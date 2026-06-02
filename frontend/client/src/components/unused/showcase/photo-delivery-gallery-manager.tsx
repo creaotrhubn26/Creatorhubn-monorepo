@@ -4,9 +4,7 @@ import { useTheming } from '../../../utils/theming-helper';
 import React, { useState } from 'react';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { useQuery } from '@tanstack/react-query';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import {
   Box,
   Typography,
@@ -54,7 +52,6 @@ import {
   Send,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
-import { getAuthHeader } from '@/lib/google/impersonation';
 
 interface Gallery {
   id: string;

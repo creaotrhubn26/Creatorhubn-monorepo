@@ -4,9 +4,7 @@ import { useTheming } from '../../../utils/theming-helper';
 import React from 'react';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { useQuery } from '@tanstack/react-query';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import {
   Box,
   Typography,
@@ -16,9 +14,7 @@ import {
   Chip,
   LinearProgress,
 } from '@mui/material';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { apiRequest } from '@/lib/queryClient';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import {
   PhotoCamera,
   Videocam,
@@ -28,7 +24,6 @@ import {
   Warning,
   Error,
 } from '@mui/icons-material';
-import { getAuthHeader } from '@/lib/google/impersonation';
 
 // Component registry with all 762 components
 const TOTAL_COMPONENTS = 762;
