@@ -31,6 +31,11 @@ function getBearer(): string | null {
   return s.RR_BEARER_TOKEN?.trim() || null;
 }
 
+/** Er AI koblet til (Role Room-token satt)? Brukes for å vise innloggings-CTA. */
+export function isAiConnected(): boolean {
+  return !!getBearer();
+}
+
 export const claudeProxyService = {
   async send(opts: {
     systemPrompt: string;

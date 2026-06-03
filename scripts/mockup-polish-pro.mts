@@ -46,7 +46,7 @@ interface MockupConfig {
   visual: { device: string; orientation?: 'portrait' | 'landscape'; fit: string; background: string; shadow: boolean; statusBarCrop: number; fadeSeconds: number; autoZoom?: boolean };
   audio: { enabled: boolean; noiseGate: boolean; noiseGateThreshold: number; polish: boolean; loudnessNormalize: boolean; loudnessTarget: number };
   music: { enabled: boolean; source: string | null; volume: number; ducking: boolean; duckDb: number };
-  export: { format: 'mp4' | 'prores4444'; pixelRatio: number; frameRate: number };
+  export: { format: 'mp4' | 'prores4444'; pixelRatio: number; frameRate: number; aspect?: number; targetHeight?: number };
 }
 interface JobSpec { clips: string[]; output: string; config: MockupConfig; music?: string }
 
@@ -72,6 +72,26 @@ function defaultConfig(): MockupConfig {
 
 const ffmpegBin = process.env.RESOLVE_SCRIPT_MANAGER_FFMPEG || 'ffmpeg';
 async function ffmpeg(args: string[]) { return exec(ffmpegBin, args); }
+
+const ffprobeBin = process.env.RESOLVE_SCRIPT_MANAGER_FFPROBE
+  || (ffmpegBin.endsWith('ffmpeg') ? ffmpegBin.slice(0, -6) + 'ffprobe' : 'ffprobe');
+/** Sjekk om en fil har et lydspor (unngår at lydløse klipp knekker concat=…:a=1). */
+async function hasAudioStream(path: string): Promise<boolean> {
+  try {
+    const { stdout } = await exec(ffprobeBin, ['-v', 'error', '-select_streams', 'a',
+      '-show_entries', 'stream=index', '-of', 'csv=p=0', path]);
+    return stdout.trim().length > 0;
+  } catch { return false; }
+}
+/** Varighet (sek) for et klipp, for å lage stillhet med riktig lengde. */
+async function clipDuration(path: string): Promise<number> {
+  try {
+    const { stdout } = await exec(ffprobeBin, ['-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'csv=p=0', path]);
+    const d = parseFloat(stdout.trim());
+    return Number.isFinite(d) && d > 0 ? d : 5;
+  } catch { return 5; }
+}
 
 async function bundle(): Promise<string> {
   const entry = `
@@ -299,10 +319,21 @@ async function main() {
   logLine(`render: ${(result.size / 1e6).toFixed(1)}MB ${result.width}x${result.height} ${result.totalDur.toFixed(1)}s`);
 
   // ── 3) Lyd: konkatener → (gate) → (musikk+ducking) → (two-pass loudness) ──
-  if (cfg.audio.enabled) {
+  // Audio-guard: klipp uten lydspor (skjermdeling uten lyd, native video-only)
+  // erstattes med stillhet av samme lengde — ellers feiler concat=…:a=1.
+  const clipAudio = await Promise.all(job.clips.map(async (c) => ({ has: await hasAudioStream(c), dur: 0 })));
+  const anyAudio = clipAudio.some((a) => a.has);
+  for (let i = 0; i < job.clips.length; i++) if (!clipAudio[i].has) clipAudio[i].dur = await clipDuration(job.clips[i]);
+  // Hopp over hele lyd-grenen hvis ingen klipp har lyd OG ingen musikk skal på.
+  const musicWanted = cfg.music.enabled && !!(job.music || cfg.music.source);
+  const buildAudio = cfg.audio.enabled && (anyAudio || musicWanted);
+  if (buildAudio) {
     progress('bygger lydspor…', 55);
     const n = job.clips.length;
-    const inputs = job.clips.flatMap((c) => ['-i', c]);
+    // Ekte lyd → '-i clip'; lydløst klipp → trimmet anullsrc-stillhet.
+    const inputs = job.clips.flatMap((c, i) => clipAudio[i].has
+      ? ['-i', c]
+      : ['-t', clipAudio[i].dur.toFixed(3), '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000']);
     const norm = job.clips.map((_, i) => `[${i}:a]aresample=48000,aformat=channel_layouts=stereo[a${i}]`).join(';');
     const concatIn = job.clips.map((_, i) => `[a${i}]`).join('');
     const gateChain = cfg.audio.noiseGate
@@ -353,22 +384,22 @@ async function main() {
   const fadeOutStart = Math.max(0, result.totalDur - fadeDur).toFixed(2);
   const alphaFade = fadeDur > 0 ? `,fade=t=in:st=0:d=${fadeDur}:alpha=1,fade=t=out:st=${fadeOutStart}:d=${fadeDur}:alpha=1` : '';
   const plainFade = fadeDur > 0 ? `,fade=t=in:st=0:d=${fadeDur},fade=t=out:st=${fadeOutStart}:d=${fadeDur}` : '';
-  const audioArgs = cfg.audio.enabled ? ['-i', audioMix] : [];
+  const audioArgs = buildAudio ? ['-i', audioMix] : [];
   // I de ikke-composite grenene er lyd alltid input [1] (webm=[0], audio=[1]).
   // Composite-grenen har sin egen map ([2]) siden bakgrunn=[0], webm=[1].
-  const audioMap = cfg.audio.enabled ? ['-map', '1:a:0'] : [];
+  const audioMap = buildAudio ? ['-map', '1:a:0'] : [];
 
   if (compositeBg) {
     progress('komponer over bakgrunn → MP4…', 85);
     const bgInput = bgImage
       ? ['-loop', '1', '-i', bgImage]
       : ['-f', 'lavfi', '-i', `color=c=${bgColor}:s=${result.width}x${result.height}:d=${result.totalDur}`];
-    const aArgs = cfg.audio.enabled ? ['-i', audioMix] : [];
+    const aArgs = buildAudio ? ['-i', audioMix] : [];
     await ffmpeg(['-y', ...bgInput, '-c:v', 'libvpx', '-i', webmOut, ...aArgs,
       '-filter_complex',
         `[0:v]scale=${result.width}:${result.height}:force_original_aspect_ratio=increase,crop=${result.width}:${result.height}[bg];` +
         `[bg][1:v]overlay=(W-w)/2:(H-h)/2:format=auto${plainFade ? ',' + plainFade.slice(1) : ''}[v]`,
-      '-map', '[v]', ...(cfg.audio.enabled ? ['-map', '2:a:0'] : []),
+      '-map', '[v]', ...(buildAudio ? ['-map', '2:a:0'] : []),
       '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'medium',
       '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', finalOut]);
   } else if (cfg.export.format === 'prores4444') {
@@ -386,8 +417,33 @@ async function main() {
       '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', finalOut]);
   }
 
+  // ── 4b) Mål-sideforhold: scale+pad (contain) til valgt aspect + høyde ──
+  // Honorerer 9:16/1:1/4:5 ekte (ikke bare codec/filendelse). Bevarer alfa for ProRes.
+  if (cfg.export.aspect && cfg.export.targetHeight) {
+    const a = cfg.export.aspect, short = cfg.export.targetHeight;
+    let tW = a >= 1 ? Math.round(short * a) : short;
+    let tH = a >= 1 ? short : Math.round(short / a);
+    tW += tW % 2; tH += tH % 2; // partall kreves av h264/prores
+    const nativeAspect = result.width / result.height;
+    if (Math.abs(nativeAspect - a) > 0.01 || result.height !== tH) {
+      progress(`tilpasser sideforhold → ${tW}x${tH}…`, 90);
+      const isMov = finalOut.endsWith('.mov');
+      const padColor = isMov ? '0x00000000' : 'black';
+      const vf = `scale=${tW}:${tH}:force_original_aspect_ratio=decrease,pad=${tW}:${tH}:(ow-iw)/2:(oh-ih)/2:color=${padColor}`;
+      const vargs = isMov
+        ? ['-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le']
+        : ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'medium', '-movflags', '+faststart'];
+      const tmp = finalOut.replace(/\.(mov|mp4)$/, '.__aspect$&');
+      await ffmpeg(['-y', '-i', finalOut, '-vf', vf, ...vargs, '-c:a', 'copy', tmp]);
+      await rm(finalOut, { force: true });
+      await ffmpeg(['-y', '-i', tmp, '-c', 'copy', finalOut]);
+      await rm(tmp, { force: true });
+      logLine(`sideforhold tilpasset til ${tW}x${tH}`);
+    }
+  }
+
   // ── 5) Valgfri Post Agent apply_audio_polish (studio-finish) ──
-  if (cfg.audio.enabled && cfg.audio.polish) {
+  if (buildAudio && cfg.audio.polish) {
     progress('Post Agent apply_audio_polish…', 93);
     const polishScript = join(ROOT, 'apps', 'resolve-script-manager', 'python', 'scripts', 'audio', 'apply_audio_polish.py');
     const isMov = finalOut.endsWith('.mov');

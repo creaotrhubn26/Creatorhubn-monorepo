@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
 import { useSceneRecorder } from './useSceneRecorder';
-import { listCaptureSources, recordAvfoundation, recordSimulator, type CaptureSource } from '../../api';
+import { listCaptureSources, recordAvfoundation, recordSimulator, checkUrlEmbeddable, type CaptureSource } from '../../api';
 import { DeviceConnectGuide } from './DeviceConnectGuide';
 import { type FrameVariant } from './deviceFrames';
 import { FramedDevice } from './FramedDevice';
@@ -49,7 +49,7 @@ function fmt(sec: number) {
 export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } = {}) {
   const {
     project, recorderStepIndex, selectScene, goToStep,
-    startRecorder, nextStep, markCurrentDone, retakeCurrent, updateScene, setProjectField,
+    startRecorder, nextStep, markCurrentDone, retakeCurrent, updateScene, setProjectField, addScene,
   } = useDemoStudio();
   const rec = useSceneRecorder();
   const macFrameRef = useRef<HTMLIFrameElement | null>(null);
@@ -58,9 +58,22 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const [sources, setSources] = useState<CaptureSource[]>([]);
   const [sourceMenu, setSourceMenu] = useState(false);
   const [showConnectGuide, setShowConnectGuide] = useState(false);
+  const [embedBlocked, setEmbedBlocked] = useState<string | null>(null);
+  const [nativeError, setNativeError] = useState<string | null>(null);
 
   // Oppdater capture-kilder ved mount (Mac-skjerm / kablede iOS-enheter / sim).
   useEffect(() => { listCaptureSources().then(setSources).catch(() => setSources([])); }, []);
+
+  // Advar hvis nettsiden ikke kan bygges inn i <iframe> (X-Frame-Options/CSP):
+  // ellers tas svart skjerm opp stille ved web-opptak.
+  const checkUrl = project?.url;
+  const checkKind = project?.captureKind ?? 'web';
+  useEffect(() => {
+    if (checkKind !== 'web' || !checkUrl) { setEmbedBlocked(null); return; }
+    let cancelled = false;
+    checkUrlEmbeddable(checkUrl).then((r) => { if (!cancelled) setEmbedBlocked(r.embeddable ? null : r.reason); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [checkUrl, checkKind]);
 
   if (!project) return <div style={{ padding: 40, fontFamily: C.font, color: C.inkSoft }}>Opprett en demo først.</div>;
 
@@ -102,7 +115,11 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
         ? (sources.find((s) => s.kind === 'mac_screen')?.id ?? '0')
         : (project.captureSourceId ?? '0');
       return await recordAvfoundation(project.id, sceneId, idx, dur);
-    } catch { return null; }
+    } catch (e) {
+      // Rust gir meningsfulle feil («ffmpeg ikke funnet», «er enheten kablet + trusted?»).
+      setNativeError(String((e as Error)?.message ?? e));
+      return null;
+    }
   };
 
   const pickSource = (s: CaptureSource | null) => {
@@ -140,6 +157,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   };
 
   const beginRecording = async () => {
+    setNativeError(null);
     startRecorder();
     if (isNativeCapture) {
       // Native: ta opp gjeldende scene fra valgt enhet/simulator (blokkerer
@@ -272,22 +290,38 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
             <option value="iphone">iPhone</option>
           </select>
           <div style={{ flex: 1 }} />
-          {/* Auto/Manual-toggle */}
-          <div style={{ display: 'flex', border: `1px solid ${C.lineStrong}`, borderRadius: 10, overflow: 'hidden' }} title="Manuell: vent på deg. Auto: Playwright utfører handlinger.">
+          {/* Auto/Manual-toggle — Auto er kun meningsfull for web (native styres av varighet) */}
+          {!isNativeCapture && (
+          <div style={{ display: 'flex', border: `1px solid ${C.lineStrong}`, borderRadius: 10, overflow: 'hidden' }} title="Manuell: du styrer hvert steg. Auto: best-effort auto-fremdrift (fungerer kun på same-origin web).">
             <div onClick={() => autoMode && toggleMode()} style={{ padding: '8px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: !autoMode ? C.dark : '#fff', color: !autoMode ? '#fff' : C.inkSoft }}>Manual</div>
             <div onClick={() => !autoMode && toggleMode()} style={{ padding: '8px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: autoMode ? C.accent : '#fff', color: autoMode ? '#fff' : C.inkSoft }}>✦ Auto</div>
           </div>
-          <button style={btn}>✦ Generate Demo Flow</button>
-          <button style={{ ...btn, background: C.dark, color: '#fff', borderColor: C.dark }}
-            onClick={() => { if (!recording) void beginRecording(); }}>
+          )}
+          {(() => { const webBlocked = captureKind === 'web' && !!embedBlocked; return (
+          <button style={{ ...btn, background: C.dark, color: '#fff', borderColor: C.dark, opacity: webBlocked ? 0.5 : 1, cursor: webBlocked ? 'not-allowed' : 'pointer' }}
+            disabled={webBlocked}
+            title={webBlocked ? 'Denne siden kan ikke bygges inn — velg Mac-skjerm/native capture' : undefined}
+            onClick={() => { if (!recording && !webBlocked) void beginRecording(); }}>
             ● {recording ? 'Recording' : rec.state === 'saving' ? 'Lagrer…' : 'Record'} <span>⌄</span>
-          </button>
+          </button>); })()}
         </div>
 
         {/* Body: device-trio + Guide-panel */}
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
           {/* Device-trio preview */}
           <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(180deg,#f6f3ee,#efe9e0)', minWidth: 0, overflow: 'hidden' }}>
+            {/* Advarsel: siden tillater ikke innbygging → web-opptak gir svart skjerm */}
+            {captureKind === 'web' && embedBlocked && (
+              <div style={{ position: 'absolute', top: 16, left: 16, right: 16, zIndex: 5, background: '#fdeee0', border: `1px solid #f0c9a8`, borderRadius: 10, padding: '10px 14px', fontSize: 12.5, color: '#8a4b15', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                <strong>Denne siden tillater ikke innbygging</strong> ({embedBlocked}). Web-opptak ville blitt svart skjerm — velg <strong>Mac-skjerm</strong> eller en native capture-kilde i kilde-menyen i stedet.
+              </div>
+            )}
+            {/* Native opptaksfeil (ffmpeg mangler / enhet ikke kablet/trusted) */}
+            {nativeError && (
+              <div style={{ position: 'absolute', top: 16, left: 16, right: 16, zIndex: 6, background: '#fdecea', border: `1px solid #f0bcb6`, borderRadius: 10, padding: '10px 14px', fontSize: 12.5, color: C.red, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                <strong>Opptak feilet:</strong> {nativeError.includes('ffmpeg') ? 'ffmpeg ikke funnet — installer ffmpeg.' : (nativeError.toLowerCase().includes('device') || nativeError.toLowerCase().includes('enhet')) ? 'Fant ikke enheten — er den kablet til og «Trust» bekreftet?' : nativeError}
+              </div>
+            )}
             {/* Recording status-badge */}
             {(recording || cur?.recordingPath) && (
               <div style={{ position: 'absolute', top: 16, left: 16, display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 10, padding: '8px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
@@ -364,7 +398,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                   <span style={{ color: C.accent }}>✦</span>
                   <div>
                     <div style={{ fontSize: 12.5, fontWeight: 600, color: '#a85a2a' }}>Auto-modus kjører</div>
-                    <div style={{ fontSize: 11.5, color: '#b06a3a' }}>Playwright utfører handlinger og går videre automatisk.</div>
+                    <div style={{ fontSize: 11.5, color: '#b06a3a' }}>Auto-fremdrift: best-effort handlinger på same-origin web; ellers venter den varigheten og går videre.</div>
                   </div>
                 </div>
               ) : (
@@ -411,7 +445,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
               </div>
             </div>
           ))}
-          <div style={{ minWidth: 100, height: 96, borderRadius: 10, border: `1px dashed ${C.lineStrong}`, display: 'grid', placeItems: 'center', cursor: 'pointer', color: C.inkSoft }}>
+          <div onClick={() => addScene(scenes.length - 1)} style={{ minWidth: 100, height: 96, borderRadius: 10, border: `1px dashed ${C.lineStrong}`, display: 'grid', placeItems: 'center', cursor: 'pointer', color: C.inkSoft }}>
             <div style={{ textAlign: 'center' }}><div style={{ fontSize: 18 }}>⊕</div><div style={{ fontSize: 11 }}>Add Scene</div></div>
           </div>
           <div style={{ flex: 1 }} />

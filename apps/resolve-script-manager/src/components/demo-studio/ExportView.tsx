@@ -12,9 +12,10 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { mockupRenderVideo, onScriptEvent } from '../../api';
+import { mockupRenderVideo, onScriptEvent, cancelScript } from '../../api';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { openPath } from '@tauri-apps/plugin-opener';
+import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { useDemoStudio } from './demoStudioStore';
 import { totalDuration } from './demoStudioModel';
 
@@ -34,15 +35,21 @@ const FORMATS = [
 const RESOLUTIONS = ['1080p', '1440p', '4K'] as const;
 const FPS = [24, 30, 60] as const;
 
+// Mål-sideforhold (b/h) per format → pipelinen cropper/padder til dette.
+const ASPECT: Record<typeof FORMATS[number]['id'], number> = {
+  '16:9': 16 / 9, '9:16': 9 / 16, '1:1': 1, '4:5': 4 / 5,
+};
+// Target-høyde (px) per oppløsning for det valgte sideforholdet.
+const TARGET_H: Record<typeof RESOLUTIONS[number], number> = { '1080p': 1080, '1440p': 1440, '4K': 2160 };
+
 interface ToggleDef { key: string; label: string; def: boolean; }
+// Kun toggles som FAKTISK gjør noe i pipelinen.
 const TOGGLES: ToggleDef[] = [
-  { key: 'subtitles', label: 'Undertekster (fra manus)', def: true },
-  { key: 'cursor', label: 'Vis cursor', def: true },
   { key: 'voiceover', label: 'Inkluder voiceover', def: true },
   { key: 'music', label: 'Bakgrunnsmusikk', def: false },
-  { key: 'mockups', label: 'Device-mockups', def: true },
-  { key: 'overlays', label: 'Overlays / callouts', def: true },
 ];
+// Funksjoner som ennå ikke er koblet — vises som «(kommer)», ikke som aktive brytere.
+const COMING_SOON = ['Undertekster (fra manus)', 'Vis cursor', 'Overlays / callouts'];
 
 export function ExportView() {
   const { project } = useDemoStudio();
@@ -53,13 +60,27 @@ export function ExportView() {
     Object.fromEntries(TOGGLES.map((t) => [t.key, t.def])),
   );
   const [busy, setBusy] = useState(false);
-  const [pct, setPct] = useState(0);
+  const [pct, setPct] = useState(0); // 0–100
   const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [resultPath, setResultPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [musicPath, setMusicPath] = useState<string | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
+  const runIdRef = useRef<string | null>(null);
+  const resultRef = useRef<string | null>(null); // unngå stale closure i finally
 
   useEffect(() => () => { unlistenRef.current?.(); }, []);
+
+  const pickMusic = async () => {
+    const sel = await openFileDialog({ multiple: false, filters: [{ name: 'Lyd', extensions: ['mp3', 'm4a', 'wav', 'aac'] }] });
+    if (typeof sel === 'string') { setMusicPath(sel); setToggles((s) => ({ ...s, music: true })); }
+  };
+
+  const cancelExport = async () => {
+    const id = runIdRef.current;
+    if (id) { try { await cancelScript(id); } catch { /* ignore */ } }
+    setStatusLabel('Avbryter…');
+  };
 
   if (!project) return <div style={{ padding: 40, fontFamily: C.font, color: C.inkSoft }}>Opprett en demo først.</div>;
 
@@ -68,11 +89,14 @@ export function ExportView() {
   const canExport = recorded.length > 0;
 
   const startExport = async () => {
-    setError(null); setResultPath(null); setPct(0); setStatusLabel('Starter…'); setBusy(true);
-    // Lytt på fremdrift fra pipelinen.
+    setError(null); setResultPath(null); resultRef.current = null; runIdRef.current = null;
+    setPct(0); setStatusLabel('Starter…'); setBusy(true);
+    // Lytt på fremdrift fra pipelinen. percent er 0–100; result-eventet legger
+    // outputPath TOP-LEVEL (ikke i .value).
     unlistenRef.current = await onScriptEvent((ev) => {
+      if (ev.runId && !runIdRef.current) runIdRef.current = ev.runId;
       if (ev.type === 'progress') { if (typeof ev.percent === 'number') setPct(ev.percent); if (ev.label) setStatusLabel(ev.label); }
-      else if (ev.type === 'result') { const op = (ev.value as { outputPath?: string })?.outputPath; if (op) setResultPath(op); }
+      else if (ev.type === 'result') { if (ev.outputPath) { resultRef.current = ev.outputPath; setResultPath(ev.outputPath); } }
       else if (ev.type === 'error') setError(ev.message ?? 'Ukjent feil');
     });
     const config = {
@@ -80,19 +104,26 @@ export function ExportView() {
         fit: 'cover', background: 'transparent',
         shadow: true, statusBarCrop: 0.045, fadeSeconds: 0.5, autoZoom: true },
       audio: { enabled: toggles.voiceover, noiseGate: true, polish: true, loudnessNormalize: true, loudnessTarget: -14 },
-      music: { enabled: toggles.music, source: null, volume: 0.5, ducking: true, duckDb: -12 },
-      export: { format: format === '9:16' ? 'prores4444' : 'mp4', pixelRatio: resolution === '4K' ? 7 : resolution === '1440p' ? 6 : 5, frameRate: fps },
+      music: { enabled: toggles.music && !!musicPath, source: musicPath, volume: 0.5, ducking: true, duckDb: -12 },
+      export: {
+        format: format === '9:16' ? 'prores4444' : 'mp4',
+        pixelRatio: resolution === '4K' ? 7 : resolution === '1440p' ? 6 : 5,
+        frameRate: fps,
+        // Mål-sideforhold + høyde → pipelinen cropper/padder til nøyaktig dette.
+        aspect: ASPECT[format], targetHeight: TARGET_H[resolution],
+      },
     };
     const clips = recorded.map((s) => s.recordingPath!).filter(Boolean);
     const outName = `${project.name.replace(/[^\w-]+/g, '_')}-demo.${format === '9:16' ? 'mov' : 'mp4'}`;
     try {
-      const summary = await mockupRenderVideo(config as Record<string, unknown>, clips, outName, toggles.music ? null : null);
-      if (!summary.succeeded && !resultPath) setError('Render fullførte ikke');
-      setPct(100); setStatusLabel('Ferdig');
+      const summary = await mockupRenderVideo(config as Record<string, unknown>, clips, outName, toggles.music ? musicPath : null);
+      if (!summary.succeeded && !resultRef.current) setError('Render fullførte ikke');
+      else { setPct(100); setStatusLabel('Ferdig'); }
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
+      runIdRef.current = null;
       unlistenRef.current?.(); unlistenRef.current = null;
     }
   };
@@ -136,7 +167,7 @@ export function ExportView() {
           </Section>
         </div>
 
-        {/* Include-toggles */}
+        {/* Include-toggles — kun de som faktisk virker */}
         <Section label="Inkluder">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 24px' }}>
             {TOGGLES.map((t) => (
@@ -149,6 +180,19 @@ export function ExportView() {
               </div>
             ))}
           </div>
+          {/* Musikk-fil (kreves når Bakgrunnsmusikk er på) */}
+          {toggles.music && (
+            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
+              <button style={{ ...outlineBtn, padding: '6px 12px' }} onClick={() => void pickMusic()}>Velg musikkfil…</button>
+              <span style={{ color: musicPath ? C.ink : C.red, wordBreak: 'break-all' }}>
+                {musicPath ? musicPath.split('/').pop() : 'Ingen fil valgt — musikk legges ikke på'}
+              </span>
+            </div>
+          )}
+          {/* Ærlig om hva som ikke er koblet ennå */}
+          <div style={{ marginTop: 12, fontSize: 11.5, color: C.inkFaint }}>
+            Kommer: {COMING_SOON.join(' · ')}. Device-mockup legges alltid på.
+          </div>
         </Section>
 
         {/* Eksport-knapp + progress */}
@@ -158,15 +202,20 @@ export function ExportView() {
               Ingen scener har opptak ennå. Ta opp scener i <strong>Guided Recorder</strong> først — eksport monterer opptakene til én produktvideo.
             </div>
           )}
-          <button disabled={busy || !canExport} onClick={() => void startExport()}
-            style={{ ...primaryBtn, opacity: busy || !canExport ? 0.5 : 1 }}>
-            {busy ? `Eksporterer… ${Math.round(pct * 100)}%` : `Eksporter ${format} ${resolution}`}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button disabled={busy || !canExport} onClick={() => void startExport()}
+              style={{ ...primaryBtn, opacity: busy || !canExport ? 0.5 : 1 }}>
+              {busy ? `Eksporterer… ${Math.round(pct)}%` : `Eksporter ${format} ${resolution}`}
+            </button>
+            {busy && (
+              <button onClick={() => void cancelExport()} style={{ ...outlineBtn }}>Avbryt</button>
+            )}
+          </div>
 
           {busy && (
             <div style={{ marginTop: 14 }}>
               <div style={{ height: 6, background: '#eee4d8', borderRadius: 3 }}>
-                <div style={{ height: '100%', width: `${pct * 100}%`, background: C.accent, borderRadius: 3, transition: 'width .2s' }} />
+                <div style={{ height: '100%', width: `${Math.min(100, Math.max(0, pct))}%`, background: C.accent, borderRadius: 3, transition: 'width .2s' }} />
               </div>
               {statusLabel && <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 6 }}>{statusLabel}</div>}
             </div>

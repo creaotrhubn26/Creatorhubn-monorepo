@@ -911,6 +911,7 @@ pub fn run() {
             media_probe::probe_media_files,
             mockup_render::mockup_render_video,
             demo_recording::save_demo_recording,
+            demo_recording::check_url_embeddable,
             capture_sources::list_capture_sources,
             capture_sources::record_avfoundation,
             capture_sources::record_simulator,

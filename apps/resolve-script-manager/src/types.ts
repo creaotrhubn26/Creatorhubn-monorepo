@@ -62,6 +62,9 @@ export interface ScriptEvent {
   total?: number;
   percent?: number;
   label?: string;
+  // result payload (mockup_render_video m.fl. emitter disse top-level)
+  outputPath?: string;
+  format?: string;
   // shot_scored payload
   index?: number;
   startSec?: number;

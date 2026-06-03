@@ -15,13 +15,15 @@
  * Verifiseres mot mockup med Playwright (scripts/_pixshot*).
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StoryView } from '../story/StoryView';
 import { ScriptBuilderView } from './ScriptBuilderView';
 import { GuidedRecorderView } from './GuidedRecorderView';
 import { ExportView } from './ExportView';
 import { FramedDevice } from './FramedDevice';
 import { type FrameVariant } from './deviceFrames';
+import { isAiConnected } from '../../services/claudeProxyService';
+import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, fetchSiteContext } from './demoStudioAI';
 import { useDemoStudio } from './demoStudioStore';
@@ -66,7 +68,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     project, selectedSceneId, recorderStepIndex,
     createProject, selectScene, updateScene, addScene, removeScene, replaceScenes,
     setSceneDevice, setProjectField, startRecorder, nextStep, markCurrentDone, retakeCurrent, goToStep,
+    loadExisting,
   } = useDemoStudio();
+
+  // Gjenopprett lagret prosjekt ved oppstart (ellers virket alt arbeid borte).
+  useEffect(() => { if (!project) loadExisting(); /* eslint-disable-next-line */ }, []);
 
   const [nav, setNav] = useState<NavId>('flow');
   const [tab, setTab] = useState<'Guide' | 'Script' | 'Notes'>('Guide');
@@ -76,17 +82,20 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [urlInput, setUrlInput] = useState('');
   const [directorBusy, setDirectorBusy] = useState(false);
   const [directorMsg, setDirectorMsg] = useState<string | null>(null);
+  const [showSignIn, setShowSignIn] = useState(false);
+  const [aiReady, setAiReady] = useState(isAiConnected());
 
   // AI Director (§5.1): hent nettside-kontekst → generér hel scene-flow →
   // erstatt scener → hopp til Script Builder så Director + Script Builder
   // jobber på samme scene-objekter.
   const runDirector = async () => {
     if (!project || directorBusy) return;
+    if (!aiReady) { setShowSignIn(true); return; }
     setDirectorBusy(true); setDirectorMsg('Leser nettsiden…');
     try {
       const siteContext = await fetchSiteContext(project.url);
       setDirectorMsg('AI Director designer flowen…');
-      const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'Healthcare Professionals', language: 'English', length: 'medium' as const };
+      const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
       const scenes = await generateDemoFlow({
         url: project.url, demoType: project.demoType, devices: project.devices, meta, siteContext,
       });
@@ -172,11 +181,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             value={project.url} onChange={(e) => setProjectField('url', e.target.value)} placeholder="https://example.com" />
         </div>
         <div style={{ flex: 1 }} />
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          {[0, 1].map((i) => <div key={i} style={{ width: 26, height: 26, borderRadius: '50%', border: '2px solid #fff', background: '#cdbfae', marginLeft: i ? -7 : 0 }} />)}
-          <span style={{ fontSize: 11, color: C.inkSoft, marginLeft: 6 }}>+2</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}><span style={{ color: C.green }}>✓</span> All changes saved</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}><span style={{ color: C.green }}>✓</span> Lagret</div>
         <button style={recording ? { ...btn, background: '#ef4444', color: '#fff', borderColor: '#ef4444' } : btn}
           onClick={async () => {
             if (recording) return;
@@ -184,7 +189,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             const ok = await rec.start();
             if (ok) setRecording(true);
           }}>● {rec.state === 'recording' ? 'Recording' : rec.state === 'saving' ? 'Lagrer…' : 'Record'}</button>
-        <button style={{ ...btn, background: C.dark, color: '#fff', borderColor: C.dark }}>Export <span>⌄</span></button>
+        <button style={{ ...btn, background: C.dark, color: '#fff', borderColor: C.dark }}
+          onClick={() => { setStoryMode(false); setNav('export'); }}>Export <span>⌄</span></button>
       </div>
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
@@ -205,17 +211,22 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           </div>
           <div style={{ flex: 1 }} />
           <div style={{ background: C.cream, border: `1px solid ${C.line}`, borderRadius: 12, padding: 14, marginBottom: 12 }}>
-            <h4 style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>✦ AI Director</h4>
+            <h4 style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              ✦ AI Director
+              <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 6, background: aiReady ? '#e6f3ec' : '#fdeee0', color: aiReady ? C.green : '#b5651d' }}>
+                {aiReady ? 'AI klar' : 'Ikke koblet'}
+              </span>
+            </h4>
             <p style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.45, marginBottom: 10 }}>La AI lese nettsiden og foreslå en hel scene-flow med manus.</p>
+            {!aiReady && (
+              <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginBottom: 8 }}
+                onClick={() => setShowSignIn(true)}>Koble til AI (Role Room)</button>
+            )}
             <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', opacity: directorBusy ? 0.6 : 1 }}
               disabled={directorBusy} onClick={() => void runDirector()}>
               {directorBusy ? 'Jobber…' : 'Generér hele demoen'}
             </button>
             {directorMsg && <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div>}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, paddingTop: 10, borderTop: `1px solid ${C.line}` }}>
-            <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#cdbfae' }} />
-            <div><div style={{ fontSize: 12.5, fontWeight: 600 }}>Olivia Moore</div><div style={{ fontSize: 11, color: C.inkFaint }}>Creator Workspace ⌄</div></div>
           </div>
         </div>
 
@@ -402,6 +413,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 3 }}>{doneCount === scenes.length ? 'Klar for eksport' : 'Ta opp scener'}</div>
           </div>
         </div>
+      )}
+      {showSignIn && (
+        <RoleRoomSignInDialog onClose={() => setShowSignIn(false)} onSignedIn={() => { setAiReady(true); setShowSignIn(false); }} />
       )}
     </div>
   );

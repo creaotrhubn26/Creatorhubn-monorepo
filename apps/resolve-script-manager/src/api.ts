@@ -100,6 +100,13 @@ export async function saveDemoRecording(
   return invoke<string>("save_demo_recording", { projectId, sceneId, dataBase64 });
 }
 
+export interface EmbedCheck { embeddable: boolean; reason: string }
+
+/** Sjekk om en URL kan vises i en <iframe> (X-Frame-Options/CSP). Fail-open. */
+export async function checkUrlEmbeddable(url: string): Promise<EmbedCheck> {
+  return invoke<EmbedCheck>("check_url_embeddable", { url });
+}
+
 export interface CaptureSource {
   kind: "mac_screen" | "ios_device" | "ios_simulator" | "iphone_mirroring";
   id: string;

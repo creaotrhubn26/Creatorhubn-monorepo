@@ -14,6 +14,8 @@
 import { useMemo, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
 import { generateSceneScript, improveScript, type ImproveAction } from './demoStudioAI';
+import { isAiConnected } from '../../services/claudeProxyService';
+import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import {
   SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, SCRIPT_TONE_LABELS, SCRIPT_LENGTH_LABELS,
   type DemoDevice, type DemoActionType, type ScriptTone, type ScriptLength,
@@ -67,9 +69,13 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
 
   const [aiBusy, setAiBusy] = useState<null | string>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [showSignIn, setShowSignIn] = useState(false);
+  const [aiReady, setAiReady] = useState(isAiConnected());
+  const [undoSnapshot, setUndoSnapshot] = useState<{ id: string; text: string } | null>(null);
 
   const onGenerate = async () => {
     if (!project || !selected) return;
+    if (!aiReady) { setShowSignIn(true); return; }
     setAiError(null); setAiBusy('generate');
     try {
       const g = await generateSceneScript({ url: project.url, demoType: project.demoType, scene: selected, meta });
@@ -81,11 +87,14 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
   };
 
   const onImprove = async (action: ImproveAction) => {
+    if (!aiReady) { setShowSignIn(true); return; }
     if (!selected?.narration?.trim()) { setAiError('Skriv narration først'); return; }
     setAiError(null); setAiBusy(action);
+    const prev = selected.narration; const sid = selected.id;
     try {
       const improved = await improveScript({ text: selected.narration, action, meta });
-      updateScene(selected.id, { narration: improved });
+      setUndoSnapshot({ id: sid, text: prev }); // gjør AI-endringen angrbar
+      updateScene(sid, { narration: improved });
     } catch (e) { setAiError((e as Error).message); } finally { setAiBusy(null); }
   };
 
@@ -129,14 +138,19 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
             ⌕ Search scenes… <span style={{ marginLeft: 'auto', fontSize: 11, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 5, padding: '1px 5px' }}>⌘K</span>
           </div>
           <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: aiReady ? '#e6f3ec' : '#fdeee0', color: aiReady ? C.green : '#b5651d' }}>
+            {aiReady ? 'AI klar' : 'AI ikke koblet'}
+          </span>
+          {!aiReady && (
+            <button style={{ ...btn }} onClick={() => setShowSignIn(true)}>Koble til AI</button>
+          )}
           <button style={{ ...btn, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onGenerate()}>
             ✦ {aiBusy === 'generate' ? 'Genererer…' : 'Generate Script'}
           </button>
           <button style={{ ...btn, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onImprove('clarify')}>
             ✎ {aiBusy && aiBusy !== 'generate' ? 'Forbedrer…' : 'AI Improve'}
           </button>
-          <button style={{ ...btn, padding: '8px 10px' }}>⋯</button>
-          <button style={{ ...btn, background: C.dark, color: '#fff', borderColor: C.dark }}>✓ Save Script <span>⌄</span></button>
+          <span style={{ fontSize: 12, color: C.green, fontWeight: 600, whiteSpace: 'nowrap' }} title="Endringer lagres automatisk">✓ Lagret</span>
         </div>
 
         {/* Body: editor + right panel */}
@@ -244,10 +258,15 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
               <span style={{ fontSize: 13, fontWeight: 700 }}>✦ AI Assistant</span>
               <span style={{ fontSize: 9, fontWeight: 700, color: C.accent, border: `1px solid ${C.accent}`, borderRadius: 4, padding: '1px 4px' }}>BETA</span>
               <div style={{ flex: 1 }} />
-              <span style={{ fontSize: 11, color: C.inkSoft, cursor: 'pointer' }}>↻ Regenerate</span>
+              <span style={{ fontSize: 11, color: aiBusy ? C.inkFaint : C.inkSoft, cursor: aiBusy ? 'default' : 'pointer' }}
+                onClick={() => { if (!aiBusy) void onGenerate(); }}>↻ Regenerate</span>
             </div>
             <div style={{ fontSize: 11, color: C.inkFaint, marginBottom: 12 }}>Forbedre manuset for denne scenen</div>
             {aiError && <div style={{ fontSize: 11.5, color: '#c4453b', marginBottom: 10 }}>{aiError}</div>}
+            {undoSnapshot && undoSnapshot.id === selected.id && (
+              <div onClick={() => { updateScene(selected.id, { narration: undoSnapshot.text }); setUndoSnapshot(null); }}
+                style={{ fontSize: 11.5, color: C.accent, cursor: 'pointer', marginBottom: 10, fontWeight: 600 }}>↩ Angre AI-endring</div>
+            )}
             {AI_SUGGESTIONS.map((s) => (
               <div key={s.title} style={{ display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
                 <div style={{ width: 26, height: 26, borderRadius: 7, background: C.cream, display: 'grid', placeItems: 'center', fontSize: 12 }}>{s.ic}</div>
@@ -261,7 +280,6 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
                 </button>
               </div>
             ))}
-            <div style={{ textAlign: 'center', border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, fontSize: 12, color: C.inkSoft, cursor: 'pointer', marginTop: 4 }}>View all suggestions ›</div>
           </div>
         </div>
 
@@ -289,6 +307,9 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
           </div>
         </div>
       </div>
+      {showSignIn && (
+        <RoleRoomSignInDialog onClose={() => setShowSignIn(false)} onSignedIn={() => { setAiReady(true); setShowSignIn(false); }} />
+      )}
     </div>
   );
 }

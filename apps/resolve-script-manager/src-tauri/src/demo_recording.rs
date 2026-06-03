@@ -107,3 +107,53 @@ pub async fn save_demo_recording(
     let _ = std::fs::remove_file(&webm_path);
     Ok(mp4_path.to_string_lossy().to_string())
 }
+
+/// Resultat av innbyggings-sjekk for en URL (X-Frame-Options / CSP frame-ancestors).
+#[derive(serde::Serialize)]
+pub struct EmbedCheck {
+    pub embeddable: bool,
+    pub reason: String,
+}
+
+/// Sjekk om en URL kan vises i en <iframe>. Brukes av Demo Studio for å advare
+/// før web-opptak (ellers tas svart skjerm opp stille). Fail-open: hvis sjekken
+/// ikke kan gjennomføres (nettverk/CORS), antar vi at den KAN bygges inn.
+#[tauri::command]
+pub async fn check_url_embeddable(url: String) -> Result<EmbedCheck, String> {
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17 Safari/605.1.15")
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => return Ok(EmbedCheck { embeddable: true, reason: format!("kunne ikke initiere sjekk: {}", e) }),
+    };
+    let res = match client.get(&url).send().await {
+        Ok(r) => r,
+        Err(e) => return Ok(EmbedCheck { embeddable: true, reason: format!("kunne ikke sjekke siden: {}", e) }),
+    };
+    let headers = res.headers();
+    let xfo = headers
+        .get("x-frame-options")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_lowercase();
+    if xfo.contains("deny") || xfo.contains("sameorigin") {
+        return Ok(EmbedCheck { embeddable: false, reason: format!("X-Frame-Options: {}", xfo.trim()) });
+    }
+    let csp = headers
+        .get("content-security-policy")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_lowercase();
+    if let Some(idx) = csp.find("frame-ancestors") {
+        let rest = &csp[idx..];
+        let end = rest.find(';').unwrap_or(rest.len());
+        let directive = &rest[..end];
+        // Begrenset hvis 'none', eller kun 'self' uten wildcard.
+        if directive.contains("'none'") || (directive.contains("'self'") && !directive.contains('*')) {
+            return Ok(EmbedCheck { embeddable: false, reason: "CSP frame-ancestors begrenser innbygging".to_string() });
+        }
+    }
+    Ok(EmbedCheck { embeddable: true, reason: "ok".to_string() })
+}

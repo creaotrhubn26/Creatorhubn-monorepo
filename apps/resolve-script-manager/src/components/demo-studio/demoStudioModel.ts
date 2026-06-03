@@ -244,7 +244,7 @@ export function makeProject(url: string, demoType: DemoType = 'product_demo'): D
     language: 'no',
     devices: ['macbook', 'iphone'],
     format: '16:9',
-    scriptMeta: { tone: 'professional', audience: 'Healthcare Professionals', language: 'English', length: 'medium' },
+    scriptMeta: { tone: 'professional', audience: 'General', language: 'Norsk', length: 'medium' },
     scenes: defaultSceneFlow('macbook'),
     createdAt: now,
     updatedAt: now,
