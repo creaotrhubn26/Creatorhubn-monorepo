@@ -289,7 +289,7 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
         `SELECT 1 FROM talents WHERE id = $1 AND owner_user_id = $2 LIMIT 1`,
         [talentId, session.userId],
       );
-      let allowed = ownerCheck.rowCount > 0;
+      let allowed = (ownerCheck.rowCount ?? 0) > 0;
 
       // Sjekk 2: er session-user member av en agency med aktiv consent?
       if (!allowed) {
@@ -318,7 +318,7 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
             LIMIT 1`,
           [talentId, session.userId, requiredScopes],
         );
-        allowed = accessCheck.rowCount > 0;
+        allowed = (accessCheck.rowCount ?? 0) > 0;
       }
 
       if (!allowed) {

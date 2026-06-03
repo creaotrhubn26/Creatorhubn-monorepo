@@ -64,6 +64,8 @@ export function setupRoleRoomCallSheetRoutes(deps: CallSheetRoutesDeps): void {
             to: recipient.email,
             subject,
             html: personalizedHtml,
+            // Plain-text-fallback for mail-klienter som ikke renderer HTML
+            text: personalizedHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
             fromLabel: "The Role Room",
           });
           results.push({ email: recipient.email, sent: out.sent, reason: out.reason });

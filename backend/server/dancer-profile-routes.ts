@@ -105,7 +105,7 @@ const upsertBodySchema = z.object({
   injuryNote: z.string().max(500).nullable().optional(),
   reelUrls: z.array(z.string().url()).max(10).optional(),
   bodyMeasurements: bodyMeasurementsSchema.optional(),
-  skillLevels: z.record(z.enum(SKILL_LEVELS)).optional(),
+  skillLevels: z.record(z.string(), z.enum(SKILL_LEVELS)).optional(),
   notes: z.string().max(2000).nullable().optional(),
   projectId: z.string().min(1).max(200).nullable().optional(),
 });

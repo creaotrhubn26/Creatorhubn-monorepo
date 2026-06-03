@@ -68415,8 +68415,8 @@ type QuoteCompatibilityRecord = Omit<
 
 function mapQuoteCompatibilityRecord(r: any): QuoteCompatibilityRecord {
   const quote = mapPriceAdministrationQuote(r);
-  const packageLine = Array.isArray(quote.services)
-    ? quote.services.find((entry: any) => entry?.type === "package")
+  const packageLine: { description?: string; type?: string } | null = Array.isArray(quote.services)
+    ? (quote.services.find((entry: any) => entry?.type === "package") as { description?: string; type?: string } | undefined) ?? null
     : null;
   const projectCreationData =
     quote.projectCreationData && typeof quote.projectCreationData === "object"

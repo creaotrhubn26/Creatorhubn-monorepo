@@ -48,19 +48,30 @@ export interface ClientGalleryRoutesDeps {
   ensureVideoTimecodeCommentsSchema: () => Promise<void>;
   buildGalleryShareUrl: (accessToken: string) => string;
   fetchGalleryWithSettingsByToken: (accessToken: string) => Promise<any>;
+  /**
+   * Matcher index.ts:22963. Returnerer GalleryPricing-struct som ikke
+   * eksporteres her — bruker bredt-typet any på return.
+   */
   calculateGalleryPricing: (
-    gallery: any,
-    selectedImageIds: string[],
+    gallerySettings: Record<string, unknown> | null | undefined,
+    selectedCount: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ) => any;
   checkContractSignature: (galleryId: string) => Promise<any>;
+  /** Matcher index.ts:23061. Andre parameter er clientEmail, ikke imageIds. */
   countUniqueDownloadedImages: (
     galleryId: string,
-    imageIds: string[],
+    clientEmail: string,
   ) => Promise<number>;
   notifyPhotographerOfDownload: (input: any) => Promise<void>;
+  /**
+   * Matcher index.ts:22136 type GalleryNotificationType + impl 22224.
+   * Literal-union beholdes så call-sites må sende gyldig type-streng.
+   */
   dispatchGalleryNotification: (
-    type: string,
+    type: 'comment_created' | 'selection_submitted' | 'project_milestone',
     photographerId: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     payload: any,
   ) => Promise<void>;
   getCreatorHubStripeClient: () => Stripe | null;
