@@ -15,7 +15,7 @@
 
 import type { Rect } from './fitRect';
 
-export type DeviceVariant = 'macbook' | 'ipad' | 'iphone';
+export type DeviceVariant = 'macbook' | 'ipad' | 'ipad_landscape' | 'iphone';
 
 /** Et avrundet rektangel — radius brukes til canvas-klipping. */
 export interface RoundedRect extends Rect {

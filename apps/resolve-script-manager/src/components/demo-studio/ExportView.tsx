@@ -76,7 +76,8 @@ export function ExportView() {
       else if (ev.type === 'error') setError(ev.message ?? 'Ukjent feil');
     });
     const config = {
-      visual: { device: scenes[0]?.device ?? 'macbook', fit: 'cover', background: 'transparent',
+      visual: { device: scenes[0]?.device ?? 'macbook', orientation: scenes[0]?.orientation ?? 'portrait',
+        fit: 'cover', background: 'transparent',
         shadow: true, statusBarCrop: 0.045, fadeSeconds: 0.5, autoZoom: true },
       audio: { enabled: toggles.voiceover, noiseGate: true, polish: true, loudnessNormalize: true, loudnessTarget: -14 },
       music: { enabled: toggles.music, source: null, volume: 0.5, ducking: true, duckDb: -12 },

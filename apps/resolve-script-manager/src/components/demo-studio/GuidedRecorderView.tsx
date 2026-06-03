@@ -57,7 +57,6 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const [sources, setSources] = useState<CaptureSource[]>([]);
   const [sourceMenu, setSourceMenu] = useState(false);
   const [showConnectGuide, setShowConnectGuide] = useState(false);
-  const [ipadLandscape, setIpadLandscape] = useState(false);
 
   // Oppdater capture-kilder ved mount (Mac-skjerm / kablede iOS-enheter / sim).
   useEffect(() => { listCaptureSources().then(setSources).catch(() => setSources([])); }, []);
@@ -74,15 +73,19 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
 
   // Valgt forhåndsvisnings-enhet (én om gangen). Dropdown setter den direkte
   // på alle scener — ingen modal. iPad kan vises stående eller liggende.
+  // Orienteringen LAGRES på scenene (scene.orientation) så eksport/opptak
+  // også bruker liggende iPad.
   const previewDevice: DemoDevice = cur?.device ?? 'macbook';
-  const previewVariant: FrameVariant = previewDevice === 'ipad' && ipadLandscape ? 'ipad_landscape' : previewDevice;
-  const dropdownValue = previewDevice === 'ipad' && ipadLandscape ? 'ipad_landscape' : previewDevice;
-  const setDeviceForAll = (v: DemoDevice) => scenes.forEach((s) => updateScene(s.id, {
-    device: v, viewport: v === 'macbook' ? 'desktop' : v === 'ipad' ? 'tablet' : 'mobile',
-  }));
+  const ipadLandscape = previewDevice === 'ipad' && cur?.orientation === 'landscape';
+  const previewVariant: FrameVariant = ipadLandscape ? 'ipad_landscape' : previewDevice;
+  const dropdownValue = ipadLandscape ? 'ipad_landscape' : previewDevice;
+  const setDeviceForAll = (v: DemoDevice, orientation: 'portrait' | 'landscape' = 'portrait') =>
+    scenes.forEach((s) => updateScene(s.id, {
+      device: v, viewport: v === 'macbook' ? 'desktop' : v === 'ipad' ? 'tablet' : 'mobile', orientation,
+    }));
   const onPickDevice = (val: string) => {
-    if (val === 'ipad_landscape') { setDeviceForAll('ipad'); setIpadLandscape(true); }
-    else { setDeviceForAll(val as DemoDevice); setIpadLandscape(false); }
+    if (val === 'ipad_landscape') setDeviceForAll('ipad', 'landscape');
+    else setDeviceForAll(val as DemoDevice, 'portrait');
   };
 
   /** Ta opp gjeldende scene fra valgt native capture-kilde (Rust → ffmpeg/simctl). */

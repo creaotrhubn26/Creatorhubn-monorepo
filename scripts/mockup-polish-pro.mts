@@ -43,7 +43,7 @@ function logLine(message: string) { emit('log', { message }); }
 
 // ── Config-typer (speiler frontend mockupConfig.ts) ──
 interface MockupConfig {
-  visual: { device: string; fit: string; background: string; shadow: boolean; statusBarCrop: number; fadeSeconds: number; autoZoom?: boolean };
+  visual: { device: string; orientation?: 'portrait' | 'landscape'; fit: string; background: string; shadow: boolean; statusBarCrop: number; fadeSeconds: number; autoZoom?: boolean };
   audio: { enabled: boolean; noiseGate: boolean; noiseGateThreshold: number; polish: boolean; loudnessNormalize: boolean; loudnessTarget: number };
   music: { enabled: boolean; source: string | null; volume: number; ducking: boolean; duckDb: number };
   export: { format: 'mp4' | 'prores4444'; pixelRatio: number; frameRate: number };
@@ -185,8 +185,10 @@ async function main() {
       : { kind: 'gradient', from: preset.from, to: preset.to };
   const padForRender = renderTransparent ? 0 : 0.08;
 
+  // Orientering→variant: liggende iPad bruker den roterte landskaps-rammen.
+  const renderVariant = v.device === 'ipad' && v.orientation === 'landscape' ? 'ipad_landscape' : v.device;
   await page.evaluate(`window.__JOB = ${JSON.stringify({
-    variant: v.device, fit: v.fit, pixelRatio: cfg.export.pixelRatio, frameRate: cfg.export.frameRate,
+    variant: renderVariant, fit: v.fit, pixelRatio: cfg.export.pixelRatio, frameRate: cfg.export.frameRate,
     background: bgForRender, padding: padForRender, shadow: v.shadow && !renderTransparent,
     statusCrop: v.statusBarCrop, autoZoom: !!v.autoZoom,
   })};`);

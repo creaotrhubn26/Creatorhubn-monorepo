@@ -81,6 +81,8 @@ export interface DemoScene {
   title: string;
   device: DemoDevice;
   viewport: DemoViewport;
+  /** Skjerm-orientering. Relevant for iPad (stående/liggende). Default 'portrait'. */
+  orientation?: 'portrait' | 'landscape';
   /** Manus / teleprompter-tekst som leses opp. */
   narration: string;
   /** Visuell instruks: hva som skal vises/fokuseres på (Script Builder rad 2). */
