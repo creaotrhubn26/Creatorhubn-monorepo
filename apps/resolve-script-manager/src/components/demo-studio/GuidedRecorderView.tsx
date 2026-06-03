@@ -18,7 +18,8 @@ import { useDemoStudio } from './demoStudioStore';
 import { useSceneRecorder } from './useSceneRecorder';
 import { listCaptureSources, recordAvfoundation, recordSimulator, type CaptureSource } from '../../api';
 import { DeviceConnectGuide } from './DeviceConnectGuide';
-import { DEVICE_FRAMES, type FrameVariant } from './deviceFrames';
+import { type FrameVariant } from './deviceFrames';
+import { FramedDevice } from './FramedDevice';
 import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, type DemoDevice } from './demoStudioModel';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -430,32 +431,6 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
 
 }
 
-/**
- * FramedDevice — live <iframe> plassert i skjerm-hullet av en ekte device-
- * ramme-PNG (samme rammer som eksporten bruker). Bredden styres av `width`;
- * høyden følger frame-PNG-ens forhold. Skjerm-rektangelet og hjørne-radius
- * kommer fra DEVICE_FRAMES (relativt 0..1).
- */
-function FramedDevice({ variant, url, width, shadow, iframeRef }: {
-  variant: FrameVariant; url: string; width: string | number;
-  shadow?: string; iframeRef?: React.Ref<HTMLIFrameElement>;
-}) {
-  const f = DEVICE_FRAMES[variant];
-  const s = f.screen;
-  return (
-    <div style={{ position: 'relative', width, aspectRatio: String(f.aspect), filter: shadow ? `drop-shadow(${shadow})` : 'drop-shadow(0 8px 22px rgba(0,0,0,0.12))' }}>
-      {/* Ekte ramme nederst (transparent surround). Skjermen i PNG-en er opak
-          svart, så iframe-en MÅ ligge OVER rammen og klippes til skjerm-hullet
-          — ellers dekker den svarte PNG-skjermen innholdet. */}
-      <img src={f.src} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
-      {/* Live innhold over rammen, klippet til skjerm-rektangelet */}
-      <div style={{ position: 'absolute', left: `${s.x * 100}%`, top: `${s.y * 100}%`, width: `${s.w * 100}%`, height: `${s.h * 100}%`, background: '#000', borderRadius: `${f.radius * 100}%`, overflow: 'hidden' }}>
-        <iframe ref={iframeRef} title={variant} src={url}
-          style={{ width: '100%', height: '100%', border: 0, display: 'block' }} />
-      </div>
-    </div>
-  );
-}
 
 function SourceItem({ label, sub, onClick, active }: { label: string; sub: string; onClick: () => void; active: boolean }) {
   return (

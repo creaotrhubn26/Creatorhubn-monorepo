@@ -20,6 +20,8 @@ import { StoryView } from '../story/StoryView';
 import { ScriptBuilderView } from './ScriptBuilderView';
 import { GuidedRecorderView } from './GuidedRecorderView';
 import { ExportView } from './ExportView';
+import { FramedDevice } from './FramedDevice';
+import { type FrameVariant } from './deviceFrames';
 import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, fetchSiteContext } from './demoStudioAI';
 import { useDemoStudio } from './demoStudioStore';
@@ -53,7 +55,6 @@ const DEMO_TYPE_ICON: Record<DemoType, string> = {
 
 const DEVICE_LABEL: Record<DemoDevice, string> = { macbook: 'MacBook', ipad: 'iPad', iphone: 'iPhone' };
 /** Bredde på preview-canvas per enhet (px) — desktop fyller, mobil/tablet smalere. */
-const DEVICE_WIDTH: Record<DemoDevice, number | string> = { macbook: '100%', ipad: 540, iphone: 320 };
 
 function fmt(sec: number) {
   const m = Math.floor(sec / 60), s = Math.round(sec % 60);
@@ -105,6 +106,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const recorderScene = scenes[recorderStepIndex];
   const doneCount = scenes.filter((s) => s.status === 'done' || s.status === 'approved').length;
   const previewDevice = selected?.device ?? 'macbook';
+  const previewVariant: FrameVariant = previewDevice === 'ipad' && selected?.orientation === 'landscape' ? 'ipad_landscape' : previewDevice;
 
   const storyPicks = useMemo(() => (project ? demoScenesToPicks(project.scenes) : []), [project]);
   const storyChapters = useMemo(() => (project ? demoChapters(project.scenes) : []), [project]);
@@ -264,16 +266,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 ))}
               </div>
 
-              {/* Live URL-preview i device-bredde */}
-              <div style={{ width: DEVICE_WIDTH[previewDevice], maxWidth: '100%', margin: '0 auto', background: '#fff', border: `1px solid ${C.line}`, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderBottom: `1px solid ${C.line}`, background: C.cream }}>
-                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#f56' }} />
-                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#fb5' }} />
-                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#5c5' }} />
-                  <span style={{ marginLeft: 8, fontSize: 11, color: C.inkFaint }}>{project.url}</span>
-                </div>
-                <iframe title="preview" src={project.url}
-                  style={{ width: '100%', height: previewDevice === 'iphone' ? 560 : 380, border: 0, display: 'block', background: '#fff' }} />
+              {/* Live preview i EKTE device-ramme (samme som Guided Recorder/eksport) */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto',
+                width: previewVariant === 'macbook' ? '78%' : previewVariant === 'ipad_landscape' ? '64%' : previewVariant === 'ipad' ? '42%' : '26%',
+                maxWidth: previewVariant === 'macbook' ? 640 : previewVariant === 'ipad_landscape' ? 560 : previewVariant === 'ipad' ? 360 : 230,
+              }}>
+                <FramedDevice variant={previewVariant} url={project.url} width="100%" />
               </div>
 
               {/* Scene-flow-kort */}
