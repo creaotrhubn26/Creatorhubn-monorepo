@@ -591,8 +591,17 @@ export function setupPhotographerMiscRoutes(
         projects,
       });
     } catch (err) {
-      console.error('[photographer-profitability] summary failed:', err);
-      res.status(500).json({ error: 'profitability_summary_failed' });
+      // Schema-feil eller manglende tabeller skal ikke krasje dashboard.
+      // Returner tom struktur i stedet for 500.
+      console.warn('[photographer-profitability] summary failed, returning empty:', err);
+      res.json({
+        totals: { revenueGross: 0, revenueNet: 0, vatAmount: 0, cost: 0, profitNet: 0, marginPct: null, projectCount: 0 },
+        serviceTypes: [],
+        topProjects: [],
+        bottomProjects: [],
+        projects: [],
+        schemaWarning: err instanceof Error ? err.message : String(err),
+      });
     }
   });
 }
