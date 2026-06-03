@@ -717,6 +717,9 @@ import { setupSongflowDeprecatedAliasesRoutes } from "./songflow-deprecated-alia
 import { setupEquipmentDiscoveryRoutes } from "./equipment-discovery-routes";
 import { setupEquipmentCatalogRoutes } from "./equipment-catalog-routes";
 import { setupEquipmentFirmwareRoutes } from "./equipment-firmware-routes";
+import { setupAcademyIntegrationsRoutes } from "./academy-integrations-routes";
+import { setupAcademyMediaAssetsRoutes } from "./academy-media-assets-routes";
+import { setupAcademyCohortSettingsRoutes } from "./academy-cohort-settings-routes";
 import { setupPricingRoutes } from "./pricing-routes";
 import { setupAccountingRoutes } from "./accounting-routes";
 import { setupFileManagementRoutes } from "./file-management-routes";
@@ -41998,7 +42001,7 @@ type AcademyCohortStatus =
   | "early_access"
   | "invitation_only";
 
-interface AcademyPersistedCohortItem {
+export interface AcademyPersistedCohortItem {
   id: string;
   name: string;
   subtitle: string;
@@ -42013,14 +42016,14 @@ interface AcademyPersistedCohortItem {
   imageTheme: number;
 }
 
-interface AcademyPersistedDiscussionItem {
+export interface AcademyPersistedDiscussionItem {
   id: string;
   author: string;
   message: string;
   timestamp: string;
 }
 
-interface AcademyCohortFeatureFlags {
+export interface AcademyCohortFeatureFlags {
   earlyAccess: boolean;
   invitationOnly: boolean;
   closed: boolean;
@@ -42134,126 +42137,6 @@ async function ensureAcademyCohortSettingsTable(): Promise<void> {
     )
   `);
 }
-
-app.get("/api/academy/cohort-settings", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const courseId = readString(req.query?.courseId);
-    if (!courseId) {
-      return res
-        .status(400)
-        .json({ success: false, error: "courseId is required" });
-    }
-
-    await ensureAcademyCohortSettingsTable();
-    const result = await pool.query(
-      `SELECT course_id, cohorts, feature_flags, discussions, selected_cohort_id, updated_at
-       FROM academy_cohort_settings
-       WHERE user_id = $1 AND course_id = $2
-       LIMIT 1`,
-      [userId, courseId],
-    );
-
-    const row = result.rows?.[0];
-    if (!row) {
-      return res.status(200).json({ success: true, data: null });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        courseId: row.course_id,
-        cohorts: normalizeCohortItems(row.cohorts),
-        featureFlags: normalizeCohortFeatureFlags(row.feature_flags),
-        discussions: normalizeCohortDiscussions(row.discussions),
-        selectedCohortId: readString(row.selected_cohort_id) || null,
-        updatedAt: row.updated_at,
-      },
-    });
-  } catch (error) {
-    console.error("Error reading academy cohort settings:", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Could not read cohort settings" });
-  }
-});
-
-app.post("/api/academy/cohort-settings", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const courseId = readString(req.body?.courseId);
-    if (!courseId) {
-      return res
-        .status(400)
-        .json({ success: false, error: "courseId is required" });
-    }
-
-    const cohorts = normalizeCohortItems(req.body?.cohorts);
-    const featureFlags = normalizeCohortFeatureFlags(req.body?.featureFlags);
-    const discussions = normalizeCohortDiscussions(req.body?.discussions);
-    const selectedCohortId = readString(req.body?.selectedCohortId) || null;
-
-    await ensureAcademyCohortSettingsTable();
-    const result = await pool.query(
-      `INSERT INTO academy_cohort_settings
-        (user_id, course_id, cohorts, feature_flags, discussions, selected_cohort_id, created_at, updated_at)
-       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, NOW(), NOW())
-       ON CONFLICT (user_id, course_id) DO UPDATE SET
-         cohorts = EXCLUDED.cohorts,
-         feature_flags = EXCLUDED.feature_flags,
-         discussions = EXCLUDED.discussions,
-         selected_cohort_id = EXCLUDED.selected_cohort_id,
-         updated_at = NOW()
-       RETURNING course_id, cohorts, feature_flags, discussions, selected_cohort_id, updated_at`,
-      [
-        userId,
-        courseId,
-        JSON.stringify(cohorts),
-        JSON.stringify(featureFlags),
-        JSON.stringify(discussions),
-        selectedCohortId,
-      ],
-    );
-
-    const row = result.rows?.[0];
-    return res.status(200).json({
-      success: true,
-      data: {
-        courseId: row?.course_id || courseId,
-        cohorts: normalizeCohortItems(row?.cohorts || cohorts),
-        featureFlags: normalizeCohortFeatureFlags(
-          row?.feature_flags || featureFlags,
-        ),
-        discussions: normalizeCohortDiscussions(
-          row?.discussions || discussions,
-        ),
-        selectedCohortId: readString(row?.selected_cohort_id) || null,
-        updatedAt: row?.updated_at || new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    console.error("Error saving academy cohort settings:", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Could not save cohort settings" });
-  }
-});
 
 // /api/invite-requests + /api/invites/admin/requests + /api/proff lookups →
 // flyttet til ./invite-requests-routes.ts (10 endpoints, dep-injected).
@@ -50123,9 +50006,9 @@ const probeVideoDurationSeconds = async (
     : 0;
 };
 
-type AcademyStoredMediaType = "image" | "video" | "audio" | "document";
+export type AcademyStoredMediaType = "image" | "video" | "audio" | "document";
 
-interface AcademyStoredMediaVersionRecord {
+export interface AcademyStoredMediaVersionRecord {
   version: number;
   fileName: string;
   mimeType: string;
@@ -50138,7 +50021,7 @@ interface AcademyStoredMediaVersionRecord {
   posterMimeType?: string;
 }
 
-interface AcademyStoredMediaAssetRecord {
+export interface AcademyStoredMediaAssetRecord {
   id: string;
   name: string;
   type: AcademyStoredMediaType;
@@ -50152,7 +50035,7 @@ interface AcademyStoredMediaAssetRecord {
   history: AcademyStoredMediaVersionRecord[];
 }
 
-interface AcademyStoredMediaManifest {
+export interface AcademyStoredMediaManifest {
   version: number;
   updatedAt: string;
   assets: AcademyStoredMediaAssetRecord[];
@@ -65907,6 +65790,24 @@ setupEquipmentFirmwareRoutes({
   resolveSoftwareOrderColumn,
   toIsoString,
 });
+setupAcademyIntegrationsRoutes({ app, pool, requireAcademySession });
+setupAcademyMediaAssetsRoutes({
+  app,
+  requireAcademySession,
+  loadAcademyMediaManifest,
+  persistAcademyMediaManifest,
+  resolveAcademyMediaVersion,
+  academyMediaStorageDir: ACADEMY_MEDIA_STORAGE_DIR,
+});
+setupAcademyCohortSettingsRoutes({
+  app,
+  pool,
+  requireAcademySession,
+  ensureAcademyCohortSettingsTable,
+  normalizeCohortItems,
+  normalizeCohortFeatureFlags,
+  normalizeCohortDiscussions,
+});
 // NB: setupSongflowDeprecatedAliasesRoutes wires later (etter handler-
 // deklarasjoner ~linje 70324). Trivielle deprecation-aliases krever at
 // EaseVerse-handlers først er deklarert.
@@ -73184,133 +73085,6 @@ app.post("/api/notebooklm/workspace/sync", async (req, res) => {
   }
 });
 
-app.get("/api/academy/google-vids/status", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const status = await getAcademyGoogleVidsWorkspaceStatus(pool, {
-      userId,
-      courseId: readString(req.query.courseId),
-      courseTitle: readString(req.query.courseTitle),
-    });
-
-    return res.json(status);
-  } catch (error) {
-    console.error("Academy Google Vids workspace status error:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to fetch Academy Google Vids workspace status" });
-  }
-});
-
-app.post("/api/academy/google-vids/sync", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const workspace = await syncAcademyGoogleVidsWorkspace(pool, {
-      userId,
-      courseId: readString(req.body?.courseId),
-      courseTitle: readString(req.body?.courseTitle),
-      snapshot: req.body?.snapshot,
-    });
-
-    const status = await getAcademyGoogleVidsWorkspaceStatus(pool, {
-      userId,
-      courseId: workspace.courseId,
-      courseTitle: workspace.courseTitle,
-    });
-
-    return res.json(status);
-  } catch (error) {
-    console.error("Academy Google Vids workspace sync error:", error);
-    return res.status(500).json({
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to sync Academy Google Vids workspace",
-    });
-  }
-});
-
-app.get("/api/academy/notebooklm/status", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const status = await getAcademyNotebookLmWorkspaceStatus(pool, {
-      userId,
-      courseId: readString(req.query.courseId),
-      lessonId: readString(req.query.lessonId),
-      courseTitle: readString(req.query.courseTitle),
-    });
-
-    return res.json(status);
-  } catch (error) {
-    console.error("Academy NotebookLM workspace status error:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to fetch Academy NotebookLM workspace status" });
-  }
-});
-
-app.post("/api/academy/notebooklm/sync", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const workspace = await syncAcademyNotebookLmWorkspace(pool, {
-      userId,
-      courseId: readString(req.body?.courseId),
-      lessonId: readString(req.body?.lessonId),
-      courseTitle: readString(req.body?.courseTitle),
-      snapshot: req.body?.snapshot,
-    });
-
-    const status = await getAcademyNotebookLmWorkspaceStatus(pool, {
-      userId,
-      courseId: workspace.courseId,
-      lessonId: workspace.lessonId,
-      courseTitle: workspace.courseTitle,
-    });
-
-    return res.json(status);
-  } catch (error) {
-    console.error("Academy NotebookLM workspace sync error:", error);
-    return res.status(500).json({
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to sync Academy NotebookLM workspace",
-    });
-  }
-});
-
 // ============================================================
 // Google People API (Stub endpoints for CRM integration)
 // ============================================================
@@ -73594,125 +73368,6 @@ app.post(
     }
   },
 );
-
-app.delete("/api/academy/media-assets/:assetId", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "instructor"))) {
-      return;
-    }
-    const assetId = String(req.params.assetId || "").trim();
-    if (!assetId) {
-      return res.status(400).json({ error: "Missing asset id" });
-    }
-    const manifest = await loadAcademyMediaManifest();
-    const nextAssets = manifest.assets.filter((entry) => entry.id !== assetId);
-    if (nextAssets.length === manifest.assets.length) {
-      return res.status(404).json({ error: "Academy media asset not found" });
-    }
-
-    manifest.assets = nextAssets;
-    manifest.updatedAt = new Date().toISOString();
-    await persistAcademyMediaManifest(manifest);
-
-    const assetDir = path.join(ACADEMY_MEDIA_STORAGE_DIR, assetId);
-    try {
-      await fs.rm(assetDir, { recursive: true, force: true });
-    } catch (error) {
-      console.warn("[academy-media] failed to remove asset directory:", error);
-    }
-
-    return res.json({ success: true, assetId });
-  } catch (error) {
-    console.error("[academy-media] delete failed:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to delete academy media asset" });
-  }
-});
-
-app.get("/api/academy/media-assets/:assetId/file", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "authenticated"))) {
-      return;
-    }
-    const assetId = String(req.params.assetId || "").trim();
-    const requestedVersion = Number(req.query.version || 0);
-    const manifest = await loadAcademyMediaManifest();
-    const record = manifest.assets.find((entry) => entry.id === assetId);
-    if (!record) {
-      return res.status(404).json({ error: "Academy media asset not found" });
-    }
-    const versionRecord = resolveAcademyMediaVersion(
-      record,
-      Number.isFinite(requestedVersion) && requestedVersion > 0
-        ? requestedVersion
-        : undefined,
-    );
-    if (!versionRecord) {
-      return res.status(404).json({ error: "Academy media version not found" });
-    }
-
-    const absolutePath = path.join(
-      ACADEMY_MEDIA_STORAGE_DIR,
-      versionRecord.relativePath,
-    );
-    if (!existsSync(absolutePath)) {
-      return res
-        .status(404)
-        .json({ error: "Academy media file missing on disk" });
-    }
-
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    res.type(versionRecord.mimeType || "application/octet-stream");
-    return res.sendFile(absolutePath);
-  } catch (error) {
-    console.error("[academy-media] serve file failed:", error);
-    return res.status(500).json({ error: "Failed to load academy media file" });
-  }
-});
-
-app.get("/api/academy/media-assets/:assetId/poster", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "authenticated"))) {
-      return;
-    }
-    const assetId = String(req.params.assetId || "").trim();
-    const requestedVersion = Number(req.query.version || 0);
-    const manifest = await loadAcademyMediaManifest();
-    const record = manifest.assets.find((entry) => entry.id === assetId);
-    if (!record) {
-      return res.status(404).json({ error: "Academy media asset not found" });
-    }
-    const versionRecord = resolveAcademyMediaVersion(
-      record,
-      Number.isFinite(requestedVersion) && requestedVersion > 0
-        ? requestedVersion
-        : undefined,
-    );
-    if (!versionRecord?.posterRelativePath) {
-      return res
-        .status(404)
-        .json({ error: "Poster not available for this asset" });
-    }
-
-    const absolutePath = path.join(
-      ACADEMY_MEDIA_STORAGE_DIR,
-      versionRecord.posterRelativePath,
-    );
-    if (!existsSync(absolutePath)) {
-      return res.status(404).json({ error: "Poster file missing on disk" });
-    }
-
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    res.type(versionRecord.posterMimeType || "image/jpeg");
-    return res.sendFile(absolutePath);
-  } catch (error) {
-    console.error("[academy-media] serve poster failed:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to load academy media poster" });
-  }
-});
 
 // Communication / Chat API routes
 const dashboardCompatRouter = createDashboardCompatRouter();
