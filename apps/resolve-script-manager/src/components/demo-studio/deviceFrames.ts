@@ -8,9 +8,10 @@
 
 import iphoneFrame from './frames/iphone.png';
 import ipadFrame from './frames/ipad.png';
+import ipadLandscapeFrame from './frames/ipad-landscape.png';
 import macbookFrame from './frames/macbook.png';
 
-export type FrameVariant = 'iphone' | 'ipad' | 'macbook';
+export type FrameVariant = 'iphone' | 'ipad' | 'ipad_landscape' | 'macbook';
 
 export interface FrameSpec {
   src: string;
@@ -24,6 +25,7 @@ export interface FrameSpec {
 // Verdier fra piksel-deteksjon (deviceFrames i frontend):
 //   iphone  1086x1448  screen 248,85 588x1275
 //   ipad    1086x1448  screen 131,112 823x1222
+//   ipad-L  1448x1086  screen 112,131 1222x823  (ipad rotert 90° CCW)
 //   macbook 1586x932   screen 261,39 1064x698  (base glattet + avrundet, slab fjernet)
 export const DEVICE_FRAMES: Record<FrameVariant, FrameSpec> = {
   iphone: {
@@ -35,6 +37,11 @@ export const DEVICE_FRAMES: Record<FrameVariant, FrameSpec> = {
     src: ipadFrame, aspect: 1086 / 1448,
     screen: { x: 131 / 1086, y: 112 / 1448, w: 823 / 1086, h: 1222 / 1448 },
     radius: 20 / 1086,
+  },
+  ipad_landscape: {
+    src: ipadLandscapeFrame, aspect: 1448 / 1086,
+    screen: { x: 112 / 1448, y: 131 / 1086, w: 1222 / 1448, h: 823 / 1086 },
+    radius: 20 / 1448,
   },
   macbook: {
     src: macbookFrame, aspect: 1586 / 932,

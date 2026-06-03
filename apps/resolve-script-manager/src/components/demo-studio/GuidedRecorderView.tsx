@@ -18,7 +18,7 @@ import { useDemoStudio } from './demoStudioStore';
 import { useSceneRecorder } from './useSceneRecorder';
 import { listCaptureSources, recordAvfoundation, recordSimulator, type CaptureSource } from '../../api';
 import { DeviceConnectGuide } from './DeviceConnectGuide';
-import { DEVICE_FRAMES } from './deviceFrames';
+import { DEVICE_FRAMES, type FrameVariant } from './deviceFrames';
 import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, type DemoDevice } from './demoStudioModel';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -57,6 +57,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const [sources, setSources] = useState<CaptureSource[]>([]);
   const [sourceMenu, setSourceMenu] = useState(false);
   const [showConnectGuide, setShowConnectGuide] = useState(false);
+  const [ipadLandscape, setIpadLandscape] = useState(false);
 
   // Oppdater capture-kilder ved mount (Mac-skjerm / kablede iOS-enheter / sim).
   useEffect(() => { listCaptureSources().then(setSources).catch(() => setSources([])); }, []);
@@ -72,11 +73,17 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const isNativeCapture = captureKind === 'ios_device' || captureKind === 'mac_screen' || captureKind === 'ios_simulator' || captureKind === 'iphone_mirroring';
 
   // Valgt forhåndsvisnings-enhet (én om gangen). Dropdown setter den direkte
-  // på alle scener — ingen modal.
+  // på alle scener — ingen modal. iPad kan vises stående eller liggende.
   const previewDevice: DemoDevice = cur?.device ?? 'macbook';
+  const previewVariant: FrameVariant = previewDevice === 'ipad' && ipadLandscape ? 'ipad_landscape' : previewDevice;
+  const dropdownValue = previewDevice === 'ipad' && ipadLandscape ? 'ipad_landscape' : previewDevice;
   const setDeviceForAll = (v: DemoDevice) => scenes.forEach((s) => updateScene(s.id, {
     device: v, viewport: v === 'macbook' ? 'desktop' : v === 'ipad' ? 'tablet' : 'mobile',
   }));
+  const onPickDevice = (val: string) => {
+    if (val === 'ipad_landscape') { setDeviceForAll('ipad'); setIpadLandscape(true); }
+    else { setDeviceForAll(val as DemoDevice); setIpadLandscape(false); }
+  };
 
   /** Ta opp gjeldende scene fra valgt native capture-kilde (Rust → ffmpeg/simctl). */
   const recordNativeScene = async (sceneId: string): Promise<string | null> => {
@@ -253,10 +260,11 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
             )}
           </div>
           {/* Velg opptaks-enhet direkte (ingen modal) — bytter forhåndsvisningen */}
-          <select style={{ ...btn, paddingRight: 28 }} value={previewDevice}
-            onChange={(e) => setDeviceForAll(e.target.value as DemoDevice)} title="Velg opptaks-enhet">
+          <select style={{ ...btn, paddingRight: 28 }} value={dropdownValue}
+            onChange={(e) => onPickDevice(e.target.value)} title="Velg opptaks-enhet">
             <option value="macbook">MacBook</option>
-            <option value="ipad">iPad</option>
+            <option value="ipad">iPad (stående)</option>
+            <option value="ipad_landscape">iPad (liggende)</option>
             <option value="iphone">iPhone</option>
           </select>
           <div style={{ flex: 1 }} />
@@ -285,14 +293,15 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
               </div>
             )}
             {/* Én enhet om gangen — den valgte. Live <iframe> over rammen,
-                klippet til skjerm-hullet. Bredde tilpasset enhets-formatet. */}
+                klippet til skjerm-hullet. Bredde tilpasset enhets-formatet
+                (landskap-iPad er bredere enn stående). */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: previewDevice === 'macbook' ? '66%' : previewDevice === 'ipad' ? '34%' : '20%',
-              maxWidth: previewDevice === 'macbook' ? 820 : previewDevice === 'ipad' ? 430 : 270,
+              width: previewVariant === 'macbook' ? '66%' : previewVariant === 'ipad_landscape' ? '56%' : previewVariant === 'ipad' ? '34%' : '20%',
+              maxWidth: previewVariant === 'macbook' ? 820 : previewVariant === 'ipad_landscape' ? 700 : previewVariant === 'ipad' ? 430 : 270,
               maxHeight: '88%',
             }}>
-              <FramedDevice variant={previewDevice} url={project.url} width="100%" iframeRef={macFrameRef} />
+              <FramedDevice variant={previewVariant} url={project.url} width="100%" iframeRef={macFrameRef} />
             </div>
           </div>
 
@@ -425,7 +434,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
  * kommer fra DEVICE_FRAMES (relativt 0..1).
  */
 function FramedDevice({ variant, url, width, shadow, iframeRef }: {
-  variant: 'iphone' | 'ipad' | 'macbook'; url: string; width: string | number;
+  variant: FrameVariant; url: string; width: string | number;
   shadow?: string; iframeRef?: React.Ref<HTMLIFrameElement>;
 }) {
   const f = DEVICE_FRAMES[variant];
