@@ -41,6 +41,8 @@ UX-forbedringer.
 | **Per-prosjekt-progress-strip** med gradient-bar | #199 |
 | **Smart-varselbar** for utløp innen 7d | #199 |
 | **Ekte sparkline** i Register-oversikt (var fake mock før) | #201 |
+| **Foreslå-knappen** gradient (var blass) | #178 |
+| **Foreslå-ny-skuespiller-knappen** dimmet i demo-modus | #206 |
 
 ## Demo-fixture-data
 - Stella Casting demo-byrå
