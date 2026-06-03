@@ -131,7 +131,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
         boxShadow: 'none',
         borderRadius: 2,
         transition: 'border-color 0.15s, transform 0.15s',
-        '&:hover': { borderColor: '#374151' },
+        '&:hover': { borderColor: danceFlowColors.grayDark },
       }}
     >
       <CardContent sx={{ p: compact ? 1.25 : 1.75, '&:last-child': { pb: compact ? 1.25 : 1.75 } }}>
@@ -143,7 +143,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
               height: compact ? 38 : 48,
               fontSize: compact ? 13 : 16,
               fontWeight: 700,
-              bgcolor: dancer.color ?? '#3b82f6',
+              bgcolor: dancer.color ?? danceFlowColors.info,
               border: '2px solid rgba(255,255,255,0.08)',
             }}
           >
@@ -190,7 +190,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
             <Chip
               size="small"
               label={`${stats.rehearsalsCount} prøver`}
-              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(96,165,250,0.15)', color: '#93c5fd' }}
+              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(96,165,250,0.15)', color: danceFlowColors.infoSoft }}
             />
             <Chip
               size="small"
@@ -246,7 +246,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
                 <Chip
                   size="small"
                   label={`${profile.heightCm} cm`}
-                  sx={{ height: 20, fontSize: 10, bgcolor: danceFlowColors.borderStrong, color: '#cbd5e1' }}
+                  sx={{ height: 20, fontSize: 10, bgcolor: danceFlowColors.borderStrong, color: danceFlowColors.grayLight }}
                 />
               )}
               <Chip

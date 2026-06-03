@@ -310,7 +310,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                   useFlexGap
                 >
                   <Typography
-                    sx={{ fontSize: 11, color: '#cbd5e1', minWidth: 110, fontWeight: 600 }}
+                    sx={{ fontSize: 11, color: danceFlowColors.grayLight, minWidth: 110, fontWeight: 600 }}
                   >
                     {SKILL_CATEGORY_LABEL_NB[cat]}
                   </Typography>
@@ -701,7 +701,7 @@ const fieldSx = {
   '& .MuiOutlinedInput-root': {
     bgcolor: danceFlowColors.bgPanel,
     '& fieldset': { borderColor: danceFlowColors.borderStrong },
-    '&:hover fieldset': { borderColor: '#374151' },
+    '&:hover fieldset': { borderColor: danceFlowColors.grayDark },
     '&.Mui-focused fieldset': { borderColor: danceFlowColors.lavenderDark },
   },
 } as const;

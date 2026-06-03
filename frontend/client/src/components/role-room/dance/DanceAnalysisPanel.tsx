@@ -251,7 +251,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
         <Card data-testid="analysis-top-dancers" sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid rgba(139,92,246,0.18)' }}>
           <CardContent>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-              <PeopleIcon sx={{ fontSize: 16, color: '#60a5fa' }} />
+              <PeopleIcon sx={{ fontSize: 16, color: danceFlowColors.infoLight }} />
               <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: danceFlowColors.lavender, fontWeight: 700 }}>
                 MEST ANNOTERTE DANSERE
               </Typography>
@@ -279,7 +279,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
                     <Chip
                       size="small"
                       label={`${d.count}`}
-                      sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(96,165,250,0.18)', color: '#93c5fd' }}
+                      sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoSoft }}
                     />
                   </Stack>
                 ))}

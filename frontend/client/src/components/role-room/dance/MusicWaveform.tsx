@@ -105,7 +105,7 @@ export const MusicWaveform: React.FC<MusicWaveformProps> = ({
         sx={{
           height,
           borderRadius: 1,
-          bgcolor: '#0d1218',
+          bgcolor: danceFlowColors.bgInset,
           border: '1px dashed rgba(139,92,246,0.25)',
           display: 'flex',
           alignItems: 'center',
@@ -123,7 +123,7 @@ export const MusicWaveform: React.FC<MusicWaveformProps> = ({
     <Box
       sx={{
         position: 'relative',
-        bgcolor: '#0d1218',
+        bgcolor: danceFlowColors.bgInset,
         borderRadius: 1,
         border: '1px solid rgba(139,92,246,0.25)',
         overflow: 'hidden',

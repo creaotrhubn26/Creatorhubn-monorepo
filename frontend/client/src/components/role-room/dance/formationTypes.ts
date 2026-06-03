@@ -6,6 +6,7 @@
  * mellom. Hver Segment kan referere til én aktiv Formation (via en
  * formationId-felt som legges til Segment senere).
  */
+import { danceFlowColors } from './danceFlowTheme';
 
 export interface Dancer {
   id: string;
@@ -93,11 +94,11 @@ export interface Formation {
 // ─── Demo-data — passer til Stykke 3 fra ChoreographyBuilder ────────────
 
 export const DEMO_DANCERS: readonly Dancer[] = [
-  { id: 'd-ingrid',   name: 'Ingrid Nordahl', initials: 'IN', role: 'Solo · protagonist', color: '#3b82f6' },
-  { id: 'd-martin',   name: 'Martin Aas',     initials: 'MA', role: 'Pas de deux',         color: '#f59e0b' },
-  { id: 'd-sofie',    name: 'Sofie Olsen',    initials: 'SO', role: 'Ensemble',            color: '#10b981' },
+  { id: 'd-ingrid',   name: 'Ingrid Nordahl', initials: 'IN', role: 'Solo · protagonist', color: danceFlowColors.info },
+  { id: 'd-martin',   name: 'Martin Aas',     initials: 'MA', role: 'Pas de deux',         color: danceFlowColors.amber },
+  { id: 'd-sofie',    name: 'Sofie Olsen',    initials: 'SO', role: 'Ensemble',            color: danceFlowColors.successDark },
   { id: 'd-jonas',    name: 'Jonas K.',       initials: 'JK', role: 'Ensemble',            color: '#8b5cf6' },
-  { id: 'd-lea',      name: 'Lea Hansen',     initials: 'LH', role: 'Ensemble',            color: '#ec4899' },
+  { id: 'd-lea',      name: 'Lea Hansen',     initials: 'LH', role: 'Ensemble',            color: danceFlowColors.pinkAccent },
 ] as const;
 
 export const DEMO_FORMATIONS: readonly Formation[] = [

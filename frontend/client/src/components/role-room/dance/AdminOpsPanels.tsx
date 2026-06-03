@@ -23,10 +23,10 @@ export interface AdminPanelProps {
 const PERFORMANCE_STATUS_META: Record<string, { label: string; color: string }> = {
   planned:       { label: 'Planlagt',     color: danceFlowColors.textMuted },
   rehearsing:    { label: 'Prøver',       color: danceFlowColors.lavender },
-  tickets_open:  { label: 'Billettsalg',  color: '#60a5fa' },
+  tickets_open:  { label: 'Billettsalg',  color: danceFlowColors.infoLight },
   sold_out:      { label: 'Utsolgt',      color: danceFlowColors.successDark },
   completed:     { label: 'Avsluttet',    color: danceFlowColors.successPrimary },
-  cancelled:     { label: 'Avlyst',       color: '#ef4444' },
+  cancelled:     { label: 'Avlyst',       color: danceFlowColors.errorStrong },
 };
 
 interface PerformanceStripboardProps {
@@ -103,7 +103,7 @@ const PerformanceStripboard: React.FC<PerformanceStripboardProps> = ({ performan
                     <Box sx={{
                       width: `${fillPct}%`,
                       height: '100%',
-                      bgcolor: fillPct >= 90 ? danceFlowColors.successDark : fillPct >= 50 ? danceFlowColors.gold : '#60a5fa',
+                      bgcolor: fillPct >= 90 ? danceFlowColors.successDark : fillPct >= 50 ? danceFlowColors.gold : danceFlowColors.infoLight,
                     }} />
                   </Box>
                 </>
@@ -232,7 +232,7 @@ const MusicRowExpansion: React.FC<MusicRowExpansionProps> = ({ item }) => {
   const tonoMeta: Record<string, { label: string; color: string }> = {
     cleared: { label: 'Cleared', color: danceFlowColors.successDark },
     pending: { label: 'Venter på TONO', color: danceFlowColors.gold },
-    blocked: { label: 'Blokkert', color: '#ef4444' },
+    blocked: { label: 'Blokkert', color: danceFlowColors.errorStrong },
     unknown: { label: 'Ukjent', color: danceFlowColors.textMuted },
   };
   const meta = tonoMeta[item.tonoStatus] ?? tonoMeta.unknown;
@@ -251,7 +251,7 @@ const MusicRowExpansion: React.FC<MusicRowExpansionProps> = ({ item }) => {
           </Box>
         ) : item.sourceUrl ? (
           <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted }}>
-            Ekstern lenke: <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>{item.sourceUrl}</a>
+            Ekstern lenke: <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: danceFlowColors.infoLight }}>{item.sourceUrl}</a>
             {' · '}<em>Last opp lydfil for waveform-preview</em>
           </Typography>
         ) : (
@@ -269,7 +269,7 @@ const MusicRowExpansion: React.FC<MusicRowExpansionProps> = ({ item }) => {
             <Chip size="small" label={`${item.bpm} BPM`} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight }} />
           ) : null}
           {item.musicalKey ? (
-            <Chip size="small" label={item.musicalKey} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(96,165,250,0.18)', color: '#93c5fd' }} />
+            <Chip size="small" label={item.musicalKey} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoSoft }} />
           ) : null}
           {item.durationSec ? (
             <Chip
@@ -283,7 +283,7 @@ const MusicRowExpansion: React.FC<MusicRowExpansionProps> = ({ item }) => {
           ))}
         </Stack>
         {item.notes ? (
-          <Typography sx={{ fontSize: 11, color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>
+          <Typography sx={{ fontSize: 11, color: danceFlowColors.grayLight, whiteSpace: 'pre-wrap' }}>
             {item.notes}
           </Typography>
         ) : null}
@@ -313,7 +313,7 @@ export const MusicArchivePanel: React.FC<AdminPanelProps> = ({ projectId }) => {
         const map = {
           cleared: { label: 'Cleared', color: danceFlowColors.successDark },
           pending: { label: 'Venter', color: danceFlowColors.gold },
-          blocked: { label: 'Blokkert', color: '#ef4444' },
+          blocked: { label: 'Blokkert', color: danceFlowColors.errorStrong },
           unknown: { label: 'Ukjent', color: danceFlowColors.textMuted },
         };
         return <Box component="span" sx={{ color: map[v].color, fontWeight: 700 }}>{map[v].label}</Box>;
@@ -491,7 +491,7 @@ const GrantsStatStrip: React.FC<GrantsStatProps> = ({ list }) => {
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="grants-stat-strip">
       <Chip size="small" label={`Utkast: ${stats.drafts}`} sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: danceFlowColors.textMuted }} />
-      <Chip size="small" label={`Sendt: ${stats.submitted}`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: '#60a5fa' }} />
+      <Chip size="small" label={`Sendt: ${stats.submitted}`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoLight }} />
       <Chip size="small" label={`Innvilget: ${stats.awarded}`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       <Chip size="small" label={`Avslått: ${stats.rejected}`} sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: danceFlowColors.errorPrimary }} />
       {stats.totalAwardedKr > 0 ? (
@@ -630,7 +630,7 @@ const InvoicesStatStrip: React.FC<{ list: ops.DanceInvoice[] }> = ({ list }) => 
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="invoices-stat-strip">
       <Chip size="small" label={`Utkast: ${stats.draft}`} sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: danceFlowColors.textMuted }} />
-      <Chip size="small" label={`Sendt: ${stats.sent}`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: '#60a5fa' }} />
+      <Chip size="small" label={`Sendt: ${stats.sent}`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoLight }} />
       <Chip size="small" label={`Betalt: ${stats.paid}`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       {stats.overdue > 0 ? (
         <Chip

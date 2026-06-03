@@ -409,7 +409,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                             width: 22,
                             height: 22,
                             fontSize: 9,
-                            bgcolor: '#3b82f6',
+                            bgcolor: danceFlowColors.info,
                             border: '1px solid #1e2536',
                             ml: idx === 0 ? 0 : -0.75,
                           }}
@@ -423,7 +423,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                             width: 22,
                             height: 22,
                             fontSize: 9,
-                            bgcolor: '#374151',
+                            bgcolor: danceFlowColors.grayDark,
                             border: '1px solid #1e2536',
                             ml: -0.75,
                           }}
@@ -630,7 +630,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
         sx={{
           mt: 3,
           fontSize: 10,
-          color: '#4b5563',
+          color: danceFlowColors.grayMid,
           textAlign: 'center',
           fontStyle: 'italic',
         }}
@@ -751,7 +751,7 @@ const AiHint: React.FC<{ title: string; body: string }> = ({ title, body }) => (
     <Typography sx={{ fontSize: 12, fontWeight: 600, color: danceFlowColors.lavenderLight }}>
       {title}
     </Typography>
-    <Typography sx={{ fontSize: 11, color: '#cbd5e1', mt: 0.25, lineHeight: 1.4 }}>
+    <Typography sx={{ fontSize: 11, color: danceFlowColors.grayLight, mt: 0.25, lineHeight: 1.4 }}>
       {body}
     </Typography>
   </Box>

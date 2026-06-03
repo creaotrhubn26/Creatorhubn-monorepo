@@ -57,8 +57,8 @@ const KIND_LABEL: Record<VideoClipKind, string> = {
 
 const KIND_COLOR: Record<VideoClipKind, string> = {
   rehearsal: '#a78bfa',
-  reference: '#fbbf24',
-  performance: '#10b981',
+  reference: danceFlowColors.gold,
+  performance: danceFlowColors.successDark,
 };
 
 export interface VideoLibraryProps {
@@ -208,7 +208,7 @@ export function VideoLibrary({
         gridTemplateColumns: { xs: '1fr', md: '280px 1fr' },
         gap: 0,
         bgcolor: BG,
-        color: '#e5e7eb',
+        color: danceFlowColors.textSecondary,
         minHeight: '100%',
       }}
     >
@@ -234,7 +234,7 @@ export function VideoLibrary({
               value={chooseChoreoId}
               onChange={(e) => setChooseChoreoId(e.target.value)}
               sx={{
-                '& .MuiInputBase-root': { fontSize: 12, bgcolor: BG, color: '#e5e7eb' },
+                '& .MuiInputBase-root': { fontSize: 12, bgcolor: BG, color: danceFlowColors.textSecondary },
                 '& .MuiInputLabel-root': { color: PURPLE_LIGHT, fontSize: 12 },
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER },
               }}
@@ -254,7 +254,7 @@ export function VideoLibrary({
               value={chooseKind}
               onChange={(e) => setChooseKind(e.target.value as VideoClipKind)}
               sx={{
-                '& .MuiInputBase-root': { fontSize: 12, bgcolor: BG, color: '#e5e7eb' },
+                '& .MuiInputBase-root': { fontSize: 12, bgcolor: BG, color: danceFlowColors.textSecondary },
                 '& .MuiInputLabel-root': { color: PURPLE_LIGHT, fontSize: 12 },
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER },
               }}
@@ -324,7 +324,7 @@ export function VideoLibrary({
               borderRadius: 4,
               border: '1px solid rgba(139,92,246,0.25)',
               background: '#0a0a0a',
-              color: '#e5e7eb',
+              color: danceFlowColors.textSecondary,
               fontSize: 12,
               outline: 'none',
             }}
@@ -376,7 +376,7 @@ export function VideoLibrary({
                               setCompareClipId(isCompare ? null : c.id);
                             }}
                             disabled={isActive}
-                            sx={{ p: 0.25, color: isCompare ? '#fbbf24' : 'rgba(229,231,235,0.4)' }}
+                            sx={{ p: 0.25, color: isCompare ? danceFlowColors.gold : 'rgba(229,231,235,0.4)' }}
                           >
                             <CompareIcon sx={{ fontSize: 14 }} />
                           </IconButton>

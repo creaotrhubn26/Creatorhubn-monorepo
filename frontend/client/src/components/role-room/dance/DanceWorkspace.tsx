@@ -143,7 +143,7 @@ const FEATURE_COLOR: Record<NonNullable<TabConfig['feature']>, string> = {
   production: '#0ea5e9',
   resources: danceFlowColors.successDark,
   on_set: danceFlowColors.amber,
-  finance: '#ec4899',
+  finance: danceFlowColors.pinkAccent,
   union: '#a855f7',
 };
 

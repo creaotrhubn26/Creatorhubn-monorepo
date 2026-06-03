@@ -31,7 +31,7 @@ const ClassesStatStrip: React.FC<{ classes: svc.DanceClass[]; enrollmentsCount: 
           label={`Fylling: ${fillPct}% (${enrollmentsCount}/${totalCapacity})`}
           sx={{
             bgcolor: fillPct >= 90 ? 'rgba(52,211,153,0.18)' : fillPct >= 50 ? 'rgba(251,191,36,0.18)' : 'rgba(96,165,250,0.18)',
-            color:   fillPct >= 90 ? danceFlowColors.successPrimary : fillPct >= 50 ? danceFlowColors.gold : '#60a5fa',
+            color:   fillPct >= 90 ? danceFlowColors.successPrimary : fillPct >= 50 ? danceFlowColors.gold : danceFlowColors.infoLight,
             fontWeight: 700,
           }}
         />
@@ -226,7 +226,7 @@ const InstructorsStatStrip: React.FC<{ list: svc.DanceInstructor[] }> = ({ list 
           key={k}
           size="small"
           label={`${contractLabels[k] ?? k}: ${n}`}
-          sx={{ bgcolor: 'rgba(96,165,250,0.15)', color: '#93c5fd' }}
+          sx={{ bgcolor: 'rgba(96,165,250,0.15)', color: danceFlowColors.infoSoft }}
         />
       ))}
     </Stack>
@@ -316,12 +316,12 @@ const RoomsStatStrip: React.FC<{ rooms: svc.DanceRoom[]; bookingsByRoom: Map<str
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="rooms-stat-strip">
       <Chip size="small" label={`${rooms.length} saler · ${totalCapacity} plasser`} sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }} />
-      <Chip size="small" label={`${totalBookings} bookings denne uka`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: '#93c5fd' }} />
+      <Chip size="small" label={`${totalBookings} bookings denne uka`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoSoft }} />
       {mostUsed && mostUsed.count > 0 ? (
         <Chip size="small" label={`Mest brukt: ${mostUsed.name} (${mostUsed.count})`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       ) : null}
       {Object.entries(byKind).map(([k, n]) => (
-        <Chip key={k} size="small" label={`${kindLabels[k] ?? k}: ${n}`} sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: '#cbd5e1' }} />
+        <Chip key={k} size="small" label={`${kindLabels[k] ?? k}: ${n}`} sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: danceFlowColors.grayLight }} />
       ))}
     </Stack>
   );
@@ -515,8 +515,8 @@ const VocabStatStrip: React.FC<{ terms: svc.MovementVocabTerm[] }> = ({ terms })
     return acc;
   }, {});
   const catLabels: Record<string, { label: string; color: string }> = {
-    turn:       { label: 'Turn',       color: '#f472b6' },
-    leap:       { label: 'Leap',       color: '#60a5fa' },
+    turn:       { label: 'Turn',       color: danceFlowColors.pinkAccentLight },
+    leap:       { label: 'Leap',       color: danceFlowColors.infoLight },
     lift:       { label: 'Lift',       color: danceFlowColors.gold },
     extension:  { label: 'Extension',  color: danceFlowColors.lavender },
     partnering: { label: 'Partnering', color: danceFlowColors.successPrimary },
@@ -542,7 +542,7 @@ const VocabStatStrip: React.FC<{ terms: svc.MovementVocabTerm[] }> = ({ terms })
             key={k}
             size="small"
             label={`${difLabels[k] ?? k}: ${n}`}
-            sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: '#cbd5e1' }}
+            sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: danceFlowColors.grayLight }}
           />
         ))}
       </Stack>

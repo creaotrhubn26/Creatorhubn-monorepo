@@ -38,7 +38,24 @@ export const danceFlowColors = {
   successDark: '#10b981', //     22× — success-hover
   errorPrimary: '#f87171', //    18× — feiltilstand
   errorSoft: '#fca5a5', //       17× — feilbakgrunn
+  errorStrong: '#ef4444', //      9× — sterk error (cancelled/blocked-badges, red-500)
   warning: '#f59e0b', //         alias for amber — semantic
+
+  // Info/blue (info-tilstander, lenker, sendt-badges)
+  info: '#3b82f6', //            11× — primær info (blue-500)
+  infoLight: '#60a5fa', //       15× — info-aksent + lenker (blue-400)
+  infoSoft: '#93c5fd', //         6× — info-bakgrunn (blue-300)
+
+  // Pink-aksent (talents/agency-badges, highlights)
+  pinkAccent: '#ec4899', //       7× — talent-/agency-badge (pink-500)
+  pinkAccentLight: '#f472b6', //  4× — talent-/agency-badge soft (pink-400)
+
+  // Grayscale aksenter (utvidet) — for sub-paneler + tabell-headers
+  grayLight: '#cbd5e1', //       16× — input-label/tabell-text på light bg (slate-300)
+  grayMid: '#4b5563', //          5× — disabled tekst på light bg (gray-600)
+  grayDark: '#374151', //        11× — disabled border / divider (gray-700)
+  graySteel: '#1f2937', //        5× — print-foreground (gray-800)
+  grayPaper: '#f3f4f6', //        7× — print-bakgrunn / toolbar (gray-100)
 
   // Text
   textPrimary: '#ffffff', //    77× — overskrifter, brødtekst på dark bg
