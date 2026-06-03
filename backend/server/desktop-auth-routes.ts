@@ -23,6 +23,17 @@ const HELPER_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 dager (samme som CLI
 type DesktopOauthState = {
   createdAt: number;
   browserOrigin: string;
+  /// Populeres ETTER callback har fullført. App-en poller
+  /// /auth/google/complete med state-id-en for å hente denne hvis
+  /// deep-link-handleren ikke fyrte (kjent macOS-quirk for tauri-
+  /// plugin-deep-link når app-en allerede kjører).
+  completion?: {
+    token: string;
+    user_email: string;
+    user_name: string;
+    api_base: string;
+    completedAt: number;
+  };
 };
 
 const desktopOauthStateStore = new Map<string, DesktopOauthState>();
@@ -93,7 +104,33 @@ export function createDesktopAuthRouter(pool: Pool): Router {
       state: stateId,
     });
 
-    return res.json({ success: true, authorizationUrl });
+    return res.json({ success: true, authorizationUrl, state: stateId });
+  });
+
+  // GET /api/desktop/auth/google/complete/:stateId — polles av app-en
+  // som fallback for deep-link-handler-flow. Returnerer 200 + token-data
+  // hvis callback har fullført, 202 hvis fortsatt venter, 404 hvis
+  // state-id ikke eksisterer (utløpt eller aldri-eksisterende).
+  router.get('/auth/google/complete/:stateId', (req: Request, res: Response) => {
+    pruneExpiredState();
+    const stateId = String(req.params.stateId || '').trim();
+    const state = desktopOauthStateStore.get(stateId);
+    if (!state) {
+      return res.status(404).json({ success: false, error: 'State utløpt' });
+    }
+    if (!state.completion) {
+      return res.status(202).json({ success: false, pending: true });
+    }
+    // Engangsbruk: token leveres én gang, deretter slettes state
+    const c = state.completion;
+    desktopOauthStateStore.delete(stateId);
+    return res.json({
+      success: true,
+      token: c.token,
+      user_email: c.user_email,
+      user_name: c.user_name,
+      api_base: c.api_base,
+    });
   });
 
   // GET /api/desktop/auth/google/callback — Google redirecter hit etter login
@@ -108,7 +145,9 @@ export function createDesktopAuthRouter(pool: Pool): Router {
         .status(400)
         .send(renderErrorPage('Ugyldig forespørsel', 'Lukk denne siden og prøv på nytt fra Creatorhub One Desk.'));
     }
-    desktopOauthStateStore.delete(stateId);
+    // Behold state-id slik at app-en kan polle /complete-endepunktet
+    // (fallback for deep-link-handler-quirks). Slettes når token er
+    // hentet via /complete eller TTL-utløp.
 
     const config = getGoogleWorkspaceOauthConfig(CREATORHUB_GOOGLE_OAUTH_APP, req);
     if (!config.configured) {
@@ -180,6 +219,16 @@ export function createDesktopAuthRouter(pool: Pool): Router {
 
       const userName = [userRow.first_name, userRow.last_name].filter(Boolean).join(' ') || googleEmail;
       const deepLink = `${DESKTOP_URL_SCHEME}://oauth-callback?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(googleEmail)}&name=${encodeURIComponent(userName)}`;
+
+      // Lagre completion i state-storen så app-en kan polle den
+      // hvis deep-link-redirecten ikke når frem
+      state.completion = {
+        token: rawToken,
+        user_email: googleEmail,
+        user_name: userName,
+        api_base: state.browserOrigin,
+        completedAt: Date.now(),
+      };
 
       return res.send(renderSuccessPage(userName, deepLink));
     } catch (error) {

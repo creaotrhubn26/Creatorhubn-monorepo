@@ -111,6 +111,53 @@ async fn start_google_login(api_base: Option<String>) -> Result<String, String> 
     device_auth::start_google_login(&base).await
 }
 
+#[derive(Serialize)]
+struct StartLoginResponse {
+    authorization_url: String,
+    state: String,
+}
+
+#[tauri::command]
+async fn start_google_login_v2(api_base: Option<String>) -> Result<StartLoginResponse, String> {
+    let base = api_base.unwrap_or_else(|| helper_client::default_api_base().to_string());
+    let r = device_auth::start_google_login_v2(&base).await?;
+    Ok(StartLoginResponse {
+        authorization_url: r.authorization_url,
+        state: r.state,
+    })
+}
+
+/// Polles av frontend mens brukeren er i Google-OAuth-flyten i
+/// nettleseren. Returnerer Some(_) når completion er klar, None ellers.
+/// Etter Some(_): lagrer device-token + henter prosjekter + emitter
+/// desktop-auth-completed-event (samme post-callback-flyt som
+/// deep-link-handleren).
+#[tauri::command]
+async fn poll_oauth_completion(
+    app: tauri::AppHandle,
+    api_base: String,
+    state: String,
+) -> Result<bool, String> {
+    let Some(dt) = device_auth::poll_oauth_completion(&api_base, &state).await? else {
+        return Ok(false);
+    };
+    device_auth::save_device_token(&dt)?;
+    let store: tauri::State<Arc<projects::ProjectStore>> = app.state();
+    match device_auth::fetch_projects_for_token(&dt.api_base, &dt.token).await {
+        Ok(entries) => {
+            store.replace_all(entries)?;
+            let _ = app.emit("desktop-auth-completed", &dt.user_email);
+            Ok(true)
+        }
+        Err(e) => {
+            // Token er lagret — la frontend rendre login-screen om igjen
+            // som mottok device-token og kjør deretter refresh
+            let _ = app.emit("desktop-auth-failed", &e);
+            Err(e)
+        }
+    }
+}
+
 #[tauri::command]
 async fn refresh_projects_from_api(
     store: tauri::State<'_, Arc<projects::ProjectStore>>,
@@ -450,6 +497,8 @@ pub fn run() {
             clear_helper_config,
             device_token_status,
             start_google_login,
+            start_google_login_v2,
+            poll_oauth_completion,
             refresh_projects_from_api,
             desktop_logout,
             list_projects,

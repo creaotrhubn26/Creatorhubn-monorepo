@@ -86,6 +86,22 @@ export async function startGoogleLogin(apiBase?: string): Promise<string> {
   return invoke<string>("start_google_login", { apiBase: apiBase ?? null });
 }
 
+export interface StartLoginResult {
+  authorization_url: string;
+  state: string;
+}
+
+export async function startGoogleLoginV2(apiBase?: string): Promise<StartLoginResult> {
+  return invoke<StartLoginResult>("start_google_login_v2", { apiBase: apiBase ?? null });
+}
+
+/// Returnerer true når completion er klar (token lagret, prosjekter
+/// hentet, desktop-auth-completed-event emittert). False = fortsatt
+/// venter. Kaste Error hvis state utløpt eller backend feilet.
+export async function pollOauthCompletion(apiBase: string, state: string): Promise<boolean> {
+  return invoke<boolean>("poll_oauth_completion", { apiBase, state });
+}
+
 export async function refreshProjectsFromApi(): Promise<number> {
   return invoke<number>("refresh_projects_from_api");
 }

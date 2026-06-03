@@ -71,6 +71,97 @@ pub fn clear_device_token() -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StartLoginResult {
+    pub authorization_url: String,
+    pub state: String,
+}
+
+/// POST /api/desktop/auth/google/start — returnerer authorizationUrl
+/// + state-id som app-en bruker for å polle /complete-endepunktet hvis
+/// deep-link-handleren ikke fyrer (kjent macOS-quirk for running-app).
+pub async fn start_google_login_v2(api_base: &str) -> Result<StartLoginResult, String> {
+    let base = api_base.trim().trim_end_matches('/');
+    let url = format!("{}/api/desktop/auth/google/start", base);
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Origin", base)
+        .header("Content-Type", "application/json")
+        .body("{}")
+        .send()
+        .await
+        .map_err(|e| format!("Google-login start feilet: {}", e))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Backend ({}): {}", status, body));
+    }
+    #[derive(Deserialize)]
+    struct R {
+        #[serde(default, rename = "authorizationUrl")]
+        url: Option<String>,
+        #[serde(default)]
+        state: Option<String>,
+    }
+    let parsed: R = resp.json().await.map_err(|e| format!("Parse: {}", e))?;
+    let authorization_url = parsed.url.ok_or_else(|| "Mangler authorizationUrl".to_string())?;
+    let state = parsed.state.ok_or_else(|| "Mangler state".to_string())?;
+    Ok(StartLoginResult { authorization_url, state })
+}
+
+/// GET /api/desktop/auth/google/complete/:stateId — poll for completion.
+/// Returnerer Some(DeviceToken) hvis bruker har fullført OAuth-flyten i
+/// browseren, None hvis fortsatt venter (HTTP 202). Err hvis 404 (state
+/// utløpt eller ugyldig).
+pub async fn poll_oauth_completion(
+    api_base: &str,
+    state_id: &str,
+) -> Result<Option<DeviceToken>, String> {
+    let base = api_base.trim().trim_end_matches('/');
+    let url = format!(
+        "{}/api/desktop/auth/google/complete/{}",
+        base,
+        urlencoding::encode(state_id),
+    );
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Poll feilet: {}", e))?;
+    if resp.status().as_u16() == 202 {
+        return Ok(None);
+    }
+    if resp.status().as_u16() == 404 {
+        return Err("State utløpt — start innlogging på nytt".to_string());
+    }
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Backend ({}): {}", status, body));
+    }
+    #[derive(Deserialize)]
+    struct R {
+        success: bool,
+        token: String,
+        user_email: String,
+        #[serde(default)]
+        user_name: String,
+        api_base: String,
+    }
+    let r: R = resp.json().await.map_err(|e| format!("Parse: {}", e))?;
+    if !r.success {
+        return Err("success=false".to_string());
+    }
+    Ok(Some(DeviceToken {
+        token: r.token,
+        user_email: r.user_email,
+        user_name: r.user_name,
+        api_base: r.api_base,
+    }))
+}
+
 /// POST /api/desktop/auth/google/start — returnerer authorizationUrl
 /// som brukeren må åpne i nettleseren.
 pub async fn start_google_login(api_base: &str) -> Result<String, String> {

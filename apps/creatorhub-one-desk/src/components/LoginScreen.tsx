@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -13,8 +13,11 @@ import {
 import GoogleIcon from "@mui/icons-material/Google";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { startGoogleLogin } from "../api";
+import { pollOauthCompletion, startGoogleLoginV2 } from "../api";
 import DeskIcon from "./DeskIcon";
+
+const POLL_INTERVAL_MS = 2000;
+const POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 min
 
 interface Props {
   /** Trigget når brukeren har fullført Google-login og prosjekter er hentet. */
@@ -26,17 +29,30 @@ interface Props {
 export default function LoginScreen({ onLoggedIn, onManualToken }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [waiting, setWaiting] = useState(false);
+  const pollTimerRef = useRef<number | null>(null);
+  const pollStartedAtRef = useRef<number>(0);
+
+  // Stopper aktiv polling — kalles ved unmount og når completion er
+  // detektert (via event eller poll).
+  const stopPolling = () => {
+    if (pollTimerRef.current !== null) {
+      window.clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     let cleanup: UnlistenFn | null = null;
     let cleanupFail: UnlistenFn | null = null;
     void listen<string>("desktop-auth-completed", () => {
+      stopPolling();
       setWaiting(false);
       onLoggedIn();
     }).then((un) => {
       cleanup = un;
     });
     void listen<string>("desktop-auth-failed", (e) => {
+      stopPolling();
       setWaiting(false);
       setError(`Innlogging feilet: ${e.payload}`);
     }).then((un) => {
@@ -45,17 +61,48 @@ export default function LoginScreen({ onLoggedIn, onManualToken }: Props) {
     return () => {
       cleanup?.();
       cleanupFail?.();
+      stopPolling();
     };
   }, [onLoggedIn]);
 
   const handleLogin = async () => {
     setError(null);
     setWaiting(true);
+    stopPolling();
     try {
-      const url = await startGoogleLogin();
+      const { authorization_url, state } = await startGoogleLoginV2();
+      const apiBase = "https://creatorhubn.com";
+
       // Åpne i system-nettleser. Bruker logger inn → backend redirecter
-      // til creatorhub-one-desk:// → vår deep-link-handler tar over.
-      await openUrl(url);
+      // til creatorhub-one-desk:// → deep-link-handler tar over hvis app
+      // ikke kjører fra før. Hvis app-en allerede kjører, virker ikke
+      // deep-link på macOS (kjent quirk) — derfor poller vi parallelt.
+      await openUrl(authorization_url);
+
+      pollStartedAtRef.current = Date.now();
+      pollTimerRef.current = window.setInterval(async () => {
+        const elapsed = Date.now() - pollStartedAtRef.current;
+        if (elapsed > POLL_TIMEOUT_MS) {
+          stopPolling();
+          setError(
+            "Innlogging tidsavbrutt etter 5 minutter. Lukk Google-fanen og prøv på nytt.",
+          );
+          setWaiting(false);
+          return;
+        }
+        try {
+          const done = await pollOauthCompletion(apiBase, state);
+          if (done) {
+            // poll_oauth_completion-kommandoen emitter desktop-auth-completed-
+            // event som useEffect over plukker opp og kaller onLoggedIn().
+            stopPolling();
+          }
+        } catch (e) {
+          stopPolling();
+          setError(typeof e === "string" ? e : String(e));
+          setWaiting(false);
+        }
+      }, POLL_INTERVAL_MS);
     } catch (e) {
       setError(typeof e === "string" ? e : String(e));
       setWaiting(false);
