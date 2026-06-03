@@ -131,11 +131,18 @@ export async function recordAvfoundation(
   return invoke<string>("record_avfoundation", { projectId, sceneId, deviceIndex, durationSec });
 }
 
-/** Ta opp en bootet iOS-simulator (krever full Xcode) → mov. */
+/** Ta opp en bootet iOS-simulator (krever full Xcode) → normalisert mp4. */
 export async function recordSimulator(
   projectId: string, sceneId: string, udid: string, durationSec: number,
 ): Promise<string> {
   return invoke<string>("record_simulator", { projectId, sceneId, udid, durationSec });
+}
+
+/** Ta opp iPhone Mirroring-VINDUET (crop til vindusgeometri) → mp4. */
+export async function recordIphoneMirroring(
+  projectId: string, sceneId: string, screenIndex: string, durationSec: number,
+): Promise<string> {
+  return invoke<string>("record_iphone_mirroring", { projectId, sceneId, screenIndex, durationSec });
 }
 
 export async function getPythonRoot(): Promise<string> {

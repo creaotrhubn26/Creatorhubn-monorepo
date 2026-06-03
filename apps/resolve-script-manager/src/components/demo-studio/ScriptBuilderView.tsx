@@ -214,7 +214,8 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 <input style={{ ...inp, flex: 1 }} value={selected.overlayText ?? ''} placeholder="Get a real-time overview of your practice"
                   onChange={(e) => updateScene(selected.id, { overlayText: e.target.value })} />
-                <select style={{ ...miniSel, minWidth: 100 }} defaultValue="minimal">
+                <select style={{ ...miniSel, minWidth: 100 }} value={selected.overlayStyle ?? 'minimal'}
+                  onChange={(e) => updateScene(selected.id, { overlayStyle: e.target.value })}>
                   {['minimal', 'callout', 'lower-third', 'tooltip', 'cta-banner', 'step-marker'].map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
@@ -244,8 +245,8 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
             <div style={{ background: C.preview, borderRadius: 12, padding: 18, color: '#f2ede6', marginBottom: 18 }}>
               <span style={{ fontSize: 11, background: '#3a342e', borderRadius: 6, padding: '3px 8px', color: '#cbc6bf' }}>Scene {selected.index + 1} of {scenes.length}</span>
               <div style={{ height: 1, background: '#3a342e', margin: '14px 0' }} />
-              <div style={{ fontFamily: 'Georgia, serif', fontSize: 19, lineHeight: 1.3 }}>
-                {selected.narration ? selected.narration.split('\n')[0] : 'Skriv narration for å se teleprompter-preview…'}
+              <div style={{ fontFamily: 'Georgia, serif', fontSize: 19, lineHeight: 1.35, whiteSpace: 'pre-wrap', maxHeight: 320, overflowY: 'auto' }}>
+                {selected.narration || 'Skriv narration for å se teleprompter-preview…'}
               </div>
               <div style={{ display: 'flex', gap: 5, marginTop: 16 }}>
                 {scenes.map((s, i) => <span key={s.id} style={{ width: i === selected.index ? 16 : 6, height: 6, borderRadius: 3, background: i === selected.index ? C.accent : '#4a443d' }} />)}

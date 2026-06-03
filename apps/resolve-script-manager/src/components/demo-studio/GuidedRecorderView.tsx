@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
 import { useSceneRecorder } from './useSceneRecorder';
-import { listCaptureSources, recordAvfoundation, recordSimulator, checkUrlEmbeddable, type CaptureSource } from '../../api';
+import { listCaptureSources, recordAvfoundation, recordSimulator, recordIphoneMirroring, checkUrlEmbeddable, type CaptureSource } from '../../api';
 import { DeviceConnectGuide } from './DeviceConnectGuide';
 import { type FrameVariant } from './deviceFrames';
 import { FramedDevice } from './FramedDevice';
@@ -112,12 +112,13 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
       if (captureKind === 'ios_simulator') {
         return await recordSimulator(project.id, sceneId, project.captureSourceId ?? '', dur);
       }
-      // iPhone Mirroring fanges som skjerm-capture → bruk Mac-skjerm-indeksen.
+      if (captureKind === 'iphone_mirroring') {
+        // Fanges som skjerm-capture, men cropes til iPhone Mirroring-vinduet.
+        const screenIdx = sources.find((s) => s.kind === 'mac_screen')?.id ?? '0';
+        return await recordIphoneMirroring(project.id, sceneId, screenIdx, dur);
+      }
       // ios_device + mac_screen bruker sin egen AVFoundation-indeks direkte.
-      const idx = captureKind === 'iphone_mirroring'
-        ? (sources.find((s) => s.kind === 'mac_screen')?.id ?? '0')
-        : (project.captureSourceId ?? '0');
-      return await recordAvfoundation(project.id, sceneId, idx, dur);
+      return await recordAvfoundation(project.id, sceneId, project.captureSourceId ?? '0', dur);
     } catch (e) {
       // Rust gir meningsfulle feil («ffmpeg ikke funnet», «er enheten kablet + trusted?»).
       setNativeError(String((e as Error)?.message ?? e));

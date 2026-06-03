@@ -206,18 +206,107 @@ pub async fn record_simulator(
 ) -> Result<String, String> {
     let dir = recordings_dir(&app, &project_id)?;
     let safe_scene: String = scene_id.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
-    let out_path = dir.join(format!("{}.mov", safe_scene));
+    let raw_path = dir.join(format!("{}._sim.mov", safe_scene));
     // simctl recordVideo kjører til den får SIGINT. Vi bruker `timeout` for å
     // stoppe etter duration_sec (sender SIGINT som simctl flusher på).
     let status = Command::new("/usr/bin/timeout")
         .args([
             "-s", "INT", &duration_sec.to_string(),
             "xcrun", "simctl", "io", &udid, "recordVideo", "--force",
-            &out_path.to_string_lossy(),
+            &raw_path.to_string_lossy(),
         ])
         .status();
     match status {
-        Ok(s) if s.success() || out_path.is_file() => Ok(out_path.to_string_lossy().to_string()),
-        _ => Err("simulator-opptak feilet (krever full Xcode + bootet simulator)".into()),
+        Ok(s) if s.success() || raw_path.is_file() => {}
+        _ => return Err("simulator-opptak feilet (krever full Xcode + bootet simulator)".into()),
     }
+    // Normaliser til H.264 MP4 (simctl gir HEVC .mov) så pipelinen får konsistent input.
+    let out_path = dir.join(format!("{}.mp4", safe_scene));
+    if let Some(ffmpeg) = find_ffmpeg() {
+        let ok = Command::new(&ffmpeg)
+            .args(["-y", "-i", &raw_path.to_string_lossy(),
+                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart", &out_path.to_string_lossy()])
+            .status().map(|s| s.success()).unwrap_or(false);
+        let _ = std::fs::remove_file(&raw_path);
+        if ok && out_path.is_file() { return Ok(out_path.to_string_lossy().to_string()); }
+    }
+    // Fallback: behold rå .mov hvis transcoding ikke gikk.
+    Ok(raw_path.to_string_lossy().to_string())
+}
+
+/// Kjør osascript og returner trimmet stdout (eller None ved feil).
+fn osascript(script: &str) -> Option<String> {
+    let out = Command::new("/usr/bin/osascript").args(["-e", script]).output().ok()?;
+    if !out.status.success() { return None; }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if s.is_empty() { None } else { Some(s) }
+}
+
+/// Parse en komma-separert tall-liste fra osascript ("0, 0, 1512, 982").
+fn parse_nums(s: &str) -> Vec<f64> {
+    s.split(',').filter_map(|p| p.trim().parse::<f64>().ok()).collect()
+}
+
+/// Ta opp iPhone Mirroring-VINDUET (ikke hele Mac-skjermen) via skjerm-capture
+/// + crop til vindusgeometrien. Crop uttrykkes som FRAKSJONER av frame (iw/ih),
+/// så det er uavhengig av retina-skalafaktor. Faller tilbake til full skjerm
+/// hvis vindusgrensene ikke kan leses (f.eks. manglende Tilgjengelighet-tilgang).
+#[tauri::command]
+pub async fn record_iphone_mirroring(
+    app: AppHandle,
+    project_id: String,
+    scene_id: String,
+    screen_index: String,
+    duration_sec: u32,
+) -> Result<String, String> {
+    let ffmpeg = find_ffmpeg().ok_or("ffmpeg ikke funnet")?;
+    let dir = recordings_dir(&app, &project_id)?;
+    let safe_scene: String = scene_id.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+    let out_path = dir.join(format!("{}.mp4", safe_scene));
+
+    // Vindusgeometri (punkter) + skrivebordsstørrelse (punkter) → crop-fraksjoner.
+    let win = osascript(
+        "tell application \"System Events\" to tell process \"iPhone Mirroring\" to get {position, size} of window 1",
+    ).map(|s| parse_nums(&s));
+    let desk = osascript(
+        "tell application \"Finder\" to get bounds of window of desktop",
+    ).map(|s| parse_nums(&s));
+
+    let crop_filter = match (win, desk) {
+        (Some(w), Some(d)) if w.len() == 4 && d.len() == 4 && d[2] > 0.0 && d[3] > 0.0 => {
+            let (x, y, ww, wh) = (w[0], w[1], w[2], w[3]);
+            let (sw, sh) = (d[2], d[3]);
+            // Klem fraksjoner til [0,1] for sikkerhets skyld.
+            let fx = (x / sw).clamp(0.0, 1.0);
+            let fy = (y / sh).clamp(0.0, 1.0);
+            let fw = (ww / sw).clamp(0.05, 1.0);
+            let fh = (wh / sh).clamp(0.05, 1.0);
+            // partalls-dimensjoner (h264) via floor til partall.
+            Some(format!(
+                "crop=floor(iw*{:.5}/2)*2:floor(ih*{:.5}/2)*2:floor(iw*{:.5}):floor(ih*{:.5})",
+                fw, fh, fx, fy
+            ))
+        }
+        _ => None,
+    };
+
+    let idx_arg = format!("{}:none", screen_index);
+    let mut args: Vec<String> = vec![
+        "-y".into(), "-f".into(), "avfoundation".into(), "-framerate".into(), "30".into(),
+        "-t".into(), duration_sec.to_string(),
+        "-i".into(), idx_arg,
+    ];
+    if let Some(cf) = &crop_filter { args.push("-vf".into()); args.push(cf.clone()); }
+    args.extend([
+        "-c:v".into(), "libx264".into(), "-preset".into(), "veryfast".into(),
+        "-pix_fmt".into(), "yuv420p".into(), "-movflags".into(), "+faststart".into(),
+        out_path.to_string_lossy().to_string(),
+    ]);
+    let status = Command::new(&ffmpeg).args(&args).status()
+        .map_err(|e| format!("spawn ffmpeg: {}", e))?;
+    if !status.success() {
+        return Err("iPhone Mirroring-opptak feilet (kjører appen, og er skjermopptak-tilgang gitt?)".into());
+    }
+    Ok(out_path.to_string_lossy().to_string())
 }

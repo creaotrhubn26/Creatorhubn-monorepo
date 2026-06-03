@@ -95,6 +95,8 @@ export interface DemoScene {
   actions: DemoAction[];
   /** Tekst-overlay vist i videoen. */
   overlayText?: string;
+  /** Stil på tekst-overlay (minimal/callout/lower-third/...). */
+  overlayStyle?: string;
   /** Interne notater / pause-cue (Script Builder rad 5). */
   notes?: string;
   /** Pause i sekunder etter scenens handling. */
