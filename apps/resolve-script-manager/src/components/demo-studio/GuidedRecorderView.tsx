@@ -18,7 +18,6 @@ import { useDemoStudio } from './demoStudioStore';
 import { useSceneRecorder } from './useSceneRecorder';
 import { listCaptureSources, recordAvfoundation, recordSimulator, type CaptureSource } from '../../api';
 import { DeviceConnectGuide } from './DeviceConnectGuide';
-import { CaptureChooser } from './CaptureChooser';
 import { DEVICE_FRAMES } from './deviceFrames';
 import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, type DemoDevice } from './demoStudioModel';
 
@@ -40,7 +39,6 @@ const NAV = [
   { id: 'preview', label: 'Device Preview', ic: '▭' },
   { id: 'export', label: 'Export', ic: '⤓' },
 ];
-const DEVICE_LABEL: Record<DemoDevice, string> = { macbook: 'MacBook', ipad: 'iPad', iphone: 'iPhone' };
 
 function fmt(sec: number) {
   const m = Math.floor(sec / 60), s = Math.round(sec % 60);
@@ -59,7 +57,6 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const [sources, setSources] = useState<CaptureSource[]>([]);
   const [sourceMenu, setSourceMenu] = useState(false);
   const [showConnectGuide, setShowConnectGuide] = useState(false);
-  const [showChooser, setShowChooser] = useState(false);
 
   // Oppdater capture-kilder ved mount (Mac-skjerm / kablede iOS-enheter / sim).
   useEffect(() => { listCaptureSources().then(setSources).catch(() => setSources([])); }, []);
@@ -73,6 +70,13 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const autoMode = (project.continueMode ?? 'manual') === 'auto';
   const captureKind = project.captureKind ?? 'web';
   const isNativeCapture = captureKind === 'ios_device' || captureKind === 'mac_screen' || captureKind === 'ios_simulator' || captureKind === 'iphone_mirroring';
+
+  // Valgt forhåndsvisnings-enhet (én om gangen). Dropdown setter den direkte
+  // på alle scener — ingen modal.
+  const previewDevice: DemoDevice = cur?.device ?? 'macbook';
+  const setDeviceForAll = (v: DemoDevice) => scenes.forEach((s) => updateScene(s.id, {
+    device: v, viewport: v === 'macbook' ? 'desktop' : v === 'ipad' ? 'tablet' : 'mobile',
+  }));
 
   /** Ta opp gjeldende scene fra valgt native capture-kilde (Rust → ffmpeg/simctl). */
   const recordNativeScene = async (sceneId: string): Promise<string | null> => {
@@ -248,10 +252,13 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
               </div>
             )}
           </div>
-          {/* Åpner Cover Flow-velgeren for opptaks-enhet */}
-          <button style={btn} onClick={() => setShowChooser(true)} title="Velg opptaks-enhet">
-            {cur?.device === 'macbook' ? '▭' : cur?.device === 'ipad' ? '▢' : '▯'} {DEVICE_LABEL[cur?.device ?? 'macbook']} <span style={{ color: C.inkFaint }}>⌄</span>
-          </button>
+          {/* Velg opptaks-enhet direkte (ingen modal) — bytter forhåndsvisningen */}
+          <select style={{ ...btn, paddingRight: 28 }} value={previewDevice}
+            onChange={(e) => setDeviceForAll(e.target.value as DemoDevice)} title="Velg opptaks-enhet">
+            <option value="macbook">MacBook</option>
+            <option value="ipad">iPad</option>
+            <option value="iphone">iPhone</option>
+          </select>
           <div style={{ flex: 1 }} />
           {/* Auto/Manual-toggle */}
           <div style={{ display: 'flex', border: `1px solid ${C.lineStrong}`, borderRadius: 10, overflow: 'hidden' }} title="Manuell: vent på deg. Auto: Playwright utfører handlinger.">
@@ -277,19 +284,15 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 <span style={{ fontSize: 12, color: C.inkFaint }}>{fmt(cur?.duration ?? 0)}</span>
               </div>
             )}
-            {/* Trioen side om side, bunn-justert — likestilte enheter (ingen
-                overlapp, Mac er ikke "kroppen"). Live <iframe> i skjerm-hullet,
-                PNG-rammen over. Bredder gir en naturlig device-family-lineup. */}
-            <div style={{ width: '88%', maxWidth: 860, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '4%' }}>
-              <div style={{ width: '52%' }}>
-                <FramedDevice variant="macbook" url={project.url} width="100%" iframeRef={macFrameRef} />
-              </div>
-              <div style={{ width: '24%' }}>
-                <FramedDevice variant="ipad" url={project.url} width="100%" shadow="0 8px 22px rgba(0,0,0,0.12)" />
-              </div>
-              <div style={{ width: '13%' }}>
-                <FramedDevice variant="iphone" url={project.url} width="100%" shadow="0 8px 20px rgba(0,0,0,0.13)" />
-              </div>
+            {/* Én enhet om gangen — den valgte. Live <iframe> over rammen,
+                klippet til skjerm-hullet. Bredde tilpasset enhets-formatet. */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: previewDevice === 'macbook' ? '66%' : previewDevice === 'ipad' ? '34%' : '20%',
+              maxWidth: previewDevice === 'macbook' ? 820 : previewDevice === 'ipad' ? 430 : 270,
+              maxHeight: '88%',
+            }}>
+              <FramedDevice variant={previewDevice} url={project.url} width="100%" iframeRef={macFrameRef} />
             </div>
           </div>
 
@@ -410,18 +413,6 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
         />
       )}
 
-      {showChooser && (
-        <CaptureChooser
-          onClose={() => setShowChooser(false)}
-          onChoose={(v) => {
-            // Sett valgt enhet på ALLE scener (hele demoen) + lukk velgeren.
-            scenes.forEach((s) => updateScene(s.id, {
-              device: v, viewport: v === 'macbook' ? 'desktop' : v === 'ipad' ? 'tablet' : 'mobile',
-            }));
-            setShowChooser(false);
-          }}
-        />
-      )}
     </div>
   );
 
