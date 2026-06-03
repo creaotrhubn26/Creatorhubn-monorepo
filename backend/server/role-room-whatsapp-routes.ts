@@ -628,17 +628,27 @@ export function setupRoleRoomWhatsAppRoutes(
       });
     }
 
+    // Positional {{1}}..{{n}}-variabler krever (a) parameter_format=POSITIONAL
+    // (WABA defaulter ellers til NAMED → INVALID_FORMAT) og (b) example.body_text
+    // med en sample-verdi per variabel. Uten begge avviser Meta med INVALID_FORMAT.
+    const varCount = new Set(
+      [...bodyText.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map((m) => m[1]),
+    ).size;
+    const bodyComponent: Record<string, unknown> = { type: "BODY", text: bodyText };
+    if (varCount > 0) {
+      const provided = Array.isArray(body.examples)
+        ? (body.examples as unknown[]).map((v) => String(v))
+        : [];
+      const samples = Array.from({ length: varCount }, (_, i) => provided[i] || `Sample ${i + 1}`);
+      bodyComponent.example = { body_text: [samples] };
+    }
     const url = `https://graph.facebook.com/v22.0/${wabaId}/message_templates`;
-    const payload = {
+    const payload: Record<string, unknown> = {
       name,
       category,
       language,
-      components: [
-        {
-          type: "BODY",
-          text: bodyText,
-        },
-      ],
+      ...(varCount > 0 ? { parameter_format: "POSITIONAL" } : {}),
+      components: [bodyComponent],
     };
 
     try {
