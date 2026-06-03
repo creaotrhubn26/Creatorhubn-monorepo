@@ -1,9 +1,12 @@
 /**
- * TalentsLogo.tsx — "The Role Room" eksisterende logo + "TALENTS" under.
+ * TalentsLogo.tsx — "The Role Room" logo + "TALENTS" under.
  *
  * Bruker /theroleroom-app-icon-1024-transparent.png (oppdatert logo med
- * teater-masker + clapperboard + person-ikon + "Casting. Roles. Together."
- * tagline) + "TALENTS"-tekst under for sidebar-header.
+ * teater-masker + clapperboard + person-ikon).
+ *
+ * CSS-filter `brightness(0) invert(1)` gjør lilla-grafikken HVIT/MONOKROM
+ * så den kontrasterer mot den mørke lilla sidebar-bakgrunnen. Bevarer
+ * transparens og alle detaljer i logoen.
  */
 
 import { Box, Typography } from '@mui/material';
@@ -14,6 +17,10 @@ interface TalentsLogoProps {
   variant?: 'large' | 'compact';
 }
 
+// Hvit monokrom-filter: gjør alle ikke-transparente piksler 100% hvite.
+// Bevarer alpha-kanalen så transparens fungerer.
+const WHITE_MONO_FILTER = 'brightness(0) invert(1)';
+
 export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
   if (variant === 'compact') {
     return (
@@ -22,7 +29,12 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
           component="img"
           src="/theroleroom-app-icon-1024-transparent.png"
           alt="The Role Room Talents"
-          sx={{ height: 28, width: 'auto', objectFit: 'contain' }}
+          sx={{
+            height: 28,
+            width: 'auto',
+            objectFit: 'contain',
+            filter: WHITE_MONO_FILTER,
+          }}
         />
         <Typography
           sx={{
@@ -56,6 +68,7 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
           maxWidth: 140,
           height: 'auto',
           objectFit: 'contain',
+          filter: WHITE_MONO_FILTER,
         }}
       />
       <Typography
