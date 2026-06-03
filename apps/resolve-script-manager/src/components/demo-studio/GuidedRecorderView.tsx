@@ -349,9 +349,22 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 <span style={{ fontSize: 12, color: C.inkFaint }}>{fmt(cur?.duration ?? 0)}</span>
               </div>
             )}
-            {/* Én enhet om gangen — den valgte. Live <iframe> over rammen,
-                klippet til skjerm-hullet. Bredde tilpasset enhets-formatet
-                (landskap-iPad er bredere enn stående). */}
+            {isNativeCapture ? (
+              /* Native kilde: previewet kan ikke speile kilden live — vis hva
+                 som faktisk tas opp ved Record, så det ikke er forvirrende. */
+              <div style={{ textAlign: 'center', maxWidth: 420, padding: 24 }}>
+                <div style={{ fontSize: 46, marginBottom: 12 }}>
+                  {captureKind === 'iphone_mirroring' ? '📡' : captureKind === 'mac_screen' ? '🖥' : captureKind === 'ios_simulator' ? '⊞' : '📱'}
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>
+                  Tar opp: {captureKind === 'iphone_mirroring' ? 'iPhone Mirroring-vinduet' : captureKind === 'mac_screen' ? 'Mac-skjermen' : captureKind === 'ios_simulator' ? 'iOS-simulatoren' : (project.captureSourceLabel ?? 'iOS-enheten')}
+                </div>
+                <div style={{ fontSize: 12.5, color: C.inkSoft, lineHeight: 1.5 }}>
+                  Forhåndsvisning er ikke tilgjengelig for native kilder. Hold {captureKind === 'iphone_mirroring' ? 'iPhone Mirroring-vinduet' : 'kilden'} synlig og trykk <strong>Record</strong> — appen fanger den direkte (croppet til vinduet).
+                </div>
+              </div>
+            ) : (
+            /* Web: én enhet om gangen — live <iframe> over rammen. */
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: previewVariant === 'macbook' ? '66%' : previewVariant === 'ipad_landscape' ? '56%' : previewVariant === 'ipad' ? '34%' : '20%',
@@ -360,6 +373,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
             }}>
               <FramedDevice variant={previewVariant} url={project.url} width="100%" iframeRef={macFrameRef} />
             </div>
+            )}
           </div>
 
           {/* Guide-panel (høyre) */}
