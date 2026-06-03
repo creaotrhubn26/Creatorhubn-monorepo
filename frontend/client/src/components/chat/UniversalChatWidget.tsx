@@ -8704,7 +8704,7 @@ export default function UniversalChatWidget({
             </Typography>
           </Box>
 
-          <Box ref={emailMessagesContainerRef} sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.5, display: 'grid', gap: 1.1, bgcolor: '#f8fafc' }}>
+          <Box ref={emailMessagesContainerRef} sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.5, display: 'grid', gap: 1.1, bgcolor: 'rgba(255,255,255,0.04)' }}>
             {gmailMessagesLoading && gmailThreadMessages.length === 0 ? (
               <Box sx={{ alignSelf: 'center', justifySelf: 'center', textAlign: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
@@ -8946,7 +8946,7 @@ export default function UniversalChatWidget({
   );
 
   const mobileGoogleDetailView = selectedGoogleSpacePreview ? (
-    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: '#f7f9fc' }}>
+    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)' }}>
       <Box
         sx={{
           px: 1.2,
@@ -13486,7 +13486,7 @@ export default function UniversalChatWidget({
 
               {/* AI Analysis Section */}
               {selectedFeedback.aiAnalysis && (
-                <Box sx={{ mt: 3, p: 2, bgcolor: '#f3e5f5', borderRadius: 1, border: '1px solid #9c27b0' }}>
+                <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(156,39,176,0.10)', borderRadius: 1, border: '1px solid rgba(156,39,176,0.40)' }}>
                   <Typography variant="subtitle2" gutterBottom sx={{ color: '#9c27b0', fontWeight: 600}}>
                     🤖 AI Analysis Results:
                   </Typography>
