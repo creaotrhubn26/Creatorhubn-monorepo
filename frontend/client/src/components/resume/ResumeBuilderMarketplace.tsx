@@ -1200,8 +1200,8 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                           sx={{
                             p: 2,
                             borderRadius: 3.5,
-                            border: isRecommended ? `2px solid ${app.gradientStart}` : '1px solid #e5e7eb',
-                            background: isRecommended ? `${app.gradientStart}08` : '#ffffff',
+                            border: isRecommended ? `2px solid ${app.gradientStart}` : '1px solid rgba(255,255,255,0.10)',
+                            background: isRecommended ? `${app.gradientStart}18` : 'rgba(255,255,255,0.04)',
                             position: 'relative',
                             transition: 'all 0.2s',
                             '&:hover': { borderColor: app.gradientStart, transform: 'translateY(-1px)' },

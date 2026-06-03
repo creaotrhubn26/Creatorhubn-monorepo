@@ -188,7 +188,7 @@ const ComprehensiveGearDatabase: React.FC = () => {
     '& .MuiCard-root': {
       border: '1px solid rgba(15, 23, 42, 0.08)',
       borderRadius: { xs: 3, md: 4 },
-      background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95))',
+      background: 'rgba(255,255,255,0.04)',
       boxShadow: '0 18px 48px rgba(15, 23, 42, 0.07)',
       backdropFilter: 'blur(14px)',
     },
@@ -196,7 +196,7 @@ const ComprehensiveGearDatabase: React.FC = () => {
       border: '1px solid rgba(15, 23, 42, 0.08)',
       borderRadius: { xs: 3, md: 4 },
       overflow: 'hidden',
-      background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95))',
+      background: 'rgba(255,255,255,0.04)',
       boxShadow: '0 18px 48px rgba(15, 23, 42, 0.07)',
       '&:before': {
         display: 'none',
