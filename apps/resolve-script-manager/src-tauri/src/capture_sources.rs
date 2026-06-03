@@ -265,10 +265,23 @@ pub async fn record_iphone_mirroring(
     let safe_scene: String = scene_id.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
     let out_path = dir.join(format!("{}.mp4", safe_scene));
 
-    // Vindusgeometri (punkter) + skrivebordsstørrelse (punkter) → crop-fraksjoner.
-    let win = osascript(
+    // Bring iPhone Mirroring til front så vinduet er synlig (ikke okkludert)
+    // og posisjonen er stabil før vi leser geometrien.
+    let _ = osascript("tell application \"iPhone Mirroring\" to activate");
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // Les vindusgeometri til den har SATT SEG (ikke midt i åpne-/flytte-animasjon):
+    // to like avlesninger på rad = stabil.
+    let read_win = || osascript(
         "tell application \"System Events\" to tell process \"iPhone Mirroring\" to get {position, size} of window 1",
     ).map(|s| parse_nums(&s));
+    let mut win = read_win();
+    for _ in 0..8 {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        let again = read_win();
+        if again.as_ref().map(|v| v.len() == 4).unwrap_or(false) && again == win { break; }
+        win = again;
+    }
     let desk = osascript(
         "tell application \"Finder\" to get bounds of window of desktop",
     ).map(|s| parse_nums(&s));
