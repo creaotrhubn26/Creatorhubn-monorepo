@@ -15,10 +15,13 @@
 //! per fil, akseptabelt for backup-flow).
 
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
+use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use tokio::io::AsyncReadExt;
+use tokio_util::io::ReaderStream;
 
 const B2_AUTHORIZE_URL: &str = "https://api.backblazeb2.com/b2api/v3/b2_authorize_account";
 const HASH_CHUNK_SIZE: usize = 1024 * 1024; // 1 MiB
@@ -144,12 +147,21 @@ pub async fn compute_sha1(path: &Path) -> Result<String, String> {
 /// Filer >5 GB krever multipart-upload (b2_start_large_file +
 /// b2_upload_part). Den varianten er ikke implementert i v1; caller
 /// må selv sjekke størrelse og falle tilbake til lokal-only.
-pub async fn upload_file(
+///
+/// `on_progress` kalles med (bytes_sent, total_bytes) hver gang et
+/// chunk er sendt over wire. Brukes til å emit'e `copy-file-progress`-
+/// event til UI så Fredrik ser fremdrift på cloud-upload (samme
+/// pattern som lokal-flyten i copy_engine::copy_and_verify).
+pub async fn upload_file<F>(
     upload: &B2UploadUrl,
     file_path: &Path,
     dest_name: &str,
     sha1_hex: &str,
-) -> Result<B2UploadResult, String> {
+    on_progress: F,
+) -> Result<B2UploadResult, String>
+where
+    F: FnMut(u64, u64) + Send + 'static,
+{
     let metadata = tokio::fs::metadata(file_path)
         .await
         .map_err(|e| format!("Les filmetadata: {}", e))?;
@@ -161,13 +173,32 @@ pub async fn upload_file(
         ));
     }
 
-    let body_bytes = tokio::fs::read(file_path)
+    let file = tokio::fs::File::open(file_path)
         .await
-        .map_err(|e| format!("Les fil for upload: {}", e))?;
+        .map_err(|e| format!("Åpne fil for upload: {}", e))?;
+
+    // Stream fila i 256 KiB-chunks så reqwest sender med Content-Length
+    // pre-known + vi kan emit'e progress per chunk.
+    let progress = Arc::new(Mutex::new(on_progress));
+    let progress_for_stream = progress.clone();
+    let bytes_sent = Arc::new(Mutex::new(0u64));
+    let bytes_sent_for_stream = bytes_sent.clone();
+
+    let reader_stream = ReaderStream::with_capacity(file, 256 * 1024);
+    let stream = reader_stream.inspect_ok(move |chunk| {
+        let mut sent = bytes_sent_for_stream.lock().unwrap();
+        *sent += chunk.len() as u64;
+        let snapshot = *sent;
+        drop(sent);
+        if let Ok(mut cb) = progress_for_stream.lock() {
+            cb(snapshot, size);
+        }
+    });
 
     // B2 krever URL-encoded fil-navn i header
     let encoded_name = b2_url_encode(dest_name);
 
+    let body = reqwest::Body::wrap_stream(stream);
     let client = reqwest::Client::new();
     let resp = client
         .post(&upload.upload_url)
@@ -176,7 +207,7 @@ pub async fn upload_file(
         .header("Content-Type", "b2/x-auto")
         .header("Content-Length", size.to_string())
         .header("X-Bz-Content-Sha1", sha1_hex)
-        .body(body_bytes)
+        .body(body)
         .send()
         .await
         .map_err(|e| format!("b2_upload_file-feil: {}", e))?;
@@ -192,12 +223,58 @@ pub async fn upload_file(
         ));
     }
 
+    // Final progress-emit ved 100% (i tilfelle siste chunk var et delvis
+    // bidrag og kompresjon-aware reqwest droppet vår tracking)
+    if let Ok(mut cb) = progress.lock() {
+        cb(size, size);
+    }
+
     Ok(B2UploadResult {
         file_id: parsed.file_id,
         file_name: parsed.file_name,
         content_sha1: parsed.content_sha1,
         content_length: parsed.content_length,
     })
+}
+
+/// Verifiser at credsen autoriserer + at bucket-en eksisterer.
+/// Brukt av frontend Test-connection-knappen før user committer en
+/// cloud-destinasjon. Returnerer OK med bucket-navn på suksess.
+pub async fn test_connection(
+    key_id: &str,
+    application_key: &str,
+    bucket_id: &str,
+) -> Result<String, String> {
+    let auth = authorize(key_id, application_key).await?;
+    let url = format!("{}/b2api/v3/b2_list_buckets", auth.api_info.storage_api.api_url);
+    let client = reqwest::Client::new();
+    let body = serde_json::json!({
+        "accountId": auth.account_id,
+        "bucketId": bucket_id,
+    });
+    let resp = client
+        .post(&url)
+        .header("Authorization", &auth.auth_token)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("test_connection-feil: {}", e))?;
+    #[derive(Deserialize)]
+    struct R {
+        buckets: Vec<B2Bucket>,
+    }
+    #[derive(Deserialize)]
+    struct B2Bucket {
+        #[serde(rename = "bucketName")]
+        bucket_name: String,
+    }
+    let parsed: R = parse_b2_response(resp, "list_buckets").await?;
+    parsed
+        .buckets
+        .into_iter()
+        .next()
+        .map(|b| b.bucket_name)
+        .ok_or_else(|| format!("Bucket {} finnes ikke (eller key mangler tilgang)", bucket_id))
 }
 
 /// b2_delete_file_version — for GDPR right-to-erasure-flow.
