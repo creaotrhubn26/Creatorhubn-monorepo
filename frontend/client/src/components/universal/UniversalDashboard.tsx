@@ -6,7 +6,9 @@ import React, { useState, useMemo, useEffect, useCallback, useRef, Suspense } fr
 const PhotographerProjectsList = React.lazy(() => import('@/pages/photographer-projects-list'));
 const PhotographerClientsList = React.lazy(() => import('@/pages/photographer-clients-list'));
 const PhotographerProfitability = React.lazy(() => import('@/pages/photographer-profitability'));
-const PhotographerPrintOrders = React.lazy(() => import('@/pages/photographer-print-orders'));
+// Slice — print-orders flyttet til dedikert modal (samme mønster som klient-modalen).
+// Side-versjonen brukes fortsatt av ruten /photographer/print-orders i App.tsx.
+const PrintOrdersModal = React.lazy(() => import('@/components/photographer/PrintOrdersModal'));
 const PhotographerEquipment = React.lazy(() => import('@/pages/photographer-equipment'));
 const PhotographerSettings = React.lazy(() => import('@/pages/photographer-settings'));
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -4150,14 +4152,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     </IconButton>
                   </Tooltip>
 
-                  {/* Slice 9X.8.D — link til klient-CRM */}
+                  {/* Slice 9X.8.D — åpne klient-CRM som modal (beholder /photographer/clients-ruten for deep-links) */}
                   <Tooltip title="Klienter (CRM)">
                     <IconButton
                       size={isSmallScreen ? "small" : "medium"}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        setLocation('/photographer/clients');
+                        setQuickModal('clients');
                       }}
                       sx={{
                         bgcolor: `${customBranding.color}1a`,
@@ -4187,7 +4189,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        setLocation('/photographer/print-orders');
+                        setQuickModal('print-orders');
                       }}
                       sx={{
                         bgcolor: pendingPrintOrders > 0 ? '#ff8c001a' : `${customBranding.color}1a`,
@@ -5022,9 +5024,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   ))}
                 </Grid2>
 
-                {/* Slice 9X.66 — Quick-action-modal-wrapper */}
+                {/* Slice 9X.66 — Quick-action-modal-wrapper.
+                    Print-orders har egen dedikert modal (PrintOrdersModal)
+                    rendret like under, så vi hopper over det case'et her. */}
                 <Dialog
-                  open={quickModal !== null}
+                  open={quickModal !== null && quickModal !== 'print-orders'}
                   onClose={() => setQuickModal(null)}
                   fullWidth
                   maxWidth="xl"
@@ -5034,7 +5038,6 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     {quickModal === 'projects' && 'Prosjekter'}
                     {quickModal === 'clients' && 'Klienter'}
                     {quickModal === 'profitability' && 'Lønnsomhet'}
-                    {quickModal === 'print-orders' && 'Print-ordrer'}
                     {quickModal === 'equipment' && 'Utstyr'}
                     {quickModal === 'settings' && 'Innstillinger'}
                     <IconButton onClick={() => setQuickModal(null)} size="small" aria-label="Lukk">
@@ -5050,12 +5053,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       {quickModal === 'projects' && <PhotographerProjectsList />}
                       {quickModal === 'clients' && <PhotographerClientsList />}
                       {quickModal === 'profitability' && <PhotographerProfitability />}
-                      {quickModal === 'print-orders' && <PhotographerPrintOrders />}
                       {quickModal === 'equipment' && <PhotographerEquipment />}
                       {quickModal === 'settings' && <PhotographerSettings />}
                     </Suspense>
                   </DialogContent>
                 </Dialog>
+
+                {/* Dedikert print-orders-modal (samme mønster som klient-modal): maxWidth="lg", dark-bg */}
+                <Suspense fallback={null}>
+                  <PrintOrdersModal
+                    open={quickModal === 'print-orders'}
+                    onClose={() => setQuickModal(null)}
+                  />
+                </Suspense>
               </Box>
             )}
 

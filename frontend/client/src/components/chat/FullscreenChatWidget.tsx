@@ -1371,12 +1371,13 @@ export default function FullscreenChatWidget({
         <Dialog
       open={open}
       onClose={onClose}
-      maxWidth="lg"
+      maxWidth="md"
       fullWidth
       sx={{ zIndex: fullscreenOverlayZIndex.root }}
       PaperProps={{
         sx: {
-          height: '90vh',
+          height: '85vh',
+          maxHeight: '90vh',
           bgcolor: 'background.paper',
           backgroundImage: 'none'
   }
@@ -1454,19 +1455,21 @@ export default function FullscreenChatWidget({
               <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
                 {isSupported && (
                   <Tooltip title="Push-varsler innstillinger">
-                    <IconButton 
+                    <IconButton
+                      size="small"
                       onClick={() => setPushSettingsOpen(true)}
-                      sx={{ 
+                      sx={{
                         color: pushEnabled ? 'rgba(255, 255, 255, 0.9)' : 'white', '&:hover': {
                           bgcolor: 'rgba(255, 255, 255, 0.1)'
                         }
                       }}
                     >
-                      {pushEnabled ? <NotificationsActive /> : <Notifications />}
+                      {pushEnabled ? <NotificationsActive fontSize="small" /> : <Notifications fontSize="small" />}
                     </IconButton>
                   </Tooltip>
                 )}
-                <IconButton 
+                <IconButton
+                  size="small"
                   ref={(el) => {
                     if (el && !googleChatMenuAnchor) {
                       // Store reference for menu positioning
@@ -1490,13 +1493,14 @@ export default function FullscreenChatWidget({
                 }
               }}
                 >
-                  <MoreVert />
+                  <MoreVert fontSize="small" />
                 </IconButton>
-                <IconButton 
+                <IconButton
+                  size="small"
                   onClick={onClose}
                   sx={{ color: 'white'}}
                 >
-                  <Close />
+                  <Close fontSize="small" />
                 </IconButton>
               </Box>
             </Box>
@@ -1643,8 +1647,8 @@ export default function FullscreenChatWidget({
                 sx={{
 		                  borderBottom: 1,
 		                  borderColor: 'divider',
-		                  py: 2,
-		                  px: 2,
+		                  py: 1.5,
+		                  px: 1.5,
 		                  position: 'relative',
                       animationDelay: `${Math.min(index * 24, 240)}ms`,
 		                  transition: 'all 0.2s ease','&:hover': {
@@ -1665,18 +1669,18 @@ export default function FullscreenChatWidget({
               }
             }}
               >
-                <ListItemAvatar sx={{ minWidth: 48}}>
+                <ListItemAvatar sx={{ minWidth: 44}}>
                   <Badge
                     color={contact.status === 'online' ? 'success' : 'default'}
                     variant="dot"
                     overlap="circular"
                     anchorOrigin={{ vertical: 'bottom', horizontal: 'right'}}
                   >
-                    <Avatar 
+                    <Avatar
                       src={contact.avatar}
 	                      sx={{
-	                        width:  44,
-	                        height:  44,
+	                        width:  40,
+	                        height:  40,
 	                        border: `2px solid ${contact.status === 'online' ? '#4CAF50' : 'transparent'}`,
 	                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
 	                  }}
@@ -1877,17 +1881,17 @@ export default function FullscreenChatWidget({
                     labelPlacement="start"
                   />
                   <Tooltip title="Ring">
-                    <IconButton>
-                      <Phone />
+                    <IconButton size="small">
+                      <Phone fontSize="small" />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Videosamtale">
-                    <IconButton>
-                      <VideoCall />
+                    <IconButton size="small">
+                      <VideoCall fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
-                    <MoreVert />
+                  <IconButton size="small" onClick={(e) => setAnchorEl(e.currentTarget)}>
+                    <MoreVert fontSize="small" />
                   </IconButton>
                 </Box>
               </Box>
