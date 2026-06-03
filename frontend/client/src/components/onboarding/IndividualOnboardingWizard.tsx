@@ -30,6 +30,7 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 import { useQueryClient } from '@tanstack/react-query';
 import StorageProviderStep from '@/components/onboarding/StorageProviderStep';
+import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
 
 const PROFESSIONS = [
   { id: 'photographer', label: 'Fotograf', icon: <CameraIcon />, color: '#ffba6c', tagline: 'Bryllup, portrett, kommersielt' },
@@ -524,6 +525,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
               onCompleted={() => setStep((s) => s + 1)}
               onSkip={() => setStep((s) => s + 1)}
             />
+            <OneDeskDownloadCard />
           </Stack>
         )}
 

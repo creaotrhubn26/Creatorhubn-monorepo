@@ -146,6 +146,7 @@ import { useLeadImport } from '@/hooks/useLeadImport';
 import ProjectHealthCheck from './ProjectHealthCheck';
 import ProjectCollaborators from './ProjectCollaborators';
 import CloudDestinationActivator from '@/components/storage/CloudDestinationActivator';
+import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
 import { getCamerasByProfession, getLogFormatsByCamera, getCameraBrand } from '../../data/video-camera-database';
 import { getPhotoCamerasByProfession, getPhotoCameraBrand } from '../../data/photo-camera-database';
 import { MemoryCardRecommendationEngine, getMemoryCardTypesByProfession, formatCurrency } from '../../data/memory-card-database';
@@ -4511,6 +4512,9 @@ useEffect(() => {
                 showSuccessToast?.('Offsite-backup aktivert — den nye destinasjonen vises i One Desk neste gang du starter en backup.', 5000);
               }}
             />
+            <Box sx={{ mt: 3 }}>
+              <OneDeskDownloadCard />
+            </Box>
           </CardContent>
         </Card>
       )}

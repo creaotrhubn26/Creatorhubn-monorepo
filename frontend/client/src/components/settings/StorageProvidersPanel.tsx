@@ -39,6 +39,7 @@ import {
   StorageProvider,
 } from '@/api/storageProviders';
 import StorageProviderStep from '@/components/onboarding/StorageProviderStep';
+import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
 
 export default function StorageProvidersPanel() {
   const [providers, setProviders] = useState<StorageProvider[]>([]);
@@ -93,6 +94,7 @@ export default function StorageProvidersPanel() {
   };
 
   return (
+    <Stack spacing={3}>
     <Card variant="outlined">
       <CardContent>
         <Stack
@@ -230,5 +232,7 @@ export default function StorageProvidersPanel() {
         </Dialog>
       </CardContent>
     </Card>
+    <OneDeskDownloadCard />
+    </Stack>
   );
 }
