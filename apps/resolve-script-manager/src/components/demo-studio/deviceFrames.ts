@@ -24,7 +24,7 @@ export interface FrameSpec {
 // Verdier fra piksel-deteksjon (deviceFrames i frontend):
 //   iphone  1086x1448  screen 248,85 588x1275
 //   ipad    1086x1448  screen 131,112 823x1222
-//   macbook 1586x933   screen 261,39 1064x698  (base beskåret: slab fjernet)
+//   macbook 1586x976   screen 261,39 1064x698  (slab klippet til flush front-lip)
 export const DEVICE_FRAMES: Record<FrameVariant, FrameSpec> = {
   iphone: {
     src: iphoneFrame, aspect: 1086 / 1448,
@@ -37,8 +37,8 @@ export const DEVICE_FRAMES: Record<FrameVariant, FrameSpec> = {
     radius: 20 / 1086,
   },
   macbook: {
-    src: macbookFrame, aspect: 1586 / 933,
-    screen: { x: 261 / 1586, y: 39 / 933, w: 1064 / 1586, h: 698 / 933 },
+    src: macbookFrame, aspect: 1586 / 976,
+    screen: { x: 261 / 1586, y: 39 / 976, w: 1064 / 1586, h: 698 / 976 },
     radius: 6 / 1586,
   },
 };

@@ -285,10 +285,10 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 <FramedDevice variant="macbook" url={project.url} width="100%" iframeRef={macFrameRef} />
               </div>
               <div style={{ width: '24%' }}>
-                <FramedDevice variant="ipad" url={project.url} width="100%" shadow="0 18px 40px rgba(0,0,0,0.20)" />
+                <FramedDevice variant="ipad" url={project.url} width="100%" shadow="0 8px 22px rgba(0,0,0,0.12)" />
               </div>
               <div style={{ width: '13%' }}>
-                <FramedDevice variant="iphone" url={project.url} width="100%" shadow="0 14px 32px rgba(0,0,0,0.26)" />
+                <FramedDevice variant="iphone" url={project.url} width="100%" shadow="0 8px 20px rgba(0,0,0,0.13)" />
               </div>
             </div>
           </div>
@@ -440,14 +440,16 @@ function FramedDevice({ variant, url, width, shadow, iframeRef }: {
   const f = DEVICE_FRAMES[variant];
   const s = f.screen;
   return (
-    <div style={{ position: 'relative', width, aspectRatio: String(f.aspect), filter: shadow ? `drop-shadow(${shadow})` : 'drop-shadow(0 22px 50px rgba(0,0,0,0.20))' }}>
-      {/* Skjerm-bakgrunn (svart bak iframe) */}
+    <div style={{ position: 'relative', width, aspectRatio: String(f.aspect), filter: shadow ? `drop-shadow(${shadow})` : 'drop-shadow(0 8px 22px rgba(0,0,0,0.12))' }}>
+      {/* Ekte ramme nederst (transparent surround). Skjermen i PNG-en er opak
+          svart, så iframe-en MÅ ligge OVER rammen og klippes til skjerm-hullet
+          — ellers dekker den svarte PNG-skjermen innholdet. */}
+      <img src={f.src} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
+      {/* Live innhold over rammen, klippet til skjerm-rektangelet */}
       <div style={{ position: 'absolute', left: `${s.x * 100}%`, top: `${s.y * 100}%`, width: `${s.w * 100}%`, height: `${s.h * 100}%`, background: '#000', borderRadius: `${f.radius * 100}%`, overflow: 'hidden' }}>
         <iframe ref={iframeRef} title={variant} src={url}
           style={{ width: '100%', height: '100%', border: 0, display: 'block' }} />
       </div>
-      {/* Ekte ramme over (transparent surround) */}
-      <img src={f.src} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
     </div>
   );
 }
