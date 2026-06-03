@@ -346,6 +346,32 @@ export const photoshop = {
   resolveReadIntellisearch: (clip_name_filter?: string) =>
     send<ResolveIntellisearchResult>("resolve.readIntellisearch", { clip_name_filter }),
 
+  resolveQuickExportList: () =>
+    send<{ presets: string[]; count: number }>("resolve.quickExportList"),
+
+  resolveQuickExportRun: (params: {
+    preset_name: string;
+    target_dir?: string;
+    custom_name?: string;
+    video_quality?: string;
+  }) => send<{ preset: string; status: string; job_id: string }>("resolve.quickExportRun", params),
+
+  resolveProjectInfo: () =>
+    send<{
+      project_name: string;
+      timeline_name: string;
+      timeline_fps: string;
+      timeline_timecode: string;
+      current_folder: string;
+    }>("resolve.projectInfo"),
+
+  resolveMediaPoolListItems: () =>
+    send<{
+      folder: string;
+      items: Array<{ id: string; clip_name: string; file_path: string; frames: number; fps: number }>;
+      count: number;
+    }>("resolve.mediaPoolListItems"),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

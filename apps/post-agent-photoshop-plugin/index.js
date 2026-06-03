@@ -517,6 +517,98 @@ const COMMANDS = {
   },
 
   /*
+   * Resolve command-router: send en kommando til watch-resolve-commands.lua
+   * (som må kjøres i Resolve) og vent på respons. Filsystem-basert IPC:
+   *   - Skriv request til ~/PostAgent/resolve-commands/<id>.json
+   *   - Vent til ~/PostAgent/resolve-results/<id>.json dukker opp
+   *   - Les respons + slett fra results
+   *
+   * timeout_ms (default 15000) styrer hvor lenge vi venter på respons.
+   * Hvis Resolve Lua-script ikke kjører eller ikke svarer, kaster vi feil.
+   *
+   * Supported commands (per Lua-handlers): quickExport.list, quickExport.run,
+   * project.info, mediaPool.listItems. Utvid Lua-script for flere.
+   */
+  "resolve.sendCommand": async ({ name, args, timeout_ms } = {}) => {
+    assertString(name, "name");
+    const home = await fs.getFolder("home").catch(() => null);
+    if (!home) throw new Error("Klarte ikke åpne home-folder");
+
+    let postAgent;
+    try {
+      postAgent = await home.getEntry("PostAgent");
+    } catch {
+      postAgent = await home.createFolder("PostAgent");
+    }
+    let commandsDir;
+    try {
+      commandsDir = await postAgent.getEntry("resolve-commands");
+    } catch {
+      commandsDir = await postAgent.createFolder("resolve-commands");
+    }
+    let resultsDir;
+    try {
+      resultsDir = await postAgent.getEntry("resolve-results");
+    } catch {
+      resultsDir = await postAgent.createFolder("resolve-results");
+    }
+
+    const id = `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const requestPayload = JSON.stringify({ id, name, args: args || {} });
+    const reqFile = await commandsDir.createFile(`${id}.json`, { overwrite: true });
+    await reqFile.write(requestPayload, { format: "utf8" });
+
+    // Poll results-folder for matching <id>.json
+    const deadline = Date.now() + (typeof timeout_ms === "number" ? timeout_ms : 15000);
+    const pollIntervalMs = 200;
+    while (Date.now() < deadline) {
+      try {
+        const respEntry = await resultsDir.getEntry(`${id}.json`);
+        const respText = await respEntry.read({ format: "utf8" });
+        // Rydd opp
+        try { await respEntry.delete(); } catch { /* ignored */ }
+        const parsed = JSON.parse(respText);
+        if (parsed.ok === false) {
+          throw new Error(parsed.error || "Resolve-handler feilet");
+        }
+        return parsed.result ?? parsed;
+      } catch (e) {
+        // Hvis getEntry feiler er det fordi filen ikke finnes enda — vent
+        if (e instanceof Error && e.message.includes("Resolve-handler")) throw e;
+      }
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+    }
+    throw new Error(
+      `Timeout (${timeout_ms ?? 15000}ms): Resolve svarte ikke. Kjører watch-resolve-commands.lua i Resolve?`,
+    );
+  },
+
+  "resolve.quickExportList": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "quickExport.list" });
+  },
+
+  "resolve.quickExportRun": async ({ preset_name, target_dir, custom_name, video_quality } = {}) => {
+    assertString(preset_name, "preset_name");
+    const params = {};
+    if (target_dir) params.TargetDir = target_dir;
+    if (custom_name) params.CustomName = custom_name;
+    if (video_quality) params.VideoQuality = video_quality;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "quickExport.run",
+      args: { preset_name, params },
+      timeout_ms: 120000, // render kan ta lang tid
+    });
+  },
+
+  "resolve.projectInfo": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "project.info" });
+  },
+
+  "resolve.mediaPoolListItems": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "mediaPool.listItems" });
+  },
+
+  /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
    * Lua-scriptet analyze-intellisearch.lua. Brukes av Multi-Agent

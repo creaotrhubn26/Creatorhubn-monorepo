@@ -190,6 +190,39 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_project_info",
+    description:
+      "Hent live info om aktivt Resolve-prosjekt: project_name, timeline_name, timeline_fps, timeline_timecode, current_folder. Krever at watch-resolve-commands.lua kjører i Resolve.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_media_pool_list_items",
+    description:
+      "List alle MediaPoolItems i Resolve current folder med id + clip_name + file_path + frames + fps. Krever watch-resolve-commands.lua.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_quick_export_list",
+    description:
+      "List Resolve sine innebygde Quick Export render-presets ('H.264 Master', 'ProRes 422 HQ', etc.). Bruk dette FØR quick_export_run. Krever watch-resolve-commands.lua.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_quick_export_run",
+    description:
+      "Kjør Quick Export på Resolve current timeline med spesifikt preset. preset_name fra quick_export_list. Valgfri target_dir + custom_name + video_quality. GPU-akselerert batch-eksport.",
+    input_schema: {
+      type: "object",
+      properties: {
+        preset_name: { type: "string" },
+        target_dir: { type: "string", description: "Absolutt mappe-path (valgfri)" },
+        custom_name: { type: "string", description: "Output-filnavn-prefix (valgfri)" },
+        video_quality: { type: "string", description: "Quality-override (valgfri)" },
+      },
+      required: ["preset_name"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -594,6 +627,19 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
       return photoshop.resolveReadIntellisearch(
         typeof input.clip_name_filter === "string" ? input.clip_name_filter : undefined,
       );
+    case "photoshop_resolve_project_info":
+      return photoshop.resolveProjectInfo();
+    case "photoshop_resolve_media_pool_list_items":
+      return photoshop.resolveMediaPoolListItems();
+    case "photoshop_resolve_quick_export_list":
+      return photoshop.resolveQuickExportList();
+    case "photoshop_resolve_quick_export_run":
+      return photoshop.resolveQuickExportRun({
+        preset_name: requireString(input, "preset_name"),
+        target_dir: typeof input.target_dir === "string" ? input.target_dir : undefined,
+        custom_name: typeof input.custom_name === "string" ? input.custom_name : undefined,
+        video_quality: typeof input.video_quality === "string" ? input.video_quality : undefined,
+      });
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
     case "photoshop_resolve_export_back":

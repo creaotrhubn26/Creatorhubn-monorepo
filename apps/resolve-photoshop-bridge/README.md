@@ -53,6 +53,19 @@ Begrensninger: hvis Resolve crasher må du restarte scriptet. Krever lokal disk 
 - Hvis Photoshop endrer dimensjoner radikalt, kan timeline-klippets in/out-points bli forskjøvet
 - Filformat: PNG er sikrest (TIFF og JPG også OK, PSD avhenger av Resolve-versjon)
 
+## Resolve command-router (live IPC)
+
+`watch-resolve-commands.lua` er en GENERISK command-router som lar Post Agent trigge Resolve scripting-API i sanntid:
+
+1. `Workspace → Scripts → Edit → watch-resolve-commands` (kjør én gang ved sesjons-start)
+2. Post Agent skriver kommando-JSON til `~/PostAgent/resolve-commands/<id>.json`
+3. Lua-script poller hvert sekund, dispatcher til handler, skriver respons til `~/PostAgent/resolve-results/<id>.json`
+4. Plugin venter på respons og returnerer til Claude
+
+Initial handlers: `quickExport.list`, `quickExport.run`, `project.info`, `mediaPool.listItems`. Utvid via HANDLERS-table i Lua-scriptet.
+
+Multi-Agent Director kan nå spørre Resolve live: "hva er current timeline?" → `photoshop_resolve_project_info` → få project + timeline + playhead-tid uten manuell scripting-kjøring.
+
 ## Resolve 21 AI IntelliSearch-bro
 
 `analyze-intellisearch.lua` triggerer Resolve sin native AI face/object-detection (krever Resolve 21+ med IntelliSearch-modeller nedlastet). Eksporterer per-clip metadata til `~/PostAgent/intellisearch/<project>_<epoch>.json`.
