@@ -4352,7 +4352,7 @@ useEffect(() => {
               </Paper>
             )}
             {selectedLocation && (
-              <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+              <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }}>
                 <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
                   <Check sx={{ fontSize: 16, mr: 0.5, color: 'success.main' }} /> {selectedLocation.name || selectedLocation.address}
                 </Typography>
