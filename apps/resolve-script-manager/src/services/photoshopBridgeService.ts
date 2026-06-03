@@ -109,6 +109,29 @@ export interface ResolveExportBackResult {
   next_step: string;
 }
 
+export interface ResolveIntellisearchItem {
+  media_pool_item_id: string;
+  clip_name: string;
+  file_path: string;
+  duration_frames: number;
+  fps: number;
+  analyzed: boolean;
+}
+
+export type ResolveIntellisearchResult =
+  | { found: false; hint?: string }
+  | {
+      found: true;
+      file: string;
+      schema_version: number;
+      project: string;
+      folder: string;
+      epoch: number;
+      mode: string;
+      items: ResolveIntellisearchItem[];
+      total: number;
+    };
+
 export interface ThumbnailResult {
   /** Base64-encoded PNG bytes (uten "data:image/png;base64,"-prefix). */
   base64: string;
@@ -319,6 +342,9 @@ export const photoshop = {
     ),
 
   resolveListInbox: () => send<ResolveInboxResult>("resolve.listInbox"),
+
+  resolveReadIntellisearch: (clip_name_filter?: string) =>
+    send<ResolveIntellisearchResult>("resolve.readIntellisearch", { clip_name_filter }),
 
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),

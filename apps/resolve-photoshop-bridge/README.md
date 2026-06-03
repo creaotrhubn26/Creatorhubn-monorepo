@@ -53,6 +53,16 @@ Begrensninger: hvis Resolve crasher må du restarte scriptet. Krever lokal disk 
 - Hvis Photoshop endrer dimensjoner radikalt, kan timeline-klippets in/out-points bli forskjøvet
 - Filformat: PNG er sikrest (TIFF og JPG også OK, PSD avhenger av Resolve-versjon)
 
+## Resolve 21 AI IntelliSearch-bro
+
+`analyze-intellisearch.lua` triggerer Resolve sin native AI face/object-detection (krever Resolve 21+ med IntelliSearch-modeller nedlastet). Eksporterer per-clip metadata til `~/PostAgent/intellisearch/<project>_<epoch>.json`.
+
+1. Last ned IntelliSearch-modeller i Resolve: Preferences → AI → IntelliSearch (Faster + Better)
+2. `Workspace → Scripts → Edit → analyze-intellisearch`
+3. Multi-Agent Director kan nå kalle `photoshop_resolve_read_intellisearch` for å lese face/object-data per klipp
+
+Bruksfall: Story-tab Wedding-agent kan bruke Resolve sin ekte AI face-score per klipp i stedet for syntetiske signals. Lavere falske positive, raskere insight på hvilke klipp som faktisk har mennesker i seg.
+
 ## Plugin-kommandoer (Post Agent)
 
 | Kommando | Tool-navn |
@@ -60,6 +70,7 @@ Begrensninger: hvis Resolve crasher må du restarte scriptet. Krever lokal disk 
 | `resolve.listInbox` | `photoshop_resolve_list_inbox` |
 | `resolve.openLatest` | `photoshop_resolve_open_latest` |
 | `resolve.exportBack` | `photoshop_resolve_export_back` |
+| `resolve.readIntellisearch` | `photoshop_resolve_read_intellisearch` |
 
 ## Arkitektur-valg
 
