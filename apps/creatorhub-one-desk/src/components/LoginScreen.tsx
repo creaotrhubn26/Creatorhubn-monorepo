@@ -15,6 +15,7 @@ import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { pollOauthCompletion, startGoogleLoginV2 } from "../api";
 import DeskIcon from "./DeskIcon";
+import noProjectsBg from "../assets/no-projects-bg.png";
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 min
@@ -110,6 +111,16 @@ export default function LoginScreen({ onLoggedIn, onManualToken }: Props) {
   };
 
   return (
+    <Box
+      sx={{
+        minHeight: "100vh",
+        background: `
+          radial-gradient(ellipse at center, rgba(255,248,236,1) 0%, rgba(253,226,179,0.85) 60%, rgba(245,185,74,0.18) 100%),
+          url(${noProjectsBg}) center/cover no-repeat
+        `,
+        backgroundBlendMode: "lighten",
+      }}
+    >
     <Container maxWidth="sm" sx={{ py: 8 }}>
       <Stack spacing={4} sx={{ alignItems: "stretch", textAlign: "center" }}>
         <Box sx={{ display: "flex", justifyContent: "center", mb: 1 }}>
@@ -166,5 +177,6 @@ export default function LoginScreen({ onLoggedIn, onManualToken }: Props) {
         </Box>
       </Stack>
     </Container>
+    </Box>
   );
 }

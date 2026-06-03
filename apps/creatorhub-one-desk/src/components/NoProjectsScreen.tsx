@@ -14,6 +14,7 @@ import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { deviceTokenStatus, refreshProjectsFromApi } from "../api";
 import DeskIcon from "./DeskIcon";
+import noProjectsBg from "../assets/no-projects-bg.png";
 
 interface Props {
   onRefresh: () => void;
@@ -52,6 +53,20 @@ export default function NoProjectsScreen({ onRefresh, onLogout }: Props) {
   };
 
   return (
+    <Box
+      sx={{
+        minHeight: "100vh",
+        // Krem-amber radial-gradient som matcher Desk-merket. Bildet
+        // bringer inn floatende skapelses-verktøy-kort langs kantene;
+        // CSS-gradienten under sørger for at lerretet ikke blir hvitt
+        // hvis bildet ikke laster (offline / loading).
+        background: `
+          radial-gradient(ellipse at center, rgba(255,248,236,1) 0%, rgba(253,226,179,0.85) 60%, rgba(245,185,74,0.18) 100%),
+          url(${noProjectsBg}) center/cover no-repeat
+        `,
+        backgroundBlendMode: "lighten",
+      }}
+    >
     <Container maxWidth="sm" sx={{ py: 8 }}>
       <Stack spacing={4} sx={{ alignItems: "stretch", textAlign: "center" }}>
         <Box sx={{ display: "flex", justifyContent: "center" }}>
@@ -144,5 +159,6 @@ export default function NoProjectsScreen({ onRefresh, onLogout }: Props) {
         </Box>
       </Stack>
     </Container>
+    </Box>
   );
 }
