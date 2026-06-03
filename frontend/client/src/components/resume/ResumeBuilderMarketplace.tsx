@@ -825,13 +825,16 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           background: featured
             ? `linear-gradient(135deg, ${app.gradientStart}10 0%, ${app.gradientEnd}10 100%)`
-            : '#fff',
+            : 'rgba(255,255,255,0.04)',
           '&:hover': {
             transform: `translateY(${featured ? -12 : -8}px)`,
             boxShadow: featured
-              ? `0 30px 60px rgba(0, 0, 0, 0.16)`
-              : '0 20px 40px rgba(0, 0, 0, 0.12)',
+              ? `0 30px 60px rgba(0, 0, 0, 0.40)`
+              : '0 20px 40px rgba(0, 0, 0, 0.30)',
             borderColor: app.gradientStart,
+            background: featured
+              ? `linear-gradient(135deg, ${app.gradientStart}18 0%, ${app.gradientEnd}18 100%)`
+              : 'rgba(255,255,255,0.06)',
           },
         }}
       >
@@ -933,14 +936,14 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: featured ? 3 : 2.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1 }}>
             <Box sx={{ flex: 1 }}>
-              <Typography variant={featured ? 'h5' : 'h6'} sx={{ fontWeight: 700, mb: 0.5, color: '#1a1a1a' }}>
+              <Typography variant={featured ? 'h5' : 'h6'} sx={{ fontWeight: 700, mb: 0.5, color: 'rgba(255,255,255,0.95)' }}>
                 {app.name}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Box sx={{ color: app.gradientStart }}>
                   <CategoryIcon category={app.category} />
                 </Box>
-                <Typography variant="caption" sx={{ color: '#999', fontWeight: 500 }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', fontWeight: 500 }}>
                   {categoryLabelMap[app.category] || app.category}
                 </Typography>
               </Box>
@@ -966,7 +969,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
 
           <Typography
             variant={featured ? 'body1' : 'body2'}
-            sx={{ color: '#666', mb: 2.5, minHeight: featured ? 50 : 40 }}
+            sx={{ color: 'rgba(255,255,255,0.70)', mb: 2.5, minHeight: featured ? 50 : 40 }}
           >
             {app.description}
           </Typography>
@@ -1042,11 +1045,11 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 <>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
                     <Rating value={displayRating} readOnly size="small" />
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#1a1a1a' }}>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.95)' }}>
                       {Number.isFinite(displayRating) ? displayRating.toFixed(1) : '—'}
                     </Typography>
                   </Box>
-                  <Typography variant="caption" sx={{ color: '#999', fontSize: '0.7rem' }}>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem' }}>
                     {Number.isFinite(displayReviews) ? displayReviews.toLocaleString() : '0'} anmeldelser
                   </Typography>
                 </>
@@ -1073,7 +1076,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 <>
                   <Typography
                     variant="caption"
-                    sx={{ fontWeight: 600, color: '#1a1a1a', display: 'block', mb: 0.25 }}
+                    sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.95)', display: 'block', mb: 0.25 }}
                   >
                     {(app.downloadCount / 1000).toFixed(0)}K nedlastinger
                   </Typography>
@@ -1099,11 +1102,11 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 <>
                   <Typography
                     variant="caption"
-                    sx={{ fontWeight: 600, color: '#1a1a1a', display: 'block', mb: 0.25 }}
+                    sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.95)', display: 'block', mb: 0.25 }}
                   >
                     Enterprise inkludert
                   </Typography>
-                  <Typography variant="caption" sx={{ color: '#999', fontSize: '0.7rem' }}>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem' }}>
                     Inkludert når oppsett er del av avtalen
                   </Typography>
                 </>
@@ -1118,7 +1121,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                   <Box sx={{ color: app.gradientStart, mt: 0.25, fontSize: '1rem' }}>
                     {feature.icon}
                   </Box>
-                  <Typography variant="caption" sx={{ color: '#666', fontSize: '0.8rem' }}>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.70)', fontSize: '0.8rem' }}>
                     {feature.text}
                   </Typography>
                 </Box>
@@ -1140,7 +1143,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                         fontWeight: 700,
                       }}
                     />
-                    <Typography variant="caption" sx={{ color: '#999' }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>
                       + Pro fra {app.pricing.price} {app.pricing.currency}
                     </Typography>
                   </>
@@ -1174,7 +1177,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 )}
               </Box>
               {app.pricing.note && (
-                <Typography variant="caption" sx={{ color: '#777', lineHeight: 1.45 }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)', lineHeight: 1.45 }}>
                   {app.pricing.note}
                 </Typography>
               )}
@@ -1184,7 +1187,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 <Box sx={{ width: '100%', mt: 1 }}>
                   <Typography
                     variant="caption"
-                    sx={{ color: '#555', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 1, display: 'block' }}
+                    sx={{ color: 'rgba(255,255,255,0.78)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 1, display: 'block' }}
                   >
                     Velg plan
                   </Typography>
@@ -1221,7 +1224,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                             />
                           )}
                           <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mb: 0.5 }}>
-                            <Typography variant="body1" sx={{ fontWeight: 800, color: '#1a1a1a' }}>
+                            <Typography variant="body1" sx={{ fontWeight: 800, color: 'rgba(255,255,255,0.95)' }}>
                               {tier.name}
                             </Typography>
                             <Typography
@@ -1231,14 +1234,14 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                               {tier.price}
                             </Typography>
                           </Stack>
-                          <Typography variant="caption" sx={{ color: '#555', display: 'block', mb: 0.75, lineHeight: 1.4 }}>
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.78)', display: 'block', mb: 0.75, lineHeight: 1.4 }}>
                             {tier.bestFor}
                           </Typography>
                           <Stack spacing={0.25}>
                             {tier.features.map((f) => (
                               <Stack key={f} direction="row" spacing={0.5} alignItems="flex-start">
                                 <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: app.gradientStart, mt: 0.7, flexShrink: 0 }} />
-                                <Typography variant="caption" sx={{ color: '#666', fontSize: '0.72rem', lineHeight: 1.45 }}>
+                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.70)', fontSize: '0.72rem', lineHeight: 1.45 }}>
                                   {f}
                                 </Typography>
                               </Stack>
@@ -1361,7 +1364,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         >
           CreatorHub Markedsplass
         </Typography>
-        <Typography variant="h6" sx={{ color: '#666', fontWeight: 400, mb: 3 }}>
+        <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.70)', fontWeight: 400, mb: 3 }}>
           Oppdag kraftige verktøy for å skalere din kreative bedrift
         </Typography>
 
@@ -1371,7 +1374,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
               <Typography variant="h5" sx={{ fontWeight: 800, color: '#ff8c00', mb: 0.5 }}>
                 {statsLoading ? '—' : marketplaceStats ? marketplaceStats.totalApps : '—'}
               </Typography>
-              <Typography variant="caption" sx={{ color: '#999' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>
                 Premium‑apper
               </Typography>
             </Box>
@@ -1385,7 +1388,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                     ? formatCompactNumber(marketplaceStats.totalDownloads)
                     : '—'}
               </Typography>
-              <Typography variant="caption" sx={{ color: '#999' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>
                 Totale nedlastinger
               </Typography>
             </Box>
@@ -1399,7 +1402,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                     ? formatRatingValue(marketplaceStats.averageRating)
                     : '—'}
               </Typography>
-              <Typography variant="caption" sx={{ color: '#999' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>
                 Gj.snittlig vurdering
               </Typography>
             </Box>
@@ -1413,7 +1416,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                     ? formatCompactNumber(marketplaceStats.activeUsers)
                     : '—'}
               </Typography>
-              <Typography variant="caption" sx={{ color: '#999' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>
                 Aktive brukere
               </Typography>
             </Box>
@@ -1430,7 +1433,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon sx={{ color: '#999' }} />
+                    <SearchIcon sx={{ color: 'rgba(255,255,255,0.55)' }} />
                   </InputAdornment>
                 ),
                 endAdornment: searchTerm ? (
@@ -1630,7 +1633,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
             borderRadius: 4,
           }}
         >
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: '#999', textTransform: 'uppercase', letterSpacing: 1 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: 1 }}>
             ⭐ Redaktørens valg
           </Typography>
           <Grid container spacing={3}>
@@ -1649,14 +1652,14 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                   justifyContent: 'center',
                 }}
               >
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: 'rgba(255,255,255,0.95)' }}>
                   Hvorfor velge {topRatedApp.name}?
                 </Typography>
                 <Stack spacing={2}>
                   {topRatedApp.features.slice(0, 3).map((feature, idx) => (
                     <Box key={idx} sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
                       <Box sx={{ color: topRatedApp.gradientStart, mt: 0.5 }}>{feature.icon}</Box>
-                      <Typography variant="body2" sx={{ color: '#666' }}>{feature.text}</Typography>
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.70)' }}>{feature.text}</Typography>
                     </Box>
                   ))}
                 </Stack>
@@ -1667,7 +1670,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       )}
 
       <Box>
-        <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: '#1a1a1a' }}>
+        <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: 'rgba(255,255,255,0.95)' }}>
           {selectedCategory === 'all'
             ? `Alle apper (${filteredApps.length})`
             : `${categoryLabelMap[selectedCategory] || selectedCategory}‑apper (${filteredApps.length})`}
@@ -1696,10 +1699,10 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       </Box>
 
       <Box sx={{ mt: 8, pt: 4, borderTop: '1px solid rgba(255,255,255,0.10)', textAlign: 'center' }}>
-        <Typography variant="body1" sx={{ color: '#666', mb: 2 }}>
+        <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.70)', mb: 2 }}>
           Finner du ikke det du leter etter?
         </Typography>
-        <Typography variant="body2" sx={{ color: '#999' }}>
+        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.55)' }}>
           Foreslå en ny app eller integrasjon på hello@creatorhubn.com
         </Typography>
       </Box>
@@ -1727,7 +1730,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                       setReviewForm(prev => ({ ...prev, rating: value || 5 }))
                     }
                   />
-                  <Typography variant="body2" sx={{ color: '#999' }}>
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.55)' }}>
                     {reviewForm.rating} / 5
                   </Typography>
                 </Box>
@@ -1788,10 +1791,10 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                       </Typography>
                       <Rating value={review.rating} readOnly size="small" />
                     </Box>
-                    <Typography variant="body2" sx={{ color: '#666' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.70)' }}>
                       {review.comment || 'Ingen kommentar gitt.'}
                     </Typography>
-                    <Typography variant="caption" sx={{ color: '#999' }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>
                       {review.userName}{review.createdAt ? ` · ${new Date(review.createdAt).toLocaleDateString()}` : ''}
                     </Typography>
                   </Stack>

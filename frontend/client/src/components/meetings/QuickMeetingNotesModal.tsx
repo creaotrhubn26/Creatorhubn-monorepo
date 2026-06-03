@@ -435,7 +435,7 @@ export function QuickMeetingNotesModal({
                 borderRadius: 2.5,
                 border: '1px solid',
                 borderColor: !isPersonalNote ? 'rgba(245, 158, 11, 0.28)' : 'rgba(59, 130, 246, 0.22)',
-                bgcolor: !isPersonalNote ? 'rgba(255, 247, 237, 0.92)' : 'rgba(239, 246, 255, 0.92)',
+                bgcolor: !isPersonalNote ? 'rgba(255,152,0,0.10)' : 'rgba(59,130,246,0.10)',
               }}
             >
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
