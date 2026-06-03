@@ -5413,7 +5413,7 @@ export default function UniversalChatWidget({
         bgcolor: 'rgba(255,255,255,0.04)',
         '&:hover': {
           color: '#0f172a',
-          bgcolor: 'rgba(255,255,255,1)',
+          bgcolor: 'rgba(255,255,255,0.04)',
           borderColor: getColorWithAlpha('#94a3b8', 0.85),
         },
       }
@@ -5930,7 +5930,7 @@ export default function UniversalChatWidget({
           p: compact ? 0.85 : 1,
           borderRadius: compact ? 2.4 : 2.8,
           border: `1px solid ${getColorWithAlpha('#2563eb', 0.18)}`,
-          bgcolor: 'rgba(239,246,255,0.84)',
+          bgcolor: 'rgba(33,150,243,0.10)',
         }}
       >
         <Typography variant="caption" sx={{ fontWeight: 800, color: '#1d4ed8' }}>

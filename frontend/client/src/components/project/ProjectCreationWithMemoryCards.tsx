@@ -3297,14 +3297,14 @@ useEffect(() => {
                     placeholder="Skriv for å søke..." 
                     size="small"
                     sx={{
-                      '& .MuiInputLabel-root': { color: '#1a1a1a', fontWeight: 600 },
+                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)', fontWeight: 600 },
                       '& .MuiOutlinedInput-root': {
                         '& fieldset': { borderColor: '#1565c0', borderWidth: 1.5 },
                         '&:hover fieldset': { borderColor: '#0d47a1' },
                         '&.Mui-focused fieldset': { borderColor: '#1565c0', borderWidth: 2 }
                       },
-                      '& .MuiInputBase-input': { color: '#1a1a1a', fontWeight: 500 },
-                      '& .MuiInputBase-input::placeholder': { color: '#666', opacity: 1 }
+                      '& .MuiInputBase-input': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 },
+                      '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.70)', opacity: 1 }
                     }}
                   />
                 )}
@@ -3318,13 +3318,13 @@ useEffect(() => {
                 size="small"
                 slotProps={{ input: { readOnly: true } }}
                 sx={{
-                  '& .MuiInputLabel-root': { color: '#1a1a1a', fontWeight: 600 },
+                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)', fontWeight: 600 },
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': { borderColor: '#1565c0', borderWidth: 1.5 },
                     '&:hover fieldset': { borderColor: '#0d47a1' },
                     '&.Mui-focused fieldset': { borderColor: '#1565c0', borderWidth: 2 }
                   },
-                  '& .MuiInputBase-input': { color: '#1a1a1a', fontWeight: 500 }
+                  '& .MuiInputBase-input': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 }
                 }}
               />
             </Box>
@@ -3442,7 +3442,7 @@ useEffect(() => {
               )
             ) : (
               <Box>
-                <Typography variant="body2" sx={{ mb: 1, color: '#1a1a1a', fontWeight: 500 }}>
+                <Typography variant="body2" sx={{ mb: 1, color: 'rgba(255,255,255,0.95)', fontWeight: 500 }}>
                   Ingen bryllupstidslinje. Opprett i Wedding Timeline Administration.
                 </Typography>
                 <Stack direction="row" spacing={1}>
@@ -3573,49 +3573,49 @@ useEffect(() => {
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
             <Box sx={{ flex: 1 }}>
-              <Typography variant="body2" fontWeight={700} sx={{ color: '#1a1a1a', mb: 0.5 }}>Prosjekt</Typography>
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" fontWeight={700} sx={{ color: 'rgba(255,255,255,0.95)', mb: 0.5 }}>Prosjekt</Typography>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Project ID: {currentProject?.id || 'Ikke opprettet enda'}
               </Typography>
               {!currentProject?.id && (
-                <Typography variant="body2" display="block" sx={{ color: '#333', fontWeight: 500, lineHeight: 1.8 }}>
+                <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.85)', fontWeight: 500, lineHeight: 1.8 }}>
                   Draft ID: {sessionId}
                 </Typography>
               )}
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Gjester: {projectData.guestCount || '-'}
               </Typography>
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Dato: {projectData.eventDate || '-'}
               </Typography>
               {projectData.eventDates && Object.keys(projectData.eventDates).length > 0 && (
-                <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+                <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                   Datoer: {Object.keys(projectData.eventDates)
                     .sort((a, b) => Number(a) - Number(b))
                     .map((k) => projectData.eventDates[Number(k)])
                     .join(', ')}
                 </Typography>
               )}
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Lokasjon: {projectData.location || '-'}
               </Typography>
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Prosjekttype: {projectData.projectType || '-'}
               </Typography>
             </Box>
             <Box sx={{ flex: 1 }}>
-              <Typography variant="body2" fontWeight={700} sx={{ color: '#1a1a1a', mb: 0.5 }}>Kontakt</Typography>
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" fontWeight={700} sx={{ color: 'rgba(255,255,255,0.95)', mb: 0.5 }}>Kontakt</Typography>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Navn: {selectedContact?.displayName || projectData.clientName || '-'}
               </Typography>
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 E-post: {selectedContact?.email || projectData.clientEmail || '-'}
               </Typography>
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Telefon: {selectedContact?.phone || projectData.clientPhone || '-'}
               </Typography>
               {(selectedContact?.companyName) && (
-                <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+                <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                   Firma: {selectedContact.companyName}
                 </Typography>
               )}
@@ -3669,8 +3669,14 @@ useEffect(() => {
         PaperProps={{
           sx: {
             borderRadius: 3,
-            background: '#fafbfc',
-            boxShadow: '0 12px 30px rgba(0, 0, 0, 0.18)'
+            background: '#0f0a07',
+            color: 'rgba(255,255,255,0.95)',
+            boxShadow: '0 12px 30px rgba(0, 0, 0, 0.45)',
+            // Card-flater inni modalen — overstyrer hvit default
+            '& .MuiCard-root, & .MuiPaper-root[class*="elevation"]': {
+              background: 'rgba(255,255,255,0.04)',
+              color: 'rgba(255,255,255,0.95)',
+            },
           }
         }}
       >
@@ -3918,11 +3924,11 @@ useEffect(() => {
 
       {/* Evendi Photo Shots Bridge — Show couple's photo wishes from Evendi */}
       {evendiPhotoShotsBridge && evendiPhotoShotsBridge.shots.length > 0 && (
-        <Card sx={{ mt: 3, background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', color: '#1a1a1a' }}>
+        <Card sx={{ mt: 3, background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', color: 'rgba(255,255,255,0.95)' }}>
           <CardContent>
             <Stack direction="row" spacing={2} alignItems="center">
               <Avatar sx={{ bgcolor: 'rgba(0,0,0,0.1)', width: 56, height: 56 }}>
-                <CameraAlt sx={{ fontSize: 32, color: '#1a1a1a' }} />
+                <CameraAlt sx={{ fontSize: 32, color: 'rgba(255,255,255,0.95)' }} />
               </Avatar>
               <Box sx={{ flex: 1 }}>
                 <Typography variant="h6" fontWeight={600}>
@@ -3943,7 +3949,7 @@ useEffect(() => {
                 disabled={!projectData.shotList?.filter((s) => !s.id?.startsWith('evendi-')).length}
                 sx={{
                   bgcolor: 'rgba(0,0,0,0.15)',
-                  color: '#1a1a1a',
+                  color: 'rgba(255,255,255,0.95)',
                   fontWeight: 600,
                   '&:hover': { bgcolor: 'rgba(0,0,0,0.25)' },
                 }}
@@ -3960,7 +3966,7 @@ useEffect(() => {
                       key={scene}
                       label={`${scene}: ${count}`}
                       size="small"
-                      sx={{ bgcolor: 'rgba(0,0,0,0.1)', color: '#1a1a1a', fontWeight: 500 }}
+                      sx={{ bgcolor: 'rgba(0,0,0,0.1)', color: 'rgba(255,255,255,0.95)', fontWeight: 500 }}
                     />
                   ) : null;
                 })
@@ -3999,7 +4005,7 @@ useEffect(() => {
             <Assignment sx={{ fontSize: 28 }} /> Prosjekttype
           </Typography>
           <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel sx={{ color: '#1a1a1a', fontWeight: 600, '&.Mui-focused': { color: '#1565c0' } }}>Velg prosjekttype</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 600, '&.Mui-focused': { color: '#1565c0' } }}>Velg prosjekttype</InputLabel>
             <Select
               value={projectData.projectType || ''}
               onChange={(e) => {
@@ -4021,7 +4027,7 @@ useEffect(() => {
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: '#1565c0', borderWidth: 1.5 },
                 '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#0d47a1' },
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#1565c0', borderWidth: 2 },
-                '& .MuiSelect-select': { color: '#1a1a1a', fontWeight: 500 }
+                '& .MuiSelect-select': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 }
               }}
               MenuProps={{
                 PaperProps: {
