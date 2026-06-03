@@ -16,6 +16,8 @@ import {
 import Stop from "@mui/icons-material/Stop";
 import CheckCircle from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
+import DescriptionIcon from "@mui/icons-material/Description";
+import HandoffReportDialog from "./HandoffReportDialog";
 import {
   cancelCopySession,
   CopyFileCompletedEvent,
@@ -43,6 +45,7 @@ export default function CopyProgressView() {
   const [sessions, setSessions] = useState<SessionStatus[]>([]);
   const [currentFiles, setCurrentFiles] = useState<Record<string, FileState>>({});
   const [recentErrors, setRecentErrors] = useState<string[]>([]);
+  const [reportSessionId, setReportSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     void listCopySessions().then(setSessions).catch(() => {});
@@ -232,17 +235,32 @@ export default function CopyProgressView() {
             </Typography>
             <Stack spacing={0.5}>
               {completedSessions.map((s) => (
-                <Stack key={s.session_id} direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                  {s.state === "completed" ? (
-                    <CheckCircle color="success" fontSize="small" />
-                  ) : s.state === "cancelled" ? (
-                    <Chip size="small" label="avbrutt" />
-                  ) : (
-                    <ErrorIcon color="error" fontSize="small" />
-                  )}
-                  <Typography variant="caption">
-                    {s.volume_label}: {s.succeeded} ✓ / {s.failed} ✗ av {s.file_count}
-                  </Typography>
+                <Stack
+                  key={s.session_id}
+                  direction="row"
+                  spacing={1}
+                  sx={{ alignItems: "center", justifyContent: "space-between" }}
+                >
+                  <Stack direction="row" spacing={1} sx={{ alignItems: "center", flex: 1, minWidth: 0 }}>
+                    {s.state === "completed" ? (
+                      <CheckCircle color="success" fontSize="small" />
+                    ) : s.state === "cancelled" ? (
+                      <Chip size="small" label="avbrutt" />
+                    ) : (
+                      <ErrorIcon color="error" fontSize="small" />
+                    )}
+                    <Typography variant="caption" noWrap>
+                      {s.volume_label}: {s.succeeded} ✓ / {s.failed} ✗ av {s.file_count}
+                    </Typography>
+                  </Stack>
+                  <Button
+                    size="small"
+                    startIcon={<DescriptionIcon fontSize="small" />}
+                    onClick={() => setReportSessionId(s.session_id)}
+                    sx={{ flexShrink: 0 }}
+                  >
+                    Rapport
+                  </Button>
                 </Stack>
               ))}
             </Stack>
@@ -267,6 +285,11 @@ export default function CopyProgressView() {
           </Box>
         )}
       </CardContent>
+      <HandoffReportDialog
+        sessionId={reportSessionId}
+        open={!!reportSessionId}
+        onClose={() => setReportSessionId(null)}
+      />
     </Card>
   );
 }

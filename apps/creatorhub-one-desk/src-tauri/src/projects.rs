@@ -48,6 +48,11 @@ pub struct ProjectsFile {
     pub active_project_id: Option<String>,
     #[serde(default)]
     pub projects: Vec<ProjectEntry>,
+    /// Auto-start backup når innsatt SD-kort matcher en planlagt
+    /// memory_card_config (label-fuzzy + kapasitet-bucket). Defaulter
+    /// til false — bekreftet av bruker før første aktivering.
+    #[serde(default)]
+    pub auto_start_backup: bool,
 }
 
 fn projects_path() -> PathBuf {
@@ -104,6 +109,7 @@ impl ProjectStore {
                 let file = ProjectsFile {
                     active_project_id: Some(cfg.project_id),
                     projects: vec![entry],
+                    auto_start_backup: false,
                 };
                 *guard = Some(file.clone());
                 // Skriv migrert versjon til disk så fremtidige starts
@@ -290,6 +296,27 @@ impl ProjectStore {
 
         file.projects = merged;
         file.active_project_id = active;
+        let file_clone = file.clone();
+        drop(guard);
+        self.save_to_disk(&file_clone)
+    }
+
+    pub fn auto_start_backup(&self) -> Result<bool, String> {
+        self.ensure_loaded()?;
+        Ok(self
+            .inner
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|f| f.auto_start_backup)
+            .unwrap_or(false))
+    }
+
+    pub fn set_auto_start_backup(&self, enabled: bool) -> Result<(), String> {
+        self.ensure_loaded()?;
+        let mut guard = self.inner.lock().unwrap();
+        let file = guard.as_mut().expect("loaded");
+        file.auto_start_backup = enabled;
         let file_clone = file.clone();
         drop(guard);
         self.save_to_disk(&file_clone)

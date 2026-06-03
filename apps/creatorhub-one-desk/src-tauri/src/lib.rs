@@ -11,10 +11,12 @@ mod copy_engine;
 mod copy_session;
 mod device_auth;
 mod dit_reporter;
+mod handoff_report;
 mod helper_client;
 mod ipad_pairing;
 mod mount_watcher;
 mod projects;
+mod session_log;
 
 use std::sync::Arc;
 
@@ -84,6 +86,35 @@ fn save_helper_config(
 #[tauri::command]
 fn clear_helper_config() -> Result<(), String> {
     helper_client::clear_config()
+}
+
+// ── Handoff-rapport commands ───────────────────────────────────────
+
+#[tauri::command]
+fn generate_handoff_report(session_id: String) -> Result<handoff_report::ReportData, String> {
+    handoff_report::generate(&session_id)
+}
+
+#[tauri::command]
+fn save_session_note(session_id: String, note: String) -> Result<(), String> {
+    session_log::save_note(&session_id, &note)
+}
+
+#[tauri::command]
+fn load_session_note(session_id: String) -> Option<String> {
+    session_log::load_note(&session_id)
+}
+
+#[tauri::command]
+fn list_recent_sessions() -> Vec<String> {
+    session_log::list_session_ids()
+}
+
+#[tauri::command]
+fn export_handoff_report(session_id: String, path: String) -> Result<(), String> {
+    let report = handoff_report::generate(&session_id)?;
+    std::fs::write(&path, report.markdown.as_bytes())
+        .map_err(|e| format!("Skriv rapport: {}", e))
 }
 
 // ── Google-OAuth device-auth commands ──────────────────────────────
@@ -168,6 +199,21 @@ fn update_project_label(
     label: String,
 ) -> Result<(), String> {
     store.update_label(&project_id, label)
+}
+
+#[tauri::command]
+fn auto_start_backup_enabled(
+    store: tauri::State<Arc<projects::ProjectStore>>,
+) -> Result<bool, String> {
+    store.auto_start_backup()
+}
+
+#[tauri::command]
+fn set_auto_start_backup(
+    store: tauri::State<Arc<projects::ProjectStore>>,
+    enabled: bool,
+) -> Result<(), String> {
+    store.set_auto_start_backup(enabled)
 }
 
 #[tauri::command]
@@ -441,11 +487,18 @@ pub fn run() {
             start_google_login,
             refresh_projects_from_api,
             desktop_logout,
+            generate_handoff_report,
+            save_session_note,
+            load_session_note,
+            list_recent_sessions,
+            export_handoff_report,
             list_projects,
             active_project_id,
             set_active_project,
             remove_project,
             update_project_label,
+            auto_start_backup_enabled,
+            set_auto_start_backup,
             fetch_project_info,
             list_detected_mounts,
             rescan_mounts,

@@ -34,6 +34,7 @@ use uuid::Uuid;
 use walkdir::WalkDir;
 
 use crate::copy_engine::{build_dest_path, copy_and_verify, hash_file_xxh64};
+use crate::session_log;
 use crate::dit_reporter;
 use crate::helper_client::{self, Config};
 use crate::mount_watcher;
@@ -171,6 +172,49 @@ struct FileCompletedEvent {
     skipped: bool,
 }
 
+/// Emit "copy-file-completed"-event til UI OG append til session-log
+/// JSONL for handoff-rapport-generering. Bruker referanser så vi ikke
+/// må klone session_id/src ved hvert call-site.
+#[allow(clippy::too_many_arguments)]
+fn record_complete(
+    app: &AppHandle,
+    session_id: &str,
+    source_path: &str,
+    dest_id: &str,
+    size: u64,
+    success: bool,
+    hash: Option<String>,
+    error: Option<String>,
+    skipped: bool,
+) {
+    let ts_ms = session_log::now_ms();
+    let _ = app.emit(
+        "copy-file-completed",
+        FileCompletedEvent {
+            session_id: session_id.to_string(),
+            source_path: source_path.to_string(),
+            dest_id: dest_id.to_string(),
+            success,
+            hash: hash.clone(),
+            error: error.clone(),
+            skipped,
+        },
+    );
+    session_log::append_file_result(
+        session_id,
+        &session_log::FileResult {
+            source_path: source_path.to_string(),
+            dest_id: dest_id.to_string(),
+            size,
+            success,
+            hash,
+            error,
+            skipped,
+            ts_ms,
+        },
+    );
+}
+
 #[derive(Serialize, Clone)]
 struct SessionCompletedEvent {
     session_id: String,
@@ -223,6 +267,30 @@ pub async fn start_session(
 
     let cancel = Arc::new(AtomicBool::new(false));
     state.insert(status.clone(), cancel.clone());
+
+    // Persist session-meta så handoff-rapporten kan genereres senere
+    // (ikke avhengig av at app-process fortsatt har state i RAM)
+    let project_id = helper_client::load_config()
+        .ok()
+        .flatten()
+        .map(|c| c.project_id)
+        .unwrap_or_default();
+    session_log::write_meta(&session_log::SessionMeta {
+        session_id: session_id.clone(),
+        mount_path: spec.mount_path.clone(),
+        volume_label: spec.volume_label.clone(),
+        project_id,
+        started_at_ms: status.started_at_ms as u64,
+        destinations: spec
+            .destinations
+            .iter()
+            .map(|d| session_log::DestSummary {
+                id: d.id.clone(),
+                label: d.label.clone(),
+                path: d.path.clone(),
+            })
+            .collect(),
+    });
 
     let _ = app.emit(
         "copy-session-started",
@@ -286,36 +354,34 @@ async fn process_destination(
                         }
                     }
                     state.update(&session_id, |s| s.succeeded += 1);
-                    let _ = app.emit(
-                        "copy-file-completed",
-                        FileCompletedEvent {
-                            session_id,
-                            source_path: src_disp,
-                            dest_id: dest_spec.id,
-                            success: true,
-                            hash: Some(existing_hash),
-                            error: None,
-                            skipped: true,
-                        },
+                    record_complete(
+                        &app,
+                        &session_id,
+                        &src_disp,
+                        &dest_spec.id,
+                        size,
+                        true,
+                        Some(existing_hash),
+                        None,
+                        true,
                     );
                     return;
                 }
                 Ok(other_hash) => {
                     state.update(&session_id, |s| s.failed += 1);
-                    let _ = app.emit(
-                        "copy-file-completed",
-                        FileCompletedEvent {
-                            session_id,
-                            source_path: src_disp,
-                            dest_id: dest_spec.id,
-                            success: false,
-                            hash: Some(other_hash.clone()),
-                            error: Some(format!(
-                                "Eksisterer med ulik hash ({} vs {}); ikke overskrevet",
-                                other_hash, src_hash
-                            )),
-                            skipped: false,
-                        },
+                    record_complete(
+                        &app,
+                        &session_id,
+                        &src_disp,
+                        &dest_spec.id,
+                        size,
+                        false,
+                        Some(other_hash.clone()),
+                        Some(format!(
+                            "Eksisterer med ulik hash ({} vs {}); ikke overskrevet",
+                            other_hash, src_hash
+                        )),
+                        false,
                     );
                     return;
                 }
@@ -405,17 +471,16 @@ async fn process_destination(
                 }
             }
             state.update(&session_id, |s| s.succeeded += 1);
-            let _ = app.emit(
-                "copy-file-completed",
-                FileCompletedEvent {
-                    session_id,
-                    source_path: src_disp,
-                    dest_id: dest_spec.id,
-                    success: true,
-                    hash: Some(v.dest_hash),
-                    error: None,
-                    skipped: false,
-                },
+            record_complete(
+                &app,
+                &session_id,
+                &src_disp,
+                &dest_spec.id,
+                size,
+                true,
+                Some(v.dest_hash),
+                None,
+                false,
             );
         }
         Err(err) => {
@@ -432,17 +497,16 @@ async fn process_destination(
                 }
             }
             state.update(&session_id, |s| s.failed += 1);
-            let _ = app.emit(
-                "copy-file-completed",
-                FileCompletedEvent {
-                    session_id,
-                    source_path: src_disp,
-                    dest_id: dest_spec.id,
-                    success: false,
-                    hash: None,
-                    error: Some(err),
-                    skipped: false,
-                },
+            record_complete(
+                &app,
+                &session_id,
+                &src_disp,
+                &dest_spec.id,
+                size,
+                false,
+                None,
+                Some(err),
+                false,
             );
         }
     }
@@ -484,17 +548,16 @@ async fn run_session(
             Err(err) => {
                 for d in &spec.destinations {
                     state.update(&session_id, |s| s.failed += 1);
-                    let _ = app.emit(
-                        "copy-file-completed",
-                        FileCompletedEvent {
-                            session_id: session_id.clone(),
-                            source_path: source.display().to_string(),
-                            dest_id: d.id.clone(),
-                            success: false,
-                            hash: None,
-                            error: Some(format!("Kunne ikke hashe kilde: {}", err)),
-                            skipped: false,
-                        },
+                    record_complete(
+                        &app,
+                        &session_id,
+                        &source.display().to_string(),
+                        &d.id,
+                        size,
+                        false,
+                        None,
+                        Some(format!("Kunne ikke hashe kilde: {}", err)),
+                        false,
                     );
                 }
                 continue;
@@ -513,19 +576,12 @@ async fn run_session(
                     let src_disp = source.display().to_string();
                     let dest_id = dest_spec.id.clone();
                     let state_em = state.clone();
+                    let size_em = size;
                     handles.push(tokio::spawn(async move {
                         state_em.update(&sid, |s| s.failed += 1);
-                        let _ = app_em.emit(
-                            "copy-file-completed",
-                            FileCompletedEvent {
-                                session_id: sid,
-                                source_path: src_disp,
-                                dest_id,
-                                success: false,
-                                hash: None,
-                                error: Some(err),
-                                skipped: false,
-                            },
+                        record_complete(
+                            &app_em, &sid, &src_disp, &dest_id, size_em, false, None,
+                            Some(err), false,
                         );
                     }));
                     continue;

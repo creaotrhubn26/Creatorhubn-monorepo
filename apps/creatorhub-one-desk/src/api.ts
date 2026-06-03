@@ -71,6 +71,67 @@ export async function saveHelperConfig(args: {
   });
 }
 
+// ── Handoff-rapport ───────────────────────────────────────────────
+export interface DestSummary {
+  id: string;
+  label: string;
+  path: string;
+  files: number;
+  bytes: number;
+  failures: number;
+}
+export interface CameraGroup {
+  label: string;
+  files: number;
+  bytes: number;
+}
+export interface TotalsSummary {
+  file_count: number;
+  total_bytes: number;
+  success_count: number;
+  failed_count: number;
+  skipped_count: number;
+  verified_count: number;
+}
+export interface FailureItem {
+  source_path: string;
+  dest_id: string;
+  error: string;
+}
+export interface ReportData {
+  session_id: string;
+  project_id: string;
+  mount_path: string;
+  volume_label: string;
+  started_at_ms: number;
+  destinations: DestSummary[];
+  cameras: CameraGroup[];
+  totals: TotalsSummary;
+  failures: FailureItem[];
+  note: string;
+  markdown: string;
+}
+
+export async function generateHandoffReport(sessionId: string): Promise<ReportData> {
+  return invoke<ReportData>("generate_handoff_report", { sessionId });
+}
+
+export async function saveSessionNote(sessionId: string, note: string): Promise<void> {
+  return invoke<void>("save_session_note", { sessionId, note });
+}
+
+export async function loadSessionNote(sessionId: string): Promise<string | null> {
+  return invoke<string | null>("load_session_note", { sessionId });
+}
+
+export async function listRecentSessions(): Promise<string[]> {
+  return invoke<string[]>("list_recent_sessions");
+}
+
+export async function exportHandoffReport(sessionId: string, path: string): Promise<void> {
+  return invoke<void>("export_handoff_report", { sessionId, path });
+}
+
 // ── Google OAuth / device-auth ────────────────────────────────────
 export interface DeviceTokenStatus {
   user_email: string;
@@ -121,6 +182,14 @@ export async function removeProject(projectId: string): Promise<void> {
 
 export async function updateProjectLabel(projectId: string, label: string): Promise<void> {
   return invoke<void>("update_project_label", { projectId, label });
+}
+
+export async function autoStartBackupEnabled(): Promise<boolean> {
+  return invoke<boolean>("auto_start_backup_enabled");
+}
+
+export async function setAutoStartBackup(enabled: boolean): Promise<void> {
+  return invoke<void>("set_auto_start_backup", { enabled });
 }
 
 export async function clearHelperConfig(): Promise<void> {
