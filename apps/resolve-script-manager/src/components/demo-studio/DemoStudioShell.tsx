@@ -111,7 +111,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
   // ── Tom tilstand: Create Demo (URL + flow) ──
   if (!project) {
-    const valid = /^https?:\/\//.test(urlInput.trim());
+    // Tilgivende URL-håndtering: auto-legg til https:// hvis brukeren bare
+    // skrev "domene.no". Krever et punktum i verts­navnet for å være gyldig.
+    const raw = urlInput.trim();
+    const normalizedUrl = raw && !/^https?:\/\//i.test(raw) ? `https://${raw}` : raw;
+    const valid = /^https?:\/\/\S+\.\S+/.test(normalizedUrl);
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: C.font, background: C.bg, color: C.ink }}>
         <div style={topbarStyle}>
@@ -123,14 +127,19 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           <p style={{ color: C.inkSoft, fontSize: 13.5, margin: 0 }}>Lim inn en URL og bygg en scene-basert produktdemo. Velg opptaks-enhet i Guided Recorder. Du styrer opptaket steg for steg.</p>
           <input style={{ ...field, fontSize: 15, padding: '13px 15px' }} placeholder="https://example.com"
             value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && valid) createProject(urlInput.trim(), demoType); }} />
+            onKeyDown={(e) => { if (e.key === 'Enter' && valid) createProject(normalizedUrl, demoType); }} />
           <select style={{ ...field, padding: '11px 12px' }} value={demoType} onChange={(e) => setDemoType(e.target.value as DemoType)}>
             {(Object.keys(DEMO_TYPE_LABELS) as DemoType[]).map((t) => <option key={t} value={t}>{DEMO_TYPE_LABELS[t]}</option>)}
           </select>
           <button style={{ ...primaryBtn, opacity: valid ? 1 : 0.5, alignSelf: 'flex-start' }}
-            disabled={!valid} onClick={() => createProject(urlInput.trim(), demoType)}>
+            disabled={!valid} onClick={() => createProject(normalizedUrl, demoType)}>
             Generér demo-flow →
           </button>
+          {!valid && (
+            <p style={{ color: C.inkSoft, fontSize: 12.5, margin: '2px 0 0' }}>
+              Skriv inn en gyldig URL for å starte (f.eks. <code>theroleroom.com</code>).
+            </p>
+          )}
         </div>
       </div>
     );
