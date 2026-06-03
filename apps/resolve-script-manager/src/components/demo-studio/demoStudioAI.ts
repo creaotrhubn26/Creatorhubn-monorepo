@@ -34,11 +34,31 @@ export interface GeneratedScript {
   overlayText: string;
 }
 
-/** Trekk ut første JSON-objekt fra en Claude-respons (tåler kodeblokk-wrapping). */
+/** Trekk ut første JSON-objekt fra en Claude-respons. Tåler ```json-fences og
+ *  omkringliggende prosa via balansert klammeparser (ikke grådig regex). */
 function extractJson<T>(text: string): T | null {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  try { return JSON.parse(match[0]) as T; } catch { return null; }
+  // 1) Strip ```json … ``` / ``` … ```-fences hvis de finnes.
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = (fence ? fence[1] : text).trim();
+  // 2) Prøv rett parse først.
+  try { return JSON.parse(body) as T; } catch { /* fall through */ }
+  // 3) Balansert klammeparser: finn første { … } med matchende dybde.
+  const start = body.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < body.length; i++) {
+    const ch = body[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+    } else if (ch === '"') inStr = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}') { depth--; if (depth === 0) {
+      try { return JSON.parse(body.slice(start, i + 1)) as T; } catch { return null; }
+    } }
+  }
+  return null;
 }
 
 const SYSTEM = `Du er en erfaren manusforfatter for produktdemoer. Du skriver konsist,

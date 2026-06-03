@@ -64,6 +64,9 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   // Oppdater capture-kilder ved mount (Mac-skjerm / kablede iOS-enheter / sim).
   useEffect(() => { listCaptureSources().then(setSources).catch(() => setSources([])); }, []);
 
+  // Frigjør skjermdelings-streamen når man forlater Guided Recorder.
+  useEffect(() => () => rec.release(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Advar hvis nettsiden ikke kan bygges inn i <iframe> (X-Frame-Options/CSP):
   // ellers tas svart skjerm opp stille ved web-opptak.
   const checkUrl = project?.url;
@@ -156,16 +159,29 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
     } catch { /* cross-origin/blokkert — hopp over */ }
   };
 
+  /** Les gjeldende scene FERSKT fra storen (unngår stale closure-indeks). */
+  const freshCurrent = () => {
+    const st = useDemoStudio.getState();
+    return st.project ? st.project.scenes[st.recorderStepIndex] ?? null : null;
+  };
+  /** Start web-opptak for scenen brukeren faktisk står på nå. */
+  const startForCurrent = async () => {
+    const st = useDemoStudio.getState();
+    const sc = st.project?.scenes[st.recorderStepIndex];
+    if (sc && st.project) await rec.start(st.project.id, sc.id);
+  };
+
   const beginRecording = async () => {
     setNativeError(null);
     startRecorder();
+    const sc = freshCurrent() ?? cur;
     if (isNativeCapture) {
       // Native: ta opp gjeldende scene fra valgt enhet/simulator (blokkerer
       // til varigheten er nådd), sett recordingPath.
-      const path = await recordNativeScene(cur.id);
-      if (path) updateScene(cur.id, { recordingPath: path });
+      const path = await recordNativeScene(sc.id);
+      if (path) updateScene(sc.id, { recordingPath: path });
     } else {
-      await rec.start();
+      await startForCurrent();
       if (autoMode) void runAuto();
     }
   };
@@ -188,28 +204,30 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
         if (path) updateScene(scene.id, { recordingPath: path });
       }
       markCurrentDone();
-      if (i < scenes.length - 1) { nextStep(); await rec.start(); }
+      if (i < scenes.length - 1) { nextStep(); await startForCurrent(); }
     }
     setAutoRunning(false);
   };
 
   const doneAndNext = async () => {
+    const sc = freshCurrent() ?? cur;
     if (isNativeCapture) {
       // Native: opptak skjer per scene via recordNativeScene (allerede lagret).
       markCurrentDone();
-      if (recorderStepIndex < scenes.length - 1) {
-        nextStep();
-        const path = await recordNativeScene(scenes[recorderStepIndex + 1]?.id ?? cur.id);
-        if (path) updateScene(scenes[recorderStepIndex + 1].id, { recordingPath: path });
+      nextStep();
+      const next = freshCurrent();
+      if (next && next.id !== sc.id) {
+        const path = await recordNativeScene(next.id);
+        if (path) updateScene(next.id, { recordingPath: path });
       }
       return;
     }
     if (rec.state === 'recording') {
-      const path = await rec.stopAndSave(project.id, cur.id);
-      if (path) updateScene(cur.id, { recordingPath: path });
+      const path = await rec.stopAndSave(project.id, sc.id);
+      if (path) updateScene(sc.id, { recordingPath: path });
     }
     markCurrentDone();
-    if (recorderStepIndex < scenes.length - 1) { nextStep(); await rec.start(); }
+    if (recorderStepIndex < scenes.length - 1) { nextStep(); await startForCurrent(); }
   };
 
   const toggleMode = () => {
@@ -417,11 +435,11 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
             {/* Bunn-knapper */}
             <div style={{ padding: 16, borderTop: `1px solid ${C.line}` }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <button style={{ ...outlineBtn, flex: 1 }} onClick={async () => { rec.cancel(); retakeCurrent(); await rec.start(); }}>↺ Retake</button>
+                <button style={{ ...outlineBtn, flex: 1 }} onClick={async () => { retakeCurrent(); await startForCurrent(); }}>↺ Retake</button>
                 <button style={{ ...darkBtn, flex: 1, opacity: rec.state === 'saving' ? 0.6 : 1 }} disabled={rec.state === 'saving'} onClick={() => void doneAndNext()}>✓ Mark as Done</button>
               </div>
               <button style={{ ...darkBtn, width: '100%', opacity: recorderStepIndex >= scenes.length - 1 ? 0.5 : 1 }} disabled={recorderStepIndex >= scenes.length - 1}
-                onClick={async () => { if (rec.state === 'recording') { const pth = await rec.stopAndSave(project.id, cur.id); if (pth) updateScene(cur.id, { recordingPath: pth }); } nextStep(); await rec.start(); }}>
+                onClick={() => void doneAndNext()}>
                 Next Step →
               </button>
             </div>

@@ -73,6 +73,15 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
   // Gjenopprett lagret prosjekt ved oppstart (ellers virket alt arbeid borte).
   useEffect(() => { if (!project) loadExisting(); /* eslint-disable-next-line */ }, []);
+  // Frigjør skjermdelings-streamen når shell unmountes.
+  useEffect(() => () => rec.release(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Start web-opptak for scenen brukeren faktisk står på nå (fersk fra storen). */
+  const startForCurrent = async () => {
+    const st = useDemoStudio.getState();
+    const sc = st.project?.scenes[st.recorderStepIndex];
+    if (sc && st.project) await rec.start(st.project.id, sc.id);
+  };
 
   const [nav, setNav] = useState<NavId>('flow');
   const [tab, setTab] = useState<'Guide' | 'Script' | 'Notes'>('Guide');
@@ -94,7 +103,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     setDirectorBusy(true); setDirectorMsg('Leser nettsiden…');
     try {
       const siteContext = await fetchSiteContext(project.url);
-      setDirectorMsg('AI Director designer flowen…');
+      setDirectorMsg(siteContext ? 'AI Director designer flowen…' : 'Kunne ikke lese siden (CORS) — designer fra URL-en…');
       const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
       const scenes = await generateDemoFlow({
         url: project.url, demoType: project.demoType, devices: project.devices, meta, siteContext,
@@ -186,7 +195,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           onClick={async () => {
             if (recording) return;
             setStoryMode(false); startRecorder();
-            const ok = await rec.start();
+            const st = useDemoStudio.getState();
+            const sc = st.project?.scenes[st.recorderStepIndex];
+            const ok = sc && st.project ? await rec.start(st.project.id, sc.id) : false;
             if (ok) setRecording(true);
           }}>● {rec.state === 'recording' ? 'Recording' : rec.state === 'saving' ? 'Lagrer…' : 'Record'}</button>
         <button style={{ ...btn, background: C.dark, color: '#fff', borderColor: C.dark }}
@@ -343,15 +354,15 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                       markCurrentDone();
                       if (recorderStepIndex < scenes.length - 1) {
                         nextStep();
-                        await rec.start();
+                        await startForCurrent();
                       } else {
                         setRecording(false);
                       }
                     }}>✓ Mark as Done</button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8 }}
-                    onClick={async () => { rec.cancel(); retakeCurrent(); await rec.start(); }}>↺ Retake</button>
+                    onClick={async () => { retakeCurrent(); await startForCurrent(); }}>↺ Retake</button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: recorderStepIndex >= scenes.length - 1 ? 0.5 : 1 }} disabled={recorderStepIndex >= scenes.length - 1}
-                    onClick={async () => { if (rec.state === 'recording') await rec.stopAndSave(project.id, recorderScene.id).then((pth) => pth && updateScene(recorderScene.id, { recordingPath: pth })); nextStep(); await rec.start(); }}>→ Next Step</button>
+                    onClick={async () => { if (rec.state === 'recording') await rec.stopAndSave(project.id, recorderScene.id).then((pth) => pth && updateScene(recorderScene.id, { recordingPath: pth })); nextStep(); await startForCurrent(); }}>→ Next Step</button>
                   <button style={{ ...outlineBtn, width: '100%' }} onClick={() => { rec.cancel(); setRecording(false); }}>Avslutt opptak</button>
                 </>
               ) : selected ? (

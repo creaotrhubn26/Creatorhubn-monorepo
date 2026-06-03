@@ -145,9 +145,11 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
 
   // ── Guided recorder ──
   startRecorder: () => {
-    const { project } = get();
+    const { project, selectedSceneId } = get();
     if (!project) return;
-    set({ recorderStepIndex: 0, selectedSceneId: project.scenes[0]?.id ?? null });
+    // Start på scenen brukeren faktisk står på (ikke alltid scene 0).
+    const idx = Math.max(0, project.scenes.findIndex((s) => s.id === selectedSceneId));
+    set({ recorderStepIndex: idx, selectedSceneId: project.scenes[idx]?.id ?? null });
   },
 
   goToStep: (index) => {
