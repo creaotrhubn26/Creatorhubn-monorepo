@@ -53,6 +53,24 @@ pub struct DestinationSpec {
     /// lokal kopi uten backend-spor (f.eks. ad-hoc-mappe valgt i dialog).
     #[serde(default)]
     pub backend_id: Option<String>,
+    /// Hvis satt: cloud-destinasjon. F.eks. "b2". `path` brukes da som
+    /// prefix i bucket-en (samme semantikk som lokal-path).
+    #[serde(default)]
+    pub cloud_provider: Option<String>,
+    /// B2 bucket-id (immutabel). Sendes til b2_get_upload_url.
+    #[serde(default)]
+    pub cloud_bucket_id: Option<String>,
+    /// Dekrypterte cloud-credentials. ALDRI lagret på disk på desktop —
+    /// kun in-memory mens en backup-økt kjører. Mottatt fra
+    /// /api/dit/projects/:id/destinations/with-creds.
+    #[serde(default)]
+    pub cloud_credentials: Option<CloudCredentials>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudCredentials {
+    pub key_id: String,
+    pub application_key: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -171,6 +189,35 @@ struct FileCompletedEvent {
     skipped: bool,
 }
 
+/// Hjelpe-funksjon for å emit'e `copy-file-completed`-event uten
+/// duplisering av FileCompletedEvent-konstruksjonen på hver call-site.
+/// Brukes spesielt av cloud-flow (process_b2_destination) som har 8+
+/// emit-punkter for ulike feiltilstander.
+#[allow(clippy::too_many_arguments)]
+fn emit_completed(
+    app: &AppHandle,
+    session_id: &str,
+    source_path: &str,
+    dest_id: &str,
+    success: bool,
+    hash: Option<String>,
+    error: Option<String>,
+    skipped: bool,
+) {
+    let _ = app.emit(
+        "copy-file-completed",
+        FileCompletedEvent {
+            session_id: session_id.to_string(),
+            source_path: source_path.to_string(),
+            dest_id: dest_id.to_string(),
+            success,
+            hash,
+            error,
+            skipped,
+        },
+    );
+}
+
 #[derive(Serialize, Clone)]
 struct SessionCompletedEvent {
     session_id: String,
@@ -260,6 +307,14 @@ async fn process_destination(
     cfg: Option<Arc<Config>>,
     cancel: Arc<AtomicBool>,
 ) {
+    // Cloud-destinasjon → B2-upload via b2_uploader, separat code-path.
+    if dest_spec.cloud_provider.as_deref() == Some("b2") {
+        process_b2_destination(
+            app, state, session_id, src, src_disp, src_hash, size, dest_spec, cfg, cancel,
+        )
+        .await;
+        return;
+    }
     // Idempotens: hvis dest finnes med samme størrelse og hash, hopp over.
     if dest_path.exists() {
         let same_size = std::fs::metadata(&dest_path).map(|m| m.len() == size).unwrap_or(false);
@@ -443,6 +498,164 @@ async fn process_destination(
                     error: Some(err),
                     skipped: false,
                 },
+            );
+        }
+    }
+}
+
+/// B2-upload code-path. Hverken idempotens-check eller lokal write —
+/// vi laster opp direkte med SHA-1-header. Backend-rapportering
+/// (dit_reporter) skjer identisk med lokal-flyten hvis backend_id finnes.
+#[allow(clippy::too_many_arguments)]
+async fn process_b2_destination(
+    app: AppHandle,
+    state: Arc<CopySessionState>,
+    session_id: String,
+    src: PathBuf,
+    src_disp: String,
+    src_hash: String, // xxh64 — beholdes for session_log/local-paritet
+    size: u64,
+    dest_spec: DestinationSpec,
+    cfg: Option<Arc<Config>>,
+    _cancel: Arc<AtomicBool>,
+) {
+    use crate::b2_uploader;
+
+    // Validér at vi har det vi trenger for cloud-flow
+    let Some(creds) = dest_spec.cloud_credentials.as_ref() else {
+        emit_completed(
+            &app, &session_id, &src_disp, &dest_spec.id, false, None,
+            Some("Cloud-creds mangler — fotograf må konfigurere storage-provider".into()),
+            false,
+        );
+        return;
+    };
+    let Some(bucket_id) = dest_spec.cloud_bucket_id.as_ref() else {
+        emit_completed(
+            &app, &session_id, &src_disp, &dest_spec.id, false, None,
+            Some("cloud_bucket_id mangler".into()),
+            false,
+        );
+        return;
+    };
+
+    // Bygg fil-nøkkel i bucket: dest_spec.path er prefix (f.eks.
+    // "dit-backup/proj_abc/"). source-path-suffix bygges fra filnavnet
+    // og prepended med volume_label hvis ikke allerede inkludert.
+    // Vi bruker hele relative-stien fra mount, slik at flerre kameraer
+    // ikke kolliderer på filnavn.
+    let prefix = dest_spec.path.trim_matches('/').to_string();
+    let file_basename = src.file_name().and_then(|s| s.to_str()).unwrap_or("ukjent");
+    // Bevar DCIM-strukturen så kamera-detektoren kan plukke det opp på
+    // restore. Vi tar de siste 3 sti-segmentene som fallback.
+    let mut tail = Vec::new();
+    for comp in src.components().rev().take(3) {
+        if let Some(s) = comp.as_os_str().to_str() {
+            tail.push(s.to_string());
+        }
+    }
+    tail.reverse();
+    let dest_name = if prefix.is_empty() {
+        tail.join("/")
+    } else {
+        format!("{}/{}", prefix, tail.join("/"))
+    };
+    let _ = file_basename;
+
+    // Backend-jobb opprettes FØR upload starter (samme som lokal-flow)
+    let backend_job_id: Option<String> = match (&dest_spec.backend_id, &cfg) {
+        (Some(backend_id), Some(cfg)) => {
+            match dit_reporter::create_job(cfg, backend_id, &src_disp, size, &src_hash).await {
+                Ok(job_id) => Some(job_id),
+                Err(err) => {
+                    eprintln!("[dit/b2] create_job failed for {}: {}", dest_spec.label, err);
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
+
+    // Steg 1: SHA-1 av kildefilen (B2 krever det)
+    let sha1 = match b2_uploader::compute_sha1(&src).await {
+        Ok(h) => h,
+        Err(err) => {
+            state.update(&session_id, |s| s.failed += 1);
+            emit_completed(
+                &app, &session_id, &src_disp, &dest_spec.id, false, None,
+                Some(format!("SHA-1-beregning feilet: {}", err)),
+                false,
+            );
+            return;
+        }
+    };
+
+    // Steg 2: authorize + get_upload_url
+    let auth = match b2_uploader::authorize(&creds.key_id, &creds.application_key).await {
+        Ok(a) => a,
+        Err(err) => {
+            state.update(&session_id, |s| s.failed += 1);
+            emit_completed(
+                &app, &session_id, &src_disp, &dest_spec.id, false, None,
+                Some(format!("B2 authorize feilet: {}", err)),
+                false,
+            );
+            return;
+        }
+    };
+    let upload_url = match b2_uploader::get_upload_url(&auth, bucket_id).await {
+        Ok(u) => u,
+        Err(err) => {
+            state.update(&session_id, |s| s.failed += 1);
+            emit_completed(
+                &app, &session_id, &src_disp, &dest_spec.id, false, None,
+                Some(format!("B2 get_upload_url feilet: {}", err)),
+                false,
+            );
+            return;
+        }
+    };
+
+    // Steg 3: upload
+    match b2_uploader::upload_file(&upload_url, &src, &dest_name, &sha1).await {
+        Ok(result) => {
+            if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
+                if let Err(err) = dit_reporter::report_verified(
+                    cfg,
+                    job_id,
+                    &format!("b2://{}/{}", bucket_id, result.file_name),
+                    result.content_length,
+                    &result.content_sha1,
+                )
+                .await
+                {
+                    eprintln!("[dit/b2] verified-report failed: {}", err);
+                }
+            }
+            state.update(&session_id, |s| s.succeeded += 1);
+            emit_completed(
+                &app, &session_id, &src_disp, &dest_spec.id, true,
+                Some(result.content_sha1),
+                None, false,
+            );
+        }
+        Err(err) => {
+            if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
+                let code = if err.contains("transport-korrupsjon") {
+                    "HASH_MISMATCH"
+                } else if err.contains("over 5 GB") {
+                    "FILE_TOO_LARGE"
+                } else {
+                    "B2_UPLOAD_FAILED"
+                };
+                if let Err(rep_err) = dit_reporter::report_failed(cfg, job_id, code, &err).await {
+                    eprintln!("[dit/b2] failed-report failed: {}", rep_err);
+                }
+            }
+            state.update(&session_id, |s| s.failed += 1);
+            emit_completed(
+                &app, &session_id, &src_disp, &dest_spec.id, false, None,
+                Some(err), false,
             );
         }
     }

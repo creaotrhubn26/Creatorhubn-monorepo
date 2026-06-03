@@ -57,6 +57,12 @@ interface DitDestinationRow {
   notes: string | null;
   created_at: Date;
   updated_at: Date;
+  // Migrasjon 231 — cloud-felter (alle nullable for backwards-compat)
+  cloud_provider: string | null;
+  cloud_provider_id: string | null;
+  cloud_bucket: string | null;
+  cloud_bucket_id: string | null;
+  cloud_prefix: string | null;
 }
 
 interface DitJobRow {
@@ -107,6 +113,10 @@ function serializeDestination(row: DitDestinationRow): Record<string, unknown> {
     notes: row.notes ?? undefined,
     created_at: isoOrNull(row.created_at),
     updated_at: isoOrNull(row.updated_at),
+    // Cloud-felter (uten creds — kun metadata om at det ER cloud)
+    cloud_provider: row.cloud_provider ?? undefined,
+    cloud_bucket: row.cloud_bucket ?? undefined,
+    cloud_prefix: row.cloud_prefix ?? undefined,
   };
 }
 
@@ -637,4 +647,67 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
       return res.status(500).json({ success: false, error: 'Kunne ikke laste prosjekt-info' });
     }
   });
+
+  // ═══════════════════════════════════════════════════════════
+  // CLOUD DESTINATIONS — destinasjoner m/ dekrypterte B2-creds
+  // ═══════════════════════════════════════════════════════════
+  // Lazy-import for å unngå sirkulær avhengighet ved oppstart.
+  // storage-providers-routes har sin egen schema-ensure.
+
+  app.get(
+    '/api/dit/projects/:projectId/destinations/with-creds',
+    async (req, res) => {
+      const auth = await verifyHelperToken(pool, req);
+      if (!auth) {
+        return res.status(401).json({ success: false, error: 'Ugyldig helper-token' });
+      }
+      const projectId = String(req.params.projectId || '').trim();
+      if (auth.project_id !== projectId) {
+        return res.status(403).json({ success: false, error: 'Token gjelder annet prosjekt' });
+      }
+
+      const { getDecryptedProviderCreds } = await import('./storage-providers-routes.js');
+
+      try {
+        const destResult = await pool.query<DitDestinationRow>(
+          'SELECT * FROM dit_destinations WHERE project_id = $1 ORDER BY priority ASC, label ASC',
+          [projectId],
+        );
+
+        // For hver cloud-destinasjon: hent dekrypterte creds. Lokale
+        // destinasjoner får null i creds-feltet.
+        const withCreds = await Promise.all(
+          destResult.rows.map(async (row) => {
+            const base = serializeDestination(row);
+            if (!row.cloud_provider || !row.cloud_provider_id) {
+              return { ...base, cloud_credentials: null };
+            }
+            const creds = await getDecryptedProviderCreds(pool, row.cloud_provider_id);
+            if (!creds) {
+              return {
+                ...base,
+                cloud_credentials: null,
+                cloud_error: 'Storage-provider er fjernet eller kunne ikke dekrypteres',
+              };
+            }
+            return {
+              ...base,
+              cloud_bucket_id: row.cloud_bucket_id ?? undefined,
+              cloud_credentials: {
+                key_id: creds.key_id,
+                application_key: creds.application_key,
+              },
+            };
+          }),
+        );
+
+        return res.json({ success: true, destinations: withCreds });
+      } catch (error) {
+        console.error('[dit] with-creds failed:', error);
+        return res
+          .status(500)
+          .json({ success: false, error: 'Kunne ikke hente destinasjoner med creds' });
+      }
+    },
+  );
 }
