@@ -1825,55 +1825,10 @@ export default function ShowcaseAdmin({
             {/* Showcase Grid */}
             {!showcasesLoading && (
               <>
-                {/* New Showcase Card */}
-                <Grid item xs={12} sm={6} md={4}>
-                  <Card 
-                    sx={{ 
-                      height: 200, 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      border: `2px dashed ${alpha(theming.colors.primary, 0.4)}`,
-                      backgroundColor: alpha(theming.colors.primary, 0.03),
-                      cursor: showcaseCreationAccess?.hasAccess ? 'pointer' : 'not-allowed',
-                      opacity: showcaseCreationAccess?.hasAccess ? 1 : 0.6,
-                      borderRadius: 3,
-                      transition: 'all 0.3s ease',
-                      '&:hover': {
-                        backgroundColor: showcaseCreationAccess?.hasAccess
-                          ? alpha(theming.colors.primary, 0.08)
-                          : alpha(theming.colors.primary, 0.03),
-                        borderColor: showcaseCreationAccess?.hasAccess
-                          ? theming.colors.primary
-                          : alpha(theming.colors.primary, 0.4),
-                        transform: showcaseCreationAccess?.hasAccess ? 'translateY(-4px)' : 'none',
-                        boxShadow: showcaseCreationAccess?.hasAccess
-                          ? `0 8px 24px ${alpha(theming.colors.primary, 0.2)}`
-                          : 'none',
-                      }
-                    }}
-                    onClick={() => {
-                      if (!showcaseCreationAccess?.hasAccess) {
-                        showNotification(showcaseCreationAccess?.reason || 'Du har ikke tilgang.', 'warning');
-                        return;
-                      }
-                      setOpenDialog('new-showcase');
-                      integration?.emit?.('showcase:create-start', { source: 'showcase-admin', timestamp: Date.now() });
-                    }}
-                  >
-                    <Box textAlign="center">
-                      <Avatar sx={{ bgcolor: alpha(theming.colors.primary, 0.1), color: theming.colors.primary, mx: 'auto', mb: 2, width: 56, height: 56 }}>
-                        <AddIcon sx={{ fontSize: 28 }} />
-                      </Avatar>
-                      <Typography variant="h6" sx={{ color: theming.colors.primary, fontWeight: 600 }}>
-                        Lag ny {terms.showcase.toLowerCase()}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Vis frem ditt beste arbeid
-                      </Typography>
-                    </Box>
-                  </Card>
-                </Grid>
+                {/* "Lag ny showcase"-kortet ble fjernet — empty-state nedenfor
+                    har sin egen primær-knapp, og når det finnes showcases bør
+                    "Ny showcase" ligge i toolbar/header i stedet for som et
+                    grid-kort som duplikerer empty-state-CTAen. */}
 
                 {/* Real Showcases from PostgreSQL - NO MOCK DATA */}
 	                {filteredShowcases && filteredShowcases.length > 0 ? (
