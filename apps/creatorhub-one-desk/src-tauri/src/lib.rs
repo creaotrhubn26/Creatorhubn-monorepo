@@ -5,6 +5,7 @@
 //! F3: copy-engine (xxHash64 + parallell kopi til N destinasjoner).
 //! F4+ legger til backend-rapportering, iPad-paring, live mirror.
 
+mod b2_uploader;
 mod capture_mirror;
 mod capture_subscriber;
 mod copy_engine;
@@ -175,6 +176,16 @@ async fn fetch_project_info() -> Result<ProjectInfo, String> {
     let cfg = helper_client::load_config()?
         .ok_or_else(|| "Ingen lagret config — paste token først".to_string())?;
     helper_client::get_project_info(&cfg).await
+}
+
+/// Henter destinasjoner med dekrypterte cloud-creds. Brukes ved
+/// backup-start så cloud-destinasjoner får riktige B2-credentials
+/// in-memory før copy_session router dem til b2_uploader.
+#[tauri::command]
+async fn fetch_destinations_with_creds() -> Result<serde_json::Value, String> {
+    let cfg = helper_client::load_config()?
+        .ok_or_else(|| "Ingen lagret config — paste token først".to_string())?;
+    helper_client::get_destinations_with_creds(&cfg).await
 }
 
 #[tauri::command]
@@ -447,6 +458,7 @@ pub fn run() {
             remove_project,
             update_project_label,
             fetch_project_info,
+            fetch_destinations_with_creds,
             list_detected_mounts,
             rescan_mounts,
             start_copy_session,

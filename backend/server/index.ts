@@ -215,6 +215,7 @@ import {
 } from "./role-room-agent-stripe-webhook.js";
 import { createCreatorHubGoogleRouter } from "./creatorhub-google-routes.js";
 import { createDesktopAuthRouter } from "./desktop-auth-routes.js";
+import { setupStorageProvidersRoutes } from "./storage-providers-routes.js";
 import { createRoleRoomIntegrationsV1Router } from "./role-room-integrations-v1-routes.js";
 import { createCommunicationRouter } from "./communication-routes.js";
 import { createDashboardCompatRouter } from "./dashboard-compat-routes.js";
@@ -30432,6 +30433,17 @@ setupDitBackupRoutes({
   app,
   pool,
   requireAdminSession,
+  requireUserSession,
+});
+
+// ── Storage-providers (B2 offsite-backup) ──────────────────────
+//   Per-bruker AES-256-GCM-krypterte Backblaze-creds. Brukt av
+//   One Desk's b2_uploader-modul via with-creds-endepunktet (kun
+//   tilgjengelig med Bearer helper-token).
+setupStorageProvidersRoutes({
+  app,
+  pool,
+  requireUserSession,
 });
 
 // ── Casting auth-middleware (F4 wiring) ───────────────────────────────

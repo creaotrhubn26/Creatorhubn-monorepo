@@ -78,6 +78,10 @@ docs/
 !docs/dance/*.md
 !apps/resolve-script-manager/src/docs/
 !apps/resolve-script-manager/src/docs/*.md
+!apps/creatorhub-one-desk/docs/
+!apps/creatorhub-one-desk/docs/*.md
+!apps/creatorhub-one-desk/docs/legal/
+!apps/creatorhub-one-desk/docs/legal/*.md
 !backend/docs/META_APP_REVIEW_SUBMISSION.md
 !backend/docs/whatsapp-app-review-runbook.md
 !backend/docs/oembed-app-review-runbook.md

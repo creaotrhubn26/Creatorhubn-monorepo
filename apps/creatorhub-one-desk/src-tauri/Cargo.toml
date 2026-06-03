@@ -28,6 +28,8 @@ notify = "6"
 walkdir = "2"
 libc = "0.2"
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
+sha1 = "0.10"
+hex = "0.4"
 futures = "0.3"
 uuid = { version = "1", features = ["v4", "serde"] }
 mdns-sd = "0.11"

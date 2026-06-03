@@ -158,6 +158,32 @@ export interface DestinationSpec {
   path: string;
   /** Hvis satt: dit_destinations.id — kopier blir registrert som dit_backup_jobs i backend. */
   backend_id?: string | null;
+  /// Cloud-felter — settes når destinasjonen er en B2-bucket
+  cloud_provider?: string | null;
+  cloud_bucket_id?: string | null;
+  cloud_credentials?: {
+    key_id: string;
+    application_key: string;
+  } | null;
+}
+
+/// Med-creds-shape returnert av /api/dit/projects/:id/destinations/with-creds.
+/// Backend setter cloud_credentials til null for lokale destinasjoner.
+export interface DestinationWithCreds {
+  id: string;
+  label: string;
+  path?: string;
+  destination_type: string;
+  cloud_provider?: string | null;
+  cloud_bucket?: string | null;
+  cloud_bucket_id?: string | null;
+  cloud_prefix?: string | null;
+  cloud_credentials: { key_id: string; application_key: string } | null;
+  cloud_error?: string | null;
+}
+
+export async function fetchDestinationsWithCreds(): Promise<DestinationWithCreds[]> {
+  return invoke<DestinationWithCreds[]>("fetch_destinations_with_creds");
 }
 
 export interface SessionStatus {
