@@ -111,20 +111,20 @@ export const PublicCvAnalyticsDialog: React.FC<Props> = ({
             {/* Hovedtall */}
             <Stack direction="row" spacing={2}>
               <Paper variant="outlined" sx={{ flex: 1, p: 2, textAlign: 'center' }}>
-                <Typography variant="h3" sx={{ fontWeight: 800, color: '#1F2937' }}>
+                <Typography variant="h4" sx={{ fontWeight: 800, color: '#1F2937' }}>
                   {data.totalViews}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">Totale visninger</Typography>
               </Paper>
               <Paper variant="outlined" sx={{ flex: 1, p: 2, textAlign: 'center', bgcolor: '#FFF8E1' }}>
-                <Typography variant="h3" sx={{ fontWeight: 800, color: '#7A5A0B' }}>
+                <Typography variant="h4" sx={{ fontWeight: 800, color: '#7A5A0B' }}>
                   {data.uniqueViewers}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">Unike personer</Typography>
               </Paper>
               {data.bots > 0 && (
                 <Paper variant="outlined" sx={{ flex: 1, p: 2, textAlign: 'center', bgcolor: '#F9FAFB' }}>
-                  <Typography variant="h3" sx={{ fontWeight: 800, color: '#6B7280' }}>
+                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#6B7280' }}>
                     {data.bots}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">Bots (ekskl.)</Typography>

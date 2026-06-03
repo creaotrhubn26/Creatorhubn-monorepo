@@ -647,7 +647,7 @@ export default function GoogleDriveAttachmentPicker({
         },
       }}
     >
-      <DialogTitle sx={{ px: 2.2, py: 1.8, borderBottom: '1px solid rgba(226,232,240,0.8)' }}>
+      <DialogTitle sx={{ px: 2.2, py: 1.8, borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 800 }}>
@@ -687,8 +687,8 @@ export default function GoogleDriveAttachmentPicker({
               gap: 1,
               p: 1.2,
               borderRadius: 3,
-              border: '1px solid rgba(226,232,240,0.85)',
-              bgcolor: 'rgba(248,250,252,0.92)',
+              border: '1px solid rgba(255,255,255,0.10)',
+              bgcolor: 'rgba(255,255,255,0.04)',
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
@@ -752,9 +752,9 @@ export default function GoogleDriveAttachmentPicker({
                       px: 1.25,
                       py: 1.1,
                       flexShrink: 0,
-                      bgcolor: selected ? '#2563eb' : 'rgba(255,255,255,0.88)',
+                      bgcolor: selected ? '#2563eb' : 'rgba(255,255,255,0.04)',
                       color: selected ? 'white' : '#0f172a',
-                      borderColor: selected ? '#2563eb' : 'rgba(203,213,225,0.9)',
+                      borderColor: selected ? '#2563eb' : 'rgba(255,255,255,0.10)',
                     }}
                   >
                     <Box sx={{ textAlign: 'left', minWidth: 0 }}>
@@ -793,8 +793,8 @@ export default function GoogleDriveAttachmentPicker({
                     }}
                     sx={{
                       height: 28,
-                      bgcolor: 'rgba(255,255,255,0.92)',
-                      border: '1px solid rgba(226,232,240,0.9)',
+                      bgcolor: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.10)',
                       fontWeight: 700,
                     }}
                   />
@@ -833,8 +833,8 @@ export default function GoogleDriveAttachmentPicker({
               minHeight: 380,
               maxHeight: 520,
               borderRadius: 3,
-              border: '1px solid rgba(226,232,240,0.9)',
-              bgcolor: '#f8fafc',
+              border: '1px solid rgba(255,255,255,0.10)',
+              bgcolor: 'rgba(255,255,255,0.04)',
               overflow: 'auto',
             }}
           >
@@ -866,7 +866,7 @@ export default function GoogleDriveAttachmentPicker({
                       sx={{
                         py: 1.25,
                         px: 1.3,
-                        borderBottom: '1px solid rgba(226,232,240,0.7)',
+                        borderBottom: '1px solid rgba(255,255,255,0.10)',
                         '&:last-of-type': {
                           borderBottom: 'none',
                         },
@@ -893,8 +893,8 @@ export default function GoogleDriveAttachmentPicker({
                           width: 38,
                           height: 38,
                           borderRadius: 2,
-                          border: '1px solid rgba(226,232,240,0.9)',
-                          bgcolor: 'white',
+                          border: '1px solid rgba(255,255,255,0.10)',
+                          bgcolor: 'rgba(255,255,255,0.04)',
                           display: 'grid',
                           placeItems: 'center',
                           overflow: 'hidden',
@@ -961,7 +961,7 @@ export default function GoogleDriveAttachmentPicker({
         </Box>
       </DialogContent>
 
-      <DialogActions sx={{ px: 2.2, py: 1.5, borderTop: '1px solid rgba(226,232,240,0.8)' }}>
+      <DialogActions sx={{ px: 2.2, py: 1.5, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 1 }}>
           <Typography variant="body2" color="text.secondary">
             {selectedIds.size > 0

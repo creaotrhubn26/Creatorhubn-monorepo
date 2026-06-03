@@ -285,7 +285,7 @@ function emailDesignerReducer(state: EmailDesignerState, action: Action): EmailD
 // ============================================================================
 
 const DEFAULT_GLOBAL_STYLES: GlobalStyles = {
-  backgroundColor: '#f5f5f5',
+  backgroundColor: 'rgba(255,255,255,0.04)',
   fontFamily: 'Arial, sans-serif',
   fontSize: 14,
   lineHeight: 1.6,
@@ -387,7 +387,7 @@ const PREBUILT_TEMPLATES: EmailTemplate[] = [
         id: '3',
         type: 'divider',
         content: {},
-        styles: { backgroundColor: '#e0e0e0', height: 1 }
+        styles: { backgroundColor: 'rgba(255,255,255,0.10)', height: 1 }
       },
       {
         id: '4',
@@ -745,7 +745,7 @@ export default function EmailDesignerComplete({
   // ============================================================================
 
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: '#fafafa' }} role="main" aria-label="Email Designer">
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)' }} role="main" aria-label="Email Designer">
       {/* Toolbar */}
       <Paper elevation={2} sx={{ p: 2, borderRadius: 0 }}>
         <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
@@ -892,7 +892,7 @@ export default function EmailDesignerComplete({
         </Paper>
 
         {/* Canvas */}
-        <Box sx={{ flex: 1, overflow: 'auto', p: 3, bgcolor: '#e0e0e0' }} role="region" aria-label="Email canvas">
+        <Box sx={{ flex: 1, overflow: 'auto', p: 3, bgcolor: 'rgba(255,255,255,0.10)' }} role="region" aria-label="Email canvas">
           <Paper
             sx={{
               width: getPreviewWidth(),
@@ -1039,7 +1039,7 @@ export default function EmailDesignerComplete({
                 <Paper
                   sx={{
                     p: 2,
-                    cursor: 'pointer', '&:hover': { bgcolor: '#f5f5f5' }
+                    cursor: 'pointer', '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' }
                   }}
                   onClick={() => loadTemplate(template)}
                 >
@@ -1402,7 +1402,7 @@ function getDefaultStyles(type: EmailComponent['type']): ComponentStyles {
     image: { width: '100%' },
     video: { width: '100%' },
     columns: {},
-    divider: { backgroundColor: '#e0e0e0', height: 1 },
+    divider: { backgroundColor: 'rgba(255,255,255,0.10)', height: 1 },
     social: {},
     spacer: { height: 20 },
     footer: { color: '#666', fontSize: 12, textAlign: 'center' }

@@ -79,15 +79,15 @@ interface BiResponse {
 
 const surfaceSx = {
   borderRadius: '24px',
-  border: '1px solid rgba(17, 24, 39, 0.08)',
-  bgcolor: '#ffffff',
+  border: '1px solid rgba(255,255,255,0.10)',
+  bgcolor: 'rgba(255,255,255,0.04)',
   boxShadow: '0 18px 44px rgba(15, 23, 42, 0.06)',
 } as const;
 
 const insetSx = {
   borderRadius: '18px',
-  border: '1px solid rgba(17, 24, 39, 0.08)',
-  bgcolor: '#fcfaf7',
+  border: '1px solid rgba(255,255,255,0.10)',
+  bgcolor: 'rgba(255,255,255,0.04)',
 } as const;
 
 function formatCurrency(value: number) {
@@ -261,7 +261,7 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
           px: { xs: 2.25, sm: 3 },
           py: { xs: 2.25, sm: 2.75 },
           background:
-            'linear-gradient(135deg, rgba(15, 52, 96, 0.08), rgba(255, 255, 255, 0.92) 52%, rgba(233, 69, 96, 0.06))',
+            'linear-gradient(135deg, rgba(15, 52, 96, 0.08), rgba(255,255,255,0.04) 52%, rgba(233, 69, 96, 0.06))',
         }}
       >
         <Stack
@@ -282,9 +282,9 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
               Denne flaten skal gi Daniel et tydelig beslutningsgrunnlag, ikke bare rå tabeller.
             </Typography>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
-              <Chip label={`${activeProfessionCount} aktive profesjoner`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
-              <Chip label={`${monthlyData.length} trendpunkter`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
-              <Chip label={`Toppspor: ${formatProfession(topProfession?.profession || overview.topProfession)}`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
+              <Chip label={`${activeProfessionCount} aktive profesjoner`} sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }} />
+              <Chip label={`${monthlyData.length} trendpunkter`} sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }} />
+              <Chip label={`Toppspor: ${formatProfession(topProfession?.profession || overview.topProfession)}`} sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }} />
             </Stack>
           </Box>
 
@@ -295,7 +295,7 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
                 value={timeRange}
                 label="Periode"
                 onChange={(event) => setTimeRange(String(event.target.value))}
-                sx={{ bgcolor: '#ffffff', borderRadius: '14px' }}
+                sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '14px' }}
               >
                 <MenuItem value="7d">7 dager</MenuItem>
                 <MenuItem value="30d">30 dager</MenuItem>
@@ -349,7 +349,7 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
             value={formatCurrency(overview.totalRevenue)}
             helper={`${overview.growthRate >= 0 ? '+' : ''}${overview.growthRate}% mot forrige periode`}
             tone={{
-              bg: 'linear-gradient(180deg, rgba(236,255,252,0.98), rgba(255,255,255,0.98))',
+              bg: 'linear-gradient(180deg, rgba(236,255,252,0.98), rgba(255,255,255,0.04))',
               border: 'rgba(45, 122, 101, 0.18)',
               iconBg: '#dff7ef',
               iconColor: '#1b7b4a',
@@ -363,7 +363,7 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
             value={String(overview.totalProjects)}
             helper="Totale prosjekter i valgt periode"
             tone={{
-              bg: 'linear-gradient(180deg, rgba(240,247,255,0.98), rgba(255,255,255,0.98))',
+              bg: 'linear-gradient(180deg, rgba(240,247,255,0.98), rgba(255,255,255,0.04))',
               border: 'rgba(37, 95, 164, 0.18)',
               iconBg: '#e9f2ff',
               iconColor: '#235fa4',
@@ -377,7 +377,7 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
             value={String(overview.totalUsers)}
             helper="Registrerte brukere i analysegrunnlaget"
             tone={{
-              bg: 'linear-gradient(180deg, rgba(250,244,255,0.98), rgba(255,255,255,0.98))',
+              bg: 'linear-gradient(180deg, rgba(250,244,255,0.98), rgba(255,255,255,0.04))',
               border: 'rgba(110, 69, 184, 0.18)',
               iconBg: '#efe7ff',
               iconColor: '#6e45b8',
@@ -391,7 +391,7 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
             value={formatCurrency(overview.averageProjectValue)}
             helper="Gjennomsnittlig prosjektverdi"
             tone={{
-              bg: 'linear-gradient(180deg, rgba(255,247,236,0.98), rgba(255,255,255,0.98))',
+              bg: 'linear-gradient(180deg, rgba(255,247,236,0.98), rgba(255,255,255,0.04))',
               border: 'rgba(160, 90, 0, 0.18)',
               iconBg: '#fff0d8',
               iconColor: '#a05a00',
