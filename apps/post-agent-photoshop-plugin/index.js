@@ -517,6 +517,65 @@ const COMMANDS = {
   },
 
   /*
+   * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
+   * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
+   * Lua-scriptet analyze-intellisearch.lua. Brukes av Multi-Agent
+   * Director for å lese ekte AI face/object-data fra Resolve i stedet
+   * for syntetiske signals.
+   *
+   * Returnerer: { found, file, schema_version, project, folder, epoch,
+   *               items: [{media_pool_item_id, clip_name, file_path, ...}] }
+   * Eller: { found: false } hvis ingen analyse er kjørt enda.
+   */
+  "resolve.readIntellisearch": async ({ clip_name_filter } = {}) => {
+    const home = await fs.getFolder("home").catch(() => null);
+    if (!home) throw new Error("Klarte ikke åpne home-folder");
+    let isDir;
+    try {
+      const postAgent = await home.getEntry("PostAgent");
+      isDir = await postAgent.getEntry("intellisearch");
+    } catch {
+      return { found: false, hint: "Kjør analyze-intellisearch.lua i Resolve først." };
+    }
+    if (!isDir.isFolder) return { found: false };
+
+    const entries = await isDir.getEntries();
+    const jsons = entries.filter((e) => e.isFile && /\.json$/i.test(e.name));
+    if (jsons.length === 0) {
+      return { found: false, hint: "Ingen analyse-filer enda. Kjør analyze-intellisearch.lua i Resolve." };
+    }
+
+    // Nyeste fil (epoch i navnet sorterer korrekt som streng)
+    jsons.sort((a, b) => b.name.localeCompare(a.name));
+    const newest = jsons[0];
+    const text = await newest.read({ format: "utf8" });
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return { found: false, hint: "Klarte ikke parse JSON: " + newest.name };
+    }
+
+    let items = parsed.items || [];
+    if (typeof clip_name_filter === "string" && clip_name_filter.length > 0) {
+      const f = clip_name_filter.toLowerCase();
+      items = items.filter((i) => (i.clip_name || "").toLowerCase().includes(f));
+    }
+
+    return {
+      found: true,
+      file: newest.nativePath,
+      schema_version: parsed.schema_version,
+      project: parsed.project,
+      folder: parsed.folder,
+      epoch: parsed.epoch,
+      mode: parsed.mode,
+      items,
+      total: items.length,
+    };
+  },
+
+  /*
    * Resolve-bro: list stills i ~/PostAgent/inbox/ som er eksportert
    * fra DaVinci Resolve via export-still-to-postagent.lua. Returnerer
    * filer sortert nyeste først med metadata fra sidefil hvis tilgjengelig.

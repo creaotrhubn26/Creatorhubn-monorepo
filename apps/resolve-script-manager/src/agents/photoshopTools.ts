@@ -190,6 +190,17 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_read_intellisearch",
+    description:
+      "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
+    input_schema: {
+      type: "object",
+      properties: {
+        clip_name_filter: { type: "string", description: "Filtrer items på clip-navn substring (valgfri)" },
+      },
+    },
+  },
+  {
     name: "photoshop_resolve_list_inbox",
     description:
       "List stills som DaVinci Resolve har eksportert til ~/PostAgent/inbox/ via export-still-to-postagent.lua. Hver item har path + filnavn + metadata (clip, frame, fps, project) hvis sidefil finnes. Sortert nyeste først.",
@@ -579,6 +590,10 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
       });
     case "photoshop_resolve_list_inbox":
       return photoshop.resolveListInbox();
+    case "photoshop_resolve_read_intellisearch":
+      return photoshop.resolveReadIntellisearch(
+        typeof input.clip_name_filter === "string" ? input.clip_name_filter : undefined,
+      );
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
     case "photoshop_resolve_export_back":
