@@ -718,6 +718,7 @@ import { setupEquipmentDiscoveryRoutes } from "./equipment-discovery-routes";
 import { setupEquipmentCatalogRoutes } from "./equipment-catalog-routes";
 import { setupEquipmentFirmwareRoutes } from "./equipment-firmware-routes";
 import { setupAcademyIntegrationsRoutes } from "./academy-integrations-routes";
+import { setupAcademyMediaAssetsRoutes } from "./academy-media-assets-routes";
 import { setupPricingRoutes } from "./pricing-routes";
 import { setupAccountingRoutes } from "./accounting-routes";
 import { setupFileManagementRoutes } from "./file-management-routes";
@@ -50124,9 +50125,9 @@ const probeVideoDurationSeconds = async (
     : 0;
 };
 
-type AcademyStoredMediaType = "image" | "video" | "audio" | "document";
+export type AcademyStoredMediaType = "image" | "video" | "audio" | "document";
 
-interface AcademyStoredMediaVersionRecord {
+export interface AcademyStoredMediaVersionRecord {
   version: number;
   fileName: string;
   mimeType: string;
@@ -50139,7 +50140,7 @@ interface AcademyStoredMediaVersionRecord {
   posterMimeType?: string;
 }
 
-interface AcademyStoredMediaAssetRecord {
+export interface AcademyStoredMediaAssetRecord {
   id: string;
   name: string;
   type: AcademyStoredMediaType;
@@ -50153,7 +50154,7 @@ interface AcademyStoredMediaAssetRecord {
   history: AcademyStoredMediaVersionRecord[];
 }
 
-interface AcademyStoredMediaManifest {
+export interface AcademyStoredMediaManifest {
   version: number;
   updatedAt: string;
   assets: AcademyStoredMediaAssetRecord[];
@@ -65909,6 +65910,14 @@ setupEquipmentFirmwareRoutes({
   toIsoString,
 });
 setupAcademyIntegrationsRoutes({ app, pool, requireAcademySession });
+setupAcademyMediaAssetsRoutes({
+  app,
+  requireAcademySession,
+  loadAcademyMediaManifest,
+  persistAcademyMediaManifest,
+  resolveAcademyMediaVersion,
+  academyMediaStorageDir: ACADEMY_MEDIA_STORAGE_DIR,
+});
 // NB: setupSongflowDeprecatedAliasesRoutes wires later (etter handler-
 // deklarasjoner ~linje 70324). Trivielle deprecation-aliases krever at
 // EaseVerse-handlers først er deklarert.
@@ -73469,125 +73478,6 @@ app.post(
     }
   },
 );
-
-app.delete("/api/academy/media-assets/:assetId", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "instructor"))) {
-      return;
-    }
-    const assetId = String(req.params.assetId || "").trim();
-    if (!assetId) {
-      return res.status(400).json({ error: "Missing asset id" });
-    }
-    const manifest = await loadAcademyMediaManifest();
-    const nextAssets = manifest.assets.filter((entry) => entry.id !== assetId);
-    if (nextAssets.length === manifest.assets.length) {
-      return res.status(404).json({ error: "Academy media asset not found" });
-    }
-
-    manifest.assets = nextAssets;
-    manifest.updatedAt = new Date().toISOString();
-    await persistAcademyMediaManifest(manifest);
-
-    const assetDir = path.join(ACADEMY_MEDIA_STORAGE_DIR, assetId);
-    try {
-      await fs.rm(assetDir, { recursive: true, force: true });
-    } catch (error) {
-      console.warn("[academy-media] failed to remove asset directory:", error);
-    }
-
-    return res.json({ success: true, assetId });
-  } catch (error) {
-    console.error("[academy-media] delete failed:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to delete academy media asset" });
-  }
-});
-
-app.get("/api/academy/media-assets/:assetId/file", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "authenticated"))) {
-      return;
-    }
-    const assetId = String(req.params.assetId || "").trim();
-    const requestedVersion = Number(req.query.version || 0);
-    const manifest = await loadAcademyMediaManifest();
-    const record = manifest.assets.find((entry) => entry.id === assetId);
-    if (!record) {
-      return res.status(404).json({ error: "Academy media asset not found" });
-    }
-    const versionRecord = resolveAcademyMediaVersion(
-      record,
-      Number.isFinite(requestedVersion) && requestedVersion > 0
-        ? requestedVersion
-        : undefined,
-    );
-    if (!versionRecord) {
-      return res.status(404).json({ error: "Academy media version not found" });
-    }
-
-    const absolutePath = path.join(
-      ACADEMY_MEDIA_STORAGE_DIR,
-      versionRecord.relativePath,
-    );
-    if (!existsSync(absolutePath)) {
-      return res
-        .status(404)
-        .json({ error: "Academy media file missing on disk" });
-    }
-
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    res.type(versionRecord.mimeType || "application/octet-stream");
-    return res.sendFile(absolutePath);
-  } catch (error) {
-    console.error("[academy-media] serve file failed:", error);
-    return res.status(500).json({ error: "Failed to load academy media file" });
-  }
-});
-
-app.get("/api/academy/media-assets/:assetId/poster", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "authenticated"))) {
-      return;
-    }
-    const assetId = String(req.params.assetId || "").trim();
-    const requestedVersion = Number(req.query.version || 0);
-    const manifest = await loadAcademyMediaManifest();
-    const record = manifest.assets.find((entry) => entry.id === assetId);
-    if (!record) {
-      return res.status(404).json({ error: "Academy media asset not found" });
-    }
-    const versionRecord = resolveAcademyMediaVersion(
-      record,
-      Number.isFinite(requestedVersion) && requestedVersion > 0
-        ? requestedVersion
-        : undefined,
-    );
-    if (!versionRecord?.posterRelativePath) {
-      return res
-        .status(404)
-        .json({ error: "Poster not available for this asset" });
-    }
-
-    const absolutePath = path.join(
-      ACADEMY_MEDIA_STORAGE_DIR,
-      versionRecord.posterRelativePath,
-    );
-    if (!existsSync(absolutePath)) {
-      return res.status(404).json({ error: "Poster file missing on disk" });
-    }
-
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    res.type(versionRecord.posterMimeType || "image/jpeg");
-    return res.sendFile(absolutePath);
-  } catch (error) {
-    console.error("[academy-media] serve poster failed:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to load academy media poster" });
-  }
-});
 
 // Communication / Chat API routes
 const dashboardCompatRouter = createDashboardCompatRouter();
