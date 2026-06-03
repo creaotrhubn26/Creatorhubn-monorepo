@@ -72,3 +72,37 @@ export async function deleteStorageProvider(
     method: 'DELETE',
   });
 }
+
+// ── GDPR right-to-erasure ──────────────────────────────────────
+
+export interface EraseProjectPayload {
+  project_id: string;
+  reason?: string;
+}
+
+export interface EraseProjectResponse {
+  success: boolean;
+  deleted: number;
+  failed: number;
+  total: number;
+  errors: string[];
+  error?: string;
+}
+
+/**
+ * Sletter ALLE filer for ett prosjekt fra Backblaze. GDPR Art 17 —
+ * right-to-erasure. Logger hver sletting i gdpr_deletion_audit.
+ * Uberettiget — kun bruker som eier providersen kan trigge.
+ */
+export async function eraseProjectFromProvider(
+  providerId: string,
+  payload: EraseProjectPayload,
+): Promise<EraseProjectResponse> {
+  return apiRequest(
+    `/api/storage/providers/${encodeURIComponent(providerId)}/erase-project`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  );
+}

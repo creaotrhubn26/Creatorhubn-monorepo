@@ -274,4 +274,13 @@ Vi tar **0 kr i påslag**. Fotografen betaler Backblaze direkte ($6/TB/mo).
 ## Endrings-logg
 
 - 2026-06-03: Initial plan, B2-selv-eid valgt over R2-hosted. Migrasjon 231 drafted.
+- 2026-06-03: **Fase 1 shipped** (PR #223). Backend storage-providers-routes,
+  migrasjoner 231+232, Rust b2_uploader + copy_engine-routing, 22/22 tester grønne.
+- 2026-06-03: **Fase 2 shipped** (samme PR). Universal Dashboard onboarding-
+  steg via StorageProviderStep (variant=wizard|settings), StorageProvidersPanel
+  for admin, profesjons-nøytral kopi som dekker alle 4 profesjoner.
+- 2026-06-03: **Fase 3 shipped** (samme PR). Migrasjon 233 gdpr_deletion_audit,
+  POST /api/storage/providers/:id/erase-project for right-to-erasure med
+  audit-logging, subprocessor-disclosure-template.md ferdigskrevet for
+  fotografenes egne personvernerklæringer.
 

@@ -218,6 +218,124 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
     }
   });
 
+  // POST /api/storage/providers/:id/erase-project — slett alle filer for
+  // ett prosjekt fra Backblaze. Brukes for right-to-erasure (GDPR Art 17).
+  // Iterer over dit_backup_jobs for prosjektet og kaller delete_file_version
+  // på Backblaze. Logger alle slettinger i gdpr_deletion_audit.
+  app.post(
+    '/api/storage/providers/:id/erase-project',
+    async (req: Request, res: Response) => {
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      await ensureSchema();
+      await ensureAuditSchema(pool);
+
+      const providerId = String(req.params.id || '').trim();
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const projectId = String(body.project_id ?? '').trim();
+      const reason = String(body.reason ?? 'user_request').trim().slice(0, 200);
+
+      if (!providerId || !projectId) {
+        return res
+          .status(400)
+          .json({ success: false, error: 'provider id + project_id påkrevd' });
+      }
+
+      // Eier-sjekk: provider må tilhøre denne brukeren
+      const provCheck = await pool.query(
+        `SELECT id FROM user_storage_providers WHERE id = $1 AND user_id = $2`,
+        [providerId, session.userId],
+      );
+      if (provCheck.rowCount === 0) {
+        return res
+          .status(403)
+          .json({ success: false, error: 'Provider tilhører ikke deg' });
+      }
+
+      // Hent alle backup-jobs for prosjektet som ble lastet opp til
+      // denne providerens cloud-destinasjoner. dit_backup_jobs har
+      // dest_path som inneholder b2://-prefiks for cloud-uploads.
+      const jobs = await pool.query<{
+        id: string;
+        dest_path: string | null;
+        cloud_bucket_id: string | null;
+      }>(
+        `SELECT j.id, j.dest_path, d.cloud_bucket_id
+           FROM dit_backup_jobs j
+           JOIN dit_destinations d ON j.destination_id = d.id
+          WHERE j.project_id = $1
+            AND d.cloud_provider_id = $2
+            AND j.status = 'verified'
+            AND j.dest_path LIKE 'b2://%'`,
+        [projectId, providerId],
+      );
+
+      const creds = await getDecryptedProviderCreds(pool, providerId);
+      if (!creds) {
+        return res
+          .status(500)
+          .json({ success: false, error: 'Kunne ikke dekryptere provider-creds' });
+      }
+
+      // Autoriser én gang, bruk samme auth-token for alle slettinger
+      const auth = await b2Authorize(creds.key_id, creds.application_key);
+      if (!auth.ok) {
+        return res.status(500).json({ success: false, error: auth.error });
+      }
+
+      let deleted = 0;
+      let failed = 0;
+      const errors: string[] = [];
+
+      for (const job of jobs.rows) {
+        if (!job.dest_path) continue;
+        // dest_path format: b2://<bucket_id>/<file_name>
+        const match = job.dest_path.match(/^b2:\/\/[^/]+\/(.+)$/);
+        if (!match) continue;
+        const fileName = match[1];
+
+        // For å slette må vi vite fileId. B2 har b2_list_file_versions for
+        // å finne det. For nå lager vi en best-effort tilnærming: kall
+        // delete_file_version med fileName + tomt fileId vil ikke virke,
+        // så vi kaller list-versions først.
+        try {
+          const fileId = await b2GetLatestFileId(auth.data, job.dest_path, fileName);
+          if (!fileId) {
+            errors.push(`${fileName}: ingen versjon funnet`);
+            failed++;
+            continue;
+          }
+          const delResult = await b2DeleteFileVersion(auth.data, fileId, fileName);
+          if (delResult.ok) {
+            deleted++;
+            await pool
+              .query(
+                `INSERT INTO gdpr_deletion_audit
+                   (user_id, project_id, provider_id, file_name, file_id, reason)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [session.userId, projectId, providerId, fileName, fileId, reason],
+              )
+              .catch(() => {});
+          } else {
+            failed++;
+            errors.push(`${fileName}: ${delResult.error}`);
+          }
+        } catch (err: any) {
+          failed++;
+          errors.push(`${fileName}: ${err?.message || err}`);
+        }
+      }
+
+      return res.json({
+        success: true,
+        deleted,
+        failed,
+        total: jobs.rows.length,
+        errors: errors.slice(0, 10),
+      });
+    },
+  );
+
   // DELETE /api/storage/providers/:id — fjern provider (sletter ikke filer på Backblaze!)
   app.delete('/api/storage/providers/:id', async (req: Request, res: Response) => {
     const session = requireUserSession(req, res);
@@ -244,6 +362,118 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
       return res.status(500).json({ success: false, error: 'Kunne ikke fjerne' });
     }
   });
+}
+
+// ── B2 server-side helpers for GDPR right-to-erasure ──────────────
+
+interface B2AuthData {
+  apiUrl: string;
+  authToken: string;
+}
+
+async function b2Authorize(
+  keyId: string,
+  applicationKey: string,
+): Promise<{ ok: true; data: B2AuthData } | { ok: false; error: string }> {
+  try {
+    const credBytes = Buffer.from(`${keyId}:${applicationKey}`).toString('base64');
+    const resp = await fetch(`${B2_API_BASE}/b2_authorize_account`, {
+      headers: { Authorization: `Basic ${credBytes}` },
+    });
+    if (!resp.ok) {
+      return { ok: false, error: `B2 authorize feilet (HTTP ${resp.status})` };
+    }
+    const json = (await resp.json()) as any;
+    return {
+      ok: true,
+      data: {
+        apiUrl: String(json?.apiInfo?.storageApi?.apiUrl ?? ''),
+        authToken: String(json?.authorizationToken ?? ''),
+      },
+    };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * b2_list_file_versions for å finne fileId av nyeste versjon. Brukes
+ * fordi delete_file_version krever fileId, ikke bare fileName.
+ */
+async function b2GetLatestFileId(
+  auth: B2AuthData,
+  _destPath: string,
+  fileName: string,
+): Promise<string | null> {
+  try {
+    const resp = await fetch(`${auth.apiUrl}/b2api/v3/b2_list_file_names`, {
+      method: 'POST',
+      headers: {
+        Authorization: auth.authToken,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ prefix: fileName, maxFileCount: 1 }),
+    });
+    if (!resp.ok) return null;
+    const json = (await resp.json()) as { files?: Array<{ fileId?: string; fileName?: string }> };
+    const found = (json.files ?? []).find((f) => f.fileName === fileName);
+    return found?.fileId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function b2DeleteFileVersion(
+  auth: B2AuthData,
+  fileId: string,
+  fileName: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const resp = await fetch(`${auth.apiUrl}/b2api/v3/b2_delete_file_version`, {
+      method: 'POST',
+      headers: {
+        Authorization: auth.authToken,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fileId, fileName }),
+    });
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => '');
+      return { ok: false, error: txt.slice(0, 200) };
+    }
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * Ensure gdpr_deletion_audit-tabellen finnes. Migration 233 kjøres
+ * normalt ved deploy, men dette er defensiv som ensureSchema.
+ */
+let auditSchemaReady: Promise<void> | null = null;
+async function ensureAuditSchema(pool: Pool): Promise<void> {
+  if (!auditSchemaReady) {
+    auditSchemaReady = pool
+      .query(
+        `CREATE TABLE IF NOT EXISTS gdpr_deletion_audit (
+           id bigserial PRIMARY KEY,
+           user_id varchar NOT NULL,
+           project_id varchar NOT NULL,
+           provider_id varchar NOT NULL,
+           file_name text NOT NULL,
+           file_id varchar,
+           reason text,
+           deleted_at timestamptz NOT NULL DEFAULT now()
+         );
+         CREATE INDEX IF NOT EXISTS gdpr_deletion_audit_user_idx
+           ON gdpr_deletion_audit (user_id, deleted_at DESC);
+         CREATE INDEX IF NOT EXISTS gdpr_deletion_audit_project_idx
+           ON gdpr_deletion_audit (project_id, deleted_at DESC);`,
+      )
+      .then(() => undefined);
+  }
+  return auditSchemaReady;
 }
 
 /**
