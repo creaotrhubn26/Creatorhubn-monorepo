@@ -223,6 +223,38 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_power_grade_list",
+    description:
+      "List alle PowerGrade-albums i Resolve gallery med navn + still-count. PowerGrade-stills er gjenbrukbare color-grade-presets. Bruk dette for å se hvilke grades som er tilgjengelige før du foreslår grading-handlinger. Krever watch-resolve-commands.lua.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_power_grade_create",
+    description:
+      "Opprett et nytt PowerGrade-album i Resolve gallery med valgfritt navn. Brukes for å organisere AI-genererte grades. Returnerer det faktiske navnet (Resolve kan ha lagt til suffix hvis navn-kollisjon).",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Album-navn (valgfri — Resolve velger default hvis utelatt)" },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_power_grade_export",
+    description:
+      "Eksporter alle stills fra et PowerGrade-album til disk som .drx (Resolve grade), .dpx (digital cinema), .tif/.jpg/.png. Bruk format='drx' for å BEVARE grade-data (kan importeres tilbake til andre Resolve-prosjekter), andre formater er rasterized previews.",
+    input_schema: {
+      type: "object",
+      properties: {
+        album_name: { type: "string" },
+        folder_path: { type: "string", description: "Absolutt sti til output-folder" },
+        prefix: { type: "string", description: "Filnavn-prefix (default 'postagent_grade')" },
+        format: { type: "string", enum: ["drx", "dpx", "tif", "jpg", "png"], description: "Default 'drx'" },
+      },
+      required: ["album_name", "folder_path"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -639,6 +671,19 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         target_dir: typeof input.target_dir === "string" ? input.target_dir : undefined,
         custom_name: typeof input.custom_name === "string" ? input.custom_name : undefined,
         video_quality: typeof input.video_quality === "string" ? input.video_quality : undefined,
+      });
+    case "photoshop_resolve_power_grade_list":
+      return photoshop.resolvePowerGradeList();
+    case "photoshop_resolve_power_grade_create":
+      return photoshop.resolvePowerGradeCreate(
+        typeof input.name === "string" ? input.name : undefined,
+      );
+    case "photoshop_resolve_power_grade_export":
+      return photoshop.resolvePowerGradeExport({
+        album_name: requireString(input, "album_name"),
+        folder_path: requireString(input, "folder_path"),
+        prefix: typeof input.prefix === "string" ? input.prefix : undefined,
+        format: input.format as "drx" | "dpx" | "tif" | "jpg" | "png" | undefined,
       });
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();

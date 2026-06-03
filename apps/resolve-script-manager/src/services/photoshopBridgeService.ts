@@ -372,6 +372,30 @@ export const photoshop = {
       count: number;
     }>("resolve.mediaPoolListItems"),
 
+  resolvePowerGradeList: () =>
+    send<{
+      albums: Array<{ name: string; still_count: number }>;
+      count: number;
+    }>("resolve.powerGradeList"),
+
+  resolvePowerGradeCreate: (name?: string) =>
+    send<{ created: boolean; name: string }>("resolve.powerGradeCreate", { name }),
+
+  resolvePowerGradeExport: (params: {
+    album_name: string;
+    folder_path: string;
+    prefix?: string;
+    format?: "drx" | "dpx" | "tif" | "jpg" | "png";
+  }) =>
+    send<{
+      exported: boolean;
+      album: string;
+      folder: string;
+      prefix: string;
+      format: string;
+      count: number;
+    }>("resolve.powerGradeExport", params),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 
