@@ -67,24 +67,32 @@ jobs:
         working-directory: apps/resolve-script-manager
         run: npm ci
 
+      # Apple Developer ID codesign + notarisering aktiveres automatisk når
+      # repo-secrets er satt (APPLE_*). Mangler de, bygges appen usignert som
+      # før (env-variablene blir tomme → Tauri hopper over signering).
+      # Oppskrift: apps/resolve-script-manager/SIGNING.md.
       - name: Build Tauri app
         working-directory: apps/resolve-script-manager
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Developer ID Application-sertifikat (base64 .p12) + passord.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # Notarisering (App Store Connect): Apple-ID + app-spesifikt passord + Team ID.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run tauri build -- --target ${{ matrix.target }}
 
-      # Apple Developer ID codesign + notarize. Currently NO Apple cert is
-      # configured, so the .app stays "unidentified developer" (Gatekeeper
-      # shows a warning on first launch). To enable codesigning later, add
-      # APPLE_CERTIFICATE (base64 .p12) + APPLE_CERTIFICATE_PASSWORD +
-      # APPLE_SIGNING_IDENTITY + APPLE_ID + APPLE_PASSWORD + APPLE_TEAM_ID
-      # as repo secrets, then add an env: block back to the Build step.
-      # See apps/resolve-script-manager/RELEASE.md.
-      - name: Note — unsigned build
+      - name: Signerings-status
         run: |
-          echo "::notice::App built UNSIGNED. Users will see Gatekeeper warning on first launch."
-          echo "::notice::To enable codesigning, add APPLE_CERTIFICATE + related secrets — see RELEASE.md."
+          if [ -n "${{ secrets.APPLE_SIGNING_IDENTITY }}" ]; then
+            echo "::notice::App bygget SIGNERT + notarisert (Developer ID)."
+          else
+            echo "::notice::App bygget USIGNERT (ingen APPLE_* secrets satt) — se SIGNING.md."
+          fi
 
       - name: Collect artifacts
         id: artifacts
