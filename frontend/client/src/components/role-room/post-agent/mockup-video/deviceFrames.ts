@@ -33,10 +33,10 @@ import ipadLandscapeFrame from './frames/ipad-landscape.png';
 import macbookFrame from './frames/macbook.png';
 
 export const DEVICE_FRAMES: Record<DeviceVariant, FrameSpec> = {
-  iphone: { src: iphoneFrame, frameW: 1086, frameH: 1448, sx: 248, sy: 85, sw: 588, sh: 1275, screenRadius: 56 },
-  ipad: { src: ipadFrame, frameW: 1086, frameH: 1448, sx: 131, sy: 112, sw: 823, sh: 1222, screenRadius: 20 },
-  ipad_landscape: { src: ipadLandscapeFrame, frameW: 1448, frameH: 1086, sx: 112, sy: 131, sw: 1222, sh: 823, screenRadius: 20 },
-  macbook: { src: macbookFrame, frameW: 1586, frameH: 932, sx: 258, sy: 22, sw: 1070, sh: 712, screenRadius: 6 },
+  iphone: { src: iphoneFrame, frameW: 1086, frameH: 1448, sx: 248, sy: 86, sw: 588, sh: 1274, screenRadius: 56 },
+  ipad: { src: ipadFrame, frameW: 1086, frameH: 1448, sx: 130, sy: 114, sw: 822, sh: 1220, screenRadius: 20 },
+  ipad_landscape: { src: ipadLandscapeFrame, frameW: 1448, frameH: 1086, sx: 114, sy: 134, sw: 1220, sh: 820, screenRadius: 20 },
+  macbook: { src: macbookFrame, frameW: 1586, frameH: 992, sx: 258, sy: 22, sw: 1070, sh: 714, screenRadius: 6 },
 };
 
 /** Forholdstall (bredde/høyde) for hele frame-PNG-en. */

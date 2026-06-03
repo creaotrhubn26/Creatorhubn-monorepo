@@ -22,30 +22,30 @@ export interface FrameSpec {
   radius: number;
 }
 
-// Verdier fra piksel-deteksjon (deviceFrames i frontend):
-//   iphone  1086x1448  screen 248,85 588x1275
-//   ipad    1086x1448  screen 131,112 823x1222
-//   ipad-L  1448x1086  screen 112,131 1222x823  (ipad rotert 90° CCW)
-//   macbook 1586x932   screen 258,22 1070x712  (skjerm re-detektert presist)
+// Rene mockups (Daniels Desktop-kilder, 2026-06-03), skjerm presist detektert:
+//   iphone  1086x1448  screen 248,86 588x1274
+//   ipad    1086x1448  screen 130,114 822x1220
+//   ipad-L  1448x1086  screen 114,134 1220x820  (ipad rotert 90° CCW)
+//   macbook 1586x992   screen 258,22 1070x714   (HELE laptopen, ingen beskjæring)
 export const DEVICE_FRAMES: Record<FrameVariant, FrameSpec> = {
   iphone: {
     src: iphoneFrame, aspect: 1086 / 1448,
-    screen: { x: 248 / 1086, y: 85 / 1448, w: 588 / 1086, h: 1275 / 1448 },
+    screen: { x: 248 / 1086, y: 86 / 1448, w: 588 / 1086, h: 1274 / 1448 },
     radius: 56 / 1086,
   },
   ipad: {
     src: ipadFrame, aspect: 1086 / 1448,
-    screen: { x: 131 / 1086, y: 112 / 1448, w: 823 / 1086, h: 1222 / 1448 },
+    screen: { x: 130 / 1086, y: 114 / 1448, w: 822 / 1086, h: 1220 / 1448 },
     radius: 20 / 1086,
   },
   ipad_landscape: {
     src: ipadLandscapeFrame, aspect: 1448 / 1086,
-    screen: { x: 112 / 1448, y: 131 / 1086, w: 1222 / 1448, h: 823 / 1086 },
+    screen: { x: 114 / 1448, y: 134 / 1086, w: 1220 / 1448, h: 820 / 1086 },
     radius: 20 / 1448,
   },
   macbook: {
-    src: macbookFrame, aspect: 1586 / 932,
-    screen: { x: 258 / 1586, y: 22 / 932, w: 1070 / 1586, h: 712 / 932 },
+    src: macbookFrame, aspect: 1586 / 992,
+    screen: { x: 258 / 1586, y: 22 / 992, w: 1070 / 1586, h: 714 / 992 },
     radius: 6 / 1586,
   },
 };
