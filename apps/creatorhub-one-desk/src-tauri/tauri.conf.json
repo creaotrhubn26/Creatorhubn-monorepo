@@ -50,7 +50,7 @@
       "endpoints": [
         "https://github.com/creaotrhubn26/Creatorhubn-monorepo/releases/latest/download/creatorhub-one-desk-{{target}}-{{arch}}.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ0RjE5NjUwREUwQjFFM0EKUldRNkhndmVVSmJ4Uk1ydlF3T3pSQTRDSWFPUFZZdmRmbmRjdkJza0pjcUp5cEtFYUtBcHYwVWoK",
+      "pubkey": "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUcxcGJtbHphV2R1SUhCMVlteHBZeUJyWlhrNklERTNNakEyUmpBek9VTXlRME0wTlFwU1YxSkdlazFKTlRoQldubEJXRFZ1ZEdKdFNUWnhNbGxMVTA1YWJqSlZjMmRaTlRsU05HSTBLM1JrYTNaeVkyOXNSMnhWYjFWNGJnbz0=",
       "windows": {
         "installMode": "passive"
       }
