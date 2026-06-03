@@ -218,6 +218,98 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
     }
   });
 
+  // GET /api/storage/providers/:id/buckets — list B2-buckets fra provider
+  // Returnerer også region-info så UI kan flagge non-EU-buckets.
+  app.get(
+    '/api/storage/providers/:id/buckets',
+    async (req: Request, res: Response) => {
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      await ensureSchema();
+
+      const providerId = String(req.params.id || '').trim();
+      if (!providerId) return res.status(400).json({ success: false, error: 'id påkrevd' });
+
+      const provCheck = await pool.query(
+        `SELECT id FROM user_storage_providers WHERE id = $1 AND user_id = $2`,
+        [providerId, session.userId],
+      );
+      if (provCheck.rowCount === 0) {
+        return res.status(403).json({ success: false, error: 'Provider tilhører ikke deg' });
+      }
+
+      const creds = await getDecryptedProviderCreds(pool, providerId);
+      if (!creds) {
+        return res.status(500).json({ success: false, error: 'Kunne ikke dekryptere creds' });
+      }
+
+      const auth = await b2Authorize(creds.key_id, creds.application_key);
+      if (!auth.ok) {
+        return res.status(500).json({ success: false, error: auth.error });
+      }
+
+      try {
+        const listResp = await fetch(`${auth.data.apiUrl}/b2api/v3/b2_list_buckets`, {
+          method: 'POST',
+          headers: {
+            Authorization: auth.data.authToken,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ accountId: auth.data.accountId }),
+        });
+        if (!listResp.ok) {
+          const txt = await listResp.text().catch(() => '');
+          return res
+            .status(500)
+            .json({ success: false, error: `B2 list_buckets: ${txt.slice(0, 200)}` });
+        }
+        const json = (await listResp.json()) as {
+          buckets?: Array<{
+            bucketId?: string;
+            bucketName?: string;
+            bucketType?: string;
+            bucketInfo?: Record<string, unknown>;
+          }>;
+        };
+
+        // B2 inkluderer ikke region i bucket-listingen. Vi infererer fra
+        // accountAuthorization sin apiUrl — `s3.us-west-001.backblazeb2.com`
+        // er US, `s3.eu-central-003.backblazeb2.com` er EU. Hele kontoens
+        // buckets ligger i samme region.
+        const apiUrl = auth.data.apiUrl;
+        const isEuRegion =
+          apiUrl.includes('eu-central') || apiUrl.includes('eu-west');
+        const inferredRegion = isEuRegion
+          ? 'eu-central'
+          : apiUrl.includes('us-west')
+            ? 'us-west'
+            : apiUrl.includes('us-east')
+              ? 'us-east'
+              : 'unknown';
+
+        const buckets = (json.buckets ?? []).map((b) => ({
+          id: b.bucketId ?? '',
+          name: b.bucketName ?? '',
+          type: b.bucketType ?? '',
+          region: inferredRegion,
+          is_gdpr_safe: isEuRegion,
+        }));
+
+        return res.json({
+          success: true,
+          buckets,
+          account_region: inferredRegion,
+          gdpr_warning: !isEuRegion
+            ? 'Kontoen din ser ut til å bruke US-region. For GDPR-samsvar anbefales EU Central (Amsterdam).'
+            : null,
+        });
+      } catch (err: any) {
+        console.error('[storage-providers] list_buckets failed:', err);
+        return res.status(500).json({ success: false, error: err?.message || 'B2-feil' });
+      }
+    },
+  );
+
   // POST /api/storage/providers/:id/erase-project — slett alle filer for
   // ett prosjekt fra Backblaze. Brukes for right-to-erasure (GDPR Art 17).
   // Iterer over dit_backup_jobs for prosjektet og kaller delete_file_version
@@ -369,6 +461,7 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
 interface B2AuthData {
   apiUrl: string;
   authToken: string;
+  accountId: string;
 }
 
 async function b2Authorize(
@@ -389,6 +482,7 @@ async function b2Authorize(
       data: {
         apiUrl: String(json?.apiInfo?.storageApi?.apiUrl ?? ''),
         authToken: String(json?.authorizationToken ?? ''),
+        accountId: String(json?.accountId ?? ''),
       },
     };
   } catch (err: any) {

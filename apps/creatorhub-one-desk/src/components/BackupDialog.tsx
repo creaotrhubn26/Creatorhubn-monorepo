@@ -25,6 +25,7 @@ import {
   DestinationSpec,
   DetectedMount,
   DitDestination,
+  fetchDestinationsWithCreds,
   startCopySession,
 } from "../api";
 
@@ -133,10 +134,37 @@ export default function BackupDialog({
     setStarting(true);
     setError(null);
     try {
+      // Hent dest-creds rett før start så cloud-destinations får inn
+      // B2-creds in-memory. Lokale dests (uten backend_id) blir uberørt.
+      let withCreds: Awaited<ReturnType<typeof fetchDestinationsWithCreds>> = [];
+      try {
+        withCreds = await fetchDestinationsWithCreds();
+      } catch (e) {
+        // Hvis with-creds-endepunktet feiler (gammel backend, ingen
+        // cloud-dests, nettverksfeil) — fortsetter med lokal-only.
+        console.warn("[backup] fetch-with-creds feilet, fortsetter lokal:", e);
+      }
+
+      const credsBy = new Map(withCreds.map((d) => [d.id, d]));
+
+      const specsWithCreds: DestinationSpec[] = finalSpecs.map((spec) => {
+        if (!spec.backend_id) return spec;
+        const match = credsBy.get(spec.backend_id);
+        if (!match || match.cloud_provider !== "b2" || !match.cloud_credentials) {
+          return spec;
+        }
+        return {
+          ...spec,
+          cloud_provider: match.cloud_provider,
+          cloud_bucket_id: match.cloud_bucket_id ?? null,
+          cloud_credentials: match.cloud_credentials,
+        };
+      });
+
       const sessionId = await startCopySession({
         mountPath: mount.mount_path,
         volumeLabel: mount.volume_label,
-        destinations: finalSpecs,
+        destinations: specsWithCreds,
       });
       onStarted(sessionId);
       reset();

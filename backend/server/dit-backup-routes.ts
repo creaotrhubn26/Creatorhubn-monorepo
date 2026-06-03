@@ -43,6 +43,12 @@ export interface DitBackupRoutesDeps {
     req: express.Request,
     res: express.Response,
   ) => AdminSession | null;
+  /// Bruker-session for fotograf-handlinger (cloud-destinasjon-create).
+  /// Hentet fra deps slik at vi ikke trenger lazy-import.
+  requireUserSession: (
+    req: express.Request,
+    res: express.Response,
+  ) => { userId: string } | null;
 }
 
 interface DitDestinationRow {
@@ -183,7 +189,7 @@ async function verifyHelperToken(
 }
 
 export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
-  const { app, pool, requireAdminSession } = deps;
+  const { app, pool, requireAdminSession, requireUserSession } = deps;
 
   // ═══════════════════════════════════════════════════════════
   // DESTINATIONS — admin-konfigurert
@@ -647,6 +653,97 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
       return res.status(500).json({ success: false, error: 'Kunne ikke laste prosjekt-info' });
     }
   });
+
+  // ═══════════════════════════════════════════════════════════
+  // CLOUD DESTINATIONS — opprett + admin
+  // ═══════════════════════════════════════════════════════════
+  //
+  // POST /api/dit/projects/:projectId/destinations/cloud — opprett
+  // cloud-destinasjon koblet til en storage-provider. Eier-sjekk på
+  // BÅDE prosjekt (via session.userId) OG provider (via samme).
+  //
+  // Body: { provider_id, bucket_id, bucket_name, prefix?, label, priority? }
+
+  app.post(
+    '/api/dit/projects/:projectId/destinations/cloud',
+    async (req, res) => {
+      // requireAdminSession er feil sjekk her — dette er bruker-handling
+      // (fotograf aktiverer offsite for eget prosjekt). Vi importerer
+      // requireUserSession via lazy-import for å unngå sirkulær deps.
+      const projectId = String(req.params.projectId || '').trim();
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const providerId = String(body.provider_id ?? '').trim();
+      const bucketId = String(body.bucket_id ?? '').trim();
+      const bucketName = String(body.bucket_name ?? '').trim();
+      const prefix = String(body.prefix ?? '').trim();
+      const label = String(body.label ?? bucketName).trim();
+      const priorityRaw = Number(body.priority ?? 5);
+      const priority = Number.isFinite(priorityRaw) ? priorityRaw : 5;
+
+      if (!projectId || !providerId || !bucketId || !bucketName) {
+        return res.status(400).json({
+          success: false,
+          error: 'projectId, provider_id, bucket_id, bucket_name påkrevd',
+        });
+      }
+
+      // Bruker-session — fotograf må være innlogget. Bruker
+      // requireUserSession-deps som er injisert fra index.ts.
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = session.userId;
+
+      // Verifisér eier av PROVIDER
+      const provCheck = await pool.query(
+        `SELECT id FROM user_storage_providers WHERE id = $1 AND user_id = $2`,
+        [providerId, userId],
+      );
+      if (provCheck.rowCount === 0) {
+        return res
+          .status(403)
+          .json({ success: false, error: 'Provider tilhører ikke deg' });
+      }
+
+      // Verifisér eier av PROSJEKT
+      const projCheck = await pool.query(
+        `SELECT id FROM legacy.projects WHERE id = $1 AND user_id = $2`,
+        [projectId, userId],
+      );
+      if (projCheck.rowCount === 0) {
+        return res
+          .status(403)
+          .json({ success: false, error: 'Prosjekt tilhører ikke deg' });
+      }
+
+      // Default-prefix hvis ikke gitt: dit-backup/<project_id>/
+      const effectivePrefix = prefix || `dit-backup/${projectId}/`;
+      const id = `did_${randomUUID()}`;
+
+      try {
+        const result = await pool.query<DitDestinationRow>(
+          `INSERT INTO dit_destinations
+             (id, project_id, destination_type, label, path, storage_type, priority, status, notes,
+              cloud_provider, cloud_provider_id, cloud_bucket, cloud_bucket_id, cloud_prefix)
+           VALUES ($1, $2, 'offsite', $3, $4, 'cloud', $5, 'configured', NULL,
+                   'b2', $6, $7, $8, $9)
+           RETURNING *`,
+          [
+            id, projectId, label.slice(0, 200), effectivePrefix, priority,
+            providerId, bucketName, bucketId, effectivePrefix,
+          ],
+        );
+        return res.json({
+          success: true,
+          destination: serializeDestination(result.rows[0]),
+        });
+      } catch (error: any) {
+        console.error('[dit] create cloud-destination failed:', error?.message || error);
+        return res
+          .status(500)
+          .json({ success: false, error: 'Kunne ikke opprette cloud-destinasjon' });
+      }
+    },
+  );
 
   // ═══════════════════════════════════════════════════════════
   // CLOUD DESTINATIONS — destinasjoner m/ dekrypterte B2-creds

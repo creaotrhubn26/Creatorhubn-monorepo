@@ -73,6 +73,65 @@ export async function deleteStorageProvider(
   });
 }
 
+// ── B2 buckets-listing + cloud-destination-create ──────────────
+
+export interface B2Bucket {
+  id: string;
+  name: string;
+  type: string;
+  region: string;
+  is_gdpr_safe: boolean;
+}
+
+export interface ListBucketsResponse {
+  success: boolean;
+  buckets: B2Bucket[];
+  account_region: string;
+  gdpr_warning: string | null;
+  error?: string;
+}
+
+export async function listBuckets(
+  providerId: string,
+): Promise<ListBucketsResponse> {
+  return apiRequest(
+    `/api/storage/providers/${encodeURIComponent(providerId)}/buckets`,
+  );
+}
+
+export interface CreateCloudDestinationPayload {
+  provider_id: string;
+  bucket_id: string;
+  bucket_name: string;
+  prefix?: string;
+  label: string;
+  priority?: number;
+}
+
+export interface CreateCloudDestinationResponse {
+  success: boolean;
+  destination?: {
+    id: string;
+    label: string;
+    cloud_bucket?: string;
+    cloud_prefix?: string;
+  };
+  error?: string;
+}
+
+export async function createCloudDestination(
+  projectId: string,
+  payload: CreateCloudDestinationPayload,
+): Promise<CreateCloudDestinationResponse> {
+  return apiRequest(
+    `/api/dit/projects/${encodeURIComponent(projectId)}/destinations/cloud`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 // ── GDPR right-to-erasure ──────────────────────────────────────
 
 export interface EraseProjectPayload {

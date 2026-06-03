@@ -31436,6 +31436,7 @@ setupDitBackupRoutes({
   app,
   pool,
   requireAdminSession,
+  requireUserSession,
 });
 
 // ── Storage-providers (B2 offsite-backup) ──────────────────────

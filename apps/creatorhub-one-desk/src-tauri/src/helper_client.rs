@@ -131,6 +131,46 @@ pub async fn list_capture_sessions(cfg: &Config) -> Result<Vec<CaptureSessionSum
     Ok(out)
 }
 
+/// Henter destinasjoner med dekrypterte cloud-creds. Kalles ved
+/// backup-start når vi vet at det finnes cloud-destinasjoner (eller
+/// alltid — endepunktet returnerer null creds for lokale dests).
+///
+/// Sikkerhets-kontrakt: returnert JSON inneholder
+/// `cloud_credentials: { key_id, application_key }` for cloud-dests.
+/// Disse må ALDRI lagres på disk — kun in-memory til start_copy_session
+/// er ferdig.
+pub async fn get_destinations_with_creds(cfg: &Config) -> Result<serde_json::Value, String> {
+    let base = cfg.api_base.trim_end_matches('/');
+    let url = format!(
+        "{}/api/dit/projects/{}/destinations/with-creds",
+        base,
+        urlencoding::encode(&cfg.project_id),
+    );
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", cfg.token))
+        .header("User-Agent", concat!("creatorhub-one-desk/", env!("CARGO_PKG_VERSION")))
+        .send()
+        .await
+        .map_err(|e| format!("Backend-request feilet: {}", e))?;
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        let snippet = body.chars().take(300).collect::<String>();
+        return Err(format!("Backend svarte {}: {}", status.as_u16(), snippet));
+    }
+    let raw: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Kunne ikke parse backend-respons: {}", e))?;
+    if raw.get("success").and_then(|v| v.as_bool()) != Some(true) {
+        let err = raw.get("error").and_then(|v| v.as_str()).unwrap_or("Ukjent feil");
+        return Err(format!("Backend feilet: {}", err));
+    }
+    Ok(raw.get("destinations").cloned().unwrap_or(serde_json::Value::Array(vec![])))
+}
+
 pub async fn get_project_info(cfg: &Config) -> Result<ProjectInfo, String> {
     let base = cfg.api_base.trim_end_matches('/');
     let url = format!("{}/api/dit/projects/{}/info", base, urlencoding::encode(&cfg.project_id));

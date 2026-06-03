@@ -271,6 +271,36 @@ Vi tar **0 kr i påslag**. Fotografen betaler Backblaze direkte ($6/TB/mo).
 - [ ] Hvis B2-upload feiler midlertidig, skal vi retry i bakgrunn eller kreve manuell re-trigger?  
       **Foreslått:** 3 retries m/ exponential backoff, deretter session_log-error + UI-indikator.
 
+## Fase 4 — Aktivering + One Desk-integrasjon
+
+Kritisk gap som ble identifisert etter Fase 1-3: vi hadde infrastrukturen
+men ingen vei fra «provider satt opp» til «filer havner i B2».
+
+### PR-D1: Backend bucket-list + cloud-destination create
+
+**Endepunkter:**
+
+- `GET /api/storage/providers/:id/buckets` — lister buckets fra B2's
+  `b2_list_buckets` med region-info (advarsel hvis ikke EU-Central).
+- `POST /api/dit/projects/:projectId/destinations/cloud` — `{ provider_id,
+  bucket_id, bucket_name, prefix?, label }` → setter inn rad i
+  `dit_destinations` med `cloud_provider='b2'`.
+
+### PR-D2: One Desk fetch with-creds
+
+- Ny Rust-Tauri-command `fetch_destinations_with_creds()` som kaller
+  `/api/dit/projects/:id/destinations/with-creds` (eksisterer fra Fase 1).
+- BackupDialog.tsx kaller dette ved start istedenfor å plukke fra
+  ProjectInfo.destinations (som mangler creds).
+
+### PR-D3: Frontend «Aktiver offsite»-UI
+
+- `CloudDestinationActivator.tsx` standalone-komponent: liste over aktive
+  cloud-destinasjoner for prosjekt + «Aktiver offsite»-knapp → 2-trinns
+  dialog: velg provider → velg bucket → klikk Aktiver.
+- EU-region-tvang: bucket-listingen flagger non-EU-buckets rødt med
+  advarsel «Anbefales ikke for GDPR-samsvar — bytt til EU Central».
+
 ## Endrings-logg
 
 - 2026-06-03: Initial plan, B2-selv-eid valgt over R2-hosted. Migrasjon 231 drafted.
