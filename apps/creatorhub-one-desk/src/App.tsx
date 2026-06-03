@@ -144,7 +144,7 @@ export default function App() {
   }
 
   if (status === "needs-token") {
-    return <TokenSetupScreen onSaved={refresh} />;
+    return <TokenSetupScreen onSaved={refresh} onBack={() => setStatus("needs-login")} />;
   }
 
   if (status === "picker") {

@@ -8,14 +8,17 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { getDefaultApiBase, saveHelperConfig } from "../api";
 import DeskIcon from "./DeskIcon";
 
 interface Props {
   onSaved: () => void;
+  /** Returner til forrige skjerm (LoginScreen). Hvis ikke gitt, vises ingen tilbake-knapp. */
+  onBack?: () => void;
 }
 
-export default function TokenSetupScreen({ onSaved }: Props) {
+export default function TokenSetupScreen({ onSaved, onBack }: Props) {
   const [apiBase, setApiBase] = useState("");
   const [token, setToken] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -42,6 +45,18 @@ export default function TokenSetupScreen({ onSaved }: Props) {
   return (
     <Container maxWidth="sm" sx={{ py: 6 }}>
       <Stack spacing={3}>
+        {onBack && (
+          <Box>
+            <Button
+              startIcon={<ArrowBackIcon />}
+              onClick={onBack}
+              size="small"
+              sx={{ alignSelf: "flex-start" }}
+            >
+              Tilbake til innlogging
+            </Button>
+          </Box>
+        )}
         <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
           <DeskIcon size={56} shadow={false} />
           <Box sx={{ flex: 1 }}>
