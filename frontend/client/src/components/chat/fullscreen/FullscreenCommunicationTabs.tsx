@@ -29,16 +29,19 @@ export default function FullscreenCommunicationTabs({
           onChange={(_, newValue) => onChangeTab(newValue)}
           variant="fullWidth"
           sx={{
+            minHeight: 36,
             '& .MuiTab-root': {
               textTransform: 'none',
-              minHeight: 42,
+              minHeight: 36,
               borderRadius: 1.5,
               mx: 0.25,
               fontWeight: 600,
+              fontSize: '0.78rem',
+              py: 0.5,
             },
             '& .MuiTabs-indicator': {
-              height: 3,
-              borderRadius: 3,
+              height: 2,
+              borderRadius: 2,
               bgcolor: accentColor,
             },
           }}
@@ -59,7 +62,7 @@ export default function FullscreenCommunicationTabs({
         <Typography
           variant="caption"
           color="text.secondary"
-          sx={{ display: 'block', textAlign: 'center', py: 0.75, fontSize: '0.75rem' }}
+          sx={{ display: 'block', textAlign: 'center', py: 0.4, fontSize: '0.68rem' }}
         >
           {activeTab === 0
             ? 'Sanntids chat med øyeblikkelig levering'
