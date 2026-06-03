@@ -202,6 +202,20 @@ export async function fetchDestinationsWithCreds(): Promise<DestinationWithCreds
   return invoke<DestinationWithCreds[]>("fetch_destinations_with_creds");
 }
 
+/// Verifiser B2-creds + bucket-eksistens FØR cloud-destinasjon committes.
+/// Returnerer bucket-navn på suksess, error-melding ved feil.
+export async function testB2Connection(
+  keyId: string,
+  applicationKey: string,
+  bucketId: string,
+): Promise<string> {
+  return invoke<string>("test_b2_connection", {
+    keyId,
+    applicationKey,
+    bucketId,
+  });
+}
+
 export interface SessionStatus {
   session_id: string;
   mount_path: string;

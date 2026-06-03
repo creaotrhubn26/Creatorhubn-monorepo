@@ -616,8 +616,35 @@ async fn process_b2_destination(
         }
     };
 
-    // Steg 3: upload
-    match b2_uploader::upload_file(&upload_url, &src, &dest_name, &sha1).await {
+    // Steg 3: upload med progress-callback. Emit copy-file-progress-
+    // event throttled til 250ms — samme rate som lokal-flyten i
+    // copy_engine, så UI får jevn progressbar uten å oversvømmes.
+    let app_for_progress = app.clone();
+    let sid_for_progress = session_id.clone();
+    let src_disp_for_progress = src_disp.clone();
+    let dest_id_for_progress = dest_spec.id.clone();
+    let last_emit = Arc::new(Mutex::new(Instant::now()));
+    let on_progress = move |bytes_sent: u64, total: u64| {
+        let now = Instant::now();
+        let mut last = last_emit.lock().unwrap();
+        if now.duration_since(*last).as_millis() < PROGRESS_THROTTLE_MS {
+            return;
+        }
+        *last = now;
+        drop(last);
+        let _ = app_for_progress.emit(
+            "copy-file-progress",
+            FileProgressEvent {
+                session_id: sid_for_progress.clone(),
+                source_path: src_disp_for_progress.clone(),
+                dest_id: dest_id_for_progress.clone(),
+                bytes_copied: bytes_sent,
+                bytes_total: total,
+            },
+        );
+    };
+
+    match b2_uploader::upload_file(&upload_url, &src, &dest_name, &sha1, on_progress).await {
         Ok(result) => {
             if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
                 if let Err(err) = dit_reporter::report_verified(

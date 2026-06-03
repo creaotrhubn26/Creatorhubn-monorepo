@@ -235,6 +235,19 @@ async fn fetch_destinations_with_creds() -> Result<serde_json::Value, String> {
     helper_client::get_destinations_with_creds(&cfg).await
 }
 
+/// Test B2-creds + bucket-eksistens for «Test connection»-knappen i
+/// CloudDestinationActivator. Brukes etter at user har valgt bucket
+/// men FØR vi committer destinasjonen til backend, slik at vi catcher
+/// permission-issues / bucket-fjerning før første backup.
+#[tauri::command]
+async fn test_b2_connection(
+    key_id: String,
+    application_key: String,
+    bucket_id: String,
+) -> Result<String, String> {
+    b2_uploader::test_connection(&key_id, &application_key, &bucket_id).await
+}
+
 #[tauri::command]
 fn list_detected_mounts(state: tauri::State<MountWatcherState>) -> Vec<DetectedMount> {
     mount_watcher::list_mounts(&state)
@@ -508,6 +521,7 @@ pub fn run() {
             update_project_label,
             fetch_project_info,
             fetch_destinations_with_creds,
+            test_b2_connection,
             list_detected_mounts,
             rescan_mounts,
             start_copy_session,
