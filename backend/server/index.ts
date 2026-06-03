@@ -717,6 +717,7 @@ import { setupSongflowDeprecatedAliasesRoutes } from "./songflow-deprecated-alia
 import { setupEquipmentDiscoveryRoutes } from "./equipment-discovery-routes";
 import { setupEquipmentCatalogRoutes } from "./equipment-catalog-routes";
 import { setupEquipmentFirmwareRoutes } from "./equipment-firmware-routes";
+import { setupAcademyIntegrationsRoutes } from "./academy-integrations-routes";
 import { setupPricingRoutes } from "./pricing-routes";
 import { setupAccountingRoutes } from "./accounting-routes";
 import { setupFileManagementRoutes } from "./file-management-routes";
@@ -65907,6 +65908,7 @@ setupEquipmentFirmwareRoutes({
   resolveSoftwareOrderColumn,
   toIsoString,
 });
+setupAcademyIntegrationsRoutes({ app, pool, requireAcademySession });
 // NB: setupSongflowDeprecatedAliasesRoutes wires later (etter handler-
 // deklarasjoner ~linje 70324). Trivielle deprecation-aliases krever at
 // EaseVerse-handlers først er deklarert.
@@ -73180,133 +73182,6 @@ app.post("/api/notebooklm/workspace/sync", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to sync NotebookLM workspace",
-    });
-  }
-});
-
-app.get("/api/academy/google-vids/status", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const status = await getAcademyGoogleVidsWorkspaceStatus(pool, {
-      userId,
-      courseId: readString(req.query.courseId),
-      courseTitle: readString(req.query.courseTitle),
-    });
-
-    return res.json(status);
-  } catch (error) {
-    console.error("Academy Google Vids workspace status error:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to fetch Academy Google Vids workspace status" });
-  }
-});
-
-app.post("/api/academy/google-vids/sync", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const workspace = await syncAcademyGoogleVidsWorkspace(pool, {
-      userId,
-      courseId: readString(req.body?.courseId),
-      courseTitle: readString(req.body?.courseTitle),
-      snapshot: req.body?.snapshot,
-    });
-
-    const status = await getAcademyGoogleVidsWorkspaceStatus(pool, {
-      userId,
-      courseId: workspace.courseId,
-      courseTitle: workspace.courseTitle,
-    });
-
-    return res.json(status);
-  } catch (error) {
-    console.error("Academy Google Vids workspace sync error:", error);
-    return res.status(500).json({
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to sync Academy Google Vids workspace",
-    });
-  }
-});
-
-app.get("/api/academy/notebooklm/status", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const status = await getAcademyNotebookLmWorkspaceStatus(pool, {
-      userId,
-      courseId: readString(req.query.courseId),
-      lessonId: readString(req.query.lessonId),
-      courseTitle: readString(req.query.courseTitle),
-    });
-
-    return res.json(status);
-  } catch (error) {
-    console.error("Academy NotebookLM workspace status error:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to fetch Academy NotebookLM workspace status" });
-  }
-});
-
-app.post("/api/academy/notebooklm/sync", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const workspace = await syncAcademyNotebookLmWorkspace(pool, {
-      userId,
-      courseId: readString(req.body?.courseId),
-      lessonId: readString(req.body?.lessonId),
-      courseTitle: readString(req.body?.courseTitle),
-      snapshot: req.body?.snapshot,
-    });
-
-    const status = await getAcademyNotebookLmWorkspaceStatus(pool, {
-      userId,
-      courseId: workspace.courseId,
-      lessonId: workspace.lessonId,
-      courseTitle: workspace.courseTitle,
-    });
-
-    return res.json(status);
-  } catch (error) {
-    console.error("Academy NotebookLM workspace sync error:", error);
-    return res.status(500).json({
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to sync Academy NotebookLM workspace",
     });
   }
 });
