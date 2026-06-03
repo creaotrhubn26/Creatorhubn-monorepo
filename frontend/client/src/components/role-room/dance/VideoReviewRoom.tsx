@@ -100,7 +100,7 @@ interface AuthorInfo {
   color: string;
 }
 
-const AUTHOR_PALETTE = ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+const AUTHOR_PALETTE = [danceFlowColors.info, danceFlowColors.amber, danceFlowColors.successDark, '#8b5cf6', danceFlowColors.pinkAccent, '#06b6d4', '#f97316'];
 
 function authorInfoFor(
   userId: string,
@@ -494,7 +494,7 @@ export function VideoReviewRoom({
         gap: 0,
         bgcolor: BG,
         minHeight: '100%',
-        color: '#e5e7eb',
+        color: danceFlowColors.textSecondary,
       }}
     >
       {/* ─── Left: video + timeline ───────────────────────── */}
@@ -600,7 +600,7 @@ export function VideoReviewRoom({
                     width: 8,
                     transform: 'translateX(-50%)',
                     borderRadius: 1,
-                    bgcolor: a.isDirectorPin ? '#fbbf24' : a.status === 'resolved' ? 'rgba(16,185,129,0.6)' : PURPLE,
+                    bgcolor: a.isDirectorPin ? danceFlowColors.gold : a.status === 'resolved' ? 'rgba(16,185,129,0.6)' : PURPLE,
                     cursor: 'pointer',
                     '&:hover': { transform: 'translateX(-50%) scale(1.3)' },
                   }}
@@ -808,7 +808,7 @@ export function VideoReviewRoom({
             onChange={(e) => setComposer(e.target.value)}
             inputRef={composerInputRef}
             sx={{
-              '& .MuiInputBase-root': { bgcolor: BG, color: '#e5e7eb', fontSize: 13 },
+              '& .MuiInputBase-root': { bgcolor: BG, color: danceFlowColors.textSecondary, fontSize: 13 },
               '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER },
             }}
             data-testid="review-composer"
@@ -912,7 +912,7 @@ export function VideoReviewRoom({
                   flexBasis: 100, minWidth: 80,
                   padding: '2px 6px', fontSize: 10, borderRadius: 3,
                   border: '1px solid rgba(167,139,250,0.25)',
-                  background: 'transparent', color: '#e5e7eb', outline: 'none',
+                  background: 'transparent', color: danceFlowColors.textSecondary, outline: 'none',
                 }}
               />
               {[...commonLabelsFor(composerCategory), ...(customLabelsByCat[composerCategory] ?? [])]
@@ -974,7 +974,7 @@ export function VideoReviewRoom({
               <IconButton
                 size="small"
                 onClick={() => setPinFlag((v) => !v)}
-                sx={{ color: pinFlag ? '#fbbf24' : 'rgba(229,231,235,0.5)' }}
+                sx={{ color: pinFlag ? danceFlowColors.gold : 'rgba(229,231,235,0.5)' }}
               >
                 {pinFlag ? <PinIcon fontSize="small" /> : <PinOutlinedIcon fontSize="small" />}
               </IconButton>
@@ -987,7 +987,7 @@ export function VideoReviewRoom({
                 onChange={(e) => setSegmentTagId(e.target.value || null)}
                 sx={{
                   minWidth: 140,
-                  '& .MuiInputBase-root': { bgcolor: BG, color: '#e5e7eb', fontSize: 11 },
+                  '& .MuiInputBase-root': { bgcolor: BG, color: danceFlowColors.textSecondary, fontSize: 11 },
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER },
                 }}
               >
@@ -1032,7 +1032,7 @@ export function VideoReviewRoom({
               <IconButton
                 size="small"
                 onClick={() => isRecording ? stopVoiceRecording() : void startVoiceRecording()}
-                sx={{ color: isRecording ? '#ef4444' : PURPLE_LIGHT }}
+                sx={{ color: isRecording ? danceFlowColors.errorStrong : PURPLE_LIGHT }}
                 data-testid="review-voice-toggle"
               >
                 {isRecording ? <StopIcon fontSize="small" /> : <MicIcon fontSize="small" />}
@@ -1094,7 +1094,7 @@ export function VideoReviewRoom({
       <Dialog
         open={upgradeDrawingOpen}
         onClose={() => setUpgradeDrawingOpen(false)}
-        PaperProps={{ sx: { bgcolor: '#0f0a1c', border: `1px solid ${BORDER}`, color: '#e5e7eb' } }}
+        PaperProps={{ sx: { bgcolor: '#0f0a1c', border: `1px solid ${BORDER}`, color: danceFlowColors.textSecondary } }}
         data-testid="drawing-upgrade-dialog"
       >
         <DialogTitle sx={{ color: PURPLE_LIGHT, fontWeight: 700 }}>Oppgrader for å tegne</DialogTitle>
@@ -1180,10 +1180,10 @@ const CommentNode: React.FC<CommentNodeProps> = ({
               {author.name}
             </Typography>
             {annotation.isDirectorPin ? (
-              <Chip size="small" label="Lederinstruksjon" sx={{ height: 16, fontSize: 9, bgcolor: 'rgba(251,191,36,0.22)', color: '#fbbf24', fontWeight: 700 }} />
+              <Chip size="small" label="Lederinstruksjon" sx={{ height: 16, fontSize: 9, bgcolor: 'rgba(251,191,36,0.22)', color: danceFlowColors.gold, fontWeight: 700 }} />
             ) : null}
             {annotation.status === 'resolved' ? (
-              <Chip size="small" label="Løst" sx={{ height: 16, fontSize: 9, bgcolor: 'rgba(16,185,129,0.18)', color: '#10b981', fontWeight: 700 }} />
+              <Chip size="small" label="Løst" sx={{ height: 16, fontSize: 9, bgcolor: 'rgba(16,185,129,0.18)', color: danceFlowColors.successDark, fontWeight: 700 }} />
             ) : null}
             <Box sx={{ flex: 1 }} />
             <Button
@@ -1233,12 +1233,12 @@ const CommentNode: React.FC<CommentNodeProps> = ({
           ) : null}
           <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
             <Tooltip title={annotation.status === 'open' ? 'Marker som løst' : 'Marker som åpen'}>
-              <IconButton size="small" onClick={onStatusToggle} sx={{ color: annotation.status === 'resolved' ? '#10b981' : 'rgba(229,231,235,0.4)', p: 0.5 }}>
+              <IconButton size="small" onClick={onStatusToggle} sx={{ color: annotation.status === 'resolved' ? danceFlowColors.successDark : 'rgba(229,231,235,0.4)', p: 0.5 }}>
                 {annotation.status === 'resolved' ? <CheckCircleIcon sx={{ fontSize: 14 }} /> : <CheckIcon sx={{ fontSize: 14 }} />}
               </IconButton>
             </Tooltip>
             <Tooltip title={annotation.isDirectorPin ? 'Avpin' : 'Pin som lederinstruksjon'}>
-              <IconButton size="small" onClick={onPinToggle} sx={{ color: annotation.isDirectorPin ? '#fbbf24' : 'rgba(229,231,235,0.4)', p: 0.5 }}>
+              <IconButton size="small" onClick={onPinToggle} sx={{ color: annotation.isDirectorPin ? danceFlowColors.gold : 'rgba(229,231,235,0.4)', p: 0.5 }}>
                 {annotation.isDirectorPin ? <PinIcon sx={{ fontSize: 14 }} /> : <PinOutlinedIcon sx={{ fontSize: 14 }} />}
               </IconButton>
             </Tooltip>

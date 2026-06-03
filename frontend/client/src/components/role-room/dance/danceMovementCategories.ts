@@ -29,8 +29,8 @@ export const DANCE_MOVEMENT_CATEGORIES: readonly MovementCategory[] = [
   { id: 'steps', label: 'Steps', color: danceFlowColors.lavender, shortcut: '1' },
   { id: 'arms',  label: 'Arms',  color: danceFlowColors.successPrimary, shortcut: '2' },
   { id: 'body',  label: 'Body',  color: danceFlowColors.gold, shortcut: '3' },
-  { id: 'jumps', label: 'Jumps', color: '#60a5fa', shortcut: '4' },
-  { id: 'turns', label: 'Turns', color: '#f472b6', shortcut: '5' },
+  { id: 'jumps', label: 'Jumps', color: danceFlowColors.infoLight, shortcut: '4' },
+  { id: 'turns', label: 'Turns', color: danceFlowColors.pinkAccentLight, shortcut: '5' },
 ] as const;
 
 const BY_ID: Record<string, MovementCategory> = Object.fromEntries(

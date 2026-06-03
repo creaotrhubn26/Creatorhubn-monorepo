@@ -677,7 +677,7 @@ const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
                 <Typography sx={{ fontSize: 9, color: danceFlowColors.textDisabled, fontFamily: 'monospace' }}>
                   {formatTime(t)}
                 </Typography>
-                <Box sx={{ width: 1, height: 4, bgcolor: '#374151', mx: 'auto' }} />
+                <Box sx={{ width: 1, height: 4, bgcolor: danceFlowColors.grayDark, mx: 'auto' }} />
               </Box>
             );
           })}
@@ -755,7 +755,7 @@ const TimelineLayerRow: React.FC<TimelineLayerRowProps> = ({
           flex: 1,
           position: 'relative',
           height: rowH,
-          bgcolor: '#0d1218',
+          bgcolor: danceFlowColors.bgInset,
           borderRadius: 0.75,
           overflow: 'hidden',
           ml: 1,
@@ -958,7 +958,7 @@ const SegmentBlock: React.FC<SegmentBlockProps> = ({
         sx={{
           fontSize: layer.variant === 'block' ? 11 : 9.5,
           fontWeight: layer.variant === 'block' ? 700 : 500,
-          color: layer.variant === 'block' ? '#fff' : '#cbd5e1',
+          color: layer.variant === 'block' ? '#fff' : danceFlowColors.grayLight,
           letterSpacing: layer.variant === 'block' ? 0.2 : 0,
           textShadow: layer.variant === 'block' ? '0 1px 2px rgba(0,0,0,0.4)' : 'none',
           flex: 1,
@@ -1142,7 +1142,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
         <Chip
           size="small"
           label={`${formatTime(segment.startSec)} → ${formatTime(segment.endSec)}`}
-          sx={{ height: 18, fontSize: 9, bgcolor: danceFlowColors.borderStrong, color: '#cbd5e1', fontFamily: 'monospace' }}
+          sx={{ height: 18, fontSize: 9, bgcolor: danceFlowColors.borderStrong, color: danceFlowColors.grayLight, fontFamily: 'monospace' }}
         />
         <Chip
           size="small"
@@ -1211,7 +1211,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
                   height: 20,
                   fontSize: 10,
                   bgcolor: 'rgba(59,130,246,0.18)',
-                  color: '#93c5fd',
+                  color: danceFlowColors.infoSoft,
                   border: '1px solid rgba(59,130,246,0.4)',
                   cursor: onOpenDancerProfile ? 'pointer' : 'default',
                   '&:hover': onOpenDancerProfile
@@ -1311,7 +1311,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
               CLAUDE — KOREOGRAFI-FORSLAG
             </Typography>
           </Stack>
-          <Typography sx={{ fontSize: 10.5, color: '#cbd5e1', mb: 1, lineHeight: 1.4 }}>
+          <Typography sx={{ fontSize: 10.5, color: danceFlowColors.grayLight, mb: 1, lineHeight: 1.4 }}>
             Få AI-forslag for bevegelse, formasjon eller musikkmatching basert på {energyMeta.labelToken && labels[energyMeta.labelToken]?.toLowerCase()}-energi og segment-type.
           </Typography>
           <Button
@@ -1363,7 +1363,7 @@ const inspectorFieldSx = {
   '& .MuiOutlinedInput-root': {
     bgcolor: danceFlowColors.bgBase,
     '& fieldset': { borderColor: danceFlowColors.borderStrong },
-    '&:hover fieldset': { borderColor: '#374151' },
+    '&:hover fieldset': { borderColor: danceFlowColors.grayDark },
     '&.Mui-focused fieldset': { borderColor: danceFlowColors.lavenderDark },
   },
 } as const;
@@ -1375,7 +1375,7 @@ const MetaPill: React.FC<{ label: string; icon?: React.ReactNode; accent?: boole
       py: 0.5,
       borderRadius: 12,
       bgcolor: accent ? 'rgba(139,92,246,0.15)' : danceFlowColors.borderStrong,
-      color: accent ? danceFlowColors.lavenderLight : '#cbd5e1',
+      color: accent ? danceFlowColors.lavenderLight : danceFlowColors.grayLight,
       border: `1px solid ${accent ? 'rgba(139,92,246,0.4)' : danceFlowColors.borderSoft}`,
       fontSize: 10,
       fontWeight: 600,

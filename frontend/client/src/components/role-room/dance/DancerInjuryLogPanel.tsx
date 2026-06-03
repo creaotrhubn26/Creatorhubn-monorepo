@@ -90,7 +90,7 @@ const STATUS_LABEL: Record<InjuryEntryStatus, string> = {
 };
 
 const STATUS_COLOR: Record<InjuryEntryStatus, string> = {
-  active: '#ef4444',
+  active: danceFlowColors.errorStrong,
   healing: danceFlowColors.amber,
   resolved: danceFlowColors.successDark,
 };

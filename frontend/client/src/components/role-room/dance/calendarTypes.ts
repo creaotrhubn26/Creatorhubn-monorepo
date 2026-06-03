@@ -37,7 +37,7 @@ export const KIND_META: Record<CalendarEventKind, { label: string; color: string
   rehearsal:    { label: 'Prøver',          color: danceFlowColors.lavender, bg: 'rgba(167,139,250,0.18)' },
   performance:  { label: 'Forestillinger',  color: danceFlowColors.gold, bg: 'rgba(251,191,36,0.18)' },
   class:        { label: 'Klasser',         color: danceFlowColors.successPrimary, bg: 'rgba(52,211,153,0.18)' },
-  audition:     { label: 'Auditions',       color: '#60a5fa', bg: 'rgba(96,165,250,0.18)' },
+  audition:     { label: 'Auditions',       color: danceFlowColors.infoLight, bg: 'rgba(96,165,250,0.18)' },
   availability: { label: 'Tilgjengelighet', color: danceFlowColors.textMuted, bg: 'rgba(156,163,175,0.18)' },
 };
 

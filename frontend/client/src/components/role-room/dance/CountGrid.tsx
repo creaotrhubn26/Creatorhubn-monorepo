@@ -133,7 +133,7 @@ export const CountGrid: React.FC<CountGridProps> = ({
   }, [eightCounts, state.includeLeadup]);
 
   return (
-    <Box data-testid="count-grid" sx={{ bgcolor: '#0d1218', borderRadius: 1.5, p: 1.5 }}>
+    <Box data-testid="count-grid" sx={{ bgcolor: danceFlowColors.bgInset, borderRadius: 1.5, p: 1.5 }}>
       {/* ─── Header ──────────────────────────────────── */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
         <Stack direction="row" spacing={1.5} alignItems="center">
@@ -193,7 +193,7 @@ export const CountGrid: React.FC<CountGridProps> = ({
           const isFirstOfEightCount = !row.isLeadup && row.displayCount === 1;
           const groupColor = row.isLeadup
             ? danceFlowColors.textMuted
-            : row.eightCountIdx % 2 === 1 ? danceFlowColors.lavenderDark : '#3b82f6';
+            : row.eightCountIdx % 2 === 1 ? danceFlowColors.lavenderDark : danceFlowColors.info;
           const sec = timeForCount(segment, row.absoluteCount, rows.length);
           return (
             <React.Fragment key={row.absoluteCount}>
@@ -282,7 +282,7 @@ export const CountGrid: React.FC<CountGridProps> = ({
                         if (url) updateEntry(row.absoluteCount, { videoRefUrl: url });
                       }
                     }}
-                    sx={{ p: 0.25, color: entry?.videoRefUrl ? danceFlowColors.lavender : '#4b5563' }}
+                    sx={{ p: 0.25, color: entry?.videoRefUrl ? danceFlowColors.lavender : danceFlowColors.grayMid }}
                   >
                     <VideoIcon sx={{ fontSize: 12 }} />
                   </IconButton>

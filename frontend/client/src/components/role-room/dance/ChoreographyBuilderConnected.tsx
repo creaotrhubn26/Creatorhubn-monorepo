@@ -465,7 +465,7 @@ export function ChoreographyBuilderConnected({
                 size="small"
                 onClick={() => void handleDelete()}
                 disabled={deleteBusy}
-                sx={{ color: '#ef4444' }}
+                sx={{ color: danceFlowColors.errorStrong }}
                 data-testid="choreography-delete"
               >
                 <DeleteIcon fontSize="small" />

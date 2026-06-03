@@ -422,7 +422,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
     const canvas = new Canvas(canvasElRef.current, {
       width: STAGE_WIDTH,
       height: STAGE_HEIGHT,
-      backgroundColor: '#0d1218',
+      backgroundColor: danceFlowColors.bgInset,
       selection: false,
       preserveObjectStacking: true,
       // Audit C1: Fabric v6 har native touch-event-støtte. Vi setter
@@ -901,14 +901,14 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                   src={d.photoUrl}
                   sx={{
                     width: 28, height: 28, fontSize: 10,
-                    bgcolor: d.color ?? '#3b82f6',
+                    bgcolor: d.color ?? danceFlowColors.info,
                     border: inFormation ? `2px solid ${d.color ?? danceFlowColors.lavenderDark}` : 'none',
                   }}
                 >
                   {d.initials}
                 </Avatar>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography noWrap sx={{ fontSize: 11, fontWeight: 600, color: inFormation ? '#fff' : '#cbd5e1' }}>
+                  <Typography noWrap sx={{ fontSize: 11, fontWeight: 600, color: inFormation ? '#fff' : danceFlowColors.grayLight }}>
                     {d.name}
                   </Typography>
                   {d.role && (
@@ -997,7 +997,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             sx={{
               minWidth: 160,
               '& .MuiInputBase-root': {
-                bgcolor: '#0d1218',
+                bgcolor: danceFlowColors.bgInset,
                 color: danceFlowColors.textSecondary,
                 fontSize: 12,
               },
@@ -2310,7 +2310,7 @@ function drawFormation(
 
     const cx = STAGE_PADDING + pos.x * innerWidth;
     const cy = STAGE_PADDING + pos.y * innerHeight;
-    const color = dancer.color ?? '#3b82f6';
+    const color = dancer.color ?? danceFlowColors.info;
 
     // Sirkel for danser-puck.
     // Audit B1: hvis keyboard-aktiv, render lavender ring + tykkere stroke

@@ -357,7 +357,7 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                           </Tooltip>
                         )}
                       </Stack>
-                      <Typography sx={{ fontSize: 10.5, color: '#cbd5e1' }}>
+                      <Typography sx={{ fontSize: 10.5, color: danceFlowColors.grayLight }}>
                         {fu.followUp}
                       </Typography>
                       {fu.dueBy && (
@@ -457,12 +457,12 @@ const RehearsalHeader: React.FC<{
 const HeaderPill: React.FC<{ label: string; icon?: React.ReactNode }> = ({ label, icon }) => (
   <Stack direction="row" spacing={0.5} alignItems="center" sx={{ px: 1, py: 0.4, borderRadius: 12, bgcolor: danceFlowColors.borderStrong, border: '1px solid #2a3142' }}>
     {icon && <Box sx={{ color: danceFlowColors.textMuted, display: 'flex' }}>{icon}</Box>}
-    <Typography sx={{ fontSize: 10, color: '#cbd5e1', fontWeight: 500 }}>{label}</Typography>
+    <Typography sx={{ fontSize: 10, color: danceFlowColors.grayLight, fontWeight: 500 }}>{label}</Typography>
   </Stack>
 );
 
 const STATUS_META: Record<RehearsalStatus, { label: string; color: string }> = {
-  planned:     { label: 'Planlagt',     color: '#60a5fa' },
+  planned:     { label: 'Planlagt',     color: danceFlowColors.infoLight },
   in_progress: { label: 'I gang',       color: danceFlowColors.gold },
   completed:   { label: 'Fullført',     color: danceFlowColors.successPrimary },
   cancelled:   { label: 'Avlyst',       color: danceFlowColors.textMuted },
@@ -587,7 +587,7 @@ const FocusAreaCard: React.FC<FocusAreaCardProps> = ({
           <Chip
             size="small"
             label={`${area.estimatedMinutes} min`}
-            sx={{ height: 20, fontSize: 9.5, bgcolor: danceFlowColors.borderStrong, color: '#cbd5e1' }}
+            sx={{ height: 20, fontSize: 9.5, bgcolor: danceFlowColors.borderStrong, color: danceFlowColors.grayLight }}
           />
         )}
       </Stack>
@@ -642,7 +642,7 @@ const SegmentReviewRow: React.FC<{
         value={note ?? ''}
         onChange={(e) => onSetOutcome(outcome, e.target.value)}
         placeholder="Notat (valgfri)"
-        InputProps={{ disableUnderline: true, sx: { fontSize: 10, color: '#cbd5e1' } }}
+        InputProps={{ disableUnderline: true, sx: { fontSize: 10, color: danceFlowColors.grayLight } }}
       />
     </Box>
   );
@@ -662,7 +662,7 @@ const OutcomeButton: React.FC<{ outcome: RehearsalOutcome; active: boolean; onCl
         aria-label={cfg.tip}
         sx={{
           p: 0.4,
-          color: active ? cfg.color : '#4b5563',
+          color: active ? cfg.color : danceFlowColors.grayMid,
           bgcolor: active ? `${cfg.color}22` : 'transparent',
           border: active ? `1px solid ${cfg.color}55` : '1px solid transparent',
         }}
@@ -718,7 +718,7 @@ const DancerFollowUpAdder: React.FC<{
         sx={{
           bgcolor: danceFlowColors.borderStrong, color: danceFlowColors.lavender,
           '&:hover': { bgcolor: danceFlowColors.borderSoft },
-          '&.Mui-disabled': { color: '#4b5563' },
+          '&.Mui-disabled': { color: danceFlowColors.grayMid },
         }}
       >
         <AddIcon sx={{ fontSize: 14 }} />
@@ -760,7 +760,7 @@ const textareaSx = {
   '& .MuiOutlinedInput-root': {
     bgcolor: danceFlowColors.bgBase,
     '& fieldset': { borderColor: danceFlowColors.borderStrong },
-    '&:hover fieldset': { borderColor: '#374151' },
+    '&:hover fieldset': { borderColor: danceFlowColors.grayDark },
     '&.Mui-focused fieldset': { borderColor: danceFlowColors.lavenderDark },
   },
 } as const;

@@ -145,7 +145,7 @@ export default function AnnotationExportOverlay({
           position: 'fixed', top: 0, left: 0,
           width: '100vw', height: '100vh',
           background: 'white', overflow: 'auto',
-          zIndex: 9999, color: '#1f2937',
+          zIndex: 9999, color: danceFlowColors.graySteel,
           fontFamily: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',
         }}
       >
@@ -156,7 +156,7 @@ export default function AnnotationExportOverlay({
             position: 'sticky', top: 0,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '8px 16px',
-            background: '#f3f4f6',
+            background: danceFlowColors.grayPaper,
             borderBottom: '1px solid #d1d5db',
             zIndex: 10,
           }}
@@ -181,7 +181,7 @@ export default function AnnotationExportOverlay({
               onClick={handleDownloadCsv}
               data-testid="annotation-export-csv"
               style={{
-                background: 'white', color: '#1f2937',
+                background: 'white', color: danceFlowColors.graySteel,
                 border: '1px solid #d1d5db',
                 borderRadius: 4, padding: '6px 14px', fontWeight: 700, cursor: 'pointer',
               }}
@@ -217,7 +217,7 @@ export default function AnnotationExportOverlay({
           </h2>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 16 }}>
             <thead>
-              <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
+              <tr style={{ background: danceFlowColors.grayPaper, textAlign: 'left' }}>
                 <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>Kategori</th>
                 <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db', textAlign: 'right' }}>Antall</th>
                 <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db', textAlign: 'right' }}>Total varighet</th>
@@ -266,7 +266,7 @@ export default function AnnotationExportOverlay({
           </h2>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead>
-              <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
+              <tr style={{ background: danceFlowColors.grayPaper, textAlign: 'left' }}>
                 <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db', width: 28 }}>#</th>
                 <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>Start</th>
                 <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>Slutt</th>
@@ -324,7 +324,7 @@ export default function AnnotationExportOverlay({
                         ? a.targetDancerIds.map(dancerLabel).join(', ')
                         : '—'}
                     </td>
-                    <td style={{ padding: '4px 8px', color: '#4b5563', maxWidth: 240 }}>
+                    <td style={{ padding: '4px 8px', color: danceFlowColors.grayMid, maxWidth: 240 }}>
                       {a.body || ''}
                     </td>
                   </tr>

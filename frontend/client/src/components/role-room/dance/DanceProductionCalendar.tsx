@@ -651,7 +651,7 @@ export function DanceProductionCalendar({
               </DialogTitle>
               <DialogContent>
                 <Stack spacing={1}>
-                  <Typography sx={{ fontSize: 12, color: '#cbd5e1' }}>
+                  <Typography sx={{ fontSize: 12, color: danceFlowColors.grayLight }}>
                     {new Date(detailEvent.startSec).toLocaleString('nb-NO')}
                     {detailEvent.endSec ? ` – ${formatTimeShort(detailEvent.endSec)}` : ''}
                   </Typography>

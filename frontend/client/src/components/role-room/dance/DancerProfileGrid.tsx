@@ -323,7 +323,7 @@ const fieldSx = {
   '& .MuiOutlinedInput-root': {
     bgcolor: danceFlowColors.bgPanel,
     '& fieldset': { borderColor: danceFlowColors.borderStrong },
-    '&:hover fieldset': { borderColor: '#374151' },
+    '&:hover fieldset': { borderColor: danceFlowColors.grayDark },
     '&.Mui-focused fieldset': { borderColor: danceFlowColors.lavenderDark },
   },
 } as const;

@@ -82,7 +82,7 @@ interface LoadState {
 }
 
 const PALETTE = [
-  '#3b82f6', danceFlowColors.amber, danceFlowColors.successDark, danceFlowColors.lavenderDark, '#ec4899',
+  danceFlowColors.info, danceFlowColors.amber, danceFlowColors.successDark, danceFlowColors.lavenderDark, danceFlowColors.pinkAccent,
   '#06b6d4', '#f97316', '#84cc16', '#a855f7', '#f43f5e',
 ];
 
@@ -446,7 +446,7 @@ export function FormationViewConnected({
               icon={<ErrorIcon sx={{ fontSize: 16 }} />}
               label={saveError ?? 'Lagring feilet'}
               size="small"
-              sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#ef4444', fontWeight: 600 }}
+              sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: danceFlowColors.errorStrong, fontWeight: 600 }}
             />
           ) : null}
         </Stack>
