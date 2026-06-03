@@ -18690,7 +18690,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     operatorId: z.string().min(1).max(160),
     deviceId: z.string().min(1).max(240),
     shootingDayId: z.string().min(1).max(160).optional(),
-    metadata: z.record(z.unknown()).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   });
 
   const liveSetEventSchema = z.object({
@@ -18698,7 +18698,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     sessionId: z.string().min(2).max(128),
     seq: z.number().int().positive(),
     type: z.enum(liveSetEventTypeValues),
-    payload: z.record(z.unknown()).default({}),
+    payload: z.record(z.string(), z.unknown()).default({}),
     capturedAt: z.string().min(4),
     deviceId: z.string().min(1).max(240),
     operatorId: z.string().min(1).max(160),

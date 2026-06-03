@@ -187,8 +187,9 @@ export function createStoryboardRouter(
     const quality = body.quality === 'hd' ? 'hd' : 'standard';
     const size = body.aspectRatio ?? '1792x1024';
 
-    // Bruker DOM/Node Response-typen for fetch — IKKE Express' Response.
-    let openaiResponse: globalThis.Response | undefined;
+    // Express' Response shadower fetch's Response her. Bruker
+    // Awaited<ReturnType<typeof fetch>> så typen er korrekt fetch-Response.
+    let openaiResponse: Awaited<ReturnType<typeof fetch>> | undefined;
     try {
       openaiResponse = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
@@ -204,17 +205,17 @@ export function createStoryboardRouter(
           quality,
           response_format: 'b64_json',
         }),
-      }) as unknown as Response;
+      });
     } catch (err) {
       res.status(502).json({ error: 'openai_network', detail: String(err) });
       return;
     }
 
-    if (!openaiResponse.ok) {
-      const errText = await openaiResponse.text().catch(() => '');
+    if (!openaiResponse || !openaiResponse.ok) {
+      const errText = openaiResponse ? await openaiResponse.text().catch(() => '') : '';
       res.status(502).json({
         error: 'openai_failed',
-        status: openaiResponse.status,
+        status: openaiResponse?.status ?? 0,
         detail: errText.slice(0, 500),
       });
       return;

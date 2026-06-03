@@ -34,7 +34,8 @@ export interface UserRoutesDeps {
   getUserIdFromAuth: (req: any) => string | null;
   isProtectedAcademyKvKey: (rawKey: unknown) => boolean;
   isRecord: (value: unknown) => value is Record<string, unknown>;
-  normalizeInterfacePreferencesRecord: (value: unknown) => any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  normalizeInterfacePreferencesRecord: (value: any) => any;
   readCompatPaymentMethods: (
     userId: string,
   ) => Promise<CompatPaymentMethod[]>;
