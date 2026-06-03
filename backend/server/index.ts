@@ -712,6 +712,7 @@ import { setupContractsUploadImportRoutes } from "./contracts-upload-import-rout
 import { setupBackupRoutes } from "./backup-routes";
 import { setupMaintenanceRoutes } from "./maintenance-routes";
 import { setupSplitSheetsRoutes } from "./split-sheets-routes";
+import { setupSongflowDeprecatedAliasesRoutes } from "./songflow-deprecated-aliases-routes";
 import { setupPricingRoutes } from "./pricing-routes";
 import { setupAccountingRoutes } from "./accounting-routes";
 import { setupFileManagementRoutes } from "./file-management-routes";
@@ -67539,6 +67540,9 @@ setupMaintenanceRoutes({
   toDateOnly, addMonths, resolveScheduledDate, mapMaintenanceRow,
 });
 setupSplitSheetsRoutes({ app, pool, getSplitSheetUserId });
+// NB: setupSongflowDeprecatedAliasesRoutes wires later (etter handler-
+// deklarasjoner ~linje 70324). Trivielle deprecation-aliases krever at
+// EaseVerse-handlers først er deklarert.
 setupPricingRoutes({ app, pool, requireUserSession, getPricingUserId });
 setupAccountingRoutes({
   app,
@@ -70422,50 +70426,23 @@ app.delete(
   unlinkSplitSheetEaseVerseHandler,
 );
 
-// SongFlow aliases (backward compatibility)
-app.get("/api/songflow-projects", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/easeverse-projects");
-  return listEaseVerseProjectsHandler(req, res);
-});
-app.get("/api/songflow-tracks", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/easeverse-tracks");
-  return listEaseVerseTracksHandler(req, res);
-});
-app.post("/api/songflow-tracks", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/easeverse-tracks");
-  return createEaseVerseTrackHandler(req, res);
-});
-app.post("/api/songflow-tracks/:trackId/backup", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/easeverse-tracks/:trackId/backup");
-  return backupEaseVerseTrackHandler(req, res);
-});
-app.post("/api/songflow-tracks/:trackId/sync-lyrics", (req, res) => {
-  markSongFlowAliasDeprecated(
-    res,
-    "/api/easeverse-tracks/:trackId/sync-lyrics",
-  );
-  return syncEaseVerseLyricsHandler(req, res);
-});
-app.put("/api/songflow-tracks/:trackId/lyrics", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/easeverse-tracks/:trackId/lyrics");
-  return updateEaseVerseLyricsHandler(req, res);
-});
-
-app.post("/api/split-sheets/from-songflow/:trackId", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/split-sheets/from-easeverse/:trackId");
-  return createSplitSheetFromEaseVerseTrackHandler(req, res);
-});
-app.get("/api/split-sheets/:id/songflow", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/split-sheets/:id/easeverse");
-  return listSplitSheetEaseVerseLinksHandler(req, res);
-});
-app.post("/api/split-sheets/:id/link-songflow", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/split-sheets/:id/link-easeverse");
-  return linkSplitSheetEaseVerseHandler(req, res);
-});
-app.delete("/api/split-sheets/:id/unlink-songflow", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/split-sheets/:id/unlink-easeverse");
-  return unlinkSplitSheetEaseVerseHandler(req, res);
+// SongFlow + split-sheets-songflow deprecation-aliases — ekstraktert til
+// ./songflow-deprecated-aliases-routes.ts (10 routes, trivielle wirings).
+// Wires HER (etter EaseVerse-handler-deklarasjoner) for å unngå TDZ-feil
+// på block-scoped `const`-handlers.
+setupSongflowDeprecatedAliasesRoutes({
+  app,
+  markSongFlowAliasDeprecated,
+  listEaseVerseProjectsHandler,
+  listEaseVerseTracksHandler,
+  createEaseVerseTrackHandler,
+  backupEaseVerseTrackHandler,
+  syncEaseVerseLyricsHandler,
+  updateEaseVerseLyricsHandler,
+  createSplitSheetFromEaseVerseTrackHandler,
+  listSplitSheetEaseVerseLinksHandler,
+  linkSplitSheetEaseVerseHandler,
+  unlinkSplitSheetEaseVerseHandler,
 });
 
 // /api/split-sheets/* inline-handlere — ekstraktert til ./split-sheets-routes.ts.
