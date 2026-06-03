@@ -29,6 +29,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useQueryClient } from '@tanstack/react-query';
+import StorageProviderStep from '@/components/onboarding/StorageProviderStep';
 
 const PROFESSIONS = [
   { id: 'photographer', label: 'Fotograf', icon: <CameraIcon />, color: '#ffba6c', tagline: 'Bryllup, portrett, kommersielt' },
@@ -60,7 +61,7 @@ const TIER_RECOMMENDATIONS: Record<string, { name: string; price: string; reason
   },
 };
 
-const STEPS = ['Velkomst', 'Profesjon', 'Brand', 'Marketplace', 'Ferdig'] as const;
+const STEPS = ['Velkomst', 'Profesjon', 'Brand', 'Marketplace', 'Backup', 'Ferdig'] as const;
 
 const DRAFT_KEY = 'individual-onboarding-draft';
 const PENDING_SAVE_KEY = 'individual-onboarding-pending-save';
@@ -515,8 +516,19 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
           </Stack>
         )}
 
-        {/* STEG 5: Ferdig */}
+        {/* STEG 5: Backup-provider (offsite) — valgfritt for alle profesjoner */}
         {step === 4 && (
+          <Stack spacing={3}>
+            <StorageProviderStep
+              variant="wizard"
+              onCompleted={() => setStep((s) => s + 1)}
+              onSkip={() => setStep((s) => s + 1)}
+            />
+          </Stack>
+        )}
+
+        {/* STEG 6: Ferdig */}
+        {step === 5 && (
           <Stack spacing={3}>
             <Box sx={{ textAlign: 'center', py: 2 }}>
               <DoneIcon sx={{ fontSize: 72, color: '#10b981', mb: 1 }} />

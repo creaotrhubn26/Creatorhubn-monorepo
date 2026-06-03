@@ -1,0 +1,74 @@
+/**
+ * API-klient for storage-providers — fotografens egne Backblaze-konti
+ * (eller andre S3-kompatible providere) som One Desk bruker for
+ * offsite-backup. Backend-rutene ligger i
+ * backend/server/storage-providers-routes.ts.
+ *
+ * SikkerhetsKontrakt:
+ *   - POST sender plaintext key_id + application_key MEN backend
+ *     validerer mot Backblaze FØR lagring og krypterer AES-256-GCM.
+ *   - GET returnerer ALDRI plaintext etter opprettelse.
+ *   - DELETE fjerner kun lokalt — eksisterende filer i Backblaze må
+ *     slettes via Backblaze-konsoll eller right-to-erasure-flow
+ *     (Fase 3).
+ */
+
+import { apiRequest } from '@/lib/queryClient';
+
+export type StorageProviderType = 'b2';
+
+export interface StorageProvider {
+  id: string;
+  provider: StorageProviderType;
+  account_label: string;
+  validated_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface CreateStorageProviderPayload {
+  provider: StorageProviderType;
+  account_label: string;
+  key_id: string;
+  application_key: string;
+}
+
+export interface CreateStorageProviderResponse {
+  success: boolean;
+  provider?: StorageProvider;
+  capabilities?: string[];
+  error?: string;
+}
+
+export async function createStorageProvider(
+  payload: CreateStorageProviderPayload,
+): Promise<CreateStorageProviderResponse> {
+  return apiRequest('/api/storage/providers', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface ListStorageProvidersResponse {
+  success: boolean;
+  providers: StorageProvider[];
+  error?: string;
+}
+
+export async function listStorageProviders(): Promise<ListStorageProvidersResponse> {
+  return apiRequest('/api/storage/providers');
+}
+
+export interface DeleteStorageProviderResponse {
+  success: boolean;
+  warning?: string;
+  error?: string;
+}
+
+export async function deleteStorageProvider(
+  id: string,
+): Promise<DeleteStorageProviderResponse> {
+  return apiRequest(`/api/storage/providers/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
