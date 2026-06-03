@@ -26,7 +26,7 @@ export interface FrameSpec {
 //   iphone  1086x1448  screen 248,85 588x1275
 //   ipad    1086x1448  screen 131,112 823x1222
 //   ipad-L  1448x1086  screen 112,131 1222x823  (ipad rotert 90° CCW)
-//   macbook 1586x932   screen 261,39 1064x698  (base glattet + avrundet, slab fjernet)
+//   macbook 1586x932   screen 258,22 1070x712  (skjerm re-detektert presist)
 export const DEVICE_FRAMES: Record<FrameVariant, FrameSpec> = {
   iphone: {
     src: iphoneFrame, aspect: 1086 / 1448,
@@ -45,7 +45,7 @@ export const DEVICE_FRAMES: Record<FrameVariant, FrameSpec> = {
   },
   macbook: {
     src: macbookFrame, aspect: 1586 / 932,
-    screen: { x: 261 / 1586, y: 39 / 932, w: 1064 / 1586, h: 698 / 932 },
+    screen: { x: 258 / 1586, y: 22 / 932, w: 1070 / 1586, h: 712 / 932 },
     radius: 6 / 1586,
   },
 };

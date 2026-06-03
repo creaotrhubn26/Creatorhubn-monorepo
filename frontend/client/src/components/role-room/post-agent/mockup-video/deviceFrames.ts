@@ -36,7 +36,7 @@ export const DEVICE_FRAMES: Record<DeviceVariant, FrameSpec> = {
   iphone: { src: iphoneFrame, frameW: 1086, frameH: 1448, sx: 248, sy: 85, sw: 588, sh: 1275, screenRadius: 56 },
   ipad: { src: ipadFrame, frameW: 1086, frameH: 1448, sx: 131, sy: 112, sw: 823, sh: 1222, screenRadius: 20 },
   ipad_landscape: { src: ipadLandscapeFrame, frameW: 1448, frameH: 1086, sx: 112, sy: 131, sw: 1222, sh: 823, screenRadius: 20 },
-  macbook: { src: macbookFrame, frameW: 1586, frameH: 932, sx: 261, sy: 39, sw: 1064, sh: 698, screenRadius: 6 },
+  macbook: { src: macbookFrame, frameW: 1586, frameH: 932, sx: 258, sy: 22, sw: 1070, sh: 712, screenRadius: 6 },
 };
 
 /** Forholdstall (bredde/høyde) for hele frame-PNG-en. */
