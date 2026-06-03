@@ -277,15 +277,18 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 <span style={{ fontSize: 12, color: C.inkFaint }}>{fmt(cur?.duration ?? 0)}</span>
               </div>
             )}
-            {/* Trioen med EKTE rammer: Mac dominerende, iPad + iPhone foran.
-                Live <iframe> plasseres i skjerm-hullet, PNG-rammen legges over. */}
-            <div style={{ position: 'relative', width: '70%', maxWidth: 720 }}>
-              <FramedDevice variant="macbook" url={project.url} width="100%" iframeRef={macFrameRef} />
-              <div style={{ position: 'absolute', right: -52, top: '24%', width: '34%' }}>
-                <FramedDevice variant="ipad" url={project.url} width="100%" shadow="0 18px 40px rgba(0,0,0,0.22)" />
+            {/* Trioen side om side, bunn-justert — likestilte enheter (ingen
+                overlapp, Mac er ikke "kroppen"). Live <iframe> i skjerm-hullet,
+                PNG-rammen over. Bredder gir en naturlig device-family-lineup. */}
+            <div style={{ width: '88%', maxWidth: 860, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '4%' }}>
+              <div style={{ width: '52%' }}>
+                <FramedDevice variant="macbook" url={project.url} width="100%" iframeRef={macFrameRef} />
               </div>
-              <div style={{ position: 'absolute', right: -86, top: '40%', width: '17%' }}>
-                <FramedDevice variant="iphone" url={project.url} width="100%" shadow="0 14px 32px rgba(0,0,0,0.28)" />
+              <div style={{ width: '24%' }}>
+                <FramedDevice variant="ipad" url={project.url} width="100%" shadow="0 18px 40px rgba(0,0,0,0.20)" />
+              </div>
+              <div style={{ width: '13%' }}>
+                <FramedDevice variant="iphone" url={project.url} width="100%" shadow="0 14px 32px rgba(0,0,0,0.26)" />
               </div>
             </div>
           </div>
