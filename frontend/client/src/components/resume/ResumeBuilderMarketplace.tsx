@@ -50,6 +50,9 @@ import {
   Groups as GroupsIcon,
   Timer as TimerIcon,
   Image as ImageIcon,
+  Clear as ClearIcon,
+  SearchOff as SearchOffIcon,
+  InfoOutlined as InfoOutlinedIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
@@ -813,6 +816,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         key={app.id}
         sx={{
           height: '100%',
+          minHeight: featured ? 660 : 580,
           display: 'flex',
           flexDirection: 'column',
           borderRadius: featured ? 3 : 2,
@@ -947,10 +951,12 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 onClick={() => toggleFavorite(app.id)}
                 sx={{
                   color: favorites.has(app.id) ? app.gradientStart : '#ccc',
+                  transition: 'transform 0.1s',
                   '&:hover': {
                     color: app.gradientStart,
                     background: `${app.gradientStart}15`,
                   },
+                  '&:active': { transform: 'scale(0.95)' },
                 }}
               >
                 {favorites.has(app.id) ? <FavoriteIcon /> : <FavoriteBorderIcon />}
@@ -989,6 +995,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                   >
                     <Box
                       component="img"
+                      loading="lazy"
                       src={media.src}
                       alt={media.alt}
                       sx={{
@@ -1046,14 +1053,16 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
               ) : (
                 // Slice 9X.78 — "Ny app"-badge istedenfor mock-stjerner
                 <Chip
+                  icon={<InfoOutlinedIcon sx={{ fontSize: '0.9rem' }} />}
                   label="Ny app — venter på vurderinger"
                   size="small"
                   sx={{
-                    bgcolor: 'rgba(255,186,108,0.18)',
-                    color: '#ffba6c',
+                    bgcolor: 'rgba(79, 172, 254, 0.12)',
+                    color: '#0284c7',
                     fontWeight: 700,
                     fontSize: '0.66rem',
                     height: 22,
+                    '& .MuiChip-icon': { color: '#0284c7' },
                   }}
                 />
               )}
@@ -1141,12 +1150,12 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                   <Chip
                     label={app.pricing.displayPrice || `Fra ${app.pricing.price} ${app.pricing.currency}`}
                     sx={{
-                      background: `linear-gradient(135deg, ${app.gradientStart}22, ${app.gradientEnd}22)`,
-                      color: app.gradientStart,
+                      background: app.gradientStart,
+                      color: '#fff',
                       fontWeight: 800,
-                      fontSize: '0.92rem',
+                      fontSize: '1rem',
                       px: 1.5,
-                      py: 2,
+                      py: 2.5,
                       height: 'auto',
                       border: `1.5px solid ${app.gradientStart}55`,
                     }}
@@ -1186,8 +1195,8 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                         <Box
                           key={tier.id}
                           sx={{
-                            p: 1.5,
-                            borderRadius: 2,
+                            p: 2,
+                            borderRadius: 3.5,
                             border: isRecommended ? `2px solid ${app.gradientStart}` : '1px solid #e5e7eb',
                             background: isRecommended ? `${app.gradientStart}08` : '#ffffff',
                             position: 'relative',
@@ -1202,7 +1211,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                               sx={{
                                 position: 'absolute',
                                 top: -10,
-                                right: 12,
+                                left: 12,
                                 bgcolor: app.gradientStart,
                                 color: '#fff',
                                 fontWeight: 700,
@@ -1212,7 +1221,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                             />
                           )}
                           <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mb: 0.5 }}>
-                            <Typography variant="body2" sx={{ fontWeight: 800, color: '#1a1a1a' }}>
+                            <Typography variant="body1" sx={{ fontWeight: 800, color: '#1a1a1a' }}>
                               {tier.name}
                             </Typography>
                             <Typography
@@ -1411,8 +1420,8 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
           </Grid>
         </Grid>
 
-        <Grid container spacing={2} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6}>
+        <Grid container spacing={1} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={5}>
             <TextField
               fullWidth
               placeholder="Søk i apper og kategorier..."
@@ -1424,6 +1433,17 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                     <SearchIcon sx={{ color: '#999' }} />
                   </InputAdornment>
                 ),
+                endAdornment: searchTerm ? (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      aria-label="Tøm søk"
+                      onClick={() => setSearchTerm('')}
+                    >
+                      <ClearIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ) : undefined,
               }}
               sx={{
                 '& .MuiOutlinedInput-root': {
@@ -1440,7 +1460,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
               }}
             />
           </Grid>
-          <Grid item xs={6} sm={3}>
+          <Grid item xs={12} sm={3.5}>
             <FormControl fullWidth>
               <Select
                 value={sortBy}
@@ -1454,7 +1474,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6} sm={3}>
+          <Grid item xs={12} sm={3.5}>
             <FormControl fullWidth>
               <Select
                 value={selectedCategory}
@@ -1600,7 +1620,16 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       )}
 
       {featuredApps.length > 0 && (
-        <Box sx={{ mb: 6 }}>
+        <Paper
+          elevation={0}
+          sx={{
+            mb: 3,
+            p: 4,
+            background:
+              'linear-gradient(135deg, rgba(255,140,0,0.08) 0%, rgba(20,184,166,0.04) 100%)',
+            borderRadius: 4,
+          }}
+        >
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: '#999', textTransform: 'uppercase', letterSpacing: 1 }}>
             ⭐ Redaktørens valg
           </Typography>
@@ -1634,7 +1663,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
               </Paper>
             </Grid>
           </Grid>
-        </Box>
+        </Paper>
       )}
 
       <Box>
@@ -1652,8 +1681,12 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         </Grid>
         {filteredApps.length === 0 && (
           <Paper sx={{ p: 6, textAlign: 'center', background: 'rgba(255,255,255,0.04)', borderRadius: 2 }}>
+            <SearchOffIcon sx={{ fontSize: 64, color: '#ddd', mb: 2 }} />
             <Typography color="textSecondary" variant="h6">
               Ingen apper funnet
+            </Typography>
+            <Typography color="textSecondary" variant="subtitle1" sx={{ mt: 1 }}>
+              Prøv andre søkeord eller kategorier
             </Typography>
             <Typography color="textSecondary" sx={{ mt: 1 }}>
               Prøv å justere søk eller filtre
