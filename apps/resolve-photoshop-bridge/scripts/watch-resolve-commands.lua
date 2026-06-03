@@ -165,11 +165,82 @@ local function handleMediaPoolListItems(args)
     jsonEscape(folder:GetName() or ""), table.concat(items, ","), #items)
 end
 
+-- PowerGrade-handlere
+local function getGallery(project)
+  local g = project:GetGallery()
+  if not g then error("Gallery ikke tilgjengelig — sjekk at Color-page er aktiv") end
+  return g
+end
+
+local function handlePowerGradeList(args)
+  local _, project = getResolveContext()
+  local gallery = getGallery(project)
+  local albums = gallery:GetGalleryPowerGradeAlbums() or {}
+  local items = {}
+  for _, album in ipairs(albums) do
+    local name = gallery:GetAlbumName(album) or "(uten navn)"
+    local stills = album:GetStills() or {}
+    table.insert(items, string.format(
+      '{"name":%s,"still_count":%d}',
+      jsonEscape(name), #stills
+    ))
+  end
+  return string.format('{"albums":[%s],"count":%d}', table.concat(items, ","), #items)
+end
+
+local function handlePowerGradeCreate(args)
+  local _, project = getResolveContext()
+  local gallery = getGallery(project)
+  local name = extractString(args, "name")
+  local album = gallery:CreateGalleryPowerGradeAlbum()
+  if not album then error("CreateGalleryPowerGradeAlbum returnerte nil") end
+  if name then
+    gallery:SetAlbumName(album, name)
+  end
+  local finalName = gallery:GetAlbumName(album) or ""
+  return string.format('{"created":true,"name":%s}', jsonEscape(finalName))
+end
+
+local function handlePowerGradeExport(args)
+  local _, project = getResolveContext()
+  local gallery = getGallery(project)
+  local albumName = extractString(args, "album_name")
+  local folderPath = extractString(args, "folder_path")
+  local prefix = extractString(args, "prefix") or "postagent_grade"
+  local format = extractString(args, "format") or "drx"
+  if not albumName then error("album_name mangler") end
+  if not folderPath then error("folder_path mangler") end
+
+  local albums = gallery:GetGalleryPowerGradeAlbums() or {}
+  local target = nil
+  for _, album in ipairs(albums) do
+    if gallery:GetAlbumName(album) == albumName then
+      target = album
+      break
+    end
+  end
+  if not target then error("Fant ikke PowerGrade-album: " .. albumName) end
+
+  local stills = target:GetStills() or {}
+  if #stills == 0 then error("Album '" .. albumName .. "' har ingen stills") end
+
+  os.execute(string.format("mkdir -p \"%s\"", folderPath))
+  local ok = target:ExportStills(stills, folderPath, prefix, format)
+  return string.format(
+    '{"exported":%s,"album":%s,"folder":%s,"prefix":%s,"format":%s,"count":%d}',
+    tostring(ok), jsonEscape(albumName), jsonEscape(folderPath),
+    jsonEscape(prefix), jsonEscape(format), #stills
+  )
+end
+
 local HANDLERS = {
   ["quickExport.list"] = handleQuickExportList,
   ["quickExport.run"] = handleQuickExportRun,
   ["project.info"] = handleProjectInfo,
   ["mediaPool.listItems"] = handleMediaPoolListItems,
+  ["powerGrade.list"] = handlePowerGradeList,
+  ["powerGrade.create"] = handlePowerGradeCreate,
+  ["powerGrade.export"] = handlePowerGradeExport,
 }
 
 -- ---------------------------------------------------------------------------

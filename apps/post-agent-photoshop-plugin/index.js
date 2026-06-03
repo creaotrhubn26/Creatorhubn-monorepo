@@ -608,6 +608,26 @@ const COMMANDS = {
     return await COMMANDS["resolve.sendCommand"]({ name: "mediaPool.listItems" });
   },
 
+  "resolve.powerGradeList": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "powerGrade.list" });
+  },
+
+  "resolve.powerGradeCreate": async ({ name } = {}) => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "powerGrade.create",
+      args: { name: name || "" },
+    });
+  },
+
+  "resolve.powerGradeExport": async ({ album_name, folder_path, prefix, format } = {}) => {
+    assertString(album_name, "album_name");
+    assertString(folder_path, "folder_path");
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "powerGrade.export",
+      args: { album_name, folder_path, prefix: prefix || "postagent_grade", format: format || "drx" },
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
