@@ -1,13 +1,20 @@
 import { useEffect, useState } from "react";
 import { Box, CircularProgress, Container, Typography } from "@mui/material";
-import { deviceTokenStatus, listProjects, loadStoredConfig, StoredConfig } from "./api";
+import { desktopLogout, deviceTokenStatus, listProjects, loadStoredConfig, StoredConfig } from "./api";
 import TokenSetupScreen from "./components/TokenSetupScreen";
 import ProjectInfoScreen from "./components/ProjectInfoScreen";
 import ProjectPickerScreen from "./components/ProjectPickerScreen";
 import LoginScreen from "./components/LoginScreen";
+import NoProjectsScreen from "./components/NoProjectsScreen";
 import UpdaterDialog from "./components/UpdaterDialog";
 
-type Status = "loading" | "needs-login" | "needs-token" | "picker" | "connected";
+type Status =
+  | "loading"
+  | "needs-login"
+  | "needs-token"
+  | "no-projects"
+  | "picker"
+  | "connected";
 
 interface PendingUpdate {
   version: string;
@@ -72,11 +79,13 @@ export default function App() {
       const deviceToken = await deviceTokenStatus().catch(() => null);
 
       if (projs.length === 0) {
-        // Ingen prosjekter — vis Google-login med manuell-token-fallback
         setConfig(null);
-        // Hvis device-token finnes men ingen prosjekter (rare race), gå
-        // til login uansett — backend kan fortsatt re-fetche.
-        setStatus(deviceToken || !deviceToken ? "needs-login" : "needs-token");
+        // Skill mellom «ingen device-token» (vis login) og «innlogget men
+        // ingen prosjekter» (vis welcome-skjerm m/ forklaring + link).
+        // Tidligere logikk sendte alltid til login → opplevdes som at
+        // ingenting skjedde etter Google-login fordi UI returnerte til
+        // samme skjermbilde.
+        setStatus(deviceToken ? "no-projects" : "needs-login");
         return;
       }
       if (cfg && cfg.has_token) {
@@ -105,6 +114,16 @@ export default function App() {
     setStatus("needs-token");
   };
 
+  const handleLogout = async () => {
+    try {
+      await desktopLogout();
+    } catch {
+      // best-effort — fortsetter til login uansett
+    }
+    setConfig(null);
+    setStatus("needs-login");
+  };
+
   useEffect(() => {
     void refresh();
   }, []);
@@ -130,6 +149,10 @@ export default function App() {
 
   if (status === "picker") {
     return <ProjectPickerScreen onProjectSelected={refresh} onAddNew={handleAddNew} />;
+  }
+
+  if (status === "no-projects") {
+    return <NoProjectsScreen onRefresh={refresh} onLogout={handleLogout} />;
   }
 
   return (
