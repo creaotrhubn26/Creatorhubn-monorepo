@@ -816,7 +816,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
           display: 'flex',
           flexDirection: 'column',
           borderRadius: featured ? 3 : 2,
-          border: featured ? `2px solid ${app.gradientStart}` : '1px solid #e0e0e0',
+          border: featured ? `2px solid ${app.gradientStart}` : '1px solid rgba(255,255,255,0.10)',
           overflow: 'hidden',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           background: featured
@@ -848,7 +848,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 label="Utvalgt"
                 size="small"
                 sx={{
-                  background: 'rgba(255, 255, 255, 0.95)',
+                  background: 'rgba(255,255,255,0.04)',
                   color: app.gradientStart,
                   fontWeight: 700,
                   fontSize: '0.7rem',
@@ -982,7 +982,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                       height: featured ? 112 : 88,
                       borderRadius: 2,
                       overflow: 'hidden',
-                      border: '1px solid rgba(15, 23, 42, 0.08)',
+                      border: '1px solid rgba(255,255,255,0.10)',
                       background: '#09090f',
                       boxShadow: '0 12px 24px rgba(15, 23, 42, 0.12)',
                     }}
@@ -1072,7 +1072,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                     sx={{
                       width: '100%',
                       height: 4,
-                      background: '#e0e0e0',
+                      background: 'rgba(255,255,255,0.10)',
                       borderRadius: 2,
                       overflow: 'hidden',
                     }}
@@ -1428,13 +1428,13 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 2,
-                  background: '#f5f5f5',
+                  background: 'rgba(255,255,255,0.04)',
                   fontSize: '0.95rem',
                   '&:hover': {
                     background: '#f0f0f0',
                   },
                   '& fieldset': {
-                    borderColor: '#e0e0e0',
+                    borderColor: 'rgba(255,255,255,0.10)',
                   },
                 },
               }}
@@ -1445,7 +1445,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
               <Select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                sx={{ borderRadius: 2, background: '#f5f5f5' }}
+                sx={{ borderRadius: 2, background: 'rgba(255,255,255,0.04)' }}
               >
                 <MenuItem value="featured">Utvalgt</MenuItem>
                 <MenuItem value="rating">Best vurdert</MenuItem>
@@ -1459,7 +1459,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
               <Select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                sx={{ borderRadius: 2, background: '#f5f5f5' }}
+                sx={{ borderRadius: 2, background: 'rgba(255,255,255,0.04)' }}
               >
                 <MenuItem value="all">Alle kategorier</MenuItem>
                 {categories.slice(1).map(cat => (
@@ -1612,7 +1612,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
               <Paper
                 sx={{
                   p: 3,
-                  background: 'linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%)',
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.04) 100%)',
                   borderRadius: 3,
                   height: '100%',
                   display: 'flex',
@@ -1651,7 +1651,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
           ))}
         </Grid>
         {filteredApps.length === 0 && (
-          <Paper sx={{ p: 6, textAlign: 'center', background: '#f5f5f5', borderRadius: 2 }}>
+          <Paper sx={{ p: 6, textAlign: 'center', background: 'rgba(255,255,255,0.04)', borderRadius: 2 }}>
             <Typography color="textSecondary" variant="h6">
               Ingen apper funnet
             </Typography>
@@ -1662,7 +1662,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
         )}
       </Box>
 
-      <Box sx={{ mt: 8, pt: 4, borderTop: '1px solid #e0e0e0', textAlign: 'center' }}>
+      <Box sx={{ mt: 8, pt: 4, borderTop: '1px solid rgba(255,255,255,0.10)', textAlign: 'center' }}>
         <Typography variant="body1" sx={{ color: '#666', mb: 2 }}>
           Finner du ikke det du leter etter?
         </Typography>
@@ -1747,7 +1747,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 <Typography color="textSecondary">Ingen anmeldelser ennå. Vær den første!</Typography>
               )}
               {(reviewsByApp[activeReviewApp.id] || []).map((review) => (
-                <Paper key={review.id} sx={{ p: 2, borderRadius: 2, background: '#fafafa' }}>
+                <Paper key={review.id} sx={{ p: 2, borderRadius: 2, background: 'rgba(255,255,255,0.04)' }}>
                   <Stack spacing={1}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
