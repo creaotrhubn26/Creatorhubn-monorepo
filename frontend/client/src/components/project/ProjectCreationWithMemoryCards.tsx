@@ -145,6 +145,7 @@ import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
 import { useLeadImport } from '@/hooks/useLeadImport';
 import ProjectHealthCheck from './ProjectHealthCheck';
 import ProjectCollaborators from './ProjectCollaborators';
+import CloudDestinationActivator from '@/components/storage/CloudDestinationActivator';
 import { getCamerasByProfession, getLogFormatsByCamera, getCameraBrand } from '../../data/video-camera-database';
 import { getPhotoCamerasByProfession, getPhotoCameraBrand } from '../../data/photo-camera-database';
 import { MemoryCardRecommendationEngine, getMemoryCardTypesByProfession, formatCurrency } from '../../data/memory-card-database';
@@ -4489,6 +4490,30 @@ useEffect(() => {
           </Button>
         </CardContent>
       </Card>
+
+      {/* ==========================================
+         OFFSITE BACKUP (B2)
+         ========================================== */}
+      {currentProject?.id && (
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 1 }}>
+              Ekstern backup (offsite)
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Aktiver en Backblaze-bucket som offsite-destinasjon for dette
+              prosjektet. Filene lastes opp direkte fra Creatorhub One Desk
+              under backup-økten — vi ser dem aldri.
+            </Typography>
+            <CloudDestinationActivator
+              projectId={String(currentProject.id)}
+              onActivated={() => {
+                showSuccessToast?.('Offsite-backup aktivert — den nye destinasjonen vises i One Desk neste gang du starter en backup.', 5000);
+              }}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* ==========================================
          PROJECT COLLABORATORS
