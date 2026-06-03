@@ -1,9 +1,9 @@
 /**
  * TalentsLogo.tsx — "The Role Room" eksisterende logo + "TALENTS" under.
  *
- * Bruker /TheRoleRoom_Logo_Tagline.png (eksisterende asset) — pek til
- * /TheRoleRoom_Logo_v2.png når Daniel laster opp ny logo
- * stacker "TALENTS" tekst under for å matche mockup #11 sidebar-header.
+ * Bruker /theroleroom-app-icon-1024-transparent.png (oppdatert logo med
+ * teater-masker + clapperboard + person-ikon + "Casting. Roles. Together."
+ * tagline) + "TALENTS"-tekst under for sidebar-header.
  */
 
 import { Box, Typography } from '@mui/material';
@@ -20,7 +20,7 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Box
           component="img"
-          src="/TheRoleRoom_Logo_Tagline.png"
+          src="/theroleroom-app-icon-1024-transparent.png"
           alt="The Role Room Talents"
           sx={{ height: 28, width: 'auto', objectFit: 'contain' }}
         />
@@ -43,22 +43,19 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'flex-start',
-        gap: 0.6,
-        pl: 0.4,
+        alignItems: 'center',
+        gap: 0.4,
       }}
     >
       <Box
         component="img"
-        src="/TheRoleRoom_Logo_Tagline.png"
+        src="/theroleroom-app-icon-1024-transparent.png"
         alt="The Role Room"
         sx={{
           width: '100%',
-          maxWidth: 180,
+          maxWidth: 140,
           height: 'auto',
           objectFit: 'contain',
-          // Sett ned tagline-fading slik at "TALENTS" under blir den dominante undertittelen
-          filter: 'brightness(1.05)',
         }}
       />
       <Typography
@@ -67,8 +64,7 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
           fontSize: '0.78rem',
           fontWeight: 800,
           letterSpacing: '0.42em',
-          pl: '54px', // align under "ROLE ROOM"-teksten (etter ikon-delen av logo)
-          mt: -0.4,
+          mt: -0.2,
         }}
       >
         TALENTS
