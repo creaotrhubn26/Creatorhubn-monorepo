@@ -640,6 +640,16 @@ export const photoshop = {
       params,
     ),
 
+  resolveSubtitleImportFromFile: (params: { file_path: string; append_to_timeline?: boolean }) =>
+    send<{
+      imported: boolean;
+      name: string;
+      clip_id: string;
+      path: string;
+      appended: boolean;
+      timeline_items: number;
+    }>("resolve.subtitleImportFromFile", params),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 
