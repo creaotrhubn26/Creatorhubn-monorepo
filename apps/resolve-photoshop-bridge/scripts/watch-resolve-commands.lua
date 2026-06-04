@@ -332,12 +332,25 @@ local function handleSpeechGenerate(args)
   )
 end
 
+-- Slate marker-farger fra README §"Analyze Slate Settings"
+local SLATE_MARKER_COLORS = {
+  Blue = true, Cyan = true, Green = true, Yellow = true, Red = true,
+  Pink = true, Purple = true, Fuchsia = true, Rose = true, Lavender = true,
+  Sky = true, Mint = true, Lemon = true, Sand = true, Cocoa = true, Cream = true,
+}
+
 -- slate.analyze — finn slates i clips, opprett markers
 local function handleSlateAnalyze(args)
   local _, project = getResolveContext()
   local mediaPool = project:GetMediaPool()
   local clipId = extractString(args, "clip_id")
   local markerColor = extractString(args, "marker_color") or "Yellow"
+
+  if not SLATE_MARKER_COLORS[markerColor] then
+    error("Ugyldig marker_color: " .. markerColor ..
+      " (gyldige: Blue, Cyan, Green, Yellow, Red, Pink, Purple, Fuchsia, " ..
+      "Rose, Lavender, Sky, Mint, Lemon, Sand, Cocoa, Cream)")
+  end
 
   local target, scope
   if clipId then
@@ -354,6 +367,37 @@ local function handleSlateAnalyze(args)
   return string.format(
     '{"scope":%s,"success":%s,"marker_color":%s}',
     jsonEscape(scope), tostring(ok), jsonEscape(markerColor)
+  )
+end
+
+-- intellisearch.analyze — synkron trigger av AnalyzeForIntellisearch.
+-- Bruk resolve.readIntellisearch (via analyze-intellisearch.lua-eksport)
+-- for å lese resultatene.
+local function handleIntellisearchAnalyze(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local clipId = extractString(args, "clip_id")
+  local identifyFaces = args:match('"identify_faces"%s*:%s*true') ~= nil
+  local isBetterMode = args:match('"better_mode"%s*:%s*true') ~= nil
+
+  local target, scope, name
+  if clipId then
+    target = findMediaPoolItemById(mediaPool, clipId)
+    if not target then error("Fant ikke MediaPoolItem: " .. clipId) end
+    scope = "item"
+    name = target:GetName() or ""
+  else
+    target = mediaPool:GetCurrentFolder()
+    if not target then error("Ingen aktiv folder") end
+    scope = "folder"
+    name = target:GetName() or ""
+  end
+
+  local ok = target:AnalyzeForIntellisearch(identifyFaces, isBetterMode)
+  return string.format(
+    '{"scope":%s,"target":%s,"success":%s,"identify_faces":%s,"better_mode":%s}',
+    jsonEscape(scope), jsonEscape(name), tostring(ok),
+    tostring(identifyFaces), tostring(isBetterMode)
   )
 end
 
@@ -638,6 +682,7 @@ local HANDLERS = {
   ["audio.classify"] = handleAudioClassify,
   ["speech.generate"] = handleSpeechGenerate,
   ["slate.analyze"] = handleSlateAnalyze,
+  ["intellisearch.analyze"] = handleIntellisearchAnalyze,
   ["timeline.smartReframe"] = handleTimelineSmartReframe,
   ["timeline.getCurrentItem"] = handleTimelineGetCurrentItem,
   ["magicMask.create"] = handleMagicMaskCreate,

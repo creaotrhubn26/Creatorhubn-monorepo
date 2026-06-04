@@ -123,6 +123,29 @@ export type ResolveLanguage =
 
 export type ResolveTrackType = "video" | "audio" | "subtitle";
 
+export type SlateMarkerColor =
+  | "Blue"
+  | "Cyan"
+  | "Green"
+  | "Yellow"
+  | "Red"
+  | "Pink"
+  | "Purple"
+  | "Fuchsia"
+  | "Rose"
+  | "Lavender"
+  | "Sky"
+  | "Mint"
+  | "Lemon"
+  | "Sand"
+  | "Cocoa"
+  | "Cream";
+
+export const SLATE_MARKER_COLORS: readonly SlateMarkerColor[] = [
+  "Blue", "Cyan", "Green", "Yellow", "Red", "Pink", "Purple", "Fuchsia",
+  "Rose", "Lavender", "Sky", "Mint", "Lemon", "Sand", "Cocoa", "Cream",
+] as const;
+
 export interface ResolveExportBackResult {
   exported_to: string;
   outbox_dir: string;
@@ -442,11 +465,24 @@ export const photoshop = {
       added_to_timeline: boolean;
     }>("resolve.speechGenerate", params),
 
-  resolveSlateAnalyze: (params?: { clip_id?: string; marker_color?: string }) =>
-    send<{ scope: "item" | "folder"; success: boolean; marker_color: string }>(
+  resolveSlateAnalyze: (params?: { clip_id?: string; marker_color?: SlateMarkerColor }) =>
+    send<{ scope: "item" | "folder"; success: boolean; marker_color: SlateMarkerColor }>(
       "resolve.slateAnalyze",
       params ?? {},
     ),
+
+  resolveIntellisearchAnalyze: (params?: {
+    clip_id?: string;
+    identify_faces?: boolean;
+    better_mode?: boolean;
+  }) =>
+    send<{
+      scope: "item" | "folder";
+      target: string;
+      success: boolean;
+      identify_faces: boolean;
+      better_mode: boolean;
+    }>("resolve.intellisearchAnalyze", params ?? {}),
 
   resolveTimelineSmartReframe: () =>
     send<{ timeline: string; success: boolean }>("resolve.timelineSmartReframe"),

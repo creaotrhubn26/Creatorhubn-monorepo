@@ -664,10 +664,36 @@ const COMMANDS = {
   },
 
   "resolve.slateAnalyze": async ({ clip_id, marker_color } = {}) => {
+    const VALID_MARKER_COLORS = new Set([
+      "Blue", "Cyan", "Green", "Yellow", "Red", "Pink", "Purple", "Fuchsia",
+      "Rose", "Lavender", "Sky", "Mint", "Lemon", "Sand", "Cocoa", "Cream",
+    ]);
+    const color = marker_color || "Yellow";
+    if (!VALID_MARKER_COLORS.has(color)) {
+      throw new Error(
+        `Ugyldig marker_color: ${color} (gyldige: ${[...VALID_MARKER_COLORS].join(", ")})`,
+      );
+    }
     return await COMMANDS["resolve.sendCommand"]({
       name: "slate.analyze",
-      args: { clip_id, marker_color: marker_color || "Yellow" },
+      args: { clip_id, marker_color: color },
       timeout_ms: 180000,
+    });
+  },
+
+  "resolve.intellisearchAnalyze": async ({
+    clip_id,
+    identify_faces,
+    better_mode,
+  } = {}) => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "intellisearch.analyze",
+      args: {
+        clip_id,
+        identify_faces: identify_faces === true,
+        better_mode: better_mode === true,
+      },
+      timeout_ms: 600000,
     });
   },
 
