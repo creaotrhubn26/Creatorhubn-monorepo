@@ -20,9 +20,14 @@ export const VIEWPORT_W: Record<FrameVariant, number> = {
   iphone: 390, ipad: 834, ipad_landscape: 1194, macbook: 1440,
 };
 
-export function FramedDevice({ variant, url, width, shadow, iframeRef }: {
+export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, onScreenClick }: {
   variant: FrameVariant; url: string; width: string | number;
   shadow?: string; iframeRef?: React.Ref<HTMLIFrameElement>;
+  /** Innhold rendret OVER skjermen (hotspot/cursor/touch-overlay). */
+  overlay?: React.ReactNode;
+  /** Klikk på skjermflaten → koordinater i viewport-prosent (0–1). Når satt,
+   *  fanges klikk (for å plassere hotspot) i stedet for å gå til iframe-en. */
+  onScreenClick?: (xPct: number, yPct: number) => void;
 }) {
   const f = DEVICE_FRAMES[variant];
   const s = f.screen;
@@ -58,6 +63,20 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef }: {
             transform: `scale(${scale || 0.001})`, transformOrigin: '0 0',
             opacity: scale > 0 ? 1 : 0,
           }} />
+        {/* Overlay (hotspot/cursor/touch) over skjermen */}
+        {overlay}
+        {/* Klikk-fanger for hotspot-plassering (kun når onScreenClick er satt) */}
+        {onScreenClick && (
+          <div
+            onClick={(e) => {
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+              const y = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+              onScreenClick(x, y);
+            }}
+            style={{ position: 'absolute', inset: 0, cursor: 'crosshair', zIndex: 3 }}
+          />
+        )}
       </div>
     </div>
   );

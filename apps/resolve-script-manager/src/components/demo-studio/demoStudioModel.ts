@@ -91,6 +91,15 @@ export interface DemoScene {
   requiredAction: string;
   /** Primær handlingstype for required action (Script Builder dropdown). */
   actionType?: DemoActionType;
+  /** Navn på mål-elementet handlingen gjelder, f.eks. «Start free trial button». */
+  targetLabel?: string;
+  /**
+   * Interaktivt mål (hotspot) på siden — rektangel i VIEWPORT-PROSENT (0–1) av
+   * skjermflaten, så det rendres device-uavhengig over enhver preview. Fremheves
+   * i Guided Recorder + preview (cursor/touch/highlight). Fylles av manuell
+   * plassering, AI-forslag eller capture-laget (klikk-gjennom).
+   */
+  hotspot?: { x: number; y: number; w: number; h: number };
   /** Strukturerte browser-handlinger (valgfritt, for automasjon). */
   actions: DemoAction[];
   /** Tekst-overlay vist i videoen. */

@@ -21,6 +21,7 @@ import { ScriptBuilderView } from './ScriptBuilderView';
 import { GuidedRecorderView } from './GuidedRecorderView';
 import { ExportView } from './ExportView';
 import { FramedDevice } from './FramedDevice';
+import { SceneInteractionOverlay } from './SceneInteractionOverlay';
 import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
@@ -29,9 +30,9 @@ import { generateDemoFlow, fetchSiteContext, runResponsiveCheck } from './demoSt
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
-  RENDER_OPTION_LABELS, RESPONSIVE_STATUS_LABELS, RESPONSIVE_STATUS_COLORS,
+  RENDER_OPTION_LABELS, RESPONSIVE_STATUS_LABELS, RESPONSIVE_STATUS_COLORS, ACTION_META,
   totalDuration, hasRecordedWork, defaultRenderOptions,
-  type DemoDevice, type DemoType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix,
+  type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
 
@@ -108,6 +109,17 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [aiReady, setAiReady] = useState(isAiConnected());
   const [respBusy, setRespBusy] = useState(false);
   const [respReport, setRespReport] = useState<ResponsiveReport | null>(null);
+  const [placingHotspot, setPlacingHotspot] = useState(false);
+
+  /** Plasser scenens hotspot fra et klikk på preview-en (viewport-prosent). */
+  const placeHotspot = (xPct: number, yPct: number) => {
+    if (!selected) return;
+    const w = 0.22, h = 0.09; // knapp-aktig standardstørrelse
+    updateScene(selected.id, {
+      hotspot: { x: Math.max(0, Math.min(1 - w, xPct - w / 2)), y: Math.max(0, Math.min(1 - h, yPct - h / 2)), w, h },
+    });
+    setPlacingHotspot(false);
+  };
 
   // Responsive Check: vurder siden i desktop/tablet/mobil → vis rapport med
   // anvendbare fikser. Krever AI (Role Room) som AI Director.
@@ -157,6 +169,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const doneCount = scenes.filter((s) => s.status === 'done' || s.status === 'approved').length;
   const previewDevice = selected?.device ?? 'macbook';
   const previewVariant: FrameVariant = previewDevice === 'ipad' && selected?.orientation === 'landscape' ? 'ipad_landscape' : previewDevice;
+  const render = project?.render ?? defaultRenderOptions();
 
   const storyPicks = useMemo(() => (project ? demoScenesToPicks(project.scenes) : []), [project]);
   const storyChapters = useMemo(() => (project ? demoChapters(project.scenes) : []), [project]);
@@ -334,14 +347,24 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
             {/* ── Center: LIVE device preview ── */}
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: C.bg, overflowY: 'auto', padding: '16px 22px' }}>
-              <div style={{ display: 'flex', gap: 4, alignSelf: 'center', background: '#fff', border: `1px solid ${C.line}`, borderRadius: 9, padding: 3, marginBottom: 14 }}>
-                {(['macbook', 'ipad', 'iphone'] as DemoDevice[]).map((d) => (
-                  <div key={d} onClick={() => selected && setSceneDevice(selected.id, d)} title={DEVICE_LABEL[d]}
-                    style={{ minWidth: 40, height: 28, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '0 8px',
-                      background: previewDevice === d ? C.creamActive : 'transparent', color: previewDevice === d ? C.ink : C.inkFaint }}>
-                    {DEVICE_LABEL[d]}
-                  </div>
-                ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, alignSelf: 'center', marginBottom: 14 }}>
+                <div style={{ display: 'flex', gap: 4, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 9, padding: 3 }}>
+                  {(['macbook', 'ipad', 'iphone'] as DemoDevice[]).map((d) => (
+                    <div key={d} onClick={() => selected && setSceneDevice(selected.id, d)} title={DEVICE_LABEL[d]}
+                      style={{ minWidth: 40, height: 28, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '0 8px',
+                        background: previewDevice === d ? C.creamActive : 'transparent', color: previewDevice === d ? C.ink : C.inkFaint }}>
+                      {DEVICE_LABEL[d]}
+                    </div>
+                  ))}
+                </div>
+                {selected && (
+                  <button
+                    onClick={() => setPlacingHotspot((v) => !v)}
+                    title="Klikk på preview-en for å markere elementet handlingen gjelder"
+                    style={{ ...btn, height: 34, background: placingHotspot ? C.accent : '#fff', color: placingHotspot ? '#fff' : C.ink, borderColor: placingHotspot ? C.accent : C.lineStrong }}>
+                    ◎ {placingHotspot ? 'Klikk på elementet…' : selected.hotspot ? 'Flytt hotspot' : 'Sett hotspot'}
+                  </button>
+                )}
               </div>
 
               {/* Live preview i EKTE device-ramme (samme som Guided Recorder/eksport) */}
@@ -350,7 +373,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 width: previewVariant === 'macbook' ? '78%' : previewVariant === 'ipad_landscape' ? '64%' : previewVariant === 'ipad' ? '42%' : '26%',
                 maxWidth: previewVariant === 'macbook' ? 640 : previewVariant === 'ipad_landscape' ? 560 : previewVariant === 'ipad' ? 360 : 230,
               }}>
-                <FramedDevice variant={previewVariant} url={project.url} width="100%" />
+                <FramedDevice variant={previewVariant} url={project.url} width="100%"
+                  overlay={<SceneInteractionOverlay hotspot={selected?.hotspot} render={render} device={previewDevice} />}
+                  onScreenClick={placingHotspot ? placeHotspot : undefined} />
               </div>
 
               {/* Scene-flow-kort */}
@@ -391,7 +416,18 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   <div style={fldLabel}>Narration</div>
                   <div style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 14, whiteSpace: 'pre-wrap' }}>{recorderScene.narration || <em style={{ color: C.inkFaint }}>(ingen manus)</em>}</div>
                   <div style={fldLabel}>Required action</div>
-                  <div style={{ fontSize: 14, marginBottom: 14 }}>{recorderScene.requiredAction || <em style={{ color: C.inkFaint }}>(ingen)</em>}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 14, marginBottom: recorderScene.targetLabel ? 6 : 14 }}>
+                    <span style={{ width: 20, height: 20, borderRadius: '50%', border: `1px solid ${C.lineStrong}`, display: 'grid', placeItems: 'center', fontSize: 11, flexShrink: 0 }}>{ACTION_META[recorderScene.actionType ?? 'click'].icon}</span>
+                    <span>{recorderScene.requiredAction || <em style={{ color: C.inkFaint }}>(ingen)</em>}</span>
+                  </div>
+                  {recorderScene.targetLabel && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, border: `1px solid ${C.line}`, borderRadius: 8, padding: '8px 10px', marginBottom: 14, background: C.cream }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: C.accent, flexShrink: 0 }} />
+                      <span style={{ fontSize: 12.5, fontWeight: 600 }}>{recorderScene.targetLabel}</span>
+                      <div style={{ flex: 1 }} />
+                      <span style={{ fontSize: 10.5, color: recorderScene.hotspot ? C.green : C.inkFaint }}>{recorderScene.hotspot ? '◎ fremhevet' : 'ingen hotspot'}</span>
+                    </div>
+                  )}
                   <span style={{ ...chip, background: SCENE_STATUS_COLORS[recorderScene.status] }}>{SCENE_STATUS_LABELS[recorderScene.status]}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: rec.state === 'recording' ? '#ef4444' : C.inkSoft, margin: '14px 0' }}>
                     {rec.state === 'recording' && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />}
@@ -449,7 +485,26 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   </div>
 
                   <div style={fldLabel}>Required action</div>
-                  <input style={field} value={selected.requiredAction} placeholder="F.eks. Click the Start button" onChange={(e) => updateScene(selected.id, { requiredAction: e.target.value })} />
+                  <div style={row2}>
+                    <select style={field} value={selected.actionType ?? 'click'} onChange={(e) => updateScene(selected.id, { actionType: e.target.value as DemoActionType })}>
+                      {(Object.keys(ACTION_META) as DemoActionType[]).map((a) => <option key={a} value={a}>{ACTION_META[a].label}</option>)}
+                    </select>
+                    <input style={field} value={selected.targetLabel ?? ''} placeholder="Element, f.eks. «Start free trial»" onChange={(e) => updateScene(selected.id, { targetLabel: e.target.value })} />
+                  </div>
+                  <input style={{ ...field, marginTop: 6 }} value={selected.requiredAction} placeholder="F.eks. Click the Start button" onChange={(e) => updateScene(selected.id, { requiredAction: e.target.value })} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                    <button style={{ ...outlineBtn, flex: 1, background: placingHotspot ? C.accent : '#fff', color: placingHotspot ? '#fff' : C.ink, borderColor: placingHotspot ? C.accent : C.lineStrong }}
+                      onClick={() => setPlacingHotspot((v) => !v)}>
+                      ◎ {placingHotspot ? 'Klikk på elementet…' : selected.hotspot ? 'Flytt hotspot' : 'Sett hotspot på preview'}
+                    </button>
+                    {selected.hotspot && (
+                      <button style={{ ...outlineBtn, padding: '0 10px' }} title="Fjern hotspot"
+                        onClick={() => updateScene(selected.id, { hotspot: undefined })}>✕</button>
+                    )}
+                  </div>
+                  {selected.hotspot
+                    ? <div style={{ fontSize: 11, color: C.green, marginTop: 5 }}>✓ Element markert — fremheves i opptak</div>
+                    : <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 5 }}>Marker elementet på preview-en så Guided Recorder kan fremheve det.</div>}
 
                   <div style={fldLabel}>Overlay-tekst</div>
                   <input style={field} value={selected.overlayText ?? ''} onChange={(e) => updateScene(selected.id, { overlayText: e.target.value })} />
