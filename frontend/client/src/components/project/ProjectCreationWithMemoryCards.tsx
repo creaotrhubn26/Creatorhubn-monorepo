@@ -146,6 +146,7 @@ import { useLeadImport } from '@/hooks/useLeadImport';
 import ProjectHealthCheck from './ProjectHealthCheck';
 import ProjectCollaborators from './ProjectCollaborators';
 import CloudDestinationActivator from '@/components/storage/CloudDestinationActivator';
+import CloudErasePanel from '@/components/storage/CloudErasePanel';
 import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
 import { getCamerasByProfession, getLogFormatsByCamera, getCameraBrand } from '../../data/video-camera-database';
 import { getPhotoCamerasByProfession, getPhotoCameraBrand } from '../../data/photo-camera-database';
@@ -4520,6 +4521,12 @@ useEffect(() => {
             />
             <Box sx={{ mt: 3 }}>
               <OneDeskDownloadCard />
+            </Box>
+            <Box sx={{ mt: 3 }}>
+              <CloudErasePanel
+                projectId={String(currentProject.id)}
+                projectName={projectData.projectName || String(currentProject.id)}
+              />
             </Box>
           </CardContent>
         </Card>
