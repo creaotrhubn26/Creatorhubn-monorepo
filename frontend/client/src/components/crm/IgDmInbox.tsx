@@ -126,6 +126,27 @@ export default function IgDmInbox({ open, onClose, brandColor }: Props) {
   const displayName = (c: IgConversation) =>
     c.participantUsername ? `@${c.participantUsername}` : (c.participantName || c.participantIgsid);
 
+  // True when an account is connected but WITHOUT instagram_manage_messages —
+  // it must be re-authorized before the inbox can read/reply.
+  const needsMessagingReauth =
+    connections.length > 0 && connections.every((c) => !c.hasMessagingScope);
+
+  // (Re)connect Instagram via OAuth — opens Meta's consent in a popup. Used
+  // both for first connect and to re-authorize an account for messaging.
+  const connectInstagram = async () => {
+    try {
+      const res = await apiRequest('/api/role-room/instagram/oauth/start');
+      const url = (res as { url?: string })?.url;
+      if (url) {
+        window.open(url, 'ig-oauth', 'width=720,height=820,resizable=yes');
+      } else {
+        toast({ title: 'Kunne ikke starte Instagram-tilkobling', variant: 'destructive' });
+      }
+    } catch (e: any) {
+      toast({ title: 'Kunne ikke starte tilkobling', description: e?.message, variant: 'destructive' });
+    }
+  };
+
   return (
     <BrandScope brandColor={brandColor}>
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { height: '80vh' } }}>
@@ -155,10 +176,24 @@ export default function IgDmInbox({ open, onClose, brandColor }: Props) {
           <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>
         ) : connections.length === 0 ? (
           <Box sx={{ p: 4 }}>
-            <Alert severity="info">
-              Ingen Instagram-konto er koblet til ennå. Koble til en Instagram Business-konto i
-              The Role Room Agent for å motta og svare på DM-er her.
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Ingen Instagram-konto er koblet til ennå. Koble en Instagram Business-konto for å
+              motta og svare på DM-er her.
             </Alert>
+            <Button variant="contained" startIcon={<InstagramIcon />} onClick={connectInstagram}>
+              Koble Instagram
+            </Button>
+          </Box>
+        ) : needsMessagingReauth ? (
+          <Box sx={{ p: 4 }}>
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Instagram-kontoen er koblet til, men mangler <strong>meldings-tilgang</strong>
+              (instagram_manage_messages). Koble til på nytt og la «manage messages» stå på i
+              Meta-dialogen for å aktivere innboksen.
+            </Alert>
+            <Button variant="contained" startIcon={<InstagramIcon />} onClick={connectInstagram}>
+              Koble Instagram på nytt
+            </Button>
           </Box>
         ) : (
           <Box sx={{ display: 'grid', gridTemplateColumns: '300px 1fr', minHeight: 0, flex: 1 }}>
