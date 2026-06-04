@@ -39,6 +39,9 @@ const REQUIRED_SCOPES = [
   'ads_read',
   'ads_management',
   'attribution_read',
+  // Unified social inbox (read + reply to Instagram DMs). App admins/testers
+  // can grant this pre-approval; all users once App Review approves it.
+  'instagram_manage_messages',
 ];
 
 export interface MetaAppConfig {
