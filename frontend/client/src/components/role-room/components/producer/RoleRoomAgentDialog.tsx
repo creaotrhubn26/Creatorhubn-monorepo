@@ -23,12 +23,8 @@ import {
   useTheme,
 } from '@mui/material';
 import {
-  AlternateEmail as AlternateEmailIcon,
-  Article as ArticleIcon,
   AutoFixHigh as AutoFixHighIcon,
   Chat as ChatIcon,
-  CloudUpload as CloudUploadIcon,
-  FactCheck as FactCheckIcon,
   GridView as GridViewIcon,
   Language as LanguageIcon,
   LocalMall as MerchIcon,
@@ -37,7 +33,6 @@ import {
   Tune as TuneIcon,
   QueryStats as QueryStatsIcon,
   Rocket as RocketIcon,
-  Tag as TagIcon,
 } from '@mui/icons-material';
 import RoleRoomResearchCompleteOverlay from './RoleRoomResearchCompleteOverlay';
 import ResearchProgressLive from './ResearchProgressLive';
@@ -773,39 +768,9 @@ export default function RoleRoomAgentDialog({
           iconPosition="start"
         />
         <Tab
-          value="meta-page"
-          label="Meta Page"
-          icon={<FactCheckIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
-          value="page-content"
-          label="Page Content"
-          icon={<ArticleIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
           value="ads-attribution"
           label="Ads Attribution"
           icon={<QueryStatsIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
-          value="fb-publish"
-          label="FB Publish"
-          icon={<CloudUploadIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
-          value="fb-mention"
-          label="Page Mentions"
-          icon={<AlternateEmailIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
-          value="ig-hashtag"
-          label="IG Hashtags"
-          icon={<TagIcon fontSize="small" />}
           iconPosition="start"
         />
         <Tab
