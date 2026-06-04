@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   Collapse,
   Dialog,
   DialogActions,
@@ -996,6 +997,37 @@ export default function RoleRoomAgentDialog({
           <Stack direction="row" justifyContent="flex-end">
             <ResearchVersionsPickerInline projectId={projectId} />
           </Stack>
+
+          {/* Friendly reassurance while working (covers the case where the
+              streaming progress panel above isn't active). */}
+          {generating && !result && (!progressStatus || progressStatus === 'idle') ? (
+            <Box
+              data-testid="research-working"
+              sx={{
+                p: 1.6,
+                borderRadius: 3,
+                border: '1px solid rgba(34,211,238,0.25)',
+                bgcolor: 'rgba(34,211,238,0.06)',
+              }}
+            >
+              <Stack direction="row" spacing={1.2} alignItems="center">
+                <CircularProgress size={22} sx={{ color: '#22d3ee' }} />
+                <Box>
+                  <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>Jeg jobber…</Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.84rem' }}>
+                    Leser nettsiden, sjekker offentlige registre og finner sosiale kontoer. Dette tar vanligvis et halvt minutt.
+                  </Typography>
+                </Box>
+              </Stack>
+            </Box>
+          ) : null}
+
+          {/* Empty state: nothing analysed yet — a warm pointer, not a blank gap. */}
+          {!result && !generating ? (
+            <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.86rem', textAlign: 'center', py: 1 }}>
+              Lim inn en nettside over og klikk «Finn ut alt om kunden» — så dukker forslagene opp her.
+            </Typography>
+          ) : null}
 
           {result ? (
             <Stack spacing={1.2}>
