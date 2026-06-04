@@ -1080,6 +1080,133 @@ const COMMANDS = {
     return await COMMANDS["resolve.sendCommand"]({ name: "clip.clearColor", args });
   },
 
+  "resolve.clipMarkersList": async ({ clip_id } = {}) => {
+    if (typeof clip_id !== "string" || clip_id.length === 0) {
+      throw new Error("clip_id må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "clip.markersList",
+      args: { clip_id },
+    });
+  },
+
+  "resolve.clipMarkersAdd": async ({
+    clip_id,
+    frame_id,
+    color,
+    name,
+    note,
+    duration,
+    custom_data,
+  } = {}) => {
+    if (typeof clip_id !== "string" || clip_id.length === 0) {
+      throw new Error("clip_id må være en ikke-tom string");
+    }
+    if (typeof frame_id !== "number" || frame_id < 0) {
+      throw new Error("frame_id må være et tall >= 0");
+    }
+    const VALID = new Set([
+      "Blue", "Cyan", "Green", "Yellow", "Red", "Pink", "Purple", "Fuchsia",
+      "Rose", "Lavender", "Sky", "Mint", "Lemon", "Sand", "Cocoa", "Cream",
+    ]);
+    const c = color || "Blue";
+    if (!VALID.has(c)) {
+      throw new Error(`Ugyldig color: ${c} (gyldige: ${[...VALID].join(", ")})`);
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "clip.markersAdd",
+      args: {
+        clip_id,
+        frame_id,
+        color: c,
+        name: name || "",
+        note: note || "",
+        duration: typeof duration === "number" ? duration : 1,
+        custom_data: custom_data || "",
+      },
+    });
+  },
+
+  "resolve.clipMarkersDeleteByColor": async ({ clip_id, color } = {}) => {
+    if (typeof clip_id !== "string" || clip_id.length === 0) {
+      throw new Error("clip_id må være en ikke-tom string");
+    }
+    if (typeof color !== "string" || color.length === 0) {
+      throw new Error("color må være en ikke-tom string (eller 'All')");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "clip.markersDeleteByColor",
+      args: { clip_id, color },
+    });
+  },
+
+  "resolve.clipMarkersDeleteAtFrame": async ({ clip_id, frame_id } = {}) => {
+    if (typeof clip_id !== "string" || clip_id.length === 0) {
+      throw new Error("clip_id må være en ikke-tom string");
+    }
+    if (typeof frame_id !== "number" || frame_id < 0) {
+      throw new Error("frame_id må være et tall >= 0");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "clip.markersDeleteAtFrame",
+      args: { clip_id, frame_id },
+    });
+  },
+
+  "resolve.versionAdd": async ({ name, version_type } = {}) => {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error("name må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "version.add",
+      args: { name, version_type: version_type === 1 ? 1 : 0 },
+    });
+  },
+
+  "resolve.versionGetCurrent": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "version.getCurrent" });
+  },
+
+  "resolve.versionGetNames": async ({ version_type } = {}) => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "version.getNames",
+      args: { version_type: version_type === 1 ? 1 : 0 },
+    });
+  },
+
+  "resolve.versionLoad": async ({ name, version_type } = {}) => {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error("name må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "version.load",
+      args: { name, version_type: version_type === 1 ? 1 : 0 },
+    });
+  },
+
+  "resolve.versionRename": async ({ old_name, new_name, version_type } = {}) => {
+    if (typeof old_name !== "string" || old_name.length === 0) {
+      throw new Error("old_name må være en ikke-tom string");
+    }
+    if (typeof new_name !== "string" || new_name.length === 0) {
+      throw new Error("new_name må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "version.rename",
+      args: { old_name, new_name, version_type: version_type === 1 ? 1 : 0 },
+    });
+  },
+
+  "resolve.versionDelete": async ({ name, version_type } = {}) => {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error("name må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "version.delete",
+      args: { name, version_type: version_type === 1 ? 1 : 0 },
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
