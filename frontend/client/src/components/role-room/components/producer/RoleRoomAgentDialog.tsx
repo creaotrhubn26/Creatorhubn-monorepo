@@ -365,11 +365,14 @@ export default function RoleRoomAgentDialog({
 
   const result = initialResult ?? null;
   // Ordered flow through the tabs for the guided Forrige/Neste navigation.
+  // Guided flow = the real producer journey only (Analyze → Plan → Listen →
+  // Measure). The App Review demo/inspector tabs (meta-page, page-content,
+  // ads-attribution, fb-publish, fb-mention, ig-hashtag) + merch are reachable
+  // via 'Alle faner' but excluded here so Forrige/Neste doesn't detour through
+  // reviewer panels. Publishing lives inside Feed-planner.
   const tabFlow = useMemo<Array<typeof activeTab>>(() => {
     const base: Array<typeof activeTab> = [
-      'research', 'merch', 'marketing-plan', 'feed-planner', 'meta-page',
-      'page-content', 'ads-attribution', 'fb-publish', 'fb-mention',
-      'ig-hashtag', 'social-inbox', 'social-analytics',
+      'research', 'marketing-plan', 'feed-planner', 'social-inbox', 'social-analytics',
     ];
     return currentUserId ? [...base, 'chat'] : base;
   }, [currentUserId]);
