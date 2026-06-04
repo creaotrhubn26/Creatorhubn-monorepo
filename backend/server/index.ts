@@ -155,6 +155,7 @@ import { setupPageMetadataRoutes } from "./role-room-page-metadata-routes.js";
 import { setupIgPublicRoutes } from "./role-room-ig-public-routes.js";
 import { setupLeadsRetrievalRoutes } from "./role-room-leads-retrieval-routes.js";
 import { setupIgEventsRoutes } from "./role-room-ig-events-routes.js";
+import { setupIgBusinessBasicRoutes } from "./role-room-ig-business-basic-routes.js";
 import { setupMetaReviewIndexRoutes } from "./role-room-meta-review-index-routes.js";
 import { setupMarketingCockpitRoutes } from "./role-room-marketing-cockpit-routes.js";
 import { setupRoleRoomAgentRoutes } from "./role-room-agent-routes.js";
@@ -30138,6 +30139,9 @@ setupLeadsRetrievalRoutes({ app, requireAdminOrDemoBypass });
 
 // Meta App Review demo for instagram_manage_events — IG events CRUD.
 setupIgEventsRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for instagram_business_basic — connected IG profile read.
+setupIgBusinessBasicRoutes({ app, requireAdminOrDemoBypass });
 
 // Meta App Review demo INDEX — one URL surfacing all 9 demos.
 setupMetaReviewIndexRoutes({ app, requireAdminOrDemoBypass });
