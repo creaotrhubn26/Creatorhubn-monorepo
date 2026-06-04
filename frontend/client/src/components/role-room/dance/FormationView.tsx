@@ -1820,16 +1820,21 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
             }}
           />
         )}
-        renderOption={(props, option) => (
-          <MenuItem {...props} key={option.id} sx={{ fontSize: 12 }}>
-            <Box>
-              <Box sx={{ fontWeight: 600 }}>{option.label}</Box>
-              <Box sx={{ fontSize: 9, color: danceFlowColors.textMuted }}>
-                Anvender mal på {formation.positions.length} dansere
+        renderOption={(props, option) => {
+          // MUI Autocomplete v6: key må trekkes ut av props før spread —
+          // ellers kan React i prod krasje med #130 (forwardRef undefined).
+          const { key, ...rest } = props as { key?: React.Key } & React.HTMLAttributes<HTMLLIElement>;
+          return (
+            <MenuItem {...rest} key={option.id} sx={{ fontSize: 12 }}>
+              <Box>
+                <Box sx={{ fontWeight: 600 }}>{option.label}</Box>
+                <Box sx={{ fontSize: 9, color: danceFlowColors.textMuted }}>
+                  Anvender mal på {formation.positions.length} dansere
+                </Box>
               </Box>
-            </Box>
-          </MenuItem>
-        )}
+            </MenuItem>
+          );
+        }}
         sx={{ mb: 1 }}
       />
       {/* G26: Section-input. Frittekst — koreografer skriver Intro/Vers 1/etc.
