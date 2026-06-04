@@ -147,6 +147,7 @@ import ProjectHealthCheck from './ProjectHealthCheck';
 import ProjectCollaborators from './ProjectCollaborators';
 import CloudDestinationActivator from '@/components/storage/CloudDestinationActivator';
 import CloudErasePanel from '@/components/storage/CloudErasePanel';
+import DeliverFromArchiveDialog from '@/components/storage/DeliverFromArchiveDialog';
 import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
 import { getCamerasByProfession, getLogFormatsByCamera, getCameraBrand } from '../../data/video-camera-database';
 import { getPhotoCamerasByProfession, getPhotoCameraBrand } from '../../data/photo-camera-database';
@@ -1845,6 +1846,7 @@ useEffect(() => {
   // Load meeting preferences from server (replaces localStorage)
   
   const [memoryCardLabeling, setMemoryCardLabeling] = useState<LabelingKey>('ABCD');
+  const [deliverDialogOpen, setDeliverDialogOpen] = useState(false);
   const [showScriptManager, setShowScriptManager] = useState<boolean>(false);
   const [showPreview, setShowPreview] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -4519,6 +4521,19 @@ useEffect(() => {
                 showSuccessToast?.('Offsite-backup aktivert — den nye destinasjonen vises i One Desk neste gang du starter en backup.', 5000);
               }}
             />
+            <Box sx={{ mt: 2 }}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => setDeliverDialogOpen(true)}
+                sx={{ borderRadius: 2 }}
+              >
+                📤 Lever til klient fra arkiv
+              </Button>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                Velg filer som er backup'et til Backblaze og send som tilgangs-galleri. Klienten ser filene direkte fra B2 via Cloudflare-cache (ingen ekstra lagring eller egress-kost).
+              </Typography>
+            </Box>
             <Box sx={{ mt: 3 }}>
               <OneDeskDownloadCard />
             </Box>
@@ -4528,6 +4543,12 @@ useEffect(() => {
                 projectName={projectData.projectName || String(currentProject.id)}
               />
             </Box>
+            <DeliverFromArchiveDialog
+              projectId={String(currentProject.id)}
+              defaultGalleryLabel={projectData.projectName || ''}
+              open={deliverDialogOpen}
+              onClose={() => setDeliverDialogOpen(false)}
+            />
           </CardContent>
         </Card>
       )}

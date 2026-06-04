@@ -165,3 +165,63 @@ export async function eraseProjectFromProvider(
     },
   );
 }
+
+// ── Archive files + deliver-to-showcase ────────────────────────
+
+export interface ArchiveFile {
+  source_path: string;
+  filename: string;
+  size_bytes: number | null;
+  source_hash: string | null;
+  camera_id: string | null;
+  verified_at: string | null;
+  cloud_providers: string[];
+}
+
+export interface ArchiveFilesResponse {
+  success: boolean;
+  files: ArchiveFile[];
+  count: number;
+  total_bytes: number;
+  error?: string;
+}
+
+export async function listArchiveFiles(
+  projectId: string,
+): Promise<ArchiveFilesResponse> {
+  return apiRequest(
+    `/api/dit/projects/${encodeURIComponent(projectId)}/archive-files`,
+  );
+}
+
+export interface DeliverToShowcasePayload {
+  client_name: string;
+  client_email: string;
+  gallery_label?: string;
+  source_paths: string[];
+}
+
+export interface DeliverToShowcaseResponse {
+  success: boolean;
+  gallery_id?: string;
+  access_token?: string;
+  gallery_url?: string;
+  delivered?: number;
+  skipped?: number;
+  created_new_gallery?: boolean;
+  errors?: string[];
+  error?: string;
+}
+
+export async function deliverProjectToShowcase(
+  projectId: string,
+  payload: DeliverToShowcasePayload,
+): Promise<DeliverToShowcaseResponse> {
+  return apiRequest(
+    `/api/dit/projects/${encodeURIComponent(projectId)}/deliver-to-showcase`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  );
+}
