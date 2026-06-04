@@ -446,6 +446,79 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_subtitles_create_from_audio",
+    description:
+      "Resolve 21 AI Auto-Captions: lager subtitle-track automatisk fra audio på current timeline. Støtter 16 språk inkludert NORWEGIAN. preset: 'DEFAULT' (42 chars/line) eller 'NETFLIX' (16 chars/line). Krever AI Auto-Caption-modell nedlastet (Preferences → AI).",
+    input_schema: {
+      type: "object",
+      properties: {
+        language: {
+          type: "string",
+          enum: [
+            "AUTO", "DANISH", "DUTCH", "ENGLISH", "FRENCH", "GERMAN", "ITALIAN",
+            "JAPANESE", "KOREAN", "MANDARIN_SIMPLIFIED", "MANDARIN_TRADITIONAL",
+            "NORWEGIAN", "PORTUGUESE", "RUSSIAN", "SPANISH", "SWEDISH",
+          ],
+          description: "Default 'AUTO'",
+        },
+        preset: { type: "string", enum: ["DEFAULT", "NETFLIX"] },
+        chars_per_line: { type: "number", description: "1-60, default 42 (16 for NETFLIX)" },
+        line_break: { type: "string", enum: ["SINGLE", "DOUBLE"] },
+        gap: { type: "number", description: "0-10 frames mellom captions, default 0" },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_track_add",
+    description:
+      "Legg til ny track på current timeline. track_type: 'video' (default), 'audio' eller 'subtitle'. sub_track_type for audio kan være 'mono', 'stereo', '5.1', '7.1', '5.1film', '7.1film', 'adaptive1' through 'adaptive24'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        track_type: { type: "string", enum: ["video", "audio", "subtitle"] },
+        sub_track_type: { type: "string", description: "Audio-only — mono/stereo/5.1/etc." },
+      },
+      required: ["track_type"],
+    },
+  },
+  {
+    name: "photoshop_resolve_track_delete",
+    description: "Slett track ved index. 1-basert. Track-type må matche faktisk track-type på timeline.",
+    input_schema: {
+      type: "object",
+      properties: {
+        track_type: { type: "string", enum: ["video", "audio", "subtitle"] },
+        index: { type: "number" },
+      },
+      required: ["track_type", "index"],
+    },
+  },
+  {
+    name: "photoshop_resolve_track_get_name",
+    description: "Hent track-navn for track ved index. Brukes for å vite hva som er på hver track før edit.",
+    input_schema: {
+      type: "object",
+      properties: {
+        track_type: { type: "string", enum: ["video", "audio", "subtitle"] },
+        index: { type: "number" },
+      },
+      required: ["track_type", "index"],
+    },
+  },
+  {
+    name: "photoshop_resolve_track_set_name",
+    description: "Sett navn på track ved index. Praktisk etter add_track for å gi mening til layout.",
+    input_schema: {
+      type: "object",
+      properties: {
+        track_type: { type: "string", enum: ["video", "audio", "subtitle"] },
+        index: { type: "number" },
+        name: { type: "string" },
+      },
+      required: ["track_type", "index", "name"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -956,6 +1029,44 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         path: requireString(input, "path"),
         export_type: input.export_type as "17Point" | "33Point" | "65Point" | undefined,
       });
+    case "photoshop_resolve_subtitles_create_from_audio":
+      return photoshop.resolveSubtitlesCreateFromAudio({
+        language: input.language as never,
+        preset: input.preset as "DEFAULT" | "NETFLIX" | undefined,
+        chars_per_line: typeof input.chars_per_line === "number" ? input.chars_per_line : undefined,
+        line_break: input.line_break as "SINGLE" | "DOUBLE" | undefined,
+        gap: typeof input.gap === "number" ? input.gap : undefined,
+      });
+    case "photoshop_resolve_track_add":
+      return photoshop.resolveTrackAdd({
+        track_type: requireString(input, "track_type") as "video" | "audio" | "subtitle",
+        sub_track_type: typeof input.sub_track_type === "string" ? input.sub_track_type : undefined,
+      });
+    case "photoshop_resolve_track_delete": {
+      const index = input.index;
+      if (typeof index !== "number") throw new Error("index må være et tall");
+      return photoshop.resolveTrackDelete({
+        track_type: requireString(input, "track_type") as "video" | "audio" | "subtitle",
+        index,
+      });
+    }
+    case "photoshop_resolve_track_get_name": {
+      const index = input.index;
+      if (typeof index !== "number") throw new Error("index må være et tall");
+      return photoshop.resolveTrackGetName({
+        track_type: requireString(input, "track_type") as "video" | "audio" | "subtitle",
+        index,
+      });
+    }
+    case "photoshop_resolve_track_set_name": {
+      const index = input.index;
+      if (typeof index !== "number") throw new Error("index må være et tall");
+      return photoshop.resolveTrackSetName({
+        track_type: requireString(input, "track_type") as "video" | "audio" | "subtitle",
+        index,
+        name: requireString(input, "name"),
+      });
+    }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
     case "photoshop_resolve_export_back":

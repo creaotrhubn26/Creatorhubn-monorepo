@@ -657,6 +657,151 @@ local HANDLERS = {
 }
 
 -- ---------------------------------------------------------------------------
+-- Subtitles + Track-management
+-- ---------------------------------------------------------------------------
+
+local function mapLanguageEnum(lang)
+  if not lang then return resolve.AUTO_CAPTION_AUTO end
+  local L = string.upper(lang)
+  local map = {
+    AUTO = resolve.AUTO_CAPTION_AUTO,
+    DANISH = resolve.AUTO_CAPTION_DANISH,
+    DUTCH = resolve.AUTO_CAPTION_DUTCH,
+    ENGLISH = resolve.AUTO_CAPTION_ENGLISH,
+    FRENCH = resolve.AUTO_CAPTION_FRENCH,
+    GERMAN = resolve.AUTO_CAPTION_GERMAN,
+    ITALIAN = resolve.AUTO_CAPTION_ITALIAN,
+    JAPANESE = resolve.AUTO_CAPTION_JAPANESE,
+    KOREAN = resolve.AUTO_CAPTION_KOREAN,
+    MANDARIN_SIMPLIFIED = resolve.AUTO_CAPTION_MANDARIN_SIMPLIFIED,
+    MANDARIN_TRADITIONAL = resolve.AUTO_CAPTION_MANDARIN_TRADITIONAL,
+    NORWEGIAN = resolve.AUTO_CAPTION_NORWEGIAN,
+    PORTUGUESE = resolve.AUTO_CAPTION_PORTUGUESE,
+    RUSSIAN = resolve.AUTO_CAPTION_RUSSIAN,
+    SPANISH = resolve.AUTO_CAPTION_SPANISH,
+    SWEDISH = resolve.AUTO_CAPTION_SWEDISH,
+  }
+  return map[L] or resolve.AUTO_CAPTION_AUTO
+end
+
+local function mapCaptionPreset(preset)
+  if not preset then return resolve.AUTO_CAPTION_SUBTITLE_DEFAULT end
+  if string.upper(preset) == "NETFLIX" then return resolve.AUTO_CAPTION_NETFLIX end
+  return resolve.AUTO_CAPTION_SUBTITLE_DEFAULT
+end
+
+local function mapLineBreak(lb)
+  if not lb then return resolve.AUTO_CAPTION_LINE_SINGLE end
+  if string.upper(lb) == "DOUBLE" then return resolve.AUTO_CAPTION_LINE_DOUBLE end
+  return resolve.AUTO_CAPTION_LINE_SINGLE
+end
+
+local function handleSubtitlesCreateFromAudio(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+
+  local language = extractString(args, "language")
+  local preset = extractString(args, "preset")
+  local charsPerLine = tonumber(args:match('"chars_per_line"%s*:%s*(%d+)'))
+  local lineBreak = extractString(args, "line_break")
+  local gap = tonumber(args:match('"gap"%s*:%s*(%d+)'))
+
+  local settings = {
+    [resolve.SUBTITLE_LANGUAGE] = mapLanguageEnum(language),
+    [resolve.SUBTITLE_CAPTION_PRESET] = mapCaptionPreset(preset),
+    [resolve.SUBTITLE_LINE_BREAK] = mapLineBreak(lineBreak),
+  }
+  if charsPerLine then settings[resolve.SUBTITLE_CHARS_PER_LINE] = charsPerLine end
+  if gap then settings[resolve.SUBTITLE_GAP] = gap end
+
+  local ok = timeline:CreateSubtitlesFromAudio(settings)
+  return string.format(
+    '{"created":%s,"timeline":%s,"language":%s,"preset":%s,"chars_per_line":%s,"line_break":%s,"gap":%s}',
+    tostring(ok),
+    jsonEscape(timeline:GetName() or ""),
+    jsonEscape(language or "AUTO"),
+    jsonEscape(preset or "DEFAULT"),
+    tostring(charsPerLine or "default"),
+    jsonEscape(lineBreak or "SINGLE"),
+    tostring(gap or 0)
+  )
+end
+
+local function handleTrackAdd(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local trackType = extractString(args, "track_type") or "video"
+  if trackType ~= "video" and trackType ~= "audio" and trackType ~= "subtitle" then
+    error("track_type må være 'video', 'audio' eller 'subtitle'")
+  end
+  local subTrackType = extractString(args, "sub_track_type")
+  local ok = subTrackType
+    and timeline:AddTrack(trackType, subTrackType)
+    or timeline:AddTrack(trackType)
+  return string.format(
+    '{"added":%s,"track_type":%s,"sub_track_type":%s,"new_count":%d}',
+    tostring(ok), jsonEscape(trackType),
+    jsonEscape(subTrackType or "none"),
+    timeline:GetTrackCount(trackType) or 0
+  )
+end
+
+local function handleTrackDelete(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local trackType = extractString(args, "track_type")
+  local index = tonumber(args:match('"index"%s*:%s*(%d+)'))
+  if not trackType then error("track_type mangler") end
+  if not index then error("index mangler") end
+  local ok = timeline:DeleteTrack(trackType, index)
+  return string.format(
+    '{"deleted":%s,"track_type":%s,"index":%d}',
+    tostring(ok), jsonEscape(trackType), index
+  )
+end
+
+local function handleTrackGetName(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local trackType = extractString(args, "track_type")
+  local index = tonumber(args:match('"index"%s*:%s*(%d+)'))
+  if not trackType then error("track_type mangler") end
+  if not index then error("index mangler") end
+  local name = timeline:GetTrackName(trackType, index) or ""
+  return string.format(
+    '{"track_type":%s,"index":%d,"name":%s}',
+    jsonEscape(trackType), index, jsonEscape(name)
+  )
+end
+
+local function handleTrackSetName(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local trackType = extractString(args, "track_type")
+  local index = tonumber(args:match('"index"%s*:%s*(%d+)'))
+  local name = extractString(args, "name")
+  if not trackType then error("track_type mangler") end
+  if not index then error("index mangler") end
+  if not name then error("name mangler") end
+  local ok = timeline:SetTrackName(trackType, index, name)
+  return string.format(
+    '{"set":%s,"track_type":%s,"index":%d,"name":%s}',
+    tostring(ok), jsonEscape(trackType), index, jsonEscape(name)
+  )
+end
+
+HANDLERS["subtitles.createFromAudio"] = handleSubtitlesCreateFromAudio
+HANDLERS["track.add"] = handleTrackAdd
+HANDLERS["track.delete"] = handleTrackDelete
+HANDLERS["track.getName"] = handleTrackGetName
+HANDLERS["track.setName"] = handleTrackSetName
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 

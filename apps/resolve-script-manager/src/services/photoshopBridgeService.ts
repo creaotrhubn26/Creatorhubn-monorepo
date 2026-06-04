@@ -103,6 +103,26 @@ export interface ResolveInboxResult {
   count: number;
 }
 
+export type ResolveLanguage =
+  | "AUTO"
+  | "DANISH"
+  | "DUTCH"
+  | "ENGLISH"
+  | "FRENCH"
+  | "GERMAN"
+  | "ITALIAN"
+  | "JAPANESE"
+  | "KOREAN"
+  | "MANDARIN_SIMPLIFIED"
+  | "MANDARIN_TRADITIONAL"
+  | "NORWEGIAN"
+  | "PORTUGUESE"
+  | "RUSSIAN"
+  | "SPANISH"
+  | "SWEDISH";
+
+export type ResolveTrackType = "video" | "audio" | "subtitle";
+
 export interface ResolveExportBackResult {
   exported_to: string;
   outbox_dir: string;
@@ -519,6 +539,47 @@ export const photoshop = {
   resolveGradesExportLUT: (params: { path: string; export_type?: "17Point" | "33Point" | "65Point" }) =>
     send<{ exported: boolean; path: string; export_type: string; item: string }>(
       "resolve.gradesExportLUT",
+      params,
+    ),
+
+  resolveSubtitlesCreateFromAudio: (params?: {
+    language?: ResolveLanguage;
+    preset?: "DEFAULT" | "NETFLIX";
+    chars_per_line?: number;
+    line_break?: "SINGLE" | "DOUBLE";
+    gap?: number;
+  }) =>
+    send<{
+      created: boolean;
+      timeline: string;
+      language: string;
+      preset: string;
+      chars_per_line: string;
+      line_break: string;
+      gap: number;
+    }>("resolve.subtitlesCreateFromAudio", params ?? {}),
+
+  resolveTrackAdd: (params: { track_type: ResolveTrackType; sub_track_type?: string }) =>
+    send<{ added: boolean; track_type: string; sub_track_type: string; new_count: number }>(
+      "resolve.trackAdd",
+      params,
+    ),
+
+  resolveTrackDelete: (params: { track_type: ResolveTrackType; index: number }) =>
+    send<{ deleted: boolean; track_type: string; index: number }>(
+      "resolve.trackDelete",
+      params,
+    ),
+
+  resolveTrackGetName: (params: { track_type: ResolveTrackType; index: number }) =>
+    send<{ track_type: string; index: number; name: string }>(
+      "resolve.trackGetName",
+      params,
+    ),
+
+  resolveTrackSetName: (params: { track_type: ResolveTrackType; index: number; name: string }) =>
+    send<{ set: boolean; track_type: string; index: number; name: string }>(
+      "resolve.trackSetName",
       params,
     ),
 
