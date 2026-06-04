@@ -961,6 +961,40 @@ export const photoshop = {
       params,
     ),
 
+  resolvePmGetInfo: () =>
+    send<{
+      current_project: string;
+      current_folder: string;
+      projects: string[];
+      subfolders: string[];
+    }>("resolve.pmGetInfo"),
+
+  resolvePmCreateProject: (params: { name: string; media_path?: string }) =>
+    send<{ created: boolean; name: string; media_path: string }>(
+      "resolve.pmCreateProject",
+      params,
+    ),
+
+  resolvePmLoadProject: (params: { name: string }) =>
+    send<{ loaded: boolean; name: string }>("resolve.pmLoadProject", params),
+
+  resolvePmSaveProject: () =>
+    send<{ saved: boolean; name: string }>("resolve.pmSaveProject"),
+
+  resolvePmDeleteProject: (params: { name: string }) =>
+    send<{ deleted: boolean; name: string }>("resolve.pmDeleteProject", params),
+
+  resolvePmCreateFolder: (params: { name: string }) =>
+    send<{ created: boolean; name: string }>("resolve.pmCreateFolder", params),
+
+  resolvePmNavigateFolder: (params: { to: string }) =>
+    send<{
+      navigated: boolean;
+      op: "root" | "parent" | "open";
+      to: string;
+      current_folder: string;
+    }>("resolve.pmNavigateFolder", params),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 
