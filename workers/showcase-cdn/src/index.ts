@@ -24,7 +24,8 @@ export interface Env {
 }
 
 const TOKEN_REGEX = /^gly_[A-Za-z0-9_-]{8,64}$/;
-const ITEM_REGEX = /^pci_[A-Za-z0-9-]{8,48}$/;
+// Item-id er en standard UUID (postgres uuid-kolonne).
+const ITEM_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
