@@ -95,6 +95,76 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
   }>({ platform: 'meta', adAccountId: '', customerId: '', linkedinAccountUrn: '', linkedinGroupUrn: '', name: '', objective: 'OUTCOME_TRAFFIC', dailyBudgetNok: '' });
   const [creating, setCreating] = useState(false);
 
+  // OAuth-flow state — hvilken plattform er midt-i-koble (åpner popup-window)
+  const [oauthStarting, setOauthStarting] = useState<'google' | 'linkedin' | null>(null);
+
+  /**
+   * Start ads-OAuth-flowen for én plattform. Backend gir oss en autoriserings-
+   * URL vi åpner i et popup-vindu — brukeren godkjenner mot Google/LinkedIn,
+   * callback lander i Role Room, popup-en lukker seg, og vi re-fetcher
+   * konto-listene så dropdownen oppdaterer seg.
+   */
+  const startAdsOauth = async (platform: 'google' | 'linkedin') => {
+    setOauthStarting(platform);
+    setAccountError(null);
+    try {
+      const returnPath = window.location.pathname + window.location.search;
+      const res = await fetch(`/api/role-room/ads/${platform}/oauth/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          browserOrigin: window.location.origin,
+          returnPath,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setAccountError(
+          body.detail || body.error || `Klarte ikke starte ${platform}-OAuth (HTTP ${res.status})`,
+        );
+        setOauthStarting(null);
+        return;
+      }
+      const { authorizationUrl } = await res.json();
+      // Åpne popup. Callback lukker den + post-message-r oss
+      const popup = window.open(authorizationUrl, '_blank', 'width=620,height=740,noopener=no,popup=yes');
+      if (!popup) {
+        setAccountError('Pop-up ble blokkert. Tillat pop-ups for theroleroom.com og prøv igjen.');
+        setOauthStarting(null);
+        return;
+      }
+      // Poll for at popup lukkes — da re-fetch kontolisten
+      const pollInterval = setInterval(async () => {
+        if (popup.closed) {
+          clearInterval(pollInterval);
+          setOauthStarting(null);
+          // Re-fetch så den nye koblingen vises i dropdown
+          if (platform === 'google') {
+            const google = await roleRoomAgentService.listGoogleCustomers();
+            if (!('error' in google)) {
+              setGoogleCustomers(google.customers);
+              if (google.customers[0] && !form.customerId) {
+                setForm((f) => ({ ...f, customerId: google.customers[0] }));
+              }
+            }
+          } else if (platform === 'linkedin') {
+            const linkedin = await roleRoomAgentService.listLinkedInAccounts();
+            if (!('error' in linkedin)) {
+              setLinkedinAccounts(linkedin.accounts);
+              if (linkedin.accounts[0] && !form.linkedinAccountUrn) {
+                setForm((f) => ({ ...f, linkedinAccountUrn: linkedin.accounts[0].id }));
+              }
+            }
+          }
+        }
+      }, 800);
+    } catch (err) {
+      setAccountError(err instanceof Error ? err.message : 'Ukjent feil ved OAuth-start');
+      setOauthStarting(null);
+    }
+  };
+
   // AI-annonsetekst (Lag 1)
   const [aiGoal, setAiGoal] = useState('lead_generation');
   const [aiInputs, setAiInputs] = useState({ businessName: '', productOrService: '', landingUrl: '', offer: '', complianceNotes: '' });
@@ -285,8 +355,33 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
       <Collapse in={createOpen} unmountOnExit>
         <Stack spacing={1} sx={{ p: 1.2, borderRadius: 1.5, bgcolor: 'rgba(148,163,184,0.06)', border: '1px solid rgba(148,163,184,0.16)' }}>
           {accountError ? (
-            <Alert severity="warning" sx={{ '& .MuiAlert-message': { fontSize: '0.78rem' } }}>
-              {accountError}
+            <Alert
+              severity="warning"
+              sx={{ '& .MuiAlert-message': { fontSize: '0.78rem', width: '100%' } }}
+            >
+              <Stack spacing={1}>
+                <Box>{accountError}</Box>
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => startAdsOauth('google')}
+                    disabled={oauthStarting === 'google'}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    {oauthStarting === 'google' ? 'Åpner…' : 'Koble Google Ads'}
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => startAdsOauth('linkedin')}
+                    disabled={oauthStarting === 'linkedin'}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    {oauthStarting === 'linkedin' ? 'Åpner…' : 'Koble LinkedIn Ads'}
+                  </Button>
+                </Stack>
+              </Stack>
             </Alert>
           ) : (
             <>
@@ -308,23 +403,49 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                 </TextField>
               )}
               {form.platform === 'google' && (
-                <TextField select size="small" label="Google Ads-konto (Customer ID)" value={form.customerId}
-                  onChange={(e) => setForm({ ...form, customerId: e.target.value })} sx={fieldSx}>
-                  {googleCustomers.length === 0 && <MenuItem value="" disabled>Ingen Google-kontoer — koble Google Ads</MenuItem>}
-                  {googleCustomers.map((c) => (
-                    <MenuItem key={c} value={c}>{c}</MenuItem>
-                  ))}
-                </TextField>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <TextField select size="small" label="Google Ads-konto (Customer ID)" value={form.customerId}
+                    onChange={(e) => setForm({ ...form, customerId: e.target.value })} sx={{ ...fieldSx, flex: 1 }}>
+                    {googleCustomers.length === 0 && <MenuItem value="" disabled>Ingen Google-kontoer — koble Google Ads</MenuItem>}
+                    {googleCustomers.map((c) => (
+                      <MenuItem key={c} value={c}>{c}</MenuItem>
+                    ))}
+                  </TextField>
+                  {googleCustomers.length === 0 && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => startAdsOauth('google')}
+                      disabled={oauthStarting === 'google'}
+                      sx={{ textTransform: 'none', color: '#fde68a', borderColor: 'rgba(253,230,138,0.4)', whiteSpace: 'nowrap' }}
+                    >
+                      {oauthStarting === 'google' ? 'Åpner…' : 'Koble Google Ads'}
+                    </Button>
+                  )}
+                </Stack>
               )}
               {form.platform === 'linkedin' && (
                 <>
-                  <TextField select size="small" label="Annonsekonto (LinkedIn)" value={form.linkedinAccountUrn}
-                    onChange={(e) => setForm({ ...form, linkedinAccountUrn: e.target.value, linkedinGroupUrn: '' })} sx={fieldSx}>
-                    {linkedinAccounts.length === 0 && <MenuItem value="" disabled>Ingen LinkedIn-kontoer — koble LinkedIn</MenuItem>}
-                    {linkedinAccounts.map((a) => (
-                      <MenuItem key={a.id} value={a.id}>{a.name || a.id}</MenuItem>
-                    ))}
-                  </TextField>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <TextField select size="small" label="Annonsekonto (LinkedIn)" value={form.linkedinAccountUrn}
+                      onChange={(e) => setForm({ ...form, linkedinAccountUrn: e.target.value, linkedinGroupUrn: '' })} sx={{ ...fieldSx, flex: 1 }}>
+                      {linkedinAccounts.length === 0 && <MenuItem value="" disabled>Ingen LinkedIn-kontoer — koble LinkedIn</MenuItem>}
+                      {linkedinAccounts.map((a) => (
+                        <MenuItem key={a.id} value={a.id}>{a.name || a.id}</MenuItem>
+                      ))}
+                    </TextField>
+                    {linkedinAccounts.length === 0 && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => startAdsOauth('linkedin')}
+                        disabled={oauthStarting === 'linkedin'}
+                        sx={{ textTransform: 'none', color: '#fde68a', borderColor: 'rgba(253,230,138,0.4)', whiteSpace: 'nowrap' }}
+                      >
+                        {oauthStarting === 'linkedin' ? 'Åpner…' : 'Koble LinkedIn Ads'}
+                      </Button>
+                    )}
+                  </Stack>
                   <TextField select size="small" label="Kampanjegruppe (LinkedIn)" value={form.linkedinGroupUrn}
                     onChange={(e) => setForm({ ...form, linkedinGroupUrn: e.target.value })} sx={fieldSx}
                     disabled={!form.linkedinAccountUrn}>
