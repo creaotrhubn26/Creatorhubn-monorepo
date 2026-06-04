@@ -28,8 +28,8 @@ import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, fetchSiteContext } from './demoStudioAI';
 import { useDemoStudio } from './demoStudioStore';
 import {
-  DEMO_TYPE_LABELS, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
-  totalDuration, type DemoDevice, type DemoType,
+  DEMO_TYPE_LABELS, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
+  totalDuration, hasRecordedWork, type DemoDevice, type DemoType,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
 
@@ -77,7 +77,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const {
     project, selectedSceneId, recorderStepIndex,
     createProject, selectScene, updateScene, addScene, removeScene, replaceScenes,
-    setSceneDevice, setProjectField, startRecorder, nextStep, markCurrentDone, retakeCurrent, goToStep,
+    setSceneDevice, setProjectField, setDemoType: applyDemoTypeTemplate, startRecorder, nextStep, markCurrentDone, retakeCurrent, goToStep,
     loadExisting,
   } = useDemoStudio();
 
@@ -277,7 +277,16 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginBottom: 14 }}>Demo-typer <span style={{ color: C.inkFaint }}>‹</span></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {(Object.keys(DEMO_TYPE_LABELS) as DemoType[]).map((t) => (
-                  <div key={t} onClick={() => setProjectField('demoType', t)}
+                  <div key={t} onClick={() => {
+                    if (t === project.demoType) return;
+                    // Bytt mal: re-seed flowen. Bekreft kun hvis brukeren har gjort
+                    // reelt opptaks-arbeid som ville gått tapt.
+                    const reseed = !hasRecordedWork(scenes) ||
+                      window.confirm(`Bytte til «${DEMO_TYPE_LABELS[t]}»-mal? Dette erstatter scene-flowen. Opptak du har gjort følger ikke med over i den nye malen.`);
+                    if (!reseed) return;
+                    applyDemoTypeTemplate(t, true);
+                  }}
+                    title={`${DEMO_TYPE_LABELS[t]} — ${DEMO_TYPE_TEMPLATES[t].scenes.length} scener · ~${DEMO_TYPE_TEMPLATES[t].targetSeconds}s`}
                     style={{ aspectRatio: '1.15', border: `1px solid ${project.demoType === t ? C.accent : C.line}`, borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', color: C.inkSoft, background: project.demoType === t ? C.cream : '#fff' }}>
                     <div style={{ fontSize: 20 }}>{DEMO_TYPE_ICON[t]}</div>
                     <div style={{ fontSize: 12, fontWeight: 500, color: C.ink }}>{DEMO_TYPE_LABELS[t].split(' ')[0]}</div>

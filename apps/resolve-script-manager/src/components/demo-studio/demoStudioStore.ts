@@ -21,6 +21,8 @@ import {
   saveProject,
   loadLastProject,
   viewportForDevice,
+  flowForDemoType,
+  DEMO_TYPE_TEMPLATES,
 } from './demoStudioModel';
 
 interface DemoStudioState {
@@ -34,6 +36,12 @@ interface DemoStudioState {
   createProject: (url: string, demoType?: DemoType) => void;
   loadExisting: () => boolean;
   setProjectField: <K extends keyof DemoProject>(key: K, value: DemoProject[K]) => void;
+  /**
+   * Sett demo-type. reseed=true erstatter scene-flow + tone/lengde/format med
+   * typens mal (slik at «Demo-typer»-knappene faktisk reformer demoen).
+   * reseed=false bytter bare typen (behold scenene).
+   */
+  setDemoType: (demoType: DemoType, reseed: boolean) => void;
 
   // ── Scener ──
   selectScene: (id: string | null) => void;
@@ -89,6 +97,23 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
     const { project } = get();
     if (!project) return;
     set({ project: persist({ ...project, [key]: value }) });
+  },
+
+  setDemoType: (demoType, reseed) => {
+    const { project } = get();
+    if (!project) return;
+    if (!reseed) {
+      set({ project: persist({ ...project, demoType }) });
+      return;
+    }
+    const tpl = DEMO_TYPE_TEMPLATES[demoType] ?? DEMO_TYPE_TEMPLATES.product_demo;
+    const scenes = reindex(flowForDemoType(demoType, project.devices[0]));
+    const scriptMeta = { ...(project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: 'Norsk', length: 'medium' as const }), tone: tpl.tone, length: tpl.length };
+    set({
+      project: persist({ ...project, demoType, scenes, format: tpl.format, scriptMeta }),
+      selectedSceneId: scenes[0]?.id ?? null,
+      recorderStepIndex: 0,
+    });
   },
 
   selectScene: (id) => set({ selectedSceneId: id }),
