@@ -123,6 +123,19 @@ export type ResolveLanguage =
 
 export type ResolveTrackType = "video" | "audio" | "subtitle";
 
+export type ResolvePage =
+  | "media"
+  | "cut"
+  | "edit"
+  | "fusion"
+  | "color"
+  | "fairlight"
+  | "deliver";
+
+export const RESOLVE_PAGES: readonly ResolvePage[] = [
+  "media", "cut", "edit", "fusion", "color", "fairlight", "deliver",
+] as const;
+
 export type SlateMarkerColor =
   | "Blue"
   | "Cyan"
@@ -717,6 +730,28 @@ export const photoshop = {
   resolveTimelineSetSetting: (params: { key: string; value: string }) =>
     send<{ scope: "timeline"; set: boolean; key: string; value: string }>(
       "resolve.timelineSetSetting",
+      params,
+    ),
+
+  resolvePageOpen: (params: { name: ResolvePage }) =>
+    send<{ opened: boolean; page: ResolvePage }>("resolve.pageOpen", params),
+
+  resolvePageCurrent: () =>
+    send<{ page: ResolvePage | null }>("resolve.pageCurrent"),
+
+  resolveClipGetProperty: (params: { clip_id: string; key?: string }) =>
+    send<
+      | { clip_id: string; key: string; value: string | number | boolean | null }
+      | {
+          clip_id: string;
+          key: null;
+          value: Record<string, string | number | boolean | null>;
+        }
+    >("resolve.clipGetProperty", params),
+
+  resolveClipSetProperty: (params: { clip_id: string; key: string; value: string }) =>
+    send<{ set: boolean; clip_id: string; key: string; value: string }>(
+      "resolve.clipSetProperty",
       params,
     ),
 

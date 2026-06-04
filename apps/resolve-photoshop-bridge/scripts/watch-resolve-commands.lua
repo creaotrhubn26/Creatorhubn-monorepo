@@ -1184,6 +1184,87 @@ HANDLERS["timeline.getSetting"] = handleTimelineGetSetting
 HANDLERS["timeline.setSetting"] = handleTimelineSetSetting
 
 -- ---------------------------------------------------------------------------
+-- Page navigation + Clip-property
+-- ---------------------------------------------------------------------------
+
+local RESOLVE_PAGES = {
+  media = true, cut = true, edit = true, fusion = true,
+  color = true, fairlight = true, deliver = true,
+}
+
+local function handlePageOpen(args)
+  local resolve, _ = getResolveContext()
+  local name = extractString(args, "name")
+  if not name or name == "" then error("name mangler") end
+  if not RESOLVE_PAGES[name] then
+    error("Ugyldig page-name: " .. name ..
+      " (gyldige: media, cut, edit, fusion, color, fairlight, deliver)")
+  end
+  local ok = resolve:OpenPage(name)
+  return string.format(
+    '{"opened":%s,"page":%s}',
+    tostring(ok), jsonEscape(name)
+  )
+end
+
+local function handlePageCurrent(_args)
+  local resolve, _ = getResolveContext()
+  local current = resolve:GetCurrentPage()
+  if current == nil then
+    return '{"page":null}'
+  end
+  return string.format('{"page":%s}', jsonEscape(current))
+end
+
+local function handleClipGetProperty(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local clipId = extractString(args, "clip_id")
+  if not clipId or clipId == "" then error("clip_id mangler") end
+  local item = findMediaPoolItemById(mediaPool, clipId)
+  if not item then error("Fant ikke MediaPoolItem: " .. clipId) end
+
+  local key = extractString(args, "key")
+  if key and key ~= "" then
+    local value = item:GetClipProperty(key)
+    return string.format(
+      '{"clip_id":%s,"key":%s,"value":%s}',
+      jsonEscape(clipId), jsonEscape(key), jsonValue(value)
+    )
+  end
+  local all = item:GetClipProperty("")
+  return string.format(
+    '{"clip_id":%s,"key":null,"value":%s}',
+    jsonEscape(clipId), settingsTableToJson(all)
+  )
+end
+
+local function handleClipSetProperty(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local clipId = extractString(args, "clip_id")
+  if not clipId or clipId == "" then error("clip_id mangler") end
+  local item = findMediaPoolItemById(mediaPool, clipId)
+  if not item then error("Fant ikke MediaPoolItem: " .. clipId) end
+
+  local key = extractString(args, "key")
+  if not key or key == "" then error("key mangler") end
+  local value = extractString(args, "value")
+  if value == nil then error("value mangler (må være string)") end
+
+  local ok = item:SetClipProperty(key, value)
+  return string.format(
+    '{"set":%s,"clip_id":%s,"key":%s,"value":%s}',
+    tostring(ok), jsonEscape(clipId), jsonEscape(key), jsonEscape(value)
+  )
+end
+
+HANDLERS["page.open"] = handlePageOpen
+HANDLERS["page.current"] = handlePageCurrent
+HANDLERS["clip.getProperty"] = handleClipGetProperty
+HANDLERS["clip.setProperty"] = handleClipSetProperty
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 
