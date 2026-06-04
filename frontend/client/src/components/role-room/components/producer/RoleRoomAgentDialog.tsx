@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Chip,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -290,6 +291,9 @@ export default function RoleRoomAgentDialog({
   // via CSS display (cards stay mounted — no remount/effect churn).
   const [researchSection, setResearchSection] =
     useState<'alle' | 'oversikt' | 'kanaler' | 'marked'>('alle');
+  // "Bestemor-modus": lead with one field + one button; the rest is optional
+  // and hidden behind a toggle so the first impression is dead simple.
+  const [showMoreResearchDetails, setShowMoreResearchDetails] = useState(false);
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
   // surface and the research forms are actually usable without pinch-
@@ -901,61 +905,97 @@ export default function RoleRoomAgentDialog({
           {error ? <Alert severity="error">{error}</Alert> : null}
           {notice ? <Alert severity="success">{notice}</Alert> : null}
 
-          <Stack direction="row" justifyContent="flex-end">
-            <ResearchVersionsPickerInline projectId={projectId} />
-          </Stack>
-
-
           <Box
             sx={{
-              p: 1.2,
+              p: { xs: 1.4, md: 1.8 },
               borderRadius: 3,
-              border: '1px solid rgba(34,211,238,0.12)',
+              border: '1px solid rgba(34,211,238,0.22)',
               bgcolor: 'rgba(15,23,42,0.52)',
             }}
           >
-            <Stack spacing={1.1}>
-              <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>
-                Start med kundesignaler
+            <Stack spacing={1.2}>
+              <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: { xs: '1rem', md: '1.1rem' } }}>
+                Lim inn kundens nettside — så finner jeg ut resten
               </Typography>
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.1}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-start' }}>
                 <TextField
-                  label="Nettside"
+                  label="Kundens nettside"
                   value={websiteUrl}
                   onChange={(event) => setWebsiteUrl(event.target.value)}
                   fullWidth
                   placeholder="https://kunde.no"
                   InputLabelProps={{ shrink: true }}
                 />
-                <TextField
-                  label="Org.nr"
-                  value={organizationNumber}
-                  onChange={(event) => setOrganizationNumber(event.target.value)}
-                  fullWidth
-                  placeholder="999 999 999"
-                  InputLabelProps={{ shrink: true }}
-                />
+                <Button
+                  variant="contained"
+                  size="large"
+                  disabled={!canGenerate || generating || applying}
+                  onClick={() => onGenerate({
+                    projectId,
+                    projectName,
+                    websiteUrl,
+                    organizationNumber,
+                    companyName,
+                    extraContext,
+                  })}
+                  data-testid="research-find-out"
+                  sx={{
+                    minWidth: { sm: 220 },
+                    py: 1.4,
+                    fontWeight: 800,
+                    textTransform: 'none',
+                    whiteSpace: 'nowrap',
+                    background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+                  }}
+                >
+                  {generating ? 'Finner ut…' : 'Finn ut alt om kunden'}
+                </Button>
               </Stack>
-              <TextField
-                label="Firmanavn"
-                value={companyName}
-                onChange={(event) => setCompanyName(event.target.value)}
-                fullWidth
-                placeholder="Northwind Drilling"
-                InputLabelProps={{ shrink: true }}
-              />
-              <TextField
-                label="Ekstra kontekst"
-                value={extraContext}
-                onChange={(event) => setExtraContext(event.target.value)}
-                fullWidth
-                multiline
-                minRows={3}
-                placeholder="Legg inn kampanjemål, målgruppe, leveranser eller annet du vil at agenten skal ta hensyn til."
-                InputLabelProps={{ shrink: true }}
-              />
+              <Button
+                variant="text"
+                size="small"
+                onClick={() => setShowMoreResearchDetails((v) => !v)}
+                sx={{ alignSelf: 'flex-start', textTransform: 'none', color: 'rgba(226,232,240,0.7)' }}
+              >
+                {showMoreResearchDetails ? 'Skjul flere detaljer' : 'Flere detaljer (valgfritt)'}
+              </Button>
+              <Collapse in={showMoreResearchDetails}>
+                <Stack spacing={1.1} sx={{ pt: 0.4 }}>
+                  <TextField
+                    label="Organisasjonsnummer (valgfritt)"
+                    value={organizationNumber}
+                    onChange={(event) => setOrganizationNumber(event.target.value)}
+                    fullWidth
+                    placeholder="999 999 999"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <TextField
+                    label="Firmanavn (valgfritt)"
+                    value={companyName}
+                    onChange={(event) => setCompanyName(event.target.value)}
+                    fullWidth
+                    placeholder="Northwind Drilling"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <TextField
+                    label="Noe spesielt jeg bør vite? (valgfritt)"
+                    value={extraContext}
+                    onChange={(event) => setExtraContext(event.target.value)}
+                    fullWidth
+                    multiline
+                    minRows={3}
+                    placeholder="F.eks. kampanjemål, målgruppe eller leveranser du vil at jeg skal ta hensyn til."
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Stack>
+              </Collapse>
             </Stack>
           </Box>
+          {/* Previous research versions — demoted from the top so the first
+              impression stays simple; only relevant once analyses exist. */}
+          <Stack direction="row" justifyContent="flex-end">
+            <ResearchVersionsPickerInline projectId={projectId} />
+          </Stack>
 
           {result ? (
             <Stack spacing={1.2}>
@@ -1933,7 +1973,7 @@ export default function RoleRoomAgentDialog({
             })}
             sx={{ textTransform: 'none', fontWeight: 700 }}
           >
-            {generating ? 'Analyserer…' : access?.providerConfigured ? 'Analyser kunde med OpenAI' : 'Analyser kunde'}
+            {generating ? 'Finner ut…' : 'Analyser på nytt'}
           </Button>
           <Button
             variant="contained"
