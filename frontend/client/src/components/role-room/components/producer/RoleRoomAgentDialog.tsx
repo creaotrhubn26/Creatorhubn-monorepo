@@ -305,10 +305,10 @@ export default function RoleRoomAgentDialog({
   // Admin/debug chrome (role chips, System status) is hidden by default so the
   // surface reads as a product; a small gear reveals it for admins.
   const [showAdminChrome, setShowAdminChrome] = useState(false);
-  // Guided flow: Forrige/Neste steps through the tabs so users don't have to
-  // pick among ~12. Tab strip stays visible by default (additive + safe); the
-  // toggle lets you collapse it for a fully guided view.
-  const [showAllTabs, setShowAllTabs] = useState(true);
+  // Guided flow by default: users move with the 5-step stepper + Forrige/Neste
+  // instead of facing a 12-tab strip (minimal cognitive load). 'Alle faner'
+  // reveals the full strip for power users.
+  const [showAllTabs, setShowAllTabs] = useState(false);
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
   // surface and the research forms are actually usable without pinch-
