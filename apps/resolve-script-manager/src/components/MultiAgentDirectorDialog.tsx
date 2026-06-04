@@ -37,10 +37,17 @@ interface Props {
 
 interface ProgressStep {
   id: string;
+  iterationId: number;
   kind: "thinking" | "tool" | "result" | "error";
   label: string;
   detail?: string;
   timestamp: number;
+}
+
+interface IterationCard {
+  id: number;
+  status: "working" | "done" | "error";
+  steps: ProgressStep[];
 }
 
 const MAX_ITERATIONS = 30;
@@ -101,10 +108,17 @@ export function MultiAgentDirectorDialog({ open, onClose }: Props) {
     }
   }, [steps.length]);
 
-  const addStep = (s: Omit<ProgressStep, "id" | "timestamp">) => {
+  const currentIterationRef = useRef(0);
+
+  const addStep = (s: Omit<ProgressStep, "id" | "timestamp" | "iterationId">) => {
     setSteps((prev) => [
       ...prev,
-      { ...s, id: `${Date.now()}-${prev.length}`, timestamp: Date.now() },
+      {
+        ...s,
+        iterationId: currentIterationRef.current,
+        id: `${Date.now()}-${prev.length}`,
+        timestamp: Date.now(),
+      },
     ]);
   };
 
@@ -123,11 +137,13 @@ export function MultiAgentDirectorDialog({ open, onClose }: Props) {
 
     const messages: ClaudeMessage[] = [{ role: "user", content: goal.trim() }];
     let iterations = 0;
+    currentIterationRef.current = 0;
 
     try {
       while (iterations < MAX_ITERATIONS) {
         if (stopRef.current) break;
         iterations += 1;
+        currentIterationRef.current = iterations;
 
         addStep({ kind: "thinking", label: `Iterasjon ${iterations}: Claude planlegger…` });
 
@@ -255,17 +271,37 @@ export function MultiAgentDirectorDialog({ open, onClose }: Props) {
               </div>
 
               <div style={progressList} ref={scrollRef} data-testid="mad-progress">
-                {steps.map((s) => (
+                {groupByIteration(steps, running).map((card) => (
                   <div
-                    key={s.id}
-                    style={{ ...progressItem, ...stepStyle(s.kind) }}
-                    data-testid={`mad-step-${s.kind}`}
+                    key={card.id}
+                    style={iterationCardStyle(card.status)}
+                    data-testid={`mad-iteration-${card.id}`}
+                    data-status={card.status}
                   >
-                    <div style={stepHeader}>
-                      <span style={stepKindBadge(s.kind)}>{s.kind.toUpperCase()}</span>
-                      <span style={stepLabel}>{s.label}</span>
+                    <header style={iterationHeader}>
+                      <span style={iterationLabel}>Iterasjon {card.id}</span>
+                      <span style={iterationStatusBadge(card.status)}>
+                        {iterationStatusText(card.status)}
+                      </span>
+                      <span style={iterationToolCount}>
+                        {card.steps.filter((s) => s.kind === "tool").length} tools
+                      </span>
+                    </header>
+                    <div style={iterationBody}>
+                      {card.steps.map((s) => (
+                        <div
+                          key={s.id}
+                          style={{ ...progressItem, ...stepStyle(s.kind) }}
+                          data-testid={`mad-step-${s.kind}`}
+                        >
+                          <div style={stepHeader}>
+                            <span style={stepKindBadge(s.kind)}>{s.kind.toUpperCase()}</span>
+                            <span style={stepLabel}>{s.label}</span>
+                          </div>
+                          {s.detail && <div style={stepDetail}>{s.detail}</div>}
+                        </div>
+                      ))}
                     </div>
-                    {s.detail && <div style={stepDetail}>{s.detail}</div>}
                   </div>
                 ))}
                 {running && (
@@ -319,6 +355,65 @@ export function MultiAgentDirectorDialog({ open, onClose }: Props) {
       </div>
     </div>
   );
+}
+
+function groupByIteration(steps: ProgressStep[], running: boolean): IterationCard[] {
+  const byId = new Map<number, IterationCard>();
+  for (const s of steps) {
+    let card = byId.get(s.iterationId);
+    if (!card) {
+      card = { id: s.iterationId, status: "working", steps: [] };
+      byId.set(s.iterationId, card);
+    }
+    card.steps.push(s);
+    if (s.kind === "error") card.status = "error";
+  }
+  const cards = Array.from(byId.values()).sort((a, b) => a.id - b.id);
+  // Marker alle ferdige unntatt siste hvis vi fortsatt kjører
+  cards.forEach((c, i) => {
+    if (c.status === "error") return;
+    const isLast = i === cards.length - 1;
+    if (running && isLast) {
+      c.status = "working";
+    } else {
+      c.status = "done";
+    }
+  });
+  return cards;
+}
+
+function iterationStatusText(status: IterationCard["status"]): string {
+  return status === "working" ? "WORKING" : status === "error" ? "FEIL" : "FERDIG";
+}
+
+function iterationCardStyle(status: IterationCard["status"]): React.CSSProperties {
+  const base: React.CSSProperties = {
+    background: "#15151c",
+    border: "1px solid #2a2a36",
+    borderRadius: 8,
+    overflow: "hidden",
+  };
+  if (status === "error") {
+    return { ...base, borderColor: "#f472b650" };
+  }
+  if (status === "working") {
+    return { ...base, borderColor: "#a78bfa50" };
+  }
+  return { ...base, borderColor: "#34d39940" };
+}
+
+function iterationStatusBadge(status: IterationCard["status"]): React.CSSProperties {
+  const color = status === "working" ? "#a78bfa" : status === "error" ? "#f472b6" : "#34d399";
+  return {
+    fontSize: 9,
+    background: color + "20",
+    border: "1px solid " + color + "50",
+    color,
+    padding: "2px 6px",
+    borderRadius: 4,
+    fontWeight: 700,
+    letterSpacing: 0.4,
+  };
 }
 
 function stepStyle(kind: ProgressStep["kind"]): React.CSSProperties {
@@ -514,13 +609,42 @@ const goalText: React.CSSProperties = {
 const progressList: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 6,
+  gap: 10,
   maxHeight: 400,
   overflowY: "auto",
   background: "#0b0b12",
   border: "1px solid #2a2a36",
   borderRadius: 8,
   padding: 10,
+};
+
+const iterationHeader: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "8px 12px",
+  background: "#1c1c26",
+  borderBottom: "1px solid #2a2a36",
+};
+
+const iterationLabel: React.CSSProperties = {
+  fontSize: 11.5,
+  fontWeight: 700,
+  color: "#e5e5ea",
+  letterSpacing: 0.4,
+};
+
+const iterationToolCount: React.CSSProperties = {
+  fontSize: 10,
+  color: "#7b7b8d",
+  marginLeft: "auto",
+};
+
+const iterationBody: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  padding: 8,
 };
 
 const progressItem: React.CSSProperties = {
