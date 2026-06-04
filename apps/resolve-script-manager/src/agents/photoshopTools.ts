@@ -20,6 +20,9 @@ import {
   SLATE_MARKER_COLORS,
   type ResolvePage,
   RESOLVE_PAGES,
+  type ResolveClipColor,
+  RESOLVE_CLIP_COLORS,
+  type ResolveTrackType,
 } from "../services/photoshopBridgeService";
 import {
   suggestPromptsLocal,
@@ -788,6 +791,79 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_timeline_get_current_timecode",
+    description:
+      "Les playhead-timecode (HH:MM:SS:FF) fra aktiv timeline. Krever at Resolve er på Cut/Edit/Color/Fairlight/Deliver-page.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_timeline_set_current_timecode",
+    description:
+      "Flytt playhead til timecode (HH:MM:SS:FF). Nyttig før operasjoner som virker på current frame (export still, magic mask, add marker).",
+    input_schema: {
+      type: "object",
+      properties: {
+        timecode: { type: "string", description: "HH:MM:SS:FF" },
+      },
+      required: ["timecode"],
+    },
+  },
+  {
+    name: "photoshop_resolve_timeline_get_item_list_in_track",
+    description:
+      "List alle items på en spesifikk timeline-track. Returnerer name + start/end/duration i frames per item. Bruk dette for å mappe tidslinjen før jump-operations.",
+    input_schema: {
+      type: "object",
+      properties: {
+        track_type: {
+          type: "string",
+          enum: ["video", "audio", "subtitle"],
+          description: "Default 'video'.",
+        },
+        track_index: { type: "number", description: "1-basert track-indeks." },
+      },
+      required: ["track_index"],
+    },
+  },
+  {
+    name: "photoshop_resolve_clip_get_color",
+    description:
+      "Les clip-color-label (Orange/Yellow/Green/etc.) — fra MediaPoolItem hvis clip_id, ellers fra currently selected timeline-item.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clip_id: { type: "string", description: "Utelat for selected timeline-item." },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_clip_set_color",
+    description:
+      "Sett clip-color-label på MediaPoolItem (med clip_id) eller selected timeline-item. Brukes for workflow-organisering: 'merk uvurderte klipp gule', 'merk dårlig audio rød', etc. 16 gyldige farger.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clip_id: { type: "string" },
+        color: {
+          type: "string",
+          enum: [
+            "Orange", "Apricot", "Yellow", "Lime", "Olive", "Green", "Teal", "Navy",
+            "Blue", "Purple", "Violet", "Pink", "Tan", "Beige", "Brown", "Chocolate",
+          ],
+        },
+      },
+      required: ["color"],
+    },
+  },
+  {
+    name: "photoshop_resolve_clip_clear_color",
+    description: "Fjern clip-color-label fra MediaPoolItem eller selected timeline-item.",
+    input_schema: {
+      type: "object",
+      properties: { clip_id: { type: "string" } },
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -1487,6 +1563,48 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         value: input.value,
       });
     }
+    case "photoshop_resolve_timeline_get_current_timecode":
+      return photoshop.resolveTimelineGetCurrentTimecode();
+    case "photoshop_resolve_timeline_set_current_timecode": {
+      if (typeof input.timecode !== "string" || input.timecode.length === 0) {
+        throw new Error("timecode må være en string (HH:MM:SS:FF)");
+      }
+      return photoshop.resolveTimelineSetCurrentTimecode({ timecode: input.timecode });
+    }
+    case "photoshop_resolve_timeline_get_item_list_in_track": {
+      const VALID: ResolveTrackType[] = ["video", "audio", "subtitle"];
+      const trackType =
+        typeof input.track_type === "string" && (VALID as readonly string[]).includes(input.track_type)
+          ? (input.track_type as ResolveTrackType)
+          : "video";
+      if (typeof input.track_index !== "number" || input.track_index < 1) {
+        throw new Error("track_index må være et tall >= 1");
+      }
+      return photoshop.resolveTimelineGetItemListInTrack({
+        track_type: trackType,
+        track_index: input.track_index,
+      });
+    }
+    case "photoshop_resolve_clip_get_color":
+      return photoshop.resolveClipGetColor({
+        clip_id: typeof input.clip_id === "string" && input.clip_id.length > 0 ? input.clip_id : undefined,
+      });
+    case "photoshop_resolve_clip_set_color": {
+      const color = input.color;
+      if (typeof color !== "string" || !(RESOLVE_CLIP_COLORS as readonly string[]).includes(color)) {
+        throw new Error(
+          `Ugyldig color: ${String(color)} (gyldige: ${RESOLVE_CLIP_COLORS.join(", ")})`,
+        );
+      }
+      return photoshop.resolveClipSetColor({
+        clip_id: typeof input.clip_id === "string" && input.clip_id.length > 0 ? input.clip_id : undefined,
+        color: color as ResolveClipColor,
+      });
+    }
+    case "photoshop_resolve_clip_clear_color":
+      return photoshop.resolveClipClearColor({
+        clip_id: typeof input.clip_id === "string" && input.clip_id.length > 0 ? input.clip_id : undefined,
+      });
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
     case "photoshop_resolve_export_back":
