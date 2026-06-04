@@ -590,7 +590,8 @@ async fn process_b2_destination(
         }
     };
 
-    // Steg 2: authorize + get_upload_url
+    // Steg 2: authorize (få ny token per upload; retry-with-backoff
+    // håndterer transient 5xx/timeout inni authorize selv)
     let auth = match b2_uploader::authorize(&creds.key_id, &creds.application_key).await {
         Ok(a) => a,
         Err(err) => {
@@ -603,22 +604,10 @@ async fn process_b2_destination(
             return;
         }
     };
-    let upload_url = match b2_uploader::get_upload_url(&auth, bucket_id).await {
-        Ok(u) => u,
-        Err(err) => {
-            state.update(&session_id, |s| s.failed += 1);
-            emit_completed(
-                &app, &session_id, &src_disp, &dest_spec.id, false, None,
-                Some(format!("B2 get_upload_url feilet: {}", err)),
-                false,
-            );
-            return;
-        }
-    };
 
-    // Steg 3: upload med progress-callback. Emit copy-file-progress-
-    // event throttled til 250ms — samme rate som lokal-flyten i
-    // copy_engine, så UI får jevn progressbar uten å oversvømmes.
+    // Steg 3: upload via upload_file_smart som ruter mellom single-
+    // part og multipart basert på filstørrelse (200 MiB threshold).
+    // Progress emit'es throttled på 250ms — samme rate som lokal.
     let app_for_progress = app.clone();
     let sid_for_progress = session_id.clone();
     let src_disp_for_progress = src_disp.clone();
@@ -644,7 +633,7 @@ async fn process_b2_destination(
         );
     };
 
-    match b2_uploader::upload_file(&upload_url, &src, &dest_name, &sha1, on_progress).await {
+    match b2_uploader::upload_file_smart(&auth, bucket_id, &src, &dest_name, &sha1, on_progress).await {
         Ok(result) => {
             if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
                 if let Err(err) = dit_reporter::report_verified(

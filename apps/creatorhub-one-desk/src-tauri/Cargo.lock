@@ -589,7 +589,7 @@ dependencies = [
 
 [[package]]
 name = "creatorhub-one-desk"
-version = "0.1.4"
+version = "0.1.6"
 dependencies = [
  "dirs 5.0.1",
  "futures",
