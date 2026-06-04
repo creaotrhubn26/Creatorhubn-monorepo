@@ -210,6 +210,15 @@ export default function RoleRoomFeedPlannerPanel({
       )
       .map((p) => p.id);
     if (ids.length === 0) return;
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `Godkjenne alle ${ids.length} poster uten å gå gjennom dem enkeltvis? ` +
+          'De merkes som klare for publisering.',
+      )
+    ) {
+      return;
+    }
     setBulkApproving(true);
     try {
       const result = await roleRoomAgentService.setFeedPostApproval({
@@ -235,6 +244,15 @@ export default function RoleRoomFeedPlannerPanel({
 
   const regenerateAll = () => {
     if (!bootstrap) return;
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        'Regenerere alle forslag? Egne endringer på ulåste poster (captions, bilder) ' +
+          'overskrives — låste poster beholdes.',
+      )
+    ) {
+      return;
+    }
     setPosts((current) => {
       const regenerated = generateFeedPostsFromBootstrap(bootstrap, platform, { rotate: true });
       // Preserve locked posts and their custom images; only overwrite unlocked.
