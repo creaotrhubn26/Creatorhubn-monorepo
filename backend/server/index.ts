@@ -723,6 +723,7 @@ import { setupEquipmentFirmwareRoutes } from "./equipment-firmware-routes";
 import { setupAcademyIntegrationsRoutes } from "./academy-integrations-routes";
 import { setupAcademyMediaAssetsRoutes } from "./academy-media-assets-routes";
 import { setupAcademyCohortSettingsRoutes } from "./academy-cohort-settings-routes";
+import { setupAcademyAdminRoutes } from "./academy-admin-routes";
 import { setupPricingRoutes } from "./pricing-routes";
 import { setupAccountingRoutes } from "./accounting-routes";
 import { setupFileManagementRoutes } from "./file-management-routes";
@@ -43745,104 +43746,6 @@ async function resolveAdminUserView(
   );
 }
 
-app.get("/api/academy/access-summary", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "authenticated",
-    );
-    if (!academySession) {
-      return;
-    }
-    const resolvedUserId = academySession.user.id;
-    const normalizedUserId =
-      resolvedUserId && resolvedUserId !== "guest"
-        ? resolvedUserId.trim().toLowerCase()
-        : null;
-    const normalizedEmail =
-      academySession.user.email?.trim().toLowerCase() || null;
-
-    const users = await listAdminUsersSnapshot();
-    const matchedUser =
-      users.find((entry) => {
-        const identifiers = [
-          toAdminString(entry.id),
-          toAdminString(entry.accountUserId),
-          toAdminString(entry.inviteRequestId),
-        ]
-          .map((value) => value?.trim().toLowerCase() || null)
-          .filter(Boolean);
-        const email = toAdminString(entry.email)?.trim().toLowerCase() || null;
-
-        if (normalizedUserId && identifiers.includes(normalizedUserId)) {
-          return true;
-        }
-
-        return Boolean(normalizedEmail && email === normalizedEmail);
-      }) || null;
-
-    if (!matchedUser) {
-      return res.status(200).json({
-        success: true,
-        data: {
-          userId: normalizedUserId,
-          email: normalizedEmail,
-          access: null,
-        },
-      });
-    }
-
-    const approvedByUserId = toAdminString(matchedUser.approvedByUserId);
-    const approvedByAccount = approvedByUserId
-      ? await findAdminAccountUser(approvedByUserId, approvedByUserId)
-      : null;
-    const approvedByRoleId = approvedByAccount
-      ? normalizeAdminRoleId(
-          approvedByAccount.role ||
-            inferAdminRoleFromProfession(approvedByAccount.profession),
-        )
-      : null;
-    const approvedByRoleLabel = approvedByRoleId
-      ? buildAdminRoleEntry(approvedByRoleId).name
-      : null;
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        userId:
-          toAdminString(matchedUser.accountUserId) ||
-          toAdminString(matchedUser.id) ||
-          normalizedUserId,
-        email: toAdminString(matchedUser.email) || normalizedEmail,
-        access: {
-          status: toAdminString(matchedUser.status),
-          approvedAt: matchedUser.approvedAt instanceof Date
-            ? matchedUser.approvedAt.toISOString()
-            : toAdminString(matchedUser.approvedAt),
-          approvedBy:
-            toAdminString(matchedUser.approvedBy) ||
-            formatAdminUserIdentity(approvedByAccount),
-          approvedByUserId,
-          approvedByRoleLabel,
-          role: toAdminString(matchedUser.role),
-          roleLabel: toAdminString(matchedUser.roleLabel),
-          profession: toAdminString(matchedUser.profession),
-          onboardingStatus: toAdminString(matchedUser.onboardingStatus),
-          inviteRequestId: toAdminString(matchedUser.inviteRequestId),
-          accountUserId: toAdminString(matchedUser.accountUserId),
-          isActive: Boolean(matchedUser.isActive),
-        },
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching academy access summary:", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Could not read academy access summary" });
-  }
-});
-
 const ADMIN_STATS_PROFESSION_KEYS = [
   "photographer",
   "videographer",
@@ -45414,20 +45317,6 @@ function countWords(text: string): number {
   }
   return text.split(/\s+/).filter(Boolean).length;
 }
-
-app.get("/api/academy/admin/revenue/overview", async (req, res) => {
-  try {
-    if (!requireAdminSession(req, res)) {
-      return;
-    }
-
-    const snapshot = await getAdminAcademyRevenueSnapshot();
-    res.json(snapshot);
-  } catch (error) {
-    console.error("Academy revenue overview error:", error);
-    res.status(500).json({ error: "Could not fetch academy revenue overview" });
-  }
-});
 
 // User onboarding status check
 
@@ -65819,6 +65708,19 @@ setupAcademyCohortSettingsRoutes({
   normalizeCohortItems,
   normalizeCohortFeatureFlags,
   normalizeCohortDiscussions,
+});
+setupAcademyAdminRoutes({
+  app,
+  requireAcademySession,
+  requireAdminSession,
+  listAdminUsersSnapshot,
+  toAdminString,
+  findAdminAccountUser,
+  normalizeAdminRoleId,
+  inferAdminRoleFromProfession,
+  buildAdminRoleEntry,
+  formatAdminUserIdentity,
+  getAdminAcademyRevenueSnapshot,
 });
 // NB: setupSongflowDeprecatedAliasesRoutes wires later (etter handler-
 // deklarasjoner ~linje 70324). Trivielle deprecation-aliases krever at
