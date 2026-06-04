@@ -284,6 +284,11 @@ export default function RoleRoomAgentDialog({
     useState<RoleRoomAgentProducerBootstrapResult | null>(null);
   const [appliedResultRef, setAppliedResultRef] =
     useState<RoleRoomAgentProducerBootstrapResult | null>(null);
+  // Research output is grouped into sections to cut the long single scroll.
+  // 'alle' (default) keeps the original full view; the others filter the cards
+  // via CSS display (cards stay mounted — no remount/effect churn).
+  const [researchSection, setResearchSection] =
+    useState<'alle' | 'oversikt' | 'kanaler' | 'marked'>('alle');
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
   // surface and the research forms are actually usable without pinch-
@@ -339,6 +344,8 @@ export default function RoleRoomAgentDialog({
   };
 
   const result = initialResult ?? null;
+  const showResearchSection = (s: 'oversikt' | 'kanaler' | 'marked'): boolean =>
+    researchSection === 'alle' || researchSection === s;
   // Derived saved-state — survives reopen, clears only when a new result object arrives.
   const projectCreatedFromResult = !!result && createdResultRef === result;
   const resultAppliedToProject = !!result && appliedResultRef === result;
@@ -1031,7 +1038,47 @@ export default function RoleRoomAgentDialog({
                   </Stack>
                 </Stack>
               </Box>
-              <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.2}>
+              <Stack
+                direction="row"
+                spacing={0.8}
+                flexWrap="wrap"
+                useFlexGap
+                role="tablist"
+                aria-label="Research-seksjoner"
+                sx={{ mb: 0.2 }}
+              >
+                {([
+                  ['alle', 'Alle'],
+                  ['oversikt', 'Oversikt'],
+                  ['kanaler', 'Kanaler'],
+                  ['marked', 'Marked'],
+                ] as const).map(([key, label]) => {
+                  const selected = researchSection === key;
+                  return (
+                    <Chip
+                      key={key}
+                      label={label}
+                      size="small"
+                      clickable
+                      role="tab"
+                      aria-selected={selected}
+                      onClick={() => setResearchSection(key)}
+                      data-testid={`research-section-${key}`}
+                      sx={{
+                        fontWeight: 700,
+                        bgcolor: selected ? 'rgba(34,211,238,0.18)' : 'rgba(148,163,184,0.12)',
+                        color: selected ? '#22d3ee' : 'rgba(226,232,240,0.7)',
+                        border: selected ? '1px solid rgba(34,211,238,0.5)' : '1px solid transparent',
+                      }}
+                    />
+                  );
+                })}
+              </Stack>
+              <Stack
+                direction={{ xs: 'column', lg: 'row' }}
+                spacing={1.2}
+                sx={{ display: showResearchSection('oversikt') ? undefined : 'none' }}
+              >
                 <Box
                   sx={{
                     flex: 1.25,
@@ -1195,6 +1242,7 @@ export default function RoleRoomAgentDialog({
               {socialProfileCandidates.length > 0 ? (
                 <Box
                   sx={{
+                    display: showResearchSection('kanaler') ? undefined : 'none',
                     p: 1.2,
                     borderRadius: 3,
                     border: '1px solid rgba(59,130,246,0.2)',
@@ -1306,6 +1354,7 @@ export default function RoleRoomAgentDialog({
               {competitorAnalysis ? (
                 <Box
                   sx={{
+                    display: showResearchSection('marked') ? undefined : 'none',
                     p: 1.2,
                     borderRadius: 3,
                     border: competitorAnalysis.status === 'ready'
@@ -1511,6 +1560,7 @@ export default function RoleRoomAgentDialog({
               {localPresencePlan ? (
                 <Box
                   sx={{
+                    display: showResearchSection('marked') ? undefined : 'none',
                     p: 1.2,
                     borderRadius: 3,
                     border: localPresencePlan.status === 'ready'
