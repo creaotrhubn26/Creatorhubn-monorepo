@@ -576,6 +576,60 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_voice_get_isolation_state",
+    description:
+      "Les Voice Isolation-state. Hvis track_index er gitt: les fra audio-track i aktiv timeline. Hvis utelatt: les fra currently selected video item. Returnerer { scope, ref, is_enabled, amount(0-100) }.",
+    input_schema: {
+      type: "object",
+      properties: {
+        track_index: {
+          type: "number",
+          description: "1-basert audio-track-indeks i timeline. Utelat for å lese fra valgt item.",
+        },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_voice_set_isolation_state",
+    description:
+      "Sett Voice Isolation på audio-track (track_index gitt) eller currently selected item (utelat track_index). amount er 0-100. Bruk dette for å rydde dialog-spor i støyete opptak før eksport. Resolve 21 native AI — gratis, GPU-akselerert.",
+    input_schema: {
+      type: "object",
+      properties: {
+        track_index: {
+          type: "number",
+          description: "1-basert audio-track-indeks. Utelat for å sette på valgt item.",
+        },
+        is_enabled: { type: "boolean" },
+        amount: {
+          type: "number",
+          description: "Isolation-styrke 0-100. 50 er nøytralt startpunkt.",
+        },
+      },
+      required: ["is_enabled", "amount"],
+    },
+  },
+  {
+    name: "photoshop_resolve_gallery_import_stills",
+    description:
+      "Importer .drx/.dpx/.lut/.cube etc. fra disk inn i Gallery — current album hvis album_name utelates, ellers spesifikt navngitt Stills/PowerGrade-album. Bruk dette for å laste eksterne PowerGrade-presets eller LUT-stills som så kan appliseres via graph.applyGradeFromDRX.",
+    input_schema: {
+      type: "object",
+      properties: {
+        file_paths: {
+          type: "array",
+          items: { type: "string" },
+          description: "Absolutte path til filer som skal importeres (minst én).",
+        },
+        album_name: {
+          type: "string",
+          description: "Navn på mål-album. Utelat for å bruke current.",
+        },
+      },
+      required: ["file_paths"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -1154,6 +1208,38 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         node_index: nodeIndex,
         enabled: input.enabled === true,
       });
+    }
+    case "photoshop_resolve_voice_get_isolation_state": {
+      const params: { track_index?: number } = {};
+      if (typeof input.track_index === "number") params.track_index = input.track_index;
+      return photoshop.resolveVoiceGetIsolationState(params);
+    }
+    case "photoshop_resolve_voice_set_isolation_state": {
+      const amount = input.amount;
+      if (typeof amount !== "number") throw new Error("amount må være et tall (0-100)");
+      if (amount < 0 || amount > 100) throw new Error("amount må være 0-100");
+      const params: { track_index?: number; is_enabled: boolean; amount: number } = {
+        is_enabled: input.is_enabled === true,
+        amount,
+      };
+      if (typeof input.track_index === "number") params.track_index = input.track_index;
+      return photoshop.resolveVoiceSetIsolationState(params);
+    }
+    case "photoshop_resolve_gallery_import_stills": {
+      const filePaths = input.file_paths;
+      if (!Array.isArray(filePaths) || filePaths.length === 0) {
+        throw new Error("file_paths må være en ikke-tom array");
+      }
+      for (const p of filePaths) {
+        if (typeof p !== "string") throw new Error("Alle file_paths må være strings");
+      }
+      const params: { file_paths: string[]; album_name?: string } = {
+        file_paths: filePaths as string[],
+      };
+      if (typeof input.album_name === "string" && input.album_name.length > 0) {
+        params.album_name = input.album_name;
+      }
+      return photoshop.resolveGalleryImportStills(params);
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();

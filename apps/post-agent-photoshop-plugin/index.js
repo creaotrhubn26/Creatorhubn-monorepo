@@ -869,6 +869,41 @@ const COMMANDS = {
     });
   },
 
+  "resolve.voiceGetIsolationState": async ({ track_index } = {}) => {
+    const args = {};
+    if (typeof track_index === "number") args.track_index = track_index;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "voice.getIsolationState",
+      args,
+    });
+  },
+
+  "resolve.voiceSetIsolationState": async ({ track_index, is_enabled, amount } = {}) => {
+    if (typeof amount !== "number") throw new Error("amount mangler (0-100)");
+    if (amount < 0 || amount > 100) throw new Error("amount må være 0-100");
+    const args = { is_enabled: is_enabled === true, amount };
+    if (typeof track_index === "number") args.track_index = track_index;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "voice.setIsolationState",
+      args,
+    });
+  },
+
+  "resolve.galleryImportStills": async ({ file_paths, album_name } = {}) => {
+    if (!Array.isArray(file_paths) || file_paths.length === 0) {
+      throw new Error("file_paths må være en ikke-tom array av paths");
+    }
+    const args = { file_paths };
+    if (typeof album_name === "string" && album_name.length > 0) {
+      args.album_name = album_name;
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "gallery.importStills",
+      args,
+      timeout_ms: 30000,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
