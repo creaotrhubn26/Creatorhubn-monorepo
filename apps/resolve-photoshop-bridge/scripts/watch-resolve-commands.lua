@@ -435,6 +435,197 @@ local function handleDolbyVisionAnalyze(args)
   )
 end
 
+-- ---------------------------------------------------------------------------
+-- Render queue + markers + grade-distribusjon
+-- ---------------------------------------------------------------------------
+
+-- render.addJob — bruker CURRENT render settings (LoadRenderPreset først om
+-- du vil spesifisere). Returnerer den unike job_id som kan brukes til start/delete.
+local function handleRenderAddJob(args)
+  local _, project = getResolveContext()
+  local preset = extractString(args, "preset_name")
+  if preset then
+    local loaded = project:LoadRenderPreset(preset)
+    if not loaded then error("LoadRenderPreset feilet for: " .. preset) end
+  end
+  -- Optional override av TargetDir/CustomName via SetRenderSettings
+  local targetDir = extractString(args, "target_dir")
+  local customName = extractString(args, "custom_name")
+  if targetDir or customName then
+    local settings = {}
+    if targetDir then settings.TargetDir = targetDir end
+    if customName then settings.CustomName = customName end
+    project:SetRenderSettings(settings)
+  end
+  local jobId = project:AddRenderJob()
+  if not jobId or jobId == "" then
+    error("AddRenderJob returnerte tom job_id")
+  end
+  return string.format('{"job_id":%s,"preset":%s}',
+    jsonEscape(jobId), jsonEscape(preset or "current"))
+end
+
+-- render.list — alle queued jobs med metadata
+local function handleRenderList(args)
+  local _, project = getResolveContext()
+  local jobs = project:GetRenderJobList() or {}
+  local items = {}
+  for _, job in ipairs(jobs) do
+    -- job er en dict. Bygger en JSON-friendly sub-objekt.
+    local id = job.JobId or job["JobId"] or ""
+    local timelineName = job.TimelineName or ""
+    local renderStatus = job.RenderStatus or "pending"
+    local outputFilename = job.OutputFilename or ""
+    table.insert(items, string.format(
+      '{"job_id":%s,"timeline_name":%s,"output_filename":%s,"status":%s}',
+      jsonEscape(id), jsonEscape(timelineName),
+      jsonEscape(outputFilename), jsonEscape(renderStatus)
+    ))
+  end
+  return string.format('{"jobs":[%s],"count":%d}', table.concat(items, ","), #items)
+end
+
+-- render.start — start spesifikke jobs eller alle hvis ingen ID
+local function handleRenderStart(args)
+  local _, project = getResolveContext()
+  local jobId = extractString(args, "job_id")
+  local interactive = args:match('"interactive_mode"%s*:%s*true') ~= nil
+  local ok
+  if jobId then
+    ok = project:StartRendering({ jobId }, interactive)
+  else
+    ok = project:StartRendering(interactive)
+  end
+  return string.format(
+    '{"started":%s,"job_id":%s,"interactive_mode":%s}',
+    tostring(ok), jsonEscape(jobId or "all"), tostring(interactive)
+  )
+end
+
+-- render.stop — stopper alle aktive renderings
+local function handleRenderStop(args)
+  local _, project = getResolveContext()
+  project:StopRendering()
+  return '{"stopped":true}'
+end
+
+-- render.status — er render-pipelinen aktiv nå?
+local function handleRenderStatus(args)
+  local _, project = getResolveContext()
+  local inProgress = project:IsRenderingInProgress()
+  return string.format('{"in_progress":%s}', tostring(inProgress))
+end
+
+-- render.deleteJob — fjern queued job
+local function handleRenderDeleteJob(args)
+  local _, project = getResolveContext()
+  local jobId = extractString(args, "job_id")
+  if not jobId then error("job_id mangler") end
+  local ok = project:DeleteRenderJob(jobId)
+  return string.format('{"deleted":%s,"job_id":%s}', tostring(ok), jsonEscape(jobId))
+end
+
+-- markers.list — alle markers på current timeline
+local function handleMarkersList(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local markers = timeline:GetMarkers() or {}
+  local items = {}
+  for frame, m in pairs(markers) do
+    table.insert(items, string.format(
+      '{"frame":%s,"color":%s,"name":%s,"note":%s,"duration":%s,"custom_data":%s}',
+      tostring(frame),
+      jsonEscape(m.color or ""),
+      jsonEscape(m.name or ""),
+      jsonEscape(m.note or ""),
+      tostring(m.duration or 0),
+      jsonEscape(m.customData or "")
+    ))
+  end
+  return string.format('{"timeline":%s,"markers":[%s],"count":%d}',
+    jsonEscape(timeline:GetName() or ""), table.concat(items, ","), #items)
+end
+
+-- markers.add — opprett ny marker på timeline
+local function handleMarkersAdd(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local frame = tonumber(args:match('"frame"%s*:%s*(%d+)'))
+  if not frame then error("frame mangler eller ugyldig") end
+  local color = extractString(args, "color") or "Yellow"
+  local name = extractString(args, "name") or ""
+  local note = extractString(args, "note") or ""
+  local duration = tonumber(args:match('"duration"%s*:%s*(%d+)')) or 1
+  local customData = extractString(args, "custom_data") or ""
+  local ok = timeline:AddMarker(frame, color, name, note, duration, customData)
+  return string.format(
+    '{"added":%s,"frame":%s,"color":%s,"name":%s}',
+    tostring(ok), tostring(frame), jsonEscape(color), jsonEscape(name)
+  )
+end
+
+-- markers.deleteByColor — slett alle markers av en farge ("All" for alle)
+local function handleMarkersDeleteByColor(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local color = extractString(args, "color") or "All"
+  local ok = timeline:DeleteMarkersByColor(color)
+  return string.format('{"deleted":%s,"color":%s}', tostring(ok), jsonEscape(color))
+end
+
+-- grades.copyToItems — kopier current grade til alle items i timeline
+local function handleGradesCopyToTimeline(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  -- Hent alle video-items
+  local trackCount = timeline:GetTrackCount("video") or 0
+  local targetItems = {}
+  for trackIdx = 1, trackCount do
+    local items = timeline:GetItemListInTrack("video", trackIdx) or {}
+    for _, it in ipairs(items) do
+      table.insert(targetItems, it)
+    end
+  end
+  if #targetItems == 0 then error("Ingen video-items på timeline") end
+  -- Bruk CURRENT item som kilde, CopyGrades på den
+  local sourceItem = timeline:GetCurrentVideoItem()
+  if not sourceItem then error("Ingen valgt source-item — velg en klipp med grade først") end
+  local ok = sourceItem:CopyGrades(targetItems)
+  return string.format(
+    '{"copied":%s,"target_count":%d,"source_item":%s}',
+    tostring(ok), #targetItems, jsonEscape(sourceItem:GetName() or "")
+  )
+end
+
+-- grades.exportLUT — eksporter grade fra current item som .cube LUT-fil
+local function handleGradesExportLUT(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local item = timeline:GetCurrentVideoItem()
+  if not item then error("Ingen valgt video-item") end
+  local path = extractString(args, "path")
+  if not path then error("path mangler") end
+  local exportTypeStr = extractString(args, "export_type") or "33Point"
+  -- Resolve sin LUT-size enum: 17/33/65 point. Vi tar string og mapper.
+  local exportTypeMap = {
+    ["17Point"] = resolve.EXPORT_LUT_17PT_CUBE or 1,
+    ["33Point"] = resolve.EXPORT_LUT_33PT_CUBE or 2,
+    ["65Point"] = resolve.EXPORT_LUT_65PT_CUBE or 3,
+  }
+  local exportType = exportTypeMap[exportTypeStr] or exportTypeMap["33Point"]
+  local ok = item:ExportLUT(exportType, path)
+  return string.format(
+    '{"exported":%s,"path":%s,"export_type":%s,"item":%s}',
+    tostring(ok), jsonEscape(path), jsonEscape(exportTypeStr),
+    jsonEscape(item:GetName() or "")
+  )
+end
+
 local HANDLERS = {
   ["quickExport.list"] = handleQuickExportList,
   ["quickExport.run"] = handleQuickExportRun,
@@ -452,6 +643,17 @@ local HANDLERS = {
   ["magicMask.create"] = handleMagicMaskCreate,
   ["magicMask.regenerate"] = handleMagicMaskRegenerate,
   ["dolbyVision.analyze"] = handleDolbyVisionAnalyze,
+  ["render.addJob"] = handleRenderAddJob,
+  ["render.list"] = handleRenderList,
+  ["render.start"] = handleRenderStart,
+  ["render.stop"] = handleRenderStop,
+  ["render.status"] = handleRenderStatus,
+  ["render.deleteJob"] = handleRenderDeleteJob,
+  ["markers.list"] = handleMarkersList,
+  ["markers.add"] = handleMarkersAdd,
+  ["markers.deleteByColor"] = handleMarkersDeleteByColor,
+  ["grades.copyToTimeline"] = handleGradesCopyToTimeline,
+  ["grades.exportLUT"] = handleGradesExportLUT,
 }
 
 -- ---------------------------------------------------------------------------
