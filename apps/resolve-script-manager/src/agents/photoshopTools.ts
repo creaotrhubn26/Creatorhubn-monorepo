@@ -1122,6 +1122,78 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_fusion_get_comp_names",
+    description:
+      "List alle Fusion-comps på currently selected timeline-item. Returnerer item-navn + count + array av comp-navn. Bruk dette først for å forstå hva som finnes før load/rename/delete-operasjoner.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_fusion_add_comp",
+    description:
+      "Opprett en ny tom Fusion-comp på selected timeline-item. Brukes for å starte motion-graphics/title-arbeid uten å gå manuelt inn på Fusion-page.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_fusion_load_comp",
+    description:
+      "Bytt til en navngitt Fusion-comp som active på selected timeline-item (samme item kan ha flere comps).",
+    input_schema: {
+      type: "object",
+      properties: { name: { type: "string" } },
+      required: ["name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_rename_comp",
+    description: "Døp om Fusion-comp på selected timeline-item.",
+    input_schema: {
+      type: "object",
+      properties: {
+        old_name: { type: "string" },
+        new_name: { type: "string" },
+      },
+      required: ["old_name", "new_name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_delete_comp",
+    description:
+      "Slett Fusion-comp på selected timeline-item. ADVARSEL: irreversibel.",
+    input_schema: {
+      type: "object",
+      properties: { name: { type: "string" } },
+      required: ["name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_import_comp",
+    description:
+      "Importer en Fusion .setting-fil fra disk og legg den til selected timeline-item som en ny comp.",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Absolutt path til .setting-fil.",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_export_comp",
+    description:
+      "Eksporter en Fusion-comp (1-basert comp_index) på selected timeline-item til disk som .setting-fil.",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        comp_index: { type: "number", description: "1-basert indeks." },
+      },
+      required: ["path", "comp_index"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -2043,6 +2115,52 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         throw new Error("to må være 'root', 'parent' eller folder-navn");
       }
       return photoshop.resolvePmNavigateFolder({ to: input.to });
+    }
+    case "photoshop_resolve_fusion_get_comp_names":
+      return photoshop.resolveFusionGetCompNames();
+    case "photoshop_resolve_fusion_add_comp":
+      return photoshop.resolveFusionAddComp();
+    case "photoshop_resolve_fusion_load_comp": {
+      if (typeof input.name !== "string" || input.name.length === 0) {
+        throw new Error("name må være en ikke-tom string");
+      }
+      return photoshop.resolveFusionLoadComp({ name: input.name });
+    }
+    case "photoshop_resolve_fusion_rename_comp": {
+      if (typeof input.old_name !== "string" || input.old_name.length === 0) {
+        throw new Error("old_name må være en ikke-tom string");
+      }
+      if (typeof input.new_name !== "string" || input.new_name.length === 0) {
+        throw new Error("new_name må være en ikke-tom string");
+      }
+      return photoshop.resolveFusionRenameComp({
+        old_name: input.old_name,
+        new_name: input.new_name,
+      });
+    }
+    case "photoshop_resolve_fusion_delete_comp": {
+      if (typeof input.name !== "string" || input.name.length === 0) {
+        throw new Error("name må være en ikke-tom string");
+      }
+      return photoshop.resolveFusionDeleteComp({ name: input.name });
+    }
+    case "photoshop_resolve_fusion_import_comp": {
+      if (typeof input.path !== "string" || input.path.length === 0) {
+        throw new Error("path må være en ikke-tom string");
+      }
+      return photoshop.resolveFusionImportComp({ path: input.path });
+    }
+    case "photoshop_resolve_fusion_export_comp": {
+      if (typeof input.path !== "string" || input.path.length === 0) {
+        throw new Error("path må være en ikke-tom string");
+      }
+      if (typeof input.comp_index !== "number" || input.comp_index < 1) {
+        throw new Error("comp_index må være et tall >= 1 (1-basert)");
+      }
+      return photoshop.resolveFusionExportComp({
+        path: input.path,
+        comp_index: input.comp_index,
+      });
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
