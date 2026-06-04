@@ -115,6 +115,11 @@ export async function demoPrintHtml(html: string): Promise<void> {
   return invoke<void>("demo_print_html", { html });
 }
 
+/** Hent ekte side-kontekst via reqwest (ingen CORS) — for AI Director. */
+export async function demoFetchSiteContext(url: string): Promise<string> {
+  return invoke<string>("demo_fetch_site_context", { url });
+}
+
 export interface EmbedCheck { embeddable: boolean; reason: string }
 
 /** Sjekk om en URL kan vises i en <iframe> (X-Frame-Options/CSP). Fail-open. */

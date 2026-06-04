@@ -917,6 +917,7 @@ pub fn run() {
             demo_capture::start_demo_capture,
             demo_capture::demo_capture_step,
             demo_capture::demo_capture_done,
+            demo_capture::demo_fetch_site_context,
             demo_export::demo_write_text,
             demo_export::demo_write_binary,
             demo_export::demo_print_html,

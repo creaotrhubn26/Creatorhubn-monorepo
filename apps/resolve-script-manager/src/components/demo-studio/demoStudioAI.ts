@@ -11,6 +11,8 @@
  */
 
 import { claudeProxyService } from '../../services/claudeProxyService';
+import { demoFetchSiteContext } from '../../api';
+import { isCaptureAvailable } from '../../services/demoCaptureService';
 import {
   makeScene, viewportForDevice, ACTION_META,
   type DemoScene, type ScriptMeta, type DemoType, type DemoDevice, type DemoActionType,
@@ -146,6 +148,14 @@ export async function improveScript(params: {
  * URL + demo-type alene. (Best-effort, aldri fatal.)
  */
 export async function fetchSiteContext(url: string): Promise<string> {
+  // Foretrekk native Tauri-fetch (reqwest, ingen CORS) — så AI-en faktisk
+  // leser siden. Fall tilbake til browser-fetch (CORS-begrenset) i web-dev.
+  if (isCaptureAvailable()) {
+    try {
+      const ctx = await demoFetchSiteContext(url);
+      if (ctx && ctx.trim()) return ctx;
+    } catch { /* fall tilbake til browser-fetch */ }
+  }
   try {
     const res = await fetch(url, { redirect: 'follow' });
     if (!res.ok) return '';

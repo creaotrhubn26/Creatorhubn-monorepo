@@ -39,6 +39,74 @@ pub async fn start_demo_capture(app: AppHandle, url: String) -> Result<(), Strin
     Ok(())
 }
 
+/// Hent EKTE side-kontekst via reqwest (ingen CORS). Trekker ut tittel +
+/// meta-description + klikkbare element-labels (knapper/lenker) + synlig tekst,
+/// så AI Director kan skrive scener basert på hva siden faktisk er/inneholder.
+#[tauri::command]
+pub async fn demo_fetch_site_context(url: String) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17 Safari/605.1.15")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client.get(&url).send().await.map_err(|e| format!("kunne ikke hente siden: {e}"))?;
+    let html = res.text().await.map_err(|e| format!("kunne ikke lese siden: {e}"))?;
+    Ok(extract_site_context(&html))
+}
+
+fn extract_site_context(html: &str) -> String {
+    use regex::Regex;
+    let title = Regex::new(r"(?is)<title[^>]*>([^<]+)</title>")
+        .ok()
+        .and_then(|re| re.captures(html).and_then(|c| c.get(1)).map(|m| m.as_str().trim().to_string()));
+    let desc = Regex::new(r#"(?is)<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']"#)
+        .ok()
+        .and_then(|re| re.captures(html).and_then(|c| c.get(1)).map(|m| m.as_str().trim().to_string()));
+
+    // Klikkbare element-labels (knapp/lenke-tekst) — gir AI ekte targets.
+    let mut labels: Vec<String> = Vec::new();
+    if let Ok(re) = Regex::new(r"(?is)<(?:a|button)[^>]*>(.*?)</(?:a|button)>") {
+        for cap in re.captures_iter(html).take(40) {
+            if let Some(m) = cap.get(1) {
+                let txt = strip_tags(m.as_str());
+                let txt = txt.split_whitespace().collect::<Vec<_>>().join(" ");
+                if txt.len() >= 2 && txt.len() <= 40 && !labels.contains(&txt) {
+                    labels.push(txt);
+                }
+            }
+        }
+    }
+
+    // Synlig tekst (script/style fjernet, tags strippet).
+    let no_blocks = Regex::new(r"(?is)<(script|style)[^>]*>.*?</(?:script|style)>")
+        .map(|re| re.replace_all(html, " ").to_string())
+        .unwrap_or_else(|_| html.to_string());
+    let text = strip_tags(&no_blocks);
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let text: String = text.chars().take(1600).collect();
+
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(t) = title { if !t.is_empty() { parts.push(format!("Tittel: {t}")); } }
+    if let Some(d) = desc { if !d.is_empty() { parts.push(format!("Beskrivelse: {d}")); } }
+    if !labels.is_empty() { parts.push(format!("Klikkbare elementer: {}", labels.join(" · "))); }
+    if !text.trim().is_empty() { parts.push(format!("Innhold: {text}")); }
+    parts.join("\n")
+}
+
+fn strip_tags(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut depth = 0i32;
+    for c in s.chars() {
+        match c {
+            '<' => depth += 1,
+            '>' => { if depth > 0 { depth -= 1; } }
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
 /// Mottar ett klikk-steg fra capture-vinduet og videresender til hovedvinduet.
 #[tauri::command]
 pub fn demo_capture_step(app: AppHandle, step: serde_json::Value) -> Result<(), String> {
