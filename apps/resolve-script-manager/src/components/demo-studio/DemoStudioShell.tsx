@@ -32,8 +32,10 @@ import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
   RENDER_OPTION_LABELS, RESPONSIVE_STATUS_LABELS, RESPONSIVE_STATUS_COLORS, ACTION_META,
+  ACTION_MATCH_LABELS, ACTION_MATCH_COLORS,
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
-  type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix,
+  sceneActionMatch, expectedActionText, validateScene,
+  type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
 
@@ -111,6 +113,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [respBusy, setRespBusy] = useState(false);
   const [respReport, setRespReport] = useState<ResponsiveReport | null>(null);
   const [placingHotspot, setPlacingHotspot] = useState(false);
+  const [showValidation, setShowValidation] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [captureCount, setCaptureCount] = useState(0);
   const captureBuf = useRef<CapturedStep[]>([]);
@@ -386,6 +389,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 {respBusy ? 'Sjekker…' : '⤢ Responsive Check'}
               </button>
               <div style={{ fontSize: 10.5, color: C.inkFaint, marginTop: 6, lineHeight: 1.4 }}>Sjekker siden i desktop, tablet og mobil.</div>
+
+              {/* ── Validation ── */}
+              <button style={{ ...outlineBtn, width: '100%', justifyContent: 'center', marginTop: 10 }}
+                onClick={() => setShowValidation(true)}>
+                ✓ Validér handlinger
+              </button>
+              <div style={{ fontSize: 10.5, color: C.inkFaint, marginTop: 6, lineHeight: 1.4 }}>Expected ↔ Detected — Match / Warning per scene.</div>
             </div>
 
             {/* ── Center: LIVE device preview ── */}
@@ -598,6 +608,70 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         <ResponsiveCheckModal report={respReport} onClose={() => setRespReport(null)}
           onApply={(fix) => applyResponsiveFix(fix)} />
       )}
+      {showValidation && project && (
+        <ValidationModal
+          scenes={project.scenes}
+          onClose={() => setShowValidation(false)}
+          onGoto={(id) => { selectScene(id); setStoryMode(false); setNav('flow'); setShowValidation(false); }}
+          onSetStatus={(id, status) => updateScene(id, { status })}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Validation-panel (§7): Expected ↔ Detected → Match/Warning per scene + godkjenn. */
+function ValidationModal({ scenes, onClose, onGoto, onSetStatus }: {
+  scenes: DemoScene[];
+  onClose: () => void;
+  onGoto: (id: string) => void;
+  onSetStatus: (id: string, status: DemoScene['status']) => void;
+}) {
+  const rows = scenes.map((s) => ({ s, match: sceneActionMatch(s), val: validateScene(s) }));
+  const nMatch = rows.filter((r) => r.match === 'match').length;
+  const nWarn = rows.filter((r) => r.match === 'warning').length;
+  const nUnver = rows.filter((r) => r.match === 'unverified').length;
+  const nNotReady = rows.filter((r) => !r.val.ready).length;
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.32)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 620, maxWidth: '94vw', maxHeight: '86vh', overflowY: 'auto', background: C.panel, borderRadius: 14, padding: 22, fontFamily: C.font, color: C.ink, boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Validation & status</h3>
+          <div style={{ flex: 1 }} />
+          <div onClick={onClose} style={{ ...iconBtn, cursor: 'pointer' }}>✕</div>
+        </div>
+        <div style={{ display: 'flex', gap: 14, fontSize: 12, color: C.inkSoft, margin: '0 0 14px' }}>
+          <span><b style={{ color: ACTION_MATCH_COLORS.match }}>{nMatch}</b> Match</span>
+          <span><b style={{ color: ACTION_MATCH_COLORS.warning }}>{nWarn}</b> Warning</span>
+          <span><b style={{ color: ACTION_MATCH_COLORS.unverified }}>{nUnver}</b> ikke verifisert</span>
+          <span style={{ marginLeft: 'auto' }}>{nNotReady > 0 ? `${nNotReady} scener mangler felt` : 'Alle scener komplette'}</span>
+        </div>
+        {rows.map(({ s, match, val }) => (
+          <div key={s.id} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontWeight: 700, fontSize: 12 }}>{s.index + 1}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>{s.title}</span>
+              <div style={{ flex: 1 }} />
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 7, color: '#fff', background: ACTION_MATCH_COLORS[match] }}>{ACTION_MATCH_LABELS[match]}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '74px 1fr', gap: '3px 8px', fontSize: 12, marginTop: 8 }}>
+              <span style={{ color: C.inkFaint }}>Expected</span><span>{expectedActionText(s)}</span>
+              <span style={{ color: C.inkFaint }}>Detected</span><span style={{ color: s.detectedSelector ? C.ink : C.inkFaint }}>{s.detectedSelector ? `${ACTION_META[s.actionType ?? 'click'].verb} ${s.targetLabel || s.detectedSelector}` : '(ikke verifisert — kjør capture eller marker manuelt)'}</span>
+            </div>
+            {!val.ready && <div style={{ fontSize: 11.5, color: '#b5651d', marginTop: 7 }}>⚠ {val.issues.join(' · ')}</div>}
+            <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+              <button style={{ ...outlineBtn, fontSize: 12, padding: '6px 11px' }} onClick={() => onGoto(s.id)}>Gå til scene</button>
+              <div style={{ flex: 1 }} />
+              {s.status !== 'needs_review' && <button style={{ ...outlineBtn, fontSize: 12, padding: '6px 11px', color: '#b5651d', borderColor: '#e6c5c2' }} onClick={() => onSetStatus(s.id, 'needs_review')}>Trenger gjennomgang</button>}
+              <button style={{ ...primaryBtn, fontSize: 12, padding: '6px 12px', background: s.status === 'approved' ? C.green : undefined, opacity: s.status === 'approved' ? 0.7 : 1 }}
+                disabled={s.status === 'approved'} onClick={() => onSetStatus(s.id, 'approved')}>
+                {s.status === 'approved' ? '✓ Godkjent' : 'Godkjenn'}
+              </button>
+            </div>
+          </div>
+        ))}
+        <button style={{ ...outlineBtn, width: '100%', marginTop: 4 }} onClick={onClose}>Lukk</button>
+      </div>
     </div>
   );
 }

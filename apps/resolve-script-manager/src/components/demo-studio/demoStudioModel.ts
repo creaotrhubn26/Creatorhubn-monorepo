@@ -30,6 +30,7 @@ export type SceneStatus =
   | 'recording'
   | 'paused'
   | 'done'
+  | 'needs_review'
   | 'retake'
   | 'approved';
 
@@ -95,6 +96,12 @@ export interface DemoScene {
   targetLabel?: string;
   /** CSS-selector for mål-elementet (fylles av capture) — brukes til validering. */
   targetSelector?: string;
+  /**
+   * Detektert selector — hva som FAKTISK ble interagert med (fylles av capture
+   * eller en verifiserings-runde). Sammenlignes med targetSelector (Expected ↔
+   * Detected → Match/Warning).
+   */
+  detectedSelector?: string;
   /**
    * Interaktivt mål (hotspot) på siden — rektangel i VIEWPORT-PROSENT (0–1) av
    * skjermflaten, så det rendres device-uavhengig over enhver preview. Fremheves
@@ -258,6 +265,7 @@ export const SCENE_STATUS_LABELS: Record<SceneStatus, string> = {
   recording: 'Recording',
   paused: 'Paused',
   done: 'Done',
+  needs_review: 'Needs Review',
   retake: 'Retake Needed',
   approved: 'Approved',
 };
@@ -268,9 +276,58 @@ export const SCENE_STATUS_COLORS: Record<SceneStatus, string> = {
   recording: '#ef4444',
   paused: '#f59e0b',
   done: '#10b981',
+  needs_review: '#f59e0b',
   retake: '#f97316',
   approved: '#a030c0',
 };
+
+// ── Validation (§7: Expected ↔ Detected → Match/Warning) ──
+export type ActionMatch = 'match' | 'warning' | 'unverified';
+
+export const ACTION_MATCH_LABELS: Record<ActionMatch, string> = {
+  match: 'Match', warning: 'Warning', unverified: 'Ikke verifisert',
+};
+export const ACTION_MATCH_COLORS: Record<ActionMatch, string> = {
+  match: '#10b981', warning: '#f59e0b', unverified: '#9a9186',
+};
+
+function normalizeSelector(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Sammenlign forventet (targetSelector) mot detektert (detectedSelector):
+ *   - unverified: ingen detektert handling ennå
+ *   - match:      detektert == forventet (riktig element ble aktivert)
+ *   - warning:    detektert avviker fra forventet (eller mangler forventet)
+ */
+export function sceneActionMatch(s: DemoScene): ActionMatch {
+  const detected = (s.detectedSelector || '').trim();
+  if (!detected) return 'unverified';
+  const expected = (s.targetSelector || '').trim();
+  if (!expected) return 'warning';
+  return normalizeSelector(expected) === normalizeSelector(detected) ? 'match' : 'warning';
+}
+
+/** Menneske-lesbar «Expected action»-tekst for en scene. */
+export function expectedActionText(s: DemoScene): string {
+  const verb = ACTION_META[s.actionType ?? 'click'].verb;
+  const target = s.targetLabel || s.targetSelector || '';
+  return target ? `${verb} ${target}` : (s.requiredAction || '(ingen handling)');
+}
+
+/**
+ * Readiness-validering: er Required Action-broen komplett (handlingstype +
+ * target + manus + varighet)? Returnerer hvilke felter som mangler.
+ */
+export function validateScene(s: DemoScene): { ready: boolean; issues: string[] } {
+  const issues: string[] = [];
+  if (!s.narration || !s.narration.trim()) issues.push('Mangler manus');
+  if (!s.actionType) issues.push('Mangler handlingstype');
+  if (!(s.targetLabel && s.targetLabel.trim()) && !(s.targetSelector && s.targetSelector.trim()) && !s.hotspot) issues.push('Mangler target / hotspot');
+  if (!s.duration || s.duration <= 0) issues.push('Ugyldig varighet');
+  return { ready: issues.length === 0, issues };
+}
 
 export function viewportForDevice(device: DemoDevice): DemoViewport {
   return device === 'macbook' ? 'desktop' : device === 'ipad' ? 'tablet' : 'mobile';
@@ -460,6 +517,8 @@ export function captureStepsToScenes(steps: CapturedStepLike[], device: DemoDevi
       actionType: at,
       targetLabel: label || undefined,
       targetSelector: s.selector || undefined,
+      // Capture = brukeren klikket faktisk elementet → detektert == forventet.
+      detectedSelector: s.selector || undefined,
       hotspot: s.hotspot,
       startScrollPct: s.scrollPct != null ? Math.round(s.scrollPct * 100) : undefined,
       duration: 8,
