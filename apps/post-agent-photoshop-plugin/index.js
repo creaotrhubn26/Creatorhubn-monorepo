@@ -832,6 +832,43 @@ const COMMANDS = {
     });
   },
 
+  "resolve.lutRefresh": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "lut.refresh" });
+  },
+
+  "resolve.graphGetNodes": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "graph.getNodes" });
+  },
+
+  "resolve.graphApplyLUT": async ({ node_index, lut_path } = {}) => {
+    if (typeof node_index !== "number") throw new Error("node_index mangler");
+    assertString(lut_path, "lut_path");
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "graph.applyLUT",
+      args: { node_index, lut_path },
+    });
+  },
+
+  "resolve.graphApplyGradeFromDRX": async ({ path, grade_mode } = {}) => {
+    assertString(path, "path");
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "graph.applyGradeFromDRX",
+      args: { path, grade_mode: typeof grade_mode === "number" ? grade_mode : 0 },
+    });
+  },
+
+  "resolve.graphResetAllGrades": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "graph.resetAllGrades" });
+  },
+
+  "resolve.graphSetNodeEnabled": async ({ node_index, enabled } = {}) => {
+    if (typeof node_index !== "number") throw new Error("node_index mangler");
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "graph.setNodeEnabled",
+      args: { node_index, enabled: enabled === true },
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve

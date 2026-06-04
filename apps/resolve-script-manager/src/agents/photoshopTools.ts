@@ -519,6 +519,63 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_lut_refresh",
+    description:
+      "Refresh Resolve sin LUT-liste fra disk. Kjør dette FØR graph.applyLUT hvis brukeren nettopp har lagt LUTs i project-folderen eller master-LUT-folderen.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_graph_get_nodes",
+    description:
+      "List alle nodes på color-graphen for CURRENTLY SELECTED timeline-item. Returnerer index + label + applied LUT + tools per node. Brukes for å forstå grade-strukturen før edit.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_graph_apply_lut",
+    description:
+      "Applisere en LUT-fil på spesifikk node i color-graphen til CURRENTLY SELECTED item. lut_path kan være absolutt eller relativ (basert på custom LUT-paths / master LUT-path). Bruk graph.getNodes først for å vite hvilken node-index.",
+    input_schema: {
+      type: "object",
+      properties: {
+        node_index: { type: "number", description: "1-basert" },
+        lut_path: { type: "string", description: "Absolutt eller relativ sti til .cube" },
+      },
+      required: ["node_index", "lut_path"],
+    },
+  },
+  {
+    name: "photoshop_resolve_graph_apply_grade_from_drx",
+    description:
+      "Applisere lagret .drx grade-fil på CURRENTLY SELECTED item. grade_mode: 0='No keyframes' (default), 1='Source Timecode aligned', 2='Start Frames aligned'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Absolutt sti til .drx-fil" },
+        grade_mode: { type: "number", enum: [0, 1, 2] },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "photoshop_resolve_graph_reset_all_grades",
+    description:
+      "Reset ALLE noder + grades på CURRENTLY SELECTED item. Bruk forsiktig — kan ikke angres uten Resolve sin undo. Vurder history.snapshot via Photoshop FØR du kaller dette hvis du vil ha rollback-mulighet i Post Agent-logikken.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_graph_set_node_enabled",
+    description:
+      "Skru node av/på på color-graphen. Brukes for å midlertidig deaktivere effekter uten å slette dem.",
+    input_schema: {
+      type: "object",
+      properties: {
+        node_index: { type: "number" },
+        enabled: { type: "boolean" },
+      },
+      required: ["node_index", "enabled"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -1065,6 +1122,37 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         track_type: requireString(input, "track_type") as "video" | "audio" | "subtitle",
         index,
         name: requireString(input, "name"),
+      });
+    }
+    case "photoshop_resolve_lut_refresh":
+      return photoshop.resolveLutRefresh();
+    case "photoshop_resolve_graph_get_nodes":
+      return photoshop.resolveGraphGetNodes();
+    case "photoshop_resolve_graph_apply_lut": {
+      const nodeIndex = input.node_index;
+      if (typeof nodeIndex !== "number") throw new Error("node_index må være et tall");
+      return photoshop.resolveGraphApplyLUT({
+        node_index: nodeIndex,
+        lut_path: requireString(input, "lut_path"),
+      });
+    }
+    case "photoshop_resolve_graph_apply_grade_from_drx": {
+      const gradeMode = input.grade_mode;
+      return photoshop.resolveGraphApplyGradeFromDRX({
+        path: requireString(input, "path"),
+        grade_mode: typeof gradeMode === "number" && gradeMode >= 0 && gradeMode <= 2
+          ? (gradeMode as 0 | 1 | 2)
+          : undefined,
+      });
+    }
+    case "photoshop_resolve_graph_reset_all_grades":
+      return photoshop.resolveGraphResetAllGrades();
+    case "photoshop_resolve_graph_set_node_enabled": {
+      const nodeIndex = input.node_index;
+      if (typeof nodeIndex !== "number") throw new Error("node_index må være et tall");
+      return photoshop.resolveGraphSetNodeEnabled({
+        node_index: nodeIndex,
+        enabled: input.enabled === true,
       });
     }
     case "photoshop_resolve_open_latest":
