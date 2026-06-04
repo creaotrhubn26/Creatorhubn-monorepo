@@ -396,6 +396,41 @@ export const photoshop = {
       count: number;
     }>("resolve.powerGradeExport", params),
 
+  resolveAudioTranscribe: (params?: { clip_id?: string; use_speaker_detection?: boolean }) =>
+    send<{ scope: "item" | "folder"; success: boolean; use_speaker_detection: boolean }>(
+      "resolve.audioTranscribe",
+      params ?? {},
+    ),
+
+  resolveAudioClassify: (params?: { clip_id?: string }) =>
+    send<{ scope: "item" | "folder"; success: boolean }>(
+      "resolve.audioClassify",
+      params ?? {},
+    ),
+
+  resolveSpeechGenerate: (params: {
+    text: string;
+    voice?: string;
+    timecode?: string;
+    model?: string;
+    add_to_timeline?: boolean;
+  }) =>
+    send<{
+      clip_name: string;
+      clip_id: string;
+      timecode: string;
+      added_to_timeline: boolean;
+    }>("resolve.speechGenerate", params),
+
+  resolveSlateAnalyze: (params?: { clip_id?: string; marker_color?: string }) =>
+    send<{ scope: "item" | "folder"; success: boolean; marker_color: string }>(
+      "resolve.slateAnalyze",
+      params ?? {},
+    ),
+
+  resolveTimelineSmartReframe: () =>
+    send<{ timeline: string; success: boolean }>("resolve.timelineSmartReframe"),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

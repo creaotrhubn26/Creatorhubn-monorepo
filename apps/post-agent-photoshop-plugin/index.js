@@ -629,6 +629,57 @@ const COMMANDS = {
   },
 
   /*
+   * Resolve 21 AI: 5 scriptable AI-funksjoner via command-router. Krever
+   * AI-modeller nedlastet i Resolve → Preferences → AI.
+   */
+  "resolve.audioTranscribe": async ({ clip_id, use_speaker_detection } = {}) => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "audio.transcribe",
+      args: { clip_id, use_speaker_detection: !!use_speaker_detection },
+      timeout_ms: 300000, // transkripsjon kan ta lang tid
+    });
+  },
+
+  "resolve.audioClassify": async ({ clip_id } = {}) => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "audio.classify",
+      args: { clip_id },
+      timeout_ms: 300000,
+    });
+  },
+
+  "resolve.speechGenerate": async ({ text, voice, timecode, model, add_to_timeline } = {}) => {
+    assertString(text, "text");
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "speech.generate",
+      args: {
+        text,
+        voice: voice || "",
+        timecode: timecode || "00:00:00:00",
+        model: model || "",
+        add_to_timeline: !!add_to_timeline,
+      },
+      timeout_ms: 120000,
+    });
+  },
+
+  "resolve.slateAnalyze": async ({ clip_id, marker_color } = {}) => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "slate.analyze",
+      args: { clip_id, marker_color: marker_color || "Yellow" },
+      timeout_ms: 180000,
+    });
+  },
+
+  "resolve.timelineSmartReframe": async () => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "timeline.smartReframe",
+      args: {},
+      timeout_ms: 180000,
+    });
+  },
+
+  /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
    * Lua-scriptet analyze-intellisearch.lua. Brukes av Multi-Agent

@@ -255,6 +255,63 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_audio_transcribe",
+    description:
+      "Resolve 21 AI: transkribér audio på spesifikk MediaPoolItem (via clip_id fra mediaPoolListItems) eller hele current folder. use_speaker_detection=true gjør at flere talere identifiseres. Krever AI Audio Transcription-modell nedlastet. Tar lang tid på store folders — timeout 5 min.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clip_id: { type: "string", description: "MediaPoolItem unique-id (utelat for å transkribere hele folder)" },
+        use_speaker_detection: { type: "boolean", description: "Identifiser ulike talere (default false)" },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_audio_classify",
+    description:
+      "Resolve 21 AI: klassifiser audio i kategorier (dialog/musikk/ambient/etc.) på spesifikk klipp eller folder. Brukes for å vekte picks i Story-tab (dialog > ambient for narrative beats). Krever AI Audio Classification-modell.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clip_id: { type: "string", description: "MediaPoolItem unique-id (utelat for folder)" },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_speech_generate",
+    description:
+      "Resolve 21 AI Speech Generator: TTS som genererer audio-MediaPoolItem fra tekst. add_to_timeline=true plasserer auto på current timeline ved timecode. Voice/model er valgfri (default Resolve-default). Bruk for voiceover-spor.",
+    input_schema: {
+      type: "object",
+      properties: {
+        text: { type: "string" },
+        voice: { type: "string", description: "Voice-modell-navn (valgfri)" },
+        timecode: { type: "string", description: "HH:MM:SS:FF — hvor klippet plasseres (default 00:00:00:00)" },
+        model: { type: "string", description: "Modell-navn (valgfri)" },
+        add_to_timeline: { type: "boolean", description: "Plasser auto på current timeline (default false)" },
+      },
+      required: ["text"],
+    },
+  },
+  {
+    name: "photoshop_resolve_slate_analyze",
+    description:
+      "Resolve 21 AI Slate ID: finn slates i video-klipp og opprett markers automatisk. marker_color (Yellow/Red/Green/Blue/etc.) styrer marker-fargen. Brukes for å auto-organisere klipp etter slate-metadata.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clip_id: { type: "string" },
+        marker_color: { type: "string", description: "Marker-farge (default 'Yellow')" },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_timeline_smart_reframe",
+    description:
+      "Resolve 21 AI SmartReframe: AI auto-reframer current timeline til ny aspect-ratio. Krever at brukeren har konfigurert target aspect i Project Settings → Image Scaling først. Bruk dette for å lage sosial-formats fra eksisterende timeline uten manuell crop per klipp.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -685,6 +742,30 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         prefix: typeof input.prefix === "string" ? input.prefix : undefined,
         format: input.format as "drx" | "dpx" | "tif" | "jpg" | "png" | undefined,
       });
+    case "photoshop_resolve_audio_transcribe":
+      return photoshop.resolveAudioTranscribe({
+        clip_id: typeof input.clip_id === "string" ? input.clip_id : undefined,
+        use_speaker_detection: input.use_speaker_detection === true,
+      });
+    case "photoshop_resolve_audio_classify":
+      return photoshop.resolveAudioClassify({
+        clip_id: typeof input.clip_id === "string" ? input.clip_id : undefined,
+      });
+    case "photoshop_resolve_speech_generate":
+      return photoshop.resolveSpeechGenerate({
+        text: requireString(input, "text"),
+        voice: typeof input.voice === "string" ? input.voice : undefined,
+        timecode: typeof input.timecode === "string" ? input.timecode : undefined,
+        model: typeof input.model === "string" ? input.model : undefined,
+        add_to_timeline: input.add_to_timeline === true,
+      });
+    case "photoshop_resolve_slate_analyze":
+      return photoshop.resolveSlateAnalyze({
+        clip_id: typeof input.clip_id === "string" ? input.clip_id : undefined,
+        marker_color: typeof input.marker_color === "string" ? input.marker_color : undefined,
+      });
+    case "photoshop_resolve_timeline_smart_reframe":
+      return photoshop.resolveTimelineSmartReframe();
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
     case "photoshop_resolve_export_back":
