@@ -728,6 +728,7 @@ import { setupAcademyAnnotationRoutes } from "./academy-annotation-routes";
 import { setupAcademyCurriculumRoutes } from "./academy-curriculum-routes";
 import { setupAcademyPresentationCritiqueRoutes } from "./academy-presentation-critique-routes";
 import { setupAcademyPresentationSearchRoutes } from "./academy-presentation-search-routes";
+import { setupAcademyPresentationDesignPlanRoutes } from "./academy-presentation-design-plan-routes";
 import { setupPricingRoutes } from "./pricing-routes";
 import { setupAccountingRoutes } from "./accounting-routes";
 import { setupFileManagementRoutes } from "./file-management-routes";
@@ -31708,27 +31709,27 @@ async function ensureInviteRequestAccessProvisioning(
 }
 
 export type AcademyPresentationScope = "course" | "skill";
-type AcademyPresentationTemplateId =
+export type AcademyPresentationTemplateId =
   | "product-overview"
   | "walkthrough"
   | "onboarding-flow"
   | "feature-explainer"
   | "training-deep-dive";
-type AcademyPresentationVisualThemeId =
+export type AcademyPresentationVisualThemeId =
   | "neutral-modern"
   | "sales-command"
   | "operations-grid"
   | "offshore-briefing";
-type AcademyPresentationDisplayMode =
+export type AcademyPresentationDisplayMode =
   | "picture-in-picture"
   | "side-panel"
   | "split-screen"
   | "full-frame";
-type AcademyPresentationSplitLayoutVariant =
+export type AcademyPresentationSplitLayoutVariant =
   | "balanced"
   | "presenter-focus"
   | "slide-focus";
-type AcademyPresentationVisualType =
+export type AcademyPresentationVisualType =
   | "title"
   | "agenda"
   | "problem"
@@ -31755,7 +31756,7 @@ type AcademyPresentationGraphicKind =
   | "shape"
   | "badge";
 
-interface AcademyPresentationDesignSlideInput {
+export interface AcademyPresentationDesignSlideInput {
   id: string;
   title: string;
   startTime: number;
@@ -31776,7 +31777,7 @@ interface AcademyPresentationDesignGraphicSlot {
   height: number;
 }
 
-interface AcademyPresentationDesignSlidePlan {
+export interface AcademyPresentationDesignSlidePlan {
   slideId: string;
   visualType: AcademyPresentationVisualType;
   grammarId: SharedAcademyPresentationSlideGrammarId;
@@ -32903,9 +32904,9 @@ interface AcademyPresentationLlmPlanResult {
   retrievalMeta: AcademyPresentationTemplateMemoryMeta;
 }
 
-type AcademyPresentationTemplateMemoryKind = "deck" | "brand-kit" | "preset";
+export type AcademyPresentationTemplateMemoryKind = "deck" | "brand-kit" | "preset";
 
-interface AcademyPresentationTemplateMemoryItem {
+export interface AcademyPresentationTemplateMemoryItem {
   id: string;
   kind: AcademyPresentationTemplateMemoryKind;
   name: string;
@@ -32918,7 +32919,7 @@ interface AcademyPresentationTemplateMemoryItem {
   brandName: string;
 }
 
-interface AcademyPresentationTemplateMemoryMatch {
+export interface AcademyPresentationTemplateMemoryMatch {
   id: string;
   kind: AcademyPresentationTemplateMemoryKind;
   name: string;
@@ -32934,7 +32935,7 @@ interface AcademyPresentationTemplateMemoryMatch {
   rerankScore: number | null;
 }
 
-interface AcademyPresentationTemplateMemoryMeta {
+export interface AcademyPresentationTemplateMemoryMeta {
   provider: "lexical" | "huggingface";
   embeddingModel?: string;
   rerankerModel?: string;
@@ -33934,274 +33935,6 @@ const academyPresentationTryLlmDesignPlan = async (
 
   return null;
 };
-
-app.post("/api/academy/presentation/design-plan", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "instructor"))) {
-      return;
-    }
-    const body = academyPresentationIsRecord(req.body) ? req.body : {};
-    const scope: AcademyPresentationScope =
-      readString(body.scope) === "skill" ? "skill" : "course";
-    const courseId = String(readString(body.courseId) || "");
-    const lessonId = String(readString(body.lessonId) || "");
-    const projectTemplateId = String(
-      readString(body.projectTemplateId) || "",
-    ).toLowerCase();
-    const useNorwegian = readBoolean(body.useNorwegian) === true;
-    const deckName = String(readString(body.deckName) || "").trim();
-    const requestedTemplate = academyPresentationNormalizeTemplateId(
-      body.deckTemplate,
-    );
-    const requestedTheme = academyPresentationNormalizeThemeId(
-      body.deckVisualThemeId,
-    );
-    const templateMemory = Array.isArray(body.templateMemory)
-      ? body.templateMemory
-          .map((entry, index) =>
-            academyPresentationNormalizeTemplateMemoryItem(entry, index),
-          )
-          .filter((entry): entry is AcademyPresentationTemplateMemoryItem =>
-            Boolean(entry),
-          )
-          .slice(0, 80)
-      : [];
-    const brandContext = academyPresentationNormalizeBrandContext(
-      body.brandContext,
-    );
-    const repairFocus = Array.isArray(body.repairFocus)
-      ? body.repairFocus
-          .map((entry) =>
-            String(readString(entry) || "")
-              .trim()
-              .slice(0, 220),
-          )
-          .filter(Boolean)
-          .slice(0, 12)
-      : [];
-
-    const slides = Array.isArray(body.slides)
-      ? body.slides
-          .map((entry, index) =>
-            academyPresentationNormalizeSlideInput(entry, index),
-          )
-          .filter((entry): entry is AcademyPresentationDesignSlideInput =>
-            Boolean(entry),
-          )
-      : [];
-
-    if (slides.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "slides is required",
-      });
-    }
-
-    const projectTemplate =
-      ACADEMY_PRESENTATION_PROJECT_TO_TEMPLATE[projectTemplateId];
-    const inferredTemplate = academyPresentationInferTemplateFromSlides(slides);
-    const recommendedTemplateId =
-      projectTemplate || requestedTemplate || inferredTemplate || "walkthrough";
-    const recommendedVisualThemeId =
-      ACADEMY_PRESENTATION_PROJECT_TO_THEME[projectTemplateId] ||
-      requestedTheme ||
-      academyPresentationInferThemeFromTemplate(recommendedTemplateId);
-    const templatePreset =
-      ACADEMY_PRESENTATION_TEMPLATE_PRESETS[recommendedTemplateId];
-
-    const visualCounts: Record<AcademyPresentationVisualType, number> = {
-      title: 0,
-      agenda: 0,
-      problem: 0,
-      solution: 0,
-      feature: 0,
-      process: 0,
-      kpi: 0,
-      timeline: 0,
-      roadmap: 0,
-      architecture: 0,
-      scenario: 0,
-      "knowledge-check": 0,
-      comparison: 0,
-      demo: 0,
-      quote: 0,
-      cta: 0,
-      summary: 0,
-    };
-    const layoutCounts: Record<AcademyPresentationDisplayMode, number> = {
-      "picture-in-picture": 0,
-      "side-panel": 0,
-      "split-screen": 0,
-      "full-frame": 0,
-    };
-
-    const slidePlans: AcademyPresentationDesignSlidePlan[] = slides.map(
-      (slide, index) => {
-        const bodyLines = academyPresentationBuildBodyLines(
-          slide,
-          useNorwegian,
-        );
-        const classification = academyPresentationInferVisualType(
-          `${slide.title} ${bodyLines.join(" ")} ${slide.speakerNotes}`,
-          index,
-          slides.length,
-        );
-        const visualType = classification.type;
-        visualCounts[visualType] += 1;
-        const intentTags = [
-          visualType,
-          recommendedTemplateId,
-          recommendedVisualThemeId,
-        ];
-        const reasons = [
-          classification.reason,
-          `slide ${index + 1}/${slides.length}`,
-          `duration ${Math.round(slide.duration)}s`,
-        ];
-        const slidePlan = academyPresentationBuildSlidePlan({
-          slide,
-          index,
-          totalSlides: slides.length,
-          useNorwegian,
-          visualType,
-          confidence: classification.score,
-          reasons,
-          intentTags,
-        });
-        layoutCounts[slidePlan.recommendedLayout] += 1;
-        slidePlan.intentTags = [
-          ...slidePlan.intentTags,
-          slidePlan.recommendedLayout,
-        ];
-        return slidePlan;
-      },
-    );
-
-    let heuristicRecommendedDisplayMode: AcademyPresentationDisplayMode =
-      templatePreset.defaultMode;
-    let bestLayoutScore = -1;
-    (Object.keys(layoutCounts) as AcademyPresentationDisplayMode[]).forEach(
-      (layout) => {
-        const score = layoutCounts[layout];
-        if (score > bestLayoutScore) {
-          bestLayoutScore = score;
-          heuristicRecommendedDisplayMode = layout;
-        }
-      },
-    );
-
-    let finalTemplateId = recommendedTemplateId;
-    let finalVisualThemeId = recommendedVisualThemeId;
-    let finalDisplayMode = heuristicRecommendedDisplayMode;
-    let finalSplitLayoutVariant =
-      ACADEMY_PRESENTATION_THEME_TO_SPLIT_VARIANT[recommendedVisualThemeId] ||
-      templatePreset.splitLayoutVariant;
-    let finalSlides = slidePlans;
-    let generatedBy = "academy-design-plan-grammar-engine-v2";
-    let generatedModel = "";
-    let generatedProvider: "huggingface" | "openai" | "rule-engine" =
-      "rule-engine";
-    const localTemplateMemoryContext =
-      await academyPresentationResolveTemplateMemoryMatches({
-        query: academyPresentationBuildTemplateMemoryQuery({
-          deckName,
-          projectTemplateId,
-          slides,
-        }),
-        items: templateMemory,
-      });
-    let templateMatches: AcademyPresentationTemplateMemoryMatch[] =
-      localTemplateMemoryContext.matches;
-    let retrievalMeta: AcademyPresentationTemplateMemoryMeta =
-      localTemplateMemoryContext.meta;
-
-    const llmPlan = await academyPresentationTryLlmDesignPlan({
-      scope,
-      courseId,
-      lessonId,
-      deckName,
-      projectTemplateId,
-      useNorwegian,
-      slides,
-      recommendedTemplateId: finalTemplateId,
-      recommendedVisualThemeId: finalVisualThemeId,
-      recommendedDisplayMode: finalDisplayMode,
-      recommendedSplitLayoutVariant: finalSplitLayoutVariant,
-      heuristicSlides: slidePlans,
-      templateMemory,
-      brandContext,
-      repairFocus,
-    });
-    if (llmPlan) {
-      finalTemplateId = llmPlan.recommendedTemplateId;
-      finalVisualThemeId = llmPlan.recommendedVisualThemeId;
-      finalDisplayMode = llmPlan.recommendedDisplayMode;
-      finalSplitLayoutVariant = llmPlan.recommendedSplitLayoutVariant;
-      finalSlides = llmPlan.slides;
-      generatedBy = "academy-design-plan-orchestrator-v2";
-      generatedModel = llmPlan.model;
-      generatedProvider = llmPlan.provider;
-      templateMatches = llmPlan.templateMatches;
-      retrievalMeta = llmPlan.retrievalMeta;
-    }
-
-    const grammarCounts = finalSlides.reduce(
-      (acc, slidePlan) => {
-        acc[slidePlan.grammarId] = (acc[slidePlan.grammarId] || 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>,
-    );
-    const repairActionsCount = finalSlides.reduce(
-      (acc, slidePlan) => acc + slidePlan.repairActions.length,
-      0,
-    );
-
-    const responsePayload = {
-      success: true,
-      data: {
-        scope,
-        courseId,
-        lessonId: scope === "skill" ? lessonId : "",
-        deckName,
-        recommendedTemplateId: finalTemplateId,
-        recommendedVisualThemeId: finalVisualThemeId,
-        recommendedDisplayMode: finalDisplayMode,
-        recommendedSplitLayoutVariant: finalSplitLayoutVariant,
-        summary: {
-          generatedBy,
-          provider: generatedProvider,
-          model: generatedModel || undefined,
-          slideCount: slides.length,
-          visualCounts,
-          grammarCounts,
-          repairActionsCount,
-          templateMemoryMatches: templateMatches,
-          retrievalMeta,
-          brandContextName: brandContext?.name || undefined,
-          pipeline: [
-            "brief-to-narrative",
-            "template-memory-retrieval",
-            "narrative-to-slide-plan",
-            "grammar-budget-repair",
-            "theme-token-apply",
-          ],
-        },
-        brandTokens: ACADEMY_PRESENTATION_THEME_TOKENS[finalVisualThemeId],
-        slides: finalSlides,
-        generatedAt: new Date().toISOString(),
-      },
-    };
-
-    return res.status(200).json(responsePayload);
-  } catch (error) {
-    console.error("Error generating academy presentation design plan:", error);
-    return res.status(500).json({
-      success: false,
-      error: "Could not generate presentation design plan",
-    });
-  }
-});
 
 const academyPresentationNormalizeCritiqueSeverity = (
   value: unknown,
@@ -65306,6 +65039,28 @@ setupAcademyPresentationSearchRoutes({
   academyPresentationNormalizeScoreSeries,
   academyPresentationRequestHfEmbeddings,
   academyPresentationRequestHfRerankerScores,
+});
+setupAcademyPresentationDesignPlanRoutes({
+  app,
+  requireAcademySession,
+  academyPresentationIsRecord,
+  academyPresentationNormalizeTemplateId,
+  academyPresentationNormalizeThemeId,
+  academyPresentationNormalizeTemplateMemoryItem,
+  academyPresentationNormalizeBrandContext,
+  academyPresentationNormalizeSlideInput,
+  academyPresentationInferTemplateFromSlides,
+  academyPresentationInferThemeFromTemplate,
+  academyPresentationBuildBodyLines,
+  academyPresentationInferVisualType,
+  academyPresentationBuildSlidePlan,
+  academyPresentationBuildTemplateMemoryQuery,
+  academyPresentationResolveTemplateMemoryMatches,
+  academyPresentationTryLlmDesignPlan,
+  ACADEMY_PRESENTATION_PROJECT_TO_TEMPLATE,
+  ACADEMY_PRESENTATION_PROJECT_TO_THEME,
+  ACADEMY_PRESENTATION_TEMPLATE_PRESETS,
+  ACADEMY_PRESENTATION_THEME_TO_SPLIT_VARIANT,
 });
 // NB: setupSongflowDeprecatedAliasesRoutes wires later (etter handler-
 // deklarasjoner ~linje 70324). Trivielle deprecation-aliases krever at
