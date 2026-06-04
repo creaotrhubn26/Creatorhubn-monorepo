@@ -29,6 +29,16 @@ import CloseIcon from "@mui/icons-material/Close";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import StopIcon from "@mui/icons-material/Stop";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import BookmarkIcon from "@mui/icons-material/BookmarkOutlined";
+import DeleteIcon from "@mui/icons-material/DeleteOutlineOutlined";
+import {
+  BUILTIN_PRESETS,
+  deletePreset as deletePresetFn,
+  listPresets,
+  savePreset,
+  touchPreset,
+  type DirectorPreset,
+} from "../lib/directorPresets";
 
 interface Props {
   open: boolean;
@@ -99,8 +109,40 @@ export function MultiAgentDirectorDialog({ open, onClose }: Props) {
   const [running, setRunning] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [presets, setPresets] = useState<DirectorPreset[]>([]);
+  const [appliedPresetId, setAppliedPresetId] = useState<string | null>(null);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [newPresetName, setNewPresetName] = useState("");
   const stopRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (open) setPresets(listPresets());
+  }, [open]);
+
+  const applyPreset = (preset: { id?: string; goal: string }) => {
+    setGoal(preset.goal);
+    setAppliedPresetId(preset.id ?? null);
+  };
+
+  const handleSavePreset = () => {
+    const name = newPresetName.trim();
+    if (!name || !goal.trim()) return;
+    try {
+      savePreset({ name, goal });
+      setPresets(listPresets());
+      setSaveModalOpen(false);
+      setNewPresetName("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleDeletePreset = (id: string) => {
+    deletePresetFn(id);
+    setPresets(listPresets());
+    if (appliedPresetId === id) setAppliedPresetId(null);
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -134,6 +176,10 @@ export function MultiAgentDirectorDialog({ open, onClose }: Props) {
     setError(null);
     setSteps([]);
     stopRef.current = false;
+    if (appliedPresetId) {
+      touchPreset(appliedPresetId);
+      setPresets(listPresets());
+    }
 
     const messages: ClaudeMessage[] = [{ role: "user", content: goal.trim() }];
     let iterations = 0;
@@ -231,6 +277,60 @@ export function MultiAgentDirectorDialog({ open, onClose }: Props) {
         <div style={body}>
           {!running && !completed && (
             <>
+              {(presets.length > 0 || BUILTIN_PRESETS.length > 0) && (
+                <div data-testid="mad-presets-section">
+                  <div style={presetsHeader}>
+                    <BookmarkIcon sx={{ fontSize: 14, color: "#a78bfa" }} />
+                    <span style={presetsLabel}>Lagrede flows</span>
+                    <span style={presetsHint}>Klikk for å plugge inn som goal</span>
+                  </div>
+                  <div style={presetsList}>
+                    {presets.map((p) => (
+                      <div
+                        key={p.id}
+                        style={{
+                          ...presetCard,
+                          ...(appliedPresetId === p.id ? presetCardActive : null),
+                        }}
+                        data-testid={`mad-preset-${p.id}`}
+                      >
+                        <button
+                          style={presetUseBtn}
+                          onClick={() => applyPreset(p)}
+                          title={p.goal}
+                        >
+                          <span style={presetName}>{p.name}</span>
+                          {p.runCount > 0 && (
+                            <span style={presetRunCount}>×{p.runCount}</span>
+                          )}
+                        </button>
+                        <button
+                          style={presetDeleteBtn}
+                          onClick={() => handleDeletePreset(p.id)}
+                          aria-label={`Slett ${p.name}`}
+                          title="Slett preset"
+                        >
+                          <DeleteIcon sx={{ fontSize: 14 }} />
+                        </button>
+                      </div>
+                    ))}
+                    {presets.length === 0 &&
+                      BUILTIN_PRESETS.map((p) => (
+                        <button
+                          key={p.name}
+                          style={presetCard}
+                          onClick={() => applyPreset(p)}
+                          title={p.goal}
+                          data-testid={`mad-preset-builtin-${p.name}`}
+                        >
+                          <span style={presetName}>{p.name}</span>
+                          <span style={presetBuiltinBadge}>BUILTIN</span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+
               <label style={fieldLabel}>
                 Hva vil du at AI Creative Director skal gjøre?
                 <span style={fieldHint}>
@@ -245,11 +345,22 @@ export function MultiAgentDirectorDialog({ open, onClose }: Props) {
                 rows={4}
                 placeholder="Skriv målet ditt her…"
                 value={goal}
-                onChange={(e) => setGoal(e.target.value)}
+                onChange={(e) => {
+                  setGoal(e.target.value);
+                  setAppliedPresetId(null);
+                }}
               />
               <div style={actionRow}>
                 <button style={secondaryBtn} onClick={onClose}>
                   Avbryt
+                </button>
+                <button
+                  style={secondaryBtn}
+                  onClick={() => setSaveModalOpen(true)}
+                  disabled={!goal.trim()}
+                  data-testid="mad-save-preset"
+                >
+                  <BookmarkIcon sx={{ fontSize: 14 }} /> Lagre som flow
                 </button>
                 <button
                   style={primaryBtn}
@@ -260,6 +371,41 @@ export function MultiAgentDirectorDialog({ open, onClose }: Props) {
                   <PlayArrowIcon sx={{ fontSize: 16 }} /> Start
                 </button>
               </div>
+
+              {saveModalOpen && (
+                <div style={saveOverlay} data-testid="mad-save-modal">
+                  <div style={saveModal}>
+                    <div style={saveModalTitle}>Lagre som flow</div>
+                    <input
+                      data-testid="mad-preset-name-input"
+                      style={inputStyle}
+                      placeholder="F.eks. 'Cinematic Wedding Touch-up'"
+                      value={newPresetName}
+                      onChange={(e) => setNewPresetName(e.target.value)}
+                      autoFocus
+                    />
+                    <div style={{ ...actionRow, marginTop: 12 }}>
+                      <button
+                        style={secondaryBtn}
+                        onClick={() => {
+                          setSaveModalOpen(false);
+                          setNewPresetName("");
+                        }}
+                      >
+                        Avbryt
+                      </button>
+                      <button
+                        style={primaryBtn}
+                        onClick={handleSavePreset}
+                        disabled={!newPresetName.trim()}
+                        data-testid="mad-confirm-save-preset"
+                      >
+                        Lagre
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -645,6 +791,132 @@ const iterationBody: React.CSSProperties = {
   flexDirection: "column",
   gap: 6,
   padding: 8,
+};
+
+const inputStyle: React.CSSProperties = {
+  background: "#0b0b12",
+  border: "1px solid #2a2a36",
+  borderRadius: 8,
+  color: "#e5e5ea",
+  padding: "10px 12px",
+  fontSize: 13,
+  width: "100%",
+  fontFamily: "inherit",
+};
+
+const presetsHeader: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  marginBottom: 8,
+};
+
+const presetsLabel: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: 0.8,
+  color: "#9ca3af",
+  textTransform: "uppercase",
+};
+
+const presetsHint: React.CSSProperties = {
+  fontSize: 10,
+  color: "#7b7b8d",
+  marginLeft: 4,
+};
+
+const presetsList: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 6,
+};
+
+const presetCard: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  background: "#1c1c26",
+  border: "1px solid #2a2a36",
+  borderRadius: 6,
+  padding: 0,
+  cursor: "pointer",
+  overflow: "hidden",
+};
+
+const presetCardActive: React.CSSProperties = {
+  borderColor: "#a78bfa",
+  background: "#1c1c2c",
+};
+
+const presetUseBtn: React.CSSProperties = {
+  background: "transparent",
+  border: 0,
+  color: "#cbcbd5",
+  fontSize: 11.5,
+  padding: "6px 10px",
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+};
+
+const presetDeleteBtn: React.CSSProperties = {
+  background: "transparent",
+  border: 0,
+  borderLeft: "1px solid #2a2a36",
+  color: "#7b7b8d",
+  fontSize: 11,
+  padding: "6px 8px",
+  cursor: "pointer",
+};
+
+const presetName: React.CSSProperties = {
+  color: "#cbcbd5",
+};
+
+const presetRunCount: React.CSSProperties = {
+  fontSize: 9,
+  color: "#a78bfa",
+  background: "#a78bfa20",
+  padding: "1px 5px",
+  borderRadius: 4,
+  fontWeight: 700,
+};
+
+const presetBuiltinBadge: React.CSSProperties = {
+  fontSize: 9,
+  color: "#7b7b8d",
+  background: "#22222e",
+  padding: "1px 5px",
+  borderRadius: 4,
+  fontWeight: 600,
+  letterSpacing: 0.4,
+  marginRight: 10,
+};
+
+const saveOverlay: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0, 0, 0, 0.6)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 3500,
+};
+
+const saveModal: React.CSSProperties = {
+  background: "#15151c",
+  border: "1px solid #2a2a36",
+  borderRadius: 12,
+  padding: 18,
+  width: "min(420px, 92vw)",
+};
+
+const saveModalTitle: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 600,
+  color: "#e5e5ea",
+  marginBottom: 12,
 };
 
 const progressItem: React.CSSProperties = {
