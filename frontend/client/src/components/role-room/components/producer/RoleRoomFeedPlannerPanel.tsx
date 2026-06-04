@@ -471,7 +471,7 @@ export default function RoleRoomFeedPlannerPanel({
             const requiredTier = option.minimumTierLevel === 2 ? ROLE_ROOM_TIERS.headliner : ROLE_ROOM_TIERS.spotlight;
             const allowed = currentTierLevel >= option.minimumTierLevel;
             const active = option.id === platform && allowed;
-            const lockedHint = `Krever Role Room ${requiredTier.shortName} eller høyere`;
+            const lockedHint = `Tilgjengelig fra Role Room ${requiredTier.shortName} — klikk for å oppgradere`;
 
             return (
               <Chip
@@ -481,6 +481,7 @@ export default function RoleRoomFeedPlannerPanel({
                     <SocialBrandLogo platform={option.id} size={18} />
                   </Box>
                 }
+                aria-label={allowed ? `Velg ${option.label}` : `${option.label} — låst. ${lockedHint}`}
                 label={allowed ? option.label : `${option.label} · ${requiredTier.shortName}`}
                 onClick={() => {
                   if (allowed) {
