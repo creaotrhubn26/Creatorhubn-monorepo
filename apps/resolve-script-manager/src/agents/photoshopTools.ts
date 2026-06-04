@@ -630,6 +630,25 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_subtitle_import_from_file",
+    description:
+      "Importer en undertekst-fil (.srt / .ass / .vtt) fra disk inn i Media Pool. Hvis append_to_timeline=true blir clipen droppet på aktiv timeline (Resolve velger subtitle-track automatisk basert på filtype). Bruk dette når brukeren har en ekstern transkripsjon eller oversettelses-SRT som skal inn i prosjektet — alternativet er CreateSubtitlesFromAudio som genererer ny tekst.",
+    input_schema: {
+      type: "object",
+      properties: {
+        file_path: {
+          type: "string",
+          description: "Absolutt path til subtitle-filen (.srt, .ass, .vtt).",
+        },
+        append_to_timeline: {
+          type: "boolean",
+          description: "Drop clipen på aktiv timeline med en gang. Default false (kun Media Pool).",
+        },
+      },
+      required: ["file_path"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -1240,6 +1259,16 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         params.album_name = input.album_name;
       }
       return photoshop.resolveGalleryImportStills(params);
+    }
+    case "photoshop_resolve_subtitle_import_from_file": {
+      const filePath = input.file_path;
+      if (typeof filePath !== "string" || filePath.length === 0) {
+        throw new Error("file_path må være en ikke-tom string");
+      }
+      return photoshop.resolveSubtitleImportFromFile({
+        file_path: filePath,
+        append_to_timeline: input.append_to_timeline === true,
+      });
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();

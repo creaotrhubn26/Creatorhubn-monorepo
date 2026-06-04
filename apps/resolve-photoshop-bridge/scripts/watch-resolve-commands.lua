@@ -1004,6 +1004,46 @@ HANDLERS["voice.setIsolationState"] = handleVoiceSetIsolation
 HANDLERS["gallery.importStills"] = handleGalleryImportStills
 
 -- ---------------------------------------------------------------------------
+-- Subtitle import (.srt / .ass / .vtt fra disk)
+-- ---------------------------------------------------------------------------
+
+local function handleSubtitleImport(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  if not mediaPool then error("Klarte ikke åpne Media Pool") end
+
+  local filePath = extractString(args, "file_path")
+  if not filePath or filePath == "" then error("file_path mangler") end
+  local appendToTimeline = args:match('"append_to_timeline"%s*:%s*true') ~= nil
+
+  local items = mediaPool:ImportMedia({ filePath })
+  if not items or #items == 0 then
+    error("ImportMedia returnerte ingen items (sjekk path + filtype: .srt/.ass/.vtt)")
+  end
+  local item = items[1]
+  local name = item:GetName() or ""
+  local clipId = item:GetMediaId() or ""
+
+  local appended = false
+  local timelineItemsAppended = 0
+  if appendToTimeline then
+    local appendedItems = mediaPool:AppendToTimeline({ item })
+    if appendedItems then
+      appended = true
+      timelineItemsAppended = #appendedItems
+    end
+  end
+
+  return string.format(
+    '{"imported":true,"name":%s,"clip_id":%s,"path":%s,"appended":%s,"timeline_items":%d}',
+    jsonEscape(name), jsonEscape(clipId), jsonEscape(filePath),
+    tostring(appended), timelineItemsAppended
+  )
+end
+
+HANDLERS["subtitle.importFromFile"] = handleSubtitleImport
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 

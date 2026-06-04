@@ -904,6 +904,17 @@ const COMMANDS = {
     });
   },
 
+  "resolve.subtitleImportFromFile": async ({ file_path, append_to_timeline } = {}) => {
+    if (typeof file_path !== "string" || file_path.length === 0) {
+      throw new Error("file_path må være en path-string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "subtitle.importFromFile",
+      args: { file_path, append_to_timeline: append_to_timeline === true },
+      timeout_ms: 30000,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
