@@ -77,9 +77,7 @@ export default function IgDmInbox({ open, onClose, brandColor }: Props) {
   }>({
     queryKey: ['ig-dm-conversations', connectionId],
     enabled: open && !!connectionId,
-    // Only poll while the dialog is actually open — avoids a 60s background
-    // request firing forever after the inbox is closed.
-    refetchInterval: open ? 60_000 : false,
+    refetchInterval: 60_000,
     queryFn: () => apiRequest(`/api/role-room/instagram/messaging/conversations?connectionId=${encodeURIComponent(connectionId)}`),
   });
   const conversations = convData?.conversations || [];
@@ -89,8 +87,8 @@ export default function IgDmInbox({ open, onClose, brandColor }: Props) {
     messages: IgMessage[]; syncError: string | null;
   }>({
     queryKey: ['ig-dm-messages', conversationId],
-    enabled: open && !!conversationId && !!connectionId,
-    refetchInterval: open && conversationId ? 30_000 : false,
+    enabled: !!conversationId && !!connectionId,
+    refetchInterval: conversationId ? 30_000 : false,
     queryFn: () => apiRequest(
       `/api/role-room/instagram/messaging/conversations/${encodeURIComponent(conversationId)}/messages?connectionId=${encodeURIComponent(connectionId)}`,
     ),
@@ -151,14 +149,7 @@ export default function IgDmInbox({ open, onClose, brandColor }: Props) {
 
   return (
     <BrandScope brandColor={brandColor}>
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-      aria-label="Instagram Direct-meldinger"
-      PaperProps={{ sx: { height: { xs: '92dvh', sm: '80vh' }, m: { xs: 1, sm: 4 } } }}
-    >
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { height: '80vh' } }}>
       <DialogTitle>
         <Stack direction="row" spacing={1} alignItems="center">
           <InstagramIcon color="primary" />
@@ -205,14 +196,9 @@ export default function IgDmInbox({ open, onClose, brandColor }: Props) {
             </Button>
           </Box>
         ) : (
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '40% 60%', sm: '260px 1fr', md: '300px 1fr' }, minHeight: 0, flex: 1 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '300px 1fr', minHeight: 0, flex: 1 }}>
             {/* Conversation list */}
             <Box sx={{ borderRight: '1px solid', borderColor: 'divider', overflowY: 'auto' }}>
-              {convData?.syncError ? (
-                <Alert severity="info" sx={{ m: 1, fontSize: 12 }}>
-                  Live-synk venter (instagram_manage_messages). Innkommende meldinger lagres via webhook.
-                </Alert>
-              ) : null}
               {convLoading ? (
                 <Box sx={{ p: 3, textAlign: 'center' }}><CircularProgress size={24} /></Box>
               ) : conversations.length === 0 ? (
