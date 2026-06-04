@@ -922,6 +922,8 @@ pub fn run() {
             demo_capture::demo_scan_result,
             demo_capture::demo_verify_action,
             demo_capture::demo_verify_result,
+            demo_capture::demo_auto_execute,
+            demo_capture::demo_auto_result,
             demo_export::demo_write_text,
             demo_export::demo_write_binary,
             demo_export::demo_print_html,

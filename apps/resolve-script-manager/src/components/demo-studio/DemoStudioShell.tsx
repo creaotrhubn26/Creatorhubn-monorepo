@@ -27,7 +27,7 @@ import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, fetchSiteContext, runResponsiveCheck } from './demoStudioAI';
-import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, type CapturedStep } from '../../services/demoCaptureService';
+import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
@@ -119,7 +119,31 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [capturing, setCapturing] = useState(false);
   const [captureCount, setCaptureCount] = useState(0);
   const [verifyBusy, setVerifyBusy] = useState(false);
+  const [autoBusy, setAutoBusy] = useState(false);
   const captureBuf = useRef<CapturedStep[]>([]);
+
+  // Auto-utfør gjeldende scenes handling (continueMode:'auto'): systemet finner
+  // target-elementet og utfører handlingen, fyller detectedSelector og avanserer.
+  const autoRunCurrent = async () => {
+    if (!isCaptureAvailable()) { window.alert('Auto-utførelse krever Tauri-appen.'); return; }
+    const st = useDemoStudio.getState();
+    const sc = st.project?.scenes[st.recorderStepIndex];
+    if (!sc || !st.project) return;
+    if (!sc.targetSelector) { window.alert('Scenen mangler target-selector — bind elementet via AI Director eller capture først.'); return; }
+    setAutoBusy(true);
+    try {
+      const r = await autoExecute(st.project.url, sc.targetSelector, sc.actionType ?? 'click');
+      if (r?.ok) {
+        updateScene(sc.id, { detectedSelector: sc.targetSelector, status: 'done' });
+        if (st.recorderStepIndex < st.project.scenes.length - 1) nextStep();
+      } else if (r && !r.found) {
+        updateScene(sc.id, { status: 'needs_review' });
+        window.alert('Fant ikke elementet på siden (selector traff ikke). Scene merket «Needs Review».');
+      }
+    } finally {
+      setAutoBusy(false);
+    }
+  };
 
   // Verifiser den gjeldende recorder-scenens handling: brukeren klikker
   // elementet → detectedSelector fylles → ekte Expected↔Detected-validering.
@@ -562,6 +586,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     onClick={async () => { retakeCurrent(); await startForCurrent(); }}>↺ Retake</button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: recorderStepIndex >= scenes.length - 1 ? 0.5 : 1 }} disabled={recorderStepIndex >= scenes.length - 1}
                     onClick={async () => { if (rec.state === 'recording') await rec.stopAndSave(project.id, recorderScene.id).then((pth) => pth && updateScene(recorderScene.id, { recordingPath: pth })); nextStep(); await startForCurrent(); }}>→ Next Step</button>
+                  <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: autoBusy ? 0.6 : 1 }} disabled={autoBusy}
+                    onClick={() => void autoRunCurrent()}
+                    title="La systemet utføre handlingen automatisk på target-elementet (continueMode: auto)">
+                    ▶ {autoBusy ? 'Kjører…' : 'Kjør automatisk'}
+                  </button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: verifyBusy ? 0.6 : 1 }} disabled={verifyBusy}
                     onClick={() => void verifyCurrentAction()}
                     title="Åpne siden og klikk elementet for å bekrefte at riktig handling utføres">

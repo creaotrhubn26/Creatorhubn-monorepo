@@ -61,6 +61,31 @@ export async function scanDom(url: string, timeoutMs = 20000): Promise<DomScanRe
   return result;
 }
 
+/** Resultat av auto-utførelse av en handling. */
+export interface AutoResult {
+  ok: boolean;
+  found: boolean;
+  selector?: string;
+}
+
+/**
+ * Auto-utfør en handling på siden (continueMode:'auto'): systemet finner
+ * `selector` og utfører `actionType`. Returnerer resultatet (ok/found) eller
+ * null ved timeout/web-dev.
+ */
+export async function autoExecute(url: string, selector: string, actionType: string, text?: string, timeoutMs = 30000): Promise<AutoResult | null> {
+  if (!isCaptureAvailable()) return null;
+  let resolve!: (v: AutoResult | null) => void;
+  const done = new Promise<AutoResult | null>((r) => { resolve = r; });
+  const unlisten = await listen<AutoResult>('demo-capture://auto', (e) => resolve(e.payload));
+  const timer = setTimeout(() => resolve(null), timeoutMs);
+  try { await invoke('demo_auto_execute', { url, selector, actionType, text: text ?? null }); } catch { resolve(null); }
+  const result = await done;
+  clearTimeout(timer);
+  unlisten();
+  return result;
+}
+
 /** Resultat av ett-skudds handlings-verifisering. */
 export interface VerifyResult {
   cancelled: boolean;

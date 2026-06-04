@@ -16,9 +16,11 @@ use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 const CAPTURE_JS: &str = include_str!("../capture/demo_capture_inject.js");
 const SCAN_JS: &str = include_str!("../capture/demo_scan_inject.js");
 const VERIFY_JS: &str = include_str!("../capture/demo_verify_inject.js");
+const AUTO_JS: &str = include_str!("../capture/demo_auto_inject.js");
 const CAPTURE_LABEL: &str = "demo-capture";
 const SCAN_LABEL: &str = "demo-scan";
 const VERIFY_LABEL: &str = "demo-verify";
+const AUTO_LABEL: &str = "demo-auto";
 
 /// Åpne capture-vinduet på `url`. Lukker et eventuelt eksisterende capture-vindu
 /// først, så vi aldri har to gående.
@@ -107,6 +109,47 @@ pub fn demo_verify_result(app: AppHandle, result: serde_json::Value) -> Result<(
         let _ = w.close();
     }
     app.emit("demo-capture://verify", result).map_err(|e| e.to_string())
+}
+
+/// Auto-utfør en scenes handling (continueMode:'auto'): åpner siden og lar
+/// auto-scriptet finne `selector` og utføre `action_type` (click/scroll/hover/
+/// type/highlight). Rapporterer via demo_auto_result.
+#[tauri::command]
+pub async fn demo_auto_execute(
+    app: AppHandle,
+    url: String,
+    selector: String,
+    action_type: String,
+    text: Option<String>,
+) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window(AUTO_LABEL) {
+        let _ = existing.close();
+    }
+    let parsed: tauri::Url = url.parse().map_err(|e| format!("ugyldig URL «{url}»: {e}"))?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err("URL må være http(s)".to_string());
+    }
+    let cfg = serde_json::json!({ "selector": selector, "actionType": action_type, "text": text });
+    let cfg_json = serde_json::to_string(&cfg).unwrap_or_else(|_| "{}".to_string());
+    let setter = format!("window.__demoAuto={cfg_json};");
+    WebviewWindowBuilder::new(&app, AUTO_LABEL, WebviewUrl::External(parsed))
+        .title("Auto-utfører handling")
+        .inner_size(1200.0, 820.0)
+        .initialization_script(&setter)
+        .initialization_script(AUTO_JS)
+        .build()
+        .map_err(|e| format!("kunne ikke åpne auto-vindu: {e}"))?;
+    Ok(())
+}
+
+/// Mottar auto-utførelse-resultatet, videresender til hovedvinduet og lukker
+/// auto-vinduet.
+#[tauri::command]
+pub fn demo_auto_result(app: AppHandle, result: serde_json::Value) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window(AUTO_LABEL) {
+        let _ = w.close();
+    }
+    app.emit("demo-capture://auto", result).map_err(|e| e.to_string())
 }
 
 /// Hent EKTE side-kontekst via reqwest (ingen CORS). Trekker ut tittel +

@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "demo-capture",
   "description": "Capture-/analyse-vindu: la den eksterne målsiden sende klikk-steg + element-skann til app-en via IPC. Kun IPC-core — ingen filsystem/skall.",
-  "windows": ["demo-capture", "demo-scan", "demo-verify"],
+  "windows": ["demo-capture", "demo-scan", "demo-verify", "demo-auto"],
   "remote": {
     "urls": ["http://*", "https://*"]
   },
