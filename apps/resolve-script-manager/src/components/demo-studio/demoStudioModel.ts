@@ -136,10 +136,11 @@ export interface DemoScene {
   status: SceneStatus;
   /**
    * Progresjons-modus per scene:
-   *   - 'manual': opptaket venter på brukerens bekreftelse (default, spec-krav)
-   *   - 'auto':   Playwright utfører required action automatisk og går videre
+   *   - 'manual':   opptaket venter på brukerens bekreftelse (default, spec-krav)
+   *   - 'assisted': bruker utfører, systemet verifiserer handlingen (detected)
+   *   - 'auto':     systemet utfører required action automatisk og går videre
    */
-  continueMode: 'manual' | 'auto';
+  continueMode: 'manual' | 'assisted' | 'auto';
   /** Sti til opptaksfil for denne scenen (settes av recorder). */
   recordingPath?: string | null;
   /** Frosset skjermbilde (dataURL) for scene-kortet — fylles av en framtidig
@@ -239,7 +240,7 @@ export interface DemoProject {
   /** Visnings-/render-innstillinger (cursor, touch points, highlight, safe area). */
   render?: DemoRenderOptions;
   /** Global progresjons-modus (kan overstyres per scene). Default 'manual'. */
-  continueMode?: 'manual' | 'auto';
+  continueMode?: 'manual' | 'assisted' | 'auto';
   /**
    * Hva som tas opp: 'web' (iframe/getDisplayMedia, default), eller en native
    * capture-kilde. For App Store-apper: 'ios_device' (kablet enhet).

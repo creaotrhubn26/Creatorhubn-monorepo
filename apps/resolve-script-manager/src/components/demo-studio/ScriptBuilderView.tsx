@@ -11,8 +11,9 @@
  * + device + opptak henger sammen (spec §11.3).
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
+import { fetchCurrentUser, roleLabel, userInitials, type CurrentUser } from '../../services/currentUserService';
 import { generateSceneScript, improveScript, type ImproveAction } from './demoStudioAI';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
@@ -79,6 +80,15 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
   const [showSignIn, setShowSignIn] = useState(false);
   const [aiReady, setAiReady] = useState(isAiConnected());
   const [undoSnapshot, setUndoSnapshot] = useState<{ id: string; text: string } | null>(null);
+  const [me, setMe] = useState<CurrentUser | null>(null);
+
+  // Vis den FAKTISK innloggede brukeren (ikke mockup). Oppdater ved innlogging.
+  useEffect(() => {
+    void fetchCurrentUser().then(setMe);
+    const onAuth = () => void fetchCurrentUser().then(setMe);
+    window.addEventListener('trrpa:auth-changed', onAuth);
+    return () => window.removeEventListener('trrpa:auth-changed', onAuth);
+  }, [aiReady]);
 
   const onGenerate = async () => {
     if (!project || !selected) return;
@@ -128,10 +138,23 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
           <div style={{ fontSize: 11, color: C.inkFaint }}>Demo Project</div>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: '#e8e3db', display: 'flex', alignItems: 'center', gap: 4 }}>{project.name} <span style={{ color: C.inkFaint }}>⌄</span></div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9, paddingTop: 8, borderTop: '1px solid #34302b' }}>
-          <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#3b5bdb', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11, fontWeight: 700 }}>JD</div>
-          <div><div style={{ fontSize: 12.5, fontWeight: 600, color: '#e8e3db' }}>Jamie Davis</div><div style={{ fontSize: 11, color: C.inkFaint }}>Pro Plan</div></div>
-        </div>
+        {me ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, paddingTop: 8, borderTop: '1px solid #34302b' }}>
+            {me.profileImageUrl
+              ? <img src={me.profileImageUrl} alt="" style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover' }} />
+              : <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#3b5bdb', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11, fontWeight: 700 }}>{userInitials(me.name)}</div>}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#e8e3db', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{me.name}</div>
+              <div style={{ fontSize: 11, color: C.inkFaint }}>{roleLabel(me)}</div>
+            </div>
+          </div>
+        ) : (
+          <div onClick={() => setShowSignIn(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 9, paddingTop: 8, borderTop: '1px solid #34302b', cursor: 'pointer' }}>
+            <div style={{ width: 30, height: 30, borderRadius: '50%', border: '1px solid #34302b', display: 'grid', placeItems: 'center', color: C.inkFaint, fontSize: 14 }}>?</div>
+            <div><div style={{ fontSize: 12.5, fontWeight: 600, color: '#e8e3db' }}>Ikke logget inn</div><div style={{ fontSize: 11, color: C.inkFaint }}>Logg inn med Role Room</div></div>
+          </div>
+        )}
       </div>
 
       {/* ── Main column ── */}
@@ -273,8 +296,9 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div><Lab>Continue mode</Lab>
                     <select style={{ ...miniSel, minWidth: 100, display: 'block', marginTop: 4 }} value={selected.continueMode ?? 'manual'}
-                      onChange={(e) => updateScene(selected.id, { continueMode: e.target.value as 'manual' | 'auto' })}>
+                      onChange={(e) => updateScene(selected.id, { continueMode: e.target.value as 'manual' | 'assisted' | 'auto' })}>
                       <option value="manual">Manual</option>
+                      <option value="assisted">Assisted</option>
                       <option value="auto">Auto</option>
                     </select>
                   </div>

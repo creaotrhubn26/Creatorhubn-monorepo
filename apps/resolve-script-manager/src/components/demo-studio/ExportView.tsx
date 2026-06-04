@@ -18,7 +18,7 @@ import { openPath } from '@tauri-apps/plugin-opener';
 import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { useDemoStudio } from './demoStudioStore';
 import { totalDuration } from './demoStudioModel';
-import { buildSrt, buildScriptHtml, renderThumbnail } from './demoStudioExports';
+import { buildSrt, buildScriptHtml, renderThumbnail, buildInteractiveGuideHtml } from './demoStudioExports';
 
 const C = {
   navBg: '#1c1a18', bg: '#f6f3ee', panel: '#ffffff', cream: '#faf7f2', line: '#eae5dd',
@@ -100,6 +100,15 @@ export function ExportView() {
     setFileMsg(null);
     try { await demoPrintHtml(buildScriptHtml(project)); setFileMsg('Manus åpnet i eget vindu — velg «Lagre som PDF» i utskriftsdialogen.'); }
     catch (e) { setFileMsg('Feil ved manus-PDF: ' + String(e)); }
+  };
+
+  const exportGuide = async () => {
+    if (!project) return;
+    setFileMsg(null);
+    const path = await saveFileDialog({ defaultPath: `${safeName()}-guide.html`, filters: [{ name: 'HTML', extensions: ['html'] }] });
+    if (typeof path !== 'string') return;
+    try { const p = await demoWriteText(path, buildInteractiveGuideHtml(project)); setFileMsg(`✓ Interaktiv guide lagret: ${p}`); void openPath(p).catch(() => {}); }
+    catch (e) { setFileMsg('Feil ved interaktiv guide: ' + String(e)); }
   };
 
   const exportThumbnail = async () => {
@@ -229,6 +238,7 @@ export function ExportView() {
         {/* Leveranser (tekst & bilde) — utenom video-renderen */}
         <Section label="Leveranser (tekst & bilde)">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            <button style={{ ...outlineBtn }} onClick={() => void exportGuide()}>Interaktiv guide (HTML)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportSrt()}>Undertekster (.srt)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportScriptPdf()}>Manus (PDF)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportThumbnail()}>Thumbnail (PNG)</button>

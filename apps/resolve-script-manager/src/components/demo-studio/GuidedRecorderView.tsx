@@ -21,6 +21,7 @@ import { DeviceConnectGuide } from './DeviceConnectGuide';
 import { type FrameVariant } from './deviceFrames';
 import { FramedDevice } from './FramedDevice';
 import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, type DemoDevice } from './demoStudioModel';
+import { fetchCurrentUser, roleLabel, userInitials, type CurrentUser } from '../../services/currentUserService';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -60,6 +61,13 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const [showConnectGuide, setShowConnectGuide] = useState(false);
   const [embedBlocked, setEmbedBlocked] = useState<string | null>(null);
   const [nativeError, setNativeError] = useState<string | null>(null);
+  const [me, setMe] = useState<CurrentUser | null>(null);
+  useEffect(() => {
+    void fetchCurrentUser().then(setMe);
+    const onAuth = () => void fetchCurrentUser().then(setMe);
+    window.addEventListener('trrpa:auth-changed', onAuth);
+    return () => window.removeEventListener('trrpa:auth-changed', onAuth);
+  }, []);
 
   // Oppdater capture-kilder ved mount (Mac-skjerm / kablede iOS-enheter / sim).
   useEffect(() => { listCaptureSources().then(setSources).catch(() => setSources([])); }, []);
@@ -256,10 +264,22 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
           <div style={{ fontSize: 11, color: C.inkFaint }}>Demo Project</div>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: '#e8e3db' }}>{project.name} ⌄</div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9, paddingTop: 8, borderTop: '1px solid #34302b' }}>
-          <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#3b5bdb', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11, fontWeight: 700 }}>JD</div>
-          <div><div style={{ fontSize: 12.5, fontWeight: 600, color: '#e8e3db' }}>Jamie Davis</div><div style={{ fontSize: 11, color: C.inkFaint }}>Pro Plan</div></div>
-        </div>
+        {me ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, paddingTop: 8, borderTop: '1px solid #34302b' }}>
+            {me.profileImageUrl
+              ? <img src={me.profileImageUrl} alt="" style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover' }} />
+              : <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#3b5bdb', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11, fontWeight: 700 }}>{userInitials(me.name)}</div>}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#e8e3db', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{me.name}</div>
+              <div style={{ fontSize: 11, color: C.inkFaint }}>{roleLabel(me)}</div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, paddingTop: 8, borderTop: '1px solid #34302b' }}>
+            <div style={{ width: 30, height: 30, borderRadius: '50%', border: '1px solid #34302b', display: 'grid', placeItems: 'center', color: C.inkFaint, fontSize: 14 }}>?</div>
+            <div><div style={{ fontSize: 12.5, fontWeight: 600, color: '#e8e3db' }}>Ikke logget inn</div><div style={{ fontSize: 11, color: C.inkFaint }}>Role Room</div></div>
+          </div>
+        )}
       </div>
 
       {/* ── Main column ── */}

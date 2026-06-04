@@ -90,6 +90,107 @@ ${rows}
 </body></html>`;
 }
 
+/**
+ * Bygg en SELVSTENDIG interaktiv guide (HTML): klikkbar steg-for-steg-
+ * gjennomgang med hotspots + tooltips + required actions. Den andre output-en
+ * ved siden av video — «Interactive Content» i flyten. Embedder scenene som
+ * JSON + inline CSS/JS, så fila kan deles og åpnes i hvilken som helst nettleser.
+ *
+ * Hvert steg viser sidens skjermbilde (thumbnailDataUrl) hvis det finnes, ellers
+ * en live <iframe> av URL-en. Hotspot + bobletekst plasseres i viewport-prosent.
+ */
+export function buildInteractiveGuideHtml(project: DemoProject): string {
+  const steps = project.scenes.map((s) => ({
+    title: s.title,
+    device: s.device,
+    url: project.url,
+    narration: s.narration || '',
+    action: s.targetLabel ? `${ACTION_META[s.actionType ?? 'click'].verb} ${s.targetLabel}` : (s.requiredAction || ''),
+    overlay: s.overlayText || '',
+    hotspot: s.hotspot || null,
+    thumb: s.thumbnailDataUrl || null,
+    startScrollPct: s.startScrollPct ?? 0,
+  }));
+  const data = JSON.stringify({ name: project.name, steps }).replace(/</g, '\\u003c');
+
+  return `<!doctype html><html lang="no"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(project.name)} — interaktiv guide</title>
+<style>
+  :root { --accent:#ef8a5d; --ink:#1d1b19; --soft:#6b6358; --line:#eae5dd; --bg:#f3efe9; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; color:var(--ink); background:var(--bg); }
+  header { display:flex; align-items:center; gap:10px; padding:12px 18px; background:#fff; border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0; }
+  header .step { margin-left:auto; color:var(--soft); font-size:12.5px; }
+  .stage { display:flex; align-items:center; justify-content:center; padding:24px; min-height:60vh; }
+  .screen { position:relative; background:#000; border-radius:14px; overflow:hidden; box-shadow:0 18px 50px rgba(0,0,0,.22); }
+  .screen iframe, .screen img { position:absolute; inset:0; width:100%; height:100%; border:0; object-fit:cover; object-position:top; }
+  .hot { position:absolute; border:2px solid var(--accent); border-radius:10px; box-shadow:0 0 0 9999px rgba(0,0,0,.30); cursor:pointer; animation:pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 9999px rgba(0,0,0,.30), 0 0 0 0 rgba(239,138,93,.5);} 50%{ box-shadow:0 0 0 9999px rgba(0,0,0,.30), 0 0 0 10px rgba(239,138,93,0);} }
+  .tip { position:absolute; max-width:260px; background:#fff; color:var(--ink); border-radius:10px; padding:11px 13px; box-shadow:0 8px 24px rgba(0,0,0,.25); font-size:13px; z-index:5; }
+  .tip b { display:block; color:var(--accent); font-size:11.5px; text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px; }
+  footer { display:flex; align-items:center; gap:14px; padding:14px 18px; background:#fff; border-top:1px solid var(--line); }
+  .dots { display:flex; gap:6px; }
+  .dots i { width:7px; height:7px; border-radius:4px; background:#d8d2c8; display:block; transition:all .2s; }
+  .dots i.on { width:18px; background:var(--accent); }
+  button { font:inherit; border:1px solid #ddd6cc; background:#fff; color:var(--ink); border-radius:9px; padding:9px 16px; cursor:pointer; font-weight:600; }
+  button.primary { background:linear-gradient(135deg,#ef8a5d,#d96a3a); color:#fff; border:0; }
+  button:disabled { opacity:.45; cursor:default; }
+  .cap { flex:1; color:var(--soft); font-size:12.5px; }
+</style></head><body>
+<header><span style="color:var(--accent)">▶</span><h1>${esc(project.name)}</h1><span class="step" id="stepLabel"></span></header>
+<div class="stage"><div class="screen" id="screen"></div></div>
+<footer>
+  <button id="prev">‹ Forrige</button>
+  <div class="dots" id="dots"></div>
+  <div class="cap" id="cap"></div>
+  <button class="primary" id="next">Neste ›</button>
+</footer>
+<script>
+  var DATA = ${data};
+  var steps = DATA.steps || [];
+  var i = 0;
+  var screen = document.getElementById('screen');
+  function dims(device){
+    if (device === 'iphone') return { w: 300, h: 620 };
+    if (device === 'ipad') return { w: 560, h: 740 };
+    return { w: 900, h: 562 }; // macbook/desktop 16:10
+  }
+  function render(){
+    var s = steps[i]; if(!s){ return; }
+    var d = dims(s.device);
+    screen.style.width = d.w + 'px'; screen.style.height = d.h + 'px';
+    var media = s.thumb
+      ? '<img src="' + s.thumb + '" alt="">'
+      : '<iframe src="' + s.url + '" scrolling="no" referrerpolicy="no-referrer"></iframe>';
+    var hot = '', tip = '';
+    if (s.hotspot){
+      var h = s.hotspot;
+      hot = '<div class="hot" id="hot" style="left:'+(h.x*100)+'%;top:'+(h.y*100)+'%;width:'+(h.w*100)+'%;height:'+(h.h*100)+'%"></div>';
+      var tx = Math.min(70, (h.x*100)); var ty = Math.min(72, (h.y*100) + (h.h*100) + 2);
+      tip = '<div class="tip" style="left:'+tx+'%;top:'+ty+'%">' + (s.action ? '<b>'+escapeHtml(s.action)+'</b>' : '') + escapeHtml(s.narration || s.overlay || '') + '</div>';
+    }
+    screen.innerHTML = media + hot + tip;
+    var hotEl = document.getElementById('hot'); if (hotEl) hotEl.onclick = next;
+    document.getElementById('stepLabel').textContent = 'Steg ' + (i+1) + ' av ' + steps.length + ' — ' + (s.title || '');
+    document.getElementById('cap').textContent = s.narration || s.overlay || '';
+    document.getElementById('prev').disabled = i === 0;
+    document.getElementById('next').textContent = i === steps.length-1 ? 'Ferdig' : 'Neste ›';
+    var dots = document.getElementById('dots'); dots.innerHTML = '';
+    for (var k=0;k<steps.length;k++){ var c=document.createElement('i'); if(k===i)c.className='on'; dots.appendChild(c); }
+  }
+  function escapeHtml(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function next(){ if(i < steps.length-1){ i++; render(); } }
+  function prev(){ if(i > 0){ i--; render(); } }
+  document.getElementById('next').onclick = next;
+  document.getElementById('prev').onclick = prev;
+  document.addEventListener('keydown', function(e){ if(e.key==='ArrowRight')next(); else if(e.key==='ArrowLeft')prev(); });
+  render();
+</script>
+</body></html>`;
+}
+
 /** Tegn en branded thumbnail (PNG-dataURL) for demoen. */
 export function renderThumbnail(project: DemoProject, format: DemoProject['format'] = '16:9'): string {
   const aspect: Record<DemoProject['format'], [number, number]> = {
