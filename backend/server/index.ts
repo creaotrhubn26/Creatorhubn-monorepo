@@ -725,6 +725,7 @@ import { setupAcademyMediaAssetsRoutes } from "./academy-media-assets-routes";
 import { setupAcademyCohortSettingsRoutes } from "./academy-cohort-settings-routes";
 import { setupAcademyAdminRoutes } from "./academy-admin-routes";
 import { setupAcademyAnnotationRoutes } from "./academy-annotation-routes";
+import { setupAcademyCurriculumRoutes } from "./academy-curriculum-routes";
 import { setupPricingRoutes } from "./pricing-routes";
 import { setupAccountingRoutes } from "./accounting-routes";
 import { setupFileManagementRoutes } from "./file-management-routes";
@@ -35162,7 +35163,7 @@ interface AcademyCurriculumFoundationQuestion {
   suggestions: string[];
 }
 
-interface AcademyCurriculumFoundationAnswer {
+export interface AcademyCurriculumFoundationAnswer {
   id: AcademyCurriculumFoundationQuestionId;
   question: string;
   answer: string;
@@ -35241,7 +35242,7 @@ interface AcademyCurriculumFoundationStudioSuggestions {
   annotations: AcademyCurriculumFoundationAnnotationSuggestion[];
 }
 
-interface AcademyCurriculumFoundationArchitecture {
+export interface AcademyCurriculumFoundationArchitecture {
   purpose: string;
   audience: string;
   transformation: string;
@@ -35264,7 +35265,7 @@ interface AcademyCurriculumFoundationRecommendation {
   architecture: AcademyCurriculumFoundationArchitecture;
 }
 
-type AcademyCurriculumIndustryProfileId =
+export type AcademyCurriculumIndustryProfileId =
   | "sales"
   | "production"
   | "offshore"
@@ -35302,7 +35303,7 @@ interface AcademyCurriculumFoundationSectionRationale {
   evidence: string;
 }
 
-interface AcademyCurriculumFoundationAssistantResult {
+export interface AcademyCurriculumFoundationAssistantResult {
   completed: boolean;
   totalQuestions: number;
   answeredCount: number;
@@ -35326,7 +35327,7 @@ type AcademyCurriculumFoundationDomainResolutionSource =
   | "lexical"
   | "heuristic";
 
-interface AcademyCurriculumFoundationTemplateMemoryItem {
+export interface AcademyCurriculumFoundationTemplateMemoryItem {
   id: string;
   name: string;
   sourceProjectTemplateId?: string;
@@ -40863,112 +40864,6 @@ const academyCurriculumTryQwenFoundationAssistant = async (params: {
 
   return null;
 };
-
-app.post("/api/academy/curriculum/foundation-assistant", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "instructor"))) {
-      return;
-    }
-    const body = academyPresentationIsRecord(req.body) ? req.body : {};
-    const useNorwegian = readBoolean(body.useNorwegian) === true;
-    const courseTitle = academyCurriculumTrimText(body.courseTitle, 220);
-    const provider = String(
-      readString(body.provider) ||
-        readString(process.env.ACADEMY_CURRICULUM_FOUNDATION_PROVIDER) ||
-        "auto",
-    )
-      .trim()
-      .toLowerCase();
-    const answers = academyCurriculumNormalizeAnswers(body.answers);
-    const manualIndustryProfile = (() => {
-      const normalized = academyCurriculumTrimText(
-        body.manualIndustryProfile,
-        64,
-      );
-      if (!normalized) return undefined;
-      const explicit = academyCurriculumNormalizeIndustryProfileId(normalized);
-      if (explicit) return explicit;
-      const inferred = academyCurriculumInferIndustryProfile(normalized);
-      return inferred === "generic" ? undefined : inferred;
-    })();
-    const templateMemory = academyCurriculumNormalizeTemplateMemory(
-      body.templateMemory,
-    );
-    const currentArchitecture = academyCurriculumNormalizeArchitecture(
-      body.currentArchitecture,
-    );
-    const currentArchitectureForGeneration =
-      academyCurriculumShouldResetCurrentArchitecture({
-        answers,
-        courseTitle,
-        currentArchitecture,
-      })
-        ? academyCurriculumNormalizeArchitecture({})
-        : currentArchitecture;
-
-    const fallback = await academyCurriculumBuildFoundationFallback({
-      courseTitle,
-      useNorwegian,
-      answers,
-      currentArchitecture: currentArchitectureForGeneration,
-      manualIndustryProfile,
-      templateMemory,
-    });
-
-    const shouldTryQwen =
-      provider === "qwen" ||
-      provider === "huggingface" ||
-      provider === "hf" ||
-      ((provider === "auto" || provider === "") &&
-        answers.length >= 2 &&
-        fallback.domainResolution.confidence >= 0.58 &&
-        !fallback.domainResolution.needsConfirmation);
-    const llmResult = shouldTryQwen
-      ? await academyCurriculumTryQwenFoundationAssistant({
-          courseTitle,
-          currentArchitecture: currentArchitectureForGeneration,
-          useNorwegian,
-          answers,
-          fallback,
-          templateMemory,
-        })
-      : null;
-
-    const result = llmResult || fallback;
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        completed: result.completed,
-        totalQuestions: result.totalQuestions,
-        answeredCount: result.answeredCount,
-        answers: result.answers,
-        nextQuestion: result.nextQuestion,
-        recommendation: result.recommendation,
-        progress: result.progress,
-        sectionRationales: result.sectionRationales,
-        meta: {
-          provider: result.provider,
-          model: result.model || undefined,
-          industryProfile: result.industryProfile,
-          domainResolution: result.domainResolution,
-          generationStage: result.generationStage,
-          templateMatch: result.templateMatch,
-          generatedAt: new Date().toISOString(),
-        },
-      },
-    });
-  } catch (error) {
-    console.error(
-      "Error generating academy curriculum foundation suggestion:",
-      error,
-    );
-    return res.status(500).json({
-      success: false,
-      error: "Could not generate curriculum foundation suggestion",
-    });
-  }
-});
 
 export type AcademyAnnotationRecommendationType =
   | "hotspot"
@@ -65638,6 +65533,20 @@ setupAcademyAnnotationRoutes({
   academyPresentationClamp,
   academyAnnotationFallbackRecommendations,
   academyAnnotationTryQwenRecommendations,
+});
+setupAcademyCurriculumRoutes({
+  app,
+  requireAcademySession,
+  academyPresentationIsRecord,
+  academyCurriculumTrimText,
+  academyCurriculumNormalizeAnswers,
+  academyCurriculumNormalizeIndustryProfileId,
+  academyCurriculumInferIndustryProfile,
+  academyCurriculumNormalizeTemplateMemory,
+  academyCurriculumNormalizeArchitecture,
+  academyCurriculumShouldResetCurrentArchitecture,
+  academyCurriculumBuildFoundationFallback,
+  academyCurriculumTryQwenFoundationAssistant,
 });
 // NB: setupSongflowDeprecatedAliasesRoutes wires later (etter handler-
 // deklarasjoner ~linje 70324). Trivielle deprecation-aliases krever at
