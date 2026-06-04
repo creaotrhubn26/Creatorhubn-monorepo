@@ -233,6 +233,142 @@ local function handlePowerGradeExport(args)
   )
 end
 
+-- ---------------------------------------------------------------------------
+-- AI-handlere (Resolve 21 Scripting API)
+-- ---------------------------------------------------------------------------
+
+-- Finn MediaPoolItem ved unique-id (samme søk som intellisearch-script)
+local function findMediaPoolItemById(mediaPool, targetId)
+  local rootFolder = mediaPool:GetRootFolder()
+  if not rootFolder then return nil end
+  local function searchFolder(folder)
+    local clips = folder:GetClipList()
+    if clips then
+      for _, clip in ipairs(clips) do
+        if clip:GetUniqueId() == targetId then return clip end
+      end
+    end
+    local subFolders = folder:GetSubFolderList()
+    if subFolders then
+      for _, sub in ipairs(subFolders) do
+        local found = searchFolder(sub)
+        if found then return found end
+      end
+    end
+    return nil
+  end
+  return searchFolder(rootFolder)
+end
+
+-- audio.transcribe — transkriber audio på folder eller spesifikk item
+local function handleAudioTranscribe(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local clipId = extractString(args, "clip_id")
+  local useSpeakerDetection = args:match('"use_speaker_detection"%s*:%s*true') ~= nil
+
+  local target, scope
+  if clipId then
+    target = findMediaPoolItemById(mediaPool, clipId)
+    if not target then error("Fant ikke MediaPoolItem: " .. clipId) end
+    scope = "item"
+  else
+    target = mediaPool:GetCurrentFolder()
+    if not target then error("Ingen aktiv folder") end
+    scope = "folder"
+  end
+
+  local ok = target:TranscribeAudio(useSpeakerDetection)
+  return string.format(
+    '{"scope":%s,"success":%s,"use_speaker_detection":%s}',
+    jsonEscape(scope), tostring(ok), tostring(useSpeakerDetection)
+  )
+end
+
+-- audio.classify — klassifiser audio på folder eller item
+local function handleAudioClassify(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local clipId = extractString(args, "clip_id")
+
+  local target, scope
+  if clipId then
+    target = findMediaPoolItemById(mediaPool, clipId)
+    if not target then error("Fant ikke MediaPoolItem: " .. clipId) end
+    scope = "item"
+  else
+    target = mediaPool:GetCurrentFolder()
+    if not target then error("Ingen aktiv folder") end
+    scope = "folder"
+  end
+
+  local ok = target:PerformAudioClassification()
+  return string.format('{"scope":%s,"success":%s}', jsonEscape(scope), tostring(ok))
+end
+
+-- speech.generate — TTS som genererer MediaPoolItem
+local function handleSpeechGenerate(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local text = extractString(args, "text")
+  if not text then error("text mangler") end
+  local timecode = extractString(args, "timecode") or "00:00:00:00"
+  local voice = extractString(args, "voice")
+  local addToTimeline = args:match('"add_to_timeline"%s*:%s*true') ~= nil
+  local model = extractString(args, "model")
+
+  local settings = { Text = text, AddToTimeline = addToTimeline }
+  if voice then settings.Voice = voice end
+  if model then settings.Model = model end
+
+  local item = mediaPool:GenerateSpeech(settings, timecode)
+  if not item then error("GenerateSpeech returnerte nil — sjekk at AI Speech Generator-modell er nedlastet") end
+  return string.format(
+    '{"clip_name":%s,"clip_id":%s,"timecode":%s,"added_to_timeline":%s}',
+    jsonEscape(item:GetClipProperty("Clip Name") or ""),
+    jsonEscape(item:GetUniqueId() or ""),
+    jsonEscape(timecode),
+    tostring(addToTimeline)
+  )
+end
+
+-- slate.analyze — finn slates i clips, opprett markers
+local function handleSlateAnalyze(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local clipId = extractString(args, "clip_id")
+  local markerColor = extractString(args, "marker_color") or "Yellow"
+
+  local target, scope
+  if clipId then
+    target = findMediaPoolItemById(mediaPool, clipId)
+    if not target then error("Fant ikke MediaPoolItem: " .. clipId) end
+    scope = "item"
+  else
+    target = mediaPool:GetCurrentFolder()
+    if not target then error("Ingen aktiv folder") end
+    scope = "folder"
+  end
+
+  local ok = target:AnalyzeForSlate(markerColor)
+  return string.format(
+    '{"scope":%s,"success":%s,"marker_color":%s}',
+    jsonEscape(scope), tostring(ok), jsonEscape(markerColor)
+  )
+end
+
+-- timeline.smartReframe — AI auto-reframe på aktiv timeline
+local function handleTimelineSmartReframe(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local ok = timeline:SmartReframe()
+  return string.format(
+    '{"timeline":%s,"success":%s}',
+    jsonEscape(timeline:GetName() or ""), tostring(ok)
+  )
+end
+
 local HANDLERS = {
   ["quickExport.list"] = handleQuickExportList,
   ["quickExport.run"] = handleQuickExportRun,
@@ -241,6 +377,11 @@ local HANDLERS = {
   ["powerGrade.list"] = handlePowerGradeList,
   ["powerGrade.create"] = handlePowerGradeCreate,
   ["powerGrade.export"] = handlePowerGradeExport,
+  ["audio.transcribe"] = handleAudioTranscribe,
+  ["audio.classify"] = handleAudioClassify,
+  ["speech.generate"] = handleSpeechGenerate,
+  ["slate.analyze"] = handleSlateAnalyze,
+  ["timeline.smartReframe"] = handleTimelineSmartReframe,
 }
 
 -- ---------------------------------------------------------------------------
