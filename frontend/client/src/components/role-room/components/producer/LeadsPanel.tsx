@@ -79,6 +79,7 @@ interface FollowupConfig {
   smsBody: string;
   emailSubject: string;
   emailBody: string;
+  replyTo: string;
   notifyPhone: string;
   notifyEmail: string;
 }
@@ -411,6 +412,13 @@ export default function LeadsPanel() {
                               label="E-post tekst" size="small" fullWidth multiline minRows={3}
                               value={cfg.emailBody}
                               onChange={(e) => setCfg({ ...cfg, emailBody: e.target.value })}
+                            />
+                            <TextField
+                              label="Kundens svar-adresse" size="small" fullWidth
+                              value={cfg.replyTo}
+                              onChange={(e) => setCfg({ ...cfg, replyTo: e.target.value })}
+                              placeholder="kontakt@bedrift.no"
+                              helperText="E-posten vises med bedriftsnavnet som avsender. Når leadet svarer, går svaret til denne adressen (kundens innboks)."
                             />
                             <Divider><Typography sx={{ fontSize: '0.72rem', color: 'rgba(226,232,240,0.5)' }}>Varsle kunden om nye leads</Typography></Divider>
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>

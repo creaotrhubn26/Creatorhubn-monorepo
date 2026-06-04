@@ -156,6 +156,7 @@ interface FollowupConfig {
   smsBody: string;
   emailSubject: string;
   emailBody: string;
+  replyTo: string;
   notifyPhone: string;
   notifyEmail: string;
 }
@@ -164,6 +165,7 @@ const DEFAULT_FOLLOWUP: FollowupConfig = {
   emailSubject: "Takk for henvendelsen, {navn}",
   emailBody:
     "Hei {navn},\n\nTakk for at du tok kontakt via annonsen vår. Vi tar kontakt med deg så raskt vi kan.\n\nVennlig hilsen\n{bedrift}",
+  replyTo: "",
   notifyPhone: "",
   notifyEmail: "",
 };
@@ -186,6 +188,10 @@ async function ensureLeadFollowupSchema(pool: Pool): Promise<void> {
       UNIQUE (user_id, connection_id)
     );
   `);
+  // reply_to added after the table shipped — additive, idempotent.
+  await pool.query(
+    `ALTER TABLE role_room_lead_followup_config ADD COLUMN IF NOT EXISTS reply_to TEXT NOT NULL DEFAULT '';`,
+  );
   // Log of follow-ups sent (so we never double-send and can show "fulgt opp").
   await pool.query(`
     CREATE TABLE IF NOT EXISTS role_room_lead_followups (
@@ -205,7 +211,7 @@ async function ensureLeadFollowupSchema(pool: Pool): Promise<void> {
 
 async function getFollowupConfig(pool: Pool, userId: string, connectionId: string): Promise<FollowupConfig> {
   const r = await pool.query(
-    `SELECT sms_body, email_subject, email_body, notify_phone, notify_email
+    `SELECT sms_body, email_subject, email_body, reply_to, notify_phone, notify_email
        FROM role_room_lead_followup_config WHERE user_id = $1 AND connection_id = $2`,
     [userId, connectionId],
   );
@@ -215,6 +221,7 @@ async function getFollowupConfig(pool: Pool, userId: string, connectionId: strin
     smsBody: String(row.sms_body) || DEFAULT_FOLLOWUP.smsBody,
     emailSubject: String(row.email_subject) || DEFAULT_FOLLOWUP.emailSubject,
     emailBody: String(row.email_body) || DEFAULT_FOLLOWUP.emailBody,
+    replyTo: String(row.reply_to || ""),
     notifyPhone: String(row.notify_phone || ""),
     notifyEmail: String(row.notify_email || ""),
   };
@@ -629,17 +636,19 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       await ensureLeadFollowupSchema(pool);
       await pool.query(
         `INSERT INTO role_room_lead_followup_config
-           (user_id, connection_id, sms_body, email_subject, email_body, notify_phone, notify_email)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+           (user_id, connection_id, sms_body, email_subject, email_body, reply_to, notify_phone, notify_email)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (user_id, connection_id)
          DO UPDATE SET sms_body = EXCLUDED.sms_body, email_subject = EXCLUDED.email_subject,
-                       email_body = EXCLUDED.email_body, notify_phone = EXCLUDED.notify_phone,
+                       email_body = EXCLUDED.email_body, reply_to = EXCLUDED.reply_to,
+                       notify_phone = EXCLUDED.notify_phone,
                        notify_email = EXCLUDED.notify_email, updated_at = now()`,
         [
           session.userId, connectionId,
           str(body.smsBody, DEFAULT_FOLLOWUP.smsBody),
           str(body.emailSubject, DEFAULT_FOLLOWUP.emailSubject),
           str(body.emailBody, DEFAULT_FOLLOWUP.emailBody),
+          str(body.replyTo),
           str(body.notifyPhone),
           str(body.notifyEmail),
         ],
@@ -701,6 +710,8 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
             text,
             html: text.replace(/\n/g, "<br>"),
             fromLabel: bedrift,
+            // Replies from the lead go to the client's own inbox, not no-reply.
+            replyTo: config.replyTo || config.notifyEmail || null,
             kind: "lead_followup",
             pool,
             sentByUserId: session.userId,
