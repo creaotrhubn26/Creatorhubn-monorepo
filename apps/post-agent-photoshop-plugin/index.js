@@ -782,6 +782,56 @@ const COMMANDS = {
     });
   },
 
+  "resolve.subtitlesCreateFromAudio": async ({ language, preset, chars_per_line, line_break, gap } = {}) => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "subtitles.createFromAudio",
+      args: {
+        language: language || "AUTO",
+        preset: preset || "DEFAULT",
+        chars_per_line: typeof chars_per_line === "number" ? chars_per_line : undefined,
+        line_break: line_break || "SINGLE",
+        gap: typeof gap === "number" ? gap : undefined,
+      },
+      timeout_ms: 300000,
+    });
+  },
+
+  "resolve.trackAdd": async ({ track_type, sub_track_type } = {}) => {
+    assertString(track_type, "track_type");
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "track.add",
+      args: { track_type, sub_track_type: sub_track_type || "" },
+    });
+  },
+
+  "resolve.trackDelete": async ({ track_type, index } = {}) => {
+    assertString(track_type, "track_type");
+    if (typeof index !== "number") throw new Error("index mangler");
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "track.delete",
+      args: { track_type, index },
+    });
+  },
+
+  "resolve.trackGetName": async ({ track_type, index } = {}) => {
+    assertString(track_type, "track_type");
+    if (typeof index !== "number") throw new Error("index mangler");
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "track.getName",
+      args: { track_type, index },
+    });
+  },
+
+  "resolve.trackSetName": async ({ track_type, index, name } = {}) => {
+    assertString(track_type, "track_type");
+    assertString(name, "name");
+    if (typeof index !== "number") throw new Error("index mangler");
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "track.setName",
+      args: { track_type, index, name },
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
