@@ -925,6 +925,42 @@ export const photoshop = {
       params,
     ),
 
+  resolveFolderListAll: () =>
+    send<{
+      count: number;
+      folders: Array<{
+        path: string;
+        name: string;
+        clip_count: number;
+        subfolder_count: number;
+      }>;
+    }>("resolve.folderListAll"),
+
+  resolveFolderGetCurrent: () =>
+    send<{ name: string; clip_count: number; subfolder_count: number }>(
+      "resolve.folderGetCurrent",
+    ),
+
+  resolveFolderSetCurrent: (params: { path: string }) =>
+    send<{ set: boolean; path: string; name: string }>(
+      "resolve.folderSetCurrent",
+      params,
+    ),
+
+  resolveFolderCreate: (params: { name: string; parent_path?: string }) =>
+    send<{
+      created: boolean;
+      path: string;
+      name: string;
+      parent_path: string;
+    }>("resolve.folderCreate", params),
+
+  resolveFolderMoveClips: (params: { clip_ids: string[]; target_path: string }) =>
+    send<{ moved: boolean; count: number; target_path: string }>(
+      "resolve.folderMoveClips",
+      params,
+    ),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

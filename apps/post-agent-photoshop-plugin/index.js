@@ -1207,6 +1207,57 @@ const COMMANDS = {
     });
   },
 
+  "resolve.folderListAll": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "folder.listAll" });
+  },
+
+  "resolve.folderGetCurrent": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "folder.getCurrent" });
+  },
+
+  "resolve.folderSetCurrent": async ({ path } = {}) => {
+    if (typeof path !== "string" || path.length === 0) {
+      throw new Error("path må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "folder.setCurrent",
+      args: { path },
+    });
+  },
+
+  "resolve.folderCreate": async ({ name, parent_path } = {}) => {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error("name må være en ikke-tom string");
+    }
+    const args = { name };
+    if (typeof parent_path === "string" && parent_path.length > 0) {
+      args.parent_path = parent_path;
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "folder.create",
+      args,
+    });
+  },
+
+  "resolve.folderMoveClips": async ({ clip_ids, target_path } = {}) => {
+    if (!Array.isArray(clip_ids) || clip_ids.length === 0) {
+      throw new Error("clip_ids må være en ikke-tom array av strings");
+    }
+    for (const id of clip_ids) {
+      if (typeof id !== "string") {
+        throw new Error("Alle clip_ids må være strings");
+      }
+    }
+    if (typeof target_path !== "string" || target_path.length === 0) {
+      throw new Error("target_path må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "folder.moveClips",
+      args: { clip_ids, target_path },
+      timeout_ms: 60000,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve

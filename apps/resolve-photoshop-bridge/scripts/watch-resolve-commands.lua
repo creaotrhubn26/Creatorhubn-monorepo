@@ -1593,6 +1593,165 @@ HANDLERS["version.rename"] = handleVersionRename
 HANDLERS["version.delete"] = handleVersionDelete
 
 -- ---------------------------------------------------------------------------
+-- MediaPool folder-management
+-- ---------------------------------------------------------------------------
+
+-- Finn folder ved path "Master/Wedding/Day 1".  Tom string eller "Master"
+-- returnerer root. Tar bare hensyn til segment-navn (case-sensitivt) — hvis
+-- to undermapper deler navn vinner første.
+local function findFolderByPath(rootFolder, path)
+  if not path or path == "" or path == "Master" or path == "/" then
+    return rootFolder
+  end
+  local parts = {}
+  for p in path:gmatch("[^/]+") do table.insert(parts, p) end
+  local startIdx = 1
+  local rootName = rootFolder:GetName() or "Master"
+  if parts[1] == "Master" or parts[1] == rootName then
+    startIdx = 2
+  end
+  local current = rootFolder
+  for i = startIdx, #parts do
+    local subs = current:GetSubFolderList() or {}
+    local found
+    for _, f in ipairs(subs) do
+      if f:GetName() == parts[i] then found = f; break end
+    end
+    if not found then
+      error("Fant ikke folder-segment '" .. parts[i] .. "' i path '" .. path .. "'")
+    end
+    current = found
+  end
+  return current
+end
+
+local function walkFolderTree(folder, parentPath, list)
+  local name = folder:GetName() or "Master"
+  local myPath
+  if parentPath == "" then
+    myPath = name
+  else
+    myPath = parentPath .. "/" .. name
+  end
+  local clips = folder:GetClipList() or {}
+  local subs = folder:GetSubFolderList() or {}
+  table.insert(list, string.format(
+    '{"path":%s,"name":%s,"clip_count":%d,"subfolder_count":%d}',
+    jsonEscape(myPath), jsonEscape(name), #clips, #subs
+  ))
+  for _, sub in ipairs(subs) do
+    walkFolderTree(sub, myPath, list)
+  end
+end
+
+local function handleFolderListAll(_args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local root = mediaPool:GetRootFolder()
+  if not root then error("Klarte ikke åpne root folder") end
+  local list = {}
+  walkFolderTree(root, "", list)
+  return string.format(
+    '{"count":%d,"folders":[%s]}',
+    #list, table.concat(list, ",")
+  )
+end
+
+local function handleFolderGetCurrent(_args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local current = mediaPool:GetCurrentFolder()
+  if not current then return '{"path":null,"name":null}' end
+  local name = current:GetName() or ""
+  -- Beste-effort path: vi vandrer fra root og finner currents match.
+  local root = mediaPool:GetRootFolder()
+  local list = {}
+  walkFolderTree(root, "", list)
+  -- Vi har ikke handle-equality cross-call, så vi best-effort via name.
+  return string.format(
+    '{"name":%s,"clip_count":%d,"subfolder_count":%d}',
+    jsonEscape(name),
+    #(current:GetClipList() or {}),
+    #(current:GetSubFolderList() or {})
+  )
+end
+
+local function handleFolderSetCurrent(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local root = mediaPool:GetRootFolder()
+  local path = extractString(args, "path")
+  if not path or path == "" then error("path mangler") end
+  local target = findFolderByPath(root, path)
+  if not target then error("Fant ikke folder: " .. path) end
+  local ok = mediaPool:SetCurrentFolder(target)
+  return string.format(
+    '{"set":%s,"path":%s,"name":%s}',
+    tostring(ok), jsonEscape(path), jsonEscape(target:GetName() or "")
+  )
+end
+
+local function handleFolderCreate(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local root = mediaPool:GetRootFolder()
+  local parentPath = extractString(args, "parent_path") or ""
+  local name = extractString(args, "name")
+  if not name or name == "" then error("name mangler") end
+  local parent = findFolderByPath(root, parentPath)
+  if not parent then error("Fant ikke parent folder: " .. parentPath) end
+  local newFolder = mediaPool:AddSubFolder(parent, name)
+  if not newFolder then error("AddSubFolder returnerte nil (kanskje duplikat-navn?)") end
+  local parentName = parent:GetName() or "Master"
+  local newPath
+  if parentPath == "" or parentPath == "Master" then
+    newPath = parentName .. "/" .. name
+  else
+    newPath = parentPath .. "/" .. name
+  end
+  return string.format(
+    '{"created":true,"path":%s,"name":%s,"parent_path":%s}',
+    jsonEscape(newPath), jsonEscape(name), jsonEscape(parentPath)
+  )
+end
+
+local function handleFolderMoveClips(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local root = mediaPool:GetRootFolder()
+  local targetPath = extractString(args, "target_path")
+  if not targetPath or targetPath == "" then error("target_path mangler") end
+  local target = findFolderByPath(root, targetPath)
+  if not target then error("Fant ikke target folder: " .. targetPath) end
+
+  -- clip_ids er array av MediaPoolItem unique-IDs (samme som vi bruker
+  -- ellers via findMediaPoolItemById).
+  local clipIdsBlock = args:match('"clip_ids"%s*:%s*(%b[])')
+  if not clipIdsBlock then error("clip_ids mangler (array av strings)") end
+  local clips = {}
+  local ids = {}
+  for id in clipIdsBlock:gmatch('"([^"]+)"') do
+    local item = findMediaPoolItemById(mediaPool, id)
+    if not item then error("Fant ikke MediaPoolItem: " .. id) end
+    table.insert(clips, item)
+    table.insert(ids, id)
+  end
+  if #clips == 0 then error("clip_ids er tom") end
+
+  local ok = mediaPool:MoveClips(clips, target)
+  return string.format(
+    '{"moved":%s,"count":%d,"target_path":%s}',
+    tostring(ok), #clips, jsonEscape(targetPath)
+  )
+end
+
+HANDLERS["folder.listAll"] = handleFolderListAll
+HANDLERS["folder.getCurrent"] = handleFolderGetCurrent
+HANDLERS["folder.setCurrent"] = handleFolderSetCurrent
+HANDLERS["folder.create"] = handleFolderCreate
+HANDLERS["folder.moveClips"] = handleFolderMoveClips
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 
