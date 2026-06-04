@@ -84,7 +84,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     project, selectedSceneId, recorderStepIndex,
     createProject, selectScene, updateScene, addScene, removeScene, replaceScenes,
     setSceneDevice, setProjectField, setDemoType: applyDemoTypeTemplate, setRenderOption, applyResponsiveFix,
-    startRecorder, nextStep, markCurrentDone, retakeCurrent, goToStep,
+    reorderScenes, startRecorder, nextStep, markCurrentDone, retakeCurrent, goToStep,
     loadExisting,
   } = useDemoStudio();
 
@@ -473,6 +473,10 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                         <span style={{ fontWeight: 700, fontSize: 11 }}>{s.index + 1}</span>
                         <span style={{ fontSize: 10, color: C.inkFaint }}>{DEVICE_LABEL[s.device]}</span>
                         <div style={{ flex: 1 }} />
+                        <span onClick={(e) => { e.stopPropagation(); if (s.index > 0) reorderScenes(s.index, s.index - 1); }}
+                          title="Flytt tidligere" style={{ cursor: s.index > 0 ? 'pointer' : 'default', color: s.index > 0 ? C.inkSoft : C.line, fontSize: 12, padding: '0 2px' }}>‹</span>
+                        <span onClick={(e) => { e.stopPropagation(); if (s.index < scenes.length - 1) reorderScenes(s.index, s.index + 1); }}
+                          title="Flytt senere" style={{ cursor: s.index < scenes.length - 1 ? 'pointer' : 'default', color: s.index < scenes.length - 1 ? C.inkSoft : C.line, fontSize: 12, padding: '0 2px' }}>›</span>
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: SCENE_STATUS_COLORS[s.status] }} />
                       </div>
                       <SceneThumb scene={s} url={project.url} height={64} />
