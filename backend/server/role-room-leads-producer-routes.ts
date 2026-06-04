@@ -27,6 +27,8 @@ import {
   META_GRAPH_API_VERSION,
   type InstagramConnectionRow,
 } from "./role-room-instagram-oauth.js";
+import { sendSms, smsConfigured } from "./crm-sms.js";
+import { sendTransactionalEmail, isTransactionalEmailConfigured } from "./transactional-email-service.js";
 
 const GRAPH = `https://graph.facebook.com/${META_GRAPH_API_VERSION}`;
 const FORM_FIELDS = "id,name,status,leads_count,created_time";
@@ -147,6 +149,97 @@ async function fetchOutcomes(
   return map;
 }
 
+// ── Fast follow-up ─────────────────────────────────────────────────────────
+// Auto-SMS + auto-email to the new lead, plus a notification to the
+// seller/client, so a lead is contacted within minutes instead of days.
+interface FollowupConfig {
+  smsBody: string;
+  emailSubject: string;
+  emailBody: string;
+  notifyPhone: string;
+  notifyEmail: string;
+}
+const DEFAULT_FOLLOWUP: FollowupConfig = {
+  smsBody: "Hei {navn}! Takk for at du tok kontakt med {bedrift}. Vi ringer deg snart. Mvh {bedrift}",
+  emailSubject: "Takk for henvendelsen, {navn}",
+  emailBody:
+    "Hei {navn},\n\nTakk for at du tok kontakt via annonsen vår. Vi tar kontakt med deg så raskt vi kan.\n\nVennlig hilsen\n{bedrift}",
+  notifyPhone: "",
+  notifyEmail: "",
+};
+
+let leadFollowupSchemaReady = false;
+async function ensureLeadFollowupSchema(pool: Pool): Promise<void> {
+  if (leadFollowupSchemaReady) return;
+  // Per-connection follow-up message templates + seller notification targets.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS role_room_lead_followup_config (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id TEXT NOT NULL,
+      connection_id UUID NOT NULL,
+      sms_body TEXT NOT NULL DEFAULT '',
+      email_subject TEXT NOT NULL DEFAULT '',
+      email_body TEXT NOT NULL DEFAULT '',
+      notify_phone TEXT NOT NULL DEFAULT '',
+      notify_email TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (user_id, connection_id)
+    );
+  `);
+  // Log of follow-ups sent (so we never double-send and can show "fulgt opp").
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS role_room_lead_followups (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id TEXT NOT NULL,
+      connection_id UUID NOT NULL,
+      form_id TEXT NOT NULL,
+      lead_external_id TEXT NOT NULL,
+      sms_sent BOOLEAN NOT NULL DEFAULT false,
+      email_sent BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (user_id, lead_external_id)
+    );
+  `);
+  leadFollowupSchemaReady = true;
+}
+
+async function getFollowupConfig(pool: Pool, userId: string, connectionId: string): Promise<FollowupConfig> {
+  const r = await pool.query(
+    `SELECT sms_body, email_subject, email_body, notify_phone, notify_email
+       FROM role_room_lead_followup_config WHERE user_id = $1 AND connection_id = $2`,
+    [userId, connectionId],
+  );
+  if (!r.rows[0]) return { ...DEFAULT_FOLLOWUP };
+  const row = r.rows[0];
+  return {
+    smsBody: String(row.sms_body) || DEFAULT_FOLLOWUP.smsBody,
+    emailSubject: String(row.email_subject) || DEFAULT_FOLLOWUP.emailSubject,
+    emailBody: String(row.email_body) || DEFAULT_FOLLOWUP.emailBody,
+    notifyPhone: String(row.notify_phone || ""),
+    notifyEmail: String(row.notify_email || ""),
+  };
+}
+
+/** Map of lead_external_id → ISO timestamp of when follow-up was sent. */
+async function fetchFollowups(pool: Pool, userId: string, leadIds: string[]): Promise<Record<string, string>> {
+  if (leadIds.length === 0) return {};
+  const r = await pool.query(
+    `SELECT lead_external_id, created_at FROM role_room_lead_followups
+       WHERE user_id = $1 AND lead_external_id = ANY($2::text[])`,
+    [userId, leadIds],
+  );
+  const map: Record<string, string> = {};
+  for (const row of r.rows) map[String(row.lead_external_id)] = new Date(row.created_at).toISOString();
+  return map;
+}
+
+/** Fill {navn} / {bedrift} placeholders. */
+function renderTemplate(tpl: string, vars: { navn: string; bedrift: string }): string {
+  return tpl
+    .replace(/\{navn\}/g, vars.navn || "der")
+    .replace(/\{bedrift\}/g, vars.bedrift || "oss");
+}
+
 /** Derive a Page access token from the stored long-lived user token. */
 async function getPageToken(connection: InstagramConnectionRow): Promise<string> {
   try {
@@ -247,9 +340,11 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       const data = Array.isArray(body.data) ? body.data : [];
       await ensureLeadSegmentSchema(pool);
       await ensureLeadRoiSchema(pool);
+      await ensureLeadFollowupSchema(pool);
       const leadIds = data.map((l: Record<string, any>) => String(l.id));
       const segments = await fetchSegments(pool, session.userId, leadIds);
       const outcomes = await fetchOutcomes(pool, session.userId, leadIds);
+      const followups = await fetchFollowups(pool, session.userId, leadIds);
       res.json({
         success: true,
         leads: data.map((lead: Record<string, any>) => {
@@ -268,6 +363,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
             segment: segments[String(lead.id)] ?? null,
             stage: outcome?.stage ?? null,
             valueKr: outcome?.valueKr ?? 0,
+            followedUpAt: followups[String(lead.id)] ?? null,
             fields,
           };
         }),
@@ -480,6 +576,170 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
         costPerCustomerKr: customers > 0 ? spendKr / customers : 0,
         roi: spendKr > 0 ? revenueKr / spendKr : 0,
       });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // ── GET /api/role-room/leads/producer/followup-config ───────────────────
+  app.get("/api/role-room/leads/producer/followup-config", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
+    if (!connectionId) {
+      res.status(400).json({ success: false, error: "connectionId is required" });
+      return;
+    }
+    try {
+      const connection = await getConnection(pool, connectionId, session.userId);
+      if (!connection) {
+        res.status(404).json({ success: false, error: "connection_not_found" });
+        return;
+      }
+      await ensureLeadFollowupSchema(pool);
+      const config = await getFollowupConfig(pool, session.userId, connectionId);
+      res.json({
+        success: true,
+        config,
+        smsConfigured: smsConfigured(),
+        emailConfigured: isTransactionalEmailConfigured(),
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // ── POST /api/role-room/leads/producer/followup-config ──────────────────
+  app.post("/api/role-room/leads/producer/followup-config", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as { connectionId?: string } & Partial<FollowupConfig>;
+    const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
+    if (!connectionId) {
+      res.status(400).json({ success: false, error: "connectionId is required" });
+      return;
+    }
+    const str = (v: unknown, fallback = "") => (typeof v === "string" ? v : fallback);
+    try {
+      const connection = await getConnection(pool, connectionId, session.userId);
+      if (!connection) {
+        res.status(404).json({ success: false, error: "connection_not_found" });
+        return;
+      }
+      await ensureLeadFollowupSchema(pool);
+      await pool.query(
+        `INSERT INTO role_room_lead_followup_config
+           (user_id, connection_id, sms_body, email_subject, email_body, notify_phone, notify_email)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (user_id, connection_id)
+         DO UPDATE SET sms_body = EXCLUDED.sms_body, email_subject = EXCLUDED.email_subject,
+                       email_body = EXCLUDED.email_body, notify_phone = EXCLUDED.notify_phone,
+                       notify_email = EXCLUDED.notify_email, updated_at = now()`,
+        [
+          session.userId, connectionId,
+          str(body.smsBody, DEFAULT_FOLLOWUP.smsBody),
+          str(body.emailSubject, DEFAULT_FOLLOWUP.emailSubject),
+          str(body.emailBody, DEFAULT_FOLLOWUP.emailBody),
+          str(body.notifyPhone),
+          str(body.notifyEmail),
+        ],
+      );
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // ── POST /api/role-room/leads/producer/followup ─────────────────────────
+  // Send the follow-up to ONE lead: auto-SMS + auto-email to the lead, plus a
+  // notification to the seller/client. Idempotent — logged so we never re-send.
+  app.post("/api/role-room/leads/producer/followup", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as {
+      connectionId?: string; formId?: string; leadId?: string;
+      name?: string; email?: string; phone?: string;
+    };
+    const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
+    const formId = typeof body.formId === "string" ? body.formId : "";
+    const leadId = typeof body.leadId === "string" ? body.leadId : "";
+    if (!connectionId || !formId || !leadId) {
+      res.status(400).json({ success: false, error: "connectionId, formId and leadId are required" });
+      return;
+    }
+    try {
+      const connection = await getConnection(pool, connectionId, session.userId);
+      if (!connection) {
+        res.status(404).json({ success: false, error: "connection_not_found" });
+        return;
+      }
+      await ensureLeadFollowupSchema(pool);
+      const config = await getFollowupConfig(pool, session.userId, connectionId);
+      const bedrift = connection.facebookPageName || connection.igUsername || "oss";
+      const navn = (body.name || "").split(" ")[0] || "";
+      const leadPhone = (body.phone || "").trim();
+      const leadEmail = (body.email || "").trim();
+
+      let smsSent = false;
+      let emailSent = false;
+      const errors: string[] = [];
+
+      // 1) SMS to the lead.
+      if (leadPhone && smsConfigured()) {
+        try {
+          await sendSms(leadPhone, renderTemplate(config.smsBody, { navn, bedrift }));
+          smsSent = true;
+        } catch (e) { errors.push(`SMS: ${e instanceof Error ? e.message : String(e)}`); }
+      }
+      // 2) Email to the lead.
+      if (leadEmail && isTransactionalEmailConfigured()) {
+        try {
+          const text = renderTemplate(config.emailBody, { navn, bedrift });
+          const result = await sendTransactionalEmail({
+            to: leadEmail,
+            subject: renderTemplate(config.emailSubject, { navn, bedrift }),
+            text,
+            html: text.replace(/\n/g, "<br>"),
+            fromLabel: bedrift,
+            kind: "lead_followup",
+            pool,
+            sentByUserId: session.userId,
+          });
+          emailSent = result.sent;
+          if (!result.sent && result.errorMessage) errors.push(`E-post: ${result.errorMessage}`);
+        } catch (e) { errors.push(`E-post: ${e instanceof Error ? e.message : String(e)}`); }
+      }
+      // 3) Notify the seller/client about the new lead.
+      const sellerMsg = `Ny lead fra annonsen: ${body.name || "(uten navn)"}${leadPhone ? `, ${leadPhone}` : ""}${leadEmail ? `, ${leadEmail}` : ""}`;
+      if (config.notifyPhone && smsConfigured()) {
+        try { await sendSms(config.notifyPhone, sellerMsg); } catch { /* best-effort */ }
+      }
+      if (config.notifyEmail && isTransactionalEmailConfigured()) {
+        try {
+          await sendTransactionalEmail({
+            to: config.notifyEmail,
+            subject: `Ny lead: ${body.name || "ny henvendelse"}`,
+            text: sellerMsg,
+            html: sellerMsg,
+            fromLabel: "The Role Room",
+            kind: "lead_seller_notice",
+            pool,
+            sentByUserId: session.userId,
+          });
+        } catch { /* best-effort */ }
+      }
+
+      // Log (idempotent) so the lead shows "fulgt opp" and we don't re-send.
+      await pool.query(
+        `INSERT INTO role_room_lead_followups (user_id, connection_id, form_id, lead_external_id, sms_sent, email_sent)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (user_id, lead_external_id)
+         DO UPDATE SET sms_sent = role_room_lead_followups.sms_sent OR EXCLUDED.sms_sent,
+                       email_sent = role_room_lead_followups.email_sent OR EXCLUDED.email_sent`,
+        [session.userId, connectionId, formId, leadId, smsSent, emailSent],
+      );
+
+      res.json({ success: true, smsSent, emailSent, errors });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }
