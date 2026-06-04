@@ -565,22 +565,30 @@ export default function RoleRoomAgentDialog({
               alignItems="center"
               sx={{ rowGap: 0.6 }}
             >
-              <Chip label="Kun admin" size="small" sx={{ bgcolor: 'rgba(15,118,110,0.18)', color: '#99f6e4' }} />
-              <Chip
-                label="Innholdsprodusent"
-                size="small"
-                sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#f0abfc', display: { xs: 'none', sm: 'inline-flex' } }}
-              />
-              <Chip
-                label={projectName}
-                size="small"
-                sx={{
-                  bgcolor: 'rgba(59,130,246,0.16)',
-                  color: '#bfdbfe',
-                  maxWidth: { xs: 160, md: 240 },
-                  '& .MuiChip-label': { textOverflow: 'ellipsis', overflow: 'hidden' },
-                }}
-              />
+              <Tooltip title="Denne testflaten er kun synlig for admin-brukere" disableInteractive>
+                <Chip label="Kun admin" size="small" aria-label="Tilgang: kun admin" sx={{ bgcolor: 'rgba(15,118,110,0.18)', color: '#99f6e4' }} />
+              </Tooltip>
+              <Tooltip title="Rollen agenten kjører som: innholdsprodusent-flyt" disableInteractive>
+                <Chip
+                  label="Innholdsprodusent"
+                  size="small"
+                  aria-label="Rolle: innholdsprodusent"
+                  sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#f0abfc', display: { xs: 'none', sm: 'inline-flex' } }}
+                />
+              </Tooltip>
+              <Tooltip title={`Aktivt prosjekt: ${projectName}`} disableInteractive>
+                <Chip
+                  label={projectName}
+                  size="small"
+                  aria-label={`Aktivt prosjekt: ${projectName}`}
+                  sx={{
+                    bgcolor: 'rgba(59,130,246,0.16)',
+                    color: '#bfdbfe',
+                    maxWidth: { xs: 160, md: 240 },
+                    '& .MuiChip-label': { textOverflow: 'ellipsis', overflow: 'hidden' },
+                  }}
+                />
+              </Tooltip>
               <Button
                 size="small"
                 variant="outlined"
