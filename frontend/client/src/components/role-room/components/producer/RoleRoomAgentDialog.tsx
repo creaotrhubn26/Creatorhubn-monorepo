@@ -273,11 +273,17 @@ export default function RoleRoomAgentDialog({
   // into a real project. Lets us (a) nudge the user while they're still
   // in the dialog and (b) confirm on close if they're about to lose
   // everything the agent produced. Reset whenever a new result arrives.
-  const [projectCreatedFromResult, setProjectCreatedFromResult] = useState(false);
+  // Track "saved" by the result OBJECT REFERENCE, not a boolean. A boolean got
+  // reset every time the dialog re-opened (the [initialResult, open] effect),
+  // so the banner re-nagged even after the user had saved. Keying on the result
+  // ref means the saved state survives reopen and auto-clears only when a
+  // genuinely new analysis (new object) arrives.
   // "Bruk forslag" applies the result INTO the current project (brief, branding,
-  // story logic). That IS saving — track it so the unsaved-banner clears and
-  // the close-guard doesn't falsely warn the analysis will be lost.
-  const [resultAppliedToProject, setResultAppliedToProject] = useState(false);
+  // story logic) — that IS saving.
+  const [createdResultRef, setCreatedResultRef] =
+    useState<RoleRoomAgentProducerBootstrapResult | null>(null);
+  const [appliedResultRef, setAppliedResultRef] =
+    useState<RoleRoomAgentProducerBootstrapResult | null>(null);
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
   // surface and the research forms are actually usable without pinch-
@@ -298,13 +304,10 @@ export default function RoleRoomAgentDialog({
     setRefinementHistory([]);
   }, [initialCompanyName, initialExtraContext, initialOrganizationNumber, initialWebsiteUrl, open]);
 
-  // Any time a new result lands (or the dialog is re-opened with a fresh
-  // one), the "already saved" bookkeeping is stale — reset so the banner
-  // re-appears and the close-confirm fires again.
-  useEffect(() => {
-    setProjectCreatedFromResult(false);
-    setResultAppliedToProject(false);
-  }, [initialResult, open]);
+  // No reset effect needed: saved-state is derived by comparing the saved
+  // result reference to the current one (below), so a new analysis (new object)
+  // automatically counts as unsaved, while a reopen of the same result stays
+  // saved.
 
   // Compose the extraContext that actually gets sent to the agent. Original
   // extraContext is preserved verbatim; refinements are appended as a
@@ -336,6 +339,9 @@ export default function RoleRoomAgentDialog({
   };
 
   const result = initialResult ?? null;
+  // Derived saved-state — survives reopen, clears only when a new result object arrives.
+  const projectCreatedFromResult = !!result && createdResultRef === result;
+  const resultAppliedToProject = !!result && appliedResultRef === result;
   const canGenerate = companyName.trim().length > 0 || websiteUrl.trim().length > 0 || organizationNumber.trim().length > 0;
   const providerLabel = useMemo(() => {
     if (!result) return null;
@@ -454,7 +460,7 @@ export default function RoleRoomAgentDialog({
     if (!result || !onCreateProject) return;
     try {
       await onCreateProject(result);
-      setProjectCreatedFromResult(true);
+      setCreatedResultRef(result);
     } catch {
       // parent owns error UX (toast, notice prop); just leave the banner
       // visible so the user knows they still haven't saved.
@@ -464,7 +470,7 @@ export default function RoleRoomAgentDialog({
     if (!result) return;
     try {
       await onApply(result);
-      setResultAppliedToProject(true);
+      setAppliedResultRef(result);
     } catch {
       // parent owns error UX; leave banner visible so user knows it didn't save.
     }
