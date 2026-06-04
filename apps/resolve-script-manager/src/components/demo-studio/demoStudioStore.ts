@@ -16,12 +16,15 @@ import {
   type DemoType,
   type DemoDevice,
   type SceneStatus,
+  type DemoRenderOptions,
+  type ResponsiveFix,
   makeProject,
   makeScene,
   saveProject,
   loadLastProject,
   viewportForDevice,
   flowForDemoType,
+  defaultRenderOptions,
   DEMO_TYPE_TEMPLATES,
 } from './demoStudioModel';
 
@@ -42,6 +45,10 @@ interface DemoStudioState {
    * reseed=false bytter bare typen (behold scenene).
    */
   setDemoType: (demoType: DemoType, reseed: boolean) => void;
+  /** Skru en visnings-toggle av/på (cursor, touch points, highlight, safe area). */
+  setRenderOption: <K extends keyof DemoRenderOptions>(key: K, value: DemoRenderOptions[K]) => void;
+  /** Anvend en strukturert Responsive Check-fiks på prosjektet/scenen. */
+  applyResponsiveFix: (fix: ResponsiveFix) => void;
 
   // ── Scener ──
   selectScene: (id: string | null) => void;
@@ -114,6 +121,34 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
       selectedSceneId: scenes[0]?.id ?? null,
       recorderStepIndex: 0,
     });
+  },
+
+  setRenderOption: (key, value) => {
+    const { project } = get();
+    if (!project) return;
+    const render = { ...defaultRenderOptions(), ...project.render, [key]: value };
+    set({ project: persist({ ...project, render }) });
+  },
+
+  applyResponsiveFix: (fix) => {
+    const { project } = get();
+    if (!project) return;
+    if (fix.kind === 'set_format' && fix.format) {
+      set({ project: persist({ ...project, format: fix.format }) });
+      return;
+    }
+    // Scene-rettede fikser: finn scenen (eksplisitt indeks, ellers første som
+    // matcher device — typisk mobil-scenen).
+    const idx = fix.sceneIndex != null
+      ? fix.sceneIndex
+      : project.scenes.findIndex((s) => s.device === (fix.device ?? 'iphone'));
+    if (idx < 0 || idx >= project.scenes.length) return;
+    const patch: Partial<DemoScene> =
+      fix.kind === 'start_scroll' ? { startScrollPct: fix.startScrollPct ?? 20 }
+      : fix.kind === 'switch_device' && fix.device ? { device: fix.device, viewport: viewportForDevice(fix.device) }
+      : {};
+    const scenes = project.scenes.map((s, i) => (i === idx ? { ...s, ...patch } : s));
+    set({ project: persist({ ...project, scenes }) });
   },
 
   selectScene: (id) => set({ selectedSceneId: id }),

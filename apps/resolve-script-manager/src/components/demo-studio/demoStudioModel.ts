@@ -101,6 +101,12 @@ export interface DemoScene {
   notes?: string;
   /** Pause i sekunder etter scenens handling. */
   pauseSec?: number;
+  /**
+   * Start scenen etter å ha scrollet N% ned på siden (0–100). Settes typisk av
+   * Responsive Check («start mobilscene etter 20% scroll») og brukes av
+   * capture/recorder til å posisjonere siden før opptak.
+   */
+  startScrollPct?: number;
   /** Estimert/faktisk varighet i sekunder. */
   duration: number;
   status: SceneStatus;
@@ -129,6 +135,73 @@ export const SCRIPT_TONE_LABELS: Record<ScriptTone, string> = {
 };
 export const SCRIPT_LENGTH_LABELS: Record<ScriptLength, string> = { short: 'Short', medium: 'Medium', long: 'Long' };
 
+/**
+ * Visnings-/render-innstillinger for demoen. Påvirker både live-preview,
+ * guided opptak og eksport (video + interaktiv guide).
+ */
+export interface DemoRenderOptions {
+  /** Vis et syntetisk muspeker-overlay (desktop). */
+  showCursor: boolean;
+  /** Vis tap-ringer der brukeren trykker (mobil/tablet). */
+  showTouchPoints: boolean;
+  /** Fremhev elementet som interageres med (spotlight/puls). */
+  highlightInteractions: boolean;
+  /** Respekter enhetens safe-area (notch/home-indikator), særlig for 9:16. */
+  safeArea: boolean;
+}
+
+export const RENDER_OPTION_LABELS: Record<keyof DemoRenderOptions, string> = {
+  showCursor: 'Show Cursor',
+  showTouchPoints: 'Show Touch Points',
+  highlightInteractions: 'Highlight Interactions',
+  safeArea: 'Safe Area',
+};
+
+export function defaultRenderOptions(): DemoRenderOptions {
+  return { showCursor: true, showTouchPoints: true, highlightInteractions: true, safeArea: true };
+}
+
+// ── Responsive Check (§ sjekk siden i desktop/tablet/mobil) ──
+export type ResponsiveStatus = 'ok' | 'warning' | 'error';
+
+/** Strukturert, anvendbar auto-fiks fra Responsive Check. */
+export interface ResponsiveFix {
+  kind: 'start_scroll' | 'switch_device' | 'set_format';
+  /** Indeks på scenen som justeres (for start_scroll/switch_device). */
+  sceneIndex?: number;
+  /** For start_scroll: scroll-prosent før scenen starter. */
+  startScrollPct?: number;
+  /** For switch_device. */
+  device?: DemoDevice;
+  /** For set_format. */
+  format?: DemoProject['format'];
+  /** Menneske-lesbar oppsummering: «Start mobile scene after scrolling 20% down.» */
+  summary: string;
+}
+
+export interface ResponsiveViewportResult {
+  device: DemoDevice;
+  status: ResponsiveStatus;
+  /** Kort status: «All good» / «CTA button is slightly low on mobile view.» */
+  message: string;
+  /** Anbefaling i klartekst (vises under message ved warning/error). */
+  recommendation?: string;
+  /** Anvendbar fiks (når status != ok). */
+  fix?: ResponsiveFix;
+}
+
+export interface ResponsiveReport {
+  results: ResponsiveViewportResult[];
+  createdAt: string;
+}
+
+export const RESPONSIVE_STATUS_LABELS: Record<ResponsiveStatus, string> = {
+  ok: 'All good', warning: 'Warning', error: 'Issue',
+};
+export const RESPONSIVE_STATUS_COLORS: Record<ResponsiveStatus, string> = {
+  ok: '#10b981', warning: '#f59e0b', error: '#ef4444',
+};
+
 export interface DemoProject {
   id: string;
   name: string;
@@ -136,6 +209,8 @@ export interface DemoProject {
   demoType: DemoType;
   language: string;
   devices: DemoDevice[];
+  /** Visnings-/render-innstillinger (cursor, touch points, highlight, safe area). */
+  render?: DemoRenderOptions;
   /** Global progresjons-modus (kan overstyres per scene). Default 'manual'. */
   continueMode?: 'manual' | 'auto';
   /**
@@ -367,6 +442,7 @@ export function makeProject(url: string, demoType: DemoType = 'product_demo'): D
     demoType,
     language: 'no',
     devices: [...new Set<DemoDevice>([tpl.device, 'iphone'])],
+    render: defaultRenderOptions(),
     format: tpl.format,
     scriptMeta: { tone: tpl.tone, audience: 'General', language: 'Norsk', length: tpl.length },
     scenes: flowForDemoType(demoType),

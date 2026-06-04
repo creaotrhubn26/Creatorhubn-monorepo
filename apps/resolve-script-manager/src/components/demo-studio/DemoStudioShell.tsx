@@ -25,11 +25,13 @@ import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
-import { generateDemoFlow, fetchSiteContext } from './demoStudioAI';
+import { generateDemoFlow, fetchSiteContext, runResponsiveCheck } from './demoStudioAI';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
-  totalDuration, hasRecordedWork, type DemoDevice, type DemoType,
+  RENDER_OPTION_LABELS, RESPONSIVE_STATUS_LABELS, RESPONSIVE_STATUS_COLORS,
+  totalDuration, hasRecordedWork, defaultRenderOptions,
+  type DemoDevice, type DemoType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
 
@@ -77,7 +79,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const {
     project, selectedSceneId, recorderStepIndex,
     createProject, selectScene, updateScene, addScene, removeScene, replaceScenes,
-    setSceneDevice, setProjectField, setDemoType: applyDemoTypeTemplate, startRecorder, nextStep, markCurrentDone, retakeCurrent, goToStep,
+    setSceneDevice, setProjectField, setDemoType: applyDemoTypeTemplate, setRenderOption, applyResponsiveFix,
+    startRecorder, nextStep, markCurrentDone, retakeCurrent, goToStep,
     loadExisting,
   } = useDemoStudio();
 
@@ -103,6 +106,25 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [directorMsg, setDirectorMsg] = useState<string | null>(null);
   const [showSignIn, setShowSignIn] = useState(false);
   const [aiReady, setAiReady] = useState(isAiConnected());
+  const [respBusy, setRespBusy] = useState(false);
+  const [respReport, setRespReport] = useState<ResponsiveReport | null>(null);
+
+  // Responsive Check: vurder siden i desktop/tablet/mobil → vis rapport med
+  // anvendbare fikser. Krever AI (Role Room) som AI Director.
+  const runResponsiveCheck_ = async () => {
+    if (!project || respBusy) return;
+    if (!aiReady) { setShowSignIn(true); return; }
+    setRespBusy(true);
+    try {
+      const siteContext = await fetchSiteContext(project.url);
+      const report = await runResponsiveCheck({ url: project.url, demoType: project.demoType, scenes: project.scenes, siteContext });
+      setRespReport(report);
+    } catch (e) {
+      setRespReport({ results: [{ device: 'macbook', status: 'error', message: 'Responsive Check feilet', recommendation: (e as Error).message }], createdAt: new Date().toISOString() });
+    } finally {
+      setRespBusy(false);
+    }
+  };
 
   // AI Director (§5.1): hent nettside-kontekst → generér hel scene-flow →
   // erstatt scener → hopp til Script Builder så Director + Script Builder
@@ -294,6 +316,20 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 ))}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginTop: 18 }}>Lagrede maler <span style={{ color: C.inkFaint }}>›</span></div>
+
+              {/* ── Visning (render-toggles) ── */}
+              <div style={{ fontSize: 13, fontWeight: 700, marginTop: 20, marginBottom: 4 }}>Visning</div>
+              {(Object.keys(RENDER_OPTION_LABELS) as (keyof DemoRenderOptions)[]).map((k) => (
+                <Toggle key={k} label={RENDER_OPTION_LABELS[k]} on={(project.render ?? defaultRenderOptions())[k]}
+                  onChange={(v) => setRenderOption(k, v)} />
+              ))}
+
+              {/* ── Responsive Check ── */}
+              <button style={{ ...outlineBtn, width: '100%', justifyContent: 'center', marginTop: 16, opacity: respBusy ? 0.6 : 1 }}
+                disabled={respBusy} onClick={() => void runResponsiveCheck_()}>
+                {respBusy ? 'Sjekker…' : '⤢ Responsive Check'}
+              </button>
+              <div style={{ fontSize: 10.5, color: C.inkFaint, marginTop: 6, lineHeight: 1.4 }}>Sjekker siden i desktop, tablet og mobil.</div>
             </div>
 
             {/* ── Center: LIVE device preview ── */}
@@ -418,6 +454,18 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   <div style={fldLabel}>Overlay-tekst</div>
                   <input style={field} value={selected.overlayText ?? ''} onChange={(e) => updateScene(selected.id, { overlayText: e.target.value })} />
 
+                  {selected.startScrollPct != null && (
+                    <>
+                      <div style={fldLabel}>Start-scroll (% — fra Responsive Check)</div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <input style={{ ...field, flex: 1 }} type="number" min={0} max={100} value={selected.startScrollPct}
+                          onChange={(e) => updateScene(selected.id, { startScrollPct: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} />
+                        <button style={{ ...outlineBtn, padding: '0 10px' }} title="Fjern start-scroll"
+                          onClick={() => updateScene(selected.id, { startScrollPct: undefined })}>✕</button>
+                      </div>
+                    </>
+                  )}
+
                   <div style={fldLabel}>Progresjon</div>
                   <div style={{ ...sel, background: C.cream }}>continueMode: manual — venter på deg</div>
 
@@ -448,6 +496,65 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       {showSignIn && (
         <RoleRoomSignInDialog onClose={() => setShowSignIn(false)} onSignedIn={() => { setAiReady(true); setShowSignIn(false); }} />
       )}
+      {respReport && (
+        <ResponsiveCheckModal report={respReport} onClose={() => setRespReport(null)}
+          onApply={(fix) => applyResponsiveFix(fix)} />
+      )}
+    </div>
+  );
+}
+
+/** Av/på-bryter for visnings-toggles (Show Cursor, Touch Points, …). */
+function Toggle({ label, on, onChange }: { label: string; on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div onClick={() => onChange(!on)} role="switch" aria-checked={on}
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', cursor: 'pointer', fontSize: 12.5, color: C.ink }}>
+      <span>{label}</span>
+      <span style={{ width: 34, height: 20, borderRadius: 10, background: on ? C.green : C.lineStrong, position: 'relative', flexShrink: 0, transition: 'background .15s' }}>
+        <span style={{ position: 'absolute', top: 2, left: on ? 16 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 2px rgba(0,0,0,.2)' }} />
+      </span>
+    </div>
+  );
+}
+
+/** Responsive Check-rapport: status per viewport + «Godta forslag» som anvender fiksen. */
+function ResponsiveCheckModal({ report, onClose, onApply }: {
+  report: ResponsiveReport;
+  onClose: () => void;
+  onApply: (fix: ResponsiveFix) => void;
+}) {
+  const [applied, setApplied] = useState<Set<number>>(new Set());
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.32)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 440, maxWidth: '92vw', background: C.panel, borderRadius: 14, padding: 22, fontFamily: C.font, color: C.ink, boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Responsive Check</h3>
+          <div style={{ flex: 1 }} />
+          <div onClick={onClose} style={{ ...iconBtn, cursor: 'pointer' }}>✕</div>
+        </div>
+        <p style={{ fontSize: 12, color: C.inkSoft, margin: '0 0 14px' }}>Siden vurdert i desktop, tablet og mobil.</p>
+        {report.results.map((r, i) => (
+          <div key={i} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, textTransform: 'capitalize' }}>{r.device === 'macbook' ? 'Desktop' : r.device === 'ipad' ? 'Tablet' : 'Mobile'}</span>
+              <div style={{ flex: 1 }} />
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 7, color: '#fff', background: RESPONSIVE_STATUS_COLORS[r.status] }}>
+                {RESPONSIVE_STATUS_LABELS[r.status]}
+              </span>
+            </div>
+            <div style={{ fontSize: 12.5, color: C.ink, marginTop: 7 }}>{r.message}</div>
+            {r.recommendation && <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 4 }}>{r.recommendation}</div>}
+            {r.fix && (
+              <button style={{ ...primaryBtn, fontSize: 12, padding: '7px 12px', marginTop: 10, opacity: applied.has(i) ? 0.55 : 1 }}
+                disabled={applied.has(i)}
+                onClick={() => { onApply(r.fix!); setApplied((s) => new Set(s).add(i)); }}>
+                {applied.has(i) ? '✓ Justert' : `Godta forslag — ${r.fix.summary}`}
+              </button>
+            )}
+          </div>
+        ))}
+        <button style={{ ...outlineBtn, width: '100%', marginTop: 4 }} onClick={onClose}>Lukk</button>
+      </div>
     </div>
   );
 }

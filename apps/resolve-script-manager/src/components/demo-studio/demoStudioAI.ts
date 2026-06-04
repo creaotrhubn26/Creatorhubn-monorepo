@@ -11,7 +11,11 @@
  */
 
 import { claudeProxyService } from '../../services/claudeProxyService';
-import { makeScene, viewportForDevice, type DemoScene, type ScriptMeta, type DemoType, type DemoDevice } from './demoStudioModel';
+import {
+  makeScene, viewportForDevice,
+  type DemoScene, type ScriptMeta, type DemoType, type DemoDevice,
+  type ResponsiveReport, type ResponsiveViewportResult, type ResponsiveStatus, type ResponsiveFix,
+} from './demoStudioModel';
 
 export type ImproveAction =
   | 'shorten' | 'clarify' | 'professional' | 'human' | 'sales' | 'tutorial' | 'cta' | 'simplify';
@@ -161,6 +165,84 @@ export async function fetchSiteContext(url: string): Promise<string> {
   } catch {
     return '';
   }
+}
+
+/**
+ * Responsive Check (§ sjekk siden i desktop/tablet/mobil). Vurderer hvordan
+ * siden trolig oppfører seg per viewport og foreslår KONKRETE, anvendbare
+ * fikser (f.eks. «start mobilscene etter 20% scroll»). Best-effort vurdering
+ * basert på URL + site-kontekst + scene-flow; presis layout-måling kommer når
+ * capture-laget (kontrollert webview) kan måle elementene direkte.
+ */
+export async function runResponsiveCheck(params: {
+  url: string;
+  demoType: DemoType;
+  scenes: DemoScene[];
+  siteContext?: string;
+}): Promise<ResponsiveReport> {
+  const { url, demoType, scenes, siteContext = '' } = params;
+  const sceneList = scenes.map((s, i) => `${i}: "${s.title}" (${s.device})`).join(', ');
+  const user = `Vurder hvordan nettsiden trolig fungerer på tre viewports og hvordan demoen bør tilpasses.
+
+Produkt-URL: ${url}
+Demo-type: ${demoType}
+Scener (indeks: tittel (enhet)): ${sceneList}
+${siteContext ? `\nKontekst fra nettsiden:\n${siteContext}\n` : ''}
+Gi ÉN vurdering per viewport: desktop (macbook), tablet (ipad), mobile (iphone).
+Hvis noe trolig er suboptimalt (f.eks. CTA-knapp lavt på mobil, tekst for tett,
+elementer under fold), sett status "warning" og foreslå en konkret fiks.
+Hvis alt trolig er greit: status "ok", message "All good", ingen fix.
+
+Tillatte fix.kind:
+- "start_scroll": start en scene etter å ha scrollet startScrollPct% ned (0-100). Sett sceneIndex (velg en scene med matchende enhet) + startScrollPct.
+- "switch_device": bytt en scenes enhet. Sett sceneIndex + device.
+- "set_format": endre eksport-format. Sett format ("16:9"|"9:16"|"1:1"|"4:5").
+
+Svar med KUN ett JSON-objekt:
+{
+  "results": [
+    { "device": "macbook|ipad|iphone", "status": "ok|warning|error",
+      "message": "kort status (eng. ok: 'All good')",
+      "recommendation": "klartekst-anbefaling (utelat ved ok)",
+      "fix": { "kind": "...", "sceneIndex": 0, "startScrollPct": 20, "device": "iphone", "format": "9:16", "summary": "kort oppsummering av fiksen" } }
+  ]
+}`;
+
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du er en UX/responsivitets-vurderer for produktdemoer. Du er konkret og konservativ — flagg kun reelle sannsynlige problemer. Du svarer ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 900,
+  });
+  const parsed = extractJson<{ results: Array<Partial<ResponsiveViewportResult> & { fix?: Partial<ResponsiveFix> }> }>(raw);
+  if (!parsed?.results?.length) throw new Error('Klarte ikke å tolke Responsive Check-svaret');
+
+  const devices: DemoDevice[] = ['macbook', 'ipad', 'iphone'];
+  const norm = (d: unknown): DemoDevice => (devices.includes(d as DemoDevice) ? (d as DemoDevice) : 'macbook');
+  const normStatus = (s: unknown): ResponsiveStatus => (s === 'warning' || s === 'error' ? s : 'ok');
+
+  const results: ResponsiveViewportResult[] = parsed.results.map((r) => {
+    const status = normStatus(r.status);
+    let fix: ResponsiveFix | undefined;
+    if (status !== 'ok' && r.fix?.kind && (r.fix.kind === 'start_scroll' || r.fix.kind === 'switch_device' || r.fix.kind === 'set_format')) {
+      fix = {
+        kind: r.fix.kind,
+        sceneIndex: typeof r.fix.sceneIndex === 'number' ? r.fix.sceneIndex : undefined,
+        startScrollPct: typeof r.fix.startScrollPct === 'number' ? Math.max(0, Math.min(100, r.fix.startScrollPct)) : undefined,
+        device: r.fix.device ? norm(r.fix.device) : undefined,
+        format: r.fix.format as ResponsiveFix['format'],
+        summary: r.fix.summary || 'Anvend foreslått justering.',
+      };
+    }
+    return {
+      device: norm(r.device),
+      status,
+      message: r.message || (status === 'ok' ? 'All good' : 'Mulig problem'),
+      recommendation: status === 'ok' ? undefined : r.recommendation,
+      fix,
+    };
+  });
+
+  return { results, createdAt: new Date().toISOString() };
 }
 
 export interface FlowSceneDraft {
