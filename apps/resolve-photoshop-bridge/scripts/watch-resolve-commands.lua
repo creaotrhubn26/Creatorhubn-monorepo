@@ -1897,6 +1897,111 @@ HANDLERS["pm.createFolder"] = handlePmCreateFolder
 HANDLERS["pm.navigateFolder"] = handlePmNavigateFolder
 
 -- ---------------------------------------------------------------------------
+-- Fusion comps på currently selected timeline-item
+-- ---------------------------------------------------------------------------
+
+-- Fusion comps lever PÅ timeline items, ikke MediaPoolItems. Alle
+-- operasjoner her gjelder current video item — bytt selection i
+-- Resolve eller flytt playhead først hvis du vil treffe spesifikt item.
+
+local function currentVideoItem()
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local item = timeline:GetCurrentVideoItem()
+  if not item then error("Ingen valgt video item") end
+  return item
+end
+
+local function handleFusionGetCompNames(_args)
+  local item = currentVideoItem()
+  local names = item:GetFusionCompNames() or {}
+  return string.format(
+    '{"item":%s,"count":%d,"names":%s}',
+    jsonEscape(item:GetName() or ""), #names, jsonArrayOfStrings(names)
+  )
+end
+
+local function handleFusionAddComp(_args)
+  local item = currentVideoItem()
+  local comp = item:AddFusionComp()
+  if not comp then error("AddFusionComp returnerte nil") end
+  return string.format(
+    '{"added":true,"item":%s}',
+    jsonEscape(item:GetName() or "")
+  )
+end
+
+local function handleFusionLoadComp(args)
+  local item = currentVideoItem()
+  local name = extractString(args, "name")
+  if not name or name == "" then error("name mangler") end
+  local comp = item:LoadFusionCompByName(name)
+  if not comp then error("LoadFusionCompByName feilet — fant ikke '" .. name .. "'") end
+  return string.format(
+    '{"loaded":true,"name":%s,"item":%s}',
+    jsonEscape(name), jsonEscape(item:GetName() or "")
+  )
+end
+
+local function handleFusionRenameComp(args)
+  local item = currentVideoItem()
+  local oldName = extractString(args, "old_name")
+  if not oldName or oldName == "" then error("old_name mangler") end
+  local newName = extractString(args, "new_name")
+  if not newName or newName == "" then error("new_name mangler") end
+  local ok = item:RenameFusionCompByName(oldName, newName)
+  return string.format(
+    '{"renamed":%s,"old_name":%s,"new_name":%s}',
+    tostring(ok), jsonEscape(oldName), jsonEscape(newName)
+  )
+end
+
+local function handleFusionDeleteComp(args)
+  local item = currentVideoItem()
+  local name = extractString(args, "name")
+  if not name or name == "" then error("name mangler") end
+  local ok = item:DeleteFusionCompByName(name)
+  return string.format(
+    '{"deleted":%s,"name":%s}',
+    tostring(ok), jsonEscape(name)
+  )
+end
+
+local function handleFusionImportComp(args)
+  local item = currentVideoItem()
+  local path = extractString(args, "path")
+  if not path or path == "" then error("path mangler") end
+  local comp = item:ImportFusionComp(path)
+  if not comp then error("ImportFusionComp returnerte nil (sjekk at path er en gyldig .setting-fil)") end
+  return string.format(
+    '{"imported":true,"path":%s}',
+    jsonEscape(path)
+  )
+end
+
+local function handleFusionExportComp(args)
+  local item = currentVideoItem()
+  local path = extractString(args, "path")
+  if not path or path == "" then error("path mangler") end
+  local compIndex = tonumber(args:match('"comp_index"%s*:%s*(%d+)'))
+  if not compIndex then error("comp_index mangler (1-basert)") end
+  local ok = item:ExportFusionComp(path, compIndex)
+  return string.format(
+    '{"exported":%s,"path":%s,"comp_index":%d}',
+    tostring(ok), jsonEscape(path), compIndex
+  )
+end
+
+HANDLERS["fusion.getCompNames"] = handleFusionGetCompNames
+HANDLERS["fusion.addComp"] = handleFusionAddComp
+HANDLERS["fusion.loadComp"] = handleFusionLoadComp
+HANDLERS["fusion.renameComp"] = handleFusionRenameComp
+HANDLERS["fusion.deleteComp"] = handleFusionDeleteComp
+HANDLERS["fusion.importComp"] = handleFusionImportComp
+HANDLERS["fusion.exportComp"] = handleFusionExportComp
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 

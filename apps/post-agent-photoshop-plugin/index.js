@@ -1325,6 +1325,72 @@ const COMMANDS = {
     });
   },
 
+  "resolve.fusionGetCompNames": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "fusion.getCompNames" });
+  },
+
+  "resolve.fusionAddComp": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "fusion.addComp" });
+  },
+
+  "resolve.fusionLoadComp": async ({ name } = {}) => {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error("name må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusion.loadComp",
+      args: { name },
+    });
+  },
+
+  "resolve.fusionRenameComp": async ({ old_name, new_name } = {}) => {
+    if (typeof old_name !== "string" || old_name.length === 0) {
+      throw new Error("old_name må være en ikke-tom string");
+    }
+    if (typeof new_name !== "string" || new_name.length === 0) {
+      throw new Error("new_name må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusion.renameComp",
+      args: { old_name, new_name },
+    });
+  },
+
+  "resolve.fusionDeleteComp": async ({ name } = {}) => {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error("name må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusion.deleteComp",
+      args: { name },
+    });
+  },
+
+  "resolve.fusionImportComp": async ({ path } = {}) => {
+    if (typeof path !== "string" || path.length === 0) {
+      throw new Error("path må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusion.importComp",
+      args: { path },
+      timeout_ms: 60000,
+    });
+  },
+
+  "resolve.fusionExportComp": async ({ path, comp_index } = {}) => {
+    if (typeof path !== "string" || path.length === 0) {
+      throw new Error("path må være en ikke-tom string");
+    }
+    if (typeof comp_index !== "number" || comp_index < 1) {
+      throw new Error("comp_index må være et tall >= 1 (1-basert)");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusion.exportComp",
+      args: { path, comp_index },
+      timeout_ms: 60000,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve

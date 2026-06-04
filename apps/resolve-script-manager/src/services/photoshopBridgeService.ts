@@ -995,6 +995,44 @@ export const photoshop = {
       current_folder: string;
     }>("resolve.pmNavigateFolder", params),
 
+  resolveFusionGetCompNames: () =>
+    send<{ item: string; count: number; names: string[] }>(
+      "resolve.fusionGetCompNames",
+    ),
+
+  resolveFusionAddComp: () =>
+    send<{ added: boolean; item: string }>("resolve.fusionAddComp"),
+
+  resolveFusionLoadComp: (params: { name: string }) =>
+    send<{ loaded: boolean; name: string; item: string }>(
+      "resolve.fusionLoadComp",
+      params,
+    ),
+
+  resolveFusionRenameComp: (params: { old_name: string; new_name: string }) =>
+    send<{ renamed: boolean; old_name: string; new_name: string }>(
+      "resolve.fusionRenameComp",
+      params,
+    ),
+
+  resolveFusionDeleteComp: (params: { name: string }) =>
+    send<{ deleted: boolean; name: string }>(
+      "resolve.fusionDeleteComp",
+      params,
+    ),
+
+  resolveFusionImportComp: (params: { path: string }) =>
+    send<{ imported: boolean; path: string }>(
+      "resolve.fusionImportComp",
+      params,
+    ),
+
+  resolveFusionExportComp: (params: { path: string; comp_index: number }) =>
+    send<{ exported: boolean; path: string; comp_index: number }>(
+      "resolve.fusionExportComp",
+      params,
+    ),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 
