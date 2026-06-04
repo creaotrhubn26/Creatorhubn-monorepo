@@ -248,6 +248,21 @@ async fn test_b2_connection(
     b2_uploader::test_connection(&key_id, &application_key, &bucket_id).await
 }
 
+/// Henter bytes brukt + filtelling for ett bucket. Krever B2-creds.
+/// Brukes av UI for å vise «12.3 GB av X TB brukt» som forhåndsvarsel
+/// før Backblaze-fakturaen blir overraskende. Kan være treg for
+/// buckets med mange filer — UI bør cache.
+#[tauri::command]
+async fn fetch_bucket_usage(
+    key_id: String,
+    application_key: String,
+    bucket_id: String,
+    bucket_name: String,
+) -> Result<b2_uploader::BucketUsage, String> {
+    let auth = b2_uploader::authorize(&key_id, &application_key).await?;
+    b2_uploader::bucket_usage(&auth, &bucket_id, bucket_name).await
+}
+
 #[tauri::command]
 fn list_detected_mounts(state: tauri::State<MountWatcherState>) -> Vec<DetectedMount> {
     mount_watcher::list_mounts(&state)
@@ -522,6 +537,7 @@ pub fn run() {
             fetch_project_info,
             fetch_destinations_with_creds,
             test_b2_connection,
+            fetch_bucket_usage,
             list_detected_mounts,
             rescan_mounts,
             start_copy_session,
