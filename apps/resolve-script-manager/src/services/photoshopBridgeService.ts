@@ -613,6 +613,33 @@ export const photoshop = {
       params,
     ),
 
+  resolveVoiceGetIsolationState: (params?: { track_index?: number }) =>
+    send<{
+      scope: "track" | "item";
+      ref: string;
+      is_enabled: boolean;
+      amount: number;
+    }>("resolve.voiceGetIsolationState", params ?? {}),
+
+  resolveVoiceSetIsolationState: (params: {
+    track_index?: number;
+    is_enabled: boolean;
+    amount: number;
+  }) =>
+    send<{
+      set: boolean;
+      scope: "track" | "item";
+      ref: string;
+      is_enabled: boolean;
+      amount: number;
+    }>("resolve.voiceSetIsolationState", params),
+
+  resolveGalleryImportStills: (params: { file_paths: string[]; album_name?: string }) =>
+    send<{ imported: boolean; album: string; count: number }>(
+      "resolve.galleryImportStills",
+      params,
+    ),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

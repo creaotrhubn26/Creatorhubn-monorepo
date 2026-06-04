@@ -903,6 +903,107 @@ HANDLERS["graph.resetAllGrades"] = handleGraphResetAllGrades
 HANDLERS["graph.setNodeEnabled"] = handleGraphSetNodeEnabled
 
 -- ---------------------------------------------------------------------------
+-- Voice Isolation + Gallery Import
+-- ---------------------------------------------------------------------------
+
+local function handleVoiceGetIsolation(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local trackIndex = tonumber(args:match('"track_index"%s*:%s*(%d+)'))
+  local state, scope, ref
+  if trackIndex then
+    state = timeline:GetVoiceIsolationState(trackIndex)
+    scope = "track"
+    ref = tostring(trackIndex)
+  else
+    local item = timeline:GetCurrentVideoItem()
+    if not item then error("Ingen valgt item — gi track_index eller velg item først") end
+    state = item:GetVoiceIsolationState()
+    scope = "item"
+    ref = item:GetName() or ""
+  end
+  if not state then error("Klarte ikke lese isolation-state") end
+  return string.format(
+    '{"scope":%s,"ref":%s,"is_enabled":%s,"amount":%d}',
+    jsonEscape(scope), jsonEscape(ref),
+    tostring(state.isEnabled or false),
+    tonumber(state.amount) or 0
+  )
+end
+
+local function handleVoiceSetIsolation(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local trackIndex = tonumber(args:match('"track_index"%s*:%s*(%d+)'))
+  local isEnabled = args:match('"is_enabled"%s*:%s*true') ~= nil
+  local amount = tonumber(args:match('"amount"%s*:%s*(%d+)'))
+  if amount == nil then error("amount mangler (0-100)") end
+  if amount < 0 or amount > 100 then error("amount må være 0-100") end
+
+  local state = { isEnabled = isEnabled, amount = amount }
+  local ok, scope, ref
+  if trackIndex then
+    ok = timeline:SetVoiceIsolationState(trackIndex, state)
+    scope = "track"
+    ref = tostring(trackIndex)
+  else
+    local item = timeline:GetCurrentVideoItem()
+    if not item then error("Ingen valgt item — gi track_index eller velg item først") end
+    ok = item:SetVoiceIsolationState(state)
+    scope = "item"
+    ref = item:GetName() or ""
+  end
+  return string.format(
+    '{"set":%s,"scope":%s,"ref":%s,"is_enabled":%s,"amount":%d}',
+    tostring(ok), jsonEscape(scope), jsonEscape(ref),
+    tostring(isEnabled), amount
+  )
+end
+
+local function handleGalleryImportStills(args)
+  local _, project = getResolveContext()
+  local gallery = getGallery(project)
+  local filePathsBlock = args:match('"file_paths"%s*:%s*(%b[])')
+  if not filePathsBlock then error("file_paths mangler (array av paths)") end
+  local files = {}
+  for path in filePathsBlock:gmatch('"([^"]+)"') do
+    table.insert(files, path)
+  end
+  if #files == 0 then error("file_paths er tom") end
+
+  local albumName = extractString(args, "album_name")
+  local targetAlbum
+  if albumName then
+    local stillAlbums = gallery:GetGalleryStillAlbums() or {}
+    for _, album in ipairs(stillAlbums) do
+      if gallery:GetAlbumName(album) == albumName then targetAlbum = album; break end
+    end
+    if not targetAlbum then
+      local pgAlbums = gallery:GetGalleryPowerGradeAlbums() or {}
+      for _, album in ipairs(pgAlbums) do
+        if gallery:GetAlbumName(album) == albumName then targetAlbum = album; break end
+      end
+    end
+    if not targetAlbum then error("Fant ikke album: " .. albumName) end
+  else
+    targetAlbum = gallery:GetCurrentStillAlbum()
+    if not targetAlbum then error("Ingen current album") end
+  end
+
+  local ok = targetAlbum:ImportStills(files)
+  return string.format(
+    '{"imported":%s,"album":%s,"count":%d}',
+    tostring(ok), jsonEscape(albumName or "current"), #files
+  )
+end
+
+HANDLERS["voice.getIsolationState"] = handleVoiceGetIsolation
+HANDLERS["voice.setIsolationState"] = handleVoiceSetIsolation
+HANDLERS["gallery.importStills"] = handleGalleryImportStills
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 
