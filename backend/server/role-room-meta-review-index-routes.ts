@@ -148,6 +148,19 @@ const DEMOS: DemoEntry[] = [
       "GET /v21.0/{ig-user-id}?fields=username,account_type,profile_picture_url,followers_count,media_count",
     ],
   },
+  {
+    slug: "pages-show-list",
+    permission: "pages_show_list",
+    title: "Account picker — choose the Page to connect",
+    oneLiner: "List the Facebook Pages a user manages (/me/accounts) so they pick which production-team Page to link.",
+    badge: "#2563eb",
+    demoPath: "/admin/pages-show-list-app-review-demo",
+    runbookPath: "backend/docs/pages-show-list-app-review-runbook.md",
+    recordingCmd: "node backend/scripts/record-pages-show-list-app-review-demo.playwright.mjs",
+    graphCalls: [
+      "GET /v21.0/me/accounts?fields=id,name,category,tasks,picture",
+    ],
+  },
 ];
 
 const WHATSAPP_DEMOS: DemoEntry[] = [
