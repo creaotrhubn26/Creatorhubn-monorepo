@@ -1026,6 +1026,60 @@ const COMMANDS = {
     });
   },
 
+  "resolve.timelineGetCurrentTimecode": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "timeline.getCurrentTimecode" });
+  },
+
+  "resolve.timelineSetCurrentTimecode": async ({ timecode } = {}) => {
+    if (typeof timecode !== "string" || timecode.length === 0) {
+      throw new Error("timecode må være en string (HH:MM:SS:FF)");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "timeline.setCurrentTimecode",
+      args: { timecode },
+    });
+  },
+
+  "resolve.timelineGetItemListInTrack": async ({ track_type, track_index } = {}) => {
+    const VALID = new Set(["video", "audio", "subtitle"]);
+    const type = track_type || "video";
+    if (!VALID.has(type)) {
+      throw new Error(`Ugyldig track_type: ${type} (video/audio/subtitle)`);
+    }
+    if (typeof track_index !== "number" || track_index < 1) {
+      throw new Error("track_index må være en number >= 1");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "timeline.getItemListInTrack",
+      args: { track_type: type, track_index },
+    });
+  },
+
+  "resolve.clipGetColor": async ({ clip_id } = {}) => {
+    const args = {};
+    if (typeof clip_id === "string" && clip_id.length > 0) args.clip_id = clip_id;
+    return await COMMANDS["resolve.sendCommand"]({ name: "clip.getColor", args });
+  },
+
+  "resolve.clipSetColor": async ({ clip_id, color } = {}) => {
+    const VALID = new Set([
+      "Orange", "Apricot", "Yellow", "Lime", "Olive", "Green", "Teal", "Navy",
+      "Blue", "Purple", "Violet", "Pink", "Tan", "Beige", "Brown", "Chocolate",
+    ]);
+    if (!VALID.has(color)) {
+      throw new Error(`Ugyldig color: ${color} (gyldige: ${[...VALID].join(", ")})`);
+    }
+    const args = { color };
+    if (typeof clip_id === "string" && clip_id.length > 0) args.clip_id = clip_id;
+    return await COMMANDS["resolve.sendCommand"]({ name: "clip.setColor", args });
+  },
+
+  "resolve.clipClearColor": async ({ clip_id } = {}) => {
+    const args = {};
+    if (typeof clip_id === "string" && clip_id.length > 0) args.clip_id = clip_id;
+    return await COMMANDS["resolve.sendCommand"]({ name: "clip.clearColor", args });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve

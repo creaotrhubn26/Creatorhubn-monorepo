@@ -136,6 +136,29 @@ export const RESOLVE_PAGES: readonly ResolvePage[] = [
   "media", "cut", "edit", "fusion", "color", "fairlight", "deliver",
 ] as const;
 
+export type ResolveClipColor =
+  | "Orange"
+  | "Apricot"
+  | "Yellow"
+  | "Lime"
+  | "Olive"
+  | "Green"
+  | "Teal"
+  | "Navy"
+  | "Blue"
+  | "Purple"
+  | "Violet"
+  | "Pink"
+  | "Tan"
+  | "Beige"
+  | "Brown"
+  | "Chocolate";
+
+export const RESOLVE_CLIP_COLORS: readonly ResolveClipColor[] = [
+  "Orange", "Apricot", "Yellow", "Lime", "Olive", "Green", "Teal", "Navy",
+  "Blue", "Purple", "Violet", "Pink", "Tan", "Beige", "Brown", "Chocolate",
+] as const;
+
 export type SlateMarkerColor =
   | "Blue"
   | "Cyan"
@@ -754,6 +777,48 @@ export const photoshop = {
       "resolve.clipSetProperty",
       params,
     ),
+
+  resolveTimelineGetCurrentTimecode: () =>
+    send<{ timeline: string; timecode: string }>("resolve.timelineGetCurrentTimecode"),
+
+  resolveTimelineSetCurrentTimecode: (params: { timecode: string }) =>
+    send<{ set: boolean; timeline: string; timecode: string }>(
+      "resolve.timelineSetCurrentTimecode",
+      params,
+    ),
+
+  resolveTimelineGetItemListInTrack: (params: {
+    track_type?: ResolveTrackType;
+    track_index: number;
+  }) =>
+    send<{
+      track_type: ResolveTrackType;
+      track_index: number;
+      count?: number;
+      items: Array<{ name: string; start: number; end: number; duration: number }>;
+    }>("resolve.timelineGetItemListInTrack", params),
+
+  resolveClipGetColor: (params?: { clip_id?: string }) =>
+    send<{
+      scope: "media_pool_item" | "timeline_item";
+      name: string;
+      color: string;
+    }>("resolve.clipGetColor", params ?? {}),
+
+  resolveClipSetColor: (params: { clip_id?: string; color: ResolveClipColor }) =>
+    send<{
+      set: boolean;
+      scope: "media_pool_item" | "timeline_item";
+      name: string;
+      color: ResolveClipColor;
+    }>("resolve.clipSetColor", params),
+
+  resolveClipClearColor: (params?: { clip_id?: string }) =>
+    send<{
+      cleared: boolean;
+      scope: "media_pool_item" | "timeline_item";
+      name: string;
+    }>("resolve.clipClearColor", params ?? {}),
 
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),

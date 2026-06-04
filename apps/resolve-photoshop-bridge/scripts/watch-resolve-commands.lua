@@ -1265,6 +1265,137 @@ HANDLERS["clip.getProperty"] = handleClipGetProperty
 HANDLERS["clip.setProperty"] = handleClipSetProperty
 
 -- ---------------------------------------------------------------------------
+-- Timecode + Track-items + Clip-color labels
+-- ---------------------------------------------------------------------------
+
+-- Resolve clip-color palette (per MediaPoolItem.SetClipColor + TimelineItem.SetClipColor)
+local RESOLVE_CLIP_COLORS = {
+  Orange = true, Apricot = true, Yellow = true, Lime = true, Olive = true,
+  Green = true, Teal = true, Navy = true, Blue = true, Purple = true,
+  Violet = true, Pink = true, Tan = true, Beige = true, Brown = true,
+  Chocolate = true,
+}
+
+local TRACK_TYPES = { video = true, audio = true, subtitle = true }
+
+local function handleTimelineGetTimecode(_args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local tc = timeline:GetCurrentTimecode()
+  if not tc then error("Timecode utilgjengelig — bytt til Cut/Edit/Color/Fairlight/Deliver-page") end
+  return string.format(
+    '{"timeline":%s,"timecode":%s}',
+    jsonEscape(timeline:GetName() or ""), jsonEscape(tc)
+  )
+end
+
+local function handleTimelineSetTimecode(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local tc = extractString(args, "timecode")
+  if not tc or tc == "" then error("timecode mangler (format HH:MM:SS:FF)") end
+  local ok = timeline:SetCurrentTimecode(tc)
+  return string.format(
+    '{"set":%s,"timeline":%s,"timecode":%s}',
+    tostring(ok), jsonEscape(timeline:GetName() or ""), jsonEscape(tc)
+  )
+end
+
+local function handleTimelineGetItemListInTrack(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local trackType = extractString(args, "track_type") or "video"
+  if not TRACK_TYPES[trackType] then
+    error("Ugyldig track_type: " .. trackType .. " (video/audio/subtitle)")
+  end
+  local idx = tonumber(args:match('"track_index"%s*:%s*(%d+)'))
+  if not idx then error("track_index mangler") end
+
+  local items = timeline:GetItemListInTrack(trackType, idx)
+  if not items then
+    return string.format(
+      '{"track_type":%s,"track_index":%d,"items":[]}',
+      jsonEscape(trackType), idx
+    )
+  end
+  local parts = {}
+  for _, item in ipairs(items) do
+    local name = item:GetName() or ""
+    local startFr = item:GetStart() or 0
+    local endFr = item:GetEnd() or 0
+    local duration = item:GetDuration() or 0
+    table.insert(parts, string.format(
+      '{"name":%s,"start":%d,"end":%d,"duration":%d}',
+      jsonEscape(name), startFr, endFr, duration
+    ))
+  end
+  return string.format(
+    '{"track_type":%s,"track_index":%d,"count":%d,"items":[%s]}',
+    jsonEscape(trackType), idx, #items, table.concat(parts, ",")
+  )
+end
+
+local function resolveClipColorTarget(args)
+  local _, project = getResolveContext()
+  local clipId = extractString(args, "clip_id")
+  if clipId then
+    local mediaPool = project:GetMediaPool()
+    local item = findMediaPoolItemById(mediaPool, clipId)
+    if not item then error("Fant ikke MediaPoolItem: " .. clipId) end
+    return item, "media_pool_item", item:GetName() or ""
+  end
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline (eller gi clip_id)") end
+  local item = timeline:GetCurrentVideoItem()
+  if not item then error("Ingen valgt timeline-item (eller gi clip_id)") end
+  return item, "timeline_item", item:GetName() or ""
+end
+
+local function handleClipGetColor(args)
+  local item, scope, name = resolveClipColorTarget(args)
+  local color = item:GetClipColor() or ""
+  return string.format(
+    '{"scope":%s,"name":%s,"color":%s}',
+    jsonEscape(scope), jsonEscape(name), jsonEscape(color)
+  )
+end
+
+local function handleClipSetColor(args)
+  local color = extractString(args, "color")
+  if not color or color == "" then error("color mangler") end
+  if not RESOLVE_CLIP_COLORS[color] then
+    error("Ugyldig color: " .. color ..
+      " (gyldige: Orange, Apricot, Yellow, Lime, Olive, Green, Teal, Navy, " ..
+      "Blue, Purple, Violet, Pink, Tan, Beige, Brown, Chocolate)")
+  end
+  local item, scope, name = resolveClipColorTarget(args)
+  local ok = item:SetClipColor(color)
+  return string.format(
+    '{"set":%s,"scope":%s,"name":%s,"color":%s}',
+    tostring(ok), jsonEscape(scope), jsonEscape(name), jsonEscape(color)
+  )
+end
+
+local function handleClipClearColor(args)
+  local item, scope, name = resolveClipColorTarget(args)
+  local ok = item:ClearClipColor()
+  return string.format(
+    '{"cleared":%s,"scope":%s,"name":%s}',
+    tostring(ok), jsonEscape(scope), jsonEscape(name)
+  )
+end
+
+HANDLERS["timeline.getCurrentTimecode"] = handleTimelineGetTimecode
+HANDLERS["timeline.setCurrentTimecode"] = handleTimelineSetTimecode
+HANDLERS["timeline.getItemListInTrack"] = handleTimelineGetItemListInTrack
+HANDLERS["clip.getColor"] = handleClipGetColor
+HANDLERS["clip.setColor"] = handleClipSetColor
+HANDLERS["clip.clearColor"] = handleClipClearColor
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 
