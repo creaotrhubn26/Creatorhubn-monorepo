@@ -583,6 +583,36 @@ export const photoshop = {
       params,
     ),
 
+  resolveLutRefresh: () => send<{ refreshed: boolean }>("resolve.lutRefresh"),
+
+  resolveGraphGetNodes: () =>
+    send<{
+      item: string;
+      num_nodes: number;
+      nodes: Array<{ index: number; label: string; lut: string; tools: string[] }>;
+    }>("resolve.graphGetNodes"),
+
+  resolveGraphApplyLUT: (params: { node_index: number; lut_path: string }) =>
+    send<{ applied: boolean; item: string; node_index: number; lut_path: string }>(
+      "resolve.graphApplyLUT",
+      params,
+    ),
+
+  resolveGraphApplyGradeFromDRX: (params: { path: string; grade_mode?: 0 | 1 | 2 }) =>
+    send<{ applied: boolean; item: string; path: string; grade_mode: number }>(
+      "resolve.graphApplyGradeFromDRX",
+      params,
+    ),
+
+  resolveGraphResetAllGrades: () =>
+    send<{ reset: boolean; item: string }>("resolve.graphResetAllGrades"),
+
+  resolveGraphSetNodeEnabled: (params: { node_index: number; enabled: boolean }) =>
+    send<{ set: boolean; item: string; node_index: number; enabled: boolean }>(
+      "resolve.graphSetNodeEnabled",
+      params,
+    ),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

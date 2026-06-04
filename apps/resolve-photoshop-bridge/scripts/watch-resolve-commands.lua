@@ -802,6 +802,107 @@ HANDLERS["track.getName"] = handleTrackGetName
 HANDLERS["track.setName"] = handleTrackSetName
 
 -- ---------------------------------------------------------------------------
+-- Color page Graph + LUT-applikasjon
+-- ---------------------------------------------------------------------------
+
+local function getCurrentItemGraph()
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local item = timeline:GetCurrentVideoItem()
+  if not item then error("Ingen valgt video-item — velg en klipp først") end
+  -- TimelineItem fungerer som Graph i nyere Resolve-versjoner (GetNumNodes
+  -- finnes direkte). Eldre versjoner krevde item:GetGraph() — vi prøver direkte.
+  if not item.GetNumNodes then error("Color-graph-API ikke tilgjengelig på TimelineItem") end
+  return item, item
+end
+
+local function handleLutRefresh(args)
+  local _, project = getResolveContext()
+  local ok = project:RefreshLUTList()
+  return string.format('{"refreshed":%s}', tostring(ok))
+end
+
+local function handleGraphGetNodes(args)
+  local item, graph = getCurrentItemGraph()
+  local count = graph:GetNumNodes() or 0
+  local nodes = {}
+  for i = 1, count do
+    local label = graph:GetNodeLabel(i) or ""
+    local lut = graph:GetLUT(i) or ""
+    local tools = graph:GetToolsInNode(i) or {}
+    local toolItems = {}
+    for _, t in ipairs(tools) do
+      table.insert(toolItems, jsonEscape(t))
+    end
+    table.insert(nodes, string.format(
+      '{"index":%d,"label":%s,"lut":%s,"tools":[%s]}',
+      i, jsonEscape(label), jsonEscape(lut), table.concat(toolItems, ",")
+    ))
+  end
+  return string.format(
+    '{"item":%s,"num_nodes":%d,"nodes":[%s]}',
+    jsonEscape(item:GetName() or ""), count, table.concat(nodes, ",")
+  )
+end
+
+local function handleGraphApplyLUT(args)
+  local item, graph = getCurrentItemGraph()
+  local nodeIndex = tonumber(args:match('"node_index"%s*:%s*(%d+)'))
+  local lutPath = extractString(args, "lut_path")
+  if not nodeIndex then error("node_index mangler") end
+  if not lutPath then error("lut_path mangler") end
+  local ok = graph:SetLUT(nodeIndex, lutPath)
+  return string.format(
+    '{"applied":%s,"item":%s,"node_index":%d,"lut_path":%s}',
+    tostring(ok), jsonEscape(item:GetName() or ""), nodeIndex, jsonEscape(lutPath)
+  )
+end
+
+local function handleGraphApplyGradeFromDRX(args)
+  local item, graph = getCurrentItemGraph()
+  local path = extractString(args, "path")
+  local gradeMode = tonumber(args:match('"grade_mode"%s*:%s*(%d+)')) or 0
+  if not path then error("path mangler") end
+  if gradeMode < 0 or gradeMode > 2 then
+    error("grade_mode må være 0 (no keyframes), 1 (source TC aligned), 2 (start frame aligned)")
+  end
+  local ok = graph:ApplyGradeFromDRX(path, gradeMode)
+  return string.format(
+    '{"applied":%s,"item":%s,"path":%s,"grade_mode":%d}',
+    tostring(ok), jsonEscape(item:GetName() or ""), jsonEscape(path), gradeMode
+  )
+end
+
+local function handleGraphResetAllGrades(args)
+  local item, graph = getCurrentItemGraph()
+  local ok = graph:ResetAllGrades()
+  return string.format(
+    '{"reset":%s,"item":%s}',
+    tostring(ok), jsonEscape(item:GetName() or "")
+  )
+end
+
+local function handleGraphSetNodeEnabled(args)
+  local item, graph = getCurrentItemGraph()
+  local nodeIndex = tonumber(args:match('"node_index"%s*:%s*(%d+)'))
+  local isEnabled = args:match('"enabled"%s*:%s*true') ~= nil
+  if not nodeIndex then error("node_index mangler") end
+  local ok = graph:SetNodeEnabled(nodeIndex, isEnabled)
+  return string.format(
+    '{"set":%s,"item":%s,"node_index":%d,"enabled":%s}',
+    tostring(ok), jsonEscape(item:GetName() or ""), nodeIndex, tostring(isEnabled)
+  )
+end
+
+HANDLERS["lut.refresh"] = handleLutRefresh
+HANDLERS["graph.getNodes"] = handleGraphGetNodes
+HANDLERS["graph.applyLUT"] = handleGraphApplyLUT
+HANDLERS["graph.applyGradeFromDRX"] = handleGraphApplyGradeFromDRX
+HANDLERS["graph.resetAllGrades"] = handleGraphResetAllGrades
+HANDLERS["graph.setNodeEnabled"] = handleGraphSetNodeEnabled
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 
