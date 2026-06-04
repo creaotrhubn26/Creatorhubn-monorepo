@@ -106,8 +106,29 @@ interface StateClaims {
   iat: number;
 }
 
+let warnedWeakOauthSecret = false;
+/**
+ * OAuth state-signing secret. Falls back to a dev secret locally, but loudly
+ * warns (once) in production — a missing AUTH_SECRET there means the signed
+ * state is forgeable, so this must surface in monitoring.
+ */
+function getOauthStateSecret(): string {
+  const secret = process.env.AUTH_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production' && !warnedWeakOauthSecret) {
+      warnedWeakOauthSecret = true;
+      console.error(
+        '[ig-oauth] SECURITY: AUTH_SECRET is not set in production — OAuth state ' +
+          'signing is using a known dev fallback and is forgeable. Set AUTH_SECRET.',
+      );
+    }
+    return 'dev-secret-not-for-prod';
+  }
+  return secret;
+}
+
 export function signOauthState(claims: Omit<StateClaims, 'nonce' | 'iat'>): string {
-  const secret = process.env.AUTH_SECRET || 'dev-secret-not-for-prod';
+  const secret = getOauthStateSecret();
   const payload: StateClaims = {
     ...claims,
     nonce: crypto.randomBytes(16).toString('base64url'),
@@ -120,7 +141,7 @@ export function signOauthState(claims: Omit<StateClaims, 'nonce' | 'iat'>): stri
 
 export function verifyOauthState(state: string | undefined | null): StateClaims | null {
   if (!state) return null;
-  const secret = process.env.AUTH_SECRET || 'dev-secret-not-for-prod';
+  const secret = getOauthStateSecret();
   const [payloadPart, sig] = state.split('.');
   if (!payloadPart || !sig) return null;
   try {

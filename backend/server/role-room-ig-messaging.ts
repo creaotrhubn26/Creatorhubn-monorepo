@@ -499,13 +499,15 @@ export async function persistInboundDmFromWebhook(pool: Pool, event: unknown): P
         if (!senderId) continue;
         const attachment = msg.attachments?.[0];
         const createdAt = m.timestamp ? new Date(m.timestamp).toISOString() : null;
+        // Ensure the conversation exists + refresh its preview, but DON'T bump
+        // unread yet — Meta retries webhooks, so bumping here would over-count.
         const convo = await upsertConversation({
           pool,
           connection,
           participantIgsid: senderId,
           lastMessageAt: createdAt,
           lastMessageSnippet: msg.text ?? (attachment ? `[${attachment.type ?? "attachment"}]` : null),
-          bumpUnread: 1,
+          bumpUnread: 0,
         });
         const inserted = await insertMessage({
           pool,
@@ -518,7 +520,17 @@ export async function persistInboundDmFromWebhook(pool: Pool, event: unknown): P
           attachmentType: attachment?.type ?? null,
           createdAt,
         });
-        if (inserted) persisted += 1;
+        // Only bump unread when this message was genuinely new (insertMessage
+        // dedups on external_message_id), so webhook retries stay idempotent.
+        if (inserted) {
+          persisted += 1;
+          await pool.query(
+            `UPDATE role_room_instagram_conversations
+                SET unread_count = unread_count + 1, updated_at = now()
+              WHERE id = $1`,
+            [convo.id],
+          );
+        }
       }
     }
     return persisted;
