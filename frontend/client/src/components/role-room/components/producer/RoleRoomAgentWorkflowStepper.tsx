@@ -5,6 +5,7 @@ import {
   CloudUpload as PublishIcon,
   MoveToInbox as ListenIcon,
   QueryStats as MeasureIcon,
+  Check as CheckIcon,
 } from '@mui/icons-material';
 
 export type RoleRoomAgentPhase = 'analyze' | 'plan' | 'publish' | 'listen' | 'measure';
@@ -78,6 +79,8 @@ export default function RoleRoomAgentWorkflowStepper({
       spacing={0}
       alignItems="stretch"
       data-testid="role-room-agent-workflow-stepper"
+      role="list"
+      aria-label="The Role Room Agent arbeidsflyt — 5 steg"
       sx={{
         px: { xs: 1, md: 2 },
         py: 1,
@@ -97,13 +100,23 @@ export default function RoleRoomAgentWorkflowStepper({
             alignItems="center"
             sx={{ flex: '1 0 auto', minWidth: 0 }}
           >
-            <Tooltip title={`Gå til ${phase.label}`} disableInteractive>
+            <Tooltip
+              title={`Gå til ${phase.label}${isActive ? ' (aktivt steg)' : isPast ? ' (fullført)' : ''}`}
+              disableInteractive
+            >
               <Box
-                role={onJump ? 'button' : undefined}
+                role={onJump ? 'button' : 'listitem'}
                 tabIndex={onJump ? 0 : -1}
+                aria-current={isActive ? 'step' : undefined}
+                aria-label={`Steg ${idx + 1} av ${PHASES.length}: ${phase.label} — ${phase.caption}${
+                  isActive ? ' (aktivt)' : isPast ? ' (fullført)' : ' (kommende)'
+                }`}
                 onClick={() => onJump?.(phase.tabs[0])}
                 onKeyDown={(e) => {
-                  if (onJump && (e.key === 'Enter' || e.key === ' ')) onJump(phase.tabs[0]);
+                  if (onJump && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    onJump(phase.tabs[0]);
+                  }
                 }}
                 data-testid={`workflow-step-${phase.id}`}
                 data-active={isActive ? 'true' : 'false'}
@@ -156,8 +169,9 @@ export default function RoleRoomAgentWorkflowStepper({
                     fontSize: '0.78rem',
                     flexShrink: 0,
                   }}
+                  aria-hidden="true"
                 >
-                  {phase.icon}
+                  {isPast ? <CheckIcon fontSize="small" /> : phase.icon}
                 </Box>
                 <Stack spacing={0} sx={{ minWidth: 0 }}>
                   <Typography
