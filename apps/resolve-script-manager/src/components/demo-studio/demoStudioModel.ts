@@ -102,6 +102,12 @@ export interface DemoScene {
    * Detected → Match/Warning).
    */
   detectedSelector?: string;
+  /** Marker scenen som et kritisk steg (fremheves i Script Builder/recorder). */
+  critical?: boolean;
+  /** Valideringsregel — når regnes handlingen som utført (f.eks. «Vent til modal åpnes»). */
+  validationRule?: string;
+  /** Hva skjer hvis handlingen ikke skjer / validering feiler. */
+  fallback?: 'retake' | 'manual' | 'skip';
   /**
    * Interaktivt mål (hotspot) på siden — rektangel i VIEWPORT-PROSENT (0–1) av
    * skjermflaten, så det rendres device-uavhengig over enhver preview. Fremheves

@@ -16,9 +16,14 @@ import { useDemoStudio } from './demoStudioStore';
 import { generateSceneScript, improveScript, type ImproveAction } from './demoStudioAI';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
+import { FramedDevice } from './FramedDevice';
+import { type FrameVariant } from './deviceFrames';
+import { SceneInteractionOverlay } from './SceneInteractionOverlay';
 import {
   SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, SCRIPT_TONE_LABELS, SCRIPT_LENGTH_LABELS,
-  type DemoDevice, type DemoActionType, type ScriptTone, type ScriptLength,
+  ACTION_MATCH_LABELS, ACTION_MATCH_COLORS,
+  sceneActionMatch, expectedActionText, defaultRenderOptions,
+  type DemoDevice, type DemoActionType, type ScriptTone, type ScriptLength, type DemoScene, type DemoRenderOptions,
 } from './demoStudioModel';
 
 const C = {
@@ -44,6 +49,7 @@ const ACTION_TYPES: DemoActionType[] = ['open_url', 'click', 'scroll', 'hover', 
 const PAUSE_OPTS = [1, 2, 3, 5];
 
 const AI_SUGGESTIONS: { ic: string; title: string; desc: string; action: ImproveAction }[] = [
+  { ic: '☺', title: 'Mer menneskelig', desc: 'Varmere, naturlig tone.', action: 'human' },
   { ic: '✂', title: 'Gjør kortere', desc: 'Stram inn manuset.', action: 'shorten' },
   { ic: '➤', title: 'Legg til CTA', desc: 'Oppfordre til handling.', action: 'cta' },
   { ic: '◉', title: 'Mer tutorial-fokusert', desc: 'Legg til steg-for-steg.', action: 'tutorial' },
@@ -60,6 +66,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
   const scenes = project?.scenes ?? [];
   const selected = scenes.find((s) => s.id === selectedSceneId) ?? scenes[0];
   const meta = project?.scriptMeta ?? { tone: 'professional' as ScriptTone, audience: 'Healthcare Professionals', language: 'English', length: 'medium' as ScriptLength };
+  const render = project?.render ?? defaultRenderOptions();
 
   const setMeta = (patch: Partial<typeof meta>) => setProjectField('scriptMeta', { ...meta, ...patch });
   const readingTime = useMemo(() => {
@@ -199,13 +206,50 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
 
             {/* 3. Required Action */}
             <Block n={3} ic="☞" title="Required Action" sub="What the viewer should do">
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <select style={{ ...miniSel, minWidth: 110 }} value={selected.actionType ?? 'click'}
-                  onChange={(e) => updateScene(selected.id, { actionType: e.target.value as DemoActionType })}>
-                  {ACTION_TYPES.map((a) => <option key={a} value={a}>{a.replace('_', ' ')}</option>)}
-                </select>
-                <input style={{ ...inp, flex: 1 }} value={selected.requiredAction} placeholder='Click the "Start Visit" button.'
-                  onChange={(e) => updateScene(selected.id, { requiredAction: e.target.value })} />
+              <div style={{ display: 'flex', gap: 14 }}>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {/* Critical Step-toggle */}
+                  <div onClick={() => updateScene(selected.id, { critical: !selected.critical })}
+                    style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                      padding: '3px 9px', borderRadius: 7, border: `1px solid ${selected.critical ? C.accent : C.lineStrong}`,
+                      background: selected.critical ? '#fdf0e7' : '#fff', color: selected.critical ? '#b5651d' : C.inkFaint }}>
+                    ★ Critical Step
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <div><Lab>Action Type</Lab>
+                      <select style={{ ...miniSel, minWidth: 110, display: 'block', marginTop: 4 }} value={selected.actionType ?? 'click'}
+                        onChange={(e) => updateScene(selected.id, { actionType: e.target.value as DemoActionType })}>
+                        {ACTION_TYPES.map((a) => <option key={a} value={a}>{a.replace('_', ' ')}</option>)}
+                      </select>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}><Lab>Target</Lab>
+                      <input style={{ ...inp, width: '100%', marginTop: 4 }} value={selected.targetLabel ?? ''} placeholder='F.eks. "Start Visit"-knappen'
+                        onChange={(e) => updateScene(selected.id, { targetLabel: e.target.value })} />
+                    </div>
+                  </div>
+                  <div><Lab>Instruction</Lab>
+                    <input style={{ ...inp, width: '100%', marginTop: 4 }} value={selected.requiredAction} placeholder='Click the "Start Visit" button.'
+                      onChange={(e) => updateScene(selected.id, { requiredAction: e.target.value })} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}><Lab>Validation</Lab>
+                      <input style={{ ...inp, width: '100%', marginTop: 4 }} value={selected.validationRule ?? ''} placeholder="Vent til modal åpnes"
+                        onChange={(e) => updateScene(selected.id, { validationRule: e.target.value })} />
+                    </div>
+                    <div><Lab>Fallback</Lab>
+                      <select style={{ ...miniSel, minWidth: 150, display: 'block', marginTop: 4 }} value={selected.fallback ?? 'retake'}
+                        onChange={(e) => updateScene(selected.id, { fallback: e.target.value as 'retake' | 'manual' | 'skip' })}>
+                        <option value="retake">Retake scene</option>
+                        <option value="manual">Mark manually done</option>
+                        <option value="skip">Hopp over scenen</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                {/* Element-preview (det bundne elementet fremhevet) */}
+                <div style={{ width: 200, flexShrink: 0 }}>
+                  <ElementPreview scene={selected} url={project.url} render={render} />
+                </div>
               </div>
             </Block>
 
@@ -226,10 +270,21 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 <textarea style={{ ...ta, minHeight: 48, flex: 1 }} value={selected.notes ?? ''} placeholder="Pause for ~2 seconds after highlighting the alerts…"
                   onChange={(e) => updateScene(selected.id, { notes: e.target.value })} />
-                <select style={{ ...miniSel, minWidth: 80 }} value={selected.pauseSec ?? 2}
-                  onChange={(e) => updateScene(selected.id, { pauseSec: Number(e.target.value) })}>
-                  {PAUSE_OPTS.map((p) => <option key={p} value={p}>{p}s</option>)}
-                </select>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div><Lab>Continue mode</Lab>
+                    <select style={{ ...miniSel, minWidth: 100, display: 'block', marginTop: 4 }} value={selected.continueMode ?? 'manual'}
+                      onChange={(e) => updateScene(selected.id, { continueMode: e.target.value as 'manual' | 'auto' })}>
+                      <option value="manual">Manual</option>
+                      <option value="auto">Auto</option>
+                    </select>
+                  </div>
+                  <div><Lab>Pause</Lab>
+                    <select style={{ ...miniSel, minWidth: 100, display: 'block', marginTop: 4 }} value={selected.pauseSec ?? 2}
+                      onChange={(e) => updateScene(selected.id, { pauseSec: Number(e.target.value) })}>
+                      {PAUSE_OPTS.map((p) => <option key={p} value={p}>{p}s</option>)}
+                    </select>
+                  </div>
+                </div>
               </div>
             </Block>
           </div>
@@ -281,6 +336,25 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
                 </button>
               </div>
             ))}
+
+            {/* Action Validation (Expected ↔ Current) */}
+            {(() => {
+              const match = sceneActionMatch(selected);
+              const statusText = match === 'match' ? 'Riktig handling registrert' : match === 'warning' ? 'Avvik oppdaget' : 'Venter på riktig handling';
+              return (
+                <div style={{ marginTop: 18, borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>✓ Action Validation</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, marginBottom: 7 }}>
+                    <span style={{ color: C.inkFaint }}>Expected Action</span>
+                    <span style={{ color: C.accent, fontWeight: 600, textAlign: 'right' }}>{expectedActionText(selected)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12 }}>
+                    <span style={{ color: C.inkFaint }}>Current Status</span>
+                    <span style={{ color: ACTION_MATCH_COLORS[match], fontWeight: 600, textAlign: 'right' }}>{statusText} ({ACTION_MATCH_LABELS[match]})</span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -311,6 +385,26 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
       {showSignIn && (
         <RoleRoomSignInDialog onClose={() => setShowSignIn(false)} onSignedIn={() => { setAiReady(true); setShowSignIn(false); }} />
       )}
+    </div>
+  );
+}
+
+/** Liten live-preview av det bundne elementet (hotspot fremhevet) i action-blokka. */
+function ElementPreview({ scene, url, render }: { scene: DemoScene; url: string; render: DemoRenderOptions }) {
+  const variant: FrameVariant = scene.device === 'ipad' && scene.orientation === 'landscape' ? 'ipad_landscape' : scene.device;
+  const w = scene.device === 'macbook' ? '100%' : scene.device === 'ipad' ? 132 : 84;
+  return (
+    <div style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, background: C.cream }}>
+      <div style={{ fontSize: 10.5, color: C.inkFaint, marginBottom: 8 }}>Element-preview</div>
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <div style={{ width: w }}>
+          <FramedDevice variant={variant} url={url} width="100%"
+            overlay={<SceneInteractionOverlay hotspot={scene.hotspot} render={render} device={scene.device} />} />
+        </div>
+      </div>
+      <div style={{ fontSize: 10.5, color: scene.hotspot ? C.green : C.inkFaint, marginTop: 8, textAlign: 'center' }}>
+        {scene.hotspot ? `◎ ${scene.targetLabel || 'element markert'}` : 'Sett hotspot i Flow Builder'}
+      </div>
     </div>
   );
 }
