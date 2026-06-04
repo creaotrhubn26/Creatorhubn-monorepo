@@ -14,12 +14,12 @@ const __dirname = dirname(__filename);
 
 const PROMPT_FILE = resolvePath(
   __dirname,
-  "../src/components/MultiAgentDirectorDialog.tsx",
+  "../src/lib/directorSystemPrompt.ts",
 );
 
 function extractPrompt(): string {
   const source = readFileSync(PROMPT_FILE, "utf8");
-  const match = source.match(/const DIRECTOR_SYSTEM_PROMPT = `([\s\S]*?)`;/);
+  const match = source.match(/export const DIRECTOR_SYSTEM_PROMPT = `([\s\S]*?)`;/);
   if (!match) throw new Error("Klarte ikke finne DIRECTOR_SYSTEM_PROMPT");
   return match[1];
 }

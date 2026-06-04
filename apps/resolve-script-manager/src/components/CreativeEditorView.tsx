@@ -61,6 +61,7 @@ const WEDDING_CHAPTERS_FOR_STORY: ChapterDef[] = [
   { id: "outro", label: "Avslutning", description: "Stille øyeblikk, nattbilder", priorityHint: "atmospheric", narrativeBeat: "outro" },
 ];
 import BrushIcon from "@mui/icons-material/Brush";
+import { DirectorPanel } from "./DirectorPanel";
 import CoffeeIcon from "@mui/icons-material/Coffee";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import MovieIcon from "@mui/icons-material/Movie";
@@ -422,6 +423,9 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
 
   // Photoshop Agent — modal-dialog state
   const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
+  // Director panel — embedded i høyre-rail, alle 91 tools tilgjengelig
+  // herfra med auto-kontekst om aktiv pick + story-state.
+  const [directorPanelOpen, setDirectorPanelOpen] = useState(false);
 
   // Claude chat state — separate history per agent
   type ChatMsg = { role: "user" | "assistant"; content: string };
@@ -927,6 +931,31 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   // When hover is active, play that segment; else play focused
   const activePick = (hoveredPickIdx != null && filteredPicks[hoveredPickIdx]) || filteredPicks[focusedPickIdx];
   const focusedPick = activePick;
+
+  // Context-snapshot for DirectorPanel. Kjøres ved Start så Claude
+  // automatisk vet hvilken pick brukeren ser på + total state.
+  const directorContextProvider = useCallback(() => {
+    const lines: string[] = ["[Creative Editor kontekst]"];
+    if (projectTitle) lines.push(`Prosjekt: ${projectTitle}`);
+    lines.push(`Total picks: ${filteredPicks.length} (${Math.round(totalDuration)}s highlight)`);
+    if (focusedPick) {
+      const signals = focusedPick.signals
+        ? Object.entries(focusedPick.signals)
+            .filter(([, v]) => typeof v === "number" && v > 0)
+            .map(([k, v]) => `${k}=${(v as number).toFixed(2)}`)
+            .join(", ")
+        : "";
+      lines.push(
+        `Aktiv pick: idx=${focusedPick.index} chapter=${focusedPick.chapter ?? "details"}` +
+          ` start=${focusedPick.startSec.toFixed(2)}s dur=${focusedPick.durationSec.toFixed(2)}s`,
+      );
+      if (signals) lines.push(`  signals: ${signals}`);
+    }
+    if (agentRole !== "claude") {
+      lines.push(`Agent-role aktiv i UI: ${agentRole}`);
+    }
+    return lines.join("\n");
+  }, [projectTitle, filteredPicks.length, totalDuration, focusedPick, agentRole]);
   // Live Narrative Simulation — mood derived from focused pick + chapter
   const mood = useMemo(() => moodForPick(focusedPick), [focusedPick]);
 
@@ -3848,6 +3877,22 @@ ${ctxLines.join("\n")}`;
               <span className="ce-agent-tab-icon"><BrushIcon style={{ fontSize: 14 }} /></span>
               <span className="ce-agent-tab-name">Photoshop</span>
             </button>
+            <button
+              className={`ce-agent-tab ${directorPanelOpen ? "active" : ""}`}
+              onClick={() => setDirectorPanelOpen((v) => !v)}
+              title="Multi-Agent Creative Director — Claude med 91 Resolve+Photoshop-tools, leser aktiv pick automatisk"
+              data-testid="ce-director-toggle"
+              style={{
+                background: directorPanelOpen
+                  ? "linear-gradient(135deg, rgba(167,139,250,0.35), rgba(110,63,199,0.35))"
+                  : "linear-gradient(135deg, rgba(167,139,250,0.18), rgba(110,63,199,0.18))",
+                borderColor: directorPanelOpen ? "#a78bfa" : "rgba(167,139,250,0.40)",
+                color: "#d8c8ff",
+              }}
+            >
+              <span className="ce-agent-tab-icon"><AutoAwesomeIcon style={{ fontSize: 14 }} /></span>
+              <span className="ce-agent-tab-name">Director</span>
+            </button>
           </div>
           {(() => {
             const working = suggBusy || flowBusy || wishesBusy || chatBusy;
@@ -3882,6 +3927,25 @@ ${ctxLines.join("\n")}`;
               </div>
             );
           })()}
+
+          {directorPanelOpen && (
+            <div
+              data-testid="ce-director-panel-mount"
+              style={{
+                background: "#0e0e16",
+                border: "1px solid #2a2a36",
+                borderRadius: 8,
+                padding: 12,
+                marginTop: 8,
+              }}
+            >
+              <DirectorPanel
+                compact
+                showContextPreview
+                contextProvider={directorContextProvider}
+              />
+            </div>
+          )}
 
           {/* Agent-specific action panels */}
           {agentRole === "audio" && (
