@@ -109,7 +109,8 @@ test.describe("useDirectorLoop pre-pender contextProvider-snapshot", () => {
   });
 
   test("Snapshot prepends til goal med separator", () => {
-    expect(hook).toMatch(/ctx\s*\?\s*`\$\{ctx\}\\n\\n---\\n\\n\$\{goal\.trim\(\)\}`/);
+    // PR R bytte til goalRef → currentGoal for stable callback-identitet.
+    expect(hook).toMatch(/ctx\s*\?\s*`\$\{ctx\}\\n\\n---\\n\\n\$\{currentGoal\.trim\(\)\}`/);
   });
 
   test("Snapshot exposes via lastContextSnapshot for UI", () => {

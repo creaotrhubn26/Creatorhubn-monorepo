@@ -82,6 +82,7 @@ export const claudeProxyService = {
     tools?: Array<{ name: string; description: string; input_schema: unknown }>;
     model?: string;
     maxTokens?: number;
+    signal?: AbortSignal;
   }): Promise<ClaudeResponse> {
     return sendRaw(opts);
   },
@@ -93,6 +94,7 @@ async function sendRaw(opts: {
   tools?: Array<{ name: string; description: string; input_schema: unknown }>;
   model?: string;
   maxTokens?: number;
+  signal?: AbortSignal;
 }): Promise<ClaudeResponse> {
   const bearer = getBearer();
   if (!bearer) throw new Error("Ikke innlogget — RR_BEARER_TOKEN mangler");
@@ -112,6 +114,7 @@ async function sendRaw(opts: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
+    signal: opts.signal,
   });
 
   if (!res.ok) {
