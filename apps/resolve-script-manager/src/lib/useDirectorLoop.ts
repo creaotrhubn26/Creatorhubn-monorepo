@@ -104,6 +104,25 @@ export function useDirectorLoop({
   const [lastContextSnapshot, setLastContextSnapshot] = useState<string | null>(null);
   const stopRef = useRef(false);
   const currentIterationRef = useRef(0);
+  // AbortController for inflight fetch — settes ved Start, brukes av Stop
+  // og unmount-cleanup. Garantert kun én controller per run.
+  const abortControllerRef = useRef<AbortController | null>(null);
+  // Guard mot setState etter unmount — React advarer ellers og evt minne-lekkasje.
+  const mountedRef = useRef(true);
+  // Holder seneste goal stabilt for stable `start`-identitet.
+  const goalRef = useRef(goal);
+  useEffect(() => {
+    goalRef.current = goal;
+  }, [goal]);
+
+  // Cleanup på unmount: aborter inflight fetch + setter mounted=false
+  // så pågående loop-iterasjoner kan se at de skal stoppe.
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   // Hold contextProvider stable via ref så hook-konsumenter ikke må
   // memo'isere callbacken sin (vil ofte ha state-deps).
@@ -112,8 +131,13 @@ export function useDirectorLoop({
     contextProviderRef.current = contextProvider;
   }, [contextProvider]);
 
+  const safeSet = useCallback(<T,>(setter: (v: T) => void, value: T) => {
+    if (mountedRef.current) setter(value);
+  }, []);
+
   const addStep = useCallback(
     (s: Omit<ProgressStep, "id" | "timestamp" | "iterationId">) => {
+      if (!mountedRef.current) return;
       setSteps((prev) => [
         ...prev,
         {
@@ -129,6 +153,7 @@ export function useDirectorLoop({
 
   const stop = useCallback(() => {
     stopRef.current = true;
+    abortControllerRef.current?.abort();
     addStep({ kind: "result", label: "Stoppet av bruker" });
   }, [addStep]);
 
@@ -141,25 +166,47 @@ export function useDirectorLoop({
     currentIterationRef.current = 0;
   }, []);
 
+  // Tracker running via ref så start kan no-op uten å avhenge av
+  // running-state (som ville gjort start ustabil mellom renders).
+  const runningRef = useRef(false);
+
   const start = useCallback(async () => {
-    if (!goal.trim()) return;
-    setRunning(true);
-    setCompleted(false);
-    setError(null);
-    setSteps([]);
+    if (runningRef.current) return;
+    const currentGoal = goalRef.current;
+    if (!currentGoal.trim()) return;
+    runningRef.current = true;
+    safeSet(setRunning, true);
+    safeSet(setCompleted, false);
+    safeSet(setError, null);
+    safeSet(setSteps, [] as ProgressStep[]);
     stopRef.current = false;
 
-    const ctx = contextProviderRef.current?.() ?? null;
-    setLastContextSnapshot(ctx);
-    const userContent = ctx ? `${ctx}\n\n---\n\n${goal.trim()}` : goal.trim();
+    // Snapshot context inni try-catch så en knust provider ikke
+    // dreper hele runen — vi logger og fortsetter uten context.
+    let ctx: string | null = null;
+    try {
+      ctx = contextProviderRef.current?.() ?? null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addStep({ kind: "error", label: "contextProvider feilet", detail: msg });
+      ctx = null;
+    }
+    safeSet(setLastContextSnapshot, ctx);
+    const userContent = ctx ? `${ctx}\n\n---\n\n${currentGoal.trim()}` : currentGoal.trim();
 
     const messages: ClaudeMessage[] = [{ role: "user", content: userContent }];
     let iterations = 0;
     currentIterationRef.current = 0;
 
+    // Fresh AbortController per Start. Abort tidligere først for
+    // safety (skulle ikke skje siden start blokkeres ved running).
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       while (iterations < MAX_ITERATIONS) {
-        if (stopRef.current) break;
+        if (stopRef.current || !mountedRef.current) break;
         iterations += 1;
         currentIterationRef.current = iterations;
 
@@ -173,7 +220,10 @@ export function useDirectorLoop({
           messages,
           tools: PHOTOSHOP_TOOLS as never,
           maxTokens: 2000,
+          signal: controller.signal,
         });
+
+        if (stopRef.current || !mountedRef.current) break;
 
         for (const block of response.content) {
           if (block.type === "text" && block.text.trim()) {
@@ -196,6 +246,8 @@ export function useDirectorLoop({
           response.content as unknown as ClaudeContentBlock[],
         );
 
+        if (stopRef.current || !mountedRef.current) break;
+
         messages.push({ role: "assistant", content: response.content });
         messages.push({
           role: "user",
@@ -210,7 +262,7 @@ export function useDirectorLoop({
         if (response.stop_reason === "end_turn") break;
       }
 
-      setCompleted(true);
+      safeSet(setCompleted, true);
       if (iterations >= MAX_ITERATIONS) {
         addStep({
           kind: "error",
@@ -219,13 +271,24 @@ export function useDirectorLoop({
         });
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      addStep({ kind: "error", label: "Feil", detail: msg });
+      // AbortError fra Stop er ikke en feil — bare rolig avbrudd.
+      const isAbort =
+        err instanceof DOMException && err.name === "AbortError";
+      if (!isAbort) {
+        const msg = err instanceof Error ? err.message : String(err);
+        safeSet(setError, msg);
+        addStep({ kind: "error", label: "Feil", detail: msg });
+      }
     } finally {
-      setRunning(false);
+      // Rydder kun hvis denne specific controller fortsatt er den
+      // aktive (kan ha blitt overskrevet av en re-start).
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      runningRef.current = false;
+      safeSet(setRunning, false);
     }
-  }, [goal, systemPrompt, addStep]);
+  }, [systemPrompt, addStep, safeSet]);
 
   const iterations = groupByIteration(steps, running);
 

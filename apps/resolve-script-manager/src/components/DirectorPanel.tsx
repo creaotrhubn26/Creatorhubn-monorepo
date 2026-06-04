@@ -60,15 +60,22 @@ export function DirectorPanel({
     setPresets(listPresets());
   }, []);
 
-  // Refresh context-preview hver gang knapper rendres så brukeren ser
-  // hva som faktisk sendes (lazy: kun når contextProvider er gitt).
+  // Recompute context-preview KUN når props/loop-completion endres —
+  // ikke per goal-tegn (det skapte unødig churn + risikerte å kalle
+  // dyre providers per tastetrykk). Try-catch så en knust provider
+  // ikke krasjer panelet.
   useEffect(() => {
     if (!showContextPreview || !contextProvider) {
       setContextPreview(null);
       return;
     }
-    setContextPreview(contextProvider() ?? null);
-  }, [showContextPreview, contextProvider, loop.goal, loop.completed]);
+    try {
+      setContextPreview(contextProvider() ?? null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setContextPreview(`(contextProvider feilet: ${msg})`);
+    }
+  }, [showContextPreview, contextProvider, loop.completed]);
 
   const applyPreset = (preset: { id?: string; goal: string }) => {
     loop.setGoal(preset.goal);

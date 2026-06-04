@@ -62,6 +62,7 @@ const WEDDING_CHAPTERS_FOR_STORY: ChapterDef[] = [
 ];
 import BrushIcon from "@mui/icons-material/Brush";
 import { DirectorPanel } from "./DirectorPanel";
+import { ErrorBoundary } from "./ErrorBoundary";
 import CoffeeIcon from "@mui/icons-material/Coffee";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import MovieIcon from "@mui/icons-material/Movie";
@@ -424,8 +425,31 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   // Photoshop Agent — modal-dialog state
   const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
   // Director panel — embedded i høyre-rail, alle 91 tools tilgjengelig
-  // herfra med auto-kontekst om aktiv pick + story-state.
-  const [directorPanelOpen, setDirectorPanelOpen] = useState(false);
+  // herfra med auto-kontekst om aktiv pick + story-state. Persistes til
+  // localStorage så toggle-tilstand overlever reload.
+  const DIRECTOR_PANEL_KEY = "ce.directorPanelOpen";
+  const [directorPanelOpen, setDirectorPanelOpenState] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(DIRECTOR_PANEL_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setDirectorPanelOpen = useCallback(
+    (next: boolean | ((prev: boolean) => boolean)) => {
+      setDirectorPanelOpenState((prev) => {
+        const v = typeof next === "function" ? next(prev) : next;
+        try {
+          window.localStorage.setItem(DIRECTOR_PANEL_KEY, v ? "1" : "0");
+        } catch {
+          /* private mode / quota — toggle fungerer, persistens skippes */
+        }
+        return v;
+      });
+    },
+    [],
+  );
 
   // Claude chat state — separate history per agent
   type ChatMsg = { role: "user" | "assistant"; content: string };
@@ -3939,11 +3963,13 @@ ${ctxLines.join("\n")}`;
                 marginTop: 8,
               }}
             >
-              <DirectorPanel
-                compact
-                showContextPreview
-                contextProvider={directorContextProvider}
-              />
+              <ErrorBoundary label="Director Panel">
+                <DirectorPanel
+                  compact
+                  showContextPreview
+                  contextProvider={directorContextProvider}
+                />
+              </ErrorBoundary>
             </div>
           )}
 
