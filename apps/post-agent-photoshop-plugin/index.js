@@ -1258,6 +1258,73 @@ const COMMANDS = {
     });
   },
 
+  "resolve.pmGetInfo": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "pm.getInfo" });
+  },
+
+  "resolve.pmCreateProject": async ({ name, media_path } = {}) => {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error("name må være en ikke-tom string");
+    }
+    const args = { name };
+    if (typeof media_path === "string" && media_path.length > 0) {
+      args.media_path = media_path;
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "pm.createProject",
+      args,
+      timeout_ms: 60000,
+    });
+  },
+
+  "resolve.pmLoadProject": async ({ name } = {}) => {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error("name må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "pm.loadProject",
+      args: { name },
+      timeout_ms: 60000,
+    });
+  },
+
+  "resolve.pmSaveProject": async () => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "pm.saveProject",
+      timeout_ms: 60000,
+    });
+  },
+
+  "resolve.pmDeleteProject": async ({ name } = {}) => {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error("name må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "pm.deleteProject",
+      args: { name },
+    });
+  },
+
+  "resolve.pmCreateFolder": async ({ name } = {}) => {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error("name må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "pm.createFolder",
+      args: { name },
+    });
+  },
+
+  "resolve.pmNavigateFolder": async ({ to } = {}) => {
+    if (typeof to !== "string" || to.length === 0) {
+      throw new Error("to må være 'root', 'parent' eller folder-navn");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "pm.navigateFolder",
+      args: { to },
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve

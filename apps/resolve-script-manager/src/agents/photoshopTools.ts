@@ -1053,6 +1053,75 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_pm_get_info",
+    description:
+      "Snapshot fra Project Manager: currently loaded project, current PM-folder, projects + subfolders i denne folderen. PM-folders er DATABASE-folders (ulik Media Pool-folders). Én call dekker alt for navigasjon.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_pm_create_project",
+    description:
+      "Opprett nytt Resolve-prosjekt i current PM-folder. Returnerer feil hvis duplikat-navn. media_path er valgfri media-location-path.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        media_path: { type: "string", description: "Valgfri media-location-path." },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_pm_load_project",
+    description:
+      "Last et eksisterende prosjekt fra current PM-folder. Project må finnes i SAMME folder som pm.getInfo viser — navigér først med pm.navigateFolder hvis nødvendig.",
+    input_schema: {
+      type: "object",
+      properties: { name: { type: "string" } },
+      required: ["name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_pm_save_project",
+    description: "Lagre currently loaded prosjekt med eksisterende navn.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_pm_delete_project",
+    description:
+      "Slett prosjekt fra current PM-folder. Kan IKKE slette currently loaded — bytt eller close først. ADVARSEL: irreversibel.",
+    input_schema: {
+      type: "object",
+      properties: { name: { type: "string" } },
+      required: ["name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_pm_create_folder",
+    description:
+      "Opprett ny PM-folder under current PM-folder. Returnerer feil hvis duplikat-navn.",
+    input_schema: {
+      type: "object",
+      properties: { name: { type: "string" } },
+      required: ["name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_pm_navigate_folder",
+    description:
+      "Bytt current PM-folder. 'root' går til root, 'parent' går opp ett nivå, ellers behandles 'to' som folder-navn under nåværende folder (OpenFolder).",
+    input_schema: {
+      type: "object",
+      properties: {
+        to: {
+          type: "string",
+          description: "'root', 'parent', eller folder-navn å åpne.",
+        },
+      },
+      required: ["to"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -1936,6 +2005,44 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         clip_ids: clipIds as string[],
         target_path: input.target_path,
       });
+    }
+    case "photoshop_resolve_pm_get_info":
+      return photoshop.resolvePmGetInfo();
+    case "photoshop_resolve_pm_create_project": {
+      if (typeof input.name !== "string" || input.name.length === 0) {
+        throw new Error("name må være en ikke-tom string");
+      }
+      const params: { name: string; media_path?: string } = { name: input.name };
+      if (typeof input.media_path === "string" && input.media_path.length > 0) {
+        params.media_path = input.media_path;
+      }
+      return photoshop.resolvePmCreateProject(params);
+    }
+    case "photoshop_resolve_pm_load_project": {
+      if (typeof input.name !== "string" || input.name.length === 0) {
+        throw new Error("name må være en ikke-tom string");
+      }
+      return photoshop.resolvePmLoadProject({ name: input.name });
+    }
+    case "photoshop_resolve_pm_save_project":
+      return photoshop.resolvePmSaveProject();
+    case "photoshop_resolve_pm_delete_project": {
+      if (typeof input.name !== "string" || input.name.length === 0) {
+        throw new Error("name må være en ikke-tom string");
+      }
+      return photoshop.resolvePmDeleteProject({ name: input.name });
+    }
+    case "photoshop_resolve_pm_create_folder": {
+      if (typeof input.name !== "string" || input.name.length === 0) {
+        throw new Error("name må være en ikke-tom string");
+      }
+      return photoshop.resolvePmCreateFolder({ name: input.name });
+    }
+    case "photoshop_resolve_pm_navigate_folder": {
+      if (typeof input.to !== "string" || input.to.length === 0) {
+        throw new Error("to må være 'root', 'parent' eller folder-navn");
+      }
+      return photoshop.resolvePmNavigateFolder({ to: input.to });
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();

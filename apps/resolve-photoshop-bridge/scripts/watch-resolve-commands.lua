@@ -1752,6 +1752,151 @@ HANDLERS["folder.create"] = handleFolderCreate
 HANDLERS["folder.moveClips"] = handleFolderMoveClips
 
 -- ---------------------------------------------------------------------------
+-- ProjectManager (database-folders + project CRUD)
+-- ---------------------------------------------------------------------------
+
+-- ProjectManager-folders er DATABASE-folders (ulik Media Pool-folders).
+-- pm:GotoRootFolder, GotoParentFolder, OpenFolder navigerer PM-tre;
+-- vi har ingen vei tilbake til en spesifikk path uten å resolve sti
+-- via gjentatte OpenFolder-call. Holder API enkelt: getInfo gir
+-- snapshot, navigateFolder bytter context.
+
+local function getPM()
+  local resolve = Resolve()
+  if not resolve then error("Resolve-API ikke tilgjengelig") end
+  local pm = resolve:GetProjectManager()
+  if not pm then error("ProjectManager utilgjengelig") end
+  return pm
+end
+
+local function jsonArrayOfStrings(arr)
+  if type(arr) ~= "table" then return "[]" end
+  local parts = {}
+  for _, s in ipairs(arr) do
+    table.insert(parts, jsonEscape(tostring(s)))
+  end
+  return "[" .. table.concat(parts, ",") .. "]"
+end
+
+-- pm.getInfo — snapshot av currently loaded prosjekt + current PM folder
+-- + projects og subfolders i denne folderen. Én call for hele state.
+local function handlePmGetInfo(_args)
+  local pm = getPM()
+  local current = pm:GetCurrentProject()
+  local currentName = current and current:GetName() or ""
+  local folderName = pm:GetCurrentFolder() or ""
+  local projects = pm:GetProjectListInCurrentFolder() or {}
+  -- GetFolderListInCurrentFolder finnes i nyere API; vi sjekker
+  -- defensivt om den finnes for kompat.
+  local folders = {}
+  if pm.GetFolderListInCurrentFolder then
+    folders = pm:GetFolderListInCurrentFolder() or {}
+  end
+  return string.format(
+    '{"current_project":%s,"current_folder":%s,"projects":%s,"subfolders":%s}',
+    jsonEscape(currentName), jsonEscape(folderName),
+    jsonArrayOfStrings(projects), jsonArrayOfStrings(folders)
+  )
+end
+
+local function handlePmCreateProject(args)
+  local pm = getPM()
+  local name = extractString(args, "name")
+  if not name or name == "" then error("name mangler") end
+  local mediaPath = extractString(args, "media_path")
+  local project
+  if mediaPath and mediaPath ~= "" then
+    project = pm:CreateProject(name, mediaPath)
+  else
+    project = pm:CreateProject(name)
+  end
+  if not project then
+    error("CreateProject returnerte nil (kanskje duplikat-navn i current folder?)")
+  end
+  return string.format(
+    '{"created":true,"name":%s,"media_path":%s}',
+    jsonEscape(name), jsonEscape(mediaPath or "")
+  )
+end
+
+local function handlePmLoadProject(args)
+  local pm = getPM()
+  local name = extractString(args, "name")
+  if not name or name == "" then error("name mangler") end
+  local project = pm:LoadProject(name)
+  if not project then error("LoadProject feilet — fant ikke '" .. name .. "' i current PM folder") end
+  return string.format(
+    '{"loaded":true,"name":%s}',
+    jsonEscape(name)
+  )
+end
+
+local function handlePmSaveProject(_args)
+  local pm = getPM()
+  local current = pm:GetCurrentProject()
+  if not current then error("Ingen aktivt prosjekt å lagre") end
+  local ok = pm:SaveProject()
+  return string.format(
+    '{"saved":%s,"name":%s}',
+    tostring(ok), jsonEscape(current:GetName() or "")
+  )
+end
+
+local function handlePmDeleteProject(args)
+  local pm = getPM()
+  local name = extractString(args, "name")
+  if not name or name == "" then error("name mangler") end
+  local ok = pm:DeleteProject(name)
+  return string.format(
+    '{"deleted":%s,"name":%s}',
+    tostring(ok), jsonEscape(name)
+  )
+end
+
+local function handlePmCreateFolder(args)
+  local pm = getPM()
+  local name = extractString(args, "name")
+  if not name or name == "" then error("name mangler") end
+  local ok = pm:CreateFolder(name)
+  return string.format(
+    '{"created":%s,"name":%s}',
+    tostring(ok), jsonEscape(name)
+  )
+end
+
+-- pm.navigateFolder({to: "root" | "parent" | folder_name})
+local function handlePmNavigateFolder(args)
+  local pm = getPM()
+  local to = extractString(args, "to")
+  if not to or to == "" then error("to mangler ('root', 'parent', eller folder-navn)") end
+  local ok
+  local op
+  if to == "root" then
+    ok = pm:GotoRootFolder()
+    op = "root"
+  elseif to == "parent" then
+    ok = pm:GotoParentFolder()
+    op = "parent"
+  else
+    ok = pm:OpenFolder(to)
+    op = "open"
+  end
+  local newFolder = pm:GetCurrentFolder() or ""
+  return string.format(
+    '{"navigated":%s,"op":%s,"to":%s,"current_folder":%s}',
+    tostring(ok), jsonEscape(op), jsonEscape(to), jsonEscape(newFolder)
+  )
+end
+
+HANDLERS["pm.getInfo"] = handlePmGetInfo
+HANDLERS["pm.createProject"] = handlePmCreateProject
+HANDLERS["pm.loadProject"] = handlePmLoadProject
+HANDLERS["pm.saveProject"] = handlePmSaveProject
+HANDLERS["pm.deleteProject"] = handlePmDeleteProject
+HANDLERS["pm.createFolder"] = handlePmCreateFolder
+HANDLERS["pm.navigateFolder"] = handlePmNavigateFolder
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 
