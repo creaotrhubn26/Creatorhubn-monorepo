@@ -34,6 +34,7 @@ import {
   LocalMall as MerchIcon,
   MoveToInbox as InboxIcon,
   MoreHoriz as MoreHorizIcon,
+  Tune as TuneIcon,
   QueryStats as QueryStatsIcon,
   Rocket as RocketIcon,
   Tag as TagIcon,
@@ -301,6 +302,9 @@ export default function RoleRoomAgentDialog({
   const [showMoreResearchDetails, setShowMoreResearchDetails] = useState(false);
   // Footer overflow menu — keeps one clear primary action + secondary ones tucked away.
   const [moreActionsAnchor, setMoreActionsAnchor] = useState<HTMLElement | null>(null);
+  // Admin/debug chrome (role chips, System status) is hidden by default so the
+  // surface reads as a product; a small gear reveals it for admins.
+  const [showAdminChrome, setShowAdminChrome] = useState(false);
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
   // surface and the research forms are actually usable without pinch-
@@ -584,17 +588,21 @@ export default function RoleRoomAgentDialog({
               alignItems="center"
               sx={{ rowGap: 0.6 }}
             >
-              <Tooltip title="Denne testflaten er kun synlig for admin-brukere" disableInteractive>
-                <Chip label="Kun admin" size="small" aria-label="Tilgang: kun admin" sx={{ bgcolor: 'rgba(15,118,110,0.18)', color: '#99f6e4' }} />
-              </Tooltip>
-              <Tooltip title="Rollen agenten kjører som: innholdsprodusent-flyt" disableInteractive>
-                <Chip
-                  label="Innholdsprodusent"
-                  size="small"
-                  aria-label="Rolle: innholdsprodusent"
-                  sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#f0abfc', display: { xs: 'none', sm: 'inline-flex' } }}
-                />
-              </Tooltip>
+              {showAdminChrome ? (
+                <>
+                  <Tooltip title="Denne testflaten er kun synlig for admin-brukere" disableInteractive>
+                    <Chip label="Kun admin" size="small" aria-label="Tilgang: kun admin" sx={{ bgcolor: 'rgba(15,118,110,0.18)', color: '#99f6e4' }} />
+                  </Tooltip>
+                  <Tooltip title="Rollen agenten kjører som: innholdsprodusent-flyt" disableInteractive>
+                    <Chip
+                      label="Innholdsprodusent"
+                      size="small"
+                      aria-label="Rolle: innholdsprodusent"
+                      sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#f0abfc', display: { xs: 'none', sm: 'inline-flex' } }}
+                    />
+                  </Tooltip>
+                </>
+              ) : null}
               <Tooltip title={`Aktivt prosjekt: ${projectName}`} disableInteractive>
                 <Chip
                   label={projectName}
@@ -608,21 +616,34 @@ export default function RoleRoomAgentDialog({
                   }}
                 />
               </Tooltip>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => setSystemStatusOpen(true)}
-                sx={{
-                  textTransform: 'none',
-                  borderColor: 'rgba(148,163,184,0.3)',
-                  color: '#cbd5e1',
-                  fontSize: '0.72rem',
-                  py: 0.2,
-                  '&:hover': { borderColor: '#22d3ee', color: '#22d3ee' },
-                }}
-              >
-                System status
-              </Button>
+              {showAdminChrome ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setSystemStatusOpen(true)}
+                  sx={{
+                    textTransform: 'none',
+                    borderColor: 'rgba(148,163,184,0.3)',
+                    color: '#cbd5e1',
+                    fontSize: '0.72rem',
+                    py: 0.2,
+                    '&:hover': { borderColor: '#22d3ee', color: '#22d3ee' },
+                  }}
+                >
+                  System status
+                </Button>
+              ) : null}
+              <Tooltip title={showAdminChrome ? 'Skjul admin-detaljer' : 'Vis admin-detaljer'} disableInteractive>
+                <IconButton
+                  size="small"
+                  onClick={() => setShowAdminChrome((v) => !v)}
+                  aria-label={showAdminChrome ? 'Skjul admin-detaljer' : 'Vis admin-detaljer'}
+                  data-testid="agent-admin-toggle"
+                  sx={{ color: showAdminChrome ? '#22d3ee' : 'rgba(148,163,184,0.55)' }}
+                >
+                  <TuneIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
             </Stack>
           </Stack>
         </Stack>
