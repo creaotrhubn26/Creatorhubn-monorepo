@@ -724,6 +724,7 @@ import { setupAcademyIntegrationsRoutes } from "./academy-integrations-routes";
 import { setupAcademyMediaAssetsRoutes } from "./academy-media-assets-routes";
 import { setupAcademyCohortSettingsRoutes } from "./academy-cohort-settings-routes";
 import { setupAcademyAdminRoutes } from "./academy-admin-routes";
+import { setupAcademyAnnotationRoutes } from "./academy-annotation-routes";
 import { setupPricingRoutes } from "./pricing-routes";
 import { setupAccountingRoutes } from "./accounting-routes";
 import { setupFileManagementRoutes } from "./file-management-routes";
@@ -40969,7 +40970,7 @@ app.post("/api/academy/curriculum/foundation-assistant", async (req, res) => {
   }
 });
 
-type AcademyAnnotationRecommendationType =
+export type AcademyAnnotationRecommendationType =
   | "hotspot"
   | "callout"
   | "note"
@@ -40978,14 +40979,14 @@ type AcademyAnnotationRecommendationType =
   | "image"
   | "video";
 
-type AcademyAnnotationRecommendationActionType =
+export type AcademyAnnotationRecommendationActionType =
   | "navigate"
   | "showContent"
   | "openLink"
   | "playVideo"
   | "showQuiz";
 
-interface AcademyAnnotationRecommendationItem {
+export interface AcademyAnnotationRecommendationItem {
   type: AcademyAnnotationRecommendationType;
   title: string;
   content: string;
@@ -41365,98 +41366,6 @@ const academyAnnotationTryQwenRecommendations = async (params: {
 
   return null;
 };
-
-app.post("/api/academy/annotation/recommendations", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "instructor"))) {
-      return;
-    }
-    const body = academyPresentationIsRecord(req.body) ? req.body : {};
-    const intent = String(readString(body.intent) || "interactive-lesson")
-      .trim()
-      .toLowerCase();
-    const scope = String(readString(body.scope) || "course")
-      .trim()
-      .toLowerCase();
-    const useNorwegian = readBoolean(body.useNorwegian) === true;
-    const courseTitle = String(readString(body.courseTitle) || "")
-      .trim()
-      .slice(0, 220);
-    const lessonTitle = String(readString(body.lessonTitle) || "")
-      .trim()
-      .slice(0, 220);
-    const summary = String(readString(body.summary) || "")
-      .trim()
-      .slice(0, 7000);
-    const videoDuration = academyPresentationClamp(
-      Number(readNumber(body.videoDuration) || 300),
-      20,
-      7200,
-    );
-    const maxItems = academyPresentationClamp(
-      Number(readNumber(body.maxItems) || 6),
-      1,
-      10,
-    );
-    const provider = String(
-      readString(body.provider) ||
-        readString(process.env.ACADEMY_ANNOTATION_RECOMMENDATION_PROVIDER) ||
-        "qwen",
-    )
-      .trim()
-      .toLowerCase();
-
-    const shouldTryQwen =
-      provider === "qwen" || provider === "huggingface" || provider === "hf";
-    const llmResult = shouldTryQwen
-      ? await academyAnnotationTryQwenRecommendations({
-          intent,
-          scope,
-          useNorwegian,
-          videoDuration,
-          maxItems,
-          courseTitle,
-          lessonTitle,
-          summary,
-        })
-      : null;
-
-    const fallback = academyAnnotationFallbackRecommendations({
-      intent,
-      useNorwegian,
-      videoDuration,
-    }).slice(0, maxItems);
-
-    const recommendations = llmResult?.recommendations?.length
-      ? llmResult.recommendations
-      : fallback;
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        intent,
-        scope,
-        recommendations,
-        meta: {
-          provider: llmResult ? "qwen" : "heuristic",
-          model: llmResult?.model || undefined,
-          generatedAt: new Date().toISOString(),
-          videoDuration,
-          maxItems,
-        },
-      },
-    });
-  } catch (error) {
-    console.error(
-      "Error generating academy annotation recommendations:",
-      error,
-    );
-    return res.status(500).json({
-      success: false,
-      error: "Could not generate annotation recommendations",
-    });
-  }
-});
 
 interface AcademyPresentationSemanticSearchItem {
   id: string;
@@ -65721,6 +65630,14 @@ setupAcademyAdminRoutes({
   buildAdminRoleEntry,
   formatAdminUserIdentity,
   getAdminAcademyRevenueSnapshot,
+});
+setupAcademyAnnotationRoutes({
+  app,
+  requireAcademySession,
+  academyPresentationIsRecord,
+  academyPresentationClamp,
+  academyAnnotationFallbackRecommendations,
+  academyAnnotationTryQwenRecommendations,
 });
 // NB: setupSongflowDeprecatedAliasesRoutes wires later (etter handler-
 // deklarasjoner ~linje 70324). Trivielle deprecation-aliases krever at
