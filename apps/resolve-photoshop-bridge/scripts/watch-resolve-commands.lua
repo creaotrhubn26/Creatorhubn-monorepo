@@ -369,6 +369,72 @@ local function handleTimelineSmartReframe(args)
   )
 end
 
+-- timeline.getCurrentItem — refs på currently selected video item
+local function handleTimelineGetCurrentItem(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local item = timeline:GetCurrentVideoItem()
+  if not item then return '{"found":false}' end
+  local mpi = item:GetMediaPoolItem()
+  return string.format(
+    '{"found":true,"name":%s,"start_frame":%d,"end_frame":%d,"duration_frames":%d,"media_pool_item_id":%s,"clip_name":%s}',
+    jsonEscape(item:GetName() or ""),
+    item:GetStart() or 0,
+    item:GetEnd() or 0,
+    item:GetDuration() or 0,
+    jsonEscape(mpi and (mpi:GetUniqueId() or "") or ""),
+    jsonEscape(mpi and (mpi:GetClipProperty("Clip Name") or "") or "")
+  )
+end
+
+-- magicMask.create — auto-mask av objekt på CURRENT video item.
+-- mode: "F" forward, "B" backward, "BI" bidirectional. Krever
+-- modeller nedlastet i Resolve → Preferences → AI.
+local function handleMagicMaskCreate(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local item = timeline:GetCurrentVideoItem()
+  if not item then error("Ingen valgt video-item — velg en klipp på timeline først") end
+  local mode = extractString(args, "mode") or "BI"
+  if mode ~= "F" and mode ~= "B" and mode ~= "BI" then
+    error("mode må være F (forward), B (backward), eller BI (bidirectional)")
+  end
+  local ok = item:CreateMagicMask(mode)
+  return string.format(
+    '{"item_name":%s,"mode":%s,"success":%s}',
+    jsonEscape(item:GetName() or ""), jsonEscape(mode), tostring(ok)
+  )
+end
+
+-- magicMask.regenerate — re-trigger eksisterende mask på CURRENT item
+local function handleMagicMaskRegenerate(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local item = timeline:GetCurrentVideoItem()
+  if not item then error("Ingen valgt video-item") end
+  local ok = item:RegenerateMagicMask()
+  return string.format(
+    '{"item_name":%s,"success":%s}',
+    jsonEscape(item:GetName() or ""), tostring(ok)
+  )
+end
+
+-- dolbyVision.analyze — kjør Dolby Vision-analyse på alle items eller current
+local function handleDolbyVisionAnalyze(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  -- Tom liste = alle items. For V1 sender vi tom.
+  local ok = timeline:AnalyzeDolbyVision({})
+  return string.format(
+    '{"timeline":%s,"success":%s,"scope":"all_items"}',
+    jsonEscape(timeline:GetName() or ""), tostring(ok)
+  )
+end
+
 local HANDLERS = {
   ["quickExport.list"] = handleQuickExportList,
   ["quickExport.run"] = handleQuickExportRun,
@@ -382,6 +448,10 @@ local HANDLERS = {
   ["speech.generate"] = handleSpeechGenerate,
   ["slate.analyze"] = handleSlateAnalyze,
   ["timeline.smartReframe"] = handleTimelineSmartReframe,
+  ["timeline.getCurrentItem"] = handleTimelineGetCurrentItem,
+  ["magicMask.create"] = handleMagicMaskCreate,
+  ["magicMask.regenerate"] = handleMagicMaskRegenerate,
+  ["dolbyVision.analyze"] = handleDolbyVisionAnalyze,
 }
 
 -- ---------------------------------------------------------------------------

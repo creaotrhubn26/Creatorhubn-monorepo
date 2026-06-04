@@ -312,6 +312,35 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "photoshop_resolve_timeline_get_current_item",
+    description:
+      "Hent referanse til CURRENTLY SELECTED video-klipp på timeline. Returnerer name, frame-range, duration og MediaPoolItem-id. Brukes FØR magic-mask-operasjoner som krever et valgt item.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_magic_mask_create",
+    description:
+      "Resolve 21 AI Magic Mask: auto-mask av et hovedobjekt på CURRENTLY SELECTED video-item. mode: 'F' forward-tracking (kun fremover fra playhead), 'B' backward, 'BI' bidirectional (default). Krever AI Magic Mask-modell nedlastet. Bruk dette i stedet for Photoshop selection.fromMask når masken skal følge bevegelse over flere frames.",
+    input_schema: {
+      type: "object",
+      properties: {
+        mode: { type: "string", enum: ["F", "B", "BI"], description: "Default 'BI' (bidirectional)" },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_magic_mask_regenerate",
+    description:
+      "Re-trigger eksisterende Magic Mask på CURRENTLY SELECTED video-item. Brukes etter at brukeren har justert mask-control-punkter manuelt og vil at AI'en skal regenerere.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_dolby_vision_analyze",
+    description:
+      "Resolve 21: Analyser Dolby Vision-metadata på alle items i current timeline. Brukes for HDR-leveranser. Krever Resolve Studio + Dolby Vision-lisens.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -766,6 +795,16 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
       });
     case "photoshop_resolve_timeline_smart_reframe":
       return photoshop.resolveTimelineSmartReframe();
+    case "photoshop_resolve_timeline_get_current_item":
+      return photoshop.resolveTimelineGetCurrentItem();
+    case "photoshop_resolve_magic_mask_create":
+      return photoshop.resolveMagicMaskCreate(
+        input.mode as "F" | "B" | "BI" | undefined,
+      );
+    case "photoshop_resolve_magic_mask_regenerate":
+      return photoshop.resolveMagicMaskRegenerate();
+    case "photoshop_resolve_dolby_vision_analyze":
+      return photoshop.resolveDolbyVisionAnalyze();
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
     case "photoshop_resolve_export_back":

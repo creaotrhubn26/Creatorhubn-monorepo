@@ -679,6 +679,37 @@ const COMMANDS = {
     });
   },
 
+  "resolve.timelineGetCurrentItem": async () => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "timeline.getCurrentItem",
+      args: {},
+    });
+  },
+
+  "resolve.magicMaskCreate": async ({ mode } = {}) => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "magicMask.create",
+      args: { mode: mode || "BI" },
+      timeout_ms: 180000,
+    });
+  },
+
+  "resolve.magicMaskRegenerate": async () => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "magicMask.regenerate",
+      args: {},
+      timeout_ms: 180000,
+    });
+  },
+
+  "resolve.dolbyVisionAnalyze": async () => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "dolbyVision.analyze",
+      args: {},
+      timeout_ms: 300000,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
