@@ -533,7 +533,7 @@ export default function RoleRoomFeedPlannerPanel({
       {platform === 'linkedin' ? <LinkedInConnectionCard projectId={projectId} /> : null}
       {platform === 'tiktok' ? <TikTokConnectionCard projectId={projectId} /> : null}
 
-      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap sx={{ rowGap: 0.8 }}>
         <Stack direction="row" spacing={1} alignItems="center">
           <Typography sx={{ color: 'rgba(226,232,240,0.68)', fontSize: '0.82rem' }}>
             {posts.length} forslag
@@ -546,7 +546,7 @@ export default function RoleRoomFeedPlannerPanel({
             lastSavedAt={lastSavedAt}
           />
         </Stack>
-        <Stack direction="row" spacing={0.6}>
+        <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ rowGap: 0.6 }}>
           {isAdmin ? (
             <Button
               size="small"
@@ -654,7 +654,7 @@ export default function RoleRoomFeedPlannerPanel({
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 440px) minmax(0, 1fr)' },
+          gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 360px) minmax(0, 1fr)' },
           gap: 1.8,
           alignItems: 'flex-start',
         }}
@@ -735,7 +735,7 @@ export default function RoleRoomFeedPlannerPanel({
               <Stack
                 spacing={0.8}
                 sx={{
-                  display: { xs: 'none', lg: 'flex' },
+                  display: { xs: 'none', md: 'flex' },
                   p: 2.4,
                   borderRadius: 2.5,
                   border: '1px dashed rgba(148,163,184,0.22)',
@@ -965,9 +965,9 @@ function InstagramPhoneMockup({
       sx={{
         mx: 'auto',
         width: '100%',
-        maxWidth: 420,
+        maxWidth: { xs: '100%', sm: 360, md: 420 },
         borderRadius: 4,
-        border: '10px solid #0b1220',
+        border: { xs: '6px solid #0b1220', sm: '10px solid #0b1220' },
         bgcolor: '#000',
         boxShadow: '0 24px 48px rgba(0,0,0,0.45)',
         overflow: 'hidden',
