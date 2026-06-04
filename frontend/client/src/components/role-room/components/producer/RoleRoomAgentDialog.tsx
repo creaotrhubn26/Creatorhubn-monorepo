@@ -1001,8 +1001,8 @@ export default function RoleRoomAgentDialog({
             <Stack spacing={1.2}>
               <Alert severity={brregVerified ? 'success' : 'info'}>
                 {brregVerified
-                  ? `Vi har nå hentet all tilgjengelig offentlig informasjon om kunden fra Brønnøysundregistrene. Ønsker du å opprette et prosjekt på ${result.companyProfile.companyName}?`
-                  : brregCompany?.statusMessage || 'Agenten har laget et kundeutkast. Brreg-data er ikke verifisert for denne analysen.'}
+                  ? `✓ Bekreftet i offentlige registre. Klar til å lagre ${result.companyProfile.companyName} som prosjekt — klikk «Bruk forslag» nederst.`
+                  : brregCompany?.statusMessage || 'Utkastet er klart. (Ikke bekreftet mot offentlige registre for denne kunden.)'}
               </Alert>
 
               {/* Multi-turn refinement: user tells the agent "actually X" and
@@ -1019,7 +1019,7 @@ export default function RoleRoomAgentDialog({
               >
                 <Stack spacing={0.85}>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>
-                    Forfin utkastet
+                    Be om en endring
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.82rem', lineHeight: 1.5 }}>
                     Ikke helt treff? Fortell agenten hva som er feil, så genererer den på nytt
@@ -1074,7 +1074,7 @@ export default function RoleRoomAgentDialog({
                         '&:hover': { bgcolor: 'rgba(34,211,238,1)' },
                       }}
                     >
-                      {generating ? 'Forfiner…' : 'Forfin'}
+                      {generating ? 'Endrer…' : 'Send endring'}
                     </Button>
                   </Stack>
                 </Stack>
@@ -1191,7 +1191,7 @@ export default function RoleRoomAgentDialog({
                 >
                   <Stack spacing={0.9}>
                     <Stack direction="row" spacing={0.9} alignItems="center" justifyContent="space-between">
-                      <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Kundeprofil</Typography>
+                      <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Om kunden</Typography>
                       <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap justifyContent="flex-end">
                         {providerLabel ? (
                           <Chip label={providerLabel} size="small" sx={{ bgcolor: 'rgba(34,211,238,0.12)', color: '#a5f3fc' }} />
@@ -1467,7 +1467,7 @@ export default function RoleRoomAgentDialog({
                   <Stack spacing={1}>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} alignItems={{ md: 'center' }} justifyContent="space-between">
                       <Box>
-                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Konkurrentanalyse og markedsføring</Typography>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Hvem konkurrerer kunden mot?</Typography>
                         <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem', lineHeight: 1.5 }}>
                           {competitorAnalysis.marketContext}
                         </Typography>
@@ -1673,7 +1673,7 @@ export default function RoleRoomAgentDialog({
                   <Stack spacing={1}>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} alignItems={{ md: 'center' }} justifyContent="space-between">
                       <Box>
-                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Lokal synlighet og event</Typography>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Lokale muligheter</Typography>
                         <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem', lineHeight: 1.5 }}>
                           {localPresencePlan.industryContext} · {localPresencePlan.marketArea}
                         </Typography>
