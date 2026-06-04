@@ -355,10 +355,10 @@ export default function MarketingPlanPanel({
       >
         <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.1rem' }}>
-            Marketing Plan Engine
+            Markedsplan
           </Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem', mt: 0.2 }}>
-            Content pillars, kanalstrategi, KPI-mål og 30-dagers handlingsplan — generert fra research + feed-planner.
+            Jeg lager en komplett plan for kunden — temaer å poste om, hvilke kanaler, mål, og en 30-dagers plan — basert på det vi fant i Research.
           </Typography>
         </Box>
         <Tooltip
@@ -366,7 +366,7 @@ export default function MarketingPlanPanel({
             plan?.status === 'active'
               ? 'Planen er aktivert og låst. Arkivér den først for å generere en ny.'
               : !readiness?.ready
-                ? 'Fyll ut readiness-feltene først'
+                ? 'Fullfør Research først, så kan jeg lage planen.'
                 : ''
           }
         >
@@ -466,30 +466,8 @@ export default function MarketingPlanPanel({
                 label={`${plan.horizonDays} dager`}
                 sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#a5f3fc' }}
               />
-              {plan.generatedWithModel ? (
-                <Chip
-                  size="small"
-                  label={plan.generatedWithModel}
-                  sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: 'rgba(226,232,240,0.78)' }}
-                />
-              ) : null}
-              {/* #146 / #147 — token-bruk + NOK-kostnad badge */}
-              {plan.strategy?.usage ? (
-                <Tooltip
-                  title={`Input ${plan.strategy.usage.inputTokens.toLocaleString('nb-NO')} + Output ${plan.strategy.usage.outputTokens.toLocaleString('nb-NO')} tokens${plan.strategy.usage.cacheReadInputTokens ? ` (cache-read ${plan.strategy.usage.cacheReadInputTokens.toLocaleString('nb-NO')})` : ''}`}
-                >
-                  <Chip
-                    size="small"
-                    label={`${((plan.strategy.usage.inputTokens + plan.strategy.usage.outputTokens) / 1000).toFixed(1)}k tok${plan.strategy.usage.costNok !== null ? ` · kr ${plan.strategy.usage.costNok.toFixed(2)}` : ''}`}
-                    sx={{
-                      bgcolor: 'rgba(99,102,241,0.14)',
-                      color: '#c7d2fe',
-                      fontFamily: 'monospace',
-                      fontWeight: 700,
-                    }}
-                  />
-                </Tooltip>
-              ) : null}
+              {/* Model name + token/cost telemetry removed from the user-facing
+                  card (internal noise); cost is still tracked server-side. */}
             </Stack>
             <Stack direction="row" spacing={0.6} alignItems="center">
               {/* #137 / #139 — eksport-knapper, alltid synlige uavhengig av status. */}
