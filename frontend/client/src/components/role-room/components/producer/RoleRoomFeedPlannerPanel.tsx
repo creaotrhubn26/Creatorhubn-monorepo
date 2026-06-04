@@ -538,13 +538,15 @@ export default function RoleRoomFeedPlannerPanel({
           <Typography sx={{ color: 'rgba(226,232,240,0.68)', fontSize: '0.82rem' }}>
             {posts.length} forslag
           </Typography>
-          <SaveStatusBadge
-            loading={loadingPlan}
-            saving={saving}
-            dirty={dirty}
-            error={saveError}
-            lastSavedAt={lastSavedAt}
-          />
+          <Box role="status" aria-live="polite">
+            <SaveStatusBadge
+              loading={loadingPlan}
+              saving={saving}
+              dirty={dirty}
+              error={saveError}
+              lastSavedAt={lastSavedAt}
+            />
+          </Box>
         </Stack>
         <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ rowGap: 0.6 }}>
           {isAdmin ? (
@@ -671,6 +673,13 @@ export default function RoleRoomFeedPlannerPanel({
               height={420}
               sx={{ maxWidth: 420, borderRadius: 4, bgcolor: 'rgba(34,211,238,0.08)' }}
             />
+          </Stack>
+        ) : posts.length === 0 ? (
+          <Stack alignItems="center" spacing={1.2} sx={{ py: 6, px: 2, textAlign: 'center' }}>
+            <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>Ingen poster ennå</Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.86rem', maxWidth: 360 }}>
+              Klikk «Regenerer alle forslag» over for å la agenten lage et feed-utkast fra kundeprofilen.
+            </Typography>
           </Stack>
         ) : (
           <motion.div
