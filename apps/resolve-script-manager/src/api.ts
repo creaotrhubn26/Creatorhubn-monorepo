@@ -100,6 +100,21 @@ export async function saveDemoRecording(
   return invoke<string>("save_demo_recording", { projectId, sceneId, dataBase64 });
 }
 
+/** Skriv ren tekst (f.eks. .srt) til en bruker-valgt sti. Returnerer stien. */
+export async function demoWriteText(path: string, contents: string): Promise<string> {
+  return invoke<string>("demo_write_text", { path, contents });
+}
+
+/** Skriv binærfil (f.eks. PNG) fra base64/dataURL til en sti. Returnerer stien. */
+export async function demoWriteBinary(path: string, base64Data: string): Promise<string> {
+  return invoke<string>("demo_write_binary", { path, base64Data });
+}
+
+/** Åpne manus-HTML i et print-vindu (→ «Lagre som PDF»). */
+export async function demoPrintHtml(html: string): Promise<void> {
+  return invoke<void>("demo_print_html", { html });
+}
+
 export interface EmbedCheck { embeddable: boolean; reason: string }
 
 /** Sjekk om en URL kan vises i en <iframe> (X-Frame-Options/CSP). Fail-open. */

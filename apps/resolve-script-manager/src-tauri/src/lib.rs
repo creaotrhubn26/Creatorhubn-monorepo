@@ -9,6 +9,7 @@ mod folder_watcher;
 mod history;
 mod capture_sources;
 mod demo_capture;
+mod demo_export;
 mod demo_recording;
 mod media_probe;
 mod mockup_render;
@@ -916,6 +917,9 @@ pub fn run() {
             demo_capture::start_demo_capture,
             demo_capture::demo_capture_step,
             demo_capture::demo_capture_done,
+            demo_export::demo_write_text,
+            demo_export::demo_write_binary,
+            demo_export::demo_print_html,
             capture_sources::list_capture_sources,
             capture_sources::record_avfoundation,
             capture_sources::record_simulator,

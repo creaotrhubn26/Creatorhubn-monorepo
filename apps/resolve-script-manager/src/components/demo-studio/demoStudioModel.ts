@@ -329,6 +329,10 @@ export function validateScene(s: DemoScene): { ready: boolean; issues: string[] 
   return { ready: issues.length === 0, issues };
 }
 
+export const DEVICE_LABELS: Record<DemoDevice, string> = {
+  macbook: 'MacBook', ipad: 'iPad', iphone: 'iPhone',
+};
+
 export function viewportForDevice(device: DemoDevice): DemoViewport {
   return device === 'macbook' ? 'desktop' : device === 'ipad' ? 'tablet' : 'mobile';
 }

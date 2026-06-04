@@ -12,12 +12,13 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { mockupRenderVideo, onScriptEvent, cancelScript } from '../../api';
+import { mockupRenderVideo, onScriptEvent, cancelScript, demoWriteText, demoWriteBinary, demoPrintHtml } from '../../api';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { openPath } from '@tauri-apps/plugin-opener';
-import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
+import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { useDemoStudio } from './demoStudioStore';
 import { totalDuration } from './demoStudioModel';
+import { buildSrt, buildScriptHtml, renderThumbnail } from './demoStudioExports';
 
 const C = {
   navBg: '#1c1a18', bg: '#f6f3ee', panel: '#ffffff', cream: '#faf7f2', line: '#eae5dd',
@@ -49,7 +50,7 @@ const TOGGLES: ToggleDef[] = [
   { key: 'music', label: 'Bakgrunnsmusikk', def: false },
 ];
 // Funksjoner som ennå ikke er koblet — vises som «(kommer)», ikke som aktive brytere.
-const COMING_SOON = ['Undertekster (fra manus)', 'Vis cursor', 'Overlays / callouts'];
+const COMING_SOON = ['Vis cursor i video', 'Overlays / callouts i video'];
 
 export function ExportView() {
   const { project } = useDemoStudio();
@@ -65,6 +66,7 @@ export function ExportView() {
   const [resultPath, setResultPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [musicPath, setMusicPath] = useState<string | null>(null);
+  const [fileMsg, setFileMsg] = useState<string | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const runIdRef = useRef<string | null>(null);
   const resultRef = useRef<string | null>(null); // unngå stale closure i finally
@@ -80,6 +82,35 @@ export function ExportView() {
     const id = runIdRef.current;
     if (id) { try { await cancelScript(id); } catch { /* ignore */ } }
     setStatusLabel('Avbryter…');
+  };
+
+  const safeName = () => (project?.name || 'demo').replace(/[^\w-]+/g, '_');
+
+  const exportSrt = async () => {
+    if (!project) return;
+    setFileMsg(null);
+    const path = await saveFileDialog({ defaultPath: `${safeName()}.srt`, filters: [{ name: 'SubRip', extensions: ['srt'] }] });
+    if (typeof path !== 'string') return;
+    try { const p = await demoWriteText(path, buildSrt(project.scenes)); setFileMsg(`✓ Undertekster lagret: ${p}`); void openPath(p).catch(() => {}); }
+    catch (e) { setFileMsg('Feil ved lagring av .srt: ' + String(e)); }
+  };
+
+  const exportScriptPdf = async () => {
+    if (!project) return;
+    setFileMsg(null);
+    try { await demoPrintHtml(buildScriptHtml(project)); setFileMsg('Manus åpnet i eget vindu — velg «Lagre som PDF» i utskriftsdialogen.'); }
+    catch (e) { setFileMsg('Feil ved manus-PDF: ' + String(e)); }
+  };
+
+  const exportThumbnail = async () => {
+    if (!project) return;
+    setFileMsg(null);
+    const dataUrl = renderThumbnail(project, format);
+    if (!dataUrl) { setFileMsg('Kunne ikke tegne thumbnail.'); return; }
+    const path = await saveFileDialog({ defaultPath: `${safeName()}-thumbnail.png`, filters: [{ name: 'PNG', extensions: ['png'] }] });
+    if (typeof path !== 'string') return;
+    try { const p = await demoWriteBinary(path, dataUrl); setFileMsg(`✓ Thumbnail lagret: ${p}`); void openPath(p).catch(() => {}); }
+    catch (e) { setFileMsg('Feil ved thumbnail: ' + String(e)); }
   };
 
   if (!project) return <div style={{ padding: 40, fontFamily: C.font, color: C.inkSoft }}>Opprett en demo først.</div>;
@@ -195,6 +226,19 @@ export function ExportView() {
           </div>
         </Section>
 
+        {/* Leveranser (tekst & bilde) — utenom video-renderen */}
+        <Section label="Leveranser (tekst & bilde)">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            <button style={{ ...outlineBtn }} onClick={() => void exportSrt()}>Undertekster (.srt)</button>
+            <button style={{ ...outlineBtn }} onClick={() => void exportScriptPdf()}>Manus (PDF)</button>
+            <button style={{ ...outlineBtn }} onClick={() => void exportThumbnail()}>Thumbnail (PNG)</button>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11.5, color: C.inkFaint }}>
+            .srt fra manus + varigheter · Manus åpnes i print-vindu (lagre som PDF) · Thumbnail i valgt format.
+          </div>
+          {fileMsg && <div style={{ marginTop: 8, fontSize: 12, color: fileMsg.startsWith('Feil') ? C.red : C.green, wordBreak: 'break-all' }}>{fileMsg}</div>}
+        </Section>
+
         {/* Eksport-knapp + progress */}
         <div style={{ marginTop: 28, borderTop: `1px solid ${C.line}`, paddingTop: 20 }}>
           {!canExport && (
@@ -241,7 +285,6 @@ export function ExportView() {
           ['30-sek LinkedIn-cut', '1:1 · kort'],
           ['15-sek teaser', '9:16 · vertikal'],
           ['Tutorial-versjon', '16:9 · m/ steg'],
-          ['Subtitle-fil (.srt)', 'fra manus'],
         ].map(([t, s]) => (
           <div key={t} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px', marginBottom: 8, opacity: 0.7 }}>
             <div style={{ fontSize: 12.5, fontWeight: 600 }}>{t}</div>
