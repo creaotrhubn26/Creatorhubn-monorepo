@@ -726,6 +726,7 @@ import { setupAcademyCohortSettingsRoutes } from "./academy-cohort-settings-rout
 import { setupAcademyAdminRoutes } from "./academy-admin-routes";
 import { setupAcademyAnnotationRoutes } from "./academy-annotation-routes";
 import { setupAcademyCurriculumRoutes } from "./academy-curriculum-routes";
+import { setupAcademyPresentationCritiqueRoutes } from "./academy-presentation-critique-routes";
 import { setupPricingRoutes } from "./pricing-routes";
 import { setupAccountingRoutes } from "./accounting-routes";
 import { setupFileManagementRoutes } from "./file-management-routes";
@@ -31705,7 +31706,7 @@ async function ensureInviteRequestAccessProvisioning(
   };
 }
 
-type AcademyPresentationScope = "course" | "skill";
+export type AcademyPresentationScope = "course" | "skill";
 type AcademyPresentationTemplateId =
   | "product-overview"
   | "walkthrough"
@@ -32940,7 +32941,7 @@ interface AcademyPresentationTemplateMemoryMeta {
   matchedCount: number;
 }
 
-interface AcademyPresentationBrandContext {
+export interface AcademyPresentationBrandContext {
   name: string;
   primary: string;
   secondary: string;
@@ -32964,7 +32965,7 @@ type AcademyPresentationCritiqueCategory =
   | "narrative"
   | "brand";
 
-interface AcademyPresentationCritiqueFinding {
+export interface AcademyPresentationCritiqueFinding {
   id: string;
   slideId?: string;
   severity: AcademyPresentationCritiqueSeverity;
@@ -32978,7 +32979,7 @@ interface AcademyPresentationCritiqueFinding {
   confidence: number;
 }
 
-interface AcademyPresentationCritiqueSlideInput {
+export interface AcademyPresentationCritiqueSlideInput {
   slideId: string;
   title: string;
   visualType: AcademyPresentationVisualType;
@@ -32990,7 +32991,7 @@ interface AcademyPresentationCritiqueSlideInput {
   visualNeeds: SharedAcademyPresentationVisualNeed[];
 }
 
-interface AcademyPresentationCritiqueResult {
+export interface AcademyPresentationCritiqueResult {
   provider: "huggingface" | "heuristic";
   model: string;
   overall: number;
@@ -35062,91 +35063,6 @@ const academyPresentationTryHuggingFaceCritique = async (params: {
 
   return null;
 };
-
-app.post("/api/academy/presentation/critique", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "instructor"))) {
-      return;
-    }
-    const body = academyPresentationIsRecord(req.body) ? req.body : {};
-    const scope: AcademyPresentationScope =
-      readString(body.scope) === "skill" ? "skill" : "course";
-    const projectTemplateId = String(
-      readString(body.projectTemplateId) || "",
-    ).toLowerCase();
-    const useNorwegian = readBoolean(body.useNorwegian) === true;
-    const deckName =
-      String(readString(body.deckName) || "").trim() || "Presentation";
-    const brandContext = academyPresentationNormalizeBrandContext(
-      body.brandContext,
-    );
-    const slides = Array.isArray(body.slides)
-      ? body.slides
-          .map((entry, index) =>
-            academyPresentationNormalizeCritiqueSlideInput(entry, index),
-          )
-          .filter((entry): entry is AcademyPresentationCritiqueSlideInput =>
-            Boolean(entry),
-          )
-          .slice(0, 16)
-      : [];
-
-    if (slides.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "slides is required",
-      });
-    }
-
-    const heuristic = academyPresentationBuildHeuristicCritique({
-      slides,
-      useNorwegian,
-      brandContext,
-    });
-    const critique =
-      (await academyPresentationTryHuggingFaceCritique({
-        slides,
-        deckName,
-        scope,
-        projectTemplateId,
-        useNorwegian,
-        brandContext,
-        heuristic,
-      })) || heuristic;
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        scope,
-        deckName,
-        provider: critique.provider,
-        model: critique.model,
-        overall: critique.overall,
-        narrative: critique.narrative,
-        pedagogy: critique.pedagogy,
-        design: critique.design,
-        visuals: critique.visuals,
-        brand: critique.brand,
-        findings: critique.findings,
-        generatedAt: new Date().toISOString(),
-        pipeline:
-          critique.provider === "huggingface"
-            ? [
-                "heuristic-baseline",
-                "qwen-vl-critique",
-                "text-fallback-if-needed",
-              ]
-            : ["heuristic-baseline"],
-      },
-    });
-  } catch (error) {
-    console.error("Error generating academy presentation critique:", error);
-    return res.status(500).json({
-      success: false,
-      error: "Could not critique presentation deck",
-    });
-  }
-});
 
 type AcademyCurriculumFoundationQuestionId =
   | "competencyTopic"
@@ -65547,6 +65463,15 @@ setupAcademyCurriculumRoutes({
   academyCurriculumShouldResetCurrentArchitecture,
   academyCurriculumBuildFoundationFallback,
   academyCurriculumTryQwenFoundationAssistant,
+});
+setupAcademyPresentationCritiqueRoutes({
+  app,
+  requireAcademySession,
+  academyPresentationIsRecord,
+  academyPresentationNormalizeBrandContext,
+  academyPresentationNormalizeCritiqueSlideInput,
+  academyPresentationBuildHeuristicCritique,
+  academyPresentationTryHuggingFaceCritique,
 });
 // NB: setupSongflowDeprecatedAliasesRoutes wires later (etter handler-
 // deklarasjoner ~linje 70324). Trivielle deprecation-aliases krever at
