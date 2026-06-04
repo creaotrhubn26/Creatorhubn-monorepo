@@ -637,17 +637,21 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
           );
           if ((dup.rowCount ?? 0) > 0) continue;
 
+          // image_url er Worker-proxy-stien — Vercel rewrite ruter
+          // /api/showcase/cdn/* → showcase-cdn.creatorhubn.workers.dev
+          const proxyUrl = `/api/showcase/cdn/${accessToken}/${itemId}`;
           await pool.query(
             `INSERT INTO client_gallery_images
-               (id, gallery_id, image_url, thumbnail_url, original_filename,
-                image_metadata)
-             VALUES ($1, $2, $3, $3, $4, $5::jsonb)`,
+               (id, gallery_id, photographer_id, image_title,
+                thumbnail_url, full_size_url, image_metadata,
+                is_visible)
+             VALUES ($1, $2, $3, $4, $5, $5, $6::jsonb, true)`,
             [
               itemId,
               galleryId,
-              // Vil bli proxyet av Cloudflare Worker
-              `/api/showcase/cdn/${accessToken}/${itemId}`,
+              session.userId,
               filename,
+              proxyUrl,
               JSON.stringify({
                 b2ProviderId: item.cloud_provider_id,
                 b2BucketId: item.cloud_bucket_id,
@@ -671,7 +675,8 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
         success: true,
         gallery_id: galleryId,
         access_token: accessToken,
-        gallery_url: `/gallery/${accessToken}`,
+        // Matcher routen i frontend App.tsx (/client/gallery/:accessToken)
+        gallery_url: `/client/gallery/${accessToken}`,
         delivered: inserted,
         skipped: items.length - inserted,
         created_new_gallery: createdNew,
