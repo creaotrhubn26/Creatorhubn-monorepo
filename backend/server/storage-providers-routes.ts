@@ -578,7 +578,7 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
           .randomBytes(24)
           .toString('base64url')
           .slice(0, 32)}`;
-        galleryId = `pcg_${crypto.randomUUID()}`;
+        galleryId = crypto.randomUUID();
         try {
           await pool.query(
             `INSERT INTO photographer_client_galleries
@@ -624,7 +624,7 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
         }
         const fileName = match[1];
         const filename = item.source_path.split('/').pop() ?? item.source_path;
-        const itemId = `pci_${crypto.randomUUID()}`;
+        const itemId = crypto.randomUUID();
 
         try {
           // Sjekk for eksisterende item med samme b2-fileName i denne galleri
