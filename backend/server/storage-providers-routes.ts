@@ -418,15 +418,449 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
         }
       }
 
+      // C: Unified erasure — slett OGSÅ tilhørende UniversalShowcase-
+      // gallerier + items koblet til samme prosjekt-id. Bridge bruker
+      // gallery_settings.ditProjectId som dedupe-key.
+      let showcaseDeleted = 0;
+      try {
+        const showcaseRes = await pool.query<{ id: string }>(
+          `DELETE FROM photographer_client_galleries
+            WHERE photographer_id = $1
+              AND gallery_settings ->> 'ditProjectId' = $2
+            RETURNING id`,
+          [session.userId, projectId],
+        );
+        showcaseDeleted = showcaseRes.rowCount ?? 0;
+        for (const row of showcaseRes.rows) {
+          await pool
+            .query(
+              `INSERT INTO gdpr_deletion_audit
+                 (user_id, project_id, provider_id, file_name, file_id, reason)
+               VALUES ($1, $2, $3, $4, NULL, $5)`,
+              [
+                session.userId,
+                projectId,
+                providerId,
+                `showcase-gallery:${row.id}`,
+                `${reason} + showcase`,
+              ],
+            )
+            .catch(() => {});
+        }
+      } catch (err: any) {
+        console.error('[storage-providers] showcase-deletion failed:', err?.message || err);
+      }
+
       return res.json({
         success: true,
         deleted,
         failed,
         total: jobs.rows.length,
+        showcase_galleries_deleted: showcaseDeleted,
         errors: errors.slice(0, 10),
       });
     },
   );
+
+  // B: POST /api/dit/projects/:projectId/deliver-to-showcase
+  // Oppretter (eller gjenoppretter) en photographer_client_gallery for
+  // klienten + insert client_gallery_images-rader med b2Source-metadata.
+  // INGEN bytes flyttes — Cloudflare Worker generer signed B2-URL
+  // just-in-time per request via /api/showcase/items/:id/sign-url.
+  app.post(
+    '/api/dit/projects/:projectId/deliver-to-showcase',
+    async (req, res) => {
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const projectId = String(req.params.projectId || '').trim();
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const clientName = String(body.client_name ?? '').trim();
+      const clientEmail = String(body.client_email ?? '').trim().toLowerCase();
+      const galleryLabel = String(body.gallery_label ?? '').trim();
+      const sourcePaths = Array.isArray(body.source_paths)
+        ? (body.source_paths as unknown[]).map((p) => String(p)).filter(Boolean)
+        : [];
+
+      if (!projectId || !clientName || !clientEmail || sourcePaths.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'projectId, client_name, client_email og source_paths påkrevd',
+        });
+      }
+      if (sourcePaths.length > 2000) {
+        return res.status(400).json({
+          success: false,
+          error: 'Maks 2000 filer per leveranse',
+        });
+      }
+
+      // Eier-sjekk på prosjekt
+      const ownerCheck = await pool.query<{ name: string | null; title: string | null }>(
+        `SELECT name, title FROM legacy.projects WHERE id = $1 AND user_id = $2`,
+        [projectId, session.userId],
+      );
+      if (ownerCheck.rowCount === 0) {
+        return res
+          .status(403)
+          .json({ success: false, error: 'Prosjekt tilhører ikke deg' });
+      }
+      const projectTitle =
+        galleryLabel ||
+        ownerCheck.rows[0]?.name ||
+        ownerCheck.rows[0]?.title ||
+        'Backup-leveranse';
+
+      // Slå opp jobs med matchende source_path. Krever cloud_provider (B2).
+      // Vi lagrer providerId + bucketId + fileName per item så Worker
+      // kan signere URL on-demand.
+      const jobsRes = await pool.query<{
+        source_path: string;
+        source_size_bytes: string | null;
+        source_hash: string | null;
+        dest_path: string | null;
+        cloud_provider_id: string | null;
+        cloud_bucket_id: string | null;
+      }>(
+        `SELECT
+           j.source_path,
+           j.source_size_bytes::text AS source_size_bytes,
+           j.source_hash,
+           j.dest_path,
+           d.cloud_provider_id,
+           d.cloud_bucket_id
+         FROM dit_backup_jobs j
+         JOIN dit_destinations d ON j.destination_id = d.id
+         WHERE j.project_id = $1
+           AND j.status = 'verified'
+           AND d.cloud_provider = 'b2'
+           AND j.source_path = ANY($2::text[])`,
+        [projectId, sourcePaths],
+      );
+      if (jobsRes.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Ingen filer funnet i B2-arkiv for disse stiene',
+        });
+      }
+
+      // Dedupe på source_path (samme fil kan ha flere cloud-destinasjoner —
+      // bruk den nyeste backup-jobben)
+      const bySource = new Map<string, typeof jobsRes.rows[number]>();
+      for (const row of jobsRes.rows) {
+        if (!bySource.has(row.source_path)) {
+          bySource.set(row.source_path, row);
+        }
+      }
+      const items = Array.from(bySource.values());
+
+      // Få eller opprett galleri. Idempotent via gallery_settings.ditProjectId
+      // (matcher capture-showcase-bridge-pattern).
+      const existingGalleryRes = await pool.query<{
+        id: string;
+        access_token: string;
+      }>(
+        `SELECT id, access_token FROM photographer_client_galleries
+          WHERE photographer_id = $1
+            AND gallery_settings ->> 'ditProjectId' = $2
+          LIMIT 1`,
+        [session.userId, projectId],
+      );
+
+      let galleryId: string;
+      let accessToken: string;
+      let createdNew = false;
+
+      if ((existingGalleryRes.rowCount ?? 0) > 0) {
+        galleryId = existingGalleryRes.rows[0].id;
+        accessToken = existingGalleryRes.rows[0].access_token;
+      } else {
+        accessToken = `gly_${crypto
+          .randomBytes(24)
+          .toString('base64url')
+          .slice(0, 32)}`;
+        galleryId = `pcg_${crypto.randomUUID()}`;
+        try {
+          await pool.query(
+            `INSERT INTO photographer_client_galleries
+               (id, photographer_id, client_name, client_email, project_title,
+                access_token, gallery_settings, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 'active')`,
+            [
+              galleryId,
+              session.userId,
+              clientName,
+              clientEmail,
+              projectTitle,
+              accessToken,
+              JSON.stringify({
+                ditProjectId: projectId,
+                source: 'dit-archive',
+                createdVia: 'one-desk-deliver',
+              }),
+            ],
+          );
+          createdNew = true;
+        } catch (err: any) {
+          console.error('[deliver-to-showcase] gallery insert failed:', err?.message || err);
+          return res
+            .status(500)
+            .json({ success: false, error: 'Kunne ikke opprette galleri' });
+        }
+      }
+
+      // Insert items — dedupe via image_metadata.b2Source.fileName
+      let inserted = 0;
+      const errors: string[] = [];
+      for (const item of items) {
+        if (!item.dest_path || !item.cloud_provider_id || !item.cloud_bucket_id) {
+          errors.push(`${item.source_path}: mangler cloud-metadata`);
+          continue;
+        }
+        // dest_path format: b2://<bucket_id>/<file_name>
+        const match = item.dest_path.match(/^b2:\/\/[^/]+\/(.+)$/);
+        if (!match) {
+          errors.push(`${item.source_path}: kunne ikke parse dest_path`);
+          continue;
+        }
+        const fileName = match[1];
+        const filename = item.source_path.split('/').pop() ?? item.source_path;
+        const itemId = `pci_${crypto.randomUUID()}`;
+
+        try {
+          // Sjekk for eksisterende item med samme b2-fileName i denne galleri
+          const dup = await pool.query(
+            `SELECT id FROM client_gallery_images
+              WHERE gallery_id = $1
+                AND image_metadata ->> 'b2FileName' = $2
+              LIMIT 1`,
+            [galleryId, fileName],
+          );
+          if ((dup.rowCount ?? 0) > 0) continue;
+
+          await pool.query(
+            `INSERT INTO client_gallery_images
+               (id, gallery_id, image_url, thumbnail_url, original_filename,
+                image_metadata)
+             VALUES ($1, $2, $3, $3, $4, $5::jsonb)`,
+            [
+              itemId,
+              galleryId,
+              // Vil bli proxyet av Cloudflare Worker
+              `/api/showcase/cdn/${accessToken}/${itemId}`,
+              filename,
+              JSON.stringify({
+                b2ProviderId: item.cloud_provider_id,
+                b2BucketId: item.cloud_bucket_id,
+                b2FileName: fileName,
+                sha1: item.source_hash,
+                sizeBytes: item.source_size_bytes
+                  ? Number(item.source_size_bytes)
+                  : null,
+                source: 'dit-archive',
+                ditProjectId: projectId,
+              }),
+            ],
+          );
+          inserted++;
+        } catch (err: any) {
+          errors.push(`${item.source_path}: ${err?.message || err}`);
+        }
+      }
+
+      return res.json({
+        success: true,
+        gallery_id: galleryId,
+        access_token: accessToken,
+        gallery_url: `/gallery/${accessToken}`,
+        delivered: inserted,
+        skipped: items.length - inserted,
+        created_new_gallery: createdNew,
+        errors: errors.slice(0, 10),
+      });
+    },
+  );
+
+  // B: GET /api/showcase/items/:item_id/sign-url
+  // Kalles av Cloudflare Worker (eller direkte av klient ved fallback)
+  // for å få en fersk signed B2-download-URL for ett item. Auth via
+  // gallery access_token i query-param. Worker har egen rate-limit per
+  // token; vi gjør grunn-verifisering her.
+  app.get('/api/showcase/items/:itemId/sign-url', async (req, res) => {
+    const itemId = String(req.params.itemId || '').trim();
+    const accessToken = String(req.query.token || '').trim();
+    if (!itemId || !accessToken) {
+      return res.status(400).json({ success: false, error: 'itemId + token påkrevd' });
+    }
+
+    // Slå opp item + verifisér at access-token matcher galleriet
+    const itemRes = await pool.query<{
+      image_metadata: Record<string, unknown>;
+      photographer_id: string;
+    }>(
+      `SELECT i.image_metadata, g.photographer_id
+         FROM client_gallery_images i
+         JOIN photographer_client_galleries g ON i.gallery_id = g.id
+        WHERE i.id = $1 AND g.access_token = $2 AND g.status = 'active'
+        LIMIT 1`,
+      [itemId, accessToken],
+    );
+    if (itemRes.rowCount === 0) {
+      return res.status(404).json({ success: false, error: 'Item ikke funnet' });
+    }
+    const meta = itemRes.rows[0].image_metadata ?? {};
+    const providerId = String(meta.b2ProviderId ?? '');
+    const bucketId = String(meta.b2BucketId ?? '');
+    const fileName = String(meta.b2FileName ?? '');
+    if (!providerId || !bucketId || !fileName) {
+      return res.status(400).json({ success: false, error: 'Item er ikke B2-source' });
+    }
+
+    const creds = await getDecryptedProviderCreds(pool, providerId);
+    if (!creds) {
+      return res.status(500).json({ success: false, error: 'Provider-creds ikke tilgjengelig' });
+    }
+
+    const auth = await b2Authorize(creds.key_id, creds.application_key);
+    if (!auth.ok) {
+      return res.status(500).json({ success: false, error: auth.error });
+    }
+
+    // b2_get_download_authorization for å lage signed-URL med TTL 1 time
+    try {
+      const downloadAuthResp = await fetch(
+        `${auth.data.apiUrl}/b2api/v3/b2_get_download_authorization`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: auth.data.authToken,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            bucketId,
+            fileNamePrefix: fileName,
+            validDurationInSeconds: 3600,
+          }),
+        },
+      );
+      if (!downloadAuthResp.ok) {
+        const txt = await downloadAuthResp.text().catch(() => '');
+        return res
+          .status(500)
+          .json({ success: false, error: `B2 download-auth: ${txt.slice(0, 200)}` });
+      }
+      const downloadAuthJson = (await downloadAuthResp.json()) as {
+        authorizationToken: string;
+        bucketName?: string;
+      };
+
+      // Slå opp bucketName fra list_buckets så vi kan bygge download-URL
+      // (Cloudflare Worker trenger den)
+      let bucketName = downloadAuthJson.bucketName;
+      if (!bucketName) {
+        const lbResp = await fetch(`${auth.data.apiUrl}/b2api/v3/b2_list_buckets`, {
+          method: 'POST',
+          headers: {
+            Authorization: auth.data.authToken,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            accountId: auth.data.accountId,
+            bucketId,
+          }),
+        });
+        if (lbResp.ok) {
+          const lbJson = (await lbResp.json()) as { buckets?: Array<{ bucketName?: string }> };
+          bucketName = lbJson.buckets?.[0]?.bucketName ?? '';
+        }
+      }
+
+      // Bygg download-URL. B2 download-host kan utledes fra apiUrl
+      // (s3.eu-central-003.backblazeb2.com → f003.backblazeb2.com)
+      const downloadHost = auth.data.apiUrl
+        .replace('https://', '')
+        .replace(/^api/, 'f')
+        .split('/')[0];
+      const signedUrl = `https://${downloadHost}/file/${bucketName}/${encodeURIComponent(
+        fileName,
+      )}?Authorization=${downloadAuthJson.authorizationToken}`;
+
+      return res.json({
+        success: true,
+        url: signedUrl,
+        expires_in: 3600,
+      });
+    } catch (err: any) {
+      console.error('[sign-url] failed:', err?.message || err);
+      return res.status(500).json({ success: false, error: err?.message || 'sign-url-feil' });
+    }
+  });
+
+  // A: GET /api/dit/projects/:projectId/archive-files — lister verifiserte
+  // B2-arkiv-filer for ett prosjekt. Brukes av UI for å vise «X filer i
+  // arkiv» + som data-kilde for «Lever til showcase»-pickeren (B).
+  app.get('/api/dit/projects/:projectId/archive-files', async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const projectId = String(req.params.projectId || '').trim();
+    if (!projectId) return res.status(400).json({ success: false, error: 'projectId påkrevd' });
+
+    // Eier-sjekk via legacy.projects.user_id
+    const ownerCheck = await pool.query(
+      `SELECT id FROM legacy.projects WHERE id = $1 AND user_id = $2`,
+      [projectId, session.userId],
+    );
+    if (ownerCheck.rowCount === 0) {
+      return res.status(403).json({ success: false, error: 'Prosjekt tilhører ikke deg' });
+    }
+
+    try {
+      // Aggregér på source_path så samme fil kopiert til N destinasjoner
+      // teller som ÉN. Vis bare verifiserte cloud-uploads.
+      const filesRes = await pool.query<{
+        source_path: string;
+        source_size_bytes: string | null;
+        source_hash: string | null;
+        camera_id: string | null;
+        verified_at: Date | null;
+        cloud_providers: string[];
+      }>(
+        `SELECT
+           j.source_path,
+           MAX(j.source_size_bytes::text) AS source_size_bytes,
+           MAX(j.source_hash) AS source_hash,
+           MAX(j.camera_id) AS camera_id,
+           MAX(j.completed_at) AS verified_at,
+           ARRAY_AGG(DISTINCT d.cloud_provider) FILTER (WHERE d.cloud_provider IS NOT NULL) AS cloud_providers
+         FROM dit_backup_jobs j
+         JOIN dit_destinations d ON j.destination_id = d.id
+         WHERE j.project_id = $1
+           AND j.status = 'verified'
+           AND d.cloud_provider IS NOT NULL
+         GROUP BY j.source_path
+         ORDER BY MAX(j.completed_at) DESC NULLS LAST
+         LIMIT 1000`,
+        [projectId],
+      );
+      const files = filesRes.rows.map((r) => ({
+        source_path: r.source_path,
+        filename: r.source_path.split('/').pop() ?? r.source_path,
+        size_bytes: r.source_size_bytes ? Number(r.source_size_bytes) : null,
+        source_hash: r.source_hash,
+        camera_id: r.camera_id,
+        verified_at: r.verified_at?.toISOString() ?? null,
+        cloud_providers: r.cloud_providers ?? [],
+      }));
+      return res.json({
+        success: true,
+        files,
+        count: files.length,
+        total_bytes: files.reduce((sum, f) => sum + (f.size_bytes ?? 0), 0),
+      });
+    } catch (err: any) {
+      console.error('[archive-files] failed:', err?.message || err);
+      return res.status(500).json({ success: false, error: 'Kunne ikke hente arkiv' });
+    }
+  });
 
   // DELETE /api/storage/providers/:id — fjern provider (sletter ikke filer på Backblaze!)
   app.delete('/api/storage/providers/:id', async (req: Request, res: Response) => {
