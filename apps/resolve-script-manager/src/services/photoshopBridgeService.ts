@@ -431,6 +431,34 @@ export const photoshop = {
   resolveTimelineSmartReframe: () =>
     send<{ timeline: string; success: boolean }>("resolve.timelineSmartReframe"),
 
+  resolveTimelineGetCurrentItem: () =>
+    send<
+      | { found: false }
+      | {
+          found: true;
+          name: string;
+          start_frame: number;
+          end_frame: number;
+          duration_frames: number;
+          media_pool_item_id: string;
+          clip_name: string;
+        }
+    >("resolve.timelineGetCurrentItem"),
+
+  resolveMagicMaskCreate: (mode?: "F" | "B" | "BI") =>
+    send<{ item_name: string; mode: string; success: boolean }>(
+      "resolve.magicMaskCreate",
+      { mode: mode ?? "BI" },
+    ),
+
+  resolveMagicMaskRegenerate: () =>
+    send<{ item_name: string; success: boolean }>("resolve.magicMaskRegenerate"),
+
+  resolveDolbyVisionAnalyze: () =>
+    send<{ timeline: string; success: boolean; scope: string }>(
+      "resolve.dolbyVisionAnalyze",
+    ),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 
