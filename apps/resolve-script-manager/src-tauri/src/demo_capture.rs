@@ -14,7 +14,9 @@
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const CAPTURE_JS: &str = include_str!("../capture/demo_capture_inject.js");
+const SCAN_JS: &str = include_str!("../capture/demo_scan_inject.js");
 const CAPTURE_LABEL: &str = "demo-capture";
+const SCAN_LABEL: &str = "demo-scan";
 
 /// Åpne capture-vinduet på `url`. Lukker et eventuelt eksisterende capture-vindu
 /// først, så vi aldri har to gående.
@@ -37,6 +39,37 @@ pub async fn start_demo_capture(app: AppHandle, url: String) -> Result<(), Strin
         .build()
         .map_err(|e| format!("kunne ikke åpne capture-vindu: {e}"))?;
     Ok(())
+}
+
+/// Åpne et lite analyse-vindu på `url`, la skann-scriptet katalogisere de ekte
+/// interaktive elementene, og motta resultatet via demo_scan_result. Vinduet
+/// lukker seg selv når skannet er ferdig.
+#[tauri::command]
+pub async fn demo_scan_dom(app: AppHandle, url: String) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window(SCAN_LABEL) {
+        let _ = existing.close();
+    }
+    let parsed: tauri::Url = url.parse().map_err(|e| format!("ugyldig URL «{url}»: {e}"))?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err("URL må være http(s)".to_string());
+    }
+    WebviewWindowBuilder::new(&app, SCAN_LABEL, WebviewUrl::External(parsed))
+        .title("Analyserer side…")
+        .inner_size(1200.0, 820.0)
+        .initialization_script(SCAN_JS)
+        .build()
+        .map_err(|e| format!("kunne ikke åpne analyse-vindu: {e}"))?;
+    Ok(())
+}
+
+/// Mottar element-katalogen fra skann-vinduet, videresender til hovedvinduet og
+/// lukker analyse-vinduet.
+#[tauri::command]
+pub fn demo_scan_result(app: AppHandle, result: serde_json::Value) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window(SCAN_LABEL) {
+        let _ = w.close();
+    }
+    app.emit("demo-capture://dom", result).map_err(|e| e.to_string())
 }
 
 /// Hent EKTE side-kontekst via reqwest (ingen CORS). Trekker ut tittel +

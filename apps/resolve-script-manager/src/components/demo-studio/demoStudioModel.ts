@@ -497,6 +497,23 @@ export function defaultSceneFlow(device: DemoDevice = 'macbook'): DemoScene[] {
   return flowForDemoType('product_demo', device);
 }
 
+/** Et interaktivt element katalogisert av DOM-skannet (AI-binding). */
+export interface ScannedElement {
+  selector: string;
+  label: string;
+  tag: string;
+  actionType: string;
+  belowFold: boolean;
+  hotspot: { x: number; y: number; w: number; h: number };
+}
+
+/** Resultat av et DOM-skann av en side. */
+export interface DomScanResult {
+  url: string;
+  title: string;
+  elements: ScannedElement[];
+}
+
 /** Ett innsamlet klikk-steg fra «klikk-gjennom»-capture (Fase 2). */
 export interface CapturedStepLike {
   url: string;

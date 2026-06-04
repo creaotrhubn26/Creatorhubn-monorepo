@@ -27,7 +27,7 @@ import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, fetchSiteContext, runResponsiveCheck } from './demoStudioAI';
-import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, type CapturedStep } from '../../services/demoCaptureService';
+import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
@@ -186,13 +186,16 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const runDirector = async () => {
     if (!project || directorBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
-    setDirectorBusy(true); setDirectorMsg('Leser nettsiden…');
+    setDirectorBusy(true); setDirectorMsg('Analyserer siden…');
     try {
+      // Skann de ekte interaktive elementene (presis element-binding) + les kontekst.
+      const scan = await scanDom(project.url).catch(() => null);
+      const elements = scan?.elements ?? [];
       const siteContext = await fetchSiteContext(project.url);
-      setDirectorMsg(siteContext ? 'AI Director designer flowen…' : 'Kunne ikke lese siden (CORS) — designer fra URL-en…');
+      setDirectorMsg(elements.length ? `Fant ${elements.length} elementer — AI Director designer flowen…` : 'AI Director designer flowen…');
       const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
       const scenes = await generateDemoFlow({
-        url: project.url, demoType: project.demoType, devices: project.devices, meta, siteContext,
+        url: project.url, demoType: project.demoType, devices: project.devices, meta, siteContext, elements,
       });
       replaceScenes(scenes);
       setDirectorMsg(`✓ ${scenes.length} scener generert`);

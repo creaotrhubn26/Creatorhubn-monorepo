@@ -11,6 +11,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import type { DomScanResult } from '../components/demo-studio/demoStudioModel';
 
 /** Ett innsamlet klikk-steg fra capture-vinduet (speiler Rust-payloaden). */
 export interface CapturedStep {
@@ -41,4 +42,21 @@ export function onCaptureStep(cb: (step: CapturedStep) => void): Promise<Unliste
 /** Lytt på «ferdig» (cancelled=true → forkast stegene). Returnerer unlisten. */
 export function onCaptureDone(cb: (cancelled: boolean) => void): Promise<UnlistenFn> {
   return listen<boolean>('demo-capture://done', (e) => cb(Boolean(e.payload)));
+}
+
+/**
+ * Skann den ekte siden for interaktive elementer (åpner analyse-vindu som
+ * lukker seg selv). Returnerer katalogen, eller null ved timeout/feil/web-dev.
+ */
+export async function scanDom(url: string, timeoutMs = 20000): Promise<DomScanResult | null> {
+  if (!isCaptureAvailable()) return null;
+  let resolve!: (v: DomScanResult | null) => void;
+  const done = new Promise<DomScanResult | null>((r) => { resolve = r; });
+  const unlisten = await listen<DomScanResult>('demo-capture://dom', (e) => resolve(e.payload));
+  const timer = setTimeout(() => resolve(null), timeoutMs);
+  try { await invoke('demo_scan_dom', { url }); } catch { resolve(null); }
+  const result = await done;
+  clearTimeout(timer);
+  unlisten();
+  return result;
 }

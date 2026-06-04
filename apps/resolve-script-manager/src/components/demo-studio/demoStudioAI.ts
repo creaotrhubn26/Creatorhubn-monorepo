@@ -17,6 +17,7 @@ import {
   makeScene, viewportForDevice, ACTION_META,
   type DemoScene, type ScriptMeta, type DemoType, type DemoDevice, type DemoActionType,
   type ResponsiveReport, type ResponsiveViewportResult, type ResponsiveStatus, type ResponsiveFix,
+  type ScannedElement,
 } from './demoStudioModel';
 
 export type ImproveAction =
@@ -269,6 +270,8 @@ export interface FlowSceneDraft {
   actionType?: string;
   /** Omtrentlig hotspot i viewport-prosent (0–1) — Jan finjusterer i preview. */
   hotspot?: { x: number; y: number; w: number; h: number };
+  /** Indeks inn i element-katalogen (DOM-skann) som handlingen gjelder. */
+  targetIndex?: number;
 }
 
 /**
@@ -284,8 +287,12 @@ export async function generateDemoFlow(params: {
   meta: ScriptMeta;
   targetSeconds?: number;
   siteContext?: string;
+  elements?: ScannedElement[];
 }): Promise<DemoScene[]> {
-  const { url, demoType, devices, meta, targetSeconds = 75, siteContext = '' } = params;
+  const { url, demoType, devices, meta, targetSeconds = 75, siteContext = '', elements = [] } = params;
+  const catalog = elements.length
+    ? `\nElement-katalog (ekte interaktive elementer på siden) — velg targetIndex for hver scene:\n${elements.map((e, i) => `${i}: "${e.label}" [${e.tag}${e.belowFold ? ', under fold' : ''}]`).join('\n')}\n`
+    : '';
   const user = `Lag en komplett produktdemo-flow.
 
 Produkt-URL: ${url}
@@ -293,18 +300,19 @@ Demo-type: ${demoType}
 Tilgjengelige enheter: ${devices.join(', ')}
 Tone: ${meta.tone} · Publikum: ${meta.audience} · Språk: ${meta.language} · Lengde: ${meta.length}
 Ønsket total varighet: ~${targetSeconds} sekunder
-${siteContext ? `\nKontekst fra nettsiden:\n${siteContext}\n` : ''}
+${siteContext ? `\nKontekst fra nettsiden:\n${siteContext}\n` : ''}${catalog}
 Foreslå 5-7 scener som forteller en sammenhengende historie (intro → kjernefunksjon → bevis/verdi → CTA → outro).
 Velg device per scene fra de tilgjengelige (bruk mobil for mobil-flyt hvis relevant).
-For hver scene: angi hvilket konkret element handlingen gjelder (targetLabel, f.eks. «Start free trial button»),
-handlingstypen (actionType: click/hover/type/scroll/highlight/open_url/switch_device/zoom/wait),
-og et OMTRENTLIG hotspot (x,y,w,h i 0–1 av skjermen) der elementet trolig er — brukeren finjusterer selv.
+For hver scene: angi handlingstypen (actionType: click/hover/type/scroll/highlight/open_url/switch_device/zoom/wait).
+${elements.length
+  ? 'Velg targetIndex fra element-katalogen over for elementet handlingen gjelder (da blir hotspot presis). Hvis ingen passer, utelat targetIndex og gi targetLabel + omtrentlig hotspot i stedet.'
+  : 'Angi hvilket konkret element handlingen gjelder (targetLabel) + et OMTRENTLIG hotspot (x,y,w,h i 0–1) der elementet trolig er — brukeren finjusterer selv.'}
 Svar med KUN ett JSON-objekt:
 {
   "scenes": [
     { "title": "...", "device": "macbook|ipad|iphone", "narration": "hva som sies",
       "visualInstruction": "hva som vises", "requiredAction": "hva som gjøres",
-      "targetLabel": "konkret element", "actionType": "click",
+      "targetIndex": 3, "targetLabel": "konkret element", "actionType": "click",
       "hotspot": { "x": 0.4, "y": 0.6, "w": 0.2, "h": 0.08 },
       "overlayText": "kort overlay", "duration": 10 }
   ]
@@ -324,11 +332,21 @@ Svar med KUN ett JSON-objekt:
   return parsed.scenes.map((d, i) => {
     const device: DemoDevice = (['macbook', 'ipad', 'iphone'] as DemoDevice[]).includes(d.device) ? d.device : (devices[0] ?? 'macbook');
     const base = makeScene(i, device);
-    const actionType = validActions.includes(d.actionType as DemoActionType) ? (d.actionType as DemoActionType) : undefined;
+    let actionType = validActions.includes(d.actionType as DemoActionType) ? (d.actionType as DemoActionType) : undefined;
     const hs = d.hotspot;
-    const hotspot = hs && typeof hs === 'object'
+    let hotspot = hs && typeof hs === 'object'
       ? { x: clamp01(hs.x, 0.4), y: clamp01(hs.y, 0.5), w: clamp01(hs.w, 0.2), h: clamp01(hs.h, 0.08) }
       : undefined;
+    let targetLabel = d.targetLabel || undefined;
+    let targetSelector: string | undefined;
+    // Bind til EKTE element fra katalogen når AI valgte en gyldig targetIndex.
+    const picked = typeof d.targetIndex === 'number' ? elements[d.targetIndex] : undefined;
+    if (picked) {
+      targetSelector = picked.selector;
+      targetLabel = picked.label || targetLabel;
+      hotspot = picked.hotspot;
+      if (!actionType && validActions.includes(picked.actionType as DemoActionType)) actionType = picked.actionType as DemoActionType;
+    }
     return {
       ...base,
       title: d.title || `Scene ${i + 1}`,
@@ -337,7 +355,8 @@ Svar med KUN ett JSON-objekt:
       narration: d.narration || '',
       visualInstruction: d.visualInstruction || '',
       requiredAction: d.requiredAction || '',
-      targetLabel: d.targetLabel || undefined,
+      targetLabel,
+      targetSelector,
       actionType,
       hotspot,
       overlayText: d.overlayText || '',
