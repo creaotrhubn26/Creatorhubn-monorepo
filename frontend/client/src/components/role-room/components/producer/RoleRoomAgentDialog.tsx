@@ -11,7 +11,10 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
   LinearProgress,
+  Menu,
+  MenuItem,
   Stack,
   TextField,
   Tooltip,
@@ -30,6 +33,7 @@ import {
   Language as LanguageIcon,
   LocalMall as MerchIcon,
   MoveToInbox as InboxIcon,
+  MoreHoriz as MoreHorizIcon,
   QueryStats as QueryStatsIcon,
   Rocket as RocketIcon,
   Tag as TagIcon,
@@ -295,6 +299,8 @@ export default function RoleRoomAgentDialog({
   // "Bestemor-modus": lead with one field + one button; the rest is optional
   // and hidden behind a toggle so the first impression is dead simple.
   const [showMoreResearchDetails, setShowMoreResearchDetails] = useState(false);
+  // Footer overflow menu — keeps one clear primary action + secondary ones tucked away.
+  const [moreActionsAnchor, setMoreActionsAnchor] = useState<HTMLElement | null>(null);
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
   // surface and the research forms are actually usable without pinch-
@@ -1982,43 +1988,59 @@ export default function RoleRoomAgentDialog({
           spacing={1}
           sx={{ width: { xs: '100%', md: 'auto' } }}
         >
-          {result && onCreateProject ? (
-            <Button
-              variant={projectCreatedFromResult ? 'text' : 'outlined'}
-              disabled={generating || applying || projectCreatedFromResult}
-              onClick={handleCreateProjectAndMark}
-              sx={{ textTransform: 'none', fontWeight: 800 }}
-            >
-              {projectCreatedFromResult ? 'Prosjekt opprettet' : 'Ja, opprett prosjekt på kunden'}
-            </Button>
-          ) : null}
-          <Button
-            variant="outlined"
-            disabled={!canGenerate || generating || applying}
-            onClick={() => onGenerate({
-              projectId,
-              projectName,
-              websiteUrl,
-              organizationNumber,
-              companyName,
-              extraContext,
-            })}
-            sx={{ textTransform: 'none', fontWeight: 700 }}
+          {/* Secondary actions tucked into a "…" menu so one primary stands clear. */}
+          <IconButton
+            onClick={(event) => setMoreActionsAnchor(event.currentTarget)}
+            disabled={generating || applying}
+            aria-label="Flere valg"
+            data-testid="agent-more-actions"
+            sx={{
+              alignSelf: { xs: 'center', md: 'auto' },
+              color: 'rgba(226,232,240,0.75)',
+              border: '1px solid rgba(148,163,184,0.28)',
+              borderRadius: 2,
+            }}
           >
-            {generating ? 'Finner ut…' : 'Analyser på nytt'}
-          </Button>
+            <MoreHorizIcon />
+          </IconButton>
+          <Menu
+            anchorEl={moreActionsAnchor}
+            open={Boolean(moreActionsAnchor)}
+            onClose={() => setMoreActionsAnchor(null)}
+            anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          >
+            {result && onCreateProject ? (
+              <MenuItem
+                disabled={projectCreatedFromResult}
+                onClick={() => { setMoreActionsAnchor(null); void handleCreateProjectAndMark(); }}
+              >
+                {projectCreatedFromResult ? 'Prosjekt opprettet ✓' : 'Opprett som nytt prosjekt'}
+              </MenuItem>
+            ) : null}
+            <MenuItem
+              disabled={!canGenerate}
+              onClick={() => {
+                setMoreActionsAnchor(null);
+                onGenerate({ projectId, projectName, websiteUrl, organizationNumber, companyName, extraContext });
+              }}
+            >
+              Analyser på nytt
+            </MenuItem>
+          </Menu>
           <Button
             variant="contained"
             disabled={!result || generating || applying}
             onClick={handleApplyAndMark}
+            data-testid="agent-primary-apply"
             sx={{
               textTransform: 'none',
               fontWeight: 800,
-              px: 2.2,
+              px: 2.6,
               background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
             }}
           >
-            {applying ? 'Bruker forslag…' : 'Bruk forslag'}
+            {applying ? 'Lagrer…' : 'Bruk forslag'}
           </Button>
         </Stack>
       </DialogActions>
