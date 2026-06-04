@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "demo-capture",
+  "description": "Capture-vindu: la den eksterne målsiden sende klikk-steg til app-en via IPC (start/step/done). Kun IPC-core — ingen filsystem/skall.",
+  "windows": ["demo-capture"],
+  "remote": {
+    "urls": ["http://*", "https://*"]
+  },
+  "permissions": ["core:default"]
+}

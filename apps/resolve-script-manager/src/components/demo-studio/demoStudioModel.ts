@@ -93,6 +93,8 @@ export interface DemoScene {
   actionType?: DemoActionType;
   /** Navn på mål-elementet handlingen gjelder, f.eks. «Start free trial button». */
   targetLabel?: string;
+  /** CSS-selector for mål-elementet (fylles av capture) — brukes til validering. */
+  targetSelector?: string;
   /**
    * Interaktivt mål (hotspot) på siden — rektangel i VIEWPORT-PROSENT (0–1) av
    * skjermflaten, så det rendres device-uavhengig over enhver preview. Fremheves
@@ -429,6 +431,41 @@ export function flowForDemoType(demoType: DemoType, deviceOverride?: DemoDevice)
 /** Bakoverkompatibel alias — product_demo-flowen. */
 export function defaultSceneFlow(device: DemoDevice = 'macbook'): DemoScene[] {
   return flowForDemoType('product_demo', device);
+}
+
+/** Ett innsamlet klikk-steg fra «klikk-gjennom»-capture (Fase 2). */
+export interface CapturedStepLike {
+  url: string;
+  selector?: string;
+  targetLabel?: string;
+  actionType?: string;
+  hotspot?: { x: number; y: number; w: number; h: number };
+  scrollPct?: number;
+}
+
+/**
+ * Konverter innsamlede capture-steg til scener. Hvert klikk blir én scene med
+ * hotspot + targetLabel + selector + actionType + start-scroll, klar for
+ * Guided Recorder. Manus (narration) fylles av AI Director etterpå.
+ */
+export function captureStepsToScenes(steps: CapturedStepLike[], device: DemoDevice = 'macbook'): DemoScene[] {
+  const valid = Object.keys(ACTION_META) as DemoActionType[];
+  return steps.map((s, i) => {
+    const at: DemoActionType = valid.includes(s.actionType as DemoActionType) ? (s.actionType as DemoActionType) : 'click';
+    const label = (s.targetLabel || '').trim();
+    return {
+      ...makeScene(i, device),
+      title: label ? label.slice(0, 40) : `Steg ${i + 1}`,
+      requiredAction: `${ACTION_META[at].verb} ${label || 'elementet'}`.trim(),
+      actionType: at,
+      targetLabel: label || undefined,
+      targetSelector: s.selector || undefined,
+      hotspot: s.hotspot,
+      startScrollPct: s.scrollPct != null ? Math.round(s.scrollPct * 100) : undefined,
+      duration: 8,
+      status: 'in_progress',
+    };
+  });
 }
 
 /**

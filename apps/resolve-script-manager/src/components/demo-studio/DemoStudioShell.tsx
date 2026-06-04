@@ -15,7 +15,7 @@
  * Verifiseres mot mockup med Playwright (scripts/_pixshot*).
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StoryView } from '../story/StoryView';
 import { ScriptBuilderView } from './ScriptBuilderView';
 import { GuidedRecorderView } from './GuidedRecorderView';
@@ -27,11 +27,12 @@ import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, fetchSiteContext, runResponsiveCheck } from './demoStudioAI';
+import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
   RENDER_OPTION_LABELS, RESPONSIVE_STATUS_LABELS, RESPONSIVE_STATUS_COLORS, ACTION_META,
-  totalDuration, hasRecordedWork, defaultRenderOptions,
+  totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
   type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
@@ -110,6 +111,42 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [respBusy, setRespBusy] = useState(false);
   const [respReport, setRespReport] = useState<ResponsiveReport | null>(null);
   const [placingHotspot, setPlacingHotspot] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [captureCount, setCaptureCount] = useState(0);
+  const captureBuf = useRef<CapturedStep[]>([]);
+
+  // Klikk-gjennom-capture (Fase 2): lytt på steg-events fra capture-vinduet,
+  // og bygg scener når brukeren er ferdig. Lytterne lever hele komponentens liv.
+  useEffect(() => {
+    const pending = [
+      onCaptureStep((s) => { captureBuf.current.push(s); setCaptureCount(captureBuf.current.length); }),
+      onCaptureDone((cancelled) => {
+        setCapturing(false);
+        const steps = captureBuf.current;
+        captureBuf.current = [];
+        setCaptureCount(0);
+        if (cancelled || steps.length === 0) return;
+        const st = useDemoStudio.getState();
+        const device = st.project?.scenes[0]?.device ?? 'macbook';
+        st.replaceScenes(captureStepsToScenes(steps, device));
+      }),
+    ];
+    return () => { pending.forEach((p) => void p.then((un) => un())); };
+  }, []);
+
+  const startCapture = async () => {
+    if (!project) return;
+    if (!isCaptureAvailable()) { window.alert('Klikk-capture krever Tauri-appen (ikke tilgjengelig i nettleser-dev). Bruk «Sett hotspot» for manuell plassering.'); return; }
+    captureBuf.current = [];
+    setCaptureCount(0);
+    setCapturing(true);
+    try {
+      await startDemoCapture(project.url);
+    } catch (e) {
+      setCapturing(false);
+      window.alert('Kunne ikke starte capture: ' + (e as Error).message);
+    }
+  };
 
   /** Plasser scenens hotspot fra et klikk på preview-en (viewport-prosent). */
   const placeHotspot = (xPct: number, yPct: number) => {
@@ -284,6 +321,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               {directorBusy ? 'Jobber…' : 'Generér hele demoen'}
             </button>
             {directorMsg && <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div>}
+            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: capturing ? C.accent : '#fff', color: capturing ? '#fff' : C.ink, borderColor: capturing ? C.accent : C.lineStrong, marginTop: 8 }}
+              disabled={capturing} onClick={() => void startCapture()}
+              title="Åpne siden i et capture-vindu og klikk deg gjennom — hvert klikk blir et steg med hotspot">
+              {capturing ? `Tar opp klikk… (${captureCount})` : '☞ Klikk-capture fra side'}
+            </button>
+            {capturing && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>Klikk deg gjennom i capture-vinduet. Trykk «Fullfør» der når du er ferdig.</div>}
           </div>
         </div>
 
