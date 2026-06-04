@@ -8,9 +8,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, Stack, Typography, Chip, Button, List, ListItemButton, ListItemText,
   CircularProgress, Alert, Divider, Table, TableBody, TableCell, TableHead, TableRow,
-  Select, MenuItem, TextField, InputAdornment,
+  Select, MenuItem, TextField, InputAdornment, Collapse,
 } from '@mui/material';
-import { ContactPage as LeadsIcon, InstallMobile as FormIcon } from '@mui/icons-material';
+import {
+  ContactPage as LeadsIcon, InstallMobile as FormIcon, BoltOutlined as FollowupIcon,
+  CheckCircle as DoneIcon, Send as SendIcon,
+} from '@mui/icons-material';
 
 type Segment = 'varm' | 'lunken' | 'kald' | 'tapt';
 const SEGMENTS: { key: Segment; label: string; hint: string; campaign: string; color: string }[] = [
@@ -68,7 +71,16 @@ interface Lead {
   segment: Segment | null;
   stage: Stage | null;
   valueKr: number;
+  followedUpAt: string | null;
   fields: Record<string, string>;
+}
+
+interface FollowupConfig {
+  smsBody: string;
+  emailSubject: string;
+  emailBody: string;
+  notifyPhone: string;
+  notifyEmail: string;
 }
 
 function fmt(iso: string | null): string {
@@ -148,6 +160,34 @@ export default function LeadsPanel() {
   // Local spend input, seeded from the saved summary; saved on blur.
   const [spendInput, setSpendInput] = useState('');
   useEffect(() => { setSpendInput(summary?.spendKr ? String(summary.spendKr) : ''); }, [summary?.spendKr, formId]);
+
+  // ── Fast follow-up: templates + seller notification + per-lead send ──────
+  const [showFollowup, setShowFollowup] = useState(false);
+  const { data: followupData } = useQuery<{
+    config: FollowupConfig; smsConfigured: boolean; emailConfigured: boolean; success: boolean;
+  }>({
+    queryKey: ['leads-followup-config', connectionId],
+    enabled: !!connectionId,
+    queryFn: () => apiRequest(`/api/role-room/leads/producer/followup-config?connectionId=${encodeURIComponent(connectionId)}`),
+  });
+  const [cfg, setCfg] = useState<FollowupConfig | null>(null);
+  useEffect(() => { if (followupData?.config) setCfg(followupData.config); }, [followupData?.config]);
+  const saveFollowupConfig = useMutation({
+    mutationFn: async (c: FollowupConfig) =>
+      apiRequest('/api/role-room/leads/producer/followup-config', {
+        method: 'POST', body: JSON.stringify({ connectionId, ...c }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-followup-config', connectionId] }),
+  });
+  const sendFollowup = useMutation({
+    mutationFn: async (lead: Lead) =>
+      apiRequest('/api/role-room/leads/producer/followup', {
+        method: 'POST',
+        body: JSON.stringify({ connectionId, formId, leadId: lead.id, name: lead.name, email: lead.email, phone: lead.phone }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] }),
+  });
+  const channelsReady = (followupData?.smsConfigured || followupData?.emailConfigured) ?? false;
   const counts = useMemo(() => {
     const c: Record<string, number> = { alle: leads.length };
     for (const s of SEGMENTS) c[s.key] = leads.filter((l) => l.segment === s.key).length;
@@ -327,6 +367,84 @@ export default function LeadsPanel() {
                     )}
                   </Box>
 
+                  {/* Rask oppfølging — templates + seller notification */}
+                  <Box sx={{ border: '1px solid rgba(56,189,248,0.3)', bgcolor: 'rgba(56,189,248,0.06)', borderRadius: 2 }}>
+                    <Stack
+                      direction="row" alignItems="center" spacing={1}
+                      sx={{ p: 1.4, cursor: 'pointer' }}
+                      onClick={() => setShowFollowup((v) => !v)}
+                    >
+                      <FollowupIcon sx={{ color: '#38bdf8' }} />
+                      <Box sx={{ flex: 1 }}>
+                        <Typography sx={{ fontWeight: 800, color: '#f8fafc' }}>Rask oppfølging</Typography>
+                        <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.6)' }}>
+                          Send automatisk SMS + e-post til nye leads, og varsle kunden. Trykk «Følg opp» på en lead under.
+                        </Typography>
+                      </Box>
+                      <Typography sx={{ color: '#38bdf8', fontSize: '0.8rem', fontWeight: 700 }}>
+                        {showFollowup ? 'Skjul' : 'Tilpass meldinger'}
+                      </Typography>
+                    </Stack>
+                    <Collapse in={showFollowup}>
+                      <Box sx={{ px: 1.4, pb: 1.6 }}>
+                        {!channelsReady ? (
+                          <Alert severity="info" sx={{ mb: 1.5 }}>
+                            SMS/e-post er ikke koblet på ennå. Meldingene under lagres, og sendes automatisk så snart utsending er aktivert.
+                          </Alert>
+                        ) : null}
+                        {cfg ? (
+                          <Stack spacing={1.4}>
+                            <TextField
+                              label="SMS til kunden (leadet)" size="small" fullWidth multiline
+                              value={cfg.smsBody}
+                              onChange={(e) => setCfg({ ...cfg, smsBody: e.target.value })}
+                              helperText="Bruk {navn} for fornavnet og {bedrift} for bedriftsnavnet."
+                            />
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
+                              <TextField
+                                label="E-post emne" size="small" fullWidth
+                                value={cfg.emailSubject}
+                                onChange={(e) => setCfg({ ...cfg, emailSubject: e.target.value })}
+                              />
+                            </Stack>
+                            <TextField
+                              label="E-post tekst" size="small" fullWidth multiline minRows={3}
+                              value={cfg.emailBody}
+                              onChange={(e) => setCfg({ ...cfg, emailBody: e.target.value })}
+                            />
+                            <Divider><Typography sx={{ fontSize: '0.72rem', color: 'rgba(226,232,240,0.5)' }}>Varsle kunden om nye leads</Typography></Divider>
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
+                              <TextField
+                                label="Kundens mobilnummer (SMS-varsel)" size="small" fullWidth
+                                value={cfg.notifyPhone}
+                                onChange={(e) => setCfg({ ...cfg, notifyPhone: e.target.value })}
+                                placeholder="+47 …"
+                              />
+                              <TextField
+                                label="Kundens e-post (varsel)" size="small" fullWidth
+                                value={cfg.notifyEmail}
+                                onChange={(e) => setCfg({ ...cfg, notifyEmail: e.target.value })}
+                                placeholder="kunde@bedrift.no"
+                              />
+                            </Stack>
+                            <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
+                              {saveFollowupConfig.isSuccess ? (
+                                <Typography sx={{ fontSize: '0.78rem', color: '#86efac' }}>Lagret</Typography>
+                              ) : null}
+                              <Button
+                                size="small" variant="contained"
+                                onClick={() => saveFollowupConfig.mutate(cfg)}
+                                disabled={saveFollowupConfig.isPending}
+                              >
+                                Lagre meldinger
+                              </Button>
+                            </Stack>
+                          </Stack>
+                        ) : <CircularProgress size={18} />}
+                      </Box>
+                    </Collapse>
+                  </Box>
+
                   <Divider />
                   {visibleLeads.length === 0 ? (
                     <Typography sx={{ p: 2, color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>
@@ -343,6 +461,7 @@ export default function LeadsPanel() {
                             <TableCell>Segment</TableCell>
                             <TableCell>Status</TableCell>
                             <TableCell>Verdi (kr)</TableCell>
+                            <TableCell>Oppfølging</TableCell>
                             <TableCell>Tidspunkt</TableCell>
                           </TableRow>
                         </TableHead>
@@ -394,6 +513,23 @@ export default function LeadsPanel() {
                                   />
                                 ) : (
                                   <Typography sx={{ fontSize: '0.8rem', color: 'rgba(226,232,240,0.4)' }}>—</Typography>
+                                )}
+                              </TableCell>
+                              <TableCell sx={{ minWidth: 120 }}>
+                                {l.followedUpAt ? (
+                                  <Stack direction="row" spacing={0.5} alignItems="center">
+                                    <DoneIcon sx={{ fontSize: 16, color: '#22c55e' }} />
+                                    <Typography sx={{ fontSize: '0.74rem', color: '#86efac' }}>Fulgt opp</Typography>
+                                  </Stack>
+                                ) : (
+                                  <Button
+                                    size="small" variant="outlined" startIcon={<SendIcon sx={{ fontSize: 15 }} />}
+                                    disabled={(!l.phone && !l.email) || (sendFollowup.isPending && sendFollowup.variables?.id === l.id)}
+                                    onClick={() => sendFollowup.mutate(l)}
+                                    sx={{ fontSize: '0.72rem', py: 0.2 }}
+                                  >
+                                    Følg opp
+                                  </Button>
                                 )}
                               </TableCell>
                               <TableCell>{fmt(l.createdTime)}</TableCell>
