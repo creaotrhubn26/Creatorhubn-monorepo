@@ -178,6 +178,66 @@ export async function fetchSiteContext(url: string): Promise<string> {
   }
 }
 
+/** Patch fra «AI fullfør demoen» — kun felt som skal fylles for én scene. */
+export interface ScenePatch {
+  index: number;
+  narration?: string;
+  requiredAction?: string;
+  overlayText?: string;
+  duration?: number;
+  targetLabel?: string;
+  actionType?: string;
+  targetIndex?: number;
+}
+
+/**
+ * «AI fullfør demoen»: fyll KUN manglende felt per scene (manus, target,
+ * overlay, varighet), uten å endre det brukeren allerede har skrevet.
+ * Returnerer patcher; caller anvender dem bare på tomme felt.
+ */
+export async function completeDemoFlow(params: {
+  url: string;
+  demoType: DemoType;
+  meta: ScriptMeta;
+  scenes: DemoScene[];
+  elements?: ScannedElement[];
+  siteContext?: string;
+}): Promise<ScenePatch[]> {
+  const { url, demoType, meta, scenes, elements = [], siteContext = '' } = params;
+  const sceneSummary = scenes.map((s) => {
+    const missing: string[] = [];
+    if (!s.narration?.trim()) missing.push('narration');
+    if (!s.overlayText?.trim()) missing.push('overlayText');
+    if (!s.duration || s.duration <= 0) missing.push('duration');
+    if (!s.targetLabel?.trim() && !s.targetSelector?.trim() && !s.hotspot) missing.push('target');
+    return `${s.index}: "${s.title}" (${s.device}) — mangler: ${missing.length ? missing.join(', ') : 'ingenting'}`;
+  }).join('\n');
+  const catalog = elements.length
+    ? `\nElement-katalog (for target):\n${elements.map((e, i) => `${i}: "${e.label}" [${e.tag}]`).join('\n')}\n`
+    : '';
+  const user = `Fullfør en EKSISTERENDE produktdemo ved å fylle KUN manglende felt per scene. Ikke endre felt som allerede har innhold.
+
+Produkt-URL: ${url}
+Demo-type: ${demoType}
+Tone: ${meta.tone} · Publikum: ${meta.audience} · Språk: ${meta.language} · Lengde: ${meta.length}
+${siteContext ? `\nKontekst fra nettsiden:\n${siteContext}\n` : ''}${catalog}
+Scener (med hva som mangler):
+${sceneSummary}
+
+Gi patch kun for scener som mangler noe. For «target»: velg targetIndex fra katalogen når mulig (ellers targetLabel). Sett actionType når relevant.
+Svar med KUN ett JSON-objekt:
+{ "patches": [ { "index": 0, "narration": "...", "requiredAction": "...", "overlayText": "...", "duration": 10, "targetIndex": 3, "targetLabel": "...", "actionType": "click" } ] }`;
+
+  const raw = await claudeProxyService.send({
+    systemPrompt: SYSTEM + ' Du fyller KUN hull og bevarer eksisterende innhold.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 2000,
+  });
+  const parsed = extractJson<{ patches: ScenePatch[] }>(raw);
+  if (!parsed?.patches?.length) return [];
+  return parsed.patches.filter((p) => typeof p.index === 'number');
+}
+
 /**
  * Responsive Check (§ sjekk siden i desktop/tablet/mobil). Vurderer hvordan
  * siden trolig oppfører seg per viewport og foreslår KONKRETE, anvendbare

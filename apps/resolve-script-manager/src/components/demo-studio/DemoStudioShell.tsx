@@ -26,7 +26,7 @@ import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
-import { generateDemoFlow, fetchSiteContext, runResponsiveCheck } from './demoStudioAI';
+import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck } from './demoStudioAI';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
@@ -252,6 +252,48 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   };
   const [demoType, setDemoType] = useState<DemoType>('product_demo');
 
+  // «AI fullfør demoen»: fyll KUN tomme felt på eksisterende scener.
+  const completeDemo = async () => {
+    if (!project || directorBusy) return;
+    if (!aiReady) { setShowSignIn(true); return; }
+    setDirectorBusy(true); setDirectorMsg('Analyserer + fyller hull…');
+    try {
+      const scan = await scanDom(project.url).catch(() => null);
+      const elements = scan?.elements ?? [];
+      const siteContext = await fetchSiteContext(project.url);
+      const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
+      const patches = await completeDemoFlow({ url: project.url, demoType: project.demoType, meta, scenes: project.scenes, elements, siteContext });
+      const validActions = Object.keys(ACTION_META) as DemoActionType[];
+      let filled = 0;
+      for (const p of patches) {
+        const sc = useDemoStudio.getState().project?.scenes.find((s) => s.index === p.index);
+        if (!sc) continue;
+        const patch: Partial<DemoScene> = {};
+        if (!sc.narration?.trim() && p.narration) patch.narration = p.narration;
+        if (!sc.overlayText?.trim() && p.overlayText) patch.overlayText = p.overlayText;
+        if ((!sc.duration || sc.duration <= 0) && typeof p.duration === 'number' && p.duration > 0) patch.duration = p.duration;
+        if (!sc.requiredAction?.trim() && p.requiredAction) patch.requiredAction = p.requiredAction;
+        if (!sc.actionType && p.actionType && validActions.includes(p.actionType as DemoActionType)) patch.actionType = p.actionType as DemoActionType;
+        const noTarget = !sc.targetLabel?.trim() && !sc.targetSelector?.trim() && !sc.hotspot;
+        if (noTarget) {
+          const el = typeof p.targetIndex === 'number' ? elements[p.targetIndex] : undefined;
+          if (el) {
+            patch.targetSelector = el.selector; patch.targetLabel = el.label; patch.hotspot = el.hotspot;
+            if (!patch.actionType && validActions.includes(el.actionType as DemoActionType)) patch.actionType = el.actionType as DemoActionType;
+          } else if (p.targetLabel) {
+            patch.targetLabel = p.targetLabel;
+          }
+        }
+        if (Object.keys(patch).length) { updateScene(sc.id, patch); filled++; }
+      }
+      setDirectorMsg(filled ? `✓ Fylte ${filled} scene(r)` : 'Alt var allerede komplett');
+    } catch (e) {
+      setDirectorMsg('Feil: ' + (e as Error).message);
+    } finally {
+      setDirectorBusy(false);
+    }
+  };
+
   const scenes = project?.scenes ?? [];
   const selected = scenes.find((s) => s.id === selectedSceneId) ?? scenes[0];
   const recorderScene = scenes[recorderStepIndex];
@@ -374,6 +416,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', opacity: directorBusy ? 0.6 : 1 }}
               disabled={directorBusy} onClick={() => void runDirector()}>
               {directorBusy ? 'Jobber…' : 'Generér hele demoen'}
+            </button>
+            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: directorBusy ? 0.6 : 1 }}
+              disabled={directorBusy} onClick={() => void completeDemo()}
+              title="Fyll kun manglende felt (manus, target, overlay, varighet) uten å overskrive det du har skrevet">
+              ✦ Fullfør demoen (fyll hull)
             </button>
             {directorMsg && <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div>}
             <button style={{ ...btn, width: '100%', justifyContent: 'center', background: capturing ? C.accent : '#fff', color: capturing ? '#fff' : C.ink, borderColor: capturing ? C.accent : C.lineStrong, marginTop: 8 }}
