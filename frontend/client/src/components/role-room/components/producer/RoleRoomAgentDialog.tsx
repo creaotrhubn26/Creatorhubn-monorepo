@@ -274,6 +274,10 @@ export default function RoleRoomAgentDialog({
   // in the dialog and (b) confirm on close if they're about to lose
   // everything the agent produced. Reset whenever a new result arrives.
   const [projectCreatedFromResult, setProjectCreatedFromResult] = useState(false);
+  // "Bruk forslag" applies the result INTO the current project (brief, branding,
+  // story logic). That IS saving — track it so the unsaved-banner clears and
+  // the close-guard doesn't falsely warn the analysis will be lost.
+  const [resultAppliedToProject, setResultAppliedToProject] = useState(false);
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
   // surface and the research forms are actually usable without pinch-
@@ -299,6 +303,7 @@ export default function RoleRoomAgentDialog({
   // re-appears and the close-confirm fires again.
   useEffect(() => {
     setProjectCreatedFromResult(false);
+    setResultAppliedToProject(false);
   }, [initialResult, open]);
 
   // Compose the extraContext that actually gets sent to the agent. Original
@@ -428,13 +433,17 @@ export default function RoleRoomAgentDialog({
   // Close-guard: if the agent has produced a result that the user has
   // not yet turned into a real project, a refresh or close wipes it.
   // Ask before letting them throw it away.
-  const hasUnsavedAgentWork = Boolean(result && onCreateProject && !projectCreatedFromResult);
+  // Work is "saved" once it's either applied into THIS project ("Bruk forslag")
+  // or turned into a NEW project ("Opprett prosjekt"). Either clears the nag.
+  const agentWorkSaved = projectCreatedFromResult || resultAppliedToProject;
+  const hasUnsavedAgentWork = Boolean(result && !agentWorkSaved);
   const handleCloseWithGuard = () => {
     if (hasUnsavedAgentWork) {
       const ok = typeof window !== 'undefined'
         ? window.confirm(
-            'Du har generert forslag fra The Role Room Agent som ikke er lagret som prosjekt. ' +
-            'Lukker du nå, mister du analysen ved neste refresh. Vil du fortsette?',
+            'Du har generert forslag fra The Role Room Agent som ikke er lagret. ' +
+            'Lagre med «Bruk forslag» (inn i dette prosjektet) eller «Opprett prosjekt» (ny kunde) først — ' +
+            'lukker du nå, mister du analysen ved neste refresh. Vil du fortsette?',
           )
         : true;
       if (!ok) return;
@@ -449,6 +458,15 @@ export default function RoleRoomAgentDialog({
     } catch {
       // parent owns error UX (toast, notice prop); just leave the banner
       // visible so the user knows they still haven't saved.
+    }
+  };
+  const handleApplyAndMark = async () => {
+    if (!result) return;
+    try {
+      await onApply(result);
+      setResultAppliedToProject(true);
+    } catch {
+      // parent owns error UX; leave banner visible so user knows it didn't save.
     }
   };
 
@@ -704,25 +722,56 @@ export default function RoleRoomAgentDialog({
             fontSize: '0.84rem',
           }}
           action={
-            <Button
-              size="small"
-              variant="contained"
-              onClick={handleCreateProjectAndMark}
-              disabled={generating || applying}
-              sx={{
-                textTransform: 'none',
-                fontWeight: 800,
-                background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
-                color: '#0b1220',
-              }}
-            >
-              Opprett prosjekt nå
-            </Button>
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={handleApplyAndMark}
+                disabled={generating || applying}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 800,
+                  background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+                }}
+              >
+                {applying ? 'Lagrer…' : 'Bruk forslag (lagre her)'}
+              </Button>
+              {onCreateProject ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={handleCreateProjectAndMark}
+                  disabled={generating || applying}
+                  sx={{ textTransform: 'none', fontWeight: 700, color: '#fcd34d', borderColor: 'rgba(251,191,36,0.5)' }}
+                >
+                  Opprett nytt prosjekt
+                </Button>
+              ) : null}
+            </Stack>
           }
         >
-          Du har generert forslag fra The Role Room Agent. Husk å klikke{' '}
-          <strong>&quot;Opprett prosjekt&quot;</strong> for å lagre — lukkes dialogen uten, mister du
-          analysen ved neste refresh.
+          Forslag fra The Role Room Agent er ikke lagret ennå. <strong>Bruk forslag</strong> lagrer
+          dem i <strong>dette prosjektet</strong>; <strong>Opprett nytt prosjekt</strong> lager et
+          for en ny kunde. Lukker du uten å lagre, mister du analysen ved neste refresh.
+        </Alert>
+      ) : agentWorkSaved ? (
+        <Alert
+          severity="success"
+          variant="outlined"
+          sx={{
+            mx: { xs: 1.4, md: 2 },
+            mt: 1,
+            mb: 0.4,
+            borderColor: 'rgba(34,197,94,0.4)',
+            color: '#bbf7d0',
+            backgroundColor: 'rgba(20,83,45,0.22)',
+            '& .MuiAlert-icon': { color: '#86efac' },
+            fontSize: '0.84rem',
+          }}
+        >
+          {projectCreatedFromResult
+            ? 'Prosjekt opprettet og lagret.'
+            : 'Forslagene er lagret i prosjektet.'}
         </Alert>
       ) : null}
       <DialogContent
@@ -1764,11 +1813,7 @@ export default function RoleRoomAgentDialog({
           <Button
             variant="contained"
             disabled={!result || generating || applying}
-            onClick={() => {
-              if (result) {
-                void onApply(result);
-              }
-            }}
+            onClick={handleApplyAndMark}
             sx={{
               textTransform: 'none',
               fontWeight: 800,
