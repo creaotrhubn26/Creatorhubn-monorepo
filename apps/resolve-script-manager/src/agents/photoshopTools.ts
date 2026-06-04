@@ -13,7 +13,12 @@
  * photoshopBridgeService — så hele vokabularet er konsistent.
  */
 
-import { photoshop, type ExportFormat } from "../services/photoshopBridgeService";
+import {
+  photoshop,
+  type ExportFormat,
+  type SlateMarkerColor,
+  SLATE_MARKER_COLORS,
+} from "../services/photoshopBridgeService";
 import {
   suggestPromptsLocal,
   suggestPromptsViaClaude,
@@ -296,12 +301,44 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
   {
     name: "photoshop_resolve_slate_analyze",
     description:
-      "Resolve 21 AI Slate ID: finn slates i video-klipp og opprett markers automatisk. marker_color (Yellow/Red/Green/Blue/etc.) styrer marker-fargen. Brukes for å auto-organisere klipp etter slate-metadata.",
+      "Resolve 21 AI Slate ID: finn slates i video-klipp og opprett markers automatisk. clip_id valgfri (mangler → folder-scope). marker_color må være én av 16 gyldige Resolve-konstanter (default 'Yellow'). Brukes for å auto-organisere klipp etter slate-metadata.",
     input_schema: {
       type: "object",
       properties: {
-        clip_id: { type: "string" },
-        marker_color: { type: "string", description: "Marker-farge (default 'Yellow')" },
+        clip_id: {
+          type: "string",
+          description: "MediaPoolItem-id for per-item-analyse. Utelat for folder-scope.",
+        },
+        marker_color: {
+          type: "string",
+          enum: [
+            "Blue", "Cyan", "Green", "Yellow", "Red", "Pink", "Purple", "Fuchsia",
+            "Rose", "Lavender", "Sky", "Mint", "Lemon", "Sand", "Cocoa", "Cream",
+          ],
+          description: "Marker-farge (default 'Yellow'). Må være én av 16 Resolve-konstanter.",
+        },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_intellisearch_analyze",
+    description:
+      "Resolve 21 AI IntelliSearch: trigger native AI-analyse av folder eller spesifikt MediaPoolItem. identify_faces=true lager person-clusters (krever ekstra tid). better_mode=true gir høyere kvalitet men er treigere. Resultatet skrives ikke til disk her — kjør analyze-intellisearch.lua etterpå og les via photoshop_resolve_read_intellisearch.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clip_id: {
+          type: "string",
+          description: "MediaPoolItem-id for per-item-analyse. Utelat for folder-scope.",
+        },
+        identify_faces: {
+          type: "boolean",
+          description: "Identifiser ansikt-clusters. Default false.",
+        },
+        better_mode: {
+          type: "boolean",
+          description: "Bruk Better-mode (treigere, høyere kvalitet). Default false (Faster).",
+        },
       },
     },
   },
@@ -1096,10 +1133,26 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         model: typeof input.model === "string" ? input.model : undefined,
         add_to_timeline: input.add_to_timeline === true,
       });
-    case "photoshop_resolve_slate_analyze":
+    case "photoshop_resolve_slate_analyze": {
+      let markerColor: SlateMarkerColor | undefined;
+      if (typeof input.marker_color === "string") {
+        if (!(SLATE_MARKER_COLORS as readonly string[]).includes(input.marker_color)) {
+          throw new Error(
+            `Ugyldig marker_color: ${input.marker_color} (gyldige: ${SLATE_MARKER_COLORS.join(", ")})`,
+          );
+        }
+        markerColor = input.marker_color as SlateMarkerColor;
+      }
       return photoshop.resolveSlateAnalyze({
         clip_id: typeof input.clip_id === "string" ? input.clip_id : undefined,
-        marker_color: typeof input.marker_color === "string" ? input.marker_color : undefined,
+        marker_color: markerColor,
+      });
+    }
+    case "photoshop_resolve_intellisearch_analyze":
+      return photoshop.resolveIntellisearchAnalyze({
+        clip_id: typeof input.clip_id === "string" ? input.clip_id : undefined,
+        identify_faces: input.identify_faces === true,
+        better_mode: input.better_mode === true,
       });
     case "photoshop_resolve_timeline_smart_reframe":
       return photoshop.resolveTimelineSmartReframe();
