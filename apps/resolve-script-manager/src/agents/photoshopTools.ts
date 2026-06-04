@@ -993,6 +993,66 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_folder_list_all",
+    description:
+      "List ALLE Media Pool-folders rekursivt med path/name/clip_count/subfolder_count. Bruk dette først når du skal organisere klipp — du må vite hva som finnes før du kan flytte ting.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_folder_get_current",
+    description:
+      "Hent currently selected Media Pool folder (navn + telling). Bruk dette for å forstå hvilken kontekst brukeren jobber i.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_folder_set_current",
+    description:
+      "Bytt selected Media Pool folder via path. Path er '/'-separert (eksempel: 'Master/Wedding/Day 1'). 'Master' er root. ImportMedia uten target-folder lander i current — bruk dette FØR import-operasjoner.",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "F.eks. 'Master/Wedding/Day 1'." },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "photoshop_resolve_folder_create",
+    description:
+      "Opprett ny undermappe under parent_path. Hvis parent_path utelates blir den lagt under root (Master). Bruk dette for å organisere store prosjekter ('A-Roll', 'B-Roll', 'Approved', 'Pending Review').",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Navn på den nye mappa." },
+        parent_path: {
+          type: "string",
+          description: "Path til parent (default root/Master).",
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_folder_move_clips",
+    description:
+      "Flytt MediaPoolItems til target folder. clip_ids er array av MediaPoolItem-IDer. Bruk dette for batch-organisering — 'flytt alle approved-klipp til Master/Approved' etter en review-runde.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clip_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array av MediaPoolItem-IDer som skal flyttes (minst én).",
+        },
+        target_path: {
+          type: "string",
+          description: "Folder-path mål (f.eks. 'Master/Approved').",
+        },
+      },
+      required: ["clip_ids", "target_path"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -1838,6 +1898,44 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
       }
       const vt = input.version_type === 1 ? 1 : 0;
       return photoshop.resolveVersionDelete({ name: input.name, version_type: vt });
+    }
+    case "photoshop_resolve_folder_list_all":
+      return photoshop.resolveFolderListAll();
+    case "photoshop_resolve_folder_get_current":
+      return photoshop.resolveFolderGetCurrent();
+    case "photoshop_resolve_folder_set_current": {
+      if (typeof input.path !== "string" || input.path.length === 0) {
+        throw new Error("path må være en ikke-tom string");
+      }
+      return photoshop.resolveFolderSetCurrent({ path: input.path });
+    }
+    case "photoshop_resolve_folder_create": {
+      if (typeof input.name !== "string" || input.name.length === 0) {
+        throw new Error("name må være en ikke-tom string");
+      }
+      const params: { name: string; parent_path?: string } = { name: input.name };
+      if (typeof input.parent_path === "string" && input.parent_path.length > 0) {
+        params.parent_path = input.parent_path;
+      }
+      return photoshop.resolveFolderCreate(params);
+    }
+    case "photoshop_resolve_folder_move_clips": {
+      const clipIds = input.clip_ids;
+      if (!Array.isArray(clipIds) || clipIds.length === 0) {
+        throw new Error("clip_ids må være en ikke-tom array");
+      }
+      for (const id of clipIds) {
+        if (typeof id !== "string") {
+          throw new Error("Alle clip_ids må være strings");
+        }
+      }
+      if (typeof input.target_path !== "string" || input.target_path.length === 0) {
+        throw new Error("target_path må være en ikke-tom string");
+      }
+      return photoshop.resolveFolderMoveClips({
+        clip_ids: clipIds as string[],
+        target_path: input.target_path,
+      });
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
