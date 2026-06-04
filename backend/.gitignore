@@ -70,3 +70,4 @@ temp/
 /data/sfx-library.json.tmp
 /data/sfx-manifest.json.tmp
 /data/sfx-generated/
+.env.pages-show-list.demo.local
