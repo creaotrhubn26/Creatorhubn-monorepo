@@ -113,7 +113,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [respBusy, setRespBusy] = useState(false);
   const [respReport, setRespReport] = useState<ResponsiveReport | null>(null);
   const [placingHotspot, setPlacingHotspot] = useState(false);
+  const [previewZoom, setPreviewZoom] = useState(1); // zoom på enhets-preview (0.5–3)
   const [showValidation, setShowValidation] = useState(false);
+  const zoomBy = (delta: number) => setPreviewZoom((z) => Math.min(3, Math.max(0.5, Math.round((z + delta) * 100) / 100)));
   const [capturing, setCapturing] = useState(false);
   const [captureCount, setCaptureCount] = useState(0);
   const captureBuf = useRef<CapturedStep[]>([]);
@@ -399,7 +401,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             </div>
 
             {/* ── Center: LIVE device preview ── */}
-            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: C.bg, overflowY: 'auto', padding: '16px 22px' }}>
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: C.bg, overflow: 'auto', padding: '16px 22px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, alignSelf: 'center', marginBottom: 14 }}>
                 <div style={{ display: 'flex', gap: 4, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 9, padding: 3 }}>
                   {(['macbook', 'ipad', 'iphone'] as DemoDevice[]).map((d) => (
@@ -418,13 +420,22 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     ◎ {placingHotspot ? 'Klikk på elementet…' : selected.hotspot ? 'Flytt hotspot' : 'Sett hotspot'}
                   </button>
                 )}
+                {/* Zoom på enhets-preview */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 9, padding: 3, height: 34, boxSizing: 'border-box' }}>
+                  <div onClick={() => zoomBy(-0.25)} title="Zoom ut"
+                    style={{ width: 26, height: 26, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', fontSize: 15, color: previewZoom <= 0.5 ? C.inkFaint : C.ink }}>−</div>
+                  <div onClick={() => setPreviewZoom(1)} title="Tilbakestill zoom (100%)"
+                    style={{ minWidth: 44, textAlign: 'center', fontSize: 12, cursor: 'pointer', color: C.inkSoft }}>{Math.round(previewZoom * 100)}%</div>
+                  <div onClick={() => zoomBy(0.25)} title="Zoom inn"
+                    style={{ width: 26, height: 26, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', fontSize: 15, color: previewZoom >= 3 ? C.inkFaint : C.ink }}>+</div>
+                </div>
               </div>
 
               {/* Live preview i EKTE device-ramme (samme som Guided Recorder/eksport) */}
               <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto',
-                width: previewVariant === 'macbook' ? '78%' : previewVariant === 'ipad_landscape' ? '64%' : previewVariant === 'ipad' ? '42%' : '26%',
-                maxWidth: previewVariant === 'macbook' ? 640 : previewVariant === 'ipad_landscape' ? 560 : previewVariant === 'ipad' ? 360 : 230,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', flexShrink: 0,
+                width: `${(previewVariant === 'macbook' ? 78 : previewVariant === 'ipad_landscape' ? 64 : previewVariant === 'ipad' ? 42 : 26) * previewZoom}%`,
+                maxWidth: (previewVariant === 'macbook' ? 640 : previewVariant === 'ipad_landscape' ? 560 : previewVariant === 'ipad' ? 360 : 230) * previewZoom,
               }}>
                 <FramedDevice variant={previewVariant} url={project.url} width="100%"
                   overlay={<SceneInteractionOverlay hotspot={selected?.hotspot} render={render} device={previewDevice} />}
