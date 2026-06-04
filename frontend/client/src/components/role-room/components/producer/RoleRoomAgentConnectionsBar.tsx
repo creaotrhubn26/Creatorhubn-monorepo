@@ -55,41 +55,29 @@ export default function RoleRoomAgentConnectionsBar({
     avatarUrl?: string | null;
   }>({ connected: false });
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      setLoading(true);
-      setLoadError(null);
-      try {
-        const [igData, liData, ttData] = await Promise.all([
-          roleRoomAgentService.listInstagramConnections(),
-          roleRoomAgentService.fetchLinkedInProfile(),
-          roleRoomAgentService.fetchTikTokConnection(),
-        ]);
-        if (cancelled) return;
-        setIgConnections(igData.connections ?? []);
-        setLinkedInProfile({
-          connected: liData.connected,
-          name: liData.name,
-          profilePictureUrl: liData.profilePictureUrl,
-        });
-        setTiktokProfile({
-          connected: ttData.connected,
-          displayName: ttData.displayName,
-          username: ttData.username,
-          avatarUrl: ttData.avatarUrl,
-        });
-      } catch (err) {
-        // Previously a rejection here left `loading` stuck true forever and
-        // swallowed the error — the bar just showed a permanent spinner.
-        if (!cancelled) {
-          setLoadError('Kunne ikke hente tilkoblinger. Prøv å laste siden på nytt.');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      const [igData, liData, ttData] = await Promise.all([
+        roleRoomAgentService.listInstagramConnections(),
+        roleRoomAgentService.fetchLinkedInProfile(),
+        roleRoomAgentService.fetchTikTokConnection(),
+      ]);
+      if (cancelled) return;
+      setIgConnections(igData.connections ?? []);
+      setLinkedInProfile({
+        connected: liData.connected,
+        name: liData.name,
+        profilePictureUrl: liData.profilePictureUrl,
+      });
+      setTiktokProfile({
+        connected: ttData.connected,
+        displayName: ttData.displayName,
+        username: ttData.username,
+        avatarUrl: ttData.avatarUrl,
+      });
+      setLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -337,21 +325,7 @@ export default function RoleRoomAgentConnectionsBar({
           );
         })}
       </Stack>
-      {loadError ? (
-        <Tooltip title={loadError} disableInteractive>
-          <Box
-            sx={{
-              fontSize: '0.7rem', color: '#fca5a5', fontWeight: 700, px: 0.8, py: 0.2,
-              borderRadius: 1, bgcolor: 'rgba(248,113,113,0.12)',
-              border: '1px solid rgba(248,113,113,0.35)', flexShrink: 0,
-            }}
-            data-testid="connections-bar-error"
-          >
-            Tilkoblinger feilet
-          </Box>
-        </Tooltip>
-      ) : null}
-      {loading || loadError ? null : igConnections.length === 0 ? (
+      {loading ? null : igConnections.length === 0 ? (
         <Tooltip title="Du må koble en konto for å begynne å publisere og lytte" disableInteractive>
           <Box
             sx={{

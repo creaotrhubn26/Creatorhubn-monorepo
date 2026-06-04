@@ -14,7 +14,7 @@
  *      executed automatically — user must tap "Bekreft" per action.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -144,25 +144,9 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
 
   const handleRevokeConsent = useCallback(() => {
     if (!projectId) return;
-    // Destructive: revoking consent also wipes the chat history via reset().
-    // Confirm first so it isn't a one-click accident.
-    if (
-      typeof window !== 'undefined' &&
-      !window.confirm(
-        'Trekke tilbake samtykke? Dette sletter chat-historikken for dette prosjektet og kan ikke angres.',
-      )
-    ) {
-      return;
-    }
     void revokeProjectConsent(projectId);
     reset();
   }, [projectId, reset]);
-
-  // Auto-scroll to the newest message as the thread grows / streams.
-  const bottomRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, pending]);
 
   const body = useMemo(() => (
     <Stack spacing={1.6} sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: { xs: 1.4, md: 2 }, pt: 1.4, pb: 1 }}>
@@ -271,7 +255,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
         </Alert>
       ) : null}
 
-      <Stack spacing={1.4} aria-live="polite" aria-atomic={false}>
+      <Stack spacing={1.4}>
         {messages.map((message) => {
           const isUser = message.role === 'user';
           return (
@@ -415,8 +399,6 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             </Typography>
           </Box>
         ) : null}
-        {/* Scroll anchor — keeps the newest message in view as it streams. */}
-        <div ref={bottomRef} aria-hidden="true" />
       </Stack>
 
       {lastError && lastError.code === 'agent_disabled' ? (
