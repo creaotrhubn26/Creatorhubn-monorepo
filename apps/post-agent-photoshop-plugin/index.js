@@ -941,6 +941,46 @@ const COMMANDS = {
     });
   },
 
+  "resolve.projectGetSetting": async ({ key } = {}) => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "project.getSetting",
+      args: { key: typeof key === "string" ? key : "" },
+    });
+  },
+
+  "resolve.projectSetSetting": async ({ key, value } = {}) => {
+    if (typeof key !== "string" || key.length === 0) {
+      throw new Error("key må være en ikke-tom string");
+    }
+    if (typeof value !== "string") {
+      throw new Error("value må være en string (Resolve godtar kun string-verdier)");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "project.setSetting",
+      args: { key, value },
+    });
+  },
+
+  "resolve.timelineGetSetting": async ({ key } = {}) => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "timeline.getSetting",
+      args: { key: typeof key === "string" ? key : "" },
+    });
+  },
+
+  "resolve.timelineSetSetting": async ({ key, value } = {}) => {
+    if (typeof key !== "string" || key.length === 0) {
+      throw new Error("key må være en ikke-tom string");
+    }
+    if (typeof value !== "string") {
+      throw new Error("value må være en string (Resolve godtar kun string-verdier)");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "timeline.setSetting",
+      args: { key, value },
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve

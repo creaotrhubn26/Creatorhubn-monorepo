@@ -686,6 +686,40 @@ export const photoshop = {
       timeline_items: number;
     }>("resolve.subtitleImportFromFile", params),
 
+  resolveProjectGetSetting: (params?: { key?: string }) =>
+    send<
+      | { scope: "project"; key: string; value: string | number | boolean | null }
+      | { scope: "project"; key: null; value: Record<string, string | number | boolean | null> }
+    >("resolve.projectGetSetting", params ?? {}),
+
+  resolveProjectSetSetting: (params: { key: string; value: string }) =>
+    send<{ scope: "project"; set: boolean; key: string; value: string }>(
+      "resolve.projectSetSetting",
+      params,
+    ),
+
+  resolveTimelineGetSetting: (params?: { key?: string }) =>
+    send<
+      | {
+          scope: "timeline";
+          timeline: string;
+          key: string;
+          value: string | number | boolean | null;
+        }
+      | {
+          scope: "timeline";
+          timeline: string;
+          key: null;
+          value: Record<string, string | number | boolean | null>;
+        }
+    >("resolve.timelineGetSetting", params ?? {}),
+
+  resolveTimelineSetSetting: (params: { key: string; value: string }) =>
+    send<{ scope: "timeline"; set: boolean; key: string; value: string }>(
+      "resolve.timelineSetSetting",
+      params,
+    ),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

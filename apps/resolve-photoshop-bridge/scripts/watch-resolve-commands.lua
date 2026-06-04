@@ -1089,6 +1089,101 @@ end
 HANDLERS["subtitle.importFromFile"] = handleSubtitleImport
 
 -- ---------------------------------------------------------------------------
+-- Project + Timeline GetSetting / SetSetting
+-- ---------------------------------------------------------------------------
+
+-- jsonValue — encode lua-value som JSON-string
+local function jsonValue(v)
+  local t = type(v)
+  if t == "string" then return jsonEscape(v) end
+  if t == "number" then return tostring(v) end
+  if t == "boolean" then return tostring(v) end
+  if v == nil then return "null" end
+  return jsonEscape(tostring(v))
+end
+
+-- settingsTableToJson — { key = value, ... } → '{"k":"v",...}'
+local function settingsTableToJson(tbl)
+  if type(tbl) ~= "table" then
+    return jsonValue(tbl)
+  end
+  local parts = {}
+  for k, v in pairs(tbl) do
+    table.insert(parts, jsonEscape(tostring(k)) .. ":" .. jsonValue(v))
+  end
+  return "{" .. table.concat(parts, ",") .. "}"
+end
+
+local function handleProjectGetSetting(args)
+  local _, project = getResolveContext()
+  local key = extractString(args, "key")
+  if key and key ~= "" then
+    local value = project:GetSetting(key)
+    return string.format(
+      '{"scope":"project","key":%s,"value":%s}',
+      jsonEscape(key), jsonValue(value)
+    )
+  end
+  local allSettings = project:GetSetting("")
+  return string.format(
+    '{"scope":"project","key":null,"value":%s}',
+    settingsTableToJson(allSettings)
+  )
+end
+
+local function handleProjectSetSetting(args)
+  local _, project = getResolveContext()
+  local key = extractString(args, "key")
+  if not key or key == "" then error("key mangler") end
+  local value = extractString(args, "value")
+  if value == nil then error("value mangler (må være string)") end
+  local ok = project:SetSetting(key, value)
+  return string.format(
+    '{"scope":"project","set":%s,"key":%s,"value":%s}',
+    tostring(ok), jsonEscape(key), jsonEscape(value)
+  )
+end
+
+local function handleTimelineGetSetting(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local key = extractString(args, "key")
+  if key and key ~= "" then
+    local value = timeline:GetSetting(key)
+    return string.format(
+      '{"scope":"timeline","timeline":%s,"key":%s,"value":%s}',
+      jsonEscape(timeline:GetName() or ""), jsonEscape(key), jsonValue(value)
+    )
+  end
+  local allSettings = timeline:GetSetting("")
+  return string.format(
+    '{"scope":"timeline","timeline":%s,"key":null,"value":%s}',
+    jsonEscape(timeline:GetName() or ""), settingsTableToJson(allSettings)
+  )
+end
+
+local function handleTimelineSetSetting(args)
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local key = extractString(args, "key")
+  if not key or key == "" then error("key mangler") end
+  local value = extractString(args, "value")
+  if value == nil then error("value mangler (må være string)") end
+  local ok = timeline:SetSetting(key, value)
+  return string.format(
+    '{"scope":"timeline","set":%s,"key":%s,"value":%s}',
+    tostring(ok), jsonEscape(key), jsonEscape(value)
+  )
+end
+
+HANDLERS["project.getSetting"] = handleProjectGetSetting
+HANDLERS["project.setSetting"] = handleProjectSetSetting
+HANDLERS["timeline.getSetting"] = handleTimelineGetSetting
+HANDLERS["timeline.setSetting"] = handleTimelineSetSetting
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 

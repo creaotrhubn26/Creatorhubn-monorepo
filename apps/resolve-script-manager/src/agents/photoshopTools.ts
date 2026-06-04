@@ -686,6 +686,58 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_project_get_setting",
+    description:
+      "Les prosjekt-innstilling fra Resolve. Hvis key utelates returneres ALLE settings som dict (timeline-fps, color-space, output-resolusjon, etc.). Bruk dette først for å forstå hva som er konfigurert før du foreslår endringer.",
+    input_schema: {
+      type: "object",
+      properties: {
+        key: {
+          type: "string",
+          description:
+            "Setting-nøkkel, f.eks. 'timelineFrameRate', 'colorScienceMode'. Utelat for full snapshot.",
+        },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_project_set_setting",
+    description:
+      "Sett prosjekt-innstilling i Resolve. Resolve godtar kun string-verdier — konverter numbers/bools til strings før kall. ADVARSEL: endrer prosjekt-state; vurder å lese current value først.",
+    input_schema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "Setting-nøkkel." },
+        value: { type: "string", description: "Ny verdi som string." },
+      },
+      required: ["key", "value"],
+    },
+  },
+  {
+    name: "photoshop_resolve_timeline_get_setting",
+    description:
+      "Les timeline-innstilling for aktiv timeline. Hvis key utelates returneres ALLE settings (timeline-fps, resolusjon, output-format, etc.) som dict. Krever aktiv timeline.",
+    input_schema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "Setting-nøkkel. Utelat for full snapshot." },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_timeline_set_setting",
+    description:
+      "Sett timeline-innstilling for aktiv timeline. Resolve godtar kun string-verdier. ADVARSEL: endrer timeline-state.",
+    input_schema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "Setting-nøkkel." },
+        value: { type: "string", description: "Ny verdi som string." },
+      },
+      required: ["key", "value"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -1322,6 +1374,32 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         file_path: filePath,
         append_to_timeline: input.append_to_timeline === true,
       });
+    }
+    case "photoshop_resolve_project_get_setting":
+      return photoshop.resolveProjectGetSetting({
+        key: typeof input.key === "string" ? input.key : undefined,
+      });
+    case "photoshop_resolve_project_set_setting": {
+      if (typeof input.key !== "string" || input.key.length === 0) {
+        throw new Error("key må være en ikke-tom string");
+      }
+      if (typeof input.value !== "string") {
+        throw new Error("value må være en string (Resolve godtar kun string-verdier)");
+      }
+      return photoshop.resolveProjectSetSetting({ key: input.key, value: input.value });
+    }
+    case "photoshop_resolve_timeline_get_setting":
+      return photoshop.resolveTimelineGetSetting({
+        key: typeof input.key === "string" ? input.key : undefined,
+      });
+    case "photoshop_resolve_timeline_set_setting": {
+      if (typeof input.key !== "string" || input.key.length === 0) {
+        throw new Error("key må være en ikke-tom string");
+      }
+      if (typeof input.value !== "string") {
+        throw new Error("value må være en string (Resolve godtar kun string-verdier)");
+      }
+      return photoshop.resolveTimelineSetSetting({ key: input.key, value: input.value });
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
