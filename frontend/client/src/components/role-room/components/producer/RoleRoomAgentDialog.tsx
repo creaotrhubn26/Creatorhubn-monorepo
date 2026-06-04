@@ -1038,6 +1038,66 @@ export default function RoleRoomAgentDialog({
                   </Stack>
                 </Stack>
               </Box>
+              {/* Summary-first: lead with what we found + top recommendations,
+                  so the producer isn't dropped straight into a wall of cards. */}
+              <Box
+                data-testid="research-summary"
+                sx={{
+                  p: 1.4,
+                  borderRadius: 3,
+                  border: '1px solid rgba(34,211,238,0.3)',
+                  bgcolor: 'rgba(34,211,238,0.06)',
+                }}
+              >
+                <Typography
+                  sx={{
+                    color: '#22d3ee',
+                    fontWeight: 800,
+                    fontSize: '0.74rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    mb: 0.6,
+                  }}
+                >
+                  Sammendrag
+                </Typography>
+                <Typography sx={{ color: '#e2e8f0', lineHeight: 1.6 }}>
+                  {result.companyProfile.summary}
+                </Typography>
+                <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                  {result.companyProfile.industry ? (
+                    <Chip size="small" label={result.companyProfile.industry} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#e2e8f0' }} />
+                  ) : null}
+                  {result.companyAge?.label ? (
+                    <Chip size="small" label={result.companyAge.label} sx={{ bgcolor: 'rgba(16,185,129,0.16)', color: '#bbf7d0' }} />
+                  ) : null}
+                  {socialProfileCandidates.length > 0 ? (
+                    <Chip size="small" label={`${socialProfileCandidates.length} sosiale kontoer`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                  ) : null}
+                  {competitorAnalysis?.competitors?.length ? (
+                    <Chip size="small" label={`${competitorAnalysis.competitors.length} konkurrenter`} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#f0abfc' }} />
+                  ) : null}
+                </Stack>
+                {(() => {
+                  const recs = (competitorAnalysis?.marketingOpportunities?.length
+                    ? competitorAnalysis.marketingOpportunities
+                    : localPresencePlan?.recommendedEventConcepts ?? []).slice(0, 3);
+                  return recs.length > 0 ? (
+                    <Box sx={{ mt: 1.2 }}>
+                      <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontWeight: 700, fontSize: '0.72rem', mb: 0.4 }}>
+                        Anbefalte neste steg
+                      </Typography>
+                      <Stack component="ol" spacing={0.4} sx={{ m: 0, pl: 2.2 }}>
+                        {recs.map((r, i) => (
+                          <Typography key={i} component="li" sx={{ color: '#e2e8f0', fontSize: '0.86rem', lineHeight: 1.5 }}>
+                            {r}
+                          </Typography>
+                        ))}
+                      </Stack>
+                    </Box>
+                  ) : null;
+                })()}
+              </Box>
               <Stack
                 direction="row"
                 spacing={0.8}
