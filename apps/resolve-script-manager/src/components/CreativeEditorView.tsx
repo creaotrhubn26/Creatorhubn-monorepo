@@ -40,7 +40,6 @@ import { StudioVsFreeDialog, useStudioVsFreeAutoShow } from "./StudioVsFreeDialo
 import { UpcomingJobsSidebar } from "./UpcomingJobsSidebar";
 import type { UpcomingJob } from "../services/upcomingJobsService";
 import { ThumbnailCreator } from "./ThumbnailCreator";
-import { PhotoshopAgentDialog } from "./PhotoshopAgentDialog";
 import { StoryView } from "./story/StoryView";
 import type { ChapterDef } from "../agents/types";
 
@@ -422,8 +421,6 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
   // Loop within focused pick (default) vs play full source continuously
   const [loopMode, setLoopMode] = useState<"pick" | "full">("pick");
 
-  // Photoshop Agent — modal-dialog state
-  const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
   // Director panel — embedded i høyre-rail, alle 91 tools tilgjengelig
   // herfra med auto-kontekst om aktiv pick + story-state. Persistes til
   // localStorage så toggle-tilstand overlever reload.
@@ -3888,25 +3885,12 @@ ${ctxLines.join("\n")}`;
               );
             })}
             <button
-              className="ce-agent-tab"
-              onClick={() => setShowPhotoshopAgent(true)}
-              title="Åpne Photoshop Agent — AI styrer Photoshop fra naturlig språk"
-              style={{
-                background: "linear-gradient(135deg, rgba(167,139,250,0.18), rgba(110,63,199,0.18))",
-                borderColor: "rgba(167,139,250,0.40)",
-                color: "#d8c8ff",
-                marginLeft: "auto",
-              }}
-            >
-              <span className="ce-agent-tab-icon"><BrushIcon style={{ fontSize: 14 }} /></span>
-              <span className="ce-agent-tab-name">Photoshop</span>
-            </button>
-            <button
               className={`ce-agent-tab ${directorPanelOpen ? "active" : ""}`}
               onClick={() => setDirectorPanelOpen((v) => !v)}
               title="Multi-Agent Creative Director — Claude med 91 Resolve+Photoshop-tools, leser aktiv pick automatisk"
               data-testid="ce-director-toggle"
               style={{
+                marginLeft: "auto",
                 background: directorPanelOpen
                   ? "linear-gradient(135deg, rgba(167,139,250,0.35), rgba(110,63,199,0.35))"
                   : "linear-gradient(135deg, rgba(167,139,250,0.18), rgba(110,63,199,0.18))",
@@ -4976,10 +4960,6 @@ ${ctxLines.join("\n")}`;
           </div>
         </button>
       </footer>
-
-      {showPhotoshopAgent && (
-        <PhotoshopAgentDialog onClose={() => setShowPhotoshopAgent(false)} />
-      )}
     </div>
   );
 }

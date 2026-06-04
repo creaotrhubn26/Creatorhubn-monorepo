@@ -6,7 +6,6 @@ import { useDepHealth, type DepHealth } from "../hooks/useDepHealth";
 import { PhotoshopStatusPill } from "./PhotoshopStatusPill";
 import CheckCircleOutlinedIcon from "@mui/icons-material/CheckCircleOutlined";
 import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
-import BrushOutlinedIcon from "@mui/icons-material/BrushOutlined";
 import AddIcon from "@mui/icons-material/Add";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import HistoryIcon from "@mui/icons-material/History";
@@ -99,7 +98,6 @@ interface Props {
   onOpenWatch: () => void;
   onOpenPhotoshopBridge: () => void;
   onOpenPhotoshopTemplates: () => void;
-  onOpenPhotoshopAgent: () => void;
   onOpenPsdGallery: () => void;
   onOpenPhotoshopHealth: () => void;
   onOpenPhotoshopTour: () => void;
@@ -153,7 +151,6 @@ export function HeaderBar({
   onOpenWatch,
   onOpenPhotoshopBridge,
   onOpenPhotoshopTemplates,
-  onOpenPhotoshopAgent,
   onOpenPsdGallery,
   onOpenPhotoshopHealth,
   onOpenPhotoshopTour,
@@ -312,17 +309,6 @@ export function HeaderBar({
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenCreations(); }}>
                   <HistoryIcon fontSize="small" /> Mine AI-kreasjoner…
-                </button>
-                <button
-                  onClick={() => { setMenuOpen(false); onOpenPhotoshopAgent(); }}
-                  style={{
-                    background: "linear-gradient(135deg, rgba(167,139,250,0.18), rgba(110,63,199,0.18))",
-                    border: "1px solid rgba(167,139,250,0.35)",
-                    color: "#e8e0ff",
-                    fontWeight: 600,
-                  }}
-                >
-                  <BrushOutlinedIcon fontSize="small" /> Photoshop Agent…
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPsdGallery(); }}>
                   PSD-galleri…
