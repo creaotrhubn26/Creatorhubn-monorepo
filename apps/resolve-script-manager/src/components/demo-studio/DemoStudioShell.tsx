@@ -212,6 +212,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const previewDevice = selected?.device ?? 'macbook';
   const previewVariant: FrameVariant = previewDevice === 'ipad' && selected?.orientation === 'landscape' ? 'ipad_landscape' : previewDevice;
   const render = project?.render ?? defaultRenderOptions();
+  // Preview-bredde per enhet (deles av enhets-ramme + kontaktskygge), skalert av zoom.
+  const baseWPct = previewVariant === 'macbook' ? 78 : previewVariant === 'ipad_landscape' ? 64 : previewVariant === 'ipad' ? 42 : 26;
+  const baseMaxW = previewVariant === 'macbook' ? 640 : previewVariant === 'ipad_landscape' ? 560 : previewVariant === 'ipad' ? 360 : 230;
 
   const storyPicks = useMemo(() => (project ? demoScenesToPicks(project.scenes) : []), [project]);
   const storyChapters = useMemo(() => (project ? demoChapters(project.scenes) : []), [project]);
@@ -431,15 +434,28 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 </div>
               </div>
 
-              {/* Live preview i EKTE device-ramme (samme som Guided Recorder/eksport) */}
+              {/* Scene: enheten på et "bord" — varm spotlight + overflate + kontaktskygge,
+                  så det føles som å sitte ved et bord med enheten foran seg. */}
               <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', flexShrink: 0,
-                width: `${(previewVariant === 'macbook' ? 78 : previewVariant === 'ipad_landscape' ? 64 : previewVariant === 'ipad' ? 42 : 26) * previewZoom}%`,
-                maxWidth: (previewVariant === 'macbook' ? 640 : previewVariant === 'ipad_landscape' ? 560 : previewVariant === 'ipad' ? 360 : 230) * previewZoom,
+                position: 'relative', alignSelf: 'stretch', display: 'flex', flexDirection: 'column', alignItems: 'center',
+                padding: '18px 0 34px', flexShrink: 0,
+                background: 'radial-gradient(68% 88% at 50% 22%, rgba(255,255,255,0.9), rgba(255,255,255,0) 70%), linear-gradient(180deg, rgba(255,255,255,0) 52%, rgba(58,47,42,0.07) 100%)',
               }}>
-                <FramedDevice variant={previewVariant} url={project.url} width="100%"
-                  overlay={<SceneInteractionOverlay hotspot={selected?.hotspot} render={render} device={previewDevice} />}
-                  onScreenClick={placingHotspot ? placeHotspot : undefined} />
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  width: `${baseWPct * previewZoom}%`, maxWidth: baseMaxW * previewZoom,
+                }}>
+                  <FramedDevice variant={previewVariant} url={project.url} width="100%"
+                    overlay={<SceneInteractionOverlay hotspot={selected?.hotspot} render={render} device={previewDevice} />}
+                    onScreenClick={placingHotspot ? placeHotspot : undefined} />
+                </div>
+                {/* Jordet kontaktskygge under enheten */}
+                <div style={{
+                  width: `${baseWPct * previewZoom * 0.82}%`, maxWidth: baseMaxW * previewZoom * 0.82,
+                  height: Math.round(16 * previewZoom), marginTop: previewVariant === 'macbook' ? Math.round(2 * previewZoom) : Math.round(14 * previewZoom),
+                  background: 'radial-gradient(50% 100% at 50% 0%, rgba(0,0,0,0.30), rgba(0,0,0,0) 72%)',
+                  filter: `blur(${Math.round(5 * previewZoom)}px)`, borderRadius: '50%', flexShrink: 0,
+                }} />
               </div>
 
               {/* Scene-flow-kort */}
