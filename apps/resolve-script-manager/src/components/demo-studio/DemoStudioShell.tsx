@@ -403,6 +403,10 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           </div>
         ) : nav === 'export' ? (
           <div style={{ flex: 1, minHeight: 0 }}><ExportView /></div>
+        ) : nav === 'create' ? (
+          <div style={{ flex: 1, minHeight: 0 }}><CreateDemoView /></div>
+        ) : nav === 'preview' ? (
+          <div style={{ flex: 1, minHeight: 0 }}><DevicePreviewView /></div>
         ) : (
           <>
             {/* ── Blocks panel (demo-typer) ── */}
@@ -790,6 +794,80 @@ function SceneThumb({ scene, url, height = 80 }: { scene: DemoScene; url: string
     <div ref={ref} style={{ position: 'relative', width: '100%', height, borderRadius: 7, overflow: 'hidden', background: '#fff', border: `1px solid ${C.line}`, marginBottom: 8 }}>
       <iframe src={url} scrolling="no" tabIndex={-1} title="" aria-hidden
         style={{ width: vw, height: logicalH, border: 0, transform: `scale(${scale || 0.001})`, transformOrigin: '0 0', pointerEvents: 'none', opacity: scale > 0 ? 1 : 0 }} />
+    </div>
+  );
+}
+
+/** Create Demo — start/oversikt: gjeldende demo + skjema for å starte en ny. */
+function CreateDemoView() {
+  const { project, createProject } = useDemoStudio();
+  const [urlInput, setUrlInput] = useState('');
+  const [demoType, setDemoType] = useState<DemoType>('product_demo');
+  const normalizedUrl = normalizeUrl(urlInput);
+  const valid = /^https?:\/\/\S+\.\S+/i.test(normalizedUrl);
+  const start = () => { if (!project || window.confirm('Erstatte gjeldende demo med en ny? (Du kan eksportere først.)')) createProject(normalizedUrl, demoType); };
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: C.bg }}>
+      <div style={{ maxWidth: 680, margin: '0 auto', padding: '36px 32px' }}>
+        {project && (
+          <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 18, background: '#fff', marginBottom: 26 }}>
+            <div style={{ fontSize: 11, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Nåværende demo</div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>{project.name}</div>
+            <div style={{ fontSize: 12.5, color: C.inkSoft, marginTop: 4 }}>{project.url} · {DEMO_TYPE_LABELS[project.demoType]} · {project.scenes.length} scener · {fmt(totalDuration(project.scenes))}</div>
+          </div>
+        )}
+        <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>{project ? 'Start ny demo' : 'Hva vil du vise frem?'}</h2>
+        <p style={{ color: C.inkSoft, fontSize: 13.5, margin: '0 0 14px' }}>Lim inn en URL og bygg en scene-basert produktdemo.{project ? ' En ny demo erstatter den gjeldende.' : ''}</p>
+        <input style={{ ...field, fontSize: 15, padding: '13px 15px' }} placeholder="https://example.com" value={urlInput}
+          onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && valid) start(); }} />
+        <select style={{ ...field, padding: '11px 12px', marginTop: 12 }} value={demoType} onChange={(e) => setDemoType(e.target.value as DemoType)}>
+          {(Object.keys(DEMO_TYPE_LABELS) as DemoType[]).map((t) => <option key={t} value={t}>{DEMO_TYPE_LABELS[t]}</option>)}
+        </select>
+        <div><button style={{ ...primaryBtn, opacity: valid ? 1 : 0.5, marginTop: 14 }} disabled={!valid} onClick={start}>
+          {project ? 'Opprett ny demo →' : 'Generér demo-flow →'}
+        </button></div>
+        {!valid && <p style={{ color: C.inkSoft, fontSize: 12.5, margin: '8px 0 0' }}>Skriv inn en gyldig URL (f.eks. <code>theroleroom.com</code>).</p>}
+      </div>
+    </div>
+  );
+}
+
+/** Device Preview — ren forhåndsvisning: stor enhet, enhetsbytte, spill gjennom scenene. */
+function DevicePreviewView() {
+  const { project, selectedSceneId, selectScene } = useDemoStudio();
+  const [override, setOverride] = useState<DemoDevice | null>(null);
+  if (!project) return null;
+  const scenes = project.scenes;
+  const idx = Math.max(0, scenes.findIndex((s) => s.id === selectedSceneId));
+  const scene = scenes[idx] ?? scenes[0];
+  if (!scene) return <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: C.inkSoft }}>Ingen scener ennå.</div>;
+  const device = override ?? scene.device;
+  const variant: FrameVariant = device === 'ipad' && scene.orientation === 'landscape' ? 'ipad_landscape' : device;
+  const render = project.render ?? defaultRenderOptions();
+  const go = (d: number) => { const n = Math.max(0, Math.min(scenes.length - 1, idx + d)); selectScene(scenes[n].id); };
+  return (
+    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: C.bg }}>
+      <div style={{ display: 'flex', gap: 4, alignSelf: 'center', background: '#fff', border: `1px solid ${C.line}`, borderRadius: 9, padding: 3, margin: '16px auto 0' }}>
+        {(['macbook', 'ipad', 'iphone'] as DemoDevice[]).map((d) => (
+          <div key={d} onClick={() => setOverride(d === scene.device ? null : d)} title={DEVICE_LABEL[d]}
+            style={{ minWidth: 46, height: 28, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '0 8px', background: device === d ? C.creamActive : 'transparent', color: device === d ? C.ink : C.inkFaint }}>{DEVICE_LABEL[d]}</div>
+        ))}
+      </div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 24px', overflow: 'auto' }}>
+        <div style={{ width: variant === 'macbook' ? '72%' : variant === 'ipad_landscape' ? '58%' : variant === 'ipad' ? '40%' : '24%', maxWidth: variant === 'macbook' ? 820 : variant === 'ipad_landscape' ? 720 : variant === 'ipad' ? 460 : 300, flexShrink: 0 }}>
+          <FramedDevice variant={variant} url={project.url} width="100%"
+            overlay={<SceneInteractionOverlay hotspot={scene.hotspot} render={render} device={device} />} />
+        </div>
+      </div>
+      <div style={{ borderTop: `1px solid ${C.line}`, background: '#fff', padding: '14px 22px', display: 'flex', alignItems: 'center', gap: 14 }}>
+        <button style={{ ...outlineBtn, opacity: idx === 0 ? 0.5 : 1 }} disabled={idx === 0} onClick={() => go(-1)}>‹ Forrige</button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>Scene {idx + 1}/{scenes.length} — {scene.title}</div>
+          <div style={{ fontSize: 12, color: C.inkSoft, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{scene.narration || scene.requiredAction || '—'}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 5 }}>{scenes.map((s, i) => <span key={s.id} onClick={() => selectScene(s.id)} style={{ width: i === idx ? 16 : 7, height: 7, borderRadius: 4, background: i === idx ? C.accent : '#d8d2c8', cursor: 'pointer' }} />)}</div>
+        <button style={{ ...outlineBtn, opacity: idx >= scenes.length - 1 ? 0.5 : 1 }} disabled={idx >= scenes.length - 1} onClick={() => go(1)}>Neste ›</button>
+      </div>
     </div>
   );
 }
