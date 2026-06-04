@@ -53,6 +53,11 @@ export interface RoleRoomLeadsProducerRoutesDeps {
 export type LeadSegment = "varm" | "lunken" | "kald" | "tapt";
 const VALID_SEGMENTS: LeadSegment[] = ["varm", "lunken", "kald", "tapt"];
 
+// Conversion stage for ROI documentation: answered → booked meeting → became
+// customer → lost. "ny" (new, untouched) = no stored row.
+export type LeadStage = "svart" | "booket" | "kunde" | "tapt";
+const VALID_STAGES: LeadStage[] = ["svart", "booket", "kunde", "tapt"];
+
 let leadSegmentSchemaReady = false;
 async function ensureLeadSegmentSchema(pool: Pool): Promise<void> {
   if (leadSegmentSchemaReady) return;
@@ -83,6 +88,62 @@ async function fetchSegments(pool: Pool, userId: string, leadIds: string[]): Pro
   );
   const map: Record<string, string> = {};
   for (const row of result.rows) map[String(row.lead_external_id)] = String(row.segment);
+  return map;
+}
+
+// ── Outcomes + spend (ROI documentation) ──────────────────────────────────
+let leadRoiSchemaReady = false;
+async function ensureLeadRoiSchema(pool: Pool): Promise<void> {
+  if (leadRoiSchemaReady) return;
+  // Per-lead conversion stage + value (kr) — for the funnel the producer shows
+  // the client (spend → leads → answered → booked → customer → revenue).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS role_room_lead_outcomes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id TEXT NOT NULL,
+      connection_id UUID NOT NULL,
+      form_id TEXT NOT NULL,
+      lead_external_id TEXT NOT NULL,
+      stage TEXT NOT NULL,
+      value_kr NUMERIC NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (user_id, lead_external_id)
+    );
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_rr_lead_outcomes_form ON role_room_lead_outcomes(user_id, connection_id, form_id);`,
+  );
+  // Ad spend per form (manually entered by the producer, or from attribution).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS role_room_lead_spend (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id TEXT NOT NULL,
+      connection_id UUID NOT NULL,
+      form_id TEXT NOT NULL,
+      spend_kr NUMERIC NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (user_id, connection_id, form_id)
+    );
+  `);
+  leadRoiSchemaReady = true;
+}
+
+/** Map of lead_external_id → {stage, valueKr} for the given user. */
+async function fetchOutcomes(
+  pool: Pool,
+  userId: string,
+  leadIds: string[],
+): Promise<Record<string, { stage: string; valueKr: number }>> {
+  if (leadIds.length === 0) return {};
+  const result = await pool.query(
+    `SELECT lead_external_id, stage, value_kr FROM role_room_lead_outcomes
+       WHERE user_id = $1 AND lead_external_id = ANY($2::text[])`,
+    [userId, leadIds],
+  );
+  const map: Record<string, { stage: string; valueKr: number }> = {};
+  for (const row of result.rows) {
+    map[String(row.lead_external_id)] = { stage: String(row.stage), valueKr: Number(row.value_kr) || 0 };
+  }
   return map;
 }
 
@@ -185,7 +246,10 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       }
       const data = Array.isArray(body.data) ? body.data : [];
       await ensureLeadSegmentSchema(pool);
-      const segments = await fetchSegments(pool, session.userId, data.map((l: Record<string, any>) => String(l.id)));
+      await ensureLeadRoiSchema(pool);
+      const leadIds = data.map((l: Record<string, any>) => String(l.id));
+      const segments = await fetchSegments(pool, session.userId, leadIds);
+      const outcomes = await fetchOutcomes(pool, session.userId, leadIds);
       res.json({
         success: true,
         leads: data.map((lead: Record<string, any>) => {
@@ -194,6 +258,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
           for (const fd of Array.isArray(lead.field_data) ? lead.field_data : []) {
             if (fd?.name) fields[fd.name] = Array.isArray(fd.values) ? fd.values.join(", ") : "";
           }
+          const outcome = outcomes[String(lead.id)];
           return {
             id: lead.id,
             createdTime: lead.created_time ?? null,
@@ -201,6 +266,8 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
             email: fields.email || null,
             phone: fields.phone_number || fields.phone || null,
             segment: segments[String(lead.id)] ?? null,
+            stage: outcome?.stage ?? null,
+            valueKr: outcome?.valueKr ?? 0,
             fields,
           };
         }),
@@ -250,6 +317,169 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
         );
       }
       res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // ── POST /api/role-room/leads/producer/outcome ──────────────────────────
+  // Set a lead's conversion stage (svart/booket/kunde/tapt) + value (kr), or
+  // clear it. Drives the ROI funnel the producer shows the client.
+  app.post("/api/role-room/leads/producer/outcome", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as {
+      connectionId?: string; formId?: string; leadId?: string;
+      stage?: string | null; valueKr?: number;
+    };
+    const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
+    const formId = typeof body.formId === "string" ? body.formId : "";
+    const leadId = typeof body.leadId === "string" ? body.leadId : "";
+    const stage = body.stage;
+    const valueKr = typeof body.valueKr === "number" && isFinite(body.valueKr) ? Math.max(0, body.valueKr) : 0;
+    if (!connectionId || !formId || !leadId) {
+      res.status(400).json({ success: false, error: "connectionId, formId and leadId are required" });
+      return;
+    }
+    if (stage !== null && !VALID_STAGES.includes(stage as LeadStage)) {
+      res.status(400).json({ success: false, error: "invalid stage" });
+      return;
+    }
+    try {
+      const connection = await getConnection(pool, connectionId, session.userId);
+      if (!connection) {
+        res.status(404).json({ success: false, error: "connection_not_found" });
+        return;
+      }
+      await ensureLeadRoiSchema(pool);
+      if (stage === null) {
+        await pool.query(
+          `DELETE FROM role_room_lead_outcomes WHERE user_id = $1 AND lead_external_id = $2`,
+          [session.userId, leadId],
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO role_room_lead_outcomes (user_id, connection_id, form_id, lead_external_id, stage, value_kr)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (user_id, lead_external_id)
+           DO UPDATE SET stage = EXCLUDED.stage, value_kr = EXCLUDED.value_kr,
+                         connection_id = EXCLUDED.connection_id, form_id = EXCLUDED.form_id, updated_at = now()`,
+          [session.userId, connectionId, formId, leadId, stage, valueKr],
+        );
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // ── POST /api/role-room/leads/producer/spend ────────────────────────────
+  // Store the ad spend (kr) for a form so cost-per-lead / ROI can be computed.
+  app.post("/api/role-room/leads/producer/spend", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as { connectionId?: string; formId?: string; spendKr?: number };
+    const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
+    const formId = typeof body.formId === "string" ? body.formId : "";
+    const spendKr = typeof body.spendKr === "number" && isFinite(body.spendKr) ? Math.max(0, body.spendKr) : 0;
+    if (!connectionId || !formId) {
+      res.status(400).json({ success: false, error: "connectionId and formId are required" });
+      return;
+    }
+    try {
+      const connection = await getConnection(pool, connectionId, session.userId);
+      if (!connection) {
+        res.status(404).json({ success: false, error: "connection_not_found" });
+        return;
+      }
+      await ensureLeadRoiSchema(pool);
+      await pool.query(
+        `INSERT INTO role_room_lead_spend (user_id, connection_id, form_id, spend_kr)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id, connection_id, form_id)
+         DO UPDATE SET spend_kr = EXCLUDED.spend_kr, updated_at = now()`,
+        [session.userId, connectionId, formId, spendKr],
+      );
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // ── GET /api/role-room/leads/producer/summary ───────────────────────────
+  // ROI funnel for a form: spend → leads → cost/lead → answered → booked →
+  // customers → revenue → ROI. Counts come from stored outcomes (independent of
+  // pagination); totalLeads from the form's leads_count.
+  app.get("/api/role-room/leads/producer/summary", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
+    const formId = typeof req.query.formId === "string" ? req.query.formId : "";
+    if (!connectionId || !formId) {
+      res.status(400).json({ success: false, error: "connectionId and formId are required" });
+      return;
+    }
+    try {
+      const connection = await getConnection(pool, connectionId, session.userId);
+      if (!connection) {
+        res.status(404).json({ success: false, error: "connection_not_found" });
+        return;
+      }
+      await ensureLeadRoiSchema(pool);
+
+      // Stored spend.
+      const spendRow = await pool.query(
+        `SELECT spend_kr FROM role_room_lead_spend WHERE user_id = $1 AND connection_id = $2 AND form_id = $3`,
+        [session.userId, connectionId, formId],
+      );
+      const spendKr = spendRow.rows[0] ? Number(spendRow.rows[0].spend_kr) || 0 : 0;
+
+      // Stage counts + revenue from stored outcomes.
+      const stageRows = await pool.query(
+        `SELECT stage, COUNT(*)::int AS n, COALESCE(SUM(value_kr), 0)::float AS sum_value
+           FROM role_room_lead_outcomes
+          WHERE user_id = $1 AND connection_id = $2 AND form_id = $3
+          GROUP BY stage`,
+        [session.userId, connectionId, formId],
+      );
+      const byStage: Record<string, { n: number; value: number }> = {};
+      for (const r of stageRows.rows) byStage[String(r.stage)] = { n: Number(r.n) || 0, value: Number(r.sum_value) || 0 };
+
+      // total leads from the form's leads_count (best-effort Graph call).
+      let totalLeads = 0;
+      try {
+        const fresh = await ensureFreshConnection(pool, connection);
+        const pageToken = await getPageToken(fresh);
+        const upstream = await fetch(
+          `${GRAPH}/${encodeURIComponent(formId)}?fields=leads_count&access_token=${encodeURIComponent(pageToken)}`,
+        );
+        const fb = (await upstream.json().catch(() => ({}))) as Record<string, any>;
+        if (upstream.ok && typeof fb.leads_count === "number") totalLeads = fb.leads_count;
+      } catch {
+        /* leave totalLeads at 0 if Graph is unavailable */
+      }
+
+      // Funnel: a "kunde" is also booked+answered; "booket" is also answered.
+      const customers = byStage.kunde?.n ?? 0;
+      const booked = (byStage.booket?.n ?? 0) + customers;
+      const answered = (byStage.svart?.n ?? 0) + booked;
+      const lost = byStage.tapt?.n ?? 0;
+      const revenueKr = byStage.kunde?.value ?? 0;
+      const trackedLeads = Math.max(totalLeads, answered + lost);
+
+      res.json({
+        success: true,
+        spendKr,
+        totalLeads: trackedLeads,
+        answered,
+        booked,
+        customers,
+        lost,
+        revenueKr,
+        costPerLeadKr: trackedLeads > 0 ? spendKr / trackedLeads : 0,
+        costPerCustomerKr: customers > 0 ? spendKr / customers : 0,
+        roi: spendKr > 0 ? revenueKr / spendKr : 0,
+      });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }
