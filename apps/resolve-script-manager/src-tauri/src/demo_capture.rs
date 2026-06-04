@@ -15,8 +15,10 @@ use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const CAPTURE_JS: &str = include_str!("../capture/demo_capture_inject.js");
 const SCAN_JS: &str = include_str!("../capture/demo_scan_inject.js");
+const VERIFY_JS: &str = include_str!("../capture/demo_verify_inject.js");
 const CAPTURE_LABEL: &str = "demo-capture";
 const SCAN_LABEL: &str = "demo-scan";
+const VERIFY_LABEL: &str = "demo-verify";
 
 /// Åpne capture-vinduet på `url`. Lukker et eventuelt eksisterende capture-vindu
 /// først, så vi aldri har to gående.
@@ -70,6 +72,41 @@ pub fn demo_scan_result(app: AppHandle, result: serde_json::Value) -> Result<(),
         let _ = w.close();
     }
     app.emit("demo-capture://dom", result).map_err(|e| e.to_string())
+}
+
+/// Åpne et verify-vindu på `url` for ett-skudds verifisering av en scenes
+/// handling. Brukeren klikker elementet; selector+label sendes via
+/// demo_verify_result. `expected_label` vises i verktøylinja som hint.
+#[tauri::command]
+pub async fn demo_verify_action(app: AppHandle, url: String, expected_label: Option<String>) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window(VERIFY_LABEL) {
+        let _ = existing.close();
+    }
+    let parsed: tauri::Url = url.parse().map_err(|e| format!("ugyldig URL «{url}»: {e}"))?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err("URL må være http(s)".to_string());
+    }
+    // Sett forventet label som JS-global (trygt escapet via serde_json).
+    let label_json = serde_json::to_string(&expected_label.unwrap_or_default()).unwrap_or_else(|_| "\"\"".to_string());
+    let setter = format!("window.__demoExpectedLabel={label_json};");
+    WebviewWindowBuilder::new(&app, VERIFY_LABEL, WebviewUrl::External(parsed))
+        .title("Verifiser handling")
+        .inner_size(1200.0, 820.0)
+        .initialization_script(&setter)
+        .initialization_script(VERIFY_JS)
+        .build()
+        .map_err(|e| format!("kunne ikke åpne verify-vindu: {e}"))?;
+    Ok(())
+}
+
+/// Mottar verify-resultatet (selector+label, eller cancelled), videresender til
+/// hovedvinduet og lukker verify-vinduet.
+#[tauri::command]
+pub fn demo_verify_result(app: AppHandle, result: serde_json::Value) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window(VERIFY_LABEL) {
+        let _ = w.close();
+    }
+    app.emit("demo-capture://verify", result).map_err(|e| e.to_string())
 }
 
 /// Hent EKTE side-kontekst via reqwest (ingen CORS). Trekker ut tittel +

@@ -27,7 +27,7 @@ import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, fetchSiteContext, runResponsiveCheck } from './demoStudioAI';
-import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, type CapturedStep } from '../../services/demoCaptureService';
+import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
@@ -118,7 +118,27 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const zoomBy = (delta: number) => setPreviewZoom((z) => Math.min(3, Math.max(0.5, Math.round((z + delta) * 100) / 100)));
   const [capturing, setCapturing] = useState(false);
   const [captureCount, setCaptureCount] = useState(0);
+  const [verifyBusy, setVerifyBusy] = useState(false);
   const captureBuf = useRef<CapturedStep[]>([]);
+
+  // Verifiser den gjeldende recorder-scenens handling: brukeren klikker
+  // elementet → detectedSelector fylles → ekte Expected↔Detected-validering.
+  const verifyCurrentAction = async () => {
+    if (!isCaptureAvailable()) { window.alert('Verifisering krever Tauri-appen.'); return; }
+    const st = useDemoStudio.getState();
+    const sc = st.project?.scenes[st.recorderStepIndex];
+    if (!sc || !st.project) return;
+    setVerifyBusy(true);
+    try {
+      const v = await verifyAction(st.project.url, sc.targetLabel);
+      if (v && !v.cancelled && v.selector) {
+        const match = sceneActionMatch({ ...sc, detectedSelector: v.selector });
+        updateScene(sc.id, { detectedSelector: v.selector, status: match === 'match' ? 'done' : 'needs_review' });
+      }
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
 
   // Klikk-gjennom-capture (Fase 2): lytt på steg-events fra capture-vinduet,
   // og bygg scener når brukeren er ferdig. Lytterne lever hele komponentens liv.
@@ -542,6 +562,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     onClick={async () => { retakeCurrent(); await startForCurrent(); }}>↺ Retake</button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: recorderStepIndex >= scenes.length - 1 ? 0.5 : 1 }} disabled={recorderStepIndex >= scenes.length - 1}
                     onClick={async () => { if (rec.state === 'recording') await rec.stopAndSave(project.id, recorderScene.id).then((pth) => pth && updateScene(recorderScene.id, { recordingPath: pth })); nextStep(); await startForCurrent(); }}>→ Next Step</button>
+                  <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: verifyBusy ? 0.6 : 1 }} disabled={verifyBusy}
+                    onClick={() => void verifyCurrentAction()}
+                    title="Åpne siden og klikk elementet for å bekrefte at riktig handling utføres">
+                    ◎ {verifyBusy ? 'Venter på klikk…' : 'Verifiser handling'}
+                  </button>
                   <button style={{ ...outlineBtn, width: '100%' }} onClick={() => { rec.cancel(); setRecording(false); }}>Avslutt opptak</button>
                 </>
               ) : selected ? (

@@ -60,3 +60,28 @@ export async function scanDom(url: string, timeoutMs = 20000): Promise<DomScanRe
   unlisten();
   return result;
 }
+
+/** Resultat av ett-skudds handlings-verifisering. */
+export interface VerifyResult {
+  cancelled: boolean;
+  selector?: string;
+  label?: string;
+}
+
+/**
+ * Verifiser en scenes handling: åpner siden, brukeren klikker elementet, vi får
+ * selectoren tilbake (eller null ved timeout/avbrutt/web-dev). expectedLabel
+ * vises som hint i verify-vinduet.
+ */
+export async function verifyAction(url: string, expectedLabel?: string, timeoutMs = 90000): Promise<VerifyResult | null> {
+  if (!isCaptureAvailable()) return null;
+  let resolve!: (v: VerifyResult | null) => void;
+  const done = new Promise<VerifyResult | null>((r) => { resolve = r; });
+  const unlisten = await listen<VerifyResult>('demo-capture://verify', (e) => resolve(e.payload));
+  const timer = setTimeout(() => resolve(null), timeoutMs);
+  try { await invoke('demo_verify_action', { url, expectedLabel: expectedLabel ?? null }); } catch { resolve(null); }
+  const result = await done;
+  clearTimeout(timer);
+  unlisten();
+  return result;
+}
