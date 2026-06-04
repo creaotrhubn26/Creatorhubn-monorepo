@@ -981,6 +981,51 @@ const COMMANDS = {
     });
   },
 
+  "resolve.pageOpen": async ({ name } = {}) => {
+    const VALID = new Set([
+      "media", "cut", "edit", "fusion", "color", "fairlight", "deliver",
+    ]);
+    if (!VALID.has(name)) {
+      throw new Error(
+        `Ugyldig page-name: ${name} (gyldige: ${[...VALID].join(", ")})`,
+      );
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "page.open",
+      args: { name },
+    });
+  },
+
+  "resolve.pageCurrent": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "page.current" });
+  },
+
+  "resolve.clipGetProperty": async ({ clip_id, key } = {}) => {
+    if (typeof clip_id !== "string" || clip_id.length === 0) {
+      throw new Error("clip_id må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "clip.getProperty",
+      args: { clip_id, key: typeof key === "string" ? key : "" },
+    });
+  },
+
+  "resolve.clipSetProperty": async ({ clip_id, key, value } = {}) => {
+    if (typeof clip_id !== "string" || clip_id.length === 0) {
+      throw new Error("clip_id må være en ikke-tom string");
+    }
+    if (typeof key !== "string" || key.length === 0) {
+      throw new Error("key må være en ikke-tom string");
+    }
+    if (typeof value !== "string") {
+      throw new Error("value må være en string (Resolve godtar kun string-verdier)");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "clip.setProperty",
+      args: { clip_id, key, value },
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve

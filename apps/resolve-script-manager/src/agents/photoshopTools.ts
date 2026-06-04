@@ -18,6 +18,8 @@ import {
   type ExportFormat,
   type SlateMarkerColor,
   SLATE_MARKER_COLORS,
+  type ResolvePage,
+  RESOLVE_PAGES,
 } from "../services/photoshopBridgeService";
 import {
   suggestPromptsLocal,
@@ -738,6 +740,54 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_page_open",
+    description:
+      "Bytt til en av Resolves 7 sider. Bruk dette FØR operasjoner som krever spesifikk page-kontekst (f.eks. visse color-operasjoner trenger Color-page aktiv).",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          enum: ["media", "cut", "edit", "fusion", "color", "fairlight", "deliver"],
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_page_current",
+    description:
+      "Hent currently displayed page i Resolve. Returnerer null hvis ingen prosjekt åpen.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_clip_get_property",
+    description:
+      "Les clip-attribute fra MediaPoolItem (fps, resolution, codec, audio-channels, etc.). Når key utelates returneres ALLE properties som dict — bruk dette for å forstå hva som finnes før spesifikke spørringer.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clip_id: { type: "string", description: "MediaPoolItem-id." },
+        key: { type: "string", description: "Property-nøkkel. Utelat for full dict." },
+      },
+      required: ["clip_id"],
+    },
+  },
+  {
+    name: "photoshop_resolve_clip_set_property",
+    description:
+      "Sett clip-attribute på MediaPoolItem. Strings only. ADVARSEL: endrer clip-metadata permanent.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clip_id: { type: "string" },
+        key: { type: "string" },
+        value: { type: "string" },
+      },
+      required: ["clip_id", "key", "value"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -1400,6 +1450,42 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         throw new Error("value må være en string (Resolve godtar kun string-verdier)");
       }
       return photoshop.resolveTimelineSetSetting({ key: input.key, value: input.value });
+    }
+    case "photoshop_resolve_page_open": {
+      const name = input.name;
+      if (typeof name !== "string" || !(RESOLVE_PAGES as readonly string[]).includes(name)) {
+        throw new Error(
+          `Ugyldig page-name: ${String(name)} (gyldige: ${RESOLVE_PAGES.join(", ")})`,
+        );
+      }
+      return photoshop.resolvePageOpen({ name: name as ResolvePage });
+    }
+    case "photoshop_resolve_page_current":
+      return photoshop.resolvePageCurrent();
+    case "photoshop_resolve_clip_get_property": {
+      if (typeof input.clip_id !== "string" || input.clip_id.length === 0) {
+        throw new Error("clip_id må være en ikke-tom string");
+      }
+      return photoshop.resolveClipGetProperty({
+        clip_id: input.clip_id,
+        key: typeof input.key === "string" ? input.key : undefined,
+      });
+    }
+    case "photoshop_resolve_clip_set_property": {
+      if (typeof input.clip_id !== "string" || input.clip_id.length === 0) {
+        throw new Error("clip_id må være en ikke-tom string");
+      }
+      if (typeof input.key !== "string" || input.key.length === 0) {
+        throw new Error("key må være en ikke-tom string");
+      }
+      if (typeof input.value !== "string") {
+        throw new Error("value må være en string (Resolve godtar kun string-verdier)");
+      }
+      return photoshop.resolveClipSetProperty({
+        clip_id: input.clip_id,
+        key: input.key,
+        value: input.value,
+      });
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
