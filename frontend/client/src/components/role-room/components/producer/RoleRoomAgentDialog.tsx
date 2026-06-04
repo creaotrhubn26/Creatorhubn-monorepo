@@ -305,6 +305,10 @@ export default function RoleRoomAgentDialog({
   // Admin/debug chrome (role chips, System status) is hidden by default so the
   // surface reads as a product; a small gear reveals it for admins.
   const [showAdminChrome, setShowAdminChrome] = useState(false);
+  // Guided flow: Forrige/Neste steps through the tabs so users don't have to
+  // pick among ~12. Tab strip stays visible by default (additive + safe); the
+  // toggle lets you collapse it for a fully guided view.
+  const [showAllTabs, setShowAllTabs] = useState(true);
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
   // surface and the research forms are actually usable without pinch-
@@ -360,6 +364,22 @@ export default function RoleRoomAgentDialog({
   };
 
   const result = initialResult ?? null;
+  // Ordered flow through the tabs for the guided Forrige/Neste navigation.
+  const tabFlow = useMemo<Array<typeof activeTab>>(() => {
+    const base: Array<typeof activeTab> = [
+      'research', 'merch', 'marketing-plan', 'feed-planner', 'meta-page',
+      'page-content', 'ads-attribution', 'fb-publish', 'fb-mention',
+      'ig-hashtag', 'social-inbox', 'social-analytics',
+    ];
+    return currentUserId ? [...base, 'chat'] : base;
+  }, [currentUserId]);
+  const TAB_LABELS: Record<string, string> = {
+    research: 'Research', merch: 'Merch', 'marketing-plan': 'Markedsplan',
+    'feed-planner': 'Feed-planner', 'meta-page': 'Meta Page', 'page-content': 'Page Content',
+    'ads-attribution': 'Ads Attribution', 'fb-publish': 'FB Publish', 'fb-mention': 'Page Mentions',
+    'ig-hashtag': 'IG Hashtags', 'social-inbox': 'Inbox', 'social-analytics': 'Analytics', chat: 'Chat',
+  };
+  const flowIndex = tabFlow.indexOf(activeTab);
   const showResearchSection = (s: 'oversikt' | 'kanaler' | 'marked'): boolean =>
     researchSection === 'alle' || researchSection === s;
   // Derived saved-state — survives reopen, clears only when a new result object arrives.
@@ -661,6 +681,48 @@ export default function RoleRoomAgentDialog({
           }
         }}
       />
+      {/* Guided flow bar: step through tabs with Forrige/Neste so users don't
+          have to pick among ~12. Toggle collapses the full tab strip. */}
+      <Stack
+        direction="row"
+        spacing={1}
+        alignItems="center"
+        sx={{ px: { xs: 1.4, md: 2 }, py: 0.6, borderBottom: '1px solid rgba(148,163,184,0.1)' }}
+      >
+        <Button
+          size="small"
+          variant="text"
+          onClick={() => setShowAllTabs((v) => !v)}
+          data-testid="agent-toggle-tabs"
+          sx={{ textTransform: 'none', color: 'rgba(226,232,240,0.7)', minWidth: 0 }}
+        >
+          {showAllTabs ? 'Skjul faner' : 'Alle faner'}
+        </Button>
+        <Typography sx={{ flex: 1, color: 'rgba(226,232,240,0.6)', fontSize: '0.78rem', textAlign: 'center' }}>
+          {flowIndex >= 0 ? `Steg ${flowIndex + 1} av ${tabFlow.length}: ${TAB_LABELS[activeTab] ?? ''}` : ''}
+        </Typography>
+        <Button
+          size="small"
+          variant="text"
+          disabled={flowIndex <= 0}
+          onClick={() => { if (flowIndex > 0) setActiveTab(tabFlow[flowIndex - 1]); }}
+          data-testid="agent-prev-step"
+          sx={{ textTransform: 'none', color: '#cbd5e1', minWidth: 0 }}
+        >
+          ← Forrige
+        </Button>
+        <Button
+          size="small"
+          variant="outlined"
+          disabled={flowIndex < 0 || flowIndex >= tabFlow.length - 1}
+          onClick={() => { if (flowIndex < tabFlow.length - 1) setActiveTab(tabFlow[flowIndex + 1]); }}
+          data-testid="agent-next-step"
+          sx={{ textTransform: 'none', fontWeight: 700, color: '#22d3ee', borderColor: 'rgba(34,211,238,0.5)' }}
+        >
+          Neste →
+        </Button>
+      </Stack>
+      {showAllTabs ? (
       <Tabs
         value={activeTab}
         onChange={(_, next) => setActiveTab(next as typeof activeTab)}
@@ -761,6 +823,7 @@ export default function RoleRoomAgentDialog({
           <Tab value="chat" label="Chat" icon={<ChatIcon fontSize="small" />} iconPosition="start" />
         ) : null}
       </Tabs>
+      ) : null}
       {hasUnsavedAgentWork ? (
         <Alert
           severity="warning"
