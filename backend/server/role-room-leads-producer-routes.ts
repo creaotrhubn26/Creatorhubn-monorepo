@@ -247,6 +247,80 @@ function renderTemplate(tpl: string, vars: { navn: string; bedrift: string }): s
     .replace(/\{bedrift\}/g, vars.bedrift || "oss");
 }
 
+// ── White-label sender domain (per connection, via Resend) ──────────────────
+// Verify the CLIENT's own domain in Resend so follow-up can be sent from e.g.
+// kontakt@tannlegen.no (true white-label) instead of no-reply@theroleroom.com.
+const RESEND_API = "https://api.resend.com";
+const RESEND_REGION = "eu-west-1";
+function resendKey(): string {
+  return process.env.ROLE_ROOM_RESEND_API_KEY || process.env.RESEND_API_KEY || "";
+}
+
+interface EmailDomainRow {
+  domain: string;
+  resendDomainId: string;
+  fromAddress: string;
+  status: string;
+}
+
+let emailDomainSchemaReady = false;
+async function ensureEmailDomainSchema(pool: Pool): Promise<void> {
+  if (emailDomainSchemaReady) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS role_room_lead_email_domain (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id TEXT NOT NULL,
+      connection_id UUID NOT NULL,
+      domain TEXT NOT NULL,
+      resend_domain_id TEXT NOT NULL,
+      from_address TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (user_id, connection_id)
+    );
+  `);
+  emailDomainSchemaReady = true;
+}
+
+async function getEmailDomain(pool: Pool, userId: string, connectionId: string): Promise<EmailDomainRow | null> {
+  const r = await pool.query(
+    `SELECT domain, resend_domain_id, from_address, status
+       FROM role_room_lead_email_domain WHERE user_id = $1 AND connection_id = $2`,
+    [userId, connectionId],
+  );
+  if (!r.rows[0]) return null;
+  const row = r.rows[0];
+  return {
+    domain: String(row.domain),
+    resendDomainId: String(row.resend_domain_id),
+    fromAddress: String(row.from_address || ""),
+    status: String(row.status || "pending"),
+  };
+}
+
+/** Fetch a domain's status + DNS records from Resend. */
+async function fetchResendDomain(domainId: string): Promise<{ status: string; records: any[] } | null> {
+  const key = resendKey();
+  if (!key) return null;
+  const res = await fetch(`${RESEND_API}/domains/${encodeURIComponent(domainId)}`, {
+    headers: { Authorization: `Bearer ${key}` },
+  });
+  if (!res.ok) return null;
+  const json = (await res.json().catch(() => ({}))) as Record<string, any>;
+  return { status: String(json.status || "pending"), records: Array.isArray(json.records) ? json.records : [] };
+}
+
+function mapRecords(records: any[]): any[] {
+  return records.map((r) => ({
+    type: r.type,
+    name: r.name,
+    value: r.value,
+    priority: r.priority ?? null,
+    status: r.status ?? null,
+    ttl: r.ttl ?? null,
+  }));
+}
+
 /** Derive a Page access token from the stored long-lived user token. */
 async function getPageToken(connection: InstagramConnectionRow): Promise<string> {
   try {
@@ -700,6 +774,15 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
           smsSent = true;
         } catch (e) { errors.push(`SMS: ${e instanceof Error ? e.message : String(e)}`); }
       }
+      // White-label: if the client's own domain is verified, send from their
+      // address (e.g. kontakt@tannlegen.no) instead of no-reply@theroleroom.com.
+      await ensureEmailDomainSchema(pool);
+      const domainCfg = await getEmailDomain(pool, session.userId, connectionId);
+      const whiteLabelFrom =
+        domainCfg && domainCfg.status === "verified" && domainCfg.fromAddress
+          ? domainCfg.fromAddress
+          : null;
+
       // 2) Email to the lead.
       if (leadEmail && isTransactionalEmailConfigured()) {
         try {
@@ -710,6 +793,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
             text,
             html: text.replace(/\n/g, "<br>"),
             fromLabel: bedrift,
+            fromAddress: whiteLabelFrom,
             // Replies from the lead go to the client's own inbox, not no-reply.
             replyTo: config.replyTo || config.notifyEmail || null,
             kind: "lead_followup",
@@ -751,6 +835,163 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       );
 
       res.json({ success: true, smsSent, emailSent, errors });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // ── GET /api/role-room/leads/producer/email-domain ──────────────────────
+  // Current white-label domain for a connection + live status/DNS from Resend.
+  app.get("/api/role-room/leads/producer/email-domain", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
+    if (!connectionId) {
+      res.status(400).json({ success: false, error: "connectionId is required" });
+      return;
+    }
+    try {
+      const connection = await getConnection(pool, connectionId, session.userId);
+      if (!connection) {
+        res.status(404).json({ success: false, error: "connection_not_found" });
+        return;
+      }
+      await ensureEmailDomainSchema(pool);
+      const row = await getEmailDomain(pool, session.userId, connectionId);
+      if (!row) {
+        res.json({ success: true, configured: false });
+        return;
+      }
+      // Refresh live status + records from Resend.
+      let status = row.status;
+      let records: any[] = [];
+      const live = await fetchResendDomain(row.resendDomainId);
+      if (live) {
+        status = live.status;
+        records = mapRecords(live.records);
+        if (status !== row.status) {
+          await pool.query(
+            `UPDATE role_room_lead_email_domain SET status = $1, updated_at = now() WHERE user_id = $2 AND connection_id = $3`,
+            [status, session.userId, connectionId],
+          );
+        }
+      }
+      res.json({
+        success: true,
+        configured: true,
+        domain: row.domain,
+        fromAddress: row.fromAddress,
+        status,
+        records,
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // ── POST /api/role-room/leads/producer/email-domain ─────────────────────
+  // Register the client's own domain in Resend → returns the DNS records the
+  // client must add. body { connectionId, domain, fromAddress }
+  app.post("/api/role-room/leads/producer/email-domain", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as { connectionId?: string; domain?: string; fromAddress?: string };
+    const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
+    const domain = (typeof body.domain === "string" ? body.domain : "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    const fromAddress = (typeof body.fromAddress === "string" ? body.fromAddress : "").trim().toLowerCase();
+    if (!connectionId || !domain) {
+      res.status(400).json({ success: false, error: "connectionId and domain are required" });
+      return;
+    }
+    if (fromAddress && !fromAddress.endsWith(`@${domain}`)) {
+      res.status(400).json({ success: false, error: `from-adressen må slutte på @${domain}` });
+      return;
+    }
+    const key = resendKey();
+    if (!key) {
+      res.status(200).json({ success: false, error: "resend_not_configured" });
+      return;
+    }
+    try {
+      const connection = await getConnection(pool, connectionId, session.userId);
+      if (!connection) {
+        res.status(404).json({ success: false, error: "connection_not_found" });
+        return;
+      }
+      await ensureEmailDomainSchema(pool);
+      // Create (or reuse) the domain in Resend.
+      const createRes = await fetch(`${RESEND_API}/domains`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: domain, region: RESEND_REGION }),
+      });
+      const created = (await createRes.json().catch(() => ({}))) as Record<string, any>;
+      if (!createRes.ok || !created.id) {
+        res.status(200).json({
+          success: false,
+          error: created?.message || created?.error?.message || `Resend ${createRes.status}`,
+        });
+        return;
+      }
+      await pool.query(
+        `INSERT INTO role_room_lead_email_domain (user_id, connection_id, domain, resend_domain_id, from_address, status)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (user_id, connection_id)
+         DO UPDATE SET domain = EXCLUDED.domain, resend_domain_id = EXCLUDED.resend_domain_id,
+                       from_address = EXCLUDED.from_address, status = EXCLUDED.status, updated_at = now()`,
+        [session.userId, connectionId, domain, String(created.id), fromAddress, String(created.status || "pending")],
+      );
+      res.json({
+        success: true,
+        domain,
+        fromAddress,
+        status: String(created.status || "pending"),
+        records: mapRecords(Array.isArray(created.records) ? created.records : []),
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // ── POST /api/role-room/leads/producer/email-domain/verify ──────────────
+  app.post("/api/role-room/leads/producer/email-domain/verify", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as { connectionId?: string };
+    const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
+    if (!connectionId) {
+      res.status(400).json({ success: false, error: "connectionId is required" });
+      return;
+    }
+    const key = resendKey();
+    if (!key) {
+      res.status(200).json({ success: false, error: "resend_not_configured" });
+      return;
+    }
+    try {
+      const connection = await getConnection(pool, connectionId, session.userId);
+      if (!connection) {
+        res.status(404).json({ success: false, error: "connection_not_found" });
+        return;
+      }
+      await ensureEmailDomainSchema(pool);
+      const row = await getEmailDomain(pool, session.userId, connectionId);
+      if (!row) {
+        res.status(404).json({ success: false, error: "no_domain" });
+        return;
+      }
+      // Trigger Resend verification, then read back status + records.
+      await fetch(`${RESEND_API}/domains/${encodeURIComponent(row.resendDomainId)}/verify`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}` },
+      }).catch(() => null);
+      const live = await fetchResendDomain(row.resendDomainId);
+      const status = live ? live.status : row.status;
+      await pool.query(
+        `UPDATE role_room_lead_email_domain SET status = $1, updated_at = now() WHERE user_id = $2 AND connection_id = $3`,
+        [status, session.userId, connectionId],
+      );
+      res.json({ success: true, status, records: live ? mapRecords(live.records) : [] });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }

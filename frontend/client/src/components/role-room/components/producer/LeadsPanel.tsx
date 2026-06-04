@@ -189,6 +189,34 @@ export default function LeadsPanel() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] }),
   });
   const channelsReady = (followupData?.smsConfigured || followupData?.emailConfigured) ?? false;
+
+  // ── White-label: client's own sender domain via Resend ──────────────────
+  interface DnsRecord { type: string; name: string; value: string; priority: number | null; status: string | null }
+  interface DomainState {
+    success: boolean; configured?: boolean; domain?: string; fromAddress?: string;
+    status?: string; records?: DnsRecord[]; error?: string;
+  }
+  const { data: domainData } = useQuery<DomainState>({
+    queryKey: ['leads-email-domain', connectionId],
+    enabled: !!connectionId && showFollowup,
+    queryFn: () => apiRequest(`/api/role-room/leads/producer/email-domain?connectionId=${encodeURIComponent(connectionId)}`),
+  });
+  const [domainInput, setDomainInput] = useState('');
+  const [fromInput, setFromInput] = useState('');
+  const connectDomain = useMutation<DomainState, Error, void>({
+    mutationFn: async () =>
+      apiRequest('/api/role-room/leads/producer/email-domain', {
+        method: 'POST', body: JSON.stringify({ connectionId, domain: domainInput, fromAddress: fromInput }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-email-domain', connectionId] }),
+  });
+  const verifyDomain = useMutation<DomainState, Error, void>({
+    mutationFn: async () =>
+      apiRequest('/api/role-room/leads/producer/email-domain/verify', {
+        method: 'POST', body: JSON.stringify({ connectionId }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-email-domain', connectionId] }),
+  });
   const counts = useMemo(() => {
     const c: Record<string, number> = { alle: leads.length };
     for (const s of SEGMENTS) c[s.key] = leads.filter((l) => l.segment === s.key).length;
@@ -447,6 +475,67 @@ export default function LeadsPanel() {
                                 Lagre meldinger
                               </Button>
                             </Stack>
+
+                            {/* White-label: send from the client's own domain */}
+                            <Divider><Typography sx={{ fontSize: '0.72rem', color: 'rgba(226,232,240,0.5)' }}>Send fra kundens eget domene (valgfritt)</Typography></Divider>
+                            {domainData?.configured && domainData.status === 'verified' ? (
+                              <Alert severity="success" sx={{ bgcolor: 'rgba(34,197,94,0.1)' }}>
+                                Sender nå fra <strong>{domainData.fromAddress || `@${domainData.domain}`}</strong> — kundens eget domene er verifisert. Ingen «via theroleroom.com».
+                              </Alert>
+                            ) : domainData?.configured ? (
+                              <Stack spacing={1}>
+                                <Alert severity="warning" sx={{ bgcolor: 'rgba(245,158,11,0.1)' }}>
+                                  Domenet <strong>{domainData.domain}</strong> venter på DNS-verifisering. Be kunden legge inn postene under i sitt DNS, og trykk så «Sjekk verifisering».
+                                </Alert>
+                                {(domainData.records || []).length > 0 ? (
+                                  <Box sx={{ overflowX: 'auto' }}>
+                                    <Table size="small">
+                                      <TableHead>
+                                        <TableRow>
+                                          <TableCell>Type</TableCell><TableCell>Navn</TableCell>
+                                          <TableCell>Verdi</TableCell><TableCell>Status</TableCell>
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {(domainData.records || []).map((r, i) => (
+                                          <TableRow key={i}>
+                                            <TableCell>{r.type}{r.priority ? ` (pri ${r.priority})` : ''}</TableCell>
+                                            <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.72rem' }}>{r.name}</TableCell>
+                                            <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.7rem', maxWidth: 280, wordBreak: 'break-all' }}>{r.value}</TableCell>
+                                            <TableCell>
+                                              <Chip size="small" label={r.status || 'pending'} sx={{ height: 18, fontSize: '0.66rem', bgcolor: r.status === 'verified' ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.2)', color: r.status === 'verified' ? '#86efac' : '#fcd34d' }} />
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </Box>
+                                ) : null}
+                                <Stack direction="row" justifyContent="flex-end">
+                                  <Button size="small" variant="outlined" onClick={() => verifyDomain.mutate()} disabled={verifyDomain.isPending}>
+                                    {verifyDomain.isPending ? 'Sjekker…' : 'Sjekk verifisering'}
+                                  </Button>
+                                </Stack>
+                              </Stack>
+                            ) : (
+                              <Stack spacing={1}>
+                                <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.6)' }}>
+                                  Vil du at e-posten skal komme fra kundens egen adresse (uten «via theroleroom.com»)? Koble kundens domene, så får du DNS-poster kunden legger inn én gang.
+                                </Typography>
+                                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
+                                  <TextField label="Kundens domene" size="small" fullWidth value={domainInput} onChange={(e) => setDomainInput(e.target.value)} placeholder="tannlegen.no" />
+                                  <TextField label="Avsenderadresse" size="small" fullWidth value={fromInput} onChange={(e) => setFromInput(e.target.value)} placeholder="kontakt@tannlegen.no" />
+                                </Stack>
+                                {connectDomain.data && connectDomain.data.success === false ? (
+                                  <Alert severity="error">{connectDomain.data.error}</Alert>
+                                ) : null}
+                                <Stack direction="row" justifyContent="flex-end">
+                                  <Button size="small" variant="outlined" onClick={() => connectDomain.mutate()} disabled={!domainInput || connectDomain.isPending}>
+                                    {connectDomain.isPending ? 'Kobler…' : 'Koble domene'}
+                                  </Button>
+                                </Stack>
+                              </Stack>
+                            )}
                           </Stack>
                         ) : <CircularProgress size={18} />}
                       </Box>
