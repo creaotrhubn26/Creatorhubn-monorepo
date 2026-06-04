@@ -482,6 +482,7 @@ import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-route
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
 import { setupRoleRoomSocialMetaRoutes } from "./role-room-social-meta-routes";
+import { setupRoleRoomIgMessagingRoutes } from "./role-room-ig-messaging-routes.js";
 import { RoleRoomCommercialAccessError } from "./role-room-commercial-access-error";
 import { setupRoleRoomCommercialAccessRoutes } from "./role-room-commercial-access-routes";
 import {
@@ -24015,6 +24016,9 @@ setupRoleRoomTalentGdprRoutes({
 //   16 endpoints: instagram (10) + facebook (6) inkl. OAuth, publish,
 //   webhooks, deauthorize, data-deletion.
 setupRoleRoomSocialMetaRoutes({ app, pool, requireAdminSession, isCompatAdminFeatureEnabled });
+
+// Instagram Direct-message inbox (unified social inbox in the CRM / Agent / Admin Room).
+setupRoleRoomIgMessagingRoutes({ app, pool, requireAdminSession });
 
 // ── Role Room social (non-Meta) — flyttet til ./role-room-social-routes.ts
 //   16 endpoints: linkedin, youtube, tiktok, og generelle /social/*.
