@@ -1396,6 +1396,203 @@ HANDLERS["clip.setColor"] = handleClipSetColor
 HANDLERS["clip.clearColor"] = handleClipClearColor
 
 -- ---------------------------------------------------------------------------
+-- Clip markers (MediaPoolItem) + Color versions (TimelineItem)
+-- ---------------------------------------------------------------------------
+
+local MARKER_COLORS = {
+  Blue = true, Cyan = true, Green = true, Yellow = true, Red = true,
+  Pink = true, Purple = true, Fuchsia = true, Rose = true, Lavender = true,
+  Sky = true, Mint = true, Lemon = true, Sand = true, Cocoa = true, Cream = true,
+}
+
+local function markersToJson(markers)
+  if type(markers) ~= "table" then return "{}" end
+  local parts = {}
+  for frameId, info in pairs(markers) do
+    table.insert(parts, string.format(
+      '%s:{"color":%s,"name":%s,"note":%s,"duration":%d,"customData":%s}',
+      jsonEscape(tostring(frameId)),
+      jsonEscape(info.color or ""),
+      jsonEscape(info.name or ""),
+      jsonEscape(info.note or ""),
+      tonumber(info.duration) or 0,
+      jsonEscape(info.customData or "")
+    ))
+  end
+  return "{" .. table.concat(parts, ",") .. "}"
+end
+
+local function resolveMediaPoolItem(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local clipId = extractString(args, "clip_id")
+  if not clipId or clipId == "" then error("clip_id mangler") end
+  local item = findMediaPoolItemById(mediaPool, clipId)
+  if not item then error("Fant ikke MediaPoolItem: " .. clipId) end
+  return item, clipId
+end
+
+local function handleClipMarkersList(args)
+  local item, clipId = resolveMediaPoolItem(args)
+  local markers = item:GetMarkers() or {}
+  return string.format(
+    '{"clip_id":%s,"markers":%s}',
+    jsonEscape(clipId), markersToJson(markers)
+  )
+end
+
+local function handleClipMarkersAdd(args)
+  local item, clipId = resolveMediaPoolItem(args)
+  local frameId = tonumber(args:match('"frame_id"%s*:%s*(%d+)'))
+  if not frameId then error("frame_id mangler") end
+  local color = extractString(args, "color") or "Blue"
+  if not MARKER_COLORS[color] then
+    error("Ugyldig color: " .. color ..
+      " (Blue/Cyan/Green/Yellow/Red/Pink/Purple/Fuchsia/Rose/Lavender/Sky/Mint/Lemon/Sand/Cocoa/Cream)")
+  end
+  local name = extractString(args, "name") or ""
+  local note = extractString(args, "note") or ""
+  local duration = tonumber(args:match('"duration"%s*:%s*(%d+)')) or 1
+  local customData = extractString(args, "custom_data") or ""
+  local ok = item:AddMarker(frameId, color, name, note, duration, customData)
+  return string.format(
+    '{"added":%s,"clip_id":%s,"frame_id":%d,"color":%s,"name":%s}',
+    tostring(ok), jsonEscape(clipId), frameId, jsonEscape(color), jsonEscape(name)
+  )
+end
+
+local function handleClipMarkersDeleteByColor(args)
+  local item, clipId = resolveMediaPoolItem(args)
+  local color = extractString(args, "color")
+  if not color or color == "" then error("color mangler (eller 'All')") end
+  if color ~= "All" and not MARKER_COLORS[color] then
+    error("Ugyldig color: " .. color .. " (eller 'All')")
+  end
+  local ok = item:DeleteMarkersByColor(color)
+  return string.format(
+    '{"deleted":%s,"clip_id":%s,"color":%s}',
+    tostring(ok), jsonEscape(clipId), jsonEscape(color)
+  )
+end
+
+local function handleClipMarkersDeleteAtFrame(args)
+  local item, clipId = resolveMediaPoolItem(args)
+  local frameId = tonumber(args:match('"frame_id"%s*:%s*(%d+)'))
+  if not frameId then error("frame_id mangler") end
+  local ok = item:DeleteMarkerAtFrame(frameId)
+  return string.format(
+    '{"deleted":%s,"clip_id":%s,"frame_id":%d}',
+    tostring(ok), jsonEscape(clipId), frameId
+  )
+end
+
+-- Color versions — on currently selected timeline item
+local function currentTimelineItem()
+  local _, project = getResolveContext()
+  local timeline = project:GetCurrentTimeline()
+  if not timeline then error("Ingen aktiv timeline") end
+  local item = timeline:GetCurrentVideoItem()
+  if not item then error("Ingen valgt timeline-item") end
+  return item
+end
+
+local function parseVersionType(args)
+  local vt = tonumber(args:match('"version_type"%s*:%s*(%d+)'))
+  if vt == nil then return 0 end -- default local
+  if vt ~= 0 and vt ~= 1 then
+    error("version_type må være 0 (local) eller 1 (remote)")
+  end
+  return vt
+end
+
+local function handleVersionAdd(args)
+  local item = currentTimelineItem()
+  local name = extractString(args, "name")
+  if not name or name == "" then error("name mangler") end
+  local versionType = parseVersionType(args)
+  local ok = item:AddVersion(name, versionType)
+  return string.format(
+    '{"added":%s,"name":%s,"version_type":%d}',
+    tostring(ok), jsonEscape(name), versionType
+  )
+end
+
+local function handleVersionGetCurrent(_args)
+  local item = currentTimelineItem()
+  local current = item:GetCurrentVersion()
+  if not current then return '{"current":null}' end
+  local name = current.versionName or ""
+  local versionType = tonumber(current.versionType) or 0
+  return string.format(
+    '{"current":{"name":%s,"version_type":%d}}',
+    jsonEscape(name), versionType
+  )
+end
+
+local function handleVersionGetNames(args)
+  local item = currentTimelineItem()
+  local versionType = parseVersionType(args)
+  local names = item:GetVersionNames(versionType) or {}
+  local parts = {}
+  for _, n in ipairs(names) do
+    table.insert(parts, jsonEscape(n))
+  end
+  return string.format(
+    '{"version_type":%d,"names":[%s]}',
+    versionType, table.concat(parts, ",")
+  )
+end
+
+local function handleVersionLoad(args)
+  local item = currentTimelineItem()
+  local name = extractString(args, "name")
+  if not name or name == "" then error("name mangler") end
+  local versionType = parseVersionType(args)
+  local ok = item:LoadVersionByName(name, versionType)
+  return string.format(
+    '{"loaded":%s,"name":%s,"version_type":%d}',
+    tostring(ok), jsonEscape(name), versionType
+  )
+end
+
+local function handleVersionRename(args)
+  local item = currentTimelineItem()
+  local oldName = extractString(args, "old_name")
+  if not oldName or oldName == "" then error("old_name mangler") end
+  local newName = extractString(args, "new_name")
+  if not newName or newName == "" then error("new_name mangler") end
+  local versionType = parseVersionType(args)
+  local ok = item:RenameVersionByName(oldName, newName, versionType)
+  return string.format(
+    '{"renamed":%s,"old_name":%s,"new_name":%s,"version_type":%d}',
+    tostring(ok), jsonEscape(oldName), jsonEscape(newName), versionType
+  )
+end
+
+local function handleVersionDelete(args)
+  local item = currentTimelineItem()
+  local name = extractString(args, "name")
+  if not name or name == "" then error("name mangler") end
+  local versionType = parseVersionType(args)
+  local ok = item:DeleteVersionByName(name, versionType)
+  return string.format(
+    '{"deleted":%s,"name":%s,"version_type":%d}',
+    tostring(ok), jsonEscape(name), versionType
+  )
+end
+
+HANDLERS["clip.markersList"] = handleClipMarkersList
+HANDLERS["clip.markersAdd"] = handleClipMarkersAdd
+HANDLERS["clip.markersDeleteByColor"] = handleClipMarkersDeleteByColor
+HANDLERS["clip.markersDeleteAtFrame"] = handleClipMarkersDeleteAtFrame
+HANDLERS["version.add"] = handleVersionAdd
+HANDLERS["version.getCurrent"] = handleVersionGetCurrent
+HANDLERS["version.getNames"] = handleVersionGetNames
+HANDLERS["version.load"] = handleVersionLoad
+HANDLERS["version.rename"] = handleVersionRename
+HANDLERS["version.delete"] = handleVersionDelete
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 

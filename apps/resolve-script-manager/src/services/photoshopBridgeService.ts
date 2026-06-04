@@ -159,6 +159,29 @@ export const RESOLVE_CLIP_COLORS: readonly ResolveClipColor[] = [
   "Blue", "Purple", "Violet", "Pink", "Tan", "Beige", "Brown", "Chocolate",
 ] as const;
 
+export type ResolveMarkerColor =
+  | "Blue"
+  | "Cyan"
+  | "Green"
+  | "Yellow"
+  | "Red"
+  | "Pink"
+  | "Purple"
+  | "Fuchsia"
+  | "Rose"
+  | "Lavender"
+  | "Sky"
+  | "Mint"
+  | "Lemon"
+  | "Sand"
+  | "Cocoa"
+  | "Cream";
+
+export const RESOLVE_MARKER_COLORS: readonly ResolveMarkerColor[] = [
+  "Blue", "Cyan", "Green", "Yellow", "Red", "Pink", "Purple", "Fuchsia",
+  "Rose", "Lavender", "Sky", "Mint", "Lemon", "Sand", "Cocoa", "Cream",
+] as const;
+
 export type SlateMarkerColor =
   | "Blue"
   | "Cyan"
@@ -819,6 +842,88 @@ export const photoshop = {
       scope: "media_pool_item" | "timeline_item";
       name: string;
     }>("resolve.clipClearColor", params ?? {}),
+
+  resolveClipMarkersList: (params: { clip_id: string }) =>
+    send<{
+      clip_id: string;
+      markers: Record<
+        string,
+        { color: string; name: string; note: string; duration: number; customData: string }
+      >;
+    }>("resolve.clipMarkersList", params),
+
+  resolveClipMarkersAdd: (params: {
+    clip_id: string;
+    frame_id: number;
+    color?: ResolveMarkerColor;
+    name?: string;
+    note?: string;
+    duration?: number;
+    custom_data?: string;
+  }) =>
+    send<{
+      added: boolean;
+      clip_id: string;
+      frame_id: number;
+      color: ResolveMarkerColor;
+      name: string;
+    }>("resolve.clipMarkersAdd", params),
+
+  resolveClipMarkersDeleteByColor: (params: {
+    clip_id: string;
+    color: ResolveMarkerColor | "All";
+  }) =>
+    send<{ deleted: boolean; clip_id: string; color: string }>(
+      "resolve.clipMarkersDeleteByColor",
+      params,
+    ),
+
+  resolveClipMarkersDeleteAtFrame: (params: { clip_id: string; frame_id: number }) =>
+    send<{ deleted: boolean; clip_id: string; frame_id: number }>(
+      "resolve.clipMarkersDeleteAtFrame",
+      params,
+    ),
+
+  resolveVersionAdd: (params: { name: string; version_type?: 0 | 1 }) =>
+    send<{ added: boolean; name: string; version_type: 0 | 1 }>(
+      "resolve.versionAdd",
+      params,
+    ),
+
+  resolveVersionGetCurrent: () =>
+    send<{ current: { name: string; version_type: 0 | 1 } | null }>(
+      "resolve.versionGetCurrent",
+    ),
+
+  resolveVersionGetNames: (params?: { version_type?: 0 | 1 }) =>
+    send<{ version_type: 0 | 1; names: string[] }>(
+      "resolve.versionGetNames",
+      params ?? {},
+    ),
+
+  resolveVersionLoad: (params: { name: string; version_type?: 0 | 1 }) =>
+    send<{ loaded: boolean; name: string; version_type: 0 | 1 }>(
+      "resolve.versionLoad",
+      params,
+    ),
+
+  resolveVersionRename: (params: {
+    old_name: string;
+    new_name: string;
+    version_type?: 0 | 1;
+  }) =>
+    send<{
+      renamed: boolean;
+      old_name: string;
+      new_name: string;
+      version_type: 0 | 1;
+    }>("resolve.versionRename", params),
+
+  resolveVersionDelete: (params: { name: string; version_type?: 0 | 1 }) =>
+    send<{ deleted: boolean; name: string; version_type: 0 | 1 }>(
+      "resolve.versionDelete",
+      params,
+    ),
 
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),

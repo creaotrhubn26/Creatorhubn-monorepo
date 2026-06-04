@@ -23,6 +23,8 @@ import {
   type ResolveClipColor,
   RESOLVE_CLIP_COLORS,
   type ResolveTrackType,
+  type ResolveMarkerColor,
+  RESOLVE_MARKER_COLORS,
 } from "../services/photoshopBridgeService";
 import {
   suggestPromptsLocal,
@@ -864,6 +866,133 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_clip_markers_list",
+    description:
+      "List ALLE markers på MediaPoolItem (frameId → {color, name, note, duration, customData}). Bruk dette for å lese ekte AI-Slate-markers fra slate_analyze, eller manuelt-satte review-markers.",
+    input_schema: {
+      type: "object",
+      properties: { clip_id: { type: "string" } },
+      required: ["clip_id"],
+    },
+  },
+  {
+    name: "photoshop_resolve_clip_markers_add",
+    description:
+      "Opprett en marker på MediaPoolItem ved frame_id. Brukes for å tagge interessante frames (highlight, retake, color-mismatch) som review-notater. 16 marker-farger.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clip_id: { type: "string" },
+        frame_id: { type: "number", description: "0-basert frame i kildeklippet." },
+        color: {
+          type: "string",
+          enum: [
+            "Blue", "Cyan", "Green", "Yellow", "Red", "Pink", "Purple", "Fuchsia",
+            "Rose", "Lavender", "Sky", "Mint", "Lemon", "Sand", "Cocoa", "Cream",
+          ],
+        },
+        name: { type: "string" },
+        note: { type: "string" },
+        duration: { type: "number", description: "Frames. Default 1." },
+        custom_data: { type: "string", description: "Valgfri payload for lookup." },
+      },
+      required: ["clip_id", "frame_id"],
+    },
+  },
+  {
+    name: "photoshop_resolve_clip_markers_delete_by_color",
+    description:
+      "Slett alle markers av en farge på MediaPoolItem. Bruk 'All' for å slette alle.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clip_id: { type: "string" },
+        color: {
+          type: "string",
+          description:
+            "Marker-farge (Blue/Cyan/Green/Yellow/Red/Pink/Purple/Fuchsia/Rose/Lavender/Sky/Mint/Lemon/Sand/Cocoa/Cream) eller 'All'.",
+        },
+      },
+      required: ["clip_id", "color"],
+    },
+  },
+  {
+    name: "photoshop_resolve_clip_markers_delete_at_frame",
+    description: "Slett marker på spesifikk frame i MediaPoolItem.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clip_id: { type: "string" },
+        frame_id: { type: "number" },
+      },
+      required: ["clip_id", "frame_id"],
+    },
+  },
+  {
+    name: "photoshop_resolve_version_add",
+    description:
+      "Opprett ny color version på currently selected timeline-item. version_type 0=local (default), 1=remote. Bruk dette FØR eksperimentell grading så brukeren kan switche tilbake.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        version_type: { type: "number", enum: [0, 1] },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_version_get_current",
+    description:
+      "Hent navn + type på currently active color version for selected timeline-item.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_version_get_names",
+    description: "List alle color version-navn for selected timeline-item (default local).",
+    input_schema: {
+      type: "object",
+      properties: { version_type: { type: "number", enum: [0, 1] } },
+    },
+  },
+  {
+    name: "photoshop_resolve_version_load",
+    description: "Bytt til color version på selected timeline-item.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        version_type: { type: "number", enum: [0, 1] },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_version_rename",
+    description: "Døp om color version på selected timeline-item.",
+    input_schema: {
+      type: "object",
+      properties: {
+        old_name: { type: "string" },
+        new_name: { type: "string" },
+        version_type: { type: "number", enum: [0, 1] },
+      },
+      required: ["old_name", "new_name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_version_delete",
+    description: "Slett color version på selected timeline-item.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        version_type: { type: "number", enum: [0, 1] },
+      },
+      required: ["name"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -1605,6 +1734,111 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
       return photoshop.resolveClipClearColor({
         clip_id: typeof input.clip_id === "string" && input.clip_id.length > 0 ? input.clip_id : undefined,
       });
+    case "photoshop_resolve_clip_markers_list": {
+      if (typeof input.clip_id !== "string" || input.clip_id.length === 0) {
+        throw new Error("clip_id må være en ikke-tom string");
+      }
+      return photoshop.resolveClipMarkersList({ clip_id: input.clip_id });
+    }
+    case "photoshop_resolve_clip_markers_add": {
+      if (typeof input.clip_id !== "string" || input.clip_id.length === 0) {
+        throw new Error("clip_id må være en ikke-tom string");
+      }
+      if (typeof input.frame_id !== "number" || input.frame_id < 0) {
+        throw new Error("frame_id må være et tall >= 0");
+      }
+      let color: ResolveMarkerColor | undefined;
+      if (typeof input.color === "string") {
+        if (!(RESOLVE_MARKER_COLORS as readonly string[]).includes(input.color)) {
+          throw new Error(
+            `Ugyldig color: ${input.color} (gyldige: ${RESOLVE_MARKER_COLORS.join(", ")})`,
+          );
+        }
+        color = input.color as ResolveMarkerColor;
+      }
+      return photoshop.resolveClipMarkersAdd({
+        clip_id: input.clip_id,
+        frame_id: input.frame_id,
+        color,
+        name: typeof input.name === "string" ? input.name : undefined,
+        note: typeof input.note === "string" ? input.note : undefined,
+        duration: typeof input.duration === "number" ? input.duration : undefined,
+        custom_data: typeof input.custom_data === "string" ? input.custom_data : undefined,
+      });
+    }
+    case "photoshop_resolve_clip_markers_delete_by_color": {
+      if (typeof input.clip_id !== "string" || input.clip_id.length === 0) {
+        throw new Error("clip_id må være en ikke-tom string");
+      }
+      if (typeof input.color !== "string" || input.color.length === 0) {
+        throw new Error("color må være en ikke-tom string (eller 'All')");
+      }
+      if (
+        input.color !== "All" &&
+        !(RESOLVE_MARKER_COLORS as readonly string[]).includes(input.color)
+      ) {
+        throw new Error(
+          `Ugyldig color: ${input.color} (gyldige: ${RESOLVE_MARKER_COLORS.join(", ")}, All)`,
+        );
+      }
+      return photoshop.resolveClipMarkersDeleteByColor({
+        clip_id: input.clip_id,
+        color: input.color as ResolveMarkerColor | "All",
+      });
+    }
+    case "photoshop_resolve_clip_markers_delete_at_frame": {
+      if (typeof input.clip_id !== "string" || input.clip_id.length === 0) {
+        throw new Error("clip_id må være en ikke-tom string");
+      }
+      if (typeof input.frame_id !== "number" || input.frame_id < 0) {
+        throw new Error("frame_id må være et tall >= 0");
+      }
+      return photoshop.resolveClipMarkersDeleteAtFrame({
+        clip_id: input.clip_id,
+        frame_id: input.frame_id,
+      });
+    }
+    case "photoshop_resolve_version_add": {
+      if (typeof input.name !== "string" || input.name.length === 0) {
+        throw new Error("name må være en ikke-tom string");
+      }
+      const vt = input.version_type === 1 ? 1 : 0;
+      return photoshop.resolveVersionAdd({ name: input.name, version_type: vt });
+    }
+    case "photoshop_resolve_version_get_current":
+      return photoshop.resolveVersionGetCurrent();
+    case "photoshop_resolve_version_get_names": {
+      const vt = input.version_type === 1 ? 1 : 0;
+      return photoshop.resolveVersionGetNames({ version_type: vt });
+    }
+    case "photoshop_resolve_version_load": {
+      if (typeof input.name !== "string" || input.name.length === 0) {
+        throw new Error("name må være en ikke-tom string");
+      }
+      const vt = input.version_type === 1 ? 1 : 0;
+      return photoshop.resolveVersionLoad({ name: input.name, version_type: vt });
+    }
+    case "photoshop_resolve_version_rename": {
+      if (typeof input.old_name !== "string" || input.old_name.length === 0) {
+        throw new Error("old_name må være en ikke-tom string");
+      }
+      if (typeof input.new_name !== "string" || input.new_name.length === 0) {
+        throw new Error("new_name må være en ikke-tom string");
+      }
+      const vt = input.version_type === 1 ? 1 : 0;
+      return photoshop.resolveVersionRename({
+        old_name: input.old_name,
+        new_name: input.new_name,
+        version_type: vt,
+      });
+    }
+    case "photoshop_resolve_version_delete": {
+      if (typeof input.name !== "string" || input.name.length === 0) {
+        throw new Error("name må være en ikke-tom string");
+      }
+      const vt = input.version_type === 1 ? 1 : 0;
+      return photoshop.resolveVersionDelete({ name: input.name, version_type: vt });
+    }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
     case "photoshop_resolve_export_back":
