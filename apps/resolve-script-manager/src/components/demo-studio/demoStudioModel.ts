@@ -136,6 +136,9 @@ export interface DemoScene {
   continueMode: 'manual' | 'auto';
   /** Sti til opptaksfil for denne scenen (settes av recorder). */
   recordingPath?: string | null;
+  /** Frosset skjermbilde (dataURL) for scene-kortet — fylles av en framtidig
+   *  capture-screenshot. Når tomt viser kortet en live mini-preview. */
+  thumbnailDataUrl?: string;
 }
 
 /** Manus-meta på prosjektnivå (Script Builder Tone/Audience/Language/Length). */

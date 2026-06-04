@@ -15,12 +15,12 @@
  * Verifiseres mot mockup med Playwright (scripts/_pixshot*).
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { StoryView } from '../story/StoryView';
 import { ScriptBuilderView } from './ScriptBuilderView';
 import { GuidedRecorderView } from './GuidedRecorderView';
 import { ExportView } from './ExportView';
-import { FramedDevice } from './FramedDevice';
+import { FramedDevice, VIEWPORT_W } from './FramedDevice';
 import { SceneInteractionOverlay } from './SceneInteractionOverlay';
 import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
@@ -472,7 +472,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                         <div style={{ flex: 1 }} />
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: SCENE_STATUS_COLORS[s.status] }} />
                       </div>
-                      <div style={{ height: 52, borderRadius: 7, background: '#e7ded2', marginBottom: 8 }} />
+                      <SceneThumb scene={s} url={project.url} height={64} />
                       <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</div>
                       <div style={{ fontSize: 11, color: C.inkFaint }}>{fmt(s.duration)} · {SCENE_STATUS_LABELS[s.status]}</div>
                     </div>
@@ -699,6 +699,36 @@ function ValidationModal({ scenes, onClose, onGoto, onSetStatus }: {
         ))}
         <button style={{ ...outlineBtn, width: '100%', marginTop: 4 }} onClick={onClose}>Lukk</button>
       </div>
+    </div>
+  );
+}
+
+/** Scene-kort thumbnail: live mini-preview av siden (skalert iframe) for scenens
+ *  enhet. Bruker frosset skjermbilde hvis det finnes, ellers live render. */
+function SceneThumb({ scene, url, height = 80 }: { scene: DemoScene; url: string; height?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [boxW, setBoxW] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const f = () => setBoxW(el.clientWidth);
+    f();
+    const ro = new ResizeObserver(f);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  if (scene.thumbnailDataUrl) {
+    return <img src={scene.thumbnailDataUrl} alt="" style={{ width: '100%', height, objectFit: 'cover', objectPosition: 'top', borderRadius: 7, marginBottom: 8, border: `1px solid ${C.line}` }} />;
+  }
+  const variant: FrameVariant = scene.device === 'ipad' && scene.orientation === 'landscape' ? 'ipad_landscape' : scene.device;
+  const vw = VIEWPORT_W[variant];
+  const scale = boxW > 0 ? boxW / vw : 0;
+  const logicalH = scale > 0 ? height / scale : height;
+  return (
+    <div ref={ref} style={{ position: 'relative', width: '100%', height, borderRadius: 7, overflow: 'hidden', background: '#fff', border: `1px solid ${C.line}`, marginBottom: 8 }}>
+      <iframe src={url} scrolling="no" tabIndex={-1} title="" aria-hidden
+        style={{ width: vw, height: logicalH, border: 0, transform: `scale(${scale || 0.001})`, transformOrigin: '0 0', pointerEvents: 'none', opacity: scale > 0 ? 1 : 0 }} />
     </div>
   );
 }
