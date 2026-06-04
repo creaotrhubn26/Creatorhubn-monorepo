@@ -60,10 +60,12 @@ import {
   MailOutline as MailIcon,
   ArrowForward as NextStepIcon,
   StarBorder as ReviewIcon,
+  Instagram as InstagramIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
 import CustomerDetailDrawer from './CustomerDetailDrawer';
 import CrmTaskInbox from './CrmTaskInbox';
+import IgDmInbox from './IgDmInbox';
 import DealsPipelineBoard from './DealsPipelineBoard';
 import CrmActionQueue from './CrmActionQueue';
 import CrmReports from './CrmReports';
@@ -205,6 +207,7 @@ export default function UniversalCRMDashboard({
   const [showFollowUpFor, setShowFollowUpFor] = useState<UniversalCustomer | null>(null); // #38 etter-levering
   const [detailCustomer, setDetailCustomer] = useState<UniversalCustomer | null>(null); // #2 kontaktdetalj-drawer
   const [showTaskInbox, setShowTaskInbox] = useState(false); // #5 task-inbox
+  const [showIgInbox, setShowIgInbox] = useState(false); // Instagram DM inbox
   const [showActionQueue, setShowActionQueue] = useState(false); // #24 action queue
   const [showReports, setShowReports] = useState(false); // Wave 3 reports
   const [showImport, setShowImport] = useState(false); // Wave 3b CSV import
@@ -1483,6 +1486,21 @@ export default function UniversalCRMDashboard({
                   }}
                 >
                   Oppgaver{(stats.tasks?.pending || 0) > 0 ? ` (${stats.tasks.pending})` : ''}
+                </Button>
+                {/* Instagram DM inbox — unified social inbox */}
+                <Button
+                  variant="outlined"
+                  startIcon={<InstagramIcon />}
+                  onClick={() => setShowIgInbox(true)}
+                  sx={{
+                    minWidth: 140,
+                    borderColor: alpha(colors.primary, 0.25),
+                    color: colors.primary,
+                    bgcolor: alpha('#fff', 0.86),
+                    '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
+                  }}
+                >
+                  Instagram-innboks
                 </Button>
                 <Button
                   variant="outlined"
@@ -3400,6 +3418,7 @@ export default function UniversalCRMDashboard({
 
       {/* #5 — task inbox */}
       <CrmTaskInbox open={showTaskInbox} onClose={() => setShowTaskInbox(false)} brandColor={colors.primary} />
+      <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor={colors.primary} />
 
       {/* #24 — action queue */}
       <CrmActionQueue

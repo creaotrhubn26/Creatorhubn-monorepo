@@ -670,7 +670,7 @@ async function subscribeAssetWebhookFields(
 export async function subscribeIgWebhookFields(
   igBusinessAccountId: string,
   pageAccessToken: string,
-  fields: string[] = ['comments', 'mentions', 'live_comments'],
+  fields: string[] = ['comments', 'mentions', 'live_comments', 'messages'],
 ): Promise<boolean> {
   return subscribeAssetWebhookFields(igBusinessAccountId, pageAccessToken, fields, 'ig-oauth');
 }

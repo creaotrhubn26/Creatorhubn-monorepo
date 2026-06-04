@@ -74,6 +74,7 @@ import {
   flattenIgWebhookEvent,
   persistSocialEvent,
 } from "./social-events.js";
+import { persistInboundDmFromWebhook } from "./role-room-ig-messaging.js";
 import {
   fetchDataDeletionRequest,
   parseSignedRequest,
@@ -729,6 +730,15 @@ export function setupRoleRoomSocialMetaRoutes(
         }
       } catch (err) {
         console.warn("[ig-webhook] persist failed (non-fatal)", err);
+      }
+
+      // Persist inbound Instagram DMs into the unified CRM inbox. Best-effort —
+      // never blocks the ack. Handles object='instagram'/'page' messaging events.
+      try {
+        const dms = await persistInboundDmFromWebhook(pool, event);
+        if (dms > 0) console.log(`[ig-webhook] persisted ${dms} inbound DM(s) to inbox`);
+      } catch (err) {
+        console.warn("[ig-webhook] DM persist failed (non-fatal)", err);
       }
 
       // Ack quickly — Meta treats >10s as a failure and will retry.

@@ -26,6 +26,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CampaignIcon from '@mui/icons-material/Campaign';
+import IgDmInbox from '../../components/crm/IgDmInbox';
 
 interface ProfileRecommendations {
   platforms: {
@@ -201,6 +202,7 @@ export default function RoleRoomAgentTab() {
   const [publishBusy, setPublishBusy] = useState<string | null>(null);
   const [publishNotice, setPublishNotice] = useState<{ kind: 'success' | 'error'; msg: string } | null>(null);
   const [ctaApplyBusy, setCtaApplyBusy] = useState(false);
+  const [showIgInbox, setShowIgInbox] = useState(false);
 
   const loadLatest = useCallback(async () => {
     try {
@@ -310,6 +312,7 @@ export default function RoleRoomAgentTab() {
 
   return (
     <Stack spacing={2} data-testid="role-room-agent-root">
+      <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor="#a855f7" />
       <Stack direction="row" alignItems="center" spacing={2}>
         <Typography variant="h6" sx={{ color: '#e2e8f0' }}>🤖 Role Room Agent — Bio + Profil-pakke</Typography>
         <Button
@@ -329,6 +332,14 @@ export default function RoleRoomAgentTab() {
           sx={{ color: '#7dd3fc' }}
         >
           Last cache
+        </Button>
+        <Button
+          size="small" variant="outlined" startIcon={<InstagramIcon />}
+          onClick={() => setShowIgInbox(true)}
+          data-testid="agent-ig-inbox"
+          sx={{ borderColor: 'rgba(168,85,247,0.4)', color: '#c4b5fd' }}
+        >
+          Instagram-innboks
         </Button>
         {generatedAt && (
           <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.5)', ml: 'auto' }}>
