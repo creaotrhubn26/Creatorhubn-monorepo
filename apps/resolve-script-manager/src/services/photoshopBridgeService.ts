@@ -459,6 +459,69 @@ export const photoshop = {
       "resolve.dolbyVisionAnalyze",
     ),
 
+  resolveRenderAddJob: (params?: { preset_name?: string; target_dir?: string; custom_name?: string }) =>
+    send<{ job_id: string; preset: string }>("resolve.renderAddJob", params ?? {}),
+
+  resolveRenderList: () =>
+    send<{
+      jobs: Array<{ job_id: string; timeline_name: string; output_filename: string; status: string }>;
+      count: number;
+    }>("resolve.renderList"),
+
+  resolveRenderStart: (params?: { job_id?: string; interactive_mode?: boolean }) =>
+    send<{ started: boolean; job_id: string; interactive_mode: boolean }>(
+      "resolve.renderStart",
+      params ?? {},
+    ),
+
+  resolveRenderStop: () => send<{ stopped: boolean }>("resolve.renderStop"),
+
+  resolveRenderStatus: () => send<{ in_progress: boolean }>("resolve.renderStatus"),
+
+  resolveRenderDeleteJob: (job_id: string) =>
+    send<{ deleted: boolean; job_id: string }>("resolve.renderDeleteJob", { job_id }),
+
+  resolveMarkersList: () =>
+    send<{
+      timeline: string;
+      markers: Array<{
+        frame: number;
+        color: string;
+        name: string;
+        note: string;
+        duration: number;
+        custom_data: string;
+      }>;
+      count: number;
+    }>("resolve.markersList"),
+
+  resolveMarkersAdd: (params: {
+    frame: number;
+    color?: string;
+    name?: string;
+    note?: string;
+    duration?: number;
+    custom_data?: string;
+  }) =>
+    send<{ added: boolean; frame: number; color: string; name: string }>(
+      "resolve.markersAdd",
+      params,
+    ),
+
+  resolveMarkersDeleteByColor: (color?: string) =>
+    send<{ deleted: boolean; color: string }>("resolve.markersDeleteByColor", { color }),
+
+  resolveGradesCopyToTimeline: () =>
+    send<{ copied: boolean; target_count: number; source_item: string }>(
+      "resolve.gradesCopyToTimeline",
+    ),
+
+  resolveGradesExportLUT: (params: { path: string; export_type?: "17Point" | "33Point" | "65Point" }) =>
+    send<{ exported: boolean; path: string; export_type: string; item: string }>(
+      "resolve.gradesExportLUT",
+      params,
+    ),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

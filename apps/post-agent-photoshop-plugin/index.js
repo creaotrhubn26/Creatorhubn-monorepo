@@ -710,6 +710,78 @@ const COMMANDS = {
     });
   },
 
+  "resolve.renderAddJob": async ({ preset_name, target_dir, custom_name } = {}) => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "render.addJob",
+      args: { preset_name, target_dir, custom_name },
+    });
+  },
+
+  "resolve.renderList": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "render.list" });
+  },
+
+  "resolve.renderStart": async ({ job_id, interactive_mode } = {}) => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "render.start",
+      args: { job_id, interactive_mode: !!interactive_mode },
+    });
+  },
+
+  "resolve.renderStop": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "render.stop" });
+  },
+
+  "resolve.renderStatus": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "render.status" });
+  },
+
+  "resolve.renderDeleteJob": async ({ job_id } = {}) => {
+    assertString(job_id, "job_id");
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "render.deleteJob",
+      args: { job_id },
+    });
+  },
+
+  "resolve.markersList": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "markers.list" });
+  },
+
+  "resolve.markersAdd": async ({ frame, color, name, note, duration, custom_data } = {}) => {
+    if (typeof frame !== "number") throw new Error("frame mangler");
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "markers.add",
+      args: {
+        frame,
+        color: color || "Yellow",
+        name: name || "",
+        note: note || "",
+        duration: typeof duration === "number" ? duration : 1,
+        custom_data: custom_data || "",
+      },
+    });
+  },
+
+  "resolve.markersDeleteByColor": async ({ color } = {}) => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "markers.deleteByColor",
+      args: { color: color || "All" },
+    });
+  },
+
+  "resolve.gradesCopyToTimeline": async () => {
+    return await COMMANDS["resolve.sendCommand"]({ name: "grades.copyToTimeline" });
+  },
+
+  "resolve.gradesExportLUT": async ({ path, export_type } = {}) => {
+    assertString(path, "path");
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "grades.exportLUT",
+      args: { path, export_type: export_type || "33Point" },
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve

@@ -341,6 +341,111 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "photoshop_resolve_render_add_job",
+    description:
+      "Legg til render-job i Resolve render queue basert på CURRENT render settings. preset_name kaller LoadRenderPreset først. target_dir/custom_name overstyrer settings før job lages. Returnerer unik job_id som start/delete bruker. Komplettere enn quickExport for proff render-pipeline.",
+    input_schema: {
+      type: "object",
+      properties: {
+        preset_name: { type: "string", description: "Load preset før job (valgfri)" },
+        target_dir: { type: "string", description: "Override output-mappe" },
+        custom_name: { type: "string", description: "Override filnavn" },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_render_list",
+    description:
+      "List alle jobs i Resolve render queue med job_id + timeline_name + output_filename + status. Brukes for å se hva som er queued før start.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_render_start",
+    description:
+      "Start render. job_id kjører spesifikk job; utelat for å kjøre alle queued. interactive_mode=true åpner Resolve sin render-dialog først.",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_id: { type: "string" },
+        interactive_mode: { type: "boolean" },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_render_stop",
+    description: "Stopp pågående render umiddelbart.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_render_status",
+    description: "Returner { in_progress: boolean } — sjekk om render-pipelinen er aktiv.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_render_delete_job",
+    description: "Fjern queued job fra render queue. job_id fra render_list.",
+    input_schema: {
+      type: "object",
+      properties: { job_id: { type: "string" } },
+      required: ["job_id"],
+    },
+  },
+  {
+    name: "photoshop_resolve_markers_list",
+    description:
+      "List alle markers på current timeline. Hver marker har frame + color + name + note + duration + custom_data. Brukes for å se hva slate.analyze har funnet eller hva brukeren har manuelt markert.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_markers_add",
+    description:
+      "Lag en marker på current timeline ved frame N. color (Yellow/Red/Green/Blue/Cyan/Magenta/Pink/Mint/Lavender/Sand/Sea/Forest/Lemon/Cocoa/Cream). duration (default 1), custom_data for å henge metadata på markeren.",
+    input_schema: {
+      type: "object",
+      properties: {
+        frame: { type: "number" },
+        color: { type: "string", description: "Default 'Yellow'" },
+        name: { type: "string" },
+        note: { type: "string" },
+        duration: { type: "number", description: "Default 1 frame" },
+        custom_data: { type: "string", description: "Custom user-data" },
+      },
+      required: ["frame"],
+    },
+  },
+  {
+    name: "photoshop_resolve_markers_delete_by_color",
+    description:
+      "Slett alle markers av spesifisert farge på current timeline. 'All' sletter alle markers uansett farge.",
+    input_schema: {
+      type: "object",
+      properties: { color: { type: "string", description: "Default 'All'" } },
+    },
+  },
+  {
+    name: "photoshop_resolve_grades_copy_to_timeline",
+    description:
+      "Kopier grade fra CURRENTLY SELECTED video-item til alle andre items på timeline. Brukes for å applisere én grade-look på hele timelinen i ett trekk.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_grades_export_lut",
+    description:
+      "Eksporter grade fra CURRENTLY SELECTED item som .cube LUT-fil. export_type styrer LUT-presisjon: '17Point' (rask, små filer), '33Point' (standard, default), '65Point' (høy presisjon, store filer).",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Absolutt sti til .cube output-fil" },
+        export_type: {
+          type: "string",
+          enum: ["17Point", "33Point", "65Point"],
+          description: "Default '33Point'",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -805,6 +910,52 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
       return photoshop.resolveMagicMaskRegenerate();
     case "photoshop_resolve_dolby_vision_analyze":
       return photoshop.resolveDolbyVisionAnalyze();
+    case "photoshop_resolve_render_add_job":
+      return photoshop.resolveRenderAddJob({
+        preset_name: typeof input.preset_name === "string" ? input.preset_name : undefined,
+        target_dir: typeof input.target_dir === "string" ? input.target_dir : undefined,
+        custom_name: typeof input.custom_name === "string" ? input.custom_name : undefined,
+      });
+    case "photoshop_resolve_render_list":
+      return photoshop.resolveRenderList();
+    case "photoshop_resolve_render_start":
+      return photoshop.resolveRenderStart({
+        job_id: typeof input.job_id === "string" ? input.job_id : undefined,
+        interactive_mode: input.interactive_mode === true,
+      });
+    case "photoshop_resolve_render_stop":
+      return photoshop.resolveRenderStop();
+    case "photoshop_resolve_render_status":
+      return photoshop.resolveRenderStatus();
+    case "photoshop_resolve_render_delete_job":
+      return photoshop.resolveRenderDeleteJob(requireString(input, "job_id"));
+    case "photoshop_resolve_markers_list":
+      return photoshop.resolveMarkersList();
+    case "photoshop_resolve_markers_add": {
+      const frame = input.frame;
+      if (typeof frame !== "number") {
+        throw new Error("frame må være et tall");
+      }
+      return photoshop.resolveMarkersAdd({
+        frame,
+        color: typeof input.color === "string" ? input.color : undefined,
+        name: typeof input.name === "string" ? input.name : undefined,
+        note: typeof input.note === "string" ? input.note : undefined,
+        duration: typeof input.duration === "number" ? input.duration : undefined,
+        custom_data: typeof input.custom_data === "string" ? input.custom_data : undefined,
+      });
+    }
+    case "photoshop_resolve_markers_delete_by_color":
+      return photoshop.resolveMarkersDeleteByColor(
+        typeof input.color === "string" ? input.color : undefined,
+      );
+    case "photoshop_resolve_grades_copy_to_timeline":
+      return photoshop.resolveGradesCopyToTimeline();
+    case "photoshop_resolve_grades_export_lut":
+      return photoshop.resolveGradesExportLUT({
+        path: requireString(input, "path"),
+        export_type: input.export_type as "17Point" | "33Point" | "65Point" | undefined,
+      });
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
     case "photoshop_resolve_export_back":
