@@ -61,7 +61,6 @@ import { FireflyPromptDialog } from "./components/FireflyPromptDialog";
 import { PhotoshopWorkspaceDialog } from "./components/PhotoshopWorkspaceDialog";
 import { MultiAgentDirectorDialog } from "./components/MultiAgentDirectorDialog";
 import { PhotoshopTemplateDialog } from "./components/PhotoshopTemplateDialog";
-import { PhotoshopAgentDialog } from "./components/PhotoshopAgentDialog";
 import { PsdGalleryDialog } from "./components/PsdGalleryDialog";
 import { PhotoshopHealthCheckDialog } from "./components/PhotoshopHealthCheckDialog";
 import {
@@ -168,7 +167,6 @@ export default function App() {
   const [showPhotoshopWorkspace, setShowPhotoshopWorkspace] = useState(false);
   const [showMultiAgent, setShowMultiAgent] = useState(false);
   const [showPhotoshopTemplates, setShowPhotoshopTemplates] = useState(false);
-  const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
   const [showPsdGallery, setShowPsdGallery] = useState(false);
   const [showPhotoshopHealth, setShowPhotoshopHealth] = useState(false);
   const [showPhotoshopTour, setShowPhotoshopTour] = useState(
@@ -704,7 +702,6 @@ export default function App() {
         onOpenPhotoshopWorkspace={() => setShowPhotoshopWorkspace(true)}
         onOpenMultiAgent={() => setShowMultiAgent(true)}
         onOpenPhotoshopTemplates={() => setShowPhotoshopTemplates(true)}
-        onOpenPhotoshopAgent={() => setShowPhotoshopAgent(true)}
         onOpenPsdGallery={() => setShowPsdGallery(true)}
         onOpenPhotoshopHealth={() => setShowPhotoshopHealth(true)}
         onOpenPhotoshopTour={() => setShowPhotoshopTour(true)}
@@ -1052,9 +1049,6 @@ export default function App() {
       />
       {showPhotoshopTemplates && (
         <PhotoshopTemplateDialog onClose={() => setShowPhotoshopTemplates(false)} />
-      )}
-      {showPhotoshopAgent && (
-        <PhotoshopAgentDialog onClose={() => setShowPhotoshopAgent(false)} />
       )}
       {showPsdGallery && (
         <PsdGalleryDialog onClose={() => setShowPsdGallery(false)} />
