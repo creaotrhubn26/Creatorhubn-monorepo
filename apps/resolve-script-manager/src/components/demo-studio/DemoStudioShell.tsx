@@ -63,6 +63,16 @@ function fmt(sec: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+/**
+ * Tilgivende URL: legg til https:// hvis protokollen mangler, så brukeren
+ * bare kan skrive «theroleroom.com». Tom streng forblir tom. Brukes både i
+ * tom-tilstandens input og i topbarens URL-felt så de oppfører seg likt.
+ */
+function normalizeUrl(raw: string): string {
+  const t = raw.trim();
+  return t && !/^https?:\/\//i.test(t) ? `https://${t}` : t;
+}
+
 export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const {
     project, selectedSceneId, recorderStepIndex,
@@ -133,9 +143,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   if (!project) {
     // Tilgivende URL-håndtering: auto-legg til https:// hvis brukeren bare
     // skrev "domene.no". Krever et punktum i verts­navnet for å være gyldig.
-    const raw = urlInput.trim();
-    const normalizedUrl = raw && !/^https?:\/\//i.test(raw) ? `https://${raw}` : raw;
-    const valid = /^https?:\/\/\S+\.\S+/.test(normalizedUrl);
+    // i-flagg så stor "HTTPS://" (f.eks. fra macOS autocorrect) også godtas.
+    const normalizedUrl = normalizeUrl(urlInput);
+    const valid = /^https?:\/\/\S+\.\S+/i.test(normalizedUrl);
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: C.font, background: C.bg, color: C.ink }}>
         <div style={topbarStyle}>
@@ -187,7 +197,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         <div style={{ flex: 1, maxWidth: 420, display: 'flex', alignItems: 'center', gap: 8, background: C.cream, border: `1px solid ${C.line}`, borderRadius: 9, padding: '7px 12px' }}>
           <span style={{ color: C.inkFaint }}>🌐</span>
           <input style={{ flex: 1, border: 0, background: 'transparent', outline: 'none', fontSize: 13, color: C.ink }}
-            value={project.url} onChange={(e) => setProjectField('url', e.target.value)} placeholder="https://example.com" />
+            value={project.url} onChange={(e) => setProjectField('url', e.target.value)}
+            onBlur={(e) => setProjectField('url', normalizeUrl(e.target.value))} placeholder="https://example.com" />
         </div>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}><span style={{ color: C.green }}>✓</span> Lagret</div>
