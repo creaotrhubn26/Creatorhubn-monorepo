@@ -29,6 +29,14 @@ import {
 } from "./role-room-instagram-oauth.js";
 import { sendSms, smsConfigured } from "./crm-sms.js";
 import { sendTransactionalEmail, isTransactionalEmailConfigured } from "./transactional-email-service.js";
+import { readEnvFallbackConfig, sendWhatsAppLeadFollowup } from "./casting-whatsapp-sender.js";
+
+/** WhatsApp lead follow-up needs an env-configured WA account + an approved template name. */
+function whatsappLeadConfig() {
+  const config = readEnvFallbackConfig();
+  const templateName = (process.env.META_WHATSAPP_TEMPLATE_LEAD_FOLLOWUP_NAME || "").trim();
+  return config && templateName ? { config, templateName } : null;
+}
 
 const GRAPH = `https://graph.facebook.com/${META_GRAPH_API_VERSION}`;
 const FORM_FIELDS = "id,name,status,leads_count,created_time";
@@ -206,6 +214,9 @@ async function ensureLeadFollowupSchema(pool: Pool): Promise<void> {
       UNIQUE (user_id, lead_external_id)
     );
   `);
+  await pool.query(
+    `ALTER TABLE role_room_lead_followups ADD COLUMN IF NOT EXISTS whatsapp_sent BOOLEAN NOT NULL DEFAULT false;`,
+  );
   leadFollowupSchemaReady = true;
 }
 
@@ -684,6 +695,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
         config,
         smsConfigured: smsConfigured(),
         emailConfigured: isTransactionalEmailConfigured(),
+        whatsappConfigured: !!whatsappLeadConfig(),
       });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
@@ -804,6 +816,21 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
           if (!result.sent && result.errorMessage) errors.push(`E-post: ${result.errorMessage}`);
         } catch (e) { errors.push(`E-post: ${e instanceof Error ? e.message : String(e)}`); }
       }
+      // 2b) WhatsApp to the lead (via an approved template), when configured.
+      let whatsappSent = false;
+      const waCfg = whatsappLeadConfig();
+      if (leadPhone && waCfg) {
+        try {
+          const r = await sendWhatsAppLeadFollowup({
+            config: waCfg.config,
+            to: leadPhone,
+            templateName: waCfg.templateName,
+            bodyParams: [navn || "der", bedrift],
+          });
+          whatsappSent = r.success;
+          if (!r.success && r.error) errors.push(`WhatsApp: ${r.error}`);
+        } catch (e) { errors.push(`WhatsApp: ${e instanceof Error ? e.message : String(e)}`); }
+      }
       // 3) Notify the seller/client about the new lead.
       const sellerMsg = `Ny lead fra annonsen: ${body.name || "(uten navn)"}${leadPhone ? `, ${leadPhone}` : ""}${leadEmail ? `, ${leadEmail}` : ""}`;
       if (config.notifyPhone && smsConfigured()) {
@@ -826,15 +853,16 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
 
       // Log (idempotent) so the lead shows "fulgt opp" and we don't re-send.
       await pool.query(
-        `INSERT INTO role_room_lead_followups (user_id, connection_id, form_id, lead_external_id, sms_sent, email_sent)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO role_room_lead_followups (user_id, connection_id, form_id, lead_external_id, sms_sent, email_sent, whatsapp_sent)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (user_id, lead_external_id)
          DO UPDATE SET sms_sent = role_room_lead_followups.sms_sent OR EXCLUDED.sms_sent,
-                       email_sent = role_room_lead_followups.email_sent OR EXCLUDED.email_sent`,
-        [session.userId, connectionId, formId, leadId, smsSent, emailSent],
+                       email_sent = role_room_lead_followups.email_sent OR EXCLUDED.email_sent,
+                       whatsapp_sent = role_room_lead_followups.whatsapp_sent OR EXCLUDED.whatsapp_sent`,
+        [session.userId, connectionId, formId, leadId, smsSent, emailSent, whatsappSent],
       );
 
-      res.json({ success: true, smsSent, emailSent, errors });
+      res.json({ success: true, smsSent, emailSent, whatsappSent, errors });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }
