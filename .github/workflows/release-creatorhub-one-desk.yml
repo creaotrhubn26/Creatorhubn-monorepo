@@ -72,16 +72,86 @@ jobs:
         working-directory: apps/creatorhub-one-desk
         run: npm ci || npm install
 
-      - name: Build Tauri app
+      # Importer Apple Developer ID-sertifikatet til en midlertidig
+      # keychain. Tauri-build leser signingIdentity fra tauri.conf.json
+      # og signerer .app + .dmg + .app.tar.gz automatisk.
+      - name: Import Apple Developer ID certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        shell: bash
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          CERT_PATH=$RUNNER_TEMP/cert.p12
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm -f "$CERT_PATH"
+
+          # Bekreft at signing identity faktisk er tilgjengelig
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Build Tauri app (signed)
         working-directory: apps/creatorhub-one-desk
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_ONE_DESK }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_ONE_DESK_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: npm run tauri build -- --target ${{ matrix.target }}
 
-      - name: Note — unsigned by Apple (F7 baseline)
+      # Notariser med App Store Connect API. notarytool venter på
+      # Apple's malware-skanning (typisk 1-5 min). Etter suksess
+      # stapler vi notarisasjon-billetten på .app + .dmg så Gatekeeper
+      # godkjenner offline.
+      - name: Notarize .app + .dmg
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
         run: |
-          echo "::notice::App built UNSIGNED av Apple Developer ID. Brukerne må right-click → Open første gang. Codesigning kan legges til senere ved å konfigurere APPLE_CERTIFICATE-secrets."
+          BUNDLE_DIR="apps/creatorhub-one-desk/src-tauri/target/${{ matrix.target }}/release/bundle"
+          APP_PATH=$(find "$BUNDLE_DIR/macos" -name "*.app" | head -1)
+          DMG_PATH=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" 2>/dev/null | head -1)
+
+          # Zip .app for notarisering (notarytool tar imot .zip, .dmg, .pkg)
+          APP_ZIP=$RUNNER_TEMP/app.zip
+          ditto -c -k --keepParent "$APP_PATH" "$APP_ZIP"
+
+          echo "::group::Notarize .app"
+          xcrun notarytool submit "$APP_ZIP" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          echo "::endgroup::"
+
+          # Stapler ticket på .app så Gatekeeper kan validere offline
+          xcrun stapler staple "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+
+          if [ -n "$DMG_PATH" ]; then
+            echo "::group::Notarize .dmg"
+            xcrun notarytool submit "$DMG_PATH" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            echo "::endgroup::"
+            xcrun stapler staple "$DMG_PATH"
+            xcrun stapler validate "$DMG_PATH"
+          fi
+
+          rm -f "$APP_ZIP"
+          echo "::notice::✓ App + DMG signed and notarized — no Gatekeeper warning for users"
 
       - name: Collect artifacts
         id: artifacts
