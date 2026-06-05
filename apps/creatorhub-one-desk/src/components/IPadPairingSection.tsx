@@ -21,7 +21,7 @@ import {
 import LinkIcon from "@mui/icons-material/Link";
 import LinkOff from "@mui/icons-material/LinkOff";
 import Tablet from "@mui/icons-material/Tablet";
-import AddCircleOutline from "@mui/icons-material/AddCircleOutline";
+import AddCircleOutlineOutlined from "@mui/icons-material/AddCircleOutlineOutlined";
 import {
   addManualIpad,
   BonjourStatusEvent,
@@ -202,7 +202,7 @@ export default function IPadPairingSection() {
                   action={
                     <Button
                       size="small"
-                      startIcon={<AddCircleOutline />}
+                      startIcon={<AddCircleOutlineOutlined />}
                       onClick={() => setManualOpen(true)}
                     >
                       Legg til manuelt
