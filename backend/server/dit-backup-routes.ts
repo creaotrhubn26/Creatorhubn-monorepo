@@ -288,11 +288,25 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
       );
       // Returner KLAR-TEKST kun NÅ — admin må kopiere umiddelbart.
       // Vi har bare hash-en lagret videre, så det vises ALDRI igjen.
+      //
+      // `connection_url` er en pre-formatert chub://-URI som Creatorhub
+      // One Desk-appen parser med ETT paste — admin trenger ikke
+      // kopiere token + projectId separat. Backend-URL inkluderes kun
+      // når en eksplisitt PUBLIC_APP_URL skiller seg fra app-defaulten.
+      const appDefault = 'https://creatorhubn.com';
+      const publicBase = (process.env.PUBLIC_APP_URL || appDefault).replace(/\/+$/, '');
+      const params = new URLSearchParams({ p: projectId, t: rawToken });
+      if (publicBase && publicBase !== appDefault) {
+        params.set('b', publicBase);
+      }
+      const connectionUrl = `chub://connect?${params.toString()}`;
+
       return res.json({
         success: true,
         token: rawToken,
         token_id: tokenId,
         expires_at: expiresAt.toISOString(),
+        connection_url: connectionUrl,
         warning: 'Tokenet vises kun NÅ. Kopiér til DIT-station-config. Det kan ikke gjenfinnes.',
       });
     } catch (error) {
