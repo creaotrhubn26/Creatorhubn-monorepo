@@ -2897,6 +2897,115 @@ end
 HANDLERS["fusionComp.addMaskRegion"] = fusionCompAddMaskRegion
 
 -- ---------------------------------------------------------------------------
+-- Easing curves på BezierSpline-keyframes
+-- ---------------------------------------------------------------------------
+
+-- fusionComp.setKeyframeEasing(tool_name, input_name, easing, time?, comp_name?)
+--
+-- Setter ease-pattern på keyframes på en animert input. Hvis time
+-- utelates: appliseres på ALLE eksisterende keyframes. Endrer ikke
+-- verdier — kun handle-tangents og step-flags.
+--
+-- Easing-modi:
+--   "linear"      — rett linje (default i Fusion)
+--   "ease_in"     — slow start (krummer venstre handle)
+--   "ease_out"    — slow end (krummer høyre handle) — mest "naturlig"
+--   "ease_in_out" — slow start + slow end (S-kurve)
+--   "smooth"      — auto-smooth tangents (kontinuerlig kurvatur)
+--   "hold"        — step (ingen interpolasjon)
+local EASING_TYPES = {
+  linear = true, ease_in = true, ease_out = true,
+  ease_in_out = true, smooth = true, hold = true,
+}
+
+-- Applisér easing-flags på en keyframe-entry (KeyFrames[time]).
+-- Fusion BezierSpline.KeyFrames[time] kan være tabell { value, LH, RH, Flags }
+-- eller bare verdi. Vi forsøker å sette Flags trygt.
+local function applyEasingToKeyframe(kf, easing)
+  if type(kf) ~= "table" then
+    -- Kan ikke endre primitive verdier
+    return false
+  end
+  kf.Flags = kf.Flags or {}
+  -- Reset known flags først
+  kf.Flags.Linear = nil
+  kf.Flags.Smooth = nil
+  kf.Flags.StepIn = nil
+  kf.Flags.StepOut = nil
+
+  if easing == "linear" then
+    kf.Flags.Linear = true
+  elseif easing == "smooth" then
+    kf.Flags.Smooth = true
+  elseif easing == "hold" then
+    kf.Flags.StepIn = true
+    kf.Flags.StepOut = true
+  elseif easing == "ease_in" then
+    -- Slow start: LH (venstre handle) drar mot keyframe-verdi
+    if kf.LH then kf.LH = { kf.LH[1], kf.LH[2] or 0 } end
+    kf.Flags.Smooth = false
+  elseif easing == "ease_out" then
+    -- Slow end: RH (høyre handle) drar mot keyframe-verdi
+    if kf.RH then kf.RH = { kf.RH[1], kf.RH[2] or 0 } end
+    kf.Flags.Smooth = false
+  elseif easing == "ease_in_out" then
+    -- S-kurve: begge handles drar mot keyframe-verdi
+    if kf.LH then kf.LH = { kf.LH[1], kf.LH[2] or 0 } end
+    if kf.RH then kf.RH = { kf.RH[1], kf.RH[2] or 0 } end
+    kf.Flags.Smooth = false
+  end
+  return true
+end
+
+local function fusionCompSetKeyframeEasing(args)
+  local comp = getFusionComp(args)
+  local toolName = extractString(args, "tool_name")
+  if not toolName or toolName == "" then error("tool_name mangler") end
+  local inputName = extractString(args, "input_name")
+  if not inputName or inputName == "" then error("input_name mangler") end
+  local easing = extractString(args, "easing")
+  if not easing or easing == "" then error("easing mangler") end
+  if not EASING_TYPES[easing] then
+    error("Ugyldig easing: " .. easing ..
+      " (gyldige: linear, ease_in, ease_out, ease_in_out, smooth, hold)")
+  end
+  local specificTime = tonumber(args:match('"time"%s*:%s*(-?%d+%.?%d*)'))
+
+  local _, input = getToolInput(comp, toolName, inputName)
+  local animSource = getInputAnimSource(input)
+  if not animSource then
+    error("Input er ikke animert — addKeyframe først")
+  end
+  local kfs = animSource.KeyFrames
+  if type(kfs) ~= "table" then
+    error("Ingen keyframes på spline")
+  end
+
+  local applied = 0
+  if specificTime then
+    if kfs[specificTime] then
+      if applyEasingToKeyframe(kfs[specificTime], easing) then
+        applied = 1
+      end
+    end
+  else
+    for _, kf in pairs(kfs) do
+      if applyEasingToKeyframe(kf, easing) then
+        applied = applied + 1
+      end
+    end
+  end
+
+  return string.format(
+    '{"applied":%d,"tool":%s,"input":%s,"easing":%s,"scope":%s}',
+    applied, jsonEscape(toolName), jsonEscape(inputName), jsonEscape(easing),
+    specificTime and jsonEscape("frame:" .. tostring(specificTime)) or jsonEscape("all")
+  )
+end
+
+HANDLERS["fusionComp.setKeyframeEasing"] = fusionCompSetKeyframeEasing
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 

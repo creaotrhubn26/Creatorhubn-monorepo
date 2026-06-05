@@ -1300,6 +1300,21 @@ export const photoshop = {
       invert: boolean;
     }>("resolve.fusionCompAddMaskRegion", params),
 
+  resolveFusionCompSetKeyframeEasing: (params: {
+    tool_name: string;
+    input_name: string;
+    easing: "linear" | "ease_in" | "ease_out" | "ease_in_out" | "smooth" | "hold";
+    time?: number;
+    comp_name?: string;
+  }) =>
+    send<{
+      applied: number;
+      tool: string;
+      input: string;
+      easing: string;
+      scope: string;
+    }>("resolve.fusionCompSetKeyframeEasing", params),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

@@ -1709,6 +1709,28 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_fusion_comp_set_keyframe_easing",
+    description:
+      "Sett ease-pattern på keyframes for profesjonell animasjon. Hvis time utelates: appliseres på ALLE eksisterende keyframes. linear=default rett linje, ease_in=slow start, ease_out=slow end (mest 'naturlig'), ease_in_out=S-kurve, smooth=auto-smooth tangents, hold=step. Endrer ikke verdier — kun tangents/flags. Kall addKeyframe FØR for å ha keyframes å easing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tool_name: { type: "string" },
+        input_name: { type: "string" },
+        easing: {
+          type: "string",
+          enum: ["linear", "ease_in", "ease_out", "ease_in_out", "smooth", "hold"],
+        },
+        time: {
+          type: "number",
+          description: "Frame-number for spesifikk keyframe. Utelat for alle.",
+        },
+        comp_name: { type: "string" },
+      },
+      required: ["tool_name", "input_name", "easing"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -3220,6 +3242,47 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         params.comp_name = input.comp_name;
       }
       return photoshop.resolveFusionCompAddMaskRegion(params);
+    }
+    case "photoshop_resolve_fusion_comp_set_keyframe_easing": {
+      if (typeof input.tool_name !== "string" || input.tool_name.length === 0) {
+        throw new Error("tool_name må være en ikke-tom string");
+      }
+      if (typeof input.input_name !== "string" || input.input_name.length === 0) {
+        throw new Error("input_name må være en ikke-tom string");
+      }
+      const VALID_EASING = [
+        "linear",
+        "ease_in",
+        "ease_out",
+        "ease_in_out",
+        "smooth",
+        "hold",
+      ] as const;
+      const easing = input.easing;
+      if (
+        typeof easing !== "string" ||
+        !(VALID_EASING as readonly string[]).includes(easing)
+      ) {
+        throw new Error(
+          `Ugyldig easing: ${String(easing)} (gyldige: ${VALID_EASING.join(", ")})`,
+        );
+      }
+      const params: {
+        tool_name: string;
+        input_name: string;
+        easing: (typeof VALID_EASING)[number];
+        time?: number;
+        comp_name?: string;
+      } = {
+        tool_name: input.tool_name,
+        input_name: input.input_name,
+        easing: easing as (typeof VALID_EASING)[number],
+      };
+      if (typeof input.time === "number") params.time = input.time;
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompSetKeyframeEasing(params);
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
