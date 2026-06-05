@@ -160,6 +160,7 @@ import {
   FolderSpecial,
   Edit,
   Delete,
+  DeleteOutline as DeleteIcon,
   CloudUpload,
   CloudDownload,
   Sync,
@@ -5718,6 +5719,20 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       projectState: 'in_review' as 'delivered' | 'in_review',
       projectId: null as string | null
     });
+    // Multi-client distribution: liste av ekstra mottakere ut over
+    // primær clientEmail/clientName-paret. Hver rad blir et eget
+    // photographer_client_galleries-row med egen accessToken så Fredrik
+    // kan se per-klient-engasjement i dashboardet.
+    const [extraRecipients, setExtraRecipients] = useState<
+      Array<{ email: string; name: string }>
+    >([]);
+    const [batchProgress, setBatchProgress] = useState<{
+      sending: boolean;
+      total: number;
+      done: number;
+      failed: Array<{ email: string; error: string }>;
+      succeeded: Array<{ email: string }>;
+    } | null>(null);
 
     // Update projectId when showcase is selected
     useEffect(() => {
@@ -5730,24 +5745,79 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     }, [shareForm.selectedShowcase, showcases]);
 
     const handleShareShowcase = async () => {
-      try {
-        const showcase = showcases.find((s: any) => s.id === shareForm.selectedShowcase);
-        if (!showcase) return;
+      const showcase = showcases.find((s: any) => s.id === shareForm.selectedShowcase);
+      if (!showcase) return;
 
-        await shareShowcaseMutation.mutateAsync({
-          showcaseId: shareForm.selectedShowcase,
-          clientEmail: shareForm.clientEmail,
-          clientName: shareForm.clientName,
-          message: shareForm.message,
-          photographerName: shareForm.photographerName,
-          photographerCompany: shareForm.photographerCompany,
-          projectState: shareForm.projectState,
-          projectId: showcase.projectId || shareForm.projectId
-        });
-        
-        onClose();
-      } catch (error) {
-        console.error('Error sharing showcase:', error);
+      // Bygg full mottaker-liste: primær + valide ekstra. Filtrer ut
+      // tomme/ugyldige rader stille — bedre å la Fredrik se hvilke som
+      // faktisk ble sendt enn å blokkere på en tom rad.
+      const recipients = [
+        { email: shareForm.clientEmail.trim(), name: shareForm.clientName.trim() },
+        ...extraRecipients
+          .map((r) => ({ email: r.email.trim(), name: r.name.trim() }))
+          .filter((r) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email) && r.name),
+      ];
+
+      if (recipients.length === 0) return;
+      if (recipients.length === 1) {
+        // Single-recipient — uendret oppførsel.
+        try {
+          await shareShowcaseMutation.mutateAsync({
+            showcaseId: shareForm.selectedShowcase,
+            clientEmail: recipients[0].email,
+            clientName: recipients[0].name,
+            message: shareForm.message,
+            photographerName: shareForm.photographerName,
+            photographerCompany: shareForm.photographerCompany,
+            projectState: shareForm.projectState,
+            projectId: showcase.projectId || shareForm.projectId,
+          });
+          onClose();
+        } catch (error) {
+          console.error('Error sharing showcase:', error);
+        }
+        return;
+      }
+
+      // Batch-flow: send sekvensielt for å unngå rate-limits på email-
+      // tjenesten. Hver mottaker får sin egen accessToken/galleri-row.
+      setBatchProgress({
+        sending: true,
+        total: recipients.length,
+        done: 0,
+        failed: [],
+        succeeded: [],
+      });
+      const failed: Array<{ email: string; error: string }> = [];
+      const succeeded: Array<{ email: string }> = [];
+      for (const r of recipients) {
+        try {
+          await shareShowcaseMutation.mutateAsync({
+            showcaseId: shareForm.selectedShowcase,
+            clientEmail: r.email,
+            clientName: r.name,
+            message: shareForm.message,
+            photographerName: shareForm.photographerName,
+            photographerCompany: shareForm.photographerCompany,
+            projectState: shareForm.projectState,
+            projectId: showcase.projectId || shareForm.projectId,
+          });
+          succeeded.push({ email: r.email });
+        } catch (error) {
+          failed.push({
+            email: r.email,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        setBatchProgress((prev) =>
+          prev
+            ? { ...prev, done: prev.done + 1, failed: [...failed], succeeded: [...succeeded] }
+            : null,
+        );
+      }
+      setBatchProgress((prev) => (prev ? { ...prev, sending: false } : null));
+      if (failed.length === 0) {
+        setTimeout(() => onClose(), 1500);
       }
     };
 
@@ -5789,8 +5859,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               </FormControl>
             </Box>
 
-            {/* Client Information */}
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+            {/* Client Information — primær mottaker + eventuelle ekstra */}
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 1 }}>
               <Box sx={{ flex: '1 1 300px', minWidth: 300 }}>
                 <TextField
                   fullWidth
@@ -5810,6 +5880,61 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   required
                 />
               </Box>
+            </Box>
+
+            {/* Ekstra mottakere — hver blir et eget galleri med egen accessToken */}
+            {extraRecipients.map((r, idx) => (
+              <Box key={idx} sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 1, alignItems: 'center' }}>
+                <Box sx={{ flex: '1 1 300px', minWidth: 280 }}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label={`Mottaker ${idx + 2} — e-post`}
+                    type="email"
+                    value={r.email}
+                    onChange={(e) => {
+                      const next = [...extraRecipients];
+                      next[idx] = { ...next[idx], email: e.target.value };
+                      setExtraRecipients(next);
+                    }}
+                  />
+                </Box>
+                <Box sx={{ flex: '1 1 250px', minWidth: 240 }}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Navn"
+                    value={r.name}
+                    onChange={(e) => {
+                      const next = [...extraRecipients];
+                      next[idx] = { ...next[idx], name: e.target.value };
+                      setExtraRecipients(next);
+                    }}
+                  />
+                </Box>
+                <IconButton
+                  size="small"
+                  onClick={() => setExtraRecipients(extraRecipients.filter((_, i) => i !== idx))}
+                  aria-label="Fjern mottaker"
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            ))}
+            <Box sx={{ mb: 3 }}>
+              <Button
+                size="small"
+                startIcon={<Add />}
+                onClick={() => setExtraRecipients([...extraRecipients, { email: '', name: '' }])}
+                disabled={batchProgress?.sending}
+              >
+                Legg til mottaker
+              </Button>
+              {extraRecipients.length > 0 && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                  Hver mottaker får sitt eget galleri med separat lenke — du kan spore aktivitet per klient.
+                </Typography>
+              )}
             </Box>
 
             {/* Photographer Information */}
@@ -5952,17 +6077,55 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 </Typography>
               </Paper>
             )}
+
+            {/* Batch-progress under sending til flere mottakere */}
+            {batchProgress && (
+              <Alert
+                severity={
+                  batchProgress.sending
+                    ? 'info'
+                    : batchProgress.failed.length > 0
+                      ? 'warning'
+                      : 'success'
+                }
+                sx={{ mt: 2 }}
+                onClose={!batchProgress.sending ? () => setBatchProgress(null) : undefined}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  {batchProgress.sending
+                    ? `Sender til ${batchProgress.done} av ${batchProgress.total}…`
+                    : batchProgress.failed.length > 0
+                      ? `${batchProgress.succeeded.length}/${batchProgress.total} sendt — ${batchProgress.failed.length} feilet`
+                      : `Alle ${batchProgress.total} mottakere fikk lenken.`}
+                </Typography>
+                {batchProgress.failed.map((f) => (
+                  <Typography key={f.email} variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+                    ❌ {f.email}: {f.error}
+                  </Typography>
+                ))}
+              </Alert>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose} disabled={batchProgress?.sending}>Avbryt</Button>
           <Button onClick={handleShareShowcase}
             variant="contained"
             color="primary"
-            disabled={shareShowcaseMutation.isPending || !shareForm.selectedShowcase || !shareForm.clientEmail || !shareForm.clientName}
+            disabled={
+              shareShowcaseMutation.isPending ||
+              batchProgress?.sending ||
+              !shareForm.selectedShowcase ||
+              !shareForm.clientEmail ||
+              !shareForm.clientName
+            }
             sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67c00' } }}
           >
-            {shareShowcaseMutation.isPending ? 'Sending...' : `Share ${getTerm('showcase')}`}
+            {batchProgress?.sending
+              ? `Sender ${batchProgress.done + 1} av ${batchProgress.total}…`
+              : extraRecipients.length > 0
+                ? `Send til ${extraRecipients.length + 1} mottakere`
+                : `Send ${getTerm('showcase').toLowerCase()}`}
           </Button>
         </DialogActions>
       </Dialog>
