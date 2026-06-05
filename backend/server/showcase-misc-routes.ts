@@ -545,6 +545,167 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
     },
   );
 
+  // GET /api/showcase/engagement/feed?limit=50 — Cross-gallery activity feed
+  // for fotografens dashboard. Union-er events fra 4 datakilder:
+  //   - gallery_download_audit   (klient lastet ned bilder)
+  //   - client_image_comments    (klient kommenterte)
+  //   - client_image_selections  (klient favoritt-merket / valgte)
+  //   - analytics_events         (klient åpnet galleri — view-tracking
+  //                                 fra creatorhub-events.viewedByClient)
+  // Alle filtreres på photographer_id = session.userId via gallery-FK.
+  // Returneres sortert nyeste først så Fredrik kan scrolle som
+  // morning-checkin.
+  app.get("/api/showcase/engagement/feed", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const limitRaw = Number(req.query.limit);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 200
+      ? Math.floor(limitRaw)
+      : 50;
+    try {
+      // 4 unioned subqueries, hver normaliserer til samme kolonnesett.
+      // gallery_id binder dem til photographer via FK. analytics_events
+      // har ikke FK, men entity_type='gallery' + entity_id=galleryId
+      // matcher manuelt mot photographer_client_galleries.
+      const sqlText = `
+        WITH owned_galleries AS (
+          SELECT id, project_title, client_name, client_email
+          FROM photographer_client_galleries
+          WHERE photographer_id = $1
+        )
+        (
+          SELECT
+            'download'::text AS kind,
+            d.gallery_id::text AS gallery_id,
+            g.project_title,
+            g.client_name,
+            d.client_email,
+            d.created_at AS happened_at,
+            jsonb_build_object('imageId', d.image_id::text) AS detail
+          FROM gallery_download_audit d
+          JOIN owned_galleries g ON g.id = d.gallery_id
+        )
+        UNION ALL
+        (
+          SELECT
+            'comment'::text AS kind,
+            c.gallery_id::text AS gallery_id,
+            g.project_title,
+            g.client_name,
+            c.client_email,
+            c.created_at AS happened_at,
+            jsonb_build_object(
+              'imageId', c.image_id::text,
+              'comment', LEFT(c.comment, 200),
+              'status', c.status
+            ) AS detail
+          FROM client_image_comments c
+          JOIN owned_galleries g ON g.id = c.gallery_id
+        )
+        UNION ALL
+        (
+          SELECT
+            'selection'::text AS kind,
+            s.gallery_id::text AS gallery_id,
+            g.project_title,
+            g.client_name,
+            s.client_email,
+            s.created_at AS happened_at,
+            jsonb_build_object(
+              'imageId', s.image_id::text,
+              'selectionType', s.selection_type
+            ) AS detail
+          FROM client_image_selections s
+          JOIN owned_galleries g ON g.id = s.gallery_id
+        )
+        UNION ALL
+        (
+          SELECT
+            'view'::text AS kind,
+            (a.entity_id) AS gallery_id,
+            g.project_title,
+            g.client_name,
+            g.client_email,
+            a.created_at AS happened_at,
+            COALESCE(a.metadata, '{}'::jsonb) AS detail
+          FROM analytics_events a
+          JOIN owned_galleries g ON g.id::text = a.entity_id
+          WHERE a.entity_type = 'gallery'
+            AND a.event_type IN ('gallery_viewed', 'gallery.view', 'view')
+        )
+        ORDER BY happened_at DESC
+        LIMIT $2
+      `;
+      // analytics_events kan mangle (idempotent ensure i marketplace-app-
+      // config-routes.ts), så vi catcher og faller tilbake til de tre
+      // andre datakildene hvis hovedquery feiler.
+      let rows: any[];
+      try {
+        const result = await pool.query(sqlText, [session.userId, limit]);
+        rows = result.rows;
+      } catch (unionErr) {
+        // Fallback uten analytics_events.
+        const fallbackSql = sqlText.replace(/UNION ALL\s*\(\s*SELECT[\s\S]*?WHERE a\.entity_type[\s\S]*?\)\s*ORDER BY/m,
+          'ORDER BY');
+        const result = await pool.query(fallbackSql, [session.userId, limit]);
+        rows = result.rows;
+      }
+
+      // Aggregate-summary for siste 7 dager — drives av samme dataset.
+      // Kjøres som second query for å holde unionen ren.
+      const summaryRes = await pool.query(
+        `
+        WITH owned AS (
+          SELECT id FROM photographer_client_galleries WHERE photographer_id = $1
+        ),
+        cutoff AS (SELECT NOW() - INTERVAL '7 days' AS since)
+        SELECT
+          (SELECT COUNT(*)::int FROM gallery_download_audit d
+             JOIN owned o ON o.id = d.gallery_id, cutoff
+             WHERE d.created_at >= cutoff.since) AS downloads_7d,
+          (SELECT COUNT(*)::int FROM client_image_comments c
+             JOIN owned o ON o.id = c.gallery_id, cutoff
+             WHERE c.created_at >= cutoff.since) AS comments_7d,
+          (SELECT COUNT(*)::int FROM client_image_selections s
+             JOIN owned o ON o.id = s.gallery_id, cutoff
+             WHERE s.created_at >= cutoff.since) AS selections_7d,
+          (SELECT COUNT(DISTINCT s.client_email)::int FROM client_image_selections s
+             JOIN owned o ON o.id = s.gallery_id, cutoff
+             WHERE s.created_at >= cutoff.since) AS active_clients_7d
+        `,
+        [session.userId],
+      );
+      const summary = summaryRes.rows[0] ?? {
+        downloads_7d: 0,
+        comments_7d: 0,
+        selections_7d: 0,
+        active_clients_7d: 0,
+      };
+
+      res.json({
+        events: rows.map((r: any) => ({
+          kind: r.kind,
+          galleryId: r.gallery_id,
+          projectTitle: r.project_title,
+          clientName: r.client_name,
+          clientEmail: r.client_email,
+          happenedAt: r.happened_at,
+          detail: r.detail ?? {},
+        })),
+        summary: {
+          downloads7d: Number(summary.downloads_7d ?? 0),
+          comments7d: Number(summary.comments_7d ?? 0),
+          selections7d: Number(summary.selections_7d ?? 0),
+          activeClients7d: Number(summary.active_clients_7d ?? 0),
+        },
+      });
+    } catch (error) {
+      console.error("[engagement-feed] feilet", error);
+      res.status(500).json({ error: "kunne_ikke_hente_engasjement" });
+    }
+  });
+
+
   // GET /api/showcase/enhancement-presets — Static preset configurations
   app.get("/api/showcase/enhancement-presets", async (_req, res) => {
     res.json(SHOWCASE_ENHANCEMENT_PRESETS);

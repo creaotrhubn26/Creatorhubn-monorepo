@@ -223,6 +223,7 @@ import {
   MovieCreation,
   TrendingUp as TimelineIcon,
   ForumOutlined as CommentResolverIcon,
+  ShowChart as TrendingUpIcon,
   Layers,
   VolumeUp,
   Subtitles,
@@ -264,6 +265,7 @@ import QuickPreview from './showcase/QuickPreview';
 import ActivityFeed from './showcase/ActivityFeed';
 import CommentResolverPanel from './showcase/CommentResolverPanel';
 import MySharedGalleriesPanel from './showcase/MySharedGalleriesPanel';
+import EngagementFeedPanel from './showcase/EngagementFeedPanel';
 import ShareToCommunityDialog from '../community/ShareToCommunityDialog';
 import SmartCollections from './showcase/SmartCollections';
 import ComparisonView from './showcase/ComparisonView';
@@ -1365,6 +1367,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   // Activity Feed State
   const [activityFeedOpen, setActivityFeedOpen] = useState(false);
   const [commentResolverOpen, setCommentResolverOpen] = useState(false);
+  const [engagementFeedOpen, setEngagementFeedOpen] = useState(false);
   
   // Smart Collections State
   const [showSmartCollections, setShowSmartCollections] = useState(false);
@@ -9360,6 +9363,23 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               </IconButton>
             </Tooltip>
 
+            {/* Klient-engasjement Button */}
+            <Tooltip title="Klient-aktivitet (views, kommentarer, downloads)">
+              <IconButton
+                size="small"
+                onClick={() => setEngagementFeedOpen(true)}
+                sx={{
+                  color: 'rgba(255,255,255,0.7)','&:hover': {
+                    color: accentColor,
+                    bgcolor: `${accentColor}20`
+                  }
+                }}
+              >
+                <TrendingUpIcon />
+              </IconButton>
+            </Tooltip>
+
+
             {/* Comparison View Button */}
             <Tooltip title="Compare Items">
               <IconButton
@@ -13449,6 +13469,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       <CommentResolverPanel
         open={commentResolverOpen}
         onClose={() => setCommentResolverOpen(false)}
+      />
+
+      {/* Klient-engasjement på tvers av delte galleries */}
+      <EngagementFeedPanel
+        open={engagementFeedOpen}
+        onClose={() => setEngagementFeedOpen(false)}
       />
 
       {/* Comparison View */}
