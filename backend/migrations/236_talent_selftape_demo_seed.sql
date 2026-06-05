@@ -34,7 +34,20 @@ BEGIN
     sides_content = EXCLUDED.sides_content,
     updated_at = now();
 
-  -- 2. AI-feedback for take 3 (matcher mockup)
+  -- 2. 5 takes FØRST (uten ai_feedback_id ennå)
+  INSERT INTO talent_selftape_takes
+    (id, project_id, take_number, duration_ms, status, recorded_at, is_demo)
+  VALUES
+    (v_take1_id, v_project_id, 1, 58000,  'ready', now() - interval '5 hours', TRUE),
+    (v_take2_id, v_project_id, 2, 65000,  'ready', now() - interval '4 hours', TRUE),
+    (v_take3_id, v_project_id, 3, 72000,  'ready', now() - interval '3 hours', TRUE),
+    (v_take4_id, v_project_id, 4, 47000,  'ready', now() - interval '2 hours', TRUE),
+    (v_take5_id, v_project_id, 5, 61000,  'ready', now() - interval '1 hour',  TRUE)
+  ON CONFLICT (id) DO UPDATE SET
+    duration_ms = EXCLUDED.duration_ms,
+    status = 'ready';
+
+  -- 3. AI-feedback for take 3 (kan nå referere v_take3_id)
   INSERT INTO talent_selftape_ai_feedback
     (id, take_id, model_version, eye_line, pacing, sound, lighting, performance,
      camera_check, audio_check, framing_check, overall_grade, detailed_md,
@@ -59,31 +72,17 @@ BEGIN
     overall_grade = EXCLUDED.overall_grade,
     status = 'ready';
 
-  -- 3. 5 takes (Take 1-5 med varigheter fra mockup)
-  INSERT INTO talent_selftape_takes
-    (id, project_id, take_number, duration_ms, status, recorded_at, is_demo)
-  VALUES
-    (v_take1_id, v_project_id, 1, 58000,  'ready', now() - interval '5 hours', TRUE),
-    (v_take2_id, v_project_id, 2, 65000,  'ready', now() - interval '4 hours', TRUE),
-    (v_take3_id, v_project_id, 3, 72000,  'ready', now() - interval '3 hours', TRUE),
-    (v_take4_id, v_project_id, 4, 47000,  'ready', now() - interval '2 hours', TRUE),
-    (v_take5_id, v_project_id, 5, 61000,  'ready', now() - interval '1 hour',  TRUE)
-  ON CONFLICT (id) DO UPDATE SET
-    duration_ms = EXCLUDED.duration_ms,
-    status = 'ready';
-
-  -- Koble take 3 til feedback
+  -- 4. Koble take 3 til feedback
   UPDATE talent_selftape_takes
      SET ai_feedback_id = v_feedback_id
    WHERE id = v_take3_id;
 
-  -- Marker take 3 som current
+  -- 5. Marker take 3 som current
   UPDATE talent_selftape_projects
      SET current_take_id = v_take3_id
    WHERE id = v_project_id;
 
-  -- 4. Submission-targets (3 stk fra mockup)
-  -- Stella Casting (agency_direct, preferred)
+  -- 6. Submission-targets (3 stk fra mockup)
   INSERT INTO talent_selftape_submissions
     (id, project_id, take_id, target_type, enabled, status, deadline_at,
      agency_org_id, agency_preferred, is_demo)
@@ -105,8 +104,7 @@ BEGIN
    WHERE id = 'c4444444-2222-2222-2222-222222222222'
      AND private_token IS NULL;
 
-  -- 5. Submission-history (Echoes Within + Silent Echo fra mockup)
-  -- Disse er tidligere prosjekter, så vi seeder dem som archived
+  -- 7. Submission-history (Echoes Within + Silent Echo fra mockup)
   INSERT INTO talent_selftape_projects
     (id, talent_id, name, status, role_name, role_type, scene_label, is_demo)
   VALUES
@@ -116,7 +114,6 @@ BEGIN
      'submitted', 'Livia', 'Supporting', 'Opening', TRUE)
   ON CONFLICT (id) DO NOTHING;
 
-  -- Takes for history-prosjektene
   INSERT INTO talent_selftape_takes
     (id, project_id, take_number, duration_ms, status, recorded_at, is_demo)
   VALUES
@@ -126,7 +123,6 @@ BEGIN
      1, 75000, 'ready', '2024-04-28 11:00:00+00', TRUE)
   ON CONFLICT (id) DO NOTHING;
 
-  -- Submission-rader for history (status = viewed / shortlisted)
   INSERT INTO talent_selftape_submissions
     (id, project_id, take_id, target_type, enabled, status,
      agency_org_id, agency_preferred, submitted_at, viewed_at, status_updated_at, is_demo)
@@ -142,7 +138,6 @@ BEGIN
   ON CONFLICT (project_id, target_type, agency_org_id, casting_role_id)
   DO UPDATE SET status = EXCLUDED.status;
 
-  -- Events for history
   INSERT INTO talent_selftape_submission_events
     (submission_id, event_type, actor_label, created_at)
   VALUES
