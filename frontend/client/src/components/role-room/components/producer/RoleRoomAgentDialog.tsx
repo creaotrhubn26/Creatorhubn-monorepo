@@ -30,6 +30,7 @@ import {
   LocalMall as MerchIcon,
   MoveToInbox as InboxIcon,
   ContactPage as LeadsTabIcon,
+  CampaignOutlined as MentionsTabIcon,
   MoreHoriz as MoreHorizIcon,
   Tune as TuneIcon,
   QueryStats as QueryStatsIcon,
@@ -44,6 +45,7 @@ import FacebookVideoPublisher from './FacebookVideoPublisher';
 import FacebookPageMentionPublisher from './FacebookPageMentionPublisher';
 import SocialInboxPanel from './SocialInboxPanel';
 import LeadsPanel from './LeadsPanel';
+import MentionsPanel from './MentionsPanel';
 import SocialAnalyticsPanel from './SocialAnalyticsPanel';
 import RoleRoomAgentWorkflowStepper from './RoleRoomAgentWorkflowStepper';
 import RoleRoomAgentConnectionsBar from './RoleRoomAgentConnectionsBar';
@@ -250,7 +252,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'leads' | 'social-analytics'>(initialTab ?? 'research');
+  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'mentions' | 'leads' | 'social-analytics'>(initialTab ?? 'research');
 
   // Synk hvis initialTab endrer seg etter mount (dialog gjenåpnes med
   // ny tab fra parent).
@@ -369,7 +371,7 @@ export default function RoleRoomAgentDialog({
   // reviewer panels. Publishing lives inside Feed-planner.
   const tabFlow = useMemo<Array<typeof activeTab>>(() => {
     const base: Array<typeof activeTab> = [
-      'research', 'marketing-plan', 'feed-planner', 'social-inbox', 'leads', 'social-analytics',
+      'research', 'marketing-plan', 'feed-planner', 'social-inbox', 'mentions', 'leads', 'social-analytics',
     ];
     return currentUserId ? [...base, 'chat'] : base;
   }, [currentUserId]);
@@ -377,7 +379,7 @@ export default function RoleRoomAgentDialog({
     research: 'Research', merch: 'Merch', 'marketing-plan': 'Markedsplan',
     'feed-planner': 'Feed-planner', 'meta-page': 'Meta Page', 'page-content': 'Page Content',
     'ads-attribution': 'Ads Attribution', 'fb-publish': 'FB Publish', 'fb-mention': 'Page Mentions',
-    'ig-hashtag': 'IG Hashtags', 'social-inbox': 'Inbox', leads: 'Leads', 'social-analytics': 'Analytics', chat: 'Chat',
+    'ig-hashtag': 'IG Hashtags', 'social-inbox': 'Inbox', mentions: 'Omtaler', leads: 'Leads', 'social-analytics': 'Analytics', chat: 'Chat',
   };
   const flowIndex = tabFlow.indexOf(activeTab);
   const showResearchSection = (s: 'oversikt' | 'kanaler' | 'marked'): boolean =>
@@ -783,6 +785,13 @@ export default function RoleRoomAgentDialog({
           data-testid="agent-tab-social-inbox"
         />
         <Tab
+          value="mentions"
+          label="Omtaler"
+          icon={<MentionsTabIcon fontSize="small" />}
+          iconPosition="start"
+          data-testid="agent-tab-mentions"
+        />
+        <Tab
           value="leads"
           label="Leads"
           icon={<LeadsTabIcon fontSize="small" />}
@@ -964,6 +973,8 @@ export default function RoleRoomAgentDialog({
           <Box sx={{ p: { xs: 1, md: 2 } }}>
             <SocialInboxPanel />
           </Box>
+        ) : activeTab === 'mentions' ? (
+          <MentionsPanel />
         ) : activeTab === 'leads' ? (
           <LeadsPanel />
         ) : activeTab === 'social-analytics' ? (
