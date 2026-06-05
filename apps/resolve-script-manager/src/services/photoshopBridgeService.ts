@@ -1243,6 +1243,18 @@ export const photoshop = {
       | { loaded: boolean; mode: "paste"; file_path: string }
     >("resolve.fusionCompLoadToolPreset", params),
 
+  resolveFusionCompSet3DTransform: (params: {
+    tool_name: string;
+    position?: { x?: number; y?: number; z?: number };
+    rotation?: { x?: number; y?: number; z?: number };
+    scale?: number | { x?: number; y?: number; z?: number };
+    comp_name?: string;
+  }) =>
+    send<{ set: boolean; tool: string; inputs_set: number }>(
+      "resolve.fusionCompSet3DTransform",
+      params,
+    ),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

@@ -1393,7 +1393,7 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
   {
     name: "photoshop_resolve_fusion_tools_reference",
     description:
-      "Hent katalog over vanlige Fusion tool-types (med tool_type RegID + common inputs). Bruk FØR fusionComp.addTool. Kategorier: generator, effect, merge, text, transform, mask, color, tracker, output.",
+      "Hent katalog over vanlige Fusion tool-types (med tool_type RegID + common inputs). Bruk FØR fusionComp.addTool. Kategorier: generator, effect, merge, text, transform, mask, color, tracker, output, 3d, particles.",
     input_schema: {
       type: "object",
       properties: {
@@ -1409,6 +1409,8 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
             "color",
             "tracker",
             "output",
+            "3d",
+            "particles",
           ],
         },
       },
@@ -1591,6 +1593,51 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
         comp_name: { type: "string" },
       },
       required: ["file_path"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_set_3d_transform",
+    description:
+      "Sett position/rotation/scale på en 3D-Fusion-tool (Camera3D, Transform3D, Shape3D, light-noder, etc.) i ÉN call. Default input-navn: Translate.X/Y/Z, Rotate.X/Y/Z, XScale/YScale/ZScale. Scale kan være tall (uniform) eller {x,y,z}. Spesifiser kun de aksene du vil endre. Lua trial-and-error setter de aksene som finnes på tool-en — feiler stille på ukjente.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tool_name: { type: "string" },
+        position: {
+          type: "object",
+          properties: {
+            x: { type: "number" },
+            y: { type: "number" },
+            z: { type: "number" },
+          },
+          description: "World position {x?, y?, z?}.",
+        },
+        rotation: {
+          type: "object",
+          properties: {
+            x: { type: "number", description: "Pitch (grader)" },
+            y: { type: "number", description: "Yaw (grader)" },
+            z: { type: "number", description: "Roll (grader)" },
+          },
+          description: "Rotation i grader {x?, y?, z?}.",
+        },
+        scale: {
+          oneOf: [
+            { type: "number", description: "Uniform skala." },
+            {
+              type: "object",
+              properties: {
+                x: { type: "number" },
+                y: { type: "number" },
+                z: { type: "number" },
+              },
+            },
+          ],
+          description: "Tall = uniform, eller {x?, y?, z?} for per-axis.",
+        },
+        comp_name: { type: "string" },
+      },
+      required: ["tool_name"],
     },
   },
   {
@@ -2980,6 +3027,61 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         params.comp_name = input.comp_name;
       }
       return photoshop.resolveFusionCompLoadToolPreset(params);
+    }
+    case "photoshop_resolve_fusion_comp_set_3d_transform": {
+      if (typeof input.tool_name !== "string" || input.tool_name.length === 0) {
+        throw new Error("tool_name må være en ikke-tom string");
+      }
+      if (
+        input.position === undefined &&
+        input.rotation === undefined &&
+        input.scale === undefined
+      ) {
+        throw new Error(
+          "Minst én av position/rotation/scale må være satt",
+        );
+      }
+      const validVec3 = (v: unknown): v is { x?: number; y?: number; z?: number } => {
+        if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+        const o = v as Record<string, unknown>;
+        return (
+          (o.x === undefined || typeof o.x === "number") &&
+          (o.y === undefined || typeof o.y === "number") &&
+          (o.z === undefined || typeof o.z === "number")
+        );
+      };
+      const params: {
+        tool_name: string;
+        position?: { x?: number; y?: number; z?: number };
+        rotation?: { x?: number; y?: number; z?: number };
+        scale?: number | { x?: number; y?: number; z?: number };
+        comp_name?: string;
+      } = { tool_name: input.tool_name };
+      if (input.position !== undefined) {
+        if (!validVec3(input.position)) {
+          throw new Error("position må være {x?, y?, z?} med tall");
+        }
+        params.position = input.position;
+      }
+      if (input.rotation !== undefined) {
+        if (!validVec3(input.rotation)) {
+          throw new Error("rotation må være {x?, y?, z?} med tall");
+        }
+        params.rotation = input.rotation;
+      }
+      if (input.scale !== undefined) {
+        if (typeof input.scale === "number") {
+          params.scale = input.scale;
+        } else if (validVec3(input.scale)) {
+          params.scale = input.scale;
+        } else {
+          throw new Error("scale må være tall eller {x?, y?, z?} med tall");
+        }
+      }
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompSet3DTransform(params);
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
