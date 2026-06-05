@@ -8,11 +8,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, Stack, Typography, Chip, Button, List, ListItemButton, ListItemText,
   CircularProgress, Alert, Divider, Table, TableBody, TableCell, TableHead, TableRow,
-  Select, MenuItem, TextField, InputAdornment, Collapse,
+  Select, MenuItem, TextField, InputAdornment, Collapse, Tooltip,
 } from '@mui/material';
 import {
   ContactPage as LeadsIcon, InstallMobile as FormIcon, BoltOutlined as FollowupIcon,
-  CheckCircle as DoneIcon, Send as SendIcon,
+  CheckCircle as DoneIcon, Send as SendIcon, AutoAwesome as AiIcon,
 } from '@mui/icons-material';
 import CtaCard from './CtaCard';
 
@@ -70,6 +70,7 @@ interface Lead {
   email: string | null;
   phone: string | null;
   segment: Segment | null;
+  segmentReason: string | null;
   stage: Stage | null;
   valueKr: number;
   followedUpAt: string | null;
@@ -129,6 +130,17 @@ export default function LeadsPanel() {
       apiRequest('/api/role-room/leads/producer/segment', {
         method: 'POST',
         body: JSON.stringify({ connectionId, leadId: vars.leadId, segment: vars.segment }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] }),
+  });
+  const autoSegment = useMutation<{ success: boolean; applied?: unknown[]; error?: string }, Error, void>({
+    mutationFn: async () =>
+      apiRequest('/api/role-room/leads/producer/auto-segment', {
+        method: 'POST',
+        body: JSON.stringify({
+          connectionId,
+          leads: leads.map((l) => ({ id: l.id, name: l.name, email: l.email, phone: l.phone, fields: l.fields })),
+        }),
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] }),
   });
@@ -322,10 +334,27 @@ export default function LeadsPanel() {
                     <Typography sx={{ fontWeight: 700, color: '#e2e8f0' }}>
                       {selectedForm?.name} · {visibleLeads.length}{segmentFilter !== 'alle' ? ` ${activeSegment?.label.toLowerCase()}` : ''} leads
                     </Typography>
-                    <Button size="small" variant="outlined" onClick={exportCsv} disabled={visibleLeads.length === 0}>
-                      Eksporter CSV{segmentFilter !== 'alle' ? ` (${activeSegment?.label})` : ''}
-                    </Button>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Button
+                        size="small" variant="contained" startIcon={<AiIcon sx={{ fontSize: 16 }} />}
+                        onClick={() => autoSegment.mutate()}
+                        disabled={leads.length === 0 || autoSegment.isPending}
+                        sx={{ bgcolor: 'rgba(168,85,247,0.9)', '&:hover': { bgcolor: 'rgb(147,51,234)' } }}
+                      >
+                        {autoSegment.isPending ? 'Segmenterer…' : 'AI-segmentér'}
+                      </Button>
+                      <Button size="small" variant="outlined" onClick={exportCsv} disabled={visibleLeads.length === 0}>
+                        Eksporter CSV{segmentFilter !== 'alle' ? ` (${activeSegment?.label})` : ''}
+                      </Button>
+                    </Stack>
                   </Stack>
+                  {autoSegment.data && autoSegment.data.success === false ? (
+                    <Alert severity="warning" sx={{ py: 0 }}>{autoSegment.data.error}</Alert>
+                  ) : autoSegment.data?.success ? (
+                    <Typography sx={{ fontSize: '0.78rem', color: '#d8b4fe' }}>
+                      AI segmenterte {autoSegment.data.applied?.length ?? 0} nye leads. Hold over et segment for å se begrunnelsen.
+                    </Typography>
+                  ) : null}
 
                   {/* Segment filter for retargeting */}
                   <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
@@ -573,18 +602,25 @@ export default function LeadsPanel() {
                               <TableCell>{l.email ?? '—'}</TableCell>
                               <TableCell>{l.phone ?? '—'}</TableCell>
                               <TableCell sx={{ minWidth: 120 }}>
-                                <Select
-                                  size="small" variant="standard"
-                                  value={l.segment ?? ''}
-                                  displayEmpty
-                                  onChange={(e) => setSegment.mutate({ leadId: l.id, segment: (e.target.value || null) as Segment | null })}
-                                  sx={{ fontSize: '0.8rem', minWidth: 100 }}
-                                >
-                                  <MenuItem value=""><em>Ikke satt</em></MenuItem>
-                                  {SEGMENTS.map((s) => (
-                                    <MenuItem key={s.key} value={s.key} sx={{ color: s.color }}>{s.label.replace(/r$|e$/, '')}</MenuItem>
-                                  ))}
-                                </Select>
+                                <Stack direction="row" spacing={0.3} alignItems="center">
+                                  <Select
+                                    size="small" variant="standard"
+                                    value={l.segment ?? ''}
+                                    displayEmpty
+                                    onChange={(e) => setSegment.mutate({ leadId: l.id, segment: (e.target.value || null) as Segment | null })}
+                                    sx={{ fontSize: '0.8rem', minWidth: 100 }}
+                                  >
+                                    <MenuItem value=""><em>Ikke satt</em></MenuItem>
+                                    {SEGMENTS.map((s) => (
+                                      <MenuItem key={s.key} value={s.key} sx={{ color: s.color }}>{s.label.replace(/r$|e$/, '')}</MenuItem>
+                                    ))}
+                                  </Select>
+                                  {l.segmentReason ? (
+                                    <Tooltip title={`AI: ${l.segmentReason}`} arrow>
+                                      <AiIcon sx={{ fontSize: 14, color: '#c084fc', flexShrink: 0 }} />
+                                    </Tooltip>
+                                  ) : null}
+                                </Stack>
                               </TableCell>
                               <TableCell sx={{ minWidth: 130 }}>
                                 <Select

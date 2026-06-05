@@ -30,6 +30,7 @@ import {
 import { sendSms, smsConfigured } from "./crm-sms.js";
 import { sendTransactionalEmail, isTransactionalEmailConfigured } from "./transactional-email-service.js";
 import { readEnvFallbackConfig, sendWhatsAppLeadFollowup } from "./casting-whatsapp-sender.js";
+import { callClaudeForJson } from "./claude-json-helper.js";
 
 /** WhatsApp lead follow-up needs an env-configured WA account + an approved template name. */
 function whatsappLeadConfig() {
@@ -85,19 +86,24 @@ async function ensureLeadSegmentSchema(pool: Pool): Promise<void> {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_rr_lead_segments_user ON role_room_lead_segments(user_id, connection_id);`,
   );
+  // AI-suggestion metadata (added after the table shipped) — additive.
+  await pool.query(`ALTER TABLE role_room_lead_segments ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`ALTER TABLE role_room_lead_segments ADD COLUMN IF NOT EXISTS ai_suggested BOOLEAN NOT NULL DEFAULT false;`);
   leadSegmentSchemaReady = true;
 }
 
-/** Map of lead_external_id → segment for the given user. */
-async function fetchSegments(pool: Pool, userId: string, leadIds: string[]): Promise<Record<string, string>> {
+/** Map of lead_external_id → {segment, reason} for the given user. */
+async function fetchSegments(pool: Pool, userId: string, leadIds: string[]): Promise<Record<string, { segment: string; reason: string }>> {
   if (leadIds.length === 0) return {};
   const result = await pool.query(
-    `SELECT lead_external_id, segment FROM role_room_lead_segments
+    `SELECT lead_external_id, segment, reason FROM role_room_lead_segments
        WHERE user_id = $1 AND lead_external_id = ANY($2::text[])`,
     [userId, leadIds],
   );
-  const map: Record<string, string> = {};
-  for (const row of result.rows) map[String(row.lead_external_id)] = String(row.segment);
+  const map: Record<string, { segment: string; reason: string }> = {};
+  for (const row of result.rows) {
+    map[String(row.lead_external_id)] = { segment: String(row.segment), reason: String(row.reason || "") };
+  }
   return map;
 }
 
@@ -452,7 +458,8 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
             name: fields.full_name || fields.name || null,
             email: fields.email || null,
             phone: fields.phone_number || fields.phone || null,
-            segment: segments[String(lead.id)] ?? null,
+            segment: segments[String(lead.id)]?.segment ?? null,
+            segmentReason: segments[String(lead.id)]?.reason ?? null,
             stage: outcome?.stage ?? null,
             valueKr: outcome?.valueKr ?? 0,
             followedUpAt: followups[String(lead.id)] ?? null,
@@ -497,14 +504,98 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
         );
       } else {
         await pool.query(
-          `INSERT INTO role_room_lead_segments (user_id, connection_id, lead_external_id, segment)
-           VALUES ($1, $2, $3, $4)
+          `INSERT INTO role_room_lead_segments (user_id, connection_id, lead_external_id, segment, reason, ai_suggested)
+           VALUES ($1, $2, $3, $4, '', false)
            ON CONFLICT (user_id, lead_external_id)
-           DO UPDATE SET segment = EXCLUDED.segment, connection_id = EXCLUDED.connection_id, updated_at = now()`,
+           DO UPDATE SET segment = EXCLUDED.segment, connection_id = EXCLUDED.connection_id,
+                         reason = '', ai_suggested = false, updated_at = now()`,
           [session.userId, connectionId, leadId, segment],
         );
       }
       res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // ── POST /api/role-room/leads/producer/auto-segment ─────────────────────
+  // AI suggests a retargeting segment (varm/lunken/kald) + reason for each
+  // not-yet-segmented lead, based on its form answers. Only fills blanks — a
+  // producer's manual choice is never overwritten.
+  app.post("/api/role-room/leads/producer/auto-segment", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as {
+      connectionId?: string;
+      leads?: Array<{ id?: string; name?: string; email?: string; phone?: string; fields?: Record<string, string> }>;
+    };
+    const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
+    const leads = Array.isArray(body.leads) ? body.leads : [];
+    if (!connectionId) {
+      res.status(400).json({ success: false, error: "connectionId is required" });
+      return;
+    }
+    try {
+      const connection = await getConnection(pool, connectionId, session.userId);
+      if (!connection) {
+        res.status(404).json({ success: false, error: "connection_not_found" });
+        return;
+      }
+      await ensureLeadSegmentSchema(pool);
+      // Only classify leads that don't already have a (manual or prior) segment.
+      const ids = leads.map((l) => String(l.id || "")).filter(Boolean);
+      const existing = await fetchSegments(pool, session.userId, ids);
+      const todo = leads.filter((l) => l.id && !existing[String(l.id)]);
+      if (todo.length === 0) {
+        res.json({ success: true, applied: [], skipped: leads.length, message: "Alle leads er allerede segmentert." });
+        return;
+      }
+      const bedrift = connection.facebookPageName || connection.igUsername || "bedriften";
+      const compact = todo.slice(0, 40).map((l, i) => ({
+        i,
+        navn: l.name || null,
+        felt: l.fields || {},
+      }));
+      const cachedSystem =
+        "Du er en norsk salgsassistent for en lokal bedrift. Du klassifiserer innkommende leads (skjemasvar fra Facebook/Instagram-annonser) " +
+        "i ett av tre segmenter for oppfølging:\n" +
+        "- \"varm\": tydelig kjøpsintensjon / vil kontaktes nå / spør om pris, time eller booking.\n" +
+        "- \"lunken\": interessert men trenger mer info, sammenligner, uforpliktende spørsmål.\n" +
+        "- \"kald\": vag interesse, lastet ned guide, generell nysgjerrighet, lite signal.\n" +
+        "Svar KUN med JSON: {\"results\":[{\"i\":<tall>,\"segment\":\"varm|lunken|kald\",\"reason\":\"kort norsk begrunnelse (maks 12 ord)\"}]}.";
+      const userMessage =
+        `Bedrift: ${bedrift}\nLeads (JSON):\n${JSON.stringify(compact)}\n\nKlassifiser hver lead. Bruk feltverdiene som signal.`;
+
+      let results: Array<{ i: number; segment: string; reason: string }> = [];
+      try {
+        const out = await callClaudeForJson<{ results: Array<{ i: number; segment: string; reason: string }> }>({
+          cachedSystem,
+          userMessage,
+          maxTokens: 1500,
+        });
+        results = Array.isArray(out.data?.results) ? out.data.results : [];
+      } catch (e) {
+        res.status(200).json({ success: false, error: `AI-segmentering feilet: ${e instanceof Error ? e.message : String(e)}` });
+        return;
+      }
+
+      const applied: Array<{ id: string; segment: string; reason: string }> = [];
+      for (const r of results) {
+        const lead = compact[r.i] ? todo[r.i] : null;
+        const segment = String(r.segment || "").toLowerCase();
+        if (!lead?.id || !VALID_SEGMENTS.includes(segment as LeadSegment)) continue;
+        const reason = String(r.reason || "").slice(0, 200);
+        await pool.query(
+          `INSERT INTO role_room_lead_segments (user_id, connection_id, lead_external_id, segment, reason, ai_suggested)
+           VALUES ($1, $2, $3, $4, $5, true)
+           ON CONFLICT (user_id, lead_external_id)
+           DO UPDATE SET segment = EXCLUDED.segment, reason = EXCLUDED.reason, ai_suggested = true,
+                         connection_id = EXCLUDED.connection_id, updated_at = now()`,
+          [session.userId, connectionId, lead.id, segment, reason],
+        );
+        applied.push({ id: lead.id, segment, reason });
+      }
+      res.json({ success: true, applied, skipped: leads.length - applied.length });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }
