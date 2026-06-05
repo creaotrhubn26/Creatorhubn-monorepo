@@ -3068,6 +3068,104 @@ HANDLERS["fusionComp.addLoader"] = fusionCompAddLoader
 HANDLERS["fusionComp.addSaver"] = fusionCompAddSaver
 
 -- ---------------------------------------------------------------------------
+-- Whip Pan helper (directional blur med animated bell-curve length)
+-- ---------------------------------------------------------------------------
+
+-- fusionComp.addWhipPan(target_tool, direction, start_frame, end_frame,
+--   peak_strength?, comp_name?)
+--
+-- Klassisk whip-pan-effekt: directional blur som ramper opp og ned i en
+-- bell-curve. Brukes for energy-cuts (mest brukt edit-teknikk i bryllup
+-- per research). Auto-skaper DirectionalBlur, animerer Length, og setter
+-- Angle basert på direction.
+--
+-- direction:
+--   "horizontal"     — 0° (L-R blur)
+--   "vertical"       — 90° (vertikal blur)
+--   "diagonal_up"    — 45°
+--   "diagonal_down"  — -45°
+--   eller tall (grader)
+local function fusionCompAddWhipPan(args)
+  local comp = getFusionComp(args)
+  local targetName = extractString(args, "target_tool")
+  if not targetName or targetName == "" then error("target_tool mangler") end
+  local target = comp:FindTool(targetName)
+  if not target then error("Fant ikke target: " .. targetName) end
+
+  local direction = extractString(args, "direction") or "horizontal"
+  local startFrame = tonumber(args:match('"start_frame"%s*:%s*(-?%d+%.?%d*)'))
+  local endFrame = tonumber(args:match('"end_frame"%s*:%s*(-?%d+%.?%d*)'))
+  if not startFrame or not endFrame then
+    error("start_frame og end_frame må være tall")
+  end
+  if endFrame <= startFrame then error("end_frame må være > start_frame") end
+  local peakStrength = tonumber(args:match('"peak_strength"%s*:%s*(-?%d+%.?%d*)')) or 0.1
+
+  -- Konverter direction → grader
+  local angle = 0
+  if direction == "horizontal" then angle = 0
+  elseif direction == "vertical" then angle = 90
+  elseif direction == "diagonal_up" then angle = 45
+  elseif direction == "diagonal_down" then angle = -45
+  else
+    local n = tonumber(direction)
+    if n then
+      angle = n
+    else
+      error("direction må være horizontal/vertical/diagonal_up/diagonal_down eller grader")
+    end
+  end
+
+  local blur = comp:AddTool("DirectionalBlur", -1, -1)
+  if not blur then error("AddTool('DirectionalBlur') feilet") end
+
+  pcall(function() blur:SetInput("Angle", angle) end)
+
+  -- Koble Length til BezierSpline for animasjon
+  local lengthInput = nil
+  if blur.FindMainInput then lengthInput = blur:FindMainInput("Length") end
+  if not lengthInput then lengthInput = blur["Length"] end
+  if lengthInput and lengthInput.ConnectTo then
+    local spline = comp:AddTool("BezierSpline", -32768, -32768)
+    if spline then lengthInput:ConnectTo(spline) end
+  end
+
+  -- Bell-curve: start 0 → mid peak → end 0
+  local midFrame = (startFrame + endFrame) / 2
+  local origTime = comp.CurrentTime or 0
+
+  comp:SetCurrentTime(startFrame)
+  blur:SetInput("Length", 0)
+  comp:SetCurrentTime(midFrame)
+  blur:SetInput("Length", peakStrength)
+  comp:SetCurrentTime(endFrame)
+  blur:SetInput("Length", 0)
+  comp:SetCurrentTime(origTime)
+
+  -- Koble target.Output → blur.Input
+  local connected = false
+  if target.FindMainOutput and blur.FindMainInput then
+    local targetOutput = target:FindMainOutput("Output")
+    local blurInput = blur:FindMainInput("Input")
+    if targetOutput and blurInput and blurInput.ConnectTo then
+      blurInput:ConnectTo(targetOutput)
+      connected = true
+    end
+  end
+
+  local name = (blur:GetAttrs() or {}).TOOLS_Name or ""
+  return string.format(
+    '{"added":true,"name":%s,"target":%s,"angle":%s,"start_frame":%s,"end_frame":%s,' ..
+    '"peak_strength":%s,"connected_to_target":%s}',
+    jsonEscape(name), jsonEscape(targetName), tostring(angle),
+    tostring(startFrame), tostring(endFrame), tostring(peakStrength),
+    tostring(connected)
+  )
+end
+
+HANDLERS["fusionComp.addWhipPan"] = fusionCompAddWhipPan
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 
