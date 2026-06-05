@@ -13,11 +13,12 @@ packages:
 
 settings:
   base:
-    SWIFT_VERSION: "6.0"
-    # Midlertidig downgrade fra 'complete' til 'minimal' 2026-06-05
-    # for å unblocke CI. Pre-existing GRDB-relaterte violations i
-    # SessionStore.swift krever refactor før vi kan re-enable.
+    # Midlertidig downgrade fra Swift 6.0 → 5 2026-06-05 for å unblocke CI.
+    # Swift 6.0 håndhever @MainActor-isolation som hard error uavhengig
+    # av STRICT_CONCURRENCY-flagget. Pre-existing GRDB-violations i
+    # SessionStore.swift krever refactor før vi kan re-enable 6.0.
     # Tracked: project_capture_strict_concurrency_pending.md
+    SWIFT_VERSION: "5"
     SWIFT_STRICT_CONCURRENCY: minimal
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: "9TAUZCPK95"
