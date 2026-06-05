@@ -9,6 +9,7 @@ import {
   Box, Stack, Typography, Button, TextField, CircularProgress, Alert, Divider, IconButton,
 } from '@mui/material';
 import { EventOutlined as EventIcon, DeleteOutline as DeleteIcon } from '@mui/icons-material';
+import ConnectionPicker from './ConnectionPicker';
 
 interface IgConnection { id: string; igUsername: string | null; facebookPageName: string | null }
 interface IgEvent {
@@ -74,15 +75,7 @@ export default function EventsPanel() {
             Lag Instagram-arrangement (åpen dag, gratis konsultasjon, webinar) som følgere kan melde seg på — en kilde til nye leads.
           </Typography>
         </Box>
-        {connections.length > 1 ? (
-          <select
-            value={connectionId}
-            onChange={(e) => setConnectionId(e.target.value)}
-            style={{ background: '#0f1729', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, padding: 8 }}
-          >
-            {connections.map((c) => <option key={c.id} value={c.id}>{c.facebookPageName || `@${c.igUsername}`}</option>)}
-          </select>
-        ) : null}
+        <ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg konto" />
       </Stack>
 
       {connLoading ? (
@@ -93,7 +86,7 @@ export default function EventsPanel() {
         <>
           {graphError ? (
             <Alert severity="info">
-              Arrangement er ikke aktivt ennå (venter på godkjenning av <code>instagram_manage_events</code> fra Meta). Du kan fylle ut under nå; det publiseres når det er godkjent.
+              Arrangement er ikke aktivert ennå (venter på godkjenning av <code>instagram_manage_events</code> fra Meta). Du kan fylle ut under nå; det publiseres når det er godkjent.
             </Alert>
           ) : null}
 
@@ -120,7 +113,7 @@ export default function EventsPanel() {
 
           <Divider>Kommende arrangement</Divider>
           {isLoading ? (
-            <Box sx={{ p: 3, textAlign: 'center' }}><CircularProgress size={22} /></Box>
+            <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} /></Box>
           ) : events.length === 0 ? (
             <Typography sx={{ p: 2, color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>Ingen kommende arrangement ennå.</Typography>
           ) : (

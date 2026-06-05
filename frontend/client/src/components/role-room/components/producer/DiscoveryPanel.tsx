@@ -12,7 +12,9 @@ import {
 import {
   TravelExplore as DiscoveryIcon, Tag as HashtagIcon, AlternateEmail as ProfileIcon,
   Facebook as PageIcon, OpenInNew as OpenIcon, CodeOutlined as EmbedIcon,
+  ThumbUpOutlined as LikeIcon, ChatBubbleOutline as CommentIcon,
 } from '@mui/icons-material';
+import ConnectionPicker from './ConnectionPicker';
 
 type Mode = 'hashtag' | 'ig-profile' | 'fb-page' | 'embed';
 const MODES: { key: Mode; label: string; icon: React.ReactNode; placeholder: string; hint: string }[] = [
@@ -80,15 +82,7 @@ export default function DiscoveryPanel() {
             Research på konkurrenter, samarbeidspartnere og innholdsidéer i kundens nisje.
           </Typography>
         </Box>
-        {connections.length > 1 ? (
-          <select
-            value={connectionId}
-            onChange={(e) => setConnectionId(e.target.value)}
-            style={{ background: '#0f1729', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, padding: 8 }}
-          >
-            {connections.map((c) => <option key={c.id} value={c.id}>{c.facebookPageName || `@${c.igUsername}`}</option>)}
-          </select>
-        ) : null}
+        <ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg konto" />
       </Stack>
 
       {connLoading ? (
@@ -123,13 +117,13 @@ export default function DiscoveryPanel() {
 
           {graphError ? (
             <Alert severity="info">
-              Oppdag er ikke aktiv ennå (venter på godkjenning av <code>Public Content Access</code> fra Meta).
+              Oppdag er ikke aktivert ennå (venter på godkjenning av <code>Public Content Access</code> fra Meta).
               {' '}Når det er godkjent kan du søke på ekte data her. ({graphError})
             </Alert>
           ) : null}
 
           {(isLoading || isFetching) && query ? (
-            <Box sx={{ p: 3, textAlign: 'center' }}><CircularProgress size={22} /></Box>
+            <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} /></Box>
           ) : null}
 
           {/* Results */}
@@ -197,14 +191,24 @@ export default function DiscoveryPanel() {
               <Divider sx={{ my: 1 }} />
               <Stack spacing={0.8}>
                 {(data.posts || []).length === 0 ? (
-                  <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>Ingen offentlige innlegg.</Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>Ingen offentlige innlegg ennå.</Typography>
                 ) : (data.posts || []).map((p: any) => (
                   <Box key={p.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.2 }}>
                     <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', whiteSpace: 'pre-wrap' }}>{p.message || '(uten tekst)'}</Typography>
                     <Stack direction="row" spacing={1.5} sx={{ mt: 0.6 }} alignItems="center">
                       <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem' }}>{fmt(p.createdTime)}</Typography>
-                      {p.reactions != null ? <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.72rem' }}>👍 {num(p.reactions)}</Typography> : null}
-                      {p.comments != null ? <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.72rem' }}>💬 {num(p.comments)}</Typography> : null}
+                      {p.reactions != null ? (
+                        <Stack direction="row" spacing={0.4} alignItems="center" sx={{ color: 'rgba(226,232,240,0.6)' }}>
+                          <LikeIcon sx={{ fontSize: 14 }} aria-label="reaksjoner" />
+                          <Typography sx={{ fontSize: '0.72rem' }}>{num(p.reactions)}</Typography>
+                        </Stack>
+                      ) : null}
+                      {p.comments != null ? (
+                        <Stack direction="row" spacing={0.4} alignItems="center" sx={{ color: 'rgba(226,232,240,0.6)' }}>
+                          <CommentIcon sx={{ fontSize: 14 }} aria-label="kommentarer" />
+                          <Typography sx={{ fontSize: '0.72rem' }}>{num(p.comments)}</Typography>
+                        </Stack>
+                      ) : null}
                       {p.permalinkUrl ? <Link href={p.permalinkUrl} target="_blank" rel="noopener" sx={{ fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 0.3 }}>Åpne <OpenIcon sx={{ fontSize: 13 }} /></Link> : null}
                     </Stack>
                   </Box>
@@ -220,7 +224,7 @@ export default function DiscoveryPanel() {
 
 function MediaGrid({ title, media }: { title: string; media: Media[] }) {
   if (!media || media.length === 0) {
-    return <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>Ingen innlegg funnet.</Typography>;
+    return <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>Ingen innlegg funnet ennå.</Typography>;
   }
   return (
     <Box>

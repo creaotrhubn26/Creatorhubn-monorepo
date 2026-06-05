@@ -16,6 +16,7 @@ import {
 } from '@mui/icons-material';
 import CtaCard from './CtaCard';
 import InsightsCard from './InsightsCard';
+import ConnectionPicker from './ConnectionPicker';
 
 type Segment = 'varm' | 'lunken' | 'kald' | 'tapt';
 const SEGMENTS: { key: Segment; label: string; hint: string; campaign: string; color: string }[] = [
@@ -281,15 +282,12 @@ export default function LeadsPanel() {
             Skjema-svar fra kundens Meta-annonser (Lead Ads). Hent dem inn her og lever til kunden.
           </Typography>
         </Box>
-        {connections.length > 1 ? (
-          <select
-            value={connectionId}
-            onChange={(e) => { setConnectionId(e.target.value); setFormId(''); }}
-            style={{ background: '#0f1729', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, padding: 8 }}
-          >
-            {connections.map((c) => <option key={c.id} value={c.id}>{c.facebookPageName || `@${c.igUsername}`}</option>)}
-          </select>
-        ) : null}
+        <ConnectionPicker
+          connections={connections}
+          value={connectionId}
+          onChange={(v) => { setConnectionId(v); setFormId(''); }}
+          label="Velg Facebook-side"
+        />
       </Stack>
 
       {connLoading ? (
@@ -300,7 +298,7 @@ export default function LeadsPanel() {
         <>
           {graphError ? (
             <Alert severity="info">
-              Leads-henting er ikke aktiv ennå (venter på godkjenning av <code>leads_retrieval</code> fra Meta).
+              Leads-henting er ikke aktivert ennå (venter på godkjenning av <code>leads_retrieval</code> fra Meta).
               Når det er godkjent dukker kundens skjema-leads opp her automatisk.
             </Alert>
           ) : null}
@@ -343,7 +341,7 @@ export default function LeadsPanel() {
                   <Typography variant="body2">Velg et lead-skjema til venstre for å se leads.</Typography>
                 </Box>
               ) : leadsLoading ? (
-                <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress size={22} /></Box>
+                <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} /></Box>
               ) : (
                 <Stack spacing={1}>
                   <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap>
@@ -548,7 +546,9 @@ export default function LeadsPanel() {
                                 control={<Switch checked={cfg.aiPersonalize} onChange={(e) => setCfg({ ...cfg, aiPersonalize: e.target.checked })} />}
                                 label={
                                   <Box>
-                                    <Typography sx={{ fontSize: '0.86rem', color: '#f8fafc', fontWeight: 600 }}>✨ La AI skrive en personlig melding til hver lead</Typography>
+                                    <Typography sx={{ fontSize: '0.86rem', color: '#f8fafc', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                      <AiIcon sx={{ fontSize: 16, color: '#c084fc' }} /> La AI skrive en personlig melding til hver lead
+                                    </Typography>
                                     <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.6)' }}>Claude tilpasser meldingen ut fra hva hver lead spurte om. Malene over brukes som tone — og som reserve hvis AI feiler.</Typography>
                                   </Box>
                                 }
@@ -665,6 +665,7 @@ export default function LeadsPanel() {
                                     size="small" variant="standard"
                                     value={l.segment ?? ''}
                                     displayEmpty
+                                    inputProps={{ 'aria-label': 'Endre segment' }}
                                     onChange={(e) => setSegment.mutate({ leadId: l.id, segment: (e.target.value || null) as Segment | null })}
                                     sx={{ fontSize: '0.8rem', minWidth: 100 }}
                                   >
@@ -685,6 +686,7 @@ export default function LeadsPanel() {
                                   size="small" variant="standard"
                                   value={l.stage ?? ''}
                                   displayEmpty
+                                  inputProps={{ 'aria-label': 'Endre status' }}
                                   onChange={(e) => setOutcome.mutate({ leadId: l.id, stage: (e.target.value || null) as Stage | null, valueKr: l.valueKr })}
                                   sx={{ fontSize: '0.8rem', minWidth: 110 }}
                                 >
