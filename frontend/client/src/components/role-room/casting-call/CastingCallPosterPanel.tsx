@@ -63,6 +63,10 @@ export interface CastingCallPosterSource {
   quote?: string;
   /** Apply-URL (vises ikke i poster — bare for delelink) */
   applyUrl?: string;
+  /** Prosjekt-ID (brukt i B2-arkivnøkkel hvis admin er innlogget) */
+  projectId?: string;
+  /** Rolle-ID (brukt i B2-arkivnøkkel hvis admin er innlogget) */
+  roleId?: string;
 }
 
 interface CastingCallPosterPanelProps {
@@ -160,6 +164,8 @@ export const CastingCallPosterPanel: React.FC<CastingCallPosterPanelProps> = ({
         canvas.toBlob(resolve, 'image/png', 0.95),
       );
       if (!blob) throw new Error('PNG-eksport feilet');
+
+      // Browser-download (uendret UX)
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -168,6 +174,26 @@ export const CastingCallPosterPanel: React.FC<CastingCallPosterPanelProps> = ({
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      // Fire-and-forget B2-arkivering. Hvis admin er innlogget +
+      // B2 er konfigurert lagres posteren til
+      // casting-call-posters/{projectId}/{roleId}-{variant}.png.
+      // Feiler stille for ikke-admin-brukere (403 ignoreres).
+      try {
+        const form = new FormData();
+        form.append('poster', blob, downloadFileName);
+        form.append('projectId', source.projectId ?? source.productionName ?? 'ukjent-prosjekt');
+        form.append('roleId', source.roleId ?? source.roleName);
+        form.append('variant', variant);
+        void fetch('/api/role-room/admin/casting-posters/save', {
+          method: 'POST',
+          body: form,
+        }).catch(() => {
+          /* ignore — arkiv er ikke-kritisk for poster-eksport */
+        });
+      } catch {
+        /* ignore — arkiv er ikke-kritisk for poster-eksport */
+      }
     } catch (err) {
       setError(`PNG-eksport feilet: ${(err as Error).message}`);
     } finally {

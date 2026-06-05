@@ -137,18 +137,77 @@ export function setupAdminDecksRoutes(deps: AdminRoomRoutesDeps): void {
     if (!session) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
     try {
-      const { updateDeckMeta } = await import("./role-room-investor-deck-db.js");
+      const { updateDeckMeta, listSlidesForDeck } = await import("./role-room-investor-deck-db.js");
+      const newStatus =
+        body.status === "draft" || body.status === "published" || body.status === "archived"
+          ? (body.status as "draft" | "published" | "archived")
+          : undefined;
       const deck = await updateDeckMeta(pool, req.params.id, session.userId, {
         title: typeof body.title === "string" ? body.title : undefined,
         description: typeof body.description === "string" ? body.description : undefined,
-        status: (body.status === "draft" || body.status === "published" || body.status === "archived")
-          ? body.status
-          : undefined,
+        status: newStatus,
       });
       if (!deck) {
         res.status(404).json({ error: "Deck ikke funnet" });
         return;
       }
+
+      // ── B2-arkivering (fire-and-forget) ─────────────────────────────
+      // Når deck publiseres, arkiver alle slides + meta til
+      // decks/{deckId}-{slug}/{meta.json,slides/NN-section.json}
+      if (newStatus === "published") {
+        try {
+          const { archiveToRoleRoomB2, deckKey } = await import("./b2-archive-helper.js");
+          const slides = await listSlidesForDeck(pool, deck.id);
+          const slug = deck.title ?? "deck";
+          const meta = {
+            deckId: deck.id,
+            title: deck.title,
+            description: deck.description,
+            status: deck.status,
+            publishedAt: new Date().toISOString(),
+            slideCount: slides.length,
+            archivedAt: new Date().toISOString(),
+          };
+          const archives: Array<Promise<unknown>> = [
+            archiveToRoleRoomB2(
+              deckKey(deck.id, slug, "meta.json"),
+              JSON.stringify(meta, null, 2),
+              "application/json; charset=utf-8",
+            ),
+          ];
+          for (let i = 0; i < slides.length; i++) {
+            const slide = slides[i] as unknown as Record<string, unknown>;
+            const idx = String(i + 1).padStart(2, "0");
+            const section = typeof slide.section === "string" ? slide.section : "slide";
+            const slidePayload = {
+              id: slide.id,
+              section,
+              content: slide.content ?? {},
+              notes: slide.notes ?? null,
+              orderIndex: i,
+            };
+            archives.push(
+              archiveToRoleRoomB2(
+                deckKey(deck.id, slug, `slides/${idx}-${section}.json`),
+                JSON.stringify(slidePayload, null, 2),
+                "application/json; charset=utf-8",
+              ),
+            );
+          }
+          void Promise.allSettled(archives).then((results) => {
+            const failed = results.filter((r) => r.status === "rejected").length;
+            if (failed > 0) {
+              console.warn(
+                `[decks] B2-arkivering: ${failed}/${results.length} fil(er) feilet for deck ${deck.id}`,
+              );
+            }
+          });
+        } catch (err) {
+          console.warn("[decks] B2-arkivering oppsett feilet", (err as Error).message);
+        }
+      }
+
       res.json({ deck });
     } catch (err) {
       console.error("admin-room decks patch error", err);
