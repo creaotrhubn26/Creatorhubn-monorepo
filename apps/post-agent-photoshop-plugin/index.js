@@ -1755,6 +1755,56 @@ const COMMANDS = {
     });
   },
 
+  "resolve.fusionCompSaveToolPreset": async ({
+    tool_name,
+    file_path,
+    comp_name,
+  } = {}) => {
+    if (typeof tool_name !== "string" || tool_name.length === 0) {
+      throw new Error("tool_name må være en ikke-tom string");
+    }
+    if (typeof file_path !== "string" || file_path.length === 0) {
+      throw new Error("file_path må være en ikke-tom string");
+    }
+    if (!file_path.toLowerCase().endsWith(".setting")) {
+      throw new Error("file_path må peke til en .setting-fil");
+    }
+    const args = { tool_name, file_path };
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.saveToolPreset",
+      args,
+      timeout_ms: 30000,
+    });
+  },
+
+  "resolve.fusionCompLoadToolPreset": async ({
+    file_path,
+    target_tool_name,
+    x,
+    y,
+    comp_name,
+  } = {}) => {
+    if (typeof file_path !== "string" || file_path.length === 0) {
+      throw new Error("file_path må være en ikke-tom string");
+    }
+    if (!file_path.toLowerCase().endsWith(".setting")) {
+      throw new Error("file_path må peke til en .setting-fil");
+    }
+    const args = { file_path };
+    if (typeof target_tool_name === "string" && target_tool_name.length > 0) {
+      args.target_tool_name = target_tool_name;
+    }
+    if (typeof x === "number") args.x = x;
+    if (typeof y === "number") args.y = y;
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.loadToolPreset",
+      args,
+      timeout_ms: 30000,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
