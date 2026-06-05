@@ -484,6 +484,7 @@ import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
 import { setupRoleRoomSocialMetaRoutes } from "./role-room-social-meta-routes";
 import { setupRoleRoomIgMessagingRoutes } from "./role-room-ig-messaging-routes.js";
 import { setupRoleRoomLeadsProducerRoutes } from "./role-room-leads-producer-routes.js";
+import { setupRoleRoomMentionsProducerRoutes } from "./role-room-mentions-producer-routes.js";
 import { RoleRoomCommercialAccessError } from "./role-room-commercial-access-error";
 import { setupRoleRoomCommercialAccessRoutes } from "./role-room-commercial-access-routes";
 import {
@@ -24029,6 +24030,8 @@ setupRoleRoomIgMessagingRoutes({ app, pool, requireAdminSession });
 
 // Producer-facing Meta Lead Ads retrieval + retargeting segments.
 setupRoleRoomLeadsProducerRoutes({ app, pool, requireAdminSession });
+// Producer-facing social listening (who's talking about the client / Page mentions).
+setupRoleRoomMentionsProducerRoutes({ app, pool, requireAdminSession });
 
 // ── Role Room social (non-Meta) — flyttet til ./role-room-social-routes.ts
 //   16 endpoints: linkedin, youtube, tiktok, og generelle /social/*.
