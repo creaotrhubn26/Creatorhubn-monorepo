@@ -607,6 +607,64 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
     }
   });
 
+  // ── POST /api/role-room/leads/producer/insights ─────────────────────────
+  // AI reads all the leads and returns what people ask about + content ideas
+  // the producer can feed into the marketing plan / feed planner. Stateless.
+  app.post("/api/role-room/leads/producer/insights", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as {
+      connectionId?: string;
+      leads?: Array<{ name?: string; segment?: string | null; fields?: Record<string, string> }>;
+    };
+    const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
+    const leads = Array.isArray(body.leads) ? body.leads : [];
+    if (!connectionId) {
+      res.status(400).json({ success: false, error: "connectionId is required" });
+      return;
+    }
+    if (leads.length === 0) {
+      res.status(200).json({ success: false, error: "Ingen leads å analysere ennå." });
+      return;
+    }
+    try {
+      const connection = await getConnection(pool, connectionId, session.userId);
+      if (!connection) {
+        res.status(404).json({ success: false, error: "connection_not_found" });
+        return;
+      }
+      const bedrift = connection.facebookPageName || connection.igUsername || "bedriften";
+      const compact = leads.slice(0, 120).map((l) => ({ segment: l.segment || null, felt: l.fields || {} }));
+      const cachedSystem =
+        "Du er en norsk markedsrådgiver for en lokal bedrift. Du analyserer innkommende leads (skjemasvar fra annonser) " +
+        "og finner mønstre som hjelper bedriften å selge mer. Vær konkret og handlingsorientert. " +
+        "Svar KUN med JSON: {" +
+        "\"summary\":\"<2-3 setningers oppsummering>\"," +
+        "\"themes\":[{\"label\":\"<hva folk spør om>\",\"count\":<antall>}]," +
+        "\"contentIdeas\":[\"<konkret innleggs-/innholdsidé som svarer på et vanlig spørsmål>\"]," +
+        "\"recommendedActions\":[\"<konkret neste steg for bedriften>\"]}.";
+      const userMessage =
+        `Bedrift: ${bedrift}\nAntall leads: ${leads.length}\nLeads (JSON): ${JSON.stringify(compact)}\n\n` +
+        `Hva spør folk oftest om? Hvilke 3-5 innholdsidéer bør bedriften lage for å svare på det og få flere kunder?`;
+
+      const out = await callClaudeForJson<{
+        summary: string;
+        themes: Array<{ label: string; count: number }>;
+        contentIdeas: string[];
+        recommendedActions: string[];
+      }>({ cachedSystem, userMessage, maxTokens: 1500 });
+      res.json({
+        success: true,
+        summary: String(out.data?.summary || ""),
+        themes: Array.isArray(out.data?.themes) ? out.data.themes.slice(0, 8) : [],
+        contentIdeas: Array.isArray(out.data?.contentIdeas) ? out.data.contentIdeas.slice(0, 8) : [],
+        recommendedActions: Array.isArray(out.data?.recommendedActions) ? out.data.recommendedActions.slice(0, 6) : [],
+      });
+    } catch (error) {
+      res.status(200).json({ success: false, error: `AI-innsikt feilet: ${error instanceof Error ? error.message : String(error)}` });
+    }
+  });
+
   // ── POST /api/role-room/leads/producer/outcome ──────────────────────────
   // Set a lead's conversion stage (svart/booket/kunde/tapt) + value (kr), or
   // clear it. Drives the ROI funnel the producer shows the client.
