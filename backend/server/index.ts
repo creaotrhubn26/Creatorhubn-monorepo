@@ -477,6 +477,7 @@ import { setupRoleRoomTalentGdprRoutes } from "./role-room-talent-gdpr-routes";
 import { setupRoleRoomAgencySearchRoutes } from "./role-room-agency-search-routes";
 import { setupRoleRoomAgencyProposalsRoutes } from "./role-room-agency-proposals-routes";
 import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes";
+import { setupTalentSelftapesRoutes } from "./talent-selftapes-routes";
 import { setupRoleRoomCandidateStatusRoutes } from "./role-room-candidate-status-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
@@ -23991,6 +23992,13 @@ setupRoleRoomAgencyProposalsRoutes({
 // Agency ↔ Production team partnership-system. Per-prosjekt scope.
 // Migrasjon 222 (agency_production_partnerships + invitations + audit).
 setupRoleRoomPartnershipsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// Self-Tape Studio — Fase A (migrate 234-236).
+// docs/specs/SELF_TAPE_STUDIO_SPEC.md
+setupTalentSelftapesRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
