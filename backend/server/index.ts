@@ -399,6 +399,7 @@ import { registerAIUsageRoutes } from "./ai-usage-routes.js";
 import { configureAIUsageTracker } from "./ai-usage-tracker.js";
 import { registerDesignTokensRoutes } from "./design-tokens-routes.js";
 import { registerStripePriceDriftRoutes } from "./stripe-price-drift-routes.js";
+import { registerB2CompanyArchiveRoutes } from "./b2-company-archive-routes.js";
 import { setupRoleNavConfigRoutes } from "./admin-room-role-nav-routes";
 import { setupResumeRoutes } from "./resume-routes";
 import {
@@ -1803,6 +1804,7 @@ configureAIUsageTracker(pool);
 registerAIUsageRoutes(app, pool, requireAdminSession);
 registerDesignTokensRoutes(app, pool, requireAdminSession);
 registerStripePriceDriftRoutes(app, pool, requireAdminSession);
+registerB2CompanyArchiveRoutes({ app, requireAdminSession });
 
 app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessions));
 app.use("/api/desktop", createDesktopAuthRouter(pool));
