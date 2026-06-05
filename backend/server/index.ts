@@ -707,6 +707,7 @@ import { setupAdminStorageCostRoutes } from "./admin-storage-cost-routes";
 import { setupAdminFileAuditRoutes } from "./admin-file-audit-routes";
 import { setupAdminSecretsRotationRoutes } from "./admin-secrets-rotation-routes";
 import { setupClientGalleryRoutes } from "./client-gallery-routes";
+import { setupGalleryVersionsRoutes } from "./gallery-versions-routes";
 import { setupContractsRoutes } from "./contracts-routes";
 import { setupBusinessRoutes } from "./business-routes";
 import { setupAnalyticsRoutes } from "./analytics-routes";
@@ -64735,6 +64736,14 @@ setupClientGalleryRoutes({
   dispatchGalleryNotification,
   getCreatorHubStripeClient,
   getActiveSessionFromRequest,
+});
+setupGalleryVersionsRoutes({
+  app,
+  pool,
+  gateGalleryAccess,
+  readGalleryPasswordHeader,
+  getActiveSessionFromRequest,
+  dispatchGalleryNotification: dispatchGalleryNotification as any,
 });
 setupContractsRoutes({
   app,

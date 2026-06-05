@@ -56,9 +56,11 @@ import {
   Payment as PaymentIcon,
   Folder as FolderIcon,
   ViewModule as ChaptersIcon,
+  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import ChapterEditor from './ChapterEditor';
 import GalleryFeedbackDialog from './GalleryFeedbackDialog';
+import GalleryVersionsTimelineDialog from './GalleryVersionsTimelineDialog';
 import useGalleryEventStream from '@/hooks/useGalleryEventStream';
 import { Snackbar, Alert as AlertBar } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -175,6 +177,7 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
   const [eventsOpenFor, setEventsOpenFor] = useState<PhotographerGallery | null>(null);
   const [feedbackOpenFor, setFeedbackOpenFor] = useState<PhotographerGallery | null>(null);
   const [attachUploadsOpenFor, setAttachUploadsOpenFor] = useState<PhotographerGallery | null>(null);
+  const [versionsOpenFor, setVersionsOpenFor] = useState<PhotographerGallery | null>(null);
   // Slice 9X.85 — live broadcast: ny klient-kommentar / utvalg-submit dukker
   // opp som toast med klikkbar handling. Stine slipper å refresh-e.
   const [liveToast, setLiveToast] = useState<{
@@ -308,6 +311,7 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
               onEvents={() => setEventsOpenFor(g)}
               onFeedback={() => setFeedbackOpenFor(g)}
               onAttachUploads={() => setAttachUploadsOpenFor(g)}
+              onVersions={() => setVersionsOpenFor(g)}
             />
           </Grid>
         ))}
@@ -403,6 +407,15 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
           }}
         />
       )}
+      {versionsOpenFor && (
+        <GalleryVersionsTimelineDialog
+          galleryId={versionsOpenFor.id}
+          galleryTitle={
+            versionsOpenFor.projectTitle ?? versionsOpenFor.clientName
+          }
+          onClose={() => setVersionsOpenFor(null)}
+        />
+      )}
 
       <Snackbar
         open={Boolean(liveToast)}
@@ -442,11 +455,12 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
 const GalleryCard: React.FC<{
   gallery: PhotographerGallery;
   terms: ShowcaseTerminology;
+  onVersions: () => void;
   onSettings: () => void;
   onEvents: () => void;
   onFeedback: () => void;
   onAttachUploads: () => void;
-}> = ({ gallery, terms, onSettings, onEvents, onFeedback, onAttachUploads }) => {
+}> = ({ gallery, terms, onSettings, onEvents, onFeedback, onAttachUploads, onVersions }) => {
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
   const totalEvents =
@@ -625,6 +639,16 @@ const GalleryCard: React.FC<{
           sx={{ mt: 1, borderColor: '#d97706', color: '#d97706', '&:hover': { borderColor: '#b45309', bgcolor: 'rgba(217, 119, 6, 0.08)' } }}
         >
           Klient-tilbakemelding
+        </Button>
+        <Button
+          size="small"
+          startIcon={<TimelineIcon />}
+          onClick={onVersions}
+          fullWidth
+          variant="outlined"
+          sx={{ mt: 1 }}
+        >
+          Versjoner & leveranseplan
         </Button>
         {/* Slice 9X.7 — explicit completion action. Disabled when
             already completed (idempotent on backend, but visual cue). */}
