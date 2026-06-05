@@ -1315,6 +1315,34 @@ export const photoshop = {
       scope: string;
     }>("resolve.fusionCompSetKeyframeEasing", params),
 
+  resolveFusionCompAddLoader: (params: {
+    file_path: string;
+    x?: number;
+    y?: number;
+    comp_name?: string;
+  }) =>
+    send<{
+      added: boolean;
+      name: string;
+      tool_type: "Loader";
+      file_path: string;
+      file_set: boolean;
+    }>("resolve.fusionCompAddLoader", params),
+
+  resolveFusionCompAddSaver: (params: {
+    file_path: string;
+    x?: number;
+    y?: number;
+    comp_name?: string;
+  }) =>
+    send<{
+      added: boolean;
+      name: string;
+      tool_type: "Saver";
+      file_path: string;
+      file_set: boolean;
+    }>("resolve.fusionCompAddSaver", params),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

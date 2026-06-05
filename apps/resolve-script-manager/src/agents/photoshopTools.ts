@@ -1731,6 +1731,42 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_fusion_comp_add_loader",
+    description:
+      "Legg til Loader-node som leser fil fra disk inn i comp. Brukes for clean plates (object removal), image overlays, logos, custom backgrounds, video-mellomdokumenter. Filnavn settes automatisk. Returnerer node-name for videre tilkobling.",
+    input_schema: {
+      type: "object",
+      properties: {
+        file_path: {
+          type: "string",
+          description: "Absolutt path til fil (png, jpg, exr, tiff, mov, mp4, ...).",
+        },
+        x: { type: "number" },
+        y: { type: "number" },
+        comp_name: { type: "string" },
+      },
+      required: ["file_path"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_add_saver",
+    description:
+      "Legg til Saver-node som skriver comp-output til disk. Brukes for offline pre-render, mellom-eksport, eller bake-down av tunge effekter. Filnavn settes automatisk.",
+    input_schema: {
+      type: "object",
+      properties: {
+        file_path: {
+          type: "string",
+          description: "Output-path (image-sekvens eller video).",
+        },
+        x: { type: "number" },
+        y: { type: "number" },
+        comp_name: { type: "string" },
+      },
+      required: ["file_path"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -3283,6 +3319,34 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         params.comp_name = input.comp_name;
       }
       return photoshop.resolveFusionCompSetKeyframeEasing(params);
+    }
+    case "photoshop_resolve_fusion_comp_add_loader": {
+      if (typeof input.file_path !== "string" || input.file_path.length === 0) {
+        throw new Error("file_path må være en ikke-tom string");
+      }
+      const params: { file_path: string; x?: number; y?: number; comp_name?: string } = {
+        file_path: input.file_path,
+      };
+      if (typeof input.x === "number") params.x = input.x;
+      if (typeof input.y === "number") params.y = input.y;
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompAddLoader(params);
+    }
+    case "photoshop_resolve_fusion_comp_add_saver": {
+      if (typeof input.file_path !== "string" || input.file_path.length === 0) {
+        throw new Error("file_path må være en ikke-tom string");
+      }
+      const params: { file_path: string; x?: number; y?: number; comp_name?: string } = {
+        file_path: input.file_path,
+      };
+      if (typeof input.x === "number") params.x = input.x;
+      if (typeof input.y === "number") params.y = input.y;
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompAddSaver(params);
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();

@@ -198,13 +198,35 @@ export const FUSION_TOOLS_CATALOG: readonly FusionToolEntry[] = [
     category: "tracker",
     description: "Planar tracking for skjerm-erstatninger / sign-replacement.",
   },
-  // ─────────── Output ───────────
+  // ─────────── Output / I/O ───────────
   {
     type: "MediaOut",
     label: "MediaOut",
     category: "output",
     description:
       "Comp-output til timeline. Hver Fusion-comp har én. Final-merge skal koble til denne.",
+  },
+  {
+    type: "Loader",
+    label: "Loader",
+    category: "output",
+    description:
+      "Last fil fra disk (image, sequence, video) inn i comp. Brukes for clean plates (object removal), image overlays, logos, custom backgrounds. Bruk fusionComp.addLoader for å sette filename automatisk.",
+    commonInputs: [
+      { name: "Filename", description: "Absolutt path til fil.", valueFormat: "string" },
+      { name: "Loop", description: "Loop avspilling.", valueFormat: "bool" },
+      { name: "HoldFirstFrame", description: "Hold første frame til lengden.", valueFormat: "int" },
+    ],
+  },
+  {
+    type: "Saver",
+    label: "Saver",
+    category: "output",
+    description:
+      "Skriv comp-output til disk som image-sekvens eller video. Brukes for offline pre-render, mellom-eksport, eller bake-down av tunge effekter. Bruk fusionComp.addSaver for å sette output-path automatisk.",
+    commonInputs: [
+      { name: "Filename", description: "Output-path.", valueFormat: "string" },
+    ],
   },
   // ─────────── 3D — scene / geometri / kamera / lys ───────────
   {
