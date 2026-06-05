@@ -11,14 +11,15 @@ import {
 } from '@mui/material';
 import {
   TravelExplore as DiscoveryIcon, Tag as HashtagIcon, AlternateEmail as ProfileIcon,
-  Facebook as PageIcon, OpenInNew as OpenIcon,
+  Facebook as PageIcon, OpenInNew as OpenIcon, CodeOutlined as EmbedIcon,
 } from '@mui/icons-material';
 
-type Mode = 'hashtag' | 'ig-profile' | 'fb-page';
+type Mode = 'hashtag' | 'ig-profile' | 'fb-page' | 'embed';
 const MODES: { key: Mode; label: string; icon: React.ReactNode; placeholder: string; hint: string }[] = [
   { key: 'hashtag', label: 'Emneknagg', icon: <HashtagIcon fontSize="small" />, placeholder: 'f.eks. tannlege', hint: 'Se ferske innlegg på en emneknagg — innholdsinspirasjon i kundens nisje.' },
   { key: 'ig-profile', label: 'IG-profil', icon: <ProfileIcon fontSize="small" />, placeholder: '@konkurrent', hint: 'Slå opp en konkurrents Instagram-bedriftskonto: følgere, bio og siste innlegg.' },
   { key: 'fb-page', label: 'Facebook-side', icon: <PageIcon fontSize="small" />, placeholder: 'side-ID eller brukernavn', hint: 'Offentlig info + siste innlegg fra en Facebook-side (partner/konkurrent).' },
+  { key: 'embed', label: 'Bygg inn', icon: <EmbedIcon fontSize="small" />, placeholder: 'lim inn FB/IG-innleggslenke', hint: 'Forhåndsvis et offentlig innlegg og kopier innbyggingskoden til kundemateriell / landingsside.' },
 ];
 
 interface IgConnection { id: string; igUsername: string | null; facebookPageName: string | null }
@@ -51,7 +52,9 @@ export default function DiscoveryPanel() {
     ? `/api/role-room/discovery/hashtag?connectionId=${encodeURIComponent(connectionId)}&q=${encodeURIComponent(query)}`
     : mode === 'ig-profile'
       ? `/api/role-room/discovery/ig-profile?connectionId=${encodeURIComponent(connectionId)}&username=${encodeURIComponent(query)}`
-      : `/api/role-room/discovery/fb-page?connectionId=${encodeURIComponent(connectionId)}&pageId=${encodeURIComponent(query)}`;
+      : mode === 'fb-page'
+        ? `/api/role-room/discovery/fb-page?connectionId=${encodeURIComponent(connectionId)}&pageId=${encodeURIComponent(query)}`
+        : `/api/role-room/embed/oembed?url=${encodeURIComponent(query)}`;
 
   const { data, isLoading, isFetching } = useQuery<any>({
     queryKey: ['discovery', mode, connectionId, query],
@@ -62,6 +65,10 @@ export default function DiscoveryPanel() {
   const runSearch = () => setQuery(input.trim());
   const activeMode = MODES.find((m) => m.key === mode)!;
   const graphError = data && data.success === false ? data.error : null;
+  const [copied, setCopied] = useState(false);
+  const copyEmbed = (html: string) => {
+    try { navigator.clipboard?.writeText(html); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* ignore */ }
+  };
 
   return (
     <Stack spacing={1.6} sx={{ p: { xs: 1, md: 2 } }}>
@@ -147,6 +154,29 @@ export default function DiscoveryPanel() {
               {data.profile.website ? <Link href={data.profile.website} target="_blank" rel="noopener" sx={{ fontSize: '0.82rem' }}>{data.profile.website}</Link> : null}
               <Divider sx={{ my: 1 }} />
               <MediaGrid title="Siste innlegg" media={data.profile.media || []} />
+            </Box>
+          ) : null}
+
+          {data?.success && mode === 'embed' && data.data ? (
+            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.4 }}>
+              <Stack direction="row" spacing={1.4}>
+                {data.data.thumbnail_url ? (
+                  <Box component="img" src={data.data.thumbnail_url} alt="" sx={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 1.5, flexShrink: 0 }} />
+                ) : null}
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.9rem' }}>{data.data.author_name || data.data.title || 'Offentlig innlegg'}</Typography>
+                  {data.data.title && data.data.author_name ? <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', mt: 0.3 }}>{data.data.title}</Typography> : null}
+                  <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem', mt: 0.4 }}>{data.data.provider_name || ''}</Typography>
+                  <Stack direction="row" spacing={1} sx={{ mt: 0.8 }} alignItems="center">
+                    <Button size="small" variant="outlined" onClick={() => copyEmbed(String(data.data.html || ''))} disabled={!data.data.html}>
+                      {copied ? 'Kopiert!' : 'Kopier innbyggingskode'}
+                    </Button>
+                    <Link href={query} target="_blank" rel="noopener" sx={{ fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: 0.3 }}>
+                      Åpne innlegget <OpenIcon sx={{ fontSize: 14 }} />
+                    </Link>
+                  </Stack>
+                </Box>
+              </Stack>
             </Box>
           ) : null}
 
