@@ -2032,6 +2032,40 @@ const COMMANDS = {
     });
   },
 
+  "resolve.fusionCompAddSpeedRamp": async ({
+    target_tool,
+    ramp_type,
+    start_frame,
+    end_frame,
+    slow_factor,
+    comp_name,
+  } = {}) => {
+    if (typeof target_tool !== "string" || target_tool.length === 0) {
+      throw new Error("target_tool må være en ikke-tom string");
+    }
+    if (typeof start_frame !== "number" || typeof end_frame !== "number") {
+      throw new Error("start_frame og end_frame må være tall");
+    }
+    if (end_frame <= start_frame) {
+      throw new Error("end_frame må være > start_frame");
+    }
+    const rt = ramp_type || "in_out";
+    const VALID = new Set(["in", "out", "in_out", "bullet_time"]);
+    if (!VALID.has(rt)) {
+      throw new Error(`Ugyldig ramp_type: ${rt} (in/out/in_out/bullet_time)`);
+    }
+    const args = { target_tool, ramp_type: rt, start_frame, end_frame };
+    if (typeof slow_factor === "number") {
+      if (slow_factor <= 0) throw new Error("slow_factor må være > 0");
+      args.slow_factor = slow_factor;
+    }
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.addSpeedRamp",
+      args,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve

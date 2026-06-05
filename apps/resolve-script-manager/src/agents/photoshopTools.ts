@@ -1794,6 +1794,30 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_fusion_comp_add_speed_ramp",
+    description:
+      "Speed ramp for slow-mo dans/kyss-momenter eller dramatiske bullet-time-effekter. Skaper TimeSpeed-node, animerer Speed-input. ramp_type bestemmer pattern: 'in'=normal→slow, 'out'=slow→normal, 'in_out'=normal→slow→normal (klassisk slow-mo moment), 'bullet_time'=ekstrem slow med rask ramp-in/ut. slow_factor er Speed ved peak (default 0.25 = 4x sakte; 0.5 = halv; 2.0 = dobbel hastighet).",
+    input_schema: {
+      type: "object",
+      properties: {
+        target_tool: { type: "string" },
+        ramp_type: {
+          type: "string",
+          enum: ["in", "out", "in_out", "bullet_time"],
+          description: "Default 'in_out'.",
+        },
+        start_frame: { type: "number" },
+        end_frame: { type: "number" },
+        slow_factor: {
+          type: "number",
+          description: "Speed ved peak. Default 0.25 (4x sakte). 1.0 = normal.",
+        },
+        comp_name: { type: "string" },
+      },
+      required: ["target_tool", "start_frame", "end_frame"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -3408,6 +3432,45 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         params.comp_name = input.comp_name;
       }
       return photoshop.resolveFusionCompAddWhipPan(params);
+    }
+    case "photoshop_resolve_fusion_comp_add_speed_ramp": {
+      if (typeof input.target_tool !== "string" || input.target_tool.length === 0) {
+        throw new Error("target_tool må være en ikke-tom string");
+      }
+      if (typeof input.start_frame !== "number" || typeof input.end_frame !== "number") {
+        throw new Error("start_frame og end_frame må være tall");
+      }
+      if (input.end_frame <= input.start_frame) {
+        throw new Error("end_frame må være > start_frame");
+      }
+      const VALID_RAMP = ["in", "out", "in_out", "bullet_time"] as const;
+      const rampType = (input.ramp_type as string) || "in_out";
+      if (!(VALID_RAMP as readonly string[]).includes(rampType)) {
+        throw new Error(
+          `Ugyldig ramp_type: ${rampType} (${VALID_RAMP.join("/")})`,
+        );
+      }
+      const params: {
+        target_tool: string;
+        ramp_type: (typeof VALID_RAMP)[number];
+        start_frame: number;
+        end_frame: number;
+        slow_factor?: number;
+        comp_name?: string;
+      } = {
+        target_tool: input.target_tool,
+        ramp_type: rampType as (typeof VALID_RAMP)[number],
+        start_frame: input.start_frame,
+        end_frame: input.end_frame,
+      };
+      if (typeof input.slow_factor === "number") {
+        if (input.slow_factor <= 0) throw new Error("slow_factor må være > 0");
+        params.slow_factor = input.slow_factor;
+      }
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompAddSpeedRamp(params);
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
