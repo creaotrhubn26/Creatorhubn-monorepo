@@ -67,24 +67,121 @@ jobs:
         working-directory: apps/resolve-script-manager
         run: npm ci
 
-      - name: Build Tauri app
+      # Importer Apple Developer ID-sertifikatet til en midlertidig
+      # keychain. Tauri-build leser signingIdentity fra tauri.conf.json
+      # og signerer .app + .dmg + .app.tar.gz automatisk.
+      - name: Import Apple Developer ID certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        shell: bash
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          CERT_PATH=$RUNNER_TEMP/cert.p12
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm -f "$CERT_PATH"
+
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Build Tauri app (signed)
         working-directory: apps/resolve-script-manager
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: npm run tauri build -- --target ${{ matrix.target }}
 
-      # Apple Developer ID codesign + notarize. Currently NO Apple cert is
-      # configured, so the .app stays "unidentified developer" (Gatekeeper
-      # shows a warning on first launch). To enable codesigning later, add
-      # APPLE_CERTIFICATE (base64 .p12) + APPLE_CERTIFICATE_PASSWORD +
-      # APPLE_SIGNING_IDENTITY + APPLE_ID + APPLE_PASSWORD + APPLE_TEAM_ID
-      # as repo secrets, then add an env: block back to the Build step.
-      # See apps/resolve-script-manager/RELEASE.md.
-      - name: Note — unsigned build
+      # Notariser med App Store Connect API. Submit uten --wait, så
+      # wait i separat retry-loop (Apple notary-API kan droppe network
+      # midt i poll — vi retry'er max 3× med stigende backoff).
+      - name: Notarize .app + .dmg
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        timeout-minutes: 45
         run: |
-          echo "::notice::App built UNSIGNED. Users will see Gatekeeper warning on first launch."
-          echo "::notice::To enable codesigning, add APPLE_CERTIFICATE + related secrets — see RELEASE.md."
+          BUNDLE_DIR="apps/resolve-script-manager/src-tauri/target/${{ matrix.target }}/release/bundle"
+          APP_PATH=$(find "$BUNDLE_DIR/macos" -name "*.app" | head -1)
+          DMG_PATH=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" 2>/dev/null | head -1)
+
+          notarize_with_retry() {
+            local target="$1"
+            local label="$2"
+            local submission_id=""
+            local attempts=0
+            local max_attempts=3
+
+            echo "::group::Submit $label for notarization"
+            submission_id=$(xcrun notarytool submit "$target" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --output-format json | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))")
+            echo "Submission ID: $submission_id"
+            echo "::endgroup::"
+
+            if [ -z "$submission_id" ]; then
+              echo "::error::Failed to submit $label for notarization"
+              return 1
+            fi
+
+            while [ $attempts -lt $max_attempts ]; do
+              attempts=$((attempts + 1))
+              echo "::group::Wait for notarization (attempt $attempts/$max_attempts)"
+              if xcrun notarytool wait "$submission_id" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" \
+                --timeout 25m; then
+                echo "::endgroup::"
+                local status
+                status=$(xcrun notarytool info "$submission_id" \
+                  --apple-id "$APPLE_ID" \
+                  --password "$APPLE_PASSWORD" \
+                  --team-id "$APPLE_TEAM_ID" \
+                  --output-format json | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))")
+                if [ "$status" = "Accepted" ]; then
+                  echo "::notice::$label notarized successfully"
+                  return 0
+                fi
+                echo "::error::Notarization status: $status (expected Accepted)"
+                return 1
+              fi
+              echo "::endgroup::"
+              echo "::warning::Notary wait failed (likely Apple-side network blip), retrying..."
+              sleep $((attempts * 30))
+            done
+            echo "::error::Notarization wait failed after $max_attempts attempts"
+            return 1
+          }
+
+          APP_ZIP=$RUNNER_TEMP/app.zip
+          ditto -c -k --keepParent "$APP_PATH" "$APP_ZIP"
+
+          notarize_with_retry "$APP_ZIP" ".app"
+          xcrun stapler staple "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+
+          if [ -n "$DMG_PATH" ]; then
+            notarize_with_retry "$DMG_PATH" ".dmg"
+            xcrun stapler staple "$DMG_PATH"
+            xcrun stapler validate "$DMG_PATH"
+          fi
+
+          rm -f "$APP_ZIP"
+          echo "::notice::✓ Post Agent .app + .dmg signed and notarized"
 
       - name: Collect artifacts
         id: artifacts
