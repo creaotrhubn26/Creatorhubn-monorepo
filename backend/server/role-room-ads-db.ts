@@ -485,6 +485,77 @@ export async function sumSpendForProjectPeriod(
 }
 
 /**
+ * Per-campaign performance rows for a project + period — gir klient-
+ * synlighet på enkelt-kampanje-nivå (ikke bare aggregert per kanal).
+ * Returnerer én rad per kampanje med campaign-meta + samme metrikker
+ * som channel-views (spend/impressions/clicks/conversions/value).
+ *
+ * Brukes av ClientAdsPerformancePanel for å vise per-kampanje read-only
+ * resultater i klient-økonomi-visningen.
+ */
+export interface CampaignResultRow {
+  campaignId: string;
+  campaignName: string;
+  platform: string;
+  status: string;
+  dailyBudgetNok: number | null;
+  spendNok: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  conversionValueNok: number;
+}
+
+export async function getCampaignResultRows(
+  pool: Pool,
+  projectId: string,
+  period: string,
+): Promise<CampaignResultRow[]> {
+  const result = await pool.query<{
+    campaign_id: string;
+    campaign_name: string;
+    platform: string;
+    status: string;
+    daily_budget_nok: string | null;
+    spend: string;
+    impressions: string;
+    clicks: string;
+    conversions: string;
+    conversion_value: string;
+  }>(
+    `SELECT c.id AS campaign_id,
+            c.name AS campaign_name,
+            c.platform AS platform,
+            c.status AS status,
+            c.daily_budget_nok::text AS daily_budget_nok,
+            COALESCE(SUM(d.spend_nok), 0)::text AS spend,
+            COALESCE(SUM(d.impressions), 0)::text AS impressions,
+            COALESCE(SUM(d.clicks), 0)::text AS clicks,
+            COALESCE(SUM(d.conversions), 0)::text AS conversions,
+            COALESCE(SUM(d.conversion_value_nok), 0)::text AS conversion_value
+       FROM ads_campaigns c
+       LEFT JOIN ads_attribution_daily d ON d.campaign_id = c.id
+            AND to_char(d.date, 'YYYY-MM') = $2
+      WHERE c.project_id = $1
+   GROUP BY c.id, c.name, c.platform, c.status, c.daily_budget_nok
+   ORDER BY COALESCE(SUM(d.spend_nok), 0) DESC, c.name ASC`,
+    [projectId, period],
+  );
+  return result.rows.map((r) => ({
+    campaignId: r.campaign_id,
+    campaignName: r.campaign_name,
+    platform: r.platform,
+    status: r.status,
+    dailyBudgetNok: r.daily_budget_nok != null ? Number(r.daily_budget_nok) : null,
+    spendNok: Number(r.spend),
+    impressions: Number(r.impressions),
+    clicks: Number(r.clicks),
+    conversions: Number(r.conversions),
+    conversionValueNok: Number(r.conversion_value),
+  }));
+}
+
+/**
  * Per-channel performance rows for a project + period (YYYY-MM), aggregated from
  * ads_attribution_daily. Feeds buildChannelResults() for the client results view.
  */
