@@ -2533,6 +2533,55 @@ HANDLERS["fusionComp.setRenderRange"] = fusionCompSetRenderRange
 HANDLERS["fusionComp.setCurrentTime"] = fusionCompSetCurrentTime
 
 -- ---------------------------------------------------------------------------
+-- Stabilize + IntelliSearch reset + Burn-in preset
+-- ---------------------------------------------------------------------------
+
+-- clip.stabilize — kjør stabilisering på currently selected timeline-item.
+-- Bruker eksisterende stabiliserings-settings (useStabilizationSmoothCam +
+-- relaterte) — sett dem først via timeline.setSetting/project.setSetting.
+local function handleClipStabilize(_args)
+  local item = currentVideoItem()
+  local ok = item:Stabilize()
+  return string.format(
+    '{"stabilized":%s,"item":%s}',
+    tostring(ok), jsonEscape(item:GetName() or "")
+  )
+end
+
+-- folder.intelliReset — slett IntelliSearch-analyse på current MediaPool-
+-- folder. Brukes før re-analyze med andre settings (better-mode vs faster,
+-- identifyFaces på/av).
+local function handleFolderIntelliReset(_args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local current = mediaPool:GetCurrentFolder()
+  if not current then error("Ingen aktiv folder") end
+  local ok = current:ResetIntellisearchAnalysis()
+  return string.format(
+    '{"reset":%s,"folder":%s}',
+    tostring(ok), jsonEscape(current:GetName() or "")
+  )
+end
+
+-- clip.loadBurnInPreset(preset_name) — last data burn-in preset (timecode,
+-- clip-name, custom-data overlays) på currently selected timeline-item.
+-- preset_name må matche et eksisterende preset i Resolve's burn-in-bibliotek.
+local function handleClipLoadBurnInPreset(args)
+  local item = currentVideoItem()
+  local presetName = extractString(args, "preset_name")
+  if not presetName or presetName == "" then error("preset_name mangler") end
+  local ok = item:LoadBurnInPreset(presetName)
+  return string.format(
+    '{"loaded":%s,"preset_name":%s,"item":%s}',
+    tostring(ok), jsonEscape(presetName), jsonEscape(item:GetName() or "")
+  )
+end
+
+HANDLERS["clip.stabilize"] = handleClipStabilize
+HANDLERS["folder.intelliReset"] = handleFolderIntelliReset
+HANDLERS["clip.loadBurnInPreset"] = handleClipLoadBurnInPreset
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 

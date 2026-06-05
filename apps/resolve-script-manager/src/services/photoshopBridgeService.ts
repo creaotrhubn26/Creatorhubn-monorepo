@@ -1209,6 +1209,18 @@ export const photoshop = {
       params,
     ),
 
+  resolveClipStabilize: () =>
+    send<{ stabilized: boolean; item: string }>("resolve.clipStabilize"),
+
+  resolveFolderIntelliReset: () =>
+    send<{ reset: boolean; folder: string }>("resolve.folderIntelliReset"),
+
+  resolveClipLoadBurnInPreset: (params: { preset_name: string }) =>
+    send<{ loaded: boolean; preset_name: string; item: string }>(
+      "resolve.clipLoadBurnInPreset",
+      params,
+    ),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

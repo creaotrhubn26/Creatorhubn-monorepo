@@ -1528,6 +1528,33 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_clip_stabilize",
+    description:
+      "Trigg AI stabilisering på currently selected timeline-item. Bruker prosjekt-/timeline-stabiliserings-settings (useStabilizationSmoothCam m.fl. — sett dem først via setSetting). Kan ta opptil 3 min på lange klipp.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_folder_intelli_reset",
+    description:
+      "Slett IntelliSearch-analyse på current MediaPool-folder. Brukes før re-analyse med andre settings (better-mode på/av, identifyFaces på/av) for å sikre ren start.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "photoshop_resolve_clip_load_burn_in_preset",
+    description:
+      "Last data burn-in preset (timecode, clip-name, custom-data overlays) på selected timeline-item. preset_name må matche et eksisterende preset i Resolves burn-in-bibliotek (Workspace → Data Burn-In).",
+    input_schema: {
+      type: "object",
+      properties: {
+        preset_name: {
+          type: "string",
+          description: "Navn på burn-in preset (f.eks. 'Timecode + Clip Name').",
+        },
+      },
+      required: ["preset_name"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -2861,6 +2888,16 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         params.comp_name = input.comp_name;
       }
       return photoshop.resolveFusionCompSetCurrentTime(params);
+    }
+    case "photoshop_resolve_clip_stabilize":
+      return photoshop.resolveClipStabilize();
+    case "photoshop_resolve_folder_intelli_reset":
+      return photoshop.resolveFolderIntelliReset();
+    case "photoshop_resolve_clip_load_burn_in_preset": {
+      if (typeof input.preset_name !== "string" || input.preset_name.length === 0) {
+        throw new Error("preset_name må være en ikke-tom string");
+      }
+      return photoshop.resolveClipLoadBurnInPreset({ preset_name: input.preset_name });
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
