@@ -806,31 +806,214 @@ export default function ClientGallery({}: ClientGalleryProps) {
         display: 'flex',
     }}
     >
-      {/* Left Sidebar - Universal Showcase Design */}
+      {/* Left Sidebar — pro-foto-portal */}
       <Box
-        sx={{
-          width: 280,
-          bgcolor: '#0f1419',
-          borderRight: '1px solid rgba(255,255,255,0.1)',
-          display: 'flex',
-          flexDirection: 'column',
-          p: 2,
-      }}
+        sx={(() => {
+          const brand = gallery?.branding ?? {};
+          const accent = brand.primaryColor || config.primaryColor;
+          // Subtilt brand-tint på sidebar-topp som gir cohesion uten å
+          // overdøve fotoinnholdet. Radial gradient i topp-venstre fades
+          // til neutral i bunn.
+          const hasBrand = !!(brand.logoUrl || brand.companyName);
+          return {
+            width: 300,
+            bgcolor: '#0f1419',
+            borderRight: '1px solid rgba(255,255,255,0.1)',
+            display: 'flex',
+            flexDirection: 'column',
+            p: 0,
+            position: 'relative',
+            ...(hasBrand && {
+              backgroundImage: `radial-gradient(circle at 0% 0%, ${accent}10 0%, transparent 60%)`,
+            }),
+          };
+        })()}
       >
-        {/* Logo/Brand */}
-        <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Avatar sx={{ bgcolor: config.primaryColor, width: 40, height: 40 }}>
-            {config.icon}
-          </Avatar>
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: '#fff' }}>
-              {gallery?.projectTitle || 'Fotogalleri'}
-            </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-              Klient: {gallery?.clientName}
-            </Typography>
-          </Box>
-        </Box>
+        {/* Brand-header — pro-fotografen sin studio-identitet.
+            Refinements i v3:
+              - Større logo (88×88) med ambient brand-glow bak
+              - Studio-navn opp til 22px display-tekst med refined tracking
+              - Brand-tinted sidebar-topp via radial gradient
+              - "Din private leveranse fra X" som hel-setning i stedet for
+                fragmentert eyebrow → project-title
+              - Hairline-divider i brand-farge under brand-block */}
+        {(() => {
+          const brand = gallery?.branding ?? {};
+          const hasBrand = !!(brand.logoUrl || brand.companyName);
+          const accent = brand.primaryColor || config.primaryColor;
+
+          if (!hasBrand) {
+            return (
+              <Box sx={{ p: 2, pb: 0 }}>
+                <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Avatar sx={{ bgcolor: accent, width: 40, height: 40 }}>
+                    {config.icon}
+                  </Avatar>
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 600, color: '#fff', lineHeight: 1.2 }}>
+                      {gallery?.projectTitle || 'Fotogalleri'}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                      Klient: {gallery?.clientName}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Box>
+            );
+          }
+
+          return (
+            <Box sx={{ position: 'relative' }}>
+              {/* Brand-block med ambient glow */}
+              <Box sx={{ pt: 4, px: 3, pb: 3, position: 'relative' }}>
+                {/* Ambient glow bak logo — subtil, gjør at brand-fargen
+                    "lyser" gjennom sidebar-toppen uten å være påtrengende */}
+                <Box
+                  aria-hidden
+                  sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 16,
+                    width: 140,
+                    height: 140,
+                    background: `radial-gradient(circle, ${accent}33 0%, transparent 70%)`,
+                    pointerEvents: 'none',
+                    zIndex: 0,
+                  }}
+                />
+
+                {/* Logo-mark: 88×88 hvit card med doble shadow-lag
+                    (én tett for definition, én diffus for ambient glow) */}
+                {brand.logoUrl ? (
+                  <Box
+                    sx={{
+                      width: 88,
+                      height: 88,
+                      bgcolor: '#fff',
+                      borderRadius: '14px',
+                      p: 1.5,
+                      mb: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      zIndex: 1,
+                      boxShadow: `0 2px 4px rgba(0,0,0,0.3), 0 12px 32px ${accent}40`,
+                    }}
+                  >
+                    <Box
+                      component="img"
+                      src={brand.logoUrl}
+                      alt={brand.companyName || 'Studio'}
+                      sx={{
+                        maxWidth: '100%',
+                        maxHeight: '100%',
+                        objectFit: 'contain',
+                      }}
+                    />
+                  </Box>
+                ) : (
+                  <Box
+                    sx={{
+                      width: 88,
+                      height: 88,
+                      bgcolor: accent,
+                      borderRadius: '14px',
+                      mb: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      zIndex: 1,
+                      boxShadow: `0 2px 4px rgba(0,0,0,0.3), 0 12px 32px ${accent}60`,
+                      '& > svg, & > .MuiSvgIcon-root': {
+                        width: 38,
+                        height: 38,
+                        color: '#fff',
+                      },
+                    }}
+                  >
+                    {config.icon}
+                  </Box>
+                )}
+
+                {/* Studio-navn — display, refined letter-spacing */}
+                {brand.companyName && (
+                  <Typography
+                    sx={{
+                      fontSize: 22,
+                      fontWeight: 700,
+                      color: '#fff',
+                      letterSpacing: '-0.015em',
+                      lineHeight: 1.1,
+                      position: 'relative',
+                      zIndex: 1,
+                    }}
+                  >
+                    {brand.companyName}
+                  </Typography>
+                )}
+
+                {/* Tagline: hel-setning som inkluderer både kontekst og brand
+                    i naturlig flyt. "Din private leveranse fra Fredrik Foto AS" */}
+                {brand.companyName && (
+                  <Typography
+                    sx={{
+                      fontSize: 12,
+                      color: 'rgba(255,255,255,0.55)',
+                      fontStyle: 'italic',
+                      mt: 0.75,
+                      position: 'relative',
+                      zIndex: 1,
+                    }}
+                  >
+                    En privat leveranse til {gallery?.clientName}
+                  </Typography>
+                )}
+              </Box>
+
+              {/* Hairline-divider i brand-farge — refined separator */}
+              <Box
+                sx={{
+                  height: 1,
+                  background: `linear-gradient(90deg, ${accent}00 0%, ${accent}66 30%, ${accent}66 70%, ${accent}00 100%)`,
+                  mb: 2.5,
+                }}
+              />
+
+              {/* Project-info under brand-block */}
+              <Box sx={{ px: 3, mb: 3 }}>
+                <Typography
+                  sx={{
+                    fontSize: 9,
+                    color: 'rgba(255,255,255,0.4)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.15em',
+                    fontWeight: 600,
+                    display: 'block',
+                    mb: 0.5,
+                  }}
+                >
+                  Prosjekt
+                </Typography>
+                <Typography
+                  sx={{
+                    fontSize: 16,
+                    color: '#fff',
+                    fontWeight: 500,
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {gallery?.projectTitle || 'Fotogalleri'}
+                </Typography>
+              </Box>
+            </Box>
+          );
+        })()}
+
+        {/* Inner content wrapper — padding kun her, ikke på Box-toppen,
+            så brand-block kan strekke seg helt til kanten */}
+        <Box sx={{ px: 2, flex: 1, display: 'flex', flexDirection: 'column' }}>
 
         {/* Selection Summary with Psychology */}
         <Paper
@@ -1149,6 +1332,62 @@ export default function ClientGallery({}: ClientGalleryProps) {
             />
           </Box>
         )}
+
+        {/* Studio-credit-footer — alltid i bunn av sidebar, nederst på flex-stacken.
+            Pro-fotograf skal være sluttkreditten klienten ser. */}
+        {gallery?.branding?.companyName && (
+          <Box
+            sx={{
+              mt: 'auto',
+              pt: 3,
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+            }}
+          >
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'rgba(255,255,255,0.4)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+                fontSize: 9,
+                fontWeight: 600,
+                display: 'block',
+                mb: 0.5,
+              }}
+            >
+              Levert av
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#fff',
+                lineHeight: 1.3,
+              }}
+            >
+              {gallery.branding.companyName}
+            </Typography>
+            {gallery.branding.website && (
+              <Typography
+                component="a"
+                href={gallery.branding.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  fontSize: 11,
+                  color: gallery.branding.primaryColor || 'rgba(255,255,255,0.5)',
+                  textDecoration: 'none',
+                  display: 'block',
+                  mt: 0.5,
+                  '&:hover': { textDecoration: 'underline' },
+                }}
+              >
+                {gallery.branding.website.replace(/^https?:\/\//, '')}
+              </Typography>
+            )}
+          </Box>
+        )}
+        </Box>{/* /Inner content wrapper */}
       </Box>
 
       {/* Main Content Area */}
