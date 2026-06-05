@@ -60,6 +60,46 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Pre-flight — verifiser signing-secrets + pubkey
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_ONE_DESK }}
+        shell: bash
+        run: |
+          # Stopp tidlig hvis secrets mangler — bedre enn å bygge en
+          # usignert binær som auto-updater vil avvise stille hos
+          # sluttbrukere.
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Secret TAURI_SIGNING_PRIVATE_KEY_ONE_DESK er tom eller mangler. Generér nøkkel med minisign og legg innholdet av ~/.tauri/one-desk inn som GitHub secret."
+            exit 1
+          fi
+          echo "✓ Signing-private-key secret er satt"
+
+          # Verifiser at pubkey i tauri.conf.json er base64-decode-bar og
+          # har minisign-format-headeren. Catcher placeholder/wipe-feil
+          # før vi forplikter en release.
+          PUBKEY_B64=$(python3 -c "import json; c = json.load(open('apps/creatorhub-one-desk/src-tauri/tauri.conf.json')); print(c['plugins']['updater']['pubkey'])")
+          if [ -z "$PUBKEY_B64" ]; then
+            echo "::error::plugins.updater.pubkey i tauri.conf.json er tom"
+            exit 1
+          fi
+          DECODED=$(echo "$PUBKEY_B64" | base64 -d 2>/dev/null || true)
+          if ! echo "$DECODED" | grep -q "untrusted comment: minisign public key"; then
+            echo "::error::pubkey i tauri.conf.json er ikke et gyldig minisign-format. Forventet 'untrusted comment: minisign public key' i decoded innhold."
+            echo "Decoded:"
+            echo "$DECODED" | head -2
+            exit 1
+          fi
+          echo "✓ pubkey i tauri.conf.json er gyldig minisign-format"
+
+          # Sjekk at den IKKE matcher kjente placeholder-mønstre. Hvis du
+          # genererte en ny nøkkel via verify-updater-key.sh, fjern denne
+          # sjekken eller flytt placeholder-mønsteret nedover for å hindre
+          # falsk-positiv.
+          PLACEHOLDER_KEY_ID="44F19650DE0B1E3A"
+          if echo "$DECODED" | grep -q "$PLACEHOLDER_KEY_ID"; then
+            echo "::warning::pubkey i tauri.conf.json er det opprinnelige passordløse dev-key (id $PLACEHOLDER_KEY_ID). For en real release bør du rotere til en eier-eksklusiv nøkkel — se scripts/verify-updater-key.sh og README."
+          fi
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
