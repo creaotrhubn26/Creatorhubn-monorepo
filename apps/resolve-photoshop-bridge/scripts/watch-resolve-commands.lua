@@ -2293,6 +2293,246 @@ HANDLERS["fusionComp.setInput"] = fusionCompSetInput
 HANDLERS["fusionComp.connectInput"] = fusionCompConnectInput
 
 -- ---------------------------------------------------------------------------
+-- Fusion animation: keyframes + expressions + render-range
+-- ---------------------------------------------------------------------------
+
+-- Helper: hent input-objekt eller throw forklarende feil.
+local function getToolInput(comp, toolName, inputName)
+  local tool = comp:FindTool(toolName)
+  if not tool then error("Fant ikke tool: " .. toolName) end
+  local input = nil
+  if tool.FindMainInput then
+    input = tool:FindMainInput(inputName)
+  end
+  if not input then
+    input = tool[inputName]
+  end
+  if not input then
+    error("Fant ikke input '" .. inputName .. "' på tool '" .. toolName .. "'")
+  end
+  return tool, input
+end
+
+-- Helper: sjekk om input allerede er animert (koblet til BezierSpline)
+-- eller har expression. Returnerer connected-tool eller nil.
+local function getInputAnimSource(input)
+  if not input.GetConnectedOutput then return nil end
+  local connected = input:GetConnectedOutput()
+  if not connected then return nil end
+  -- ConnectedOutput er et Output-objekt — tool finnes via .GetTool eller via direkte ref
+  if connected.GetTool then
+    return connected:GetTool()
+  end
+  return nil
+end
+
+-- fusionComp.addKeyframe(tool_name, input_name, time, value, comp_name?)
+-- Tilnærming: hvis input ikke er animert, kobler vi en ny BezierSpline.
+-- Så setter vi comp.CurrentTime og kaller SetInput — Fusion oppretter
+-- keyframe automatisk på den aktive splinen.
+local function fusionCompAddKeyframe(args)
+  local comp = getFusionComp(args)
+  local toolName = extractString(args, "tool_name")
+  if not toolName or toolName == "" then error("tool_name mangler") end
+  local inputName = extractString(args, "input_name")
+  if not inputName or inputName == "" then error("input_name mangler") end
+  local time = tonumber(args:match('"time"%s*:%s*(-?%d+%.?%d*)'))
+  if not time then error("time mangler (frame-number, kan være float)") end
+  local rawValue = extractString(args, "value")
+  if rawValue == nil then error("value mangler") end
+
+  local tool, input = getToolInput(comp, toolName, inputName)
+
+  -- Hvis input ikke er animert, koble til ny BezierSpline
+  local animSource = getInputAnimSource(input)
+  if not animSource then
+    local spline = comp:AddTool("BezierSpline", -32768, -32768)
+    if not spline then error("Klarte ikke opprette BezierSpline for animasjon") end
+    if input.ConnectTo then
+      input:ConnectTo(spline)
+    else
+      error("Input støtter ikke ConnectTo — ikke animerbar")
+    end
+  end
+
+  -- Save current time, jump, set, restore
+  local origTime = comp.CurrentTime or 0
+  comp:SetCurrentTime(time)
+  local coerced = coerceValue(rawValue)
+  local ok = tool:SetInput(inputName, coerced)
+  comp:SetCurrentTime(origTime)
+
+  return string.format(
+    '{"keyframed":%s,"tool":%s,"input":%s,"time":%s,"value":%s}',
+    tostring(ok ~= nil and ok ~= false),
+    jsonEscape(toolName), jsonEscape(inputName),
+    tostring(time), jsonEscape(tostring(rawValue))
+  )
+end
+
+-- fusionComp.removeKeyframe(tool_name, input_name, time, comp_name?)
+-- Disconnecter ikke splinen — sletter bare keyframe ved tid.
+local function fusionCompRemoveKeyframe(args)
+  local comp = getFusionComp(args)
+  local toolName = extractString(args, "tool_name")
+  if not toolName or toolName == "" then error("tool_name mangler") end
+  local inputName = extractString(args, "input_name")
+  if not inputName or inputName == "" then error("input_name mangler") end
+  local time = tonumber(args:match('"time"%s*:%s*(-?%d+%.?%d*)'))
+  if not time then error("time mangler") end
+
+  local _, input = getToolInput(comp, toolName, inputName)
+  local animSource = getInputAnimSource(input)
+  if not animSource then
+    return string.format(
+      '{"removed":false,"reason":"ikke-animert","tool":%s,"input":%s}',
+      jsonEscape(toolName), jsonEscape(inputName)
+    )
+  end
+  -- BezierSpline har KeyFrames som tabell { [time] = {value, ...} }
+  if animSource.KeyFrames then
+    animSource.KeyFrames[time] = nil
+  elseif animSource.DeleteKeyFrame then
+    animSource:DeleteKeyFrame(time)
+  end
+  return string.format(
+    '{"removed":true,"tool":%s,"input":%s,"time":%s}',
+    jsonEscape(toolName), jsonEscape(inputName), tostring(time)
+  )
+end
+
+-- fusionComp.listKeyframes(tool_name, input_name, comp_name?)
+local function fusionCompListKeyframes(args)
+  local comp = getFusionComp(args)
+  local toolName = extractString(args, "tool_name")
+  if not toolName or toolName == "" then error("tool_name mangler") end
+  local inputName = extractString(args, "input_name")
+  if not inputName or inputName == "" then error("input_name mangler") end
+
+  local _, input = getToolInput(comp, toolName, inputName)
+  local animSource = getInputAnimSource(input)
+  if not animSource then
+    return string.format(
+      '{"animated":false,"tool":%s,"input":%s,"keyframes":[]}',
+      jsonEscape(toolName), jsonEscape(inputName)
+    )
+  end
+  local kfs = animSource.KeyFrames
+  if type(kfs) ~= "table" then
+    return string.format(
+      '{"animated":true,"tool":%s,"input":%s,"keyframes":[]}',
+      jsonEscape(toolName), jsonEscape(inputName)
+    )
+  end
+  local parts = {}
+  for t, v in pairs(kfs) do
+    local val = type(v) == "table" and (v[1] or v.value) or v
+    table.insert(parts, string.format(
+      '{"time":%s,"value":%s}',
+      tostring(t),
+      type(val) == "string" and jsonEscape(val) or tostring(val)
+    ))
+  end
+  return string.format(
+    '{"animated":true,"tool":%s,"input":%s,"count":%d,"keyframes":[%s]}',
+    jsonEscape(toolName), jsonEscape(inputName), #parts,
+    table.concat(parts, ",")
+  )
+end
+
+-- fusionComp.setExpression(tool_name, input_name, expression, comp_name?)
+local function fusionCompSetExpression(args)
+  local comp = getFusionComp(args)
+  local toolName = extractString(args, "tool_name")
+  if not toolName or toolName == "" then error("tool_name mangler") end
+  local inputName = extractString(args, "input_name")
+  if not inputName or inputName == "" then error("input_name mangler") end
+  local expression = extractString(args, "expression")
+  if expression == nil then error("expression mangler (kan være tom string for å rydde)") end
+
+  local _, input = getToolInput(comp, toolName, inputName)
+  if not input.SetExpression then
+    error("Input støtter ikke SetExpression")
+  end
+  local ok = input:SetExpression(expression)
+  return string.format(
+    '{"set":%s,"tool":%s,"input":%s,"expression":%s}',
+    tostring(ok ~= nil and ok ~= false),
+    jsonEscape(toolName), jsonEscape(inputName), jsonEscape(expression)
+  )
+end
+
+-- fusionComp.removeAnimation(tool_name, input_name, comp_name?)
+-- Disconnecter input fra spline OG rydder expression. Verdi blir
+-- statisk på sin nåværende verdi-snapshot.
+local function fusionCompRemoveAnimation(args)
+  local comp = getFusionComp(args)
+  local toolName = extractString(args, "tool_name")
+  if not toolName or toolName == "" then error("tool_name mangler") end
+  local inputName = extractString(args, "input_name")
+  if not inputName or inputName == "" then error("input_name mangler") end
+
+  local _, input = getToolInput(comp, toolName, inputName)
+  local cleared = false
+  if input.SetExpression then
+    input:SetExpression("")
+    cleared = true
+  end
+  if input.ConnectTo then
+    -- ConnectTo med nil disconnecter i de fleste Fusion-versjoner
+    input:ConnectTo(nil)
+    cleared = true
+  end
+  return string.format(
+    '{"cleared":%s,"tool":%s,"input":%s}',
+    tostring(cleared),
+    jsonEscape(toolName), jsonEscape(inputName)
+  )
+end
+
+-- fusionComp.setRenderRange(start, end, comp_name?)
+-- Setter både Global og Render start/end. Fusion bruker disse to par.
+local function fusionCompSetRenderRange(args)
+  local comp = getFusionComp(args)
+  local startFrame = tonumber(args:match('"start"%s*:%s*(-?%d+%.?%d*)'))
+  local endFrame = tonumber(args:match('"end"%s*:%s*(-?%d+%.?%d*)'))
+  if not startFrame then error("start mangler (frame-number)") end
+  if not endFrame then error("end mangler (frame-number)") end
+  if endFrame < startFrame then error("end må være >= start") end
+
+  comp:SetAttrs({
+    COMPN_GlobalStart = startFrame,
+    COMPN_GlobalEnd = endFrame,
+    COMPN_RenderStart = startFrame,
+    COMPN_RenderEnd = endFrame,
+  })
+  return string.format(
+    '{"set":true,"start":%s,"end":%s}',
+    tostring(startFrame), tostring(endFrame)
+  )
+end
+
+-- fusionComp.setCurrentTime(time, comp_name?)
+local function fusionCompSetCurrentTime(args)
+  local comp = getFusionComp(args)
+  local time = tonumber(args:match('"time"%s*:%s*(-?%d+%.?%d*)'))
+  if not time then error("time mangler") end
+  comp:SetCurrentTime(time)
+  return string.format(
+    '{"set":true,"time":%s,"current_time":%s}',
+    tostring(time), tostring(comp.CurrentTime or time)
+  )
+end
+
+HANDLERS["fusionComp.addKeyframe"] = fusionCompAddKeyframe
+HANDLERS["fusionComp.removeKeyframe"] = fusionCompRemoveKeyframe
+HANDLERS["fusionComp.listKeyframes"] = fusionCompListKeyframes
+HANDLERS["fusionComp.setExpression"] = fusionCompSetExpression
+HANDLERS["fusionComp.removeAnimation"] = fusionCompRemoveAnimation
+HANDLERS["fusionComp.setRenderRange"] = fusionCompSetRenderRange
+HANDLERS["fusionComp.setCurrentTime"] = fusionCompSetCurrentTime
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 

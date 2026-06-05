@@ -1415,6 +1415,119 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_fusion_comp_add_keyframe",
+    description:
+      "Animér en Fusion-input — oppretter keyframe på spesifikt frame med spesifikk verdi. Hvis input ikke er animert fra før, kobles automatisk en BezierSpline til den. Brukes for fade-in (Blend over frames), tittel-reveal (Size 0→1), pan/zoom (Center.X over tid). Bruk fusionComp.tools_reference for å se common inputs per tool.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tool_name: { type: "string" },
+        input_name: {
+          type: "string",
+          description: "F.eks. 'StyledText', 'Blend', 'Size', 'Center'.",
+        },
+        time: {
+          type: "number",
+          description: "Frame-number (kan være float for sub-frame).",
+        },
+        value: {
+          oneOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
+          description: "Verdi ved dette frame.",
+        },
+        comp_name: { type: "string" },
+      },
+      required: ["tool_name", "input_name", "time", "value"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_remove_keyframe",
+    description:
+      "Slett keyframe ved et spesifikt frame. Disconnecter ikke splinen — fjerner bare keyframen.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tool_name: { type: "string" },
+        input_name: { type: "string" },
+        time: { type: "number" },
+        comp_name: { type: "string" },
+      },
+      required: ["tool_name", "input_name", "time"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_list_keyframes",
+    description:
+      "List alle keyframes på en input. Returnerer { animated, keyframes: [{time, value}, ...] }. Hvis input ikke er animert: animated=false, keyframes=[].",
+    input_schema: {
+      type: "object",
+      properties: {
+        tool_name: { type: "string" },
+        input_name: { type: "string" },
+        comp_name: { type: "string" },
+      },
+      required: ["tool_name", "input_name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_set_expression",
+    description:
+      "Bind en input til en expression. Expression er Fusion-script som evalueres per frame. Eksempler: 'time/100' (rampe 0→1 over 100 frames), 'sin(time/10)' (oscillering), 'Background1.Size' (mirror annen input). Tom string rydder expression. ALTERNATIV til keyframes — bruk én eller den andre, ikke begge.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tool_name: { type: "string" },
+        input_name: { type: "string" },
+        expression: {
+          type: "string",
+          description: "Fusion-script-expression. Tom for å rydde.",
+        },
+        comp_name: { type: "string" },
+      },
+      required: ["tool_name", "input_name", "expression"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_remove_animation",
+    description:
+      "Rydd ALL animasjon på en input — disconnecter spline + rydder expression. Verdi blir statisk på nåværende snapshot. Bruk dette for å reset en input før ny animasjon, eller for å frigjøre input fra tracker-binding.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tool_name: { type: "string" },
+        input_name: { type: "string" },
+        comp_name: { type: "string" },
+      },
+      required: ["tool_name", "input_name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_set_render_range",
+    description:
+      "Sett Fusion-comp sin render-range (start og end frame). Påvirker både Global og Render-range. Bruk dette FØR animasjon for å definere hvor lenge comp-en er.",
+    input_schema: {
+      type: "object",
+      properties: {
+        start: { type: "number", description: "Frame-number for start." },
+        end: { type: "number", description: "Frame-number for end (>= start)." },
+        comp_name: { type: "string" },
+      },
+      required: ["start", "end"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_set_current_time",
+    description:
+      "Flytt Fusion-comp playhead til spesifikt frame. Påvirker hva SetInput uten time-arg skriver til (creates keyframe at this time if input is animated).",
+    input_schema: {
+      type: "object",
+      properties: {
+        time: { type: "number" },
+        comp_name: { type: "string" },
+      },
+      required: ["time"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -2598,6 +2711,156 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         filter: { category: category ?? null },
         entries,
       };
+    }
+    case "photoshop_resolve_fusion_comp_add_keyframe": {
+      if (typeof input.tool_name !== "string" || input.tool_name.length === 0) {
+        throw new Error("tool_name må være en ikke-tom string");
+      }
+      if (typeof input.input_name !== "string" || input.input_name.length === 0) {
+        throw new Error("input_name må være en ikke-tom string");
+      }
+      if (typeof input.time !== "number") {
+        throw new Error("time må være et tall (frame-number)");
+      }
+      if (input.value === undefined || input.value === null) {
+        throw new Error("value mangler");
+      }
+      const params: {
+        tool_name: string;
+        input_name: string;
+        time: number;
+        value: string;
+        comp_name?: string;
+      } = {
+        tool_name: input.tool_name,
+        input_name: input.input_name,
+        time: input.time,
+        value: typeof input.value === "string" ? input.value : String(input.value),
+      };
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompAddKeyframe(params);
+    }
+    case "photoshop_resolve_fusion_comp_remove_keyframe": {
+      if (typeof input.tool_name !== "string" || input.tool_name.length === 0) {
+        throw new Error("tool_name må være en ikke-tom string");
+      }
+      if (typeof input.input_name !== "string" || input.input_name.length === 0) {
+        throw new Error("input_name må være en ikke-tom string");
+      }
+      if (typeof input.time !== "number") {
+        throw new Error("time må være et tall");
+      }
+      const params: {
+        tool_name: string;
+        input_name: string;
+        time: number;
+        comp_name?: string;
+      } = {
+        tool_name: input.tool_name,
+        input_name: input.input_name,
+        time: input.time,
+      };
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompRemoveKeyframe(params);
+    }
+    case "photoshop_resolve_fusion_comp_list_keyframes": {
+      if (typeof input.tool_name !== "string" || input.tool_name.length === 0) {
+        throw new Error("tool_name må være en ikke-tom string");
+      }
+      if (typeof input.input_name !== "string" || input.input_name.length === 0) {
+        throw new Error("input_name må være en ikke-tom string");
+      }
+      const params: {
+        tool_name: string;
+        input_name: string;
+        comp_name?: string;
+      } = {
+        tool_name: input.tool_name,
+        input_name: input.input_name,
+      };
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompListKeyframes(params);
+    }
+    case "photoshop_resolve_fusion_comp_set_expression": {
+      if (typeof input.tool_name !== "string" || input.tool_name.length === 0) {
+        throw new Error("tool_name må være en ikke-tom string");
+      }
+      if (typeof input.input_name !== "string" || input.input_name.length === 0) {
+        throw new Error("input_name må være en ikke-tom string");
+      }
+      if (typeof input.expression !== "string") {
+        throw new Error("expression må være en string (tom for å rydde)");
+      }
+      const params: {
+        tool_name: string;
+        input_name: string;
+        expression: string;
+        comp_name?: string;
+      } = {
+        tool_name: input.tool_name,
+        input_name: input.input_name,
+        expression: input.expression,
+      };
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompSetExpression(params);
+    }
+    case "photoshop_resolve_fusion_comp_remove_animation": {
+      if (typeof input.tool_name !== "string" || input.tool_name.length === 0) {
+        throw new Error("tool_name må være en ikke-tom string");
+      }
+      if (typeof input.input_name !== "string" || input.input_name.length === 0) {
+        throw new Error("input_name må være en ikke-tom string");
+      }
+      const params: {
+        tool_name: string;
+        input_name: string;
+        comp_name?: string;
+      } = {
+        tool_name: input.tool_name,
+        input_name: input.input_name,
+      };
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompRemoveAnimation(params);
+    }
+    case "photoshop_resolve_fusion_comp_set_render_range": {
+      if (typeof input.start !== "number") {
+        throw new Error("start må være et tall (frame-number)");
+      }
+      if (typeof input.end !== "number") {
+        throw new Error("end må være et tall");
+      }
+      if (input.end < input.start) {
+        throw new Error("end må være >= start");
+      }
+      const params: {
+        start: number;
+        end: number;
+        comp_name?: string;
+      } = { start: input.start, end: input.end };
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompSetRenderRange(params);
+    }
+    case "photoshop_resolve_fusion_comp_set_current_time": {
+      if (typeof input.time !== "number") {
+        throw new Error("time må være et tall");
+      }
+      const params: { time: number; comp_name?: string } = { time: input.time };
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompSetCurrentTime(params);
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
