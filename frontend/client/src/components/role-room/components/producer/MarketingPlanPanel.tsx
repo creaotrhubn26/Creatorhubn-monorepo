@@ -410,7 +410,7 @@ export default function MarketingPlanPanel({
           severity="success"
           icon={<ShareIcon fontSize="inherit" />}
           action={
-            <Tooltip title={shareCopied ? 'Kopiert ✓' : 'Kopier URL'}>
+            <Tooltip title={shareCopied ? 'Kopiert' : 'Kopier URL'}>
               <Button
                 size="small"
                 startIcon={<ContentCopyIcon fontSize="inherit" />}
@@ -429,7 +429,7 @@ export default function MarketingPlanPanel({
           sx={{ bgcolor: 'rgba(34,197,94,0.08)', color: '#bbf7d0', border: '1px solid rgba(34,197,94,0.32)' }}
         >
           <Typography sx={{ fontWeight: 700, fontSize: '0.84rem' }}>
-            Delbar lenke (24t) {shareCopied ? '· kopiert til utklippstavle ✓' : ''}
+            Delbar lenke (24t) {shareCopied ? '· kopiert til utklippstavle' : ''}
           </Typography>
           <Typography
             component="code"
@@ -2002,7 +2002,7 @@ function PostCard({
                 }}
               >
                 <Typography sx={{ color: '#bbf7d0', fontSize: '0.72rem', fontWeight: 600 }}>
-                  💡 Foreslått tid: {new Date(suggestedTime.isoTimestamp).toLocaleString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  Foreslått tid: {new Date(suggestedTime.isoTimestamp).toLocaleString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                 </Typography>
               </Box>
             </Tooltip>
@@ -2045,7 +2045,7 @@ function PostCard({
                 }}
               >
                 <Typography sx={{ color: '#ddd6fe', fontSize: '0.72rem', fontWeight: 600 }}>
-                  🔗 Foreslått CTA: {suggestedCta.cta} <code style={{ fontFamily: 'monospace', color: '#a78bfa' }}>{suggestedCta.linkMacro}</code>
+                  Foreslått CTA: {suggestedCta.cta} <code style={{ fontFamily: 'monospace', color: '#a78bfa' }}>{suggestedCta.linkMacro}</code>
                 </Typography>
               </Box>
             </Tooltip>
@@ -2185,7 +2185,7 @@ function PostCard({
             {/* #165 ekte: kuratert norsk creator-DB + IG live-stats hvis koblet */}
             <Box>
               <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.74rem', mb: 0.4 }}>
-                🎯 Anbefalte norske skapere
+                Anbefalte norske skapere
                 {creators?.dataSource === 'curated_plus_live_ig' ? (
                   <Chip size="small" label="+ live IG-stats" sx={{ ml: 0.6, height: 14, fontSize: '0.6rem', bgcolor: 'rgba(225,48,108,0.18)', color: '#fbcfe8' }} />
                 ) : null}
@@ -2246,7 +2246,7 @@ function PostCard({
             {stockLinks ? (
               <Box>
                 <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.74rem', mb: 0.3 }}>
-                  📷 Finn b-roll / stock
+                  Finn b-roll / stock
                 </Typography>
                 <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap>
                   {stockLinks.map((link) => (
@@ -2267,7 +2267,7 @@ function PostCard({
             {/* #168 ekte: DALL-E 3 thumbnail-generering */}
             <Box>
               <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.74rem', mb: 0.3 }}>
-                🎬 Generer thumbnail (DALL-E 3)
+                Generer thumbnail (DALL-E 3)
               </Typography>
               {thumbnail ? (
                 <Stack spacing={0.4}>
@@ -2314,7 +2314,7 @@ function PostCard({
                     py: 0.3,
                   }}
                 >
-                  {generatingThumbnail ? 'Genererer (15-30s)…' : '✨ Generer thumbnail med AI'}
+                  {generatingThumbnail ? 'Genererer (15-30s)…' : 'Generer thumbnail med AI'}
                 </Button>
               )}
             </Box>
@@ -2322,7 +2322,7 @@ function PostCard({
             {/* #169 ekte: reach-estimat fra industry-benchmark + valgfri follower-input */}
             <Box>
               <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.74rem', mb: 0.3 }}>
-                📊 Estimert rekkevidde
+                Estimert rekkevidde
               </Typography>
               {loadingReach ? (
                 <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem' }}>Laster…</Typography>
@@ -2390,7 +2390,7 @@ function PostCard({
               minWidth: 0,
             }}
           >
-            {generatingReplies ? 'Genererer svarmaler…' : '💬 Generer svarmaler'}
+            {generatingReplies ? 'Genererer svarmaler…' : 'Generer svarmaler'}
           </Button>
         ) : (
           <Box
@@ -2408,7 +2408,7 @@ function PostCard({
               {(['positive', 'question', 'negative'] as const).map((kind) => {
                 const text = replyTemplates[kind];
                 if (!text) return null;
-                const label = kind === 'positive' ? '😊 Positiv' : kind === 'question' ? '❓ Spørsmål' : '⚠️ Negativ';
+                const label = kind === 'positive' ? 'Positiv' : kind === 'question' ? 'Spørsmål' : 'Negativ';
                 return (
                   <Box
                     key={kind}

@@ -170,7 +170,7 @@ const LinkedInPreview: React.FC<PreviewSubProps> = ({ post, handle, logoUrl }) =
           {handle}
         </Typography>
         <Typography sx={{ color: '#666', fontSize: '0.7rem' }}>
-          16 t · 🌐
+          16 t · Offentlig
         </Typography>
       </Stack>
       <LinkedInIcon sx={{ color: '#0A66C2', fontSize: 18 }} />
@@ -253,7 +253,7 @@ const FacebookPreview: React.FC<PreviewSubProps> = ({ post, handle, logoUrl }) =
           {handle}
         </Typography>
         <Typography sx={{ color: '#65676b', fontSize: '0.74rem' }}>
-          2 t · 🌐
+          2 t · Offentlig
         </Typography>
       </Stack>
       <FacebookIcon sx={{ color: '#1877F2', fontSize: 18 }} />
