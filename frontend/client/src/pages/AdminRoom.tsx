@@ -88,7 +88,6 @@ import {
 import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
 import { WhatsNewTab } from '../components/role-room/components/admin-room/WhatsNewTab';
 import { ResendStatusTab } from '../components/role-room/components/admin-room/ResendStatusTab';
-import { B2ArchiveTab } from '../components/role-room/components/admin-room/B2ArchiveTab';
 import { ContentMarketingTab } from '../components/admin/content-marketing/ContentMarketingTab';
 import { IndustryTargetsTab } from '../components/admin/content-marketing/IndustryTargetsTab';
 import { OperatingSystemTab } from '../components/admin/content-marketing/OperatingSystemTab';
@@ -110,7 +109,7 @@ import ContentCalendarTab from './admin-room/ContentCalendarTab';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -4367,7 +4366,6 @@ export default function AdminRoom() {
   else if (tab === 'marketing-cockpit') content = <MarketingCockpitTab />;
   else if (tab === 'role-room-agent') content = <RoleRoomAgentTab />;
   else if (tab === 'content-calendar') content = <ContentCalendarTab />;
-  else if (tab === 'b2-archive') content = <B2ArchiveTab />;
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
@@ -4422,7 +4420,6 @@ export default function AdminRoom() {
           <Tab value="marketing-cockpit" label="Marketing Cockpit" />
           <Tab value="role-room-agent" label="🤖 Role Room Agent" />
           <Tab value="content-calendar" label="Content-kalender" />
-          <Tab value="b2-archive" label="B2-arkiv" />
         </Tabs>
         <Box>{content}</Box>
       </Stack>

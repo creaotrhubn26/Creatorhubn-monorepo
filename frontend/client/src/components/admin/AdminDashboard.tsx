@@ -115,6 +115,7 @@ import ReportsPanel from './ReportsPanel';
 import AutomatedBusinessReports from './AutomatedBusinessReports';
 import PrototypeFeedbackPanel from './PrototypeFeedbackPanel';
 import SystemBackupDashboard from './SystemBackupDashboard';
+import B2ArchiveTab from './B2ArchiveTab';
 import CreatorHubNotes from './Creatorhubnotesnew';
 import AdvancedNotesManager from './AdvancedNotesManager';
 import DocumentationBrowser from './DocumentationBrowser';
@@ -914,6 +915,7 @@ export default function AdminDashboard({
     { id: 'secrets-rotation', label: 'Nøkkel-rotering', icon: Security },
     { id: 'drift-helse', label: 'Drift', icon: Settings },
     { id: 'system-backup', label: 'Backup', icon: Storage },
+    { id: 'b2-archive', label: 'B2-arkiv', icon: Storage },
     { id: 'gdpr-compliance', label: 'GDPR', icon: Security },
     { id: 'development-tools', label: 'Utvikling', icon: AutoAwesome },
     { id: 'automations', label: 'Automatisering', icon: AutoAwesome },
@@ -1867,6 +1869,8 @@ export default function AdminDashboard({
         );
       case 'system-backup':
         return <SystemBackupDashboard {...sharedPanelProps} />;
+      case 'b2-archive':
+        return <B2ArchiveTab />;
       case 'gdpr-compliance':
         return <GDPRCompliancePanel />;
       case 'development-tools':
