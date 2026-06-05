@@ -375,12 +375,12 @@ export default function RoleRoomAgentDialog({
   // Power tools (Oppdag/discovery, Omtaler/mentions, Arrangement/events) + the
   // App Review demo/inspector tabs + merch are all reachable via 'Alle faner',
   // so they're one click away without bloating the guided step sequence.
-  const tabFlow = useMemo<Array<typeof activeTab>>(() => {
-    const base: Array<typeof activeTab> = [
-      'research', 'marketing-plan', 'feed-planner', 'social-inbox', 'leads', 'social-analytics',
-    ];
-    return currentUserId ? [...base, 'chat'] : base;
-  }, [currentUserId]);
+  // Exactly the 6 phases shown in the workflow stepper, so "Steg X av N" and the
+  // stepper always agree. Chat is a utility (reachable via 'Flere verktøy'), not
+  // a numbered step.
+  const tabFlow = useMemo<Array<typeof activeTab>>(() => [
+    'research', 'marketing-plan', 'feed-planner', 'social-inbox', 'leads', 'social-analytics',
+  ], []);
   const TAB_LABELS: Record<string, string> = {
     research: 'Research', discovery: 'Oppdag', merch: 'Merch', 'marketing-plan': 'Markedsplan',
     'feed-planner': 'Feed-planner', 'meta-page': 'Meta Page', 'page-content': 'Page Content',
@@ -556,9 +556,9 @@ export default function RoleRoomAgentDialog({
       {(generating || applying) ? <LinearProgress sx={{ height: 3 }} /> : null}
       <DialogTitle
         sx={{
-          pb: 1.2,
+          pb: 1,
           px: { xs: 1.4, md: 3 },
-          pt: { xs: 1.4, md: 2 },
+          pt: { xs: 1.2, md: 1.5 },
           borderBottom: '1px solid rgba(148,163,184,0.14)',
           background: 'radial-gradient(circle at top left, rgba(34,211,238,0.18) 0%, rgba(15,23,42,0) 48%)',
         }}

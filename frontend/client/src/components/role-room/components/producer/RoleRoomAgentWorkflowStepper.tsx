@@ -96,10 +96,11 @@ export default function RoleRoomAgentWorkflowStepper({
       aria-label="The Role Room Agent arbeidsflyt — 6 steg"
       sx={{
         px: { xs: 1, md: 2 },
-        py: 1,
+        py: 1.25,
         bgcolor: 'rgba(15,23,42,0.55)',
         borderBottom: '1px solid rgba(148,163,184,0.18)',
         overflowX: 'auto',
+        overflowY: 'hidden',
       }}
     >
       {PHASES.map((phase, idx) => {
@@ -139,7 +140,7 @@ export default function RoleRoomAgentWorkflowStepper({
                   alignItems: 'center',
                   gap: 1,
                   px: { xs: 1, md: 1.4 },
-                  py: 0.6,
+                  py: 0.75,
                   borderRadius: 1.4,
                   cursor: onJump ? 'pointer' : 'default',
                   border: isActive
