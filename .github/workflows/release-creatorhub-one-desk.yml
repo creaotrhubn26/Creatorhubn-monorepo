@@ -121,7 +121,11 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         shell: bash
-        timeout-minutes: 45
+        # 90 min total = romslig for 3 × 25 min retry-attempts + sleeps.
+        # En enkelt notary-submission tar normalt 5-15 min; bumpet etter
+        # 2026-06-05-incident der Apple-siden hang i 45 min på første
+        # forsøk, og outer-timeout killet før retry rakk å starte.
+        timeout-minutes: 90
         run: |
           BUNDLE_DIR="apps/creatorhub-one-desk/src-tauri/target/${{ matrix.target }}/release/bundle"
           APP_PATH=$(find "$BUNDLE_DIR/macos" -name "*.app" | head -1)
