@@ -2727,6 +2727,89 @@ end
 HANDLERS["fusionComp.set3DTransform"] = fusionCompSet3DTransform
 
 -- ---------------------------------------------------------------------------
+-- Tracker scripting (2D Tracker + PlanarTracker)
+-- ---------------------------------------------------------------------------
+
+-- fusionComp.trackerTrack(tool_name, direction, comp_name?)
+-- direction: "forward" eller "backward". Lang-løpende operasjon —
+-- analyserer hvert frame i comp-range. Bruker 60s timeout som default
+-- per call (kan overstyres via plugin-wrapper).
+local function fusionCompTrackerTrack(args)
+  local comp = getFusionComp(args)
+  local toolName = extractString(args, "tool_name")
+  if not toolName or toolName == "" then error("tool_name mangler") end
+  local direction = extractString(args, "direction") or "forward"
+  if direction ~= "forward" and direction ~= "backward" then
+    error("direction må være 'forward' eller 'backward'")
+  end
+
+  local tool = comp:FindTool(toolName)
+  if not tool then error("Fant ikke tool: " .. toolName) end
+
+  local ok
+  if direction == "forward" then
+    if not tool.TrackForward then error("Tool støtter ikke TrackForward — ikke en Tracker?") end
+    ok = tool:TrackForward()
+  else
+    if not tool.TrackBackward then error("Tool støtter ikke TrackBackward — ikke en Tracker?") end
+    ok = tool:TrackBackward()
+  end
+
+  return string.format(
+    '{"tracked":%s,"tool":%s,"direction":%s}',
+    tostring(ok ~= nil and ok ~= false),
+    jsonEscape(toolName), jsonEscape(direction)
+  )
+end
+
+-- fusionComp.trackerGetCenter(tool_name, time?, comp_name?)
+-- Returnerer tracked center-position ved gitt frame (eller current time).
+-- Brukes for å lese tracker-data → bruk i annen tool's input via setInput
+-- eller connectInput med src_output: "SteadyPosition" / "UnsteadyPosition".
+local function fusionCompTrackerGetCenter(args)
+  local comp = getFusionComp(args)
+  local toolName = extractString(args, "tool_name")
+  if not toolName or toolName == "" then error("tool_name mangler") end
+  local time = tonumber(args:match('"time"%s*:%s*(-?%d+%.?%d*)'))
+  if not time then time = comp.CurrentTime or 0 end
+
+  local tool = comp:FindTool(toolName)
+  if not tool then error("Fant ikke tool: " .. toolName) end
+
+  -- Tracker exposes GetSelectedTrackedCenter(time) eller via Steady/UnsteadyPosition[time]
+  local px, py
+  if tool.GetSelectedTrackedCenter then
+    local pos = tool:GetSelectedTrackedCenter(time)
+    if pos then
+      px = pos[1] or pos.X
+      py = pos[2] or pos.Y
+    end
+  end
+  -- Fallback: prøv SteadyPosition[time]
+  if px == nil and tool.SteadyPosition then
+    local sp = tool.SteadyPosition[time]
+    if type(sp) == "table" then
+      px = sp[1] or sp.X
+      py = sp[2] or sp.Y
+    end
+  end
+
+  if px == nil or py == nil then
+    return string.format(
+      '{"found":false,"tool":%s,"time":%s,"reason":"Tracker ikke tracked enda — kjør trackerTrack først"}',
+      jsonEscape(toolName), tostring(time)
+    )
+  end
+  return string.format(
+    '{"found":true,"tool":%s,"time":%s,"x":%s,"y":%s}',
+    jsonEscape(toolName), tostring(time), tostring(px), tostring(py)
+  )
+end
+
+HANDLERS["fusionComp.trackerTrack"] = fusionCompTrackerTrack
+HANDLERS["fusionComp.trackerGetCenter"] = fusionCompTrackerGetCenter
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 

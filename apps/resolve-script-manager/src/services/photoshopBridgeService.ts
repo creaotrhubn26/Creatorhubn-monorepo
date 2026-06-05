@@ -1255,6 +1255,26 @@ export const photoshop = {
       params,
     ),
 
+  resolveFusionCompTrackerTrack: (params: {
+    tool_name: string;
+    direction?: "forward" | "backward";
+    comp_name?: string;
+  }) =>
+    send<{ tracked: boolean; tool: string; direction: "forward" | "backward" }>(
+      "resolve.fusionCompTrackerTrack",
+      params,
+    ),
+
+  resolveFusionCompTrackerGetCenter: (params: {
+    tool_name: string;
+    time?: number;
+    comp_name?: string;
+  }) =>
+    send<
+      | { found: false; tool: string; time: number; reason: string }
+      | { found: true; tool: string; time: number; x: number; y: number }
+    >("resolve.fusionCompTrackerGetCenter", params),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 
