@@ -76,6 +76,10 @@ docs/
 !docs/post-agent/*.md
 !docs/dance/
 !docs/dance/*.md
+!docs/specs/
+!docs/specs/*.md
+!docs/partnerships-demo/
+!docs/partnerships-demo/*.md
 !apps/resolve-script-manager/src/docs/
 !apps/resolve-script-manager/src/docs/*.md
 !apps/creatorhub-one-desk/docs/
