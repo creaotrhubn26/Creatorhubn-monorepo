@@ -1215,6 +1215,89 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_media_pool_import_timeline_from_file",
+    description:
+      "Importer ferdig timeline-skjelett fra fil. Støtter .aaf/.edl/.xml/.fcpxml/.drt/.adl/.otio. .drt er DaVinci Resolve Timeline-mal (typisk brukt for repetitive prosjekt-skjeletter — Wedding A/B-roll-struktur, Promo-mal). NB: timeline_name + import_source_clips ignoreres for DRT. interlace_processing kun for AAF.",
+    input_schema: {
+      type: "object",
+      properties: {
+        file_path: {
+          type: "string",
+          description: "Absolutt path til .aaf/.edl/.xml/.fcpxml/.drt/.adl/.otio-fil.",
+        },
+        timeline_name: {
+          type: "string",
+          description: "Navn på den nye timelinen (ikke gyldig for DRT).",
+        },
+        import_source_clips: {
+          type: "boolean",
+          description: "Default true. Sett false for å kun importere timeline-struktur.",
+        },
+        source_clips_path: {
+          type: "string",
+          description: "Fallback-path å lete etter source clips hvis original-paths er døde.",
+        },
+        interlace_processing: {
+          type: "boolean",
+          description: "AAF-only: aktiver interlace-prosessering.",
+        },
+      },
+      required: ["file_path"],
+    },
+  },
+  {
+    name: "photoshop_resolve_media_pool_delete_timelines",
+    description:
+      "Slett en eller flere timelines fra Media Pool ved navn. ADVARSEL: irreversibel.",
+    input_schema: {
+      type: "object",
+      properties: {
+        timeline_names: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array av timeline-navn (minst én).",
+        },
+      },
+      required: ["timeline_names"],
+    },
+  },
+  {
+    name: "photoshop_resolve_pm_import_project",
+    description:
+      "Importer .drp-prosjekt-arkiv inn i current PM-folder. project_name overstyrer navn i .drp. Hele operasjonen kan ta minutter (timeout 300s).",
+    input_schema: {
+      type: "object",
+      properties: {
+        file_path: {
+          type: "string",
+          description: "Absolutt path til .drp-fil.",
+        },
+        project_name: {
+          type: "string",
+          description: "Overstyr navn i .drp.",
+        },
+      },
+      required: ["file_path"],
+    },
+  },
+  {
+    name: "photoshop_resolve_pm_export_project",
+    description:
+      "Eksporter et prosjekt fra current PM-folder som .drp-arkiv. Default tar med stills og LUTs. Kan ta minutter — timeout 600s.",
+    input_schema: {
+      type: "object",
+      properties: {
+        project_name: { type: "string" },
+        file_path: { type: "string", description: "Output .drp-path." },
+        with_stills_and_luts: {
+          type: "boolean",
+          description: "Default true.",
+        },
+      },
+      required: ["project_name", "file_path"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -2216,6 +2299,85 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         filter: { scope: scope ?? null, category: category ?? null },
         entries,
       };
+    }
+    case "photoshop_resolve_media_pool_import_timeline_from_file": {
+      if (typeof input.file_path !== "string" || input.file_path.length === 0) {
+        throw new Error("file_path må være en ikke-tom string");
+      }
+      const VALID_EXT = [".aaf", ".edl", ".xml", ".fcpxml", ".drt", ".adl", ".otio"];
+      const lower = input.file_path.toLowerCase();
+      const matches = VALID_EXT.some((ext) => lower.endsWith(ext));
+      if (!matches) {
+        throw new Error(
+          `Ugyldig filtype for file_path. Gyldige: ${VALID_EXT.join(", ")}`,
+        );
+      }
+      const params: {
+        file_path: string;
+        timeline_name?: string;
+        import_source_clips?: boolean;
+        source_clips_path?: string;
+        interlace_processing?: boolean;
+      } = { file_path: input.file_path };
+      if (typeof input.timeline_name === "string" && input.timeline_name.length > 0) {
+        params.timeline_name = input.timeline_name;
+      }
+      if (typeof input.source_clips_path === "string" && input.source_clips_path.length > 0) {
+        params.source_clips_path = input.source_clips_path;
+      }
+      if (typeof input.import_source_clips === "boolean") {
+        params.import_source_clips = input.import_source_clips;
+      }
+      if (typeof input.interlace_processing === "boolean") {
+        params.interlace_processing = input.interlace_processing;
+      }
+      return photoshop.resolveMediaPoolImportTimelineFromFile(params);
+    }
+    case "photoshop_resolve_media_pool_delete_timelines": {
+      const names = input.timeline_names;
+      if (!Array.isArray(names) || names.length === 0) {
+        throw new Error("timeline_names må være en ikke-tom array");
+      }
+      for (const n of names) {
+        if (typeof n !== "string" || n.length === 0) {
+          throw new Error("Alle timeline_names må være ikke-tomme strings");
+        }
+      }
+      return photoshop.resolveMediaPoolDeleteTimelines({
+        timeline_names: names as string[],
+      });
+    }
+    case "photoshop_resolve_pm_import_project": {
+      if (typeof input.file_path !== "string" || input.file_path.length === 0) {
+        throw new Error("file_path må være en ikke-tom string");
+      }
+      if (!input.file_path.toLowerCase().endsWith(".drp")) {
+        throw new Error("file_path må peke til en .drp-fil");
+      }
+      const params: { file_path: string; project_name?: string } = {
+        file_path: input.file_path,
+      };
+      if (typeof input.project_name === "string" && input.project_name.length > 0) {
+        params.project_name = input.project_name;
+      }
+      return photoshop.resolvePmImportProject(params);
+    }
+    case "photoshop_resolve_pm_export_project": {
+      if (typeof input.project_name !== "string" || input.project_name.length === 0) {
+        throw new Error("project_name må være en ikke-tom string");
+      }
+      if (typeof input.file_path !== "string" || input.file_path.length === 0) {
+        throw new Error("file_path må være en ikke-tom string");
+      }
+      const params: {
+        project_name: string;
+        file_path: string;
+        with_stills_and_luts?: boolean;
+      } = { project_name: input.project_name, file_path: input.file_path };
+      if (typeof input.with_stills_and_luts === "boolean") {
+        params.with_stills_and_luts = input.with_stills_and_luts;
+      }
+      return photoshop.resolvePmExportProject(params);
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();

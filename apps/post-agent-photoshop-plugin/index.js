@@ -1391,6 +1391,99 @@ const COMMANDS = {
     });
   },
 
+  "resolve.mediaPoolImportTimelineFromFile": async ({
+    file_path,
+    timeline_name,
+    import_source_clips,
+    source_clips_path,
+    interlace_processing,
+  } = {}) => {
+    if (typeof file_path !== "string" || file_path.length === 0) {
+      throw new Error("file_path må være en ikke-tom string");
+    }
+    const VALID_EXT = new Set([".aaf", ".edl", ".xml", ".fcpxml", ".drt", ".adl", ".otio"]);
+    const ext = file_path.toLowerCase().slice(file_path.lastIndexOf("."));
+    if (!VALID_EXT.has(ext)) {
+      throw new Error(
+        `Ugyldig filtype: ${ext} (gyldige: ${[...VALID_EXT].join(", ")})`,
+      );
+    }
+    const args = { file_path };
+    if (typeof timeline_name === "string" && timeline_name.length > 0) {
+      args.timeline_name = timeline_name;
+    }
+    if (typeof source_clips_path === "string" && source_clips_path.length > 0) {
+      args.source_clips_path = source_clips_path;
+    }
+    if (typeof import_source_clips === "boolean") {
+      args.import_source_clips = import_source_clips;
+    }
+    if (typeof interlace_processing === "boolean") {
+      args.interlace_processing = interlace_processing;
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "mediaPool.importTimelineFromFile",
+      args,
+      timeout_ms: 120000,
+    });
+  },
+
+  "resolve.mediaPoolDeleteTimelines": async ({ timeline_names } = {}) => {
+    if (!Array.isArray(timeline_names) || timeline_names.length === 0) {
+      throw new Error("timeline_names må være en ikke-tom array av strings");
+    }
+    for (const n of timeline_names) {
+      if (typeof n !== "string" || n.length === 0) {
+        throw new Error("Alle timeline_names må være ikke-tomme strings");
+      }
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "mediaPool.deleteTimelines",
+      args: { timeline_names },
+      timeout_ms: 60000,
+    });
+  },
+
+  "resolve.pmImportProject": async ({ file_path, project_name } = {}) => {
+    if (typeof file_path !== "string" || file_path.length === 0) {
+      throw new Error("file_path må være en ikke-tom string");
+    }
+    if (!file_path.toLowerCase().endsWith(".drp")) {
+      throw new Error("file_path må peke til en .drp-fil");
+    }
+    const args = { file_path };
+    if (typeof project_name === "string" && project_name.length > 0) {
+      args.project_name = project_name;
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "pm.importProject",
+      args,
+      timeout_ms: 300000,
+    });
+  },
+
+  "resolve.pmExportProject": async ({
+    project_name,
+    file_path,
+    with_stills_and_luts,
+  } = {}) => {
+    if (typeof project_name !== "string" || project_name.length === 0) {
+      throw new Error("project_name må være en ikke-tom string");
+    }
+    if (typeof file_path !== "string" || file_path.length === 0) {
+      throw new Error("file_path må være en ikke-tom string");
+    }
+    const args = { project_name, file_path };
+    if (typeof with_stills_and_luts === "boolean") {
+      args.with_stills_and_luts = with_stills_and_luts;
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "pm.exportProject",
+      args,
+      timeout_ms: 600000,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve

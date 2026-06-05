@@ -2002,6 +2002,136 @@ HANDLERS["fusion.importComp"] = handleFusionImportComp
 HANDLERS["fusion.exportComp"] = handleFusionExportComp
 
 -- ---------------------------------------------------------------------------
+-- Import / Export: timelines + projects
+-- ---------------------------------------------------------------------------
+
+-- mediaPool.importTimelineFromFile(file_path, timeline_name?,
+--   import_source_clips?, source_clips_path?, interlace_processing?)
+-- Lar Director instansiere ferdig timeline-skjelett fra
+-- .aaf/.edl/.xml/.fcpxml/.drt/.adl/.otio.
+local function handleMediaPoolImportTimeline(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local filePath = extractString(args, "file_path")
+  if not filePath or filePath == "" then error("file_path mangler") end
+
+  local options = {}
+  local timelineName = extractString(args, "timeline_name")
+  if timelineName and timelineName ~= "" then
+    options.timelineName = timelineName
+  end
+  local sourceClipsPath = extractString(args, "source_clips_path")
+  if sourceClipsPath and sourceClipsPath ~= "" then
+    options.sourceClipsPath = sourceClipsPath
+  end
+  if args:match('"import_source_clips"%s*:%s*true') then
+    options.importSourceClips = true
+  elseif args:match('"import_source_clips"%s*:%s*false') then
+    options.importSourceClips = false
+  end
+  if args:match('"interlace_processing"%s*:%s*true') then
+    options.interlaceProcessing = true
+  end
+
+  local timeline = mediaPool:ImportTimelineFromFile(filePath, options)
+  if not timeline then
+    error("ImportTimelineFromFile feilet — sjekk path + filtype + at format støttes")
+  end
+  return string.format(
+    '{"imported":true,"timeline_name":%s,"file_path":%s,"fps":%s}',
+    jsonEscape(timeline:GetName() or ""),
+    jsonEscape(filePath),
+    jsonEscape(timeline:GetSetting("timelineFrameRate") or "")
+  )
+end
+
+-- mediaPool.deleteTimelines(timeline_names[])
+-- Finn ved navn (iterer GetTimelineByIndex 1..N) → DeleteTimelines.
+local function handleMediaPoolDeleteTimelines(args)
+  local _, project = getResolveContext()
+  local mediaPool = project:GetMediaPool()
+  local namesBlock = args:match('"timeline_names"%s*:%s*(%b[])')
+  if not namesBlock then error("timeline_names mangler (array av strings)") end
+  local wantedNames = {}
+  for n in namesBlock:gmatch('"([^"]+)"') do
+    wantedNames[n] = true
+  end
+
+  local count = project:GetTimelineCount() or 0
+  local timelines = {}
+  local matched = {}
+  for i = 1, count do
+    local tl = project:GetTimelineByIndex(i)
+    if tl then
+      local name = tl:GetName() or ""
+      if wantedNames[name] then
+        table.insert(timelines, tl)
+        table.insert(matched, name)
+      end
+    end
+  end
+  if #timelines == 0 then
+    error("Fant ingen timelines matching: " .. namesBlock)
+  end
+
+  local ok = mediaPool:DeleteTimelines(timelines)
+  local matchedParts = {}
+  for _, n in ipairs(matched) do
+    table.insert(matchedParts, jsonEscape(n))
+  end
+  return string.format(
+    '{"deleted":%s,"count":%d,"names":[%s]}',
+    tostring(ok), #matched, table.concat(matchedParts, ",")
+  )
+end
+
+-- pm.importProject(file_path, project_name?) — .drp-import inn i current
+-- PM-folder.
+local function handlePmImportProject(args)
+  local pm = getPM()
+  local filePath = extractString(args, "file_path")
+  if not filePath or filePath == "" then error("file_path mangler") end
+  local projectName = extractString(args, "project_name")
+  local ok
+  if projectName and projectName ~= "" then
+    ok = pm:ImportProject(filePath, projectName)
+  else
+    ok = pm:ImportProject(filePath)
+  end
+  return string.format(
+    '{"imported":%s,"file_path":%s,"project_name":%s}',
+    tostring(ok), jsonEscape(filePath), jsonEscape(projectName or "")
+  )
+end
+
+-- pm.exportProject(project_name, file_path, with_stills_and_luts?)
+local function handlePmExportProject(args)
+  local pm = getPM()
+  local projectName = extractString(args, "project_name")
+  if not projectName or projectName == "" then error("project_name mangler") end
+  local filePath = extractString(args, "file_path")
+  if not filePath or filePath == "" then error("file_path mangler") end
+
+  -- Default true; bare false hvis eksplisitt
+  local withStillsAndLuts = true
+  if args:match('"with_stills_and_luts"%s*:%s*false') then
+    withStillsAndLuts = false
+  end
+
+  local ok = pm:ExportProject(projectName, filePath, withStillsAndLuts)
+  return string.format(
+    '{"exported":%s,"project_name":%s,"file_path":%s,"with_stills_and_luts":%s}',
+    tostring(ok), jsonEscape(projectName), jsonEscape(filePath),
+    tostring(withStillsAndLuts)
+  )
+end
+
+HANDLERS["mediaPool.importTimelineFromFile"] = handleMediaPoolImportTimeline
+HANDLERS["mediaPool.deleteTimelines"] = handleMediaPoolDeleteTimelines
+HANDLERS["pm.importProject"] = handlePmImportProject
+HANDLERS["pm.exportProject"] = handlePmExportProject
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 
