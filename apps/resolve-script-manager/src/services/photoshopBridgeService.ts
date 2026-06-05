@@ -1367,6 +1367,25 @@ export const photoshop = {
       connected_to_target: boolean;
     }>("resolve.fusionCompAddWhipPan", params),
 
+  resolveFusionCompAddSpeedRamp: (params: {
+    target_tool: string;
+    ramp_type: "in" | "out" | "in_out" | "bullet_time";
+    start_frame: number;
+    end_frame: number;
+    slow_factor?: number;
+    comp_name?: string;
+  }) =>
+    send<{
+      added: boolean;
+      name: string;
+      target: string;
+      ramp_type: "in" | "out" | "in_out" | "bullet_time";
+      start_frame: number;
+      end_frame: number;
+      slow_factor: number;
+      connected_to_target: boolean;
+    }>("resolve.fusionCompAddSpeedRamp", params),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

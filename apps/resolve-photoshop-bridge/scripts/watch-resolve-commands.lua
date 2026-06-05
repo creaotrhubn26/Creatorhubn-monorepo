@@ -3166,6 +3166,110 @@ end
 HANDLERS["fusionComp.addWhipPan"] = fusionCompAddWhipPan
 
 -- ---------------------------------------------------------------------------
+-- Speed Ramp helper (TimeSpeed med animated Speed input)
+-- ---------------------------------------------------------------------------
+
+-- fusionComp.addSpeedRamp(target_tool, ramp_type, start_frame, end_frame,
+--   slow_factor?, comp_name?)
+--
+-- Variable retime via TimeSpeed-node. Brukes for slow-mo dans/kyss-momenter
+-- og dramatiske bullet-time-effekter. Per research er retime kun delvis
+-- scriptable på timeline-nivå — Fusion TimeSpeed gir oss full kontroll.
+--
+-- ramp_type:
+--   "in"        — normal → slow (entering slow-mo)
+--   "out"       — slow → normal (exiting slow-mo)
+--   "in_out"    — normal → slow → normal (klassisk slow-mo moment)
+--   "bullet_time" — extreme slow i midten med rask ramp-in/out
+--
+-- slow_factor er Speed-verdi ved peak (default 0.25 = 4x sakte). 1.0 = normal,
+-- 0.5 = halv hastighet, 2.0 = dobbel hastighet (kan brukes for speed-up).
+local function fusionCompAddSpeedRamp(args)
+  local comp = getFusionComp(args)
+  local targetName = extractString(args, "target_tool")
+  if not targetName or targetName == "" then error("target_tool mangler") end
+  local target = comp:FindTool(targetName)
+  if not target then error("Fant ikke target: " .. targetName) end
+
+  local rampType = extractString(args, "ramp_type") or "in_out"
+  if rampType ~= "in" and rampType ~= "out" and rampType ~= "in_out" and rampType ~= "bullet_time" then
+    error("ramp_type må være in/out/in_out/bullet_time")
+  end
+  local startFrame = tonumber(args:match('"start_frame"%s*:%s*(-?%d+%.?%d*)'))
+  local endFrame = tonumber(args:match('"end_frame"%s*:%s*(-?%d+%.?%d*)'))
+  if not startFrame or not endFrame then
+    error("start_frame og end_frame må være tall")
+  end
+  if endFrame <= startFrame then error("end_frame må være > start_frame") end
+  local slowFactor = tonumber(args:match('"slow_factor"%s*:%s*(-?%d+%.?%d*)')) or 0.25
+  if slowFactor <= 0 then error("slow_factor må være > 0") end
+
+  local ts = comp:AddTool("TimeSpeed", -1, -1)
+  if not ts then error("AddTool('TimeSpeed') feilet") end
+
+  -- Koble Speed til BezierSpline
+  local speedInput = nil
+  if ts.FindMainInput then speedInput = ts:FindMainInput("Speed") end
+  if not speedInput then speedInput = ts["Speed"] end
+  if speedInput and speedInput.ConnectTo then
+    local spline = comp:AddTool("BezierSpline", -32768, -32768)
+    if spline then speedInput:ConnectTo(spline) end
+  end
+
+  local origTime = comp.CurrentTime or 0
+
+  if rampType == "in" then
+    -- normal → slow
+    comp:SetCurrentTime(startFrame); ts:SetInput("Speed", 1.0)
+    comp:SetCurrentTime(endFrame); ts:SetInput("Speed", slowFactor)
+  elseif rampType == "out" then
+    -- slow → normal
+    comp:SetCurrentTime(startFrame); ts:SetInput("Speed", slowFactor)
+    comp:SetCurrentTime(endFrame); ts:SetInput("Speed", 1.0)
+  elseif rampType == "in_out" then
+    -- normal → slow → normal (klassisk slow-mo)
+    local midFrame = (startFrame + endFrame) / 2
+    comp:SetCurrentTime(startFrame); ts:SetInput("Speed", 1.0)
+    comp:SetCurrentTime(midFrame); ts:SetInput("Speed", slowFactor)
+    comp:SetCurrentTime(endFrame); ts:SetInput("Speed", 1.0)
+  elseif rampType == "bullet_time" then
+    -- Ekstreme: rask ramp inn til veldig sakte, hold, rask ramp ut
+    local range = endFrame - startFrame
+    local rampIn = startFrame + range * 0.15
+    local rampOut = startFrame + range * 0.85
+    local extremeSlow = slowFactor / 3  -- 3x slower enn vanlig slow_factor
+    comp:SetCurrentTime(startFrame); ts:SetInput("Speed", 1.0)
+    comp:SetCurrentTime(rampIn); ts:SetInput("Speed", extremeSlow)
+    comp:SetCurrentTime(rampOut); ts:SetInput("Speed", extremeSlow)
+    comp:SetCurrentTime(endFrame); ts:SetInput("Speed", 1.0)
+  end
+
+  comp:SetCurrentTime(origTime)
+
+  -- Koble target.Output → ts.Input
+  local connected = false
+  if target.FindMainOutput and ts.FindMainInput then
+    local targetOutput = target:FindMainOutput("Output")
+    local tsInput = ts:FindMainInput("Input")
+    if targetOutput and tsInput and tsInput.ConnectTo then
+      tsInput:ConnectTo(targetOutput)
+      connected = true
+    end
+  end
+
+  local name = (ts:GetAttrs() or {}).TOOLS_Name or ""
+  return string.format(
+    '{"added":true,"name":%s,"target":%s,"ramp_type":%s,"start_frame":%s,' ..
+    '"end_frame":%s,"slow_factor":%s,"connected_to_target":%s}',
+    jsonEscape(name), jsonEscape(targetName), jsonEscape(rampType),
+    tostring(startFrame), tostring(endFrame), tostring(slowFactor),
+    tostring(connected)
+  )
+end
+
+HANDLERS["fusionComp.addSpeedRamp"] = fusionCompAddSpeedRamp
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 
