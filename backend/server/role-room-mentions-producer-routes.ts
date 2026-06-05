@@ -25,6 +25,7 @@ import {
   META_GRAPH_API_VERSION,
   type InstagramConnectionRow,
 } from "./role-room-instagram-oauth.js";
+import { callClaudeForJson } from "./claude-json-helper.js";
 
 const GRAPH = `https://graph.facebook.com/${META_GRAPH_API_VERSION}`;
 const MENTION_FIELDS = "id,from,message,story,created_time,permalink_url";
@@ -193,6 +194,42 @@ export function setupRoleRoomMentionsProducerRoutes(deps: RoleRoomMentionsProduc
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
+  // ── POST /api/role-room/mentions/producer/draft-reply ───────────────────
+  // AI drafts a warm, on-brand reply to a mention so the producer can respond
+  // fast (and turn positive mentions into leads). Stateless — producer reviews
+  // before posting.
+  app.post("/api/role-room/mentions/producer/draft-reply", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as { connectionId?: string; from?: string; message?: string };
+    const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
+    const message = typeof body.message === "string" ? body.message : "";
+    if (!connectionId || !message.trim()) {
+      res.status(400).json({ success: false, error: "connectionId and message are required" });
+      return;
+    }
+    try {
+      const connection = await getConnection(pool, connectionId, session.userId);
+      if (!connection) {
+        res.status(404).json({ success: false, error: "connection_not_found" });
+        return;
+      }
+      const bedrift = connection.facebookPageName || connection.igUsername || "bedriften";
+      const out = await callClaudeForJson<{ reply: string }>({
+        cachedSystem:
+          "Du svarer på vegne av en lokal bedrift på en offentlig omtale/tagg på Facebook/Instagram. " +
+          "Skriv et kort, varmt og profesjonelt norsk svar (1-2 setninger). Takk personen, vær imøtekommende, " +
+          "og inviter til neste steg hvis det passer (uten å være selgende). Ingen hashtags. " +
+          "Svar KUN med JSON: {\"reply\":\"<svaret>\"}.",
+        userMessage: `Bedrift: ${bedrift}\nFra: ${body.from || "(ukjent)"}\nOmtale: "${message}"\n\nSkriv et passende svar.`,
+        maxTokens: 400,
+      });
+      res.json({ success: true, reply: String(out.data?.reply || "") });
+    } catch (error) {
+      res.status(200).json({ success: false, error: `AI-svar feilet: ${error instanceof Error ? error.message : String(error)}` });
     }
   });
 }

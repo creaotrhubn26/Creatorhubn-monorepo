@@ -146,6 +146,19 @@ export default function LeadsPanel() {
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] }),
   });
+  type AdCopy = { primaryText: string; headline: string; description: string; cta: string };
+  const retargetingCopy = useMutation<
+    { success: boolean; variants?: AdCopy[]; audienceNote?: string; error?: string }, Error, Segment
+  >({
+    mutationFn: async (seg: Segment) =>
+      apiRequest('/api/role-room/leads/producer/retargeting-copy', {
+        method: 'POST',
+        body: JSON.stringify({
+          connectionId, segment: seg,
+          leads: leads.filter((l) => l.segment === seg).map((l) => ({ fields: l.fields })),
+        }),
+      }),
+  });
 
   // ── ROI: conversion stage + value per lead, spend per form, funnel summary ──
   const { data: summary } = useQuery<RoiSummary>({
@@ -380,12 +393,43 @@ export default function LeadsPanel() {
 
                   {/* Retargeting campaign suggestion for the active segment */}
                   {activeSegment ? (
-                    <Alert
-                      severity="info"
-                      sx={{ bgcolor: `${activeSegment.color}14`, color: '#e2e8f0', border: `1px solid ${activeSegment.color}40`, '& .MuiAlert-icon': { color: activeSegment.color } }}
-                    >
-                      <strong>{activeSegment.label}</strong> — {activeSegment.hint}. Forslag til kampanje: «{activeSegment.campaign}». Eksporter gruppen og kjør en retargeting-kampanje mot den.
-                    </Alert>
+                    <Box sx={{ bgcolor: `${activeSegment.color}14`, color: '#e2e8f0', border: `1px solid ${activeSegment.color}40`, borderRadius: 1.5, p: 1.4 }}>
+                      <Typography sx={{ fontSize: '0.86rem' }}>
+                        <strong>{activeSegment.label}</strong> — {activeSegment.hint}. Forslag til kampanje: «{activeSegment.campaign}». Eksporter gruppen og kjør en retargeting-kampanje mot den.
+                      </Typography>
+                      <Button
+                        size="small" variant="contained" startIcon={<AiIcon sx={{ fontSize: 15 }} />}
+                        onClick={() => retargetingCopy.mutate(activeSegment.key)}
+                        disabled={retargetingCopy.isPending}
+                        sx={{ mt: 1, bgcolor: 'rgba(168,85,247,0.9)', '&:hover': { bgcolor: 'rgb(147,51,234)' } }}
+                      >
+                        {retargetingCopy.isPending ? 'Skriver…' : 'AI: skriv annonsetekst'}
+                      </Button>
+                      {retargetingCopy.data && retargetingCopy.data.success === false ? (
+                        <Alert severity="warning" sx={{ mt: 1, py: 0 }}>{retargetingCopy.data.error}</Alert>
+                      ) : null}
+                      {retargetingCopy.data?.success && retargetingCopy.isIdle === false ? (
+                        <Stack spacing={1} sx={{ mt: 1.2 }}>
+                          {(retargetingCopy.data.variants || []).map((v, i) => (
+                            <Box key={i} sx={{ bgcolor: 'rgba(2,6,23,0.4)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 1.5, p: 1.2 }}>
+                              <Typography sx={{ fontWeight: 700, color: '#f8fafc', fontSize: '0.9rem' }}>{v.headline}</Typography>
+                              <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', mt: 0.4, whiteSpace: 'pre-wrap' }}>{v.primaryText}</Typography>
+                              {v.description ? <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.78rem', mt: 0.4 }}>{v.description}</Typography> : null}
+                              <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.6 }}>
+                                <Chip size="small" label={v.cta} sx={{ height: 20, fontSize: '0.66rem', bgcolor: 'rgba(168,85,247,0.2)', color: '#d8b4fe' }} />
+                                <Button size="small" sx={{ minWidth: 0, fontSize: '0.72rem', textTransform: 'none', color: '#c084fc' }}
+                                  onClick={() => { try { navigator.clipboard?.writeText(`${v.headline}\n\n${v.primaryText}\n\n${v.description}`); } catch { /* ignore */ } }}>
+                                  Kopier
+                                </Button>
+                              </Stack>
+                            </Box>
+                          ))}
+                          {retargetingCopy.data.audienceNote ? (
+                            <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.65)' }}>Målgruppe-tips: {retargetingCopy.data.audienceNote}</Typography>
+                          ) : null}
+                        </Stack>
+                      ) : null}
+                    </Box>
                   ) : null}
 
                   {/* ROI / resultater for kunden */}

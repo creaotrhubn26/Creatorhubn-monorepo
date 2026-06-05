@@ -607,6 +607,59 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
     }
   });
 
+  // ── POST /api/role-room/leads/producer/retargeting-copy ─────────────────
+  // AI writes ready-to-use retargeting ad copy for a segment (varm/lunken/kald),
+  // tailored to what those leads asked about. Stateless.
+  app.post("/api/role-room/leads/producer/retargeting-copy", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as {
+      connectionId?: string; segment?: string;
+      leads?: Array<{ fields?: Record<string, string> }>;
+    };
+    const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
+    const segment = String(body.segment || "").toLowerCase();
+    if (!connectionId || !VALID_SEGMENTS.includes(segment as LeadSegment)) {
+      res.status(400).json({ success: false, error: "connectionId and a valid segment are required" });
+      return;
+    }
+    try {
+      const connection = await getConnection(pool, connectionId, session.userId);
+      if (!connection) {
+        res.status(404).json({ success: false, error: "connection_not_found" });
+        return;
+      }
+      const bedrift = connection.facebookPageName || connection.igUsername || "bedriften";
+      const segmentNote: Record<string, string> = {
+        varm: "varme leads (høy kjøpsintensjon, vil kontaktes nå)",
+        lunken: "lunkne leads (interessert, trenger mer info / vurderer)",
+        kald: "kalde leads (vag interesse, trenger å bygge tillit)",
+        tapt: "tapte leads (svarte ikke / kjøpte ikke – vinn dem tilbake)",
+      };
+      const sample = Array.isArray(body.leads) ? body.leads.slice(0, 30).map((l) => l.fields || {}) : [];
+      const cachedSystem =
+        "Du er en norsk annonsetekstforfatter for Meta (Facebook/Instagram) retargeting-annonser for en lokal bedrift. " +
+        "Skriv konkret, troverdig og handlingsorientert – tilpasset hvor varmt segmentet er. Ingen klisjeer, ingen emoji-spam. " +
+        "Svar KUN med JSON: {\"variants\":[{\"primaryText\":\"<hovedtekst, 2-4 setninger>\",\"headline\":\"<kort overskrift>\",\"description\":\"<én linje>\",\"cta\":\"<BOOK_NOW|LEARN_MORE|SIGN_UP|GET_QUOTE|CONTACT_US>\"}],\"audienceNote\":\"<kort tips om hvem/hvordan å målrette>\"}. Lag 2 varianter.";
+      const userMessage =
+        `Bedrift: ${bedrift}\nSegment: ${segmentNote[segment]}\n` +
+        `Eksempel på hva disse leadsene spurte om (JSON): ${JSON.stringify(sample)}\n\n` +
+        `Skriv 2 retargeting-annonsevarianter mot dette segmentet.`;
+      const out = await callClaudeForJson<{
+        variants: Array<{ primaryText: string; headline: string; description: string; cta: string }>;
+        audienceNote: string;
+      }>({ cachedSystem, userMessage, maxTokens: 1200 });
+      res.json({
+        success: true,
+        segment,
+        variants: Array.isArray(out.data?.variants) ? out.data.variants.slice(0, 3) : [],
+        audienceNote: String(out.data?.audienceNote || ""),
+      });
+    } catch (error) {
+      res.status(200).json({ success: false, error: `AI-annonsetekst feilet: ${error instanceof Error ? error.message : String(error)}` });
+    }
+  });
+
   // ── POST /api/role-room/leads/producer/insights ─────────────────────────
   // AI reads all the leads and returns what people ask about + content ideas
   // the producer can feed into the marketing plan / feed planner. Stateless.

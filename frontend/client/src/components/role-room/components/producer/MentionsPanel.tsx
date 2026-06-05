@@ -7,9 +7,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Box, Stack, Typography, Chip, Button, CircularProgress, Alert, Divider, Link,
+  Box, Stack, Typography, Chip, Button, CircularProgress, Alert, Divider, Link, TextField,
 } from '@mui/material';
-import { CampaignOutlined as MentionsIcon, OpenInNew as OpenIcon } from '@mui/icons-material';
+import { CampaignOutlined as MentionsIcon, OpenInNew as OpenIcon, AutoAwesome as AiIcon } from '@mui/icons-material';
 
 type Status = 'svart' | 'lead' | 'skjult';
 const STATUSES: { key: Status; label: string; color: string }[] = [
@@ -69,6 +69,24 @@ export default function MentionsPanel() {
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mentions-list', connectionId] }),
   });
+
+  // AI-drafted replies, keyed by mention id (producer reviews before posting).
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [drafting, setDrafting] = useState<string | null>(null);
+  const draftReply = async (m: Mention) => {
+    setDrafting(m.id);
+    try {
+      const r = await apiRequest('/api/role-room/mentions/producer/draft-reply', {
+        method: 'POST',
+        body: JSON.stringify({ connectionId, from: m.from, message: m.message }),
+      }) as { success: boolean; reply?: string; error?: string };
+      setDrafts((d) => ({ ...d, [m.id]: r.success ? (r.reply || '') : `⚠ ${r.error || 'AI-svar feilet'}` }));
+    } catch (e) {
+      setDrafts((d) => ({ ...d, [m.id]: `⚠ ${e instanceof Error ? e.message : String(e)}` }));
+    } finally {
+      setDrafting(null);
+    }
+  };
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { alle: mentions.length };
@@ -167,7 +185,35 @@ export default function MentionsPanel() {
                           sx={{ height: 22, fontSize: '0.72rem', fontWeight: 600, bgcolor: m.status === s.key ? `${s.color}26` : 'transparent', color: s.color, borderColor: `${s.color}66` }}
                         />
                       ))}
+                      <Chip
+                        size="small" clickable icon={<AiIcon sx={{ fontSize: 14 }} />}
+                        label={drafting === m.id ? 'Skriver…' : 'AI-svar'}
+                        onClick={() => draftReply(m)}
+                        sx={{ height: 22, fontSize: '0.72rem', fontWeight: 600, bgcolor: 'rgba(168,85,247,0.16)', color: '#d8b4fe', '& .MuiChip-icon': { color: '#d8b4fe' } }}
+                      />
                     </Stack>
+                    {drafts[m.id] !== undefined ? (
+                      <Stack spacing={0.6} sx={{ mt: 1 }}>
+                        <TextField
+                          size="small" multiline fullWidth minRows={2}
+                          value={drafts[m.id]}
+                          onChange={(e) => setDrafts((d) => ({ ...d, [m.id]: e.target.value }))}
+                          label="AI-forslag (rediger før du svarer)"
+                        />
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Button size="small" sx={{ textTransform: 'none', fontSize: '0.74rem' }}
+                            onClick={() => { try { navigator.clipboard?.writeText(drafts[m.id]); } catch { /* ignore */ } }}>
+                            Kopier
+                          </Button>
+                          {m.permalinkUrl ? (
+                            <Button size="small" variant="outlined" sx={{ textTransform: 'none', fontSize: '0.74rem' }}
+                              href={m.permalinkUrl} target="_blank" rel="noopener">
+                              Åpne for å svare
+                            </Button>
+                          ) : null}
+                        </Stack>
+                      </Stack>
+                    ) : null}
                   </Box>
                 );
               })}
