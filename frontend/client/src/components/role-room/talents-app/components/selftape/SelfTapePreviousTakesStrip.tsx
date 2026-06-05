@@ -16,9 +16,12 @@ interface Props {
   takes: SelftapeTake[];
   currentTakeId: string | null;
   onSelect: () => Promise<void> | void;
+  onMoreClick: (e: React.MouseEvent<HTMLElement>, take: SelftapeTake) => void;
 }
 
-export default function SelfTapePreviousTakesStrip({ takes, currentTakeId, onSelect }: Props) {
+export default function SelfTapePreviousTakesStrip({
+  takes, currentTakeId, onSelect, onMoreClick,
+}: Props) {
   if (takes.length === 0) return null;
   return (
     <Box>
@@ -100,7 +103,10 @@ export default function SelfTapePreviousTakesStrip({ takes, currentTakeId, onSel
                     bgcolor: 'rgba(0,0,0,0.32)',
                     '&:hover': { bgcolor: 'rgba(0,0,0,0.48)' },
                   }}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoreClick(e, t);
+                  }}
                 >
                   <MoreVertOutlinedIcon fontSize="small" />
                 </IconButton>

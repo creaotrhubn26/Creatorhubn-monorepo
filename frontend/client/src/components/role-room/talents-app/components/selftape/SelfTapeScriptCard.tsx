@@ -15,6 +15,7 @@ interface Props {
   sceneLabel: string | null;
   sidesPages: number | null;
   sidesContent: string | null;
+  onViewFullScript: () => void;
 }
 
 interface ScriptLine {
@@ -36,7 +37,7 @@ function parseScript(md: string | null): ScriptLine[] {
   return lines;
 }
 
-export default function SelfTapeScriptCard({ sceneLabel, sidesPages, sidesContent }: Props) {
+export default function SelfTapeScriptCard({ sceneLabel, sidesPages, sidesContent, onViewFullScript }: Props) {
   const lines = useMemo(() => parseScript(sidesContent), [sidesContent]);
   // Fase B: highlight 3. linje (matcher mockup #15 — "You said a lot of things...")
   const highlightIndex = 2;
@@ -58,7 +59,14 @@ export default function SelfTapeScriptCard({ sceneLabel, sidesPages, sidesConten
           direction="row"
           alignItems="center"
           spacing={0.4}
-          sx={{ color: palette.accentBright, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}
+          onClick={onViewFullScript}
+          sx={{
+            color: palette.accentBright,
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            '&:hover': { textDecoration: 'underline' },
+          }}
         >
           Se hele manus
           <ArrowForwardOutlinedIcon sx={{ fontSize: 14 }} />

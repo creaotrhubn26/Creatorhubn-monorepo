@@ -5,19 +5,27 @@
  * Fase B: render kun lagret feedback (status='ready').
  * Fase D: knapp for å re-trigge Claude Opus 4.7.
  */
-import { Box, Stack, Typography } from '@mui/material';
+import { Box, CircularProgress, Stack, Typography } from '@mui/material';
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import SpeedOutlinedIcon from '@mui/icons-material/SpeedOutlined';
 import MicNoneOutlinedIcon from '@mui/icons-material/MicNoneOutlined';
 import WbIncandescentOutlinedIcon from '@mui/icons-material/WbIncandescentOutlined';
 import StarOutlineIcon from '@mui/icons-material/StarOutline';
+import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
+import { useState } from 'react';
 
 import { palette, radius } from '../../theme';
-import type { SelftapeAIFeedback } from '../../../services/roleRoomSelfTapesService';
+import {
+  regenerateFeedback,
+  type SelftapeAIFeedback,
+  type SelftapeTake,
+} from '../../../services/roleRoomSelfTapesService';
 
 interface Props {
   feedback: SelftapeAIFeedback | null;
+  currentTake: SelftapeTake | null;
+  onRegenerated: () => Promise<void> | void;
 }
 
 const POSITIVE_GRADES = new Set(['great', 'good', 'excellent']);
@@ -69,7 +77,26 @@ const CATEGORIES: CategoryDef[] = [
   { key: 'performance', label: 'Spilling', Icon: StarOutlineIcon },
 ];
 
-export default function SelfTapeAIFeedbackCard({ feedback }: Props) {
+export default function SelfTapeAIFeedbackCard({ feedback, currentTake, onRegenerated }: Props) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const handleRegenerate = async () => {
+    if (!currentTake) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await regenerateFeedback(currentTake.id);
+      await onRegenerated();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Regenerate feilet');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const canRegenerate = !!currentTake && !busy && feedback?.status !== 'generating';
+
   if (!feedback || feedback.status !== 'ready') {
     return (
       <Box
@@ -80,17 +107,50 @@ export default function SelfTapeAIFeedbackCard({ feedback }: Props) {
           p: 2.4,
         }}
       >
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-          <AutoAwesomeOutlinedIcon sx={{ color: palette.accentBright, fontSize: 'small' }} />
-          <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.95rem' }}>
-            AI-feedback
-          </Typography>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <AutoAwesomeOutlinedIcon sx={{ color: palette.accentBright, fontSize: 'small' }} />
+            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.95rem' }}>
+              AI-feedback
+            </Typography>
+          </Stack>
+          {currentTake && feedback?.status !== 'generating' ? (
+            <Box
+              component="button"
+              onClick={handleRegenerate}
+              disabled={!canRegenerate}
+              sx={{
+                background: palette.accentGradient,
+                color: '#fff',
+                border: 'none',
+                cursor: canRegenerate ? 'pointer' : 'not-allowed',
+                px: 1.2,
+                py: 0.4,
+                borderRadius: radius.sm,
+                fontWeight: 700,
+                fontSize: '0.74rem',
+                fontFamily: 'inherit',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 0.4,
+                '&:hover': canRegenerate ? { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' } : undefined,
+              }}
+            >
+              {busy
+                ? <CircularProgress size={10} sx={{ color: '#fff' }} />
+                : <AutoAwesomeOutlinedIcon sx={{ fontSize: 12 }} />}
+              Kjør analyse
+            </Box>
+          ) : null}
         </Stack>
         <Typography sx={{ color: palette.textMuted, fontSize: '0.84rem' }}>
           {feedback?.status === 'generating'
             ? 'AI-en analyserer takeen din nå …'
-            : 'Spill inn en take for å motta detaljert tilbakemelding fra AI-en.'}
+            : currentTake
+              ? 'Trykk «Kjør analyse» for å få detaljert tilbakemelding fra Claude Opus 4.7.'
+              : 'Spill inn en take for å motta detaljert tilbakemelding fra AI-en.'}
         </Typography>
+        {err ? <Typography sx={{ color: '#f87171', fontSize: '0.78rem', mt: 1 }}>{err}</Typography> : null}
       </Box>
     );
   }
@@ -111,10 +171,36 @@ export default function SelfTapeAIFeedbackCard({ feedback }: Props) {
             AI-feedback
           </Typography>
         </Stack>
-        <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem' }}>
-          {feedback.model_version ?? 'Claude Opus 4.7'}
-        </Typography>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem' }}>
+            {feedback.model_version ?? 'Claude Opus 4.7'}
+          </Typography>
+          {canRegenerate ? (
+            <Box
+              component="button"
+              onClick={handleRegenerate}
+              disabled={busy}
+              title="Kjør analysen på nytt"
+              sx={{
+                background: 'transparent',
+                color: palette.textMuted,
+                border: 'none',
+                cursor: 'pointer',
+                p: 0.4,
+                lineHeight: 0,
+                '&:hover': { color: palette.accentBright },
+              }}
+            >
+              {busy
+                ? <CircularProgress size={12} sx={{ color: palette.accentBright }} />
+                : <RefreshOutlinedIcon sx={{ fontSize: 14 }} />}
+            </Box>
+          ) : null}
+        </Stack>
       </Stack>
+      {err ? (
+        <Typography sx={{ color: '#f87171', fontSize: '0.78rem', mb: 1 }}>{err}</Typography>
+      ) : null}
 
       <Stack spacing={1.6}>
         {CATEGORIES.map(({ key, label, Icon }) => {
