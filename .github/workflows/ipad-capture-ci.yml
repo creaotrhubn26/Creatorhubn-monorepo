@@ -20,7 +20,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Select latest Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+        # Prosjektet bruker SWIFT_VERSION 6.0 (krever Xcode 16+). Bruker
+        # /Applications/Xcode.app som peker til runner-ens nyeste Xcode.
+        run: sudo xcode-select -s /Applications/Xcode.app
 
       - name: Install tooling
         run: |
@@ -37,7 +39,7 @@ jobs:
           xcodebuild \
             -project CaptureApp.xcodeproj \
             -scheme CaptureApp \
-            -destination 'platform=iOS Simulator,name=iPad Pro (12.9-inch) (6th generation),OS=17.5' \
+            -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4),OS=latest' \
             -configuration Debug \
             clean build test \
             CODE_SIGN_IDENTITY="" \
