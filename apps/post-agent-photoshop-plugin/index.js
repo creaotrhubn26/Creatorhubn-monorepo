@@ -2002,6 +2002,36 @@ const COMMANDS = {
     });
   },
 
+  "resolve.fusionCompAddWhipPan": async ({
+    target_tool,
+    direction,
+    start_frame,
+    end_frame,
+    peak_strength,
+    comp_name,
+  } = {}) => {
+    if (typeof target_tool !== "string" || target_tool.length === 0) {
+      throw new Error("target_tool må være en ikke-tom string");
+    }
+    if (typeof start_frame !== "number" || typeof end_frame !== "number") {
+      throw new Error("start_frame og end_frame må være tall");
+    }
+    if (end_frame <= start_frame) {
+      throw new Error("end_frame må være > start_frame");
+    }
+    const dir = direction !== undefined ? String(direction) : "horizontal";
+    const args = { target_tool, direction: dir, start_frame, end_frame };
+    if (typeof peak_strength === "number") {
+      if (peak_strength < 0) throw new Error("peak_strength må være >= 0");
+      args.peak_strength = peak_strength;
+    }
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.addWhipPan",
+      args,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve

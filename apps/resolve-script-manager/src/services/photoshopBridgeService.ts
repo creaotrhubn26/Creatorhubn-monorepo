@@ -1343,6 +1343,30 @@ export const photoshop = {
       file_set: boolean;
     }>("resolve.fusionCompAddSaver", params),
 
+  resolveFusionCompAddWhipPan: (params: {
+    target_tool: string;
+    direction:
+      | "horizontal"
+      | "vertical"
+      | "diagonal_up"
+      | "diagonal_down"
+      | string;
+    start_frame: number;
+    end_frame: number;
+    peak_strength?: number;
+    comp_name?: string;
+  }) =>
+    send<{
+      added: boolean;
+      name: string;
+      target: string;
+      angle: number;
+      start_frame: number;
+      end_frame: number;
+      peak_strength: number;
+      connected_to_target: boolean;
+    }>("resolve.fusionCompAddWhipPan", params),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

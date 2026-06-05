@@ -1767,6 +1767,33 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_fusion_comp_add_whip_pan",
+    description:
+      "Klassisk whip-pan-transisjon: DirectionalBlur som ramper opp og ned i bell-curve over angitt frame-range. Auto-skaper DirectionalBlur etter target_tool, animerer Length (0 → peak → 0), setter Angle basert på direction, og kobler target.Output → blur.Input. Brukes for energy-cuts (mest populære transition i wedding-edits per research).",
+    input_schema: {
+      type: "object",
+      properties: {
+        target_tool: {
+          type: "string",
+          description: "Tool å applisere whip pan på (typisk MediaIn1).",
+        },
+        direction: {
+          type: "string",
+          description:
+            "'horizontal' (0°), 'vertical' (90°), 'diagonal_up' (45°), 'diagonal_down' (-45°), eller eget tall (grader).",
+        },
+        start_frame: { type: "number" },
+        end_frame: { type: "number" },
+        peak_strength: {
+          type: "number",
+          description: "Maks blur-styrke ved middle frame. Default 0.1 (10% av frame).",
+        },
+        comp_name: { type: "string" },
+      },
+      required: ["target_tool", "start_frame", "end_frame"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -3347,6 +3374,40 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         params.comp_name = input.comp_name;
       }
       return photoshop.resolveFusionCompAddSaver(params);
+    }
+    case "photoshop_resolve_fusion_comp_add_whip_pan": {
+      if (typeof input.target_tool !== "string" || input.target_tool.length === 0) {
+        throw new Error("target_tool må være en ikke-tom string");
+      }
+      if (typeof input.start_frame !== "number" || typeof input.end_frame !== "number") {
+        throw new Error("start_frame og end_frame må være tall");
+      }
+      if (input.end_frame <= input.start_frame) {
+        throw new Error("end_frame må være > start_frame");
+      }
+      const direction =
+        input.direction !== undefined ? String(input.direction) : "horizontal";
+      const params: {
+        target_tool: string;
+        direction: string;
+        start_frame: number;
+        end_frame: number;
+        peak_strength?: number;
+        comp_name?: string;
+      } = {
+        target_tool: input.target_tool,
+        direction,
+        start_frame: input.start_frame,
+        end_frame: input.end_frame,
+      };
+      if (typeof input.peak_strength === "number") {
+        if (input.peak_strength < 0) throw new Error("peak_strength må være >= 0");
+        params.peak_strength = input.peak_strength;
+      }
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompAddWhipPan(params);
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
