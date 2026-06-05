@@ -1804,7 +1804,18 @@ configureAIUsageTracker(pool);
 registerAIUsageRoutes(app, pool, requireAdminSession);
 registerDesignTokensRoutes(app, pool, requireAdminSession);
 registerStripePriceDriftRoutes(app, pool, requireAdminSession);
-registerB2CompanyArchiveRoutes({ app, requireAdminSession });
+registerB2CompanyArchiveRoutes({
+  app,
+  requireAdminSession,
+  routePrefix: "/api/admin/b2-archive",
+  envPrefix: "B2_",
+});
+registerB2CompanyArchiveRoutes({
+  app,
+  requireAdminSession,
+  routePrefix: "/api/role-room/admin/b2-archive",
+  envPrefix: "B2_ROLE_ROOM_",
+});
 
 app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessions));
 app.use("/api/desktop", createDesktopAuthRouter(pool));

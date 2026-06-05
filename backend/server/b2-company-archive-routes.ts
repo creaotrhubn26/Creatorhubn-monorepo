@@ -1,19 +1,24 @@
 /**
  * b2-company-archive-routes.ts
  *
- * Admin-gated tilgang til Creatorhub AS sitt eierskap-eide B2-bucket
- * (creatorhubn-archive-prod). Brukes for selskap-eide arkiv-data
- * (DB-backup, intern-medier) — separat fra per-fotograf B2-koblingen
- * i storage-providers-routes.ts der hver fotograf har sin egen konto.
+ * Admin-gated tilgang til Backblaze B2-buckets. Modulen er parameterisert
+ * så vi kan registrere flere bucketer med forskjellige route- og
+ * env-var-prefiks. Per 2026-06-05 har vi to:
  *
- * Credentials kommer fra Render env-vars:
- *   B2_APPLICATION_KEY_ID   — backend-key scoped til bucket
- *   B2_APPLICATION_KEY      — secret (shown once av B2)
- *   B2_BUCKET_ID            — kun ID, brukes ikke for S3-API
- *   B2_BUCKET_NAME          — `creatorhubn-archive-prod`
+ *   1. Creatorhub AS selskap-bucket:
+ *      - Route prefix: /api/admin/b2-archive
+ *      - Env prefix:   B2_              (B2_APPLICATION_KEY_ID, ...)
+ *      - Bucket:       creatorhubn-archive-prod
  *
- * B2 har S3-kompatibel API som AWS SDK forstår direkte. Endpoint-mønster:
- *   https://s3.<region>.backblazeb2.com
+ *   2. The Role Room produkt-bucket:
+ *      - Route prefix: /api/role-room/admin/b2-archive
+ *      - Env prefix:   B2_ROLE_ROOM_
+ *      - Bucket:       the-role-room-prod
+ *
+ * Begge gates av samme requireAdminSession-middleware (admin-rolle).
+ * Frontend gater i tillegg på e-post (kun produkteier ser fanene).
+ *
+ * B2 har S3-kompatibel API. Endpoint-mønster: https://s3.<region>.backblazeb2.com
  * Default region for nye kontoer er us-west-001.
  */
 
@@ -31,20 +36,20 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 const B2_REGION = process.env.B2_REGION || "us-west-001";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
 
-// Usage-stats cache: B2 har ingen direkte "total bytes" API; vi må
-// iterere ListObjectsV2 og summere. Cache 5 min for å unngå å hamre
-// API'en hver gang admin laster siden.
 interface UsageCache {
   bytes: number;
   files: number;
   computedAt: number;
 }
-let usageCache: UsageCache | null = null;
 const USAGE_CACHE_TTL_MS = 5 * 60 * 1000;
 
 interface B2RoutesDeps {
   app: express.Application;
   requireAdminSession: (req: any, res: any) => any;
+  /** URL-prefix uten avsluttende slash, f.eks. "/api/admin/b2-archive" */
+  routePrefix: string;
+  /** env-var-prefix inkludert underscore, f.eks. "B2_" eller "B2_ROLE_ROOM_" */
+  envPrefix: string;
 }
 
 interface B2Config {
@@ -52,10 +57,10 @@ interface B2Config {
   client: S3Client;
 }
 
-function getB2Config(): B2Config | null {
-  const keyId = process.env.B2_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_APPLICATION_KEY;
-  const bucketName = process.env.B2_BUCKET_NAME;
+function getB2Config(envPrefix: string): B2Config | null {
+  const keyId = process.env[`${envPrefix}APPLICATION_KEY_ID`];
+  const appKey = process.env[`${envPrefix}APPLICATION_KEY`];
+  const bucketName = process.env[`${envPrefix}BUCKET_NAME`];
 
   if (!keyId || !appKey || !bucketName) {
     return null;
@@ -78,8 +83,6 @@ async function computeBucketUsage(config: B2Config): Promise<{ bytes: number; fi
   let totalBytes = 0;
   let totalFiles = 0;
   let continuationToken: string | undefined;
-
-  // Cap iterasjoner som safety mot uendelig loop — 1000 sider × 1000 keys = 1M files
   for (let i = 0; i < 1000; i++) {
     const result = await config.client.send(
       new ListObjectsV2Command({
@@ -95,11 +98,9 @@ async function computeBucketUsage(config: B2Config): Promise<{ bytes: number; fi
     if (!result.IsTruncated) break;
     continuationToken = result.NextContinuationToken;
   }
-
   return { bytes: totalBytes, files: totalFiles };
 }
 
-// Validér object-key — B2 tillater nesten alt, men vi avviser ../ for path-traversal-paranoia
 function isValidKey(key: string): boolean {
   if (!key || typeof key !== "string") return false;
   if (key.length > 1024) return false;
@@ -109,24 +110,25 @@ function isValidKey(key: string): boolean {
 }
 
 export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
-  const { app, requireAdminSession } = deps;
+  const { app, requireAdminSession, routePrefix, envPrefix } = deps;
 
-  app.get("/api/admin/b2-archive/health", async (req, res) => {
+  // Separat usage-cache per bucket (envPrefix er nøkkel)
+  let usageCache: UsageCache | null = null;
+
+  app.get(`${routePrefix}/health`, async (req, res) => {
     if (!requireAdminSession(req, res)) return;
 
-    const config = getB2Config();
+    const config = getB2Config(envPrefix);
     if (!config) {
       return res.json({
         connected: false,
         configured: false,
-        error: "B2 env-vars mangler (B2_APPLICATION_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_NAME)",
+        error: `B2 env-vars mangler (${envPrefix}APPLICATION_KEY_ID, ${envPrefix}APPLICATION_KEY, ${envPrefix}BUCKET_NAME)`,
       });
     }
 
     try {
-      await config.client.send(
-        new HeadBucketCommand({ Bucket: config.bucketName }),
-      );
+      await config.client.send(new HeadBucketCommand({ Bucket: config.bucketName }));
       return res.json({
         connected: true,
         configured: true,
@@ -145,9 +147,9 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
     }
   });
 
-  app.get("/api/admin/b2-archive/usage", async (req, res) => {
+  app.get(`${routePrefix}/usage`, async (req, res) => {
     if (!requireAdminSession(req, res)) return;
-    const config = getB2Config();
+    const config = getB2Config(envPrefix);
     if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
 
     const force = req.query.force === "1";
@@ -171,25 +173,18 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
         cached: false,
       });
     } catch (err: any) {
-      return res.status(500).json({
-        error: err?.message || "Klarte ikke å beregne bucket-bruk",
-      });
+      return res.status(500).json({ error: err?.message || "Klarte ikke å beregne bucket-bruk" });
     }
   });
 
-  app.get("/api/admin/b2-archive/files", async (req, res) => {
+  app.get(`${routePrefix}/files`, async (req, res) => {
     if (!requireAdminSession(req, res)) return;
-
-    const config = getB2Config();
-    if (!config) {
-      return res.status(503).json({ error: "B2 ikke konfigurert" });
-    }
+    const config = getB2Config(envPrefix);
+    if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
 
     const prefix = typeof req.query.prefix === "string" ? req.query.prefix : undefined;
     const continuationToken =
-      typeof req.query.continuationToken === "string"
-        ? req.query.continuationToken
-        : undefined;
+      typeof req.query.continuationToken === "string" ? req.query.continuationToken : undefined;
     const maxKeys = Math.min(Number(req.query.maxKeys) || 100, 1000);
 
     try {
@@ -201,7 +196,6 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
           MaxKeys: maxKeys,
         }),
       );
-
       return res.json({
         files: (result.Contents || []).map((obj: { Key?: string; Size?: number; LastModified?: Date; ETag?: string }) => ({
           key: obj.Key,
@@ -214,15 +208,13 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
         keyCount: result.KeyCount,
       });
     } catch (err: any) {
-      return res.status(500).json({
-        error: err?.message || "Klarte ikke å liste B2-filer",
-      });
+      return res.status(500).json({ error: err?.message || "Klarte ikke å liste B2-filer" });
     }
   });
 
-  app.post("/api/admin/b2-archive/upload-url", express.json(), async (req, res) => {
+  app.post(`${routePrefix}/upload-url`, express.json(), async (req, res) => {
     if (!requireAdminSession(req, res)) return;
-    const config = getB2Config();
+    const config = getB2Config(envPrefix);
     if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
 
     const { key, contentType, expiresIn } = req.body || {};
@@ -238,19 +230,16 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
         ContentType: typeof contentType === "string" ? contentType : undefined,
       });
       const url = await getSignedUrl(config.client, command, { expiresIn: ttl });
-
-      // Invalider usage-cache så neste GET ser oppdatert tall etter upload
       usageCache = null;
-
       return res.json({ uploadUrl: url, key, expiresIn: ttl });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || "Klarte ikke å lage upload-URL" });
     }
   });
 
-  app.get("/api/admin/b2-archive/download-url", async (req, res) => {
+  app.get(`${routePrefix}/download-url`, async (req, res) => {
     if (!requireAdminSession(req, res)) return;
-    const config = getB2Config();
+    const config = getB2Config(envPrefix);
     if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
 
     const key = typeof req.query.key === "string" ? req.query.key : "";
@@ -260,10 +249,7 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
     const ttl = Math.min(Math.max(Number(req.query.expiresIn) || 600, 60), 3600);
 
     try {
-      const command = new GetObjectCommand({
-        Bucket: config.bucketName,
-        Key: key,
-      });
+      const command = new GetObjectCommand({ Bucket: config.bucketName, Key: key });
       const url = await getSignedUrl(config.client, command, { expiresIn: ttl });
       return res.json({ downloadUrl: url, key, expiresIn: ttl });
     } catch (err: any) {
@@ -271,9 +257,9 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
     }
   });
 
-  app.delete("/api/admin/b2-archive/files/:key(*)", async (req, res) => {
+  app.delete(`${routePrefix}/files/:key(*)`, async (req, res) => {
     if (!requireAdminSession(req, res)) return;
-    const config = getB2Config();
+    const config = getB2Config(envPrefix);
     if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
 
     const key = req.params.key;
@@ -282,12 +268,7 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
     }
 
     try {
-      await config.client.send(
-        new DeleteObjectCommand({
-          Bucket: config.bucketName,
-          Key: key,
-        }),
-      );
+      await config.client.send(new DeleteObjectCommand({ Bucket: config.bucketName, Key: key }));
       usageCache = null;
       return res.json({ deleted: true, key });
     } catch (err: any) {
