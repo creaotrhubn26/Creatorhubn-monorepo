@@ -69,6 +69,10 @@ export interface ChunkedUploadOpts {
     totalChunks: number;
     bytesUploaded: number;
     totalBytes: number;
+    /** Gjennomsnittlig kB/s siste 30 sek. null før vi har nok samples. */
+    throughputKbps: number | null;
+    /** Estimert sekunder igjen til upload er ferdig. null før throughputKbps er klar. */
+    etaSeconds: number | null;
   }) => void;
   signal?: AbortSignal;
 }
@@ -189,6 +193,14 @@ export async function chunkedUpload(
     startedAt: persisted?.startedAt || new Date().toISOString(),
   });
 
+  // Throughput-tracking: liste over (timestamp, kumulative bytes)-samples
+  // brukt til å beregne gjennomsnittlig opplastingshastighet over siste
+  // 30 sek og dermed ETA. Initialiseres med startpunkt slik at vi har
+  // første sample umiddelbart.
+  const throughputSamples: Array<{ t: number; bytes: number }> = [
+    { t: Date.now(), bytes: receivedSet.size * CHUNK_SIZE },
+  ];
+
   // Last opp manglende chunks
   for (let i = 0; i < totalChunks; i++) {
     if (opts.signal?.aborted) {
@@ -220,12 +232,45 @@ export async function chunkedUpload(
       startedAt: persisted?.startedAt || new Date().toISOString(),
     });
 
+    // ETA-beregning basert på siste 30-sek-vindu av throughput.
+    // Throughput-samples (timestamp + cumulative bytes) gjør at vi kan
+    // håndtere både hetekjøring og treg-nett-perioder uten å la et
+    // gammelt langsomt øyeblikk ødelegge for et nytt, kjapt et.
+    const now = Date.now();
+    const bytesNow = Math.min(receivedSet.size * CHUNK_SIZE, file.size);
+    throughputSamples.push({ t: now, bytes: bytesNow });
+    // Behold kun samples fra siste 30 sekunder
+    while (
+      throughputSamples.length > 1 &&
+      now - throughputSamples[0].t > 30_000
+    ) {
+      throughputSamples.shift();
+    }
+    let throughputKbps: number | null = null;
+    let etaSeconds: number | null = null;
+    if (throughputSamples.length >= 2) {
+      const first = throughputSamples[0];
+      const last = throughputSamples[throughputSamples.length - 1];
+      const deltaBytes = last.bytes - first.bytes;
+      const deltaMs = last.t - first.t;
+      if (deltaMs > 0 && deltaBytes > 0) {
+        const bytesPerSec = (deltaBytes / deltaMs) * 1000;
+        throughputKbps = Math.round(bytesPerSec / 1024);
+        const remaining = file.size - bytesNow;
+        if (remaining > 0) {
+          etaSeconds = Math.ceil(remaining / bytesPerSec);
+        }
+      }
+    }
+
     opts.onProgress?.({
       chunkIndex: i,
       receivedCount: receivedSet.size,
       totalChunks,
-      bytesUploaded: Math.min(receivedSet.size * CHUNK_SIZE, file.size),
+      bytesUploaded: bytesNow,
       totalBytes: file.size,
+      throughputKbps,
+      etaSeconds,
     });
   }
 

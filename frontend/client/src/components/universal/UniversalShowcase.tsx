@@ -5202,27 +5202,57 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 };
 
   // Video-specific functions for videographer profession
+  //
+  // Timecode-kommentarer fra klient er kritisk feedback-kanal — ALDRI
+  // svelge feil i stillhet. Hvis POST feiler:
+  //   1. Persistér kommentaren lokalt med en pending-id
+  //   2. Vis retry-toast til brukeren slik at de vet det ikke ble sendt
+  //   3. Re-trigger automatisk neste gang funksjonen kjøres
+  const PENDING_TIMECODED_COMMENTS_KEY = 'pending-timecoded-comments';
+
+  const persistPendingTimecodedComment = (pending: {
+    videoId: string;
+    timecode: number;
+    comment: string;
+    version: string;
+    userId: string;
+    queuedAt: string;
+  }) => {
+    try {
+      const existing = JSON.parse(
+        window.localStorage.getItem(PENDING_TIMECODED_COMMENTS_KEY) || '[]',
+      );
+      existing.push(pending);
+      window.localStorage.setItem(
+        PENDING_TIMECODED_COMMENTS_KEY,
+        JSON.stringify(existing),
+      );
+    } catch {}
+  };
+
   const addTimecodedComment = async (timecode: number, comment: string) => {
     if (!selectedItem?.id || !comment.trim()) {
       return;
     }
+
+    const payload = {
+      videoId: selectedItem.id,
+      timecode,
+      comment,
+      version: videoVersion,
+      userId,
+    };
 
     try {
       const response = await fetch('/api/video/timecoded-comments', {
       method: 'POST',
       headers: { 'Content-Type' : 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          videoId: selectedItem?.id,
-          timecode,
-          comment,
-          version: videoVersion,
-          userId
-    })
+        body: JSON.stringify(payload)
   });
 
-      if (!response.ok) throw new Error('Failed to add timecoded comment');
-      
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
       const newComment = (await response.json()) as {
         id: string;
         timecode: number;
@@ -5232,8 +5262,67 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       setTimecodedComments(prev => [...prev, newComment]);
 } catch (error) {
       console.error('Error adding timecoded comment:', error);
+      // Persist for later retry — kommentaren skal ALDRI tapes stille
+      persistPendingTimecodedComment({
+        ...payload,
+        queuedAt: new Date().toISOString(),
+      });
+      showErrorToast(
+        'Kunne ikke sende kommentaren. Den er lagret lokalt og prøves igjen ved neste anledning.',
+        'Tilbakemelding ble ikke sendt',
+      );
     }
   };
+
+  // Ved mount: flush pending-kommentarer hvis vi har dem fra forrige sesjon
+  useEffect(() => {
+    const flushPending = async () => {
+      let pending: Array<{
+        videoId: string;
+        timecode: number;
+        comment: string;
+        version: string;
+        userId: string;
+        queuedAt: string;
+      }> = [];
+      try {
+        pending = JSON.parse(
+          window.localStorage.getItem(PENDING_TIMECODED_COMMENTS_KEY) || '[]',
+        );
+      } catch {}
+      if (pending.length === 0) return;
+      const stillPending: typeof pending = [];
+      for (const p of pending) {
+        try {
+          const res = await fetch('/api/video/timecoded-comments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(p),
+          });
+          if (!res.ok) {
+            stillPending.push(p);
+          }
+        } catch {
+          stillPending.push(p);
+        }
+      }
+      try {
+        window.localStorage.setItem(
+          PENDING_TIMECODED_COMMENTS_KEY,
+          JSON.stringify(stillPending),
+        );
+        if (pending.length > stillPending.length) {
+          showSuccessToast(
+            `${pending.length - stillPending.length} venta tilbakemelding(er) ble sendt.`,
+            'Tilbakemeldinger sendt',
+          );
+        }
+      } catch {}
+    };
+    void flushPending();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const createVideoSequence = async (sequenceName: string, chapters: string[]) => {
     if (!selectedItem?.id) {
