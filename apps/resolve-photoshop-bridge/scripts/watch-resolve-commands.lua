@@ -2810,6 +2810,93 @@ HANDLERS["fusionComp.trackerTrack"] = fusionCompTrackerTrack
 HANDLERS["fusionComp.trackerGetCenter"] = fusionCompTrackerGetCenter
 
 -- ---------------------------------------------------------------------------
+-- Mask-region helper: bygg + posisjonér + koble til target's EffectMask
+-- ---------------------------------------------------------------------------
+
+-- fusionComp.addMaskRegion(target_tool, shape, x, y, width, height,
+--   soft_edge?, invert?, comp_name?)
+--
+-- Wrapper-call som dekker det vanligste mask-pattern: lag en mask-node,
+-- posisjonér + størrelsesett, og koble til target tool sin EffectMask-input.
+-- Brukes for video-cloning (mask en halvdel), object-removal (mask
+-- objekt-region), invisible-transition (kombinér med Magic Mask på subjekt).
+--
+-- Koordinater er normalisert 0-1. Rectangle: x/y = senter. Width/Height
+-- som fraksjon av frame. Default soft_edge=0.005, invert=false.
+local function fusionCompAddMaskRegion(args)
+  local comp = getFusionComp(args)
+  local targetName = extractString(args, "target_tool")
+  if not targetName or targetName == "" then error("target_tool mangler") end
+  local shape = extractString(args, "shape") or "rectangle"
+  if shape ~= "rectangle" and shape ~= "ellipse" then
+    error("shape må være 'rectangle' eller 'ellipse'")
+  end
+  local x = tonumber(args:match('"x"%s*:%s*(-?%d+%.?%d*)'))
+  local y = tonumber(args:match('"y"%s*:%s*(-?%d+%.?%d*)'))
+  local width = tonumber(args:match('"width"%s*:%s*(-?%d+%.?%d*)'))
+  local height = tonumber(args:match('"height"%s*:%s*(-?%d+%.?%d*)'))
+  if not x or not y or not width or not height then
+    error("x, y, width, height må alle være tall (0-1 normalisert)")
+  end
+  local softEdge = tonumber(args:match('"soft_edge"%s*:%s*(-?%d+%.?%d*)')) or 0.005
+  local invert = args:match('"invert"%s*:%s*true') ~= nil
+
+  -- Verifiser at target eksisterer
+  local target = comp:FindTool(targetName)
+  if not target then error("Fant ikke target_tool: " .. targetName) end
+
+  -- Opprett mask-tool. Rectangle/Ellipse er RegID i Fusion.
+  local toolType = shape == "ellipse" and "Ellipse" or "Rectangle"
+  local mask = comp:AddTool(toolType, -1, -1)
+  if not mask then error("Klarte ikke opprette " .. toolType) end
+
+  -- Sett posisjon via Center.X / Center.Y
+  pcall(function() mask:SetInput("Center.X", x) end)
+  pcall(function() mask:SetInput("Center.Y", y) end)
+  -- Sett størrelse via Width / Height (eller XWidth/YHeight for Ellipse)
+  if shape == "rectangle" then
+    pcall(function() mask:SetInput("Width", width) end)
+    pcall(function() mask:SetInput("Height", height) end)
+  else
+    -- Ellipse bruker Width som radius * 2 og lignende — Fusion API
+    -- har Width og Height typisk for ellipse-bounding-box.
+    pcall(function() mask:SetInput("Width", width) end)
+    pcall(function() mask:SetInput("Height", height) end)
+  end
+  -- Soft edge
+  pcall(function() mask:SetInput("SoftEdge", softEdge) end)
+  -- Invert
+  pcall(function() mask:SetInput("PaintMode", invert and 1 or 0) end)
+
+  -- Koble mask → target's EffectMask
+  local maskName = (mask:GetAttrs() or {}).TOOLS_Name or ""
+  local connected = false
+  if target.FindMainInput then
+    local em = target:FindMainInput("EffectMask")
+    if em and em.ConnectTo then
+      -- Mask-tools eksponerer "Mask"-output
+      local maskOut = mask:FindMainOutput and mask:FindMainOutput("Mask")
+      if maskOut then
+        em:ConnectTo(maskOut)
+        connected = true
+      end
+    end
+  end
+
+  return string.format(
+    '{"created":true,"mask_name":%s,"shape":%s,"target":%s,' ..
+    '"connected_to_effect_mask":%s,"x":%s,"y":%s,"width":%s,"height":%s,' ..
+    '"soft_edge":%s,"invert":%s}',
+    jsonEscape(maskName), jsonEscape(shape), jsonEscape(targetName),
+    tostring(connected),
+    tostring(x), tostring(y), tostring(width), tostring(height),
+    tostring(softEdge), tostring(invert)
+  )
+end
+
+HANDLERS["fusionComp.addMaskRegion"] = fusionCompAddMaskRegion
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 

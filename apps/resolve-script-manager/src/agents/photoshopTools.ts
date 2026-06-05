@@ -1676,6 +1676,39 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_fusion_comp_add_mask_region",
+    description:
+      "Opprett mask-region (Rectangle/Ellipse) på en Fusion-tool i ÉN call. Posisjon + størrelse + soft-edge + invert + auto-tilkobling til target's EffectMask. Brukes for: video-cloning (mask en halvdel av V2-clip), object-removal (mask boom-mic-region + komposit clean-plate under), invisible-transition (kombiner med magicMask på subjekt). Koordinater er 0-1 normalisert; x/y = senter av mask.",
+    input_schema: {
+      type: "object",
+      properties: {
+        target_tool: {
+          type: "string",
+          description: "Tool å maske (typisk MediaIn1 eller en Merge-node).",
+        },
+        shape: {
+          type: "string",
+          enum: ["rectangle", "ellipse"],
+          description: "Default 'rectangle'.",
+        },
+        x: { type: "number", description: "Senter X (0-1)." },
+        y: { type: "number", description: "Senter Y (0-1)." },
+        width: { type: "number", description: "Bredde som fraksjon av frame (0-1)." },
+        height: { type: "number", description: "Høyde som fraksjon av frame (0-1)." },
+        soft_edge: {
+          type: "number",
+          description: "Soft fall-off (default 0.005). Større = mykere kant.",
+        },
+        invert: {
+          type: "boolean",
+          description: "Default false (hide outside region). true = hide inside.",
+        },
+        comp_name: { type: "string" },
+      },
+      required: ["target_tool", "x", "y", "width", "height"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -3146,6 +3179,47 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         params.comp_name = input.comp_name;
       }
       return photoshop.resolveFusionCompTrackerGetCenter(params);
+    }
+    case "photoshop_resolve_fusion_comp_add_mask_region": {
+      if (typeof input.target_tool !== "string" || input.target_tool.length === 0) {
+        throw new Error("target_tool må være en ikke-tom string");
+      }
+      const shape = input.shape === "ellipse" ? "ellipse" : "rectangle";
+      if (
+        typeof input.x !== "number" ||
+        typeof input.y !== "number" ||
+        typeof input.width !== "number" ||
+        typeof input.height !== "number"
+      ) {
+        throw new Error("x, y, width, height må alle være tall");
+      }
+      if (input.width <= 0 || input.height <= 0) {
+        throw new Error("width og height må være > 0");
+      }
+      const params: {
+        target_tool: string;
+        shape: "rectangle" | "ellipse";
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        soft_edge?: number;
+        invert?: boolean;
+        comp_name?: string;
+      } = {
+        target_tool: input.target_tool,
+        shape,
+        x: input.x,
+        y: input.y,
+        width: input.width,
+        height: input.height,
+      };
+      if (typeof input.soft_edge === "number") params.soft_edge = input.soft_edge;
+      if (typeof input.invert === "boolean") params.invert = input.invert;
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompAddMaskRegion(params);
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
