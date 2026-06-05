@@ -151,7 +151,7 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
       }
       const id = String(result.request?.id ?? '');
       if (result.emailSent) {
-        setSuccess(`Forespørsel sendt til ${clientEmail.trim()} ✓`);
+        setSuccess(`Forespørsel sendt til ${clientEmail.trim()}`);
       } else if (result.emailReason === 'missing_email_config') {
         setSuccess(`Forespørselen ble lagret in-app. E-post kunne ikke sendes (Gmail SMTP er ikke konfigurert).`);
       } else {
