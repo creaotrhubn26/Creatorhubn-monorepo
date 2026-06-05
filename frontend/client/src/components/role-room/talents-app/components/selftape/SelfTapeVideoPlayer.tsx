@@ -17,11 +17,14 @@ import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
 import HandymanOutlinedIcon from '@mui/icons-material/HandymanOutlined';
 import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined';
 import MenuBookOutlinedIcon from '@mui/icons-material/MenuBookOutlined';
+import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined';
 import { useEffect, useRef, useState } from 'react';
 
 import { palette, radius } from '../../theme';
 import {
+  externalProviderLabel,
   formatDuration,
+  isExternalProvider,
   type SelftapeTake,
 } from '../../../services/roleRoomSelfTapesService';
 
@@ -30,10 +33,11 @@ interface Props {
   onRecordClick: () => void;
   onUploadFile: (file: File) => void;
   onGuidesClick: () => void;
+  onAddExternalClick: () => void;
 }
 
 export default function SelfTapeVideoPlayer({
-  take, onRecordClick, onUploadFile, onGuidesClick,
+  take, onRecordClick, onUploadFile, onGuidesClick, onAddExternalClick,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -50,7 +54,11 @@ export default function SelfTapeVideoPlayer({
     setDurationMs(take?.duration_ms ?? 0);
   }, [take?.id, take?.video_url, take?.duration_ms]);
 
+  const isExternal = isExternalProvider(take?.source_provider);
   const playable = take?.video_url ?? take?.hls_manifest ?? null;
+  // For external embeds bygger vi iframe-URL fra video_url (allerede embed-formet
+  // av backend parseExternalVideoUrl).
+  const externalEmbedUrl = isExternal ? (take?.video_url ?? null) : null;
 
   const handlePlayPause = () => {
     const v = videoRef.current;
@@ -115,9 +123,26 @@ export default function SelfTapeVideoPlayer({
         justifyContent="space-between"
         sx={{ px: 2.4, py: 1.4, borderBottom: `1px solid ${palette.borderSubtle}` }}
       >
-        <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', fontWeight: 600 }}>
-          Nåværende take: {take ? `Take ${take.take_number}` : 'Ingen take valgt'}
-        </Typography>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', fontWeight: 600 }}>
+            Nåværende take: {take ? `Take ${take.take_number}` : 'Ingen take valgt'}
+          </Typography>
+          {isExternal ? (
+            <Box
+              sx={{
+                bgcolor: 'rgba(168,85,247,0.18)',
+                color: palette.accentBright,
+                fontWeight: 700,
+                fontSize: '0.7rem',
+                px: 1,
+                py: 0.2,
+                borderRadius: 999,
+              }}
+            >
+              {externalProviderLabel(take?.source_provider)}
+            </Box>
+          ) : null}
+        </Stack>
         <Tooltip title="Verktøy">
           <IconButton size="small" sx={{ color: palette.textMuted }}>
             <HandymanOutlinedIcon fontSize="small" />
@@ -138,7 +163,17 @@ export default function SelfTapeVideoPlayer({
           color: palette.textMuted,
         }}
       >
-        {playable ? (
+        {externalEmbedUrl ? (
+          <iframe
+            src={externalEmbedUrl}
+            title={`Take ${take?.take_number ?? ''}`}
+            allow="autoplay; fullscreen; encrypted-media"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+            sandbox="allow-scripts allow-same-origin allow-presentation"
+            style={{ width: '100%', height: '100%', border: 0 }}
+          />
+        ) : playable ? (
           <video
             ref={videoRef}
             src={playable}
@@ -176,29 +211,32 @@ export default function SelfTapeVideoPlayer({
         )}
       </Box>
 
-      {/* Scrub-bar */}
-      <Box
-        onClick={handleScrub}
-        sx={{
-          position: 'relative',
-          height: 6,
-          bgcolor: 'rgba(168,85,247,0.10)',
-          cursor: playable ? 'pointer' : 'default',
-        }}
-      >
+      {/* Scrub-bar (kun for native CF Stream — eksterne har egne kontroller i iframe) */}
+      {!isExternal ? (
         <Box
+          onClick={handleScrub}
           sx={{
-            position: 'absolute',
-            inset: 0,
-            width: `${progressPct}%`,
-            background: 'linear-gradient(90deg, #a855f7, #d946ef)',
-            boxShadow: '0 0 8px rgba(168,85,247,0.4)',
-            pointerEvents: 'none',
+            position: 'relative',
+            height: 6,
+            bgcolor: 'rgba(168,85,247,0.10)',
+            cursor: playable ? 'pointer' : 'default',
           }}
-        />
-      </Box>
+        >
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              width: `${progressPct}%`,
+              background: 'linear-gradient(90deg, #a855f7, #d946ef)',
+              boxShadow: '0 0 8px rgba(168,85,247,0.4)',
+              pointerEvents: 'none',
+            }}
+          />
+        </Box>
+      ) : null}
 
-      {/* Controls */}
+      {/* Controls — skjules for eksterne (iframe har egne) */}
+      {!isExternal ? (
       <Stack
         direction="row"
         alignItems="center"
@@ -253,6 +291,7 @@ export default function SelfTapeVideoPlayer({
           <FullscreenOutlinedIcon fontSize="small" />
         </IconButton>
       </Stack>
+      ) : null}
 
       {/* Action-knapper under */}
       <Stack
@@ -311,6 +350,30 @@ export default function SelfTapeVideoPlayer({
         >
           <FileUploadOutlinedIcon fontSize="small" />
           Last opp video
+        </Box>
+        <Box
+          component="button"
+          onClick={onAddExternalClick}
+          title="Lim inn YouTube, Google Drive eller Vimeo-lenke"
+          sx={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1,
+            background: 'transparent',
+            color: palette.textPrimary,
+            border: `1px solid ${palette.borderStrong}`,
+            cursor: 'pointer',
+            py: 1.4,
+            px: 2,
+            borderRadius: radius.sm,
+            fontWeight: 600,
+            fontFamily: 'inherit',
+            '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
+          }}
+        >
+          <LinkOutlinedIcon fontSize="small" />
+          Lenke
         </Box>
         <Box
           component="button"

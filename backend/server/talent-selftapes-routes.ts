@@ -941,4 +941,352 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
       return res.status(500).json({ error: "Tracking feilet" });
     }
   });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // FASE A-E: Utvelgelses-integrasjon + ekstern video-kilde
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ── POST /takes/external — talent legger til YouTube/Drive/Vimeo ──
+  // Parser URL strikt, ekstraherer video-id, lagrer som take med
+  // source_provider sat til riktig provider. Ingen filupload.
+  app.post("/api/role-room/talents/selftapes/projects/:projectId/takes/external",
+    async (req, res) => {
+      const session = getActiveSession(req);
+      const talentId = await resolveTalentId(pool, req, session);
+      if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
+      const { url, duration_ms } = (req.body || {}) as {
+        url?: string; duration_ms?: number;
+      };
+      if (!url || typeof url !== "string") {
+        return res.status(400).json({ error: "url er påkrevd" });
+      }
+      const parsed = parseExternalVideoUrl(url);
+      if (!parsed) {
+        return res.status(400).json({
+          error: "URL gjenkjennes ikke. Støtter unlisted YouTube, Google Drive og Vimeo.",
+        });
+      }
+      try {
+        const owner = await pool.query(
+          `SELECT 1 FROM talent_selftape_projects
+            WHERE id = $1::uuid AND talent_id = $2::uuid LIMIT 1`,
+          [req.params.projectId, talentId],
+        );
+        if (!owner.rowCount) return res.status(404).json({ error: "Prosjekt ikke funnet" });
+
+        const next = await pool.query(
+          `SELECT COALESCE(MAX(take_number), 0) + 1 AS n
+             FROM talent_selftape_takes WHERE project_id = $1::uuid`,
+          [req.params.projectId],
+        );
+        const takeNumber = next.rows[0].n;
+
+        const r = await pool.query(
+          `INSERT INTO talent_selftape_takes
+             (project_id, take_number, status, duration_ms,
+              source_provider, external_url, external_video_id,
+              video_url, thumbnail_url, metadata, is_demo)
+           VALUES ($1::uuid, $2, 'ready', $3,
+                   $4, $5, $6,
+                   $7, $8, $9::jsonb, $10)
+           RETURNING *`,
+          [
+            req.params.projectId,
+            takeNumber,
+            Math.max(0, Math.round(Number(duration_ms ?? 0))),
+            parsed.provider,
+            parsed.cleanUrl,
+            parsed.videoId,
+            parsed.embedUrl,        // brukes som video_url for player-fallback
+            parsed.thumbnailUrl,
+            JSON.stringify({
+              source: "external",
+              original_url: url,
+              provider: parsed.provider,
+              video_id: parsed.videoId,
+            }),
+            isDemoRequest(req),
+          ],
+        );
+        await pool.query(
+          `UPDATE talent_selftape_projects SET current_take_id = $1::uuid WHERE id = $2::uuid`,
+          [r.rows[0].id, req.params.projectId],
+        );
+        return res.status(201).json({ take: r.rows[0] });
+      } catch (err) {
+        console.error("[selftapes/takes external] failed", err);
+        return res.status(500).json({ error: "Klarte ikke å lagre ekstern lenke", detail: String(err) });
+      }
+    },
+  );
+
+  // ── POST /submissions/:id/revoke — talent revokerer tilgang ────────
+  app.post("/api/role-room/talents/selftapes/submissions/:id/revoke",
+    async (req, res) => {
+      const session = getActiveSession(req);
+      const talentId = await resolveTalentId(pool, req, session);
+      if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
+      const { reason } = (req.body || {}) as { reason?: string };
+      try {
+        // Verifiser at talent eier submission'en (via project ownership)
+        const owner = await pool.query(
+          `SELECT s.id::text
+             FROM talent_selftape_submissions s
+             JOIN talent_selftape_projects p ON p.id = s.project_id
+            WHERE s.id = $1::uuid AND p.talent_id = $2::uuid LIMIT 1`,
+          [req.params.id, talentId],
+        );
+        if (!owner.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
+
+        const r = await pool.query(
+          `UPDATE talent_selftape_submissions
+              SET status = 'revoked',
+                  revoked_at = now(),
+                  revoke_reason = $1,
+                  status_updated_at = now()
+            WHERE id = $2::uuid
+            RETURNING *`,
+          [reason ?? null, req.params.id],
+        );
+        // Audit-event (best-effort)
+        try {
+          await pool.query(
+            `INSERT INTO talent_selftape_submission_events
+               (submission_id, event_type, actor_label, details)
+             VALUES ($1::uuid, 'revoked', 'talent', $2::jsonb)`,
+            [req.params.id, JSON.stringify({ reason: reason ?? null })],
+          );
+        } catch { /* best-effort */ }
+        return res.json({ submission: r.rows[0] });
+      } catch (err) {
+        console.error("[selftapes/submissions revoke] failed", err);
+        return res.status(500).json({ error: "Revoke feilet", detail: String(err) });
+      }
+    },
+  );
+
+  // ── GET /talents/selftapes/shared — talentens "Mine delte" oversikt
+  app.get("/api/role-room/talents/selftapes/shared", async (req, res) => {
+    const session = getActiveSession(req);
+    const talentId = await resolveTalentId(pool, req, session);
+    if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      const r = await pool.query(
+        `SELECT s.id::text, s.target_type, s.status, s.submitted_at, s.viewed_at,
+                s.revoked_at, s.revoke_reason, s.deadline_at, s.view_count,
+                s.last_viewed_at, s.private_token,
+                p.id::text AS selftape_project_id, p.name AS selftape_project_name,
+                a.name AS agency_name, a.logo_url AS agency_logo_url,
+                cp.name AS casting_project_name,
+                cr.name AS casting_role_name,
+                t.take_number, t.thumbnail_url, t.source_provider,
+                cr.id::text AS casting_role_id
+           FROM talent_selftape_submissions s
+           JOIN talent_selftape_projects p ON p.id = s.project_id
+           LEFT JOIN agency_orgs a         ON a.id = s.agency_org_id
+           LEFT JOIN casting_projects cp   ON cp.id = s.casting_project_id
+           LEFT JOIN casting_roles cr      ON cr.id = s.casting_role_id
+           LEFT JOIN talent_selftape_takes t ON t.id = s.take_id
+          WHERE p.talent_id = $1::uuid
+          ORDER BY COALESCE(s.submitted_at, s.created_at) DESC NULLS LAST`,
+        [talentId],
+      );
+      return res.json({ shared: r.rows });
+    } catch (err) {
+      console.error("[selftapes/shared GET] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente delinger" });
+    }
+  });
+
+  // ── GET /casting-roles/:roleId/selftapes — produksjon ser self-tapes
+  // Krever at innlogget bruker eier prosjektet rollen tilhører.
+  app.get("/api/role-room/casting-roles/:roleId/selftapes", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      // Verifiser at brukeren eier prosjektet
+      const own = await pool.query(
+        `SELECT cp.id::text AS project_id, cp.created_by
+           FROM casting_roles cr
+           JOIN casting_projects cp ON cp.id = cr.project_id
+          WHERE cr.id = $1::uuid LIMIT 1`,
+        [req.params.roleId],
+      );
+      if (!own.rowCount) return res.status(404).json({ error: "Rolle ikke funnet" });
+      if (own.rows[0].created_by !== session.userId) {
+        return res.status(403).json({ error: "Du eier ikke prosjektet" });
+      }
+
+      const r = await pool.query(
+        `SELECT * FROM v_casting_role_selftapes
+          WHERE role_id = $1`,
+        [req.params.roleId],
+      );
+
+      // Signer URLs on-the-fly hvis CF Stream + stream_uid finnes
+      const rows = await Promise.all(r.rows.map(async (row) => {
+        if (row.source_provider === "cloudflare_stream" && row.stream_uid) {
+          try {
+            const signed = await signStreamPlaybackUrl(row.stream_uid, 60 * 60 * 3);
+            const thumb = await signStreamThumbnailUrl(row.stream_uid, 60 * 60 * 24);
+            if (signed) row.video_url = signed;
+            if (thumb) row.thumbnail_url = thumb;
+          } catch (err) {
+            console.warn("[selftapes/casting-roles] sign failed", err);
+          }
+        }
+        return row;
+      }));
+      return res.json({ selftapes: rows });
+    } catch (err) {
+      console.error("[selftapes/casting-roles GET] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente self-tapes" });
+    }
+  });
+
+  // ── POST /casting-roles/selftapes/submissions/:id/view ─────────────
+  // Produksjon registrerer en visning — øker view_count, skriver audit,
+  // setter status → 'viewed' hvis 'submitted'. Idempotent på UUID.
+  app.post("/api/role-room/casting-roles/selftapes/submissions/:id/view",
+    async (req, res) => {
+      const session = getActiveSession(req);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        // Verifiser at brukeren eier prosjektet
+        const own = await pool.query(
+          `SELECT s.id::text, s.project_id::text, p.talent_id::text, cp.created_by
+             FROM talent_selftape_submissions s
+             LEFT JOIN talent_selftape_projects p ON p.id = s.project_id
+             LEFT JOIN casting_projects cp ON cp.id = s.casting_project_id
+            WHERE s.id = $1::uuid LIMIT 1`,
+          [req.params.id],
+        );
+        if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
+        const row = own.rows[0];
+        if (!row.created_by) {
+          return res.status(403).json({ error: "Ingen prosjekt-eier-info" });
+        }
+        if (row.created_by !== session.userId) {
+          return res.status(403).json({ error: "Du eier ikke prosjektet" });
+        }
+
+        const upd = await pool.query(
+          `UPDATE talent_selftape_submissions
+              SET status = CASE WHEN status = 'submitted' THEN 'viewed' ELSE status END,
+                  viewed_at = COALESCE(viewed_at, now()),
+                  last_viewed_at = now(),
+                  view_count = view_count + 1,
+                  status_updated_at = now()
+            WHERE id = $1::uuid AND status != 'revoked'
+            RETURNING id::text, status, view_count, last_viewed_at`,
+          [req.params.id],
+        );
+        if (!upd.rowCount) {
+          return res.status(410).json({ error: "Submission er revoket av talent" });
+        }
+
+        // Audit-trail (best-effort på begge tabeller)
+        try {
+          await pool.query(
+            `INSERT INTO talent_selftape_submission_events
+               (submission_id, event_type, actor_label, details)
+             VALUES ($1::uuid, 'viewed', $2, $3::jsonb)`,
+            [req.params.id, session.email ?? "production", JSON.stringify({
+              user_id: session.userId,
+            })],
+          );
+        } catch { /* ignore */ }
+        try {
+          await pool.query(
+            `INSERT INTO talent_access_audit
+               (talent_id, partner_type, partner_ref, scope, accessed_by, details)
+             VALUES ($1::uuid, 'production_team', $2, 'self_tape_review', $3, $4::jsonb)`,
+            [row.talent_id, session.userId, session.email ?? null,
+             JSON.stringify({ submission_id: req.params.id })],
+          );
+        } catch { /* ignore — audit-write skal ikke blokkere visning */ }
+
+        return res.json({ submission: upd.rows[0] });
+      } catch (err) {
+        console.error("[selftapes/casting-roles view] failed", err);
+        return res.status(500).json({ error: "View-tracking feilet" });
+      }
+    },
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// External URL parsers — strikt for sikkerhets-skyld
+// ═══════════════════════════════════════════════════════════════════
+interface ParsedExternal {
+  provider: "youtube_unlisted" | "google_drive" | "vimeo";
+  videoId: string;
+  cleanUrl: string;
+  embedUrl: string;
+  thumbnailUrl: string | null;
+}
+
+const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{6,32}$/;
+const VIMEO_ID_RE = /^[0-9]{6,12}$/;
+const DRIVE_ID_RE = /^[A-Za-z0-9_-]{20,80}$/;
+
+function parseExternalVideoUrl(raw: string): ParsedExternal | null {
+  let parsed: URL;
+  try { parsed = new URL(raw.trim()); } catch { return null; }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+  const host = parsed.hostname.toLowerCase();
+
+  // YouTube
+  if (host === "youtu.be" || host.endsWith("youtube.com") || host.endsWith("youtube-nocookie.com")) {
+    let id = "";
+    if (host === "youtu.be") {
+      id = parsed.pathname.replace(/^\//, "").split("/")[0] ?? "";
+    } else if (parsed.pathname === "/watch") {
+      id = parsed.searchParams.get("v") ?? "";
+    } else if (parsed.pathname.startsWith("/embed/") || parsed.pathname.startsWith("/v/")
+               || parsed.pathname.startsWith("/shorts/")) {
+      id = parsed.pathname.split("/")[2] ?? "";
+    }
+    if (!YOUTUBE_ID_RE.test(id)) return null;
+    return {
+      provider: "youtube_unlisted",
+      videoId: id,
+      cleanUrl: `https://www.youtube.com/watch?v=${id}`,
+      embedUrl: `https://www.youtube-nocookie.com/embed/${id}?modestbranding=1&rel=0`,
+      thumbnailUrl: `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
+    };
+  }
+
+  // Vimeo
+  if (host === "vimeo.com" || host.endsWith(".vimeo.com")) {
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const id = segments.find((s) => VIMEO_ID_RE.test(s)) ?? "";
+    if (!id) return null;
+    return {
+      provider: "vimeo",
+      videoId: id,
+      cleanUrl: `https://vimeo.com/${id}`,
+      embedUrl: `https://player.vimeo.com/video/${id}?title=0&byline=0&portrait=0`,
+      thumbnailUrl: null,
+    };
+  }
+
+  // Google Drive
+  if (host === "drive.google.com" || host === "docs.google.com") {
+    // Format: /file/d/{ID}/view  ELLER  /open?id={ID}
+    let id = "";
+    const fileMatch = parsed.pathname.match(/\/file\/d\/([A-Za-z0-9_-]{20,80})/);
+    if (fileMatch) id = fileMatch[1];
+    if (!id) id = parsed.searchParams.get("id") ?? "";
+    if (!DRIVE_ID_RE.test(id)) return null;
+    return {
+      provider: "google_drive",
+      videoId: id,
+      cleanUrl: `https://drive.google.com/file/d/${id}/view`,
+      embedUrl: `https://drive.google.com/file/d/${id}/preview`,
+      thumbnailUrl: null,
+    };
+  }
+
+  return null;
 }

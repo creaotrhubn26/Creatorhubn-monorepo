@@ -54,6 +54,7 @@ import ScriptViewerDialog from '../components/selftape/dialogs/ScriptViewerDialo
 import GuidesDrawer from '../components/selftape/dialogs/GuidesDrawer';
 import TakeActionsMenu from '../components/selftape/dialogs/TakeActionsMenu';
 import RecordTakeDialog from '../components/selftape/dialogs/RecordTakeDialog';
+import AddExternalSourceDialog from '../components/selftape/dialogs/AddExternalSourceDialog';
 
 interface SelfTapeStudioPageProps {
   demoMode?: boolean;
@@ -73,6 +74,7 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
   const [scriptDialog, setScriptDialog] = useState<'brief' | 'script' | null>(null);
   const [guidesOpen, setGuidesOpen] = useState(false);
   const [recordOpen, setRecordOpen] = useState(false);
+  const [externalOpen, setExternalOpen] = useState(false);
   const [takeMenuAnchor, setTakeMenuAnchor] = useState<HTMLElement | null>(null);
   const [takeMenuTake, setTakeMenuTake] = useState<SelftapeTake | null>(null);
 
@@ -329,6 +331,7 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
               onRecordClick={() => setRecordOpen(true)}
               onUploadFile={handleUploadFile}
               onGuidesClick={() => setGuidesOpen(true)}
+              onAddExternalClick={() => setExternalOpen(true)}
             />
             <SelfTapePreviousTakesStrip
               takes={detail.takes}
@@ -405,6 +408,15 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
         onUploaded={async () => {
           await reloadDetail();
           setSnack({ msg: 'Take lastet opp og klar', severity: 'success' });
+        }}
+      />
+      <AddExternalSourceDialog
+        open={externalOpen}
+        projectId={activeProjectId}
+        onClose={() => setExternalOpen(false)}
+        onAdded={async () => {
+          await reloadDetail();
+          setSnack({ msg: 'Ekstern lenke lagt til', severity: 'success' });
         }}
       />
       <TakeActionsMenu

@@ -34,6 +34,12 @@ export interface SelftapeProject {
   updated_at: string;
 }
 
+export type SelftapeSourceProvider =
+  | 'cloudflare_stream'
+  | 'youtube_unlisted'
+  | 'google_drive'
+  | 'vimeo';
+
 export interface SelftapeTake {
   id: string;
   take_number: number;
@@ -42,12 +48,68 @@ export interface SelftapeTake {
   video_url: string | null;
   stream_uid: string | null;
   hls_manifest?: string | null;
+  source_provider?: SelftapeSourceProvider;
+  external_url?: string | null;
+  external_video_id?: string | null;
   status: SelftapeTakeStatus;
   notes: string | null;
   metadata: Record<string, unknown>;
   ai_feedback_id: string | null;
   recorded_at: string;
   created_at: string;
+}
+
+export interface SelftapeSharedItem {
+  id: string;
+  target_type: SelftapeTargetType;
+  status: SelftapeSubmissionStatus | 'revoked';
+  submitted_at: string | null;
+  viewed_at: string | null;
+  revoked_at: string | null;
+  revoke_reason: string | null;
+  deadline_at: string | null;
+  view_count: number;
+  last_viewed_at: string | null;
+  private_token: string | null;
+  selftape_project_id: string;
+  selftape_project_name: string;
+  agency_name?: string | null;
+  agency_logo_url?: string | null;
+  casting_project_name?: string | null;
+  casting_role_id?: string | null;
+  casting_role_name?: string | null;
+  take_number?: number | null;
+  thumbnail_url?: string | null;
+  source_provider?: SelftapeSourceProvider;
+}
+
+export interface CastingRoleSelftape {
+  submission_id: string;
+  role_id: string;
+  project_id: string;
+  submission_status: SelftapeSubmissionStatus | 'revoked';
+  submitted_at: string | null;
+  viewed_at: string | null;
+  view_count: number;
+  last_viewed_at: string | null;
+  revoked_at: string | null;
+  submission_metadata: Record<string, unknown>;
+  take_id: string | null;
+  take_number: number | null;
+  duration_ms: number | null;
+  thumbnail_url: string | null;
+  video_url: string | null;
+  hls_manifest: string | null;
+  stream_uid: string | null;
+  source_provider: SelftapeSourceProvider;
+  external_url: string | null;
+  external_video_id: string | null;
+  ai_feedback_id: string | null;
+  selftape_project_id: string;
+  talent_id: string;
+  selftape_project_name: string;
+  talent_display_name: string | null;
+  talent_headshot_url: string | null;
 }
 
 export interface SelftapeAIFeedbackCategory {
@@ -333,6 +395,93 @@ export function submissionHistory(
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
+
+// ── Eksterne kilder ───────────────────────────────────────────────
+export function addExternalTake(
+  projectId: string,
+  args: { url: string; duration_ms?: number },
+): Promise<{ take: SelftapeTake }> {
+  return api(`/projects/${projectId}/takes/external`, {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+}
+
+// ── Revoke + delinger ─────────────────────────────────────────────
+export function revokeSubmission(
+  submissionId: string,
+  reason?: string,
+): Promise<{ submission: SelftapeSubmission }> {
+  return api(`/submissions/${submissionId}/revoke`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason ?? null }),
+  });
+}
+
+export function listSharedSubmissions(): Promise<{ shared: SelftapeSharedItem[] }> {
+  return api('/shared');
+}
+
+// ── Casting-side (produksjon) ─────────────────────────────────────
+/**
+ * Hent alle aktive self-tape-submissions for en casting-rolle. Krever
+ * at innlogget bruker eier prosjektet rollen tilhører.
+ */
+export async function listCastingRoleSelftapes(
+  roleId: string,
+): Promise<{ selftapes: CastingRoleSelftape[] }> {
+  const url = buildUrl(`/casting-roles/${roleId}/selftapes`)
+    .replace('/api/role-room/talents/selftapes', '/api/role-room');
+  const r = await fetch(url, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const payload: unknown = await r.json().catch(() => null);
+  if (!r.ok) {
+    const msg = payload && typeof payload === 'object'
+      ? (payload as { error?: string }).error
+      : null;
+    throw new Error(msg ?? `HTTP ${r.status}`);
+  }
+  return payload as { selftapes: CastingRoleSelftape[] };
+}
+
+/** Registrer at produksjon har sett en self-tape (audit + view_count). */
+export async function trackSelftapeView(
+  submissionId: string,
+): Promise<{ submission: { id: string; status: string; view_count: number; last_viewed_at: string } }> {
+  const url = buildUrl(`/casting-roles/selftapes/submissions/${submissionId}/view`)
+    .replace('/api/role-room/talents/selftapes', '/api/role-room');
+  const r = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const payload: unknown = await r.json().catch(() => null);
+  if (!r.ok) {
+    const msg = payload && typeof payload === 'object'
+      ? (payload as { error?: string }).error
+      : null;
+    throw new Error(msg ?? `HTTP ${r.status}`);
+  }
+  return payload as { submission: { id: string; status: string; view_count: number; last_viewed_at: string } };
+}
+
+// ── Helpers for external video provider rendering ────────────────
+export function isExternalProvider(provider?: SelftapeSourceProvider | null): boolean {
+  return provider !== undefined
+    && provider !== null
+    && provider !== 'cloudflare_stream';
+}
+
+export function externalProviderLabel(provider?: SelftapeSourceProvider | null): string {
+  switch (provider) {
+    case 'youtube_unlisted': return 'YouTube (unlisted)';
+    case 'google_drive': return 'Google Drive';
+    case 'vimeo': return 'Vimeo';
+    default: return 'Cloudflare Stream';
+  }
+}
 
 /** Format duration_ms til "MM:SS" */
 export function formatDuration(durationMs: number): string {
