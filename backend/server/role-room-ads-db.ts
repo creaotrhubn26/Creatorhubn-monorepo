@@ -523,8 +523,16 @@ export async function getCampaignResultRows(
     conversions: string;
     conversion_value: string;
   }>(
+    // ads_campaigns har ikke et 'name'-felt — vi henter kampanje-navn fra
+    // creative_config.campaignName (JSONB) hvis satt, ellers fallback til
+    // external_campaign_id, og til slutt til en kort id-string. Aldri NULL.
     `SELECT c.id AS campaign_id,
-            c.name AS campaign_name,
+            COALESCE(
+              c.creative_config->>'campaignName',
+              c.creative_config->>'name',
+              c.external_campaign_id,
+              'Kampanje ' || LEFT(c.id::text, 8)
+            ) AS campaign_name,
             c.platform AS platform,
             c.status AS status,
             c.daily_budget_nok::text AS daily_budget_nok,
@@ -537,8 +545,8 @@ export async function getCampaignResultRows(
        LEFT JOIN ads_attribution_daily d ON d.campaign_id = c.id
             AND to_char(d.date, 'YYYY-MM') = $2
       WHERE c.project_id = $1
-   GROUP BY c.id, c.name, c.platform, c.status, c.daily_budget_nok
-   ORDER BY COALESCE(SUM(d.spend_nok), 0) DESC, c.name ASC`,
+   GROUP BY c.id, c.creative_config, c.external_campaign_id, c.platform, c.status, c.daily_budget_nok
+   ORDER BY COALESCE(SUM(d.spend_nok), 0) DESC, campaign_name ASC`,
     [projectId, period],
   );
   return result.rows.map((r) => ({

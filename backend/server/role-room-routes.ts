@@ -22791,6 +22791,64 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           [campaignId, campaign.projectId, userId, authorRole, body, intent],
         );
 
+        // Fire producer-notification: kun når klient er avsender (produsenten
+        // skal IKKE få notifikasjon på sine egne svar). Vi bruker producer_team-
+        // audience så hele teamet ser den, ikke bare eieren av kampanjen.
+        if (authorRole === 'client') {
+          const intentLabel = (() => {
+            switch (intent) {
+              case 'increase_budget': return 'Be om økning av budsjett';
+              case 'decrease_budget': return 'Be om reduksjon av budsjett';
+              case 'pause': return 'Be om pause';
+              case 'resume': return 'Be om restart';
+              case 'change_targeting': return 'Be om endring av målgruppe';
+              case 'change_creative': return 'Be om endring av kreativ/tekst';
+              case 'general_feedback': return 'Generell tilbakemelding';
+              default: return 'Ny kommentar';
+            }
+          })();
+          const truncatedBody = body.length > 140 ? `${body.slice(0, 140)}…` : body;
+          // Campaign-navn hentes med fallback: creative_config.campaignName →
+          // external_campaign_id → kort campaign-id. ads_campaigns har ikke
+          // et 'name'-felt direkte (samme fallback-kjede som getCampaignResultRows).
+          const creativeCfg = (campaign.creativeConfig ?? {}) as Record<string, unknown>;
+          const campaignDisplayName =
+            (typeof creativeCfg.campaignName === 'string' && creativeCfg.campaignName) ||
+            (typeof creativeCfg.name === 'string' && creativeCfg.name) ||
+            campaign.externalCampaignId ||
+            `Kampanje ${String(campaign.id).slice(0, 8)}`;
+          try {
+            await upsertProducerProjectNotification({
+              projectId: campaign.projectId,
+              audience: 'producer_team',
+              eventType: 'ads_client_comment',
+              title: `Klient: ${intentLabel} på "${campaignDisplayName}"`,
+              message: truncatedBody,
+              linkedEntityType: 'ads_campaign',
+              linkedEntityId: campaignId,
+              metadata: {
+                commentId: String(result.rows[0].id),
+                platform: campaign.platform,
+                campaignName: campaignDisplayName,
+                intent,
+                authorUserId: userId,
+              },
+              createdByUserId: userId,
+              createdByRole: 'client',
+            });
+            // Marker at vi har varslet (idempotent — neste cron-iter unngår dupliserings-spam)
+            await pool.query(
+              `UPDATE client_ads_campaign_comments
+                  SET producer_notified_at = NOW()
+                WHERE id = $1 AND producer_notified_at IS NULL`,
+              [result.rows[0].id],
+            );
+          } catch (notifyError) {
+            // Notifikasjon-feil skal IKKE rulle tilbake kommentaren — logg og fortsett
+            console.warn('Failed to fire producer notification for ads-comment:', notifyError);
+          }
+        }
+
         res.status(201).json({
           comment: {
             id: String(result.rows[0].id),
