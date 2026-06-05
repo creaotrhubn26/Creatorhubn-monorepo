@@ -1732,6 +1732,29 @@ const COMMANDS = {
     });
   },
 
+  "resolve.clipStabilize": async () => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "clip.stabilize",
+      timeout_ms: 180000,
+    });
+  },
+
+  "resolve.folderIntelliReset": async () => {
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "folder.intelliReset",
+    });
+  },
+
+  "resolve.clipLoadBurnInPreset": async ({ preset_name } = {}) => {
+    if (typeof preset_name !== "string" || preset_name.length === 0) {
+      throw new Error("preset_name må være en ikke-tom string");
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "clip.loadBurnInPreset",
+      args: { preset_name },
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
