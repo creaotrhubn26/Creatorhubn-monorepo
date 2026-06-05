@@ -2582,6 +2582,86 @@ HANDLERS["folder.intelliReset"] = handleFolderIntelliReset
 HANDLERS["clip.loadBurnInPreset"] = handleClipLoadBurnInPreset
 
 -- ---------------------------------------------------------------------------
+-- Fusion tool-presets (save/load enkeltnoder som .setting-filer)
+-- ---------------------------------------------------------------------------
+
+-- fusionComp.saveToolPreset(tool_name, file_path, comp_name?)
+-- Lagrer en enkelt tool sin konfigurasjon (alle Input-verdier + animasjon)
+-- som .setting-fil. Brukes for å bygge bibliotek av gjenbrukbare
+-- title/lower-third/effekt-templates.
+local function fusionCompSaveToolPreset(args)
+  local comp = getFusionComp(args)
+  local toolName = extractString(args, "tool_name")
+  if not toolName or toolName == "" then error("tool_name mangler") end
+  local filePath = extractString(args, "file_path")
+  if not filePath or filePath == "" then error("file_path mangler") end
+
+  local tool = comp:FindTool(toolName)
+  if not tool then error("Fant ikke tool: " .. toolName) end
+
+  -- SaveSettings finnes på Tool-objekter; returnerer typisk Bool eller path.
+  local ok = false
+  if tool.SaveSettings then
+    ok = tool:SaveSettings(filePath) ~= nil
+  else
+    error("Tool støtter ikke SaveSettings")
+  end
+  return string.format(
+    '{"saved":%s,"tool":%s,"file_path":%s}',
+    tostring(ok), jsonEscape(toolName), jsonEscape(filePath)
+  )
+end
+
+-- fusionComp.loadToolPreset(file_path, target_tool_name?, x?, y?, comp_name?)
+-- Laster en .setting-fil. Hvis target_tool_name er gitt — overskriver
+-- den eksisterende toolens innstillinger (tool:LoadSettings). Hvis ikke —
+-- paster .settings inn i comp-en som ny(e) tool(s) (comp:Paste).
+local function fusionCompLoadToolPreset(args)
+  local comp = getFusionComp(args)
+  local filePath = extractString(args, "file_path")
+  if not filePath or filePath == "" then error("file_path mangler") end
+  local targetName = extractString(args, "target_tool_name")
+  local x = tonumber(args:match('"x"%s*:%s*(-?%d+)'))
+  local y = tonumber(args:match('"y"%s*:%s*(-?%d+)'))
+
+  if targetName and targetName ~= "" then
+    -- Overskriv eksisterende tool
+    local target = comp:FindTool(targetName)
+    if not target then error("Fant ikke target tool: " .. targetName) end
+    if not target.LoadSettings then
+      error("Tool støtter ikke LoadSettings")
+    end
+    local ok = target:LoadSettings(filePath) ~= nil
+    return string.format(
+      '{"loaded":%s,"mode":"overwrite","target":%s,"file_path":%s}',
+      tostring(ok), jsonEscape(targetName), jsonEscape(filePath)
+    )
+  end
+
+  -- Paste som ny tool(s) via Settings-tabell
+  if not bmd or not bmd.readfile then
+    error("bmd.readfile utilgjengelig — kan ikke lese .setting (bruk target_tool_name for overwrite)")
+  end
+  local settingsTable = bmd.readfile(filePath)
+  if type(settingsTable) ~= "table" then
+    error("Kunne ikke parse .setting-fil: " .. filePath)
+  end
+  if x or y then
+    settingsTable.__flags = settingsTable.__flags or {}
+    settingsTable.__flags.x = x or -1
+    settingsTable.__flags.y = y or -1
+  end
+  local pasted = comp:Paste(settingsTable)
+  return string.format(
+    '{"loaded":%s,"mode":"paste","file_path":%s}',
+    tostring(pasted), jsonEscape(filePath)
+  )
+end
+
+HANDLERS["fusionComp.saveToolPreset"] = fusionCompSaveToolPreset
+HANDLERS["fusionComp.loadToolPreset"] = fusionCompLoadToolPreset
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 

@@ -1555,6 +1555,45 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_fusion_comp_save_tool_preset",
+    description:
+      "Lagre en enkelt Fusion-tool sin konfigurasjon (alle Input-verdier + animasjon) som .setting-fil. Brukes for å bygge bibliotek av gjenbrukbare title/lower-third/effekt-templates. Eksempel: lag en stylized TextPlus → save_tool_preset → gjenbruk på andre prosjekter via load_tool_preset.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tool_name: { type: "string", description: "Navn på tool å lagre (f.eks. 'Text1')." },
+        file_path: {
+          type: "string",
+          description: "Absolutt path til .setting-fil (må ende på .setting).",
+        },
+        comp_name: { type: "string" },
+      },
+      required: ["tool_name", "file_path"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_load_tool_preset",
+    description:
+      "Last en .setting-preset inn i comp. To moduser: (1) target_tool_name gitt = overskriv eksisterende tool sin config (LoadSettings). (2) target_tool_name utelatt = paste som nye tools i comp (Paste). x/y posisjonerer pasted tools i node-graph.",
+    input_schema: {
+      type: "object",
+      properties: {
+        file_path: {
+          type: "string",
+          description: "Absolutt path til .setting-fil.",
+        },
+        target_tool_name: {
+          type: "string",
+          description: "Overskriv eksisterende tool. Utelat for å paste som nytt.",
+        },
+        x: { type: "number", description: "Node-graph X-posisjon for paste-mode." },
+        y: { type: "number", description: "Node-graph Y-posisjon for paste-mode." },
+        comp_name: { type: "string" },
+      },
+      required: ["file_path"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -2898,6 +2937,49 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         throw new Error("preset_name må være en ikke-tom string");
       }
       return photoshop.resolveClipLoadBurnInPreset({ preset_name: input.preset_name });
+    }
+    case "photoshop_resolve_fusion_comp_save_tool_preset": {
+      if (typeof input.tool_name !== "string" || input.tool_name.length === 0) {
+        throw new Error("tool_name må være en ikke-tom string");
+      }
+      if (typeof input.file_path !== "string" || input.file_path.length === 0) {
+        throw new Error("file_path må være en ikke-tom string");
+      }
+      if (!input.file_path.toLowerCase().endsWith(".setting")) {
+        throw new Error("file_path må peke til en .setting-fil");
+      }
+      const params: { tool_name: string; file_path: string; comp_name?: string } = {
+        tool_name: input.tool_name,
+        file_path: input.file_path,
+      };
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompSaveToolPreset(params);
+    }
+    case "photoshop_resolve_fusion_comp_load_tool_preset": {
+      if (typeof input.file_path !== "string" || input.file_path.length === 0) {
+        throw new Error("file_path må være en ikke-tom string");
+      }
+      if (!input.file_path.toLowerCase().endsWith(".setting")) {
+        throw new Error("file_path må peke til en .setting-fil");
+      }
+      const params: {
+        file_path: string;
+        target_tool_name?: string;
+        x?: number;
+        y?: number;
+        comp_name?: string;
+      } = { file_path: input.file_path };
+      if (typeof input.target_tool_name === "string" && input.target_tool_name.length > 0) {
+        params.target_tool_name = input.target_tool_name;
+      }
+      if (typeof input.x === "number") params.x = input.x;
+      if (typeof input.y === "number") params.y = input.y;
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompLoadToolPreset(params);
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();

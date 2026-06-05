@@ -1221,6 +1221,28 @@ export const photoshop = {
       params,
     ),
 
+  resolveFusionCompSaveToolPreset: (params: {
+    tool_name: string;
+    file_path: string;
+    comp_name?: string;
+  }) =>
+    send<{ saved: boolean; tool: string; file_path: string }>(
+      "resolve.fusionCompSaveToolPreset",
+      params,
+    ),
+
+  resolveFusionCompLoadToolPreset: (params: {
+    file_path: string;
+    target_tool_name?: string;
+    x?: number;
+    y?: number;
+    comp_name?: string;
+  }) =>
+    send<
+      | { loaded: boolean; mode: "overwrite"; target: string; file_path: string }
+      | { loaded: boolean; mode: "paste"; file_path: string }
+    >("resolve.fusionCompLoadToolPreset", params),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 
