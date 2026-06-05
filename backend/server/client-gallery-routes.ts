@@ -118,6 +118,54 @@ export function setupClientGalleryRoutes(
     "suggestion",
   ]);
 
+  // Tolker gallery_settings → konkrete policy-flagger. Sentralisert her
+  // fordi flere kall-steder må ta samme avgjørelser. Det fins to formater
+  // som har samlet seg over tid:
+  //   - Showcase-deling (PR #75):   { projectState, allowDownloads, allowComments }
+  //   - iPad-capture-flow (legacy): { allowDownload, allowComments }
+  // projectState er den autoritative source-of-truth når den er satt:
+  //   - 'in_review'  → ingen nedlasting, kommentarer tillatt, watermark
+  //   - 'delivered'  → nedlasting tillatt, kommentarer låst, ingen watermark
+  // Fallback (ingen projectState): respekter eksplisitte flagger med
+  // defaults som matcher den eksisterende oppførselen.
+  type GalleryPolicy = {
+    canDownload: boolean;
+    canComment: boolean;
+    watermarked: boolean;
+    projectState: 'in_review' | 'delivered' | null;
+  };
+  function resolveGalleryPolicy(settings: Record<string, unknown>): GalleryPolicy {
+    const stateRaw = typeof settings.projectState === 'string' ? settings.projectState : null;
+    const projectState =
+      stateRaw === 'delivered' || stateRaw === 'in_review' ? stateRaw : null;
+
+    if (projectState === 'in_review') {
+      return {
+        canDownload: false,
+        canComment: settings.allowComments !== false,
+        watermarked: settings.watermarkEnabled !== false,
+        projectState,
+      };
+    }
+    if (projectState === 'delivered') {
+      return {
+        canDownload: settings.allowDownload !== false && settings.allowDownloads !== false,
+        canComment: false,
+        watermarked: settings.watermarkEnabled === true,
+        projectState,
+      };
+    }
+    // Legacy / ustyrt gallery — gå på eksplisitte flagger.
+    const allowDownload =
+      settings.allowDownload !== false && settings.allowDownloads !== false;
+    return {
+      canDownload: allowDownload,
+      canComment: settings.allowComments !== false,
+      watermarked: settings.watermarkEnabled === true,
+      projectState: null,
+    };
+  }
+
   //
   // Unauthenticated — the accessToken IS the auth. Every request re-signs
   // Capture-sourced image URLs so the gallery keeps working past R2's
@@ -923,6 +971,16 @@ export function setupClientGalleryRoutes(
           ...(access.requiresPassword ? { requiresPassword: true } : {}),
         });
       }
+      const policy = resolveGalleryPolicy(access.settings ?? {});
+      if (!policy.canComment) {
+        return res.status(403).json({
+          error: 'comments_disabled',
+          projectState: policy.projectState,
+          message: policy.projectState === 'delivered'
+            ? 'Prosjektet er levert. Kommentarer er låst — kontakt fotograf for endringer.'
+            : 'Kommentarer er deaktivert for dette galleriet.',
+        });
+      }
       await ensureVideoTimecodeCommentsSchema();
       let parentId: string | null = null;
       if (parentIdRaw) {
@@ -1129,6 +1187,16 @@ export function setupClientGalleryRoutes(
         return res.status(access.status).json({
           error: access.error,
           ...(access.requiresPassword ? { requiresPassword: true } : {}),
+        });
+      }
+      const policy = resolveGalleryPolicy(access.settings ?? {});
+      if (!policy.canComment) {
+        return res.status(403).json({
+          error: 'comments_disabled',
+          projectState: policy.projectState,
+          message: policy.projectState === 'delivered'
+            ? 'Prosjektet er levert. Kommentarer er låst — kontakt fotograf for endringer.'
+            : 'Kommentarer er deaktivert for dette galleriet.',
         });
       }
       const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
@@ -1839,8 +1907,15 @@ export function setupClientGalleryRoutes(
       }
       const gallery = access.gallery;
       const settings = access.settings;
-      if (settings.allowDownload === false) {
-        return res.status(403).json({ error: "download_disabled" });
+      const policy = resolveGalleryPolicy(settings ?? {});
+      if (!policy.canDownload) {
+        return res.status(403).json({
+          error: 'download_disabled',
+          projectState: policy.projectState,
+          message: policy.projectState === 'in_review'
+            ? 'Prosjektet er fortsatt i klient-review. Nedlasting åpnes når fotograf merker det som levert.'
+            : 'Nedlasting er deaktivert for dette galleriet.',
+        });
       }
 
       // Slice 9X.11 — kontrakt-gate. Hvis galleriet er linket til en
@@ -1927,7 +2002,45 @@ export function setupClientGalleryRoutes(
       if (picked.length === 0) {
         return res.status(404).json({ error: "no_matching_images" });
       }
-      const watermarked = settings.watermarkEnabled === true;
+      // Bruk policy-helperen (samme som i comments/download-gating) for å
+      // unngå avvik mellom hva som er tillatt og hva som faktisk leveres.
+      const watermarked = policy.watermarked;
+
+      // Sharp-pipeline for on-the-fly watermark. Importeres dynamisk så
+      // vi unngår å laste ~50MB av sharp's binær når galleriet ikke
+      // krever det. Cached på første call.
+      let sharpModulePromise: Promise<typeof import('sharp')> | null = null;
+      const getSharp = () => {
+        if (!sharpModulePromise) {
+          sharpModulePromise = import('sharp').then((m) => (m as any).default ?? m);
+        }
+        return sharpModulePromise;
+      };
+      const watermarkText = String(
+        settings.watermarkText ?? gallery.projectTitle ?? 'PROOF',
+      ).slice(0, 60);
+      const watermarkOpacity = Math.max(
+        0.05,
+        Math.min(1, Number(settings.watermarkOpacity ?? 0.55)),
+      );
+      const escapeXml = (v: string): string =>
+        v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      const buildWatermarkSvg = (width: number, height: number): Buffer => {
+        // Størrelse skalerer med bildets bredde så watermarket er synlig
+        // på både full-res RAW og web-thumbs. ~5% av bredden ≈ leselig.
+        const fontSize = Math.max(28, Math.round(width * 0.05));
+        const padding = Math.round(fontSize * 0.6);
+        const safeText = escapeXml(watermarkText);
+        return Buffer.from(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+            <style>
+              .wm { fill: rgba(255,255,255,${watermarkOpacity}); font-family: Helvetica, Arial, sans-serif; font-weight: 700; font-size: ${fontSize}px; text-shadow: 2px 2px 4px rgba(0,0,0,0.6); }
+            </style>
+            <text x="${width - padding}" y="${height - padding}" text-anchor="end" class="wm">${safeText}</text>
+          </svg>`,
+        );
+      };
 
       const zipFilename = `gallery-${gallery.id.slice(0, 8)}-${Date.now()}.zip`;
       res.setHeader('Content-Type', 'application/zip');
@@ -1944,27 +2057,121 @@ export function setupClientGalleryRoutes(
       archive.pipe(res);
 
       // Pull each image as a node-fetch stream and append. archiver
-      // handles back-pressure so we only buffer one in flight at a
-      // time (the connection drives consumption).
+      // handles back-pressure så vi kun har én in flight om gangen.
+      //
+      // Per-image-strategi avhenger av to flagger:
+      //   stripExif (default true)  — fjerner GPS, kamera-serie, lens-info.
+      //                                Kritisk compliance-vern for pro-fotografer
+      //                                (bryllup/celeb). Opt-out via
+      //                                gallery_settings.preserveExif = true
+      //                                f.eks. ved RAW-leveranse til retusjør.
+      //   watermarked              — fra policy.watermarked (PR #76).
+      //
+      // Beslutningsmatrise:
+      //   pre-watermarkedUrl + !stripExif  → pass-through (gratis)
+      //   watermark on-the-fly             → sharp.composite (already strips
+      //                                      metadata by sharp's default;
+      //                                      explicit ingen withMetadata)
+      //   stripExif uten watermark         → sharp roundtrip kun for å strippe
+      //                                      (litt CPU men ingen composite)
+      //   ingen av delene                  → pass-through (gratis)
+      const preserveExif = settings.preserveExif === true;
+      const stripExif = !preserveExif;
       let appended = 0;
       for (const img of picked) {
-        const sourceUrl = watermarked && img.watermarkedUrl
+        const preWatermarkedUrl = watermarked && img.watermarkedUrl
           ? img.watermarkedUrl
-          : (img.autoCleanedUrl ?? img.fullSizeUrl);
+          : null;
+        const sourceUrl = preWatermarkedUrl
+          ?? img.autoCleanedUrl
+          ?? img.fullSizeUrl;
+        const safeName = `${img.imageTitle.replace(/[\\/:*?"<>|]/g, '_')}.jpg`;
         try {
           const fetchRes = await fetch(sourceUrl);
           if (!fetchRes.ok || !fetchRes.body) {
             console.warn(`[client-gallery] zip skip ${img.id}: ${fetchRes.status}`);
             continue;
           }
-          // node-fetch v3 returns a web ReadableStream; archiver wants a
-          // Node Readable. The Node-native fetch gives us .body as a
-          // web stream too — convert via Readable.fromWeb.
-          const { Readable } = await import('node:stream');
-          const nodeStream = Readable.fromWeb(fetchRes.body as never);
-          const safeName = `${img.imageTitle.replace(/[\\/:*?"<>|]/g, '_')}.jpg`;
-          archive.append(nodeStream, { name: safeName });
-          appended++;
+
+          const needsOnTheFlyWatermark = watermarked && !preWatermarkedUrl;
+          // Pre-watermarked variants er allerede branded, men de kan
+          // fortsatt bære EXIF fra original-eksport — så vi går gjennom
+          // sharp også der hvis stripExif krever det.
+          const needsSharpForExif = stripExif && !needsOnTheFlyWatermark;
+
+          if (needsOnTheFlyWatermark) {
+            // Buffrer + transformerer. Vi ofrer streaming for å garantere
+            // at klienten ALDRI får original uten watermark — selv hvis
+            // sharp feiler hopper vi over bildet (logg + skip). sharp
+            // default-stripper metadata når .withMetadata() ikke kalles.
+            try {
+              const sourceBuffer = Buffer.from(await fetchRes.arrayBuffer());
+              const sharp = await getSharp();
+              const meta = await sharp(sourceBuffer).metadata();
+              const w = meta.width ?? 1600;
+              const h = meta.height ?? 1200;
+              const overlay = buildWatermarkSvg(w, h);
+              const watermarkedBuffer = await sharp(sourceBuffer)
+                .rotate() // auto-orient + strip EXIF orientation
+                .composite([{ input: overlay, gravity: 'southeast', blend: 'over' }])
+                .jpeg({ quality: 90 })
+                .toBuffer();
+              archive.append(watermarkedBuffer, { name: safeName });
+              appended++;
+            } catch (sharpErr) {
+              console.warn(
+                `[client-gallery] watermark composite failed for ${img.id} — SKIPPING for safety:`,
+                sharpErr,
+              );
+              // Skip-på-feil er sikkerhetsdekk: bedre tomt zip-entry
+              // enn å lekke original-piksler ved sharp-krasj.
+            }
+          } else if (needsSharpForExif) {
+            // Kun strip-pipeline, ingen composite. Litt CPU men null
+            // bildebehandling utover re-encoding for å droppe metadata.
+            // Fallback-on-error: streamer originalen heller enn å miste
+            // bildet helt — siden ingen security-gevinst forsvinner her
+            // (klienten har lovlig tilgang når denne pathen tas).
+            try {
+              const sourceBuffer = Buffer.from(await fetchRes.arrayBuffer());
+              const sharp = await getSharp();
+              const strippedBuffer = await sharp(sourceBuffer)
+                .rotate()
+                .jpeg({ quality: 92 })
+                .toBuffer();
+              archive.append(strippedBuffer, { name: safeName });
+              appended++;
+            } catch (sharpErr) {
+              console.warn(
+                `[client-gallery] exif-strip failed for ${img.id} — faller tilbake til original:`,
+                sharpErr,
+              );
+              // Best-effort: append original-bufferet om strip feilet.
+              // Klienten har uansett rett til bildet i denne pathen.
+              try {
+                const fallbackRes = await fetch(sourceUrl);
+                if (fallbackRes.ok && fallbackRes.body) {
+                  const { Readable } = await import('node:stream');
+                  archive.append(Readable.fromWeb(fallbackRes.body as never), {
+                    name: safeName,
+                  });
+                  appended++;
+                }
+              } catch (fallbackErr) {
+                console.warn(
+                  `[client-gallery] fallback fetch failed ${img.id}:`,
+                  fallbackErr,
+                );
+              }
+            }
+          } else {
+            // Pass-through stream — kun når preserveExif=true (eksplisitt
+            // opt-out) og ingen watermark trengs.
+            const { Readable } = await import('node:stream');
+            const nodeStream = Readable.fromWeb(fetchRes.body as never);
+            archive.append(nodeStream, { name: safeName });
+            appended++;
+          }
         } catch (err) {
           console.warn(`[client-gallery] zip fetch failed ${img.id}:`, err);
         }
