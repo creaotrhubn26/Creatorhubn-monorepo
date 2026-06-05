@@ -65,6 +65,7 @@ VIKTIGE BEGRENSNINGER:
 - Iterasjons-budsjett: ${MAX_ITERATIONS}. Bruk dem klokt — én "full snapshot"-call > fem småspørringer.
 - Resolve-tools krever at watch-resolve-commands.lua kjører i Resolve. Hvis du får timeout-feil → fortell brukeren.
 - SetSetting/SetClipProperty godtar KUN strings — konverter numbers ("24"-string, ikke 24-number).
+- USIKKER på hvilke setting-keys/-verdier som finnes? Kall photoshop_resolve_settings_reference (filtrer på scope/category for kortere svar). Kjente keys med enum-verdi valideres automatisk på setSetting.
 - Aldri gjett file-paths, layer-navn eller preset-navn — list dem først.
 - Hvis brukeren stopper sesjonen, respekter det og avslutt elegant.
 - Hold tone og rapport på norsk.
