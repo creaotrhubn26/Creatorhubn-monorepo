@@ -368,14 +368,16 @@ export default function RoleRoomAgentDialog({
 
   const result = initialResult ?? null;
   // Ordered flow through the tabs for the guided Forrige/Neste navigation.
-  // Guided flow = the real producer journey only (Analyze → Plan → Listen →
-  // Measure). The App Review demo/inspector tabs (meta-page, page-content,
-  // ads-attribution, fb-publish, fb-mention, ig-hashtag) + merch are reachable
-  // via 'Alle faner' but excluded here so Forrige/Neste doesn't detour through
-  // reviewer panels. Publishing lives inside Feed-planner.
+  // Kept deliberately SHORT (bestemor-vennlig / minst mulig kognitiv belastning):
+  // only the core lead-gen journey is a forced step —
+  //   Forstå kunden (Research) → Plan (Markedsplan) → Publiser (Feed-planner)
+  //   → Svar (Inbox) → Få kunder (Leads) → Mål (Analytics).
+  // Power tools (Oppdag/discovery, Omtaler/mentions, Arrangement/events) + the
+  // App Review demo/inspector tabs + merch are all reachable via 'Alle faner',
+  // so they're one click away without bloating the guided step sequence.
   const tabFlow = useMemo<Array<typeof activeTab>>(() => {
     const base: Array<typeof activeTab> = [
-      'research', 'discovery', 'marketing-plan', 'feed-planner', 'social-inbox', 'mentions', 'leads', 'events', 'social-analytics',
+      'research', 'marketing-plan', 'feed-planner', 'social-inbox', 'leads', 'social-analytics',
     ];
     return currentUserId ? [...base, 'chat'] : base;
   }, [currentUserId]);
@@ -702,7 +704,7 @@ export default function RoleRoomAgentDialog({
           data-testid="agent-toggle-tabs"
           sx={{ textTransform: 'none', color: 'rgba(226,232,240,0.7)', minWidth: 0 }}
         >
-          {showAllTabs ? 'Skjul faner' : 'Alle faner'}
+          {showAllTabs ? 'Skjul verktøy' : 'Flere verktøy'}
         </Button>
         <Typography sx={{ flex: 1, color: 'rgba(226,232,240,0.6)', fontSize: '0.78rem', textAlign: 'center' }}>
           {flowIndex >= 0 ? `Steg ${flowIndex + 1} av ${tabFlow.length}: ${TAB_LABELS[activeTab] ?? ''}` : ''}
