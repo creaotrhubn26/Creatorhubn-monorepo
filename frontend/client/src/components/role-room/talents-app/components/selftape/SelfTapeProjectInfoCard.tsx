@@ -8,9 +8,10 @@ import type { SelftapeProject } from '../../../services/roleRoomSelfTapesService
 
 interface Props {
   project: SelftapeProject;
+  onBriefClick: () => void;
 }
 
-export default function SelfTapeProjectInfoCard({ project }: Props) {
+export default function SelfTapeProjectInfoCard({ project, onBriefClick }: Props) {
   return (
     <Box
       sx={{
@@ -85,6 +86,7 @@ export default function SelfTapeProjectInfoCard({ project }: Props) {
           </Stack>
         </Box>
         <Button
+          onClick={onBriefClick}
           startIcon={<DescriptionOutlinedIcon />}
           sx={{
             textTransform: 'none',

@@ -17,6 +17,23 @@
 import type express from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
+import multer from "multer";
+import Anthropic from "@anthropic-ai/sdk";
+
+import {
+  isStreamEnabled,
+  uploadToStream,
+  signStreamPlaybackUrl,
+  signStreamThumbnailUrl,
+} from "./cloudflare-stream-service.js";
+
+// 500 MB grense — én typisk self-tape (60-90s @ 1080p) ligger på 50-150 MB
+const MAX_SELFTAPE_BYTES = 500 * 1024 * 1024;
+
+const selftapeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_SELFTAPE_BYTES },
+});
 
 interface SessionLike {
   userId: string;
@@ -263,7 +280,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
   });
 
   // ── POST /takes/init-upload — opprett rad + returner upload-info ─
-  // Per Fase A: bare DB-rad. CF Stream-integrasjon kommer i Fase C.
+  // Kompatibilitets-endepunkt; nye klienter bør bruke /takes/upload som
+  // gjør init+upload+finalize i ett kall.
   app.post("/api/role-room/talents/selftapes/projects/:projectId/takes/init-upload",
     async (req, res) => {
       const session = getActiveSession(req);
@@ -278,7 +296,6 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         );
         if (!owner.rowCount) return res.status(404).json({ error: "Prosjekt ikke funnet" });
 
-        // Hent neste take_number
         const next = await pool.query(
           `SELECT COALESCE(MAX(take_number), 0) + 1 AS n
              FROM talent_selftape_takes WHERE project_id = $1::uuid`,
@@ -294,18 +311,138 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
           [req.params.projectId, takeNumber],
         );
 
-        // Fase A: returner take-id. Fase C legger til CF Stream signed URL.
         return res.status(201).json({
           take: ins.rows[0],
           upload: {
-            // TODO Fase C: signed CF Stream upload URL
-            provider: "stub",
-            note: "Stream-integrasjon kommer i Fase C",
+            provider: "backend-multipart",
+            endpoint: `/api/role-room/talents/selftapes/projects/${req.params.projectId}/takes/upload`,
+            max_size_bytes: MAX_SELFTAPE_BYTES,
+            note: "Klienten poster multipart-blob til /takes/upload",
           },
         });
       } catch (err) {
         console.error("[selftapes/takes init-upload] failed", err);
         return res.status(500).json({ error: "Init feilet", detail: String(err) });
+      }
+    },
+  );
+
+  // ── POST /takes/upload — multipart: MediaRecorder-blob eller fil ─
+  // Backend laster opp til Cloudflare Stream og finalize-r take-raden
+  // i ett kall. Demo-modus lagrer som "klar" uten CF Stream.
+  app.post("/api/role-room/talents/selftapes/projects/:projectId/takes/upload",
+    selftapeUpload.single("video"),
+    async (req, res) => {
+      const session = getActiveSession(req);
+      const talentId = await resolveTalentId(pool, req, session);
+      if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
+      const file = (req as express.Request & { file?: Express.Multer.File }).file;
+      if (!file) return res.status(400).json({ error: "video-fil mangler" });
+      const projectId = req.params.projectId;
+      const durationMs = Number((req.body as { duration_ms?: string }).duration_ms ?? 0);
+
+      try {
+        const owner = await pool.query(
+          `SELECT 1 FROM talent_selftape_projects
+            WHERE id = $1::uuid AND talent_id = $2::uuid LIMIT 1`,
+          [projectId, talentId],
+        );
+        if (!owner.rowCount) return res.status(404).json({ error: "Prosjekt ikke funnet" });
+
+        // Neste take_number
+        const next = await pool.query(
+          `SELECT COALESCE(MAX(take_number), 0) + 1 AS n
+             FROM talent_selftape_takes WHERE project_id = $1::uuid`,
+          [projectId],
+        );
+        const takeNumber = next.rows[0].n;
+
+        // Demo-modus: lagre uten CF Stream (frontend bruker tom video-URL)
+        if (isDemoRequest(req)) {
+          const r = await pool.query(
+            `INSERT INTO talent_selftape_takes
+               (project_id, take_number, status, duration_ms, metadata, is_demo)
+             VALUES ($1::uuid, $2, 'ready', $3, $4::jsonb, TRUE)
+             RETURNING *`,
+            [projectId, takeNumber, Math.max(0, Math.round(durationMs)),
+             JSON.stringify({ demo: true, mime: file.mimetype, size: file.size })],
+          );
+          await pool.query(
+            `UPDATE talent_selftape_projects SET current_take_id = $1::uuid WHERE id = $2::uuid`,
+            [r.rows[0].id, projectId],
+          );
+          return res.status(201).json({ take: r.rows[0] });
+        }
+
+        // Live-modus: krever CF Stream
+        if (!isStreamEnabled()) {
+          return res.status(503).json({
+            error: "Cloudflare Stream er ikke konfigurert. Sett CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_STREAM_API_TOKEN på serveren.",
+          });
+        }
+
+        // Opprett take-rad først så vi har id å bygge meta rundt
+        const insTake = await pool.query(
+          `INSERT INTO talent_selftape_takes
+             (project_id, take_number, status, duration_ms)
+           VALUES ($1::uuid, $2, 'uploading', $3)
+           RETURNING id::text`,
+          [projectId, takeNumber, Math.max(0, Math.round(durationMs))],
+        );
+        const takeId: string = insTake.rows[0].id;
+
+        let streamUid = "";
+        let playbackUrl = "";
+        let thumbnailUrl = "";
+        try {
+          const result = await uploadToStream(file.buffer, file.mimetype, {
+            projectId,
+            postId: takeId,
+            filename: file.originalname ?? `take-${takeNumber}.${file.mimetype.includes("mp4") ? "mp4" : "webm"}`,
+            requireSignedURLs: true,
+          });
+          streamUid = result.uid;
+          // Generer signerte URL-er (3 timer TTL — refreshes på getProject).
+          // Faller tilbake til CF Streams default-URL hvis signering ikke er aktivert.
+          playbackUrl = (await signStreamPlaybackUrl(streamUid, 60 * 60 * 3))
+            ?? result.playbackUrl;
+          thumbnailUrl = (await signStreamThumbnailUrl(streamUid, 60 * 60 * 24))
+            ?? result.thumbnailUrl;
+        } catch (uploadErr) {
+          // Rull tilbake take-raden hvis Stream feiler
+          await pool.query(`DELETE FROM talent_selftape_takes WHERE id = $1::uuid`, [takeId]);
+          console.error("[selftapes/takes upload] CF Stream failed", uploadErr);
+          return res.status(502).json({
+            error: "Upload til Cloudflare Stream feilet",
+            detail: String(uploadErr),
+          });
+        }
+
+        // Finalize-rad
+        const fin = await pool.query(
+          `UPDATE talent_selftape_takes
+              SET status = 'ready',
+                  stream_uid = $1,
+                  video_url = $2,
+                  hls_manifest = $2,
+                  thumbnail_url = $3,
+                  metadata = jsonb_build_object(
+                    'source', 'multipart-upload',
+                    'mime', $4::text,
+                    'size_bytes', $5::int
+                  )
+            WHERE id = $6::uuid
+            RETURNING *`,
+          [streamUid, playbackUrl, thumbnailUrl, file.mimetype, file.size, takeId],
+        );
+        await pool.query(
+          `UPDATE talent_selftape_projects SET current_take_id = $1::uuid WHERE id = $2::uuid`,
+          [takeId, projectId],
+        );
+        return res.status(201).json({ take: fin.rows[0] });
+      } catch (err) {
+        console.error("[selftapes/takes upload] failed", err);
+        return res.status(500).json({ error: "Upload feilet", detail: String(err) });
       }
     },
   );
@@ -428,27 +565,162 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
   });
 
   // ── POST /takes/:takeId/feedback/regenerate ─────────────────────
-  // Fase A: stub-respons. Fase D integrerer Claude Opus.
+  // Fase D: kaller Claude Opus 4.7 med scenens kontekst + take-metadata
+  // og lagrer strukturert respons i talent_selftape_ai_feedback.
   app.post("/api/role-room/talents/selftapes/takes/:takeId/feedback/regenerate",
     async (req, res) => {
       const session = getActiveSession(req);
-      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const talentId = await resolveTalentId(pool, req, session);
+      if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
+      const takeId = req.params.takeId;
+
       try {
-        // Sett feedback til generating-status så UI kan polle
-        const r = await pool.query(
+        // Hent take + prosjekt-kontekst og verifiser eierskap
+        const ctx = await pool.query(
+          `SELECT t.id::text AS take_id, t.take_number, t.duration_ms, t.notes,
+                  t.metadata,
+                  p.id::text AS project_id, p.name AS project_name,
+                  p.role_name, p.role_type, p.scene_label, p.sides_pages,
+                  p.sides_content
+             FROM talent_selftape_takes t
+             JOIN talent_selftape_projects p ON p.id = t.project_id
+            WHERE t.id = $1::uuid AND p.talent_id = $2::uuid
+            LIMIT 1`,
+          [takeId, talentId],
+        );
+        if (!ctx.rowCount) return res.status(404).json({ error: "Take ikke funnet" });
+        const c = ctx.rows[0];
+
+        // Sett pending-rad slik at UI kan polle hvis vi går asynkront
+        const pending = await pool.query(
           `INSERT INTO talent_selftape_ai_feedback (take_id, status)
            VALUES ($1::uuid, 'generating')
-           RETURNING id::text, status`,
-          [req.params.takeId],
+           RETURNING id::text`,
+          [takeId],
         );
+        const feedbackId: string = pending.rows[0].id;
         await pool.query(
           `UPDATE talent_selftape_takes SET ai_feedback_id = $1::uuid WHERE id = $2::uuid`,
-          [r.rows[0].id, req.params.takeId],
+          [feedbackId, takeId],
         );
-        return res.json({ feedback: r.rows[0], note: "AI-integrasjon kommer i Fase D" });
+
+        // Ingen API-key → returnér stub i pending (ikke crashe)
+        if (!process.env.ANTHROPIC_API_KEY) {
+          return res.json({
+            feedback: { id: feedbackId, status: "generating" },
+            note: "ANTHROPIC_API_KEY mangler — sett den på Render for live AI-feedback",
+          });
+        }
+
+        // Bygg prompt + call Claude Opus 4.7
+        const modelId = process.env.SELFTAPE_FEEDBACK_MODEL ?? "claude-opus-4-7";
+        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+        const systemPrompt = [
+          "Du er en erfaren casting-direktør som gir konstruktiv, presis tilbakemelding",
+          "på self-tapes. Tilbakemeldingen brukes til å hjelpe skuespilleren forbedre",
+          "neste take. Skriv på norsk.",
+          "",
+          "Returnér KUN ren JSON som matcher dette skjemaet (ingen markdown, ingen forklaringer):",
+          `{`,
+          `  "eye_line": { "grade": "Great|Good|Fair|Needs work", "note": "<1-2 setninger>" },`,
+          `  "pacing": { "grade": "...", "note": "..." },`,
+          `  "sound": { "grade": "...", "note": "..." },`,
+          `  "lighting": { "grade": "...", "note": "..." },`,
+          `  "performance": { "grade": "...", "note": "..." },`,
+          `  "camera_check": { "resolution": "1080p|720p|...", "frame_rate": "30fps|...", "stability": "Stable|Shaky|..." },`,
+          `  "audio_check": { "input_level": "Good|Low|Hot|...", "background_noise": "Low|Medium|High", "clarity": "Clear|Muffled|..." },`,
+          `  "framing_check": { "headroom": "On mark|Too much|Too little", "eye_line": "On mark|High|Low", "lighting": "Well lit|Flat|Backlit" },`,
+          `  "overall_grade": "Excellent|Good|Fair|Needs work",`,
+          `  "detailed_md": "<3-5 setningers oppsummering med konkrete neste-skritt>"`,
+          `}`,
+        ].join("\n");
+
+        const userPrompt = [
+          `Self-tape-prosjekt: ${c.project_name ?? "Ukjent"}`,
+          `Rolle: ${c.role_name ?? "—"}${c.role_type ? ` (${c.role_type})` : ""}`,
+          `Scene: ${c.scene_label ?? "—"}${c.sides_pages ? ` · ${c.sides_pages} sider` : ""}`,
+          ``,
+          `Take #${c.take_number}, varighet ${Math.round((c.duration_ms ?? 0) / 1000)}s.`,
+          c.notes ? `Skuespillerens notater: ${c.notes}` : "",
+          ``,
+          c.sides_content
+            ? `Manus / dialog:\n${String(c.sides_content).slice(0, 4000)}`
+            : "Ingen manus tilgjengelig.",
+          ``,
+          "Vurder takeen basert på manus-konteksten ovenfor og gi konkret, handlingsrettet",
+          "tilbakemelding. Hvis du ikke har faktisk video-data, bruk dine generelle anbefalinger",
+          "som er sannsynlige for en self-tape av denne lengden og typen rolle.",
+        ].filter(Boolean).join("\n");
+
+        const result = await client.messages.create({
+          model: modelId,
+          max_tokens: 1500,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userPrompt }],
+        });
+
+        const textBlock = result.content.find((b) => b.type === "text");
+        const responseText = textBlock && textBlock.type === "text" ? textBlock.text : "";
+        // Strip evt. markdown-fence
+        const json = responseText.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+        let parsed: Record<string, unknown> = {};
+        try {
+          parsed = JSON.parse(json);
+        } catch {
+          // Fallback: lagre rå tekst i detailed_md slik at brukeren ser noe
+          parsed = { detailed_md: responseText, overall_grade: "Fair" };
+        }
+
+        // Lagre strukturert resultat
+        const upd = await pool.query(
+          `UPDATE talent_selftape_ai_feedback
+              SET model_version = $1,
+                  eye_line = $2::jsonb,
+                  pacing = $3::jsonb,
+                  sound = $4::jsonb,
+                  lighting = $5::jsonb,
+                  performance = $6::jsonb,
+                  camera_check = $7::jsonb,
+                  audio_check = $8::jsonb,
+                  framing_check = $9::jsonb,
+                  overall_grade = $10,
+                  detailed_md = $11,
+                  status = 'ready',
+                  generated_at = now()
+            WHERE id = $12::uuid
+            RETURNING *`,
+          [
+            modelId,
+            JSON.stringify(parsed.eye_line ?? null),
+            JSON.stringify(parsed.pacing ?? null),
+            JSON.stringify(parsed.sound ?? null),
+            JSON.stringify(parsed.lighting ?? null),
+            JSON.stringify(parsed.performance ?? null),
+            JSON.stringify(parsed.camera_check ?? null),
+            JSON.stringify(parsed.audio_check ?? null),
+            JSON.stringify(parsed.framing_check ?? null),
+            (parsed.overall_grade as string) ?? null,
+            (parsed.detailed_md as string) ?? null,
+            feedbackId,
+          ],
+        );
+        return res.json({ feedback: upd.rows[0] });
       } catch (err) {
         console.error("[selftapes/feedback regenerate] failed", err);
-        return res.status(500).json({ error: "Regenerate feilet" });
+        // Marker som failed i DB hvis vi kommer hit etter at vi har laget rad
+        try {
+          await pool.query(
+            `UPDATE talent_selftape_ai_feedback
+                SET status = 'failed',
+                    error_message = $1
+              WHERE take_id = $2::uuid AND status = 'generating'`,
+            [String(err).slice(0, 500), takeId],
+          );
+        } catch {
+          // ignore secondary error
+        }
+        return res.status(500).json({ error: "Regenerate feilet", detail: String(err) });
       }
     },
   );

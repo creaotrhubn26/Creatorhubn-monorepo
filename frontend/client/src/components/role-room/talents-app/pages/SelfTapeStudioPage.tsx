@@ -1,10 +1,12 @@
 /**
- * SelfTapeStudioPage.tsx — Self-Tape Studio (Fase B av spec)
+ * SelfTapeStudioPage.tsx — Self-Tape Studio
  *
- * 3-kolonne layout (matcher mockup #15):
- *   Venstre: project-info + video-player + record/upload + previous takes
- *   Midten: script + take management + AI feedback
- *   Høyre: submission targets + almost-ready + history
+ * 3-kolonne layout (mockup #15):
+ *   Venstre: project-info + video-player + previous-takes + status
+ *   Midten:  script + take management + AI feedback
+ *   Høyre:   submissions + almost-ready + history
+ *
+ * Wired med dialoger (Fase B-2) og opptak/upload (Fase C).
  *
  * Spec: docs/specs/SELF_TAPE_STUDIO_SPEC.md
  */
@@ -14,6 +16,7 @@ import {
   Box,
   Button,
   CircularProgress,
+  Snackbar,
   Stack,
   Typography,
 } from '@mui/material';
@@ -25,8 +28,11 @@ import { palette, radius } from '../theme';
 import {
   getProject,
   listProjects,
+  sendSubmission,
+  uploadRecordedTake,
   type ProjectDetail,
   type SelftapeProject,
+  type SelftapeTake,
 } from '../../services/roleRoomSelfTapesService';
 
 import SelfTapeProjectInfoCard from '../components/selftape/SelfTapeProjectInfoCard';
@@ -42,6 +48,13 @@ import SelfTapeSubmissionHistory, {
   type SubmissionHistoryEntry,
 } from '../components/selftape/SelfTapeSubmissionHistory';
 
+import ProjectLibraryDrawer from '../components/selftape/dialogs/ProjectLibraryDrawer';
+import NewProjectDialog from '../components/selftape/dialogs/NewProjectDialog';
+import ScriptViewerDialog from '../components/selftape/dialogs/ScriptViewerDialog';
+import GuidesDrawer from '../components/selftape/dialogs/GuidesDrawer';
+import TakeActionsMenu from '../components/selftape/dialogs/TakeActionsMenu';
+import RecordTakeDialog from '../components/selftape/dialogs/RecordTakeDialog';
+
 interface SelfTapeStudioPageProps {
   demoMode?: boolean;
 }
@@ -54,25 +67,39 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Dialog open-state
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [scriptDialog, setScriptDialog] = useState<'brief' | 'script' | null>(null);
+  const [guidesOpen, setGuidesOpen] = useState(false);
+  const [recordOpen, setRecordOpen] = useState(false);
+  const [takeMenuAnchor, setTakeMenuAnchor] = useState<HTMLElement | null>(null);
+  const [takeMenuTake, setTakeMenuTake] = useState<SelftapeTake | null>(null);
+
+  // Snackbar
+  const [snack, setSnack] = useState<{ msg: string; severity: 'success' | 'error' | 'info' } | null>(null);
+
+  const refreshProjects = useCallback(async () => {
+    const { projects } = await listProjects();
+    setProjects(projects);
+    return projects;
+  }, []);
+
   // Last project-listen ved mount
   useEffect(() => {
     let cancelled = false;
-    listProjects()
-      .then(({ projects }) => {
+    refreshProjects()
+      .then((projs) => {
         if (cancelled) return;
-        setProjects(projects);
-        // Velg første active prosjekt
-        const active = projects.find((p) => p.status === 'active') ?? projects[0];
+        const active = projs.find((p) => p.status === 'active') ?? projs[0];
         setActiveProjectId(active?.id ?? null);
       })
       .catch((err) => {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Klarte ikke å hente prosjekter');
       });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    return () => { cancelled = true; };
+  }, [refreshProjects]);
 
   // Last detail når activeProjectId endres
   useEffect(() => {
@@ -93,12 +120,8 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
         if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Klarte ikke å hente prosjekt-data');
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [activeProjectId]);
 
   const reloadDetail = useCallback(async () => {
@@ -119,7 +142,7 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
     { label: 'Minst ett målsted valgt', done: (detail?.submissions.length ?? 0) > 0 },
   ];
 
-  // Avled history-entries fra submissions (Fase B: viser status-progresjon)
+  // Avled history-entries fra submissions
   const historyEntries: SubmissionHistoryEntry[] = (detail?.submissions ?? [])
     .flatMap((s) => {
       const label = s.target_type === 'agency_direct'
@@ -141,6 +164,78 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
     })
     .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
 
+  // Handlers
+  const handleNewProjectCreated = useCallback(async (projectId: string) => {
+    await refreshProjects();
+    setActiveProjectId(projectId);
+    setSnack({ msg: 'Prosjektet er opprettet', severity: 'success' });
+  }, [refreshProjects]);
+
+  const handleProjectChanged = useCallback(async () => {
+    const projs = await refreshProjects();
+    // Hvis aktivt prosjekt ble arkivert, bytt til neste
+    if (activeProjectId && !projs.some((p) => p.id === activeProjectId)) {
+      const next = projs.find((p) => p.status === 'active') ?? projs[0];
+      setActiveProjectId(next?.id ?? null);
+    }
+  }, [activeProjectId, refreshProjects]);
+
+  const handleUploadFile = useCallback(async (file: File) => {
+    if (!activeProjectId) return;
+    setSnack({ msg: 'Laster opp video …', severity: 'info' });
+    try {
+      // Estimer varighet fra fil-størrelse hvis ikke i metadata
+      const videoEl = document.createElement('video');
+      videoEl.preload = 'metadata';
+      const objectUrl = URL.createObjectURL(file);
+      videoEl.src = objectUrl;
+      const durationMs = await new Promise<number>((resolve) => {
+        videoEl.onloadedmetadata = () => {
+          URL.revokeObjectURL(objectUrl);
+          resolve(Math.round((videoEl.duration || 0) * 1000));
+        };
+        videoEl.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(0); };
+        // Fallback hvis metadata aldri trigger
+        window.setTimeout(() => resolve(0), 4000);
+      });
+      await uploadRecordedTake(activeProjectId, file, {
+        durationMs,
+        filename: file.name,
+      });
+      await reloadDetail();
+      setSnack({ msg: 'Take lastet opp', severity: 'success' });
+    } catch (err) {
+      setSnack({
+        msg: err instanceof Error ? `Upload feilet: ${err.message}` : 'Upload feilet',
+        severity: 'error',
+      });
+    }
+  }, [activeProjectId, reloadDetail]);
+
+  const handleAlmostReadySubmit = useCallback(async () => {
+    if (!detail) return;
+    const next = detail.submissions.find((s) => !s.submitted_at && s.status !== 'submitted');
+    if (!next) {
+      setSnack({ msg: 'Ingen ledige målsteder å sende til', severity: 'info' });
+      return;
+    }
+    try {
+      await sendSubmission(next.id);
+      await reloadDetail();
+      setSnack({ msg: 'Self-tapen er sendt', severity: 'success' });
+    } catch (err) {
+      setSnack({
+        msg: err instanceof Error ? `Send feilet: ${err.message}` : 'Send feilet',
+        severity: 'error',
+      });
+    }
+  }, [detail, reloadDetail]);
+
+  const handleTakeMenu = useCallback((e: React.MouseEvent<HTMLElement>, take: SelftapeTake) => {
+    setTakeMenuAnchor(e.currentTarget);
+    setTakeMenuTake(take);
+  }, []);
+
   return (
     <Box sx={{ p: 3, maxWidth: 1600, mx: 'auto' }}>
       {/* Header */}
@@ -155,8 +250,8 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
         </Box>
         <Stack direction="row" spacing={1.2}>
           <Button
+            onClick={() => setLibraryOpen(true)}
             startIcon={<FolderOutlinedIcon />}
-            disabled
             sx={{
               textTransform: 'none', fontWeight: 600, px: 2, py: 1, borderRadius: radius.sm,
               color: palette.textPrimary, border: `1px solid ${palette.borderStrong}`,
@@ -166,8 +261,8 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
             Prosjekt-bibliotek
           </Button>
           <Button
+            onClick={() => setNewProjectOpen(true)}
             startIcon={<AddCircleOutlineIcon />}
-            disabled
             sx={{
               textTransform: 'none', fontWeight: 700, px: 2.4, py: 1, borderRadius: radius.sm,
               background: palette.accentGradient, color: '#fff',
@@ -199,9 +294,20 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
           <Typography sx={{ color: palette.textPrimary, fontWeight: 700, mb: 0.8 }}>
             Ingen prosjekter ennå
           </Typography>
-          <Typography sx={{ color: palette.textMuted, fontSize: '0.9rem' }}>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.9rem', mb: 2 }}>
             Klikk «Nytt prosjekt» for å begynne din første self-tape.
           </Typography>
+          <Button
+            onClick={() => setNewProjectOpen(true)}
+            startIcon={<AddCircleOutlineIcon />}
+            sx={{
+              textTransform: 'none', fontWeight: 700, px: 2.4, py: 1, borderRadius: radius.sm,
+              background: palette.accentGradient, color: '#fff',
+              '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+            }}
+          >
+            Nytt prosjekt
+          </Button>
         </Box>
       ) : (
         <Box
@@ -212,34 +318,48 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
             alignItems: 'start',
           }}
         >
-          {/* VENSTRE KOLONNE — video + actions + takes + status */}
+          {/* VENSTRE KOLONNE */}
           <Stack spacing={2}>
-            <SelfTapeProjectInfoCard project={detail.project} />
-            <SelfTapeVideoPlayer take={currentTake} />
+            <SelfTapeProjectInfoCard
+              project={detail.project}
+              onBriefClick={() => setScriptDialog('brief')}
+            />
+            <SelfTapeVideoPlayer
+              take={currentTake}
+              onRecordClick={() => setRecordOpen(true)}
+              onUploadFile={handleUploadFile}
+              onGuidesClick={() => setGuidesOpen(true)}
+            />
             <SelfTapePreviousTakesStrip
               takes={detail.takes}
               currentTakeId={detail.project.current_take_id}
               onSelect={async () => { await reloadDetail(); }}
+              onMoreClick={handleTakeMenu}
             />
             <SelfTapeStatusCards feedback={detail.feedback} />
           </Stack>
 
-          {/* MIDTRE KOLONNE — script + take mgmt + AI feedback */}
+          {/* MIDTRE KOLONNE */}
           <Stack spacing={2}>
             <SelfTapeScriptCard
               sceneLabel={detail.project.scene_label}
               sidesPages={detail.project.sides_pages}
               sidesContent={detail.project.sides_content}
+              onViewFullScript={() => setScriptDialog('script')}
             />
             <SelfTapeTakeManagement
               takes={detail.takes}
               currentTakeId={detail.project.current_take_id}
               onSelect={async () => { await reloadDetail(); }}
             />
-            <SelfTapeAIFeedbackCard feedback={detail.feedback} />
+            <SelfTapeAIFeedbackCard
+              feedback={detail.feedback}
+              currentTake={currentTake}
+              onRegenerated={reloadDetail}
+            />
           </Stack>
 
-          {/* HØYRE KOLONNE — submissions + almost ready + history */}
+          {/* HØYRE KOLONNE */}
           <Stack spacing={2}>
             <SelfTapeSubmissionTargets
               submissions={detail.submissions}
@@ -247,29 +367,72 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
             />
             <SelfTapeAlmostReadyCard
               checklist={checklist}
-              onSubmit={async () => {
-                // Send første ikke-sendte target
-                const next = detail.submissions.find(
-                  (s) => !s.submitted_at && s.status !== 'submitted',
-                );
-                if (next) {
-                  try {
-                    const { sendSubmission } = await import(
-                      '../../services/roleRoomSelfTapesService'
-                    );
-                    await sendSubmission(next.id);
-                    await reloadDetail();
-                  } catch (err) {
-                    console.error('AlmostReady onSubmit failed', err);
-                  }
-                }
-              }}
+              onSubmit={handleAlmostReadySubmit}
             />
             <SelfTapeSubmissionHistory entries={historyEntries} />
           </Stack>
         </Box>
       )}
-      {/* Demo-modus + projects-state debugging — kun i dev */}
+
+      {/* Dialoger */}
+      <ProjectLibraryDrawer
+        open={libraryOpen}
+        projects={projects}
+        activeProjectId={activeProjectId}
+        onClose={() => setLibraryOpen(false)}
+        onSelect={(id) => setActiveProjectId(id)}
+        onChanged={handleProjectChanged}
+      />
+      <NewProjectDialog
+        open={newProjectOpen}
+        onClose={() => setNewProjectOpen(false)}
+        onCreated={handleNewProjectCreated}
+      />
+      <ScriptViewerDialog
+        open={scriptDialog !== null}
+        project={detail?.project ?? null}
+        onClose={() => setScriptDialog(null)}
+        variant={scriptDialog ?? 'script'}
+      />
+      <GuidesDrawer
+        open={guidesOpen}
+        onClose={() => setGuidesOpen(false)}
+      />
+      <RecordTakeDialog
+        open={recordOpen}
+        projectId={activeProjectId}
+        onClose={() => setRecordOpen(false)}
+        onUploaded={async () => {
+          await reloadDetail();
+          setSnack({ msg: 'Take lastet opp og klar', severity: 'success' });
+        }}
+      />
+      <TakeActionsMenu
+        anchorEl={takeMenuAnchor}
+        take={takeMenuTake}
+        isCurrent={takeMenuTake?.id === detail?.project.current_take_id}
+        onClose={() => { setTakeMenuAnchor(null); setTakeMenuTake(null); }}
+        onChanged={reloadDetail}
+      />
+
+      <Snackbar
+        open={!!snack}
+        autoHideDuration={4000}
+        onClose={() => setSnack(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {snack ? (
+          <Alert
+            onClose={() => setSnack(null)}
+            severity={snack.severity}
+            sx={{ width: '100%' }}
+          >
+            {snack.msg}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
+
+      {/* Demo-modus + projects-debug */}
       {demoMode && projects.length > 1 ? (
         <Box sx={{ mt: 3, color: palette.textMuted, fontSize: '0.78rem' }}>
           {projects.length} prosjekter tilgjengelig. Velg via «Prosjekt-bibliotek».

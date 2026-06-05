@@ -229,6 +229,50 @@ export function deleteTake(takeId: string): Promise<{ deleted: true }> {
   return api(`/takes/${takeId}`, { method: 'DELETE' });
 }
 
+/**
+ * Upload en innspilt take direkte (multipart) — backend pusher til CF Stream
+ * og kjører finalize automatisk. Returnerer den ferdige raden.
+ */
+export async function uploadRecordedTake(
+  projectId: string,
+  blob: Blob,
+  args: {
+    durationMs: number;
+    onProgress?: (pct: number) => void;
+    filename?: string;
+  },
+): Promise<{ take: SelftapeTake }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const url = buildUrl(`/projects/${projectId}/takes/upload`);
+    const form = new FormData();
+    form.append('duration_ms', String(args.durationMs));
+    form.append('video', blob, args.filename ?? 'take.webm');
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && args.onProgress) {
+        args.onProgress((e.loaded / e.total) * 100);
+      }
+    };
+    xhr.onerror = () => reject(new Error('network_error'));
+    xhr.onload = () => {
+      try {
+        const payload = JSON.parse(xhr.responseText || '{}');
+        if (xhr.status >= 400) {
+          reject(new Error(payload.error ?? `HTTP ${xhr.status}`));
+        } else {
+          resolve(payload);
+        }
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error('parse_failed'));
+      }
+    };
+    xhr.open('POST', url, true);
+    xhr.withCredentials = true;
+    xhr.send(form);
+  });
+}
+
 // ── AI Feedback ───────────────────────────────────────────────────
 export function getFeedback(takeId: string): Promise<{ feedback: SelftapeAIFeedback | null }> {
   return api(`/takes/${takeId}/feedback`);
