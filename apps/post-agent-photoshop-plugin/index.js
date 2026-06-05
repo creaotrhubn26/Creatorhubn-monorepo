@@ -1582,6 +1582,156 @@ const COMMANDS = {
     });
   },
 
+  "resolve.fusionCompAddKeyframe": async ({
+    tool_name,
+    input_name,
+    time,
+    value,
+    comp_name,
+  } = {}) => {
+    if (typeof tool_name !== "string" || tool_name.length === 0) {
+      throw new Error("tool_name må være en ikke-tom string");
+    }
+    if (typeof input_name !== "string" || input_name.length === 0) {
+      throw new Error("input_name må være en ikke-tom string");
+    }
+    if (typeof time !== "number") {
+      throw new Error("time må være et tall (frame-number)");
+    }
+    if (value === undefined || value === null) {
+      throw new Error("value mangler");
+    }
+    const args = {
+      tool_name,
+      input_name,
+      time,
+      value: typeof value === "string" ? value : String(value),
+    };
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.addKeyframe",
+      args,
+    });
+  },
+
+  "resolve.fusionCompRemoveKeyframe": async ({
+    tool_name,
+    input_name,
+    time,
+    comp_name,
+  } = {}) => {
+    if (typeof tool_name !== "string" || tool_name.length === 0) {
+      throw new Error("tool_name må være en ikke-tom string");
+    }
+    if (typeof input_name !== "string" || input_name.length === 0) {
+      throw new Error("input_name må være en ikke-tom string");
+    }
+    if (typeof time !== "number") {
+      throw new Error("time må være et tall");
+    }
+    const args = { tool_name, input_name, time };
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.removeKeyframe",
+      args,
+    });
+  },
+
+  "resolve.fusionCompListKeyframes": async ({
+    tool_name,
+    input_name,
+    comp_name,
+  } = {}) => {
+    if (typeof tool_name !== "string" || tool_name.length === 0) {
+      throw new Error("tool_name må være en ikke-tom string");
+    }
+    if (typeof input_name !== "string" || input_name.length === 0) {
+      throw new Error("input_name må være en ikke-tom string");
+    }
+    const args = { tool_name, input_name };
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.listKeyframes",
+      args,
+    });
+  },
+
+  "resolve.fusionCompSetExpression": async ({
+    tool_name,
+    input_name,
+    expression,
+    comp_name,
+  } = {}) => {
+    if (typeof tool_name !== "string" || tool_name.length === 0) {
+      throw new Error("tool_name må være en ikke-tom string");
+    }
+    if (typeof input_name !== "string" || input_name.length === 0) {
+      throw new Error("input_name må være en ikke-tom string");
+    }
+    if (typeof expression !== "string") {
+      throw new Error("expression må være en string (tom string for å rydde)");
+    }
+    const args = { tool_name, input_name, expression };
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.setExpression",
+      args,
+    });
+  },
+
+  "resolve.fusionCompRemoveAnimation": async ({
+    tool_name,
+    input_name,
+    comp_name,
+  } = {}) => {
+    if (typeof tool_name !== "string" || tool_name.length === 0) {
+      throw new Error("tool_name må være en ikke-tom string");
+    }
+    if (typeof input_name !== "string" || input_name.length === 0) {
+      throw new Error("input_name må være en ikke-tom string");
+    }
+    const args = { tool_name, input_name };
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.removeAnimation",
+      args,
+    });
+  },
+
+  "resolve.fusionCompSetRenderRange": async ({
+    start,
+    end,
+    comp_name,
+  } = {}) => {
+    if (typeof start !== "number") {
+      throw new Error("start må være et tall (frame-number)");
+    }
+    if (typeof end !== "number") {
+      throw new Error("end må være et tall");
+    }
+    if (end < start) {
+      throw new Error("end må være >= start");
+    }
+    const args = { start, end };
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.setRenderRange",
+      args,
+    });
+  },
+
+  "resolve.fusionCompSetCurrentTime": async ({ time, comp_name } = {}) => {
+    if (typeof time !== "number") {
+      throw new Error("time må være et tall");
+    }
+    const args = { time };
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.setCurrentTime",
+      args,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve

@@ -1125,6 +1125,90 @@ export const photoshop = {
       src_output: string;
     }>("resolve.fusionCompConnectInput", params),
 
+  resolveFusionCompAddKeyframe: (params: {
+    tool_name: string;
+    input_name: string;
+    time: number;
+    value: string;
+    comp_name?: string;
+  }) =>
+    send<{
+      keyframed: boolean;
+      tool: string;
+      input: string;
+      time: number;
+      value: string;
+    }>("resolve.fusionCompAddKeyframe", params),
+
+  resolveFusionCompRemoveKeyframe: (params: {
+    tool_name: string;
+    input_name: string;
+    time: number;
+    comp_name?: string;
+  }) =>
+    send<
+      | { removed: false; reason: string; tool: string; input: string }
+      | { removed: true; tool: string; input: string; time: number }
+    >("resolve.fusionCompRemoveKeyframe", params),
+
+  resolveFusionCompListKeyframes: (params: {
+    tool_name: string;
+    input_name: string;
+    comp_name?: string;
+  }) =>
+    send<
+      | { animated: false; tool: string; input: string; keyframes: [] }
+      | {
+          animated: true;
+          tool: string;
+          input: string;
+          count?: number;
+          keyframes: Array<{ time: number; value: number | string }>;
+        }
+    >("resolve.fusionCompListKeyframes", params),
+
+  resolveFusionCompSetExpression: (params: {
+    tool_name: string;
+    input_name: string;
+    expression: string;
+    comp_name?: string;
+  }) =>
+    send<{
+      set: boolean;
+      tool: string;
+      input: string;
+      expression: string;
+    }>("resolve.fusionCompSetExpression", params),
+
+  resolveFusionCompRemoveAnimation: (params: {
+    tool_name: string;
+    input_name: string;
+    comp_name?: string;
+  }) =>
+    send<{ cleared: boolean; tool: string; input: string }>(
+      "resolve.fusionCompRemoveAnimation",
+      params,
+    ),
+
+  resolveFusionCompSetRenderRange: (params: {
+    start: number;
+    end: number;
+    comp_name?: string;
+  }) =>
+    send<{ set: boolean; start: number; end: number }>(
+      "resolve.fusionCompSetRenderRange",
+      params,
+    ),
+
+  resolveFusionCompSetCurrentTime: (params: {
+    time: number;
+    comp_name?: string;
+  }) =>
+    send<{ set: boolean; time: number; current_time: number }>(
+      "resolve.fusionCompSetCurrentTime",
+      params,
+    ),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 
