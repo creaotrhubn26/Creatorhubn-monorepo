@@ -135,8 +135,10 @@ async function api<T>(
   });
   const payload: unknown = await r.json().catch(() => null);
   if (!r.ok) {
-    const msg = (payload && typeof payload === 'object' && (payload as { error?: string }).error)
-      || `HTTP ${r.status}`;
+    const errorField = payload && typeof payload === 'object'
+      ? (payload as { error?: string }).error
+      : null;
+    const msg = errorField ?? `HTTP ${r.status}`;
     throw new Error(msg);
   }
   return payload as T;
