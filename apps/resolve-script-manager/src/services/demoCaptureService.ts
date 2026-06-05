@@ -61,6 +61,23 @@ export async function scanDom(url: string, timeoutMs = 20000): Promise<DomScanRe
   return result;
 }
 
+/**
+ * Ta et skjermbilde av siden (html2canvas i eget vindu). Returnerer JPEG
+ * data-URL eller null (timeout/feil/web-dev). Brukes til thumbnails + vision.
+ */
+export async function captureScreenshot(url: string, timeoutMs = 30000): Promise<string | null> {
+  if (!isCaptureAvailable()) return null;
+  let resolve!: (v: string | null) => void;
+  const done = new Promise<string | null>((r) => { resolve = r; });
+  const unlisten = await listen<{ ok: boolean; dataUrl?: string }>('demo-capture://shot', (e) => resolve(e.payload?.ok ? (e.payload.dataUrl ?? null) : null));
+  const timer = setTimeout(() => resolve(null), timeoutMs);
+  try { await invoke('demo_screenshot', { url }); } catch { resolve(null); }
+  const result = await done;
+  clearTimeout(timer);
+  unlisten();
+  return result;
+}
+
 /** Resultat av auto-utførelse av en handling. */
 export interface AutoResult {
   ok: boolean;

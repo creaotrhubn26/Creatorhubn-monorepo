@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
 import { fetchCurrentUser, roleLabel, userInitials, type CurrentUser } from '../../services/currentUserService';
+import { captureScreenshot, isCaptureAvailable } from '../../services/demoCaptureService';
 import { generateSceneScript, improveScript, type ImproveAction } from './demoStudioAI';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
@@ -95,12 +96,23 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
     if (!aiReady) { setShowSignIn(true); return; }
     setAiError(null); setAiBusy('generate');
     try {
-      const g = await generateSceneScript({ url: project.url, demoType: project.demoType, scene: selected, meta });
+      const g = await generateSceneScript({ url: project.url, demoType: project.demoType, scene: selected, meta, screenshot: selected.thumbnailDataUrl });
       updateScene(selected.id, {
         narration: g.narration, visualInstruction: g.visualInstruction,
         requiredAction: g.requiredAction, overlayText: g.overlayText, status: 'in_progress',
       });
     } catch (e) { setAiError((e as Error).message); } finally { setAiBusy(null); }
+  };
+
+  const onShot = async () => {
+    if (!project || !selected) return;
+    if (!isCaptureAvailable()) { setAiError('Skjermbilde krever Tauri-appen.'); return; }
+    setAiError(null); setAiBusy('shot');
+    try {
+      const d = await captureScreenshot(project.url);
+      if (d) updateScene(selected.id, { thumbnailDataUrl: d });
+      else setAiError('Klarte ikke ta skjermbilde');
+    } finally { setAiBusy(null); }
   };
 
   const onImprove = async (action: ImproveAction) => {
@@ -319,6 +331,14 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
               <span style={{ fontSize: 13, fontWeight: 700 }}>👁 Live Preview</span>
               <div style={{ flex: 1 }} />
               <span style={{ ...chip, fontSize: 10 }}>▭ {DEVICE_LABEL[selected.device]}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <button style={{ ...btn, padding: '6px 11px', fontSize: 12, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onShot()}>
+                {aiBusy === 'shot' ? 'Tar skjermbilde…' : 'Ta skjermbilde'}
+              </button>
+              <span style={{ fontSize: 11, color: selected.thumbnailDataUrl ? C.green : C.inkFaint }}>
+                {selected.thumbnailDataUrl ? '✓ Generate Script bruker vision' : 'For AI vision (ser skjermen)'}
+              </span>
             </div>
             {/* Teleprompter preview-kort */}
             <div style={{ background: C.preview, borderRadius: 12, padding: 18, color: '#f2ede6', marginBottom: 18 }}>

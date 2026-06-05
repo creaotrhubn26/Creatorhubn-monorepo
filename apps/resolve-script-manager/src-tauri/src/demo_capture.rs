@@ -17,10 +17,13 @@ const CAPTURE_JS: &str = include_str!("../capture/demo_capture_inject.js");
 const SCAN_JS: &str = include_str!("../capture/demo_scan_inject.js");
 const VERIFY_JS: &str = include_str!("../capture/demo_verify_inject.js");
 const AUTO_JS: &str = include_str!("../capture/demo_auto_inject.js");
+const H2C_JS: &str = include_str!("../capture/html2canvas.min.js");
+const SHOT_JS: &str = include_str!("../capture/demo_shot_inject.js");
 const CAPTURE_LABEL: &str = "demo-capture";
 const SCAN_LABEL: &str = "demo-scan";
 const VERIFY_LABEL: &str = "demo-verify";
 const AUTO_LABEL: &str = "demo-auto";
+const SHOT_LABEL: &str = "demo-shot";
 
 /// Åpne capture-vinduet på `url`. Lukker et eventuelt eksisterende capture-vindu
 /// først, så vi aldri har to gående.
@@ -150,6 +153,36 @@ pub fn demo_auto_result(app: AppHandle, result: serde_json::Value) -> Result<(),
         let _ = w.close();
     }
     app.emit("demo-capture://auto", result).map_err(|e| e.to_string())
+}
+
+/// Ta et skjermbilde av siden (html2canvas i et eget vindu). Resultatet (JPEG
+/// data-URL) sendes via demo_shot_result. Brukes til scene-thumbnails + vision.
+#[tauri::command]
+pub async fn demo_screenshot(app: AppHandle, url: String) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window(SHOT_LABEL) {
+        let _ = existing.close();
+    }
+    let parsed: tauri::Url = url.parse().map_err(|e| format!("ugyldig URL «{url}»: {e}"))?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err("URL må være http(s)".to_string());
+    }
+    WebviewWindowBuilder::new(&app, SHOT_LABEL, WebviewUrl::External(parsed))
+        .title("Tar skjermbilde…")
+        .inner_size(1280.0, 800.0)
+        .initialization_script(H2C_JS)
+        .initialization_script(SHOT_JS)
+        .build()
+        .map_err(|e| format!("kunne ikke åpne skjermbilde-vindu: {e}"))?;
+    Ok(())
+}
+
+/// Mottar skjermbildet (data-URL), videresender til hovedvinduet og lukker vinduet.
+#[tauri::command]
+pub fn demo_shot_result(app: AppHandle, result: serde_json::Value) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window(SHOT_LABEL) {
+        let _ = w.close();
+    }
+    app.emit("demo-capture://shot", result).map_err(|e| e.to_string())
 }
 
 /// Hent EKTE side-kontekst via reqwest (ingen CORS). Trekker ut tittel +

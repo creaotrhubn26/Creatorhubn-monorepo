@@ -8,9 +8,16 @@
 
 import { loadSettings } from "../components/SettingsModal";
 
+/** Innholds-blokk (tekst eller bilde) — for vision sendes content som array. */
+export type ClaudeContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
+
 export interface ClaudeMessage {
   role: "user" | "assistant";
-  content: string;
+  /** Tekst, eller en blokk-array (tekst + bilder) for vision. Proxyen
+   *  videresender content rått til Anthropic. */
+  content: string | ClaudeContentBlock[];
 }
 
 export interface ClaudeResponse {

@@ -10,7 +10,7 @@
  * (ingen React) så den kan gjenbrukes + testes.
  */
 
-import { claudeProxyService } from '../../services/claudeProxyService';
+import { claudeProxyService, type ClaudeContentBlock } from '../../services/claudeProxyService';
 import { demoFetchSiteContext } from '../../api';
 import { isCaptureAvailable } from '../../services/demoCaptureService';
 import {
@@ -78,13 +78,22 @@ ingen forklaring rundt.`;
  * Generer manus for én scene. Returnerer narration/visual/action/overlay.
  * Kaster hvis Claude-proxy feiler (caller viser feil i UI).
  */
+/** Gjør en data-URL om til en Anthropic bilde-blokk (for vision). */
+function imageBlock(dataUrl: string): ClaudeContentBlock | null {
+  const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/s);
+  if (!m) return null;
+  return { type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } };
+}
+
 export async function generateSceneScript(params: {
   url: string;
   demoType: DemoType;
   scene: DemoScene;
   meta: ScriptMeta;
+  /** Skjermbilde (data-URL) av scenen → Claude vision skriver presist det som vises. */
+  screenshot?: string;
 }): Promise<GeneratedScript> {
-  const { url, demoType, scene, meta } = params;
+  const { url, demoType, scene, meta, screenshot } = params;
   const user = `Produkt-URL: ${url}
 Demo-type: ${demoType}
 Scene: "${scene.title}" (scene ${scene.index + 1}), enhet: ${scene.device}
@@ -98,9 +107,13 @@ Skriv manus for DENNE scenen. Svar med JSON:
   "overlayText": "kort tekst-overlay (maks 6 ord)"
 }`;
 
+  const img = screenshot ? imageBlock(screenshot) : null;
+  const content: string | ClaudeContentBlock[] = img
+    ? [img, { type: 'text', text: user }]
+    : user;
   const raw = await claudeProxyService.send({
-    systemPrompt: SYSTEM,
-    messages: [{ role: 'user', content: user }],
+    systemPrompt: SYSTEM + (img ? ' Du SER et skjermbilde av denne scenen — beskriv presist det som faktisk vises på skjermen.' : ''),
+    messages: [{ role: 'user', content }],
     maxTokens: 700,
   });
   const parsed = extractJson<GeneratedScript>(raw);
