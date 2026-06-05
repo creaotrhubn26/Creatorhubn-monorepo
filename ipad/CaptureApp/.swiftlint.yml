@@ -20,4 +20,10 @@ excluded:
 
 force_cast: error
 force_try: error
-force_unwrapping: warning
+# Tests bruker idiomatisk try!/force-unwrap for å fail-fast på
+# oppsetts-feil — det er ikke en reell risk-source. Excluder CaptureAppTests
+# fra force_unwrapping-regelen så main-bygget ikke brekker på tests.
+force_unwrapping:
+  severity: warning
+  excluded:
+    - CaptureAppTests
