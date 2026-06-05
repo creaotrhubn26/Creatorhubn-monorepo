@@ -22,20 +22,37 @@ import {
   S3Client,
   ListObjectsV2Command,
   HeadBucketCommand,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const B2_REGION = process.env.B2_REGION || "us-west-001";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
+
+// Usage-stats cache: B2 har ingen direkte "total bytes" API; vi må
+// iterere ListObjectsV2 og summere. Cache 5 min for å unngå å hamre
+// API'en hver gang admin laster siden.
+interface UsageCache {
+  bytes: number;
+  files: number;
+  computedAt: number;
+}
+let usageCache: UsageCache | null = null;
+const USAGE_CACHE_TTL_MS = 5 * 60 * 1000;
 
 interface B2RoutesDeps {
   app: express.Application;
   requireAdminSession: (req: any, res: any) => any;
 }
 
-function getB2Config(): {
+interface B2Config {
   bucketName: string;
   client: S3Client;
-} | null {
+}
+
+function getB2Config(): B2Config | null {
   const keyId = process.env.B2_APPLICATION_KEY_ID;
   const appKey = process.env.B2_APPLICATION_KEY;
   const bucketName = process.env.B2_BUCKET_NAME;
@@ -55,6 +72,40 @@ function getB2Config(): {
   });
 
   return { bucketName, client };
+}
+
+async function computeBucketUsage(config: B2Config): Promise<{ bytes: number; files: number }> {
+  let totalBytes = 0;
+  let totalFiles = 0;
+  let continuationToken: string | undefined;
+
+  // Cap iterasjoner som safety mot uendelig loop — 1000 sider × 1000 keys = 1M files
+  for (let i = 0; i < 1000; i++) {
+    const result = await config.client.send(
+      new ListObjectsV2Command({
+        Bucket: config.bucketName,
+        ContinuationToken: continuationToken,
+        MaxKeys: 1000,
+      }),
+    );
+    for (const obj of result.Contents || []) {
+      totalBytes += obj.Size || 0;
+      totalFiles += 1;
+    }
+    if (!result.IsTruncated) break;
+    continuationToken = result.NextContinuationToken;
+  }
+
+  return { bytes: totalBytes, files: totalFiles };
+}
+
+// Validér object-key — B2 tillater nesten alt, men vi avviser ../ for path-traversal-paranoia
+function isValidKey(key: string): boolean {
+  if (!key || typeof key !== "string") return false;
+  if (key.length > 1024) return false;
+  if (key.includes("..")) return false;
+  if (key.startsWith("/")) return false;
+  return true;
 }
 
 export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
@@ -90,6 +141,38 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
         bucketName: config.bucketName,
         region: B2_REGION,
         error: err?.message || "Ukjent feil ved B2-tilkobling",
+      });
+    }
+  });
+
+  app.get("/api/admin/b2-archive/usage", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const config = getB2Config();
+    if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
+
+    const force = req.query.force === "1";
+    const now = Date.now();
+    if (!force && usageCache && now - usageCache.computedAt < USAGE_CACHE_TTL_MS) {
+      return res.json({
+        bytes: usageCache.bytes,
+        files: usageCache.files,
+        computedAt: new Date(usageCache.computedAt).toISOString(),
+        cached: true,
+      });
+    }
+
+    try {
+      const stats = await computeBucketUsage(config);
+      usageCache = { ...stats, computedAt: now };
+      return res.json({
+        bytes: stats.bytes,
+        files: stats.files,
+        computedAt: new Date(now).toISOString(),
+        cached: false,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || "Klarte ikke å beregne bucket-bruk",
       });
     }
   });
@@ -134,6 +217,81 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
       return res.status(500).json({
         error: err?.message || "Klarte ikke å liste B2-filer",
       });
+    }
+  });
+
+  app.post("/api/admin/b2-archive/upload-url", express.json(), async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const config = getB2Config();
+    if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
+
+    const { key, contentType, expiresIn } = req.body || {};
+    if (!isValidKey(key)) {
+      return res.status(400).json({ error: "Ugyldig key (1-1024 tegn, ingen ../)" });
+    }
+    const ttl = Math.min(Math.max(Number(expiresIn) || 600, 60), 3600);
+
+    try {
+      const command = new PutObjectCommand({
+        Bucket: config.bucketName,
+        Key: key,
+        ContentType: typeof contentType === "string" ? contentType : undefined,
+      });
+      const url = await getSignedUrl(config.client, command, { expiresIn: ttl });
+
+      // Invalider usage-cache så neste GET ser oppdatert tall etter upload
+      usageCache = null;
+
+      return res.json({ uploadUrl: url, key, expiresIn: ttl });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || "Klarte ikke å lage upload-URL" });
+    }
+  });
+
+  app.get("/api/admin/b2-archive/download-url", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const config = getB2Config();
+    if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
+
+    const key = typeof req.query.key === "string" ? req.query.key : "";
+    if (!isValidKey(key)) {
+      return res.status(400).json({ error: "Ugyldig key" });
+    }
+    const ttl = Math.min(Math.max(Number(req.query.expiresIn) || 600, 60), 3600);
+
+    try {
+      const command = new GetObjectCommand({
+        Bucket: config.bucketName,
+        Key: key,
+      });
+      const url = await getSignedUrl(config.client, command, { expiresIn: ttl });
+      return res.json({ downloadUrl: url, key, expiresIn: ttl });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || "Klarte ikke å lage download-URL" });
+    }
+  });
+
+  app.delete("/api/admin/b2-archive/files/:key(*)", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const config = getB2Config();
+    if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
+
+    const key = req.params.key;
+    if (!isValidKey(key)) {
+      return res.status(400).json({ error: "Ugyldig key" });
+    }
+
+    try {
+      await config.client.send(
+        new DeleteObjectCommand({
+          Bucket: config.bucketName,
+          Key: key,
+        }),
+      );
+      usageCache = null;
+      return res.json({ deleted: true, key });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || "Klarte ikke å slette" });
     }
   });
 }
