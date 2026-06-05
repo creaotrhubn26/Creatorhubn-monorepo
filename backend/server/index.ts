@@ -458,7 +458,7 @@ import { setupShowcaseSmartAlbumsRoutes } from "./showcase-smart-albums-routes";
 import { setupShowcaseBatchOperationsRoutes } from "./showcase-batch-operations-routes";
 import { setupShowcaseGooglePhotosRoutes } from "./showcase-google-photos-routes";
 import { setupShowcaseClientRoutes } from "./showcase-client-routes";
-import { setupShowcaseMiscRoutes } from "./showcase-misc-routes";
+import { setupShowcaseMiscRoutes, runDeadlineReminderSweep } from "./showcase-misc-routes";
 import { setupShowcaseImageOpsRoutes } from "./showcase-image-ops-routes";
 import { setupEvendiPlanningRoutes } from "./evendi-planning-routes";
 import { setupEvendiWeatherLocationRoutes } from "./evendi-weather-location-routes";
@@ -69861,6 +69861,27 @@ setupShowcaseMiscRoutes({
   compatStoreSet,
   dbCompatUserKvKey,
 });
+
+// Selection-deadline reminders: daily sweep finner galleries med
+// selectionDeadline 3 eller 1 dag unna og sender e-post-påminnelse til
+// klienten. Idempotent via gallery_settings.reminderSentFor. Bruker
+// .unref() så loopen aldri holder prosessen i live.
+setInterval(() => {
+  void runDeadlineReminderSweep(pool).then((r) => {
+    if (r.sent > 0 || r.errors > 0) {
+      console.log(`[showcase-deadline-sweep] scanned=${r.scanned} sent=${r.sent} errors=${r.errors}`);
+    }
+  });
+}, 24 * 60 * 60 * 1000).unref();
+// Kjør en sweep 60s etter startup så reminders som er forfalt mens
+// serveren var nede sendes umiddelbart.
+setTimeout(() => {
+  void runDeadlineReminderSweep(pool).then((r) => {
+    if (r.sent > 0 || r.errors > 0) {
+      console.log(`[showcase-deadline-sweep] startup scanned=${r.scanned} sent=${r.sent} errors=${r.errors}`);
+    }
+  });
+}, 60_000).unref();
 
 // ── Showcase collections — flyttet til ./showcase-collections-routes.ts
 setupShowcaseCollectionsRoutes({
