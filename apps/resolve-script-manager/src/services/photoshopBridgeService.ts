@@ -1033,6 +1033,44 @@ export const photoshop = {
       params,
     ),
 
+  resolveMediaPoolImportTimelineFromFile: (params: {
+    file_path: string;
+    timeline_name?: string;
+    import_source_clips?: boolean;
+    source_clips_path?: string;
+    interlace_processing?: boolean;
+  }) =>
+    send<{
+      imported: boolean;
+      timeline_name: string;
+      file_path: string;
+      fps: string;
+    }>("resolve.mediaPoolImportTimelineFromFile", params),
+
+  resolveMediaPoolDeleteTimelines: (params: { timeline_names: string[] }) =>
+    send<{ deleted: boolean; count: number; names: string[] }>(
+      "resolve.mediaPoolDeleteTimelines",
+      params,
+    ),
+
+  resolvePmImportProject: (params: { file_path: string; project_name?: string }) =>
+    send<{ imported: boolean; file_path: string; project_name: string }>(
+      "resolve.pmImportProject",
+      params,
+    ),
+
+  resolvePmExportProject: (params: {
+    project_name: string;
+    file_path: string;
+    with_stills_and_luts?: boolean;
+  }) =>
+    send<{
+      exported: boolean;
+      project_name: string;
+      file_path: string;
+      with_stills_and_luts: boolean;
+    }>("resolve.pmExportProject", params),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 
