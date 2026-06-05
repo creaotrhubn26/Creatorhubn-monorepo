@@ -49,16 +49,16 @@ export default function CtaCard({ connectionId }: { connectionId: string }) {
   const isPhone = PHONE_TYPES.includes(ctaType);
 
   return (
-    <Box sx={{ border: '1px solid rgba(168,85,247,0.32)', bgcolor: 'rgba(168,85,247,0.07)', borderRadius: 2 }}>
+    <Box sx={{ border: '1px solid rgba(34,211,238,0.3)', bgcolor: 'rgba(34,211,238,0.06)', borderRadius: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ p: 1.4, cursor: 'pointer' }} onClick={() => setOpen((v) => !v)}>
-        <CtaIcon sx={{ color: '#c084fc' }} />
+        <CtaIcon sx={{ color: '#22d3ee' }} />
         <Box sx={{ flex: 1 }}>
           <Typography sx={{ fontWeight: 800, color: '#f8fafc' }}>Gjør Facebook-siden til en lead-maskin</Typography>
           <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.6)' }}>
             Sett en «Book nå»-knapp på kundens side, så folk kan booke/ringe rett fra Facebook.
           </Typography>
         </Box>
-        <Typography sx={{ color: '#c084fc', fontSize: '0.8rem', fontWeight: 700 }}>{open ? 'Skjul' : 'Sett knapp'}</Typography>
+        <Typography sx={{ color: '#22d3ee', fontSize: '0.8rem', fontWeight: 700 }}>{open ? 'Skjul' : 'Sett knapp'}</Typography>
       </Stack>
       <Collapse in={open}>
         <Box sx={{ px: 1.4, pb: 1.6 }}>

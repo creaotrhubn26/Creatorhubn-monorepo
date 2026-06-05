@@ -10,6 +10,7 @@ import {
   Box, Stack, Typography, Chip, Button, CircularProgress, Alert, Divider, Link, TextField,
 } from '@mui/material';
 import { CampaignOutlined as MentionsIcon, OpenInNew as OpenIcon, AutoAwesome as AiIcon } from '@mui/icons-material';
+import ConnectionPicker from './ConnectionPicker';
 
 type Status = 'svart' | 'lead' | 'skjult';
 const STATUSES: { key: Status; label: string; color: string }[] = [
@@ -80,9 +81,9 @@ export default function MentionsPanel() {
         method: 'POST',
         body: JSON.stringify({ connectionId, from: m.from, message: m.message }),
       }) as { success: boolean; reply?: string; error?: string };
-      setDrafts((d) => ({ ...d, [m.id]: r.success ? (r.reply || '') : `⚠ ${r.error || 'AI-svar feilet'}` }));
+      setDrafts((d) => ({ ...d, [m.id]: r.success ? (r.reply || '') : (r.error || 'AI-svar feilet — prøv igjen.') }));
     } catch (e) {
-      setDrafts((d) => ({ ...d, [m.id]: `⚠ ${e instanceof Error ? e.message : String(e)}` }));
+      setDrafts((d) => ({ ...d, [m.id]: e instanceof Error ? e.message : String(e) }));
     } finally {
       setDrafting(null);
     }
@@ -106,15 +107,7 @@ export default function MentionsPanel() {
             Innlegg der kundens Facebook-side er tagget eller nevnt. Følg med, svar, og gjør positive omtaler til innhold eller varme leads.
           </Typography>
         </Box>
-        {connections.length > 1 ? (
-          <select
-            value={connectionId}
-            onChange={(e) => setConnectionId(e.target.value)}
-            style={{ background: '#0f1729', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, padding: 8 }}
-          >
-            {connections.map((c) => <option key={c.id} value={c.id}>{c.facebookPageName || `@${c.igUsername}`}</option>)}
-          </select>
-        ) : null}
+        <ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg Facebook-side" />
       </Stack>
 
       {connLoading ? (
@@ -125,7 +118,7 @@ export default function MentionsPanel() {
         <>
           {graphError ? (
             <Alert severity="info">
-              Omtale-henting er ikke aktiv ennå (venter på godkjenning av <code>Page Mentions</code> fra Meta).
+              Omtale-henting er ikke aktivert ennå (venter på godkjenning av <code>Page Mentions</code> fra Meta).
               Når det er godkjent dukker omtaler av kundens side opp her automatisk.
             </Alert>
           ) : null}
@@ -152,10 +145,10 @@ export default function MentionsPanel() {
           <Divider />
 
           {mentionsLoading ? (
-            <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress size={22} /></Box>
+            <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} /></Box>
           ) : visible.length === 0 ? (
             <Typography sx={{ p: 2, color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>
-              {mentions.length === 0 ? 'Ingen omtaler funnet ennå.' : 'Ingen omtaler i denne gruppen.'}
+              {mentions.length === 0 ? 'Ingen omtaler funnet ennå.' : 'Ingen omtaler i denne gruppen ennå.'}
             </Typography>
           ) : (
             <Stack spacing={1}>

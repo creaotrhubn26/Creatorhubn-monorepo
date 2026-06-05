@@ -47,7 +47,7 @@ export default function InsightsCard({ connectionId, leads }: { connectionId: st
           <Button
             size="small" variant="contained" startIcon={<AiIcon sx={{ fontSize: 16 }} />}
             onClick={() => run.mutate()} disabled={leads.length === 0 || run.isPending}
-            sx={{ mb: 1.2, bgcolor: 'rgba(34,211,238,0.9)', color: '#06121f', '&:hover': { bgcolor: 'rgb(8,178,210)' } }}
+            sx={{ mb: 1.2, bgcolor: 'rgba(168,85,247,0.9)', '&:hover': { bgcolor: 'rgb(147,51,234)' } }}
           >
             {run.isPending ? 'Analyserer…' : data ? 'Oppdater innsikt' : 'Lag innsikt'}
           </Button>
