@@ -166,7 +166,7 @@ export default function LeadsPanel() {
   // ── Fast follow-up: templates + seller notification + per-lead send ──────
   const [showFollowup, setShowFollowup] = useState(false);
   const { data: followupData } = useQuery<{
-    config: FollowupConfig; smsConfigured: boolean; emailConfigured: boolean; success: boolean;
+    config: FollowupConfig; smsConfigured: boolean; emailConfigured: boolean; whatsappConfigured: boolean; success: boolean;
   }>({
     queryKey: ['leads-followup-config', connectionId],
     enabled: !!connectionId,
@@ -189,7 +189,7 @@ export default function LeadsPanel() {
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] }),
   });
-  const channelsReady = (followupData?.smsConfigured || followupData?.emailConfigured) ?? false;
+  const channelsReady = (followupData?.smsConfigured || followupData?.emailConfigured || followupData?.whatsappConfigured) ?? false;
 
   // ── White-label: client's own sender domain via Resend ──────────────────
   interface DnsRecord { type: string; name: string; value: string; priority: number | null; status: string | null }
@@ -410,7 +410,7 @@ export default function LeadsPanel() {
                       <Box sx={{ flex: 1 }}>
                         <Typography sx={{ fontWeight: 800, color: '#f8fafc' }}>Rask oppfølging</Typography>
                         <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.6)' }}>
-                          Send automatisk SMS + e-post til nye leads, og varsle kunden. Trykk «Følg opp» på en lead under.
+                          Send automatisk e-post, SMS og WhatsApp til nye leads, og varsle kunden. Trykk «Følg opp» på en lead under.
                         </Typography>
                       </Box>
                       <Typography sx={{ color: '#38bdf8', fontSize: '0.8rem', fontWeight: 700 }}>
@@ -421,7 +421,8 @@ export default function LeadsPanel() {
                       <Box sx={{ px: 1.4, pb: 1.6 }}>
                         {!channelsReady ? (
                           <Alert severity="info" sx={{ mb: 1.5 }}>
-                            SMS/e-post er ikke koblet på ennå. Meldingene under lagres, og sendes automatisk så snart utsending er aktivert.
+                            E-post/SMS/WhatsApp er ikke koblet på ennå. Meldingene under lagres, og sendes automatisk så snart en kanal er aktivert.
+                            {' '}(WhatsApp krever en Meta-godkjent meldingsmal.)
                           </Alert>
                         ) : null}
                         {cfg ? (
