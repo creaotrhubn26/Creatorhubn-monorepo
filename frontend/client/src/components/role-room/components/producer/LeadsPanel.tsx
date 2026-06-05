@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, Stack, Typography, Chip, Button, List, ListItemButton, ListItemText,
   CircularProgress, Alert, Divider, Table, TableBody, TableCell, TableHead, TableRow,
-  Select, MenuItem, TextField, InputAdornment, Collapse, Tooltip,
+  Select, MenuItem, TextField, InputAdornment, Collapse, Tooltip, Switch, FormControlLabel,
 } from '@mui/material';
 import {
   ContactPage as LeadsIcon, InstallMobile as FormIcon, BoltOutlined as FollowupIcon,
@@ -84,6 +84,7 @@ interface FollowupConfig {
   replyTo: string;
   notifyPhone: string;
   notifyEmail: string;
+  aiPersonalize: boolean;
 }
 
 function fmt(iso: string | null): string {
@@ -197,7 +198,7 @@ export default function LeadsPanel() {
     mutationFn: async (lead: Lead) =>
       apiRequest('/api/role-room/leads/producer/followup', {
         method: 'POST',
-        body: JSON.stringify({ connectionId, formId, leadId: lead.id, name: lead.name, email: lead.email, phone: lead.phone }),
+        body: JSON.stringify({ connectionId, formId, leadId: lead.id, name: lead.name, email: lead.email, phone: lead.phone, fields: lead.fields }),
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] }),
   });
@@ -496,6 +497,17 @@ export default function LeadsPanel() {
                                 placeholder="kunde@bedrift.no"
                               />
                             </Stack>
+                            <Box sx={{ border: '1px solid rgba(168,85,247,0.3)', bgcolor: 'rgba(168,85,247,0.06)', borderRadius: 1.5, px: 1.4, py: 0.6 }}>
+                              <FormControlLabel
+                                control={<Switch checked={cfg.aiPersonalize} onChange={(e) => setCfg({ ...cfg, aiPersonalize: e.target.checked })} />}
+                                label={
+                                  <Box>
+                                    <Typography sx={{ fontSize: '0.86rem', color: '#f8fafc', fontWeight: 600 }}>✨ La AI skrive en personlig melding til hver lead</Typography>
+                                    <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.6)' }}>Claude tilpasser meldingen ut fra hva hver lead spurte om. Malene over brukes som tone — og som reserve hvis AI feiler.</Typography>
+                                  </Box>
+                                }
+                              />
+                            </Box>
                             <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
                               {saveFollowupConfig.isSuccess ? (
                                 <Typography sx={{ fontSize: '0.78rem', color: '#86efac' }}>Lagret</Typography>
