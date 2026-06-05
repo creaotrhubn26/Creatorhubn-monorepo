@@ -1484,6 +1484,104 @@ const COMMANDS = {
     });
   },
 
+  "resolve.fusionCompGetInfo": async ({ comp_name } = {}) => {
+    const args = {};
+    if (typeof comp_name === "string" && comp_name.length > 0) {
+      args.comp_name = comp_name;
+    }
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.getInfo",
+      args,
+    });
+  },
+
+  "resolve.fusionCompAddTool": async ({
+    tool_type,
+    name,
+    x,
+    y,
+    comp_name,
+  } = {}) => {
+    if (typeof tool_type !== "string" || tool_type.length === 0) {
+      throw new Error("tool_type må være en ikke-tom string (f.eks. 'TextPlus')");
+    }
+    const args = { tool_type };
+    if (typeof name === "string" && name.length > 0) args.name = name;
+    if (typeof x === "number") args.x = x;
+    if (typeof y === "number") args.y = y;
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.addTool",
+      args,
+    });
+  },
+
+  "resolve.fusionCompDeleteTool": async ({ name, comp_name } = {}) => {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error("name må være en ikke-tom string");
+    }
+    const args = { name };
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.deleteTool",
+      args,
+    });
+  },
+
+  "resolve.fusionCompSetInput": async ({
+    tool_name,
+    input_name,
+    value,
+    comp_name,
+  } = {}) => {
+    if (typeof tool_name !== "string" || tool_name.length === 0) {
+      throw new Error("tool_name må være en ikke-tom string");
+    }
+    if (typeof input_name !== "string" || input_name.length === 0) {
+      throw new Error("input_name må være en ikke-tom string");
+    }
+    if (value === undefined || value === null) {
+      throw new Error("value mangler");
+    }
+    const args = {
+      tool_name,
+      input_name,
+      value: typeof value === "string" ? value : String(value),
+    };
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.setInput",
+      args,
+    });
+  },
+
+  "resolve.fusionCompConnectInput": async ({
+    dest_tool,
+    dest_input,
+    src_tool,
+    src_output,
+    comp_name,
+  } = {}) => {
+    if (typeof dest_tool !== "string" || dest_tool.length === 0) {
+      throw new Error("dest_tool må være en ikke-tom string");
+    }
+    if (typeof dest_input !== "string" || dest_input.length === 0) {
+      throw new Error("dest_input må være en ikke-tom string");
+    }
+    if (typeof src_tool !== "string" || src_tool.length === 0) {
+      throw new Error("src_tool må være en ikke-tom string");
+    }
+    const args = { dest_tool, dest_input, src_tool };
+    if (typeof src_output === "string" && src_output.length > 0) {
+      args.src_output = src_output;
+    }
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.connectInput",
+      args,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
