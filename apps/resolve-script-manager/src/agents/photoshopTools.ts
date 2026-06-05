@@ -1641,6 +1641,41 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_fusion_comp_tracker_track",
+    description:
+      "Kjør tracking på en Tracker-tool (eller PlanarTracker). direction='forward' analyserer fra current time fremover, 'backward' bakover. Lang-løpende operasjon (10 min timeout) — analyserer hvert frame. Bruk FØR trackerGetCenter eller for å koble tracker-output til Transform.Center.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tool_name: { type: "string", description: "Navn på Tracker-node." },
+        direction: {
+          type: "string",
+          enum: ["forward", "backward"],
+          description: "Default 'forward'.",
+        },
+        comp_name: { type: "string" },
+      },
+      required: ["tool_name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_tracker_get_center",
+    description:
+      "Hent tracked center-position (x, y) på Tracker ved gitt frame. Hvis ikke tracked enda returnerer {found: false}. Brukes for å verifisere tracker eller for å lese verdier i Director-logikk. For å BINDE tracker → annen tool: bruk connectInput med src_output='SteadyPosition' eller 'UnsteadyPosition'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tool_name: { type: "string" },
+        time: {
+          type: "number",
+          description: "Frame-number. Utelat for current time.",
+        },
+        comp_name: { type: "string" },
+      },
+      required: ["tool_name"],
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -3082,6 +3117,35 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         params.comp_name = input.comp_name;
       }
       return photoshop.resolveFusionCompSet3DTransform(params);
+    }
+    case "photoshop_resolve_fusion_comp_tracker_track": {
+      if (typeof input.tool_name !== "string" || input.tool_name.length === 0) {
+        throw new Error("tool_name må være en ikke-tom string");
+      }
+      const direction =
+        input.direction === "backward" ? "backward" : "forward";
+      const params: {
+        tool_name: string;
+        direction: "forward" | "backward";
+        comp_name?: string;
+      } = { tool_name: input.tool_name, direction };
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompTrackerTrack(params);
+    }
+    case "photoshop_resolve_fusion_comp_tracker_get_center": {
+      if (typeof input.tool_name !== "string" || input.tool_name.length === 0) {
+        throw new Error("tool_name må være en ikke-tom string");
+      }
+      const params: { tool_name: string; time?: number; comp_name?: string } = {
+        tool_name: input.tool_name,
+      };
+      if (typeof input.time === "number") params.time = input.time;
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompTrackerGetCenter(params);
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();

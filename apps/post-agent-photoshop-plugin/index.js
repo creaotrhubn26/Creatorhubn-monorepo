@@ -1862,6 +1862,44 @@ const COMMANDS = {
     });
   },
 
+  "resolve.fusionCompTrackerTrack": async ({
+    tool_name,
+    direction,
+    comp_name,
+  } = {}) => {
+    if (typeof tool_name !== "string" || tool_name.length === 0) {
+      throw new Error("tool_name må være en ikke-tom string");
+    }
+    const dir = direction || "forward";
+    if (dir !== "forward" && dir !== "backward") {
+      throw new Error("direction må være 'forward' eller 'backward'");
+    }
+    const args = { tool_name, direction: dir };
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.trackerTrack",
+      args,
+      timeout_ms: 600000,
+    });
+  },
+
+  "resolve.fusionCompTrackerGetCenter": async ({
+    tool_name,
+    time,
+    comp_name,
+  } = {}) => {
+    if (typeof tool_name !== "string" || tool_name.length === 0) {
+      throw new Error("tool_name må være en ikke-tom string");
+    }
+    const args = { tool_name };
+    if (typeof time === "number") args.time = time;
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.trackerGetCenter",
+      args,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
