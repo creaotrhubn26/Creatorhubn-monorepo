@@ -176,6 +176,7 @@ import {
   sumManagementFeeForPeriod,
   sumSpendForProjectPeriod,
   getChannelResultRows,
+  getCampaignResultRows,
 } from './role-room-ads-db.js';
 import {
   getBudget,
@@ -22513,6 +22514,210 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ period, ...results });
       } catch (error) {
         res.status(500).json({ error: 'Failed to load channel results', detail: String(error) });
+      }
+    },
+  );
+
+  // Per-campaign breakdown for the client transparency view (read-only).
+  // Brukes av ClientAdsPerformancePanel i ClientEconomyPanel.
+  router.get(
+    '/ads/results/by-campaign',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : '';
+        if (!projectId) return res.status(400).json({ error: 'projectId_required' });
+        const period =
+          typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
+            ? req.query.period
+            : new Date().toISOString().slice(0, 7);
+        const campaigns = await getCampaignResultRows(pool, projectId, period);
+        const campaignsWithRoas = campaigns.map((c) => ({
+          ...c,
+          roas: c.spendNok > 0 ? Number((c.conversionValueNok / c.spendNok).toFixed(2)) : null,
+          costPerConversionNok: c.conversions > 0 ? Number((c.spendNok / c.conversions).toFixed(2)) : null,
+        }));
+        res.json({ period, campaigns: campaignsWithRoas });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load campaign results', detail: String(error) });
+      }
+    },
+  );
+
+  // ── Klient-kommentar på kampanje (migrasjon 237) ────────────────────────
+  // Klienten kan be om endringer (øk budsjett / pause / juster mål) uten
+  // selv å ha skrive-tilgang til kampanjen. Produsenten ser kommentaren i
+  // sin Ads-panel og kan svare eller utføre handlingen.
+
+  const ALLOWED_COMMENT_INTENTS = new Set([
+    'increase_budget',
+    'decrease_budget',
+    'pause',
+    'resume',
+    'change_targeting',
+    'change_creative',
+    'general_feedback',
+    'producer_reply',
+  ]);
+
+  // Hent alle kommentar-tråder for en kampanje (begge roller leser samme data).
+  router.get(
+    '/ads/campaigns/:campaignId/client-comments',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const campaignId = String(req.params.campaignId);
+        const userId = getUserId(req);
+        // Tilgang: klient/produsent på samme prosjekt. Vi sjekker prosjekt-
+        // tilhørighet via kampanjen (campaign.project_id).
+        const campaign = await getCampaignById(pool, campaignId);
+        if (!campaign) return res.status(404).json({ error: 'campaign_not_found' });
+        // produsent (eier) eller noen med project-access.
+        if (campaign.userId !== userId) {
+          const hasAccess = await pool.query<{ ok: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM casting_user_roles
+               WHERE project_id = $1 AND user_id = $2
+             ) AS ok`,
+            [campaign.projectId, userId],
+          );
+          if (!hasAccess.rows[0]?.ok) {
+            return res.status(403).json({ error: 'forbidden' });
+          }
+        }
+        const result = await pool.query(
+          `SELECT id, campaign_id, project_id, author_user_id, author_role,
+                  body, intent, created_at, resolved_at, resolved_by_user_id
+             FROM client_ads_campaign_comments
+            WHERE campaign_id = $1
+         ORDER BY created_at ASC
+            LIMIT 200`,
+          [campaignId],
+        );
+        res.json({
+          comments: result.rows.map((r) => ({
+            id: String(r.id),
+            campaignId: r.campaign_id,
+            projectId: r.project_id,
+            authorUserId: r.author_user_id,
+            authorRole: r.author_role,
+            body: r.body,
+            intent: r.intent,
+            createdAt: r.created_at,
+            resolvedAt: r.resolved_at,
+            resolvedByUserId: r.resolved_by_user_id,
+          })),
+        });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load comments', detail: String(error) });
+      }
+    },
+  );
+
+  // Legg til ny kommentar (klient: be om endring | produsent: svar).
+  router.post(
+    '/ads/campaigns/:campaignId/client-comments',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const campaignId = String(req.params.campaignId);
+        const userId = getUserId(req);
+        const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+        const intent = typeof req.body?.intent === 'string' ? req.body.intent : null;
+
+        if (!body || body.length > 4000) {
+          return res.status(400).json({ error: 'body_required_or_too_long' });
+        }
+        if (intent !== null && !ALLOWED_COMMENT_INTENTS.has(intent)) {
+          return res.status(400).json({ error: 'invalid_intent' });
+        }
+
+        const campaign = await getCampaignById(pool, campaignId);
+        if (!campaign) return res.status(404).json({ error: 'campaign_not_found' });
+
+        // Avgjør rolle: er bruker = kampanje-eier → producer, ellers → client.
+        // (Klient-reviewer er en project-rolle, vi forenkler her: er du IKKE
+        // eier av kampanjen, regnes du som klient-side avsender.)
+        const authorRole = campaign.userId === userId ? 'producer' : 'client';
+
+        // Klient må ha project-access; producer trivially OK siden hen eier.
+        if (authorRole === 'client') {
+          const hasAccess = await pool.query<{ ok: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM casting_user_roles
+               WHERE project_id = $1 AND user_id = $2
+             ) AS ok`,
+            [campaign.projectId, userId],
+          );
+          if (!hasAccess.rows[0]?.ok) {
+            return res.status(403).json({ error: 'forbidden' });
+          }
+        }
+
+        const result = await pool.query<{
+          id: number;
+          campaign_id: string;
+          project_id: string;
+          author_user_id: string;
+          author_role: string;
+          body: string;
+          intent: string | null;
+          created_at: Date;
+        }>(
+          `INSERT INTO client_ads_campaign_comments
+            (campaign_id, project_id, author_user_id, author_role, body, intent)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING id, campaign_id, project_id, author_user_id, author_role, body, intent, created_at`,
+          [campaignId, campaign.projectId, userId, authorRole, body, intent],
+        );
+
+        res.status(201).json({
+          comment: {
+            id: String(result.rows[0].id),
+            campaignId: result.rows[0].campaign_id,
+            projectId: result.rows[0].project_id,
+            authorUserId: result.rows[0].author_user_id,
+            authorRole: result.rows[0].author_role,
+            body: result.rows[0].body,
+            intent: result.rows[0].intent,
+            createdAt: result.rows[0].created_at,
+          },
+        });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to save comment', detail: String(error) });
+      }
+    },
+  );
+
+  // Marker en kommentar-tråd som løst (kun produsenten).
+  router.post(
+    '/ads/client-comments/:commentId/resolve',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const commentId = String(req.params.commentId);
+        const userId = getUserId(req);
+        // Sjekk eierskap via kampanje → produsent.
+        const ownerResult = await pool.query<{ user_id: string }>(
+          `SELECT c.user_id
+             FROM client_ads_campaign_comments cc
+             JOIN ads_campaigns c ON c.id = cc.campaign_id
+            WHERE cc.id = $1`,
+          [commentId],
+        );
+        if (!ownerResult.rows[0]) return res.status(404).json({ error: 'comment_not_found' });
+        if (ownerResult.rows[0].user_id !== userId) {
+          return res.status(403).json({ error: 'only_producer_can_resolve' });
+        }
+        await pool.query(
+          `UPDATE client_ads_campaign_comments
+              SET resolved_at = NOW(), resolved_by_user_id = $2
+            WHERE id = $1 AND resolved_at IS NULL`,
+          [commentId, userId],
+        );
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to resolve', detail: String(error) });
       }
     },
   );
