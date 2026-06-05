@@ -1,15 +1,21 @@
 import { Box, Stack, Tooltip, Typography } from '@mui/material';
 import {
-  AutoFixHigh as AnalyzeIcon,
+  AutoFixHigh as ResearchIcon,
   Rocket as PlanIcon,
   CloudUpload as PublishIcon,
-  MoveToInbox as ListenIcon,
+  MoveToInbox as InboxIcon,
+  ContactPage as LeadsIcon,
   QueryStats as MeasureIcon,
   Check as CheckIcon,
 } from '@mui/icons-material';
 
-export type RoleRoomAgentPhase = 'analyze' | 'plan' | 'publish' | 'listen' | 'measure';
+export type RoleRoomAgentPhase = 'research' | 'plan' | 'publish' | 'inbox' | 'leads' | 'measure';
 
+// Mirrors the guided tab flow in RoleRoomAgentDialog (research → markedsplan →
+// feed-planner → inbox → leads → analytics). Labels match the tab names and
+// captions are Norwegian throughout (bestemor-vennlig, ingen språk-miks).
+// Each phase's `tabs` also lists the related power-tools so the step lights up
+// when the producer is in one of them.
 const PHASES: Array<{
   id: RoleRoomAgentPhase;
   label: string;
@@ -18,37 +24,44 @@ const PHASES: Array<{
   tabs: string[];
 }> = [
   {
-    id: 'analyze',
-    label: 'Analyze',
-    caption: 'Forstå bedriften',
-    icon: <AnalyzeIcon fontSize="small" />,
-    tabs: ['research', 'meta-page'],
+    id: 'research',
+    label: 'Research',
+    caption: 'Forstå kunden',
+    icon: <ResearchIcon fontSize="small" />,
+    tabs: ['research', 'discovery', 'meta-page', 'page-content'],
   },
   {
     id: 'plan',
-    label: 'Plan',
-    caption: 'Strategi + posts',
+    label: 'Markedsplan',
+    caption: 'Strategi + innlegg',
     icon: <PlanIcon fontSize="small" />,
-    tabs: ['marketing-plan', 'feed-planner'],
+    tabs: ['marketing-plan'],
   },
   {
     id: 'publish',
-    label: 'Publish',
-    caption: 'På tvers av plattformer',
+    label: 'Feed-planner',
+    caption: 'Lag + publiser',
     icon: <PublishIcon fontSize="small" />,
-    tabs: ['fb-publish', 'fb-mention', 'page-content'],
+    tabs: ['feed-planner', 'fb-publish'],
   },
   {
-    id: 'listen',
-    label: 'Listen',
-    caption: 'Inbox + sentiment',
-    icon: <ListenIcon fontSize="small" />,
-    tabs: ['social-inbox'],
+    id: 'inbox',
+    label: 'Inbox',
+    caption: 'Svar + omtaler',
+    icon: <InboxIcon fontSize="small" />,
+    tabs: ['social-inbox', 'mentions', 'fb-mention', 'ig-hashtag'],
+  },
+  {
+    id: 'leads',
+    label: 'Leads',
+    caption: 'Få + følg opp kunder',
+    icon: <LeadsIcon fontSize="small" />,
+    tabs: ['leads', 'events'],
   },
   {
     id: 'measure',
-    label: 'Measure',
-    caption: 'Analytics',
+    label: 'Analyse',
+    caption: 'Resultater',
     icon: <MeasureIcon fontSize="small" />,
     tabs: ['social-analytics', 'ads-attribution'],
   },
@@ -80,7 +93,7 @@ export default function RoleRoomAgentWorkflowStepper({
       alignItems="stretch"
       data-testid="role-room-agent-workflow-stepper"
       role="list"
-      aria-label="The Role Room Agent arbeidsflyt — 5 steg"
+      aria-label="The Role Room Agent arbeidsflyt — 6 steg"
       sx={{
         px: { xs: 1, md: 2 },
         py: 1,
