@@ -307,6 +307,20 @@ fn list_discovered_ipads(state: tauri::State<Arc<IpadPairingState>>) -> Vec<Disc
     state.list_discovered()
 }
 
+/// Legg til en iPad manuelt (når Bonjour ikke fungerer pga bedrifts-
+/// nettverk eller WiFi-isolasjon). Bruker oppgir IP + port + visnings-
+/// navn fra iPad-appens "Vis pairing-info"-skjerm.
+#[tauri::command]
+fn add_manual_ipad(
+    state: tauri::State<Arc<IpadPairingState>>,
+    device_name: String,
+    ip: String,
+    port: u16,
+    device_id: Option<String>,
+) -> DiscoveredIpad {
+    state.add_manual(device_name, ip, port, device_id)
+}
+
 #[tauri::command]
 fn list_paired_ipads() -> Vec<PairedIpad> {
     ipad_pairing::load_paired()
@@ -544,6 +558,7 @@ pub fn run() {
             cancel_copy_session,
             list_copy_sessions,
             list_discovered_ipads,
+            add_manual_ipad,
             list_paired_ipads,
             current_pairing_pin,
             generate_pairing_pin,

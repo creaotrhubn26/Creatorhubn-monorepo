@@ -168,6 +168,29 @@ export async function rescanMounts(): Promise<DetectedMount[]> {
   return invoke<DetectedMount[]>("rescan_mounts");
 }
 
+/// Manuell iPad-input når Bonjour er blokkert (bedrifts-VLAN, WiFi-
+/// isolasjon). Tar IP + port + visningsnavn fra iPad-appens "Vis
+/// pairing-info"-skjerm.
+export async function addManualIpad(args: {
+  deviceName: string;
+  ip: string;
+  port: number;
+  deviceId?: string | null;
+}): Promise<unknown> {
+  return invoke("add_manual_ipad", {
+    deviceName: args.deviceName,
+    ip: args.ip,
+    port: args.port,
+    deviceId: args.deviceId ?? null,
+  });
+}
+
+/// Status-event emit'es hvert 5. sekund fra Bonjour-browseren.
+export interface BonjourStatusEvent {
+  discovered_count: number;
+  elapsed_secs: number;
+}
+
 export interface DestinationSpec {
   id: string;
   label: string;
