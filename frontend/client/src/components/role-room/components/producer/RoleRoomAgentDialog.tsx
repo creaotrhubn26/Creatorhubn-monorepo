@@ -1131,7 +1131,7 @@ export default function RoleRoomAgentDialog({
             <Stack spacing={1.2}>
               <Alert severity={brregVerified ? 'success' : 'info'}>
                 {brregVerified
-                  ? `✓ Bekreftet i offentlige registre. Klar til å lagre ${result.companyProfile.companyName} som prosjekt — klikk «Bruk forslag» nederst.`
+                  ? `Bekreftet i offentlige registre. Klar til å lagre ${result.companyProfile.companyName} som prosjekt — klikk «Bruk forslag» nederst.`
                   : brregCompany?.statusMessage || 'Utkastet er klart. (Ikke bekreftet mot offentlige registre for denne kunden.)'}
               </Alert>
 
@@ -2107,7 +2107,7 @@ export default function RoleRoomAgentDialog({
                 disabled={projectCreatedFromResult}
                 onClick={() => { setMoreActionsAnchor(null); void handleCreateProjectAndMark(); }}
               >
-                {projectCreatedFromResult ? 'Prosjekt opprettet ✓' : 'Opprett som nytt prosjekt'}
+                {projectCreatedFromResult ? 'Prosjekt opprettet' : 'Opprett som nytt prosjekt'}
               </MenuItem>
             ) : null}
             <MenuItem

@@ -24,6 +24,7 @@ import {
   Reply as ReplyIcon,
   Refresh as RefreshIcon,
   CheckCircleOutline as MarkReadIcon,
+  MoveToInbox as InboxHeaderIcon,
 } from '@mui/icons-material';
 import roleRoomAgentService, {
   type RoleRoomSentimentLabel,
@@ -151,18 +152,18 @@ export default function SocialInboxPanel(): React.ReactElement {
         borderRadius: 2,
       }}
     >
-      <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="space-between">
-        <Stack direction="row" spacing={1} alignItems="baseline">
-          <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '1rem' }}>
-            Social Inbox
-          </Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.78rem' }}>
-            {events.length} events
-            {counts.unread > 0 ? ` · ${counts.unread} ulest` : ''}
-          </Typography>
+      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+        <Stack direction="row" spacing={1} alignItems="center">
+          <InboxHeaderIcon sx={{ color: '#22d3ee' }} />
+          <Box>
+            <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>Inbox</Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem' }}>
+              {events.length} hendelser{counts.unread > 0 ? ` · ${counts.unread} ulest` : ''}
+            </Typography>
+          </Box>
         </Stack>
         <Tooltip title="Oppdater">
-          <IconButton size="small" onClick={() => void refresh()} disabled={loading}>
+          <IconButton size="small" aria-label="Oppdater inbox" onClick={() => void refresh()} disabled={loading}>
             <RefreshIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} />
           </IconButton>
         </Tooltip>
@@ -188,14 +189,15 @@ export default function SocialInboxPanel(): React.ReactElement {
           value={kindFilter}
           onChange={(e) => setKindFilter(e.target.value as FilterKind)}
           data-testid="inbox-kind-filter"
+          inputProps={{ 'aria-label': 'Filtrer etter type' }}
           sx={{ minWidth: 130, fontSize: '0.78rem' }}
         >
           <MenuItem value="all">Alle typer</MenuItem>
           <MenuItem value="comment">Kommentarer</MenuItem>
           <MenuItem value="reply">Svar</MenuItem>
-          <MenuItem value="mention">Mentions</MenuItem>
-          <MenuItem value="dm">DMs</MenuItem>
-          <MenuItem value="reaction">Reactions</MenuItem>
+          <MenuItem value="mention">Omtaler</MenuItem>
+          <MenuItem value="dm">DM-er</MenuItem>
+          <MenuItem value="reaction">Reaksjoner</MenuItem>
         </Select>
 
         <Select
@@ -203,9 +205,10 @@ export default function SocialInboxPanel(): React.ReactElement {
           value={sentimentFilter}
           onChange={(e) => setSentimentFilter(e.target.value as FilterSentiment)}
           data-testid="inbox-sentiment-filter"
+          inputProps={{ 'aria-label': 'Filtrer etter sentiment' }}
           sx={{ minWidth: 130, fontSize: '0.78rem' }}
         >
-          <MenuItem value="all">All sentiment</MenuItem>
+          <MenuItem value="all">Alle stemninger</MenuItem>
           <MenuItem value="negative">Negativ</MenuItem>
           <MenuItem value="neutral">Nøytral</MenuItem>
           <MenuItem value="positive">Positiv</MenuItem>
