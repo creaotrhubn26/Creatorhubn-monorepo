@@ -217,6 +217,9 @@ import {
   hasGoogleCustomerAccess,
   listAccessibleCustomers as listGoogleAccessibleCustomers,
   parseCampaignResourceName as parseGoogleCampaignResourceName,
+  sendMccInvite,
+  listMccLinks,
+  getMccLinkStatus,
   GoogleAdsApiError,
   type GoogleAdsAuth,
 } from './role-room-google-ads.js';
@@ -22108,6 +22111,123 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
         }
         res.status(500).json({ error: 'Failed to list Google customers', detail: String(error) });
+      }
+    },
+  );
+
+  // ── MCC ↔ kunde-invitasjons-flyt (ett-klikk i stedet for 9 manuelle steg) ─
+  // Produsent: lim inn kundens 10-sifrede Google Ads customer-id → POST /mcc/invite.
+  // Klient: ser invitasjon som notifikasjon i sin Google Ads → ett klikk for å godta.
+  // Poll: GET /mcc/links eller /mcc/links/:id/status til status = ACTIVE.
+
+  // Helper: normaliser 10-sifret customer-id (godta "880-900-5872" → "8809005872").
+  function normalizeGoogleCustomerId(raw: unknown): string | null {
+    if (typeof raw !== 'string') return null;
+    const digits = raw.replace(/[^0-9]/g, '');
+    if (digits.length !== 10) return null;
+    return digits;
+  }
+
+  // Sender invitasjon fra produsent-MCC til en kunde-id.
+  router.post(
+    '/ads/google/mcc/invite',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const customerId = normalizeGoogleCustomerId(req.body?.customerId);
+        if (!customerId) {
+          return res.status(400).json({
+            error: 'invalid_customer_id',
+            detail: 'Forventer 10 siffer (bindestreker stripes automatisk)',
+          });
+        }
+        const accessToken = await resolveAdsAccessToken(pool, 'google', userId);
+        const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+        const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+        if (!accessToken || !developerToken || !loginCustomerId) {
+          return res.status(412).json({
+            error: 'google_ads_not_configured',
+            detail: 'Krever Google Ads-OAuth + GOOGLE_ADS_DEVELOPER_TOKEN + GOOGLE_ADS_LOGIN_CUSTOMER_ID',
+          });
+        }
+        const result = await sendMccInvite(
+          { accessToken, developerToken, loginCustomerId },
+          customerId,
+        );
+        res.json({
+          ok: true,
+          clientCustomerId: customerId,
+          managerLinkId: result.managerLinkId,
+          resourceName: result.resourceName,
+          status: 'PENDING' as const,
+        });
+      } catch (error) {
+        if (error instanceof GoogleAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to send MCC invite', detail: String(error) });
+      }
+    },
+  );
+
+  // List alle MCC ↔ kunde-links (pending + active + refused) for dashboard.
+  router.get(
+    '/ads/google/mcc/links',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const accessToken = await resolveAdsAccessToken(pool, 'google', userId);
+        const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+        const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+        if (!accessToken || !developerToken || !loginCustomerId) {
+          return res.status(412).json({
+            error: 'google_ads_not_configured',
+            detail: 'Krever Google Ads-OAuth + GOOGLE_ADS_DEVELOPER_TOKEN + GOOGLE_ADS_LOGIN_CUSTOMER_ID',
+          });
+        }
+        const links = await listMccLinks({ accessToken, developerToken, loginCustomerId });
+        res.json({ links });
+      } catch (error) {
+        if (error instanceof GoogleAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to list MCC links', detail: String(error) });
+      }
+    },
+  );
+
+  // Sjekk status for én spesifikk kunde-id (poll-vennlig).
+  router.get(
+    '/ads/google/mcc/links/:customerId/status',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const customerId = normalizeGoogleCustomerId(req.params.customerId);
+        if (!customerId) {
+          return res.status(400).json({ error: 'invalid_customer_id' });
+        }
+        const accessToken = await resolveAdsAccessToken(pool, 'google', userId);
+        const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+        const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+        if (!accessToken || !developerToken || !loginCustomerId) {
+          return res.status(412).json({
+            error: 'google_ads_not_configured',
+            detail: 'Krever Google Ads-OAuth + GOOGLE_ADS_DEVELOPER_TOKEN + GOOGLE_ADS_LOGIN_CUSTOMER_ID',
+          });
+        }
+        const link = await getMccLinkStatus(
+          { accessToken, developerToken, loginCustomerId },
+          customerId,
+        );
+        res.json({ clientCustomerId: customerId, link });
+      } catch (error) {
+        if (error instanceof GoogleAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to check MCC link status', detail: String(error) });
       }
     },
   );
