@@ -486,6 +486,7 @@ import { setupRoleRoomIgMessagingRoutes } from "./role-room-ig-messaging-routes.
 import { setupRoleRoomLeadsProducerRoutes } from "./role-room-leads-producer-routes.js";
 import { setupRoleRoomMentionsProducerRoutes } from "./role-room-mentions-producer-routes.js";
 import { setupRoleRoomDiscoveryProducerRoutes } from "./role-room-discovery-producer-routes.js";
+import { setupRoleRoomCtaProducerRoutes } from "./role-room-cta-producer-routes.js";
 import { RoleRoomCommercialAccessError } from "./role-room-commercial-access-error";
 import { setupRoleRoomCommercialAccessRoutes } from "./role-room-commercial-access-routes";
 import {
@@ -24035,6 +24036,8 @@ setupRoleRoomLeadsProducerRoutes({ app, pool, requireAdminSession });
 setupRoleRoomMentionsProducerRoutes({ app, pool, requireAdminSession });
 // Producer-facing discovery/research (hashtag + IG profile + FB page lookup).
 setupRoleRoomDiscoveryProducerRoutes({ app, pool, requireAdminSession });
+// Producer-facing Page CTA button ('Book nå' etc. for lead capture).
+setupRoleRoomCtaProducerRoutes({ app, pool, requireAdminSession });
 
 // ── Role Room social (non-Meta) — flyttet til ./role-room-social-routes.ts
 //   16 endpoints: linkedin, youtube, tiktok, og generelle /social/*.

@@ -14,6 +14,7 @@ import {
   ContactPage as LeadsIcon, InstallMobile as FormIcon, BoltOutlined as FollowupIcon,
   CheckCircle as DoneIcon, Send as SendIcon,
 } from '@mui/icons-material';
+import CtaCard from './CtaCard';
 
 type Segment = 'varm' | 'lunken' | 'kald' | 'tapt';
 const SEGMENTS: { key: Segment; label: string; hint: string; campaign: string; color: string }[] = [
@@ -276,6 +277,8 @@ export default function LeadsPanel() {
               Når det er godkjent dukker kundens skjema-leads opp her automatisk.
             </Alert>
           ) : null}
+
+          {connectionId ? <CtaCard connectionId={connectionId} /> : null}
 
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '300px 1fr' }, gap: 2 }}>
             {/* Forms */}
