@@ -1275,6 +1275,31 @@ export const photoshop = {
       | { found: true; tool: string; time: number; x: number; y: number }
     >("resolve.fusionCompTrackerGetCenter", params),
 
+  resolveFusionCompAddMaskRegion: (params: {
+    target_tool: string;
+    shape: "rectangle" | "ellipse";
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    soft_edge?: number;
+    invert?: boolean;
+    comp_name?: string;
+  }) =>
+    send<{
+      created: boolean;
+      mask_name: string;
+      shape: "rectangle" | "ellipse";
+      target: string;
+      connected_to_effect_mask: boolean;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      soft_edge: number;
+      invert: boolean;
+    }>("resolve.fusionCompAddMaskRegion", params),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

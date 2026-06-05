@@ -1900,6 +1900,45 @@ const COMMANDS = {
     });
   },
 
+  "resolve.fusionCompAddMaskRegion": async ({
+    target_tool,
+    shape,
+    x,
+    y,
+    width,
+    height,
+    soft_edge,
+    invert,
+    comp_name,
+  } = {}) => {
+    if (typeof target_tool !== "string" || target_tool.length === 0) {
+      throw new Error("target_tool må være en ikke-tom string");
+    }
+    const s = shape || "rectangle";
+    if (s !== "rectangle" && s !== "ellipse") {
+      throw new Error("shape må være 'rectangle' eller 'ellipse'");
+    }
+    if (
+      typeof x !== "number" ||
+      typeof y !== "number" ||
+      typeof width !== "number" ||
+      typeof height !== "number"
+    ) {
+      throw new Error("x, y, width, height må alle være tall (0-1 normalisert)");
+    }
+    if (width <= 0 || height <= 0) {
+      throw new Error("width og height må være > 0");
+    }
+    const args = { target_tool, shape: s, x, y, width, height };
+    if (typeof soft_edge === "number") args.soft_edge = soft_edge;
+    if (typeof invert === "boolean") args.invert = invert;
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.addMaskRegion",
+      args,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
