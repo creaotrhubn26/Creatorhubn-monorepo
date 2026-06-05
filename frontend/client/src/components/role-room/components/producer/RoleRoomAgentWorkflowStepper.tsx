@@ -100,7 +100,7 @@ export default function RoleRoomAgentWorkflowStepper({
         bgcolor: 'rgba(15,23,42,0.55)',
         borderBottom: '1px solid rgba(148,163,184,0.18)',
         overflowX: 'auto',
-        overflowY: 'hidden',
+        flexShrink: 0, // don't get squished when the dialog content is tall
       }}
     >
       {PHASES.map((phase, idx) => {

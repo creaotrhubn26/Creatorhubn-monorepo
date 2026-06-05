@@ -561,6 +561,7 @@ export default function RoleRoomAgentDialog({
           pt: { xs: 1.2, md: 1.5 },
           borderBottom: '1px solid rgba(148,163,184,0.14)',
           background: 'radial-gradient(circle at top left, rgba(34,211,238,0.18) 0%, rgba(15,23,42,0) 48%)',
+          flexShrink: 0,
         }}
       >
         <Stack spacing={{ xs: 0.8, md: 1.1 }}>
@@ -695,7 +696,7 @@ export default function RoleRoomAgentDialog({
         direction="row"
         spacing={1}
         alignItems="center"
-        sx={{ px: { xs: 1.4, md: 2 }, py: 0.6, borderBottom: '1px solid rgba(148,163,184,0.1)' }}
+        sx={{ px: { xs: 1.4, md: 2 }, py: 0.6, borderBottom: '1px solid rgba(148,163,184,0.1)', flexShrink: 0 }}
       >
         <Button
           size="small"
