@@ -108,44 +108,89 @@ jobs:
         run: npm run tauri build -- --target ${{ matrix.target }}
 
       # Notariser med App Store Connect API. notarytool venter på
-      # Apple's malware-skanning (typisk 1-5 min). Etter suksess
-      # stapler vi notarisasjon-billetten på .app + .dmg så Gatekeeper
-      # godkjenner offline.
+      # Apple's malware-skanning (typisk 1-5 min, max 1 time). Etter
+      # suksess stapler vi notarisasjon-billetten på .app + .dmg så
+      # Gatekeeper godkjenner offline.
+      #
+      # Apple's notary-API har av og til transient network-feil under
+      # poll. Vi submitter UTEN --wait, så bruker --wait i en separat
+      # retry-loop med 5 min timeout per forsøk, max 3 forsøk.
       - name: Notarize .app + .dmg
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         shell: bash
+        timeout-minutes: 45
         run: |
           BUNDLE_DIR="apps/creatorhub-one-desk/src-tauri/target/${{ matrix.target }}/release/bundle"
           APP_PATH=$(find "$BUNDLE_DIR/macos" -name "*.app" | head -1)
           DMG_PATH=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" 2>/dev/null | head -1)
 
-          # Zip .app for notarisering (notarytool tar imot .zip, .dmg, .pkg)
+          notarize_with_retry() {
+            local target="$1"
+            local label="$2"
+            local submission_id=""
+            local attempts=0
+            local max_attempts=3
+
+            # Steg 1: submit UTEN --wait (raskt, henter bare submission ID)
+            echo "::group::Submit $label for notarization"
+            submission_id=$(xcrun notarytool submit "$target" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --output-format json | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))")
+            echo "Submission ID: $submission_id"
+            echo "::endgroup::"
+
+            if [ -z "$submission_id" ]; then
+              echo "::error::Failed to submit $label for notarization"
+              return 1
+            fi
+
+            # Steg 2: poll status med retry på transient feil
+            while [ $attempts -lt $max_attempts ]; do
+              attempts=$((attempts + 1))
+              echo "::group::Wait for notarization (attempt $attempts/$max_attempts)"
+              if xcrun notarytool wait "$submission_id" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" \
+                --timeout 25m; then
+                echo "::endgroup::"
+                # Bekreft accepted-status
+                local status
+                status=$(xcrun notarytool info "$submission_id" \
+                  --apple-id "$APPLE_ID" \
+                  --password "$APPLE_PASSWORD" \
+                  --team-id "$APPLE_TEAM_ID" \
+                  --output-format json | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))")
+                if [ "$status" = "Accepted" ]; then
+                  echo "::notice::$label notarized successfully"
+                  return 0
+                fi
+                echo "::error::Notarization status: $status (expected Accepted)"
+                return 1
+              fi
+              echo "::endgroup::"
+              echo "::warning::Notary wait failed (likely Apple-side network blip), retrying..."
+              sleep $((attempts * 30))
+            done
+            echo "::error::Notarization wait failed after $max_attempts attempts"
+            return 1
+          }
+
+          # Zip .app for notarisering
           APP_ZIP=$RUNNER_TEMP/app.zip
           ditto -c -k --keepParent "$APP_PATH" "$APP_ZIP"
 
-          echo "::group::Notarize .app"
-          xcrun notarytool submit "$APP_ZIP" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
-          echo "::endgroup::"
-
-          # Stapler ticket på .app så Gatekeeper kan validere offline
+          notarize_with_retry "$APP_ZIP" ".app"
           xcrun stapler staple "$APP_PATH"
           xcrun stapler validate "$APP_PATH"
 
           if [ -n "$DMG_PATH" ]; then
-            echo "::group::Notarize .dmg"
-            xcrun notarytool submit "$DMG_PATH" \
-              --apple-id "$APPLE_ID" \
-              --password "$APPLE_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID" \
-              --wait
-            echo "::endgroup::"
+            notarize_with_retry "$DMG_PATH" ".dmg"
             xcrun stapler staple "$DMG_PATH"
             xcrun stapler validate "$DMG_PATH"
           fi
