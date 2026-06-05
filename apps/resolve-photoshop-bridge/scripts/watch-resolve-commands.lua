@@ -3006,6 +3006,68 @@ end
 HANDLERS["fusionComp.setKeyframeEasing"] = fusionCompSetKeyframeEasing
 
 -- ---------------------------------------------------------------------------
+-- Loader + Saver (fil-I/O i Fusion-comp)
+-- ---------------------------------------------------------------------------
+
+-- fusionComp.addLoader(file_path, x?, y?, comp_name?)
+-- Adds Loader-node pointing at file. Common use: clean plate fra Photoshop,
+-- image overlays, logos, custom backgrounds, video-mellomdokumenter.
+local function fusionCompAddLoader(args)
+  local comp = getFusionComp(args)
+  local filePath = extractString(args, "file_path")
+  if not filePath or filePath == "" then error("file_path mangler") end
+  local x = tonumber(args:match('"x"%s*:%s*(-?%d+)')) or -1
+  local y = tonumber(args:match('"y"%s*:%s*(-?%d+)')) or -1
+
+  local loader = comp:AddTool("Loader", x, y)
+  if not loader then error("AddTool('Loader') returnerte nil") end
+  -- Loader bruker "Clip" eller "Filename" — prøv begge for kompat
+  local fileSet = false
+  pcall(function()
+    loader.Clip[1] = { Filename = filePath, FormatID = "FFmpeg", StartFrame = 0, LengthSetManually = false }
+    fileSet = true
+  end)
+  if not fileSet then
+    pcall(function() loader:SetInput("Filename", filePath); fileSet = true end)
+  end
+
+  local name = (loader:GetAttrs() or {}).TOOLS_Name or ""
+  return string.format(
+    '{"added":true,"name":%s,"tool_type":"Loader","file_path":%s,"file_set":%s}',
+    jsonEscape(name), jsonEscape(filePath), tostring(fileSet)
+  )
+end
+
+-- fusionComp.addSaver(file_path, x?, y?, comp_name?)
+local function fusionCompAddSaver(args)
+  local comp = getFusionComp(args)
+  local filePath = extractString(args, "file_path")
+  if not filePath or filePath == "" then error("file_path mangler") end
+  local x = tonumber(args:match('"x"%s*:%s*(-?%d+)')) or -1
+  local y = tonumber(args:match('"y"%s*:%s*(-?%d+)')) or -1
+
+  local saver = comp:AddTool("Saver", x, y)
+  if not saver then error("AddTool('Saver') returnerte nil") end
+  local fileSet = false
+  pcall(function()
+    saver.Clip[1] = { Filename = filePath, FormatID = "FFmpeg", StartFrame = 0, LengthSetManually = false }
+    fileSet = true
+  end)
+  if not fileSet then
+    pcall(function() saver:SetInput("Filename", filePath); fileSet = true end)
+  end
+
+  local name = (saver:GetAttrs() or {}).TOOLS_Name or ""
+  return string.format(
+    '{"added":true,"name":%s,"tool_type":"Saver","file_path":%s,"file_set":%s}',
+    jsonEscape(name), jsonEscape(filePath), tostring(fileSet)
+  )
+end
+
+HANDLERS["fusionComp.addLoader"] = fusionCompAddLoader
+HANDLERS["fusionComp.addSaver"] = fusionCompAddSaver
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 
