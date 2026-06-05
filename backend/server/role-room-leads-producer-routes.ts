@@ -173,6 +173,7 @@ interface FollowupConfig {
   replyTo: string;
   notifyPhone: string;
   notifyEmail: string;
+  aiPersonalize: boolean;
 }
 const DEFAULT_FOLLOWUP: FollowupConfig = {
   smsBody: "Hei {navn}! Takk for at du tok kontakt med {bedrift}. Vi ringer deg snart. Mvh {bedrift}",
@@ -182,6 +183,7 @@ const DEFAULT_FOLLOWUP: FollowupConfig = {
   replyTo: "",
   notifyPhone: "",
   notifyEmail: "",
+  aiPersonalize: false,
 };
 
 let leadFollowupSchemaReady = false;
@@ -202,9 +204,12 @@ async function ensureLeadFollowupSchema(pool: Pool): Promise<void> {
       UNIQUE (user_id, connection_id)
     );
   `);
-  // reply_to added after the table shipped — additive, idempotent.
+  // reply_to + ai_personalize added after the table shipped — additive, idempotent.
   await pool.query(
     `ALTER TABLE role_room_lead_followup_config ADD COLUMN IF NOT EXISTS reply_to TEXT NOT NULL DEFAULT '';`,
+  );
+  await pool.query(
+    `ALTER TABLE role_room_lead_followup_config ADD COLUMN IF NOT EXISTS ai_personalize BOOLEAN NOT NULL DEFAULT false;`,
   );
   // Log of follow-ups sent (so we never double-send and can show "fulgt opp").
   await pool.query(`
@@ -228,7 +233,7 @@ async function ensureLeadFollowupSchema(pool: Pool): Promise<void> {
 
 async function getFollowupConfig(pool: Pool, userId: string, connectionId: string): Promise<FollowupConfig> {
   const r = await pool.query(
-    `SELECT sms_body, email_subject, email_body, reply_to, notify_phone, notify_email
+    `SELECT sms_body, email_subject, email_body, reply_to, notify_phone, notify_email, ai_personalize
        FROM role_room_lead_followup_config WHERE user_id = $1 AND connection_id = $2`,
     [userId, connectionId],
   );
@@ -241,6 +246,7 @@ async function getFollowupConfig(pool: Pool, userId: string, connectionId: strin
     replyTo: String(row.reply_to || ""),
     notifyPhone: String(row.notify_phone || ""),
     notifyEmail: String(row.notify_email || ""),
+    aiPersonalize: row.ai_personalize === true,
   };
 }
 
@@ -813,13 +819,14 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       await ensureLeadFollowupSchema(pool);
       await pool.query(
         `INSERT INTO role_room_lead_followup_config
-           (user_id, connection_id, sms_body, email_subject, email_body, reply_to, notify_phone, notify_email)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           (user_id, connection_id, sms_body, email_subject, email_body, reply_to, notify_phone, notify_email, ai_personalize)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (user_id, connection_id)
          DO UPDATE SET sms_body = EXCLUDED.sms_body, email_subject = EXCLUDED.email_subject,
                        email_body = EXCLUDED.email_body, reply_to = EXCLUDED.reply_to,
                        notify_phone = EXCLUDED.notify_phone,
-                       notify_email = EXCLUDED.notify_email, updated_at = now()`,
+                       notify_email = EXCLUDED.notify_email, ai_personalize = EXCLUDED.ai_personalize,
+                       updated_at = now()`,
         [
           session.userId, connectionId,
           str(body.smsBody, DEFAULT_FOLLOWUP.smsBody),
@@ -828,6 +835,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
           str(body.replyTo),
           str(body.notifyPhone),
           str(body.notifyEmail),
+          body.aiPersonalize === true,
         ],
       );
       res.json({ success: true });
@@ -844,7 +852,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
     if (!session) return;
     const body = (req.body ?? {}) as {
       connectionId?: string; formId?: string; leadId?: string;
-      name?: string; email?: string; phone?: string;
+      name?: string; email?: string; phone?: string; fields?: Record<string, string>;
     };
     const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
     const formId = typeof body.formId === "string" ? body.formId : "";
@@ -870,10 +878,37 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       let emailSent = false;
       const errors: string[] = [];
 
+      // Default to the configured templates; optionally let Claude write a
+      // personal message based on what the lead actually asked about.
+      let smsText = renderTemplate(config.smsBody, { navn, bedrift });
+      let subjectText = renderTemplate(config.emailSubject, { navn, bedrift });
+      let emailBodyText = renderTemplate(config.emailBody, { navn, bedrift });
+      if (config.aiPersonalize) {
+        try {
+          const out = await callClaudeForJson<{ smsBody: string; emailSubject: string; emailBody: string }>({
+            cachedSystem:
+              "Du skriver varm, kort og profesjonell norsk oppfølging fra en lokal bedrift til en person som nettopp meldte interesse via en annonse. " +
+              "Referer naturlig til det personen spurte om. Ikke vær overivrig eller selgende. Ingen emoji. " +
+              "Svar KUN med JSON: {\"smsBody\":\"<1-2 setninger, maks 320 tegn>\",\"emailSubject\":\"<kort>\",\"emailBody\":\"<2-4 setninger, signer med bedriftsnavn>\"}.",
+            userMessage:
+              `Bedrift: ${bedrift}\nPersonens fornavn: ${navn || "(ukjent)"}\n` +
+              `Skjemasvar (JSON): ${JSON.stringify(body.fields || {})}\n\n` +
+              `Mal (tone å matche) – SMS: "${config.smsBody}" | E-post: "${config.emailBody}"\n` +
+              `Skriv en personlig oppfølging.`,
+            maxTokens: 700,
+          });
+          if (out.data?.smsBody) smsText = String(out.data.smsBody).slice(0, 480);
+          if (out.data?.emailSubject) subjectText = String(out.data.emailSubject).slice(0, 200);
+          if (out.data?.emailBody) emailBodyText = String(out.data.emailBody).slice(0, 4000);
+        } catch (e) {
+          errors.push(`AI-personalisering feilet, brukte mal: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+
       // 1) SMS to the lead.
       if (leadPhone && smsConfigured()) {
         try {
-          await sendSms(leadPhone, renderTemplate(config.smsBody, { navn, bedrift }));
+          await sendSms(leadPhone, smsText);
           smsSent = true;
         } catch (e) { errors.push(`SMS: ${e instanceof Error ? e.message : String(e)}`); }
       }
@@ -889,10 +924,10 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       // 2) Email to the lead.
       if (leadEmail && isTransactionalEmailConfigured()) {
         try {
-          const text = renderTemplate(config.emailBody, { navn, bedrift });
+          const text = emailBodyText;
           const result = await sendTransactionalEmail({
             to: leadEmail,
-            subject: renderTemplate(config.emailSubject, { navn, bedrift }),
+            subject: subjectText,
             text,
             html: text.replace(/\n/g, "<br>"),
             fromLabel: bedrift,
