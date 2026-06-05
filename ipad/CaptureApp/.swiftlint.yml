@@ -17,13 +17,11 @@ opt_in_rules:
 excluded:
   - CaptureApp/Generated
   - CaptureApp.xcodeproj
+  # Tests bruker idiomatisk try!/force-unwrap for å fail-fast på
+  # oppsetts-feil. Per-rule-excluded fungerer ikke på SwiftLint-versjonen
+  # på CI, så ekskluderer hele test-mappen fra linting.
+  - CaptureAppTests
 
 force_cast: error
 force_try: error
-# Tests bruker idiomatisk try!/force-unwrap for å fail-fast på
-# oppsetts-feil — det er ikke en reell risk-source. Excluder CaptureAppTests
-# fra force_unwrapping-regelen så main-bygget ikke brekker på tests.
-force_unwrapping:
-  severity: warning
-  excluded:
-    - CaptureAppTests
+force_unwrapping: warning
