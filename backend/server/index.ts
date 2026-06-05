@@ -401,6 +401,7 @@ import { registerDesignTokensRoutes } from "./design-tokens-routes.js";
 import { registerStripePriceDriftRoutes } from "./stripe-price-drift-routes.js";
 import { registerB2CompanyArchiveRoutes } from "./b2-company-archive-routes.js";
 import { registerCastingPosterArchiveRoutes } from "./role-room-casting-poster-archive-routes.js";
+import { registerB2ArchiveCronRoutes } from "./b2-archive-cron-routes.js";
 import { setupRoleNavConfigRoutes } from "./admin-room-role-nav-routes";
 import { setupResumeRoutes } from "./resume-routes";
 import {
@@ -1818,6 +1819,7 @@ registerB2CompanyArchiveRoutes({
   envPrefix: "B2_ROLE_ROOM_",
 });
 registerCastingPosterArchiveRoutes({ app, requireAdminSession });
+registerB2ArchiveCronRoutes({ app, pool });
 
 app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessions));
 app.use("/api/desktop", createDesktopAuthRouter(pool));
