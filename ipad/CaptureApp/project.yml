@@ -18,6 +18,10 @@ settings:
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: "9TAUZCPK95"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # Apple Generic Versioning — kreves av fastlane increment_build_number
+    VERSIONING_SYSTEM: apple-generic
+    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.1.0"
 
 targets:
   CaptureApp:
