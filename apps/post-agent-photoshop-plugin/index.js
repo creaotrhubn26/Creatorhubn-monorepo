@@ -1805,6 +1805,63 @@ const COMMANDS = {
     });
   },
 
+  "resolve.fusionCompSet3DTransform": async ({
+    tool_name,
+    position,
+    rotation,
+    scale,
+    comp_name,
+  } = {}) => {
+    if (typeof tool_name !== "string" || tool_name.length === 0) {
+      throw new Error("tool_name må være en ikke-tom string");
+    }
+    if (
+      position === undefined &&
+      rotation === undefined &&
+      scale === undefined
+    ) {
+      throw new Error(
+        "Minst én av position/rotation/scale må være satt",
+      );
+    }
+    const args = { tool_name };
+    if (position !== undefined) {
+      if (
+        typeof position !== "object" ||
+        position === null ||
+        Array.isArray(position)
+      ) {
+        throw new Error("position må være {x?, y?, z?}");
+      }
+      args.position = position;
+    }
+    if (rotation !== undefined) {
+      if (
+        typeof rotation !== "object" ||
+        rotation === null ||
+        Array.isArray(rotation)
+      ) {
+        throw new Error("rotation må være {x?, y?, z?}");
+      }
+      args.rotation = rotation;
+    }
+    if (scale !== undefined) {
+      // scale kan være enten scalar (uniform) eller {x?,y?,z?}
+      if (
+        typeof scale !== "number" &&
+        (typeof scale !== "object" || scale === null || Array.isArray(scale))
+      ) {
+        throw new Error("scale må være tall eller {x?, y?, z?}");
+      }
+      args.scale = scale;
+    }
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.set3DTransform",
+      args,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve

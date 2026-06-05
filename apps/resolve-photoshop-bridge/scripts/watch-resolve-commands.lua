@@ -2662,6 +2662,71 @@ HANDLERS["fusionComp.saveToolPreset"] = fusionCompSaveToolPreset
 HANDLERS["fusionComp.loadToolPreset"] = fusionCompLoadToolPreset
 
 -- ---------------------------------------------------------------------------
+-- 3D-transform helper (set Position/Rotation/Scale i én call)
+-- ---------------------------------------------------------------------------
+
+-- fusionComp.set3DTransform(tool_name, position?, rotation?, scale?, comp_name?)
+-- Wraps multiple SetInput-kall for vector-inputs. Default input-navn matcher
+-- standard 3D-noder (Transform3D, Camera3D, lys, Shape3D etc.):
+--   - Translate.X / Translate.Y / Translate.Z
+--   - Rotate.X / Rotate.Y / Rotate.Z
+--   - XScale / YScale / ZScale (eller scalar Scale for uniform)
+-- Bruk per_axis_prefixes for å overstyre hvis tool bruker andre navn.
+local function fusionCompSet3DTransform(args)
+  local comp = getFusionComp(args)
+  local toolName = extractString(args, "tool_name")
+  if not toolName or toolName == "" then error("tool_name mangler") end
+
+  local tool = comp:FindTool(toolName)
+  if not tool then error("Fant ikke tool: " .. toolName) end
+
+  local setCount = 0
+  local function trySetInput(name, value)
+    if value == nil then return end
+    local ok = pcall(function() tool:SetInput(name, value) end)
+    if ok then setCount = setCount + 1 end
+  end
+
+  -- Position
+  local px = tonumber(args:match('"position"%s*:%s*{[^}]-"x"%s*:%s*(-?%d+%.?%d*)'))
+  local py = tonumber(args:match('"position"%s*:%s*{[^}]-"y"%s*:%s*(-?%d+%.?%d*)'))
+  local pz = tonumber(args:match('"position"%s*:%s*{[^}]-"z"%s*:%s*(-?%d+%.?%d*)'))
+  trySetInput("Translate.X", px)
+  trySetInput("Translate.Y", py)
+  trySetInput("Translate.Z", pz)
+
+  -- Rotation
+  local rx = tonumber(args:match('"rotation"%s*:%s*{[^}]-"x"%s*:%s*(-?%d+%.?%d*)'))
+  local ry = tonumber(args:match('"rotation"%s*:%s*{[^}]-"y"%s*:%s*(-?%d+%.?%d*)'))
+  local rz = tonumber(args:match('"rotation"%s*:%s*{[^}]-"z"%s*:%s*(-?%d+%.?%d*)'))
+  trySetInput("Rotate.X", rx)
+  trySetInput("Rotate.Y", ry)
+  trySetInput("Rotate.Z", rz)
+
+  -- Scale: enten {x, y, z} eller scalar tall (uniform)
+  local sx = tonumber(args:match('"scale"%s*:%s*{[^}]-"x"%s*:%s*(-?%d+%.?%d*)'))
+  local sy = tonumber(args:match('"scale"%s*:%s*{[^}]-"y"%s*:%s*(-?%d+%.?%d*)'))
+  local sz = tonumber(args:match('"scale"%s*:%s*{[^}]-"z"%s*:%s*(-?%d+%.?%d*)'))
+  local scalarScale = tonumber(args:match('"scale"%s*:%s*(-?%d+%.?%d*)'))
+  if scalarScale and not (sx or sy or sz) then
+    trySetInput("XScale", scalarScale)
+    trySetInput("YScale", scalarScale)
+    trySetInput("ZScale", scalarScale)
+  else
+    trySetInput("XScale", sx)
+    trySetInput("YScale", sy)
+    trySetInput("ZScale", sz)
+  end
+
+  return string.format(
+    '{"set":true,"tool":%s,"inputs_set":%d}',
+    jsonEscape(toolName), setCount
+  )
+end
+
+HANDLERS["fusionComp.set3DTransform"] = fusionCompSet3DTransform
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 
