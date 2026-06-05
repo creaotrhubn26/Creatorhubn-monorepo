@@ -1939,6 +1939,41 @@ const COMMANDS = {
     });
   },
 
+  "resolve.fusionCompSetKeyframeEasing": async ({
+    tool_name,
+    input_name,
+    easing,
+    time,
+    comp_name,
+  } = {}) => {
+    if (typeof tool_name !== "string" || tool_name.length === 0) {
+      throw new Error("tool_name må være en ikke-tom string");
+    }
+    if (typeof input_name !== "string" || input_name.length === 0) {
+      throw new Error("input_name må være en ikke-tom string");
+    }
+    const VALID = new Set([
+      "linear",
+      "ease_in",
+      "ease_out",
+      "ease_in_out",
+      "smooth",
+      "hold",
+    ]);
+    if (!VALID.has(easing)) {
+      throw new Error(
+        `Ugyldig easing: ${easing} (gyldige: ${[...VALID].join(", ")})`,
+      );
+    }
+    const args = { tool_name, input_name, easing };
+    if (typeof time === "number") args.time = time;
+    if (typeof comp_name === "string" && comp_name.length > 0) args.comp_name = comp_name;
+    return await COMMANDS["resolve.sendCommand"]({
+      name: "fusionComp.setKeyframeEasing",
+      args,
+    });
+  },
+
   /*
    * Resolve 21 AI IntelliSearch-bro: les den nyeste analyse-resultat-
    * filen fra ~/PostAgent/intellisearch/ som ble skrevet av Resolve
