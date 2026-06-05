@@ -6,6 +6,7 @@ import {
   Chip,
   CircularProgress,
   Collapse,
+  Divider,
   MenuItem,
   Stack,
   TextField,
@@ -351,6 +352,10 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
 
       {error && <Alert severity="error" sx={{ '& .MuiAlert-message': { fontSize: '0.78rem' } }}>{error}</Alert>}
 
+      {/* MCC ↔ kunde-invitasjon (Google Ads): ett-klikk i stedet for at klient
+          må gjøre 9 trinn i sin Google Ads-UI. */}
+      <MccInviteSection />
+
       {/* Opprett-kampanje-skjema */}
       <Collapse in={createOpen} unmountOnExit>
         <Stack spacing={1} sx={{ p: 1.2, borderRadius: 1.5, bgcolor: 'rgba(148,163,184,0.06)', border: '1px solid rgba(148,163,184,0.16)' }}>
@@ -667,3 +672,227 @@ const fieldSx = {
   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' },
   '& .MuiSvgIcon-root': { color: 'rgba(226,232,240,0.6)' },
 } as const;
+
+// ─── MccInviteSection ────────────────────────────────────────
+// Lar produsenten lime inn 10-sifret Google Ads customer-id og sende
+// invitasjon fra MCC. Klienten ser invitasjonen som notifikasjon i
+// sin Google Ads og kan godkjenne med ett klikk.
+
+type MccLink = {
+  clientCustomerId: string;
+  status: 'PENDING' | 'ACTIVE' | 'REFUSED' | 'CANCELED' | 'INACTIVE' | 'UNKNOWN';
+  managerLinkId: string | null;
+  hidden: boolean;
+};
+
+const MCC_STATUS_META: Record<MccLink['status'], { color: string; bg: string; label: string }> = {
+  PENDING: { color: '#fcd34d', bg: 'rgba(252,211,77,0.12)', label: 'Venter på godkjenning' },
+  ACTIVE: { color: '#86efac', bg: 'rgba(134,239,172,0.12)', label: 'Tilkoblet' },
+  REFUSED: { color: '#fca5a5', bg: 'rgba(252,165,165,0.12)', label: 'Avvist av kunde' },
+  CANCELED: { color: 'rgba(226,232,240,0.6)', bg: 'rgba(148,163,184,0.12)', label: 'Kansellert' },
+  INACTIVE: { color: 'rgba(226,232,240,0.6)', bg: 'rgba(148,163,184,0.12)', label: 'Inaktiv' },
+  UNKNOWN: { color: '#cbd5e1', bg: 'rgba(148,163,184,0.12)', label: 'Ukjent' },
+};
+
+// Formater 10-sifret id til "XXX-XXX-XXXX" for visning
+const fmtCustomerId = (digits: string): string => {
+  if (digits.length !== 10) return digits;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+};
+
+function MccInviteSection() {
+  const [expanded, setExpanded] = useState(false);
+  const [customerIdInput, setCustomerIdInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [links, setLinks] = useState<MccLink[]>([]);
+  const [loadingLinks, setLoadingLinks] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+
+  const fetchLinks = async () => {
+    setLoadingLinks(true);
+    setListError(null);
+    try {
+      const res = await fetch('/api/role-room/ads/google/mcc/links', { credentials: 'include' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setListError(body.detail || body.error || `HTTP ${res.status}`);
+        setLinks([]);
+        return;
+      }
+      const data = await res.json();
+      setLinks(data.links || []);
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : 'Ukjent feil');
+    } finally {
+      setLoadingLinks(false);
+    }
+  };
+
+  useEffect(() => {
+    if (expanded && links.length === 0 && !listError) void fetchLinks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded]);
+
+  // Auto-polling: mens panelet er åpent OG vi har minst én PENDING-link,
+  // poll hvert 30. sek for å fange status-endringer (klient godkjenner /
+  // avviser invitasjon) uten at produsenten må klikke 'Oppdater' selv.
+  useEffect(() => {
+    if (!expanded) return;
+    const hasPending = links.some((l) => l.status === 'PENDING');
+    if (!hasPending) return;
+    const interval = setInterval(() => {
+      void fetchLinks();
+    }, 30000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, links]);
+
+  const sendInvite = async () => {
+    const digits = customerIdInput.replace(/[^0-9]/g, '');
+    if (digits.length !== 10) {
+      setSendError('Customer-ID må være 10 siffer (bindestreker er OK).');
+      return;
+    }
+    setSending(true);
+    setSendError(null);
+    try {
+      const res = await fetch('/api/role-room/ads/google/mcc/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ customerId: digits }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSendError(body.detail || body.error || `HTTP ${res.status}`);
+        return;
+      }
+      // Suksess — legg til i lokal liste optimistisk, re-fetch så vi får ekte data
+      setCustomerIdInput('');
+      setLinks((cur) => [
+        { clientCustomerId: digits, status: 'PENDING', managerLinkId: body.managerLinkId, hidden: false },
+        ...cur.filter((l) => l.clientCustomerId !== digits),
+      ]);
+      // Re-fetch etter 2 sek for å bekrefte status fra API
+      setTimeout(() => void fetchLinks(), 2000);
+    } catch (e) {
+      setSendError(e instanceof Error ? e.message : 'Ukjent feil');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Stack sx={{ ...CARD_SX, p: 1.2 }} spacing={1}>
+      <Stack direction="row" alignItems="center" spacing={1}>
+        <CampaignIcon sx={{ fontSize: 18, color: '#fcd34d' }} />
+        <Typography sx={{ color: '#fcd34d', fontWeight: 700, fontSize: '0.88rem', flex: 1 }}>
+          Inviter kunde til Google Ads MCC
+        </Typography>
+        <Button
+          size="small"
+          onClick={() => setExpanded((cur) => !cur)}
+          sx={{ textTransform: 'none', color: '#fcd34d', fontSize: '0.76rem' }}
+        >
+          {expanded ? 'Skjul' : 'Vis'}
+        </Button>
+      </Stack>
+
+      <Collapse in={expanded} unmountOnExit>
+        <Stack spacing={1.2} sx={{ pt: 0.5 }}>
+          <Typography sx={SUBTLE}>
+            Lim inn kundens 10-sifrede Google Ads kunde-ID (synlig øverst i Google Ads). Vi sender en invitasjons-forespørsel fra MCC-en din — kunden ser den som notifikasjon i sin Google Ads og kan godta med ett klikk.
+          </Typography>
+
+          <Stack direction="row" spacing={1} alignItems="center">
+            <TextField
+              size="small"
+              label="Kunde-ID (XXX-XXX-XXXX)"
+              placeholder="123-456-7890"
+              value={customerIdInput}
+              onChange={(e) => setCustomerIdInput(e.target.value.slice(0, 14))}
+              sx={{ ...fieldSx, flex: 1 }}
+            />
+            <Button
+              size="small"
+              variant="contained"
+              disabled={sending || customerIdInput.replace(/[^0-9]/g, '').length !== 10}
+              onClick={sendInvite}
+              sx={{
+                textTransform: 'none',
+                bgcolor: '#6366f1',
+                fontWeight: 700,
+                whiteSpace: 'nowrap',
+                '&:hover': { bgcolor: '#4f46e5' },
+              }}
+            >
+              {sending ? 'Sender…' : 'Send invitasjon'}
+            </Button>
+          </Stack>
+
+          {sendError && (
+            <Alert severity="error" sx={{ '& .MuiAlert-message': { fontSize: '0.76rem' } }}>
+              {sendError}
+            </Alert>
+          )}
+
+          <Divider sx={{ borderColor: 'rgba(148,163,184,0.16)' }} />
+
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem' }}>
+              MCC ↔ kunde-links ({links.length})
+            </Typography>
+            <Button
+              size="small"
+              onClick={() => void fetchLinks()}
+              disabled={loadingLinks}
+              sx={{ textTransform: 'none', color: '#a5b4fc', fontSize: '0.74rem' }}
+            >
+              {loadingLinks ? 'Oppdaterer…' : 'Oppdater'}
+            </Button>
+          </Stack>
+
+          {listError && (
+            <Alert severity="warning" sx={{ '& .MuiAlert-message': { fontSize: '0.74rem' } }}>
+              {listError}
+            </Alert>
+          )}
+
+          {links.length === 0 && !loadingLinks && !listError && (
+            <Typography sx={{ ...SUBTLE, fontStyle: 'italic' }}>
+              Ingen invitasjoner sendt fra denne MCC-en ennå.
+            </Typography>
+          )}
+
+          {links.map((link) => {
+            const meta = MCC_STATUS_META[link.status];
+            return (
+              <Stack
+                key={`${link.clientCustomerId}-${link.managerLinkId ?? 'no-link'}`}
+                direction="row"
+                alignItems="center"
+                spacing={1}
+                sx={{
+                  p: 0.8,
+                  borderRadius: 1,
+                  bgcolor: 'rgba(148,163,184,0.06)',
+                  border: '1px solid rgba(148,163,184,0.16)',
+                }}
+              >
+                <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem', flex: 1 }}>
+                  {fmtCustomerId(link.clientCustomerId)}
+                </Typography>
+                <Chip
+                  label={meta.label}
+                  size="small"
+                  sx={{ bgcolor: meta.bg, color: meta.color, fontWeight: 700, fontSize: '0.7rem', height: 22 }}
+                />
+              </Stack>
+            );
+          })}
+        </Stack>
+      </Collapse>
+    </Stack>
+  );
+}
