@@ -32,6 +32,7 @@ import {
   ContactPage as LeadsTabIcon,
   CampaignOutlined as MentionsTabIcon,
   TravelExplore as DiscoveryTabIcon,
+  EventOutlined as EventsTabIcon,
   MoreHoriz as MoreHorizIcon,
   Tune as TuneIcon,
   QueryStats as QueryStatsIcon,
@@ -48,6 +49,7 @@ import SocialInboxPanel from './SocialInboxPanel';
 import LeadsPanel from './LeadsPanel';
 import MentionsPanel from './MentionsPanel';
 import DiscoveryPanel from './DiscoveryPanel';
+import EventsPanel from './EventsPanel';
 import SocialAnalyticsPanel from './SocialAnalyticsPanel';
 import RoleRoomAgentWorkflowStepper from './RoleRoomAgentWorkflowStepper';
 import RoleRoomAgentConnectionsBar from './RoleRoomAgentConnectionsBar';
@@ -254,7 +256,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'discovery' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'mentions' | 'leads' | 'social-analytics'>(initialTab ?? 'research');
+  const [activeTab, setActiveTab] = useState<'research' | 'discovery' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'mentions' | 'leads' | 'events' | 'social-analytics'>(initialTab ?? 'research');
 
   // Synk hvis initialTab endrer seg etter mount (dialog gjenåpnes med
   // ny tab fra parent).
@@ -373,7 +375,7 @@ export default function RoleRoomAgentDialog({
   // reviewer panels. Publishing lives inside Feed-planner.
   const tabFlow = useMemo<Array<typeof activeTab>>(() => {
     const base: Array<typeof activeTab> = [
-      'research', 'discovery', 'marketing-plan', 'feed-planner', 'social-inbox', 'mentions', 'leads', 'social-analytics',
+      'research', 'discovery', 'marketing-plan', 'feed-planner', 'social-inbox', 'mentions', 'leads', 'events', 'social-analytics',
     ];
     return currentUserId ? [...base, 'chat'] : base;
   }, [currentUserId]);
@@ -381,7 +383,7 @@ export default function RoleRoomAgentDialog({
     research: 'Research', discovery: 'Oppdag', merch: 'Merch', 'marketing-plan': 'Markedsplan',
     'feed-planner': 'Feed-planner', 'meta-page': 'Meta Page', 'page-content': 'Page Content',
     'ads-attribution': 'Ads Attribution', 'fb-publish': 'FB Publish', 'fb-mention': 'Page Mentions',
-    'ig-hashtag': 'IG Hashtags', 'social-inbox': 'Inbox', mentions: 'Omtaler', leads: 'Leads', 'social-analytics': 'Analytics', chat: 'Chat',
+    'ig-hashtag': 'IG Hashtags', 'social-inbox': 'Inbox', mentions: 'Omtaler', leads: 'Leads', events: 'Arrangement', 'social-analytics': 'Analytics', chat: 'Chat',
   };
   const flowIndex = tabFlow.indexOf(activeTab);
   const showResearchSection = (s: 'oversikt' | 'kanaler' | 'marked'): boolean =>
@@ -802,6 +804,13 @@ export default function RoleRoomAgentDialog({
           data-testid="agent-tab-leads"
         />
         <Tab
+          value="events"
+          label="Arrangement"
+          icon={<EventsTabIcon fontSize="small" />}
+          iconPosition="start"
+          data-testid="agent-tab-events"
+        />
+        <Tab
           value="social-analytics"
           label="Analytics"
           icon={<QueryStatsIcon fontSize="small" />}
@@ -980,6 +989,8 @@ export default function RoleRoomAgentDialog({
           </Box>
         ) : activeTab === 'mentions' ? (
           <MentionsPanel />
+        ) : activeTab === 'events' ? (
+          <EventsPanel />
         ) : activeTab === 'leads' ? (
           <LeadsPanel />
         ) : activeTab === 'social-analytics' ? (
