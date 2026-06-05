@@ -32,6 +32,7 @@ import {
   type FireflyIntent,
   type FireflyContext,
 } from "../lib/fireflyPromptHelper";
+import { getCatalog, validateSetting } from "../lib/resolveSettingsCatalog";
 
 // Anthropic tool definition shape (matcher beta.messages.tool_use)
 export interface ClaudeToolDefinition {
@@ -1194,6 +1195,26 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_settings_reference",
+    description:
+      "Hent katalog over kjente Resolve project/timeline/clip setting-keys med valid value-formats og enum-verdier. Bruk dette FØR du kaller setSetting/clipSetProperty for å vite hvilke nøkler som finnes og hva som er gyldige verdier (f.eks. timelineFrameRate krever '24' ikke 24, colorScienceMode er enum). Filter på scope ('project'/'timeline'/'clip') og kategori for å minske respons-størrelse.",
+    input_schema: {
+      type: "object",
+      properties: {
+        scope: {
+          type: "string",
+          enum: ["project", "timeline", "clip"],
+          description: "Filter på scope. Utelat for alle.",
+        },
+        category: {
+          type: "string",
+          description:
+            "Filter på kategori: timeline, monitoring, colorScience, ai, performance, audio, cameraRaw, delivery, metadata.",
+        },
+      },
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -1842,6 +1863,12 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
       if (typeof input.value !== "string") {
         throw new Error("value må være en string (Resolve godtar kun string-verdier)");
       }
+      const v = validateSetting("project", input.key, input.value);
+      if (!v.ok) {
+        throw new Error(
+          `${v.warning}. Kall photoshop_resolve_settings_reference for å se gyldige verdier.`,
+        );
+      }
       return photoshop.resolveProjectSetSetting({ key: input.key, value: input.value });
     }
     case "photoshop_resolve_timeline_get_setting":
@@ -1854,6 +1881,12 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
       }
       if (typeof input.value !== "string") {
         throw new Error("value må være en string (Resolve godtar kun string-verdier)");
+      }
+      const v = validateSetting("timeline", input.key, input.value);
+      if (!v.ok) {
+        throw new Error(
+          `${v.warning}. Kall photoshop_resolve_settings_reference for å se gyldige verdier.`,
+        );
       }
       return photoshop.resolveTimelineSetSetting({ key: input.key, value: input.value });
     }
@@ -1886,6 +1919,12 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
       }
       if (typeof input.value !== "string") {
         throw new Error("value må være en string (Resolve godtar kun string-verdier)");
+      }
+      const v = validateSetting("clip", input.key, input.value);
+      if (!v.ok) {
+        throw new Error(
+          `${v.warning}. Kall photoshop_resolve_settings_reference for å se gyldige verdier.`,
+        );
       }
       return photoshop.resolveClipSetProperty({
         clip_id: input.clip_id,
@@ -2161,6 +2200,22 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         path: input.path,
         comp_index: input.comp_index,
       });
+    }
+    case "photoshop_resolve_settings_reference": {
+      // Lokal lookup — INGEN bridge-call. runPhotoshopTool gjør
+      // JSON.stringify på return-verdien, så vi returnerer objekt.
+      const scope =
+        typeof input.scope === "string"
+          ? (input.scope as "project" | "timeline" | "clip")
+          : undefined;
+      const category =
+        typeof input.category === "string" ? input.category : undefined;
+      const entries = getCatalog({ scope, category });
+      return {
+        count: entries.length,
+        filter: { scope: scope ?? null, category: category ?? null },
+        entries,
+      };
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
