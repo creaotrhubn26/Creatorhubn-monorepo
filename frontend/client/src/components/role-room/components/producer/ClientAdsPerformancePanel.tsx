@@ -366,6 +366,18 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
+  // Auto-polling hvert 60 sek mens tråden er åpen — så klient og produsent
+  // ser hverandres svar uten å måtte re-laste manuelt. Pauser når
+  // dokumentet er hidden (lukket fane) for å spare API-kall.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      void fetchComments();
+    }, 60000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignId]);
+
   const submit = async () => {
     if (!body.trim()) return;
     setSubmitting(true);

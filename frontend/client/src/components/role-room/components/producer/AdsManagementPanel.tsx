@@ -734,6 +734,20 @@ function MccInviteSection() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded]);
 
+  // Auto-polling: mens panelet er åpent OG vi har minst én PENDING-link,
+  // poll hvert 30. sek for å fange status-endringer (klient godkjenner /
+  // avviser invitasjon) uten at produsenten må klikke 'Oppdater' selv.
+  useEffect(() => {
+    if (!expanded) return;
+    const hasPending = links.some((l) => l.status === 'PENDING');
+    if (!hasPending) return;
+    const interval = setInterval(() => {
+      void fetchLinks();
+    }, 30000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, links]);
+
   const sendInvite = async () => {
     const digits = customerIdInput.replace(/[^0-9]/g, '');
     if (digits.length !== 10) {
