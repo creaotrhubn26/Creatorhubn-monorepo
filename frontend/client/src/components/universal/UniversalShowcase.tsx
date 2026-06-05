@@ -222,6 +222,7 @@ import {
   Videocam,
   MovieCreation,
   TrendingUp as TimelineIcon,
+  ForumOutlined as CommentResolverIcon,
   Layers,
   VolumeUp,
   Subtitles,
@@ -261,6 +262,7 @@ import WorkflowExecutor from './showcase/WorkflowExecutor';
 import ContextualActionBar from './showcase/ContextualActionBar';
 import QuickPreview from './showcase/QuickPreview';
 import ActivityFeed from './showcase/ActivityFeed';
+import CommentResolverPanel from './showcase/CommentResolverPanel';
 import ShareToCommunityDialog from '../community/ShareToCommunityDialog';
 import SmartCollections from './showcase/SmartCollections';
 import ComparisonView from './showcase/ComparisonView';
@@ -1361,6 +1363,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   
   // Activity Feed State
   const [activityFeedOpen, setActivityFeedOpen] = useState(false);
+  const [commentResolverOpen, setCommentResolverOpen] = useState(false);
   
   // Smart Collections State
   const [showSmartCollections, setShowSmartCollections] = useState(false);
@@ -9202,7 +9205,23 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 <Notifications />
               </IconButton>
             </Tooltip>
-            
+
+            {/* Comment Resolver */}
+            <Tooltip title="Klient-kommentarer — marker som adressert eller svar">
+              <IconButton
+                size="small"
+                onClick={() => setCommentResolverOpen(true)}
+                sx={{
+                  color: 'rgba(255,255,255,0.7)','&:hover': {
+                    color: accentColor,
+                    bgcolor: `${accentColor}20`
+                  }
+                }}
+              >
+                <CommentResolverIcon />
+              </IconButton>
+            </Tooltip>
+
             {/* Comparison View Button */}
             <Tooltip title="Compare Items">
               <IconButton
@@ -13287,7 +13306,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         profession={profession}
         accentColor={accentColor}
       />
-      
+
+      {/* Klient-kommentar-resolver */}
+      <CommentResolverPanel
+        open={commentResolverOpen}
+        onClose={() => setCommentResolverOpen(false)}
+      />
+
       {/* Comparison View */}
       <ComparisonView
         open={comparisonViewOpen}
