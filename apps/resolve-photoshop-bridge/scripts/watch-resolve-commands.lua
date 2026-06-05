@@ -2132,6 +2132,167 @@ HANDLERS["pm.importProject"] = handlePmImportProject
 HANDLERS["pm.exportProject"] = handlePmExportProject
 
 -- ---------------------------------------------------------------------------
+-- Fusion node scripting (inside-comp API)
+-- ---------------------------------------------------------------------------
+
+-- Hver Director-call er en fresh Lua-invocation, så vi kan ikke cache
+-- comp-handler på tvers. Hver handler re-resolverer:
+--   1. Get selected timeline-item
+--   2. Hvis comp_name gitt: LoadFusionCompByName
+--   3. Hvis ikke: bruk siste comp i listen
+local function getFusionComp(args)
+  local item = currentVideoItem()
+  local compName = extractString(args, "comp_name")
+  if compName and compName ~= "" then
+    local comp = item:LoadFusionCompByName(compName)
+    if not comp then
+      error("Fant ikke Fusion comp: " .. compName)
+    end
+    return comp, compName
+  end
+  local names = item:GetFusionCompNames()
+  if not names or #names == 0 then
+    error("Ingen Fusion comp på dette itemet — lag med fusion.addComp først")
+  end
+  local lastName = names[#names]
+  local comp = item:LoadFusionCompByName(lastName)
+  if not comp then error("LoadFusionCompByName(" .. lastName .. ") returnerte nil") end
+  return comp, lastName
+end
+
+-- coerceValue — Fusion SetInput godtar tall, string, bool. JSON-arg er
+-- string. Vi prøver number → boolean → string.
+local function coerceValue(raw)
+  if raw == nil then return nil end
+  -- Bool?
+  if raw == "true" then return true end
+  if raw == "false" then return false end
+  -- Number?
+  local n = tonumber(raw)
+  if n ~= nil then return n end
+  return raw
+end
+
+local function fusionCompGetInfo(args)
+  local comp, compName = getFusionComp(args)
+  local toolList = comp:GetToolList(false) or {}
+  -- GetToolList returnerer {[1]=tool, [2]=tool, ...} eller dict — håndtér begge
+  local tools = {}
+  if toolList[1] then
+    for _, tool in ipairs(toolList) do
+      local name = tool.Name or tool:GetAttrs and tool:GetAttrs().TOOLS_Name or ""
+      local toolType = tool:GetAttrs and tool:GetAttrs().TOOLS_RegID or ""
+      table.insert(tools, string.format(
+        '{"name":%s,"type":%s}',
+        jsonEscape(tostring(name)), jsonEscape(tostring(toolType))
+      ))
+    end
+  else
+    for name, tool in pairs(toolList) do
+      local toolType = tool:GetAttrs and tool:GetAttrs().TOOLS_RegID or ""
+      table.insert(tools, string.format(
+        '{"name":%s,"type":%s}',
+        jsonEscape(tostring(name)), jsonEscape(tostring(toolType))
+      ))
+    end
+  end
+  return string.format(
+    '{"comp":%s,"tool_count":%d,"tools":[%s]}',
+    jsonEscape(compName), #tools, table.concat(tools, ",")
+  )
+end
+
+local function fusionCompAddTool(args)
+  local comp = getFusionComp(args)
+  local toolType = extractString(args, "tool_type")
+  if not toolType or toolType == "" then error("tool_type mangler (f.eks. 'Background', 'TextPlus', 'Merge')") end
+  local x = tonumber(args:match('"x"%s*:%s*(-?%d+)')) or -1
+  local y = tonumber(args:match('"y"%s*:%s*(-?%d+)')) or -1
+  local name = extractString(args, "name")
+
+  local tool = comp:AddTool(toolType, x, y)
+  if not tool then error("AddTool(" .. toolType .. ") returnerte nil") end
+  if name and name ~= "" then
+    tool:SetAttrs({ TOOLS_Name = name })
+  end
+  local attrs = tool:GetAttrs() or {}
+  local finalName = attrs.TOOLS_Name or ""
+  return string.format(
+    '{"added":true,"name":%s,"tool_type":%s,"x":%d,"y":%d}',
+    jsonEscape(finalName), jsonEscape(toolType), x, y
+  )
+end
+
+local function fusionCompDeleteTool(args)
+  local comp = getFusionComp(args)
+  local name = extractString(args, "name")
+  if not name or name == "" then error("name mangler") end
+  local tool = comp:FindTool(name)
+  if not tool then error("Fant ikke tool: " .. name) end
+  comp:SetActiveTool(tool)
+  comp:Execute("composition.SelectAll(false)\ncomposition.ActiveTool:Select(true)\ncomposition.Cut()")
+  -- Cut sletter selected tool — alternativt: tool:Delete() hvis tilgjengelig
+  return string.format(
+    '{"deleted":true,"name":%s}',
+    jsonEscape(name)
+  )
+end
+
+local function fusionCompSetInput(args)
+  local comp = getFusionComp(args)
+  local toolName = extractString(args, "tool_name")
+  if not toolName or toolName == "" then error("tool_name mangler") end
+  local inputName = extractString(args, "input_name")
+  if not inputName or inputName == "" then error("input_name mangler") end
+  local rawValue = extractString(args, "value")
+  if rawValue == nil then error("value mangler") end
+
+  local tool = comp:FindTool(toolName)
+  if not tool then error("Fant ikke tool: " .. toolName) end
+  local coerced = coerceValue(rawValue)
+  local ok = tool:SetInput(inputName, coerced)
+  return string.format(
+    '{"set":%s,"tool":%s,"input":%s,"value":%s}',
+    tostring(ok ~= nil and ok ~= false),
+    jsonEscape(toolName), jsonEscape(inputName), jsonEscape(tostring(rawValue))
+  )
+end
+
+local function fusionCompConnectInput(args)
+  local comp = getFusionComp(args)
+  local destTool = extractString(args, "dest_tool")
+  if not destTool or destTool == "" then error("dest_tool mangler") end
+  local destInput = extractString(args, "dest_input")
+  if not destInput or destInput == "" then error("dest_input mangler") end
+  local srcTool = extractString(args, "src_tool")
+  if not srcTool or srcTool == "" then error("src_tool mangler") end
+  local srcOutput = extractString(args, "src_output") or "Output"
+
+  local dest = comp:FindTool(destTool)
+  if not dest then error("Fant ikke dest_tool: " .. destTool) end
+  local src = comp:FindTool(srcTool)
+  if not src then error("Fant ikke src_tool: " .. srcTool) end
+
+  local destInputObj = dest:FindMainInput(destInput) or dest[destInput]
+  if not destInputObj then error("Fant ikke input '" .. destInput .. "' på " .. destTool) end
+  local srcOutputObj = src:FindMainOutput(srcOutput) or src[srcOutput]
+  if not srcOutputObj then error("Fant ikke output '" .. srcOutput .. "' på " .. srcTool) end
+
+  destInputObj:ConnectTo(srcOutputObj)
+  return string.format(
+    '{"connected":true,"dest":%s,"dest_input":%s,"src":%s,"src_output":%s}',
+    jsonEscape(destTool), jsonEscape(destInput),
+    jsonEscape(srcTool), jsonEscape(srcOutput)
+  )
+end
+
+HANDLERS["fusionComp.getInfo"] = fusionCompGetInfo
+HANDLERS["fusionComp.addTool"] = fusionCompAddTool
+HANDLERS["fusionComp.deleteTool"] = fusionCompDeleteTool
+HANDLERS["fusionComp.setInput"] = fusionCompSetInput
+HANDLERS["fusionComp.connectInput"] = fusionCompConnectInput
+
+-- ---------------------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------------------
 

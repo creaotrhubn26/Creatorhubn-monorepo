@@ -1071,6 +1071,60 @@ export const photoshop = {
       with_stills_and_luts: boolean;
     }>("resolve.pmExportProject", params),
 
+  resolveFusionCompGetInfo: (params?: { comp_name?: string }) =>
+    send<{
+      comp: string;
+      tool_count: number;
+      tools: Array<{ name: string; type: string }>;
+    }>("resolve.fusionCompGetInfo", params ?? {}),
+
+  resolveFusionCompAddTool: (params: {
+    tool_type: string;
+    name?: string;
+    x?: number;
+    y?: number;
+    comp_name?: string;
+  }) =>
+    send<{
+      added: boolean;
+      name: string;
+      tool_type: string;
+      x: number;
+      y: number;
+    }>("resolve.fusionCompAddTool", params),
+
+  resolveFusionCompDeleteTool: (params: { name: string; comp_name?: string }) =>
+    send<{ deleted: boolean; name: string }>(
+      "resolve.fusionCompDeleteTool",
+      params,
+    ),
+
+  resolveFusionCompSetInput: (params: {
+    tool_name: string;
+    input_name: string;
+    value: string;
+    comp_name?: string;
+  }) =>
+    send<{ set: boolean; tool: string; input: string; value: string }>(
+      "resolve.fusionCompSetInput",
+      params,
+    ),
+
+  resolveFusionCompConnectInput: (params: {
+    dest_tool: string;
+    dest_input: string;
+    src_tool: string;
+    src_output?: string;
+    comp_name?: string;
+  }) =>
+    send<{
+      connected: boolean;
+      dest: string;
+      dest_input: string;
+      src: string;
+      src_output: string;
+    }>("resolve.fusionCompConnectInput", params),
+
   resolveOpenLatest: () =>
     send<{ opened: string; metadata: ResolveStillMetadata | null }>("resolve.openLatest"),
 

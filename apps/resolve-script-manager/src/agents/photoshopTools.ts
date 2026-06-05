@@ -33,6 +33,10 @@ import {
   type FireflyContext,
 } from "../lib/fireflyPromptHelper";
 import { getCatalog, validateSetting } from "../lib/resolveSettingsCatalog";
+import {
+  getFusionCatalog,
+  type FusionToolCategory,
+} from "../lib/fusionToolsCatalog";
 
 // Anthropic tool definition shape (matcher beta.messages.tool_use)
 export interface ClaudeToolDefinition {
@@ -1298,6 +1302,119 @@ export const PHOTOSHOP_TOOLS: ClaudeToolDefinition[] = [
     },
   },
   {
+    name: "photoshop_resolve_fusion_comp_get_info",
+    description:
+      "Snapshot av Fusion-comp på selected timeline-item. Returnerer {comp_name, tool_count, tools: [{name, type}]}. comp_name valgfri — utelat for å bruke siste comp i listen. Bruk FØR addTool/setInput for å se hva som finnes.",
+    input_schema: {
+      type: "object",
+      properties: {
+        comp_name: {
+          type: "string",
+          description: "Comp-navn (fra fusion.getCompNames). Utelat for siste comp.",
+        },
+      },
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_add_tool",
+    description:
+      "Legg til en Fusion-node i comp på selected timeline-item. tool_type må være en gyldig RegID (kall photoshop_resolve_fusion_tools_reference for liste). Returnerer name + posisjon. Bruk dette for å bygge titler ('TextPlus'), bakgrunn ('Background'), comp ('Merge'), effekter ('Blur', 'Glow').",
+    input_schema: {
+      type: "object",
+      properties: {
+        tool_type: {
+          type: "string",
+          description:
+            "Tool RegID, f.eks. 'TextPlus', 'Background', 'Merge', 'Blur'. Case-sensitivt.",
+        },
+        name: {
+          type: "string",
+          description: "Override default tool-navn (settes via SetAttrs).",
+        },
+        x: { type: "number", description: "Node-graph X-posisjon (default -1)." },
+        y: { type: "number", description: "Node-graph Y-posisjon (default -1)." },
+        comp_name: { type: "string" },
+      },
+      required: ["tool_type"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_delete_tool",
+    description: "Slett en Fusion-node ved navn.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        comp_name: { type: "string" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_set_input",
+    description:
+      "Sett en input på en Fusion-node. value tolkes som tall ('1.0'), boolean ('true'/'false') eller string. Bruk reference-tool for å se common inputs per tool-type.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tool_name: { type: "string" },
+        input_name: {
+          type: "string",
+          description: "F.eks. 'StyledText', 'Size', 'TopLeftRed', 'XBlurSize'.",
+        },
+        value: {
+          oneOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
+          description: "Verdi — konverteres til string for transport.",
+        },
+        comp_name: { type: "string" },
+      },
+      required: ["tool_name", "input_name", "value"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_comp_connect_input",
+    description:
+      "Koble en src-tool's output til en dest-tool's input. Standard src_output = 'Output'. Eksempel: Merge.Background ← Background.Output.",
+    input_schema: {
+      type: "object",
+      properties: {
+        dest_tool: { type: "string" },
+        dest_input: { type: "string", description: "F.eks. 'Foreground', 'Background', 'Input'." },
+        src_tool: { type: "string" },
+        src_output: {
+          type: "string",
+          description: "Default 'Output'.",
+        },
+        comp_name: { type: "string" },
+      },
+      required: ["dest_tool", "dest_input", "src_tool"],
+    },
+  },
+  {
+    name: "photoshop_resolve_fusion_tools_reference",
+    description:
+      "Hent katalog over vanlige Fusion tool-types (med tool_type RegID + common inputs). Bruk FØR fusionComp.addTool. Kategorier: generator, effect, merge, text, transform, mask, color, tracker, output.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: {
+          type: "string",
+          enum: [
+            "generator",
+            "effect",
+            "merge",
+            "text",
+            "transform",
+            "mask",
+            "color",
+            "tracker",
+            "output",
+          ],
+        },
+      },
+    },
+  },
+  {
     name: "photoshop_resolve_read_intellisearch",
     description:
       "Les den nyeste Resolve 21 AI IntelliSearch-analyse-filen som er eksportert av analyze-intellisearch.lua. Returnerer per-clip face/object-metadata fra Resolve sin native AI — bruk dette FØR du gjør innholds-baserte vurderinger som ellers ville krevd photoshop_see_canvas per klipp. clip_name_filter er valgfri (case-insensitive substring-match).",
@@ -2378,6 +2495,109 @@ async function dispatch(name: string, input: Record<string, unknown>): Promise<u
         params.with_stills_and_luts = input.with_stills_and_luts;
       }
       return photoshop.resolvePmExportProject(params);
+    }
+    case "photoshop_resolve_fusion_comp_get_info": {
+      const params: { comp_name?: string } = {};
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompGetInfo(params);
+    }
+    case "photoshop_resolve_fusion_comp_add_tool": {
+      if (typeof input.tool_type !== "string" || input.tool_type.length === 0) {
+        throw new Error("tool_type må være en ikke-tom string");
+      }
+      const params: {
+        tool_type: string;
+        name?: string;
+        x?: number;
+        y?: number;
+        comp_name?: string;
+      } = { tool_type: input.tool_type };
+      if (typeof input.name === "string" && input.name.length > 0) params.name = input.name;
+      if (typeof input.x === "number") params.x = input.x;
+      if (typeof input.y === "number") params.y = input.y;
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompAddTool(params);
+    }
+    case "photoshop_resolve_fusion_comp_delete_tool": {
+      if (typeof input.name !== "string" || input.name.length === 0) {
+        throw new Error("name må være en ikke-tom string");
+      }
+      const params: { name: string; comp_name?: string } = { name: input.name };
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompDeleteTool(params);
+    }
+    case "photoshop_resolve_fusion_comp_set_input": {
+      if (typeof input.tool_name !== "string" || input.tool_name.length === 0) {
+        throw new Error("tool_name må være en ikke-tom string");
+      }
+      if (typeof input.input_name !== "string" || input.input_name.length === 0) {
+        throw new Error("input_name må være en ikke-tom string");
+      }
+      if (input.value === undefined || input.value === null) {
+        throw new Error("value mangler");
+      }
+      const params: {
+        tool_name: string;
+        input_name: string;
+        value: string;
+        comp_name?: string;
+      } = {
+        tool_name: input.tool_name,
+        input_name: input.input_name,
+        value: typeof input.value === "string" ? input.value : String(input.value),
+      };
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompSetInput(params);
+    }
+    case "photoshop_resolve_fusion_comp_connect_input": {
+      if (typeof input.dest_tool !== "string" || input.dest_tool.length === 0) {
+        throw new Error("dest_tool må være en ikke-tom string");
+      }
+      if (typeof input.dest_input !== "string" || input.dest_input.length === 0) {
+        throw new Error("dest_input må være en ikke-tom string");
+      }
+      if (typeof input.src_tool !== "string" || input.src_tool.length === 0) {
+        throw new Error("src_tool må være en ikke-tom string");
+      }
+      const params: {
+        dest_tool: string;
+        dest_input: string;
+        src_tool: string;
+        src_output?: string;
+        comp_name?: string;
+      } = {
+        dest_tool: input.dest_tool,
+        dest_input: input.dest_input,
+        src_tool: input.src_tool,
+      };
+      if (typeof input.src_output === "string" && input.src_output.length > 0) {
+        params.src_output = input.src_output;
+      }
+      if (typeof input.comp_name === "string" && input.comp_name.length > 0) {
+        params.comp_name = input.comp_name;
+      }
+      return photoshop.resolveFusionCompConnectInput(params);
+    }
+    case "photoshop_resolve_fusion_tools_reference": {
+      // Lokal lookup — INGEN bridge-call.
+      const category =
+        typeof input.category === "string"
+          ? (input.category as FusionToolCategory)
+          : undefined;
+      const entries = getFusionCatalog({ category });
+      return {
+        count: entries.length,
+        filter: { category: category ?? null },
+        entries,
+      };
     }
     case "photoshop_resolve_open_latest":
       return photoshop.resolveOpenLatest();
