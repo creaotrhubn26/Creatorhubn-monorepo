@@ -15,6 +15,7 @@ import {
   CheckCircle as DoneIcon, Send as SendIcon, AutoAwesome as AiIcon,
 } from '@mui/icons-material';
 import CtaCard from './CtaCard';
+import InsightsCard from './InsightsCard';
 
 type Segment = 'varm' | 'lunken' | 'kald' | 'tapt';
 const SEGMENTS: { key: Segment; label: string; hint: string; campaign: string; color: string }[] = [
@@ -292,6 +293,7 @@ export default function LeadsPanel() {
           ) : null}
 
           {connectionId ? <CtaCard connectionId={connectionId} /> : null}
+          {connectionId && formId && leads.length > 0 ? <InsightsCard connectionId={connectionId} leads={leads} /> : null}
 
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '300px 1fr' }, gap: 2 }}>
             {/* Forms */}
