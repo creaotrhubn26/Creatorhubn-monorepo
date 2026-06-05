@@ -12,7 +12,9 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    # macos-15 (Sequoia) inkluderer Xcode 16+ som trengs for Swift 6.0.
+    # macos-14 har bare Xcode 15.x og kan ikke kompilere prosjektet.
+    runs-on: macos-15
     defaults:
       run:
         working-directory: ipad/CaptureApp
