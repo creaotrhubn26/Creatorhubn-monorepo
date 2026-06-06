@@ -219,6 +219,20 @@ export async function macosNotification(title: string, body: string): Promise<vo
   return invoke<void>("macos_notification", { title, body });
 }
 
+// ── Brukerpreferanser ─────────────────────────────────────────────
+export interface Prefs {
+  auto_eject: boolean;
+  default_dest_ids: string[];
+}
+
+export async function getPrefs(): Promise<Prefs> {
+  return invoke<Prefs>("get_prefs");
+}
+
+export async function saveDefaultDestIds(destIds: string[]): Promise<void> {
+  return invoke<void>("save_default_dest_ids", { destIds });
+}
+
 /// Status-event emit'es hvert 5. sekund fra Bonjour-browseren.
 export interface BonjourStatusEvent {
   discovered_count: number;
