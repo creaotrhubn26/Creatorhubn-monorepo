@@ -291,7 +291,7 @@ export default function FeedPostDetailPanel({
       if (body?.video?.scheduled) {
         setFbPublishStatus(`Køet for publisering ${post.scheduledFor ? new Date(post.scheduledFor).toLocaleString('nb-NO') : 'snart'} (video id ${body.video.id ?? '(ukjent)'})`);
       } else {
-        setFbPublishStatus(`✓ Publisert til Facebook Page (video id ${body?.video?.id ?? '(ukjent)'})`);
+        setFbPublishStatus(`Publisert til Facebook Page (video id ${body?.video?.id ?? '(ukjent)'})`);
       }
     } catch (e) {
       setFbPublishStatus(e instanceof Error ? e.message : 'FB-publisering feilet.');
@@ -340,7 +340,7 @@ export default function FeedPostDetailPanel({
       if (result.rateLimited) {
         setPublishStatus('Rate-limit nådd (50/24t). Prøv igjen senere.');
       } else if (result.immediatelyPublished) {
-        setPublishStatus(`✓ Publisert (media id ${result.job.igMediaId})`);
+        setPublishStatus(`Publisert (media id ${result.job.igMediaId})`);
       } else {
         setPublishStatus(`Køet for publisering ${post.scheduledFor ? new Date(post.scheduledFor).toLocaleString('nb-NO') : 'snart'}`);
       }
@@ -1021,7 +1021,7 @@ export default function FeedPostDetailPanel({
             <Chip
               key={s.hashtag}
               size="small"
-              label={`#${s.hashtag}${s.hashtagId ? ' ✓' : ''}`}
+              label={`#${s.hashtag}`}
               onClick={() => {
                 const existing = hashtagsText.trim();
                 const tag = `#${s.hashtag}`;

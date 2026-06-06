@@ -10,16 +10,17 @@ export interface TelemetryRoutesDeps {
     userId: string,
     events: any[],
   ) => Promise<{ ingested: number }>;
+  /**
+   * Matcher ergonomics-telemetry-service.ts:418 (ingestReflect).
+   * answers-felt heter 'payload' i tidligere wire-kontrakt; vi tar imot
+   * begge ved å unionere keys (alle felter er optional).
+   */
   ingestErgonomicsReflect: (
     pool: Pool,
     userId: string,
     sessionId: string,
-    payload: {
-      hardest?: string;
-      regretted?: string;
-      wouldSave?: string;
-    },
-  ) => Promise<{ id: string }>;
+    answers: { hardest?: string; regretted?: string; wouldSave?: string },
+  ) => Promise<{ id: number }>;
   summariseErgonomicsSession: (
     pool: Pool,
     userId: string,

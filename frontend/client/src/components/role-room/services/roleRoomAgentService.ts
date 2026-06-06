@@ -2543,6 +2543,8 @@ export const roleRoomAgentService = {
     postId: string;
     projectId: string;
     scheduledFor?: string | null;
+    /** Plan-ID for batch-context (audit-spor i backend). Valgfri. */
+    planId?: string | null;
   }): Promise<{ planPost: MarketingPlanPost; feedPlanPostId: string }> {
     const response = await fetch(
       `/api/role-room/marketing-plan/posts/${encodeURIComponent(input.postId)}/accept`,
@@ -2552,6 +2554,7 @@ export const roleRoomAgentService = {
         body: JSON.stringify({
           projectId: input.projectId,
           scheduledFor: input.scheduledFor ?? null,
+          planId: input.planId ?? null,
         }),
       },
     );

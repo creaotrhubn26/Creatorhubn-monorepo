@@ -11,6 +11,7 @@
  *  - Hoppe til count via klikk → playhead seeker til count-tid
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React, { useMemo, useState, useCallback } from 'react';
 import {
   Box,
@@ -132,17 +133,17 @@ export const CountGrid: React.FC<CountGridProps> = ({
   }, [eightCounts, state.includeLeadup]);
 
   return (
-    <Box data-testid="count-grid" sx={{ bgcolor: '#0d1218', borderRadius: 1.5, p: 1.5 }}>
+    <Box data-testid="count-grid" sx={{ bgcolor: danceFlowColors.bgInset, borderRadius: 1.5, p: 1.5 }}>
       {/* ─── Header ──────────────────────────────────── */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
         <Stack direction="row" spacing={1.5} alignItems="center">
-          <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#a78bfa', letterSpacing: 1 }}>
+          <Typography sx={{ fontSize: 11, fontWeight: 700, color: danceFlowColors.lavender, letterSpacing: 1 }}>
             COUNT SYSTEM · {eightCounts} × 8-COUNT
           </Typography>
           <Chip
             size="small"
             label={`${bpm ?? '–'} BPM · ${totalCounts} beats`}
-            sx={{ height: 18, fontSize: 9, bgcolor: 'rgba(139,92,246,0.12)', color: '#c4b5fd', border: '1px solid rgba(139,92,246,0.3)' }}
+            sx={{ height: 18, fontSize: 9, bgcolor: 'rgba(139,92,246,0.12)', color: danceFlowColors.lavenderLight, border: '1px solid rgba(139,92,246,0.3)' }}
           />
         </Stack>
         <Stack direction="row" spacing={0.5} alignItems="center">
@@ -155,11 +156,11 @@ export const CountGrid: React.FC<CountGridProps> = ({
                 data-testid="count-grid-leadup-toggle"
               />
             }
-            label={<Typography sx={{ fontSize: 10, color: '#9ca3af' }}>5-6-7-8 leadup</Typography>}
+            label={<Typography sx={{ fontSize: 10, color: danceFlowColors.textMuted }}>5-6-7-8 leadup</Typography>}
             sx={{ ml: 0, mr: 0.5 }}
           />
           <Tooltip title="Tilbakestill alle tellinger">
-            <IconButton size="small" onClick={reset} sx={{ color: '#9ca3af', '&:hover': { color: '#f87171' } }}>
+            <IconButton size="small" onClick={reset} sx={{ color: danceFlowColors.textMuted, '&:hover': { color: danceFlowColors.errorPrimary } }}>
               <ResetIcon sx={{ fontSize: 14 }} />
             </IconButton>
           </Tooltip>
@@ -191,8 +192,8 @@ export const CountGrid: React.FC<CountGridProps> = ({
           const entry = state.entries.find((e) => e.count === row.absoluteCount);
           const isFirstOfEightCount = !row.isLeadup && row.displayCount === 1;
           const groupColor = row.isLeadup
-            ? '#9ca3af'
-            : row.eightCountIdx % 2 === 1 ? '#8b5cf6' : '#3b82f6';
+            ? danceFlowColors.textMuted
+            : row.eightCountIdx % 2 === 1 ? danceFlowColors.lavenderDark : danceFlowColors.info;
           const sec = timeForCount(segment, row.absoluteCount, rows.length);
           return (
             <React.Fragment key={row.absoluteCount}>
@@ -281,7 +282,7 @@ export const CountGrid: React.FC<CountGridProps> = ({
                         if (url) updateEntry(row.absoluteCount, { videoRefUrl: url });
                       }
                     }}
-                    sx={{ p: 0.25, color: entry?.videoRefUrl ? '#a78bfa' : '#4b5563' }}
+                    sx={{ p: 0.25, color: entry?.videoRefUrl ? danceFlowColors.lavender : danceFlowColors.grayMid }}
                   >
                     <VideoIcon sx={{ fontSize: 12 }} />
                   </IconButton>
@@ -294,10 +295,10 @@ export const CountGrid: React.FC<CountGridProps> = ({
 
       {/* ─── Footer info ─────────────────────────────── */}
       <Stack direction="row" justifyContent="space-between" sx={{ mt: 1, pt: 0.75, borderTop: '1px solid #1a2230' }}>
-        <Typography sx={{ fontSize: 9, color: '#6b7280' }}>
+        <Typography sx={{ fontSize: 9, color: danceFlowColors.textDisabled }}>
           Klikk på telling-tall for å spille av musikk fra det punktet
         </Typography>
-        <Typography sx={{ fontSize: 9, color: '#6b7280', fontFamily: 'monospace' }}>
+        <Typography sx={{ fontSize: 9, color: danceFlowColors.textDisabled, fontFamily: 'monospace' }}>
           {formatTime(segment.startSec)} → {formatTime(segment.endSec)}
         </Typography>
       </Stack>
@@ -313,10 +314,10 @@ const CountHeader: React.FC<{ children: React.ReactNode }> = ({ children }) => (
       px: 0.75, py: 0.5,
       borderBottom: '1px solid #2a3142',
       borderRight: '1px solid #1a2230',
-      bgcolor: '#0a0a0a',
+      bgcolor: danceFlowColors.bgBase,
       fontSize: 8.5,
       letterSpacing: 1,
-      color: '#6b7280',
+      color: danceFlowColors.textDisabled,
       fontWeight: 700,
     }}
   >
@@ -342,7 +343,7 @@ const CountInput: React.FC<{
       variant="standard"
       value={value ?? ''}
       onChange={(e) => onChange(e.target.value)}
-      InputProps={{ disableUnderline: true, sx: { fontSize: 10, px: 0.6, py: 0.4, color: '#e5e7eb' } }}
+      InputProps={{ disableUnderline: true, sx: { fontSize: 10, px: 0.6, py: 0.4, color: danceFlowColors.textSecondary } }}
       sx={{ width: '100%' }}
     />
   </Box>

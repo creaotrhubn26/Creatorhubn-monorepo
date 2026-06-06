@@ -46,6 +46,7 @@ import {
   Share,
   Download,
   Favorite,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 
 interface WorkflowStep {
@@ -513,9 +514,13 @@ export const WorkflowExecutor: React.FC<WorkflowExecutorProps> = ({
 
             {/* Success Message */}
             {!executing && workflowSteps.every(s => s.status === 'complete') && (
-              <Alert severity="success" sx={{ mt: 3, bgcolor: 'rgba(76, 175, 80, 0.1)', color: 'white' }}>
+              <Alert
+                severity="success"
+                icon={<CheckCircleIcon fontSize="inherit" />}
+                sx={{ mt: 3, bgcolor: 'rgba(76, 175, 80, 0.1)', color: 'white' }}
+              >
                 <Typography variant="body2" fontWeight="600">
-                  ✅ Workflow completed successfully!
+                  Workflow fullført
                 </Typography>
               </Alert>
             )}

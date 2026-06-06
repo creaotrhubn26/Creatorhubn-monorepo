@@ -34,6 +34,7 @@ import {
   Block,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { buildEventsWsUrl } from '@/lib/realtimeWsUrl';
 import { formatDistanceToNow } from 'date-fns';
 import { nb } from 'date-fns/locale';
 
@@ -68,8 +69,14 @@ export default function CommunityNotificationFeed({ userId, maxHeight = 400 }: C
   useEffect(() => {
     fetchNotifications();
 
-    // Connect to WebSocket for real-time notifications
-    const ws = new WebSocket(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/events`);
+    // Connect to WebSocket for real-time notifications.
+    // null i prod uten eksplisitt WS-host (Vercel proxy-er ikke WS) — da
+    // hopper vi over koblingen i stedet for å spamme failed-connections.
+    const wsUrl = buildEventsWsUrl('/ws/events');
+    if (!wsUrl) {
+      return;
+    }
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {

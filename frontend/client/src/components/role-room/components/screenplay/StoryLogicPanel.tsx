@@ -320,6 +320,12 @@ interface StoryLogicPanelProps {
   onSave?: (data: StoryLogicState) => void;
   initialData?: StoryLogicState;
   onUnsavedStateChange?: (hasUnsaved: boolean, reason?: string) => void;
+  /**
+   * Naviger videre til Story Writer (manus-editoren). Når satt vises en
+   * "Gå til Story Writer"-knapp i "Klar til å skrive"-kortet, slik at fullført
+   * story-logic ikke blir en blindvei der brukeren må finne veien tilbake selv.
+   */
+  onNavigateToStoryWriter?: () => void;
 }
 
 export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
@@ -327,6 +333,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
   onSave,
   initialData,
   onUnsavedStateChange,
+  onNavigateToStoryWriter,
 }) => {
   const branding = useBrandingSettings();
   const [state, setState] = useState<StoryLogicState>(initialData || DEFAULT_STATE);
@@ -642,14 +649,18 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
       if (current < 0 || current > 2) return;
       const currentStatus = validationResults[phases[current]];
       if (currentStatus !== 'ready') return;
-      if (current >= 2) return;
       e.preventDefault();
+      if (current >= 2) {
+        // Siste fase ferdig → fortsett til Story Writer i stedet for å stoppe.
+        onNavigateToStoryWriter?.();
+        return;
+      }
       setExpandedPhase(current + 1);
       setState(prev => ({ ...prev, currentPhase: current + 1 }));
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [expandedPhase, validationResults]);
+  }, [expandedPhase, validationResults, onNavigateToStoryWriter]);
 
   // Update validation status - only when memoized results change
   useEffect(() => {
@@ -2550,8 +2561,19 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   </Typography>
                 </Box>
               )}
-              {/* Export button */}
-              <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+              {/* Actions: fortsett til Story Writer + eksport */}
+              <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
+                {onNavigateToStoryWriter && (
+                  <Button
+                    size="small"
+                    endIcon={<ArrowForwardIcon />}
+                    onClick={onNavigateToStoryWriter}
+                    sx={{ bgcolor: '#10b981', color: '#06281d', textTransform: 'none', '&:hover': { bgcolor: '#0ea371' } }}
+                    variant="contained"
+                  >
+                    Gå til Story Writer
+                  </Button>
+                )}
                 <Button
                   size="small"
                   startIcon={<DownloadIcon />}

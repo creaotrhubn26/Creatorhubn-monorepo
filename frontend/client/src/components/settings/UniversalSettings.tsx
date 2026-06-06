@@ -58,6 +58,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import StorageProvidersPanel from './StorageProvidersPanel';
 
 interface UniversalSettingsProps {
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
@@ -385,6 +386,11 @@ export default function UniversalSettings({
               )}
             </CardContent>
           </Card>
+        </Grid>
+
+        {/* Ekstern backup (offsite) — Backblaze B2-providers */}
+        <Grid size={{ xs: 12 }}>
+          <StorageProvidersPanel />
         </Grid>
 
         {/* Auto-Monitor Configuration */}

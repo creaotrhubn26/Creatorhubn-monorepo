@@ -45,6 +45,7 @@ import {
 } from '../../services/castingApiService';
 import {
   buildClientPortalUrl,
+  toClientPortalWorkspace,
   type ClientPortalWorkspaceFocus,
 } from '../../utils/clientPortal';
 import {
@@ -668,7 +669,10 @@ export default function ProducerExportHandoffPanel({
     [clientContributionTasks],
   );
   const getWorkspaceFocusForContributionTask = useCallback((task: (typeof openClientContributionTasks)[number]): ClientPortalWorkspaceFocus => (
-    resolveWorkspaceFocus(getProducerWorkspaceSurfaceForContributionSource(task.sourceType))
+    // ProducerWorkspaceSurfaceKey er superset av ClientPortalWorkspace
+    // (inkluderer 'marketing-plan'). Map til klient-portal-vokabular via
+    // toClientPortalWorkspace (returnerer undefined for ikke-portal-keys).
+    resolveWorkspaceFocus(toClientPortalWorkspace(getProducerWorkspaceSurfaceForContributionSource(task.sourceType)))
   ), [resolveWorkspaceFocus]);
   const materialTypeSummary = useMemo(
     () => clientMaterials.reduce<Record<string, number>>((summary, material) => {

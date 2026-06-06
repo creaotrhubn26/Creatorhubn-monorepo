@@ -126,6 +126,109 @@ function fmtTime(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/**
+ * VideoQualityIndicator — viser klienten hvilken oppløsning som spilles
+ * av akkurat nå + advarer hvis nettet er tregt.
+ *
+ * Cloudflare Stream HLS gjør adaptive bitrate automatisk. Når kunden
+ * sitter på 4G eller hotell-wifi får de 360p / 540p / 720p — ikke
+ * fordi videografen leverte dårlig kvalitet, men fordi player-en
+ * beskytter dem mot avbrudd. Uten denne indikatoren tror kunden ofte
+ * at videografen leverte uskarpt master.
+ */
+const VideoQualityIndicator: React.FC<{
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  hasStarted: boolean;
+}> = ({ videoRef, hasStarted }) => {
+  const [renderedHeight, setRenderedHeight] = useState<number | null>(null);
+  const [downlinkMbps, setDownlinkMbps] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!hasStarted) return;
+    const v = videoRef.current;
+    if (!v) return;
+    let cancelled = false;
+    const update = () => {
+      if (cancelled) return;
+      setRenderedHeight(v.videoHeight || null);
+    };
+    update();
+    const interval = setInterval(update, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [videoRef, hasStarted]);
+
+  useEffect(() => {
+    const conn = (navigator as any).connection;
+    if (!conn) return;
+    const update = () => {
+      const d = typeof conn.downlink === 'number' ? conn.downlink : null;
+      setDownlinkMbps(d);
+    };
+    update();
+    conn.addEventListener?.('change', update);
+    return () => conn.removeEventListener?.('change', update);
+  }, []);
+
+  if (!hasStarted || !renderedHeight) return null;
+
+  const qualityLabel =
+    renderedHeight >= 2160
+      ? '4K'
+      : renderedHeight >= 1440
+        ? '2K'
+        : renderedHeight >= 1080
+          ? '1080p'
+          : renderedHeight >= 720
+            ? '720p'
+            : renderedHeight >= 480
+              ? '540p'
+              : '360p';
+
+  const slowNetwork = downlinkMbps !== null && downlinkMbps < 5;
+  const tooltipText = slowNetwork
+    ? `Nettverket ditt er tregt (${downlinkMbps?.toFixed(1)} Mbps). ` +
+      `Player-en viser ${qualityLabel} for å unngå avbrudd. ` +
+      `Originalfilmen er levert i full kvalitet.`
+    : `Spiller av ${qualityLabel} via Cloudflare Stream adaptive HLS. ` +
+      `Player-en justerer kvalitet automatisk basert på nettet ditt.`;
+
+  return (
+    <Tooltip title={tooltipText} placement="top-end">
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 12,
+          right: 12,
+          px: 1.25,
+          py: 0.5,
+          bgcolor: slowNetwork ? 'rgba(217, 119, 6, 0.92)' : 'rgba(0,0,0,0.55)',
+          color: '#fff',
+          borderRadius: 1,
+          fontFamily: 'monospace',
+          fontSize: '0.7rem',
+          fontWeight: 700,
+          letterSpacing: '0.04em',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.5,
+          cursor: 'help',
+          backdropFilter: 'blur(8px)',
+          zIndex: 5,
+        }}
+      >
+        {slowNetwork ? '⚠ ' : ''}
+        {qualityLabel}
+        {downlinkMbps !== null && downlinkMbps < 100
+          ? ` · ${downlinkMbps.toFixed(0)} Mbps`
+          : ''}
+      </Box>
+    </Tooltip>
+  );
+};
+
 const CinematicVideoPlayer: React.FC<Props> = ({
   src,
   poster,
@@ -420,6 +523,12 @@ const CinematicVideoPlayer: React.FC<Props> = ({
         preload="metadata"
         onClick={togglePlay}
       />
+
+      {/* Video-kvalitet-indikator: hjelper klient å forstå at lav
+          oppløsning skyldes deres nett, ikke en dårlig leveranse.
+          Cloudflare Stream HLS gjør adaptive bitrate automatisk basert
+          på nettverkshastighet. */}
+      <VideoQualityIndicator videoRef={videoRef} hasStarted={hasStarted} />
 
       {/* ── Hero tittel-overlay (vises før/like etter play) ─────────── */}
       <Fade in={showTitleOverlay && (title != null || subtitle != null)} timeout={prefersReducedMotion ? 0 : 800}>

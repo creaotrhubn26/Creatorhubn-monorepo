@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { buildEventsWsUrl } from '@/lib/realtimeWsUrl';
 
 export interface RealtimeNotification {
   id: string;
@@ -38,11 +39,15 @@ export function useRealtimeNotifications(
       return;
     }
 
+    // Bygg WS-URL mot backenden. Returnerer null i prod uten eksplisitt
+    // WS-host (Vercel proxy-er ikke WS) — da kobler vi ikke, og slipper
+    // den uendelige reconnect-spammen i konsollen.
+    const wsUrl = buildEventsWsUrl('/ws/events');
+    if (!wsUrl) {
+      return;
+    }
+
     try {
-      // Use secure WebSocket in production, regular in development
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws/events`;
-      
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 

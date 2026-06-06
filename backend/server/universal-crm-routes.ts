@@ -1,5 +1,6 @@
 import express from "express";
 import type { Pool } from "pg";
+import { sendSms, smsConfigured } from "./crm-sms";
 
 export interface UniversalCrmRoutesDeps {
   app: express.Application;
@@ -10,8 +11,181 @@ export interface UniversalCrmRoutesDeps {
 export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   const { app, pool, requireUserSession } = deps;
 
+  // ── Self-applying, idempotent schema for the CRM workflow-gap features.
+  // Mirrors the CREATE TABLE IF NOT EXISTS pattern used across the codebase
+  // (ergonomics/marketplace/role-room) rather than the fire-and-forget
+  // migrate runner — safer and verifiable (see docs/UNIVERSAL-CRM-WORKFLOW-GAPS.md).
+  // #59 — one canonical normalizer shared by manual create + CSV import.
+  const normalizeEmail = (e: unknown): string | null => {
+    const s = typeof e === "string" ? e.trim().toLowerCase() : "";
+    return s.length > 0 ? s : null;
+  };
+
+  const ensureCrmExtraSchema = async () => {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS crm_invoices (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        customer_id uuid,
+        contract_id uuid,
+        invoice_number text,
+        description text,
+        total_amount numeric DEFAULT 0,
+        deposit_amount numeric DEFAULT 0,
+        paid_amount numeric DEFAULT 0,
+        currency text DEFAULT 'NOK',
+        status text DEFAULT 'draft',              -- draft|sent|partial|paid|overdue
+        due_date date,
+        issued_at timestamptz,
+        paid_at timestamptz,
+        profession text,
+        owner_user_id text,
+        external_invoice_id text,
+        external_provider text,
+        external_synced_at timestamptz,
+        created_at timestamptz DEFAULT now(),
+        updated_at timestamptz DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS crm_invoices_customer_idx ON crm_invoices(customer_id);
+      -- #27 — accounting bridge (PowerOffice) external reference, idempotent.
+      ALTER TABLE crm_invoices ADD COLUMN IF NOT EXISTS external_invoice_id text;
+      ALTER TABLE crm_invoices ADD COLUMN IF NOT EXISTS external_provider text;
+      ALTER TABLE crm_invoices ADD COLUMN IF NOT EXISTS external_synced_at timestamptz;
+
+      CREATE TABLE IF NOT EXISTS crm_meetings (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        customer_id uuid,
+        title text,
+        description text,
+        location text,
+        meet_link text,
+        web_view_url text,
+        scheduled_at timestamptz,
+        duration_minutes int DEFAULT 60,
+        profession text,
+        owner_user_id text,
+        created_at timestamptz DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS crm_meetings_customer_idx ON crm_meetings(customer_id);
+      CREATE INDEX IF NOT EXISTS crm_meetings_scheduled_idx ON crm_meetings(scheduled_at);
+
+      CREATE TABLE IF NOT EXISTS event_customer_relations (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id text NOT NULL,
+        customer_id uuid,
+        customer_email text,
+        role text DEFAULT 'Client',
+        notes text,
+        owner_user_id text,
+        created_at timestamptz DEFAULT now(),
+        UNIQUE (event_id, customer_id)
+      );
+      CREATE INDEX IF NOT EXISTS event_customer_relations_event_idx ON event_customer_relations(event_id);
+
+      CREATE TABLE IF NOT EXISTS lead_form_tokens (
+        token text PRIMARY KEY,
+        owner_user_id text NOT NULL,
+        profession text,
+        created_at timestamptz DEFAULT now()
+      );
+
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS owner_user_id text;
+      -- Wave 0 multi-tenancy: every CRM-owned table gets an owner so reads can
+      -- be scoped per user. Idempotent; safe to run on every boot.
+      ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS owner_user_id text;
+      -- Wave 1 (#20-lean) — immutable win/loss timestamps, captured on close.
+      ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS won_at timestamptz;
+      ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS lost_at timestamptz;
+      ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS lost_reason text;
+      ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS owner_user_id text;
+      ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS owner_user_id text;
+      -- Wave 1: staleness signal — bumped on every activity insert (#35).
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS last_contact timestamptz;
+      -- Wave 2: post-delivery lifecycle + rebook loop (#8/#21/#24).
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS lifecycle_stage text;
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS last_delivered_at timestamptz;
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS next_rebook_due_at timestamptz;
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS last_reminded_at timestamptz;
+      -- Wave 3b: data quality + growth attribution (#33/#59/#23).
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS email_normalized text;
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS referred_by_customer_id uuid;
+      CREATE INDEX IF NOT EXISTS crm_customers_email_norm_idx ON crm_customers(owner_user_id, email_normalized);
+      -- #15 soft-delete + #51 inbound dedup.
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+      ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS source_message_id text;
+      ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS channel text;
+      CREATE INDEX IF NOT EXISTS crm_activities_srcmsg_idx ON crm_activities(owner_user_id, source_message_id);
+      -- Wave 3c: GDPR consent metadata (#34) + reviews/NPS (#39).
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS consent_status text;
+      ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS consent_at timestamptz;
+      CREATE TABLE IF NOT EXISTS crm_reviews (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        customer_id uuid,
+        owner_user_id text,
+        rating int,
+        nps_score int,
+        testimonial_text text,
+        public_consent boolean DEFAULT false,
+        created_at timestamptz DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS crm_reviews_customer_idx ON crm_reviews(customer_id);
+      CREATE INDEX IF NOT EXISTS crm_customers_owner_idx ON crm_customers(owner_user_id);
+      CREATE INDEX IF NOT EXISTS crm_deals_owner_idx ON crm_deals(owner_user_id);
+      CREATE INDEX IF NOT EXISTS crm_activities_owner_idx ON crm_activities(owner_user_id);
+      CREATE INDEX IF NOT EXISTS crm_tasks_owner_idx ON crm_tasks(owner_user_id);
+    `);
+  };
+  ensureCrmExtraSchema().catch((e) =>
+    console.error("CRM extra-schema bootstrap failed:", e),
+  );
+
+  // ── Wave 2 automation engine (#9/#21/#24) ────────────────────────────
+  // Idempotent sweep: for every customer whose rebook window has arrived and
+  // who has no open rebook task, create one (throttled via last_reminded_at so
+  // we never spam). This is the motor that turns "delivered 11 months ago"
+  // into a concrete follow-up instead of a lead rotting in silence.
+  const runCrmAutomationSweep = async (): Promise<{ rebookTasks: number }> => {
+    try {
+      const due = await pool.query(
+        `SELECT id, owner_user_id, name FROM crm_customers
+         WHERE next_rebook_due_at IS NOT NULL
+           AND next_rebook_due_at <= now()
+           AND deleted_at IS NULL
+           AND status <> 'archived'
+           AND (last_reminded_at IS NULL OR last_reminded_at < now() - interval '30 days')`,
+      );
+      let created = 0;
+      for (const c of due.rows) {
+        const ins = await pool.query(
+          `INSERT INTO crm_tasks (id, customer_id, title, description, priority, status, due_date, owner_user_id, created_at, updated_at)
+           SELECT gen_random_uuid(), $1, 'Følg opp gjenbestilling', 'Det er ~1 år siden levering — foreslå ny fotografering.', 'medium', 'pending', now() + interval '7 days', $2, now(), now()
+           WHERE NOT EXISTS (
+             SELECT 1 FROM crm_tasks WHERE customer_id = $1 AND owner_user_id = $2 AND status = 'pending' AND title = 'Følg opp gjenbestilling'
+           ) RETURNING id`,
+          [c.id, c.owner_user_id],
+        );
+        if (ins.rows.length > 0) {
+          created++;
+          await pool.query(
+            `UPDATE crm_customers SET last_reminded_at = now(), lifecycle_stage = 'rebook-window' WHERE id = $1`,
+            [c.id],
+          );
+        }
+      }
+      return { rebookTasks: created };
+    } catch (e) {
+      console.error("CRM automation sweep failed:", e);
+      return { rebookTasks: 0 };
+    }
+  };
+  // Hourly scheduler (best-effort; idempotent + throttled so duplicate boots
+  // are harmless). Mirrors the other worker loops in this server.
+  const automationTimer = setInterval(() => { void runCrmAutomationSweep(); }, 60 * 60 * 1000);
+  automationTimer.unref?.();
+  console.log("[crm-automation] sweep loop started (hourly)");
+
   app.get("/api/universal-crm/customers", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const {
         profession,
@@ -21,9 +195,10 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         offset = "0",
       } = req.query as Record<string, string>;
 
-      let where = "WHERE 1=1";
-      const params: any[] = [];
-      let idx = 1;
+      // Wave 0 — tenant isolation: only the signed-in owner's (non-deleted) customers.
+      let where = "WHERE owner_user_id = $1 AND deleted_at IS NULL";
+      const params: any[] = [session.userId];
+      let idx = 2;
 
       if (profession) {
         where += ` AND profession = $${idx++}`;
@@ -81,11 +256,12 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
    * Get a single customer with project link
    */
   app.get("/api/universal-crm/customers/:id", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const result = await pool.query(
-        "SELECT c.*, p.name as project_name, p.status as project_status FROM crm_customers c LEFT JOIN legacy.projects p ON c.project_id = p.id WHERE c.id = $1",
-        [req.params.id],
+        "SELECT c.*, p.name as project_name, p.status as project_status FROM crm_customers c LEFT JOIN legacy.projects p ON c.project_id = p.id WHERE c.id = $1 AND c.owner_user_id = $2 AND c.deleted_at IS NULL",
+        [req.params.id, session.userId],
       );
       if (result.rows.length === 0) {
         return res.status(404).json({ error: "Customer not found" });
@@ -127,7 +303,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
    * Create a new CRM customer
    */
   app.post("/api/universal-crm/customers", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const {
         name,
@@ -149,8 +326,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       }
 
       const result = await pool.query(
-        `INSERT INTO crm_customers (id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), now())
+        `INSERT INTO crm_customers (id, name, email, phone, company, profession, project_type, budget, status, tags, notes, source, custom_fields, owner_user_id, email_normalized, referred_by_customer_id, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now(), now())
          RETURNING *`,
         [
           name,
@@ -165,6 +342,9 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
           notes || null,
           source || null,
           JSON.stringify(customFields || {}),
+          session.userId,
+          normalizeEmail(email),
+          req.body.referredByCustomerId || null,
         ],
       );
 
@@ -196,49 +376,12 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   /**
-   * GET /api/universal-crm/customers/:id
-   * Get a single customer by ID
-   */
-  app.get("/api/universal-crm/customers/:id", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
-    try {
-      const result = await pool.query(
-        "SELECT * FROM crm_customers WHERE id = $1",
-        [req.params.id],
-      );
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: "Customer not found" });
-      }
-      const r = result.rows[0];
-      return res.json({
-        id: r.id,
-        name: r.name || "",
-        email: r.email || "",
-        phone: r.phone || "",
-        company: r.company || "",
-        profession: r.profession || "",
-        projectType: r.project_type || "",
-        budget: r.budget ? parseFloat(r.budget) : undefined,
-        status: r.status || "lead",
-        tags: r.tags || [],
-        notes: r.notes || "",
-        source: r.source || "",
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-        customFields: r.custom_fields || {},
-      });
-    } catch (error) {
-      console.error("CRM customer get error:", error);
-      return res.status(500).json({ error: "Failed to fetch customer" });
-    }
-  });
-
-  /**
    * PUT /api/universal-crm/customers/:id
    * Update a customer
    */
   app.put("/api/universal-crm/customers/:id", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const { id } = req.params;
       const updates = req.body;
@@ -257,9 +400,12 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         notes: "notes",
         source: "source",
         customFields: "custom_fields",
+        consentStatus: "consent_status",
       };
 
       const setClauses: string[] = ["updated_at = now()"];
+      // #34 — stamp consent time whenever consent status is set.
+      if (updates.consentStatus !== undefined) setClauses.push("consent_at = now()");
       const params: any[] = [];
       let idx = 1;
 
@@ -275,13 +421,35 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       }
 
       params.push(id);
+      params.push(session.userId);
       const result = await pool.query(
-        `UPDATE crm_customers SET ${setClauses.join(", ")} WHERE id = $${idx} RETURNING *`,
+        `UPDATE crm_customers SET ${setClauses.join(", ")} WHERE id = $${idx} AND owner_user_id = $${idx + 1} RETURNING *`,
         params,
       );
 
       if (result.rows.length === 0) {
         return res.status(404).json({ error: "Customer not found" });
+      }
+
+      // #8/#38 — delivery trigger: completing a customer starts the post-
+      // delivery lifecycle (review request now, rebook nudge in ~11 months).
+      if (updates.status === "completed") {
+        await pool.query(
+          `UPDATE crm_customers
+             SET lifecycle_stage = 'delivered', last_delivered_at = now(),
+                 next_rebook_due_at = now() + interval '11 months'
+           WHERE id = $1 AND owner_user_id = $2`,
+          [id, session.userId],
+        ).catch((e) => console.warn("lifecycle set skipped:", e));
+        // Create a review-request task if none open for this customer.
+        await pool.query(
+          `INSERT INTO crm_tasks (id, customer_id, title, description, priority, status, due_date, owner_user_id, created_at, updated_at)
+           SELECT gen_random_uuid(), $1, 'Be om anmeldelse', 'Leveranse fullført — be kunden om en anmeldelse.', 'medium', 'pending', now() + interval '3 days', $2, now(), now()
+           WHERE NOT EXISTS (
+             SELECT 1 FROM crm_tasks WHERE customer_id = $1 AND owner_user_id = $2 AND status = 'pending' AND title = 'Be om anmeldelse'
+           )`,
+          [id, session.userId],
+        ).catch((e) => console.warn("review task skipped:", e));
       }
 
       const r = result.rows[0];
@@ -314,19 +482,102 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
    * Delete a customer
    */
   app.delete("/api/universal-crm/customers/:id", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
+      // #15 — soft-delete: hide the record but keep history (and any FK refs).
+      // Use ?hard=true for an irreversible GDPR erasure (cascades children).
+      const hard = String((req.query as any).hard) === "true";
+      if (hard) {
+        const ids = await pool.query(
+          "SELECT id FROM crm_customers WHERE id = $1 AND owner_user_id = $2",
+          [req.params.id, session.userId],
+        );
+        if (ids.rows.length === 0) return res.status(404).json({ error: "Customer not found" });
+        for (const t of ["crm_reviews", "crm_deals", "crm_invoices", "crm_meetings", "crm_activities", "crm_tasks"]) {
+          await pool.query(`DELETE FROM ${t} WHERE customer_id = $1 AND owner_user_id = $2`, [req.params.id, session.userId]).catch(() => {});
+        }
+        await pool.query("DELETE FROM crm_customers WHERE id = $1 AND owner_user_id = $2", [req.params.id, session.userId]);
+        return res.json({ success: true, id: req.params.id, erased: true });
+      }
       const result = await pool.query(
-        "DELETE FROM crm_customers WHERE id = $1 RETURNING id",
-        [req.params.id],
+        "UPDATE crm_customers SET deleted_at = now(), updated_at = now() WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL RETURNING id",
+        [req.params.id, session.userId],
       );
       if (result.rows.length === 0) {
         return res.status(404).json({ error: "Customer not found" });
       }
-      return res.json({ success: true, id: req.params.id });
+      return res.json({ success: true, id: req.params.id, softDeleted: true });
     } catch (error) {
       console.error("CRM customer delete error:", error);
       return res.status(500).json({ error: "Failed to delete customer" });
+    }
+  });
+
+  /**
+   * GET /api/universal-crm/customers/:id/overview
+   * Wave 1 (#2) — everything about one customer in a single owner-scoped
+   * round-trip: the record + deals + tasks + invoices + meetings + the
+   * activity timeline. Powers the CustomerDetailDrawer.
+   */
+  app.get("/api/universal-crm/customers/:id/overview", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const id = req.params.id;
+      const owner = session.userId;
+      const cust = await pool.query(
+        `SELECT * FROM crm_customers WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL`,
+        [id, owner],
+      );
+      if (cust.rows.length === 0) {
+        return res.status(404).json({ error: "Customer not found" });
+      }
+      const c = cust.rows[0];
+      const [deals, tasks, invoices, meetings, activities, reviews] = await Promise.all([
+        pool.query(`SELECT * FROM crm_deals WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY created_at DESC`, [id, owner]),
+        pool.query(`SELECT * FROM crm_tasks WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY due_date ASC NULLS LAST`, [id, owner]),
+        pool.query(`SELECT * FROM crm_invoices WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY created_at DESC`, [id, owner]).catch(() => ({ rows: [] })),
+        pool.query(`SELECT * FROM crm_meetings WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY scheduled_at DESC NULLS LAST`, [id, owner]).catch(() => ({ rows: [] })),
+        pool.query(`SELECT * FROM crm_activities WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY created_at DESC LIMIT 200`, [id, owner]),
+        pool.query(`SELECT * FROM crm_reviews WHERE customer_id = $1 AND owner_user_id = $2 ORDER BY created_at DESC`, [id, owner]).catch(() => ({ rows: [] })),
+      ]);
+
+      // Build a unified reverse-chronological timeline from activities +
+      // derived events (deal stage, invoice issued/paid, meeting scheduled).
+      const timeline: any[] = [];
+      for (const a of activities.rows) {
+        timeline.push({ kind: "activity", type: a.type, title: a.subject, detail: a.description, direction: a.direction, at: a.scheduled_at || a.created_at });
+      }
+      for (const d of deals.rows) {
+        timeline.push({ kind: "deal", type: d.stage, title: `Deal: ${d.title}`, detail: d.value ? `${Number(d.value).toLocaleString("nb-NO")} ${d.currency || "NOK"}` : null, at: d.created_at });
+      }
+      for (const inv of invoices.rows) {
+        timeline.push({ kind: "invoice", type: inv.status, title: `Faktura ${inv.invoice_number || ""}`.trim(), detail: `NOK ${Number(inv.total_amount || 0).toLocaleString("nb-NO")}`, at: inv.issued_at || inv.created_at });
+      }
+      for (const m of meetings.rows) {
+        timeline.push({ kind: "meeting", type: "meeting", title: m.title || "Møte", detail: m.location, at: m.scheduled_at || m.created_at });
+      }
+      timeline.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+
+      return res.json({
+        customer: {
+          id: c.id, name: c.name, email: c.email, phone: c.phone, company: c.company,
+          status: c.status, projectType: c.project_type, budget: c.budget ? parseFloat(c.budget) : null,
+          source: c.source, tags: c.tags || [], notes: c.notes, lastContact: c.last_contact,
+          consentStatus: c.consent_status, consentAt: c.consent_at,
+          createdAt: c.created_at,
+        },
+        deals: deals.rows,
+        tasks: tasks.rows,
+        invoices: invoices.rows,
+        meetings: meetings.rows,
+        reviews: reviews.rows,
+        timeline,
+      });
+    } catch (error) {
+      console.error("CRM customer overview error:", error);
+      return res.status(500).json({ error: "Failed to fetch overview" });
     }
   });
 
@@ -335,47 +586,72 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
    * CRM dashboard statistics
    */
   app.get("/api/universal-crm/stats", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const { profession } = req.query as Record<string, string>;
-      const profFilter = profession ? " AND profession = $1" : "";
-      const profParams = profession ? [profession] : [];
+      // Wave 0 — every aggregate is owner-scoped ($1); profession is optional $2.
+      const owner = session.userId;
+      const profFilter = profession ? " AND profession = $2" : "";
+      const custParams = profession ? [owner, profession] : [owner];
 
       const total = await pool.query(
-        `SELECT count(*) as total FROM crm_customers WHERE 1=1${profFilter}`,
-        profParams,
+        `SELECT count(*) as total FROM crm_customers WHERE owner_user_id = $1 AND deleted_at IS NULL${profFilter}`,
+        custParams,
       );
 
       const byStatus = await pool.query(
-        `SELECT status, count(*) as count FROM crm_customers WHERE 1=1${profFilter} GROUP BY status`,
-        profParams,
+        `SELECT status, count(*) as count FROM crm_customers WHERE owner_user_id = $1 AND deleted_at IS NULL${profFilter} GROUP BY status`,
+        custParams,
       );
 
       const recentlyAdded = await pool.query(
-        `SELECT count(*) as count FROM crm_customers WHERE created_at > now() - interval '30 days'${profFilter}`,
-        profParams,
+        `SELECT count(*) as count FROM crm_customers WHERE owner_user_id = $1 AND deleted_at IS NULL AND created_at > now() - interval '30 days'${profFilter}`,
+        custParams,
       );
 
       const byProfession = await pool.query(
-        `SELECT profession, count(*) as count FROM crm_customers WHERE profession IS NOT NULL${profFilter} GROUP BY profession ORDER BY count DESC`,
-        profParams,
+        `SELECT profession, count(*) as count FROM crm_customers WHERE owner_user_id = $1 AND deleted_at IS NULL AND profession IS NOT NULL${profFilter} GROUP BY profession ORDER BY count DESC`,
+        custParams,
       );
 
-      // Deal stats
+      // Deal stats — owner-scoped
       const dealStats = await pool.query(
         `SELECT count(*) as total, COALESCE(sum(value), 0) as total_value,
                 count(*) FILTER (WHERE stage = 'closed_won') as won,
                 count(*) FILTER (WHERE stage = 'closed_lost') as lost
-         FROM crm_deals WHERE 1=1`,
+         FROM crm_deals WHERE owner_user_id = $1`,
+        [owner],
       );
 
-      // Task stats
+      // Task stats — owner-scoped, with overdue/due-today for the inbox badge (#37)
       const taskStats = await pool.query(
         `SELECT count(*) as total,
                 count(*) FILTER (WHERE status = 'pending') as pending,
-                count(*) FILTER (WHERE status = 'completed') as completed
-         FROM crm_tasks WHERE 1=1`,
+                count(*) FILTER (WHERE status = 'completed') as completed,
+                count(*) FILTER (WHERE status = 'pending' AND due_date IS NOT NULL AND due_date < CURRENT_DATE) as overdue,
+                count(*) FILTER (WHERE status = 'pending' AND due_date::date = CURRENT_DATE) as due_today
+         FROM crm_tasks WHERE owner_user_id = $1`,
+        [owner],
       );
+
+      // Invoice / accounts-receivable stats (#10/#11), owner-scoped. Guarded so
+      // a missing table (pre-bootstrap) never breaks the whole stats endpoint.
+      let invoiceRow: any = { total: 0, billed: 0, collected: 0, outstanding: 0, overdue: 0 };
+      try {
+        const invoiceStats = await pool.query(
+          `SELECT count(*) as total,
+                  COALESCE(sum(total_amount), 0) as billed,
+                  COALESCE(sum(paid_amount), 0) as collected,
+                  COALESCE(sum(total_amount - paid_amount) FILTER (WHERE status <> 'paid'), 0) as outstanding,
+                  count(*) FILTER (WHERE status <> 'paid' AND due_date IS NOT NULL AND due_date < CURRENT_DATE) as overdue
+           FROM crm_invoices WHERE owner_user_id = $1`,
+          [owner],
+        );
+        invoiceRow = invoiceStats.rows[0];
+      } catch (e) {
+        console.warn("Invoice stats skipped (table may not exist yet):", e);
+      }
 
       const statusMap: Record<string, number> = {};
       byStatus.rows.forEach((r: any) => {
@@ -403,6 +679,15 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
             total: parseInt(taskStats.rows[0].total),
             pending: parseInt(taskStats.rows[0].pending),
             completed: parseInt(taskStats.rows[0].completed),
+            overdue: parseInt(taskStats.rows[0].overdue),
+            dueToday: parseInt(taskStats.rows[0].due_today),
+          },
+          invoices: {
+            total: parseInt(invoiceRow.total),
+            billed: parseFloat(invoiceRow.billed),
+            collected: parseFloat(invoiceRow.collected),
+            outstanding: parseFloat(invoiceRow.outstanding),
+            overdue: parseInt(invoiceRow.overdue),
           },
         },
       });
@@ -417,28 +702,31 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   // ============================================================
 
   app.get("/api/universal-crm/deals", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const {
         customer_id,
         stage,
         limit = "50",
       } = req.query as Record<string, string>;
-      let where = "WHERE 1=1";
-      const params: any[] = [];
-      let idx = 1;
+      let where = "WHERE d.owner_user_id = $1";
+      const params: any[] = [session.userId];
+      let idx = 2;
       if (customer_id) {
-        where += ` AND customer_id = $${idx++}`;
+        where += ` AND d.customer_id = $${idx++}`;
         params.push(customer_id);
       }
       if (stage) {
-        where += ` AND stage = $${idx++}`;
+        where += ` AND d.stage = $${idx++}`;
         params.push(stage);
       }
 
       const rows = await pool.query(
-        `SELECT * FROM crm_deals ${where} ORDER BY created_at DESC LIMIT $${idx}`,
-        [...params, parseInt(limit) || 50],
+        `SELECT d.*, c.name AS customer_name, c.email AS customer_email
+         FROM crm_deals d LEFT JOIN crm_customers c ON c.id = d.customer_id
+         ${where} ORDER BY d.created_at DESC LIMIT $${idx}`,
+        [...params, parseInt(limit) || 200],
       );
       return res.json({ deals: rows.rows });
     } catch (error) {
@@ -448,7 +736,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   app.post("/api/universal-crm/deals", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const {
         customerId,
@@ -473,8 +762,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       if (!title) return res.status(400).json({ error: "Title is required" });
 
       const result = await pool.query(
-        `INSERT INTO crm_deals (id, customer_id, title, value, currency, stage, probability, expected_close_date, assigned_to, service_type, notes, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now()) RETURNING *`,
+        `INSERT INTO crm_deals (id, customer_id, title, value, currency, stage, probability, expected_close_date, assigned_to, service_type, notes, owner_user_id, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), now()) RETURNING *`,
         [
           customer_id || null,
           title,
@@ -486,6 +775,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
           assigned_to || null,
           service_type || null,
           notes || null,
+          session.userId,
         ],
       );
       return res.status(201).json({ deal: result.rows[0] });
@@ -496,7 +786,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   app.put("/api/universal-crm/deals/:id", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const allowed = [
         "customer_id",
@@ -519,9 +810,13 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
           params.push(req.body[key]);
         }
       }
+      // #20-lean — stamp the immutable close moment when the stage closes.
+      if (req.body.stage === "closed_won") setClauses.push("won_at = COALESCE(won_at, now())");
+      if (req.body.stage === "closed_lost") setClauses.push("lost_at = COALESCE(lost_at, now())");
       params.push(req.params.id);
+      params.push(session.userId);
       const result = await pool.query(
-        `UPDATE crm_deals SET ${setClauses.join(", ")} WHERE id = $${idx} RETURNING *`,
+        `UPDATE crm_deals SET ${setClauses.join(", ")} WHERE id = $${idx} AND owner_user_id = $${idx + 1} RETURNING *`,
         params,
       );
       if (result.rows.length === 0)
@@ -533,12 +828,55 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
     }
   });
 
+  // #46 — single deal with customer + its activities/tasks.
+  app.get("/api/universal-crm/deals/:id", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const deal = await pool.query(
+        `SELECT d.*, c.name AS customer_name, c.email AS customer_email
+         FROM crm_deals d LEFT JOIN crm_customers c ON c.id = d.customer_id
+         WHERE d.id = $1 AND d.owner_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (deal.rows.length === 0)
+        return res.status(404).json({ error: "Deal not found" });
+      const [tasks, activities] = await Promise.all([
+        pool.query(`SELECT * FROM crm_tasks WHERE deal_id = $1 AND owner_user_id = $2 ORDER BY due_date ASC NULLS LAST`, [req.params.id, session.userId]),
+        pool.query(`SELECT * FROM crm_activities WHERE deal_id = $1 AND owner_user_id = $2 ORDER BY created_at DESC`, [req.params.id, session.userId]),
+      ]);
+      return res.json({ deal: deal.rows[0], tasks: tasks.rows, activities: activities.rows });
+    } catch (error) {
+      console.error("CRM deal get error:", error);
+      return res.status(500).json({ error: "Failed to fetch deal" });
+    }
+  });
+
+  // #46 — delete a deal (owner-scoped).
+  app.delete("/api/universal-crm/deals/:id", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const result = await pool.query(
+        `DELETE FROM crm_deals WHERE id = $1 AND owner_user_id = $2 RETURNING id`,
+        [req.params.id, session.userId],
+      );
+      if (result.rows.length === 0)
+        return res.status(404).json({ error: "Deal not found" });
+      return res.json({ success: true, id: req.params.id });
+    } catch (error) {
+      console.error("CRM deal delete error:", error);
+      return res.status(500).json({ error: "Failed to delete deal" });
+    }
+  });
+
   // ============================================================
   // CRM Activities API – /api/universal-crm/activities/*
   // ============================================================
 
   app.get("/api/universal-crm/activities", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const {
         customer_id,
@@ -546,9 +884,9 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         type,
         limit = "50",
       } = req.query as Record<string, string>;
-      let where = "WHERE 1=1";
-      const params: any[] = [];
-      let idx = 1;
+      let where = "WHERE owner_user_id = $1";
+      const params: any[] = [session.userId];
+      let idx = 2;
       if (customer_id) {
         where += ` AND customer_id = $${idx++}`;
         params.push(customer_id);
@@ -574,7 +912,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   app.post("/api/universal-crm/activities", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const {
         customerId,
@@ -596,8 +935,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         return res.status(400).json({ error: "Type and subject are required" });
 
       const result = await pool.query(
-        `INSERT INTO crm_activities (id, customer_id, deal_id, type, subject, description, scheduled_at, direction, outcome, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, now(), now()) RETURNING *`,
+        `INSERT INTO crm_activities (id, customer_id, deal_id, type, subject, description, scheduled_at, direction, outcome, owner_user_id, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now()) RETURNING *`,
         [
           customer_id || null,
           deal_id || null,
@@ -607,8 +946,16 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
           scheduled_at || null,
           direction || null,
           outcome || null,
+          session.userId,
         ],
       );
+      // #35 — bump the customer's last-contacted timestamp (owner-scoped).
+      if (customer_id) {
+        await pool.query(
+          `UPDATE crm_customers SET last_contact = now() WHERE id = $1 AND owner_user_id = $2`,
+          [customer_id, session.userId],
+        ).catch(() => { /* best-effort */ });
+      }
       return res.status(201).json({ activity: result.rows[0] });
     } catch (error) {
       console.error("CRM activity create error:", error);
@@ -621,7 +968,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   // ============================================================
 
   app.get("/api/universal-crm/tasks", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const {
         customer_id,
@@ -629,9 +977,9 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         assigned_to,
         limit = "50",
       } = req.query as Record<string, string>;
-      let where = "WHERE 1=1";
-      const params: any[] = [];
-      let idx = 1;
+      let where = "WHERE owner_user_id = $1";
+      const params: any[] = [session.userId];
+      let idx = 2;
       if (customer_id) {
         where += ` AND customer_id = $${idx++}`;
         params.push(customer_id);
@@ -657,7 +1005,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   app.post("/api/universal-crm/tasks", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const {
         customerId,
@@ -680,8 +1029,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       if (!title) return res.status(400).json({ error: "Title is required" });
 
       const result = await pool.query(
-        `INSERT INTO crm_tasks (id, customer_id, deal_id, title, description, assigned_to, priority, status, due_date, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, now(), now()) RETURNING *`,
+        `INSERT INTO crm_tasks (id, customer_id, deal_id, title, description, assigned_to, priority, status, due_date, owner_user_id, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now()) RETURNING *`,
         [
           customer_id || null,
           deal_id || null,
@@ -691,6 +1040,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
           priority || "medium",
           status || "pending",
           due_date || null,
+          session.userId,
         ],
       );
       return res.status(201).json({ task: result.rows[0] });
@@ -701,7 +1051,8 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   });
 
   app.put("/api/universal-crm/tasks/:id", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const allowed = [
         "customer_id",
@@ -724,8 +1075,9 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
         }
       }
       params.push(req.params.id);
+      params.push(session.userId);
       const result = await pool.query(
-        `UPDATE crm_tasks SET ${setClauses.join(", ")} WHERE id = $${idx} RETURNING *`,
+        `UPDATE crm_tasks SET ${setClauses.join(", ")} WHERE id = $${idx} AND owner_user_id = $${idx + 1} RETURNING *`,
         params,
       );
       if (result.rows.length === 0)
@@ -793,6 +1145,791 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
     } catch (error) {
       console.error("CRM email templates error:", error);
       return res.status(500).json({ error: "Failed to fetch email templates" });
+    }
+  });
+
+  // ============================================================
+  // CRM Invoices API – #9/#10 manual invoice + payment-status tracking
+  // ============================================================
+
+  const mapInvoice = (r: any) => ({
+    id: r.id,
+    customerId: r.customer_id,
+    contractId: r.contract_id,
+    invoiceNumber: r.invoice_number,
+    description: r.description || "",
+    totalAmount: r.total_amount != null ? parseFloat(r.total_amount) : 0,
+    depositAmount: r.deposit_amount != null ? parseFloat(r.deposit_amount) : 0,
+    paidAmount: r.paid_amount != null ? parseFloat(r.paid_amount) : 0,
+    balanceDue:
+      (r.total_amount != null ? parseFloat(r.total_amount) : 0) -
+      (r.paid_amount != null ? parseFloat(r.paid_amount) : 0),
+    currency: r.currency || "NOK",
+    status: r.status || "draft",
+    dueDate: r.due_date,
+    issuedAt: r.issued_at,
+    paidAt: r.paid_at,
+    externalInvoiceId: r.external_invoice_id || null,
+    externalProvider: r.external_provider || null,
+    externalSyncedAt: r.external_synced_at || null,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  });
+
+  app.get("/api/universal-crm/invoices", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const { customer_id } = req.query as Record<string, string>;
+      const where = customer_id
+        ? "WHERE owner_user_id = $1 AND customer_id = $2"
+        : "WHERE owner_user_id = $1";
+      const params = customer_id ? [session.userId, customer_id] : [session.userId];
+      const rows = await pool.query(
+        `SELECT * FROM crm_invoices ${where} ORDER BY created_at DESC`,
+        params,
+      );
+      return res.json({ invoices: rows.rows.map(mapInvoice) });
+    } catch (error) {
+      console.error("CRM invoices list error:", error);
+      return res.status(500).json({ error: "Failed to fetch invoices" });
+    }
+  });
+
+  app.post("/api/universal-crm/invoices", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const {
+        customerId,
+        contractId,
+        description,
+        totalAmount,
+        depositAmount,
+        dueDate,
+        profession,
+      } = req.body;
+      // Human-friendly sequential-ish invoice number.
+      const seq = await pool.query(
+        `SELECT count(*) + 1 AS n FROM crm_invoices`,
+      );
+      const invoiceNumber = `INV-${new Date().getFullYear()}-${String(seq.rows[0].n).padStart(4, "0")}`;
+      const result = await pool.query(
+        `INSERT INTO crm_invoices (id, customer_id, contract_id, invoice_number, description, total_amount, deposit_amount, paid_amount, status, due_date, issued_at, profession, owner_user_id, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 0, 'sent', $7, now(), $8, $9, now(), now()) RETURNING *`,
+        [
+          customerId || null,
+          contractId || null,
+          invoiceNumber,
+          description || null,
+          totalAmount || 0,
+          depositAmount || 0,
+          dueDate || null,
+          profession || null,
+          session.userId,
+        ],
+      );
+      return res.status(201).json({ invoice: mapInvoice(result.rows[0]) });
+    } catch (error) {
+      console.error("CRM invoice create error:", error);
+      return res.status(500).json({ error: "Failed to create invoice" });
+    }
+  });
+
+  // Update an invoice — primarily to record payments / change status.
+  app.put("/api/universal-crm/invoices/:id", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const { paidAmount, status, dueDate, description, totalAmount } = req.body;
+      const setClauses: string[] = ["updated_at = now()"];
+      const params: any[] = [];
+      let idx = 1;
+      if (paidAmount !== undefined) {
+        setClauses.push(`paid_amount = $${idx++}`);
+        params.push(paidAmount);
+      }
+      if (totalAmount !== undefined) {
+        setClauses.push(`total_amount = $${idx++}`);
+        params.push(totalAmount);
+      }
+      if (description !== undefined) {
+        setClauses.push(`description = $${idx++}`);
+        params.push(description);
+      }
+      if (dueDate !== undefined) {
+        setClauses.push(`due_date = $${idx++}`);
+        params.push(dueDate || null);
+      }
+      if (status !== undefined) {
+        setClauses.push(`status = $${idx++}`);
+        params.push(status);
+        if (status === "paid") setClauses.push("paid_at = now()");
+      }
+      params.push(req.params.id);
+      params.push(session.userId);
+      const result = await pool.query(
+        `UPDATE crm_invoices SET ${setClauses.join(", ")} WHERE id = $${idx} AND owner_user_id = $${idx + 1} RETURNING *`,
+        params,
+      );
+      if (result.rows.length === 0)
+        return res.status(404).json({ error: "Invoice not found" });
+      // Auto-resolve status from amounts when not explicitly set.
+      const inv = mapInvoice(result.rows[0]);
+      if (status === undefined) {
+        const newStatus =
+          inv.paidAmount <= 0
+            ? "sent"
+            : inv.paidAmount >= inv.totalAmount
+              ? "paid"
+              : "partial";
+        if (newStatus !== inv.status) {
+          await pool.query(
+            `UPDATE crm_invoices SET status = $1${newStatus === "paid" ? ", paid_at = now()" : ""} WHERE id = $2`,
+            [newStatus, req.params.id],
+          );
+          inv.status = newStatus;
+        }
+      }
+      return res.json({ invoice: inv });
+    } catch (error) {
+      console.error("CRM invoice update error:", error);
+      return res.status(500).json({ error: "Failed to update invoice" });
+    }
+  });
+
+  // #27 — book a CRM invoice into accounting (PowerOffice Go). Reuses the
+  // existing poweroffice.ts module + the owner's stored connection in
+  // photographer_integrations (photographer_id == CRM owner_user_id). Honest
+  // errors when no active connection (so we never pretend to have booked).
+  app.post("/api/universal-crm/invoices/:id/book", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const inv = await pool.query(
+        `SELECT i.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone, c.company AS customer_company
+         FROM crm_invoices i LEFT JOIN crm_customers c ON c.id = i.customer_id
+         WHERE i.id = $1 AND i.owner_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (inv.rows.length === 0) return res.status(404).json({ error: "Invoice not found" });
+      const row = inv.rows[0];
+      if (row.external_invoice_id) {
+        return res.status(409).json({ error: "Fakturaen er allerede bokført", externalInvoiceId: row.external_invoice_id });
+      }
+      if (!row.customer_email) {
+        return res.status(400).json({ error: "Kunden mangler e-post — kreves for å opprette faktura i PowerOffice." });
+      }
+
+      // Owner's PowerOffice connection.
+      const intQ = await pool.query(
+        `SELECT client_key, status, default_product_id FROM photographer_integrations
+         WHERE photographer_id = $1 AND provider = 'poweroffice' LIMIT 1`,
+        [session.userId],
+      ).catch(() => ({ rows: [] as any[] }));
+      if (intQ.rows.length === 0) {
+        return res.status(412).json({ error: "PowerOffice er ikke koblet til. Koble regnskap i innstillinger først." });
+      }
+      const { client_key, status: intStatus, default_product_id } = intQ.rows[0];
+      if (intStatus && intStatus !== "active" && intStatus !== "connected") {
+        return res.status(412).json({ error: `PowerOffice-tilkoblingen er ikke aktiv (status=${intStatus}).` });
+      }
+
+      const total = row.total_amount != null ? parseFloat(row.total_amount) : 0;
+      const { createInvoiceViaSalesOrder, PowerOfficeApiError, PowerOfficeAuthError } = await import("./poweroffice.js");
+      try {
+        const result = await createInvoiceViaSalesOrder({
+          clientKey: client_key,
+          cachedProductId: default_product_id ? Number(default_product_id) : null,
+          customer: row.customer_company
+            ? { type: "company", name: row.customer_company, email: row.customer_email, phone: row.customer_phone || null }
+            : { type: "person", name: row.customer_name || "Kunde", email: row.customer_email, phone: row.customer_phone || null },
+          reference: row.invoice_number || row.description || `Faktura ${row.id}`,
+          lines: [{ description: row.description || "Tjeneste", quantity: 1, unitPriceNet: total }],
+          deliveryType: "Auto",
+        });
+        await pool.query(
+          `UPDATE crm_invoices SET external_invoice_id = $2, external_provider = 'poweroffice', external_synced_at = now(), updated_at = now()
+           WHERE id = $1 AND owner_user_id = $3`,
+          [req.params.id, result.salesOrderId, session.userId],
+        );
+        if (result.productJustCreated) {
+          await pool.query(
+            `UPDATE photographer_integrations SET default_product_id = $2, last_used_at = now(), updated_at = now()
+             WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+            [session.userId, result.productId],
+          ).catch(() => {});
+        }
+        return res.json({
+          ok: true,
+          externalInvoiceId: result.salesOrderId,
+          salesOrderNumber: result.salesOrderNumber,
+          sendError: result.sendError || null,
+        });
+      } catch (err: any) {
+        if (err instanceof PowerOfficeAuthError) {
+          await pool.query(
+            `UPDATE photographer_integrations SET status = 'invalid', last_error = $2, updated_at = now()
+             WHERE photographer_id = $1 AND provider = 'poweroffice'`,
+            [session.userId, String(err.message).slice(0, 500)],
+          ).catch(() => {});
+          return res.status(401).json({ error: "PowerOffice-tilkoblingen er ikke gyldig lenger. Koble til på nytt." });
+        }
+        if (err instanceof PowerOfficeApiError) {
+          return res.status(502).json({ error: `PowerOffice-feil: ${String(err.message).slice(0, 300)}` });
+        }
+        throw err;
+      }
+    } catch (error: any) {
+      console.error("CRM invoice book error:", error);
+      return res.status(500).json({ error: error?.message || "Failed to book invoice" });
+    }
+  });
+
+  // ============================================================
+  // CRM Meetings API – #7 agenda / upcoming meetings
+  // ============================================================
+
+  app.get("/api/universal-crm/meetings", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const { customer_id, upcoming } = req.query as Record<string, string>;
+      let where = "WHERE owner_user_id = $1";
+      const params: any[] = [session.userId];
+      let idx = 2;
+      if (customer_id) {
+        where += ` AND customer_id = $${idx++}`;
+        params.push(customer_id);
+      }
+      if (upcoming === "true") {
+        where += ` AND scheduled_at >= now()`;
+      }
+      const rows = await pool.query(
+        `SELECT * FROM crm_meetings ${where} ORDER BY scheduled_at ASC NULLS LAST LIMIT 100`,
+        params,
+      );
+      return res.json({ meetings: rows.rows });
+    } catch (error) {
+      console.error("CRM meetings list error:", error);
+      return res.status(500).json({ error: "Failed to fetch meetings" });
+    }
+  });
+
+  app.post("/api/universal-crm/meetings", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const {
+        customerId,
+        title,
+        description,
+        location,
+        meetLink,
+        webViewUrl,
+        scheduledAt,
+        durationMinutes,
+        profession,
+      } = req.body;
+      const result = await pool.query(
+        `INSERT INTO crm_meetings (id, customer_id, title, description, location, meet_link, web_view_url, scheduled_at, duration_minutes, profession, owner_user_id, created_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now()) RETURNING *`,
+        [
+          customerId || null,
+          title || "Møte",
+          description || null,
+          location || null,
+          meetLink || null,
+          webViewUrl || null,
+          scheduledAt || null,
+          durationMinutes || 60,
+          profession || null,
+          session.userId,
+        ],
+      );
+      return res.status(201).json({ meeting: result.rows[0] });
+    } catch (error) {
+      console.error("CRM meeting create error:", error);
+      return res.status(500).json({ error: "Failed to create meeting" });
+    }
+  });
+
+  // ============================================================
+  // Event ↔ Customer relations – #15 (was a 404 + false-positive toast)
+  // ============================================================
+
+  app.get("/api/events/:id/relations", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const rows = await pool.query(
+        `SELECT r.*, c.name AS customer_name, c.email AS customer_email_resolved
+         FROM event_customer_relations r
+         LEFT JOIN crm_customers c ON c.id = r.customer_id
+         WHERE r.event_id = $1 AND r.owner_user_id = $2 ORDER BY r.created_at DESC`,
+        [req.params.id, session.userId],
+      );
+      return res.json({ relations: rows.rows });
+    } catch (error) {
+      console.error("Event relations list error:", error);
+      return res.status(500).json({ error: "Failed to fetch relations" });
+    }
+  });
+
+  app.post("/api/events/:id/relations", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const { customerId, customerEmail, role, notes } = req.body;
+      const result = await pool.query(
+        `INSERT INTO event_customer_relations (id, event_id, customer_id, customer_email, role, notes, owner_user_id, created_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now())
+         ON CONFLICT (event_id, customer_id) DO UPDATE SET role = EXCLUDED.role, notes = EXCLUDED.notes
+         RETURNING *`,
+        [
+          req.params.id,
+          customerId || null,
+          customerEmail || null,
+          role || "Client",
+          notes || null,
+          session.userId,
+        ],
+      );
+      return res.status(201).json({ relation: result.rows[0] });
+    } catch (error) {
+      console.error("Event relation create error:", error);
+      return res.status(500).json({ error: "Failed to link customer to event" });
+    }
+  });
+
+  // ============================================================
+  // Lead intake – #1/#16 public web-form endpoint + form token
+  // ============================================================
+
+  // Authenticated: get-or-create the caller's public lead-form token.
+  app.get("/api/universal-crm/lead-form-token", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const { profession } = req.query as Record<string, string>;
+      const existing = await pool.query(
+        `SELECT * FROM lead_form_tokens WHERE owner_user_id = $1 LIMIT 1`,
+        [session.userId],
+      );
+      let row = existing.rows[0];
+      if (!row) {
+        const created = await pool.query(
+          `INSERT INTO lead_form_tokens (token, owner_user_id, profession, created_at)
+           VALUES (encode(gen_random_bytes(12), 'hex'), $1, $2, now()) RETURNING *`,
+          [session.userId, profession || null],
+        );
+        row = created.rows[0];
+      }
+      return res.json({ token: row.token, profession: row.profession });
+    } catch (error) {
+      console.error("Lead-form token error:", error);
+      return res.status(500).json({ error: "Failed to get lead form token" });
+    }
+  });
+
+  // Public: a website inquiry form posts here. No auth — the token maps the
+  // lead to its photographer. Creates a lead (source='website') + an SLA task.
+  app.post("/api/public/lead/:formToken", async (req, res) => {
+    try {
+      const tokenRow = await pool.query(
+        `SELECT * FROM lead_form_tokens WHERE token = $1`,
+        [req.params.formToken],
+      );
+      if (tokenRow.rows.length === 0) {
+        return res.status(404).json({ error: "Unknown form" });
+      }
+      const owner = tokenRow.rows[0];
+      const { name, email, phone, projectType, budget, notes } = req.body;
+      if (!name || !email) {
+        return res.status(400).json({ error: "Name and email are required" });
+      }
+      const inserted = await pool.query(
+        `INSERT INTO crm_customers (id, name, email, phone, profession, project_type, budget, status, notes, source, owner_user_id, email_normalized, consent_status, consent_at, custom_fields, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'lead', $7, 'website', $8, $9, 'form_submitted', now(), '{}'::jsonb, now(), now()) RETURNING id`,
+        [
+          name,
+          email,
+          phone || null,
+          owner.profession || null,
+          projectType || null,
+          budget || null,
+          notes || null,
+          owner.owner_user_id,
+          normalizeEmail(email),
+        ],
+      );
+      const customerId = inserted.rows[0].id;
+      // SLA: follow up within 24h.
+      await pool.query(
+        `INSERT INTO crm_tasks (id, customer_id, title, description, priority, status, due_date, assigned_to, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, 'high', 'pending', now() + interval '24 hours', $4, now(), now())`,
+        [
+          customerId,
+          `Følg opp ny henvendelse: ${name}`,
+          `Innkommet via nettside-skjema. ${notes || ""}`.trim(),
+          owner.owner_user_id,
+        ],
+      ).catch((e) => console.warn("Lead SLA task insert skipped:", e));
+      return res.status(201).json({ ok: true, message: "Takk! Vi tar kontakt snart." });
+    } catch (error) {
+      console.error("Public lead intake error:", error);
+      return res.status(500).json({ error: "Failed to submit lead" });
+    }
+  });
+
+  // ============================================================
+  // Action queue (#24) + automation trigger (#9)
+  // ============================================================
+
+  // What needs proactive attention right now — owner-scoped buckets that turn
+  // the lifecycle data into a daily to-do that drives repeat revenue.
+  app.get("/api/universal-crm/action-queue", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const owner = session.userId;
+      const [overdue, rebook, dormant, reviewDue] = await Promise.all([
+        pool.query(
+          `SELECT t.id, t.title, t.due_date, t.customer_id, c.name AS customer_name
+           FROM crm_tasks t LEFT JOIN crm_customers c ON c.id = t.customer_id
+           WHERE t.owner_user_id = $1 AND t.status = 'pending' AND t.due_date IS NOT NULL AND t.due_date < CURRENT_DATE
+           ORDER BY t.due_date ASC LIMIT 50`,
+          [owner],
+        ),
+        pool.query(
+          `SELECT id, name, email, last_delivered_at, next_rebook_due_at
+           FROM crm_customers
+           WHERE owner_user_id = $1 AND deleted_at IS NULL AND status <> 'archived'
+             AND next_rebook_due_at IS NOT NULL AND next_rebook_due_at <= now()
+           ORDER BY next_rebook_due_at ASC LIMIT 50`,
+          [owner],
+        ),
+        pool.query(
+          `SELECT id, name, email, last_contact
+           FROM crm_customers
+           WHERE owner_user_id = $1 AND deleted_at IS NULL AND status IN ('lead','prospect','active')
+             AND (last_contact IS NULL OR last_contact < now() - interval '45 days')
+           ORDER BY last_contact ASC NULLS FIRST LIMIT 50`,
+          [owner],
+        ),
+        pool.query(
+          `SELECT id, name, email, last_delivered_at
+           FROM crm_customers
+           WHERE owner_user_id = $1 AND deleted_at IS NULL AND lifecycle_stage = 'delivered'
+             AND last_delivered_at IS NOT NULL AND last_delivered_at > now() - interval '60 days'
+           ORDER BY last_delivered_at DESC LIMIT 50`,
+          [owner],
+        ),
+      ]);
+      return res.json({
+        overdueTasks: overdue.rows,
+        rebookDue: rebook.rows,
+        dormant: dormant.rows,
+        reviewDue: reviewDue.rows,
+      });
+    } catch (error) {
+      console.error("CRM action-queue error:", error);
+      return res.status(500).json({ error: "Failed to fetch action queue" });
+    }
+  });
+
+  // Manual trigger for the automation sweep (also runs hourly on a timer).
+  app.post("/api/universal-crm/automation/run", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
+    try {
+      const result = await runCrmAutomationSweep();
+      return res.json({ ok: true, ...result });
+    } catch (error) {
+      console.error("CRM automation run error:", error);
+      return res.status(500).json({ error: "Failed to run automation" });
+    }
+  });
+
+  // ============================================================
+  // Reporting / intelligence (#10/#25/#40/#41/#42/#43) — owner-scoped
+  // ============================================================
+  app.get("/api/universal-crm/reports", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const owner = session.userId;
+      const [funnel, forecast, sourceRoi, ltv, revenue] = await Promise.all([
+        // Funnel: deals count + value per stage (#25)
+        pool.query(
+          `SELECT stage, count(*)::int AS count, COALESCE(sum(value),0) AS value
+           FROM crm_deals WHERE owner_user_id = $1 GROUP BY stage`,
+          [owner],
+        ),
+        // Weighted forecast for OPEN deals, bucketed by expected-close month (#42)
+        pool.query(
+          `SELECT to_char(date_trunc('month', COALESCE(expected_close_date, now())), 'YYYY-MM') AS month,
+                  COALESCE(sum(value * probability / 100.0), 0) AS weighted, COALESCE(sum(value),0) AS gross, count(*)::int AS deals
+           FROM crm_deals
+           WHERE owner_user_id = $1 AND stage NOT IN ('closed_won','closed_lost')
+           GROUP BY 1 ORDER BY 1`,
+          [owner],
+        ),
+        // Source ROI: leads + won revenue + win-rate per source (#41)
+        pool.query(
+          `SELECT COALESCE(c.source,'ukjent') AS source,
+                  count(DISTINCT c.id)::int AS customers,
+                  count(d.id) FILTER (WHERE d.stage = 'closed_won')::int AS won_deals,
+                  COALESCE(sum(d.value) FILTER (WHERE d.stage = 'closed_won'),0) AS won_value
+           FROM crm_customers c LEFT JOIN crm_deals d ON d.customer_id = c.id AND d.owner_user_id = $1
+           WHERE c.owner_user_id = $1 AND c.deleted_at IS NULL GROUP BY 1 ORDER BY won_value DESC`,
+          [owner],
+        ),
+        // Top customers by lifetime value: won deals + paid invoices (#40/#43)
+        pool.query(
+          `SELECT c.id, c.name,
+                  COALESCE((SELECT sum(value) FROM crm_deals d WHERE d.customer_id = c.id AND d.stage='closed_won'),0)
+                  + COALESCE((SELECT sum(paid_amount) FROM crm_invoices i WHERE i.customer_id = c.id),0) AS ltv,
+                  (SELECT count(*) FROM crm_deals d WHERE d.customer_id = c.id AND d.stage='closed_won')::int AS won_count
+           FROM crm_customers c WHERE c.owner_user_id = $1 AND c.deleted_at IS NULL
+           ORDER BY ltv DESC LIMIT 10`,
+          [owner],
+        ),
+        // Revenue: pipeline / won / realized (paid invoices) (#10)
+        pool.query(
+          `SELECT
+             (SELECT COALESCE(sum(value),0) FROM crm_deals WHERE owner_user_id=$1 AND stage NOT IN ('closed_won','closed_lost')) AS pipeline,
+             (SELECT COALESCE(sum(value),0) FROM crm_deals WHERE owner_user_id=$1 AND stage='closed_won') AS won,
+             (SELECT COALESCE(sum(paid_amount),0) FROM crm_invoices WHERE owner_user_id=$1) AS realized,
+             (SELECT COALESCE(sum(total_amount - paid_amount),0) FROM crm_invoices WHERE owner_user_id=$1 AND status<>'paid') AS outstanding`,
+          [owner],
+        ).catch(() => ({ rows: [{ pipeline: 0, won: 0, realized: 0, outstanding: 0 }] })),
+      ]);
+      const num = (v: any) => Number(v) || 0;
+      return res.json({
+        funnel: funnel.rows.map((r: any) => ({ stage: r.stage, count: r.count, value: num(r.value) })),
+        forecast: forecast.rows.map((r: any) => ({ month: r.month, weighted: Math.round(num(r.weighted)), gross: num(r.gross), deals: r.deals })),
+        sourceRoi: sourceRoi.rows.map((r: any) => ({ source: r.source, customers: r.customers, wonDeals: r.won_deals, wonValue: num(r.won_value) })),
+        topCustomers: ltv.rows.map((r: any) => ({ id: r.id, name: r.name, ltv: num(r.ltv), wonCount: r.won_count })),
+        revenue: {
+          pipeline: num(revenue.rows[0].pipeline),
+          won: num(revenue.rows[0].won),
+          realized: num(revenue.rows[0].realized),
+          outstanding: num(revenue.rows[0].outstanding),
+        },
+      });
+    } catch (error) {
+      console.error("CRM reports error:", error);
+      return res.status(500).json({ error: "Failed to build reports" });
+    }
+  });
+
+  // Owner-scoped export of customers (#29) — JSON rows; frontend builds CSV.
+  app.get("/api/universal-crm/export", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const rows = await pool.query(
+        `SELECT c.name, c.email, c.phone, c.company, c.profession, c.project_type, c.budget,
+                c.status, c.source, c.created_at, c.last_contact,
+                COALESCE((SELECT sum(d.value) FROM crm_deals d WHERE d.customer_id=c.id AND d.stage='closed_won'),0) AS won_value,
+                COALESCE((SELECT sum(i.paid_amount) FROM crm_invoices i WHERE i.customer_id=c.id),0) AS paid
+         FROM crm_customers c WHERE c.owner_user_id = $1 AND c.deleted_at IS NULL ORDER BY c.created_at DESC`,
+        [session.userId],
+      );
+      return res.json({ rows: rows.rows });
+    } catch (error) {
+      console.error("CRM export error:", error);
+      return res.status(500).json({ error: "Failed to export" });
+    }
+  });
+
+  // CSV/contact import (#28) — owner-scoped, normalized + deduped by email.
+  // body: { rows: [{name,email,phone,company,projectType,budget,source}], mode: 'skip'|'update' }
+  app.post("/api/universal-crm/customers/import", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const owner = session.userId;
+      const mode = req.body?.mode === "update" ? "update" : "skip";
+      const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+      if (rows.length === 0) return res.status(400).json({ error: "No rows to import" });
+      if (rows.length > 5000) return res.status(400).json({ error: "Max 5000 rows per import" });
+
+      let created = 0, updated = 0, skipped = 0;
+      const errors: Array<{ row: number; error: string }> = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i] || {};
+        const name = typeof r.name === "string" ? r.name.trim() : "";
+        if (!name) { errors.push({ row: i + 1, error: "Mangler navn" }); continue; }
+        const norm = normalizeEmail(r.email);
+        const budget = r.budget != null && r.budget !== "" ? Number(r.budget) : null;
+        try {
+          let existing = null as any;
+          if (norm) {
+            const found = await pool.query(
+              `SELECT id FROM crm_customers WHERE owner_user_id = $1 AND email_normalized = $2 AND deleted_at IS NULL LIMIT 1`,
+              [owner, norm],
+            );
+            existing = found.rows[0] || null;
+          }
+          if (existing && mode === "skip") { skipped++; continue; }
+          if (existing && mode === "update") {
+            await pool.query(
+              `UPDATE crm_customers SET
+                 name = COALESCE(NULLIF($3,''), name),
+                 phone = COALESCE(NULLIF($4,''), phone),
+                 company = COALESCE(NULLIF($5,''), company),
+                 project_type = COALESCE(NULLIF($6,''), project_type),
+                 budget = COALESCE($7, budget),
+                 source = COALESCE(NULLIF($8,''), source),
+                 updated_at = now()
+               WHERE id = $1 AND owner_user_id = $2`,
+              [existing.id, owner, name, r.phone || "", r.company || "", r.projectType || "", budget, r.source || ""],
+            );
+            updated++;
+          } else {
+            await pool.query(
+              `INSERT INTO crm_customers (id, name, email, phone, company, project_type, budget, status, source, profession, owner_user_id, email_normalized, custom_fields, created_at, updated_at)
+               VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'lead', $7, $8, $9, $10, '{}'::jsonb, now(), now())`,
+              [name, r.email || null, r.phone || null, r.company || null, r.projectType || null, budget, r.source || "import", r.profession || null, owner, norm],
+            );
+            created++;
+          }
+        } catch (rowErr: any) {
+          errors.push({ row: i + 1, error: rowErr?.message || "DB-feil" });
+        }
+      }
+      return res.json({ ok: true, created, updated, skipped, errors });
+    } catch (error) {
+      console.error("CRM import error:", error);
+      return res.status(500).json({ error: "Failed to import" });
+    }
+  });
+
+  // ============================================================
+  // Reviews / NPS (#39) — owner-scoped
+  // ============================================================
+  app.get("/api/universal-crm/reviews", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const { customer_id } = req.query as Record<string, string>;
+      const where = customer_id ? "WHERE owner_user_id = $1 AND customer_id = $2" : "WHERE owner_user_id = $1";
+      const params = customer_id ? [session.userId, customer_id] : [session.userId];
+      const rows = await pool.query(`SELECT * FROM crm_reviews ${where} ORDER BY created_at DESC`, params);
+      return res.json({ reviews: rows.rows });
+    } catch (error) {
+      console.error("CRM reviews list error:", error);
+      return res.status(500).json({ error: "Failed to fetch reviews" });
+    }
+  });
+
+  app.post("/api/universal-crm/reviews", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const { customerId, rating, npsScore, testimonialText, publicConsent } = req.body;
+      const result = await pool.query(
+        `INSERT INTO crm_reviews (id, customer_id, owner_user_id, rating, nps_score, testimonial_text, public_consent, created_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now()) RETURNING *`,
+        [customerId || null, session.userId, rating || null, npsScore || null, testimonialText || null, Boolean(publicConsent)],
+      );
+      return res.status(201).json({ review: result.rows[0] });
+    } catch (error) {
+      console.error("CRM review create error:", error);
+      return res.status(500).json({ error: "Failed to create review" });
+    }
+  });
+
+  // ============================================================
+  // SMS channel (#49) — owner-scoped, provider-gated, logged as activity
+  // ============================================================
+  app.get("/api/universal-crm/sms/status", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
+    return res.json({ configured: smsConfigured() });
+  });
+
+  app.post("/api/universal-crm/sms/send", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const { customerId, to, message } = req.body;
+      if (!to || !message) return res.status(400).json({ error: "to og message er påkrevd" });
+      const result = await sendSms(String(to), String(message));
+      // Log as a CRM activity so the timeline reflects the touch + bump last_contact.
+      if (customerId) {
+        await pool.query(
+          `INSERT INTO crm_activities (id, customer_id, type, subject, description, direction, channel, owner_user_id, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, 'sms', 'SMS sendt', $2, 'outbound', 'sms', $3, now(), now())`,
+          [customerId, String(message).slice(0, 500), session.userId],
+        ).catch((e) => console.warn("SMS activity log skipped:", e));
+        await pool.query(`UPDATE crm_customers SET last_contact = now() WHERE id = $1 AND owner_user_id = $2`, [customerId, session.userId]).catch(() => {});
+      }
+      return res.json({ ok: true, sid: result.sid, provider: result.provider });
+    } catch (error: any) {
+      if (error?.code === "sms_not_configured") {
+        return res.status(409).json({ error: error.message });
+      }
+      console.error("CRM SMS send error:", error);
+      return res.status(500).json({ error: error?.message || "Failed to send SMS" });
+    }
+  });
+
+  // ============================================================
+  // Dedupe / merge (#33) — owner-scoped
+  // ============================================================
+  app.get("/api/universal-crm/duplicates", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const groups = await pool.query(
+        `SELECT email_normalized, count(*)::int AS n,
+                json_agg(json_build_object('id', id, 'name', name, 'createdAt', created_at) ORDER BY created_at) AS members
+         FROM crm_customers
+         WHERE owner_user_id = $1 AND deleted_at IS NULL AND email_normalized IS NOT NULL
+         GROUP BY email_normalized HAVING count(*) > 1
+         ORDER BY n DESC LIMIT 100`,
+        [session.userId],
+      );
+      return res.json({ duplicates: groups.rows });
+    } catch (error) {
+      console.error("CRM duplicates error:", error);
+      return res.status(500).json({ error: "Failed to detect duplicates" });
+    }
+  });
+
+  app.post("/api/universal-crm/customers/:id/merge", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const sourceId = req.params.id;
+      const targetId = req.body?.into;
+      if (!targetId || targetId === sourceId) return res.status(400).json({ error: "Gyldig 'into'-mål kreves" });
+      // Both must belong to the owner and be live.
+      const check = await pool.query(
+        `SELECT id FROM crm_customers WHERE id = ANY($1) AND owner_user_id = $2 AND deleted_at IS NULL`,
+        [[sourceId, targetId], session.userId],
+      );
+      if (check.rows.length !== 2) return res.status(404).json({ error: "Kunde(r) ikke funnet" });
+      // Reparent children from source → target.
+      let moved = 0;
+      for (const t of ["crm_deals", "crm_invoices", "crm_meetings", "crm_activities", "crm_tasks", "crm_reviews"]) {
+        const r = await pool.query(
+          `UPDATE ${t} SET customer_id = $1 WHERE customer_id = $2 AND owner_user_id = $3`,
+          [targetId, sourceId, session.userId],
+        ).catch(() => ({ rowCount: 0 }));
+        moved += r.rowCount || 0;
+      }
+      // Retire the source via soft-delete.
+      await pool.query(
+        `UPDATE crm_customers SET deleted_at = now(), updated_at = now() WHERE id = $1 AND owner_user_id = $2`,
+        [sourceId, session.userId],
+      );
+      return res.json({ ok: true, merged: sourceId, into: targetId, movedRecords: moved });
+    } catch (error) {
+      console.error("CRM merge error:", error);
+      return res.status(500).json({ error: "Failed to merge customers" });
     }
   });
 }

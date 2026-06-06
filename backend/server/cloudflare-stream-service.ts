@@ -60,10 +60,22 @@ export interface StreamUploadResult {
  * direct-upload-endpoint (POST som multipart). For proxy-størrelse
  * (<500 MB) er dette enklere enn tus.
  */
+// Default-policy: require signed URLs på alle uploads. Klient kan ikke
+// spille av med rå UID — må gå via signStreamPlaybackUrl som genererer
+// en kort-TTL token. Beskytter mot at en delt videodelivery.net-URL
+// blir kopiert/distribuert utenfor godkjent klient-flyt.
+//
+// Override via env CLOUDFLARE_STREAM_REQUIRE_SIGNED_URLS=0 (kun for
+// utviklings-debug).
+const requireSignedUrlsDefault = (): boolean => {
+  if (process.env.CLOUDFLARE_STREAM_REQUIRE_SIGNED_URLS === '0') return false;
+  return true;
+};
+
 export async function uploadToStream(
   bytes: Buffer,
   mime: string,
-  meta: { projectId: string; postId: string; filename: string },
+  meta: { projectId: string; postId: string; filename: string; requireSignedURLs?: boolean },
 ): Promise<StreamUploadResult> {
   const cfg = buildStreamConfig();
   if (!cfg.enabled) {
@@ -107,6 +119,39 @@ export async function uploadToStream(
     throw new Error(`stream_upload_rejected: ${JSON.stringify(data.errors)}`);
   }
   const uid = data.result.uid;
+
+  // Etter upload: markér videoen som requireSignedURLs=true så ingen
+  // kan spille av med direkte URL. Klient må gå via signStreamPlaybackUrl
+  // for å få en kort-TTL token. Idempotent — kan kalles på nytt.
+  const requireSigned = meta.requireSignedURLs ?? requireSignedUrlsDefault();
+  if (requireSigned) {
+    try {
+      const patchRes = await fetch(
+        `${CF_API_BASE}/accounts/${cfg.accountId}/stream/${uid}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${cfg.apiToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ requireSignedURLs: true }),
+        },
+      );
+      if (!patchRes.ok) {
+        const errText = await patchRes.text().catch(() => '');
+        console.warn(
+          `[stream] kunne ikke sette requireSignedURLs=true for ${uid}:`,
+          errText,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `[stream] requireSignedURLs-oppdatering kastet for ${uid}:`,
+        err,
+      );
+    }
+  }
+
   return {
     uid,
     playbackUrl: data.result.playback?.hls
@@ -167,19 +212,107 @@ export async function deleteStreamVideo(uid: string): Promise<void> {
 
 /**
  * Lag en signert playback-URL (kort TTL) for klient-portal-sesjoner.
- * Stream støtter signed URLs ved å POST-e til /stream/<uid>/token.
- * For MVP returnerer vi unsigned URL — bytt til signed når public
- * portal-link skal kunne deles uten å lekke video til verden.
+ *
+ * Kaller Cloudflare Streams /stream/<uid>/token-endepunkt og returnerer
+ * en URL formatert som
+ *     https://customer-<sub>.cloudflarestream.com/<token>/manifest/video.m3u8
+ *
+ * Tokenet validerer mot Streams interne signatur — vi trenger ikke å
+ * holde et eget signering-secret. Default TTL 1 time (matcher R2-signed-
+ * URLs); kalleren kan overstyre.
+ *
+ * Returnerer `null` hvis Stream ikke er konfigurert eller token-callet
+ * feiler. I sistnevnte tilfelle bør kaller falle tilbake til en proxy-
+ * basert avspilling, IKKE eksponere rå URL.
  */
 export async function signStreamPlaybackUrl(
-  uid: string, _ttlSeconds: number,
+  uid: string,
+  ttlSeconds: number = 60 * 60,
 ): Promise<string | null> {
   const cfg = buildStreamConfig();
   if (!cfg.enabled) return null;
-  // TODO: bytt til /stream/<uid>/token når Stream-videoer markeres som
-  // requireSignedURLs=true. For nå er videoene satt opp som unsigned
-  // (samme tilgangsmodell som magic-link).
-  return buildPlaybackUrl(uid, cfg.customerSubdomain);
+
+  // Clamp TTL til 1m–24t. Kortere = sikrere mot lekkasje, lengre =
+  // mindre token-refresh-trafikk fra klient.
+  const ttl = Math.min(24 * 60 * 60, Math.max(60, Math.floor(ttlSeconds)));
+  const exp = Math.floor(Date.now() / 1000) + ttl;
+
+  try {
+    const res = await fetch(
+      `${CF_API_BASE}/accounts/${cfg.accountId}/stream/${uid}/token`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${cfg.apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          exp,
+          // accessRules: kan brukes for IP/geo-låsing senere
+        }),
+      },
+    );
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.warn(
+        `[stream] token-generering feilet for ${uid}: ${res.status} ${errText}`,
+      );
+      return null;
+    }
+    const data = (await res.json()) as {
+      success?: boolean;
+      result?: { token?: string };
+    };
+    const token = data.result?.token;
+    if (!data.success || !token) return null;
+    if (cfg.customerSubdomain) {
+      return `https://customer-${cfg.customerSubdomain}.cloudflarestream.com/${token}/manifest/video.m3u8`;
+    }
+    return `https://videodelivery.net/${token}/manifest/video.m3u8`;
+  } catch (err) {
+    console.warn(`[stream] token-generering kastet for ${uid}:`, err);
+    return null;
+  }
+}
+
+/**
+ * Tilsvarende for thumbnail. Stream-tokens er gyldige for både video
+ * manifest og thumbnail-URLer.
+ */
+export async function signStreamThumbnailUrl(
+  uid: string,
+  ttlSeconds: number = 60 * 60,
+): Promise<string | null> {
+  const cfg = buildStreamConfig();
+  if (!cfg.enabled) return null;
+  const ttl = Math.min(24 * 60 * 60, Math.max(60, Math.floor(ttlSeconds)));
+  const exp = Math.floor(Date.now() / 1000) + ttl;
+  try {
+    const res = await fetch(
+      `${CF_API_BASE}/accounts/${cfg.accountId}/stream/${uid}/token`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${cfg.apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ exp }),
+      },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      success?: boolean;
+      result?: { token?: string };
+    };
+    const token = data.result?.token;
+    if (!data.success || !token) return null;
+    if (cfg.customerSubdomain) {
+      return `https://customer-${cfg.customerSubdomain}.cloudflarestream.com/${token}/thumbnails/thumbnail.jpg`;
+    }
+    return `https://videodelivery.net/${token}/thumbnails/thumbnail.jpg`;
+  } catch {
+    return null;
+  }
 }
 
 function buildPlaybackUrl(uid: string, customerSubdomain: string | undefined): string {

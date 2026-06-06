@@ -169,7 +169,7 @@ import {
   normalizeProjectFileRecords,
   type ProjectFileRecord,
 } from '../../utils/projectFiles';
-import { buildClientPortalUrl, type ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
+import { buildClientPortalUrl, toClientPortalWorkspace, type ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
 import { describeProducerError } from '../../utils/producerErrorMessage';
 import type { StoryArcNavigationFocus } from '../../utils/storyArcFocus';
 import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
@@ -2076,7 +2076,7 @@ export default function ProducerMediaPanel({
 
   useEffect(() => {
     onWorkspaceFocusChange?.({
-      workspace: activeWorkspace,
+      workspace: toClientPortalWorkspace(activeWorkspace),
       sectionId: activeSection?.id,
       pageId: activePage?.id,
       artifactId: focusedArtifactId ?? undefined,
@@ -2685,7 +2685,7 @@ export default function ProducerMediaPanel({
     }
     const nextUrl = buildClientPortalUrl(projectId, {
       tab: 'media',
-      workspace: activeWorkspace,
+      workspace: toClientPortalWorkspace(activeWorkspace),
       sectionId: activeSection.id,
       pageId: activePage.id,
       artifactId: focusedArtifactId ?? undefined,

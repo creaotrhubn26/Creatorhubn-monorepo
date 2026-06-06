@@ -377,6 +377,12 @@ export default function VideografOrchestrator({
   });
 
   // Trigger orchestration
+  //
+  // Ærlig error-håndtering speilet etter FotografOrchestrator-fix
+  // (PR #61, commit e8689b71). Tidligere svelget triggerOrchestration
+  // feil i stillhet via implisitt .catch — Bjarne klikket en knapp,
+  // så et 2s spinning så bare stopp. Nå: tydelig 'error'-state med
+  // melding som vises i UI.
   const triggerOrchestration = useMutation({
     mutationFn: async ({ orchestrationId, triggerData }: { orchestrationId: string, triggerData: any }) => {
       return apiRequest(`/api/videograf/orchestration/trigger`, {
@@ -387,18 +393,33 @@ export default function VideografOrchestrator({
         body: JSON.stringify({ orchestrationId, triggerData, sessionId })
     });
   },
-    onSuccess: (data, variables) => {
+    onSuccess: (_data, variables) => {
       setOrchestrationStates(prev => ({
         ...prev,
         [variables.orchestrationId]: {
           running: true,
           lastRun: new Date(),
           completedActions:  [],
-          failedActions: []
+          failedActions: [],
+          status: 'queued'
     }
     }));
       queryClient.invalidateQueries({ queryKey: ['/api/videograf/orchestration/status', ],});
-  }
+  },
+    onError: (error, variables) => {
+      console.error('Videograf orchestration trigger error:', error);
+      const message = error instanceof Error ? error.message : 'Ukjent feil';
+      setOrchestrationStates(prev => ({
+        ...prev,
+        [variables.orchestrationId]: {
+          ...(prev as any)[variables.orchestrationId],
+          running: false,
+          status: 'error',
+          error: `Kunne ikke starte arbeidsflyt: ${message}`,
+          lastRun: new Date(),
+        },
+      }));
+    },
 });
 
   const handleOrchestrationTrigger = (orchestrationId: string, triggerData?: any) => {

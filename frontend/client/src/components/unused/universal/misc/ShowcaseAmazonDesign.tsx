@@ -4,9 +4,7 @@ import { useTheming } from '../../../utils/theming-helper';
 import React, { useState } from 'react';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { useQuery } from '@tanstack/react-query';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import {
   Box,
   Typography,
@@ -21,9 +19,7 @@ import {
   Avatar,
   IconButton,
 } from '@mui/material';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { apiRequest } from '@/lib/queryClient';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import {
   PhotoCamera,
   Favorite,
@@ -34,7 +30,6 @@ import {
   LocalShipping,
   Security,
 } from '@mui/icons-material';
-import { getAuthHeader } from '@/lib/google/impersonation';
 
 interface ShowcaseAmazonDesignProps {
   profession?: 'photographer' | 'videographer' | 'musicproducer' | 'vendor';

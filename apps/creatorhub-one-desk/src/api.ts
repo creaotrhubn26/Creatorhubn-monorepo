@@ -71,6 +71,74 @@ export async function saveHelperConfig(args: {
   });
 }
 
+// ── Google OAuth / device-auth ────────────────────────────────────
+export interface DeviceTokenStatus {
+  user_email: string;
+  user_name: string;
+  api_base: string;
+}
+
+export async function deviceTokenStatus(): Promise<DeviceTokenStatus | null> {
+  return invoke<DeviceTokenStatus | null>("device_token_status");
+}
+
+export async function startGoogleLogin(apiBase?: string): Promise<string> {
+  return invoke<string>("start_google_login", { apiBase: apiBase ?? null });
+}
+
+export interface StartLoginResult {
+  authorization_url: string;
+  state: string;
+}
+
+export async function startGoogleLoginV2(apiBase?: string): Promise<StartLoginResult> {
+  return invoke<StartLoginResult>("start_google_login_v2", { apiBase: apiBase ?? null });
+}
+
+/// Returnerer true når completion er klar (token lagret, prosjekter
+/// hentet, desktop-auth-completed-event emittert). False = fortsatt
+/// venter. Kaste Error hvis state utløpt eller backend feilet.
+export async function pollOauthCompletion(apiBase: string, state: string): Promise<boolean> {
+  return invoke<boolean>("poll_oauth_completion", { apiBase, state });
+}
+
+export async function refreshProjectsFromApi(): Promise<number> {
+  return invoke<number>("refresh_projects_from_api");
+}
+
+export async function desktopLogout(): Promise<void> {
+  return invoke<void>("desktop_logout");
+}
+
+// ── Multi-project ─────────────────────────────────────────────────
+export interface ProjectEntry {
+  project_id: string;
+  label: string;
+  api_base: string;
+  token: string;
+  last_used_ms: number;
+}
+
+export async function listProjects(): Promise<ProjectEntry[]> {
+  return invoke<ProjectEntry[]>("list_projects");
+}
+
+export async function activeProjectId(): Promise<string | null> {
+  return invoke<string | null>("active_project_id");
+}
+
+export async function setActiveProject(projectId: string): Promise<void> {
+  return invoke<void>("set_active_project", { projectId });
+}
+
+export async function removeProject(projectId: string): Promise<void> {
+  return invoke<void>("remove_project", { projectId });
+}
+
+export async function updateProjectLabel(projectId: string, label: string): Promise<void> {
+  return invoke<void>("update_project_label", { projectId, label });
+}
+
 export async function clearHelperConfig(): Promise<void> {
   return invoke<void>("clear_helper_config");
 }
@@ -100,12 +168,123 @@ export async function rescanMounts(): Promise<DetectedMount[]> {
   return invoke<DetectedMount[]>("rescan_mounts");
 }
 
+/// Manuell iPad-input når Bonjour er blokkert (bedrifts-VLAN, WiFi-
+/// isolasjon). Tar IP + port + visningsnavn fra iPad-appens "Vis
+/// pairing-info"-skjerm.
+export async function addManualIpad(args: {
+  deviceName: string;
+  ip: string;
+  port: number;
+  deviceId?: string | null;
+}): Promise<unknown> {
+  return invoke("add_manual_ipad", {
+    deviceName: args.deviceName,
+    ip: args.ip,
+    port: args.port,
+    deviceId: args.deviceId ?? null,
+  });
+}
+
+/// Oppdater Mac-tray-tooltip dynamisk. Brukes av CopyProgressView for
+/// å vise "Backup: 87/240 filer" i status-baren.
+export async function setTrayStatus(tooltip: string): Promise<void> {
+  return invoke<void>("set_tray_status", { tooltip });
+}
+
+/// Pre-flight kapasitets-sjekk: sjekk om dest-paths har nok ledig
+/// plass for bytesNeeded (samme tall for hver dest). Brukes av
+/// BackupDialog FØR start.
+export interface DestCapacity {
+  path: string;
+  total_bytes: number | null;
+  free_bytes: number | null;
+  needed_bytes: number;
+  sufficient: boolean;
+  safe_margin: boolean;
+}
+
+export async function checkDestinationsCapacity(
+  destPaths: string[],
+  bytesNeeded: number,
+): Promise<DestCapacity[]> {
+  return invoke<DestCapacity[]>("check_destinations_capacity", {
+    destPaths,
+    bytesNeeded,
+  });
+}
+
+/// macOS-native notification via osascript. Brukes av CopyProgressView
+/// for å vise "Backup ferdig"-notification i Notification Center.
+export async function macosNotification(title: string, body: string): Promise<void> {
+  return invoke<void>("macos_notification", { title, body });
+}
+
+// ── Brukerpreferanser ─────────────────────────────────────────────
+export interface Prefs {
+  auto_eject: boolean;
+  default_dest_ids: string[];
+}
+
+export async function getPrefs(): Promise<Prefs> {
+  return invoke<Prefs>("get_prefs");
+}
+
+export async function saveDefaultDestIds(destIds: string[]): Promise<void> {
+  return invoke<void>("save_default_dest_ids", { destIds });
+}
+
+/// Status-event emit'es hvert 5. sekund fra Bonjour-browseren.
+export interface BonjourStatusEvent {
+  discovered_count: number;
+  elapsed_secs: number;
+}
+
 export interface DestinationSpec {
   id: string;
   label: string;
   path: string;
   /** Hvis satt: dit_destinations.id — kopier blir registrert som dit_backup_jobs i backend. */
   backend_id?: string | null;
+  /// Cloud-felter — settes når destinasjonen er en B2-bucket
+  cloud_provider?: string | null;
+  cloud_bucket_id?: string | null;
+  cloud_credentials?: {
+    key_id: string;
+    application_key: string;
+  } | null;
+}
+
+/// Med-creds-shape returnert av /api/dit/projects/:id/destinations/with-creds.
+/// Backend setter cloud_credentials til null for lokale destinasjoner.
+export interface DestinationWithCreds {
+  id: string;
+  label: string;
+  path?: string;
+  destination_type: string;
+  cloud_provider?: string | null;
+  cloud_bucket?: string | null;
+  cloud_bucket_id?: string | null;
+  cloud_prefix?: string | null;
+  cloud_credentials: { key_id: string; application_key: string } | null;
+  cloud_error?: string | null;
+}
+
+export async function fetchDestinationsWithCreds(): Promise<DestinationWithCreds[]> {
+  return invoke<DestinationWithCreds[]>("fetch_destinations_with_creds");
+}
+
+/// Verifiser B2-creds + bucket-eksistens FØR cloud-destinasjon committes.
+/// Returnerer bucket-navn på suksess, error-melding ved feil.
+export async function testB2Connection(
+  keyId: string,
+  applicationKey: string,
+  bucketId: string,
+): Promise<string> {
+  return invoke<string>("test_b2_connection", {
+    keyId,
+    applicationKey,
+    bucketId,
+  });
 }
 
 export interface SessionStatus {
@@ -177,6 +356,17 @@ export interface CopySessionCompletedEvent {
   succeeded: number;
   failed: number;
   cancelled: boolean;
+}
+
+/// Emit'es én gang per destinasjon når den blir deaktivert for resten
+/// av sesjonen pga vedvarende feil. Etterfølgende filer i samme session
+/// skipper denne destinasjonen — andre destinasjoner fortsetter.
+export interface CopyDestDisabledEvent {
+  session_id: string;
+  dest_id: string;
+  dest_label: string;
+  reason_code: "DEST_NO_SPACE" | "DEST_PERM_DENIED" | string;
+  reason_message: string;
 }
 
 // ─── iPad-paring (F5) ──────────────────────────────────────────

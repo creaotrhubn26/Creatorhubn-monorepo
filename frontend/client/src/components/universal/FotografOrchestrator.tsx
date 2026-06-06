@@ -574,26 +574,21 @@ function FotografOrchestrator({
     staleTime: 5000
   });
 
-  // Trigger orchestration with better error handling
+  // Trigger orchestration — feil propagerer til onError så bruker ser ekte status,
+  // ikke en simulert "completed" som dekker over at API-et var nede.
   const triggerOrchestration = useMutation({
     mutationFn: async ({ orchestrationId, triggerData }: { orchestrationId: string, triggerData: any }) => {
       setTriggeringStates(prev => ({ ...prev, [orchestrationId]: true }));
-      try {
-        const response = await apiRequest(`/api/orchestration/trigger`, {
-          headers: {
-            "Content-Type" : "application/json"
-          },
-          method: 'POST',
-          body: JSON.stringify({ orchestrationId, triggerData, sessionId: effectiveSessionId })
-        });
-        return response;
-      } catch (error) {
-        // Fallback: simulate local execution if API fails
-        console.warn('API trigger failed:', error instanceof Error ? error.message : String(error), '– simulating locally:', orchestrationId);
-        return { success: true, local: true, orchestrationId };
-      }
+      const response = await apiRequest(`/api/orchestration/trigger`, {
+        headers: {
+          "Content-Type" : "application/json"
+        },
+        method: 'POST',
+        body: JSON.stringify({ orchestrationId, triggerData, sessionId: effectiveSessionId })
+      });
+      return response;
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (_data, variables) => {
       setOrchestrationStates(prev => ({
         ...prev,
         [variables.orchestrationId]: {
@@ -601,25 +596,10 @@ function FotografOrchestrator({
           lastRun: new Date(),
           completedActions: [],
           failedActions: [],
-          status: 'running'
+          status: 'queued'
         }
       }));
-      
-      // Simulate completion after 2 seconds for local execution
-      if (data?.local) {
-        setTimeout(() => {
-          setOrchestrationStates(prev => ({
-            ...prev,
-            [variables.orchestrationId]: {
-              ...prev[variables.orchestrationId],
-              running: false,
-              status: 'completed',
-              completedActions: ['step1', 'step2', 'step3']
-            }
-          }));
-        }, 2000);
-      }
-      
+
       queryClient.invalidateQueries({ queryKey: ['orchestration-status'] });
       setTriggeringStates(prev => ({ ...prev, [variables.orchestrationId]: false }));
     },
@@ -947,7 +927,7 @@ function FotografOrchestrator({
       </Grid>
 
       {/* Lag ditt eget workflow - så enkelt som bestemor kan forstå */}
-      <Box sx={{ mt: 4, p: 3, bgcolor: '#f0f8ff', borderRadius: 2, border: '1px solid #e3f2fd'}}>
+      <Box sx={{ mt: 4, p: 3, bgcolor: 'rgba(33,150,243,0.08)', borderRadius: 2, border: '1px solid rgba(33,150,243,0.20)'}}>
         <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
           <AutoAwesome sx={{ color: '#2196f3' }} />
           Lag ditt eget arbeidsflyt
@@ -1063,7 +1043,7 @@ function FotografOrchestrator({
       </Box>
 
       {/* Status som er lett å forstå */}
-      <Box sx={{ mt: 4, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
+      <Box sx={{ mt: 4, p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.10)' }}>
         <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1}}>
           <Info sx={{ fontSize: 18 }} />
           Status
@@ -1126,7 +1106,7 @@ function FotografOrchestrator({
 
       {/* Profesjonsinfo og tilgjengelige profesjoner */}
       {professionAdapter && (
-        <Box sx={{ mt: 3, p: 2, bgcolor: '#fafafa', borderRadius: 2, border: '1px solid #e0e0e0' }}>
+        <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.10)' }}>
           <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
             <Assessment sx={{ fontSize: 18, color: theming.colors.primary }} />
             Profesjonsoppsett
@@ -1151,7 +1131,7 @@ function FotografOrchestrator({
       )}
 
       {/* System Metrics Panel */}
-      <Box sx={{ mt: 3, p: 2, bgcolor: '#fafafa', borderRadius: 2, border: '1px solid #e0e0e0' }}>
+      <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.10)' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <TrendingUp sx={{ fontSize: 18, color: theming.colors.primary }} />
@@ -1303,7 +1283,7 @@ function FotografOrchestrator({
 
               {/* Vis valgte handlinger først hvis det er noen */}
               {newWorkflow.actions.length > 0 && (
-                <Box sx={{ mb: 3, p: 2, bgcolor: '#f0f8ff', borderRadius: 2, border: '1px solid #e3f2fd' }}>
+                <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(33,150,243,0.08)', borderRadius: 2, border: '1px solid rgba(33,150,243,0.20)' }}>
                   <Typography variant="subtitle2" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1}}>
                     <CheckCircle sx={{ color: '#2196f3' }} />
                     Valgte handlinger ({newWorkflow.actions.length}):
@@ -1534,11 +1514,27 @@ function FotografOrchestrator({
                 }}
               />
               <Typography variant="body2">
-                {orchestrationStates[selectedOrchestration]?.running ? 'Kjører' :
-                 (orchestrationStates[selectedOrchestration] as Record<string, unknown>)?.status === 'completed' ? 'Fullført' :
-                 (orchestrationStates[selectedOrchestration] as Record<string, unknown>)?.status === 'error' ? 'Feil' : 'Klar'}
+                {(() => {
+                  const s = orchestrationStates[selectedOrchestration] as Record<string, unknown> | undefined;
+                  const status = s?.status as string | undefined;
+                  if (status === 'queued') return 'Køet — venter på behandler';
+                  if (status === 'running') return 'Kjører';
+                  if (status === 'completed') return 'Fullført';
+                  if (status === 'partial') return 'Delvis fullført';
+                  if (status === 'expired') return 'Utløpt — ingen behandler plukket opp jobben';
+                  if (status === 'stopped') return 'Stoppet av bruker';
+                  if (status === 'failed' || status === 'error') return 'Feil';
+                  if (s?.running) return 'Kjører';
+                  return 'Klar';
+                })()}
               </Typography>
             </Box>
+
+            {(orchestrationStates[selectedOrchestration] as Record<string, unknown> | undefined)?.errorMessage && (
+              <Typography variant="caption" color="error.main" sx={{ mt: 0.5 }}>
+                {String((orchestrationStates[selectedOrchestration] as Record<string, unknown>).errorMessage)}
+              </Typography>
+            )}
 
             {orchestrationStates[selectedOrchestration]?.lastRun && (
               <Typography variant="caption" color="text.secondary">

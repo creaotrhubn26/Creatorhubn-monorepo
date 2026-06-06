@@ -216,6 +216,8 @@ interface SessionRow {
   error_detail: string | null;
   created_at: Date;
   completed_at: Date | null;
+  /** AI-generert follow-up-questions array (caches mellom API-calls). */
+  follow_up_questions?: string[] | null;
 }
 
 function toApi(row: SessionRow) {

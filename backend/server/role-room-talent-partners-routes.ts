@@ -28,6 +28,7 @@
 import type express from "express";
 import type { Pool } from "pg";
 import crypto from "node:crypto";
+import { sendTransactionalEmail } from "./transactional-email-service";
 
 interface SessionLike {
   userId: string;
@@ -56,13 +57,48 @@ const MATRIX_SCOPES = [
   "audition_invitations", // → 'Auditions'-kolonnen
 ] as const;
 
-/** Hent talent for en owner-user-id. Returnerer null hvis ingen profil. */
+/** Defensive: kjør spørring som referer is_demo, fall tilbake til
+ *  versjon uten is_demo hvis kolonnen ikke finnes (migrasjon 214 ikke
+ *  anvendt ennå). Forhindrer container-krasj-sykler.
+ */
+async function safeQueryWithDemoFilter<T = unknown>(
+  pool: Pool,
+  withFilter: string,
+  withoutFilter: string,
+  params: unknown[],
+): Promise<{ rows: T[] }> {
+  try {
+    return (await pool.query(withFilter, params)) as unknown as { rows: T[] };
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    const msg = (err as Error).message ?? "";
+    if (code === "42703" || /is_demo.*does not exist/i.test(msg)) {
+      console.warn("[talent-partners] is_demo-kolonne mangler — bruker fallback uten demo-filter");
+      return (await pool.query(withoutFilter, params)) as unknown as { rows: T[] };
+    }
+    throw err;
+  }
+}
+
+/** Hent talent for en owner-user-id. Returnerer null hvis ingen profil.
+ *  Defensive: tolererer at is_demo-kolonnen mangler.
+ */
 async function fetchTalentForUser(pool: Pool, userId: string) {
-  const r = await pool.query(
+  const r = await safeQueryWithDemoFilter<Record<string, unknown> & { id: string; display_name?: string }>(
+    pool,
+    `SELECT * FROM talents WHERE owner_user_id = $1 AND COALESCE(is_demo, FALSE) = FALSE LIMIT 1`,
     `SELECT * FROM talents WHERE owner_user_id = $1 LIMIT 1`,
     [userId],
   );
   return r.rows[0] ?? null;
+}
+
+/** Fast UUID for demo-talenten (matcher seed i migrasjon 214). */
+const DEMO_TALENT_ID = "11111111-1111-1111-1111-111111111111";
+
+/** Sjekker om request ber om demo-modus via ?demo=1. */
+function isDemoRequest(req: express.Request): boolean {
+  return req.query?.demo === "1" || req.query?.demo === "true";
 }
 
 /** Maskér en email til log/audit: "k***@stella.no". */
@@ -79,12 +115,50 @@ export function setupRoleRoomTalentPartnersRoutes(
   const { app, pool, getActiveSession } = deps;
 
   // ── GET /partners-overview ─────────────────────────────────────────
+  // ?demo=1 → returner isolert demo-talent + demo-rader (ingen auth påkrevd).
+  // Ellers → normal flyt: krev session, returner brukerens talent-profil.
   app.get("/api/role-room/talents/me/partners-overview", async (req, res) => {
-    const session = getActiveSession(req);
-    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const demo = isDemoRequest(req);
+    let talent: Record<string, unknown> | null = null;
+    const demoFilter = demo ? "TRUE" : "FALSE";
 
     try {
-      const talent = await fetchTalentForUser(pool, session.userId);
+      if (demo) {
+        // Defensive: hvis migrasjon 214 ikke er anvendt ennå, returner tom payload
+        // i stedet for å krasje (forhindrer container-krasj-sykler).
+        const t = await safeQueryWithDemoFilter(
+          pool,
+          `SELECT * FROM talents WHERE id = $1 AND is_demo = TRUE LIMIT 1`,
+          `SELECT * FROM talents WHERE id = $1 LIMIT 1`,
+          [DEMO_TALENT_ID],
+        );
+        talent = (t.rows[0] as Record<string, unknown>) ?? null;
+        if (!talent) {
+          return res.json({
+            talent: null,
+            stats: { activePartners: 0, sharedTalentPools: 0, pendingRequests: 0, gdprCompliantPercent: 100 },
+            partners: [],
+            feed: [],
+            warning: "Demo-data ikke seedet ennå — kjør migrasjon 214",
+          });
+        }
+      } else {
+        const session = getActiveSession(req);
+        if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+        talent = await fetchTalentForUser(pool, session.userId);
+      }
+    } catch (preErr) {
+      console.error("[partners-overview pre-flight] failed", preErr);
+      return res.json({
+        talent: null,
+        stats: { activePartners: 0, sharedTalentPools: 0, pendingRequests: 0, gdprCompliantPercent: 100 },
+        partners: [],
+        feed: [],
+        warning: "Pre-flight feilet — migrasjon 214 mangler sannsynligvis",
+      });
+    }
+
+    try {
       if (!talent) {
         return res.json({
           talent: null,
@@ -103,7 +177,24 @@ export function setupRoleRoomTalentPartnersRoutes(
       // partner_ref kan være UUID til agency_orgs.id eller en e-post — vi
       // joiner på UUID-formet og faller tilbake til partner_display_name
       // for resten.
-      const consentsResult = await pool.query(
+      const consentsResult = await safeQueryWithDemoFilter<{
+        id: string;
+        partner_type: string;
+        partner_ref: string;
+        partner_display_name: string | null;
+        scope: string;
+        status: string;
+        granted_at: string;
+        expires_at: string | null;
+        agency_id: string | null;
+        agency_name: string | null;
+        agency_slug: string | null;
+        agency_email: string | null;
+        agency_website: string | null;
+        agency_logo: string | null;
+        agency_verified: boolean | null;
+      }>(
+        pool,
         `SELECT
             c.id, c.partner_type, c.partner_ref, c.partner_display_name, c.scope,
             c.status, c.granted_at, c.expires_at,
@@ -118,7 +209,32 @@ export function setupRoleRoomTalentPartnersRoutes(
           LEFT JOIN agency_orgs a ON a.id::text = c.partner_ref
           WHERE c.talent_id = $1
             AND c.status = 'granted'
+            AND COALESCE(c.is_demo, FALSE) = ${demoFilter}
             AND (c.expires_at IS NULL OR c.expires_at > now())`,
+        // Fallback uten is_demo (kun gyldig for demo=false; demo=true returnerer ingenting)
+        demo
+          ? `SELECT NULL::uuid AS id, NULL::text AS partner_type, NULL::text AS partner_ref,
+                NULL::text AS partner_display_name, NULL::text AS scope,
+                NULL::text AS status, NULL::timestamptz AS granted_at, NULL::timestamptz AS expires_at,
+                NULL::uuid AS agency_id, NULL::text AS agency_name, NULL::text AS agency_slug,
+                NULL::text AS agency_email, NULL::text AS agency_website,
+                NULL::text AS agency_logo, NULL::boolean AS agency_verified
+              WHERE FALSE`
+          : `SELECT
+                c.id, c.partner_type, c.partner_ref, c.partner_display_name, c.scope,
+                c.status, c.granted_at, c.expires_at,
+                a.id  AS agency_id,
+                a.name AS agency_name,
+                a.slug AS agency_slug,
+                a.contact_email AS agency_email,
+                a.website_url AS agency_website,
+                a.logo_url AS agency_logo,
+                a.verified AS agency_verified
+              FROM talent_consent_registry c
+              LEFT JOIN agency_orgs a ON a.id::text = c.partner_ref
+              WHERE c.talent_id = $1
+                AND c.status = 'granted'
+                AND (c.expires_at IS NULL OR c.expires_at > now())`,
         [talent.id],
       );
 
@@ -161,11 +277,23 @@ export function setupRoleRoomTalentPartnersRoutes(
       }
 
       // Hent siste access fra audit-tabellen for "Last Activity"
-      const auditResult = await pool.query(
+      const auditResult = await safeQueryWithDemoFilter<{
+        partner_type: string;
+        partner_ref: string;
+        last_accessed: string;
+      }>(
+        pool,
         `SELECT partner_type, partner_ref, MAX(accessed_at) AS last_accessed
            FROM talent_access_audit
           WHERE talent_id = $1
+            AND COALESCE(is_demo, FALSE) = ${demoFilter}
           GROUP BY partner_type, partner_ref`,
+        demo
+          ? `SELECT NULL::text AS partner_type, NULL::text AS partner_ref, NULL::timestamptz AS last_accessed WHERE FALSE`
+          : `SELECT partner_type, partner_ref, MAX(accessed_at) AS last_accessed
+                FROM talent_access_audit
+               WHERE talent_id = $1
+               GROUP BY partner_type, partner_ref`,
         [talent.id],
       );
       const lastSeenByKey = new Map<string, string>();
@@ -208,58 +336,80 @@ export function setupRoleRoomTalentPartnersRoutes(
       partners.sort((a, b) => (a.last_activity < b.last_activity ? 1 : -1));
 
       // Pending invites count
-      const pendingResult = await pool.query(
+      const pendingResult = await safeQueryWithDemoFilter<{ n: number }>(
+        pool,
         `SELECT count(*)::int AS n FROM talent_partner_invites
-          WHERE talent_id = $1 AND status = 'pending' AND expires_at > now()`,
+          WHERE talent_id = $1
+            AND status = 'pending'
+            AND COALESCE(is_demo, FALSE) = ${demoFilter}
+            AND expires_at > now()`,
+        demo
+          ? `SELECT 0::int AS n WHERE FALSE`
+          : `SELECT count(*)::int AS n FROM talent_partner_invites
+              WHERE talent_id = $1 AND status = 'pending' AND expires_at > now()`,
         [talent.id],
       );
+      // Ekte pending — ingen forcing. Mockup-spec og ekte data kan avvike.
       const pendingRequests = pendingResult.rows[0]?.n ?? 0;
 
       // Feed: kombiner audit + invite-events + consent-events (siste ~20)
-      const feedResult = await pool.query(
-        `SELECT * FROM (
+      const feedSqlWithIsDemo = `SELECT * FROM (
             SELECT
-              'access' AS kind,
-              a.id::text AS id,
-              a.partner_type,
-              a.partner_ref,
+              'access' AS kind, a.id::text AS id, a.partner_type, a.partner_ref,
               (SELECT name FROM agency_orgs WHERE id::text = a.partner_ref) AS display_name,
               jsonb_build_object('scope', a.scope, 'endpoint', a.access_context->>'endpoint') AS details,
-              a.accessed_at AS occurred_at,
-              NULL::text AS badge
+              a.accessed_at AS occurred_at, NULL::text AS badge
             FROM talent_access_audit a
             WHERE a.talent_id = $1
-              AND a.accessed_at > now() - interval '30 days'
+              AND COALESCE(a.is_demo, FALSE) = ${demoFilter}
+              AND a.accessed_at > now() - interval '180 days'
           UNION ALL
-            SELECT
-              'invite' AS kind,
-              i.id::text,
-              i.partner_type,
-              NULL,
+            SELECT 'invite' AS kind, i.id::text, i.partner_type, NULL,
               COALESCE(i.partner_display_name, i.partner_email),
               jsonb_build_object('email', i.partner_email, 'scopes', i.scopes),
               i.created_at,
               CASE WHEN i.status = 'pending' THEN 'pending' ELSE NULL END
             FROM talent_partner_invites i
             WHERE i.talent_id = $1
-              AND i.created_at > now() - interval '30 days'
+              AND COALESCE(i.is_demo, FALSE) = ${demoFilter}
+              AND i.created_at > now() - interval '180 days'
           UNION ALL
-            SELECT
-              'consent_grant' AS kind,
-              c.id::text,
-              c.partner_type,
-              c.partner_ref,
+            SELECT 'consent_grant' AS kind, c.id::text, c.partner_type, c.partner_ref,
               COALESCE(c.partner_display_name, (SELECT name FROM agency_orgs WHERE id::text = c.partner_ref)),
-              jsonb_build_object('scope', c.scope),
-              c.granted_at,
-              NULL::text
+              jsonb_build_object('scope', c.scope), c.granted_at, NULL::text
             FROM talent_consent_registry c
             WHERE c.talent_id = $1
-              AND c.granted_at > now() - interval '30 days'
+              AND COALESCE(c.is_demo, FALSE) = ${demoFilter}
+              AND c.granted_at > now() - interval '180 days'
               AND c.status = 'granted'
-        ) feed
-        ORDER BY occurred_at DESC
-        LIMIT 20`,
+        ) feed ORDER BY occurred_at DESC LIMIT 20`;
+      const feedSqlWithoutIsDemo = `SELECT * FROM (
+            SELECT 'access' AS kind, a.id::text AS id, a.partner_type, a.partner_ref,
+              (SELECT name FROM agency_orgs WHERE id::text = a.partner_ref) AS display_name,
+              jsonb_build_object('scope', a.scope, 'endpoint', a.access_context->>'endpoint') AS details,
+              a.accessed_at AS occurred_at, NULL::text AS badge
+            FROM talent_access_audit a
+            WHERE a.talent_id = $1 AND a.accessed_at > now() - interval '180 days'
+          UNION ALL
+            SELECT 'invite' AS kind, i.id::text, i.partner_type, NULL,
+              COALESCE(i.partner_display_name, i.partner_email),
+              jsonb_build_object('email', i.partner_email, 'scopes', i.scopes),
+              i.created_at,
+              CASE WHEN i.status = 'pending' THEN 'pending' ELSE NULL END
+            FROM talent_partner_invites i
+            WHERE i.talent_id = $1 AND i.created_at > now() - interval '180 days'
+          UNION ALL
+            SELECT 'consent_grant' AS kind, c.id::text, c.partner_type, c.partner_ref,
+              COALESCE(c.partner_display_name, (SELECT name FROM agency_orgs WHERE id::text = c.partner_ref)),
+              jsonb_build_object('scope', c.scope), c.granted_at, NULL::text
+            FROM talent_consent_registry c
+            WHERE c.talent_id = $1 AND c.status = 'granted'
+              AND c.granted_at > now() - interval '180 days'
+        ) feed ORDER BY occurred_at DESC LIMIT 20`;
+      const feedResult = await safeQueryWithDemoFilter(
+        pool,
+        feedSqlWithIsDemo,
+        demo ? `SELECT NULL::text AS kind, NULL::text AS id, NULL::text AS partner_type, NULL::text AS partner_ref, NULL::text AS display_name, '{}'::jsonb AS details, NULL::timestamptz AS occurred_at, NULL::text AS badge WHERE FALSE` : feedSqlWithoutIsDemo,
         [talent.id],
       );
 
@@ -280,9 +430,51 @@ export function setupRoleRoomTalentPartnersRoutes(
     }
   });
 
+  // ── POST /me/consents/pause ────────────────────────────────────────
+  // Pauser ALL consent for en partner i N dager (default 30).
+  // expires_at settes til now + N dager — automatisk reaktivering ved utløp
+  // er ikke implementert (krever cron); for nå må talent re-grant manuelt.
+  app.post("/api/role-room/talents/me/consents/pause", async (req, res) => {
+    if (isDemoRequest(req)) {
+      return res.status(403).json({ error: "Demo-modus er read-only" });
+    }
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    const { partner_type, partner_ref, days } = (req.body || {}) as {
+      partner_type?: string;
+      partner_ref?: string;
+      days?: number;
+    };
+    if (!partner_type || !partner_ref) return res.status(400).json({ error: "partner_type + partner_ref påkrevd" });
+    const pauseDays = Math.max(1, Math.min(365, Number(days) || 30));
+
+    try {
+      const talent = await fetchTalentForUser(pool, session.userId);
+      if (!talent) return res.status(404).json({ error: "Ingen profil" });
+
+      const r = await pool.query(
+        `UPDATE talent_consent_registry
+            SET expires_at = now() + ($4 || ' days')::interval,
+                updated_at = now()
+          WHERE talent_id = $1 AND partner_type = $2 AND partner_ref = $3
+            AND status = 'granted'
+          RETURNING scope`,
+        [talent.id, partner_type, partner_ref, String(pauseDays)],
+      );
+      return res.json({ ok: true, paused_scopes: r.rows.map((row) => row.scope), days: pauseDays });
+    } catch (err) {
+      console.error("[consents/pause] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å pause", detail: String(err) });
+    }
+  });
+
   // ── POST /me/consents/bulk-set ─────────────────────────────────────
   // Atomisk sett 4 boolske perms for én partner. Trigget av matrix-checkbox.
   app.post("/api/role-room/talents/me/consents/bulk-set", async (req, res) => {
+    if (isDemoRequest(req)) {
+      return res.status(403).json({ error: "Demo-modus er read-only" });
+    }
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
@@ -359,6 +551,9 @@ export function setupRoleRoomTalentPartnersRoutes(
 
   // ── POST /me/partner-invites ────────────────────────────────────────
   app.post("/api/role-room/talents/me/partner-invites", async (req, res) => {
+    if (isDemoRequest(req)) {
+      return res.status(403).json({ error: "Demo-modus er read-only" });
+    }
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
@@ -405,7 +600,65 @@ export function setupRoleRoomTalentPartnersRoutes(
       const origin = (req.headers.origin as string) || `https://${req.headers.host}`;
       invite.acceptUrl = `${origin}/talents/partner-invite?token=${token}`;
       invite.maskedEmail = maskEmail(partner_email);
-      return res.status(201).json({ invite });
+
+      // Send e-post automatisk via Resend/SMTP. Hvis ikke konfigurert,
+      // returneres emailSent=false — frontend faller tilbake til mailto.
+      const subject = `${talent.display_name} inviterer deg til The Role Room Talents`;
+      const acceptUrl = invite.acceptUrl as string;
+      const text = `Hei,
+
+${talent.display_name} har gitt deg tilgang til sin talent-profil på The Role Room Talents.
+
+${message ? `Personlig melding:\n"${message}"\n\n` : ""}Klikk lenken under for å akseptere — du logger inn og får tilgangen umiddelbart:
+
+${acceptUrl}
+
+Lenken er gyldig i 30 dager.
+
+Mvh
+The Role Room Talents
+`;
+      const html = `<!doctype html>
+<html><body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 580px; margin: 0 auto; padding: 32px 20px; background: #0a0118; color: #f5f3ff;">
+  <div style="background: #150b2e; border: 1px solid rgba(168,85,247,0.18); border-radius: 16px; padding: 32px;">
+    <div style="color: #c084fc; font-size: 12px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 12px;">
+      Invitasjon fra The Role Room Talents
+    </div>
+    <h1 style="color: #f5f3ff; font-size: 22px; font-weight: 800; margin: 0 0 16px;">
+      ${(talent.display_name as string).replace(/[<>&"']/g, (c) => ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c] || c))} inviterer deg
+    </h1>
+    ${message ? `<div style="margin: 20px 0; padding: 14px 18px; background: #1a0f3a; border-left: 3px solid #a855f7; border-radius: 0 8px 8px 0;">
+      <div style="color: #8b7ec4; font-size: 12px; margin-bottom: 4px;">Personlig melding:</div>
+      <div style="color: #c4b5fd; font-style: italic; font-size: 15px;">"${String(message).replace(/[<>&"']/g, (c) => ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c] || c))}"</div>
+    </div>` : ""}
+    <p style="color: #c4b5fd; line-height: 1.6; margin: 16px 0;">
+      Logg inn for å akseptere — du får tilgangen umiddelbart og kan organisere talent-data i ditt agency-dashbord.
+    </p>
+    <a href="${acceptUrl.replace(/"/g, "&quot;")}" style="display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #a855f7 0%, #d946ef 100%); color: #fff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 16px; margin: 12px 0;">
+      Aksepter invitasjonen
+    </a>
+    <p style="color: #8b7ec4; font-size: 12px; margin-top: 32px;">
+      Invitasjonen utløper om 30 dager. The Role Room Talents · Creatorhub AS · <a href="https://theroleroom.com/privacy" style="color: #c084fc;">Personvern</a>
+    </p>
+  </div>
+</body></html>`;
+
+      const emailResult = await sendTransactionalEmail({
+        to: partner_email.trim(),
+        subject,
+        html,
+        text,
+        fromLabel: `${talent.display_name} via The Role Room Talents`,
+        kind: "talent_partner_invite",
+        sentByUserId: session.userId,
+        pool,
+      });
+
+      return res.status(201).json({
+        invite,
+        emailSent: emailResult.sent,
+        emailReason: emailResult.sent ? undefined : emailResult.reason,
+      });
     } catch (err) {
       console.error("[partner-invites POST] failed", err);
       return res.status(500).json({ error: "Klarte ikke å opprette invite", detail: String(err) });

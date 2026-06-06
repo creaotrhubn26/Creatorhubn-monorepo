@@ -50,7 +50,7 @@
         <span>The Role Room — Creatorhub AS</span>
       </header>
       <h1>Personvern­erklæring</h1>
-      <p class="muted">Sist oppdatert: 18. april 2026 · Behandlings­ansvarlig: Creatorhub AS, org.nr 937 518 684</p>
+      <p class="muted">Sist oppdatert: 31. mai 2026 · Behandlings­ansvarlig: Creatorhub AS, org.nr 937 518 684</p>
 
       <div class="toc">
         <strong>Innhold</strong>
@@ -60,9 +60,10 @@
           <li><a href="#tredjepart">3. Tredjeparts­tjenester og infrastruktur</a></li>
           <li><a href="#instagram">4. Instagram-data — detaljert</a></li>
           <li><a href="#annonser">5. Annonser og ads-data</a></li>
-          <li><a href="#hvor-lenge">6. Hvor lenge</a></li>
-          <li><a href="#dine-rettigheter">7. Dine rettigheter (GDPR)</a></li>
-          <li><a href="#kontakt">8. Kontakt</a></li>
+          <li><a href="#talents">6. Talents-portalen — talent-profiler, samtykke, media</a></li>
+          <li><a href="#hvor-lenge">7. Hvor lenge</a></li>
+          <li><a href="#dine-rettigheter">8. Dine rettigheter (GDPR)</a></li>
+          <li><a href="#kontakt">9. Kontakt</a></li>
         </ul>
       </div>
 
@@ -231,26 +232,75 @@
         handling utløses uten klient-styrt opt-in.
       </p>
 
-      <h2 id="hvor-lenge">6. Hvor lenge</h2>
+      <h2 id="talents">6. Talents-portalen — talent-profiler, samtykke, media</h2>
+      <p>
+        Hvis du er <strong>skuespiller, danser eller annen utøver</strong> som
+        registrerer en profil på <code>/talents</code>, behandles dataene dine
+        under en separat, samtykke-styrt modell:
+      </p>
+
+      <h3>Hva vi lagrer i din talent-profil</h3>
+      <ul>
+        <li><strong>Profil-data</strong> du selv fyller ut: visningsnavn, e-post, by, bio, spille-alder, kjønn, høyde, hår-/øyenfarge, ferdigheter, språk, dialekter, tilgjengelighet</li>
+        <li><strong>Media</strong> du laster opp: headshot, showreel-video, CV (PDF)</li>
+        <li><strong>Eier-kobling</strong>: din bruker-ID er eneeier av profilen (<code>owner_user_id</code>). Demo-profiler (Ingrid Nilsen) er isolerte fra dine ekte data via en <code>is_demo</code>-flagg.</li>
+      </ul>
+
+      <h3>Samtykke per partner per scope</h3>
+      <p>
+        Vi deler <strong>ingenting</strong> med casting-byråer, sentre, produsenter eller individuelle castere uten ditt eksplisitte samtykke. Hver gang du gir en partner tilgang lagrer vi en rad i <code>talent_consent_registry</code> med:
+      </p>
+      <ul>
+        <li>Hvilken partner (type + ID — eks. Stella Casting AS, Norsk Skuespillersenter)</li>
+        <li>Hvilken scope (basis-profil, media-portfolio, kontaktinfo, demografi, tilgjengelighet, audition-invitasjoner, self-tape, eller full profil)</li>
+        <li>Når du ga samtykke + valgfri utløpsdato</li>
+        <li>Status (granted, paused, revoked) — du kan trekke når som helst med ett klikk</li>
+      </ul>
+      <p>Granular samtykke — hvis du gir Stella "kun media-portfolio", ser de IKKE kontaktinfo eller demografi.</p>
+
+      <h3>Audit-logg: hvem har sett profilen din</h3>
+      <p>
+        Hver gang en partner åpner profilen din eller laster ned media, logger vi det i <code>talent_access_audit</code>. Du ser denne loggen på <code>/talents/aktivitet</code> (aggregert per partner og dag, siste 90 dager). Vi rydder loggen etter 12 måneder automatisk.
+      </p>
+
+      <h3>Media-lagring (Cloudflare R2 + Stream)</h3>
+      <ul>
+        <li><strong>Headshot, alternativ-foto, CV (PDF):</strong> Cloudflare R2 i bucket <code>casting-videos</code>. Filer lagres under <code>talents/{talent-id}/{kind}/{uuid}-{filename}</code>. Hver fil har metadata: talent-ID, opplaster, opplastnings-tid.</li>
+        <li><strong>Showreel-video:</strong> Cloudflare Stream — auto-transkodet til adaptive bitrate (HLS/DASH), spilt av via innebygd iframe-player. Stream lagrer i Cloudflares EU-region.</li>
+        <li><strong>Streaming-tilkobling direkte</strong> — backend ser aldri filebytes. Vi genererer en signert PUT-URL og din nettleser streamer filen direkte til Cloudflare.</li>
+        <li><strong>Tilgang til media</strong> er gated per consent: en partner kan ikke laste ned din headshot uten en aktiv <code>media_portfolio</code>- eller <code>full_profile</code>-scope.</li>
+        <li>Cloudflare har EU-jurisdiksjon for R2 og Stream. Standard personvernklausuler (SCC) er på plass.</li>
+      </ul>
+
+      <h3>Dine rettigheter på Talents-portalen</h3>
+      <ul>
+        <li><strong>Last ned data</strong> (GDPR art. 20): Innstillinger → "Last ned mine data" gir deg en JSON-fil med profil, alle consents, alle invitasjoner, hele audit-loggen, og alle stream-uploads.</li>
+        <li><strong>Slett alt</strong> (GDPR art. 17): Innstillinger → "Slett kontoen min" sletter profilen, alle R2-filer (bulk delete via S3 API), alle Cloudflare Stream-videoer (DELETE via Stream API), og CASCADE-sletter consents/invitasjoner/audit-logg. Du må skrive <code>SLETT MIN PROFIL</code> for å bekrefte. Endelig — kan ikke angres.</li>
+        <li><strong>Trekk én partners tilgang</strong>: Partnere-siden → 3-prikker-meny → "Trekk all tilgang" (umiddelbart effektivt). Eller "Pause i 30 dager" som setter en utløpsdato.</li>
+      </ul>
+
+      <h2 id="hvor-lenge">7. Hvor lenge</h2>
       <ul>
         <li>Konto-data: så lenge du er kunde + 90 dager etter sletting</li>
         <li>AI-samtale­logger: 90 dager (deretter anonymiseres)</li>
-        <li>Audit-logger: 6 måneder etter sletting (compliance)</li>
+        <li>Talent-audit-logg: <strong>12 måneder</strong> — sweep automatisk</li>
+        <li>Talent-consent-historikk: så lenge du er medlem + 90 dager etter sletting (compliance)</li>
+        <li>Audit-logger generelt: 6 måneder etter sletting (compliance)</li>
         <li>Stripe-fakturaer: 5 år (norsk bokføringslov § 13)</li>
         <li>Instagram tokens: så lenge du er koblet til + slettes umiddelbart ved tilbakekalling</li>
       </ul>
 
-      <h2 id="dine-rettigheter">7. Dine rettigheter (GDPR)</h2>
+      <h2 id="dine-rettigheter">8. Dine rettigheter (GDPR)</h2>
       <p>Du har rett til:</p>
       <ul>
         <li><strong>Innsyn</strong> — be om kopi av all data vi har om deg</li>
         <li><strong>Korrigering</strong> — rette feil opplysninger</li>
-        <li><strong>Sletting</strong> — be om sletting (se <a href="/data-deletion">data-slettings­side</a>)</li>
-        <li><strong>Dataportabilitet</strong> — eksport av dine prosjekter og caption-historikk i JSON</li>
+        <li><strong>Sletting</strong> — be om sletting (se <a href="/data-deletion">data-slettings­side</a>, eller for Talents: Innstillinger → "Slett kontoen min")</li>
+        <li><strong>Dataportabilitet</strong> — eksport av dine prosjekter, caption-historikk og Talents-profil i JSON</li>
         <li><strong>Klage til Datatilsynet</strong> — <a href="https://datatilsynet.no" target="_blank" rel="noreferrer">datatilsynet.no</a></li>
       </ul>
 
-      <h2 id="kontakt">8. Kontakt</h2>
+      <h2 id="kontakt">9. Kontakt</h2>
       <p>
         Personvern­spørsmål: <a href="mailto:privacy@theroleroom.com">privacy@theroleroom.com</a><br />
         Generell kontakt: <a href="mailto:hello@theroleroom.com">hello@theroleroom.com</a><br />

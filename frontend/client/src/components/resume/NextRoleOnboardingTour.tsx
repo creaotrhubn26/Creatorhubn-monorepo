@@ -225,7 +225,7 @@ export const NextRoleOnboardingTour: React.FC<Props> = ({
           zIndex: 8002,
           p: 2,
           borderRadius: 2,
-          bgcolor: '#fff',
+          bgcolor: 'rgba(255,255,255,0.04)',
           border: '2px solid #F5B82E',
         }}
       >

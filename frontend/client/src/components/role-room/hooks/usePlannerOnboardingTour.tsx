@@ -22,6 +22,12 @@ interface PlannerOnboardingTourOptions {
   onFocusWorkflowStepper?: () => void;
   /** Kalles når bruker klikker action på "Send til klient"-tip. */
   onShowClientReview?: () => void;
+  /**
+   * Om workflow-stepperen (Brief → Story → …) faktisk rendres. Den vises kun i
+   * content_producer-modus; i produksjonsteam-modus finnes den ikke, så steg 2
+   * må omformuleres for å ikke peke på noe som ikke er der. Default true.
+   */
+  hasWorkflowStepper?: boolean;
 }
 
 const STEP_DELAY_MS = 6000;
@@ -33,6 +39,7 @@ export function usePlannerOnboardingTour(options: PlannerOnboardingTourOptions):
     onOpenCommandPalette,
     onFocusWorkflowStepper,
     onShowClientReview,
+    hasWorkflowStepper = true,
   } = options;
 
   const ai = useAIRecommendation({ userKey });
@@ -53,12 +60,18 @@ export function usePlannerOnboardingTour(options: PlannerOnboardingTourOptions):
       });
     }, 4000);
 
-    // Steg 2: Workflow-stepper (etter ca. 10s — gir bruker tid til å registrere steg 1)
+    // Steg 2: Workflow-orientering (etter ca. 10s — gir bruker tid til å registrere steg 1).
+    // Produksjonsteam-modus har ingen stepper øverst, så meldingen tilpasses for
+    // ikke å peke på noe som ikke finnes.
     const t2 = window.setTimeout(() => {
       ai.recommend({
-        recommendationId: 'tour-step-2-workflow',
-        message: 'Følg pipelinen Brief → Story → Storyboard → Klient → Levering øverst. Klikkbar.',
-        actionLabel: 'Vis meg',
+        recommendationId: hasWorkflowStepper
+          ? 'tour-step-2-workflow'
+          : 'tour-step-2-workflow-production-team',
+        message: hasWorkflowStepper
+          ? 'Følg pipelinen Brief → Story → Storyboard → Klient → Levering øverst. Klikkbar.'
+          : 'Velg en flate i Story Arc-oversikten for å begynne — f.eks. Story Writer for å skrive manus.',
+        actionLabel: hasWorkflowStepper ? 'Vis meg' : 'Til toppen',
         onAction: onFocusWorkflowStepper,
         durationMs: 12000,
       });

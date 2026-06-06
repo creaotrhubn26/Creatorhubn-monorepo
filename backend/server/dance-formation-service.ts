@@ -36,6 +36,20 @@ export interface FormationInput {
   transitionNote?: string | null;
   tags?: string[];
   transitionPaths?: DancerTransitionPath[];
+  /** Migrasjon 214 (G14): lock-feltet — pucks ikke draggable, delete refuserer. */
+  locked?: boolean;
+  /**
+   * Migrasjon 215 (A2): optimistic concurrency-control. Klient kan sende
+   * version-tallet de leste; UPDATE refuseres (FormationVersionConflictError)
+   * hvis server-version har bevegd seg. Når undefined hopper vi over
+   * conflict-check og kjører som siste-skriver-vinner (bakover-kompatibel).
+   */
+  expectedVersion?: number;
+  /**
+   * Migrasjon 216 (G26): gruppe-label for formasjonen ('Intro', 'Vers 1',
+   * 'Refreng', 'Bridge'). NULL = ingen seksjon. Display-only metadata.
+   */
+  sectionName?: string | null;
 }
 
 export interface FormationPatch extends Partial<FormationInput> {}
@@ -56,8 +70,22 @@ export interface FormationRecord {
   transitionNote: string | null;
   tags: string[];
   transitionPaths: DancerTransitionPath[];
+  /** Migrasjon 214 (G14). */
+  locked: boolean;
+  /** Migrasjon 215 (A2): optimistic concurrency. Bumpes ved hver UPDATE. */
+  version: number;
+  /** Migrasjon 216 (G26): gruppe-label. */
+  sectionName: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A2: spesial-feil for å skille concurrent-conflict fra andre feil. */
+export class FormationVersionConflictError extends Error {
+  constructor(public readonly id: string, public readonly serverVersion: number, public readonly clientVersion: number) {
+    super(`Version conflict on formation ${id}: server=${serverVersion} client=${clientVersion}`);
+    this.name = 'FormationVersionConflictError';
+  }
 }
 
 // ─── Mapping ────────────────────────────────────────────────────────────
@@ -148,6 +176,13 @@ function mapRow(row: Record<string, unknown>): FormationRecord {
     transitionNote: row.transition_note == null ? null : String(row.transition_note),
     tags: asStringArray(row.tags),
     transitionPaths: asTransitionPaths(row.transition_paths),
+    // Migrasjon 214: defaultes til false. Eldre records (pre-migration) som
+    // returnerer NULL/undefined får automatisk false via JS-coercion.
+    locked: row.locked === true,
+    // Migrasjon 215 (A2): version-counter. Defaultes til 1 for kompabilitet.
+    version: asNumberOr(row.version, 1),
+    // Migrasjon 216 (G26): section-label
+    sectionName: row.section_name == null ? null : String(row.section_name),
     createdAt: isoTs(row.created_at),
     updatedAt: isoTs(row.updated_at),
   };
@@ -225,9 +260,10 @@ export async function createFormation(
        id, owner_user_id, project_id, label, notes,
        stage_width_m, stage_depth_m, dancer_positions,
        transition_from_id, display_order,
-       start_sec, end_sec, transition_note, tags, transition_paths
+       start_sec, end_sec, transition_note, tags, transition_paths,
+       locked, section_name
      )
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      RETURNING *`,
     [
       id,
@@ -245,6 +281,8 @@ export async function createFormation(
       input.transitionNote ?? null,
       JSON.stringify(input.tags ?? []),
       JSON.stringify(input.transitionPaths ?? []),
+      input.locked === true,
+      input.sectionName ?? null,
     ],
   );
   return mapRow(rows[0]);
@@ -277,6 +315,8 @@ export async function patchFormation(
   if (patch.transitionNote !== undefined) push('transition_note', patch.transitionNote);
   if (patch.tags !== undefined) push('tags', JSON.stringify(patch.tags));
   if (patch.transitionPaths !== undefined) push('transition_paths', JSON.stringify(patch.transitionPaths));
+  if (patch.locked !== undefined) push('locked', patch.locked === true);
+  if (patch.sectionName !== undefined) push('section_name', patch.sectionName ?? null);
 
   if (sets.length === 0) return getFormation(pool, ownerUserId, id);
 
@@ -293,11 +333,23 @@ export async function patchFormation(
   return mapRow(rows[0]);
 }
 
+/** Returverdi-diskriminator for delete: 'deleted', 'not_found', 'locked'. */
+export type DeleteFormationResult = 'deleted' | 'not_found' | 'locked';
+
 export async function deleteFormation(
   pool: Pool,
   ownerUserId: string,
   id: string,
-): Promise<boolean> {
+): Promise<DeleteFormationResult> {
+  // Migrasjon 214 (G14): refuser slett hvis formasjonen er låst.
+  const { rows: locks } = await pool.query(
+    `SELECT locked FROM dance_formation
+     WHERE owner_user_id = $1 AND id = $2`,
+    [ownerUserId, id],
+  );
+  if (locks.length === 0) return 'not_found';
+  if (locks[0].locked === true) return 'locked';
+
   // Null out any transition_from_id pointers TO this formation so we don't
   // leave dangling references (no FK constraint, just data hygiene).
   await pool.query(
@@ -310,7 +362,7 @@ export async function deleteFormation(
     `DELETE FROM dance_formation WHERE owner_user_id = $1 AND id = $2`,
     [ownerUserId, id],
   );
-  return (rowCount ?? 0) > 0;
+  return (rowCount ?? 0) > 0 ? 'deleted' : 'not_found';
 }
 
 /**
@@ -359,7 +411,10 @@ export async function replaceFormations(
       const order = f.displayOrder ?? i;
 
       if (existingIds.has(id)) {
-        const { rows } = await client.query(
+        // A2: hvis expectedVersion er satt, bruk CAS-pattern. WHERE-clausen
+        // sjekker version = expected; rowCount = 0 betyr conflict.
+        const useCAS = typeof f.expectedVersion === 'number';
+        const { rows, rowCount } = await client.query(
           `UPDATE dance_formation SET
              label = $3, notes = $4,
              stage_width_m = $5, stage_depth_m = $6,
@@ -372,26 +427,61 @@ export async function replaceFormations(
              transition_note = $13,
              tags = $14,
              transition_paths = $15,
+             locked = $16,
+             section_name = $17,
+             version = version + 1,
              updated_at = now()
            WHERE owner_user_id = $1 AND id = $2
+             ${useCAS ? 'AND version = $18' : ''}
            RETURNING *`,
-          [
-            ownerUserId, id,
-            f.label,
-            f.notes ?? null,
-            f.stageWidthM ?? 12.0,
-            f.stageDepthM ?? 8.0,
-            JSON.stringify(f.positions ?? []),
-            f.transitionFromId ?? null,
-            order,
-            projectId,
-            f.startSec ?? null,
-            f.endSec ?? null,
-            f.transitionNote ?? null,
-            JSON.stringify(f.tags ?? []),
-            JSON.stringify(f.transitionPaths ?? []),
-          ],
+          useCAS
+            ? [
+                ownerUserId, id,
+                f.label,
+                f.notes ?? null,
+                f.stageWidthM ?? 12.0,
+                f.stageDepthM ?? 8.0,
+                JSON.stringify(f.positions ?? []),
+                f.transitionFromId ?? null,
+                order,
+                projectId,
+                f.startSec ?? null,
+                f.endSec ?? null,
+                f.transitionNote ?? null,
+                JSON.stringify(f.tags ?? []),
+                JSON.stringify(f.transitionPaths ?? []),
+                f.locked === true,
+                f.sectionName ?? null,
+                f.expectedVersion,
+              ]
+            : [
+                ownerUserId, id,
+                f.label,
+                f.notes ?? null,
+                f.stageWidthM ?? 12.0,
+                f.stageDepthM ?? 8.0,
+                JSON.stringify(f.positions ?? []),
+                f.transitionFromId ?? null,
+                order,
+                projectId,
+                f.startSec ?? null,
+                f.endSec ?? null,
+                f.transitionNote ?? null,
+                JSON.stringify(f.tags ?? []),
+                JSON.stringify(f.transitionPaths ?? []),
+                f.locked === true,
+                f.sectionName ?? null,
+              ],
         );
+        if ((rowCount ?? 0) === 0 && useCAS) {
+          // Conflict: server har annen versjon enn klient forventet
+          const { rows: cur } = await client.query(
+            `SELECT version FROM dance_formation WHERE owner_user_id = $1 AND id = $2`,
+            [ownerUserId, id],
+          );
+          const serverVersion = cur.length > 0 ? asNumberOr(cur[0].version, 0) : 0;
+          throw new FormationVersionConflictError(id, serverVersion, f.expectedVersion ?? 0);
+        }
         written.push(mapRow(rows[0]));
       } else {
         const { rows } = await client.query(
@@ -399,9 +489,10 @@ export async function replaceFormations(
              id, owner_user_id, project_id, label, notes,
              stage_width_m, stage_depth_m, dancer_positions,
              transition_from_id, display_order,
-             start_sec, end_sec, transition_note, tags, transition_paths
+             start_sec, end_sec, transition_note, tags, transition_paths,
+             locked, section_name
            )
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
            RETURNING *`,
           [
             id, ownerUserId, projectId,
@@ -417,6 +508,8 @@ export async function replaceFormations(
             f.transitionNote ?? null,
             JSON.stringify(f.tags ?? []),
             JSON.stringify(f.transitionPaths ?? []),
+            f.locked === true,
+            f.sectionName ?? null,
           ],
         );
         written.push(mapRow(rows[0]));
@@ -424,9 +517,24 @@ export async function replaceFormations(
     }
 
     // Delete formations that the client removed.
-    const toDelete: string[] = [];
+    // Migrasjon 214 (G14): låste formasjoner får IKKE slettes selv via
+    // replace-flyten. Filtrer dem ut av to-delete (de blir værende).
+    const candidates: string[] = [];
     for (const id of existingIds) {
-      if (!incomingIds.has(id)) toDelete.push(id);
+      if (!incomingIds.has(id)) candidates.push(id);
+    }
+    let toDelete: string[] = candidates;
+    if (candidates.length > 0) {
+      const { rows: lockedRows } = await client.query(
+        `SELECT id FROM dance_formation
+         WHERE owner_user_id = $1 AND id = ANY($2::text[]) AND locked = true`,
+        [ownerUserId, candidates],
+      );
+      const lockedSet = new Set<string>(lockedRows.map((r: Record<string, unknown>) => String(r.id)));
+      toDelete = candidates.filter((id) => !lockedSet.has(id));
+      // Låste formasjoner som klienten "fjernet" må også returneres så
+      // klienten ser at de fortsatt finnes — refresh-en henter dem uansett
+      // ved neste GET, så vi trenger ikke gjøre noe ekstra her.
     }
     if (toDelete.length > 0) {
       await client.query(

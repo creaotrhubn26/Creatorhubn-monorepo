@@ -103,6 +103,8 @@ import AdminAnalyticsHub from './AdminAnalyticsHub';
 import AdminAICostDashboard from './AdminAICostDashboard';
 import AdminDesignTokensPanel from './AdminDesignTokensPanel';
 import BillingManagementPanel from './BillingManagementPanel';
+import UserCostOverviewPanel from './UserCostOverviewPanel';
+import SecretsRotationPanel from './SecretsRotationPanel';
 import { GDPRCompliancePanel } from './GDPRCompliancePanel';
 import IntegrationsManagementPanel from './IntegrationsManagementPanel';
 import CreatorhubVisualEditorRefactored from './CreatorhubVisualEditorRefactored';
@@ -113,6 +115,7 @@ import ReportsPanel from './ReportsPanel';
 import AutomatedBusinessReports from './AutomatedBusinessReports';
 import PrototypeFeedbackPanel from './PrototypeFeedbackPanel';
 import SystemBackupDashboard from './SystemBackupDashboard';
+import B2ArchiveTab from './B2ArchiveTab';
 import CreatorHubNotes from './Creatorhubnotesnew';
 import AdvancedNotesManager from './AdvancedNotesManager';
 import DocumentationBrowser from './DocumentationBrowser';
@@ -895,6 +898,7 @@ export default function AdminDashboard({
     { id: 'prototype-feedback', label: 'Prototype Feedback', icon: Feedback },
     { id: 'okonomi', label: 'Økonomi', icon: AttachMoney },
     { id: 'price-management', label: 'Prisstyring', icon: AttachMoney },
+    { id: 'user-costs', label: 'Bruker-kostnader', icon: AttachMoney },
     { id: 'marketplace-apps', label: 'Marketplace-apper', icon: Storefront },
     { id: 'analytics-hub', label: 'Analytics Hub', icon: Assessment },
     { id: 'ai-cost', label: 'AI-kostnader', icon: Psychology },
@@ -908,8 +912,10 @@ export default function AdminDashboard({
     { id: 'feature-management', label: 'Funksjonsflagg', icon: ToggleOn },
     { id: 'centralized-monitoring', label: 'Sentralisert Overvåkning', icon: Assessment },
     { id: 'protokollstyring', label: 'Protokollstyring', icon: Security },
+    { id: 'secrets-rotation', label: 'Nøkkel-rotering', icon: Security },
     { id: 'drift-helse', label: 'Drift', icon: Settings },
     { id: 'system-backup', label: 'Backup', icon: Storage },
+    { id: 'b2-archive', label: 'B2-arkiv', icon: Storage },
     { id: 'gdpr-compliance', label: 'GDPR', icon: Security },
     { id: 'development-tools', label: 'Utvikling', icon: AutoAwesome },
     { id: 'automations', label: 'Automatisering', icon: AutoAwesome },
@@ -943,13 +949,13 @@ export default function AdminDashboard({
     {
       label: 'Forretning',
       items: adminTabs.filter((tab) =>
-        ['okonomi', 'price-management', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'profession-types'].includes(tab.id),
+        ['okonomi', 'price-management', 'user-costs', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'profession-types'].includes(tab.id),
       ),
     },
     {
       label: 'Plattform',
       items: adminTabs.filter((tab) =>
-        ['integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
+        ['integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'secrets-rotation', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
       ),
     },
     {
@@ -973,6 +979,7 @@ export default function AdminDashboard({
     'prototype-feedback': 'Samle produktinnsikt, tester og prioritering fra prototyper.',
     okonomi: 'Følg inntekter, utbetalinger og operativ økonomi.',
     'price-management': 'Juster prismodeller og kommersielle satser på tvers av tilbud.',
+    'user-costs': 'Per-bruker oversikt over lagring, AI-kost, totalkost og margin til CreatorHub.',
     reports: 'Analyser utvikling, rapporter og forretningssignaler.',
     academy: 'Styr Academy-økonomi, instruktører og utbetalingsflyt.',
     'tidum-tilganger': 'Behandle Tidum-forespørsler, knytt dem til virksomheter og hold tilgangssynken samlet i CreatorHub.',
@@ -982,6 +989,7 @@ export default function AdminDashboard({
     'feature-management': 'Kontroller funksjonsflagg og plattformtilgang.',
     'centralized-monitoring': 'Se overvåkning, alarmer og kritiske hendelser samlet.',
     protokollstyring: 'Styr interne protokoller, rutiner og push-konfigurasjon.',
+    'secrets-rotation': 'Spor når Stripe-/Cloudflare-/Render-nøkler ble rotert sist; varsel ved forfall.',
     'drift-helse': 'Overvåk tjenestehelse, kapasitet og systemstatus.',
     'system-backup': 'Administrer sikkerhetskopier og gjenoppretting.',
     'gdpr-compliance': 'Følg personvernkrav, sletterutiner og samsvar.',
@@ -1117,7 +1125,7 @@ export default function AdminDashboard({
   if (userLoading) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Card sx={{ p: 4, textAlign: 'center' }}>
+        <Card sx={{ p: 2.5, textAlign: 'center' }}>
           <LinearProgress sx={{ mb: 2 }} />
           <Typography variant="h6" gutterBottom>
             Sjekker brukerrettigheter...
@@ -1134,7 +1142,7 @@ export default function AdminDashboard({
   if (userError || !currentUser) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Card sx={{ p: 4, textAlign: 'center' }}>
+        <Card sx={{ p: 2.5, textAlign: 'center' }}>
           <Security sx={{ fontSize: 64, color: 'warning.main', mb: 2 }} />
           <Typography variant="h5" gutterBottom>
             Autentisering påkrevd
@@ -1160,7 +1168,7 @@ export default function AdminDashboard({
   if (!currentUser.isAdmin) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Card sx={{ p: 4, textAlign: 'center' }}>
+        <Card sx={{ p: 2.5, textAlign: 'center' }}>
           <Security sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
           <Typography variant="h5" gutterBottom>
             Ingen tilgang til Admin Dashboard
@@ -1204,7 +1212,7 @@ export default function AdminDashboard({
               borderRadius: '24px',
               border: '1px solid #eadfce',
               background:
-                'linear-gradient(135deg, rgba(255, 248, 237, 0.96), rgba(255, 255, 255, 0.98))',
+                'linear-gradient(135deg, rgba(255, 248, 237, 0.96), rgba(255,255,255,0.04))',
               boxShadow: '0 22px 44px rgba(27, 21, 12, 0.06)',
             }}
           >
@@ -1333,7 +1341,7 @@ export default function AdminDashboard({
                         px: 1.75,
                         py: 1.5,
                         bgcolor: card.background,
-                        border: '1px solid rgba(15, 23, 42, 0.04)',
+                        border: '1px solid rgba(255,255,255,0.04)',
                       }}
                     >
                       <Typography sx={{ fontSize: '0.72rem', color: '#766d61', fontWeight: 700 }}>
@@ -1397,7 +1405,7 @@ export default function AdminDashboard({
           >
             <CardContent>
               <Typography variant="h6">Plattformgebyrer (20%)</Typography>
-              <Typography variant="h3" sx={{ fontWeight: 700, my: 2 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
                 5,000
               </Typography>
               <Typography variant="body2">NOK denne måneden</Typography>
@@ -1414,7 +1422,7 @@ export default function AdminDashboard({
           >
             <CardContent>
               <Typography variant="h6">Totale Kursregistreringer</Typography>
-              <Typography variant="h3" sx={{ fontWeight: 700, my: 2 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
                 50
               </Typography>
               <Typography variant="body2">studenter denne måneden</Typography>
@@ -1431,7 +1439,7 @@ export default function AdminDashboard({
           >
             <CardContent>
               <Typography variant="h6">Aktive Instruktører</Typography>
-              <Typography variant="h3" sx={{ fontWeight: 700, my: 2 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
                 5
               </Typography>
               <Typography variant="body2">med aktive kurs</Typography>
@@ -1798,6 +1806,10 @@ export default function AdminDashboard({
             initialSection={priceManagementSection}
           />
         );
+      case 'user-costs':
+        return <UserCostOverviewPanel />;
+      case 'secrets-rotation':
+        return <SecretsRotationPanel />;
       case 'marketplace-apps':
         return <MarketplaceAppConfigManager />;
       case 'analytics-hub':
@@ -1857,6 +1869,8 @@ export default function AdminDashboard({
         );
       case 'system-backup':
         return <SystemBackupDashboard {...sharedPanelProps} />;
+      case 'b2-archive':
+        return <B2ArchiveTab />;
       case 'gdpr-compliance':
         return <GDPRCompliancePanel />;
       case 'development-tools':

@@ -298,7 +298,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
                 <Stack direction="row" alignItems="center" spacing={0.6}>
                   <Chip
                     size="small"
-                    label={o.kind === 'winner' ? `🏆 Winner z=${o.zScore}` : `⚠️ Concern z=${o.zScore}`}
+                    label={o.kind === 'winner' ? `Vinner z=${o.zScore}` : `Bekymring z=${o.zScore}`}
                     sx={{
                       bgcolor: o.kind === 'winner' ? 'rgba(52,211,153,0.18)' : 'rgba(248,113,113,0.18)',
                       color: o.kind === 'winner' ? '#bbf7d0' : '#fecaca',

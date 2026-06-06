@@ -194,7 +194,10 @@ export function setupPhotographerClientsRoutes(
     try {
       const clientRow = await pool.query(
         `SELECT id, email, first_name, last_name, phone, address, city,
-                postal_code, notes, preferences, created_at, updated_at
+                postal_code, notes, preferences,
+                COALESCE(customer_type, 'person') AS customer_type,
+                organization_number,
+                created_at, updated_at
            FROM clients
           WHERE id = $1 AND photographer_id = $2
           LIMIT 1`,
@@ -265,6 +268,8 @@ export function setupPhotographerClientsRoutes(
           postalCode: c.postal_code ?? null,
           notes: c.notes ?? null,
           preferences: c.preferences ?? null,
+          customerType: (c.customer_type ?? 'person') as 'person' | 'company',
+          organizationNumber: c.organization_number ?? null,
           createdAt: c.created_at,
           updatedAt: c.updated_at,
         },
@@ -329,20 +334,30 @@ export function setupPhotographerClientsRoutes(
       city,
       postalCode,
       notes,
+      customerType,
+      organizationNumber,
     } = req.body ?? {};
+
+    // Valider customer_type — eneste lovlige verdier er 'person' og 'company'.
+    const validCustomerType =
+      customerType === 'person' || customerType === 'company'
+        ? customerType
+        : null;
 
     try {
       const result = await pool.query(
         `UPDATE clients
-            SET first_name  = COALESCE($1, first_name),
-                last_name   = COALESCE($2, last_name),
-                phone       = COALESCE($3, phone),
-                address     = COALESCE($4, address),
-                city        = COALESCE($5, city),
-                postal_code = COALESCE($6, postal_code),
-                notes       = COALESCE($7, notes),
-                updated_at  = NOW()
-          WHERE id = $8 AND photographer_id = $9`,
+            SET first_name         = COALESCE($1, first_name),
+                last_name          = COALESCE($2, last_name),
+                phone              = COALESCE($3, phone),
+                address            = COALESCE($4, address),
+                city               = COALESCE($5, city),
+                postal_code        = COALESCE($6, postal_code),
+                notes              = COALESCE($7, notes),
+                customer_type      = COALESCE($8, customer_type),
+                organization_number = COALESCE($9, organization_number),
+                updated_at         = NOW()
+          WHERE id = $10 AND photographer_id = $11`,
         [
           firstName ?? null,
           lastName ?? null,
@@ -351,6 +366,8 @@ export function setupPhotographerClientsRoutes(
           city ?? null,
           postalCode ?? null,
           notes ?? null,
+          validCustomerType,
+          typeof organizationNumber === 'string' ? organizationNumber : null,
           clientId,
           photographerId,
         ],

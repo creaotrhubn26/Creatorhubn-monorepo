@@ -13,6 +13,7 @@
  * Persistens og samarbeid kommer i en senere PR. Ingen backend-kall.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import {
   Box,
@@ -340,8 +341,8 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
     <Box
       data-testid="choreography-builder"
       sx={{
-        bgcolor: '#0a0a0a',
-        color: '#e5e7eb',
+        bgcolor: danceFlowColors.bgBase,
+        color: danceFlowColors.textSecondary,
         minHeight: '100vh',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',
         display: 'flex',
@@ -354,7 +355,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
           px: 3,
           py: 2,
           borderBottom: '1px solid #1e2536',
-          bgcolor: '#0f1318',
+          bgcolor: danceFlowColors.bgPanel,
           display: 'flex',
           alignItems: 'center',
           gap: 2,
@@ -362,13 +363,13 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
         }}
       >
         <Box sx={{ flex: 1, minWidth: 240 }}>
-          <Typography sx={{ fontSize: 10, letterSpacing: 2.5, color: '#a78bfa', fontWeight: 700 }}>
+          <Typography sx={{ fontSize: 10, letterSpacing: 2.5, color: danceFlowColors.lavender, fontWeight: 700 }}>
             {labels.choreographyBuilderTitle.toUpperCase()}
           </Typography>
           <Typography sx={{ fontSize: 18, fontWeight: 800, color: '#fff', mt: 0.25 }}>
             {choreography.title}
           </Typography>
-          <Typography sx={{ fontSize: 11, color: '#9ca3af', mt: 0.25 }}>
+          <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted, mt: 0.25 }}>
             {choreography.choreographer ? `Koreograf: ${choreography.choreographer} · ` : ''}
             {choreography.musicTitle ?? 'Musikk ikke valgt'}
           </Typography>
@@ -389,7 +390,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
               label={musicError}
               sx={{
                 bgcolor: 'rgba(239,68,68,0.18)',
-                color: '#fca5a5',
+                color: danceFlowColors.errorSoft,
                 fontWeight: 600,
                 maxWidth: 240,
               }}
@@ -405,7 +406,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
                 aria-label={isPlaying ? 'Pause' : 'Spill'}
                 sx={{
                   bgcolor: isPlaying ? 'rgba(52,211,153,0.15)' : 'rgba(139,92,246,0.12)',
-                  color: isPlaying ? '#34d399' : '#c4b5fd',
+                  color: isPlaying ? danceFlowColors.successPrimary : danceFlowColors.lavenderLight,
                   border: `1px solid ${isPlaying ? 'rgba(52,211,153,0.4)' : 'rgba(139,92,246,0.4)'}`,
                   '&:hover': { bgcolor: isPlaying ? 'rgba(52,211,153,0.22)' : 'rgba(139,92,246,0.2)' },
                   '&.Mui-disabled': { opacity: 0.45 },
@@ -416,7 +417,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
             </span>
           </Tooltip>
           {playheadSec > 0 && (
-            <Typography sx={{ fontSize: 11, color: '#a78bfa', fontFamily: 'monospace', minWidth: 50 }}>
+            <Typography sx={{ fontSize: 11, color: danceFlowColors.lavender, fontFamily: 'monospace', minWidth: 50 }}>
               {formatTime(playheadSec)}
             </Typography>
           )}
@@ -426,7 +427,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
             variant="contained"
             startIcon={<SaveIcon />}
             onClick={handleSave}
-            sx={{ textTransform: 'none', bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' } }}
+            sx={{ textTransform: 'none', bgcolor: danceFlowColors.lavenderDark, '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
           >
             {labels.choreographyBuilderSaveLabel}
           </Button>
@@ -466,12 +467,12 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
           data-testid="choreo-segment-list"
           sx={{
             borderRight: { lg: '1px solid #1e2536' },
-            bgcolor: '#0a0a0a',
+            bgcolor: danceFlowColors.bgBase,
             overflowY: 'auto',
             p: 1.5,
           }}
         >
-          <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#6b7280', fontWeight: 700, mb: 1 }}>
+          <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: danceFlowColors.textDisabled, fontWeight: 700, mb: 1 }}>
             SEGMENTER ({choreography.segments.length})
           </Typography>
           <Stack spacing={0.5}>
@@ -496,18 +497,18 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
                     p: 1,
                     borderRadius: 1,
                     cursor: 'pointer',
-                    border: `1px solid ${isSel ? meta.color : '#1e2536'}`,
+                    border: `1px solid ${isSel ? meta.color : danceFlowColors.borderStrong}`,
                     bgcolor: isSel ? `${meta.color}1a` : 'transparent',
                     borderLeft: `3px solid ${meta.color}`,
                     transition: 'all 0.15s',
-                    '&:hover': { bgcolor: isSel ? `${meta.color}22` : '#0f1318' },
+                    '&:hover': { bgcolor: isSel ? `${meta.color}22` : danceFlowColors.bgPanel },
                   }}
                 >
                   <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>
                       {seg.label ?? labels[meta.labelToken]}
                     </Typography>
-                    <Typography sx={{ fontSize: 9, color: '#6b7280', fontFamily: 'monospace' }}>
+                    <Typography sx={{ fontSize: 9, color: danceFlowColors.textDisabled, fontFamily: 'monospace' }}>
                       {formatTime(seg.startSec)}
                     </Typography>
                   </Stack>
@@ -517,7 +518,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
                       {labels[energyMeta.labelToken]}
                     </Typography>
                     <Box sx={{ flex: 1 }} />
-                    <Typography sx={{ fontSize: 9, color: '#6b7280' }}>
+                    <Typography sx={{ fontSize: 9, color: danceFlowColors.textDisabled }}>
                       {segmentDuration(seg)}s
                     </Typography>
                   </Stack>
@@ -548,14 +549,14 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
           }}
           sx={{
             overflow: 'auto',
-            bgcolor: '#0a0a0a',
+            bgcolor: danceFlowColors.bgBase,
             p: 2,
             outline: 'none',
             '&:focus-visible': { boxShadow: 'inset 0 0 0 2px rgba(167,139,250,0.4)' },
           }}
         >
           {choreography.segments.length === 0 ? (
-            <Box sx={{ p: 4, textAlign: 'center', color: '#6b7280' }}>
+            <Box sx={{ p: 4, textAlign: 'center', color: danceFlowColors.textDisabled }}>
               <Typography sx={{ fontSize: 14 }}>{labels.choreographyBuilderEmpty}</Typography>
             </Box>
           ) : (
@@ -576,7 +577,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
           data-testid="choreo-inspector"
           sx={{
             borderLeft: { lg: '1px solid #1e2536' },
-            bgcolor: '#0f1318',
+            bgcolor: danceFlowColors.bgPanel,
             overflowY: 'auto',
             p: 2,
           }}
@@ -592,7 +593,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
               onSeekToCount={seekTo}
             />
           ) : (
-            <Typography sx={{ fontSize: 12, color: '#6b7280' }}>
+            <Typography sx={{ fontSize: 12, color: danceFlowColors.textDisabled }}>
               Velg et segment for å se detaljer.
             </Typography>
           )}
@@ -673,10 +674,10 @@ const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
                   pb: 0.25,
                 }}
               >
-                <Typography sx={{ fontSize: 9, color: '#6b7280', fontFamily: 'monospace' }}>
+                <Typography sx={{ fontSize: 9, color: danceFlowColors.textDisabled, fontFamily: 'monospace' }}>
                   {formatTime(t)}
                 </Typography>
-                <Box sx={{ width: 1, height: 4, bgcolor: '#374151', mx: 'auto' }} />
+                <Box sx={{ width: 1, height: 4, bgcolor: danceFlowColors.grayDark, mx: 'auto' }} />
               </Box>
             );
           })}
@@ -742,7 +743,7 @@ const TimelineLayerRow: React.FC<TimelineLayerRowProps> = ({
         }}
       >
         <Box sx={{ width: 4, height: '70%', borderRadius: 0.5, bgcolor: layer.color }} />
-        <Typography sx={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', letterSpacing: 0.3, textTransform: 'uppercase' }}>
+        <Typography sx={{ fontSize: 10, fontWeight: 600, color: danceFlowColors.textMuted, letterSpacing: 0.3, textTransform: 'uppercase' }}>
           {labels[layer.labelToken]}
         </Typography>
       </Box>
@@ -754,7 +755,7 @@ const TimelineLayerRow: React.FC<TimelineLayerRowProps> = ({
           flex: 1,
           position: 'relative',
           height: rowH,
-          bgcolor: '#0d1218',
+          bgcolor: danceFlowColors.bgInset,
           borderRadius: 0.75,
           overflow: 'hidden',
           ml: 1,
@@ -814,7 +815,7 @@ const TimelineLayerRow: React.FC<TimelineLayerRowProps> = ({
               top: 0,
               bottom: 0,
               width: 2,
-              bgcolor: '#fbbf24',
+              bgcolor: danceFlowColors.gold,
               boxShadow: '0 0 6px rgba(251,191,36,0.6)',
               pointerEvents: 'none',
               zIndex: 5,
@@ -957,7 +958,7 @@ const SegmentBlock: React.FC<SegmentBlockProps> = ({
         sx={{
           fontSize: layer.variant === 'block' ? 11 : 9.5,
           fontWeight: layer.variant === 'block' ? 700 : 500,
-          color: layer.variant === 'block' ? '#fff' : '#cbd5e1',
+          color: layer.variant === 'block' ? '#fff' : danceFlowColors.grayLight,
           letterSpacing: layer.variant === 'block' ? 0.2 : 0,
           textShadow: layer.variant === 'block' ? '0 1px 2px rgba(0,0,0,0.4)' : 'none',
           flex: 1,
@@ -1073,7 +1074,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
           size="small"
           aria-label="Slett segment"
           onClick={onDelete}
-          sx={{ color: '#9ca3af', '&:hover': { color: '#f87171' } }}
+          sx={{ color: danceFlowColors.textMuted, '&:hover': { color: danceFlowColors.errorPrimary } }}
         >
           <DeleteIcon sx={{ fontSize: 16 }} />
         </IconButton>
@@ -1141,16 +1142,16 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
         <Chip
           size="small"
           label={`${formatTime(segment.startSec)} → ${formatTime(segment.endSec)}`}
-          sx={{ height: 18, fontSize: 9, bgcolor: '#1e2536', color: '#cbd5e1', fontFamily: 'monospace' }}
+          sx={{ height: 18, fontSize: 9, bgcolor: danceFlowColors.borderStrong, color: danceFlowColors.grayLight, fontFamily: 'monospace' }}
         />
         <Chip
           size="small"
           label={`${segmentDuration(segment)}s`}
-          sx={{ height: 18, fontSize: 9, bgcolor: 'rgba(139,92,246,0.15)', color: '#c4b5fd' }}
+          sx={{ height: 18, fontSize: 9, bgcolor: 'rgba(139,92,246,0.15)', color: danceFlowColors.lavenderLight }}
         />
       </Stack>
 
-      <Divider sx={{ borderColor: '#1e2536', my: 0.5 }} />
+      <Divider sx={{ borderColor: danceFlowColors.borderStrong, my: 0.5 }} />
 
       {/* Lag-spesifikke felter */}
       <InspectorTextField label={`${labels.choreographyLayerMusic} — cue`} value={segment.musicCue} onChange={(v) => onChange({ musicCue: v })} />
@@ -1175,9 +1176,9 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
                 sx={{
                   height: 22,
                   fontSize: 10,
-                  bgcolor: isSel ? `${e.color}33` : '#1e2536',
-                  color: isSel ? e.color : '#9ca3af',
-                  border: `1px solid ${isSel ? e.color : '#2a3142'}`,
+                  bgcolor: isSel ? `${e.color}33` : danceFlowColors.borderStrong,
+                  color: isSel ? e.color : danceFlowColors.textMuted,
+                  border: `1px solid ${isSel ? e.color : danceFlowColors.borderSoft}`,
                   fontWeight: isSel ? 700 : 500,
                   cursor: 'pointer',
                 }}
@@ -1195,7 +1196,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
         <FieldLabel>{labels.choreographyInspectorDancersLabel}</FieldLabel>
         <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
           {segment.dancers.length === 0 ? (
-            <Typography sx={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>Ingen dansere tildelt</Typography>
+            <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>Ingen dansere tildelt</Typography>
           ) : (
             segment.dancers.map((d) => (
               <Chip
@@ -1210,7 +1211,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
                   height: 20,
                   fontSize: 10,
                   bgcolor: 'rgba(59,130,246,0.18)',
-                  color: '#93c5fd',
+                  color: danceFlowColors.infoSoft,
                   border: '1px solid rgba(59,130,246,0.4)',
                   cursor: onOpenDancerProfile ? 'pointer' : 'default',
                   '&:hover': onOpenDancerProfile
@@ -1242,7 +1243,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
               href={segment.videoRefUrl}
               target="_blank"
               rel="noopener noreferrer"
-              sx={{ color: '#a78bfa' }}
+              sx={{ color: danceFlowColors.lavender }}
             >
               <VideoIcon sx={{ fontSize: 16 }} />
             </IconButton>
@@ -1269,9 +1270,9 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
                 sx={{
                   height: 22,
                   fontSize: 10,
-                  bgcolor: isSel ? `${a.color}26` : '#1e2536',
-                  color: isSel ? a.color : '#9ca3af',
-                  border: `1px solid ${isSel ? a.color : '#2a3142'}`,
+                  bgcolor: isSel ? `${a.color}26` : danceFlowColors.borderStrong,
+                  color: isSel ? a.color : danceFlowColors.textMuted,
+                  border: `1px solid ${isSel ? a.color : danceFlowColors.borderSoft}`,
                   fontWeight: isSel ? 700 : 500,
                   cursor: 'pointer',
                   '& .MuiChip-icon': { color: a.color },
@@ -1282,7 +1283,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
         </Stack>
       </Box>
 
-      <Divider sx={{ borderColor: '#1e2536', my: 0.5 }} />
+      <Divider sx={{ borderColor: danceFlowColors.borderStrong, my: 0.5 }} />
 
       {/* 8-count nedbrytning */}
       <Box>
@@ -1299,25 +1300,25 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
         />
       </Box>
 
-      <Divider sx={{ borderColor: '#1e2536', my: 0.5 }} />
+      <Divider sx={{ borderColor: danceFlowColors.borderStrong, my: 0.5 }} />
 
       {/* AI-handling */}
       <Card sx={{ bgcolor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.3)', boxShadow: 'none' }}>
         <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-            <AutoAwesomeIcon sx={{ fontSize: 14, color: '#a78bfa' }} />
-            <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', letterSpacing: 1 }}>
+            <AutoAwesomeIcon sx={{ fontSize: 14, color: danceFlowColors.lavender }} />
+            <Typography sx={{ fontSize: 10, fontWeight: 700, color: danceFlowColors.lavender, letterSpacing: 1 }}>
               CI — KOREOGRAFI-FORSLAG
             </Typography>
           </Stack>
-          <Typography sx={{ fontSize: 10.5, color: '#cbd5e1', mb: 1, lineHeight: 1.4 }}>
+          <Typography sx={{ fontSize: 10.5, color: danceFlowColors.grayLight, mb: 1, lineHeight: 1.4 }}>
             Få AI-forslag for bevegelse, formasjon eller musikkmatching basert på {energyMeta.labelToken && labels[energyMeta.labelToken]?.toLowerCase()}-energi og segment-type.
           </Typography>
           <Button
             size="small"
             variant="outlined"
             startIcon={<AutoAwesomeIcon sx={{ fontSize: 13 }} />}
-            sx={{ textTransform: 'none', fontSize: 11, color: '#c4b5fd', borderColor: 'rgba(139,92,246,0.4)' }}
+            sx={{ textTransform: 'none', fontSize: 11, color: danceFlowColors.lavenderLight, borderColor: 'rgba(139,92,246,0.4)' }}
           >
             Foreslå bevegelser
           </Button>
@@ -1330,7 +1331,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
 // ═══════════════════════ SMÅ-KOMPONENTER ═══════════════════════
 
 const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <Typography sx={{ fontSize: 9, letterSpacing: 1, color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', mb: 0.4 }}>
+  <Typography sx={{ fontSize: 9, letterSpacing: 1, color: danceFlowColors.textDisabled, fontWeight: 700, textTransform: 'uppercase', mb: 0.4 }}>
     {children}
   </Typography>
 );
@@ -1358,12 +1359,12 @@ const InspectorTextField: React.FC<InspectorTextFieldProps> = ({ label, value, o
 );
 
 const inspectorFieldSx = {
-  '& .MuiInputBase-input': { color: '#e5e7eb', fontSize: 11.5 },
+  '& .MuiInputBase-input': { color: danceFlowColors.textSecondary, fontSize: 11.5 },
   '& .MuiOutlinedInput-root': {
-    bgcolor: '#0a0a0a',
-    '& fieldset': { borderColor: '#1e2536' },
-    '&:hover fieldset': { borderColor: '#374151' },
-    '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
+    bgcolor: danceFlowColors.bgBase,
+    '& fieldset': { borderColor: danceFlowColors.borderStrong },
+    '&:hover fieldset': { borderColor: danceFlowColors.grayDark },
+    '&.Mui-focused fieldset': { borderColor: danceFlowColors.lavenderDark },
   },
 } as const;
 
@@ -1373,9 +1374,9 @@ const MetaPill: React.FC<{ label: string; icon?: React.ReactNode; accent?: boole
       px: 1.25,
       py: 0.5,
       borderRadius: 12,
-      bgcolor: accent ? 'rgba(139,92,246,0.15)' : '#1e2536',
-      color: accent ? '#c4b5fd' : '#cbd5e1',
-      border: `1px solid ${accent ? 'rgba(139,92,246,0.4)' : '#2a3142'}`,
+      bgcolor: accent ? 'rgba(139,92,246,0.15)' : danceFlowColors.borderStrong,
+      color: accent ? danceFlowColors.lavenderLight : danceFlowColors.grayLight,
+      border: `1px solid ${accent ? 'rgba(139,92,246,0.4)' : danceFlowColors.borderSoft}`,
       fontSize: 10,
       fontWeight: 600,
       display: 'flex',
@@ -1405,7 +1406,7 @@ const EnergyMeter: React.FC<EnergyMeterProps> = ({ level, compact }) => {
             width: compact ? 4 : 8,
             height: '100%',
             borderRadius: 0.25,
-            bgcolor: i < meta.intensity ? meta.color : '#1e2536',
+            bgcolor: i < meta.intensity ? meta.color : danceFlowColors.borderStrong,
             transition: 'background-color 0.12s',
           }}
         />
@@ -1432,7 +1433,7 @@ const AddSegmentMenu: React.FC<{
         sx={{
           textTransform: 'none',
           fontSize: 11,
-          color: '#c4b5fd',
+          color: danceFlowColors.lavenderLight,
           borderColor: 'rgba(139,92,246,0.3)',
           justifyContent: 'flex-start',
           py: 0.75,
@@ -1444,7 +1445,7 @@ const AddSegmentMenu: React.FC<{
         <ChevronRightIcon sx={{ fontSize: 14, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }} />
       </Button>
       {open && (
-        <Stack spacing={0.25} sx={{ mt: 0.5, p: 0.5, bgcolor: '#0f1318', borderRadius: 0.75, border: '1px solid #1e2536' }}>
+        <Stack spacing={0.25} sx={{ mt: 0.5, p: 0.5, bgcolor: danceFlowColors.bgPanel, borderRadius: 0.75, border: '1px solid #1e2536' }}>
           {SEGMENT_KINDS.map((s) => (
             <Box
               key={s.kind}
@@ -1453,11 +1454,11 @@ const AddSegmentMenu: React.FC<{
               sx={{
                 display: 'flex', alignItems: 'center', gap: 0.75,
                 px: 0.75, py: 0.5, borderRadius: 0.5, cursor: 'pointer',
-                '&:hover': { bgcolor: '#1e2536' },
+                '&:hover': { bgcolor: danceFlowColors.borderStrong },
               }}
             >
               <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: s.color }} />
-              <Typography sx={{ fontSize: 11, color: '#e5e7eb' }}>{labels[s.labelToken]}</Typography>
+              <Typography sx={{ fontSize: 11, color: danceFlowColors.textSecondary }}>{labels[s.labelToken]}</Typography>
             </Box>
           ))}
         </Stack>
@@ -1500,9 +1501,9 @@ const AudioFileButton: React.FC<{
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
             sx={{
-              bgcolor: hasAudio ? 'rgba(167,139,250,0.18)' : '#1e2536',
-              color: hasAudio ? '#a78bfa' : '#9ca3af',
-              border: `1px solid ${hasAudio ? 'rgba(167,139,250,0.4)' : '#2a3142'}`,
+              bgcolor: hasAudio ? 'rgba(167,139,250,0.18)' : danceFlowColors.borderStrong,
+              color: hasAudio ? danceFlowColors.lavender : danceFlowColors.textMuted,
+              border: `1px solid ${hasAudio ? 'rgba(167,139,250,0.4)' : danceFlowColors.borderSoft}`,
               '&.Mui-disabled': { opacity: 0.6 },
             }}
           >
@@ -1519,9 +1520,9 @@ const AudioFileButton: React.FC<{
 const AutosaveBadge: React.FC<{ status: 'idle' | 'saving' | 'saved' | 'error' }> = ({ status }) => {
   if (status === 'idle') return null;
   const cfg = {
-    saving: { label: 'Lagrer…', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
-    saved:  { label: '✓ Lagret', color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
-    error:  { label: '⚠ Lagring feilet', color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
+    saving: { label: 'Lagrer…', color: danceFlowColors.lavender, bg: 'rgba(167,139,250,0.12)' },
+    saved:  { label: '✓ Lagret', color: danceFlowColors.successPrimary, bg: 'rgba(52,211,153,0.12)' },
+    error:  { label: '⚠ Lagring feilet', color: danceFlowColors.errorPrimary, bg: 'rgba(248,113,113,0.12)' },
   }[status];
   return (
     <Chip

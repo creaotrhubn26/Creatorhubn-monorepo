@@ -1199,18 +1199,18 @@ export function EnhancedGearTab({
       : [];
   const workspaceChromeSx = {
     '& .MuiCard-root': {
-      border: '1px solid rgba(15, 23, 42, 0.08)',
+      border: '1px solid rgba(255,255,255,0.10)',
       borderRadius: { xs: 3, md: 4 },
-      background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94))',
-      boxShadow: '0 18px 48px rgba(15, 23, 42, 0.07)',
+      background: 'rgba(255,255,255,0.04)',
+      boxShadow: '0 18px 48px rgba(255,255,255,0.07)',
       backdropFilter: 'blur(14px)',
     },
     '& .MuiAccordion-root': {
-      border: '1px solid rgba(15, 23, 42, 0.08)',
+      border: '1px solid rgba(255,255,255,0.10)',
       borderRadius: { xs: 3, md: 4 },
       overflow: 'hidden',
-      background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94))',
-      boxShadow: '0 18px 48px rgba(15, 23, 42, 0.07)',
+      background: 'rgba(255,255,255,0.04)',
+      boxShadow: '0 18px 48px rgba(255,255,255,0.07)',
       '&:before': {
         display: 'none',
       },
@@ -1225,9 +1225,9 @@ export function EnhancedGearTab({
   } as const;
   const workspaceDialogPaperSx = {
     borderRadius: { xs: 3, md: 4 },
-    border: '1px solid rgba(15, 23, 42, 0.08)',
-    background: 'linear-gradient(180deg, rgba(255,255,255,0.99), rgba(248,250,252,0.95))',
-    boxShadow: '0 30px 90px rgba(15, 23, 42, 0.18)',
+    border: '1px solid rgba(255,255,255,0.10)',
+    background: 'rgba(255,255,255,0.04)',
+    boxShadow: '0 30px 90px rgba(255,255,255,0.18)',
     overflow: 'hidden',
   } as const;
 
@@ -1304,7 +1304,7 @@ export function EnhancedGearTab({
             p: { xs: 2.5, md: 3.5 },
             borderRadius: 4,
             border: `1px solid ${config.color}22`,
-            background: `radial-gradient(circle at top right, ${config.color}18, transparent 38%), linear-gradient(135deg, rgba(255,255,255,0.96), rgba(248,250,252,0.92))`,
+            background: `radial-gradient(circle at top right, ${config.color}18, transparent 38%), rgba(255,255,255,0.04)`,
             ...theming.getThemedCardSx(),
           }}
         >
@@ -1377,11 +1377,11 @@ export function EnhancedGearTab({
                       border: '1px solid',
                       borderColor: 'divider',
                       overflow: 'hidden',
-                      background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.92))',
+                      background: 'rgba(255,255,255,0.04)',
                       transition: 'transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease',
                       '&:hover': {
                         transform: 'translateY(-4px)',
-                        boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
+                        boxShadow: '0 18px 48px rgba(255,255,255,0.08)',
                         borderColor: `${module.accent}40`,
                       },
                     }}
@@ -1485,7 +1485,7 @@ export function EnhancedGearTab({
                 border: '1px solid',
                 borderColor: 'divider',
                 overflow: 'hidden',
-                background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(249,250,251,0.96))',
+                background: 'rgba(255,255,255,0.04)',
               }}
             >
               <Box
@@ -1695,7 +1695,7 @@ export function EnhancedGearTab({
   const renderNewsSection = () => {
     if (isLoading && !gearNews?.length) {
       return (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 2.5 }}>
           <CircularProgress size={48} sx={{ color: config.color }} />
           <Box sx={{ ml: 2 }}>
             <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>Henter utstyr database...</Typography>
@@ -1861,7 +1861,7 @@ export function EnhancedGearTab({
   const renderFirmwareSection = () => {
     if (firmwareLoading) {
       return (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 2.5 }}>
           <CircularProgress size={48} sx={{ color: config.color }} />
           <Box sx={{ ml: 2 }}>
             <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>Sjekker firmware status...</Typography>
@@ -1896,7 +1896,7 @@ export function EnhancedGearTab({
                 p: 3, 
                 height: '100%',
                 borderRadius: 2,
-                border: item.hasUpdate ? `2px solid ${config.color}` : '1px solid #e0e0e0',
+                border: item.hasUpdate ? `2px solid ${config.color}` : '1px solid rgba(255,255,255,0.10)',
                 backgroundColor: item.hasUpdate ? `${config.color}08` : 'background.paper',
                 ...theming.getThemedCardSx()
               }}>
@@ -1997,7 +1997,7 @@ export function EnhancedGearTab({
       </Box>
 
       {inventoryLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 2.5 }}>
           <CircularProgress />
         </Box>
       ) : userEquipment.length === 0 ? (
@@ -2134,7 +2134,7 @@ export function EnhancedGearTab({
                                   label={`${specification.label}: ${specification.value}`}
                                   variant="outlined"
                                   sx={{
-                                    borderColor: 'rgba(15, 23, 42, 0.12)',
+                                    borderColor: 'rgba(255,255,255,0.12)',
                                     color: theming.colors.primary,
                                     backgroundColor: 'rgba(255,255,255,0.8)',
                                   }}
@@ -2356,7 +2356,7 @@ export function EnhancedGearTab({
       </Box>
 
       {maintenanceLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 2.5 }}>
           <CircularProgress />
         </Box>
       ) : maintenanceSchedule.length === 0 ? (
@@ -2456,7 +2456,7 @@ export function EnhancedGearTab({
       </Box>
 
       {rentalsLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 2.5 }}>
           <CircularProgress />
         </Box>
       ) : equipmentRentals.length === 0 ? (
@@ -2563,7 +2563,7 @@ export function EnhancedGearTab({
       </Typography>
 
       {marketLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 2.5 }}>
           <CircularProgress />
         </Box>
       ) : (
@@ -2718,7 +2718,7 @@ export function EnhancedGearTab({
       </Typography>
 
       {lensLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 2.5 }}>
           <CircularProgress />
         </Box>
       ) : lensDatabase.length === 0 ? (
@@ -2873,7 +2873,7 @@ export function EnhancedGearTab({
           </Typography>
 
           {softwareLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 2.5 }}>
               <CircularProgress />
             </Box>
           ) : (
@@ -3046,8 +3046,8 @@ export function EnhancedGearTab({
           p: { xs: 2.5, md: 3.5 },
           borderRadius: { xs: 4, md: 5 },
           border: `1px solid ${config.color}26`,
-          background: `radial-gradient(circle at top right, ${config.color}16, transparent 34%), radial-gradient(circle at bottom left, ${config.color}10, transparent 28%), linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95))`,
-          boxShadow: '0 24px 70px rgba(15, 23, 42, 0.08)',
+          background: `radial-gradient(circle at top right, ${config.color}16, transparent 34%), radial-gradient(circle at bottom left, ${config.color}10, transparent 28%), rgba(255,255,255,0.04)`,
+          boxShadow: '0 24px 70px rgba(255,255,255,0.08)',
           overflow: 'hidden',
           ...theming.getThemedCardSx(),
         }}
@@ -3149,10 +3149,10 @@ export function EnhancedGearTab({
           mb: 3,
           p: 1,
           borderRadius: 4,
-          border: '1px solid rgba(15, 23, 42, 0.08)',
+          border: '1px solid rgba(255,255,255,0.10)',
           background: 'rgba(255,255,255,0.88)',
           backdropFilter: 'blur(18px)',
-          boxShadow: '0 20px 50px rgba(15, 23, 42, 0.08)',
+          boxShadow: '0 20px 50px rgba(255,255,255,0.08)',
           ...theming.getThemedCardSx(),
         }}
       >
@@ -3280,7 +3280,7 @@ export function EnhancedGearTab({
               </Stack>
             </Box>
           </AccordionSummary>
-          <AccordionDetails sx={{ p: 4 }}>
+          <AccordionDetails sx={{ p: 2.5 }}>
             {renderEquipmentDatabase()}
           </AccordionDetails>
         </Accordion>
@@ -3329,7 +3329,7 @@ export function EnhancedGearTab({
               </Stack>
             </Box>
           </AccordionSummary>
-          <AccordionDetails sx={{ p: 4 }}>
+          <AccordionDetails sx={{ p: 2.5 }}>
             {renderNewsSection()}
           </AccordionDetails>
         </Accordion>
@@ -3378,7 +3378,7 @@ export function EnhancedGearTab({
               </Stack>
             </Box>
           </AccordionSummary>
-          <AccordionDetails sx={{ p: 4 }}>
+          <AccordionDetails sx={{ p: 2.5 }}>
             {renderFirmwareSection()}
           </AccordionDetails>
         </Accordion>
@@ -3427,7 +3427,7 @@ export function EnhancedGearTab({
               </Stack>
             </Box>
           </AccordionSummary>
-          <AccordionDetails sx={{ p: 4 }}>
+          <AccordionDetails sx={{ p: 2.5 }}>
             {renderMarketSection()}
           </AccordionDetails>
         </Accordion>
@@ -3451,7 +3451,7 @@ export function EnhancedGearTab({
           pb: 2,
           px: 3,
           pt: 3,
-          borderBottom: '1px solid rgba(15, 23, 42, 0.08)',
+          borderBottom: '1px solid rgba(255,255,255,0.10)',
           background: `linear-gradient(135deg, ${config.color}14, rgba(248,250,252,0.94))`
         }}>
           <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
@@ -3464,7 +3464,7 @@ export function EnhancedGearTab({
             <Close />
           </IconButton>
         </DialogTitle>
-        <DialogContent dividers sx={{ px: 3, py: 2.5, borderColor: 'rgba(15, 23, 42, 0.08)' }}>
+        <DialogContent dividers sx={{ px: 3, py: 2.5, borderColor: 'rgba(255,255,255,0.10)' }}>
           <Box sx={{ mb: 2 }}>
             <Chip 
               label={selectedArticle?.category}
@@ -3491,7 +3491,7 @@ export function EnhancedGearTab({
             {selectedArticle?.content || selectedArticle?.summary}
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ p: 3, borderTop: '1px solid rgba(15, 23, 42, 0.08)', justifyContent: 'space-between' }}>
+        <DialogActions sx={{ p: 3, borderTop: '1px solid rgba(255,255,255,0.10)', justifyContent: 'space-between' }}>
           {selectedArticle?.url && (
             <Button
               href={selectedArticle.url}
@@ -3525,7 +3525,7 @@ export function EnhancedGearTab({
             px: 3,
             pt: 3,
             pb: 2,
-            borderBottom: '1px solid rgba(15, 23, 42, 0.08)',
+            borderBottom: '1px solid rgba(255,255,255,0.10)',
             background: `linear-gradient(135deg, ${config.color}14, rgba(248,250,252,0.94))`,
           }}
         >
@@ -3727,7 +3727,7 @@ export function EnhancedGearTab({
                               height: 52,
                               borderRadius: 2,
                               objectFit: 'cover',
-                              border: '1px solid rgba(15, 23, 42, 0.08)',
+                              border: '1px solid rgba(255,255,255,0.10)',
                               mr: 1.5,
                               flexShrink: 0,
                               backgroundColor: 'rgba(248,250,252,0.9)',
@@ -3775,7 +3775,7 @@ export function EnhancedGearTab({
             />
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2.5, borderTop: '1px solid rgba(15, 23, 42, 0.08)' }}>
+        <DialogActions sx={{ px: 3, py: 2.5, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
           <Button
             onClick={() => setAddEquipmentOpen(false)}
             disabled={addInventoryMutation.isPending}
@@ -3811,7 +3811,7 @@ export function EnhancedGearTab({
               px: 3,
               pt: 3,
               pb: 2,
-              borderBottom: '1px solid rgba(15, 23, 42, 0.08)',
+              borderBottom: '1px solid rgba(255,255,255,0.10)',
               background: `linear-gradient(135deg, ${config.color}14, rgba(248,250,252,0.94))`,
             }}
           >
@@ -3822,7 +3822,7 @@ export function EnhancedGearTab({
               <PushNotificationSettings userId={userId} showDescription={false} />
             </Box>
           </DialogContent>
-          <DialogActions sx={{ p: 3, borderTop: '1px solid rgba(15, 23, 42, 0.08)' }}>
+          <DialogActions sx={{ p: 3, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
             <Button onClick={() => setPushSettingsOpen(false)} variant="contained" sx={{ backgroundColor: config.color }}>
               Lukk
             </Button>

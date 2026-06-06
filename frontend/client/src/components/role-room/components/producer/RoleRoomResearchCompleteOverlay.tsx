@@ -419,7 +419,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
               Vi fant <strong>{datapoints}</strong> datapunkter på{' '}
               <strong>{formatMs(totalMs)}</strong>.
               {missingCriticalFields.length === 0 ? (
-                <> Klar for marketing plan ✓</>
+                <> Klar for markedsplan</>
               ) : (
                 <> Mangler {missingCriticalFields.length} kritisk{missingCriticalFields.length === 1 ? '' : 'e'} felt før marketing plan.</>
               )}

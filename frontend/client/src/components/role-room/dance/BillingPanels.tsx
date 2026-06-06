@@ -7,6 +7,7 @@
  *   TrialBanner       — vises i workspace når abonnement er trial/comp
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -40,10 +41,10 @@ import {
 } from '@mui/icons-material';
 import * as billing from './danceBillingService';
 
-const PURPLE = '#8b5cf6';
-const PURPLE_LIGHT = '#a78bfa';
-const BG = '#0a0a0a';
-const CARD = '#111114';
+const PURPLE = danceFlowColors.lavenderDark;
+const PURPLE_LIGHT = danceFlowColors.lavender;
+const BG = danceFlowColors.bgBase;
+const CARD = danceFlowColors.bgCard;
 const BORDER = 'rgba(139,92,246,0.25)';
 
 const FEATURE_LABEL: Record<string, string> = {
@@ -141,7 +142,7 @@ export function DancePricingPage({ persona }: DancePricingPageProps): React.Reac
   };
 
   return (
-    <Box sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 4 } }} data-testid="dance-pricing-page">
+    <Box sx={{ bgcolor: BG, color: danceFlowColors.textSecondary, minHeight: '100%', p: { xs: 2, md: 4 } }} data-testid="dance-pricing-page">
       <Stack spacing={1} alignItems="center" sx={{ mb: 4, textAlign: 'center' }}>
         <Typography sx={{ fontSize: 11, letterSpacing: 3, color: PURPLE_LIGHT, fontWeight: 700 }}>
           PRISER
@@ -162,7 +163,7 @@ export function DancePricingPage({ persona }: DancePricingPageProps): React.Reac
             sx={{
               mt: 1,
               bgcolor: subscription.status === 'active' ? 'rgba(16,185,129,0.18)' : 'rgba(167,139,250,0.18)',
-              color: subscription.status === 'active' ? '#10b981' : PURPLE_LIGHT,
+              color: subscription.status === 'active' ? danceFlowColors.successDark : PURPLE_LIGHT,
               fontWeight: 700,
             }}
           />
@@ -179,7 +180,7 @@ export function DancePricingPage({ persona }: DancePricingPageProps): React.Reac
                 px: 2, py: 0.5, textTransform: 'none', fontSize: 12, fontWeight: 700,
                 color: billingPeriod === p ? '#fff' : 'rgba(229,231,235,0.5)',
                 bgcolor: billingPeriod === p ? PURPLE : 'transparent',
-                '&:hover': { bgcolor: billingPeriod === p ? '#7c3aed' : 'rgba(139,92,246,0.08)' },
+                '&:hover': { bgcolor: billingPeriod === p ? danceFlowColors.lavenderDeep : 'rgba(139,92,246,0.08)' },
               }}
             >
               {p === 'monthly' ? 'Månedlig' : 'Årlig (2 mnd gratis)'}
@@ -259,7 +260,7 @@ export function DancePricingPage({ persona }: DancePricingPageProps): React.Reac
                 <Chip
                   size="small"
                   label={`${plan.trialDays} dager gratis prøveperiode`}
-                  sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(16,185,129,0.12)', color: '#10b981', fontSize: 11 }}
+                  sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(16,185,129,0.12)', color: danceFlowColors.successDark, fontSize: 11 }}
                 />
               ) : null}
               <Box sx={{ flex: 1 }}>
@@ -290,7 +291,7 @@ export function DancePricingPage({ persona }: DancePricingPageProps): React.Reac
                   bgcolor: plan.isFeatured ? PURPLE : 'transparent',
                   color: plan.isFeatured ? '#fff' : PURPLE_LIGHT,
                   borderColor: PURPLE,
-                  '&:hover': { bgcolor: plan.isFeatured ? '#7c3aed' : 'rgba(139,92,246,0.08)' },
+                  '&:hover': { bgcolor: plan.isFeatured ? danceFlowColors.lavenderDeep : 'rgba(139,92,246,0.08)' },
                 }}
               >
                 {isCurrent ? 'Aktiv' :
@@ -326,7 +327,7 @@ export function PlanAdminPanel(): React.ReactElement {
   React.useEffect(() => { void refresh(); }, [refresh]);
 
   return (
-    <Box sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 3 } }} data-testid="plan-admin-panel">
+    <Box sx={{ bgcolor: BG, color: danceFlowColors.textSecondary, minHeight: '100%', p: { xs: 2, md: 3 } }} data-testid="plan-admin-panel">
       <Stack direction="row" alignItems="center" sx={{ mb: 2 }}>
         <Box sx={{ flex: 1 }}>
           <Typography sx={{ fontSize: 10, letterSpacing: 2, color: PURPLE_LIGHT, fontWeight: 700 }}>
@@ -341,7 +342,7 @@ export function PlanAdminPanel(): React.ReactElement {
           startIcon={<AddIcon />}
           onClick={() => setCreating(true)}
           data-testid="plan-admin-create"
-          sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none' }}
+          sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep }, textTransform: 'none' }}
         >
           Ny plan
         </Button>
@@ -363,7 +364,7 @@ export function PlanAdminPanel(): React.ReactElement {
                   </Typography>
                   <Chip size="small" label={plan.slug} sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(229,231,235,0.06)' }} />
                   {plan.isFeatured ? <Chip size="small" label="Anbefalt" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(139,92,246,0.18)', color: PURPLE_LIGHT }} /> : null}
-                  {!plan.isActive ? <Chip size="small" label="Inaktiv" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(239,68,68,0.18)', color: '#fca5a5' }} /> : null}
+                  {!plan.isActive ? <Chip size="small" label="Inaktiv" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(239,68,68,0.18)', color: danceFlowColors.errorSoft }} /> : null}
                 </Stack>
                 <Typography sx={{ fontSize: 11, color: 'rgba(229,231,235,0.6)', mt: 0.5 }}>
                   {plan.persona} · kr {plan.monthlyPriceKr ?? '—'}/mnd · kr {plan.yearlyPriceKr ?? '—'}/år · {plan.features.length} features
@@ -556,7 +557,7 @@ const PlanFormDialog: React.FC<{
           onClick={() => void submit()}
           disabled={saving}
           data-testid="plan-admin-save"
-          sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' } }}
+          sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
         >
           {saving ? 'Lagrer…' : (plan ? 'Lagre' : 'Opprett')}
         </Button>
@@ -622,7 +623,7 @@ export function TesterAdminPanel(): React.ReactElement {
   const inviteUrl = (token: string): string => `${window.location.origin}/invite/${token}`;
 
   return (
-    <Box sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 3 } }} data-testid="tester-admin-panel">
+    <Box sx={{ bgcolor: BG, color: danceFlowColors.textSecondary, minHeight: '100%', p: { xs: 2, md: 3 } }} data-testid="tester-admin-panel">
       <Stack direction="row" alignItems="center" sx={{ mb: 2 }}>
         <Box sx={{ flex: 1 }}>
           <Typography sx={{ fontSize: 10, letterSpacing: 2, color: PURPLE_LIGHT, fontWeight: 700 }}>
@@ -637,7 +638,7 @@ export function TesterAdminPanel(): React.ReactElement {
           startIcon={<AddIcon />}
           onClick={() => setOpen(true)}
           data-testid="tester-invite-create"
-          sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none' }}
+          sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep }, textTransform: 'none' }}
         >
           Ny invite
         </Button>
@@ -663,10 +664,10 @@ export function TesterAdminPanel(): React.ReactElement {
                       sx={{
                         height: 18, fontSize: 10,
                         bgcolor: inv.usedCount >= inv.maxUses ? 'rgba(239,68,68,0.18)' : 'rgba(16,185,129,0.18)',
-                        color: inv.usedCount >= inv.maxUses ? '#fca5a5' : '#10b981',
+                        color: inv.usedCount >= inv.maxUses ? danceFlowColors.errorSoft : danceFlowColors.successDark,
                       }}
                     />
-                    {inv.acceptedAt ? <Chip size="small" label="Akseptert" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(16,185,129,0.18)', color: '#10b981' }} /> : null}
+                    {inv.acceptedAt ? <Chip size="small" label="Akseptert" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(16,185,129,0.18)', color: danceFlowColors.successDark }} /> : null}
                   </Stack>
                   <Typography sx={{ fontSize: 10, color: 'rgba(229,231,235,0.4)', mt: 0.25, fontFamily: 'monospace' }} noWrap>
                     {url}
@@ -750,7 +751,7 @@ export function TesterAdminPanel(): React.ReactElement {
             onClick={() => void submit()}
             disabled={submitting || !draft.planSlug}
             data-testid="tester-invite-submit"
-            sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' } }}
+            sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
           >
             {submitting ? 'Oppretter…' : 'Opprett invite'}
           </Button>
@@ -814,7 +815,7 @@ export function AdminSettingsPanel(): React.ReactElement {
   };
 
   return (
-    <Box sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 3 } }} data-testid="admin-settings-panel">
+    <Box sx={{ bgcolor: BG, color: danceFlowColors.textSecondary, minHeight: '100%', p: { xs: 2, md: 3 } }} data-testid="admin-settings-panel">
       <Stack direction="row" alignItems="center" sx={{ mb: 2 }}>
         <SettingsIcon sx={{ color: PURPLE_LIGHT, mr: 1 }} />
         <Typography sx={{ fontSize: 10, letterSpacing: 2, color: PURPLE_LIGHT, fontWeight: 700 }}>
@@ -901,7 +902,7 @@ export function TrialBanner(): React.ReactElement | null {
       data-testid="dance-trial-banner"
       sx={{
         bgcolor: isComp ? 'rgba(139,92,246,0.18)' : 'rgba(251,191,36,0.18)',
-        color: isComp ? PURPLE_LIGHT : '#fbbf24',
+        color: isComp ? PURPLE_LIGHT : danceFlowColors.gold,
         px: 2, py: 0.75, borderRadius: 1, fontSize: 12, fontWeight: 700,
         display: 'flex', alignItems: 'center', gap: 1,
       }}
@@ -994,7 +995,7 @@ export function TesterInviteLanding({
       alignItems="center"
       justifyContent="center"
       spacing={3}
-      sx={{ minHeight: '70vh', p: 4, bgcolor: BG, color: '#e5e7eb' }}
+      sx={{ minHeight: '70vh', p: 4, bgcolor: BG, color: danceFlowColors.textSecondary }}
     >
       <Typography sx={{ fontSize: 11, letterSpacing: 3, color: PURPLE_LIGHT, fontWeight: 700 }}>
         TESTER-TILGANG
@@ -1018,7 +1019,7 @@ export function TesterInviteLanding({
           onClick={() => void accept()}
           disabled={accepting || invite.usesRemaining === 0}
           sx={{
-            bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' },
+            bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep },
             textTransform: 'none', fontWeight: 700, minWidth: 240,
           }}
         >

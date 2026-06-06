@@ -5,6 +5,7 @@
  * Faller tilbake til "Åpne i ny fane"-link hvis URL-en ikke kan embeddes.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -119,13 +120,13 @@ export const VideoRefPlayer: React.FC<VideoRefPlayerProps> = ({
         sx={{
           mt: 0.5,
           p: 1,
-          bgcolor: '#0d1218',
+          bgcolor: danceFlowColors.bgInset,
           borderRadius: 1,
           border: `1px solid ${PURPLE_BORDER}`,
         }}
       >
         <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-          <Typography sx={{ fontSize: 11, color: '#9ca3af' }}>
+          <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted }}>
             URL-en kan ikke embeddes — åpne i ny fane.
           </Typography>
           <Tooltip title="Åpne i ny fane">
@@ -135,7 +136,7 @@ export const VideoRefPlayer: React.FC<VideoRefPlayerProps> = ({
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              sx={{ color: '#a78bfa' }}
+              sx={{ color: danceFlowColors.lavender }}
             >
               <OpenInNewIcon sx={{ fontSize: 16 }} />
             </IconButton>

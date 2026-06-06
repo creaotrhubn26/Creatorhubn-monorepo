@@ -5,32 +5,39 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
   LinearProgress,
+  Menu,
+  MenuItem,
   Stack,
   TextField,
+  Tooltip,
   Typography,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
 import {
-  AlternateEmail as AlternateEmailIcon,
-  Article as ArticleIcon,
   AutoFixHigh as AutoFixHighIcon,
   Chat as ChatIcon,
-  CloudUpload as CloudUploadIcon,
-  FactCheck as FactCheckIcon,
   GridView as GridViewIcon,
   Language as LanguageIcon,
   LocalMall as MerchIcon,
   MoveToInbox as InboxIcon,
+  ContactPage as LeadsTabIcon,
+  CampaignOutlined as MentionsTabIcon,
+  TravelExplore as DiscoveryTabIcon,
+  EventOutlined as EventsTabIcon,
+  MoreHoriz as MoreHorizIcon,
+  Tune as TuneIcon,
   QueryStats as QueryStatsIcon,
   Rocket as RocketIcon,
-  Tag as TagIcon,
 } from '@mui/icons-material';
 import RoleRoomResearchCompleteOverlay from './RoleRoomResearchCompleteOverlay';
 import ResearchProgressLive from './ResearchProgressLive';
@@ -40,6 +47,10 @@ import AdsAttributionInspector from './AdsAttributionInspector';
 import FacebookVideoPublisher from './FacebookVideoPublisher';
 import FacebookPageMentionPublisher from './FacebookPageMentionPublisher';
 import SocialInboxPanel from './SocialInboxPanel';
+import LeadsPanel from './LeadsPanel';
+import MentionsPanel from './MentionsPanel';
+import DiscoveryPanel from './DiscoveryPanel';
+import EventsPanel from './EventsPanel';
 import SocialAnalyticsPanel from './SocialAnalyticsPanel';
 import RoleRoomAgentWorkflowStepper from './RoleRoomAgentWorkflowStepper';
 import RoleRoomAgentConnectionsBar from './RoleRoomAgentConnectionsBar';
@@ -246,7 +257,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'social-analytics'>(initialTab ?? 'research');
+  const [activeTab, setActiveTab] = useState<'research' | 'discovery' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'mentions' | 'leads' | 'events' | 'social-analytics'>(initialTab ?? 'research');
 
   // Synk hvis initialTab endrer seg etter mount (dialog gjenåpnes med
   // ny tab fra parent).
@@ -274,7 +285,34 @@ export default function RoleRoomAgentDialog({
   // into a real project. Lets us (a) nudge the user while they're still
   // in the dialog and (b) confirm on close if they're about to lose
   // everything the agent produced. Reset whenever a new result arrives.
-  const [projectCreatedFromResult, setProjectCreatedFromResult] = useState(false);
+  // Track "saved" by the result OBJECT REFERENCE, not a boolean. A boolean got
+  // reset every time the dialog re-opened (the [initialResult, open] effect),
+  // so the banner re-nagged even after the user had saved. Keying on the result
+  // ref means the saved state survives reopen and auto-clears only when a
+  // genuinely new analysis (new object) arrives.
+  // "Bruk forslag" applies the result INTO the current project (brief, branding,
+  // story logic) — that IS saving.
+  const [createdResultRef, setCreatedResultRef] =
+    useState<RoleRoomAgentProducerBootstrapResult | null>(null);
+  const [appliedResultRef, setAppliedResultRef] =
+    useState<RoleRoomAgentProducerBootstrapResult | null>(null);
+  // Research output is grouped into sections to cut the long single scroll.
+  // 'alle' (default) keeps the original full view; the others filter the cards
+  // via CSS display (cards stay mounted — no remount/effect churn).
+  const [researchSection, setResearchSection] =
+    useState<'alle' | 'oversikt' | 'kanaler' | 'marked'>('alle');
+  // "Bestemor-modus": lead with one field + one button; the rest is optional
+  // and hidden behind a toggle so the first impression is dead simple.
+  const [showMoreResearchDetails, setShowMoreResearchDetails] = useState(false);
+  // Footer overflow menu — keeps one clear primary action + secondary ones tucked away.
+  const [moreActionsAnchor, setMoreActionsAnchor] = useState<HTMLElement | null>(null);
+  // Admin/debug chrome (role chips, System status) is hidden by default so the
+  // surface reads as a product; a small gear reveals it for admins.
+  const [showAdminChrome, setShowAdminChrome] = useState(false);
+  // Guided flow by default: users move with the 5-step stepper + Forrige/Neste
+  // instead of facing a 12-tab strip (minimal cognitive load). 'Alle faner'
+  // reveals the full strip for power users.
+  const [showAllTabs, setShowAllTabs] = useState(false);
 
   // Phone + iPad-portrait widths get a fullScreen dialog so the chat
   // surface and the research forms are actually usable without pinch-
@@ -295,12 +333,10 @@ export default function RoleRoomAgentDialog({
     setRefinementHistory([]);
   }, [initialCompanyName, initialExtraContext, initialOrganizationNumber, initialWebsiteUrl, open]);
 
-  // Any time a new result lands (or the dialog is re-opened with a fresh
-  // one), the "already saved" bookkeeping is stale — reset so the banner
-  // re-appears and the close-confirm fires again.
-  useEffect(() => {
-    setProjectCreatedFromResult(false);
-  }, [initialResult, open]);
+  // No reset effect needed: saved-state is derived by comparing the saved
+  // result reference to the current one (below), so a new analysis (new object)
+  // automatically counts as unsaved, while a reopen of the same result stays
+  // saved.
 
   // Compose the extraContext that actually gets sent to the agent. Original
   // extraContext is preserved verbatim; refinements are appended as a
@@ -332,6 +368,32 @@ export default function RoleRoomAgentDialog({
   };
 
   const result = initialResult ?? null;
+  // Ordered flow through the tabs for the guided Forrige/Neste navigation.
+  // Kept deliberately SHORT (bestemor-vennlig / minst mulig kognitiv belastning):
+  // only the core lead-gen journey is a forced step —
+  //   Forstå kunden (Research) → Plan (Markedsplan) → Publiser (Feed-planner)
+  //   → Svar (Inbox) → Få kunder (Leads) → Mål (Analytics).
+  // Power tools (Oppdag/discovery, Omtaler/mentions, Arrangement/events) + the
+  // App Review demo/inspector tabs + merch are all reachable via 'Alle faner',
+  // so they're one click away without bloating the guided step sequence.
+  // Exactly the 6 phases shown in the workflow stepper, so "Steg X av N" and the
+  // stepper always agree. Chat is a utility (reachable via 'Flere verktøy'), not
+  // a numbered step.
+  const tabFlow = useMemo<Array<typeof activeTab>>(() => [
+    'research', 'marketing-plan', 'feed-planner', 'social-inbox', 'leads', 'social-analytics',
+  ], []);
+  const TAB_LABELS: Record<string, string> = {
+    research: 'Research', discovery: 'Oppdag', merch: 'Merch', 'marketing-plan': 'Markedsplan',
+    'feed-planner': 'Feed-planner', 'meta-page': 'Meta Page', 'page-content': 'Page Content',
+    'ads-attribution': 'Ads Attribution', 'fb-publish': 'FB Publish', 'fb-mention': 'Page Mentions',
+    'ig-hashtag': 'IG Hashtags', 'social-inbox': 'Inbox', mentions: 'Omtaler', leads: 'Leads', events: 'Arrangement', 'social-analytics': 'Analytics', chat: 'Chat',
+  };
+  const flowIndex = tabFlow.indexOf(activeTab);
+  const showResearchSection = (s: 'oversikt' | 'kanaler' | 'marked'): boolean =>
+    researchSection === 'alle' || researchSection === s;
+  // Derived saved-state — survives reopen, clears only when a new result object arrives.
+  const projectCreatedFromResult = !!result && createdResultRef === result;
+  const resultAppliedToProject = !!result && appliedResultRef === result;
   const canGenerate = companyName.trim().length > 0 || websiteUrl.trim().length > 0 || organizationNumber.trim().length > 0;
   const providerLabel = useMemo(() => {
     if (!result) return null;
@@ -429,13 +491,17 @@ export default function RoleRoomAgentDialog({
   // Close-guard: if the agent has produced a result that the user has
   // not yet turned into a real project, a refresh or close wipes it.
   // Ask before letting them throw it away.
-  const hasUnsavedAgentWork = Boolean(result && onCreateProject && !projectCreatedFromResult);
+  // Work is "saved" once it's either applied into THIS project ("Bruk forslag")
+  // or turned into a NEW project ("Opprett prosjekt"). Either clears the nag.
+  const agentWorkSaved = projectCreatedFromResult || resultAppliedToProject;
+  const hasUnsavedAgentWork = Boolean(result && !agentWorkSaved);
   const handleCloseWithGuard = () => {
     if (hasUnsavedAgentWork) {
       const ok = typeof window !== 'undefined'
         ? window.confirm(
-            'Du har generert forslag fra The Role Room Agent som ikke er lagret som prosjekt. ' +
-            'Lukker du nå, mister du analysen ved neste refresh. Vil du fortsette?',
+            'Du har generert forslag fra The Role Room Agent som ikke er lagret. ' +
+            'Lagre med «Bruk forslag» (inn i dette prosjektet) eller «Opprett prosjekt» (ny kunde) først — ' +
+            'lukker du nå, mister du analysen ved neste refresh. Vil du fortsette?',
           )
         : true;
       if (!ok) return;
@@ -446,10 +512,19 @@ export default function RoleRoomAgentDialog({
     if (!result || !onCreateProject) return;
     try {
       await onCreateProject(result);
-      setProjectCreatedFromResult(true);
+      setCreatedResultRef(result);
     } catch {
       // parent owns error UX (toast, notice prop); just leave the banner
       // visible so the user knows they still haven't saved.
+    }
+  };
+  const handleApplyAndMark = async () => {
+    if (!result) return;
+    try {
+      await onApply(result);
+      setAppliedResultRef(result);
+    } catch {
+      // parent owns error UX; leave banner visible so user knows it didn't save.
     }
   };
 
@@ -482,11 +557,12 @@ export default function RoleRoomAgentDialog({
       {(generating || applying) ? <LinearProgress sx={{ height: 3 }} /> : null}
       <DialogTitle
         sx={{
-          pb: 1.2,
+          pb: 1,
           px: { xs: 1.4, md: 3 },
-          pt: { xs: 1.4, md: 2 },
+          pt: { xs: 1.2, md: 1.5 },
           borderBottom: '1px solid rgba(148,163,184,0.14)',
           background: 'radial-gradient(circle at top left, rgba(34,211,238,0.18) 0%, rgba(15,23,42,0) 48%)',
+          flexShrink: 0,
         }}
       >
         <Stack spacing={{ xs: 0.8, md: 1.1 }}>
@@ -527,37 +603,62 @@ export default function RoleRoomAgentDialog({
               alignItems="center"
               sx={{ rowGap: 0.6 }}
             >
-              <Chip label="Kun admin" size="small" sx={{ bgcolor: 'rgba(15,118,110,0.18)', color: '#99f6e4' }} />
-              <Chip
-                label="Innholdsprodusent"
-                size="small"
-                sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#f0abfc', display: { xs: 'none', sm: 'inline-flex' } }}
-              />
-              <Chip
-                label={projectName}
-                size="small"
-                sx={{
-                  bgcolor: 'rgba(59,130,246,0.16)',
-                  color: '#bfdbfe',
-                  maxWidth: { xs: 160, md: 240 },
-                  '& .MuiChip-label': { textOverflow: 'ellipsis', overflow: 'hidden' },
-                }}
-              />
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => setSystemStatusOpen(true)}
-                sx={{
-                  textTransform: 'none',
-                  borderColor: 'rgba(148,163,184,0.3)',
-                  color: '#cbd5e1',
-                  fontSize: '0.72rem',
-                  py: 0.2,
-                  '&:hover': { borderColor: '#22d3ee', color: '#22d3ee' },
-                }}
-              >
-                System status
-              </Button>
+              {showAdminChrome ? (
+                <>
+                  <Tooltip title="Denne testflaten er kun synlig for admin-brukere" disableInteractive>
+                    <Chip label="Kun admin" size="small" aria-label="Tilgang: kun admin" sx={{ bgcolor: 'rgba(15,118,110,0.18)', color: '#99f6e4' }} />
+                  </Tooltip>
+                  <Tooltip title="Rollen agenten kjører som: innholdsprodusent-flyt" disableInteractive>
+                    <Chip
+                      label="Innholdsprodusent"
+                      size="small"
+                      aria-label="Rolle: innholdsprodusent"
+                      sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#f0abfc', display: { xs: 'none', sm: 'inline-flex' } }}
+                    />
+                  </Tooltip>
+                </>
+              ) : null}
+              <Tooltip title={`Aktivt prosjekt: ${projectName}`} disableInteractive>
+                <Chip
+                  label={projectName}
+                  size="small"
+                  aria-label={`Aktivt prosjekt: ${projectName}`}
+                  sx={{
+                    bgcolor: 'rgba(59,130,246,0.16)',
+                    color: '#bfdbfe',
+                    maxWidth: { xs: 160, md: 240 },
+                    '& .MuiChip-label': { textOverflow: 'ellipsis', overflow: 'hidden' },
+                  }}
+                />
+              </Tooltip>
+              {showAdminChrome ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setSystemStatusOpen(true)}
+                  sx={{
+                    textTransform: 'none',
+                    borderColor: 'rgba(148,163,184,0.3)',
+                    color: '#cbd5e1',
+                    fontSize: '0.72rem',
+                    py: 0.2,
+                    '&:hover': { borderColor: '#22d3ee', color: '#22d3ee' },
+                  }}
+                >
+                  System status
+                </Button>
+              ) : null}
+              <Tooltip title={showAdminChrome ? 'Skjul admin-detaljer' : 'Vis admin-detaljer'} disableInteractive>
+                <IconButton
+                  size="small"
+                  onClick={() => setShowAdminChrome((v) => !v)}
+                  aria-label={showAdminChrome ? 'Skjul admin-detaljer' : 'Vis admin-detaljer'}
+                  data-testid="agent-admin-toggle"
+                  sx={{ color: showAdminChrome ? '#22d3ee' : 'rgba(148,163,184,0.55)' }}
+                >
+                  <TuneIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
             </Stack>
           </Stack>
         </Stack>
@@ -575,6 +676,48 @@ export default function RoleRoomAgentDialog({
           }
         }}
       />
+      {/* Guided flow bar: step through tabs with Forrige/Neste so users don't
+          have to pick among ~12. Toggle collapses the full tab strip. */}
+      <Stack
+        direction="row"
+        spacing={1}
+        alignItems="center"
+        sx={{ px: { xs: 1.4, md: 2 }, py: 0.6, borderBottom: '1px solid rgba(148,163,184,0.1)', flexShrink: 0 }}
+      >
+        <Button
+          size="small"
+          variant="text"
+          onClick={() => setShowAllTabs((v) => !v)}
+          data-testid="agent-toggle-tabs"
+          sx={{ textTransform: 'none', color: 'rgba(226,232,240,0.7)', minWidth: 0 }}
+        >
+          {showAllTabs ? 'Skjul verktøy' : 'Flere verktøy'}
+        </Button>
+        <Typography sx={{ flex: 1, color: 'rgba(226,232,240,0.6)', fontSize: '0.78rem', textAlign: 'center' }}>
+          {flowIndex >= 0 ? `Steg ${flowIndex + 1} av ${tabFlow.length}: ${TAB_LABELS[activeTab] ?? ''}` : ''}
+        </Typography>
+        <Button
+          size="small"
+          variant="text"
+          disabled={flowIndex <= 0}
+          onClick={() => { if (flowIndex > 0) setActiveTab(tabFlow[flowIndex - 1]); }}
+          data-testid="agent-prev-step"
+          sx={{ textTransform: 'none', color: '#cbd5e1', minWidth: 0 }}
+        >
+          ← Forrige
+        </Button>
+        <Button
+          size="small"
+          variant="outlined"
+          disabled={flowIndex < 0 || flowIndex >= tabFlow.length - 1}
+          onClick={() => { if (flowIndex < tabFlow.length - 1) setActiveTab(tabFlow[flowIndex + 1]); }}
+          data-testid="agent-next-step"
+          sx={{ textTransform: 'none', fontWeight: 700, color: '#22d3ee', borderColor: 'rgba(34,211,238,0.5)' }}
+        >
+          Neste →
+        </Button>
+      </Stack>
+      {showAllTabs ? (
       <Tabs
         value={activeTab}
         onChange={(_, next) => setActiveTab(next as typeof activeTab)}
@@ -603,6 +746,7 @@ export default function RoleRoomAgentDialog({
         }}
       >
         <Tab value="research" label="Research" icon={<AutoFixHighIcon fontSize="small" />} iconPosition="start" />
+        <Tab value="discovery" label="Oppdag" icon={<DiscoveryTabIcon fontSize="small" />} iconPosition="start" data-testid="agent-tab-discovery" />
         <Tab
           value="merch"
           label="Merch"
@@ -622,39 +766,9 @@ export default function RoleRoomAgentDialog({
           iconPosition="start"
         />
         <Tab
-          value="meta-page"
-          label="Meta Page"
-          icon={<FactCheckIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
-          value="page-content"
-          label="Page Content"
-          icon={<ArticleIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
           value="ads-attribution"
           label="Ads Attribution"
           icon={<QueryStatsIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
-          value="fb-publish"
-          label="FB Publish"
-          icon={<CloudUploadIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
-          value="fb-mention"
-          label="Page Mentions"
-          icon={<AlternateEmailIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
-          value="ig-hashtag"
-          label="IG Hashtags"
-          icon={<TagIcon fontSize="small" />}
           iconPosition="start"
         />
         <Tab
@@ -663,6 +777,27 @@ export default function RoleRoomAgentDialog({
           icon={<InboxIcon fontSize="small" />}
           iconPosition="start"
           data-testid="agent-tab-social-inbox"
+        />
+        <Tab
+          value="mentions"
+          label="Omtaler"
+          icon={<MentionsTabIcon fontSize="small" />}
+          iconPosition="start"
+          data-testid="agent-tab-mentions"
+        />
+        <Tab
+          value="leads"
+          label="Leads"
+          icon={<LeadsTabIcon fontSize="small" />}
+          iconPosition="start"
+          data-testid="agent-tab-leads"
+        />
+        <Tab
+          value="events"
+          label="Arrangement"
+          icon={<EventsTabIcon fontSize="small" />}
+          iconPosition="start"
+          data-testid="agent-tab-events"
         />
         <Tab
           value="social-analytics"
@@ -675,6 +810,7 @@ export default function RoleRoomAgentDialog({
           <Tab value="chat" label="Chat" icon={<ChatIcon fontSize="small" />} iconPosition="start" />
         ) : null}
       </Tabs>
+      ) : null}
       {hasUnsavedAgentWork ? (
         <Alert
           severity="warning"
@@ -690,25 +826,56 @@ export default function RoleRoomAgentDialog({
             fontSize: '0.84rem',
           }}
           action={
-            <Button
-              size="small"
-              variant="contained"
-              onClick={handleCreateProjectAndMark}
-              disabled={generating || applying}
-              sx={{
-                textTransform: 'none',
-                fontWeight: 800,
-                background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
-                color: '#0b1220',
-              }}
-            >
-              Opprett prosjekt nå
-            </Button>
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={handleApplyAndMark}
+                disabled={generating || applying}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 800,
+                  background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+                }}
+              >
+                {applying ? 'Lagrer…' : 'Bruk forslag (lagre her)'}
+              </Button>
+              {onCreateProject ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={handleCreateProjectAndMark}
+                  disabled={generating || applying}
+                  sx={{ textTransform: 'none', fontWeight: 700, color: '#fcd34d', borderColor: 'rgba(251,191,36,0.5)' }}
+                >
+                  Opprett nytt prosjekt
+                </Button>
+              ) : null}
+            </Stack>
           }
         >
-          Du har generert forslag fra The Role Room Agent. Husk å klikke{' '}
-          <strong>&quot;Opprett prosjekt&quot;</strong> for å lagre — lukkes dialogen uten, mister du
-          analysen ved neste refresh.
+          Forslag fra The Role Room Agent er ikke lagret ennå. <strong>Bruk forslag</strong> lagrer
+          dem i <strong>dette prosjektet</strong>; <strong>Opprett nytt prosjekt</strong> lager et
+          for en ny kunde. Lukker du uten å lagre, mister du analysen ved neste refresh.
+        </Alert>
+      ) : agentWorkSaved ? (
+        <Alert
+          severity="success"
+          variant="outlined"
+          sx={{
+            mx: { xs: 1.4, md: 2 },
+            mt: 1,
+            mb: 0.4,
+            borderColor: 'rgba(34,197,94,0.4)',
+            color: '#bbf7d0',
+            backgroundColor: 'rgba(20,83,45,0.22)',
+            '& .MuiAlert-icon': { color: '#86efac' },
+            fontSize: '0.84rem',
+          }}
+        >
+          {projectCreatedFromResult
+            ? 'Prosjekt opprettet og lagret.'
+            : 'Forslagene er lagret i prosjektet.'}
         </Alert>
       ) : null}
       <DialogContent
@@ -761,6 +928,8 @@ export default function RoleRoomAgentDialog({
               }}
             />
           </Box>
+        ) : activeTab === 'discovery' ? (
+          <DiscoveryPanel />
         ) : activeTab === 'merch' ? (
           <Box sx={{ p: { xs: 1.4, md: 2 } }}>
             <MerchSuppliersPanel
@@ -807,6 +976,12 @@ export default function RoleRoomAgentDialog({
           <Box sx={{ p: { xs: 1, md: 2 } }}>
             <SocialInboxPanel />
           </Box>
+        ) : activeTab === 'mentions' ? (
+          <MentionsPanel />
+        ) : activeTab === 'events' ? (
+          <EventsPanel />
+        ) : activeTab === 'leads' ? (
+          <LeadsPanel />
         ) : activeTab === 'social-analytics' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>
             <SocialAnalyticsPanel />
@@ -816,68 +991,135 @@ export default function RoleRoomAgentDialog({
           {error ? <Alert severity="error">{error}</Alert> : null}
           {notice ? <Alert severity="success">{notice}</Alert> : null}
 
-          <Stack direction="row" justifyContent="flex-end">
-            <ResearchVersionsPickerInline projectId={projectId} />
-          </Stack>
-
-
           <Box
             sx={{
-              p: 1.2,
+              p: { xs: 1.4, md: 1.8 },
               borderRadius: 3,
-              border: '1px solid rgba(34,211,238,0.12)',
+              border: '1px solid rgba(34,211,238,0.22)',
               bgcolor: 'rgba(15,23,42,0.52)',
             }}
           >
-            <Stack spacing={1.1}>
-              <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>
-                Start med kundesignaler
+            <Stack spacing={1.2}>
+              <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: { xs: '1rem', md: '1.1rem' } }}>
+                Lim inn kundens nettside — så finner jeg ut resten
               </Typography>
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.1}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-start' }}>
                 <TextField
-                  label="Nettside"
+                  label="Kundens nettside"
                   value={websiteUrl}
                   onChange={(event) => setWebsiteUrl(event.target.value)}
                   fullWidth
                   placeholder="https://kunde.no"
                   InputLabelProps={{ shrink: true }}
                 />
-                <TextField
-                  label="Org.nr"
-                  value={organizationNumber}
-                  onChange={(event) => setOrganizationNumber(event.target.value)}
-                  fullWidth
-                  placeholder="999 999 999"
-                  InputLabelProps={{ shrink: true }}
-                />
+                <Button
+                  variant="contained"
+                  size="large"
+                  disabled={!canGenerate || generating || applying}
+                  onClick={() => onGenerate({
+                    projectId,
+                    projectName,
+                    websiteUrl,
+                    organizationNumber,
+                    companyName,
+                    extraContext,
+                  })}
+                  data-testid="research-find-out"
+                  sx={{
+                    minWidth: { sm: 220 },
+                    py: 1.4,
+                    fontWeight: 800,
+                    textTransform: 'none',
+                    whiteSpace: 'nowrap',
+                    background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+                  }}
+                >
+                  {generating ? 'Finner ut…' : 'Finn ut alt om kunden'}
+                </Button>
               </Stack>
-              <TextField
-                label="Firmanavn"
-                value={companyName}
-                onChange={(event) => setCompanyName(event.target.value)}
-                fullWidth
-                placeholder="Northwind Drilling"
-                InputLabelProps={{ shrink: true }}
-              />
-              <TextField
-                label="Ekstra kontekst"
-                value={extraContext}
-                onChange={(event) => setExtraContext(event.target.value)}
-                fullWidth
-                multiline
-                minRows={3}
-                placeholder="Legg inn kampanjemål, målgruppe, leveranser eller annet du vil at agenten skal ta hensyn til."
-                InputLabelProps={{ shrink: true }}
-              />
+              <Button
+                variant="text"
+                size="small"
+                onClick={() => setShowMoreResearchDetails((v) => !v)}
+                sx={{ alignSelf: 'flex-start', textTransform: 'none', color: 'rgba(226,232,240,0.7)' }}
+              >
+                {showMoreResearchDetails ? 'Skjul flere detaljer' : 'Flere detaljer (valgfritt)'}
+              </Button>
+              <Collapse in={showMoreResearchDetails}>
+                <Stack spacing={1.1} sx={{ pt: 0.4 }}>
+                  <TextField
+                    label="Organisasjonsnummer (valgfritt)"
+                    value={organizationNumber}
+                    onChange={(event) => setOrganizationNumber(event.target.value)}
+                    fullWidth
+                    placeholder="999 999 999"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <TextField
+                    label="Firmanavn (valgfritt)"
+                    value={companyName}
+                    onChange={(event) => setCompanyName(event.target.value)}
+                    fullWidth
+                    placeholder="Northwind Drilling"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <TextField
+                    label="Noe spesielt jeg bør vite? (valgfritt)"
+                    value={extraContext}
+                    onChange={(event) => setExtraContext(event.target.value)}
+                    fullWidth
+                    multiline
+                    minRows={3}
+                    placeholder="F.eks. kampanjemål, målgruppe eller leveranser du vil at jeg skal ta hensyn til."
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Stack>
+              </Collapse>
             </Stack>
           </Box>
+          {/* Previous research versions — demoted from the top so the first
+              impression stays simple; only relevant once analyses exist. */}
+          <Stack direction="row" justifyContent="flex-end">
+            <ResearchVersionsPickerInline projectId={projectId} />
+          </Stack>
+
+          {/* Friendly reassurance while working (covers the case where the
+              streaming progress panel above isn't active). */}
+          {generating && !result && (!progressStatus || progressStatus === 'idle') ? (
+            <Box
+              data-testid="research-working"
+              sx={{
+                p: 1.6,
+                borderRadius: 3,
+                border: '1px solid rgba(34,211,238,0.25)',
+                bgcolor: 'rgba(34,211,238,0.06)',
+              }}
+            >
+              <Stack direction="row" spacing={1.2} alignItems="center">
+                <CircularProgress size={22} sx={{ color: '#22d3ee' }} />
+                <Box>
+                  <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>Jeg jobber…</Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.84rem' }}>
+                    Leser nettsiden, sjekker offentlige registre og finner sosiale kontoer. Dette tar vanligvis et halvt minutt.
+                  </Typography>
+                </Box>
+              </Stack>
+            </Box>
+          ) : null}
+
+          {/* Empty state: nothing analysed yet — a warm pointer, not a blank gap. */}
+          {!result && !generating ? (
+            <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.86rem', textAlign: 'center', py: 1 }}>
+              Lim inn en nettside over og klikk «Finn ut alt om kunden» — så dukker forslagene opp her.
+            </Typography>
+          ) : null}
 
           {result ? (
             <Stack spacing={1.2}>
               <Alert severity={brregVerified ? 'success' : 'info'}>
                 {brregVerified
-                  ? `Vi har nå hentet all tilgjengelig offentlig informasjon om kunden fra Brønnøysundregistrene. Ønsker du å opprette et prosjekt på ${result.companyProfile.companyName}?`
-                  : brregCompany?.statusMessage || 'Agenten har laget et kundeutkast. Brreg-data er ikke verifisert for denne analysen.'}
+                  ? `Bekreftet i offentlige registre. Klar til å lagre ${result.companyProfile.companyName} som prosjekt — klikk «Bruk forslag» nederst.`
+                  : brregCompany?.statusMessage || 'Utkastet er klart. (Ikke bekreftet mot offentlige registre for denne kunden.)'}
               </Alert>
 
               {/* Multi-turn refinement: user tells the agent "actually X" and
@@ -894,7 +1136,7 @@ export default function RoleRoomAgentDialog({
               >
                 <Stack spacing={0.85}>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>
-                    Forfin utkastet
+                    Be om en endring
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.82rem', lineHeight: 1.5 }}>
                     Ikke helt treff? Fortell agenten hva som er feil, så genererer den på nytt
@@ -949,12 +1191,112 @@ export default function RoleRoomAgentDialog({
                         '&:hover': { bgcolor: 'rgba(34,211,238,1)' },
                       }}
                     >
-                      {generating ? 'Forfiner…' : 'Forfin'}
+                      {generating ? 'Endrer…' : 'Send endring'}
                     </Button>
                   </Stack>
                 </Stack>
               </Box>
-              <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.2}>
+              {/* Summary-first: lead with what we found + top recommendations,
+                  so the producer isn't dropped straight into a wall of cards. */}
+              <Box
+                data-testid="research-summary"
+                sx={{
+                  p: 1.4,
+                  borderRadius: 3,
+                  border: '1px solid rgba(34,211,238,0.3)',
+                  bgcolor: 'rgba(34,211,238,0.06)',
+                }}
+              >
+                <Typography
+                  sx={{
+                    color: '#22d3ee',
+                    fontWeight: 800,
+                    fontSize: '0.74rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    mb: 0.6,
+                  }}
+                >
+                  Sammendrag
+                </Typography>
+                <Typography sx={{ color: '#e2e8f0', lineHeight: 1.6 }}>
+                  {result.companyProfile.summary}
+                </Typography>
+                <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                  {result.companyProfile.industry ? (
+                    <Chip size="small" label={result.companyProfile.industry} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#e2e8f0' }} />
+                  ) : null}
+                  {result.companyAge?.label ? (
+                    <Chip size="small" label={result.companyAge.label} sx={{ bgcolor: 'rgba(16,185,129,0.16)', color: '#bbf7d0' }} />
+                  ) : null}
+                  {socialProfileCandidates.length > 0 ? (
+                    <Chip size="small" label={`${socialProfileCandidates.length} sosiale kontoer`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                  ) : null}
+                  {competitorAnalysis?.competitors?.length ? (
+                    <Chip size="small" label={`${competitorAnalysis.competitors.length} konkurrenter`} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#f0abfc' }} />
+                  ) : null}
+                </Stack>
+                {(() => {
+                  const recs = (competitorAnalysis?.marketingOpportunities?.length
+                    ? competitorAnalysis.marketingOpportunities
+                    : localPresencePlan?.recommendedEventConcepts ?? []).slice(0, 3);
+                  return recs.length > 0 ? (
+                    <Box sx={{ mt: 1.2 }}>
+                      <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontWeight: 700, fontSize: '0.72rem', mb: 0.4 }}>
+                        Anbefalte neste steg
+                      </Typography>
+                      <Stack component="ol" spacing={0.4} sx={{ m: 0, pl: 2.2 }}>
+                        {recs.map((r, i) => (
+                          <Typography key={i} component="li" sx={{ color: '#e2e8f0', fontSize: '0.86rem', lineHeight: 1.5 }}>
+                            {r}
+                          </Typography>
+                        ))}
+                      </Stack>
+                    </Box>
+                  ) : null;
+                })()}
+              </Box>
+              <Stack
+                direction="row"
+                spacing={0.8}
+                flexWrap="wrap"
+                useFlexGap
+                role="tablist"
+                aria-label="Research-seksjoner"
+                sx={{ mb: 0.2 }}
+              >
+                {([
+                  ['alle', 'Alle'],
+                  ['oversikt', 'Oversikt'],
+                  ['kanaler', 'Kanaler'],
+                  ['marked', 'Marked'],
+                ] as const).map(([key, label]) => {
+                  const selected = researchSection === key;
+                  return (
+                    <Chip
+                      key={key}
+                      label={label}
+                      size="small"
+                      clickable
+                      role="tab"
+                      aria-selected={selected}
+                      onClick={() => setResearchSection(key)}
+                      data-testid={`research-section-${key}`}
+                      sx={{
+                        fontWeight: 700,
+                        bgcolor: selected ? 'rgba(34,211,238,0.18)' : 'rgba(148,163,184,0.12)',
+                        color: selected ? '#22d3ee' : 'rgba(226,232,240,0.7)',
+                        border: selected ? '1px solid rgba(34,211,238,0.5)' : '1px solid transparent',
+                      }}
+                    />
+                  );
+                })}
+              </Stack>
+              <Stack
+                direction={{ xs: 'column', lg: 'row' }}
+                spacing={1.2}
+                sx={{ display: showResearchSection('oversikt') ? undefined : 'none' }}
+              >
                 <Box
                   sx={{
                     flex: 1.25,
@@ -966,7 +1308,7 @@ export default function RoleRoomAgentDialog({
                 >
                   <Stack spacing={0.9}>
                     <Stack direction="row" spacing={0.9} alignItems="center" justifyContent="space-between">
-                      <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Kundeprofil</Typography>
+                      <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Om kunden</Typography>
                       <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap justifyContent="flex-end">
                         {providerLabel ? (
                           <Chip label={providerLabel} size="small" sx={{ bgcolor: 'rgba(34,211,238,0.12)', color: '#a5f3fc' }} />
@@ -1118,6 +1460,7 @@ export default function RoleRoomAgentDialog({
               {socialProfileCandidates.length > 0 ? (
                 <Box
                   sx={{
+                    display: showResearchSection('kanaler') ? undefined : 'none',
                     p: 1.2,
                     borderRadius: 3,
                     border: '1px solid rgba(59,130,246,0.2)',
@@ -1229,6 +1572,7 @@ export default function RoleRoomAgentDialog({
               {competitorAnalysis ? (
                 <Box
                   sx={{
+                    display: showResearchSection('marked') ? undefined : 'none',
                     p: 1.2,
                     borderRadius: 3,
                     border: competitorAnalysis.status === 'ready'
@@ -1240,7 +1584,7 @@ export default function RoleRoomAgentDialog({
                   <Stack spacing={1}>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} alignItems={{ md: 'center' }} justifyContent="space-between">
                       <Box>
-                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Konkurrentanalyse og markedsføring</Typography>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Hvem konkurrerer kunden mot?</Typography>
                         <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem', lineHeight: 1.5 }}>
                           {competitorAnalysis.marketContext}
                         </Typography>
@@ -1434,6 +1778,7 @@ export default function RoleRoomAgentDialog({
               {localPresencePlan ? (
                 <Box
                   sx={{
+                    display: showResearchSection('marked') ? undefined : 'none',
                     p: 1.2,
                     borderRadius: 3,
                     border: localPresencePlan.status === 'ready'
@@ -1445,7 +1790,7 @@ export default function RoleRoomAgentDialog({
                   <Stack spacing={1}>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} alignItems={{ md: 'center' }} justifyContent="space-between">
                       <Box>
-                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Lokal synlighet og event</Typography>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Lokale muligheter</Typography>
                         <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem', lineHeight: 1.5 }}>
                           {localPresencePlan.industryContext} · {localPresencePlan.marketArea}
                         </Typography>
@@ -1722,48 +2067,59 @@ export default function RoleRoomAgentDialog({
           spacing={1}
           sx={{ width: { xs: '100%', md: 'auto' } }}
         >
-          {result && onCreateProject ? (
-            <Button
-              variant={projectCreatedFromResult ? 'text' : 'outlined'}
-              disabled={generating || applying || projectCreatedFromResult}
-              onClick={handleCreateProjectAndMark}
-              sx={{ textTransform: 'none', fontWeight: 800 }}
-            >
-              {projectCreatedFromResult ? 'Prosjekt opprettet' : 'Ja, opprett prosjekt på kunden'}
-            </Button>
-          ) : null}
-          <Button
-            variant="outlined"
-            disabled={!canGenerate || generating || applying}
-            onClick={() => onGenerate({
-              projectId,
-              projectName,
-              websiteUrl,
-              organizationNumber,
-              companyName,
-              extraContext,
-            })}
-            startIcon={<RoleRoomAgentIcon size={18} working={generating} />}
-            sx={{ textTransform: 'none', fontWeight: 700 }}
+          {/* Secondary actions tucked into a "…" menu so one primary stands clear. */}
+          <IconButton
+            onClick={(event) => setMoreActionsAnchor(event.currentTarget)}
+            disabled={generating || applying}
+            aria-label="Flere valg"
+            data-testid="agent-more-actions"
+            sx={{
+              alignSelf: { xs: 'center', md: 'auto' },
+              color: 'rgba(226,232,240,0.75)',
+              border: '1px solid rgba(148,163,184,0.28)',
+              borderRadius: 2,
+            }}
           >
-            {generating ? 'Analyserer…' : access?.providerConfigured ? 'Analyser kunde med OpenAI' : 'Analyser kunde'}
-          </Button>
+            <MoreHorizIcon />
+          </IconButton>
+          <Menu
+            anchorEl={moreActionsAnchor}
+            open={Boolean(moreActionsAnchor)}
+            onClose={() => setMoreActionsAnchor(null)}
+            anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          >
+            {result && onCreateProject ? (
+              <MenuItem
+                disabled={projectCreatedFromResult}
+                onClick={() => { setMoreActionsAnchor(null); void handleCreateProjectAndMark(); }}
+              >
+                {projectCreatedFromResult ? 'Prosjekt opprettet' : 'Opprett som nytt prosjekt'}
+              </MenuItem>
+            ) : null}
+            <MenuItem
+              disabled={!canGenerate}
+              onClick={() => {
+                setMoreActionsAnchor(null);
+                onGenerate({ projectId, projectName, websiteUrl, organizationNumber, companyName, extraContext });
+              }}
+            >
+              Analyser på nytt
+            </MenuItem>
+          </Menu>
           <Button
             variant="contained"
             disabled={!result || generating || applying}
-            onClick={() => {
-              if (result) {
-                void onApply(result);
-              }
-            }}
+            onClick={handleApplyAndMark}
+            data-testid="agent-primary-apply"
             sx={{
               textTransform: 'none',
               fontWeight: 800,
-              px: 2.2,
+              px: 2.6,
               background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
             }}
           >
-            {applying ? 'Bruker forslag…' : 'Bruk forslag'}
+            {applying ? 'Lagrer…' : 'Bruk forslag'}
           </Button>
         </Stack>
       </DialogActions>

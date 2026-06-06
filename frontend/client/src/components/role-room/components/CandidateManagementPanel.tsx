@@ -81,6 +81,7 @@ import {
   Videocam as VideocamIcon,
   Gavel as GavelIcon,
   Tune as TuneIcon,
+  HandshakeOutlined as HandshakeOutlinedIcon,
   DoneAll as DoneAllIcon,
   Rule as RuleIcon,
   ViewCarousel as ViewCarouselIcon,
@@ -990,6 +991,25 @@ function CandidateManagementPanelInner({
 
   const handleStatusUpdate = async (candidate: Candidate, status: StatusFilter) => {
     await saveCandidatePatch(candidate, { status }, `${candidate.name} satt til ${getStatusLabel(status)}`);
+    // Phase 9.6 — hvis kandidat er fra partnership-talent-forslag,
+    // PATCH casting_candidates direkte + trigger e-post-callback til byrå.
+    // Compat-store-flyten over oppdaterer ikke den relasjonelle tabellen, så
+    // partnership-kandidater må synkes separat.
+    const meta = (candidate as { metadata?: Record<string, unknown> }).metadata;
+    const isFromPartnership = meta && (meta as { source?: string }).source === 'partnership_talent_proposal';
+    if (isFromPartnership && candidate.id) {
+      try {
+        await fetch(`/api/role-room/candidates/${encodeURIComponent(candidate.id)}/status`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        });
+      } catch (err) {
+        // Stille feilet — vanlig saveCandidatePatch over har lagret status lokalt
+        console.warn('Partnership candidate-status PATCH feilet:', err);
+      }
+    }
   };
 
   const handleBulkStatusUpdate = async (status: StatusFilter) => {
@@ -1838,6 +1858,32 @@ function CandidateManagementPanelInner({
                   size="small"
                   sx={{ height: 22, bgcolor: 'rgba(184,107,255,0.14)', color: roleTabAccent, border: `1px solid ${roleBorder}` }}
                 />
+                {(() => {
+                  // Vis "Foreslått av <byrå>"-chip når kandidat kom via
+                  // partnership-talent-proposal (auto-created). Detekteres
+                  // via metadata.source — strikt skille fra manuelt
+                  // satte agency-strenger.
+                  const meta = (candidate as { metadata?: Record<string, unknown> }).metadata;
+                  const isFromPartnership = meta && (meta as { source?: string }).source === 'partnership_talent_proposal';
+                  const agencyName = isFromPartnership
+                    ? ((meta as { agency_name?: string }).agency_name ?? candidate.agency)
+                    : null;
+                  if (!isFromPartnership || !agencyName) return null;
+                  return (
+                    <Chip
+                      icon={<HandshakeOutlinedIcon sx={{ color: '#38bdf8 !important', fontSize: '0.9rem' }} />}
+                      label={`Fra ${agencyName}`}
+                      size="small"
+                      sx={{
+                        height: 22,
+                        bgcolor: 'rgba(56,189,248,0.14)',
+                        color: '#38bdf8',
+                        border: '1px solid rgba(56,189,248,0.32)',
+                        fontWeight: 600,
+                      }}
+                    />
+                  );
+                })()}
               </Box>
               <LinearProgress
                 variant="determinate"

@@ -56,9 +56,11 @@ import {
   Payment as PaymentIcon,
   Folder as FolderIcon,
   ViewModule as ChaptersIcon,
+  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import ChapterEditor from './ChapterEditor';
 import GalleryFeedbackDialog from './GalleryFeedbackDialog';
+import GalleryVersionsTimelineDialog from './GalleryVersionsTimelineDialog';
 import useGalleryEventStream from '@/hooks/useGalleryEventStream';
 import { Snackbar, Alert as AlertBar } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -70,6 +72,7 @@ import {
   type ShowcaseTerminology,
 } from '@/utils/showcaseTerminology';
 import { useCmsContent } from '@/hooks/useCmsContent';
+import AttachUploadsDialog from './AttachUploadsDialog';
 
 interface GallerySettings {
   maxSelections?: number;
@@ -173,6 +176,8 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
   const [settingsOpenFor, setSettingsOpenFor] = useState<PhotographerGallery | null>(null);
   const [eventsOpenFor, setEventsOpenFor] = useState<PhotographerGallery | null>(null);
   const [feedbackOpenFor, setFeedbackOpenFor] = useState<PhotographerGallery | null>(null);
+  const [attachUploadsOpenFor, setAttachUploadsOpenFor] = useState<PhotographerGallery | null>(null);
+  const [versionsOpenFor, setVersionsOpenFor] = useState<PhotographerGallery | null>(null);
   // Slice 9X.85 — live broadcast: ny klient-kommentar / utvalg-submit dukker
   // opp som toast med klikkbar handling. Stine slipper å refresh-e.
   const [liveToast, setLiveToast] = useState<{
@@ -305,6 +310,8 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
               onSettings={() => setSettingsOpenFor(g)}
               onEvents={() => setEventsOpenFor(g)}
               onFeedback={() => setFeedbackOpenFor(g)}
+              onAttachUploads={() => setAttachUploadsOpenFor(g)}
+              onVersions={() => setVersionsOpenFor(g)}
             />
           </Grid>
         ))}
@@ -384,6 +391,31 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
           onClose={() => setFeedbackOpenFor(null)}
         />
       )}
+      {attachUploadsOpenFor && (
+        <AttachUploadsDialog
+          open
+          galleryId={attachUploadsOpenFor.id}
+          galleryTitle={
+            attachUploadsOpenFor.projectTitle ?? attachUploadsOpenFor.clientName
+          }
+          onClose={() => setAttachUploadsOpenFor(null)}
+          onSuccess={() => {
+            // Re-fetch galleries så imageCount oppdateres på kortet
+            queryClient.invalidateQueries({
+              queryKey: ['/api/photographer/galleries'],
+            });
+          }}
+        />
+      )}
+      {versionsOpenFor && (
+        <GalleryVersionsTimelineDialog
+          galleryId={versionsOpenFor.id}
+          galleryTitle={
+            versionsOpenFor.projectTitle ?? versionsOpenFor.clientName
+          }
+          onClose={() => setVersionsOpenFor(null)}
+        />
+      )}
 
       <Snackbar
         open={Boolean(liveToast)}
@@ -423,10 +455,12 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
 const GalleryCard: React.FC<{
   gallery: PhotographerGallery;
   terms: ShowcaseTerminology;
+  onVersions: () => void;
   onSettings: () => void;
   onEvents: () => void;
   onFeedback: () => void;
-}> = ({ gallery, terms, onSettings, onEvents, onFeedback }) => {
+  onAttachUploads: () => void;
+}> = ({ gallery, terms, onSettings, onEvents, onFeedback, onAttachUploads, onVersions }) => {
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
   const totalEvents =
@@ -588,6 +622,16 @@ const GalleryCard: React.FC<{
         </Stack>
         <Button
           size="small"
+          startIcon={<AddIcon />}
+          onClick={onAttachUploads}
+          fullWidth
+          variant="outlined"
+          sx={{ mt: 1 }}
+        >
+          Legg til fra opplastinger
+        </Button>
+        <Button
+          size="small"
           startIcon={<CommentIcon />}
           onClick={onFeedback}
           fullWidth
@@ -595,6 +639,16 @@ const GalleryCard: React.FC<{
           sx={{ mt: 1, borderColor: '#d97706', color: '#d97706', '&:hover': { borderColor: '#b45309', bgcolor: 'rgba(217, 119, 6, 0.08)' } }}
         >
           Klient-tilbakemelding
+        </Button>
+        <Button
+          size="small"
+          startIcon={<TimelineIcon />}
+          onClick={onVersions}
+          fullWidth
+          variant="outlined"
+          sx={{ mt: 1 }}
+        >
+          Versjoner & leveranseplan
         </Button>
         {/* Slice 9X.7 — explicit completion action. Disabled when
             already completed (idempotent on backend, but visual cue). */}

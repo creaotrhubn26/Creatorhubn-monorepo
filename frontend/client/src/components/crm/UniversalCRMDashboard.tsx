@@ -49,7 +49,28 @@ import {
   Assessment as AssessmentIcon,
   AccountBalance as SplitSheetIcon,
   Description as ContractIcon,
+  DeleteOutline as DeleteIcon,
+  Archive as ArchiveIcon,
+  ContentCopy as CopyIcon,
+  OpenInNew as OpenInNewIcon,
+  RequestQuote as QuoteIcon,
+  ReceiptLong as InvoiceIcon,
+  ViewKanban as KanbanIcon,
+  ViewList as ListIcon,
+  MailOutline as MailIcon,
+  ArrowForward as NextStepIcon,
+  StarBorder as ReviewIcon,
+  Instagram as InstagramIcon,
 } from '@mui/icons-material';
+import { useToast } from '@/hooks/use-toast';
+import CustomerDetailDrawer from './CustomerDetailDrawer';
+import CrmTaskInbox from './CrmTaskInbox';
+import IgDmInbox from './IgDmInbox';
+import DealsPipelineBoard from './DealsPipelineBoard';
+import CrmActionQueue from './CrmActionQueue';
+import CrmReports from './CrmReports';
+import CrmImportDialog from './CrmImportDialog';
+import CrmDuplicatesDialog from './CrmDuplicatesDialog';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '../../hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
@@ -75,6 +96,29 @@ interface UniversalCustomer {
   updatedAt: string;
   customFields: Record<string, unknown>;
 }
+
+// Single source of truth for status labels so card-chips, filter and edit
+// dialog never disagree (gap #23). Pipeline order drives the board view (#2)
+// and the "Neste steg"-action (#20/#26).
+const STATUS_LABELS: Record<string, string> = {
+  lead: 'Henvendelse',
+  prospect: 'Potensiell',
+  active: 'Aktiv',
+  completed: 'Fullført',
+  archived: 'Arkivert',
+};
+const PIPELINE_ORDER: Array<'lead' | 'prospect' | 'active' | 'completed'> = [
+  'lead',
+  'prospect',
+  'active',
+  'completed',
+];
+const statusLabel = (status: string): string => STATUS_LABELS[status] || status;
+const nextStatus = (status: string): 'prospect' | 'active' | 'completed' | null => {
+  const i = PIPELINE_ORDER.indexOf(status as any);
+  if (i < 0 || i >= PIPELINE_ORDER.length - 1) return null;
+  return PIPELINE_ORDER[i + 1] as 'prospect' | 'active' | 'completed';
+};
 
 interface GooglePeopleContact {
   id: string;
@@ -128,6 +172,14 @@ export default function UniversalCRMDashboard({
   const communicationTrackingAccess = features.checkFeatureAccess('communication-tracking');
 
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  // Sync helper — every CRM mutation announces itself on the integration bus
+  // AND broadcasts, so UniversalDashboard and any registered component stay in
+  // step with what just happened in the CRM ("alt synker med hverandre").
+  const emitCrmChange = React.useCallback((type: string, data: any) => {
+    try { integration.emit(type, { ...data, source: 'universal-crm-dashboard' }); } catch { /* bus best-effort */ }
+    try { communication.sendBroadcast(type, data); } catch { /* bus best-effort */ }
+  }, [integration, communication]);
   const { profession: currentProfession, adaptTabLabels, adaptDashboardTitle } = useProfessionAdapter();
   const { getCurrentUserProfession, getProfessionDisplayName, getUserProfessionColor } = useDynamicProfessions();
   const resolvedUserId = user?.id || user?.email || queryClient.getQueryData<{ id?: string; email?: string }>(['user'])?.id || queryClient.getQueryData<{ id?: string; email?: string }>(['user'])?.email || 'default';
@@ -148,6 +200,40 @@ export default function UniversalCRMDashboard({
   const [linkRole, setLinkRole] = useState<string>('Client');
   const [linkNotes, setLinkNotes] = useState<string>('');
   const [showContractsDialog, setShowContractsDialog] = useState(false);
+  // CRM workflow gaps — see docs/UNIVERSAL-CRM-WORKFLOW-GAPS.md
+  const [viewMode, setViewMode] = useState<'list' | 'board'>('list'); // #2 pipeline-board
+  const [customerToDelete, setCustomerToDelete] = useState<UniversalCustomer | null>(null); // #41 slett/arkiver
+  const [meetingResult, setMeetingResult] = useState<{ meetLink?: string | null; webViewUrl?: string | null } | null>(null); // #5/#29 vis Meet-lenke
+  const [showFollowUpFor, setShowFollowUpFor] = useState<UniversalCustomer | null>(null); // #38 etter-levering
+  const [detailCustomer, setDetailCustomer] = useState<UniversalCustomer | null>(null); // #2 kontaktdetalj-drawer
+  const [showTaskInbox, setShowTaskInbox] = useState(false); // #5 task-inbox
+  const [showIgInbox, setShowIgInbox] = useState(false); // Instagram DM inbox
+  const [showActionQueue, setShowActionQueue] = useState(false); // #24 action queue
+  const [showReports, setShowReports] = useState(false); // Wave 3 reports
+  const [showImport, setShowImport] = useState(false); // Wave 3b CSV import
+  const [showDuplicates, setShowDuplicates] = useState(false); // #33 dedupe-merge
+  // #42 — controlled edit-form so empty fields never corrupt into ', '
+  const [editForm, setEditForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    company: '',
+    status: 'lead',
+    notes: '',
+  });
+  // #4 — contract form (event date/location/type/deposit) instead of one-click.
+  const [showContractForm, setShowContractForm] = useState(false);
+  const [contractForm, setContractForm] = useState({
+    contractType: '',
+    eventDate: '',
+    eventLocation: '',
+    totalAmount: '',
+    depositAmount: '',
+  });
+  // #9/#10 — invoices dialog state
+  const [showInvoicesDialog, setShowInvoicesDialog] = useState(false);
+  const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+  const [invoiceForm, setInvoiceForm] = useState({ description: '', totalAmount: '', depositAmount: '', dueDate: '' });
   // Slice 9X.8 — per-client galleries dialog. Opens when photographer
   // clicks "Galleri-historikk" on a customer card; lists every gallery
   // belonging to that customer with full status, share-link, and
@@ -158,6 +244,7 @@ export default function UniversalCRMDashboard({
     date: new Date().toISOString().split('T')[0],
     time: '10:00',
     duration: 60,
+    location: '',
     description: '',
   });
 
@@ -297,9 +384,23 @@ export default function UniversalCRMDashboard({
       date: new Date().toISOString().split('T')[0],
       time: '10:00',
       duration: 60,
+      location: (selectedCustomer.customFields?.location as string) || '',
       description: `Kundemøte for ${selectedCustomer.projectType || selectedProject?.projectType || 'prosjekt'}${selectedProject?.name ? ` • ${selectedProject.name}` : ''}`,
     });
   }, [selectedCustomer, selectedProject, showMeetingDialog]);
+
+  // #42 — hydrate the controlled edit-form when the dialog opens.
+  useEffect(() => {
+    if (!editingCustomer || !showEditDialog) return;
+    setEditForm({
+      name: editingCustomer.name || '',
+      email: editingCustomer.email || '',
+      phone: editingCustomer.phone || '',
+      company: editingCustomer.company || '',
+      status: editingCustomer.status || 'lead',
+      notes: editingCustomer.notes || '',
+    });
+  }, [editingCustomer, showEditDialog]);
 
   const tabLabels = adaptTabLabels();
   
@@ -339,15 +440,17 @@ export default function UniversalCRMDashboard({
 
   // Fetch customers for the current profession
   const { data: customersData, isLoading, error } = useQuery({
-    queryKey: ['universal-crm-customers', activeProfession, searchTerm],
+    queryKey: ['universal-crm-customers', activeProfession, searchTerm, statusFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (activeProfession) params.append('profession', activeProfession);
       if (searchTerm) params.append('search', searchTerm);
-      
-      const response = await fetch(`/api/universal-crm/customers?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch customers');
-      return response.json();
+      // #22/#14 — push status to the server so the count is truthful and we
+      // are not just filtering the first loaded page client-side.
+      if (statusFilter) params.append('status', statusFilter);
+
+      // Via apiRequest so the Bearer token is attached (raw fetch was 401-ing).
+      return apiRequest(`/api/universal-crm/customers?${params.toString()}`);
   }
 });
 
@@ -356,9 +459,7 @@ export default function UniversalCRMDashboard({
     queryKey: ['universal-crm-stats', activeProfession],
     queryFn: async () => {
       const params = activeProfession ? `?profession=${activeProfession}` : '';
-      const response = await fetch(`/api/universal-crm/stats${params}`);
-      if (!response.ok) throw new Error('Failed to fetch stats');
-      return response.json();
+      return apiRequest(`/api/universal-crm/stats${params}`);
   }
 });
 
@@ -375,6 +476,8 @@ export default function UniversalCRMDashboard({
     imageCount: number;
     selectionCount: number;
     paidCount: number;
+    favoriteCount?: number;
+    commentCount?: number;
     createdAt: string;
     shareUrl: string;
     projectTitle: string | null;
@@ -382,9 +485,8 @@ export default function UniversalCRMDashboard({
   }> }>({
     queryKey: ['/api/photographer/galleries'],
     queryFn: async () => {
-      const r = await fetch('/api/photographer/galleries');
-      if (!r.ok) return { galleries: [] };
-      return r.json();
+      try { return await apiRequest('/api/photographer/galleries'); }
+      catch { return { galleries: [] }; }
     },
     refetchInterval: 30_000,
   });
@@ -446,10 +548,10 @@ export default function UniversalCRMDashboard({
     queryKey: ['/api/projects', user?.id, 'crm-aggregation'],
     enabled: Boolean(user?.id),
     queryFn: async () => {
-      const r = await fetch(`/api/projects?userId=${encodeURIComponent(String(user?.id ?? ''))}`);
-      if (!r.ok) return [];
-      const arr = await r.json();
-      return Array.isArray(arr) ? arr : [];
+      try {
+        const arr = await apiRequest(`/api/projects?userId=${encodeURIComponent(String(user?.id ?? ''))}`);
+        return Array.isArray(arr) ? arr : [];
+      } catch { return []; }
     },
   });
   const projectsByClient = React.useMemo(() => {
@@ -496,11 +598,7 @@ export default function UniversalCRMDashboard({
   const isMusicProducer = activeProfession === 'music_producer';
   const { data: splitSheetStatsData } = useQuery({
     queryKey: ['split-sheets-crm-stats', activeProfession],
-    queryFn: async () => {
-      const response = await fetch(`/api/split-sheets/stats?profession=${activeProfession}`);
-      if (!response.ok) throw new Error('Failed to fetch split sheet stats');
-      return response.json();
-    },
+    queryFn: async () => apiRequest(`/api/split-sheets/stats?profession=${activeProfession}`),
     enabled: isMusicProducer,
   });
 
@@ -509,19 +607,14 @@ export default function UniversalCRMDashboard({
   // Create customer mutation
   const createCustomerMutation = useMutation({
     mutationFn: async (customerData: Partial<UniversalCustomer>) => {
-      const response = await fetch(`/api/universal-crm/customers`, {
-        headers: {
-          'Content-Type' : 'application/json'
-        },
+      return apiRequest('/api/universal-crm/customers', {
         method: 'POST',
         body: JSON.stringify({
           ...customerData,
           profession: activeProfession,
-          status: customerData.status || 'lead'
-        })
+          status: customerData.status || 'lead',
+        }),
       });
-      if (!response.ok) throw new Error('Failed to create customer');
-      return response.json();
     },
     onSuccess: async (created) => {
       // Sync to Google Contacts (create if missing)
@@ -558,20 +651,28 @@ export default function UniversalCRMDashboard({
       }
       queryClient.invalidateQueries({ queryKey: ['universal-crm-customers'] });
       queryClient.invalidateQueries({ queryKey: ['universal-crm-stats'] });
+      const createdName = created?.name || created?.customer?.name || 'Kunden';
+      emitCrmChange('customer:created', created?.customer || created);
+      toast({ title: 'Kunde lagret', description: `${createdName} er lagt til i CRM.`, variant: 'success' });
       setShowAddForm(false);
-    }
+    },
+    onError: (err: any) => {
+      // #18/#40 — keep the form open with its data so nothing is lost.
+      toast({
+        title: 'Kunne ikke lagre kunden',
+        description: err?.message || 'Sjekk nettforbindelsen og prøv igjen — skjemaet er beholdt.',
+        variant: 'destructive',
+      });
+    },
   });
 
   // Update customer mutation
   const updateCustomerMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<UniversalCustomer> }) => {
-      const response = await fetch(`/api/universal-crm/customers/${encodeURIComponent(id)}`, {
+      return apiRequest(`/api/universal-crm/customers/${encodeURIComponent(id)}`, {
         method: 'PUT',
-        headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify(updates),
       });
-      if (!response.ok) throw new Error('Failed to update customer');
-      return response.json();
     },
     onSuccess: (updated) => {
       try {
@@ -581,8 +682,17 @@ export default function UniversalCRMDashboard({
       }
       queryClient.invalidateQueries({ queryKey: ['universal-crm-customers'] });
       queryClient.invalidateQueries({ queryKey: ['universal-crm-stats'] });
+      toast({ title: 'Kunde oppdatert', variant: 'success' });
       setShowEditDialog(false);
       setEditingCustomer(null);
+    },
+    onError: (err: any) => {
+      // #21/#42 — surface failures; do NOT close the dialog so edits survive.
+      toast({
+        title: 'Kunne ikke oppdatere kunden',
+        description: err?.message || 'Endringene ble ikke lagret. Prøv igjen.',
+        variant: 'destructive',
+      });
     },
   });
 
@@ -614,17 +724,30 @@ export default function UniversalCRMDashboard({
       return { project: response, customer };
   },
     onSuccess: (data) => {
-      // Update customer status to 'active'
-      queryClient.invalidateQueries({ queryKey: ['universal-crm-customers', ],});
-      
+      // Backend cascades customer.status → 'active' on project creation.
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-customers'] });
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
+
       // Notify parent component
       if (onProjectCreate) {
         onProjectCreate(data.customer, data.project);
-    }
-      
+      }
+      toast({
+        title: 'Prosjekt opprettet',
+        description: `${data.customer?.name || 'Kunden'} er nå satt som aktiv.`,
+        variant: 'success',
+      });
       setShowProjectDialog(false);
-  }
-});
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Kunne ikke opprette prosjekt',
+        description: err?.message || 'Prøv igjen.',
+        variant: 'destructive',
+      });
+    },
+  });
 
   // Schedule meeting with customer mutation
   const scheduleMeetingMutation = useMutation({
@@ -654,18 +777,327 @@ export default function UniversalCRMDashboard({
       // Notify parent component
       if (onMeetingSchedule) {
         onMeetingSchedule(data.customer, data.meeting);
-    }
-      
-      setShowMeetingDialog(false);
-  }
-});
+      }
+      // #29 — surface the Meet link instead of throwing it away. Keep the
+      // dialog open so the photographer can copy/open it.
+      const meeting = data.meeting || {};
+      setMeetingResult({ meetLink: meeting.meetLink ?? null, webViewUrl: meeting.webViewUrl ?? null });
+
+      // #7 — persist to the CRM agenda so "kommende møter" can list it.
+      recordMeetingMutation.mutate({
+        customerId: data.customer?.id,
+        title: `Møte med ${data.customer?.name || 'kunde'}`,
+        description: meetingForm.description,
+        location: meetingForm.location,
+        meetLink: meeting.meetLink ?? null,
+        webViewUrl: meeting.webViewUrl ?? null,
+        scheduledAt: meetingForm.date ? `${meetingForm.date}T${meetingForm.time || '10:00'}:00` : null,
+        durationMinutes: meetingForm.duration,
+        profession: activeProfession,
+      });
+
+      // #26 — a scheduled meeting advances a raw lead one step.
+      if (data.customer?.id && data.customer.status === 'lead') {
+        updateCustomerMutation.mutate({ id: data.customer.id, updates: { status: 'prospect' } });
+      }
+      queryClient.invalidateQueries({ queryKey: ['crm-meetings'] });
+      emitCrmChange('meeting:created', { meeting: data.meeting, customerId: data.customer?.id });
+      toast({
+        title: 'Møte planlagt',
+        description: meeting.meetLink ? 'Google Meet-lenke er klar nedenfor.' : `Møte med ${data.customer?.name || 'kunden'} er opprettet.`,
+        variant: 'success',
+      });
+    },
+    onError: (err: any) => {
+      // #28 — a missing Google connection returns 400; tell the user how to fix it.
+      const msg = String(err?.message || '');
+      const needsGoogle = /google|connect|not connected|401|400/i.test(msg);
+      toast({
+        title: 'Kunne ikke planlegge møtet',
+        description: needsGoogle
+          ? 'Koble Google-kontoen din i Innstillinger først, så fungerer Meet-lenker.'
+          : (msg || 'Prøv igjen.'),
+        variant: 'destructive',
+        duration: 7000,
+      });
+    },
+  });
+
+  // #4/#13/#39 — contract create as a real mutation: carries event date,
+  // location, type and deposit; gives feedback; flips lead/prospect → active.
+  const createContractMutation = useMutation({
+    mutationFn: async ({ customer, form }: { customer: UniversalCustomer; form: typeof contractForm }) => {
+      const contractData = {
+        clientName: customer.name,
+        clientEmail: customer.email,
+        clientId: customer.id,
+        projectDescription: `${customer.name} - ${customer.projectType || 'Prosjekt'}`,
+        contractType: form.contractType || customer.projectType || 'general',
+        totalAmount: Number(form.totalAmount) || customer.budget || 0,
+        depositAmount: Number(form.depositAmount) || 0,
+        eventDate: form.eventDate || (customer.customFields?.eventDate as string) || null,
+        eventLocation: form.eventLocation || (customer.customFields?.location as string) || null,
+        status: 'draft',
+        profession: activeProfession,
+      };
+      const response = await apiRequest('/api/contracts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(contractData),
+      });
+      const contracts = await apiRequest(`/api/contracts?clientId=${encodeURIComponent(customer.id)}`);
+      return { response, contracts, customer };
+    },
+    onSuccess: ({ contracts, customer }) => {
+      setCustomerContracts(contracts.contracts || []);
+      setShowContractForm(false);
+      // #26 — a contract means the deal is real: advance the customer.
+      if (customer.status === 'lead' || customer.status === 'prospect') {
+        updateCustomerMutation.mutate({ id: customer.id, updates: { status: 'active' } });
+      }
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-customers'] });
+      emitCrmChange('contract:created', { customerId: customer.id, customerName: customer.name });
+      toast({ title: 'Kontrakt opprettet', description: 'Utkast lagret. Send til signering når du er klar.', variant: 'success' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Kunne ikke opprette kontrakt', description: err?.message || 'Prøv igjen.', variant: 'destructive' });
+    },
+  });
+
+  // #34/#44 — mark gallery delivered with real feedback + idempotent handling.
+  const markGalleryCompleteMutation = useMutation({
+    mutationFn: async (galleryId: string) => {
+      return apiRequest(`/api/photographer/galleries/${galleryId}/mark-complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+    },
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/photographer/galleries'] });
+      emitCrmChange('gallery:changed', { reason: 'completed' });
+      toast({
+        title: res?.alreadyCompleted ? 'Galleriet var allerede levert' : 'Galleri markert som levert',
+        variant: 'success',
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Kunne ikke markere som levert', description: err?.message || 'Prøv igjen.', variant: 'destructive' });
+    },
+  });
+
+  // #33 — email the client the gallery share-link straight from the CRM.
+  const notifyClientMutation = useMutation({
+    mutationFn: async (galleryId: string) => {
+      return apiRequest(`/api/photographer/galleries/${galleryId}/notify-client`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+    },
+    onSuccess: () => {
+      toast({ title: 'Galleri sendt til klient', description: 'Klienten har fått e-post med lenken.', variant: 'success' });
+    },
+    onError: (err: any) => {
+      const msg = String(err?.message || '');
+      toast({
+        title: 'Kunne ikke sende til klient',
+        description: /503|email|smtp|mail/i.test(msg) ? 'E-posttjenesten er ikke konfigurert ennå.' : (msg || 'Prøv igjen.'),
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // #36 — create a fresh gallery for a customer from the card.
+  const createGalleryMutation = useMutation({
+    mutationFn: async (customer: UniversalCustomer) => {
+      return apiRequest('/api/photographer/galleries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientName: customer.name,
+          clientEmail: customer.email,
+          projectTitle: `${customer.name} - ${customer.projectType || 'Galleri'}`,
+        }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/photographer/galleries'] });
+      emitCrmChange('gallery:changed', { reason: 'created' });
+      toast({ title: 'Nytt galleri opprettet', description: 'Last opp bilder og send til klient når du er klar.', variant: 'success' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Kunne ikke opprette galleri', description: err?.message || 'Prøv igjen.', variant: 'destructive' });
+    },
+  });
+
+  // #3/#24 — "Tilbud" creates a real CRM deal in the proposal stage. This both
+  // gives Simen a proposal record AND populates the deal pipeline the /stats
+  // revenue KPI reads (previously a permanent 0 because nothing wrote deals).
+  const createDealMutation = useMutation({
+    mutationFn: async (customer: UniversalCustomer) => {
+      return apiRequest('/api/universal-crm/deals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: customer.id,
+          title: `Tilbud: ${customer.name} – ${customer.projectType || 'Prosjekt'}`,
+          value: customer.budget || 0,
+          currency: 'NOK',
+          stage: 'proposal',
+          serviceType: customer.projectType || null,
+          notes: customer.notes || null,
+        }),
+      });
+    },
+    onSuccess: (_res, customer) => {
+      // A sent proposal moves a raw lead to prospect.
+      if (customer.status === 'lead') {
+        updateCustomerMutation.mutate({ id: customer.id, updates: { status: 'prospect' } });
+      }
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-deals'] });
+      // UniversalDashboard already listens for quote:created.
+      emitCrmChange('quote:created', { customerId: customer.id, customerName: customer.name });
+      emitCrmChange('crm:deal:created', { customerId: customer.id });
+      toast({ title: 'Tilbud opprettet', description: `Lagt i pipeline for ${customer.name}.`, variant: 'success' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Kunne ikke opprette tilbud', description: err?.message || 'Prøv igjen.', variant: 'destructive' });
+    },
+  });
+
+  // #41 — delete / archive a customer with confirmation + feedback.
+  const deleteCustomerMutation = useMutation({
+    mutationFn: async ({ id, hard }: { id: string; hard?: boolean }) => {
+      // #15 — soft-delete by default; hard=true is an irreversible GDPR erasure.
+      return apiRequest(`/api/universal-crm/customers/${encodeURIComponent(id)}${hard ? '?hard=true' : ''}`, { method: 'DELETE' });
+    },
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-customers'] });
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-stats'] });
+      emitCrmChange('customer:deleted', { id: customerToDelete?.id });
+      toast({ title: res?.erased ? 'Alle data slettet' : 'Kunde slettet', variant: 'success' });
+      setCustomerToDelete(null);
+    },
+    onError: (err: any) => {
+      toast({ title: 'Kunne ikke slette kunden', description: err?.message || 'Prøv igjen.', variant: 'destructive' });
+    },
+  });
+
+  // #9/#10 — invoices for the open customer.
+  const { data: invoicesData } = useQuery<{ invoices: any[] }>({
+    queryKey: ['universal-crm-invoices', selectedCustomer?.id],
+    enabled: Boolean(selectedCustomer?.id) && showInvoicesDialog,
+    queryFn: async () => {
+      try { return await apiRequest(`/api/universal-crm/invoices?customer_id=${encodeURIComponent(selectedCustomer!.id)}`); }
+      catch { return { invoices: [] }; }
+    },
+  });
+  const customerInvoices = invoicesData?.invoices || [];
+
+  const createInvoiceMutation = useMutation({
+    mutationFn: async ({ customer, form }: { customer: UniversalCustomer; form: typeof invoiceForm }) => {
+      return apiRequest('/api/universal-crm/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: customer.id,
+          description: form.description || `${customer.name} – ${customer.projectType || 'oppdrag'}`,
+          totalAmount: Number(form.totalAmount) || customer.budget || 0,
+          depositAmount: Number(form.depositAmount) || 0,
+          dueDate: form.dueDate || null,
+          profession: activeProfession,
+        }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-stats'] });
+      emitCrmChange('invoice:created', { customerId: selectedCustomer?.id });
+      setShowInvoiceForm(false);
+      setInvoiceForm({ description: '', totalAmount: '', depositAmount: '', dueDate: '' });
+      toast({ title: 'Faktura opprettet', description: 'Markert som sendt. Registrer betaling når den kommer.', variant: 'success' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Kunne ikke opprette faktura', description: err?.message || 'Prøv igjen.', variant: 'destructive' });
+    },
+  });
+
+  const recordPaymentMutation = useMutation({
+    mutationFn: async ({ invoice, kind }: { invoice: any; kind: 'deposit' | 'full' }) => {
+      const paidAmount = kind === 'full' ? invoice.totalAmount : (invoice.depositAmount || 0);
+      return apiRequest(`/api/universal-crm/invoices/${encodeURIComponent(invoice.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paidAmount }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-stats'] });
+      emitCrmChange('invoice:paid', { customerId: selectedCustomer?.id });
+      toast({ title: 'Betaling registrert', variant: 'success' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Kunne ikke registrere betaling', description: err?.message || 'Prøv igjen.', variant: 'destructive' });
+    },
+  });
+
+  // #27 — book an invoice into PowerOffice (accounting).
+  const bookInvoiceMutation = useMutation({
+    mutationFn: async (invoiceId: string) =>
+      apiRequest(`/api/universal-crm/invoices/${encodeURIComponent(invoiceId)}/book`, { method: 'POST', body: JSON.stringify({}) }),
+    onSuccess: (r: any) => {
+      queryClient.invalidateQueries({ queryKey: ['universal-crm-invoices'] });
+      toast({
+        title: 'Bokført i PowerOffice',
+        description: r?.sendError ? `Salgsordre opprettet (sending: ${r.sendError})` : `Salgsordre ${r?.salesOrderNumber ?? ''} opprettet`.trim(),
+        variant: 'success',
+      });
+    },
+    onError: (err: any) => {
+      const msg = String(err?.message || '');
+      toast({
+        title: 'Kunne ikke bokføre',
+        description: /412|ikke koblet|ikke aktiv/i.test(msg) ? 'Koble PowerOffice i innstillinger først.' : (msg || 'Prøv igjen.'),
+        variant: 'destructive', duration: 7000,
+      });
+    },
+  });
+
+  // #7 — record each scheduled meeting so the agenda has something to list.
+  const recordMeetingMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      return apiRequest('/api/universal-crm/meetings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['crm-meetings'] });
+    },
+  });
+
+  // #7 — upcoming meetings agenda.
+  const { data: upcomingMeetingsData } = useQuery<{ meetings: any[] }>({
+    queryKey: ['crm-meetings', 'upcoming'],
+    queryFn: async () => {
+      try { return await apiRequest('/api/universal-crm/meetings?upcoming=true'); }
+      catch { return { meetings: [] }; }
+    },
+  });
+  const upcomingMeetings = upcomingMeetingsData?.meetings || [];
 
   const customers = customersData?.customers || [];
-  const stats = statsData?.stats || { total: 0, byStatus: {}, recentlyAdded: 0 };
-  const filteredCustomers = React.useMemo(
-    () => customers.filter((customer: UniversalCustomer) => !statusFilter || customer.status === statusFilter),
-    [customers, statusFilter],
-  );
+  const stats = statsData?.stats || { total: 0, byStatus: {}, recentlyAdded: 0, deals: { totalValue: 0, won: 0 }, tasks: {} };
+  // #22/#14 — status is now filtered server-side, so the rendered list IS the
+  // filtered list. totalMatching is the true count from the server (not just
+  // the loaded page), so "synlige kunder" no longer lies.
+  const filteredCustomers = customers;
+  const totalMatching = typeof customersData?.total === 'number' ? customersData.total : customers.length;
+  const loadedIsCapped = customers.length < totalMatching;
   const heroSummary = [
     `${stats.total || 0} kontakter totalt`,
     `${stats.byStatus?.active || 0} aktive`,
@@ -691,6 +1123,15 @@ export default function UniversalCRMDashboard({
       tone: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)',
     },
     {
+      label: 'Avtalt verdi',
+      // #11 — profession-agnostic revenue KPI from the deal pipeline the
+      // backend already sums; no longer hidden behind the music-producer branch.
+      value: `${Math.round(stats.deals?.totalValue || 0).toLocaleString('nb-NO')} kr`,
+      // #10 — surface outstanding accounts-receivable from invoices.
+      description: `Utestående: ${Math.round(stats.invoices?.outstanding || 0).toLocaleString('nb-NO')} kr`,
+      tone: 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)',
+    },
+    {
       label: 'Siste uke',
       value: stats.recentlyAdded || 0,
       description: 'nye registreringer',
@@ -711,10 +1152,10 @@ export default function UniversalCRMDashboard({
       
       if (projectIds.length === 0) return {};
 
-      const response = await fetch(`/api/split-sheets?project_id=${projectIds.join('')}`);
-      if (!response.ok) return {};
-      const result = await response.json();
-      
+      let result: any;
+      try { result = await apiRequest(`/api/split-sheets?project_id=${projectIds.join('')}`); }
+      catch { return {}; }
+
       // Group by customer (via project relationship)
       const grouped: Record<string, any[]> = {};
       result.data?.forEach((ss: any) => {
@@ -836,19 +1277,23 @@ export default function UniversalCRMDashboard({
   };
 
   const handleCreateCustomer = (formData: FormData) => {
-    const website = (formData.get('website') as string) || ',';
-    const customerData = {
-      name: formData.get('name') as string,
-      email: formData.get('email') as string,
-      phone: formData.get('phone') as string,
-      company: formData.get('company') as string,
-      projectType: formData.get('projectType') as string,
+    // #19 — empty website must be '', never the literal ',' that corrupted customFields.
+    const website = ((formData.get('website') as string) || '').trim();
+    const source = ((formData.get('source') as string) || 'manual').trim();
+    const customerData: Partial<UniversalCustomer> = {
+      name: (formData.get('name') as string)?.trim(),
+      email: (formData.get('email') as string)?.trim(),
+      phone: (formData.get('phone') as string)?.trim(),
+      company: (formData.get('company') as string)?.trim(),
+      projectType: (formData.get('projectType') as string)?.trim(),
       budget: parseFloat(formData.get('budget') as string) || undefined,
-      notes: formData.get('notes') as string,
-      status: formData.get('status') as string || 'lead',
-      customFields: { website }
-};
-    
+      notes: (formData.get('notes') as string) || '',
+      status: (formData.get('status') as string) || 'lead',
+      source, // #17 — capture lead source for ROI reporting
+      // only persist website when actually provided
+      customFields: website ? { website } : {},
+    };
+
     createCustomerMutation.mutate(customerData);
   };
 
@@ -948,6 +1393,37 @@ export default function UniversalCRMDashboard({
                 >
                   {showAddForm ? 'Skjul skjema' : 'Ny kunde'}
                 </Button>
+                {/* #28 — import existing client list (biggest adoption blocker). */}
+                <Button
+                  variant="outlined"
+                  startIcon={<CopyIcon />}
+                  onClick={() => setShowImport(true)}
+                  disabled={!customerManagementAccess.hasAccess}
+                  sx={{
+                    minWidth: 130,
+                    borderColor: alpha(colors.primary, 0.25),
+                    color: colors.primary,
+                    bgcolor: alpha('#fff', 0.86),
+                    '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
+                  }}
+                >
+                  Importer
+                </Button>
+                {/* #33 — duplicate detection + merge. */}
+                <Button
+                  variant="outlined"
+                  onClick={() => setShowDuplicates(true)}
+                  disabled={!customerManagementAccess.hasAccess}
+                  sx={{
+                    minWidth: 120,
+                    borderColor: alpha(colors.primary, 0.25),
+                    color: colors.primary,
+                    bgcolor: alpha('#fff', 0.86),
+                    '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
+                  }}
+                >
+                  Dubletter
+                </Button>
                 <Button
                   variant="outlined"
                   startIcon={<AssessmentIcon />}
@@ -965,6 +1441,66 @@ export default function UniversalCRMDashboard({
                   }}
                 >
                   Business Intelligence
+                </Button>
+                {/* Wave 3 — revenue intelligence reports + CSV export. */}
+                <Button
+                  variant="outlined"
+                  startIcon={<AssessmentIcon />}
+                  onClick={() => setShowReports(true)}
+                  sx={{
+                    minWidth: 140,
+                    borderColor: alpha(colors.primary, 0.25),
+                    color: colors.primary,
+                    bgcolor: alpha('#fff', 0.86),
+                    '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
+                  }}
+                >
+                  Rapporter
+                </Button>
+                {/* #24 — daily action queue (rebook/dormant/review/overdue). */}
+                <Button
+                  variant="outlined"
+                  startIcon={<NextStepIcon />}
+                  onClick={() => setShowActionQueue(true)}
+                  sx={{
+                    minWidth: 140,
+                    borderColor: alpha(colors.primary, 0.25),
+                    color: colors.primary,
+                    bgcolor: alpha('#fff', 0.86),
+                    '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
+                  }}
+                >
+                  Handlinger
+                </Button>
+                {/* #5/#37 — CRM task inbox with overdue badge. */}
+                <Button
+                  variant="outlined"
+                  startIcon={<TaskIcon />}
+                  onClick={() => setShowTaskInbox(true)}
+                  sx={{
+                    minWidth: 140,
+                    borderColor: (stats.tasks?.overdue || 0) > 0 ? '#d32f2f' : alpha(colors.primary, 0.25),
+                    color: (stats.tasks?.overdue || 0) > 0 ? '#d32f2f' : colors.primary,
+                    bgcolor: alpha('#fff', 0.86),
+                    '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
+                  }}
+                >
+                  Oppgaver{(stats.tasks?.pending || 0) > 0 ? ` (${stats.tasks.pending})` : ''}
+                </Button>
+                {/* Instagram DM inbox — unified social inbox */}
+                <Button
+                  variant="outlined"
+                  startIcon={<InstagramIcon />}
+                  onClick={() => setShowIgInbox(true)}
+                  sx={{
+                    minWidth: 140,
+                    borderColor: alpha(colors.primary, 0.25),
+                    color: colors.primary,
+                    bgcolor: alpha('#fff', 0.86),
+                    '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
+                  }}
+                >
+                  Instagram-innboks
                 </Button>
                 <Button
                   variant="outlined"
@@ -1087,7 +1623,7 @@ export default function UniversalCRMDashboard({
               <Paper
                 elevation={0}
                 sx={{
-                  p: 2.5,
+                  p: 2,
                   minHeight: 176,
                   borderRadius: 3.5,
                   color: 'white',
@@ -1102,7 +1638,7 @@ export default function UniversalCRMDashboard({
                   {metric.label}
                 </Typography>
                 <Box>
-                  <Typography variant="h2" sx={{ fontWeight: 800, lineHeight: 1, mb: 1 }}>
+                  <Typography variant="h3" sx={{ fontWeight: 800, lineHeight: 1, mb: 1 }}>
                     {metric.value}
                   </Typography>
                   <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -1116,32 +1652,32 @@ export default function UniversalCRMDashboard({
           {isMusicProducer && (
             <>
               <Grid item xs={12} sm={6} md={3}>
-                <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3, border: `1px solid ${alpha('#9f7aea', 0.2)}`, bgcolor: alpha('#9f7aea', 0.06) }}>
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: `1px solid ${alpha('#9f7aea', 0.2)}`, bgcolor: alpha('#9f7aea', 0.06) }}>
                   <Typography variant="overline" sx={{ color: '#7c3aed' }}>Split Sheets</Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#7c3aed' }}>{splitSheetStats.total || 0}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 800, color: '#7c3aed' }}>{splitSheetStats.total || 0}</Typography>
                   <Typography variant="body2" color="text.secondary">aktive fordelingsark</Typography>
                 </Paper>
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
-                <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3, border: `1px solid ${alpha('#f59e0b', 0.2)}`, bgcolor: alpha('#f59e0b', 0.06) }}>
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: `1px solid ${alpha('#f59e0b', 0.2)}`, bgcolor: alpha('#f59e0b', 0.06) }}>
                   <Typography variant="overline" sx={{ color: '#d97706' }}>Venter signatur</Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#d97706' }}>{splitSheetStats.pendingSignatures || 0}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 800, color: '#d97706' }}>{splitSheetStats.pendingSignatures || 0}</Typography>
                   <Typography variant="body2" color="text.secondary">må følges opp</Typography>
                 </Paper>
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
-                <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3, border: `1px solid ${alpha('#22c55e', 0.2)}`, bgcolor: alpha('#22c55e', 0.06) }}>
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: `1px solid ${alpha('#22c55e', 0.2)}`, bgcolor: alpha('#22c55e', 0.06) }}>
                   <Typography variant="overline" sx={{ color: '#16a34a' }}>Total inntekt</Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#16a34a' }}>
+                  <Typography variant="h5" sx={{ fontWeight: 800, color: '#16a34a' }}>
                     {splitSheetStats.totalRevenue ? `${splitSheetStats.totalRevenue.toLocaleString('nb-NO')} kr` : '0 kr'}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">registrert i split sheets</Typography>
                 </Paper>
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
-                <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3, border: `1px solid ${alpha('#8b5cf6', 0.2)}`, bgcolor: alpha('#8b5cf6', 0.06) }}>
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: `1px solid ${alpha('#8b5cf6', 0.2)}`, bgcolor: alpha('#8b5cf6', 0.06) }}>
                   <Typography variant="overline" sx={{ color: '#7c3aed' }}>Fullført</Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#7c3aed' }}>{splitSheetStats.completed || 0}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 800, color: '#7c3aed' }}>{splitSheetStats.completed || 0}</Typography>
                   <Typography variant="body2" color="text.secondary">klare arkivklare avtaler</Typography>
                 </Paper>
               </Grid>
@@ -1196,9 +1732,13 @@ export default function UniversalCRMDashboard({
                 </FormControl>
               </Stack>
 
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
                 <Chip
-                  label={`${filteredCustomers.length} synlige kunder`}
+                  label={
+                    loadedIsCapped
+                      ? `Viser ${customers.length} av ${totalMatching}`
+                      : `${totalMatching} ${statusFilter ? statusLabel(statusFilter).toLowerCase() + '-kunder' : 'kunder'}`
+                  }
                   sx={{ bgcolor: alpha(colors.primary, 0.08), color: colors.primary, fontWeight: 700 }}
                 />
                 {statusFilter && (
@@ -1206,6 +1746,25 @@ export default function UniversalCRMDashboard({
                     Nullstill filter
                   </Button>
                 )}
+                {/* #2 — switch between flat list and a pipeline board. */}
+                <Button
+                  size="small"
+                  variant={viewMode === 'list' ? 'contained' : 'outlined'}
+                  startIcon={<ListIcon />}
+                  onClick={() => setViewMode('list')}
+                  sx={viewMode === 'list' ? { bgcolor: colors.primary } : undefined}
+                >
+                  Liste
+                </Button>
+                <Button
+                  size="small"
+                  variant={viewMode === 'board' ? 'contained' : 'outlined'}
+                  startIcon={<KanbanIcon />}
+                  onClick={() => { setViewMode('board'); setStatusFilter(''); }}
+                  sx={viewMode === 'board' ? { bgcolor: colors.primary } : undefined}
+                >
+                  Pipeline
+                </Button>
               </Stack>
             </Stack>
 
@@ -1216,6 +1775,35 @@ export default function UniversalCRMDashboard({
             )}
           </Stack>
         </Paper>
+
+        {/* #7 — upcoming meetings agenda so scheduled meetings don't vanish. */}
+        {upcomingMeetings.length > 0 && (
+          <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3.5, border: surfaceBorder }}>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+              <Schedule sx={{ color: colors.primary }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Kommende møter</Typography>
+              <Chip size="small" label={upcomingMeetings.length} sx={{ bgcolor: alpha(colors.primary, 0.12), color: colors.primary, fontWeight: 700 }} />
+            </Stack>
+            <Stack spacing={1}>
+              {upcomingMeetings.slice(0, 5).map((m: any) => (
+                <Stack key={m.id} direction="row" spacing={1.5} alignItems="center" justifyContent="space-between" sx={{ flexWrap: 'wrap' }}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>{m.title || 'Møte'}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {m.scheduled_at ? new Date(m.scheduled_at).toLocaleString('nb-NO', { dateStyle: 'medium', timeStyle: 'short' }) : 'Ukjent tid'}
+                      {m.location ? ` • ${m.location}` : ''}
+                    </Typography>
+                  </Box>
+                  {m.meet_link && (
+                    <Button size="small" startIcon={<VideoCall />} onClick={() => window.open(m.meet_link, '_blank')}>
+                      Bli med
+                    </Button>
+                  )}
+                </Stack>
+              ))}
+            </Stack>
+          </Paper>
+        )}
 
         {showAddForm && (
           <Paper
@@ -1275,6 +1863,20 @@ export default function UniversalCRMDashboard({
                   <Grid item xs={12} sm={6}>
                     <TextField name="budget" label="Budsjett (NOK)" type="number" fullWidth />
                   </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Kilde</InputLabel>
+                      <Select name="source" label="Kilde" defaultValue="manual">
+                        <MenuItem value="manual">Lagt inn manuelt</MenuItem>
+                        <MenuItem value="website">Nettside</MenuItem>
+                        <MenuItem value="referral">Anbefaling</MenuItem>
+                        <MenuItem value="instagram">Instagram</MenuItem>
+                        <MenuItem value="facebook">Facebook</MenuItem>
+                        <MenuItem value="email">E-post</MenuItem>
+                        <MenuItem value="other">Annet</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
                   <Grid item xs={12}>
                     <TextField name="notes" label="Notater" multiline rows={4} fullWidth />
                   </Grid>
@@ -1323,6 +1925,10 @@ export default function UniversalCRMDashboard({
             <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: surfaceBorder }}>
               <Typography color="error">Feil ved lasting av kunder</Typography>
             </Paper>
+          ) : viewMode === 'board' ? (
+            /* #3/#19 — real pipeline: board operates on DEALS, not customer.status.
+               Shown before the empty-customer gate so it works even with 0 customers. */
+            <DealsPipelineBoard profession={activeProfession} brandColor={colors.primary} />
           ) : filteredCustomers.length === 0 ? (
             <Paper
               elevation={0}
@@ -1342,14 +1948,34 @@ export default function UniversalCRMDashboard({
                   <Typography variant="body2" color="text.secondary">
                     Opprett den første kunden manuelt, eller la dem komme inn automatisk via kundeforespørsels-skjemaet på nettsiden din.
                   </Typography>
-                  <Button
-                    variant="contained"
-                    size="large"
-                    onClick={() => setShowAddForm(true)}
-                    sx={{ bgcolor: colors.primary, mt: 1 }}
-                  >
-                    Opprett første kunde
-                  </Button>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                    <Button
+                      variant="contained"
+                      size="large"
+                      onClick={() => setShowAddForm(true)}
+                      sx={{ bgcolor: colors.primary }}
+                    >
+                      Opprett første kunde
+                    </Button>
+                    {/* #16 — real embeddable lead form, not an empty promise. */}
+                    <Button
+                      variant="outlined"
+                      size="large"
+                      startIcon={<CopyIcon />}
+                      onClick={async () => {
+                        try {
+                          const r = await apiRequest(`/api/universal-crm/lead-form-token?profession=${encodeURIComponent(activeProfession)}`);
+                          const url = `${window.location.origin}/lead/${r.token}`;
+                          await navigator.clipboard?.writeText(url);
+                          toast({ title: 'Skjema-lenke kopiert', description: url, variant: 'success', duration: 8000 });
+                        } catch (e: any) {
+                          toast({ title: 'Kunne ikke hente skjema-lenke', description: e?.message || 'Prøv igjen.', variant: 'destructive' });
+                        }
+                      }}
+                    >
+                      Kopier skjema-lenke for nettsiden
+                    </Button>
+                  </Stack>
                 </Stack>
               ) : (
                 <Stack spacing={1.5} alignItems="flex-start">
@@ -1434,13 +2060,12 @@ export default function UniversalCRMDashboard({
                                   {customer.name}
                                 </Typography>
                                 <Chip
-                                  label={customer.status}
+                                  label={statusLabel(customer.status)}
                                   size="small"
                                   sx={{
                                     bgcolor: alpha(getStatusColor(customer.status), 0.12),
                                     color: getStatusColor(customer.status),
                                     fontWeight: 700,
-                                    textTransform: 'capitalize',
                                   }}
                                 />
                               </Stack>
@@ -1551,11 +2176,11 @@ export default function UniversalCRMDashboard({
                                   <Chip label={`${galleryAgg.totalSelections} valg`} size="small" variant="outlined" />
                                 )}
                                 {galleryAgg.totalPaid > 0 && (
-                                  <Chip label={`${galleryAgg.totalPaid} betalt`} size="small" sx={{ bgcolor: '#ff9800', color: 'white' }} />
+                                  <Chip label={`${galleryAgg.totalPaid} bildekjøp`} size="small" sx={{ bgcolor: '#ff9800', color: 'white' }} />
                                 )}
                                 {galleryAgg.latestShareUrl && (
                                   <Chip
-                                    label="Åpne"
+                                    label="Forhåndsvis"
                                     size="small"
                                     variant="outlined"
                                     onClick={(e) => {
@@ -1636,6 +2261,53 @@ export default function UniversalCRMDashboard({
                                 Link event
                               </Button>
                             )}
+                            {/* #20/#26 — advance the customer one pipeline step inline. */}
+                            {nextStatus(customer.status) && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<NextStepIcon />}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const ns = nextStatus(customer.status);
+                                  if (ns) updateCustomerMutation.mutate({ id: customer.id, updates: { status: ns } });
+                                }}
+                                disabled={updateCustomerMutation.isPending || !customerManagementAccess.hasAccess}
+                                sx={{ borderColor: alpha('#0288d1', 0.4), color: '#0288d1' }}
+                              >
+                                {`→ ${statusLabel(nextStatus(customer.status) as string)}`}
+                              </Button>
+                            )}
+                            {/* #3 — send a proposal (creates a deal in the pipeline). */}
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<QuoteIcon />}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                createDealMutation.mutate(customer);
+                              }}
+                              disabled={customer.status === 'archived' || createDealMutation.isPending || !salesTrackingAccess.hasAccess}
+                              sx={{ borderColor: alpha('#7c3aed', 0.4), color: '#7c3aed' }}
+                            >
+                              Tilbud
+                            </Button>
+                            {/* #9 — invoicing from the card. */}
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<InvoiceIcon />}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCustomer(customer);
+                                setShowInvoiceForm(false);
+                                setShowInvoicesDialog(true);
+                              }}
+                              disabled={!salesTrackingAccess.hasAccess}
+                              sx={{ borderColor: alpha('#16a34a', 0.4), color: '#16a34a' }}
+                            >
+                              Faktura
+                            </Button>
                             <Button
                               size="small"
                               variant="outlined"
@@ -1643,6 +2315,7 @@ export default function UniversalCRMDashboard({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedCustomer(customer);
+                                setMeetingResult(null);
                                 setShowMeetingDialog(true);
                               }}
                               disabled={customer.status === 'archived' || !communicationTrackingAccess.hasAccess}
@@ -1669,6 +2342,7 @@ export default function UniversalCRMDashboard({
                               startIcon={<WorkOutline />}
                               onClick={(e) => {
                                 e.stopPropagation();
+                                setDetailCustomer(customer); // #2 open the detail drawer
                                 onCustomerSelect?.(customer);
                               }}
                             >
@@ -1756,6 +2430,48 @@ export default function UniversalCRMDashboard({
                                 Galleri-historikk ({galleryAgg.count})
                               </Button>
                             )}
+                            {/* #36 — create a gallery even when none exists yet. */}
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                createGalleryMutation.mutate(customer);
+                              }}
+                              disabled={customer.status === 'archived' || createGalleryMutation.isPending}
+                              sx={{ borderColor: alpha(colors.primary, 0.4), color: colors.primary }}
+                            >
+                              Nytt galleri
+                            </Button>
+                            {/* #38 — after-delivery follow-up (review / thanks / rebook). */}
+                            {(customer.status === 'active' || customer.status === 'completed') && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<ReviewIcon />}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShowFollowUpFor(customer);
+                                }}
+                                sx={{ borderColor: alpha('#e91e63', 0.4), color: '#e91e63' }}
+                              >
+                                Oppfølging
+                              </Button>
+                            )}
+                            {/* #41 — delete / archive with confirmation. */}
+                            <Button
+                              size="small"
+                              variant="text"
+                              color="error"
+                              startIcon={<DeleteIcon />}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCustomerToDelete(customer);
+                              }}
+                              sx={{ ml: 'auto' }}
+                            >
+                              Slett
+                            </Button>
                           </Stack>
                         </Stack>
                       </CardContent>
@@ -1832,38 +2548,53 @@ export default function UniversalCRMDashboard({
                                   <Chip size="small" variant="outlined" label={`${g.selectionCount} valg`} />
                                 )}
                                 {g.paidCount > 0 && (
-                                  <Chip size="small" sx={{ bgcolor: '#ff9800', color: 'white' }} label={`${g.paidCount} betalt`} />
+                                  <Chip size="small" sx={{ bgcolor: '#ff9800', color: 'white' }} label={`${g.paidCount} bildekjøp`} />
+                                )}
+                                {(g.favoriteCount ?? 0) > 0 && (
+                                  <Chip size="small" variant="outlined" sx={{ borderColor: '#e91e63', color: '#e91e63' }} label={`${g.favoriteCount} favoritter`} />
+                                )}
+                                {(g.commentCount ?? 0) > 0 && (
+                                  <Chip size="small" variant="outlined" label={`${g.commentCount} kommentarer`} />
                                 )}
                               </Stack>
                             </Box>
                             <Stack spacing={1}>
+                              {/* #37 — admin management vs the client-facing preview. */}
                               <Button
                                 size="small"
                                 variant="outlined"
+                                startIcon={<OpenInNewIcon />}
+                                onClick={() => window.open(`/photographer/galleries/${g.id}`, '_blank')}
+                              >
+                                Administrer
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="text"
                                 onClick={() => window.open(g.shareUrl, '_blank')}
                               >
-                                Åpne
+                                Forhåndsvis som klient
                               </Button>
+                              {/* #33 — email the share link to the client. */}
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<MailIcon />}
+                                disabled={notifyClientMutation.isPending}
+                                onClick={() => notifyClientMutation.mutate(g.id)}
+                              >
+                                Send til klient
+                              </Button>
+                              {/* #34/#44 — mark delivered via mutation (feedback + idempotent). */}
                               {!isCompleted && (
                                 <Button
                                   size="small"
                                   variant="contained"
                                   color="success"
-                                  onClick={async () => {
-                                    try {
-                                      await apiRequest(`/api/photographer/galleries/${g.id}/mark-complete`, {
-                                        method: 'POST',
-                                        body: JSON.stringify({}),
-                                      });
-                                      queryClient.invalidateQueries({
-                                        queryKey: ['/api/photographer/galleries'],
-                                      });
-                                    } catch (err) {
-                                      console.warn('mark-complete failed', err);
-                                    }
-                                  }}
+                                  disabled={markGalleryCompleteMutation.isPending}
+                                  onClick={() => markGalleryCompleteMutation.mutate(g.id)}
                                 >
-                                  Marker ferdig
+                                  {markGalleryCompleteMutation.isPending ? 'Markerer…' : 'Marker ferdig'}
                                 </Button>
                               )}
                             </Stack>
@@ -1895,48 +2626,94 @@ export default function UniversalCRMDashboard({
               size="small"
               variant="contained"
               startIcon={<AddIcon />}
-              onClick={async () => {
-                // Create contract from customer
-                try {
-                  const contractData = {
-                    clientName: selectedCustomer?.name,
-                    clientEmail: selectedCustomer?.email,
-                    clientId: selectedCustomer?.id,
-                    projectDescription: `${selectedCustomer?.name} - ${selectedCustomer?.projectType || 'Prosjekt'}`,
-                    totalAmount: selectedCustomer?.budget || 0,
-                    status: 'draft',
-                    profession: activeProfession,
-                  };
-                  
-                  const response = await apiRequest('/api/contracts', {
-                    method: 'POST',
-                    headers: { 'Content-Type' : 'application/json' },
-                    body: JSON.stringify(contractData),
-                  });
-                  
-                  if (response.success || response.contract) {
-                    // Refresh contracts list
-                    const contracts = await apiRequest(`/api/contracts?clientId=${selectedCustomer?.id}`);
-                    setCustomerContracts(contracts.contracts || []);
-                  }
-                } catch (error) {
-                  console.error('Error creating contract:', error);
-                }
+              onClick={() => {
+                // #4 — open a real form instead of a one-click empty draft.
+                setContractForm({
+                  contractType: selectedCustomer?.projectType || '',
+                  eventDate: (selectedCustomer?.customFields?.eventDate as string) || '',
+                  eventLocation: (selectedCustomer?.customFields?.location as string) || '',
+                  totalAmount: selectedCustomer?.budget ? String(selectedCustomer.budget) : '',
+                  depositAmount: '',
+                });
+                setShowContractForm((v) => !v);
               }}
               sx={{ bgcolor: '#f57c00', '&:hover': { bgcolor: '#e65100' } }}
             >
-              Opprett kontrakt
+              {showContractForm ? 'Skjul skjema' : 'Ny kontrakt'}
             </Button>
           </Box>
         </DialogTitle>
         <DialogContent>
+          {/* #4 — contract form: type, event date, location, amount + deposit. */}
+          {showContractForm && (
+            <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Type kontrakt"
+                    value={contractForm.contractType}
+                    onChange={(e) => setContractForm((c) => ({ ...c, contractType: e.target.value }))}
+                    fullWidth placeholder="bryllup, portrett, konsert…"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Dato for oppdrag"
+                    type="date"
+                    value={contractForm.eventDate}
+                    onChange={(e) => setContractForm((c) => ({ ...c, eventDate: e.target.value }))}
+                    fullWidth InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    label="Sted"
+                    value={contractForm.eventLocation}
+                    onChange={(e) => setContractForm((c) => ({ ...c, eventLocation: e.target.value }))}
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Totalbeløp (NOK)"
+                    type="number"
+                    value={contractForm.totalAmount}
+                    onChange={(e) => setContractForm((c) => ({ ...c, totalAmount: e.target.value }))}
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Depositum (NOK)"
+                    type="number"
+                    value={contractForm.depositAmount}
+                    onChange={(e) => setContractForm((c) => ({ ...c, depositAmount: e.target.value }))}
+                    fullWidth
+                    helperText="Booking bekreftes når depositum er innbetalt + kontrakt signert"
+                  />
+                </Grid>
+                <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    variant="contained"
+                    disabled={createContractMutation.isPending || !selectedCustomer}
+                    onClick={() => selectedCustomer && createContractMutation.mutate({ customer: selectedCustomer, form: contractForm })}
+                    sx={{ bgcolor: '#f57c00', '&:hover': { bgcolor: '#e65100' } }}
+                  >
+                    {createContractMutation.isPending ? 'Oppretter…' : 'Opprett kontraktutkast'}
+                  </Button>
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
           {customerContracts.length === 0 ? (
             <Alert severity="info">
               Ingen kontrakter funnet for denne kunden.
             </Alert>
           ) : (
             <List>
-              {customerContracts.map((contract: any) => (
+              {customerContracts.map((contract: any) => {
+                const sigStatus = contract.signature_status || contract.signatureStatus;
+                return (
                 <React.Fragment key={contract.id}>
                 <ListItem alignItems="flex-start">
                   <ListItemAvatar>
@@ -1949,28 +2726,47 @@ export default function UniversalCRMDashboard({
                     secondary={
                       <Box>
                         <Typography variant="caption" display="block">
-                          Status: {contract.status} • Beløp: NOK {contract.totalAmount || 0}
+                          Status: {contract.status} • Beløp: NOK {Number(contract.totalAmount || 0).toLocaleString('nb-NO')}
+                          {contract.depositAmount ? ` • Depositum: NOK ${Number(contract.depositAmount).toLocaleString('nb-NO')}` : ''}
                         </Typography>
                         <Typography variant="caption" display="block" color="text.secondary">
                           Opprettet: {new Date(contract.createdAt).toLocaleDateString('no-NO')}
+                          {contract.eventDate ? ` • Oppdrag: ${new Date(contract.eventDate).toLocaleDateString('no-NO')}` : ''}
                         </Typography>
                       </Box>
                     }
                   />
-                  <Chip
-                    label={contract.status}
-                    size="small"
-                    color={contract.status === 'active' ? 'success' : contract.status === 'draft' ? 'warning' : 'default'}
-                  />
+                  <Stack spacing={0.5} alignItems="flex-end">
+                    <Chip
+                      label={contract.status}
+                      size="small"
+                      color={contract.status === 'active' ? 'success' : contract.status === 'draft' ? 'warning' : 'default'}
+                    />
+                    {sigStatus && (
+                      <Chip label={`Signatur: ${sigStatus}`} size="small" variant="outlined" />
+                    )}
+                    {/* #25 — send draft to e-signing via the Contract hub. */}
+                    {contract.status === 'draft' && (
+                      <Button
+                        size="small"
+                        variant="text"
+                        startIcon={<OpenInNewIcon />}
+                        onClick={() => window.open(`/contracts/${contract.id}`, '_blank')}
+                      >
+                        Send til signering
+                      </Button>
+                    )}
+                  </Stack>
                 </ListItem>
                 <Divider component="li" />
                 </React.Fragment>
-              ))}
+                );
+              })}
             </List>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowContractsDialog(false)}>Lukk</Button>
+          <Button onClick={() => { setShowContractsDialog(false); setShowContractForm(false); }}>Lukk</Button>
         </DialogActions>
       </Dialog>
 
@@ -1996,6 +2792,10 @@ export default function UniversalCRMDashboard({
               value={meetingForm.date}
               onChange={(event) => setMeetingForm((current) => ({ ...current, date: event.target.value }))}
               fullWidth
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ min: new Date().toISOString().split('T')[0] }}
+              helperText={meetingForm.date && meetingForm.date < new Date().toISOString().split('T')[0] ? 'Datoen er i fortiden' : ' '}
+              error={Boolean(meetingForm.date) && meetingForm.date < new Date().toISOString().split('T')[0]}
             />
             <TextField
               label="Tid"
@@ -2011,6 +2811,14 @@ export default function UniversalCRMDashboard({
               onChange={(event) => setMeetingForm((current) => ({ ...current, duration: Number(event.target.value) || 0 }))}
               fullWidth
             />
+            {/* #8 — location so the shoot/meeting has a place attached. */}
+            <TextField
+              label="Sted / lokasjon"
+              value={meetingForm.location}
+              onChange={(event) => setMeetingForm((current) => ({ ...current, location: event.target.value }))}
+              fullWidth
+              placeholder="f.eks. studio, Vigeland­sparken, kundens adresse"
+            />
             <TextField
               label="Beskrivelse"
               multiline
@@ -2019,10 +2827,45 @@ export default function UniversalCRMDashboard({
               onChange={(event) => setMeetingForm((current) => ({ ...current, description: event.target.value }))}
               fullWidth
             />
+            {/* #29 — the generated Meet link is shown, copyable and openable. */}
+            {meetingResult && (
+              <Alert severity="success" sx={{ alignItems: 'center' }}>
+                <Stack spacing={1}>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    Møtet er opprettet{meetingResult.meetLink ? ' — Google Meet-lenke:' : '.'}
+                  </Typography>
+                  {meetingResult.meetLink && (
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                      <Typography variant="caption" sx={{ wordBreak: 'break-all' }}>{meetingResult.meetLink}</Typography>
+                      <Button
+                        size="small"
+                        startIcon={<CopyIcon />}
+                        onClick={() => {
+                          navigator.clipboard?.writeText(meetingResult.meetLink || '');
+                          toast({ title: 'Lenke kopiert', variant: 'success' });
+                        }}
+                      >
+                        Kopier
+                      </Button>
+                      <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => window.open(meetingResult.meetLink || '', '_blank')}>
+                        Åpne
+                      </Button>
+                      {meetingResult.webViewUrl && (
+                        <Button size="small" onClick={() => window.open(meetingResult.webViewUrl || '', '_blank')}>
+                          Åpne i kalender
+                        </Button>
+                      )}
+                    </Stack>
+                  )}
+                </Stack>
+              </Alert>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowMeetingDialog(false)}>Avbryt</Button>
+          <Button onClick={() => { setShowMeetingDialog(false); setMeetingResult(null); }}>
+            {meetingResult ? 'Lukk' : 'Avbryt'}
+          </Button>
           <Button variant="contained"
             onClick={() => selectedCustomer && scheduleMeetingMutation.mutate({
               customer: selectedCustomer,
@@ -2030,10 +2873,16 @@ export default function UniversalCRMDashboard({
                 date: meetingForm.date,
                 time: meetingForm.time,
                 duration: meetingForm.duration,
+                location: meetingForm.location,
+                meetingLocation: meetingForm.location,
                 description: meetingForm.description,
               }
             })}
-            disabled={scheduleMeetingMutation.isPending}
+            disabled={
+              scheduleMeetingMutation.isPending ||
+              !meetingForm.date ||
+              meetingForm.date < new Date().toISOString().split('T')[0]
+            }
             sx={{ bgcolor: '#2196f3' }}
           >
             {scheduleMeetingMutation.isPending ? 'Planlegger...' : 'Planlegg møte'}
@@ -2132,11 +2981,26 @@ export default function UniversalCRMDashboard({
           <Button onClick={() => setShowLinkDialog(false)}>Avbryt</Button>
           <Button
             variant="contained"
-            onClick={() => {
+            onClick={async () => {
               if (!selectedCustomer || !eventContext) return;
               if (onLinkToEvent) {
                 onLinkToEvent(selectedCustomer, { role: linkRole, notes: linkNotes });
-              } else {
+                setShowLinkDialog(false);
+                return;
+              }
+              // #15 — persist to the real relations endpoint and only confirm on
+              // a verified write (no more false-positive "linked" toast).
+              try {
+                await apiRequest(`/api/events/${encodeURIComponent(eventContext.id)}/relations`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    customerId: selectedCustomer.id,
+                    customerEmail: selectedCustomer.email,
+                    role: linkRole,
+                    notes: linkNotes,
+                  }),
+                });
                 try {
                   communication.sendMessage('event:link-customer', {
                     eventId: eventContext.id,
@@ -2144,11 +3008,16 @@ export default function UniversalCRMDashboard({
                     role: linkRole,
                     notes: linkNotes,
                   });
-                } catch (error) {
-                  console.warn('Could not link customer to event via communication bus:', error);
-                }
+                } catch { /* bus best-effort */ }
+                toast({ title: 'Kontakt koblet til event', variant: 'success' });
+                setShowLinkDialog(false);
+              } catch (error: any) {
+                toast({
+                  title: 'Kunne ikke koble til event',
+                  description: error?.message || 'Prøv igjen.',
+                  variant: 'destructive',
+                });
               }
-              setShowLinkDialog(false);
             }}
           >
             Link
@@ -2160,34 +3029,58 @@ export default function UniversalCRMDashboard({
       <Dialog open={showEditDialog} onClose={() => setShowEditDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Rediger kunde</DialogTitle>
         <DialogContent>
-          <Box component="form" id="edit-customer-form" sx={{ mt: 1 }}>
+          <Box sx={{ mt: 1 }}>
             <Grid container spacing={2}>
               <Grid item xs={12}>
-                <TextField defaultValue={editingCustomer?.name || ', '} name="name" label="Navn" fullWidth />
+                <TextField
+                  value={editForm.name}
+                  onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                  label="Navn" fullWidth required
+                  error={!editForm.name.trim()}
+                  helperText={!editForm.name.trim() ? 'Navn er påkrevd' : ' '}
+                />
               </Grid>
               <Grid item xs={12}>
-                <TextField defaultValue={editingCustomer?.email || ', '} name="email" label="E-post" type="email" fullWidth />
+                <TextField
+                  value={editForm.email}
+                  onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                  label="E-post" type="email" fullWidth
+                />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField defaultValue={editingCustomer?.phone || ', '} name="phone" label="Telefon" fullWidth />
+                <TextField
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                  label="Telefon" fullWidth
+                />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField defaultValue={editingCustomer?.company || ', '} name="company" label="Firma" fullWidth />
+                <TextField
+                  value={editForm.company}
+                  onChange={(e) => setEditForm((f) => ({ ...f, company: e.target.value }))}
+                  label="Firma" fullWidth
+                />
               </Grid>
               <Grid item xs={12}>
                 <FormControl fullWidth>
                   <InputLabel>Status</InputLabel>
-                  <Select defaultValue={editingCustomer?.status || 'lead'} name="status" label="Status">
-                    <MenuItem value="lead">Henvendelser</MenuItem>
-                    <MenuItem value="prospect">Potensielle</MenuItem>
-                    <MenuItem value="active">Aktive</MenuItem>
-                    <MenuItem value="completed">Fullført</MenuItem>
-                    <MenuItem value="archived">Arkivert</MenuItem>
+                  <Select
+                    value={editForm.status}
+                    onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
+                    label="Status"
+                  >
+                    {PIPELINE_ORDER.concat('archived' as any).map((s) => (
+                      <MenuItem key={s} value={s}>{statusLabel(s)}</MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12}>
-                <TextField defaultValue={editingCustomer?.notes || ', '} name="notes" label="Notater" multiline rows={3} fullWidth />
+                <TextField
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+                  label="Notater" multiline rows={3} fullWidth
+                />
               </Grid>
             </Grid>
           </Box>
@@ -2196,20 +3089,21 @@ export default function UniversalCRMDashboard({
           <Button onClick={() => setShowEditDialog(false)}>Avbryt</Button>
           <Button
             variant="contained"
-            disabled={updateCustomerMutation.isPending}
+            disabled={updateCustomerMutation.isPending || !editForm.name.trim()}
             onClick={() => {
               if (!editingCustomer) return;
-              const form = document.getElementById('edit-customer-form') as HTMLFormElement;
-              const fd = new FormData(form);
-              const updates = {
-                name: (fd.get('name') as string) || editingCustomer.name,
-                email: (fd.get('email') as string) || editingCustomer.email,
-                phone: (fd.get('phone') as string) || editingCustomer.phone,
-                company: (fd.get('company') as string) || editingCustomer.company,
-                status: (fd.get('status') as string) || editingCustomer.status,
-                notes: (fd.get('notes') as string) || editingCustomer.notes,
-              };
-              updateCustomerMutation.mutate({ id: editingCustomer.id, updates });
+              // #42 — controlled values; empty optional fields become '' (never ', ').
+              updateCustomerMutation.mutate({
+                id: editingCustomer.id,
+                updates: {
+                  name: editForm.name.trim(),
+                  email: editForm.email.trim(),
+                  phone: editForm.phone.trim(),
+                  company: editForm.company.trim(),
+                  status: editForm.status,
+                  notes: editForm.notes,
+                },
+              });
             }}
             sx={{ bgcolor: '#2196f3' }}
           >
@@ -2301,90 +3195,247 @@ export default function UniversalCRMDashboard({
         </DialogContent>
       </Dialog>
 
-      {/* Customer Contracts Dialog */}
-      <Dialog open={showContractsDialog} onClose={() => setShowContractsDialog(false)} maxWidth="md" fullWidth>
+      {/* #9/#10 — invoices: list, create, record payment */}
+      <Dialog open={showInvoicesDialog} onClose={() => { setShowInvoicesDialog(false); setShowInvoiceForm(false); }} maxWidth="md" fullWidth>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <ContractIcon color="primary" />
-              <Typography variant="h6">
-                Kontrakter for {selectedCustomer?.name}
-              </Typography>
+              <InvoiceIcon sx={{ color: '#16a34a' }} />
+              <Typography variant="h6">Fakturaer for {selectedCustomer?.name}</Typography>
             </Box>
             <Button
               size="small"
               variant="contained"
               startIcon={<AddIcon />}
-              onClick={async () => {
-                // Create contract from customer
-                try {
-                  const contractData = {
-                    clientName: selectedCustomer?.name,
-                    clientEmail: selectedCustomer?.email,
-                    clientId: selectedCustomer?.id,
-                    projectDescription: `${selectedCustomer?.name} - ${selectedCustomer?.projectType || 'Prosjekt'}`,
-                    totalAmount: selectedCustomer?.budget || 0,
-                    status: 'draft',
-                    profession: activeProfession,
-                  };
-                  
-                  const response = await apiRequest('/api/contracts', {
-                    method: 'POST',
-                    headers: { 'Content-Type' : 'application/json' },
-                    body: JSON.stringify(contractData),
-                  });
-                  
-                  if (response.success || response.contract) {
-                    // Refresh contracts list
-                    const contracts = await apiRequest(`/api/contracts?clientId=${selectedCustomer?.id}`);
-                    setCustomerContracts(contracts.contracts || []);
-                  }
-                } catch (error) {
-                  console.error('Error creating contract:', error);
-                }
+              onClick={() => {
+                setInvoiceForm({
+                  description: `${selectedCustomer?.name} – ${selectedCustomer?.projectType || 'oppdrag'}`,
+                  totalAmount: selectedCustomer?.budget ? String(selectedCustomer.budget) : '',
+                  depositAmount: '',
+                  dueDate: '',
+                });
+                setShowInvoiceForm((v) => !v);
               }}
-              sx={{ bgcolor: '#f57c00', '&:hover': { bgcolor: '#e65100' } }}
+              sx={{ bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }}
             >
-              Opprett kontrakt
+              {showInvoiceForm ? 'Skjul skjema' : 'Ny faktura'}
             </Button>
           </Box>
         </DialogTitle>
         <DialogContent>
-          {customerContracts.length === 0 ? (
-            <Alert severity="info">
-              Ingen kontrakter funnet for denne kunden.
-            </Alert>
+          {showInvoiceForm && (
+            <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <TextField label="Beskrivelse" value={invoiceForm.description} onChange={(e) => setInvoiceForm((f) => ({ ...f, description: e.target.value }))} fullWidth />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField label="Totalbeløp (NOK)" type="number" value={invoiceForm.totalAmount} onChange={(e) => setInvoiceForm((f) => ({ ...f, totalAmount: e.target.value }))} fullWidth />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField label="Depositum (NOK)" type="number" value={invoiceForm.depositAmount} onChange={(e) => setInvoiceForm((f) => ({ ...f, depositAmount: e.target.value }))} fullWidth />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField label="Forfall" type="date" value={invoiceForm.dueDate} onChange={(e) => setInvoiceForm((f) => ({ ...f, dueDate: e.target.value }))} fullWidth InputLabelProps={{ shrink: true }} />
+                </Grid>
+                <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    variant="contained"
+                    disabled={createInvoiceMutation.isPending || !selectedCustomer}
+                    onClick={() => selectedCustomer && createInvoiceMutation.mutate({ customer: selectedCustomer, form: invoiceForm })}
+                    sx={{ bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }}
+                  >
+                    {createInvoiceMutation.isPending ? 'Oppretter…' : 'Opprett faktura'}
+                  </Button>
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
+          {customerInvoices.length === 0 ? (
+            <Alert severity="info">Ingen fakturaer for denne kunden ennå.</Alert>
           ) : (
             <List>
-              {customerContracts.map((contract: any) => (
-                <ListItem key={contract.id} divider>
-                  <ListItemText
-                    primary={contract.projectDescription || 'Kontrakt'}
-                    secondary={
-                      <Box>
-                        <Typography variant="caption" display="block">
-                          Status: {contract.status} • Beløp: NOK {contract.totalAmount || 0}
-                        </Typography>
-                        <Typography variant="caption" display="block" color="text.secondary">
-                          Opprettet: {new Date(contract.createdAt).toLocaleDateString('no-NO')}
-                        </Typography>
-                      </Box>
-                    }
-                  />
-                  <Chip
-                    label={contract.status}
-                    size="small"
-                    color={contract.status === 'active' ? 'success' : contract.status === 'draft' ? 'warning': 'default'}
-                  />
-                </ListItem>
-              ))}
+              {customerInvoices.map((inv: any) => {
+                const statusColor = inv.status === 'paid' ? 'success' : inv.status === 'partial' ? 'warning' : inv.status === 'overdue' ? 'error' : 'default';
+                return (
+                  <React.Fragment key={inv.id}>
+                    <ListItem alignItems="flex-start">
+                      <ListItemText
+                        primary={`${inv.invoiceNumber} — ${inv.description || 'Faktura'}`}
+                        secondary={
+                          <Box>
+                            <Typography variant="caption" display="block">
+                              Total: NOK {Number(inv.totalAmount).toLocaleString('nb-NO')} • Betalt: NOK {Number(inv.paidAmount).toLocaleString('nb-NO')} • Utestående: NOK {Number(inv.balanceDue).toLocaleString('nb-NO')}
+                            </Typography>
+                            {inv.dueDate && (
+                              <Typography variant="caption" display="block" color="text.secondary">
+                                Forfall: {new Date(inv.dueDate).toLocaleDateString('no-NO')}
+                              </Typography>
+                            )}
+                          </Box>
+                        }
+                      />
+                      <Stack spacing={0.5} alignItems="flex-end">
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          {inv.externalInvoiceId && (
+                            <Chip size="small" color="success" variant="outlined" icon={<InvoiceIcon />} label="Bokført" />
+                          )}
+                          <Chip label={inv.status} size="small" color={statusColor as any} />
+                        </Stack>
+                        {inv.status !== 'paid' && (
+                          <Stack direction="row" spacing={0.5}>
+                            {inv.depositAmount > 0 && inv.paidAmount < inv.depositAmount && (
+                              <Button size="small" disabled={recordPaymentMutation.isPending} onClick={() => recordPaymentMutation.mutate({ invoice: inv, kind: 'deposit' })}>
+                                Depositum betalt
+                              </Button>
+                            )}
+                            <Button size="small" variant="outlined" disabled={recordPaymentMutation.isPending} onClick={() => recordPaymentMutation.mutate({ invoice: inv, kind: 'full' })}>
+                              Marker betalt
+                            </Button>
+                          </Stack>
+                        )}
+                        {/* #27 — book to PowerOffice (accounting). */}
+                        {!inv.externalInvoiceId && (
+                          <Stack direction="row" spacing={0.5} alignItems="center">
+                            <Button size="small" variant="text" disabled={bookInvoiceMutation.isPending} onClick={() => bookInvoiceMutation.mutate(inv.id)}>
+                              Bokfør i PowerOffice
+                            </Button>
+                            {/* Midlertidig: PowerOffice kjører mot demo-miljø til produksjons-
+                                tilgang er på plass (partnerskap). Fjern når live. */}
+                            <Chip size="small" variant="outlined" color="warning" label="Demo · under utvikling" sx={{ height: 20, fontSize: '0.65rem' }} />
+                          </Stack>
+                        )}
+                      </Stack>
+                    </ListItem>
+                    <Divider component="li" />
+                  </React.Fragment>
+                );
+              })}
             </List>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowContractsDialog(false)}>Lukk</Button>
+          <Button onClick={() => { setShowInvoicesDialog(false); setShowInvoiceForm(false); }}>Lukk</Button>
         </DialogActions>
       </Dialog>
+
+      {/* #41 — delete / archive confirmation */}
+      <Dialog open={Boolean(customerToDelete)} onClose={() => setCustomerToDelete(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Slett kunde?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            <strong>Slett</strong> skjuler <strong>{customerToDelete?.name}</strong> men beholder historikken (kan gjenopprettes i databasen).
+            <strong> Arkiver</strong> beholder kunden synlig som arkivert. <strong>Slett alle data</strong> fjerner alt permanent (GDPR).
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ flexWrap: 'wrap' }}>
+          <Button onClick={() => setCustomerToDelete(null)}>Avbryt</Button>
+          <Button
+            startIcon={<ArchiveIcon />}
+            disabled={updateCustomerMutation.isPending}
+            onClick={() => {
+              if (!customerToDelete) return;
+              updateCustomerMutation.mutate({ id: customerToDelete.id, updates: { status: 'archived' } });
+              setCustomerToDelete(null);
+            }}
+          >
+            Arkiver
+          </Button>
+          <Button
+            color="error"
+            startIcon={<DeleteIcon />}
+            disabled={deleteCustomerMutation.isPending}
+            onClick={() => customerToDelete && deleteCustomerMutation.mutate({ id: customerToDelete.id })}
+          >
+            {deleteCustomerMutation.isPending ? 'Sletter…' : 'Slett'}
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={deleteCustomerMutation.isPending}
+            onClick={() => customerToDelete && deleteCustomerMutation.mutate({ id: customerToDelete.id, hard: true })}
+          >
+            Slett alle data (GDPR)
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* #38 — after-delivery follow-up: review / thank-you / rebook */}
+      <Dialog open={Boolean(showFollowUpFor)} onClose={() => setShowFollowUpFor(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ReviewIcon color="primary" />
+            Oppfølging — {showFollowUpFor?.name}
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.5} sx={{ mt: 1 }}>
+            <Alert severity="info">
+              Lukk sløyfa etter levering: be om en anmeldelse, send takk, eller planlegg gjenbestilling.
+            </Alert>
+            {[
+              { key: 'review', label: 'Be om anmeldelse', subject: 'Vi hadde glede av å jobbe med deg!', body: 'Kan du legge igjen en kort anmeldelse? Det betyr mye for et lite fotograffirma.' },
+              { key: 'thanks', label: 'Send takk', subject: 'Tusen takk!', body: 'Tusen takk for at vi fikk ta bildene dine. Håper du blir like glad i dem som vi er.' },
+              { key: 'rebook', label: 'Planlegg gjenbestilling om 1 år', subject: 'På tide med nye bilder?', body: 'Det har snart gått en stund — skal vi sette opp en ny fotografering?' },
+            ].map((tpl) => (
+              <Button
+                key={tpl.key}
+                variant="outlined"
+                startIcon={<MailIcon />}
+                onClick={() => {
+                  const to = showFollowUpFor?.email || '';
+                  // Opens the user's mail client prefilled; works without extra backend.
+                  window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(tpl.subject)}&body=${encodeURIComponent(tpl.body)}`, '_blank');
+                  // Log it as a CRM activity so the timeline reflects the touch.
+                  if (showFollowUpFor?.id) {
+                    apiRequest('/api/universal-crm/activities', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ customerId: showFollowUpFor.id, type: 'email', subject: tpl.label, direction: 'outbound' }),
+                    }).catch(() => { /* best effort */ });
+                  }
+                  toast({ title: `${tpl.label} klargjort`, variant: 'success' });
+                }}
+              >
+                {tpl.label}
+              </Button>
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowFollowUpFor(null)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* #2 — contact detail drawer (record + timeline + quick-log) */}
+      <CustomerDetailDrawer
+        open={Boolean(detailCustomer)}
+        customerId={detailCustomer?.id || null}
+        customerName={detailCustomer?.name}
+        onClose={() => setDetailCustomer(null)}
+        brandColor={colors.primary}
+      />
+
+      {/* #5 — task inbox */}
+      <CrmTaskInbox open={showTaskInbox} onClose={() => setShowTaskInbox(false)} brandColor={colors.primary} />
+      <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor={colors.primary} />
+
+      {/* #24 — action queue */}
+      <CrmActionQueue
+        open={showActionQueue}
+        onClose={() => setShowActionQueue(false)}
+        onOpenCustomer={(id, name) => setDetailCustomer({ id, name } as any)}
+        brandColor={colors.primary}
+      />
+
+      {/* Wave 3 — reports */}
+      <CrmReports open={showReports} onClose={() => setShowReports(false)} brandColor={colors.primary} />
+
+      {/* Wave 3b — CSV import */}
+      <CrmImportDialog open={showImport} onClose={() => setShowImport(false)} brandColor={colors.primary} />
+
+      {/* #33 — dedupe / merge */}
+      <CrmDuplicatesDialog open={showDuplicates} onClose={() => setShowDuplicates(false)} brandColor={colors.primary} />
     </Box>
   );
 }

@@ -65,9 +65,9 @@ const DaVinciResolveExportService = {
     return {
       projectName: 'CreatorHub Export',
       frameRate:  24,
-      resolution: '1920x108',
-      colorSpace: 'Rec70',
-      exportFormat: 'XM',
+      resolution: '1920x1080',
+      colorSpace: 'Rec709',
+      exportFormat: 'XML',
       includeAudio: true,
       includeColorGrading: false
 };
@@ -94,7 +94,7 @@ const DaVinciResolveExportService = {
       
       // Store export data in localStorage for persistence
       const exportData = {
-        id: exportd,
+        id: exportId,
         content: xmlContent,
         metadata: {
           projectName: options.projectName,
@@ -111,7 +111,7 @@ const DaVinciResolveExportService = {
       
       localStorage.setItem(`davinci_export_${exportId}`, JSON.stringify(exportData));
       // Mirror to server KV
-      fetch('/api/user/kv, ', {
+      fetch('/api/user/kv', {
         method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
         body: JSON.stringify({ key: `davinci_export_${exportId}`, value: exportData })
       }).catch(() => {});
@@ -144,7 +144,7 @@ const DaVinciResolveExportService = {
     storyArc: StoryArc,
     options: ResolveExportOptions
   ): string {
-    const [width, height] = options.resolution.split('x,').map(Number);
+    const [width, height] = options.resolution.split('x').map(Number);
     const frameRate = options.frameRate;
     const duration = clips.length > 0 ? Math.max(...clips.map(c => c.start + c.duration)) : 0;
     const durationInFrames = Math.round(duration * frameRate);

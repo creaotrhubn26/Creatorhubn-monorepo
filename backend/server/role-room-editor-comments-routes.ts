@@ -27,6 +27,9 @@ const VALID_ANCHOR_TYPES = [
   // Role Room content production-anchors:
   "content_post", "marketing_plan_post", "feed_plan_post",
   "gallery_image", "storyboard_frame",
+  // Screenplay/manus-anchors (Story Writer): la produksjonsteamet kommentere
+  // på manuset, en scene, eller en konkret linje i Fountain-teksten.
+  "manuscript", "manuscript_scene", "screenplay_line", "beat",
 ];
 const VALID_STATUSES = ["open", "in_progress", "resolved", "wontfix"];
 const VALID_PRIORITIES = ["low", "normal", "high", "urgent"];
@@ -423,6 +426,15 @@ export function registerRoleRoomEditorCommentsRoutes(
         if (typeof body?.assignedTo === "string") {
           updates.push(`assigned_to = $${p++}`);
           values.push(body.assignedTo.slice(0, 200));
+        }
+        // anchorRef-oppdatering: brukes til å re-mappe linje-ankrede kommentarer
+        // når manus-scener omorganiseres (linjenumre forskyves). Kun forfatter.
+        if (typeof body?.anchorRef === "string") {
+          if (existing[0].author_id !== auth.userId) {
+            res.status(403).json({ error: "kan_ikke_editere_andres_kommentar" }); return;
+          }
+          updates.push(`anchor_ref = $${p++}`);
+          values.push(body.anchorRef.slice(0, 200));
         }
         if (updates.length === 0) {
           res.status(400).json({ error: "ingen_endringer" }); return;

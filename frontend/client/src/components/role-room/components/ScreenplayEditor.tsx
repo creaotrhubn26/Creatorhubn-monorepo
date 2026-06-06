@@ -151,6 +151,10 @@ interface ScreenplayEditorProps {
   showLineNumbers?: boolean;
   onCursorChange?: (line: number, column: number, element: FountainElement | null) => void;
   spellCheck?: boolean;
+  /** Linjenumre (1-basert) som har kommentar-tråder — vises som markør i margen. */
+  commentLines?: Set<number>;
+  /** Klikk på en kommentar-markør i margen. */
+  onCommentLineClick?: (line: number) => void;
 }
 
 // Fountain syntax patterns
@@ -408,6 +412,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   showLineNumbers = true,
   onCursorChange,
   spellCheck = true,
+  commentLines,
+  onCommentLineClick,
 }) => {
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
@@ -1570,7 +1576,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           {!isMobile && <Divider orientation="vertical" flexItem />}
           
           {/* Undo/Redo */}
-          <Tooltip title="Angre (Ctrl+Z)">
+          <Tooltip title="Angre siste endring i manuset (Ctrl+Z)">
             <span>
               <IconButton 
                 size={responsive.buttonSize}
@@ -1592,7 +1598,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title="Gjør om (Ctrl+Y)">
+          <Tooltip title="Gjør om endringen du angret (Ctrl+Y)">
             <span>
               <IconButton 
                 size={responsive.buttonSize}
@@ -1857,22 +1863,48 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
               zIndex: 1,
             }}
           >
-            {parsedLines.map((_, index) => (
-              <Typography
-                key={index}
-                sx={{
-                  fontFamily: 'Courier Prime, Courier New, monospace',
-                  fontSize: responsive.fontSize,
-                  lineHeight: '1.5',
-                  color: cursorPosition.line === index + 1 ? '#a78bfa' : 'rgba(255,255,255,0.3)',
-                  textAlign: 'right',
-                  pr: isMobile ? 0.5 : 1,
-                  userSelect: 'none',
-                }}
-              >
-                {index + 1}
-              </Typography>
-            ))}
+            {parsedLines.map((_, index) => {
+              const hasComment = commentLines?.has(index + 1) ?? false;
+              return (
+                <Typography
+                  key={index}
+                  component="div"
+                  onClick={hasComment ? () => onCommentLineClick?.(index + 1) : undefined}
+                  title={hasComment ? `Kommentar på linje ${index + 1}` : undefined}
+                  sx={{
+                    fontFamily: 'Courier Prime, Courier New, monospace',
+                    fontSize: responsive.fontSize,
+                    lineHeight: '1.5',
+                    color: cursorPosition.line === index + 1 ? '#a78bfa' : 'rgba(255,255,255,0.3)',
+                    textAlign: 'right',
+                    pr: isMobile ? 0.5 : 1,
+                    pl: 1,
+                    userSelect: 'none',
+                    position: 'relative',
+                    cursor: hasComment ? 'pointer' : 'default',
+                  }}
+                >
+                  {hasComment && (
+                    <Box
+                      component="span"
+                      aria-label={`Kommentar på linje ${index + 1}`}
+                      sx={{
+                        position: 'absolute',
+                        left: 2,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: 7,
+                        height: 7,
+                        borderRadius: '50%',
+                        bgcolor: '#f59e0b',
+                        boxShadow: '0 0 0 2px rgba(245,158,11,0.25)',
+                      }}
+                    />
+                  )}
+                  {index + 1}
+                </Typography>
+              );
+            })}
           </Box>
         )}
 

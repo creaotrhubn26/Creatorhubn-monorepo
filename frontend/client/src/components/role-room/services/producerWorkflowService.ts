@@ -1458,17 +1458,12 @@ interface QueuedProducerMutation {
   id: string;
   domain: ProducerMutationDomain;
   method: 'POST' | 'PATCH' | 'DELETE';
-  endpoint: string; // relativ sti; kan inneholde en lokal-id som remappes ved replay
+  endpoint: string;
   body?: unknown;
-  createdLocalId?: string; // satt for create-ops så avhengige køposter kan remappes
+  createdLocalId?: string;
   queuedAt: string;
 }
 
-/**
- * En feil er transient (behold i kø, prøv igjen) hvis den er en nettverksfeil
- * (ingen HTTP-status) eller en 401/408/429/5xx. Permanent (4xx ellers) →
- * dropp fra kø / re-kast til UI, fordi replay aldri vil lykkes.
- */
 function isTransientBackendError(error: unknown): boolean {
   const status = (error as { status?: number } | null | undefined)?.status;
   if (typeof status !== 'number') return true;
@@ -1487,9 +1482,6 @@ function extractCreatedId(response: unknown): string | undefined {
 
 async function readMutationQueue(projectId: string): Promise<QueuedProducerMutation[]> {
   const stored = await settingsService.getSetting<QueuedProducerMutation[]>(PRODUCER_MUTATION_QUEUE_NAMESPACE, { projectId });
-  // VIKTIG: returner en KOPI. settingsService.readCache deler ut det cachede
-  // arrayet by reference; muteres det in-place (push) korrumperes cachen, og
-  // setSetting sin dedup (cached === data) hopper over å persistere endringen.
   return Array.isArray(stored) ? [...stored] : [];
 }
 
@@ -1497,15 +1489,11 @@ async function writeMutationQueue(projectId: string, queue: QueuedProducerMutati
   await settingsService.setSetting(PRODUCER_MUTATION_QUEUE_NAMESPACE, queue, { projectId });
 }
 
-// Per-prosjekt mutex så samtidige kø-operasjoner (enqueue + flush, evt. utløst
-// av parallelle reads/effekter) serialiseres. Uten dette kunne et enqueue-write
-// bli overskrevet av en samtidig kø-operasjon (read-modify-write-race).
 const queueLocks = new Map<string, Promise<unknown>>();
 
 function withQueueLock<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
   const prev = queueLocks.get(projectId) ?? Promise.resolve();
   const next = prev.then(fn, fn);
-  // Hold låsen til den nåværende seksjonen er ferdig; svelg feil i lås-kjeden.
   queueLocks.set(projectId, next.then(() => undefined, () => undefined));
   return next;
 }
@@ -1521,11 +1509,6 @@ async function enqueueProducerMutation(
   });
 }
 
-/**
- * Replay køede mutasjoner i rekkefølge til backend. Stopper (og beholder resten)
- * ved første transiente feil — fortsatt offline. Lokal-id-er fra create-ops
- * remappes til ekte backend-id-er i påfølgende posters endpoint.
- */
 async function flushProducerMutationQueue(projectId: string): Promise<void> {
   await withQueueLock(projectId, async () => {
     let queue = await readMutationQueue(projectId);
@@ -1551,10 +1534,8 @@ async function flushProducerMutationQueue(projectId: string): Promise<void> {
         }
       } catch (error) {
         if (isTransientBackendError(error)) {
-          // Fortsatt offline — behold køen og avbryt; replayes neste gang.
           return;
         }
-        // Permanent feil — dropp posten så køen ikke står fast i evig loop.
         console.warn('[producerWorkflowService] dropper køet mutasjon etter permanent feil:', endpoint, error);
       }
 
@@ -1564,13 +1545,6 @@ async function flushProducerMutationQueue(projectId: string): Promise<void> {
   });
 }
 
-/**
- * Kjør en producer-mutasjon med offline-replay-semantikk:
- *  1. Tøm evt. ventende kø først (bevarer rekkefølge).
- *  2. Hvis køen fortsatt har poster → vi er offline: køpost + optimistisk speil.
- *  3. Ellers prøv backend live. Ved transient feil → kø + optimistisk. Ved
- *     permanent feil → re-kast så UI viser valideringsfeil.
- */
 async function runProducerMutation<T>(opts: {
   projectId: string;
   domain: ProducerMutationDomain;
@@ -1594,8 +1568,6 @@ async function runProducerMutation<T>(opts: {
     });
 
   if (pending.length > 0) {
-    // Køen ble ikke tømt → fortsatt offline. Ikke prøv backend (ville feilet
-    // og kan avhenge av en ennå-uopplastet lokal entitet). Køpost i rekkefølge.
     await enqueue();
     return opts.optimistic();
   }
@@ -1613,62 +1585,90 @@ async function runProducerMutation<T>(opts: {
   }
 }
 
+// In-flight dedupe-cache (fra main): forhindrer at parallelle komponenter som
+// bruker samme hook fyrer hver sin fetch for samme prosjekt.
+const inFlightRequests = new Map<string, Promise<unknown>>();
+
+function dedupedFetch<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const existing = inFlightRequests.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+  const promise = (async () => {
+    try {
+      return await fn();
+    } finally {
+      inFlightRequests.delete(key);
+    }
+  })();
+  inFlightRequests.set(key, promise);
+  return promise;
+}
+
 async function fetchTimeline(projectId: string): Promise<ProducerTimelineItem[]> {
-  await flushProducerMutationQueue(projectId).catch(() => {});
-  try {
-    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/timeline`);
-    const items = Array.isArray(response.items) ? response.items : [];
-    const normalized = sortTimelineItems(items.map((item, index) => normalizeTimelineItem(item, projectId, index)));
-    await settingsService.setSetting(TIMELINE_MIRROR_NAMESPACE, normalized, { projectId });
-    return normalized;
-  } catch (error) {
-    console.warn('[producerWorkflowService] fetchTimeline falt tilbake til localStorage-speil:', error);
-    return readTimelineMirror(projectId);
-  }
+  return dedupedFetch(`timeline:${projectId}`, async () => {
+    await flushProducerMutationQueue(projectId).catch(() => {});
+    try {
+      const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/timeline`);
+      const items = Array.isArray(response.items) ? response.items : [];
+      const normalized = sortTimelineItems(items.map((item, index) => normalizeTimelineItem(item, projectId, index)));
+      await writeTimelineMirror(projectId, normalized);
+      return normalized;
+    } catch (error) {
+      console.warn('[producerWorkflowService] fetchTimeline falt tilbake til localStorage-speil:', error);
+      return readTimelineMirror(projectId);
+    }
+  });
 }
 
 async function fetchEconomy(projectId: string): Promise<ProducerEconomyItem[]> {
-  await flushProducerMutationQueue(projectId).catch(() => {});
-  try {
-    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/economy/items`);
-    const items = Array.isArray(response.items) ? response.items : [];
-    const normalized = sortEconomyItems(items.map((item, index) => normalizeEconomyItem(item, projectId, index)));
-    await settingsService.setSetting(ECONOMY_MIRROR_NAMESPACE, normalized, { projectId });
-    return normalized;
-  } catch (error) {
-    console.warn('[producerWorkflowService] fetchEconomy falt tilbake til localStorage-speil:', error);
-    return readEconomyMirror(projectId);
-  }
+  return dedupedFetch(`economy:${projectId}`, async () => {
+    await flushProducerMutationQueue(projectId).catch(() => {});
+    try {
+      const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/economy/items`);
+      const items = Array.isArray(response.items) ? response.items : [];
+      const normalized = sortEconomyItems(items.map((item, index) => normalizeEconomyItem(item, projectId, index)));
+      await writeEconomyMirror(projectId, normalized);
+      return normalized;
+    } catch (error) {
+      console.warn('[producerWorkflowService] fetchEconomy falt tilbake til localStorage-speil:', error);
+      return readEconomyMirror(projectId);
+    }
+  });
 }
 
 async function fetchReviews(projectId: string): Promise<ProducerClientReview[]> {
-  await flushProducerMutationQueue(projectId).catch(() => {});
-  try {
-    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/reviews`);
-    const items = Array.isArray(response.items) ? response.items : [];
-    const normalized = sortReviews(items.map((review) => normalizeReview(review, projectId)));
-    await settingsService.setSetting(REVIEWS_MIRROR_NAMESPACE, normalized, { projectId });
-    return normalized;
-  } catch (error) {
-    console.warn('[producerWorkflowService] fetchReviews falt tilbake til localStorage-speil:', error);
-    return readReviewsMirror(projectId);
-  }
+  return dedupedFetch(`reviews:${projectId}`, async () => {
+    await flushProducerMutationQueue(projectId).catch(() => {});
+    try {
+      const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/reviews`);
+      const items = Array.isArray(response.items) ? response.items : [];
+      const normalized = sortReviews(items.map((review) => normalizeReview(review, projectId)));
+      await writeReviewsMirror(projectId, normalized);
+      return normalized;
+    } catch (error) {
+      console.warn('[producerWorkflowService] fetchReviews falt tilbake til localStorage-speil:', error);
+      return readReviewsMirror(projectId);
+    }
+  });
 }
 
 async function fetchNotifications(projectId: string): Promise<ProducerProjectNotification[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/notifications`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return items
-    .map((item) => normalizeNotification(item, projectId))
-    .sort((left, right) => compareIso(right.updated_at, left.updated_at));
+  return dedupedFetch(`notifications:${projectId}`, async () => {
+    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/notifications`);
+    const items = Array.isArray(response.items) ? response.items : [];
+    return items
+      .map((item) => normalizeNotification(item, projectId))
+      .sort((left, right) => compareIso(right.updated_at, left.updated_at));
+  });
 }
 
 async function fetchExpenses(projectId: string): Promise<ProducerExpense[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/expenses`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return items
-    .map((item) => normalizeExpense(item, projectId))
-    .sort((left, right) => compareIso(right.updatedAt, left.updatedAt));
+  return dedupedFetch(`expenses:${projectId}`, async () => {
+    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/expenses`);
+    const items = Array.isArray(response.items) ? response.items : [];
+    return items
+      .map((item) => normalizeExpense(item, projectId))
+      .sort((left, right) => compareIso(right.updatedAt, left.updatedAt));
+  });
 }
 
 async function readClientIntakeFromStorage(projectId: string): Promise<ProducerClientIntake | null> {

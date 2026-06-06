@@ -8,7 +8,9 @@ import ShowcaseConversionFooter from '@/components/showcase/ShowcaseConversionFo
 const MusicShowcase: React.FC = () => {
   const { user } = useAuth();
   const userId = user?.id || user?.email || 'unknown-user';
-  const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || null;
+  const displayName = (user as { firstName?: string; lastName?: string; displayName?: string } | null)?.displayName
+    || [(user as { firstName?: string } | null)?.firstName, (user as { lastName?: string } | null)?.lastName].filter(Boolean).join(' ').trim()
+    || null;
 
   useShowcaseSEO({
     profession: 'music_producer',

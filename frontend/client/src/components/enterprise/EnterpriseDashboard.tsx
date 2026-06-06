@@ -223,7 +223,7 @@ const EnterpriseDashboard: React.FC = () => {
       {/* Enterprise Header */}
       <Box sx={{ mb:  4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <Box>
-          <Typography variant="h3" sx={{  mb: 2, fontWeight: 'bold'  }}>
+          <Typography variant="h4" sx={{  mb: 2, fontWeight: 'bold'  }}>
             CreatorHub Norge Enterprise
           </Typography>
           <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
@@ -341,14 +341,14 @@ const OverviewPanel: React.FC<{ analytics: any }> = ({ analytics }) => {
   const theming = useTheming('photographer');
 
   return (
-  <Grid container spacing={3}>
+  <Grid container spacing={2}>
     <Grid item xs={12} md={3}>
       <Card sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
           <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
             Totale Inntekter
           </Typography>
-          <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+          <Typography variant="h5" sx={{ color: theming.colors.primary }}>
             {analytics?.revenue?.[0]?.revenue ? `${analytics.revenue[0].revenue} NOK` : '0 NOK'}
           </Typography>
         </CardContent>
@@ -360,7 +360,7 @@ const OverviewPanel: React.FC<{ analytics: any }> = ({ analytics }) => {
           <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
             Aktive Kunder
           </Typography>
-          <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+          <Typography variant="h5" sx={{ color: theming.colors.primary }}>
             {analytics?.customers?.reduce((sum: number, c: any) => sum + c.count, 0) || 0}
           </Typography>
         </CardContent>
@@ -372,7 +372,7 @@ const OverviewPanel: React.FC<{ analytics: any }> = ({ analytics }) => {
           <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
             Pågående Prosjekter
           </Typography>
-          <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+          <Typography variant="h5" sx={{ color: theming.colors.primary }}>
             {analytics?.projects?.reduce((sum: number, p: any) => sum + p.count, 0) || 0}
           </Typography>
         </CardContent>
@@ -384,7 +384,7 @@ const OverviewPanel: React.FC<{ analytics: any }> = ({ analytics }) => {
           <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
             Abonnementer
           </Typography>
-          <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+          <Typography variant="h5" sx={{ color: theming.colors.primary }}>
             {analytics?.subscriptions?.reduce((sum: number, s: any) => sum + s.count, 0) || 0}
           </Typography>
         </CardContent>
@@ -1027,14 +1027,14 @@ const ReportsPanel: React.FC<{ analytics: any }> = ({ analytics }) => {
         </Box>
       </Box>
       
-      <Grid container spacing={3}>
+      <Grid container spacing={2}>
         {/* KPI Cards */}
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent>
               <Typography variant="overline" color="text.secondary">Omsetning</Typography>
-              <Typography variant="h4">{reportData.revenue.current.toLocaleString('nb-NO')} kr</Typography>
-              <Chip 
+              <Typography variant="h5">{reportData.revenue.current.toLocaleString('nb-NO')} kr</Typography>
+              <Chip
                 label={`${reportData.revenue.change > 0 ? '+' : ''}${reportData.revenue.change}%`}
                 color={reportData.revenue.change > 0 ? 'success' : 'error'}
                 size="small"
@@ -1047,8 +1047,8 @@ const ReportsPanel: React.FC<{ analytics: any }> = ({ analytics }) => {
           <Card sx={theming.getThemedCardSx()}>
             <CardContent>
               <Typography variant="overline" color="text.secondary">Prosjekter</Typography>
-              <Typography variant="h4">{reportData.projects.current}</Typography>
-              <Chip 
+              <Typography variant="h5">{reportData.projects.current}</Typography>
+              <Chip
                 label={`${reportData.projects.change > 0 ? '+' : ''}${reportData.projects.change}%`}
                 color={reportData.projects.change > 0 ? 'success' : 'error'}
                 size="small"
@@ -1061,8 +1061,8 @@ const ReportsPanel: React.FC<{ analytics: any }> = ({ analytics }) => {
           <Card sx={theming.getThemedCardSx()}>
             <CardContent>
               <Typography variant="overline" color="text.secondary">Nye kunder</Typography>
-              <Typography variant="h4">{reportData.clients.current}</Typography>
-              <Chip 
+              <Typography variant="h5">{reportData.clients.current}</Typography>
+              <Chip
                 label={`${reportData.clients.change > 0 ? '+' : ''}${reportData.clients.change}%`}
                 color={reportData.clients.change > 0 ? 'success' : 'error'}
                 size="small"
@@ -1075,8 +1075,8 @@ const ReportsPanel: React.FC<{ analytics: any }> = ({ analytics }) => {
           <Card sx={theming.getThemedCardSx()}>
             <CardContent>
               <Typography variant="overline" color="text.secondary">Snitt prosjektverdi</Typography>
-              <Typography variant="h4">{reportData.avgProjectValue.current.toLocaleString('nb-NO')} kr</Typography>
-              <Chip 
+              <Typography variant="h5">{reportData.avgProjectValue.current.toLocaleString('nb-NO')} kr</Typography>
+              <Chip
                 label={`${reportData.avgProjectValue.change > 0 ? '+' : ''}${reportData.avgProjectValue.change}%`}
                 color={reportData.avgProjectValue.change > 0 ? 'success' : 'error'}
                 size="small"

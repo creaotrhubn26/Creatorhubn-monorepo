@@ -464,7 +464,7 @@ export default function ChatWidget({
             borderRadius: 3,
             maxHeight: '90vh',
             height: '700px',
-            background: 'linear-gradient(145deg, rgba(255,255,255,0.97), rgba(248,250,252,0.98))',
+            background: 'linear-gradient(145deg, rgba(255,255,255,0.04), rgba(255,255,255,0.04))',
             backdropFilter: 'blur(10px)',
         }}}
         TransitionComponent={UpwardSlide}
@@ -583,7 +583,7 @@ export default function ChatWidget({
                 width: 320,
                 borderRight:  1,
                 borderColor: 'divider',
-                bgcolor: 'rgba(248, 250, 252, 0.95)',
+                bgcolor: 'rgba(255,255,255,0.04)',
               }}
             >
               <List sx={{ py:  0 }}>
@@ -728,7 +728,7 @@ export default function ChatWidget({
                       p:  1,
                       borderTop:  1,
                       borderColor: 'divider',
-                      background: 'rgba(248, 250, 252, 0.98)',
+                      background: 'rgba(255,255,255,0.04)',
                     }}
                   >
                     <TextField
@@ -823,7 +823,7 @@ export default function ChatWidget({
                         sx={{
                           mt:  1,
                           p:  1,
-                          bgcolor: 'rgba(255,255,255,0.96)',
+                          bgcolor: 'rgba(255,255,255,0.04)',
                           borderRadius:  2,
                           border: `1px solid ${getProfessionColor()}30`,
                           maxHeight: 220,
@@ -898,7 +898,7 @@ export default function ChatWidget({
                         sx={{
                           mt:  1,
                           p:  1,
-                          bgcolor: 'rgba(255,255,255,0.96)',
+                          bgcolor: 'rgba(255,255,255,0.04)',
                           borderRadius:  2,
                           display: 'flex',
                           alignItems: 'center',
