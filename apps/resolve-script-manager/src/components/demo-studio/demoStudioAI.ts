@@ -191,6 +191,32 @@ export async function fetchSiteContext(url: string): Promise<string> {
   }
 }
 
+/**
+ * AI self-healing: når en scenes mål-element ikke lenger finnes (brutt selector),
+ * la Claude velge elementet i dagens katalog som best matcher den opprinnelige
+ * intensjonen. Returnerer katalog-indeks, eller null hvis ingen passer.
+ */
+export async function healTarget(params: {
+  targetLabel?: string;
+  actionType?: string;
+  elements: ScannedElement[];
+}): Promise<number | null> {
+  const { targetLabel, actionType, elements } = params;
+  if (!elements.length) return null;
+  const catalog = elements.map((e, i) => `${i}: "${e.label}" [${e.tag}]`).join('\n');
+  const user = `Mål-elementet for handlingen «${actionType || 'click'} ${targetLabel || ''}» ble ikke funnet (selector brutt). ` +
+    `Velg elementet fra dagens katalog som BEST matcher den opprinnelige intensjonen.\nKatalog:\n${catalog}\n` +
+    `Svar med KUN ett JSON-objekt: { "index": <tall, eller -1 hvis ingen passer> }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du reparerer brutte element-referanser i en produktdemo. Svar kun med JSON.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 120,
+  });
+  const parsed = extractJson<{ index: number }>(raw);
+  if (!parsed || typeof parsed.index !== 'number' || parsed.index < 0 || parsed.index >= elements.length) return null;
+  return parsed.index;
+}
+
 /** Patch fra «AI fullfør demoen» — kun felt som skal fylles for én scene. */
 export interface ScenePatch {
   index: number;
@@ -412,12 +438,14 @@ Svar med KUN ett JSON-objekt:
       : undefined;
     let targetLabel = d.targetLabel || undefined;
     let targetSelector: string | undefined;
+    let targetLocators: typeof elements[number]['locators'] | undefined;
     // Bind til EKTE element fra katalogen når AI valgte en gyldig targetIndex.
     const picked = typeof d.targetIndex === 'number' ? elements[d.targetIndex] : undefined;
     if (picked) {
       targetSelector = picked.selector;
       targetLabel = picked.label || targetLabel;
       hotspot = picked.hotspot;
+      targetLocators = picked.locators;
       if (!actionType && validActions.includes(picked.actionType as DemoActionType)) actionType = picked.actionType as DemoActionType;
     }
     return {
@@ -430,6 +458,7 @@ Svar med KUN ett JSON-objekt:
       requiredAction: d.requiredAction || '',
       targetLabel,
       targetSelector,
+      targetLocators,
       actionType,
       hotspot,
       overlayText: d.overlayText || '',

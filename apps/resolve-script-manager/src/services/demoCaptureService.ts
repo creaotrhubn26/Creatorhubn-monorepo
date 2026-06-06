@@ -11,7 +11,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { DomScanResult } from '../components/demo-studio/demoStudioModel';
+import type { DomScanResult, TargetLocator } from '../components/demo-studio/demoStudioModel';
 
 /** Ett innsamlet klikk-steg fra capture-vinduet (speiler Rust-payloaden). */
 export interface CapturedStep {
@@ -22,6 +22,8 @@ export interface CapturedStep {
   hotspot: { x: number; y: number; w: number; h: number };
   /** Scroll-posisjon (0–1) da klikket skjedde. */
   scrollPct: number;
+  /** Multi-strategi-locators (resilient replay). */
+  locators?: TargetLocator[];
 }
 
 /** Er capture tilgjengelig (kjører vi i Tauri)? */

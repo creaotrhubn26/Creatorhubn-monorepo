@@ -97,6 +97,12 @@ export interface DemoScene {
   /** CSS-selector for mål-elementet (fylles av capture) — brukes til validering. */
   targetSelector?: string;
   /**
+   * Multi-strategi-locators for mål-elementet (resilient replay). Flere uavhengige
+   * fingeravtrykk (id/testid/aria/text/css) prøves i rekkefølge ved replay/verify,
+   * så scenen overlever re-renders, hashede CSS-klasser og A/B-varianter.
+   */
+  targetLocators?: TargetLocator[];
+  /**
    * Detektert selector — hva som FAKTISK ble interagert med (fylles av capture
    * eller en verifiserings-runde). Sammenlignes med targetSelector (Expected ↔
    * Detected → Match/Warning).
@@ -504,6 +510,10 @@ export function defaultSceneFlow(device: DemoDevice = 'macbook'): DemoScene[] {
   return flowForDemoType('product_demo', device);
 }
 
+/** Locator-strategi for resilient element-gjenfinning ved replay. */
+export type LocatorStrategy = 'id' | 'testid' | 'aria' | 'text' | 'css';
+export interface TargetLocator { strategy: LocatorStrategy; value: string }
+
 /** Et interaktivt element katalogisert av DOM-skannet (AI-binding). */
 export interface ScannedElement {
   selector: string;
@@ -512,6 +522,8 @@ export interface ScannedElement {
   actionType: string;
   belowFold: boolean;
   hotspot: { x: number; y: number; w: number; h: number };
+  /** Multi-strategi-locators (resilient replay). */
+  locators?: TargetLocator[];
 }
 
 /** Resultat av et DOM-skann av en side. */
@@ -519,6 +531,8 @@ export interface DomScanResult {
   url: string;
   title: string;
   elements: ScannedElement[];
+  /** JS-rendret synlig tekst (rikere AI-kontekst enn anonym reqwest). */
+  pageText?: string;
 }
 
 /** Ett innsamlet klikk-steg fra «klikk-gjennom»-capture (Fase 2). */
@@ -529,6 +543,7 @@ export interface CapturedStepLike {
   actionType?: string;
   hotspot?: { x: number; y: number; w: number; h: number };
   scrollPct?: number;
+  locators?: TargetLocator[];
 }
 
 /**
@@ -548,6 +563,7 @@ export function captureStepsToScenes(steps: CapturedStepLike[], device: DemoDevi
       actionType: at,
       targetLabel: label || undefined,
       targetSelector: s.selector || undefined,
+      targetLocators: s.locators && s.locators.length ? s.locators : undefined,
       // Capture = brukeren klikket faktisk elementet → detektert == forventet.
       detectedSelector: s.selector || undefined,
       hotspot: s.hotspot,

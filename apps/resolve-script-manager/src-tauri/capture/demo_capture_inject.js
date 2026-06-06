@@ -93,8 +93,27 @@
     return 'click';
   }
 
+  // Multi-strategi-locators: flere uavhengige fingeravtrykk per element.
+  function buildLocators(el) {
+    var L = [];
+    try {
+      if (el.id) L.push({ strategy: 'id', value: '#' + esc(el.id) });
+      var tid = el.getAttribute && (el.getAttribute('data-testid') || el.getAttribute('data-test') || el.getAttribute('data-cy'));
+      if (tid) L.push({ strategy: 'testid', value: '[data-testid="' + tid + '"]' });
+      var role = el.getAttribute && el.getAttribute('role');
+      var aria = el.getAttribute && (el.getAttribute('aria-label') || '');
+      if (role || aria) L.push({ strategy: 'aria', value: (role || el.nodeName.toLowerCase()) + '|' + (aria || labelFor(el)) });
+      var txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (txt && txt.length <= 40) L.push({ strategy: 'text', value: el.nodeName.toLowerCase() + '|' + txt });
+      L.push({ strategy: 'css', value: cssPath(el) });
+    } catch (e) { /* */ }
+    return L;
+  }
+
   document.addEventListener('click', function (e) {
-    var t = e.target;
+    // composedPath gir det EKTE målet også gjennom shadow-DOM-grenser.
+    var path = (e.composedPath && e.composedPath()) || [];
+    var t = path[0] || e.target;
     if (!t || (t.closest && t.closest('#__demoCaptureBar'))) return;
     var el = meaningful(t);
     var r = el.getBoundingClientRect();
@@ -104,6 +123,7 @@
     var step = {
       url: location.href,
       selector: cssPath(el),
+      locators: buildLocators(el),
       targetLabel: labelFor(el),
       actionType: actionFor(el),
       hotspot: {

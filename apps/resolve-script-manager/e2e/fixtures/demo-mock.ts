@@ -22,9 +22,9 @@ export function installDemoMock() {
   (window as unknown as { __demoEmit: typeof emit }).__demoEmit = emit;
 
   const SCAN_ELEMENTS = [
-    { selector: '#start', label: 'Start free trial', tag: 'button', actionType: 'click', belowFold: false, hotspot: { x: 0.40, y: 0.30, w: 0.20, h: 0.08 } },
-    { selector: '#demo', label: 'Request a demo', tag: 'a', actionType: 'click', belowFold: false, hotspot: { x: 0.65, y: 0.30, w: 0.20, h: 0.08 } },
-    { selector: '#pricing', label: 'Pricing', tag: 'a', actionType: 'click', belowFold: true, hotspot: { x: 0.80, y: 0.05, w: 0.10, h: 0.05 } },
+    { selector: '#start', label: 'Start free trial', tag: 'button', actionType: 'click', belowFold: false, hotspot: { x: 0.40, y: 0.30, w: 0.20, h: 0.08 }, locators: [{ strategy: 'id', value: '#start' }, { strategy: 'text', value: 'button|Start free trial' }] },
+    { selector: '#demo', label: 'Request a demo', tag: 'a', actionType: 'click', belowFold: false, hotspot: { x: 0.65, y: 0.30, w: 0.20, h: 0.08 }, locators: [{ strategy: 'id', value: '#demo' }] },
+    { selector: '#pricing', label: 'Pricing', tag: 'a', actionType: 'click', belowFold: true, hotspot: { x: 0.80, y: 0.05, w: 0.10, h: 0.05 }, locators: [{ strategy: 'id', value: '#pricing' }] },
   ];
 
   const TINY_JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAAAv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AfwD/2Q==';
@@ -49,9 +49,10 @@ export function installDemoMock() {
         case 'plugin:dialog|open': return '/tmp/demo-input';
         case 'start_demo_capture': return null; // spec styrer steg via __demoEmit
         case 'demo_capture_done': return null;
-        case 'demo_scan_dom': later(() => emit('demo-capture://dom', { url: args.url, title: 'Test', elements: SCAN_ELEMENTS })); return null;
+        case 'demo_scan_dom': later(() => emit('demo-capture://dom', { url: args.url, title: 'Test', elements: SCAN_ELEMENTS, pageText: 'Test-side: Start free trial. Request a demo. Pricing.' })); return null;
         case 'demo_verify_action': later(() => emit('demo-capture://verify', { cancelled: false, selector: '#start', label: 'Start free trial' })); return null;
-        case 'demo_auto_execute': later(() => emit('demo-capture://auto', { ok: true, found: true, selector: args.selector })); return null;
+        // Selector-bevisst: «broken/missing»-selektorer feiler → trigger self-healing.
+        case 'demo_auto_execute': { const found = !/broken|missing/.test(String(args.selector || '')); later(() => emit('demo-capture://auto', { ok: found, found, selector: args.selector })); return null; }
         case 'demo_screenshot': later(() => emit('demo-capture://shot', { ok: true, dataUrl: TINY_JPEG })); return null;
         case 'demo_fetch_site_context': return 'Tittel: Test\nKlikkbare elementer: Start free trial · Request a demo';
         case 'demo_write_text': return args.path;

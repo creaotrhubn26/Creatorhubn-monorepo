@@ -48,6 +48,8 @@ async function setupRoutes(page: Page) {
         { device: 'macbook', status: 'ok', message: 'All good' },
         { device: 'iphone', status: 'warning', message: 'CTA lavt på mobil', recommendation: 'Start etter 20% scroll', fix: { kind: 'start_scroll', sceneIndex: 0, startScrollPct: 35, summary: 'Start mobilscene etter 35% scroll' } },
       ] });
+    } else if (text.includes('selector brutt')) {
+      payload = anthropic({ index: 0 }); // self-healing → velg #start
     } else if (text.includes('Skriv manus for DENNE scenen')) {
       payload = anthropic({ narration: 'Scene-manus fra AI', visualInstruction: 'vis', requiredAction: 'Klikk Start', overlayText: 'Overlay' });
     } else if (sys.includes('manus-redaktør')) {
@@ -239,7 +241,7 @@ test('auto-execute som ikke finner element setter needs_review', async ({ page }
   await overrideCaptureInvoke(page, { autoOk: false, autoFound: false });
   let alertSeen = false;
   page.removeAllListeners('dialog');
-  page.on('dialog', (d) => { if (/Fant ikke elementet/.test(d.message())) alertSeen = true; void d.accept(); });
+  page.on('dialog', (d) => { if (/Fant ikke elementet|klarte ikke å reparere/.test(d.message())) alertSeen = true; void d.accept(); });
   await page.getByText('Start free trial').first().click();
   await page.getByRole('button', { name: /Record/ }).first().click();
   await page.getByRole('button', { name: /Kjør automatisk/ }).click();
@@ -398,4 +400,26 @@ test('Create Demo med eksisterende prosjekt krever confirm før erstatning', asy
   // Tilbake i Flow Builder med nytt prosjekt (default product_demo, 6 scener).
   await expect(page.getByText('Demo-flow')).toBeVisible();
   await expect(page.getByText('6 scener')).toBeVisible();
+});
+
+// ── AI self-healing av brutt selector ──
+
+test('AI self-healing reparerer brutt selector og fullfører auto', async ({ page }) => {
+  await seedDemo(page);
+  // Capture en scene med en BRUTT selector (#broken-1) → auto vil feile først.
+  await page.getByText(/Klikk-capture/).click();
+  await page.evaluate(() => {
+    const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
+    emit('demo-capture://step', { url: 'x', selector: '#broken-1', targetLabel: 'Start free trial', actionType: 'click', hotspot: { x: 0.4, y: 0.3, w: 0.2, h: 0.08 }, scrollPct: 0, locators: [{ strategy: 'id', value: '#broken-1' }] });
+    emit('demo-capture://done', false);
+  });
+  await expect(page.getByText('Start free trial').first()).toBeVisible({ timeout: 10000 });
+  let healed = false;
+  page.removeAllListeners('dialog');
+  page.on('dialog', (d) => { if (/AI reparerte/.test(d.message())) healed = true; void d.accept(); });
+  await page.getByText('Start free trial').first().click();
+  await page.getByRole('button', { name: /Record/ }).first().click();
+  await page.getByRole('button', { name: /Kjør automatisk/ }).click();
+  // auto found=false → scanDom → healTarget(#start) → retry → found=true → done.
+  await expect.poll(() => healed, { timeout: 15000 }).toBe(true);
 });

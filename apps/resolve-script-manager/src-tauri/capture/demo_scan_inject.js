@@ -50,11 +50,37 @@
     return 'click';
   }
 
+  function buildLocators(el) {
+    var L = [];
+    try {
+      if (el.id) L.push({ strategy: 'id', value: '#' + esc(el.id) });
+      var tid = el.getAttribute && (el.getAttribute('data-testid') || el.getAttribute('data-test') || el.getAttribute('data-cy'));
+      if (tid) L.push({ strategy: 'testid', value: '[data-testid="' + tid + '"]' });
+      var role = el.getAttribute && el.getAttribute('role');
+      var aria = el.getAttribute && (el.getAttribute('aria-label') || '');
+      if (role || aria) L.push({ strategy: 'aria', value: (role || el.nodeName.toLowerCase()) + '|' + (aria || labelFor(el)) });
+      var txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (txt && txt.length <= 40) L.push({ strategy: 'text', value: el.nodeName.toLowerCase() + '|' + txt });
+      L.push({ strategy: 'css', value: cssPath(el) });
+    } catch (e) { /* */ }
+    return L;
+  }
+
+  // Dyp spørring som gjennomtrenger shadow-DOM (web components / design-systemer).
+  function deepQueryAll(sel) {
+    var out = [];
+    function walk(root) {
+      try { Array.prototype.push.apply(out, root.querySelectorAll(sel)); } catch (e) { /* */ }
+      var all = root.querySelectorAll ? root.querySelectorAll('*') : [];
+      for (var i = 0; i < all.length; i++) { if (all[i].shadowRoot) walk(all[i].shadowRoot); }
+    }
+    walk(document);
+    return out;
+  }
+
   function scan() {
     var iw = window.innerWidth || 1, ih = window.innerHeight || 1;
-    var nodes = Array.prototype.slice.call(
-      document.querySelectorAll('a,button,input,textarea,select,[role="button"],[role="link"],[onclick],h1,h2')
-    );
+    var nodes = deepQueryAll('a,button,input,textarea,select,[role="button"],[role="link"],[onclick],h1,h2');
     var out = [], seen = {};
     for (var i = 0; i < nodes.length; i++) {
       var el = nodes[i];
@@ -68,6 +94,7 @@
       seen[key] = 1;
       out.push({
         selector: s,
+        locators: buildLocators(el),
         label: lab,
         tag: el.nodeName.toLowerCase(),
         actionType: actionFor(el),
@@ -81,7 +108,10 @@
       });
       if (out.length >= 60) break;
     }
-    invoke('demo_scan_result', { url: location.href, title: document.title || '', elements: out });
+    // JS-rendret synlig tekst (rikere kontekst enn anonym reqwest).
+    var pageText = '';
+    try { pageText = (document.body.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 1600); } catch (e) { /* */ }
+    invoke('demo_scan_result', { url: location.href, title: document.title || '', elements: out, pageText: pageText });
   }
 
   function go() { setTimeout(scan, 1200); } // gi SPA-en tid til å rendre

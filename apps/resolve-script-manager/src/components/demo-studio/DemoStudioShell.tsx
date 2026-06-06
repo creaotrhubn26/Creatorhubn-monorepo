@@ -26,7 +26,7 @@ import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
-import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck } from './demoStudioAI';
+import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck, healTarget } from './demoStudioAI';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
@@ -133,12 +133,30 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     setAutoBusy(true);
     try {
       const r = await autoExecute(st.project.url, sc.targetSelector, sc.actionType ?? 'click');
-      if (r?.ok) {
+      if (r?.ok && r.found) {
         updateScene(sc.id, { detectedSelector: sc.targetSelector, status: 'done' });
         if (st.recorderStepIndex < st.project.scenes.length - 1) nextStep();
       } else if (r && !r.found) {
-        updateScene(sc.id, { status: 'needs_review' });
-        window.alert('Fant ikke elementet på siden (selector traff ikke). Scene merket «Needs Review».');
+        // Self-healing: skann siden på nytt + la AI finne riktig element → reparer + prøv igjen.
+        const scan = await scanDom(st.project.url).catch(() => null);
+        const els = scan?.elements ?? [];
+        const idx = els.length ? await healTarget({ targetLabel: sc.targetLabel, actionType: sc.actionType, elements: els }).catch(() => null) : null;
+        if (idx != null && els[idx]) {
+          const el = els[idx];
+          updateScene(sc.id, { targetSelector: el.selector, targetLocators: el.locators, targetLabel: el.label, hotspot: el.hotspot });
+          const r2 = await autoExecute(st.project.url, el.selector, sc.actionType ?? 'click');
+          if (r2?.ok && r2.found) {
+            updateScene(sc.id, { detectedSelector: el.selector, status: 'done' });
+            if (st.recorderStepIndex < st.project.scenes.length - 1) nextStep();
+            window.alert('Selector var brutt — AI reparerte den automatisk og handlingen lyktes.');
+          } else {
+            updateScene(sc.id, { status: 'needs_review' });
+            window.alert('AI klarte ikke å reparere target. Scene merket «Needs Review».');
+          }
+        } else {
+          updateScene(sc.id, { status: 'needs_review' });
+          window.alert('Fant ikke elementet på siden. Scene merket «Needs Review».');
+        }
       }
     } finally {
       setAutoBusy(false);
@@ -235,7 +253,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       // Skann de ekte interaktive elementene (presis element-binding) + les kontekst.
       const scan = await scanDom(project.url).catch(() => null);
       const elements = scan?.elements ?? [];
-      const siteContext = await fetchSiteContext(project.url);
+      // Foretrekk JS-rendret pageText fra skannet (rikere enn anonym reqwest).
+      const siteContext = scan?.pageText || await fetchSiteContext(project.url);
       setDirectorMsg(elements.length ? `Fant ${elements.length} elementer — AI Director designer flowen…` : 'AI Director designer flowen…');
       const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
       const scenes = await generateDemoFlow({
@@ -260,7 +279,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     try {
       const scan = await scanDom(project.url).catch(() => null);
       const elements = scan?.elements ?? [];
-      const siteContext = await fetchSiteContext(project.url);
+      const siteContext = scan?.pageText || await fetchSiteContext(project.url);
       const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
       const patches = await completeDemoFlow({ url: project.url, demoType: project.demoType, meta, scenes: project.scenes, elements, siteContext });
       const validActions = Object.keys(ACTION_META) as DemoActionType[];
