@@ -84,9 +84,18 @@ def run(params: dict, dry_run: bool) -> None:
     except Exception:
         pass
 
-    if not hasattr(timeline, "GenerateSpeech"):
-        bridge.error("timeline.GenerateSpeech mangler — krever Resolve 21+ med AI Speech Generator")
+    # GenerateSpeech ligger på PROJECT i Resolve 21.0.0.47 (ikke Timeline, tross
+    # README). Resolve-proxyer returnerer None for ukjente metoder → sjekk `is None`,
+    # ikke hasattr. Fall tilbake til timeline hvis en framtidig build flytter den dit.
+    gen = getattr(project, "GenerateSpeech", None)
+    gen_owner = "project"
+    if gen is None:
+        gen = getattr(timeline, "GenerateSpeech", None)
+        gen_owner = "timeline"
+    if gen is None:
+        bridge.error("GenerateSpeech ikke tilgjengelig — krever Resolve 21 Studio med AI Speech Generator-modell installert")
         sys.exit(1)
+    bridge.log(f"Bruker {gen_owner}.GenerateSpeech")
 
     timecode = (params.get("timecode") or "").strip()
     generated = 0
@@ -105,7 +114,7 @@ def run(params: dict, dry_run: bool) -> None:
         if custom_voice:
             settings["CustomVoiceFile"] = custom_voice
         try:
-            item = timeline.GenerateSpeech(settings, timecode) if timecode else timeline.GenerateSpeech(settings)
+            item = gen(settings, timecode) if timecode else gen(settings)
             if item:
                 generated += 1
                 bridge.log(f"Voiceover scene {i + 1}/{len(texts)} generert")
