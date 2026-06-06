@@ -39,6 +39,7 @@ import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
 import { DemoStudioShell } from "./components/demo-studio/DemoStudioShell";
 import { StoryTestHarness } from "./components/story/StoryTestHarness";
+import { DemoTestHarness } from "./components/demo-studio/DemoTestHarness";
 import { AgentEditorView } from "./components/AgentEditorView";
 import MUSIC_VIDEO_AGENT_CONFIG from "./agents/music_video";
 import CORPORATE_AGENT_CONFIG from "./agents/corporate";
@@ -92,9 +93,17 @@ function isStoryTestMode(): boolean {
   return new URLSearchParams(window.location.search).get("test") === "story";
 }
 
+function isDemoTestMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("test") === "demo";
+}
+
 export default function App() {
   if (isStoryTestMode()) {
     return <StoryTestHarness />;
+  }
+  if (isDemoTestMode()) {
+    return <DemoTestHarness />;
   }
 
   const [registry, setRegistry] = useState<Registry | null>(null);
