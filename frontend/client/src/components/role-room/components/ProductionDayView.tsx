@@ -98,6 +98,7 @@ import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { LocationsIcon as LocationIcon, CalendarCustomIcon as CalendarMonthIcon, StatsIcon } from './icons/CastingIcons';
 import type { CrewMember, Location, ProductionDay, Prop } from '../models/casting';
 import { productionPlanningService } from '../services/productionPlanningService';
+import { planProductionDays, type SchedulerLocation } from '../utils/productionScheduler';
 import { castingService } from '../services/castingService';
 import { externalDataService } from '@/services/ExternalDataService';
 import { WeatherForecastCard } from './WeatherForecastCard';
@@ -269,39 +270,74 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   // en dag. Bruker location.assignedScenes så dagen knyttes til scenene, og
   // location.id så dagen arver ekte koordinater/adresse (vær/reise/kart virker).
   const [generatingDays, setGeneratingDays] = useState(false);
-  const handleGenerateDaysFromLocations = useCallback(async () => {
-    if (!projectId) return;
+  // «Planlegg»-dialog: produsenten styrer startdato, scener/dag og helg-hopping.
+  // Defaultene er bransjeriktige, så bestemor kan bare trykke «Generer».
+  const [schedulerOpen, setSchedulerOpen] = useState(false);
+  const [schedStartDate, setSchedStartDate] = useState('');
+  const [schedMaxScenes, setSchedMaxScenes] = useState(8);
+  const [schedSkipWeekends, setSchedSkipWeekends] = useState(true);
+
+  // Default startdato = dagen etter siste planlagte dag, ellers i dag.
+  const defaultStartMs = useMemo(() => {
+    const DAY_MS = 86_400_000;
+    const existingDateMs = productionDays
+      .map((d) => (d.date ? new Date(d.date).getTime() : NaN))
+      .filter((t) => Number.isFinite(t)) as number[];
+    return existingDateMs.length ? Math.max(...existingDateMs) + DAY_MS : Date.now();
+  }, [productionDays]);
+
+  const newLocationCandidates = useMemo(() => {
     const existingLocationIds = new Set(
       productionDays.map((d) => d.locationId).filter((id): id is string => Boolean(id)),
     );
-    const candidates = locations.filter((loc) => loc.id && !existingLocationIds.has(loc.id));
-    if (candidates.length === 0) {
+    return locations.filter((loc) => loc.id && !existingLocationIds.has(loc.id));
+  }, [productionDays, locations]);
+
+  const openScheduler = useCallback(() => {
+    if (newLocationCandidates.length === 0) {
       showInfo('Alle lokasjoner har allerede en produksjonsdag.');
       return;
     }
+    setSchedStartDate(new Date(defaultStartMs).toISOString().split('T')[0]);
+    setSchedMaxScenes(8);
+    setSchedSkipWeekends(true);
+    setSchedulerOpen(true);
+  }, [newLocationCandidates, defaultStartMs, showInfo]);
+
+  // Live forhåndsvisning av planen (uten å lagre) — så produsenten ser hvor
+  // mange dager og hvilke datoer FØR de trykker generer.
+  const plannedPreview = useMemo(() => {
+    if (!schedulerOpen) return [];
+    const startMs = schedStartDate ? Date.parse(`${schedStartDate}T00:00:00Z`) : defaultStartMs;
+    return planProductionDays(newLocationCandidates as SchedulerLocation[], {
+      startDateMs: Number.isFinite(startMs) ? startMs : defaultStartMs,
+      maxScenesPerDay: schedMaxScenes,
+      skipWeekends: schedSkipWeekends,
+    });
+  }, [schedulerOpen, schedStartDate, schedMaxScenes, schedSkipWeekends, newLocationCandidates, defaultStartMs]);
+
+  const handleGenerateDaysFromLocations = useCallback(async () => {
+    if (!projectId || newLocationCandidates.length === 0) return;
     setGeneratingDays(true);
     try {
       const nowIso = new Date().toISOString();
-      const DAY_MS = 86_400_000;
-      // Startdato: dagen etter siste planlagte dag, ellers i dag. Sekvensielle
-      // skytedager (bransje-default) — produsenten kan flytte hele planen med
-      // "Forskyv dager" eller redigere hver dag.
-      const existingDateMs = productionDays
-        .map((d) => (d.date ? new Date(d.date).getTime() : NaN))
-        .filter((t) => Number.isFinite(t)) as number[];
-      const startMs = existingDateMs.length ? Math.max(...existingDateMs) + DAY_MS : Date.now();
+      const startMs = schedStartDate ? Date.parse(`${schedStartDate}T00:00:00Z`) : defaultStartMs;
+      const plan = planProductionDays(newLocationCandidates as SchedulerLocation[], {
+        startDateMs: Number.isFinite(startMs) ? startMs : defaultStartMs,
+        maxScenesPerDay: schedMaxScenes,
+        skipWeekends: schedSkipWeekends,
+      });
       let created = 0;
-      for (const loc of candidates) {
-        const dayDate = new Date(startMs + created * DAY_MS).toISOString().split('T')[0];
+      for (const p of plan) {
         const day: ProductionDay = {
           id: `day-${Date.now()}-${created}`,
           projectId,
-          date: dayDate,
-          locationId: loc.id,
-          scenes: Array.isArray(loc.assignedScenes) ? loc.assignedScenes : [],
+          date: p.dateIso,
+          locationId: p.locationId,
+          scenes: p.scenes as ProductionDay['scenes'],
           crew: [],
           props: [],
-          notes: `Auto-generert fra lokasjon: ${loc.name}`,
+          notes: `Auto-generert fra lokasjon: ${p.label}`,
           status: 'planned',
           createdAt: nowIso,
           updatedAt: nowIso,
@@ -311,7 +347,10 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       }
       const days = await productionPlanningService.getProductionDays(projectId);
       setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
-      showSuccess(`Genererte ${created} produksjonsdag(er) — én per lokasjon med sekvensielle datoer. Juster datoer/call-time eller forskyv hele planen ved behov.`);
+      setSchedulerOpen(false);
+      showSuccess(
+        `Genererte ${created} produksjonsdag(er) — gruppert per lokasjon, jevnt fordelt (maks ${schedMaxScenes} scener/dag)${schedSkipWeekends ? ', helger hoppet over' : ''}. Juster eller forskyv ved behov.`,
+      );
       onUpdate?.();
     } catch (error) {
       console.error('Generate production days failed:', error);
@@ -319,7 +358,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     } finally {
       setGeneratingDays(false);
     }
-  }, [projectId, productionDays, locations, normalizeProductionDay, showInfo, showSuccess, showError, onUpdate]);
+  }, [projectId, newLocationCandidates, schedStartDate, schedMaxScenes, schedSkipWeekends, defaultStartMs, normalizeProductionDay, showSuccess, showError, onUpdate]);
 
   // Load day-specific data (scenes, crew, props, validation) for each production day
   useEffect(() => {
@@ -2301,13 +2340,13 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             </Button>
             </span>
           </Tooltip>
-          <Tooltip title="Generer én produksjonsdag per lokasjon (gruppert etter sted), med scenene som er knyttet til lokasjonen">
+          <Tooltip title="Planlegg produksjonsdager gruppert per lokasjon (skyt alt på ett sted samlet), med valgfri startdato, scener per dag og helg-hopping">
             <span>
               <Button
                 variant="outlined"
-                onClick={handleGenerateDaysFromLocations}
+                onClick={openScheduler}
                 disabled={locations.length === 0 || generatingDays}
-                aria-label="Generer produksjonsdager fra lokasjoner"
+                aria-label="Planlegg produksjonsdager fra lokasjoner"
                 sx={{
                   color: '#ce93d8',
                   borderColor: 'rgba(206,147,216,0.5)',
@@ -2318,12 +2357,80 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 }}
               >
                 <AutoGenerateIcon />
-                {showExtendedLabels && <Box component="span" sx={{ ml: 1 }}>{generatingDays ? 'Genererer…' : 'Generer fra lokasjoner'}</Box>}
+                {showExtendedLabels && <Box component="span" sx={{ ml: 1 }}>{generatingDays ? 'Genererer…' : 'Planlegg fra lokasjoner'}</Box>}
               </Button>
             </span>
           </Tooltip>
         </Box>
       </Box>
+
+      {/* Planlegg-dialog: produsent-styrt scheduling med live forhåndsvisning */}
+      <Dialog open={schedulerOpen} onClose={() => !generatingDays && setSchedulerOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AutoGenerateIcon sx={{ color: '#ce93d8' }} />
+          Planlegg produksjonsdager
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+            Lager én skytedag per lokasjon ({newLocationCandidates.length} uten dag), jevnt fordelt og med
+            sekvensielle datoer. Defaultene er bransjeriktige — du kan bare trykke «Generer».
+          </Typography>
+          <Stack spacing={2}>
+            <TextField
+              label="Startdato"
+              type="date"
+              size="small"
+              value={schedStartDate}
+              onChange={(e) => setSchedStartDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <TextField
+              label="Maks scener per dag"
+              type="number"
+              size="small"
+              value={schedMaxScenes}
+              onChange={(e) => setSchedMaxScenes(Math.max(1, Number(e.target.value) || 1))}
+              helperText="En lokasjon med flere scener deles jevnt over flere dager (9 scener / maks 8 → 5 + 4)."
+              inputProps={{ min: 1, max: 50 }}
+              fullWidth
+            />
+            <FormControlLabel
+              control={<Switch checked={schedSkipWeekends} onChange={(e) => setSchedSkipWeekends(e.target.checked)} />}
+              label="Hopp over helger (lør/søn)"
+            />
+            <Box sx={{ borderTop: '1px solid rgba(255,255,255,0.08)', pt: 1.5 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Forhåndsvisning — {plannedPreview.length} dag(er)
+              </Typography>
+              <Box sx={{ maxHeight: 200, overflowY: 'auto' }}>
+                {plannedPreview.map((p, i) => (
+                  <Box key={`${p.locationId}-${i}`} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.4, fontSize: 14 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{p.dateIso}</Typography>
+                    <Typography variant="body2" sx={{ color: 'text.secondary', flex: 1, mx: 1, textAlign: 'left' }}>
+                      {p.label}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                      {p.scenes.length} scene{p.scenes.length === 1 ? '' : 'r'}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSchedulerOpen(false)} disabled={generatingDays}>Avbryt</Button>
+          <Button
+            variant="contained"
+            onClick={handleGenerateDaysFromLocations}
+            disabled={generatingDays || plannedPreview.length === 0}
+            sx={{ bgcolor: '#9c27b0', '&:hover': { bgcolor: '#7b1fa2' } }}
+          >
+            {generatingDays ? 'Genererer…' : `Generer ${plannedPreview.length} dag(er)`}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Warning if no locations */}
       {locations.length === 0 && (

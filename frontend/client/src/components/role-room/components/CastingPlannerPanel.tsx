@@ -41,6 +41,7 @@ import {
   Tooltip,
   Alert,
   Badge,
+  Snackbar,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -299,6 +300,14 @@ import NewProjectCreationModal from './Planning/NewProjectCreationModal';
 import RoleRoomBrandMark from './shared/RoleRoomBrandMark';
 import RoleRoomBillingAccountDialog from './RoleRoomBillingAccountDialog';
 import SelectionMeetPlannerCard from './SelectionMeetPlannerCard';
+import SelfTapePreviewModal from './selftape/SelfTapePreviewModal';
+import {
+  availabilityChipStyle,
+  listCastingRoleSelftapes,
+  selftapeAvailability,
+  type CastingRoleSelftape,
+} from '../services/roleRoomSelfTapesService';
+import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 
 interface CastingPlannerPanelProps {
   onClose?: () => void;
@@ -1122,6 +1131,13 @@ type RoleRoomProjectWorkspaceState = {
   const [selectionCompareCandidateIds, setSelectionCompareCandidateIds] = useState<string[]>([]);
   const [selectionDecisionLog, setSelectionDecisionLog] = useState<SelectionDecisionLogEntry[]>([]);
   const [selectionSelfTapeIndexByCandidate, setSelectionSelfTapeIndexByCandidate] = useState<Record<string, number>>({});
+  // Self-Tape Studio-integrasjon: Map[talent_id, CastingRoleSelftape[]]
+  // Hentes per rolle ved mount/role-endring. Brukes til 📹-badge på kort
+  // i både Kandidater-Kanban og Utvelgelse-fanen.
+  const [selftapesByTalent, setSelftapesByTalent] = useState<Map<string, CastingRoleSelftape[]>>(
+    new Map(),
+  );
+  const [selftapePreview, setSelftapePreview] = useState<CastingRoleSelftape | null>(null);
   const [selectionBoardMode, setSelectionBoardMode] = useState(false);
   const [selectionShortcutsOpen, setSelectionShortcutsOpen] = useState(false);
   const [selectionNotesDraft, setSelectionNotesDraft] = useState('');
@@ -6394,6 +6410,44 @@ type RoleRoomProjectWorkspaceState = {
     )),
     [currentProject?.roles],
   );
+
+  // Self-tape fetch — én gang per (project, role-set). Resultatet
+  // brukes til 📹-badge på kandidat-kort i både Kanban og Utvelgelse.
+  useEffect(() => {
+    if (!currentProject?.id || roles.length === 0) {
+      setSelftapesByTalent(new Map());
+      return;
+    }
+    let cancelled = false;
+    const fetchAll = async () => {
+      try {
+        const results = await Promise.all(
+          roles.map(async (r) => {
+            try {
+              const { selftapes } = await listCastingRoleSelftapes(r.id);
+              return selftapes;
+            } catch {
+              return [] as CastingRoleSelftape[];
+            }
+          }),
+        );
+        if (cancelled) return;
+        const map = new Map<string, CastingRoleSelftape[]>();
+        for (const list of results) {
+          for (const s of list) {
+            const existing = map.get(s.talent_id) ?? [];
+            existing.push(s);
+            map.set(s.talent_id, existing);
+          }
+        }
+        setSelftapesByTalent(map);
+      } catch (err) {
+        console.warn('[CastingPlannerPanel] selftape-fetch failed', err);
+      }
+    };
+    fetchAll();
+    return () => { cancelled = true; };
+  }, [currentProject?.id, roles]);
   const allCandidates = useMemo(
     () => (currentProject?.candidates ?? []).filter((candidate): candidate is Candidate => (
       !!candidate
@@ -6531,12 +6585,49 @@ type RoleRoomProjectWorkspaceState = {
     [contentProducerPlannerSurface, producerMediaFocus?.workspace],
   );
 
+  const [stepChangeToast, setStepChangeToast] = useState<string | null>(null);
+
   const completedWorkflowSteps = useMemo(
-    () => deriveCompletedWorkflowSteps(currentProject?.producerWorkflowStatus),
-    [currentProject?.producerWorkflowStatus],
+    () => deriveCompletedWorkflowSteps(
+      currentProject?.producerWorkflowStatus,
+      currentProject?.producerPhaseCompletion,
+    ),
+    [currentProject?.producerWorkflowStatus, currentProject?.producerPhaseCompletion],
   );
 
+  const handleTogglePhaseComplete = useCallback(async (step: 'delivery' | 'economy') => {
+    if (!currentProject) return;
+    const existing = currentProject.producerPhaseCompletion ?? {};
+    const isComplete = Boolean(existing[step]);
+    const nextCompletion = { ...existing, [step]: isComplete ? null : new Date().toISOString() };
+    const nextProject: CastingProject = {
+      ...currentProject,
+      producerPhaseCompletion: nextCompletion,
+      updatedAt: new Date().toISOString(),
+    };
+    // Optimistisk: oppdater lokalt umiddelbart.
+    setCurrentProject(nextProject);
+    setProjects((previous) => previous.map((project) => (project.id === nextProject.id ? nextProject : project)));
+    try {
+      // saveProject er offline-resilient (replay-kø) — trygt selv ved 401/offline.
+      await castingService.saveProject(nextProject);
+    } catch (saveError) {
+      console.warn('[content-producer] kunne ikke lagre fase-fullføring', saveError);
+    }
+  }, [currentProject]);
+
   const handleSelectWorkflowStep = useCallback((step: WorkflowStepKey) => {
+    // Lett bekreftelse på at man byttet steg — stepperen highlighter også, men
+    // en kort toast fanger oppmerksomheten hvis man er distrahert.
+    const stepToastLabels: Record<WorkflowStepKey, string> = {
+      brief: 'Brief',
+      story: 'Story',
+      storyboard: 'Storyboard',
+      approval: 'Klient',
+      delivery: 'Levering',
+      economy: 'Økonomi',
+    };
+    setStepChangeToast(`Nå i: ${stepToastLabels[step]}`);
     switch (step) {
       case 'brief':
         openContentProducerPlannerSurface('project_room', {
@@ -9322,6 +9413,72 @@ type RoleRoomProjectWorkspaceState = {
         />
       )}
 
+      {/* Fase-fullføring: Levering/Økonomi har ingen avledet «ferdig»-signal,
+          så Stig markerer dem manuelt herfra. Vises kun når et av disse
+          stegene er aktivt. Stepperen reflekterer flagget med et check-ikon. */}
+      {isContentProducerMode && currentProject && !isLiveSetImmersive
+        && (activeWorkflowStep === 'delivery' || activeWorkflowStep === 'economy')
+        && (() => {
+          const phaseStep: 'delivery' | 'economy' = activeWorkflowStep === 'delivery' ? 'delivery' : 'economy';
+          const stepLabel = phaseStep === 'delivery' ? 'Levering' : 'Økonomi';
+          const completedAt = currentProject.producerPhaseCompletion?.[phaseStep] ?? null;
+          return (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+                px: { xs: 1.5, sm: 2 },
+                py: 0.85,
+                bgcolor: completedAt ? 'rgba(34,197,94,0.08)' : 'rgba(15,23,42,0.4)',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+              }}
+            >
+              <Typography sx={{ fontSize: '0.8rem', color: completedAt ? '#86efac' : 'rgba(203,213,225,0.8)' }}>
+                {completedAt
+                  ? `✓ ${stepLabel} er markert som fullført ${new Date(completedAt).toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit' })}`
+                  : `${stepLabel}-steget vises som uferdig i oversikten til du markerer det fullført.`}
+              </Typography>
+              <Button
+                size="small"
+                variant={completedAt ? 'text' : 'contained'}
+                onClick={() => { void handleTogglePhaseComplete(phaseStep); }}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.74rem',
+                  flexShrink: 0,
+                  ...(completedAt
+                    ? { color: 'rgba(203,213,225,0.85)' }
+                    : { bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }),
+                }}
+              >
+                {completedAt ? 'Angre' : `Marker ${stepLabel.toLowerCase()} som fullført`}
+              </Button>
+            </Box>
+          );
+        })()}
+
+      {/* #121: kort bekreftelse ved steg-bytte i workflow-stepperen. */}
+      <Snackbar
+        open={stepChangeToast !== null}
+        autoHideDuration={1800}
+        onClose={() => setStepChangeToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={stepChangeToast ?? ''}
+        ContentProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            color: '#e2e8f0',
+            border: '1px solid rgba(124,58,237,0.4)',
+            fontWeight: 700,
+            fontSize: '0.82rem',
+            minWidth: 'auto',
+          },
+        }}
+      />
+
       {/* Tabs */}
       <Box
         role="navigation"
@@ -10602,6 +10759,11 @@ type RoleRoomProjectWorkspaceState = {
                               const isActive = selectedSelectionCandidateId === candidate.id;
                               const isCompared = selectionCompareCandidateIds.includes(candidate.id);
                               const auditionCount = auditionSchedulesByCandidate.get(candidate.id)?.length || 0;
+                              // Self-tape-badge: vises hvis kandidaten har talent_id med aktiv submission
+                              const candidateTalentId = (candidate as { talent_id?: string }).talent_id;
+                              const candidateSelftapes = candidateTalentId
+                                ? selftapesByTalent.get(candidateTalentId)
+                                : undefined;
                               const candidatePhoto = getCandidatePrimaryPhoto(candidate);
                               const assignedRoleIds = getCandidateAssignedRoles(candidate);
                               const assignedRoleNames = assignedRoleIds
@@ -10673,6 +10835,44 @@ type RoleRoomProjectWorkspaceState = {
                                         border: '1px solid rgba(125,211,252,0.45)',
                                       }}
                                     />
+                                    {/* 📹 Self-tape-badge (utvelgelse-fane) — tilstand-bevisst */}
+                                    {candidateSelftapes && candidateSelftapes.length > 0 ? (() => {
+                                      const tape = candidateSelftapes[0];
+                                      const availability = selftapeAvailability(tape);
+                                      const style = availabilityChipStyle(availability);
+                                      return (
+                                        <Box
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelftapePreview(tape);
+                                          }}
+                                          sx={{
+                                            position: 'absolute',
+                                            top: 6,
+                                            right: 6,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 0.3,
+                                            height: 20,
+                                            px: 0.7,
+                                            borderRadius: 999,
+                                            bgcolor: style.bg,
+                                            color: style.fg,
+                                            fontSize: '0.62rem',
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                            border: `1px solid ${style.border}`,
+                                            boxShadow: `0 0 8px ${style.border}`,
+                                            '&:hover': { filter: 'brightness(1.15)' },
+                                          }}
+                                          title={`${style.label} — klikk for å åpne`}
+                                        >
+                                          <PlayCircleOutlineIcon sx={{ fontSize: 12 }} />
+                                          {style.label}
+                                          {candidateSelftapes.length > 1 ? ` (${candidateSelftapes.length})` : ''}
+                                        </Box>
+                                      );
+                                    })() : null}
                                   </Box>
 
                                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.55 }}>
@@ -17480,6 +17680,14 @@ type RoleRoomProjectWorkspaceState = {
         currentProjectId={currentProject?.id ?? null}
         currentProjectName={currentProject?.name ?? null}
         hidden={isLiveSetImmersive}
+      />
+
+      {/* Self-tape preview modal — åpnes ved klikk på 📹-badge */}
+      <SelfTapePreviewModal
+        open={!!selftapePreview}
+        selftape={selftapePreview}
+        viewerLabel={adminUser?.display_name || adminUser?.email || 'Produksjon'}
+        onClose={() => setSelftapePreview(null)}
       />
     </>
     </ErrorBoundary>

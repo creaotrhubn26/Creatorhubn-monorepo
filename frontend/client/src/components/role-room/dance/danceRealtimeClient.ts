@@ -16,6 +16,7 @@
  *   - CRDT-state-sync er IKKE implementert — bare presence + cursor.
  *     Autosave fortsetter å være source-of-truth for formasjons-data.
  */
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 
 export interface DancePresenceUser {
@@ -111,7 +112,7 @@ export function useDanceRealtimePresence(
                 .map((u: { userId: string; displayName?: string; color?: string }) => ({
                   userId: u.userId,
                   displayName: u.displayName ?? u.userId,
-                  color: u.color ?? '#a78bfa',
+                  color: u.color ?? danceFlowColors.lavender,
                   lastSeenMs: now,
                 })));
               break;
@@ -124,7 +125,7 @@ export function useDanceRealtimePresence(
                 return [...prev, {
                   userId: msg.userId,
                   displayName: msg.displayName ?? msg.userId,
-                  color: msg.color ?? '#a78bfa',
+                  color: msg.color ?? danceFlowColors.lavender,
                   lastSeenMs: now,
                 }];
               });

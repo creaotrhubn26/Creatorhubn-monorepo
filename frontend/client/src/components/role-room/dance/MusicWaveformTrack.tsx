@@ -9,6 +9,7 @@
  * Klikk på waveformen seeker via onSeek-callback (typisk koblet til video).
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import { Box } from '@mui/material';
 import WaveSurfer from 'wavesurfer.js';
@@ -42,7 +43,7 @@ export function MusicWaveformTrack({
     const ws = WaveSurfer.create({
       container: containerRef.current,
       waveColor: 'rgba(251, 191, 36, 0.55)',
-      progressColor: '#fbbf24',
+      progressColor: danceFlowColors.gold,
       cursorColor: 'rgba(255,255,255,0.7)',
       cursorWidth: 1,
       height: WAVE_HEIGHT,

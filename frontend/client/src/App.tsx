@@ -192,6 +192,8 @@ import TermsAndConditions from '@/pages/terms-and-conditions';
 import ClientWorkspaceShell from '@/components/role-room/components/client-workspace/ClientWorkspaceShell';
 import PublicCV from '@/pages/public-cv';
 import NextRoleLanding from '@/pages/nextrole-landing';
+import AgencyLandingPage from '@/pages/agency-landing';
+import AgencyFAQPage from '@/pages/agency-faq';
 import CreatorhubInnovationPage from '@/pages/CreatorhubInnovationPage';
 import GoogleVerificationDemoPage from '@/pages/GoogleVerificationDemoPage';
 import PhotographerClientsList from '@/pages/photographer-clients-list';
@@ -202,6 +204,8 @@ import PhotographerProjectDetail from '@/pages/photographer-project-detail';
 import PhotographerProfitability from '@/pages/photographer-profitability';
 import PhotographerIntegrations from '@/pages/photographer-integrations';
 import PhotographerGalleryDetail from '@/pages/photographer-gallery-detail';
+import PublicLeadForm from '@/pages/public-lead-form';
+import CrmStandalone from '@/pages/crm-standalone';
 import PortalPage from '@/pages/portal';
 import PhotographerProjectUpload from '@/pages/photographer-project-upload';
 import PhotographerEquipment from '@/pages/photographer-equipment';
@@ -808,6 +812,10 @@ function App() {
                   <Route path="/resume-builder" component={ResumeBuilder} />
                   <Route path="/cv/:slug" component={PublicCV as React.ComponentType<any>} />
                   <Route path="/nextrole" component={NextRoleLanding as React.ComponentType<any>} />
+                  <Route path="/for-byraer" component={AgencyLandingPage as React.ComponentType<any>} />
+                  <Route path="/for-byråer" component={AgencyLandingPage as React.ComponentType<any>} />
+                  <Route path="/agencies" component={AgencyLandingPage as React.ComponentType<any>} />
+                  <Route path="/faq" component={AgencyFAQPage as React.ComponentType<any>} />
                   <Route path="/showcase-admin" component={ShowcaseAdminRouteWrapper as React.ComponentType<any>} />
                   {/* Plugin management routes removed - file doesn't exist */}
                   <Route path="/request-access" component={RequestAccess as React.ComponentType<any>} />
@@ -836,6 +844,7 @@ function App() {
                   <Route path="/subscription" component={SubscriptionSelectionPage as React.ComponentType<any>} />
                   <Route path="/subscription-selection" component={SubscriptionSelectionPage as React.ComponentType<any>} />
                   <Route path="/about-us" component={About as React.ComponentType<any>} />
+                  <Route path="/lead/:token" component={PublicLeadForm as React.ComponentType<any>} />
                   <Route path="/client/gallery/:projectId/:accessToken" component={ClientGallery as React.ComponentType<any>} />
                   <Route path="/client/gallery/:accessToken" component={ClientGallery as React.ComponentType<any>} />
                   <Route path="/client/portal/:token" component={ClientPortalMarketingPage as React.ComponentType<any>} />
@@ -853,6 +862,7 @@ function App() {
                     component={WeddingTimelineClientResponsive}
                   />
                   <Route path="/dashboard" component={() => <SmartDashboardRoute />} />
+                  <Route path="/crm" component={CrmStandalone as React.ComponentType<any>} />
                   <Route path="/story-arc-studio" component={StoryArcStudioRouteWrapper} />
                   <Route
                     path="/fotograf"

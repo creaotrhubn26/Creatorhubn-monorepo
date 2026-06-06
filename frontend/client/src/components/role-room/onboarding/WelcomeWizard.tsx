@@ -292,7 +292,7 @@ const WelcomeWizard: React.FC = () => {
         />
 
         {/* Steg-pillene */}
-        <Stack direction="row" spacing={0.6} sx={{ mt: 1.4, flexWrap: 'wrap', useFlexGap: true }} useFlexGap>
+        <Stack direction="row" spacing={0.6} sx={{ mt: 1.4, flexWrap: 'wrap' }} useFlexGap>
           {STEPS.map((step, idx) => {
             const stepDone = completedSteps.includes(step.id);
             const isActive = idx === activeStepIdx;

@@ -74,6 +74,7 @@ import {
   flattenIgWebhookEvent,
   persistSocialEvent,
 } from "./social-events.js";
+import { persistInboundDmFromWebhook } from "./role-room-ig-messaging.js";
 import {
   fetchDataDeletionRequest,
   parseSignedRequest,
@@ -82,6 +83,8 @@ import {
 } from "./role-room-instagram-deauth.js";
 import { isInstagramImageUploadConfigured } from "./role-room-instagram-image-upload.js";
 import { checkAgentEntitlement } from "./role-room-agent-entitlements.js";
+import { resolveClientPortalSession } from "./role-room-client-portal.js";
+import { getProjectProducerUserId } from "./client-portal-connected-platforms.js";
 
 interface AdminSession {
   userId: string;
@@ -99,6 +102,13 @@ export interface RoleRoomSocialMetaRoutesDeps {
     res: express.Response,
   ) => AdminSession | null;
   isCompatAdminFeatureEnabled: (featureId: string) => boolean;
+}
+
+/** Escape untrusted values before embedding in the OAuth callback HTML. */
+function escapeHtml(value: unknown): string {
+  return String(value ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string),
+  );
 }
 
 export function setupRoleRoomSocialMetaRoutes(
@@ -129,12 +139,41 @@ export function setupRoleRoomSocialMetaRoutes(
     return res.json({ success: true, url, scopes: META_REQUIRED_SCOPES });
   });
 
+  // Klient-initiert Instagram/Meta-kobling: klienten (via portal-token) gir
+  // selv tilgang fra portalen. Vi mynter samme signerte state som
+  // produsentens start — men med PROSJEKTEIERENS userId — slik at den delte
+  // callbacken lagrer koblingen under produsenten + prosjektet, og Stig
+  // faktisk kan publisere. Consent gis med klientens egen Meta-innlogging.
+  // Tokens utveksles server-side i callbacken; klienten får kun authorize-URL.
+  app.get("/api/client/portal/oauth/instagram/start", async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token) return res.status(400).json({ success: false, error: "missing_token" });
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) return res.status(404).json({ success: false, error: "invalid_or_expired_token" });
+    const config = getMetaAppConfig();
+    if (!config) {
+      return res.status(503).json({ success: false, error: "Meta App er ikke konfigurert." });
+    }
+    const producerUserId = await getProjectProducerUserId(pool, session.projectId);
+    if (!producerUserId) {
+      return res.status(409).json({
+        success: false,
+        error: "Prosjektet mangler en produsent å koble kontoen til.",
+      });
+    }
+    const returnPath = `/client/portal/${encodeURIComponent(token)}`;
+    const state = signOauthState({ userId: producerUserId, projectId: session.projectId, returnPath });
+    const url = buildAuthorizationUrl(state);
+    if (!url) return res.status(500).json({ success: false, error: "Kunne ikke bygge auth-URL." });
+    return res.json({ success: true, url, scopes: META_REQUIRED_SCOPES });
+  });
+
   app.get("/api/role-room/instagram/oauth/callback", async (req, res) => {
     const code = typeof req.query.code === "string" ? req.query.code : null;
     const state = typeof req.query.state === "string" ? req.query.state : null;
     const error = typeof req.query.error === "string" ? req.query.error : null;
     if (error) {
-      return res.status(400).send(`<html><body><h1>Meta returnerte feil</h1><p>${error}</p></body></html>`);
+      return res.status(400).send(`<html><body><h1>Meta returnerte feil</h1><p>${escapeHtml(error)}</p></body></html>`);
     }
     if (!code || !state) {
       return res.status(400).send("Mangler code/state");
@@ -193,16 +232,26 @@ export function setupRoleRoomSocialMetaRoutes(
           });
         }
       }
+      // Klient-initiert kobling (returnPath satt): send klienten tilbake til
+      // portalen i stedet for en generisk success-side.
+      if (claims.returnPath && claims.returnPath.startsWith("/")) {
+        const sep = claims.returnPath.includes("?") ? "&" : "?";
+        return res.redirect(`${claims.returnPath}${sep}connected=instagram`);
+      }
       return res.send(
         `<html><body style="font-family:system-ui;padding:40px;background:#0b1220;color:#e2e8f0;">` +
           `<h1>Instagram er koblet til</h1>` +
           `<p>${saved.length} konto(er) lagret. Du kan lukke dette vinduet og gå tilbake til The Role Room.</p>` +
-          `<ul>${saved.map((a) => `<li>@${a.igUsername ?? "(ukjent)"} — ${a.igBusinessAccountId}</li>`).join("")}</ul>` +
+          `<ul>${saved.map((a) => `<li>@${escapeHtml(a.igUsername ?? "(ukjent)")} — ${escapeHtml(a.igBusinessAccountId)}</li>`).join("")}</ul>` +
           `<script>window.opener && window.opener.postMessage({type:'instagram-connected',count:${saved.length}}, '*'); setTimeout(()=>window.close(), 4000);</script>` +
           `</body></html>`,
       );
     } catch (oauthError) {
       console.error("[ig-oauth] callback failed", oauthError);
+      if (claims.returnPath && claims.returnPath.startsWith("/")) {
+        const sep = claims.returnPath.includes("?") ? "&" : "?";
+        return res.redirect(`${claims.returnPath}${sep}connect_error=instagram`);
+      }
       return res.status(500).send(
         `<html><body><h1>Innlogging feilet</h1><p>${(oauthError as Error).message}</p></body></html>`,
       );
@@ -729,6 +778,15 @@ export function setupRoleRoomSocialMetaRoutes(
         }
       } catch (err) {
         console.warn("[ig-webhook] persist failed (non-fatal)", err);
+      }
+
+      // Persist inbound Instagram DMs into the unified CRM inbox. Best-effort —
+      // never blocks the ack. Handles object='instagram'/'page' messaging events.
+      try {
+        const dms = await persistInboundDmFromWebhook(pool, event);
+        if (dms > 0) console.log(`[ig-webhook] persisted ${dms} inbound DM(s) to inbox`);
+      } catch (err) {
+        console.warn("[ig-webhook] DM persist failed (non-fatal)", err);
       }
 
       // Ack quickly — Meta treats >10s as a failure and will retry.

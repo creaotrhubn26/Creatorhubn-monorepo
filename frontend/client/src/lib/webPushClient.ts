@@ -43,7 +43,7 @@ export async function subscribeToPush(): Promise<{ ok: boolean; reason?: string 
       // Re-registrer hos backend i tilfelle subscription er ny for denne brukeren
       await apiRequest('/api/push/subscribe', {
         method: 'POST',
-        body: existing.toJSON(),
+        body: existing.toJSON() as Record<string, unknown>,
       });
       return { ok: true };
     }
@@ -53,11 +53,13 @@ export async function subscribeToPush(): Promise<{ ok: boolean; reason?: string 
 
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(keyRes.publicKey),
+      // urlBase64ToUint8Array returnerer Uint8Array<ArrayBufferLike>;
+      // pushManager.subscribe forventer BufferSource — cast eksplisitt.
+      applicationServerKey: urlBase64ToUint8Array(keyRes.publicKey) as BufferSource,
     });
     await apiRequest('/api/push/subscribe', {
       method: 'POST',
-      body: sub.toJSON(),
+      body: sub.toJSON() as Record<string, unknown>,
     });
     return { ok: true };
   } catch (err: any) {

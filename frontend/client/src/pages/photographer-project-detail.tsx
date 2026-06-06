@@ -903,6 +903,19 @@ export default function PhotographerProjectDetail() {
             <Typography variant="caption" color="text.secondary">
               Ekstern faktura-id: {p.externalInvoiceId}
             </Typography>
+            {p.invoiceProvider === 'poweroffice' && p.externalInvoiceId && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<OpenInNew />}
+                href={`https://godemo.poweroffice.net/#salesorders/edit/${p.externalInvoiceId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{ alignSelf: 'flex-start', mt: 0.5 }}
+              >
+                Åpne i PowerOffice GO
+              </Button>
+            )}
           </Stack>
         ) : (
           <Stack spacing={1}>

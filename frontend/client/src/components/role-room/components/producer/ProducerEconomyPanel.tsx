@@ -22,9 +22,11 @@ import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
+import { useSnackbar } from 'notistack';
 import { useProducerEconomy } from '../../hooks/useProducerEconomy';
 import type { ProducerPhase } from '../../services/producerWorkflowService';
 import { getProducerEconomyStatusLabel } from '../../utils/producerWorkflow';
+import { describeProducerError } from '../../utils/producerErrorMessage';
 import BudgetCategoryPicker from './BudgetCategoryPicker';
 
 interface ProducerEconomyPanelProps {
@@ -66,6 +68,7 @@ export default function ProducerEconomyPanel({
   onFocusedPhaseChange,
 }: ProducerEconomyPanelProps) {
   const { items, totals, loading, error, createItem, updateItem, removeItem } = useProducerEconomy(projectId);
+  const { enqueueSnackbar } = useSnackbar();
 
   const [phase, setPhase] = useState<ProducerPhase>('preproduction');
   const [category, setCategory] = useState('');
@@ -212,19 +215,25 @@ export default function ProducerEconomyPanel({
 
   const handleCreate = async () => {
     if (!category.trim() || !itemName.trim()) return;
-    await createItem({
-      phase,
-      category: category.trim(),
-      itemName: itemName.trim(),
-      estimate: Number.parseFloat(estimate || '0') || 0,
-      approved: 0,
-      actual: 0,
-      status: 'draft',
-      clientVisible: true,
-    });
-    setCategory('');
-    setItemName('');
-    setEstimate('');
+    try {
+      await createItem({
+        phase,
+        category: category.trim(),
+        itemName: itemName.trim(),
+        estimate: Number.parseFloat(estimate || '0') || 0,
+        approved: 0,
+        actual: 0,
+        status: 'draft',
+        clientVisible: true,
+      });
+      setCategory('');
+      setItemName('');
+      setEstimate('');
+      enqueueSnackbar('Budsjettlinjen er lagt til.', { variant: 'success' });
+    } catch (createError) {
+      // Behold feltene så Stig ikke mister det han skrev, og forklar hva som skjedde.
+      enqueueSnackbar(describeProducerError(createError, 'legge til budsjettlinjen'), { variant: 'error' });
+    }
   };
 
   const handleDraftChange = (itemId: string, patch: Partial<EconomyDraft>) => {
@@ -267,6 +276,10 @@ export default function ProducerEconomyPanel({
           dirty: false,
         },
       }));
+      enqueueSnackbar('Budsjettlinjen er lagret.', { variant: 'success' });
+    } catch (saveError) {
+      // Hold linjen «dirty» så Stig ser at den ikke ble lagret og kan prøve igjen.
+      enqueueSnackbar(describeProducerError(saveError, 'lagre budsjettlinjen'), { variant: 'error' });
     } finally {
       setSavingItemId(null);
     }
@@ -281,6 +294,9 @@ export default function ProducerEconomyPanel({
         delete next[itemId];
         return next;
       });
+      enqueueSnackbar('Budsjettlinjen er slettet.', { variant: 'success' });
+    } catch (deleteError) {
+      enqueueSnackbar(describeProducerError(deleteError, 'slette budsjettlinjen'), { variant: 'error' });
     } finally {
       setSavingItemId(null);
     }

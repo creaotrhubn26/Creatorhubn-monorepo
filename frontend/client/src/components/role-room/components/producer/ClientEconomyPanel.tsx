@@ -31,6 +31,7 @@ import roleRoomAgentService, {
 } from '../../services/roleRoomAgentService';
 import GrantedAssetsCard from './GrantedAssetsCard';
 import ClientConnectWizard from '../client-workspace/ClientConnectWizard';
+import ClientAdsPerformancePanel from './ClientAdsPerformancePanel';
 
 /**
  * Client-facing economy hub (MedInnova-avtalen §5.3): the simplest possible view
@@ -333,6 +334,13 @@ export default function ClientEconomyPanel({
           </Stack>
         </Stack>
       )}
+
+      {/* ── Per kampanje (read-only for klient + dialog-tråd) ── */}
+      <ClientAdsPerformancePanel
+        projectId={projectId}
+        period={period}
+        userRole={userRole}
+      />
 
       {/* ── Lag 2: AI-anbefalinger (myk veiledning, ingen automatisk handling) ── */}
       {recommendations && (recommendations.recommendations.length > 0 || recommendations.overallNote) && (

@@ -120,7 +120,7 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
         )}
         <Box sx={{ flex: 1 }} />
         {onAnalyzeVisually && (
-          <Tooltip title="Analyser frame-bildet med Claude vision (detekter SFX fra hva som er tegnet)">
+          <Tooltip title="Analyser frame-bildet med CI (detekter SFX fra hva som er tegnet)">
             <IconButton
               size="small"
               onClick={onAnalyzeVisually}

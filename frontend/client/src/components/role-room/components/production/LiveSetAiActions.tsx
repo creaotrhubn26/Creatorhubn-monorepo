@@ -164,7 +164,7 @@ export const LiveSetAiActions: React.FC<Props> = (props) => {
           <Typography
             sx={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', letterSpacing: 1 }}
           >
-            CLAUDE AI
+            CI
           </Typography>
         </Stack>
         <Button
@@ -229,7 +229,7 @@ export const LiveSetAiActions: React.FC<Props> = (props) => {
           {currentCall?.status === 'loading' && (
             <Stack direction="row" spacing={1} alignItems="center" sx={{ py: 4, justifyContent: 'center' }}>
               <CircularProgress size={18} />
-              <Typography sx={{ color: '#a78bfa' }}>Claude analyserer…</Typography>
+              <Typography sx={{ color: '#a78bfa' }}>CI analyserer…</Typography>
             </Stack>
           )}
           {currentCall?.status === 'error' && (
@@ -402,7 +402,7 @@ const ContinuityView: React.FC<{ data: ContinuityCheckResult }> = ({ data }) => 
     />
     {data.conflicts.length === 0 ? (
       <Typography sx={{ fontSize: 13, color: '#cbd5e1' }}>
-        Claude fant ingen continuity-drift mot tidligere shots.
+        CI fant ingen continuity-drift mot tidligere shots.
       </Typography>
     ) : (
       <List dense sx={{ p: 0 }}>

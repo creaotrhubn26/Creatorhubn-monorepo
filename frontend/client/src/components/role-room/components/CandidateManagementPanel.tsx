@@ -991,6 +991,25 @@ function CandidateManagementPanelInner({
 
   const handleStatusUpdate = async (candidate: Candidate, status: StatusFilter) => {
     await saveCandidatePatch(candidate, { status }, `${candidate.name} satt til ${getStatusLabel(status)}`);
+    // Phase 9.6 — hvis kandidat er fra partnership-talent-forslag,
+    // PATCH casting_candidates direkte + trigger e-post-callback til byrå.
+    // Compat-store-flyten over oppdaterer ikke den relasjonelle tabellen, så
+    // partnership-kandidater må synkes separat.
+    const meta = (candidate as { metadata?: Record<string, unknown> }).metadata;
+    const isFromPartnership = meta && (meta as { source?: string }).source === 'partnership_talent_proposal';
+    if (isFromPartnership && candidate.id) {
+      try {
+        await fetch(`/api/role-room/candidates/${encodeURIComponent(candidate.id)}/status`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        });
+      } catch (err) {
+        // Stille feilet — vanlig saveCandidatePatch over har lagret status lokalt
+        console.warn('Partnership candidate-status PATCH feilet:', err);
+      }
+    }
   };
 
   const handleBulkStatusUpdate = async (status: StatusFilter) => {

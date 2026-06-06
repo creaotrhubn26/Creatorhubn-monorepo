@@ -782,6 +782,14 @@ export function EquipmentManagementPanel({
     source: 'unsplash' | 'pexels' | 'shotcafe' | 'pixabay' | 'openverse' | 'wikimedia';
   }>>([]);
   const [imageSearchLoading, setImageSearchLoading] = useState(false);
+  // Ekte produktbilde-forslag (Wikimedia Commons) for auto-bilde ved add.
+  const [equipmentImageSuggestions, setEquipmentImageSuggestions] = useState<Array<{
+    id: string;
+    url: string;
+    thumbnailUrl: string;
+    description: string;
+  }>>([]);
+  const [equipmentImageLoading, setEquipmentImageLoading] = useState(false);
   const [tempImageUrl, setTempImageUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchControllerRef = useRef<AbortController | null>(null);
@@ -2207,6 +2215,102 @@ export function EquipmentManagementPanel({
       setImageSearchLoading(false);
     }
   }, []);
+
+  // ── Auto-bilde ved add ────────────────────────────────────────────────
+  // Når man legger til NYTT utstyr uten bilde (kamera-katalogen har ingen
+  // innebygde bilder), kjør bildesøket automatisk på «merke + modell» og
+  // pre-fyll beste treff. Forslagene vises under bildefeltet så Lars kan
+  // bytte med ett klikk. Løser «ingen bilde av utstyret» uten manuelt søk.
+  // ── Ekte produktbilder ved add (IKKE stock) ──────────────────────────
+  // Henter ekte produktbilder av det faktiske utstyret fra Wikimedia Commons
+  // for «merke + modell», filtrert til treff som faktisk nevner modellen/merket.
+  // Ingen Pexels/Pixabay/Unsplash/film-stills. Finnes ingen ekte treff →
+  // ingen auto-bilde (vi faller IKKE tilbake til stock).
+  const autoResolveImageRef = useRef(false);
+  const equipmentImageControllerRef = useRef<AbortController | null>(null);
+
+  const searchEquipmentProductImages = useCallback(async (brand: string, model: string) => {
+    const query = `${brand} ${model}`.trim();
+    const m = model.trim().toLowerCase();
+    const b = brand.trim().toLowerCase();
+    if (query.length < 3) { setEquipmentImageSuggestions([]); return; }
+
+    equipmentImageControllerRef.current?.abort();
+    const controller = new AbortController();
+    equipmentImageControllerRef.current = controller;
+    const { signal } = controller;
+
+    setEquipmentImageLoading(true);
+    setEquipmentImageSuggestions([]);
+    try {
+      const searchRes = await fetch(
+        `https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srnamespace=6&format=json&origin=*&srlimit=10`,
+        { signal },
+      );
+      if (!searchRes.ok) return;
+      const searchData = await searchRes.json();
+      const titles: string[] = (searchData.query?.search || [])
+        .map((s: { title?: string }) => s.title)
+        .filter(Boolean)
+        .slice(0, 8);
+
+      const resolved = await Promise.all(titles.map(async (title) => {
+        try {
+          const infoRes = await fetch(
+            `https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=imageinfo&iiprop=url|thumburl|mime&iiurlwidth=400&format=json&origin=*`,
+            { signal },
+          );
+          if (!infoRes.ok) return null;
+          const infoData = await infoRes.json();
+          const pages = infoData.query?.pages;
+          const page = pages?.[Object.keys(pages || {})[0]];
+          const ii = page?.imageinfo?.[0];
+          const mime: string = ii?.mime || '';
+          if (!ii?.url || !mime.startsWith('image/')) return null;
+          const label = String(title).toLowerCase();
+          // Ekte modell-/merke-bilde: tittelen MÅ nevne modellen eller merket.
+          if (!((m && label.includes(m)) || (b && label.includes(b)))) return null;
+          return { id: `wm-${page.pageid}`, url: ii.url as string, thumbnailUrl: (ii.thumburl as string) || (ii.url as string), description: String(title) };
+        } catch {
+          return null;
+        }
+      }));
+
+      const found = resolved.filter((r): r is { id: string; url: string; thumbnailUrl: string; description: string } => r !== null);
+      // Modell-match først, deretter merke-match.
+      found.sort((x, y) => {
+        const sc = (d: string) => (m && d.toLowerCase().includes(m) ? 2 : 0) + (b && d.toLowerCase().includes(b) ? 1 : 0);
+        return sc(y.description) - sc(x.description);
+      });
+      setEquipmentImageSuggestions(found);
+
+      // Auto-velg beste EKTE modell-treff (kun hvis modellen faktisk nevnes).
+      if (autoResolveImageRef.current) {
+        autoResolveImageRef.current = false;
+        const best = found.find((f) => m && f.description.toLowerCase().includes(m)) || found[0];
+        if (best?.url) {
+          setFormData((prev) => (prev.imageUrl ? prev : { ...prev, imageUrl: best.url }));
+        }
+      }
+    } catch {
+      /* nettverksfeil / abort — ingen forslag, ingen stock */
+    } finally {
+      setEquipmentImageLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!dialogOpen || editingEquipment) return; // kun ved nytt utstyr
+    if (formData.imageUrl) return; // alt har bilde
+    const query = [formData.brand, formData.model].filter(Boolean).join(' ').trim();
+    if (query.length < 3) { setEquipmentImageSuggestions([]); return; }
+    autoResolveImageRef.current = true;
+    const brand = formData.brand || '';
+    const model = formData.model || '';
+    const timer = window.setTimeout(() => { void searchEquipmentProductImages(brand, model); }, 700);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, editingEquipment, formData.brand, formData.model, formData.imageUrl]);
 
   const handleFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -6940,6 +7044,38 @@ export function EquipmentManagementPanel({
                       }}
                     />
                   </Box>
+
+                  {/* Ekte produktbilder (Wikimedia) ved add — klikk for å bytte.
+                      Ingen stock; vises kun når faktiske modell-/merke-treff finnes. */}
+                  {!editingEquipment && (equipmentImageLoading || equipmentImageSuggestions.length > 0) ? (
+                    <Box sx={{ mt: 1.25 }}>
+                      <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)', mb: 0.6 }}>
+                        {equipmentImageLoading ? 'Finner ekte produktbilder…' : 'Ekte produktbilder — klikk for å bytte'}
+                      </Typography>
+                      <Stack direction="row" spacing={0.6} sx={{ overflowX: 'auto', pb: 0.5 }}>
+                        {equipmentImageSuggestions.slice(0, 6).map((img) => (
+                          <Tooltip key={img.id} title={img.description} placement="top">
+                            <Box
+                              component="img"
+                              src={img.thumbnailUrl || img.url}
+                              alt={img.description}
+                              loading="lazy"
+                              onClick={() => setFormData((prev) => ({ ...prev, imageUrl: img.url }))}
+                              sx={{
+                                width: 52,
+                                height: 52,
+                                borderRadius: 1,
+                                objectFit: 'cover',
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                                border: formData.imageUrl === img.url ? '2px solid #9333ea' : '1px solid rgba(255,255,255,0.15)',
+                              }}
+                            />
+                          </Tooltip>
+                        ))}
+                      </Stack>
+                    </Box>
+                  ) : null}
                 </Box>
               </Box>
             </Box>

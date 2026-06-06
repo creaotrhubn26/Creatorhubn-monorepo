@@ -5,6 +5,7 @@
  * via the editor flow.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import { Stack, CircularProgress, Alert, Button, Box } from '@mui/material';
 import { DancerProfileGrid, type DancerStatsSnapshot } from './DancerProfileGrid';
@@ -131,7 +132,7 @@ export function DancerProfileGridConnected({
   if (loading && dancers.length === 0) {
     return (
       <Stack alignItems="center" justifyContent="center" sx={{ minHeight: 240 }}>
-        <CircularProgress size={28} sx={{ color: '#8b5cf6' }} />
+        <CircularProgress size={28} sx={{ color: danceFlowColors.lavenderDark }} />
       </Stack>
     );
   }

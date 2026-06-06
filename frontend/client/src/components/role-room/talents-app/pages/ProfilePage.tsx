@@ -38,6 +38,7 @@ import { useCallback, useEffect, useState } from 'react';
 import roleRoomTalentsService, { type RoleRoomTalent } from '../../services/roleRoomTalentsService';
 import MediaUploader from '../components/MediaUploader';
 import { palette, radius } from '../theme';
+import SelfTapeSharedList from '../components/selftape/SelfTapeSharedList';
 
 interface ProfilePageProps {
   demoMode: boolean;
@@ -139,7 +140,7 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
   }
 
   return (
-    <Box sx={{ p: 3, maxWidth: 1080, mx: 'auto' }}>
+    <Box sx={{ p: { xs: 1.5, sm: 2, md: 3 }, maxWidth: 1080, mx: 'auto' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 3 }}>
         <Box>
           <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1.15 }}>
@@ -226,6 +227,19 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
             <Typography sx={{ color: palette.textMuted, fontSize: '0.85rem' }}>Ingen språk lagt inn ennå</Typography>
           ) : null}
         </Stack>
+      </Box>
+
+      {/* Mine delte self-tapes (GDPR-oversikt + revoke) */}
+      <Box sx={{ ...cardSx, mb: 2 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.4 }}>
+          <Typography sx={{ color: palette.textPrimary, fontWeight: 700 }}>
+            Mine delte self-tapes
+          </Typography>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
+            Du kan trekke tilbake tilgangen når som helst
+          </Typography>
+        </Stack>
+        <SelfTapeSharedList />
       </Box>
 
       {/* Rediger-dialog */}

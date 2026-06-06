@@ -55,10 +55,22 @@ describe('reorderScenesWithLineMap (Fountain er source-of-truth)', () => {
 });
 
 describe('scene-relativ kommentar-forankring (ingen drift)', () => {
-  it('bygger et scene-relativt anker for en linje inne i en scene', () => {
-    // Linje 10 = "Handling C." i scene 2 (heading på linje 9) → offset 1.
+  it('bygger et tekst-fingeravtrykk-anker for en linje med innhold', () => {
+    // Linje 10 = "Handling C." i scene 2 (heading på linje 9) → offset 1 + snippet.
     const anchor = buildLineCommentAnchor(CONTENT, 'm1', 10);
-    expect(anchor).toMatch(/^m1#s:.+:1$/);
+    expect(anchor).toMatch(/^m1#t:.+:1:Handling C\.$/);
+  });
+
+  it('FØLGER teksten når en linje settes inn over kommentaren i samme scene', () => {
+    const anchor = buildLineCommentAnchor(CONTENT, 'm1', 10); // "Handling C."
+    // Sett inn en ny linje rett etter BIL-overskriften (linje 9) — "Handling C."
+    // skyves fra linje 10 til 11, men INNEN samme scene (offset endres).
+    const edited = CONTENT.split('\n');
+    edited.splice(9, 0, 'Han går inn.'); // ny index 9 (linje 10)
+    const editedContent = edited.join('\n');
+    const resolved = resolveLineCommentAnchor(editedContent, 'm1', anchor);
+    expect(resolved).toBe(11);
+    expect(editedContent.split('\n')[resolved! - 1]).toBe('Handling C.');
   });
 
   it('round-trip: anker løser tilbake til samme linje i uendret innhold', () => {

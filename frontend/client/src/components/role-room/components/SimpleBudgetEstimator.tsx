@@ -9,7 +9,7 @@
 
 import { useMemo, useState, useEffect, useRef } from 'react';
 import {
-  Box, Card, CardContent, Typography, TextField, InputAdornment, Divider, Chip, Tooltip,
+  Box, Card, CardContent, Typography, TextField, InputAdornment, Divider, Chip, Tooltip, Button,
 } from '@mui/material';
 import {
   CalendarMonth as DayIcon,
@@ -41,6 +41,44 @@ const kr = (value: number): string =>
 
 const accent = '#34d399';
 
+// Standard bransje-satser (NOK) brukt som forslag der produsenten ikke har satt
+// egen pris. Delt mellom kortet og budsjettpakke-beregningen (én kilde).
+export const BUDGET_DEFAULTS = { perShootDay: 25000, perLocation: 5000 };
+
+export interface BudgetEstimateLine {
+  key: 'day' | 'location' | 'other';
+  label: string;
+  count: number;
+  rate: number;
+  subtotal: number;
+  isDefault: boolean;
+}
+export interface BudgetEstimateResult { total: number; lines: BudgetEstimateLine[] }
+
+/**
+ * Ren beregning av det enkle budsjett-overslaget fra PERSISTERTE satser +
+ * drivere (opptaksdager, lokasjoner). Bruker standard-satser der pris mangler.
+ * Brukes både til å sende budsjettpakken til klient og (via kortet) live.
+ */
+export function computeSimpleBudgetEstimate(
+  rates: BudgetRates | undefined,
+  shootDays: number,
+  locations: number,
+): BudgetEstimateResult {
+  const r = rates ?? {};
+  const dayDefault = !(r.perShootDay && r.perShootDay > 0);
+  const locDefault = !(r.perLocation && r.perLocation > 0);
+  const dayRate = dayDefault ? BUDGET_DEFAULTS.perShootDay : (r.perShootDay as number);
+  const locRate = locDefault ? BUDGET_DEFAULTS.perLocation : (r.perLocation as number);
+  const other = r.otherFixed && r.otherFixed > 0 ? r.otherFixed : 0;
+  const lines: BudgetEstimateLine[] = [
+    { key: 'day', label: 'Opptaksdager', count: shootDays, rate: dayRate, subtotal: shootDays * dayRate, isDefault: dayDefault },
+    { key: 'location', label: 'Lokasjoner', count: locations, rate: locRate, subtotal: locations * locRate, isDefault: locDefault },
+    { key: 'other', label: 'Andre faste kostnader', count: 1, rate: other, subtotal: other, isDefault: false },
+  ];
+  return { total: lines.reduce((sum, l) => sum + l.subtotal, 0), lines };
+}
+
 export function SimpleBudgetEstimator({
   shootDays,
   locations,
@@ -68,15 +106,37 @@ export function SimpleBudgetEstimator({
     return Number.isFinite(n) && n > 0 ? n : 0;
   };
 
-  const dayRate = num(perDay);
-  const locationRate = num(perLocation);
+  // Standard bransje-satser (delt kilde) brukt som forslag der produsenten ikke
+  // har satt egen pris. Tydelig merket «standard» i UI — ikke en påstand om sannhet.
+  const DEFAULTS = BUDGET_DEFAULTS;
+
+  const dayEntered = num(perDay);
+  const locationEntered = num(perLocation);
   const other = num(otherFixed);
+
+  // Effektiv sats: produsentens egen pris hvis satt, ellers standard-sats.
+  const dayRate = dayEntered || DEFAULTS.perShootDay;
+  const locationRate = locationEntered || DEFAULTS.perLocation;
+  const usingDefaultDay = dayEntered === 0;
+  const usingDefaultLocation = locationEntered === 0;
 
   const dayTotal = shootDays * dayRate;
   const locationTotal = locations * locationRate;
   const total = dayTotal + locationTotal + other;
 
-  const hasAnyPrice = dayRate > 0 || locationRate > 0 || other > 0;
+  const usingAnyDefault = (usingDefaultDay && shootDays > 0) || (usingDefaultLocation && locations > 0);
+
+  const applyDefaults = () => {
+    if (readOnly) return;
+    const next: BudgetRates = {
+      perShootDay: dayEntered || DEFAULTS.perShootDay,
+      perLocation: locationEntered || DEFAULTS.perLocation,
+      otherFixed: other || undefined,
+    };
+    setPerDay(String(next.perShootDay));
+    setPerLocation(String(next.perLocation));
+    onRatesChange(next);
+  };
 
   const commit = (next: BudgetRates) => {
     if (readOnly) return;
@@ -93,10 +153,11 @@ export function SimpleBudgetEstimator({
         helper: 'Hva koster én opptaksdag i snitt? (crew, utstyr, mat, leie …)',
         value: perDay,
         onChange: (v: string) => { setPerDay(v); },
-        onCommit: () => commit({ perShootDay: num(perDay) || undefined, perLocation: locationRate || undefined, otherFixed: other || undefined }),
+        onCommit: () => commit({ perShootDay: num(perDay) || undefined, perLocation: locationEntered || undefined, otherFixed: other || undefined }),
         count: shootDays,
         rate: dayRate,
         subtotal: dayTotal,
+        isDefault: usingDefaultDay,
       },
       {
         key: 'location',
@@ -106,10 +167,11 @@ export function SimpleBudgetEstimator({
         helper: 'Engangskostnad per lokasjon (leie, tillatelser, rigging …)',
         value: perLocation,
         onChange: (v: string) => { setPerLocation(v); },
-        onCommit: () => commit({ perShootDay: dayRate || undefined, perLocation: num(perLocation) || undefined, otherFixed: other || undefined }),
+        onCommit: () => commit({ perShootDay: dayEntered || undefined, perLocation: num(perLocation) || undefined, otherFixed: other || undefined }),
         count: locations,
         rate: locationRate,
         subtotal: locationTotal,
+        isDefault: usingDefaultLocation,
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -164,9 +226,9 @@ export function SimpleBudgetEstimator({
             />
             <Box sx={{ textAlign: { xs: 'left', sm: 'right' }, minWidth: 110 }}>
               <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.55)', display: 'block' }}>
-                {row.count} × {kr(row.rate)}
+                {row.count} × {kr(row.rate)}{row.isDefault && row.count > 0 ? ' · standard-sats' : ''}
               </Typography>
-              <Typography sx={{ fontWeight: 700, color: row.subtotal > 0 ? accent : 'rgba(226,232,240,0.4)' }}>
+              <Typography sx={{ fontWeight: 700, color: row.subtotal > 0 ? (row.isDefault ? 'rgba(167,243,208,0.7)' : accent) : 'rgba(226,232,240,0.4)' }}>
                 {kr(row.subtotal)}
               </Typography>
             </Box>
@@ -197,7 +259,7 @@ export function SimpleBudgetEstimator({
             value={otherFixed}
             disabled={readOnly}
             onChange={(e) => setOtherFixed(e.target.value.replace(/[^\d\s.,]/g, ''))}
-            onBlur={() => commit({ perShootDay: dayRate || undefined, perLocation: locationRate || undefined, otherFixed: num(otherFixed) || undefined })}
+            onBlur={() => commit({ perShootDay: dayEntered || undefined, perLocation: locationEntered || undefined, otherFixed: num(otherFixed) || undefined })}
             helperText="Engangskostnader: etterarbeid, rekvisita, forsikring …"
             InputProps={{ endAdornment: <InputAdornment position="end">kr</InputAdornment> }}
             sx={{ '& .MuiFormHelperText-root': { fontSize: 11, color: 'rgba(226,232,240,0.6)' } }}
@@ -214,10 +276,15 @@ export function SimpleBudgetEstimator({
           <Typography variant="h4" sx={{ color: accent, fontWeight: 800, lineHeight: 1 }}>{kr(total)}</Typography>
         </Box>
 
-        {!hasAnyPrice && (
-          <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.6)', mt: 1.5, fontStyle: 'italic' }}>
-            👆 Skriv inn prisene dine over, så fyller vi ut overslaget med én gang.
-          </Typography>
+        {usingAnyDefault && !readOnly && (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 1.5, flexWrap: 'wrap' }}>
+            <Typography variant="caption" sx={{ color: 'rgba(167,243,208,0.85)', fontStyle: 'italic' }}>
+              Bruker standard-satser der du ikke har satt egen pris. Bytt dem ut med dine egne tall når du vil.
+            </Typography>
+            <Button size="small" variant="outlined" onClick={applyDefaults} sx={{ color: '#a7f3d0', borderColor: 'rgba(52,211,153,0.4)' }}>
+              Bruk standard-satser
+            </Button>
+          </Box>
         )}
         {shootDays === 0 && (
           <Typography variant="caption" sx={{ color: 'rgba(251,191,36,0.9)', mt: 1.5, display: 'block' }}>

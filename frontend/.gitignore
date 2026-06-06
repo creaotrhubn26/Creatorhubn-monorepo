@@ -50,3 +50,6 @@ client/src/assets/Martin4k.mp4
 client/src/assets/_L9A8606.ppm
 *.mp4
 *.ppm
+
+# Demo-opptak (genererte screenshots)
+demo-artifacts/

@@ -88,6 +88,9 @@ import {
 import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
 import { WhatsNewTab } from '../components/role-room/components/admin-room/WhatsNewTab';
 import { ResendStatusTab } from '../components/role-room/components/admin-room/ResendStatusTab';
+import { B2ArchiveTab } from '../components/role-room/components/admin-room/B2ArchiveTab';
+import { PlatformStatusWidget } from '../components/role-room/components/admin-room/PlatformStatusWidget';
+import { MigrationsTab } from '../components/role-room/components/admin-room/MigrationsTab';
 import { ContentMarketingTab } from '../components/admin/content-marketing/ContentMarketingTab';
 import { IndustryTargetsTab } from '../components/admin/content-marketing/IndustryTargetsTab';
 import { OperatingSystemTab } from '../components/admin/content-marketing/OperatingSystemTab';
@@ -109,7 +112,7 @@ import ContentCalendarTab from './admin-room/ContentCalendarTab';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -1841,6 +1844,9 @@ function DashboardTab({ onJumpToTab }: { onJumpToTab: (tab: AdminRoomTab) => voi
           </Box>
         ))}
       </Box>
+
+      {/* Plattform-status */}
+      <PlatformStatusWidget />
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5 }}>
         {/* Frister */}
@@ -4109,6 +4115,23 @@ function PresenceContactsView() {
 
   return (
     <Stack spacing={1.5}>
+      <Alert
+        severity="info"
+        sx={{ bgcolor: 'rgba(167,139,250,0.08)', color: 'rgba(226,232,240,0.92)' }}
+      >
+        <Typography variant="body2" sx={{ mb: 0.3, fontWeight: 700, color: '#fff' }}>
+          AI-personaliserte outreach-meldinger
+        </Typography>
+        <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.85)' }}>
+          Hver kontakt kan kobles til en outreach-template (under "Templates"-fanen) og
+          Claude personaliserer åpningen basert på kontaktens rolle, organisasjon og
+          notater før du sender. Bruker endepunktet
+          <code style={{ marginLeft: 4, marginRight: 4, fontSize: '0.74rem' }}>
+            POST /api/admin-room/outreach-templates/:id/personalize
+          </code>
+          med kontakt-ID. Templates oppdateres via Role Room Agent-fanen.
+        </Typography>
+      </Alert>
       <Stack direction="row" justifyContent="flex-end">
         <Button
           size="small"
@@ -4366,6 +4389,8 @@ export default function AdminRoom() {
   else if (tab === 'marketing-cockpit') content = <MarketingCockpitTab />;
   else if (tab === 'role-room-agent') content = <RoleRoomAgentTab />;
   else if (tab === 'content-calendar') content = <ContentCalendarTab />;
+  else if (tab === 'b2-archive') content = <B2ArchiveTab />;
+  else if (tab === 'migrations') content = <MigrationsTab />;
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
@@ -4420,6 +4445,8 @@ export default function AdminRoom() {
           <Tab value="marketing-cockpit" label="Marketing Cockpit" />
           <Tab value="role-room-agent" label="🤖 Role Room Agent" />
           <Tab value="content-calendar" label="Content-kalender" />
+          <Tab value="b2-archive" label="B2-arkiv" />
+          <Tab value="migrations" label="Migrasjoner" />
         </Tabs>
         <Box>{content}</Box>
       </Stack>

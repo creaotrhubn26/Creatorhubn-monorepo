@@ -8,6 +8,7 @@
  * Krever at brukerens plan har 'addon_eligible'-feature (Frilanser Pro).
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -29,9 +30,9 @@ import * as svc from './danceAddonService';
 import { useDancePlanGate } from './useDancePlanGate';
 import type { DanceAddon, DanceAddonSubscription } from './danceAddonService';
 
-const PURPLE_BRIGHT = '#8b5cf6';
+const PURPLE_BRIGHT = danceFlowColors.lavenderDark;
 const PURPLE_DEEP   = '#4c1d95';
-const PURPLE_LIGHT  = '#a78bfa';
+const PURPLE_LIGHT  = danceFlowColors.lavender;
 const TEXT_DIM      = 'rgba(229,231,235,0.78)';
 const TEXT_MUTED    = 'rgba(229,231,235,0.50)';
 const PANEL_BORDER  = 'rgba(167,139,250,0.18)';
@@ -171,7 +172,7 @@ export const AddonsPanel: React.FC = () => {
                         />
                       ) : null}
                       {isCanceledFuture ? (
-                        <Chip label="Avsluttes" size="small" sx={{ bgcolor: 'rgba(245,158,11,0.18)', color: '#f59e0b', fontWeight: 700, height: 18, fontSize: 10 }} />
+                        <Chip label="Avsluttes" size="small" sx={{ bgcolor: 'rgba(245,158,11,0.18)', color: danceFlowColors.amber, fontWeight: 700, height: 18, fontSize: 10 }} />
                       ) : null}
                     </Stack>
                     <Typography sx={{ fontSize: 12, color: TEXT_DIM, mt: 0.75, lineHeight: 1.5 }}>
@@ -207,7 +208,7 @@ export const AddonsPanel: React.FC = () => {
                       onClick={() => cancel(a.slug)}
                       disabled={busy === a.slug}
                       startIcon={<StopIcon />}
-                      sx={{ textTransform: 'none', color: '#f87171', fontSize: 12 }}
+                      sx={{ textTransform: 'none', color: danceFlowColors.errorPrimary, fontSize: 12 }}
                     >
                       Stopp
                     </Button>

@@ -410,7 +410,7 @@ export default function FeatureManagement({
 
   if (isLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 4 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 2.5 }}>
         <CircularProgress />
         <Typography variant="h6" sx={{ ml: 2, color: theming.colors.primary }}>
           Laster inn funksjoner...
@@ -521,12 +521,12 @@ export default function FeatureManagement({
       {mainTabValue === 0 && (
         <>
           {/* Stats Overview */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} md={3}>
           <Card sx={{ background: 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)', color: 'white' }}>
             <CardContent>
               <Typography variant="h6">Totalt aktive</Typography>
-              <Typography variant="h3">
+              <Typography variant="h4" sx={{ fontWeight: 700 }}>
                 {features.filter((f: Feature) => f.enabled).length}
               </Typography>
               <Typography variant="body2">av {features.length} funksjoner</Typography>
@@ -542,7 +542,7 @@ export default function FeatureManagement({
                   <Typography variant="h6" sx={{ textTransform: 'capitalize', color: theming.colors.primary }}>
                     {category}
                   </Typography>
-                  <Typography variant="h3" sx={{ color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
                     {stats.enabled}
                   </Typography>
                   <Typography variant="body2">av {stats.total}</Typography>
@@ -711,7 +711,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Totalt Funksjoner</Typography>
-                          <Typography variant="h3" sx={{ color: theming.colors.primary }}>
+                          <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
                             {stats.total}
                           </Typography>
                         </CardContent>
@@ -721,7 +721,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Aktiverte</Typography>
-                          <Typography variant="h3" sx={{ color: '#4caf50' }}>
+                          <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 700 }}>
                             {stats.enabled}
                           </Typography>
                         </CardContent>
@@ -731,7 +731,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Valgfrie</Typography>
-                          <Typography variant="h3" sx={{ color: '#2196f3' }}>
+                          <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 700 }}>
                             {stats.optional}
                           </Typography>
                         </CardContent>
@@ -741,7 +741,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Påkrevde</Typography>
-                          <Typography variant="h3" sx={{ color: '#ff9800' }}>
+                          <Typography variant="h4" sx={{ color: '#ff9800', fontWeight: 700 }}>
                             {stats.required}
                           </Typography>
                         </CardContent>
@@ -901,7 +901,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Totalt Tabs</Typography>
-                          <Typography variant="h3" sx={{ color: theming.colors.primary }}>
+                          <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
                             {stats.totalTabs}
                           </Typography>
                         </CardContent>
@@ -911,7 +911,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Aktiverte Tabs</Typography>
-                          <Typography variant="h3" sx={{ color: '#4caf50' }}>
+                          <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 700 }}>
                             {stats.enabledTabs}
                           </Typography>
                         </CardContent>
@@ -921,7 +921,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Påkrevde Tabs</Typography>
-                          <Typography variant="h3" sx={{ color: '#ff9800' }}>
+                          <Typography variant="h4" sx={{ color: '#ff9800', fontWeight: 700 }}>
                             {stats.requiredTabs}
                           </Typography>
                         </CardContent>
@@ -931,7 +931,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Valgfrie Tabs</Typography>
-                          <Typography variant="h3" sx={{ color: '#2196f3' }}>
+                          <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 700 }}>
                             {stats.optionalTabs}
                           </Typography>
                         </CardContent>

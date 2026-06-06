@@ -1,0 +1,22 @@
+name = "showcase-cdn"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# Worker rutes via creatorhubn.com — wrangler trenger zone-tilkobling
+# eller deploy via dashboard etter første push. For lokal dev:
+#   wrangler dev --remote
+#
+# Konfigurert med fortrukken cache-TTL (30 dager). Backblaze + Cloudflare
+# Bandwidth Alliance gjør egress gratis så lenge requesten kommer fra
+# en Cloudflare-edge.
+#
+# Route i prod: creatorhubn.com/api/showcase/cdn/* → denne Workeren
+
+[vars]
+BACKEND_BASE = "https://creatorhubn.com"
+CACHE_TTL_SECONDS = "2592000"  # 30 dager
+
+# Optional KV-namespace for token rate-limiting (ikke implementert i v1)
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT"
+# id = "TODO"

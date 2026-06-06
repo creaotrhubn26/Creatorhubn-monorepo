@@ -39,8 +39,7 @@ import {
   Plus,
 } from 'lucide-react';
 
-// Import dynamic profession system
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+// useDynamicProfessions dedupliseert — allerede importert øverst (linje 6)
 import { useAuth } from '@/hooks/useAuth';
 
 // Import enhanced loading components

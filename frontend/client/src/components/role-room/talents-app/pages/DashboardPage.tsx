@@ -176,7 +176,7 @@ export default function DashboardPage({ demoMode, onNavigate }: DashboardPagePro
       ) : null}
 
       {/* 3 kjapp-kort */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2, mb: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2, mb: 3 }}>
         <QuickCard
           Icon={GroupIcon}
           label="Aktive partnere"

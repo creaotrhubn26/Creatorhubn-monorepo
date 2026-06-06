@@ -696,6 +696,8 @@ export interface RegistryOverview {
   total_visible: number;
   new_30d: number;
   available_now: number;
+  /** 30-dagers daglig sparkline-data: nye consent-grants per dag. */
+  sparkline?: Array<{ day: string; n: number }>;
 }
 
 export interface SavedSearch {

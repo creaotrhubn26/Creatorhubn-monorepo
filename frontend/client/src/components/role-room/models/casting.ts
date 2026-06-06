@@ -1737,6 +1737,13 @@ export type ProducerWorkflowProjectStatus =
   | 'changes_requested'
   | 'approved';
 
+export interface ProducerPhaseCompletion {
+  /** ISO-tidspunkt da Levering ble markert fullført, ellers null. */
+  delivery?: string | null;
+  /** ISO-tidspunkt da Økonomi ble markert fullført, ellers null. */
+  economy?: string | null;
+}
+
 export interface ProducerWorkflowProjectMeta {
   totalReviews: number;
   pendingReviews: number;
@@ -1831,6 +1838,13 @@ export interface CastingProject {
   producerPlanning?: ProducerProjectPlanning;
   producerWorkflowStatus?: ProducerWorkflowProjectStatus;
   producerWorkflowMeta?: ProducerWorkflowProjectMeta;
+  /**
+   * Eksplisitt fullført-markering for Levering- og Økonomi-fasene. Disse
+   * fasene har ingen pålitelig avledet «ferdig»-signal (delivery er ren
+   * konfig, økonomi lever utenfor planning), så produsenten markerer dem
+   * manuelt. ISO-tidspunkt = fullført, null/undefined = ikke fullført.
+   */
+  producerPhaseCompletion?: ProducerPhaseCompletion;
   roles: Role[];
   candidates: Candidate[];
   crew: CrewMember[];

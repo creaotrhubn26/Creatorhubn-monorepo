@@ -124,19 +124,19 @@ const BASE = '/api/role-room/partnerships';
 
 function buildUrl(path: string, params?: Record<string, string | undefined>): string {
   let url = `${BASE}${path}`;
+  const qp = new URLSearchParams();
   if (params) {
-    const qp = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {
       if (v != null && v !== '') qp.set(k, String(v));
     });
-    // Bevar ?demo=1 fra nåværende URL hvis ikke eksplisitt overstyrt
-    if (typeof window !== 'undefined' && !qp.has('demo')) {
-      const cur = new URLSearchParams(window.location.search);
-      if (cur.get('demo') === '1' || cur.get('demo') === 'true') qp.set('demo', '1');
-    }
-    const qs = qp.toString();
-    if (qs) url += `?${qs}`;
   }
+  // Bevar ?demo=1 fra nåværende URL i ALLE requests (også de uten params)
+  if (typeof window !== 'undefined' && !qp.has('demo')) {
+    const cur = new URLSearchParams(window.location.search);
+    if (cur.get('demo') === '1' || cur.get('demo') === 'true') qp.set('demo', '1');
+  }
+  const qs = qp.toString();
+  if (qs) url += `?${qs}`;
   return url;
 }
 
@@ -162,7 +162,8 @@ async function api<T>(path: string, init?: RequestInit & { params?: Record<strin
       err.warning = payload as ConsequenceWarning;
       throw err;
     }
-    const msg = (payload && typeof payload === 'object' && (payload as { error?: string }).error) || `HTTP ${r.status}`;
+    const extractedError = (payload && typeof payload === 'object' && (payload as { error?: string }).error) || null;
+    const msg: string = typeof extractedError === 'string' ? extractedError : `HTTP ${r.status}`;
     throw new Error(msg);
   }
   return payload as T;
@@ -334,6 +335,21 @@ export function proposeTalent(
   return api(`/invitations/${invitationId}/talent-proposals`, { method: 'POST', body: JSON.stringify(args) });
 }
 
+export interface BulkProposeResult {
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  successes: Array<{ talent_id: string; proposal: TalentProposal }>;
+  failures: Array<{ talent_id: string; error: string }>;
+}
+
+export function bulkProposeTalents(
+  invitationId: string,
+  args: { talent_ids: string[]; casting_role_id?: string; agency_notes?: string },
+): Promise<BulkProposeResult> {
+  return api(`/invitations/${invitationId}/talent-proposals/bulk`, { method: 'POST', body: JSON.stringify(args) });
+}
+
 export function listTalentProposals(invitationId: string): Promise<{ proposals: TalentProposal[] }> {
   return api(`/invitations/${invitationId}/talent-proposals`);
 }
@@ -355,4 +371,45 @@ export function respondToTalentProposal(
 
 export function incomingTalentProposalsForProject(projectId: string): Promise<{ proposals: TalentProposal[] }> {
   return api(`/casting-projects/${projectId}/incoming-talent-proposals`);
+}
+
+// ── Agency dashboard ───────────────────────────────────────────────
+export interface AgencyDashboard {
+  partnerships: { pending: number; active: number; paused: number; revoked: number };
+  project_invitations: { pending: number; accepted: number; closed: number };
+  talent_proposals: {
+    pending: number; accepted: number; declined: number; withdrawn: number;
+    total: number; accept_rate_percent: number | null;
+  };
+  talent_pool_size: number;
+  recent_activity: Array<{
+    action: string;
+    created_at: string;
+    details: Record<string, unknown> | null;
+    actor_name: string | null;
+  }>;
+  // Phase 9.13
+  partnerships_sparkline?: Array<{ day: string; n: number }>;
+  proposals_sparkline?: Array<{ day: string; n: number }>;
+  active_projects?: Array<{
+    invitation_id: string;
+    casting_project_id: string;
+    project_name: string;
+    project_type: string | null;
+    end_date: string | null;
+    expires_at: string | null;
+    role_count: number;
+    proposals_count: number;
+    proposals_accepted: number;
+  }>;
+  upcoming_expiries?: Array<{
+    invitation_id: string;
+    project_name: string;
+    expires_at: string;
+    days_left: number;
+  }>;
+}
+
+export function agencyDashboard(): Promise<AgencyDashboard> {
+  return api('/dashboard/agency');
 }

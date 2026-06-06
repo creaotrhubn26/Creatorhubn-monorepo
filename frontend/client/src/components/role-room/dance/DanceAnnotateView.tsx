@@ -76,7 +76,7 @@ export interface DanceAnnotateViewProps {
 
 type AnnotateRightTab = 'annotate' | 'review';
 
-const PURPLE = '#a78bfa';
+const PURPLE = danceFlowColors.lavender;
 
 export default function DanceAnnotateView({
   clipId,
@@ -561,7 +561,7 @@ export default function DanceAnnotateView({
             <Stack spacing={0.5}>
               {(['steps', 'arms', 'body', 'jumps', 'turns'] as const).map((cid) => {
                 const cnt = annotations.filter((a) => a.category === cid).length;
-                const cat = ['#a78bfa', '#34d399', '#fbbf24', '#60a5fa', '#f472b6'][
+                const cat = [danceFlowColors.lavender, danceFlowColors.successPrimary, danceFlowColors.gold, danceFlowColors.infoLight, danceFlowColors.pinkAccentLight][
                   ['steps', 'arms', 'body', 'jumps', 'turns'].indexOf(cid)
                 ];
                 return (

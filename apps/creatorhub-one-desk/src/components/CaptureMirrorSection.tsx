@@ -205,6 +205,17 @@ export default function CaptureMirrorSection({ plannedDestinations }: Props) {
           </Alert>
         )}
 
+        {/* Token-expired-banner: vises hvis NOEN session ble droppet pga
+            ugyldig helper-token. Reconnect-loopen stopper for å unngå spam
+            — Fredrik må generere ny token i Admin Room. */}
+        {Object.values(subState).some((s) => s === "auth_expired") && (
+          <Alert severity="warning" sx={{ mb: 1 }}>
+            <strong>Helper-token er avvist av backend.</strong> Live-mirror
+            stoppet for å unngå spam. Generér ny token i CreatorHub Admin
+            Room → DIT Helper Tokens, og lim inn i One Desk for å fortsette.
+          </Alert>
+        )}
+
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
           Subscriber til iPad-sessionens WebSocket-strøm. Når mirror er PÅ,
           lastes hver nye asset ned via signed R2-URL og kopieres til{" "}
@@ -240,12 +251,14 @@ export default function CaptureMirrorSection({ plannedDestinations }: Props) {
                     {state && (
                       <Chip
                         size="small"
-                        label={state}
+                        label={state === "auth_expired" ? "token utløpt" : state}
                         color={
                           state === "connected"
                             ? "success"
                             : state === "error"
                             ? "error"
+                            : state === "auth_expired"
+                            ? "warning"
                             : "default"
                         }
                       />

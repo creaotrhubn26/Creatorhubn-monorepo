@@ -1891,7 +1891,7 @@ export default function WeddingTimeline({
                 key={event.id || event.eventId || `event-${index}`}
                 sx={{
                   mb: 2,
-                  bgcolor: '#fafafa',
+                  bgcolor: 'rgba(255,255,255,0.04)',
                   borderRadius: 2,
                   boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)'
                 }}
@@ -2140,7 +2140,7 @@ export default function WeddingTimeline({
                 key={event.id || event.eventId || `timeline-${index}`}
                 sx={{
                   mb: 2,
-                  bgcolor: '#fafafa',
+                  bgcolor: 'rgba(255,255,255,0.04)',
                   borderRadius: 2,
                   boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
                   transition: 'all 0.3s ease',
@@ -2320,7 +2320,7 @@ export default function WeddingTimeline({
                 key={event.id || event.eventId || `communication-${index}`}
                 sx={{
                   mb: 2,
-                  bgcolor: '#fafafa',
+                  bgcolor: 'rgba(255,255,255,0.04)',
                   borderRadius: 2,
                   boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
                   transition: 'all 0.3s ease',
@@ -2483,7 +2483,7 @@ export default function WeddingTimeline({
                 key={event.id || event.eventId || `positioning-${index}`}
                 sx={{
                   mb: 2,
-                  bgcolor: '#fafafa',
+                  bgcolor: 'rgba(255,255,255,0.04)',
                   borderRadius: 2,
                   boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
                   transition: 'all 0.3s ease',

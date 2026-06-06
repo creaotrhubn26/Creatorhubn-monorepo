@@ -105,6 +105,7 @@ export const DragDropCollections: React.FC<DragDropCollectionsProps> = ({
   // Undo/Redo state
   const [history, setHistory] = useState<Collection[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string; itemCount: number } | null>(null);
   
   // Toast
   const [toast, setToast] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
@@ -169,9 +170,9 @@ export const DragDropCollections: React.FC<DragDropCollectionsProps> = ({
     onCollectionCreate?.(newCollection);
     
     setShowNewCollectionDialog(false);
-    setNewCollectionName(', ');
-    setNewCollectionDesc(', ');
-    setToast({ open: true, message: `Collection "${newCollectionName}," created`, severity: 'success' });
+    setNewCollectionName('');
+    setNewCollectionDesc('');
+    setToast({ open: true, message: `Samling "${newCollectionName}" opprettet`, severity: 'success' });
   }, [newCollectionName, newCollectionDesc, accentColor, collections, saveToHistory, onCollectionCreate]);
 
   // Update collection name
@@ -191,32 +192,46 @@ export const DragDropCollections: React.FC<DragDropCollectionsProps> = ({
     }
 
     setEditingCollection(null);
-    setEditingName(', ');
-    setToast({ open: true, message: 'Collection renamed', severity: 'success' });
+    setEditingName('');
+    setToast({ open: true, message: 'Samling omdøpt', severity: 'success' });
   }, [editingName, collections, saveToHistory, onCollectionUpdate]);
 
-  // Delete collection
+  // Request delete (opens confirm dialog)
   const handleDeleteCollection = useCallback((collectionId: string) => {
     if (collectionId === 'uncategorized') {
-      setToast({ open: true, message: 'Cannot delete Uncategorized collection', severity: 'error' });
+      setToast({ open: true, message: 'Uncategorized-samlingen kan ikke slettes', severity: 'error' });
       return;
     }
-
     const collection = collections.find(c => c.id === collectionId);
     if (!collection) return;
+    setPendingDelete({ id: collection.id, name: collection.name, itemCount: collection.items.length });
+  }, [collections]);
 
-    // Move items back to uncategorized
+  // Confirmed delete
+  const confirmDeleteCollection = useCallback(() => {
+    if (!pendingDelete) return;
+    const collection = collections.find(c => c.id === pendingDelete.id);
+    if (!collection) {
+      setPendingDelete(null);
+      return;
+    }
     const uncategorized = collections.find(c => c.id === 'uncategorized');
     if (uncategorized) {
       uncategorized.items = [...uncategorized.items, ...collection.items];
     }
-
-    const newCollections = collections.filter(c => c.id !== collectionId);
+    const newCollections = collections.filter(c => c.id !== pendingDelete.id);
     saveToHistory(newCollections);
-    onCollectionDelete?.(collectionId);
-    
-    setToast({ open: true, message: `Collection "${collection.name}" deleted`, severity: 'success' });
-  }, [collections, saveToHistory, onCollectionDelete]);
+    onCollectionDelete?.(pendingDelete.id);
+    const moved = pendingDelete.itemCount;
+    setToast({
+      open: true,
+      message: moved > 0
+        ? `Samling "${pendingDelete.name}" slettet — ${moved} element${moved === 1 ? '' : 'er'} flyttet til Uncategorized`
+        : `Samling "${pendingDelete.name}" slettet`,
+      severity: 'success',
+    });
+    setPendingDelete(null);
+  }, [pendingDelete, collections, saveToHistory, onCollectionDelete]);
 
   // Drag handlers
   const handleDragStart = useCallback((e: React.DragEvent, item: ShowcaseItem, collectionId: string) => {
@@ -607,6 +622,35 @@ export const DragDropCollections: React.FC<DragDropCollectionsProps> = ({
           {toast.message}
         </Alert>
       </Snackbar>
+
+      <Dialog
+        open={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        PaperProps={{
+          sx: {
+            bgcolor: '#06080d',
+            color: '#edf0f7',
+            border: '1px solid rgba(245,166,35,0.22)',
+          },
+        }}
+      >
+        <DialogTitle>Slette samling «{pendingDelete?.name}»?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.75)' }}>
+            {pendingDelete && pendingDelete.itemCount > 0
+              ? `${pendingDelete.itemCount} element${pendingDelete.itemCount === 1 ? '' : 'er'} flyttes til «Uncategorized». Selve filene blir værende.`
+              : 'Samlingen er tom og kan slettes uten å påvirke filer.'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingDelete(null)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+            Avbryt
+          </Button>
+          <Button onClick={confirmDeleteCollection} color="error" variant="contained">
+            Slett
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

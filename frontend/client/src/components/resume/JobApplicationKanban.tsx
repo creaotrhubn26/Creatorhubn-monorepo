@@ -309,7 +309,7 @@ export const JobApplicationKanban: React.FC<Props> = ({
                   spacing={1}
                   sx={{
                     px: 1.5, py: 1, mb: 1,
-                    bgcolor: '#FAFAFA',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                     borderRadius: 1,
                     borderTop: `3px solid ${col.color}`,
                   }}
@@ -355,7 +355,7 @@ export const JobApplicationKanban: React.FC<Props> = ({
                                   cursor: 'pointer',
                                   boxShadow: dragSnap.isDragging
                                     ? '0 8px 24px rgba(15,23,42,0.18)'
-                                    : '0 1px 2px rgba(15,23,42,0.04)',
+                                    : '0 1px 2px rgba(255,255,255,0.04)',
                                   transform: dragSnap.isDragging
                                     ? `${prov.draggableProps.style?.transform ?? ''} rotate(2deg)`
                                     : prov.draggableProps.style?.transform,

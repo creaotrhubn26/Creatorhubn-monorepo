@@ -134,8 +134,8 @@ const PiiDisclosurePanel: React.FC<{
       variant="outlined"
       sx={{
         p: 2,
-        bgcolor: '#F9FAFB',
-        borderColor: '#E5E7EB',
+        bgcolor: 'rgba(255,255,255,0.04)',
+        borderColor: 'rgba(255,255,255,0.10)',
       }}
     >
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
@@ -456,7 +456,7 @@ export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId })
       <Paper
         key={idx}
         variant="outlined"
-        sx={{ p: 1.5, my: 0.7, bgcolor: '#FAFAFA' }}
+        sx={{ p: 1.5, my: 0.7, bgcolor: 'rgba(255,255,255,0.04)' }}
       >
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 0.5 }}>
           <Box sx={{ flex: 1 }}>
@@ -559,7 +559,7 @@ export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId })
 
             <PiiDisclosurePanel showRights />
 
-            <Paper variant="outlined" sx={{ p: 2, mt: 2, bgcolor: '#FFF8E1', borderColor: '#F5B82E' }}>
+            <Paper variant="outlined" sx={{ p: 2, mt: 2, bgcolor: 'rgba(245,184,46,0.12)', borderColor: '#F5B82E' }}>
               <FormControlLabel
                 control={
                   <Checkbox
@@ -634,7 +634,7 @@ export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId })
               px: 2, py: 1,
               borderBottom: '1px solid', borderColor: 'divider',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              bgcolor: '#FAFAFA',
+              bgcolor: 'rgba(255,255,255,0.04)',
             }}>
               <Typography variant="caption" color="text.secondary">
                 Sigrid svarer i {TONE_META[tone].label.toLowerCase()}-modus
@@ -681,7 +681,7 @@ export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId })
             </Box>
 
             {/* Chat-vindu */}
-            <Box ref={scrollRef} sx={{ flex: 1, overflowY: 'auto', p: 2, bgcolor: '#FAFAFA' }}>
+            <Box ref={scrollRef} sx={{ flex: 1, overflowY: 'auto', p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
               <Stack spacing={2}>
                 {messages.map((m, i) => {
                   const isUser = m.role === 'user';
@@ -707,7 +707,7 @@ export const SigridCareerMentor: React.FC<Props> = ({ open, onClose, resumeId })
                           variant="outlined"
                           sx={{
                             p: 1.5,
-                            bgcolor: isUser ? '#fff' : '#FFF8E1',
+                            bgcolor: isUser ? 'rgba(255,255,255,0.04)' : 'rgba(245,184,46,0.12)',
                             borderColor: isUser ? 'divider' : '#F5B82E40',
                           }}
                         >

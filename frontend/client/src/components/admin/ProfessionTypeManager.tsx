@@ -470,7 +470,7 @@ export default function ProfessionTypeManager() {
               <Typography variant="h6" color="textSecondary">
                 Aktive Profesjoner
               </Typography>
-              <Typography variant="h3" sx={{ color: '#4caf50', fontWeight: 700}}>
+              <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 700}}>
                 {activeProfessions?.total || 0}
               </Typography>
             </CardContent>
@@ -483,7 +483,7 @@ export default function ProfessionTypeManager() {
               <Typography variant="h6" color="textSecondary">
                 Tilgjengelige Maler
               </Typography>
-              <Typography variant="h3" sx={{ color: '#2196f3', fontWeight: 700}}>
+              <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 700}}>
                 {availableTemplates?.count || 0}
               </Typography>
             </CardContent>
@@ -496,7 +496,7 @@ export default function ProfessionTypeManager() {
               <Typography variant="h6" color="textSecondary">
                 Totale Brukere
               </Typography>
-              <Typography variant="h3" sx={{ color: '#ff9800', fontWeight: 700}}>
+              <Typography variant="h4" sx={{ color: '#ff9800', fontWeight: 700}}>
                 {activeProfessions?.totalUsers || 0}
               </Typography>
             </CardContent>
@@ -509,7 +509,7 @@ export default function ProfessionTypeManager() {
               <Typography variant="h6" color="textSecondary">
                 SSB Integrasjoner
               </Typography>
-              <Typography variant="h3" sx={{ color: '#9c27b0', fontWeight: 700}}>
+              <Typography variant="h4" sx={{ color: '#9c27b0', fontWeight: 700}}>
                 {activeProfessions?.ssbConnected || 0}
               </Typography>
             </CardContent>

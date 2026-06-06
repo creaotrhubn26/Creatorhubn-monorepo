@@ -536,7 +536,7 @@ const TransportBar: React.FC<{
           onChange={handleScrub}
           aria-label="Video scrubber"
           data-testid={`${testId}-scrub`}
-          style={{ flex: 1, accentColor: '#a78bfa', cursor: 'pointer' }}
+          style={{ flex: 1, accentColor: danceFlowColors.lavender, cursor: 'pointer' }}
         />
       </Box>
       {/* Kontroller */}

@@ -10,13 +10,28 @@ import {
 } from '../services/producerWorkflowService';
 import { onProducerWorkflowEvent } from '../services/producerWorkflowEvents';
 
-export function useProducerReviews(projectId?: string) {
+interface UseProducerReviewsOptions {
+  /**
+   * Sett > 0 for å poll'e backend på intervall (ms) så klient-beslutninger og
+   * -kommentarer som skjer i klientportalen (en annen enhet/sesjon) dukker opp
+   * hos produsenten i tilnærmet sanntid — uten WebSocket (som ikke går gjennom
+   * Vercel-rewriten). `onProducerWorkflowEvent` dekker kun samme fane, så uten
+   * polling ser ikke Stig klientens handlinger før han laster på nytt.
+   */
+  livePollMs?: number;
+}
+
+export function useProducerReviews(projectId?: string, options?: UseProducerReviewsOptions) {
+  const livePollMs = options?.livePollMs ?? 0;
   const [items, setItems] = useState<ProducerClientReview[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const requestIdRef = useRef(0);
 
-  const load = useCallback(async () => {
+  // `silent` brukes av live-polling: ingen spinner og ingen feilbanner som
+  // overskriver en allerede god liste hvis ett enkelt bakgrunnskall feiler.
+  const runLoad = useCallback(async (silent: boolean) => {
     const requestId = ++requestIdRef.current;
     if (!projectId) {
       setItems([]);
@@ -25,25 +40,35 @@ export function useProducerReviews(projectId?: string) {
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const nextItems = await producerWorkflowService.getReviews(projectId);
       if (requestId !== requestIdRef.current) {
         return;
       }
       setItems(nextItems);
+      setLastSyncedAt(Date.now());
+      if (silent) {
+        setError(null);
+      }
     } catch (loadError) {
       if (requestId !== requestIdRef.current) {
         return;
       }
-      setError(loadError instanceof Error ? loadError.message : 'Kunne ikke hente review-flyt');
+      if (!silent) {
+        setError(loadError instanceof Error ? loadError.message : 'Kunne ikke hente review-flyt');
+      }
     } finally {
-      if (requestId === requestIdRef.current) {
+      if (requestId === requestIdRef.current && !silent) {
         setLoading(false);
       }
     }
   }, [projectId]);
+
+  const load = useCallback(() => runLoad(false), [runLoad]);
 
   useEffect(() => {
     void load();
@@ -65,6 +90,38 @@ export function useProducerReviews(projectId?: string) {
       void load();
     });
   }, [load, projectId]);
+
+  // Live-polling: pauses når fanen er skjult (sparer kall), og henter en gang
+  // umiddelbart når Stig kommer tilbake til fanen.
+  useEffect(() => {
+    if (!projectId || livePollMs <= 0 || typeof window === 'undefined') {
+      return () => undefined;
+    }
+
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+      void runLoad(true);
+    };
+    const timer = window.setInterval(tick, livePollMs);
+
+    const onVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void runLoad(true);
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibility);
+    }
+
+    return () => {
+      window.clearInterval(timer);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibility);
+      }
+    };
+  }, [projectId, livePollMs, runLoad]);
 
   const createReview = useCallback(async (payload: CreateProducerReviewInput) => {
     if (!projectId) throw new Error('Mangler projectId');
@@ -114,6 +171,8 @@ export function useProducerReviews(projectId?: string) {
     summary,
     loading,
     error,
+    lastSyncedAt,
+    livePollActive: livePollMs > 0,
     reload: load,
     createReview,
     addComment,

@@ -23,6 +23,7 @@ import {
   sendNewsletterIssueToRecipient,
   type NewsletterBlock,
 } from "./role-room-newsletter-email-service";
+import { archiveToRoleRoomB2, newsletterIssueKey } from "./b2-archive-helper.js";
 
 function asBlocks(value: unknown): NewsletterBlock[] {
   if (!Array.isArray(value)) return [];
@@ -660,6 +661,42 @@ export function setupRoleRoomNewsletterRoutes(deps: NewsletterRoutesDeps): void 
             WHERE id = $3`,
           [sentCount, failedCount, issue.id],
         );
+
+        // ── B2-arkivering (fire-and-forget) ─────────────────────────────
+        // Lagrer rendert HTML + block-struktur + meta til
+        // the-role-room-prod/newsletters/issues/YYYY-MM/{issueId}.{html|json|meta.json}
+        // for langtidsarkiv. Feiler stille hvis B2 ikke konfigurert.
+        try {
+          const renderedHtml = issue.body_html ?? markdownToHtml(issue.body_markdown ?? "");
+          const blocks = asBlocks(issue.blocks);
+          const meta = {
+            issueId: issue.id,
+            subject: issue.subject,
+            preheader: issue.preheader,
+            audienceFilter: issue.audience_filter ?? "all",
+            sentAt: new Date().toISOString(),
+            sentCount,
+            failedCount,
+            recipientCount: subscribers.length,
+            archivedAt: new Date().toISOString(),
+          };
+          await Promise.all([
+            archiveToRoleRoomB2(newsletterIssueKey(issue.id, "html"), renderedHtml, "text/html; charset=utf-8"),
+            archiveToRoleRoomB2(
+              newsletterIssueKey(issue.id, "blocks.json"),
+              JSON.stringify(blocks, null, 2),
+              "application/json; charset=utf-8",
+            ),
+            archiveToRoleRoomB2(
+              newsletterIssueKey(issue.id, "meta.json"),
+              JSON.stringify(meta, null, 2),
+              "application/json; charset=utf-8",
+            ),
+          ]);
+        } catch (err) {
+          // archive-feil må aldri propageres — sending er allerede ferdig
+          console.warn("[newsletter-issues] B2-arkivering feilet", (err as Error).message);
+        }
       })().catch((err) => console.error("[newsletter-issues] async send error", err));
 
       res.status(202).json({

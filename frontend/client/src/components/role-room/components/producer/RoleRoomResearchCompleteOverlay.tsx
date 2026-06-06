@@ -86,7 +86,7 @@ const SERVICE_LABELS: Record<keyof RoleRoomAgentServiceLatencies, { label: strin
   merchSuppliers: { label: 'Merch-leverandører', source: 'Brreg + Google Places' },
   metaPagesEnrichment: { label: 'Meta Pages-berikelse', source: 'graph.facebook.com' },
   colorExtraction: { label: 'Logo-paletten', source: 'node-vibrant' },
-  claudeSynthesis: { label: 'Claude-syntese', source: 'api.anthropic.com' },
+  claudeSynthesis: { label: 'CI-syntese', source: 'Creatorhub Intelligence' },
   openaiSynthesis: { label: 'OpenAI-syntese', source: 'api.openai.com' },
   totalMs: { label: 'Totaltid', source: 'wall clock' },
 };
@@ -419,7 +419,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
               Vi fant <strong>{datapoints}</strong> datapunkter på{' '}
               <strong>{formatMs(totalMs)}</strong>.
               {missingCriticalFields.length === 0 ? (
-                <> Klar for marketing plan ✓</>
+                <> Klar for markedsplan</>
               ) : (
                 <> Mangler {missingCriticalFields.length} kritisk{missingCriticalFields.length === 1 ? '' : 'e'} felt før marketing plan.</>
               )}

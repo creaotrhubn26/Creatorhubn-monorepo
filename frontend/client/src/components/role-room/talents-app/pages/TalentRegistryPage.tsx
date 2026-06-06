@@ -184,19 +184,35 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
             </Typography>
           </Box>
           <Stack direction="row" spacing={1.4} alignItems="center">
-            <Button
-              startIcon={<PersonAddOutlinedIcon />}
-              onClick={() => setProposeOpen(true)}
-              disabled={demoMode}
-              sx={{
-                textTransform: 'none', fontWeight: 700, px: 2.4, py: 1.1, borderRadius: radius.sm,
-                background: palette.accentGradient, color: '#fff',
-                '&:hover': { filter: 'brightness(1.08)' },
-                boxShadow: '0 8px 24px rgba(168,85,247,0.28)',
-              }}
-            >
-              Foreslå ny skuespiller
-            </Button>
+            <Tooltip title={demoMode ? 'Ikke tilgjengelig i demo-modus — sender ekte e-post til talenten' : ''} arrow>
+              <span>
+                <Button
+                  startIcon={<PersonAddOutlinedIcon />}
+                  onClick={() => setProposeOpen(true)}
+                  disabled={demoMode}
+                  sx={{
+                    textTransform: 'none', fontWeight: 700, px: 2.4, py: 1.1, borderRadius: radius.sm,
+                    background: palette.accentGradient, color: '#fff',
+                    boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+                      boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                    },
+                    // Overstyr MUI sin default disabled-stil (lys grå) — beholder
+                    // gradient men dimmer ned til 50% så det er tydelig at den
+                    // er deaktivert uten å bli blass/usynlig på dark bg.
+                    '&.Mui-disabled': {
+                      background: palette.accentGradient,
+                      color: 'rgba(255,255,255,0.7)',
+                      opacity: 0.45,
+                      boxShadow: 'none',
+                    },
+                  }}
+                >
+                  Foreslå ny skuespiller
+                </Button>
+              </span>
+            </Tooltip>
             <ToggleButtonGroup
               value={showProposals ? 'proposals' : view}
               exclusive
@@ -237,7 +253,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
             <AutoAwesomeIcon sx={{ color: palette.accentBright, fontSize: 20 }} />
             <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Avanserte filtre</Typography>
           </Stack>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, 1fr)' }, gap: 1.4 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(5, 1fr)' }, gap: 1.4 }}>
             <FilterField label="By" value={filters.location || ''} onChange={(v) => setFilters({ ...filters, location: v || undefined })} options={['', ...NORWEGIAN_CITIES]} placeholder="Alle byer" />
             <PlayingAgeField filters={filters} onChange={(f) => setFilters({ ...filters, ...f })} />
             <MultiField label="Språk" values={filters.languages} options={LANGUAGE_OPTIONS} onChange={(v) => setFilters({ ...filters, languages: v.length ? v : undefined })} />
@@ -269,7 +285,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
               <AutoAwesomeIcon sx={{ color: palette.accentBright, fontSize: 20 }} />
               <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Fremhevede talenter</Typography>
             </Stack>
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 1.4 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(auto-fill, minmax(140px, 1fr))', sm: 'repeat(auto-fill, minmax(190px, 1fr))' }, gap: { xs: 1, md: 1.4 } }}>
               {featured.map((t) => <FeaturedCard key={t.id} talent={t} />)}
             </Box>
           </Box>
@@ -287,7 +303,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
               value={filters.sort ?? 'recent'}
               size="small"
               onChange={(e) => setFilters({ ...filters, sort: e.target.value as TalentSearchFilters['sort'] })}
-              sx={{ color: palette.textPrimary, fontSize: '0.85rem', minWidth: 160, bgcolor: palette.bgCard, ...fieldSx['& .MuiOutlinedInput-root'] }}
+              sx={{ ...fieldSx['& .MuiOutlinedInput-root'], color: palette.textPrimary, fontSize: '0.85rem', minWidth: 160, bgcolor: palette.bgCard }}
             >
               <MenuItem value="recent">Nylig aktive</MenuItem>
               <MenuItem value="available_first">Tilgjengelig først</MenuItem>
@@ -382,7 +398,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
               </Box>
             </Box>
             <Box sx={{ mt: 2, height: 60, borderRadius: radius.sm, bgcolor: 'rgba(168,85,247,0.04)', position: 'relative', overflow: 'hidden' }}>
-              <Sparkline color={palette.accent} />
+              <Sparkline color={palette.accent} data={overview.sparkline} />
             </Box>
           </Box>
         ) : null}
@@ -510,7 +526,7 @@ function FilterField({ label, value, onChange, options, placeholder, optionsLabe
         displayEmpty
         onChange={(e) => onChange(e.target.value)}
         renderValue={(v) => (v ? (optionsLabel?.[v] ?? v) : (placeholder || 'Alle'))}
-        sx={{ color: palette.textPrimary, fontSize: '0.85rem', bgcolor: palette.bgCardElevated, borderRadius: radius.sm, ...fieldSx['& .MuiOutlinedInput-root'] }}
+        sx={{ ...fieldSx['& .MuiOutlinedInput-root'], color: palette.textPrimary, fontSize: '0.85rem', bgcolor: palette.bgCardElevated, borderRadius: radius.sm }}
       >
         {options.map((opt) => (
           <MenuItem key={opt || '__empty__'} value={opt}>
@@ -537,7 +553,7 @@ function PlayingAgeField({ filters, onChange }: { filters: TalentSearchFilters; 
           const [lo, hi] = v.split('–').map((x) => parseInt(x, 10));
           onChange({ age_min: lo || undefined, age_max: hi || undefined });
         }}
-        sx={{ color: palette.textPrimary, fontSize: '0.85rem', bgcolor: palette.bgCardElevated, borderRadius: radius.sm, ...fieldSx['& .MuiOutlinedInput-root'] }}
+        sx={{ ...fieldSx['& .MuiOutlinedInput-root'], color: palette.textPrimary, fontSize: '0.85rem', bgcolor: palette.bgCardElevated, borderRadius: radius.sm }}
       >
         <MenuItem value="18–60+">18–60+</MenuItem>
         <MenuItem value="16–25">16–25</MenuItem>
@@ -566,7 +582,7 @@ function MultiField({ label, values, options, onChange }: { label: string; value
           return `${s.length} valgt`;
         }}
         onChange={(e) => onChange(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
-        sx={{ color: palette.textPrimary, fontSize: '0.85rem', bgcolor: palette.bgCardElevated, borderRadius: radius.sm, ...fieldSx['& .MuiOutlinedInput-root'] }}
+        sx={{ ...fieldSx['& .MuiOutlinedInput-root'], color: palette.textPrimary, fontSize: '0.85rem', bgcolor: palette.bgCardElevated, borderRadius: radius.sm }}
       >
         {options.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
       </Select>
@@ -737,20 +753,46 @@ function SaveSearchDialog({ open, filters, currentCount, onClose, onSaved }: { o
   );
 }
 
-function Sparkline({ color }: { color: string }) {
-  // Enkel SVG-sparkline med deterministisk "growth"-mønster
-  const points = '0,55 30,52 60,48 90,52 120,40 150,38 180,30 210,32 240,22 270,16 300,8';
+function Sparkline({ color, data }: { color: string; data?: Array<{ day: string; n: number }> }) {
+  // EKTE sparkline fra backend — siste 30 dager med nye consent-grants
+  // per dag. Tom-state = ren tekst i stedet for fake-mønster.
+  if (!data || data.length === 0) {
+    return (
+      <svg viewBox="0 0 320 60" width="100%" height="100%" preserveAspectRatio="none">
+        <text x="160" y="34" textAnchor="middle" fill="rgba(168,85,247,0.45)" fontSize="11" fontFamily="-apple-system, sans-serif">
+          Ingen aktivitet siste 30 dager
+        </text>
+      </svg>
+    );
+  }
+  const w = 320;
+  const h = 60;
+  const padTop = 8;
+  const padBottom = 4;
+  const usableH = h - padTop - padBottom;
+  const maxVal = Math.max(1, ...data.map((d) => d.n));
+  const stepX = data.length > 1 ? w / (data.length - 1) : w;
+  const pts = data.map((d, i) => ({
+    x: i * stepX,
+    y: h - padBottom - (d.n / maxVal) * usableH,
+    val: d.n,
+    day: d.day,
+  }));
+  const polyPoints = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const lastPt = pts[pts.length - 1];
   return (
-    <svg viewBox="0 0 320 60" width="100%" height="100%" preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height="100%" preserveAspectRatio="none">
       <defs>
         <linearGradient id="sl-fill" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.45" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polygon points={`0,60 ${points} 320,60`} fill="url(#sl-fill)" />
-      <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="300" cy="8" r="3" fill={color} />
+      <polygon points={`0,${h} ${polyPoints} ${w},${h}`} fill="url(#sl-fill)" />
+      <polyline points={polyPoints} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={lastPt.x.toFixed(1)} cy={lastPt.y.toFixed(1)} r="3" fill={color}>
+        <title>{`${lastPt.day}: ${lastPt.val} nye registreringer`}</title>
+      </circle>
     </svg>
   );
 }

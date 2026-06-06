@@ -4,7 +4,6 @@ import { useTheming } from '../../../utils/theming-helper';
 import React, { useState } from 'react';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import {
   Box,
   Typography,
@@ -25,9 +24,7 @@ import {
   ListItemSecondaryAction,
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { apiRequest } from '@/lib/queryClient';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import {
   VideoLibrary,
   Add,

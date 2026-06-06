@@ -295,6 +295,21 @@
 </head>
 <body>
   <div id="casting-root"></div>
+  <script>
+    // Stale-chunk self-heal — se index.html for full begrunnelse. Laster
+    // siden på nytt når en deploy har rotert chunk-hashene under en åpen
+    // fane, så lazy-import-er ikke krasjer error boundary med en text/html-
+    // respons. sessionStorage-guard hindrer reload-loop.
+    window.addEventListener('vite:preloadError', function (e) {
+      var KEY = 'chunk-reload-at';
+      var last = Number(sessionStorage.getItem(KEY) || '0');
+      if (Date.now() - last > 15000) {
+        if (e && typeof e.preventDefault === 'function') e.preventDefault();
+        sessionStorage.setItem(KEY, String(Date.now()));
+        window.location.reload();
+      }
+    });
+  </script>
   <script type="module" src="/src/components/role-room/casting-main.tsx"></script>
 </body>
 </html>

@@ -27,7 +27,7 @@ import type { AnnotationCategoryRecord } from './danceAnnotationCatalogService';
 import { danceFlowColors } from './danceFlowTheme';
 
 const COLOR_PRESETS = [
-  '#a78bfa', '#34d399', '#fbbf24', '#60a5fa', '#f472b6',
+  danceFlowColors.lavender, danceFlowColors.successPrimary, danceFlowColors.gold, danceFlowColors.infoLight, danceFlowColors.pinkAccentLight,
   '#06b6d4', '#84cc16', '#fb7185', '#c084fc', '#fcd34d',
 ] as const;
 
@@ -156,10 +156,10 @@ export default function AnnotateCategoryDialog({
             label="Navn"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            data-testid="annotate-category-dialog-name"
             placeholder="F.eks. Floor work"
             autoFocus
-            inputProps={{ maxLength: 80 }}
+            // testid på input slik at Playwright `.fill()` virker direkte
+            inputProps={{ maxLength: 80, 'data-testid': 'annotate-category-dialog-name' }}
           />
 
           <Box>

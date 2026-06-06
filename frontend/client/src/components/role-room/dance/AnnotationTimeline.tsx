@@ -15,6 +15,7 @@
  * Playhead-linje følger playheadSec.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import { Box, Tooltip, Typography } from '@mui/material';
 import { DANCE_MOVEMENT_CATEGORIES, categoryById } from './danceMovementCategories';
@@ -23,7 +24,7 @@ import type { VideoAnnotation } from './danceVideoService';
 const TRACK_HEIGHT = 22;
 const TRACK_GAP = 4;
 const LABEL_WIDTH = 64;
-const UNCAT_COLOR = '#6b7280';
+const UNCAT_COLOR = danceFlowColors.textDisabled;
 const HANDLE_WIDTH = 6;
 
 export interface AnnotationTimelineProps {
@@ -303,8 +304,8 @@ export function AnnotationTimeline({
             fontSize: 11, fontWeight: 600,
             cursor: 'pointer', font: 'inherit',
             '&:hover': {
-              color: '#a78bfa',
-              borderColor: '#a78bfa',
+              color: danceFlowColors.lavender,
+              borderColor: danceFlowColors.lavender,
               bgcolor: 'rgba(167,139,250,0.06)',
             },
           }}

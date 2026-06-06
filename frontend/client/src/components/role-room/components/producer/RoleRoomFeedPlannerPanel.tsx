@@ -51,6 +51,7 @@ import FeedPostDetailPanel from './FeedPostDetailPanel';
 import FeedPlanTimeline from './FeedPlanTimeline';
 import SocialBrandLogo, { InstagramBrandLogo } from './SocialBrandLogo';
 import { buildFeedPost } from '../../utils/feedPlanner';
+import { describeProducerError } from '../../utils/producerErrorMessage';
 import SortableFeedPostTile from './SortableFeedPostTile';
 
 type RoleRoomFeedPlannerPanelProps = {
@@ -185,7 +186,7 @@ export default function RoleRoomFeedPlannerPanel({
         if (result?.updatedAt) setLastSavedAt(result.updatedAt);
         setDirty(false);
       } catch (error) {
-        setSaveError(error instanceof Error ? error.message : 'Kunne ikke lagre feed-planen.');
+        setSaveError(describeProducerError(error, 'lagre feed-planen'));
       } finally {
         setSaving(false);
       }
@@ -210,6 +211,15 @@ export default function RoleRoomFeedPlannerPanel({
       )
       .map((p) => p.id);
     if (ids.length === 0) return;
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `Godkjenne alle ${ids.length} poster uten å gå gjennom dem enkeltvis? ` +
+          'De merkes som klare for publisering.',
+      )
+    ) {
+      return;
+    }
     setBulkApproving(true);
     try {
       const result = await roleRoomAgentService.setFeedPostApproval({
@@ -235,6 +245,15 @@ export default function RoleRoomFeedPlannerPanel({
 
   const regenerateAll = () => {
     if (!bootstrap) return;
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        'Regenerere alle forslag? Egne endringer på ulåste poster (captions, bilder) ' +
+          'overskrives — låste poster beholdes.',
+      )
+    ) {
+      return;
+    }
     setPosts((current) => {
       const regenerated = generateFeedPostsFromBootstrap(bootstrap, platform, { rotate: true });
       // Preserve locked posts and their custom images; only overwrite unlocked.
@@ -335,8 +354,14 @@ export default function RoleRoomFeedPlannerPanel({
       if (result.success) {
         setStrategyRefreshNote(`Strategi for ${platform} oppdatert.`);
       } else {
-        setStrategyRefreshNote(`Refresh feilet: ${result.error ?? 'ukjent feil'}`);
+        setStrategyRefreshNote(
+          result.error
+            ? `Strategioppdateringen feilet: ${result.error}`
+            : 'Strategioppdateringen kunne ikke fullføres. Prøv igjen.',
+        );
       }
+    } catch (refreshError) {
+      setStrategyRefreshNote(describeProducerError(refreshError, 'oppdatere feed-strategien'));
     } finally {
       setRefreshingStrategy(false);
       window.setTimeout(() => setStrategyRefreshNote(null), 6000);
@@ -453,7 +478,7 @@ export default function RoleRoomFeedPlannerPanel({
             const requiredTier = option.minimumTierLevel === 2 ? ROLE_ROOM_TIERS.headliner : ROLE_ROOM_TIERS.spotlight;
             const allowed = currentTierLevel >= option.minimumTierLevel;
             const active = option.id === platform && allowed;
-            const lockedHint = `Krever Role Room ${requiredTier.shortName} eller høyere`;
+            const lockedHint = `Tilgjengelig fra Role Room ${requiredTier.shortName} — klikk for å oppgradere`;
 
             return (
               <Chip
@@ -463,6 +488,7 @@ export default function RoleRoomFeedPlannerPanel({
                     <SocialBrandLogo platform={option.id} size={18} />
                   </Box>
                 }
+                aria-label={allowed ? `Velg ${option.label}` : `${option.label} — låst. ${lockedHint}`}
                 label={allowed ? option.label : `${option.label} · ${requiredTier.shortName}`}
                 onClick={() => {
                   if (allowed) {
@@ -515,27 +541,29 @@ export default function RoleRoomFeedPlannerPanel({
       {platform === 'linkedin' ? <LinkedInConnectionCard projectId={projectId} /> : null}
       {platform === 'tiktok' ? <TikTokConnectionCard projectId={projectId} /> : null}
 
-      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap sx={{ rowGap: 0.8 }}>
         <Stack direction="row" spacing={1} alignItems="center">
           <Typography sx={{ color: 'rgba(226,232,240,0.68)', fontSize: '0.82rem' }}>
             {posts.length} forslag
           </Typography>
-          <SaveStatusBadge
-            loading={loadingPlan}
-            saving={saving}
-            dirty={dirty}
-            error={saveError}
-            lastSavedAt={lastSavedAt}
-          />
+          <Box role="status" aria-live="polite">
+            <SaveStatusBadge
+              loading={loadingPlan}
+              saving={saving}
+              dirty={dirty}
+              error={saveError}
+              lastSavedAt={lastSavedAt}
+            />
+          </Box>
         </Stack>
-        <Stack direction="row" spacing={0.6}>
+        <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ rowGap: 0.6 }}>
           {isAdmin ? (
             <Button
               size="small"
               startIcon={<RestartAltIcon fontSize="small" />}
               onClick={refreshStrategy}
               disabled={refreshingStrategy}
-              title={strategyRefreshNote ?? 'Tving Claude+web_search-oppdatering av plattform-strategi'}
+              title={strategyRefreshNote ?? 'Tving CI-oppdatering av plattform-strategi'}
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
@@ -636,7 +664,7 @@ export default function RoleRoomFeedPlannerPanel({
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 440px) minmax(0, 1fr)' },
+          gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 360px) minmax(0, 1fr)' },
           gap: 1.8,
           alignItems: 'flex-start',
         }}
@@ -653,6 +681,13 @@ export default function RoleRoomFeedPlannerPanel({
               height={420}
               sx={{ maxWidth: 420, borderRadius: 4, bgcolor: 'rgba(34,211,238,0.08)' }}
             />
+          </Stack>
+        ) : posts.length === 0 ? (
+          <Stack alignItems="center" spacing={1.2} sx={{ py: 6, px: 2, textAlign: 'center' }}>
+            <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>Ingen poster ennå</Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.86rem', maxWidth: 360 }}>
+              Klikk «Regenerer alle forslag» over for å la agenten lage et feed-utkast fra kundeprofilen.
+            </Typography>
           </Stack>
         ) : (
           <motion.div
@@ -717,7 +752,7 @@ export default function RoleRoomFeedPlannerPanel({
               <Stack
                 spacing={0.8}
                 sx={{
-                  display: { xs: 'none', lg: 'flex' },
+                  display: { xs: 'none', md: 'flex' },
                   p: 2.4,
                   borderRadius: 2.5,
                   border: '1px dashed rgba(148,163,184,0.22)',
@@ -947,9 +982,9 @@ function InstagramPhoneMockup({
       sx={{
         mx: 'auto',
         width: '100%',
-        maxWidth: 420,
+        maxWidth: { xs: '100%', sm: 360, md: 420 },
         borderRadius: 4,
-        border: '10px solid #0b1220',
+        border: { xs: '6px solid #0b1220', sm: '10px solid #0b1220' },
         bgcolor: '#000',
         boxShadow: '0 24px 48px rgba(0,0,0,0.45)',
         overflow: 'hidden',

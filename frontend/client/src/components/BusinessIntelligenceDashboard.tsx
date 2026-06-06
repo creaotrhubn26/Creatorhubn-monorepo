@@ -439,7 +439,7 @@ export default function BusinessIntelligenceDashboard() {
     (isMusicProducer && (revenueAnalyticsLoading || paymentAnalyticsLoading || marketInsightsLoading));
 
   return (
-    <Box sx={{ p: 3, maxWidth: '100%' }}>
+    <Box sx={{ p: 2, maxWidth: '100%' }}>
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box display="flex" alignItems="center" gap={2}>
@@ -449,7 +449,7 @@ export default function BusinessIntelligenceDashboard() {
             </Avatar>
           )}
           <Box>
-            <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, color: theming.colors.primary }}>
+            <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, color: theming.colors.primary }}>
               {adaptDashboardTitle ? adaptDashboardTitle() : 'Business Intelligence Dashboard'}
             </Typography>
             <Typography variant="subtitle1" color="text.secondary">
@@ -515,7 +515,7 @@ export default function BusinessIntelligenceDashboard() {
         </Grid>
       </Paper>
 
-      <Grid container spacing={3}>
+      <Grid container spacing={2}>
         {/* ⭐ Norwegian Economic Indicators (SSB) */}
         {ssbEconomicData && (
           <Grid item xs={12}>
@@ -571,7 +571,7 @@ export default function BusinessIntelligenceDashboard() {
                   <Grid item xs={12} sm={4}>
                     <Card sx={{ p: 2, textAlign: 'center' }}>
                       <Typography variant="caption" color="text.secondary">Befolkning</Typography>
-                      <Typography variant="h4" sx={{ fontWeight: 600, color: 'info.dark' }}>
+                      <Typography variant="h5" sx={{ fontWeight: 600, color: 'info.dark' }}>
                         {ssbPopulationData.data.population.toLocaleString('no-NO')}
                       </Typography>
                     </Card>
@@ -579,7 +579,7 @@ export default function BusinessIntelligenceDashboard() {
                   <Grid item xs={12} sm={4}>
                     <Card sx={{ p: 2, textAlign: 'center' }}>
                       <Typography variant="caption" color="text.secondary">Årlig vekst</Typography>
-                      <Typography variant="h4" sx={{ fontWeight: 600, color: 'success.dark' }}>
+                      <Typography variant="h5" sx={{ fontWeight: 600, color: 'success.dark' }}>
                         +{ssbPopulationData.data.growth}%
                       </Typography>
                     </Card>
@@ -587,7 +587,7 @@ export default function BusinessIntelligenceDashboard() {
                   <Grid item xs={12} sm={4}>
                     <Card sx={{ p: 2, textAlign: 'center' }}>
                       <Typography variant="caption" color="text.secondary">Tetthet</Typography>
-                      <Typography variant="h4" sx={{ fontWeight: 600, color: 'warning.dark' }}>
+                      <Typography variant="h5" sx={{ fontWeight: 600, color: 'warning.dark' }}>
                         {ssbPopulationData.data.density}/km²
                       </Typography>
                     </Card>
@@ -797,7 +797,7 @@ export default function BusinessIntelligenceDashboard() {
               />
               <CardContent>
                 <Box mb={2}>
-                  <Typography variant="h4" color="primary" sx={{ fontWeight: 600}}>
+                  <Typography variant="h5" color="primary" sx={{ fontWeight: 600}}>
                     kr {dashboardData.data.marketInsights.pricingGuidance.suggestedPrice?.toLocaleString()}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">

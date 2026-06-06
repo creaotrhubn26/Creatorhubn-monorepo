@@ -268,7 +268,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>
                 Total Cameras
               </Typography>
-              <Typography variant="h3" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ color: theming.colors.primary }}>
                 {videoStatus.totalCameras + photoStatus.totalCameras}
               </Typography>
             </CardContent>
@@ -280,7 +280,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>
                 Inserted
               </Typography>
-              <Typography variant="h3" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ color: theming.colors.primary }}>
                 {videoStatus.inserted + photoStatus.inserted}
               </Typography>
             </CardContent>
@@ -292,7 +292,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>
                 Updated
               </Typography>
-              <Typography variant="h3" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ color: theming.colors.primary }}>
                 {videoStatus.updated + photoStatus.updated}
               </Typography>
             </CardContent>
@@ -304,7 +304,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>
                 Rejected/Conflicts
               </Typography>
-              <Typography variant="h3" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ color: theming.colors.primary }}>
                 {videoStatus.rejected + photoStatus.rejected + videoStatus.conflicts + photoStatus.conflicts}
               </Typography>
             </CardContent>

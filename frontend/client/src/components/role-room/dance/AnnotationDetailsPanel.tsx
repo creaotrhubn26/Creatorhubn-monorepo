@@ -6,6 +6,7 @@
  * Delete-knapp + edit-knapp øverst.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import { Box, Stack, Typography, Chip, IconButton, Tooltip, TextField, Button, MenuItem } from '@mui/material';
 import { Edit as EditIcon, Delete as DeleteIcon, Close as CloseIcon, Save as SaveIcon } from '@mui/icons-material';
@@ -13,7 +14,7 @@ import type { VideoAnnotation, AnnotationStatus } from './danceVideoService';
 import { categoryById, DANCE_MOVEMENT_CATEGORIES } from './danceMovementCategories';
 import { formatTimecode, parseTimecode } from './timecode';
 
-const PURPLE_LIGHT = '#a78bfa';
+const PURPLE_LIGHT = danceFlowColors.lavender;
 const TEXT_DIM = 'rgba(229,231,235,0.55)';
 
 export interface AnnotationDetailsPanelProps {
@@ -73,7 +74,7 @@ export function AnnotationDetailsPanel({
             size="small"
             onClick={() => setEditing((v) => !v)}
             data-testid="annotation-details-edit"
-            sx={{ color: editing ? '#34d399' : PURPLE_LIGHT, p: 0.5 }}
+            sx={{ color: editing ? danceFlowColors.successPrimary : PURPLE_LIGHT, p: 0.5 }}
           >
             <EditIcon sx={{ fontSize: 16 }} />
           </IconButton>
@@ -83,7 +84,7 @@ export function AnnotationDetailsPanel({
             size="small"
             onClick={onDelete}
             data-testid="annotation-details-delete"
-            sx={{ color: '#9ca3af', p: 0.5, '&:hover': { color: '#f87171' } }}
+            sx={{ color: danceFlowColors.textMuted, p: 0.5, '&:hover': { color: danceFlowColors.errorPrimary } }}
           >
             <DeleteIcon sx={{ fontSize: 16 }} />
           </IconButton>
@@ -92,7 +93,7 @@ export function AnnotationDetailsPanel({
           <IconButton
             size="small"
             onClick={onClose}
-            sx={{ color: '#9ca3af', p: 0.5 }}
+            sx={{ color: danceFlowColors.textMuted, p: 0.5 }}
           >
             <CloseIcon sx={{ fontSize: 16 }} />
           </IconButton>
@@ -108,7 +109,7 @@ export function AnnotationDetailsPanel({
             onChange={(e) => setDraftBody(e.target.value)}
             inputProps={{ 'data-testid': 'annotation-details-label-input' }}
             fullWidth
-            sx={{ '& .MuiInputBase-input': { fontSize: 12, color: '#e5e7eb' } }}
+            sx={{ '& .MuiInputBase-input': { fontSize: 12, color: danceFlowColors.textSecondary } }}
           />
           <TextField
             select
@@ -118,7 +119,7 @@ export function AnnotationDetailsPanel({
             onChange={(e) => setDraftCategory(e.target.value || null)}
             inputProps={{ 'data-testid': 'annotation-details-category-select' }}
             fullWidth
-            sx={{ '& .MuiInputBase-input': { fontSize: 12, color: '#e5e7eb' } }}
+            sx={{ '& .MuiInputBase-input': { fontSize: 12, color: danceFlowColors.textSecondary } }}
           >
             <MenuItem value="">— ingen —</MenuItem>
             {DANCE_MOVEMENT_CATEGORIES.map((c) => (
@@ -133,7 +134,7 @@ export function AnnotationDetailsPanel({
             onChange={(e) => setDraftDancer(e.target.value)}
             inputProps={{ 'data-testid': 'annotation-details-dancer-select' }}
             fullWidth
-            sx={{ '& .MuiInputBase-input': { fontSize: 12, color: '#e5e7eb' } }}
+            sx={{ '& .MuiInputBase-input': { fontSize: 12, color: danceFlowColors.textSecondary } }}
           >
             <MenuItem value="">— ingen —</MenuItem>
             {dancerOptions.map((d) => (
@@ -146,7 +147,7 @@ export function AnnotationDetailsPanel({
             startIcon={<SaveIcon sx={{ fontSize: 14 }} />}
             onClick={save}
             data-testid="annotation-details-save"
-            sx={{ bgcolor: '#8b5cf6', textTransform: 'none', '&:hover': { bgcolor: '#7c3aed' } }}
+            sx={{ bgcolor: danceFlowColors.lavenderDark, textTransform: 'none', '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
           >
             Lagre
           </Button>
@@ -169,7 +170,7 @@ export function AnnotationDetailsPanel({
             {formatTimecode(annotation.timestampSec, fps)} – {endTc}
           </Typography>
           {annotation.targetDancerIds.length > 0 ? (
-            <Typography sx={{ fontSize: 11, color: '#e5e7eb' }}>
+            <Typography sx={{ fontSize: 11, color: danceFlowColors.textSecondary }}>
               <Box component="span" sx={{ color: TEXT_DIM }}>Dancer: </Box>
               {annotation.targetDancerIds
                 .map((id) => dancerOptions.find((d) => d.id === id)?.label ?? id)
@@ -177,13 +178,13 @@ export function AnnotationDetailsPanel({
             </Typography>
           ) : null}
           {cat ? (
-            <Typography sx={{ fontSize: 11, color: '#e5e7eb' }}>
+            <Typography sx={{ fontSize: 11, color: danceFlowColors.textSecondary }}>
               <Box component="span" sx={{ color: TEXT_DIM }}>Category: </Box>{cat.label}
             </Typography>
           ) : null}
           {annotation.confidence != null ? (
             <Typography
-              sx={{ fontSize: 11, color: '#e5e7eb' }}
+              sx={{ fontSize: 11, color: danceFlowColors.textSecondary }}
               data-testid="annotation-details-confidence"
             >
               <Box component="span" sx={{ color: TEXT_DIM }}>Confidence: </Box>
@@ -191,7 +192,7 @@ export function AnnotationDetailsPanel({
             </Typography>
           ) : null}
           {annotation.body ? (
-            <Typography sx={{ fontSize: 11, color: '#e5e7eb', mt: 0.5 }}>
+            <Typography sx={{ fontSize: 11, color: danceFlowColors.textSecondary, mt: 0.5 }}>
               <Box component="span" sx={{ color: TEXT_DIM }}>Notes: </Box>{annotation.body}
             </Typography>
           ) : null}

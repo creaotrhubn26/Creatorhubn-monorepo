@@ -11,6 +11,7 @@
  * - Konfigurerbart skjema via `fields`-prop
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -39,10 +40,10 @@ import {
 } from '@mui/icons-material';
 import EmptyState from '../shared/EmptyState';
 
-const PURPLE = '#8b5cf6';
-const PURPLE_LIGHT = '#a78bfa';
-const BG = '#0a0a0a';
-const CARD = '#111114';
+const PURPLE = danceFlowColors.lavenderDark;
+const PURPLE_LIGHT = danceFlowColors.lavender;
+const BG = danceFlowColors.bgBase;
+const CARD = danceFlowColors.bgCard;
 const BORDER = 'rgba(139,92,246,0.25)';
 
 export type FieldType =
@@ -221,7 +222,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
   };
 
   return (
-    <Box data-testid={panelTestId} sx={{ bgcolor: BG, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 3 } }}>
+    <Box data-testid={panelTestId} sx={{ bgcolor: BG, color: danceFlowColors.textSecondary, minHeight: '100%', p: { xs: 2, md: 3 } }}>
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         spacing={1.5}
@@ -251,7 +252,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
           }}
           sx={{
             minWidth: 200,
-            '& .MuiInputBase-root': { bgcolor: CARD, color: '#e5e7eb', fontSize: 12 },
+            '& .MuiInputBase-root': { bgcolor: CARD, color: danceFlowColors.textSecondary, fontSize: 12 },
             '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER },
           }}
         />
@@ -259,7 +260,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
           variant="contained"
           startIcon={<AddIcon />}
           onClick={openCreate}
-          sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 600 }}
+          sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep }, textTransform: 'none', fontWeight: 600 }}
           data-testid={`crud-new-${primaryField}`}
         >
           Ny
@@ -344,7 +345,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
                               height: 22,
                               fontSize: 11,
                               bgcolor: 'rgba(139,92,246,0.10)',
-                              color: '#e5e7eb',
+                              color: danceFlowColors.textSecondary,
                               maxWidth: 320,
                               '& .MuiChip-label': { display: 'flex', alignItems: 'center' },
                             }}
@@ -407,7 +408,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
             variant="contained"
             onClick={() => void submitDraft()}
             disabled={saving}
-            sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' } }}
+            sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
             data-testid="crud-submit"
           >
             {saving ? 'Lagrer…' : editing ? 'Lagre' : 'Opprett'}

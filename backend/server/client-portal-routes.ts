@@ -5,6 +5,11 @@ import {
   resolveClientPortalSession,
 } from "./role-room-client-portal.js";
 import { persistAuthSession } from "./auth-session-store.js";
+import { markClientPresent } from "./client-portal-presence-service.js";
+import {
+  loadConnectedPlatforms,
+  loadProjectProducerInfo,
+} from "./client-portal-connected-platforms.js";
 
 export interface ClientPortalRoutesDeps {
   app: express.Application;
@@ -17,6 +22,49 @@ export function setupClientPortalRoutes(
 ): void {
   const { app, pool, activeSessions } = deps;
   type ActiveSessionData = any;
+
+  // Klient-tilstedeværelse: klientportalen sender en heartbeat mens fanen er
+  // åpen, så produsenten kan se «Klienten ser på prosjektet nå» i sanntid.
+  app.post("/api/client/portal/presence", async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token) return res.status(400).json({ error: "missing_token" });
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
+    const workspace =
+      req.body && typeof req.body.workspace === "string" ? req.body.workspace : null;
+    markClientPresent(session.projectId, session.clientEmail, session.clientName, workspace);
+    return res.json({ status: "ok" });
+  });
+
+  // Koblede plattformer: klienten ser hvilke kontoer de har gitt produsenten
+  // tilgang til (Instagram, Facebook, TikTok, LinkedIn, Google Workspace) og
+  // status på koblingen. Returnerer ALDRI tokens eller scopes — kun
+  // {platform, status, kontonavn}.
+  app.get("/api/client/portal/connected-platforms", async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token) return res.status(400).json({ error: "missing_token" });
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
+    try {
+      const [platforms, producer] = await Promise.all([
+        loadConnectedPlatforms(pool, session.projectId),
+        loadProjectProducerInfo(pool, session.projectId),
+      ]);
+      return res.json({
+        status: "ok",
+        platforms,
+        producer: producer
+          ? { name: producer.name, agency: producer.agency, email: producer.email }
+          : null,
+      });
+    } catch {
+      // Aldri la denne oversikten velte klientportalen — degrader til tom liste.
+      return res.json({ status: "ok", platforms: [], producer: null });
+    }
+  });
+
+  // (Klient-samtykke flyttet til role-room-routerens /client-portal/oauth-consent
+  //  for å kunne varsle produsent-teamet via upsertProducerProjectNotification.)
 
   app.get("/api/client/portal/requests", async (req, res) => {
     const token = typeof req.query.token === "string" ? req.query.token : "";

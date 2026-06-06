@@ -485,7 +485,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
         <Stack spacing={3}>
           {/* Template Selection */}
           {templates.length > 0 && (
-            <Paper sx={{ p: 2, bgcolor: '#f8f9fa', border: '1px solid #e9ecef',  ...theming.getThemedCardSx() }}>
+            <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)',  ...theming.getThemedCardSx() }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -610,7 +610,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
           />
 
           {/* Smart Content Generation */}
-          <Paper sx={{ p: 2, bgcolor: '#f0f7ff', border: '1px solid #2196f340',  ...theming.getThemedCardSx() }}>
+          <Paper sx={{ p: 2, bgcolor: 'rgba(33,150,243,0.08)', border: '1px solid rgba(33,150,243,0.20)',  ...theming.getThemedCardSx() }}>
             <Stack spacing={2}>
               <Stack direction="row" alignItems="center" spacing={2}>
                 <AutoAwesomeIcon sx={{ color: '#2196f3'}} />
@@ -665,7 +665,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
           </Paper>
 
           {/* Rich Text Toolbar */}
-          <Paper sx={{ p: 1, mb: 1, bgcolor: '#f8f9fa', border: '1px solid #e9ecef',  ...theming.getThemedCardSx() }}>
+          <Paper sx={{ p: 1, mb: 1, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)',  ...theming.getThemedCardSx() }}>
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
               <Typography variant="caption" sx={{ mr: 1, color: '#666' }}>
                 Formatering: </Typography>
@@ -775,7 +775,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
 
           {/* Gallery Attachment Section */}
           {emailData.projectId && projectGalleries.length > 0 && (
-            <Paper sx={{ p: 2, bgcolor: '#fff3e0', border: '1px solid #ffb74d',  ...theming.getThemedCardSx() }}>
+            <Paper sx={{ p: 2, bgcolor: 'rgba(255,152,0,0.12)', border: '1px solid #ffb74d',  ...theming.getThemedCardSx() }}>
               <Stack spacing={2}>
                 <Stack direction="row" alignItems="center" spacing={2}>
                   <GalleryIcon sx={{ color: '#ff8f00'}} />
@@ -888,7 +888,7 @@ ${getProfessionTerms().signature}
             
             {/* Rich Text Preview */}
             {isRichText && (
-              <Paper sx={{ p: 2, mt: 1, bgcolor: '#f8f9fa', border: '1px solid #e9ecef',  ...theming.getThemedCardSx() }}>
+              <Paper sx={{ p: 2, mt: 1, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)',  ...theming.getThemedCardSx() }}>
                 <Typography variant="caption" color="text.secondary" gutterBottom>
                   Forhåndsvisning (slik mottaker ser den):
                 </Typography>
@@ -929,8 +929,8 @@ ${getProfessionTerms().signature}
                   right: 0,
                   mt: 1,
                   p: 2,
-                  bgcolor: '#f0f7ff',
-                  border: '1px solid #2196f3',
+                  bgcolor: 'rgba(33,150,243,0.08)',
+                  border: '1px solid rgba(33,150,243,0.20)',
                   borderRadius: 1,
                   zIndex: 1000,
                   ...theming.getThemedCardSx()
@@ -979,7 +979,7 @@ ${getProfessionTerms().signature}
 
       <DialogActions sx={{ 
         p:  3, 
-        pt: 0, borderTop: '1px solid #e9ecef',
+        pt: 0, borderTop: '1px solid rgba(255,255,255,0.10)',
         justifyContent: 'space-between'
   }}>
         <Stack direction="row" spacing={1}>

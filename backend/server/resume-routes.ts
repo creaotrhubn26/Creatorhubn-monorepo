@@ -694,7 +694,7 @@ function summarizeResumeForAI(full: FullResume): string {
       lines.push(
         `- ${scrubPII(e.jobTitle ?? "")} hos ${scrubPII(e.company ?? "")} (${startStr} → ${endStr})`,
       );
-      if (e.description) lines.push(`  ${scrubPII(e.description.slice(0, 300))}`);
+      if (e.description) lines.push(`  ${scrubPII(typeof e.description === "string" ? e.description.slice(0, 300) : e.description)}`);
       const ach = (e.achievements as string[]) ?? [];
       ach.slice(0, 5).forEach((a) => lines.push(`  • ${scrubPII(a)}`));
     });
@@ -731,7 +731,7 @@ function summarizeResumeForAI(full: FullResume): string {
     lines.push("\nPROSJEKTER:");
     full.projects.forEach((p_) => {
       lines.push(`- ${scrubPII(p_.title ?? "")}${p_.role ? ` (${scrubPII(p_.role)})` : ""}`);
-      if (p_.description) lines.push(`  ${scrubPII(p_.description.slice(0, 200))}`);
+      if (p_.description) lines.push(`  ${scrubPII(typeof p_.description === "string" ? p_.description.slice(0, 200) : p_.description)}`);
     });
   }
   return lines.join("\n");
@@ -2978,7 +2978,10 @@ export function setupResumeRoutes(deps: ResumeRoutesDeps): void {
       try {
         let text = "";
         if (req.file.mimetype === "application/pdf") {
-          const pdfParse = (await import("pdf-parse")).default;
+          // pdf-parse ESM eksporterer funksjonen som modul-default OG som
+          // navngitt default-eksport. Cast via unknown for å unngå type-mismatch.
+          const pdfParseMod = await import("pdf-parse");
+          const pdfParse = ((pdfParseMod as unknown as { default?: typeof pdfParseMod }).default ?? pdfParseMod) as unknown as (buf: Buffer) => Promise<{ text: string }>;
           const parsed = await pdfParse(req.file.buffer);
           text = parsed.text;
         } else {

@@ -31,6 +31,12 @@ import {
   ZoomOut,
   Fullscreen,
   FullscreenExit,
+  MusicNote as MusicNoteIcon,
+  PhotoCamera as PhotoCameraIcon,
+  CameraEnhance as LensIcon,
+  Straighten as StraightenIcon,
+  Timer as TimerIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import { useDynamicProfessions } from '@/components/universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
@@ -306,9 +312,12 @@ export const QuickPreview: React.FC<QuickPreviewProps> = ({
                 borderRadius: 3,
                 border: `2px solid ${accentColor}`
               }}>
-                <Typography variant="h4" sx={{ color: 'white', mb: 3, textAlign: 'center' }}>
-                  🎵 {currentItem.title}
-                </Typography>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'center', mb: 3 }}>
+                  <MusicNoteIcon sx={{ color: 'white' }} />
+                  <Typography variant="h4" sx={{ color: 'white', textAlign: 'center' }}>
+                    {currentItem.title}
+                  </Typography>
+                </Stack>
                 <audio
                   src={currentItem.fileUrl}
                   controls
@@ -512,19 +521,28 @@ export const QuickPreview: React.FC<QuickPreviewProps> = ({
                   </Typography>
                   <Stack spacing={1} sx={{ mt: 1 }}>
                     {currentItem.exif.camera && (
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
-                        📷 {currentItem.exif.camera}
-                      </Typography>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <PhotoCameraIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }} />
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
+                          {currentItem.exif.camera}
+                        </Typography>
+                      </Stack>
                     )}
                     {currentItem.exif.lens && (
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
-                        🔍 {currentItem.exif.lens}
-                      </Typography>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <LensIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }} />
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
+                          {currentItem.exif.lens}
+                        </Typography>
+                      </Stack>
                     )}
                     {currentItem.exif.focalLength && (
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
-                        📏 {currentItem.exif.focalLength}
-                      </Typography>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <StraightenIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }} />
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
+                          {currentItem.exif.focalLength}
+                        </Typography>
+                      </Stack>
                     )}
                     {currentItem.exif.aperture && (
                       <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
@@ -532,9 +550,12 @@ export const QuickPreview: React.FC<QuickPreviewProps> = ({
                       </Typography>
                     )}
                     {currentItem.exif.shutterSpeed && (
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
-                        ⏱️ {currentItem.exif.shutterSpeed}
-                      </Typography>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <TimerIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }} />
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
+                          {currentItem.exif.shutterSpeed}
+                        </Typography>
+                      </Stack>
                     )}
                     {currentItem.exif.iso && (
                       <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
@@ -576,19 +597,28 @@ export const QuickPreview: React.FC<QuickPreviewProps> = ({
                   </Typography>
                   <Stack spacing={0.5}>
                     {currentItem.stats.views !== undefined && (
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
-                        👁️ {currentItem.stats.views} views
-                      </Typography>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <VisibilityIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }} />
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
+                          {currentItem.stats.views} visninger
+                        </Typography>
+                      </Stack>
                     )}
                     {currentItem.stats.likes !== undefined && (
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
-                        ❤️ {currentItem.stats.likes} likes
-                      </Typography>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <Favorite sx={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }} />
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
+                          {currentItem.stats.likes} likes
+                        </Typography>
+                      </Stack>
                     )}
                     {currentItem.stats.downloads !== undefined && (
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
-                        ⬇️ {currentItem.stats.downloads} downloads
-                      </Typography>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <Download sx={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }} />
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
+                          {currentItem.stats.downloads} nedlastinger
+                        </Typography>
+                      </Stack>
                     )}
                   </Stack>
                 </Box>

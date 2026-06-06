@@ -1674,6 +1674,18 @@ export const newsletterIssuesApi = {
   unpublish: async (id: string): Promise<{ ok: boolean; item: NewsletterIssue }> => {
     return jsonFetch(`/newsletter/role-room/issues/${encodeURIComponent(id)}/unpublish`, { method: 'POST' });
   },
+  // PR 12: Generer Weekly Brief-draft fra siste konkurrent-rapport.
+  fromReport: async (input: { brandKey?: string; reportId?: number } = {}): Promise<{
+    ok: boolean;
+    issue: NewsletterIssue;
+    sourceReport: { id: number; brandKey: string; generatedAt: string };
+    blockCount: number;
+  }> => {
+    return jsonFetch('/newsletter/role-room/issues/from-report', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
 };
 
 // ─────────────────────────────────────────────────────────

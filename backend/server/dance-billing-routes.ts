@@ -82,7 +82,7 @@ const planBody = z.object({
   stripeMonthlyPriceId: z.string().max(120).nullable().optional(),
   stripeYearlyPriceId: z.string().max(120).nullable().optional(),
   features: z.array(z.string().max(120)).max(50).optional(),
-  limits: z.record(z.unknown()).optional(),
+  limits: z.record(z.string(), z.unknown()).optional(),
   trialDays: z.number().int().min(0).max(365).optional(),
   isActive: z.boolean().optional(),
   isFeatured: z.boolean().optional(),
@@ -107,7 +107,7 @@ const checkoutBody = z.object({
 });
 
 const settingBody = z.object({
-  value: z.record(z.unknown()),
+  value: z.record(z.string(), z.unknown()),
   description: z.string().max(500).nullable().optional(),
 });
 

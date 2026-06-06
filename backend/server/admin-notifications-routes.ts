@@ -36,7 +36,14 @@ export interface AdminNotificationsDeps {
   app: express.Application;
   pool: any;
   getPricingUserId: (req: any) => string;
-  requireAdminSession?: (req: any, res: any) => boolean;
+  /**
+   * Matcher index.ts:1756 — returnerer session-objekt eller null.
+   * Brukes truthy/falsy i route-handlers, ikke som strict boolean.
+   */
+  requireAdminSession?: (
+    req: express.Request,
+    res: express.Response,
+  ) => { userId: string; email: string; name: string; role: string; loginAt: string } | null;
 }
 
 const VALID_TYPES = ["info", "warning", "success", "error", "announcement"];

@@ -625,6 +625,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const [manuscriptViewers, setManuscriptViewers] = useState<Array<{ userId: string; displayName: string }>>([]);
   // userId → vennlig navn (fra prosjekt-medlemmer) for å resolve lås-eier.
   const [memberNameMap, setMemberNameMap] = useState<Record<string, string>>({});
+  // Ref-speil så lås-effektens (én-gangs) closure alltid ser nyeste navnekart.
+  const memberNameMapRef = useRef<Record<string, string>>({});
+  useEffect(() => { memberNameMapRef.current = memberNameMap; }, [memberNameMap]);
+  const resolveMemberName = (id?: string | null): string => {
+    const key = id == null ? '' : String(id);
+    return (key && memberNameMapRef.current[key]) || key || 'En annen i teamet';
+  };
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
   const [showTargetDialog, setShowTargetDialog] = useState(false);
   const [targetDraft, setTargetDraft] = useState('');
@@ -672,17 +679,18 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   // så StoryboardIntegrationView (som krever selectedScene) renderes
   // umiddelbart. Vente-state ('Velg en scene') var det som gjorde Storyboard
   // Pro-grensesnittet usynlig selv om koden er der.
-  useEffect(() => {
-    if (sceneViewMode === 'storyboard' && !selectedScene && scenes.length > 0) {
-      setSelectedScene(scenes[0]);
-    }
-  }, [sceneViewMode, selectedScene, scenes]);
   const [showProductionPanel, setShowProductionPanel] = useState(false);
   // Default 'storyboard' (ikke 'list') så Storyboard Pro-grensesnittet vises
   // umiddelbart når brukeren åpner Scener-fanen. Tidligere måtte man manuelt
   // klikke 'Storyboard' i toggle-knappene — det var 4 klikk dypt og praktisk
   // talt skjult. Brukeren kan fortsatt bytte til Liste/Dra hvis ønsket.
   const [sceneViewMode, setSceneViewMode] = useState<'list' | 'drag' | 'storyboard'>('storyboard');
+  // useEffect MÅ kjøres etter sceneViewMode-deklarasjon (block-scoped TS-feil).
+  useEffect(() => {
+    if (sceneViewMode === 'storyboard' && !selectedScene && scenes.length > 0) {
+      setSelectedScene(scenes[0]);
+    }
+  }, [sceneViewMode, selectedScene, scenes]);
   const [productionWorkspaceMode, setProductionWorkspaceMode] = useState<'storyboard' | 'split'>('storyboard');
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
@@ -1114,7 +1122,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           });
           showWarning(
             lockErr.lockedBy
-              ? `${lockErr.lockedBy} redigerer dette manuset nå. Endringene dine lagres ikke før låsen frigis.`
+              ? `${resolveMemberName(lockErr.lockedBy)} redigerer dette manuset nå. Endringene dine lagres ikke før låsen frigis.`
               : 'En annen i teamet redigerer dette manuset nå.',
           );
         }
@@ -1524,7 +1532,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       // Remap dialogue til de endelige scene-id-ene (bevarte der de matchet).
       const mergedDialogue = autoDialogue.map((d) => ({
         ...d,
-        sceneId: autoIdToFinalId.get(d.sceneId) ?? d.sceneId,
+        sceneId: (d.sceneId ? autoIdToFinalId.get(d.sceneId) ?? d.sceneId : d.sceneId) as string,
       }));
 
       // Update state
@@ -1856,7 +1864,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           setManuscriptSaveStatus('error');
           showWarning(
             lockErr.lockedBy
-              ? `Manuset redigeres av ${lockErr.lockedBy} akkurat nå — endringene dine er ikke lagret. De beholdes til låsen frigis.`
+              ? `Manuset redigeres av ${resolveMemberName(lockErr.lockedBy)} akkurat nå — endringene dine er ikke lagret. De beholdes til låsen frigis.`
               : 'Manuset er låst av en annen i teamet — endringene dine er ikke lagret ennå.',
           );
           return;
@@ -3071,6 +3079,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   castingCandidates={castingCandidates}
                   onCharacterAdd={handleCharacterAdd}
                   onLocationAdd={handleLocationAdd}
+                  storyLogicData={storyLogicData}
                 />
               </>
             )}
@@ -4497,7 +4506,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
 // Sub-components for each tab
 interface EditorTabProps {
-  manuscript: Manuscript; 
+  manuscript: Manuscript;
   onContentChange: (content: string) => void;
   onParseToScenes?: (content: string) => void;
   manuscriptSaveStatus?: 'saved' | 'unsaved' | 'saving' | 'error';
@@ -4510,6 +4519,7 @@ interface EditorTabProps {
   scenes?: SceneBreakdown[];
   onCharacterAdd?: (name: string) => void;
   onLocationAdd?: (name: string) => void;
+  storyLogicData?: StoryLogicState | null;
 }
 
 interface CharacterProfileOpenPayload {
@@ -4532,6 +4542,7 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
   scenes = [],
   onCharacterAdd,
   onLocationAdd,
+  storyLogicData = null,
 }) => {
   const { showSuccess } = useToast();
   const branding = useBrandingSettings();

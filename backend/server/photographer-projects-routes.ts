@@ -140,8 +140,10 @@ export function setupPhotographerProjectsRoutes(
         }),
       });
     } catch (err) {
-      console.error('[photographer-projects] list failed:', err);
-      res.status(500).json({ error: 'list_projects_failed' });
+      // Schema-feil eller manglende tabeller skal ikke krasje admin dashboard.
+      // Returner tom liste i stedet for 500 — UI viser allerede empty-state.
+      console.warn('[photographer-projects] list failed, returning empty:', err);
+      res.json({ projects: [], schemaWarning: err instanceof Error ? err.message : String(err) });
     }
   });
 

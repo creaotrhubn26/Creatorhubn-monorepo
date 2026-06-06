@@ -21,6 +21,7 @@
  *   - Layer/z-index-håndtering (stage-bunn / dansere / overlay-piler)
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   Box,
@@ -421,7 +422,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
     const canvas = new Canvas(canvasElRef.current, {
       width: STAGE_WIDTH,
       height: STAGE_HEIGHT,
-      backgroundColor: '#0d1218',
+      backgroundColor: danceFlowColors.bgInset,
       selection: false,
       preserveObjectStacking: true,
       // Audit C1: Fabric v6 har native touch-event-støtte. Vi setter
@@ -765,7 +766,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
   return (
     <Box
       data-testid="formation-view-wrapper"
-      sx={{ bgcolor: '#0a0a0a', color: '#e5e7eb', display: 'flex', flexDirection: 'column' }}
+      sx={{ bgcolor: danceFlowColors.bgBase, color: danceFlowColors.textSecondary, display: 'flex', flexDirection: 'column' }}
     >
     {/* Audit H1: read-only-banner. Vises i toppen så bruker vet hvorfor
         ingen knapper svarer. */}
@@ -774,7 +775,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
         data-testid="formation-view-readonly-banner"
         sx={{
           px: 2, py: 0.75, fontSize: 11, fontWeight: 600,
-          color: '#fbbf24', bgcolor: 'rgba(251,191,36,0.10)',
+          color: danceFlowColors.gold, bgcolor: 'rgba(251,191,36,0.10)',
           borderBottom: '1px solid rgba(251,191,36,0.25)',
         }}
       >
@@ -784,8 +785,8 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
     <Box
       data-testid="formation-view"
       sx={{
-        bgcolor: '#0a0a0a',
-        color: '#e5e7eb',
+        bgcolor: danceFlowColors.bgBase,
+        color: danceFlowColors.textSecondary,
         flex: 1,
         fontFamily: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',
         display: 'grid',
@@ -819,12 +820,12 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
         data-testid="formation-roster"
         sx={{
           borderRight: { lg: '1px solid #1e2536' },
-          bgcolor: '#0a0a0a',
+          bgcolor: danceFlowColors.bgBase,
           p: 1.5,
           overflowY: 'auto',
         }}
       >
-        <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#6b7280', fontWeight: 700, mb: 1 }}>
+        <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: danceFlowColors.textDisabled, fontWeight: 700, mb: 1 }}>
           DANSE-ROSTER ({dancers.length})
         </Typography>
         {/* Workflow-audit G3: hvis ingen ekte dansere er lagt til (kun
@@ -841,10 +842,10 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               bgcolor: 'rgba(167,139,250,0.04)',
             }}
           >
-            <Typography sx={{ fontSize: 10, color: '#e5e7eb', fontWeight: 600, mb: 0.5 }}>
+            <Typography sx={{ fontSize: 10, color: danceFlowColors.textSecondary, fontWeight: 600, mb: 0.5 }}>
               Demo-dansere vises
             </Typography>
-            <Typography sx={{ fontSize: 9, color: '#9ca3af', mb: 1, lineHeight: 1.4 }}>
+            <Typography sx={{ fontSize: 9, color: danceFlowColors.textMuted, mb: 1, lineHeight: 1.4 }}>
               Legg til dine egne dansere i Dancers-fanen for å bruke ekte navn.
             </Typography>
             <Box
@@ -860,7 +861,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               sx={{
                 fontSize: 10,
                 fontWeight: 700,
-                color: '#a78bfa',
+                color: danceFlowColors.lavender,
                 bgcolor: 'transparent',
                 border: '1px solid #a78bfa',
                 borderRadius: 0.5,
@@ -890,40 +891,40 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                   p: 0.75,
                   borderRadius: 1,
                   cursor: 'pointer',
-                  border: `1px solid ${inFormation ? d.color ?? '#8b5cf6' : '#1e2536'}`,
-                  bgcolor: inFormation ? `${d.color ?? '#8b5cf6'}15` : 'transparent',
+                  border: `1px solid ${inFormation ? d.color ?? danceFlowColors.lavenderDark : danceFlowColors.borderStrong}`,
+                  bgcolor: inFormation ? `${d.color ?? danceFlowColors.lavenderDark}15` : 'transparent',
                   transition: 'all 0.12s',
-                  '&:hover': { bgcolor: inFormation ? `${d.color ?? '#8b5cf6'}22` : '#0f1318' },
+                  '&:hover': { bgcolor: inFormation ? `${d.color ?? danceFlowColors.lavenderDark}22` : danceFlowColors.bgPanel },
                 }}
               >
                 <Avatar
                   src={d.photoUrl}
                   sx={{
                     width: 28, height: 28, fontSize: 10,
-                    bgcolor: d.color ?? '#3b82f6',
-                    border: inFormation ? `2px solid ${d.color ?? '#8b5cf6'}` : 'none',
+                    bgcolor: d.color ?? danceFlowColors.info,
+                    border: inFormation ? `2px solid ${d.color ?? danceFlowColors.lavenderDark}` : 'none',
                   }}
                 >
                   {d.initials}
                 </Avatar>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography noWrap sx={{ fontSize: 11, fontWeight: 600, color: inFormation ? '#fff' : '#cbd5e1' }}>
+                  <Typography noWrap sx={{ fontSize: 11, fontWeight: 600, color: inFormation ? '#fff' : danceFlowColors.grayLight }}>
                     {d.name}
                   </Typography>
                   {d.role && (
-                    <Typography noWrap sx={{ fontSize: 9, color: '#6b7280' }}>
+                    <Typography noWrap sx={{ fontSize: 9, color: danceFlowColors.textDisabled }}>
                       {d.role}
                     </Typography>
                   )}
                 </Box>
                 {inFormation && (
-                  <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: d.color ?? '#8b5cf6' }} />
+                  <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: d.color ?? danceFlowColors.lavenderDark }} />
                 )}
               </Box>
             );
           })}
         </Stack>
-        <Typography sx={{ fontSize: 9, color: '#6b7280', mt: 1.5, fontStyle: 'italic' }}>
+        <Typography sx={{ fontSize: 9, color: danceFlowColors.textDisabled, mt: 1.5, fontStyle: 'italic' }}>
           Klikk for å legge til/fjerne fra aktiv formasjon. Drag på scenen for plassering.
         </Typography>
       </Box>
@@ -939,7 +940,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             ? { xs: '1fr', lg: 'minmax(280px, 1fr) auto' }
             : '1fr',
           gap: videoPanelSlot ? 1 : 0,
-          bgcolor: '#0a0a0a',
+          bgcolor: danceFlowColors.bgBase,
         }}
         data-testid="formation-stage-center-grid"
       >
@@ -959,7 +960,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
           flexDirection: 'column',
           alignItems: 'center',
           gap: 1.5,
-          bgcolor: '#0a0a0a',
+          bgcolor: danceFlowColors.bgBase,
         }}
       >
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ width: '100%' }}>
@@ -970,11 +971,11 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             <Chip
               size="small"
               label={activeFormation.notes}
-              sx={{ height: 20, fontSize: 10, bgcolor: '#1e2536', color: '#9ca3af', maxWidth: 360 }}
+              sx={{ height: 20, fontSize: 10, bgcolor: danceFlowColors.borderStrong, color: danceFlowColors.textMuted, maxWidth: 360 }}
             />
           )}
           {animationProgress && (
-            <Chip size="small" label="Animerer…" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(251,191,36,0.18)', color: '#fbbf24' }} />
+            <Chip size="small" label="Animerer…" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(251,191,36,0.18)', color: danceFlowColors.gold }} />
           )}
         </Stack>
 
@@ -996,11 +997,11 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             sx={{
               minWidth: 160,
               '& .MuiInputBase-root': {
-                bgcolor: '#0d1218',
-                color: '#e5e7eb',
+                bgcolor: danceFlowColors.bgInset,
+                color: danceFlowColors.textSecondary,
                 fontSize: 12,
               },
-              '& .MuiOutlinedInput-notchedOutline': { borderColor: '#2a3142' },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: danceFlowColors.borderSoft },
             }}
             data-testid="formation-stage-type"
           >
@@ -1017,8 +1018,8 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             onChange={(_, v: number | null) => v !== null && setSnapStep(v)}
             sx={{
               '& .MuiToggleButton-root': {
-                color: '#9ca3af',
-                borderColor: '#2a3142',
+                color: danceFlowColors.textMuted,
+                borderColor: danceFlowColors.borderSoft,
                 fontSize: 11,
                 px: 1,
                 '&.Mui-selected': { color: '#fff', bgcolor: 'rgba(167,139,250,0.18)' },
@@ -1042,8 +1043,8 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               selected={symmetry}
               onChange={() => setSymmetry((v) => !v)}
               sx={{
-                color: symmetry ? '#fff' : '#9ca3af',
-                borderColor: '#2a3142',
+                color: symmetry ? '#fff' : danceFlowColors.textMuted,
+                borderColor: danceFlowColors.borderSoft,
                 bgcolor: symmetry ? 'rgba(167,139,250,0.18)' : 'transparent',
                 fontSize: 11,
                 px: 1,
@@ -1060,7 +1061,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                 size="small"
                 onClick={() => distributeEvenly('x')}
                 disabled={!activeFormation || activeFormation.positions.length < 2}
-                sx={{ color: '#a78bfa' }}
+                sx={{ color: danceFlowColors.lavender }}
                 data-testid="formation-distribute-x"
               >
                 <DistributeXIcon sx={{ fontSize: 18 }} />
@@ -1073,7 +1074,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                 size="small"
                 onClick={() => distributeEvenly('y')}
                 disabled={!activeFormation || activeFormation.positions.length < 2}
-                sx={{ color: '#a78bfa' }}
+                sx={{ color: danceFlowColors.lavender }}
                 data-testid="formation-distribute-y"
               >
                 <DistributeYIcon sx={{ fontSize: 18 }} />
@@ -1096,8 +1097,8 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               onChange={() => setCurveMode((v) => !v)}
               data-testid="formation-curve-tool"
               sx={{
-                color: curveMode ? '#fff' : '#9ca3af',
-                borderColor: '#2a3142',
+                color: curveMode ? '#fff' : danceFlowColors.textMuted,
+                borderColor: danceFlowColors.borderSoft,
                 bgcolor: curveMode ? 'rgba(96,165,250,0.18)' : 'transparent',
                 fontSize: 11, px: 1,
               }}
@@ -1111,7 +1112,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                 size="small"
                 onClick={undo}
                 data-testid="formation-undo"
-                sx={{ color: '#a78bfa' }}
+                sx={{ color: danceFlowColors.lavender }}
               >
                 <UndoIcon sx={{ fontSize: 18 }} />
               </IconButton>
@@ -1123,7 +1124,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                 size="small"
                 onClick={redo}
                 data-testid="formation-redo"
-                sx={{ color: '#a78bfa' }}
+                sx={{ color: danceFlowColors.lavender }}
               >
                 <RedoIcon sx={{ fontSize: 18 }} />
               </IconButton>
@@ -1176,12 +1177,12 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                 data-testid="formation-stage-label-upstage"
                 sx={{
                   position: 'absolute', top: 6, left: 0, right: 0, textAlign: 'center',
-                  fontSize: 11, color: '#9ca3af', letterSpacing: 2, pointerEvents: 'none',
+                  fontSize: 11, color: danceFlowColors.textMuted, letterSpacing: 2, pointerEvents: 'none',
                   fontWeight: 700,
                 }}
               >
                 Upstage
-                <Box component="span" sx={{ display: 'block', fontSize: 8, color: '#6b7280', mt: 0.25, letterSpacing: 1.5, fontWeight: 500 }}>
+                <Box component="span" sx={{ display: 'block', fontSize: 8, color: danceFlowColors.textDisabled, mt: 0.25, letterSpacing: 1.5, fontWeight: 500 }}>
                   ↑ Mirror · Back Wall
                 </Box>
               </Typography>
@@ -1189,12 +1190,12 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                 data-testid="formation-stage-label-downstage"
                 sx={{
                   position: 'absolute', bottom: 6, left: 0, right: 0, textAlign: 'center',
-                  fontSize: 11, color: '#fbbf24', letterSpacing: 2, pointerEvents: 'none',
+                  fontSize: 11, color: danceFlowColors.gold, letterSpacing: 2, pointerEvents: 'none',
                   fontWeight: 700,
                 }}
               >
                 Downstage
-                <Box component="span" sx={{ display: 'block', fontSize: 8, color: '#9ca3af', mt: 0.25, letterSpacing: 1.5, fontWeight: 500 }}>
+                <Box component="span" sx={{ display: 'block', fontSize: 8, color: danceFlowColors.textMuted, mt: 0.25, letterSpacing: 1.5, fontWeight: 500 }}>
                   ↓ Audience · Front
                 </Box>
               </Typography>
@@ -1202,7 +1203,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                 data-testid="formation-stage-label-left"
                 sx={{
                   position: 'absolute', top: '50%', left: 4, transform: 'translateY(-50%) rotate(-90deg)',
-                  transformOrigin: 'center', fontSize: 9, color: '#6b7280',
+                  transformOrigin: 'center', fontSize: 9, color: danceFlowColors.textDisabled,
                   letterSpacing: 1.5, pointerEvents: 'none', fontWeight: 600,
                 }}
               >
@@ -1212,7 +1213,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                 data-testid="formation-stage-label-right"
                 sx={{
                   position: 'absolute', top: '50%', right: 4, transform: 'translateY(-50%) rotate(90deg)',
-                  transformOrigin: 'center', fontSize: 9, color: '#6b7280',
+                  transformOrigin: 'center', fontSize: 9, color: danceFlowColors.textDisabled,
                   letterSpacing: 1.5, pointerEvents: 'none', fontWeight: 600,
                 }}
               >
@@ -1253,7 +1254,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             border: '1px solid #1e2536',
           }}
         >
-          <Typography sx={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, letterSpacing: 0.5, flexShrink: 0 }}>
+          <Typography sx={{ fontSize: 10, color: danceFlowColors.textMuted, fontWeight: 600, letterSpacing: 0.5, flexShrink: 0 }}>
             Opacity
           </Typography>
           <input
@@ -1265,9 +1266,9 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             onChange={(e) => setStageOpacity(Number(e.target.value) / 100)}
             data-testid="formation-stage-opacity"
             aria-label="Stage opacity"
-            style={{ flex: 1, maxWidth: 180, accentColor: '#a78bfa' }}
+            style={{ flex: 1, maxWidth: 180, accentColor: danceFlowColors.lavender }}
           />
-          <Typography sx={{ fontSize: 10, color: '#a78bfa', fontWeight: 600, minWidth: 32 }}>
+          <Typography sx={{ fontSize: 10, color: danceFlowColors.lavender, fontWeight: 600, minWidth: 32 }}>
             {Math.round(stageOpacity * 100)}%
           </Typography>
           <Box sx={{ flex: 1 }} />
@@ -1275,7 +1276,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             component="label"
             sx={{
               display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 11,
-              color: '#e5e7eb', fontWeight: 500, cursor: 'pointer',
+              color: danceFlowColors.textSecondary, fontWeight: 500, cursor: 'pointer',
             }}
           >
             <input
@@ -1283,7 +1284,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               checked={showPaths}
               onChange={() => setShowPaths((v) => !v)}
               data-testid="formation-stage-show-paths"
-              style={{ accentColor: '#a78bfa' }}
+              style={{ accentColor: danceFlowColors.lavender }}
             />
             Show Paths
           </Box>
@@ -1291,7 +1292,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             component="label"
             sx={{
               display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 11,
-              color: '#e5e7eb', fontWeight: 500, cursor: 'pointer',
+              color: danceFlowColors.textSecondary, fontWeight: 500, cursor: 'pointer',
             }}
           >
             <input
@@ -1299,16 +1300,16 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               checked={showIds}
               onChange={() => setShowIds((v) => !v)}
               data-testid="formation-stage-show-ids"
-              style={{ accentColor: '#a78bfa' }}
+              style={{ accentColor: danceFlowColors.lavender }}
             />
             Show IDs
           </Box>
         </Stack>
 
-        <Typography sx={{ fontSize: 10, color: '#6b7280', textAlign: 'center', mt: -0.5 }}>
+        <Typography sx={{ fontSize: 10, color: danceFlowColors.textDisabled, textAlign: 'center', mt: -0.5 }}>
           Drag dansere på scenen for å plassere. Posisjonen lagres automatisk i aktiv formasjon.
           {/* Audit B1: keyboard-hint */}
-          <Box component="span" sx={{ display: 'block', mt: 0.25, fontSize: 9, color: '#6b7280' }}>
+          <Box component="span" sx={{ display: 'block', mt: 0.25, fontSize: 9, color: danceFlowColors.textDisabled }}>
             Eller bruk <strong>Tab</strong> + piltaster — pucks flyttes 1% per trykk (Shift = 5%).
           </Box>
         </Typography>
@@ -1320,7 +1321,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
         data-testid="formation-list"
         sx={{
           borderLeft: { lg: '1px solid #1e2536' },
-          bgcolor: '#0f1318',
+          bgcolor: danceFlowColors.bgPanel,
           p: 1.5,
           overflowY: 'auto',
         }}
@@ -1351,7 +1352,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             onChange={updateActiveFormation}
           />
         ) : null}
-        <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#6b7280', fontWeight: 700, mb: 1, mt: activeFormation ? 1.5 : 0 }}>
+        <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: danceFlowColors.textDisabled, fontWeight: 700, mb: 1, mt: activeFormation ? 1.5 : 0 }}>
           FORMASJONER ({formations.length})
         </Typography>
 
@@ -1371,11 +1372,11 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               textAlign: 'center',
             }}
           >
-            <Typography sx={{ fontSize: 11, color: '#e5e7eb', fontWeight: 600, mb: 0.5 }}>
+            <Typography sx={{ fontSize: 11, color: danceFlowColors.textSecondary, fontWeight: 600, mb: 0.5 }}>
               Ingen formasjoner ennå
             </Typography>
-            <Typography sx={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.5 }}>
-              <strong style={{ color: '#a78bfa' }}>Dobbeltklikk på tidslinjen</strong>{' '}
+            <Typography sx={{ fontSize: 10, color: danceFlowColors.textMuted, lineHeight: 1.5 }}>
+              <strong style={{ color: danceFlowColors.lavender }}>Dobbeltklikk på tidslinjen</strong>{' '}
               under for å opprette en ved en spesifikk tid,
               <br />
               eller skriv et navn under og trykk «Lagre».
@@ -1399,7 +1400,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                 sx={{
                   px: 0.5, py: 0.5, mt: idx > 0 ? 0.75 : 0,
                   fontSize: 9, letterSpacing: 1.5, fontWeight: 700,
-                  color: '#fbbf24', textTransform: 'uppercase',
+                  color: danceFlowColors.gold, textTransform: 'uppercase',
                   borderBottom: '1px solid rgba(251,191,36,0.2)',
                 }}
               >
@@ -1414,7 +1415,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                 sx={{
                   p: 0.75,
                   borderRadius: 1,
-                  border: `1px solid ${isActive ? '#a78bfa' : '#1e2536'}`,
+                  border: `1px solid ${isActive ? danceFlowColors.lavender : danceFlowColors.borderStrong}`,
                   bgcolor: isActive ? 'rgba(167,139,250,0.1)' : 'transparent',
                 }}
               >
@@ -1425,11 +1426,11 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                   >
                     <Typography
                       noWrap
-                      sx={{ fontSize: 11, fontWeight: 600, color: isActive ? '#c4b5fd' : '#e5e7eb' }}
+                      sx={{ fontSize: 11, fontWeight: 600, color: isActive ? danceFlowColors.lavenderLight : danceFlowColors.textSecondary }}
                     >
                       {f.name}
                     </Typography>
-                    <Typography sx={{ fontSize: 9, color: '#6b7280' }}>
+                    <Typography sx={{ fontSize: 9, color: danceFlowColors.textDisabled }}>
                       {f.positions.length} dansere
                     </Typography>
                   </Box>
@@ -1439,7 +1440,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                         size="small"
                         data-testid={`formation-animate-${f.id}`}
                         onClick={() => animateToFormation(f.id)}
-                        sx={{ color: '#a78bfa', p: 0.25 }}
+                        sx={{ color: danceFlowColors.lavender, p: 0.25 }}
                         disabled={!!animationProgress}
                       >
                         <PlayIcon sx={{ fontSize: 14 }} />
@@ -1450,7 +1451,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                     <IconButton
                       size="small"
                       onClick={() => deleteFormation(f.id)}
-                      sx={{ color: '#9ca3af', p: 0.25, '&:hover': { color: '#f87171' } }}
+                      sx={{ color: danceFlowColors.textMuted, p: 0.25, '&:hover': { color: danceFlowColors.errorPrimary } }}
                     >
                       <DeleteIcon sx={{ fontSize: 14 }} />
                     </IconButton>
@@ -1463,7 +1464,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
         </Stack>
 
         <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid #1e2536' }}>
-          <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: '#6b7280', fontWeight: 700, mb: 0.5 }}>
+          <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: danceFlowColors.textDisabled, fontWeight: 700, mb: 0.5 }}>
             LAGRE NÅVÆRENDE SOM
           </Typography>
           <Stack direction="row" spacing={0.5}>
@@ -1475,10 +1476,10 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               onKeyDown={(e) => { if (e.key === 'Enter') saveNewFormation(); }}
               sx={{
                 flex: 1,
-                '& .MuiInputBase-input': { fontSize: 11, color: '#e5e7eb' },
+                '& .MuiInputBase-input': { fontSize: 11, color: danceFlowColors.textSecondary },
                 '& .MuiOutlinedInput-root': {
-                  bgcolor: '#0a0a0a',
-                  '& fieldset': { borderColor: '#1e2536' },
+                  bgcolor: danceFlowColors.bgBase,
+                  '& fieldset': { borderColor: danceFlowColors.borderStrong },
                 },
               }}
             />
@@ -1486,7 +1487,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               size="small"
               onClick={saveNewFormation}
               disabled={!newFormationName.trim()}
-              sx={{ bgcolor: '#8b5cf6', color: '#fff', '&:hover': { bgcolor: '#7c3aed' }, '&.Mui-disabled': { bgcolor: '#1e2536', color: '#6b7280' } }}
+              sx={{ bgcolor: danceFlowColors.lavenderDark, color: '#fff', '&:hover': { bgcolor: danceFlowColors.lavenderDeep }, '&.Mui-disabled': { bgcolor: danceFlowColors.borderStrong, color: danceFlowColors.textDisabled } }}
             >
               <SaveIcon sx={{ fontSize: 14 }} />
             </IconButton>
@@ -1729,7 +1730,7 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
         justifyContent="space-between"
         sx={{ mb: 0.75 }}
       >
-        <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#a78bfa', fontWeight: 700 }}>
+        <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: danceFlowColors.lavender, fontWeight: 700 }}>
           AKTIV FORMASJON
         </Typography>
         {/* Audit G14: lock-toggle. Klient-side state inntil migration. */}
@@ -1746,9 +1747,9 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
             data-testid="formation-details-lock-toggle"
             aria-pressed={formation.locked === true}
             sx={{
-              color: formation.locked ? '#fbbf24' : '#6b7280',
+              color: formation.locked ? danceFlowColors.gold : danceFlowColors.textDisabled,
               p: 0.25,
-              '&:hover': { color: formation.locked ? '#fbbf24' : '#a78bfa' },
+              '&:hover': { color: formation.locked ? danceFlowColors.gold : danceFlowColors.lavender },
             }}
           >
             {/* Bruker enkle Unicode-symboler så vi slipper ekstra import */}
@@ -1775,7 +1776,7 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
               py: 0.5, fontSize: 10, fontWeight: 700, letterSpacing: 1,
               color: stageMode === m ? '#fff' : 'rgba(229,231,235,0.45)',
               bgcolor: stageMode === m ? 'rgba(167,139,250,0.22)' : 'transparent',
-              border: `1px solid ${stageMode === m ? '#a78bfa' : 'rgba(255,255,255,0.12)'}`,
+              border: `1px solid ${stageMode === m ? danceFlowColors.lavender : 'rgba(255,255,255,0.12)'}`,
               borderRadius: 0.5,
               textTransform: 'uppercase',
             }}
@@ -1819,16 +1820,21 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
             }}
           />
         )}
-        renderOption={(props, option) => (
-          <MenuItem {...props} key={option.id} sx={{ fontSize: 12 }}>
-            <Box>
-              <Box sx={{ fontWeight: 600 }}>{option.label}</Box>
-              <Box sx={{ fontSize: 9, color: '#9ca3af' }}>
-                Anvender mal på {formation.positions.length} dansere
+        renderOption={(props, option) => {
+          // MUI Autocomplete v6: key må trekkes ut av props før spread —
+          // ellers kan React i prod krasje med #130 (forwardRef undefined).
+          const { key, ...rest } = props as { key?: React.Key } & React.HTMLAttributes<HTMLLIElement>;
+          return (
+            <MenuItem {...rest} key={option.id} sx={{ fontSize: 12 }}>
+              <Box>
+                <Box sx={{ fontWeight: 600 }}>{option.label}</Box>
+                <Box sx={{ fontSize: 9, color: danceFlowColors.textMuted }}>
+                  Anvender mal på {formation.positions.length} dansere
+                </Box>
               </Box>
-            </Box>
-          </MenuItem>
-        )}
+            </MenuItem>
+          );
+        }}
         sx={{ mb: 1 }}
       />
       {/* G26: Section-input. Frittekst — koreografer skriver Intro/Vers 1/etc.
@@ -1848,7 +1854,7 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
             label="Section (valgfri)"
             placeholder="Intro, Vers 1, Refreng…"
             sx={{
-              '& .MuiInputBase-input': { fontSize: 11, color: '#e5e7eb' },
+              '& .MuiInputBase-input': { fontSize: 11, color: danceFlowColors.textSecondary },
               '& .MuiInputLabel-root': { fontSize: 11 },
             }}
           />
@@ -1913,10 +1919,10 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
         placeholder="Notater for denne formasjonen"
         value={formation.notes ?? ''}
         onChange={(e) => onChange({ notes: e.target.value || undefined })}
-        sx={{ mb: 1, '& .MuiInputBase-input': { fontSize: 11, color: '#e5e7eb' } }}
+        sx={{ mb: 1, '& .MuiInputBase-input': { fontSize: 11, color: danceFlowColors.textSecondary } }}
         data-testid="formation-details-notes"
       />
-      <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: '#6b7280', fontWeight: 700, mb: 0.5 }}>
+      <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: danceFlowColors.textDisabled, fontWeight: 700, mb: 0.5 }}>
         TAGS
       </Typography>
       <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 0.75 }} data-testid="formation-details-tags">
@@ -1926,11 +1932,11 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
             size="small"
             label={t}
             onDelete={() => removeTag(t)}
-            sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd' }}
+            sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight }}
           />
         ))}
         {tags.length === 0 ? (
-          <Typography sx={{ fontSize: 10, color: '#6b7280', fontStyle: 'italic' }}>
+          <Typography sx={{ fontSize: 10, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
             Ingen tagger ennå
           </Typography>
         ) : null}
@@ -1944,13 +1950,13 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
           onChange={(e) => setTagDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
           inputProps={{ 'data-testid': 'formation-details-tag-input' }}
-          sx={{ '& .MuiInputBase-input': { fontSize: 10.5, color: '#e5e7eb' } }}
+          sx={{ '& .MuiInputBase-input': { fontSize: 10.5, color: danceFlowColors.textSecondary } }}
         />
         <IconButton
           size="small"
           onClick={addTag}
           disabled={!tagDraft.trim()}
-          sx={{ color: '#a78bfa' }}
+          sx={{ color: danceFlowColors.lavender }}
           data-testid="formation-details-tag-add"
         >
           <AddIcon sx={{ fontSize: 16 }} />
@@ -1960,7 +1966,7 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
       {/* F5-1: Dancers-liste med visibility-toggles */}
       {dancersInFormation.length > 0 ? (
         <>
-          <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: '#6b7280', fontWeight: 700, mb: 0.5 }}>
+          <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: danceFlowColors.textDisabled, fontWeight: 700, mb: 0.5 }}>
             DANCERS ({dancersInFormation.length})
           </Typography>
           <Stack spacing={0.25} sx={{ mb: 1 }} data-testid="formation-dancers-list">
@@ -1974,8 +1980,8 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
                   spacing={0.5}
                   sx={{ opacity: hidden ? 0.45 : 1 }}
                 >
-                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: d.color ?? '#a78bfa', flexShrink: 0 }} />
-                  <Typography sx={{ fontSize: 10.5, color: '#e5e7eb', flex: 1, fontWeight: 600 }}>
+                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: d.color ?? danceFlowColors.lavender, flexShrink: 0 }} />
+                  <Typography sx={{ fontSize: 10.5, color: danceFlowColors.textSecondary, flex: 1, fontWeight: 600 }}>
                     {d.initials || d.id.slice(0, 2).toUpperCase()}{' · '}{d.name}
                   </Typography>
                   <IconButton
@@ -1984,7 +1990,7 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
                     data-testid={`formation-dancer-toggle-${d.id}`}
                     aria-pressed={!hidden}
                     aria-label={hidden ? `Vis ${d.name}` : `Skjul ${d.name}`}
-                    sx={{ p: 0.25, color: hidden ? 'rgba(229,231,235,0.4)' : '#a78bfa' }}
+                    sx={{ p: 0.25, color: hidden ? 'rgba(229,231,235,0.4)' : danceFlowColors.lavender }}
                   >
                     {hidden ? <VisibilityOffIcon sx={{ fontSize: 14 }} /> : <VisibilityIcon sx={{ fontSize: 14 }} />}
                   </IconButton>
@@ -1996,33 +2002,33 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
       ) : null}
 
       {/* F5-2 + F5-4: Stage-overlay controls */}
-      <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: '#6b7280', fontWeight: 700, mb: 0.5, mt: 1 }}>
+      <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: danceFlowColors.textDisabled, fontWeight: 700, mb: 0.5, mt: 1 }}>
         STAGE
       </Typography>
       <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 0.75 }}>
         <Box
           component="label"
-          sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 10.5, color: '#e5e7eb', cursor: 'pointer' }}
+          sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 10.5, color: danceFlowColors.textSecondary, cursor: 'pointer' }}
         >
           <Checkbox
             size="small"
             checked={showPaths}
             onChange={onToggleShowPaths}
             inputProps={{ 'data-testid': 'formation-show-paths' } as React.InputHTMLAttributes<HTMLInputElement>}
-            sx={{ p: 0.25, color: '#a78bfa', '&.Mui-checked': { color: '#a78bfa' } }}
+            sx={{ p: 0.25, color: danceFlowColors.lavender, '&.Mui-checked': { color: danceFlowColors.lavender } }}
           />
           Show Paths
         </Box>
         <Box
           component="label"
-          sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 10.5, color: '#e5e7eb', cursor: 'pointer' }}
+          sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 10.5, color: danceFlowColors.textSecondary, cursor: 'pointer' }}
         >
           <Checkbox
             size="small"
             checked={showIds}
             onChange={onToggleShowIds}
             inputProps={{ 'data-testid': 'formation-show-ids' } as React.InputHTMLAttributes<HTMLInputElement>}
-            sx={{ p: 0.25, color: '#a78bfa', '&.Mui-checked': { color: '#a78bfa' } }}
+            sx={{ p: 0.25, color: danceFlowColors.lavender, '&.Mui-checked': { color: danceFlowColors.lavender } }}
           />
           Show IDs
         </Box>
@@ -2038,13 +2044,13 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
           data-testid="formation-stage-opacity"
           style={{ flex: 1 }}
         />
-        <Typography sx={{ fontSize: 10, color: '#a78bfa', minWidth: 32, textAlign: 'right' }}>
+        <Typography sx={{ fontSize: 10, color: danceFlowColors.lavender, minWidth: 32, textAlign: 'right' }}>
           {Math.round(stageOpacity * 100)}%
         </Typography>
       </Stack>
 
       {/* F5-5: TRANSITION editor */}
-      <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: '#6b7280', fontWeight: 700, mb: 0.5 }}>
+      <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: danceFlowColors.textDisabled, fontWeight: 700, mb: 0.5 }}>
         TRANSITION
       </Typography>
       <Stack direction="row" spacing={0.5} sx={{ mb: 0.75 }}>
@@ -2079,7 +2085,7 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
         value={formation.transitionNote ?? ''}
         onChange={(e) => onChange({ transitionNote: e.target.value || null })}
         inputProps={{ 'data-testid': 'formation-transition-note' }}
-        sx={{ mb: 0.5, '& .MuiInputBase-input': { fontSize: 10.5, color: '#e5e7eb' } }}
+        sx={{ mb: 0.5, '& .MuiInputBase-input': { fontSize: 10.5, color: danceFlowColors.textSecondary } }}
       />
     </Box>
   );
@@ -2107,7 +2113,7 @@ function drawStageBackground(
       top: cy - radius,
       radius,
       fill: '#11151c',
-      stroke: '#2a3142',
+      stroke: danceFlowColors.borderSoft,
       strokeWidth: 1.5,
       selectable: false,
       evented: false,
@@ -2119,7 +2125,7 @@ function drawStageBackground(
       top: cy - radius - 6,
       radius: radius + 6,
       fill: 'transparent',
-      stroke: '#fbbf24',
+      stroke: danceFlowColors.gold,
       strokeWidth: 2,
       strokeDashArray: [6, 6],
       selectable: false,
@@ -2148,7 +2154,7 @@ function drawStageBackground(
       width: stageW,
       height: stageH,
       fill: '#11151c',
-      stroke: '#2a3142',
+      stroke: danceFlowColors.borderSoft,
       strokeWidth: 1.5,
       rx: 6,
       ry: 6,
@@ -2160,7 +2166,7 @@ function drawStageBackground(
     if (stageType === 'proscenium' || stageType === 'runway') {
       // Mirror line (back wall) — lilla, dash
       const mirror = new Line([left, top, left + stageW, top], {
-        stroke: '#a78bfa',
+        stroke: danceFlowColors.lavender,
         strokeWidth: 2,
         strokeDashArray: [4, 4],
         selectable: false,
@@ -2171,7 +2177,7 @@ function drawStageBackground(
       const audience = new Line(
         [left, top + stageH, left + stageW, top + stageH],
         {
-          stroke: '#fbbf24',
+          stroke: danceFlowColors.gold,
           strokeWidth: 3,
           selectable: false,
           evented: false,
@@ -2297,7 +2303,7 @@ function drawFormation(
         canvas.add(line);
       }
     };
-    const colorFor = (id: string): string => dancersById.get(id)?.color ?? '#a78bfa';
+    const colorFor = (id: string): string => dancersById.get(id)?.color ?? danceFlowColors.lavender;
     drawPath(options.prevFormation, formation, colorFor);
     drawPath(formation, options.nextFormation as Formation | null | undefined ?? null!, colorFor);
   }
@@ -2309,7 +2315,7 @@ function drawFormation(
 
     const cx = STAGE_PADDING + pos.x * innerWidth;
     const cy = STAGE_PADDING + pos.y * innerHeight;
-    const color = dancer.color ?? '#3b82f6';
+    const color = dancer.color ?? danceFlowColors.info;
 
     // Sirkel for danser-puck.
     // Audit B1: hvis keyboard-aktiv, render lavender ring + tykkere stroke
@@ -2318,7 +2324,7 @@ function drawFormation(
     const circle = new Circle({
       radius: PUCK_RADIUS,
       fill: color,
-      stroke: isKbActive ? '#a78bfa' : (pos.isLead ? '#fbbf24' : 'rgba(255,255,255,0.4)'),
+      stroke: isKbActive ? danceFlowColors.lavender : (pos.isLead ? danceFlowColors.gold : 'rgba(255,255,255,0.4)'),
       strokeWidth: isKbActive ? 4 : (pos.isLead ? 3 : 1.5),
       originX: 'center',
       originY: 'center',
@@ -2344,7 +2350,7 @@ function drawFormation(
       fontSize: 10,
       fontWeight: 'bold',
       fontFamily: '-apple-system, sans-serif',
-      fill: '#e5e7eb',
+      fill: danceFlowColors.textSecondary,
       width: 100,
       textAlign: 'center',
       originX: 'center',
@@ -2358,7 +2364,7 @@ function drawFormation(
     const leadStar = pos.isLead
       ? new Textbox('★', {
           fontSize: 14,
-          fill: '#fbbf24',
+          fill: danceFlowColors.gold,
           width: 20,
           textAlign: 'center',
           originX: 'center',

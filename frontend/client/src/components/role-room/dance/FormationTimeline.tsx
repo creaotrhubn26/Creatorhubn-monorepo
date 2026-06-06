@@ -327,7 +327,7 @@ export function FormationTimeline({
             ) : null}
 
             {/* NOTES-spor (F5-9) */}
-            {notes.length > 0 ? renderBlockTrack('NOTES', '#60a5fa', notes.map((n) => ({ id: n.id, label: n.text, startSec: n.startSec, endSec: n.endSec })), 'formation-timeline-note') : null}
+            {notes.length > 0 ? renderBlockTrack('NOTES', danceFlowColors.infoLight, notes.map((n) => ({ id: n.id, label: n.text, startSec: n.startSec, endSec: n.endSec })), 'formation-timeline-note') : null}
 
             {/* Phase 5: DANCERS-track-slot (typisk <DancerPathsView/>) */}
             {dancersTrackSlot ? (

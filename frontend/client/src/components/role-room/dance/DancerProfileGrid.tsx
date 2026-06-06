@@ -10,6 +10,7 @@
  * Sort:   navn / sist oppdatert / primær stil
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -164,8 +165,8 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
     <Box
       data-testid="dancer-profile-grid"
       sx={{
-        bgcolor: '#0a0a0a',
-        color: '#e5e7eb',
+        bgcolor: danceFlowColors.bgBase,
+        color: danceFlowColors.textSecondary,
         minHeight: '100%',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',
         p: { xs: 2, md: 3 },
@@ -180,7 +181,7 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
         sx={{ mb: 2 }}
       >
         <Box>
-          <Typography sx={{ fontSize: 10, letterSpacing: 2, color: '#a78bfa', fontWeight: 700 }}>
+          <Typography sx={{ fontSize: 10, letterSpacing: 2, color: danceFlowColors.lavender, fontWeight: 700 }}>
             DANSERPROFILER
           </Typography>
           <Typography sx={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>
@@ -226,7 +227,7 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
             startIcon={<RefreshIcon sx={{ fontSize: 14 }} />}
             onClick={() => void refresh()}
             disabled={loading}
-            sx={{ textTransform: 'none', fontSize: 11, color: '#9ca3af' }}
+            sx={{ textTransform: 'none', fontSize: 11, color: danceFlowColors.textMuted }}
           >
             Oppdater
           </Button>
@@ -240,8 +241,8 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
               sx={{
                 textTransform: 'none',
                 fontSize: 11,
-                bgcolor: '#8b5cf6',
-                '&:hover': { bgcolor: '#7c3aed' },
+                bgcolor: danceFlowColors.lavenderDark,
+                '&:hover': { bgcolor: danceFlowColors.lavenderDeep },
               }}
             >
               Legg til danser
@@ -253,7 +254,7 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
       {/* ─── Error / loading ───────────────────────────── */}
       {errorMsg && (
         <Typography
-          sx={{ fontSize: 12, color: '#fca5a5', mb: 1.5 }}
+          sx={{ fontSize: 12, color: danceFlowColors.errorSoft, mb: 1.5 }}
           data-testid="dancer-profile-grid-error"
         >
           {errorMsg}
@@ -262,18 +263,18 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
 
       {loading && profiles.size === 0 ? (
         <Box sx={{ textAlign: 'center', py: 6 }}>
-          <CircularProgress size={28} sx={{ color: '#a78bfa' }} />
-          <Typography sx={{ fontSize: 11, color: '#6b7280', mt: 1 }}>Henter profiler…</Typography>
+          <CircularProgress size={28} sx={{ color: danceFlowColors.lavender }} />
+          <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, mt: 1 }}>Henter profiler…</Typography>
         </Box>
       ) : dancers.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 6 }}>
-          <Typography sx={{ fontSize: 13, color: '#6b7280', fontStyle: 'italic' }}>
+          <Typography sx={{ fontSize: 13, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
             Ingen dansere koblet til prosjektet enda
           </Typography>
         </Box>
       ) : visible.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 6 }}>
-          <Typography sx={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>
+          <Typography sx={{ fontSize: 12, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
             Ingen dansere matcher filteret
           </Typography>
         </Box>
@@ -318,12 +319,12 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
 };
 
 const fieldSx = {
-  '& .MuiInputBase-input': { color: '#e5e7eb', fontSize: 11.5 },
+  '& .MuiInputBase-input': { color: danceFlowColors.textSecondary, fontSize: 11.5 },
   '& .MuiOutlinedInput-root': {
-    bgcolor: '#0f1318',
-    '& fieldset': { borderColor: '#1e2536' },
-    '&:hover fieldset': { borderColor: '#374151' },
-    '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
+    bgcolor: danceFlowColors.bgPanel,
+    '& fieldset': { borderColor: danceFlowColors.borderStrong },
+    '&:hover fieldset': { borderColor: danceFlowColors.grayDark },
+    '&.Mui-focused fieldset': { borderColor: danceFlowColors.lavenderDark },
   },
 } as const;
 

@@ -10,13 +10,14 @@
  * choreographer can see where each segment sits in the music.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import { Box, CircularProgress, Stack, Typography } from '@mui/material';
 import type { Segment } from './choreographyTypes';
 
-const PURPLE = '#8b5cf6';
-const PURPLE_LIGHT = '#a78bfa';
+const PURPLE = danceFlowColors.lavenderDark;
+const PURPLE_LIGHT = danceFlowColors.lavender;
 
 export interface MusicWaveformProps {
   audioUrl: string | null;
@@ -56,7 +57,7 @@ export const MusicWaveform: React.FC<MusicWaveformProps> = ({
         media: mediaElement,
         waveColor: 'rgba(167,139,250,0.55)',
         progressColor: PURPLE,
-        cursorColor: '#34d399',
+        cursorColor: danceFlowColors.successPrimary,
         cursorWidth: 2,
         height,
         barWidth: 2,
@@ -104,14 +105,14 @@ export const MusicWaveform: React.FC<MusicWaveformProps> = ({
         sx={{
           height,
           borderRadius: 1,
-          bgcolor: '#0d1218',
+          bgcolor: danceFlowColors.bgInset,
           border: '1px dashed rgba(139,92,246,0.25)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <Typography sx={{ color: '#6b7280', fontSize: 11 }}>
+        <Typography sx={{ color: danceFlowColors.textDisabled, fontSize: 11 }}>
           Last opp en musikkfil for å se waveform
         </Typography>
       </Box>
@@ -122,7 +123,7 @@ export const MusicWaveform: React.FC<MusicWaveformProps> = ({
     <Box
       sx={{
         position: 'relative',
-        bgcolor: '#0d1218',
+        bgcolor: danceFlowColors.bgInset,
         borderRadius: 1,
         border: '1px solid rgba(139,92,246,0.25)',
         overflow: 'hidden',
@@ -166,7 +167,7 @@ export const MusicWaveform: React.FC<MusicWaveformProps> = ({
           sx={{
             position: 'absolute',
             inset: 0,
-            color: '#fca5a5',
+            color: danceFlowColors.errorSoft,
             bgcolor: 'rgba(13,18,24,0.85)',
             pointerEvents: 'none',
           }}
