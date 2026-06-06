@@ -20,6 +20,7 @@ import { StoryView } from '../story/StoryView';
 import { ScriptBuilderView } from './ScriptBuilderView';
 import { GuidedRecorderView } from './GuidedRecorderView';
 import { ExportView } from './ExportView';
+import { MarketingPanel } from './MarketingPanel';
 import { FramedDevice, VIEWPORT_W } from './FramedDevice';
 import { SceneInteractionOverlay } from './SceneInteractionOverlay';
 import { type FrameVariant } from './deviceFrames';
@@ -52,6 +53,7 @@ const C = {
 const NAV_ITEMS = [
   { id: 'create', label: 'Create Demo', ic: '▢' },
   { id: 'flow', label: 'Flow Builder', ic: '⤳' },
+  { id: 'marketing', label: 'Marketing', ic: '◆' },
   { id: 'script', label: 'Script Builder', ic: '✎' },
   { id: 'recorder', label: 'Guided Recorder', ic: '●' },
   { id: 'preview', label: 'Device Preview', ic: '▭' },
@@ -692,6 +694,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           <div style={{ flex: 1, minHeight: 0 }}><CreateDemoView onCreated={() => setNav('flow')} /></div>
         ) : nav === 'preview' ? (
           <div style={{ flex: 1, minHeight: 0 }}><DevicePreviewView /></div>
+        ) : nav === 'marketing' ? (
+          <div style={{ flex: 1, minHeight: 0, display: 'flex' }}><MarketingPanel onOpenSignIn={() => setShowSignIn(true)} /></div>
         ) : (
           <>
             {/* ── Blocks panel (demo-typer) ── */}

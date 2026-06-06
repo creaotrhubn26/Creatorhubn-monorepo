@@ -17,8 +17,10 @@ import {
   makeScene, viewportForDevice, ACTION_META,
   type DemoScene, type ScriptMeta, type DemoType, type DemoDevice, type DemoActionType,
   type ResponsiveReport, type ResponsiveViewportResult, type ResponsiveStatus, type ResponsiveFix,
-  classifyCta, describePosition, getLearnedTarget,
+  classifyCta, describePosition, getLearnedTarget, getVoicePrefs,
+  CHANNEL_PRESETS, FRAMEWORKS, FUNNEL_INTENT, FUNNEL_LABELS,
   type ScannedElement, type DirectorCritique, type CritiqueIssue, type CritiqueSeverity,
+  type MarketingBrief, type MarketingChannel, type FunnelStage, type MarketingObjective,
 } from './demoStudioModel';
 
 export type ImproveAction =
@@ -604,11 +606,23 @@ Svar med KUN ett JSON-objekt:
   });
   const parsed = extractJson<{ scenes: FlowSceneDraft[] }>(raw);
   if (!parsed?.scenes?.length) throw new Error('Klarte ikke å tolke flow fra AI');
+  return buildScenesFromDrafts(parsed.scenes, { url, devices, elements });
+}
 
+/**
+ * Felles scene-bygger: gjør AI-utkast (FlowSceneDraft) om til DemoScene med
+ * element-binding, menneske-loop-korreksjoner (A) og bindingConfidence (C).
+ * Delt mellom generateDemoFlow og generateMarketingFlow.
+ */
+export function buildScenesFromDrafts(
+  drafts: FlowSceneDraft[],
+  ctx: { url: string; devices: DemoDevice[]; elements: ScannedElement[] },
+): DemoScene[] {
+  const { url, devices, elements } = ctx;
   const clamp01 = (n: unknown, fallback: number) => (typeof n === 'number' && n >= 0 && n <= 1 ? n : fallback);
   const validActions = Object.keys(ACTION_META) as DemoActionType[];
 
-  return parsed.scenes.map((d, i) => {
+  return drafts.map((d, i) => {
     const device: DemoDevice = (['macbook', 'ipad', 'iphone'] as DemoDevice[]).includes(d.device) ? d.device : (devices[0] ?? 'macbook');
     const base = makeScene(i, device);
     let actionType = validActions.includes(d.actionType as DemoActionType) ? (d.actionType as DemoActionType) : undefined;
@@ -668,4 +682,179 @@ Svar med KUN ett JSON-objekt:
       status: 'in_progress',
     };
   });
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  MARKETING MODE — AI som forstår markedsføreren + innholdsprodusenten
+// ════════════════════════════════════════════════════════════════════
+
+const MARKETING_SYSTEM = `Du er en erfaren vekst-/innholdsstrateg som lager
+målrettede produktdemoer. Du tenker i persona, funnel-steg og kanal: hver scene
+skal flytte ÉN målgruppe ETT steg videre, på kanalens språk. Du bruker
+markedsførings-rammeverk (PAS/AIDA/BAB) for dramaturgi, åpner med en hook,
+bygger mot bevis, og lander på én tydelig CTA matchet funnel-steget. Du svarer
+ALLTID med kun ett JSON-objekt.`;
+
+/** Manus-stemme læres over tid (G): injiser likte/mislikte eksempler i prompten. */
+function voicePrefBlock(url: string): string {
+  const p = getVoicePrefs(url);
+  if (!p.liked.length && !p.disliked.length) return '';
+  let s = '\nINNHOLDSPRODUSENTENS STEMME (lært av tidligere tilbakemelding) — etterlikn stil:\n';
+  if (p.liked.length) s += `Likte formuleringer:\n${p.liked.slice(0, 6).map((t) => `+ ${t}`).join('\n')}\n`;
+  if (p.disliked.length) s += `Unngå denne stilen:\n${p.disliked.slice(0, 6).map((t) => `- ${t}`).join('\n')}\n`;
+  return s;
+}
+
+/** AI foreslår en marketing-brief fra nettsiden (persona, smerte, verdi, funnel). */
+export async function suggestMarketingBrief(params: {
+  url: string; siteContext?: string; elements?: ScannedElement[];
+}): Promise<Partial<MarketingBrief>> {
+  const { url, siteContext = '', elements = [] } = params;
+  const elCatalog = elements.slice(0, 20).map((e) => `"${e.label}"${e.ctaType ? ` (CTA:${e.ctaType})` : ''}`).join(', ');
+  const user = `Analyser produktet og foreslå en markedsførings-brief.
+
+Produkt-URL: ${url}
+${siteContext ? `Kontekst fra siden:\n${siteContext.slice(0, 1800)}\n` : ''}${elCatalog ? `Interaktive elementer: ${elCatalog}\n` : ''}
+Foreslå:
+- persona: den mest sannsynlige ideelle kunden (ICP), kort
+- jobToBeDone: hva personaen prøver å oppnå
+- painPoints: 2–4 konkrete smertepunkter
+- valueProps: 2–4 verdiløfter produktet leverer
+- proof: 0–3 bevis-elementer hvis synlig (tall, logoer, sitater)
+- objection: største innvending som må slås
+- objective: ett av "awareness" | "lead_gen" | "conversion" | "activation" | "retention" | "expansion" | "advocacy" (mest sannsynlig markedsføringsmål)
+- funnelStage: "tofu" | "mofu" | "bofu" (mest relevant for en demo)
+- desiredAction: ønsket handling
+
+Svar med KUN ett JSON-objekt med disse feltene.`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: MARKETING_SYSTEM, messages: [{ role: 'user', content: user }], maxTokens: 900,
+  });
+  const p = extractJson<Partial<MarketingBrief>>(raw);
+  if (!p) return {};
+  const arr = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 4) : [];
+  const stage: FunnelStage = (['tofu', 'mofu', 'bofu'] as FunnelStage[]).includes(p.funnelStage as FunnelStage) ? p.funnelStage as FunnelStage : 'mofu';
+  const objectives: MarketingObjective[] = ['awareness', 'lead_gen', 'conversion', 'activation', 'retention', 'expansion', 'advocacy'];
+  const objective = objectives.includes(p.objective as MarketingObjective) ? p.objective as MarketingObjective : undefined;
+  return {
+    persona: typeof p.persona === 'string' ? p.persona : '',
+    jobToBeDone: typeof p.jobToBeDone === 'string' ? p.jobToBeDone : undefined,
+    painPoints: arr(p.painPoints),
+    valueProps: arr(p.valueProps),
+    proof: arr(p.proof),
+    objection: typeof p.objection === 'string' ? p.objection : undefined,
+    objective,
+    funnelStage: stage,
+    desiredAction: typeof p.desiredAction === 'string' ? p.desiredAction : undefined,
+  };
+}
+
+/** Generer en MÅLRETTET marketing-flow: persona × funnel × kanal × rammeverk. */
+export async function generateMarketingFlow(params: {
+  url: string;
+  brief: MarketingBrief;
+  devices: DemoDevice[];
+  elements?: ScannedElement[];
+  siteContext?: string;
+  meta?: ScriptMeta;
+}): Promise<DemoScene[]> {
+  const { url, brief, devices, elements = [], siteContext = '' } = params;
+  const preset = CHANNEL_PRESETS[brief.channel];
+  const framework = FRAMEWORKS[brief.framework || preset.framework];
+  const funnel = FUNNEL_INTENT[brief.funnelStage];
+  const catalog = elements.length
+    ? `\nElement-katalog (ekte interaktive elementer, velg targetIndex pr. scene):\n${elements.map((e, i) => `${i}: "${e.label}" [${e.tag}${e.ctaType ? `, CTA:${e.ctaType}` : ''}${describePosition(e.hotspot) ? `, ${describePosition(e.hotspot)}` : ''}]`).join('\n')}\n`
+    : '';
+  const user = `Lag en målrettet markedsførings-demo.
+
+Produkt-URL: ${url}
+MÅLGRUPPE (persona): ${brief.persona || '(ikke spesifisert)'}
+${brief.jobToBeDone ? `Jobben de prøver å gjøre: ${brief.jobToBeDone}\n` : ''}Smertepunkter: ${brief.painPoints.join(' · ') || '(ukjent)'}
+Verdiløfter: ${brief.valueProps.join(' · ') || '(ukjent)'}
+${brief.proof?.length ? `Bevis: ${brief.proof.join(' · ')}\n` : ''}${brief.objection ? `Innvending å slå: ${brief.objection}\n` : ''}
+FUNNEL-STEG: ${FUNNEL_LABELS[brief.funnelStage]} → mål: ${funnel.goal}. CTA-energi: ${funnel.ctaHint}.
+KANAL: ${preset.label} → ${preset.toneHint}. Total lengde ~${preset.maxSeconds}s, hook i de første ${preset.hookSeconds} sek.${preset.captions ? ' Skriv korte caption-vennlige linjer.' : ''}
+RAMMEVERK: ${framework.label}. Følg disse beatene i rekkefølge, én eller flere scener per beat: ${framework.beats.join(' → ')}.
+${brief.desiredAction ? `ØNSKET HANDLING (siste CTA): ${brief.desiredAction}\n` : ''}${siteContext ? `\nKontekst fra siden:\n${siteContext.slice(0, 1500)}\n` : ''}${catalog}${voicePrefBlock(url)}
+Krav:
+- Åpne med en hook som treffer personaens smertepunkt (ikke generisk feature-intro).
+- Hver scene: narration (det som sies, matchet personaen + kanalens tone), visualInstruction, requiredAction, og når relevant targetIndex/targetLabel + actionType + hotspot.
+- Siste scene = tydelig CTA matchet funnel-steget.
+- Total varighet ≈ ${preset.maxSeconds}s fordelt på scenene.
+
+Svar med KUN ett JSON-objekt:
+{ "scenes": [ { "title": "...", "device": "macbook|ipad|iphone", "narration": "...", "visualInstruction": "...", "requiredAction": "...", "targetIndex": 3, "targetLabel": "...", "actionType": "click", "hotspot": {"x":0.4,"y":0.6,"w":0.2,"h":0.08}, "overlayText": "...", "duration": 8 } ] }`;
+
+  const raw = await claudeProxyService.send({
+    systemPrompt: MARKETING_SYSTEM,
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 2200,
+  });
+  const parsed = extractJson<{ scenes: FlowSceneDraft[] }>(raw);
+  if (!parsed?.scenes?.length) throw new Error('Klarte ikke å tolke marketing-flow fra AI');
+  return buildScenesFromDrafts(parsed.scenes, { url, devices, elements });
+}
+
+/** En målrettet variant-spesifikasjon (per persona / kanal / vinkel). */
+export interface VariantSpec {
+  label: string;
+  channel?: MarketingChannel;
+  persona?: string;
+  /** Vinkel/hook-variasjon, f.eks. «ROI-vinkel» eller «tids-sparing». */
+  angle?: string;
+}
+export interface GeneratedVariant {
+  label: string;
+  channel?: MarketingChannel;
+  format?: string;
+  scenes: DemoScene[];
+}
+
+/**
+ * Variant-motor: ta en ferdig flow og lag målrettede kutt — omskriv manus,
+ * overlay, hook og CTA (og juster varighet/format) per persona/kanal/vinkel.
+ * Element-binding (target/hotspot) beholdes; kun budskapet endres.
+ */
+export async function generateVariants(params: {
+  url: string;
+  baseScenes: DemoScene[];
+  brief: MarketingBrief;
+  variants: VariantSpec[];
+}): Promise<GeneratedVariant[]> {
+  const { url, baseScenes, brief, variants } = params;
+  const baseList = baseScenes.map((s, i) => `${i}: "${s.title}" — ${(s.narration || '').slice(0, 110)}${s.overlayText ? ` | overlay: ${s.overlayText}` : ''}`).join('\n');
+  const out: GeneratedVariant[] = [];
+  for (const v of variants) {
+    const preset = v.channel ? CHANNEL_PRESETS[v.channel] : undefined;
+    const user = `Lag en MÅLRETTET variant av denne demoen. Behold rekkefølge og antall scener, men skriv om manus + overlay så de treffer dette målet:
+
+VARIANT: ${v.label}
+${v.persona ? `Persona: ${v.persona}\n` : `Persona: ${brief.persona}\n`}${v.angle ? `Vinkel/hook: ${v.angle}\n` : ''}${preset ? `Kanal: ${preset.label} → ${preset.toneHint}. Hold linjene korte (~${preset.maxSeconds}s totalt).\n` : ''}${voicePrefBlock(url)}
+Basis-scener:
+${baseList}
+
+Svar med KUN ett JSON-objekt: { "scenes": [ { "index": 0, "narration": "...", "overlayText": "...", "duration": 8 } ] } — én post per basis-scene (samme index).`;
+    try {
+      const raw = await claudeProxyService.send({
+        systemPrompt: MARKETING_SYSTEM, messages: [{ role: 'user', content: user }], maxTokens: 1600,
+      });
+      const parsed = extractJson<{ scenes: Array<{ index: number; narration?: string; overlayText?: string; duration?: number }> }>(raw);
+      const patchByIndex = new Map<number, { narration?: string; overlayText?: string; duration?: number }>();
+      (parsed?.scenes || []).forEach((p) => { if (typeof p.index === 'number') patchByIndex.set(p.index, p); });
+      const scenes: DemoScene[] = baseScenes.map((s, i) => {
+        const p = patchByIndex.get(i);
+        return {
+          ...s,
+          id: `${s.id}__${v.label.replace(/\s+/g, '-').toLowerCase()}`,
+          narration: p?.narration?.trim() || s.narration,
+          overlayText: p?.overlayText?.trim() ?? s.overlayText,
+          duration: typeof p?.duration === 'number' && p.duration > 0 ? p.duration : s.duration,
+        };
+      });
+      out.push({ label: v.label, channel: v.channel, format: preset?.format, scenes });
+    } catch {
+      // hopp over en variant som feiler — de andre leveres fortsatt
+    }
+  }
+  return out;
 }

@@ -287,6 +287,10 @@ export interface DemoProject {
   format: '16:9' | '9:16' | '1:1' | '4:5';
   /** Manus-meta (Script Builder Tone/Audience/Language/Length). */
   scriptMeta?: ScriptMeta;
+  /** Arbeidsmodus: 'demo' (feature-tur) eller 'marketing' (målrettet budskap). */
+  mode?: 'demo' | 'marketing';
+  /** Marketing-brief (Marketing mode): persona, funnel-steg, kanal, rammeverk. */
+  marketingBrief?: MarketingBrief;
   scenes: DemoScene[];
   createdAt: string;
   updatedAt: string;
@@ -770,6 +774,140 @@ export function detectLearnedDrift(url: string, elements: ScannedElement[]): Lea
     const labOk = labels.has(normCta(t.correctLabel || t.label));
     return !selOk && !labOk;
   });
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  MARKETING MODE — målrettet innhold (persona × funnel × kanal × rammeverk)
+// ════════════════════════════════════════════════════════════════════
+
+/** Funnel-steg: hvor i kjøpsreisen publikum er. */
+export type FunnelStage = 'tofu' | 'mofu' | 'bofu';
+export const FUNNEL_LABELS: Record<FunnelStage, string> = {
+  tofu: 'Oppmerksomhet (TOFU)',
+  mofu: 'Vurdering (MOFU)',
+  bofu: 'Beslutning (BOFU)',
+};
+/** Hva hvert funnel-steg skal oppnå + hvilken CTA-energi som passer. */
+export const FUNNEL_INTENT: Record<FunnelStage, { goal: string; ctaHint: string }> = {
+  tofu: { goal: 'skape oppmerksomhet og nysgjerrighet rundt problemet', ctaHint: 'lav-terskel («Se hvordan», «Lær mer»)' },
+  mofu: { goal: 'vise hvordan produktet løser problemet bedre enn alternativene', ctaHint: 'vurdering («Sammenlign», «Prøv gratis», «Se demo»)' },
+  bofu: { goal: 'fjerne siste tvil og utløse handling', ctaHint: 'beslutning («Book demo», «Start nå», «Kom i gang»)' },
+};
+
+/** Distribusjonskanal — styrer format, lengde, tone og caption-grammatikk. */
+export type MarketingChannel = 'reels' | 'tiktok' | 'youtube' | 'linkedin' | 'email' | 'landing' | 'sales_demo';
+export interface ChannelPreset {
+  label: string;
+  format: DemoProject['format'];
+  maxSeconds: number;
+  captions: boolean;
+  hookSeconds: number;
+  toneHint: string;
+  /** Foretrukket rammeverk for denne kanalen. */
+  framework: MarketingFramework;
+}
+export const CHANNEL_PRESETS: Record<MarketingChannel, ChannelPreset> = {
+  reels:      { label: 'Instagram Reels', format: '9:16', maxSeconds: 30, captions: true,  hookSeconds: 3, toneHint: 'rask, energisk, hook i første 3 sek, store captions', framework: 'pas' },
+  tiktok:     { label: 'TikTok',          format: '9:16', maxSeconds: 35, captions: true,  hookSeconds: 2, toneHint: 'rå, autentisk, pattern-interrupt-hook', framework: 'pas' },
+  youtube:    { label: 'YouTube',         format: '16:9', maxSeconds: 90, captions: false, hookSeconds: 8, toneHint: 'fortellende, dypere, tydelig verdiløfte tidlig', framework: 'aida' },
+  linkedin:   { label: 'LinkedIn',        format: '1:1',  maxSeconds: 45, captions: true,  hookSeconds: 4, toneHint: 'autoritativ, innsikts-drevet, B2B-troverdig', framework: 'bab' },
+  email:      { label: 'E-post',          format: '16:9', maxSeconds: 40, captions: false, hookSeconds: 5, toneHint: 'personlig, én tydelig CTA, lav friksjon', framework: 'aida' },
+  landing:    { label: 'Landingsside',    format: '16:9', maxSeconds: 60, captions: false, hookSeconds: 5, toneHint: 'verdiløfte + bevis + CTA, konverteringsrettet', framework: 'pas' },
+  sales_demo: { label: 'Salgsdemo',       format: '16:9', maxSeconds: 120, captions: false, hookSeconds: 10, toneHint: 'konsultativ, tilpasset innvendinger, ROI-fokus', framework: 'bab' },
+};
+
+/** Markedsførings-rammeverk (metode) for scene-dramaturgi. */
+export type MarketingFramework =
+  | 'pas' | 'aida' | 'bab' | 'problem_solution'
+  | 'fab' | 'storybrand' | 'quest' | 'fourps' | 'pastor' | 'star' | 'jtbd';
+export const FRAMEWORKS: Record<MarketingFramework, { label: string; beats: string[]; bestFor: string }> = {
+  pas:              { label: 'PAS (Problem · Agiter · Løs)', beats: ['Problem', 'Agiter smerten', 'Løsning', 'Bevis', 'CTA'], bestFor: 'kort, smerte-drevet innhold (Reels/ads)' },
+  aida:             { label: 'AIDA (Oppmerksomhet · Interesse · Begjær · Handling)', beats: ['Oppmerksomhet/hook', 'Interesse', 'Begjær/verdi', 'Bevis', 'Handling/CTA'], bestFor: 'klassisk salgsfortelling, video' },
+  bab:              { label: 'BAB (Før · Etter · Bro)', beats: ['Før (dagens smerte)', 'Etter (ønsket tilstand)', 'Bro (produktet)', 'Bevis', 'CTA'], bestFor: 'transformasjon/ROI, B2B' },
+  problem_solution: { label: 'Problem → Løsning', beats: ['Problem', 'Løsning', 'Hvordan det virker', 'Bevis', 'CTA'], bestFor: 'enkle produkt-forklaringer' },
+  fab:              { label: 'FAB (Feature · Advantage · Benefit)', beats: ['Funksjon', 'Fordel', 'Gevinst for kunden', 'Bevis', 'CTA'], bestFor: 'feature-tunge produkter, sammenligning' },
+  storybrand:       { label: 'StoryBrand SB7 (kunden er helten)', beats: ['Helt (kunden) vil noe', 'Problem', 'Guide (produktet) forstår', 'Plan', 'Kall til handling', 'Suksess vs. fiasko'], bestFor: 'merkevare-fortelling, landingssider' },
+  quest:            { label: 'QUEST (Qualify · Understand · Educate · Stimulate · Transition)', beats: ['Kvalifiser publikum', 'Vis forståelse', 'Lær bort', 'Stimuler begjær', 'Overgang til CTA'], bestFor: 'lengre nurture/utdannende innhold' },
+  fourps:           { label: '4 P-er (Promise · Picture · Proof · Push)', beats: ['Løfte', 'Mal bildet', 'Bevis', 'Push (CTA)'], bestFor: 'punchy ads + e-post' },
+  pastor:           { label: 'PASTOR (Problem · Amplify · Story · Testimony · Offer · Response)', beats: ['Problem', 'Forsterk', 'Historie/løsning', 'Testimonial', 'Tilbud', 'Respons (CTA)'], bestFor: 'høy-konvertering salgsdemo' },
+  star:             { label: 'STAR (Situation · Task · Action · Result)', beats: ['Situasjon', 'Oppgave', 'Handling', 'Resultat', 'CTA'], bestFor: 'case studies / kundehistorier' },
+  jtbd:             { label: 'Jobs-to-be-done', beats: ['Jobben kunden vil ha gjort', 'Dagens dårlige løsning', 'Hvordan produktet gjør jobben', 'Bevis', 'CTA'], bestFor: 'innovasjon/onboarding, ny kategori' },
+};
+
+/** Markedsføringsmål — hva du vil oppnå. Anbefaler funnel-steg + metode + kanaler. */
+export type MarketingObjective =
+  | 'awareness' | 'lead_gen' | 'conversion' | 'activation' | 'retention' | 'expansion' | 'advocacy';
+export interface ObjectiveSpec {
+  label: string;
+  description: string;
+  funnelStage: FunnelStage;
+  framework: MarketingFramework;
+  channels: MarketingChannel[];
+}
+export const MARKETING_OBJECTIVES: Record<MarketingObjective, ObjectiveSpec> = {
+  awareness:  { label: 'Bygg oppmerksomhet', description: 'Nå nye folk, skap nysgjerrighet rundt problemet', funnelStage: 'tofu', framework: 'pas', channels: ['reels', 'tiktok', 'youtube'] },
+  lead_gen:   { label: 'Generer leads', description: 'Få kvalifiserte interessenter til å melde seg', funnelStage: 'mofu', framework: 'quest', channels: ['linkedin', 'landing', 'email'] },
+  conversion: { label: 'Konverter til kunde', description: 'Få vurderende kjøpere til å handle', funnelStage: 'bofu', framework: 'pastor', channels: ['landing', 'sales_demo', 'email'] },
+  activation: { label: 'Aktiver / onboard', description: 'Få nye brukere til første verdi-øyeblikk', funnelStage: 'mofu', framework: 'jtbd', channels: ['email', 'youtube'] },
+  retention:  { label: 'Behold kunder', description: 'Vis verdi, reduser frafall, dyp bruk', funnelStage: 'bofu', framework: 'bab', channels: ['email', 'youtube'] },
+  expansion:  { label: 'Mersalg / oppgrader', description: 'Få eksisterende kunder til å utvide', funnelStage: 'bofu', framework: 'fab', channels: ['email', 'sales_demo'] },
+  advocacy:   { label: 'Skap ambassadører', description: 'Få fornøyde kunder til å anbefale', funnelStage: 'bofu', framework: 'star', channels: ['linkedin', 'reels'] },
+};
+
+/** Marketing-brief: AI-ens forståelse av markedsføreren og målgruppen. */
+export interface MarketingBrief {
+  /** Hva du vil oppnå — anbefaler funnel-steg + metode + kanaler. */
+  objective?: MarketingObjective;
+  /** ICP / persona, f.eks. «markedssjef i SMB-byrå». */
+  persona: string;
+  /** Jobs-to-be-done — hva personaen prøver å oppnå. */
+  jobToBeDone?: string;
+  /** Smertepunkter. */
+  painPoints: string[];
+  /** Verdiløfter produktet leverer. */
+  valueProps: string[];
+  /** Bevis (tall, logoer, sitater). */
+  proof?: string[];
+  /** Hovedinnvending som skal slås. */
+  objection?: string;
+  funnelStage: FunnelStage;
+  channel: MarketingChannel;
+  framework: MarketingFramework;
+  /** Ønsket handling (CTA-intensjon). */
+  desiredAction?: string;
+}
+export function emptyMarketingBrief(): MarketingBrief {
+  return { objective: 'conversion', persona: '', painPoints: [], valueProps: [], funnelStage: 'mofu', channel: 'reels', framework: 'pas' };
+}
+/** Velg et mål → sett anbefalt funnel-steg, metode og standardkanal (kan overstyres). */
+export function applyObjectiveToBrief(brief: MarketingBrief, objective: MarketingObjective): MarketingBrief {
+  const o = MARKETING_OBJECTIVES[objective];
+  return { ...brief, objective, funnelStage: o.funnelStage, framework: o.framework, channel: o.channels[0] ?? brief.channel };
+}
+
+// ── Stemme-/tone-læring (G): innholdsprodusentens stemme læres over tid ──
+const VOICE_PREFS_KEY = 'trrpa.demoStudio.voicePrefs';
+export interface VoicePrefs { liked: string[]; disliked: string[] }
+function loadVoicePrefs(): Record<string, VoicePrefs> {
+  try { return JSON.parse(localStorage.getItem(VOICE_PREFS_KEY) || '{}') as Record<string, VoicePrefs>; } catch { return {}; }
+}
+/** Lær produsentens stemme: tommel opp/ned på en manus-linje, lagret pr. vert. */
+export function recordVoicePref(url: string, line: string, liked: boolean): void {
+  const text = (line || '').trim();
+  if (!text) return;
+  const m = loadVoicePrefs();
+  const h = hostOf(url);
+  const p: VoicePrefs = m[h] ?? { liked: [], disliked: [] };
+  const add = liked ? p.liked : p.disliked;
+  const remove = liked ? p.disliked : p.liked;
+  if (!add.includes(text)) add.unshift(text);
+  const ri = remove.indexOf(text); if (ri >= 0) remove.splice(ri, 1);
+  p.liked = p.liked.slice(0, 12); p.disliked = p.disliked.slice(0, 12);
+  m[h] = p;
+  try { localStorage.setItem(VOICE_PREFS_KEY, JSON.stringify(m)); } catch { /* */ }
+}
+export function getVoicePrefs(url: string): VoicePrefs {
+  return loadVoicePrefs()[hostOf(url)] ?? { liked: [], disliked: [] };
 }
 
 /** Et interaktivt element katalogisert av DOM-skannet (AI-binding). */
