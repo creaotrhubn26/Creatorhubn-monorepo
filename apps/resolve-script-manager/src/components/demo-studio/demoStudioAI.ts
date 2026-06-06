@@ -1061,6 +1061,55 @@ Svar med KUN ett JSON-objekt:
   return buildScenesFromDrafts(parsed.scenes, { url, devices, elements });
 }
 
+/**
+ * Manus-drevne visuelle forslag: les hver scenes narration og foreslå ÉN visuell
+ * utheving der manuset nevner noe konkret — et tall (stat-callout), en funksjon/
+ * verdi (overlay), eller noe man bør peke på (highlight). «Det du hører i manuset
+ * → vis det.» Brukeren kan anvende forslaget (sette overlay / fremheve / infographic).
+ */
+export type VisualBeatKind = 'overlay' | 'stat' | 'highlight' | 'infographic';
+export interface VisualBeat {
+  index: number;
+  kind: VisualBeatKind;
+  /** Frasen i manuset forslaget gjelder. */
+  phrase: string;
+  /** Kort overlay-tekst (≤ 6 ord) å vise på skjermen. */
+  overlay: string;
+  /** Kort begrunnelse. */
+  why?: string;
+}
+export async function suggestVisualBeats(params: {
+  scenes: Array<{ narration?: string; targetLabel?: string }>;
+}): Promise<VisualBeat[]> {
+  const list = params.scenes
+    .map((s, i) => ({ i, t: (s.narration || '').trim(), tgt: s.targetLabel }))
+    .filter((s) => s.t);
+  if (!list.length) return [];
+  const user = `Les manuset for hver scene. Der manuset NEVNER noe konkret som bør fremheves visuelt, foreslå ÉN visuell utheving per scene (hopp over scener uten noe å fremheve).
+
+Scener:
+${list.map((s) => `${s.i}: "${s.t.slice(0, 160)}"${s.tgt ? ` [element: ${s.tgt}]` : ''}`).join('\n')}
+
+For hver: velg kind:
+- "stat" når manuset nevner et TALL/måleenhet (vis tallet stort)
+- "overlay" når en funksjon/verdi/nøkkelord bør stå som tekst på skjermen
+- "highlight" når noe på skjermen bør pekes på / zoomes mot
+- "infographic" når et helt poeng fortjener en egen grafikk
+Gi phrase (frasen fra manuset), overlay (kort tekst ≤ 6 ord), why (kort).
+
+Svar med KUN ett JSON-objekt: { "beats": [ { "index": 0, "kind": "stat", "phrase": "...", "overlay": "...", "why": "..." } ] }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: MARKETING_SYSTEM, messages: [{ role: 'user', content: user }], maxTokens: 1600,
+  });
+  const p = extractJson<{ beats?: VisualBeat[] }>(raw);
+  const kinds: VisualBeatKind[] = ['overlay', 'stat', 'highlight', 'infographic'];
+  return Array.isArray(p?.beats)
+    ? p!.beats.filter((b) => b && typeof b.index === 'number' && kinds.includes(b.kind as VisualBeatKind) && typeof b.overlay === 'string').slice(0, 30).map((b) => ({
+        index: b.index, kind: b.kind as VisualBeatKind, phrase: typeof b.phrase === 'string' ? b.phrase : '', overlay: b.overlay, why: typeof b.why === 'string' ? b.why : undefined,
+      }))
+    : [];
+}
+
 /** Kontekstuell infographic: Claude designer en branded SVG fra produktets data. */
 export type InfographicKind = 'overview' | 'features' | 'comparison' | 'funnel';
 export const INFOGRAPHIC_LABELS: Record<InfographicKind, string> = {
