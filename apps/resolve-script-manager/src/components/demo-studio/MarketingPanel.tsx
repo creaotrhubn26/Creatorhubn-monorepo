@@ -16,6 +16,7 @@ import { useDemoStudio } from './demoStudioStore';
 import { ProductBrainMap } from './ProductBrainMap';
 import { buildBrainHtml, svgToPngDataUrl } from './demoStudioExports';
 import { demoPrintHtml } from '../../api';
+import { addAsset } from './assetLibrary';
 import {
   suggestMarketingBrief, generateMarketingFlow, generateVariants, fetchSiteContext,
   ocrDetectElements, analyzeProductEvidence, buildProductBrain, draftOnePager as aiDraftOnePager,
@@ -135,7 +136,7 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
       let ev = evidence;
       if (!ev) { ev = await analyzeProductEvidence({ url: project.url, siteContext, elements }).catch(() => null); if (ev) setEvidence(ev); }
       const text = await aiDraftOnePager({ url: project.url, siteContext, elements, evidence: ev ?? undefined, branding });
-      if (text) { setOnePager(text); setCritique(null); }
+      if (text) { setOnePager(text); setCritique(null); addAsset({ kind: 'onepager', title: `One-pager — ${branding?.brandName || project.name}`, text, url: project.url }); }
       setMsg(`✓ One-pager-utkast laget fra ${pagesScanned.length || 1} side${pagesScanned.length === 1 ? '' : 'r'}${pagesScanned.length > 1 ? ` (${pagesScanned.join(', ')})` : ''} + vision. Rediger eller «Vurder kvalitet».`);
     } catch (e) { setMsg('Feil: ' + (e as Error).message); }
     finally { setBusy(null); }
@@ -215,7 +216,8 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
         logoUrl: project.branding?.logoUrl,
       });
       setInfoSvg(svg);
-      setMsg('✓ Infographic generert — last ned PNG/SVG.');
+      addAsset({ kind: 'infographic', title: `${INFOGRAPHIC_LABELS[infoKind]} — ${project.branding?.brandName || project.name}`, svg, url: project.url, note: INFOGRAPHIC_LABELS[infoKind] });
+      setMsg('✓ Infographic generert + lagret i biblioteket — last ned PNG/SVG.');
     } catch (e) { setMsg('Feil: ' + (e as Error).message); }
     finally { setBusy(null); }
   };

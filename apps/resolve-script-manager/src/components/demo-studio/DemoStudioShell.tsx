@@ -21,6 +21,7 @@ import { ScriptBuilderView } from './ScriptBuilderView';
 import { GuidedRecorderView } from './GuidedRecorderView';
 import { ExportView } from './ExportView';
 import { MarketingPanel } from './MarketingPanel';
+import { LibraryPanel } from './LibraryPanel';
 import { speak, cancelSpeech, getWebVoices, isWebSpeechSupported, type WebVoice } from './webSpeechVoiceover';
 import { FramedDevice, VIEWPORT_W } from './FramedDevice';
 import { SceneInteractionOverlay } from './SceneInteractionOverlay';
@@ -55,6 +56,7 @@ const NAV_ITEMS = [
   { id: 'create', label: 'Create Demo', ic: '▢' },
   { id: 'flow', label: 'Flow Builder', ic: '⤳' },
   { id: 'marketing', label: 'Marketing', ic: '◆' },
+  { id: 'library', label: 'Bibliotek', ic: '▤' },
   { id: 'script', label: 'Script Builder', ic: '✎' },
   { id: 'recorder', label: 'Guided Recorder', ic: '●' },
   { id: 'preview', label: 'Device Preview', ic: '▭' },
@@ -761,6 +763,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           <div style={{ flex: 1, minHeight: 0 }}><DevicePreviewView /></div>
         ) : nav === 'marketing' ? (
           <div style={{ flex: 1, minHeight: 0, display: 'flex' }}><MarketingPanel onOpenSignIn={() => setShowSignIn(true)} /></div>
+        ) : nav === 'library' ? (
+          <div style={{ flex: 1, minHeight: 0, display: 'flex' }}><LibraryPanel /></div>
         ) : (
           <>
             {/* ── Blocks panel (demo-typer) ── */}
