@@ -1083,22 +1083,22 @@ export default function AdminDashboard({
     {
       label: 'Rollenivå',
       value: currentUser?.isAdmin ? 'Full admin' : 'Begrenset',
-      tone: '#92400e',
-      background: '#fff4e5',
+      tone: '#ff8c00',
+      background: 'rgba(255,140,0,0.15)',
     },
     {
       label: 'Live datakilder',
       value: configuredOverviewFeedCount > 0
         ? `${liveOverviewFeedCount}/${configuredOverviewFeedCount}`
         : 'Avventer backend',
-      tone: '#0f766e',
-      background: '#ecfdf5',
+      tone: '#86efac',
+      background: 'rgba(34,197,94,0.18)',
     },
     {
       label: 'Sesjon',
       value: hasSessionToken ? 'Aktiv' : 'Mangler token',
-      tone: hasSessionToken ? '#1d4ed8' : '#b91c1c',
-      background: hasSessionToken ? '#eff6ff' : '#fef2f2',
+      tone: hasSessionToken ? '#93c5fd' : '#fca5a5',
+      background: hasSessionToken ? 'rgba(30,64,175,0.18)' : 'rgba(239,68,68,0.15)',
     },
   ];
 
@@ -1210,10 +1210,10 @@ export default function AdminDashboard({
           <Card
             sx={{
               borderRadius: '24px',
-              border: '1px solid #eadfce',
+              border: '1px solid rgba(255,255,255,0.12)',
               background:
-                'linear-gradient(135deg, rgba(255, 248, 237, 0.96), rgba(255,255,255,0.04))',
-              boxShadow: '0 22px 44px rgba(27, 21, 12, 0.06)',
+                'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
+              boxShadow: '0 22px 44px rgba(0,0,0,0.35)',
             }}
           >
             <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
@@ -1233,16 +1233,16 @@ export default function AdminDashboard({
                       fontSize: '0.72rem',
                       textTransform: 'uppercase',
                       letterSpacing: '0.12em',
-                      color: '#8b5e34',
+                      color: '#ff8c00',
                       fontWeight: 700,
                     }}
                   >
                     Workspace Control
                   </Typography>
-                  <Typography variant="h5" sx={{ mt: 0.75, fontWeight: 700, color: '#181512' }}>
+                  <Typography variant="h5" sx={{ mt: 0.75, fontWeight: 700, color: '#fff' }}>
                     Rask tilgang til adminoppgavene som brukes mest
                   </Typography>
-                  <Typography sx={{ mt: 0.75, color: '#6b6257', maxWidth: 620 }}>
+                  <Typography sx={{ mt: 0.75, color: 'rgba(255,255,255,0.85)', maxWidth: 620 }}>
                     Hopp direkte til brukere, prisstyring og drift uten å lete i sidebar. Dette
                     er den operative startflaten for Daniel som full admin.
                   </Typography>
@@ -1250,10 +1250,10 @@ export default function AdminDashboard({
                 <Chip
                   label={`${adminTabs.length} adminflater`}
                   sx={{
-                    bgcolor: '#ffffff',
-                    border: '1px solid #eadfce',
+                    bgcolor: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)',
                     fontWeight: 700,
-                    color: '#5d5347',
+                    color: 'rgba(255,255,255,0.85)',
                   }}
                 />
               </Box>
@@ -1270,27 +1270,27 @@ export default function AdminDashboard({
                         justifyContent: 'space-between',
                         alignItems: 'flex-start',
                         borderRadius: '18px',
-                        border: '1px solid #e6dccd',
-                        bgcolor: '#fffdf9',
-                        color: '#1f1b16',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        bgcolor: 'rgba(255,255,255,0.04)',
+                        color: '#fff',
                         textTransform: 'none',
                         boxShadow: 'none',
                         '&:hover': {
-                          bgcolor: '#ffffff',
-                          borderColor: '#d7c5ad',
-                          boxShadow: '0 10px 24px rgba(27, 21, 12, 0.08)',
+                          bgcolor: 'rgba(255,255,255,0.06)',
+                          borderColor: 'rgba(255,255,255,0.2)',
+                          boxShadow: '0 10px 24px rgba(0,0,0,0.45)',
                         },
                       }}
                     >
                       <Box sx={{ textAlign: 'left' }}>
                         <Typography sx={{ fontWeight: 700 }}>{action.label}</Typography>
-                        <Typography sx={{ mt: 0.4, fontSize: '0.8rem', color: '#7a7063' }}>
+                        <Typography sx={{ mt: 0.4, fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)' }}>
                           {action.description}
                         </Typography>
                       </Box>
                       <ExpandMore
                         sx={{
-                          color: '#8b8378',
+                          color: 'rgba(255,255,255,0.65)',
                           transform: 'rotate(-90deg)',
                         }}
                       />
@@ -1306,9 +1306,9 @@ export default function AdminDashboard({
           <Card
             sx={{
               borderRadius: '24px',
-              border: '1px solid #eadfce',
-              bgcolor: '#ffffff',
-              boxShadow: '0 22px 44px rgba(27, 21, 12, 0.06)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              bgcolor: 'rgba(255,255,255,0.06)',
+              boxShadow: '0 22px 44px rgba(0,0,0,0.35)',
               height: '100%',
             }}
           >
@@ -1318,16 +1318,16 @@ export default function AdminDashboard({
                   fontSize: '0.72rem',
                   textTransform: 'uppercase',
                   letterSpacing: '0.12em',
-                  color: '#8b5e34',
+                  color: '#ff8c00',
                   fontWeight: 700,
                 }}
               >
                 Admin Status
               </Typography>
-              <Typography variant="h5" sx={{ mt: 0.75, fontWeight: 700, color: '#181512' }}>
+              <Typography variant="h5" sx={{ mt: 0.75, fontWeight: 700, color: '#fff' }}>
                 Operativt snapshot
               </Typography>
-              <Typography sx={{ mt: 0.75, color: '#6b6257' }}>
+              <Typography sx={{ mt: 0.75, color: 'rgba(255,255,255,0.85)' }}>
                 Et raskt bilde av tilgang, datakilder og session før du går videre inn i
                 detaljene.
               </Typography>
@@ -1344,7 +1344,7 @@ export default function AdminDashboard({
                         border: '1px solid rgba(255,255,255,0.04)',
                       }}
                     >
-                      <Typography sx={{ fontSize: '0.72rem', color: '#766d61', fontWeight: 700 }}>
+                      <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', fontWeight: 700 }}>
                         {card.label}
                       </Typography>
                       <Typography sx={{ mt: 0.5, fontWeight: 700, color: card.tone }}>
@@ -1386,12 +1386,12 @@ export default function AdminDashboard({
       <Typography
         variant="h5"
         gutterBottom
-        sx={{ display: 'flex', alignItems: 'center', gap: 2 }}
+        sx={{ display: 'flex', alignItems: 'center', gap: 2, color: '#fff' }}
       >
         <School sx={{ color: '#ff8c00' }} />
         Academy Management
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+      <Typography variant="body2" sx={{ mb: 4, color: 'rgba(255,255,255,0.7)' }}>
         Administrer kursutbetalinger til instruktører og plattformgebyrer
       </Typography>
 
@@ -1579,17 +1579,17 @@ export default function AdminDashboard({
       <Typography
         variant="h5"
         gutterBottom
-        sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}
+        sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}
       >
         <Settings />
         Drift & Innstillinger
       </Typography>
 
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+        <Typography variant="h6" gutterBottom sx={{ mb: 2, color: '#fff' }}>
           Push-varsler
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography variant="body2" sx={{ mb: 2, color: 'rgba(255,255,255,0.7)' }}>
           Aktiver push-varsler for å motta varsler om systemhendelser, brukeraktivitet og
           kritiske oppdateringer.
         </Typography>
@@ -1607,12 +1607,12 @@ export default function AdminDashboard({
       <Box sx={{ mb: 3 }}>
         <Typography
           variant="h5"
-          sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}
+          sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}
         >
           <Campaign color="primary" />
           Marketing Management
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
           Content Calendar & Announcement Management
         </Typography>
       </Box>
@@ -1774,12 +1774,12 @@ export default function AdminDashboard({
             >
               <Typography
                 variant="h5"
-                sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}
+                sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}
               >
                 <Folder color="primary" />
                 Visual CMS Dashboard
               </Typography>
-              <Typography variant="body1" color="text.secondary">
+              <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                 API Bank Management, Mock/Real Switching og Deployment Workflow
               </Typography>
             </Box>
@@ -1920,7 +1920,7 @@ export default function AdminDashboard({
         <Box
           sx={{
             minHeight: '100vh',
-            bgcolor: '#f4f1ec',
+            bgcolor: '#0a0f1a',
             px: { md: 2.5, xl: 4 },
             py: { md: 2.5, xl: 4 },
           }}
@@ -1932,10 +1932,10 @@ export default function AdminDashboard({
               minHeight: 'calc(100vh - 40px)',
               display: 'grid',
               gridTemplateColumns: '260px minmax(0, 1fr)',
-              bgcolor: '#ffffff',
+              bgcolor: 'rgba(255,255,255,0.06)',
               borderRadius: '28px',
-              border: '1px solid #ebe3d8',
-              boxShadow: '0 24px 80px rgba(27, 21, 12, 0.08)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
               overflow: 'hidden',
             }}
           >
@@ -1943,8 +1943,8 @@ export default function AdminDashboard({
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
-                bgcolor: '#faf8f4',
-                borderRight: '1px solid #eee6db',
+                bgcolor: 'rgba(255,255,255,0.04)',
+                borderRight: '1px solid rgba(255,255,255,0.12)',
                 p: 2.5,
                 minHeight: 0,
               }}
@@ -1963,7 +1963,7 @@ export default function AdminDashboard({
                       width: 34,
                       height: 34,
                       borderRadius: '12px',
-                      bgcolor: '#181512',
+                      bgcolor: '#ff8c00',
                       display: 'grid',
                       placeItems: 'center',
                       overflow: 'hidden',
@@ -1976,15 +1976,15 @@ export default function AdminDashboard({
                     />
                   </Box>
                   <Box>
-                    <Typography sx={{ fontSize: '0.95rem', fontWeight: 700, color: '#1a1713' }}>
+                    <Typography sx={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>
                       CreatorHub
                     </Typography>
-                    <Typography sx={{ fontSize: '0.72rem', color: '#8b8378' }}>
+                    <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.65)' }}>
                       Admin workspace
                     </Typography>
                   </Box>
                 </Box>
-                <Typography sx={{ fontSize: '0.72rem', color: '#8b8378', fontWeight: 600 }}>
+                <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.65)', fontWeight: 600 }}>
                   v4.0
                 </Typography>
               </Box>
@@ -1999,16 +1999,16 @@ export default function AdminDashboard({
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
-                        <Search sx={{ fontSize: 18, color: '#9a9185' }} />
+                        <Search sx={{ fontSize: 18, color: 'rgba(255,255,255,0.65)' }} />
                       </InputAdornment>
                     ),
                   }}
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       borderRadius: '14px',
-                      bgcolor: '#ffffff',
+                      bgcolor: 'rgba(255,255,255,0.06)',
                       '& fieldset': {
-                        borderColor: '#e6dccd',
+                        borderColor: 'rgba(255,255,255,0.12)',
                       },
                     },
                     '& .MuiInputBase-input': {
@@ -2016,7 +2016,7 @@ export default function AdminDashboard({
                     },
                   }}
                 />
-                <Typography sx={{ mt: 0.75, px: 0.5, fontSize: '0.72rem', color: '#9a9185' }}>
+                <Typography sx={{ mt: 0.75, px: 0.5, fontSize: '0.72rem', color: 'rgba(255,255,255,0.65)' }}>
                   {normalizedAdminNavQuery
                     ? `${visibleAdminTabCount} treff i adminen`
                     : `${adminTabs.length} adminflater tilgjengelig`}
@@ -2039,7 +2039,7 @@ export default function AdminDashboard({
                       gap: 1,
                       cursor: 'pointer',
                       '&:hover': {
-                        bgcolor: '#f5f2ed',
+                        bgcolor: 'rgba(255,255,255,0.06)',
                       },
                     }}
                   >
@@ -2048,7 +2048,7 @@ export default function AdminDashboard({
                         fontSize: '0.72rem',
                         letterSpacing: '0.1em',
                         textTransform: 'uppercase',
-                        color: '#9a9185',
+                        color: 'rgba(255,255,255,0.65)',
                         fontWeight: 700,
                       }}
                     >
@@ -2060,8 +2060,8 @@ export default function AdminDashboard({
                         size="small"
                         sx={{
                           height: 22,
-                          bgcolor: '#ffffff',
-                          color: '#7f766b',
+                          bgcolor: 'rgba(255,255,255,0.06)',
+                          color: 'rgba(255,255,255,0.7)',
                           fontWeight: 700,
                           borderRadius: '999px',
                         }}
@@ -2069,7 +2069,7 @@ export default function AdminDashboard({
                       <ExpandMore
                         sx={{
                           fontSize: 18,
-                          color: '#8c8478',
+                          color: 'rgba(255,255,255,0.65)',
                           transform:
                             normalizedAdminNavQuery || (adminGroupExpansion[group.label] ?? true)
                               ? 'rotate(180deg)'
@@ -2100,16 +2100,16 @@ export default function AdminDashboard({
                               borderRadius: '14px',
                               textTransform: 'none',
                               fontWeight: isSelected ? 700 : 600,
-                              color: isSelected ? '#181512' : '#6c655b',
-                              bgcolor: isSelected ? '#f1eee8' : 'transparent',
+                              color: isSelected ? '#fff' : 'rgba(255,255,255,0.85)',
+                              bgcolor: isSelected ? 'rgba(255,140,0,0.15)' : 'transparent',
                               border: isSelected
-                                ? '1px solid rgba(140, 94, 52, 0.12)'
+                                ? '1px solid rgba(255,140,0,0.35)'
                                 : '1px solid transparent',
                               '&:hover': {
-                                bgcolor: isSelected ? '#f1eee8' : '#f5f2ed',
+                                bgcolor: isSelected ? 'rgba(255,140,0,0.2)' : 'rgba(255,255,255,0.06)',
                               },
                               '& .MuiButton-startIcon': {
-                                color: isSelected ? '#181512' : '#8b8378',
+                                color: isSelected ? '#fff' : 'rgba(255,255,255,0.65)',
                               },
                             }}
                           >
@@ -2122,7 +2122,7 @@ export default function AdminDashboard({
                                   sx={{
                                     mt: 0.15,
                                     fontSize: '0.72rem',
-                                    color: '#8c8478',
+                                    color: 'rgba(255,255,255,0.65)',
                                     maxWidth: 190,
                                     whiteSpace: 'nowrap',
                                     overflow: 'hidden',
@@ -2142,7 +2142,7 @@ export default function AdminDashboard({
               ))}
             </Box>
 
-            <Box sx={{ pt: 2, borderTop: '1px solid #eee6db', display: 'grid', gap: 0.75 }}>
+            <Box sx={{ pt: 2, borderTop: '1px solid rgba(255,255,255,0.12)', display: 'grid', gap: 0.75 }}>
               <Button
                 fullWidth
                 onClick={() => setFullscreenChatOpen(true)}
@@ -2152,7 +2152,7 @@ export default function AdminDashboard({
                   justifyContent: 'flex-start',
                   borderRadius: '12px',
                   textTransform: 'none',
-                  color: '#5f574f',
+                  color: 'rgba(255,255,255,0.85)',
                   fontWeight: 600,
                 }}
               >
@@ -2167,7 +2167,7 @@ export default function AdminDashboard({
                   justifyContent: 'flex-start',
                   borderRadius: '12px',
                   textTransform: 'none',
-                  color: '#5f574f',
+                  color: 'rgba(255,255,255,0.85)',
                   fontWeight: 600,
                 }}
               >
@@ -2181,7 +2181,7 @@ export default function AdminDashboard({
               sx={{
                 px: 4,
                 py: 3,
-                borderBottom: '1px solid #f0ebe3',
+                borderBottom: '1px solid rgba(255,255,255,0.12)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -2189,7 +2189,7 @@ export default function AdminDashboard({
               }}
             >
               <Box>
-                <Typography sx={{ fontSize: '0.8rem', color: '#938b80' }}>
+                <Typography sx={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.65)' }}>
                   CreatorHub Admin {'>'} Workspace {'>'} {currentTab.label}
                 </Typography>
                 <Typography
@@ -2197,12 +2197,12 @@ export default function AdminDashboard({
                     mt: 0.75,
                     fontSize: '1.05rem',
                     fontWeight: 700,
-                    color: '#181512',
+                    color: '#fff',
                   }}
                 >
                   {currentTab.label}
                 </Typography>
-                <Typography sx={{ mt: 0.5, fontSize: '0.84rem', color: '#7d7468', maxWidth: 720 }}>
+                <Typography sx={{ mt: 0.5, fontSize: '0.84rem', color: 'rgba(255,255,255,0.7)', maxWidth: 720 }}>
                   {currentTabDescription}
                 </Typography>
                 <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
@@ -2210,8 +2210,8 @@ export default function AdminDashboard({
                     label={currentUser.isAdmin ? 'Full admin' : 'Begrenset tilgang'}
                     size="small"
                     sx={{
-                      bgcolor: '#fff4e5',
-                      color: '#8c4d00',
+                      bgcolor: 'rgba(255,140,0,0.15)',
+                      color: '#ff8c00',
                       fontWeight: 700,
                       borderRadius: '999px',
                     }}
@@ -2224,8 +2224,8 @@ export default function AdminDashboard({
                     }
                     size="small"
                     sx={{
-                      bgcolor: '#ecfdf5',
-                      color: '#0f766e',
+                      bgcolor: 'rgba(34,197,94,0.18)',
+                      color: '#86efac',
                       fontWeight: 700,
                       borderRadius: '999px',
                     }}
@@ -2234,8 +2234,8 @@ export default function AdminDashboard({
                     label={hasSessionToken ? 'Sesjon aktiv' : 'Sesjon mangler'}
                     size="small"
                     sx={{
-                      bgcolor: hasSessionToken ? '#eff6ff' : '#fef2f2',
-                      color: hasSessionToken ? '#1d4ed8' : '#b91c1c',
+                      bgcolor: hasSessionToken ? 'rgba(30,64,175,0.18)' : 'rgba(239,68,68,0.15)',
+                      color: hasSessionToken ? '#93c5fd' : '#fca5a5',
                       fontWeight: 700,
                       borderRadius: '999px',
                     }}
@@ -2248,26 +2248,26 @@ export default function AdminDashboard({
                   label={currentUser.isAdmin ? 'Administrator' : 'Tilgang'}
                   size="small"
                   sx={{
-                    bgcolor: '#f6ede0',
-                    color: '#8c4d00',
+                    bgcolor: 'rgba(255,140,0,0.15)',
+                    color: '#ff8c00',
                     fontWeight: 700,
                     borderRadius: '999px',
                   }}
                 />
                 <Avatar
                   src={currentUser.picture || undefined}
-                  sx={{ width: 34, height: 34, bgcolor: '#efe2d4', color: '#181512' }}
+                  sx={{ width: 34, height: 34, bgcolor: 'rgba(255,140,0,0.18)', color: '#ff8c00' }}
                 >
                   {(currentUser.name || currentUser.email || 'A').charAt(0).toUpperCase()}
                 </Avatar>
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: '#181512' }}>
+                  <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff' }}>
                     {currentUser.name || 'Admin'}
                   </Typography>
                   <Typography
                     sx={{
                       fontSize: '0.75rem',
-                      color: '#8f877b',
+                      color: 'rgba(255,255,255,0.65)',
                       maxWidth: 240,
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
@@ -2285,7 +2285,7 @@ export default function AdminDashboard({
                 p: isVisualCmsTab ? 0 : 4,
                 minWidth: 0,
                 overflowY: 'auto',
-                bgcolor: isVisualCmsTab ? '#ffffff' : '#fcfaf7',
+                bgcolor: isVisualCmsTab ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.04)',
               }}
             >
               <Box sx={{ maxWidth: isVisualCmsTab ? '100%' : '1280px', mx: 'auto' }}>
@@ -2375,10 +2375,10 @@ export default function AdminDashboard({
         position="sticky"
         elevation={2}
         sx={{
-          backgroundColor: 'rgba(250, 248, 244, 0.96)',
-          borderBottom: '1px solid #e9dece',
+          backgroundColor: 'rgba(15,23,42,0.94)',
+          borderBottom: '1px solid rgba(255,255,255,0.12)',
           backdropFilter: 'blur(16px)',
-          color: 'text.primary',
+          color: '#fff',
         }}
       >
         <Toolbar
@@ -2411,8 +2411,7 @@ export default function AdminDashboard({
               {!isSmall && (
                 <Typography
                   variant="caption"
-                  color="text.secondary"
-                  sx={{ display: 'block', mt: -0.5 }}
+                  sx={{ display: 'block', mt: -0.5, color: 'rgba(255,255,255,0.7)' }}
                 >
                   {currentUser.email}
                 </Typography>
@@ -2425,8 +2424,8 @@ export default function AdminDashboard({
             sx={{
               color: '#ff8c00',
               ml: 1,
-              border: '1px solid #eadfce',
-              bgcolor: '#ffffff',
+              border: '1px solid rgba(255,255,255,0.12)',
+              bgcolor: 'rgba(255,255,255,0.06)',
             }}
           >
             <MenuIcon />
@@ -2437,7 +2436,7 @@ export default function AdminDashboard({
 
       <MobileDropdownMenu />
 
-      <Box sx={{ minHeight: '100vh', bgcolor: '#f4f1ec', pb: 12 }}>
+      <Box sx={{ minHeight: '100vh', bgcolor: '#0a0f1a', pb: 12 }}>
         <Container
           maxWidth={isVisualCmsTab ? false : 'xl'}
           disableGutters={isVisualCmsTab}
@@ -2455,13 +2454,13 @@ export default function AdminDashboard({
                 px: { xs: 0.5, sm: 0 },
               }}
             >
-              <Typography sx={{ fontSize: '0.76rem', color: '#938b80', mb: 0.75 }}>
+              <Typography sx={{ fontSize: '0.76rem', color: 'rgba(255,255,255,0.65)', mb: 0.75 }}>
                 CreatorHub Admin {'>'} Workspace {'>'} {currentTab.label}
               </Typography>
-              <Typography sx={{ fontSize: '1.35rem', fontWeight: 700, color: '#181512' }}>
+              <Typography sx={{ fontSize: '1.35rem', fontWeight: 700, color: '#fff' }}>
                 {currentTab.label}
               </Typography>
-              <Typography sx={{ mt: 0.5, fontSize: '0.92rem', color: '#6f675d' }}>
+              <Typography sx={{ mt: 0.5, fontSize: '0.92rem', color: 'rgba(255,255,255,0.7)' }}>
                 {currentTabDescription}
               </Typography>
             </Box>
