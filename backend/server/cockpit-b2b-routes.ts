@@ -23,6 +23,7 @@ import Anthropic from "@anthropic-ai/sdk";
 
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { composeEmail } from "./email-design-system.js";
+import { resolveDefaultLinkedInOrg } from "./linkedin-oauth-routes.js";
 
 interface SessionLike { userId: string; email?: string }
 
@@ -48,11 +49,19 @@ export function setupCockpitB2BRoutes(deps: CockpitB2BRoutesDeps): void {
   // ── 1. LinkedIn Company auto-publish ─────────────────────────────
   app.post("/api/admin-room/cockpit/linkedin/publish/:draftId", async (req, res) => {
     const session = guard(req, res); if (!session) return;
-    const accessToken = process.env.LINKEDIN_ACCESS_TOKEN?.trim();
-    const companyUrn = process.env.LINKEDIN_COMPANY_URN?.trim()
-      ?? (req.body as { company_urn?: string })?.company_urn;
-    if (!accessToken) return res.status(503).json({ error: "LINKEDIN_ACCESS_TOKEN mangler" });
-    if (!companyUrn) return res.status(400).json({ error: "company_urn må være satt (LINKEDIN_COMPANY_URN eller body)" });
+    // Override via body, ellers bruk default-orgen fra linkedin_org_config
+    const override = (req.body as { organization_urn?: string })?.organization_urn;
+    const resolved = await resolveDefaultLinkedInOrg(pool);
+    if (!resolved && !override) {
+      return res.status(503).json({
+        error: "LinkedIn er ikke koblet. Klikk «Koble LinkedIn» i Cockpit først.",
+      });
+    }
+    const accessToken = resolved?.accessToken;
+    const companyUrn = override ?? resolved?.organizationUrn;
+    if (!accessToken || !companyUrn) {
+      return res.status(503).json({ error: "Token eller URN mangler" });
+    }
 
     try {
       const r = await pool.query(

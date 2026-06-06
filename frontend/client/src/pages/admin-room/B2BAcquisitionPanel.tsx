@@ -655,18 +655,270 @@ function CaseStudiesSection() {
 }
 
 // ── LinkedIn-publish-seksjon ──────────────────────────────────────
+interface LinkedInStatus {
+  configured: boolean;
+  client_id_set: boolean;
+  client_secret_set: boolean;
+  redirect_uri: string;
+  connections: Array<{
+    id: string;
+    organization_urn: string;
+    vanity_name: string | null;
+    display_name: string | null;
+    org_type: 'company' | 'showcase';
+    parent_display_name: string | null;
+    expires_at: string;
+    is_default: boolean;
+    last_publish_at: string | null;
+    last_error: string | null;
+    last_error_at: string | null;
+    scopes: string[];
+  }>;
+}
+
 function LinkedInPublishSection() {
+  const [status, setStatus] = useState<LinkedInStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState<{ tone: 'success' | 'error' | 'info'; text: string } | null>(null);
+
+  const reload = useCallback(async () => {
+    try {
+      const r = await fetch('/api/admin-room/cockpit/linkedin/status', { credentials: 'include' });
+      if (r.ok) setStatus(await r.json());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void reload();
+    // URL-callback-detect: ?linkedin=connected
+    const params = new URLSearchParams(window.location.search);
+    const linkedinParam = params.get('linkedin');
+    if (linkedinParam === 'connected') {
+      const count = params.get('count') ?? '0';
+      setMsg({ tone: 'success', text: `LinkedIn koblet — ${count} org(er) lagret.` });
+      void reload();
+    } else if (linkedinParam === 'error') {
+      const reason = params.get('reason') ?? 'ukjent';
+      setMsg({ tone: 'error', text: `LinkedIn-feil: ${reason}` });
+    }
+  }, [reload]);
+
+  const connect = async () => {
+    setMsg(null);
+    try {
+      const r = await fetch('/api/admin-room/cockpit/linkedin/oauth-start', { credentials: 'include' });
+      const payload = await r.json();
+      if (!r.ok) throw new Error(payload.error ?? `HTTP ${r.status}`);
+      window.location.href = payload.redirect_url;
+    } catch (err) {
+      setMsg({ tone: 'error', text: err instanceof Error ? err.message : 'OAuth-start feilet' });
+    }
+  };
+
+  const setDefault = async (id: string) => {
+    setMsg(null);
+    try {
+      const r = await fetch(`/api/admin-room/cockpit/linkedin/orgs/${id}/default`, {
+        method: 'PATCH', credentials: 'include',
+      });
+      if (!r.ok) {
+        const p = await r.json();
+        throw new Error(p.error ?? `HTTP ${r.status}`);
+      }
+      setMsg({ tone: 'success', text: 'Default oppdatert.' });
+      await reload();
+    } catch (err) {
+      setMsg({ tone: 'error', text: err instanceof Error ? err.message : 'Feilet' });
+    }
+  };
+
+  const refreshToken = async (id: string) => {
+    setMsg(null);
+    try {
+      const r = await fetch(`/api/admin-room/cockpit/linkedin/orgs/${id}/refresh`, {
+        method: 'POST', credentials: 'include',
+      });
+      const payload = await r.json();
+      if (!r.ok) throw new Error(payload.error ?? `HTTP ${r.status}`);
+      setMsg({ tone: 'success', text: `Token fornyet (${Math.round(payload.expires_in / 3600 / 24)} dager til neste utløp).` });
+      await reload();
+    } catch (err) {
+      setMsg({ tone: 'error', text: err instanceof Error ? err.message : 'Refresh feilet' });
+    }
+  };
+
+  const disconnect = async (id: string) => {
+    if (!window.confirm('Fjerne kobling? Du kan koble på nytt senere.')) return;
+    setMsg(null);
+    try {
+      const r = await fetch(`/api/admin-room/cockpit/linkedin/orgs/${id}`, {
+        method: 'DELETE', credentials: 'include',
+      });
+      if (!r.ok) {
+        const p = await r.json();
+        throw new Error(p.error ?? `HTTP ${r.status}`);
+      }
+      setMsg({ tone: 'success', text: 'Fjernet.' });
+      await reload();
+    } catch (err) {
+      setMsg({ tone: 'error', text: err instanceof Error ? err.message : 'Fjern feilet' });
+    }
+  };
+
+  if (loading) {
+    return <CircularProgress size={20} sx={{ color: '#c084fc' }} />;
+  }
+
   return (
-    <Stack spacing={1.2}>
-      <Typography sx={{ color: 'rgba(203,213,225,0.85)', fontSize: '0.88rem', lineHeight: 1.55 }}>
-        LinkedIn Company auto-publish er nå koblet til drafts-flowen. Når du
-        har en draft med <code>platform=linkedin</code>, klikk «Publiser» i
-        eksisterende PostDraftsPanel — den går rett til LinkedIn Company-page
-        (krever <code>LINKEDIN_ACCESS_TOKEN</code> + <code>LINKEDIN_COMPANY_URN</code> env-vars).
-      </Typography>
-      <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.78rem', fontStyle: 'italic' }}>
-        Endepunkt: POST /api/admin-room/cockpit/linkedin/publish/:draftId
-      </Typography>
+    <Stack spacing={1.6}>
+      {msg ? <Alert severity={msg.tone} onClose={() => setMsg(null)}>{msg.text}</Alert> : null}
+
+      {!status?.configured ? (
+        <Alert severity="warning">
+          <Typography sx={{ fontWeight: 700, fontSize: '0.88rem', mb: 0.4 }}>
+            Mangler LinkedIn-app-konfig
+          </Typography>
+          <Typography sx={{ fontSize: '0.84rem' }}>
+            Sett <code>LINKEDIN_CLIENT_ID</code> + <code>LINKEDIN_CLIENT_SECRET</code> på Render.
+            Lag en app i{' '}
+            <a href="https://developer.linkedin.com/" target="_blank" rel="noreferrer"
+               style={{ color: '#c084fc' }}>
+              LinkedIn Developer Portal
+            </a>
+            {' '}med scopes: <code>r_organization_admin</code>, <code>w_organization_social</code>,
+            {' '}<code>r_basicprofile</code>. Redirect-URI: <code>{status?.redirect_uri ?? ''}</code>
+          </Typography>
+        </Alert>
+      ) : null}
+
+      {(status?.connections ?? []).length === 0 ? (
+        <Stack spacing={1.2}>
+          <Typography sx={{ color: 'rgba(203,213,225,0.85)', fontSize: '0.88rem', lineHeight: 1.55 }}>
+            Klikk «Koble LinkedIn» for å starte OAuth-flyten. Du blir sendt til LinkedIn,
+            logger inn (én gang), og kommer tilbake med Creatorhub AS + The Role Room
+            Showcase Page automatisk koblet.
+          </Typography>
+          <Button
+            onClick={connect}
+            disabled={!status?.configured}
+            startIcon={<ShareOutlinedIcon />}
+            sx={{
+              background: '#0a66c2', // LinkedIn-blå
+              color: '#fff',
+              textTransform: 'none',
+              fontWeight: 700,
+              alignSelf: 'flex-start',
+              px: 2.4, py: 1.2,
+              '&:hover': { background: '#085bab' },
+              '&.Mui-disabled': { background: 'rgba(10,102,194,0.3)', color: 'rgba(255,255,255,0.5)' },
+            }}
+          >
+            Koble LinkedIn
+          </Button>
+        </Stack>
+      ) : (
+        <Stack spacing={1.2}>
+          {status?.connections.map((conn) => {
+            const expiresAt = new Date(conn.expires_at);
+            const daysLeft = Math.round((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            const isExpiringSoon = daysLeft < 7;
+            return (
+              <Box
+                key={conn.id}
+                sx={{
+                  bgcolor: conn.is_default ? 'rgba(168,85,247,0.10)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${conn.is_default ? 'rgba(168,85,247,0.45)' : 'rgba(168,85,247,0.18)'}`,
+                  borderRadius: 1.4,
+                  p: 1.8,
+                }}
+              >
+                <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.2}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Typography sx={{ fontWeight: 700, color: '#f5f3ff', fontSize: '0.94rem' }}>
+                        {conn.display_name ?? conn.vanity_name ?? conn.organization_urn}
+                      </Typography>
+                      <Chip
+                        label={conn.org_type === 'showcase' ? 'Showcase' : 'Company'}
+                        size="small"
+                        sx={{
+                          bgcolor: conn.org_type === 'showcase'
+                            ? 'rgba(217,70,239,0.20)' : 'rgba(96,165,250,0.20)',
+                          color: conn.org_type === 'showcase' ? '#e879f9' : '#60a5fa',
+                          fontWeight: 700, fontSize: '0.7rem', height: 20,
+                        }}
+                      />
+                      {conn.is_default ? (
+                        <Chip label="DEFAULT" size="small"
+                          sx={{ bgcolor: 'rgba(52,211,153,0.20)', color: '#34d399',
+                                fontWeight: 700, fontSize: '0.7rem', height: 20 }} />
+                      ) : null}
+                    </Stack>
+                    {conn.parent_display_name ? (
+                      <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.78rem', mt: 0.3 }}>
+                        Parent: {conn.parent_display_name}
+                      </Typography>
+                    ) : null}
+                    <Typography sx={{ color: isExpiringSoon ? '#fbbf24' : 'rgba(148,163,184,0.7)', fontSize: '0.74rem', mt: 0.4 }}>
+                      Token utløper {daysLeft > 0 ? `om ${daysLeft} dager` : `for ${Math.abs(daysLeft)} dager siden`}
+                    </Typography>
+                    {conn.last_error ? (
+                      <Typography sx={{ color: '#f87171', fontSize: '0.74rem', mt: 0.4 }}>
+                        Siste feil: {conn.last_error.slice(0, 100)}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                  <Stack direction="row" spacing={0.6}>
+                    {!conn.is_default ? (
+                      <Button
+                        onClick={() => setDefault(conn.id)}
+                        size="small"
+                        sx={{ textTransform: 'none', fontSize: '0.78rem',
+                              color: '#c084fc', minWidth: 0 }}
+                      >
+                        Sett default
+                      </Button>
+                    ) : null}
+                    <Button
+                      onClick={() => refreshToken(conn.id)}
+                      size="small"
+                      sx={{ textTransform: 'none', fontSize: '0.78rem',
+                            color: '#fbbf24', minWidth: 0 }}
+                    >
+                      Forny
+                    </Button>
+                    <Button
+                      onClick={() => disconnect(conn.id)}
+                      size="small"
+                      sx={{ textTransform: 'none', fontSize: '0.78rem',
+                            color: '#f87171', minWidth: 0 }}
+                    >
+                      Fjern
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Box>
+            );
+          })}
+          <Button
+            onClick={connect}
+            startIcon={<ShareOutlinedIcon />}
+            sx={{
+              alignSelf: 'flex-start',
+              textTransform: 'none',
+              color: '#0a66c2',
+              border: '1px solid #0a66c2',
+              fontWeight: 700,
+              px: 2, py: 0.8,
+              '&:hover': { bgcolor: 'rgba(10,102,194,0.10)' },
+            }}
+          >
+            Koble en til
+          </Button>
+        </Stack>
+      )}
     </Stack>
   );
 }
