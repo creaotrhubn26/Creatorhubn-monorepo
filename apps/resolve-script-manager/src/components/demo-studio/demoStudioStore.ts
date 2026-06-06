@@ -61,6 +61,23 @@ interface DemoStudioState {
   setSceneStatus: (id: string, status: SceneStatus) => void;
   setSceneDevice: (id: string, device: DemoDevice) => void;
 
+  // ── Edit Mode: undo/redo (historikk over prosjekt-snapshots) ──
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+
+  // ── Edit Mode: multi-select ──
+  /** Scener valgt for batch-operasjoner (i tillegg til selectedSceneId). */
+  selectedSceneIds: string[];
+  toggleSceneSelected: (id: string, additive?: boolean) => void;
+  clearSceneSelection: () => void;
+  removeSelectedScenes: () => void;
+
+  /** Intern undo/redo-historikk (prosjekt-snapshots). Ikke kall direkte. */
+  _undo: DemoProject[];
+  _redo: DemoProject[];
+
   // ── Guided recorder (manuell progresjon) ──
   startRecorder: () => void;
   goToStep: (index: number) => void;
@@ -80,10 +97,35 @@ function persist(project: DemoProject): DemoProject {
   return project;
 }
 
-export const useDemoStudio = create<DemoStudioState>((set, get) => ({
+const HISTORY_CAP = 60;
+/** Koalescering: raske påfølgende edits med samme nøkkel blir ÉN undo-handling. */
+let _lastSnap: { t: number; key: string } | null = null;
+
+export const useDemoStudio = create<DemoStudioState>((set, get) => {
+  /**
+   * Ta vare på nåværende prosjekt-tilstand FØR en mutasjon, så den kan angres.
+   * `key` + `coalesceMs` slår sammen raske påfølgende edits (f.eks. tasting i ett
+   * felt) til én undo-handling. Rydder redo-stacken (ny gren = ingen redo).
+   */
+  const snapshot = (key: string, coalesceMs = 0) => {
+    const { project, _undo } = get();
+    if (!project) return;
+    const now = Date.now();
+    if (coalesceMs > 0 && _lastSnap && _lastSnap.key === key && now - _lastSnap.t < coalesceMs) {
+      _lastSnap = { t: now, key };
+      return; // samme logiske handling → ikke ny undo-post
+    }
+    _lastSnap = { t: now, key };
+    set({ _undo: [..._undo, project].slice(-HISTORY_CAP), _redo: [] });
+  };
+
+  return {
   project: null,
   selectedSceneId: null,
   recorderStepIndex: 0,
+  _undo: [],
+  _redo: [],
+  selectedSceneIds: [],
 
   createProject: (url, demoType = 'product_demo') => {
     const project = makeProject(url, demoType);
@@ -103,6 +145,7 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
   setProjectField: (key, value) => {
     const { project } = get();
     if (!project) return;
+    snapshot(`field:${String(key)}`, 800);
     set({ project: persist({ ...project, [key]: value }) });
   },
 
@@ -113,6 +156,7 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
       set({ project: persist({ ...project, demoType }) });
       return;
     }
+    snapshot('demotype');
     const tpl = DEMO_TYPE_TEMPLATES[demoType] ?? DEMO_TYPE_TEMPLATES.product_demo;
     const scenes = reindex(flowForDemoType(demoType, project.devices[0]));
     const scriptMeta = { ...(project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: 'Norsk', length: 'medium' as const }), tone: tpl.tone, length: tpl.length };
@@ -126,6 +170,7 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
   setRenderOption: (key, value) => {
     const { project } = get();
     if (!project) return;
+    snapshot(`render:${String(key)}`);
     const render = { ...defaultRenderOptions(), ...project.render, [key]: value };
     set({ project: persist({ ...project, render }) });
   },
@@ -133,6 +178,7 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
   applyResponsiveFix: (fix) => {
     const { project } = get();
     if (!project) return;
+    snapshot('responsive');
     if (fix.kind === 'set_format' && fix.format) {
       set({ project: persist({ ...project, format: fix.format }) });
       return;
@@ -156,6 +202,7 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
   addScene: (afterIndex) => {
     const { project } = get();
     if (!project) return;
+    snapshot('add');
     const at = afterIndex == null ? project.scenes.length : afterIndex + 1;
     const scene = makeScene(at);
     const scenes = reindex([
@@ -169,6 +216,8 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
   updateScene: (id, patch) => {
     const { project } = get();
     if (!project) return;
+    // Tasting i ett felt koalesceres til én undo-handling (800ms).
+    snapshot(`update:${id}`, 800);
     const scenes = project.scenes.map((s) => (s.id === id ? { ...s, ...patch } : s));
     set({ project: persist({ ...project, scenes }) });
   },
@@ -176,6 +225,7 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
   removeScene: (id) => {
     const { project, selectedSceneId } = get();
     if (!project) return;
+    snapshot('remove');
     const scenes = reindex(project.scenes.filter((s) => s.id !== id));
     const nextSelected = selectedSceneId === id ? scenes[0]?.id ?? null : selectedSceneId;
     set({ project: persist({ ...project, scenes }), selectedSceneId: nextSelected });
@@ -184,6 +234,7 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
   replaceScenes: (scenes) => {
     const { project } = get();
     if (!project) return;
+    snapshot('replace');
     const reindexed = reindex(scenes);
     set({ project: persist({ ...project, scenes: reindexed }), selectedSceneId: reindexed[0]?.id ?? null });
   },
@@ -191,6 +242,7 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
   reorderScenes: (fromIndex, toIndex) => {
     const { project } = get();
     if (!project) return;
+    snapshot('reorder');
     const scenes = [...project.scenes];
     const [moved] = scenes.splice(fromIndex, 1);
     if (!moved) return;
@@ -202,6 +254,58 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
 
   setSceneDevice: (id, device) =>
     get().updateScene(id, { device, viewport: viewportForDevice(device) }),
+
+  // ── Edit Mode: undo/redo ──
+  undo: () => {
+    const { _undo, _redo, project } = get();
+    if (!_undo.length || !project) return;
+    const prev = _undo[_undo.length - 1];
+    _lastSnap = null;
+    const selOk = prev.scenes.some((s) => s.id === get().selectedSceneId);
+    set({
+      project: persist(prev),
+      _undo: _undo.slice(0, -1),
+      _redo: [..._redo, project].slice(-HISTORY_CAP),
+      selectedSceneId: selOk ? get().selectedSceneId : prev.scenes[0]?.id ?? null,
+      selectedSceneIds: [],
+    });
+  },
+  redo: () => {
+    const { _undo, _redo, project } = get();
+    if (!_redo.length || !project) return;
+    const next = _redo[_redo.length - 1];
+    _lastSnap = null;
+    const selOk = next.scenes.some((s) => s.id === get().selectedSceneId);
+    set({
+      project: persist(next),
+      _redo: _redo.slice(0, -1),
+      _undo: [..._undo, project].slice(-HISTORY_CAP),
+      selectedSceneId: selOk ? get().selectedSceneId : next.scenes[0]?.id ?? null,
+      selectedSceneIds: [],
+    });
+  },
+  canUndo: () => get()._undo.length > 0,
+  canRedo: () => get()._redo.length > 0,
+
+  // ── Edit Mode: multi-select ──
+  toggleSceneSelected: (id, additive = false) => {
+    const { selectedSceneIds } = get();
+    if (!additive) {
+      set({ selectedSceneIds: selectedSceneIds.length === 1 && selectedSceneIds[0] === id ? [] : [id] });
+      return;
+    }
+    set({ selectedSceneIds: selectedSceneIds.includes(id) ? selectedSceneIds.filter((x) => x !== id) : [...selectedSceneIds, id] });
+  },
+  clearSceneSelection: () => set({ selectedSceneIds: [] }),
+  removeSelectedScenes: () => {
+    const { project, selectedSceneIds, selectedSceneId } = get();
+    if (!project || !selectedSceneIds.length) return;
+    snapshot('remove-multi');
+    const kill = new Set(selectedSceneIds);
+    const scenes = reindex(project.scenes.filter((s) => !kill.has(s.id)));
+    const nextSelected = selectedSceneId && kill.has(selectedSceneId) ? scenes[0]?.id ?? null : selectedSceneId;
+    set({ project: persist({ ...project, scenes }), selectedSceneIds: [], selectedSceneId: nextSelected });
+  },
 
   // ── Guided recorder ──
   startRecorder: () => {
@@ -240,4 +344,5 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => ({
     const cur = project.scenes[recorderStepIndex];
     if (cur) get().setSceneStatus(cur.id, 'retake');
   },
-}));
+  };
+});

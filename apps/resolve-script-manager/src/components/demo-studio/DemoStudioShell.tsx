@@ -91,10 +91,43 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     setSceneDevice, setProjectField, setDemoType: applyDemoTypeTemplate, setRenderOption, applyResponsiveFix,
     reorderScenes, startRecorder, nextStep, markCurrentDone, retakeCurrent, goToStep,
     loadExisting,
+    undo, redo, canUndo, canRedo,
+    selectedSceneIds, toggleSceneSelected, clearSceneSelection, removeSelectedScenes,
   } = useDemoStudio();
 
   // Gjenopprett lagret prosjekt ved oppstart (ellers virket alt arbeid borte).
   useEffect(() => { if (!project) loadExisting(); /* eslint-disable-next-line */ }, []);
+
+  // Edit Mode-hurtigtaster: undo/redo globalt; slett/velg-alle/escape kun når
+  // man ikke skriver i et felt. ⌘/Ctrl bærer kommandoene.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+      if (typing) return;
+      if (mod && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        const ids = useDemoStudio.getState().project?.scenes.map((s) => s.id) ?? [];
+        useDemoStudio.setState({ selectedSceneIds: ids });
+        return;
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && useDemoStudio.getState().selectedSceneIds.length) {
+        e.preventDefault();
+        removeSelectedScenes();
+        return;
+      }
+      if (e.key === 'Escape') clearSceneSelection();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo, removeSelectedScenes, clearSceneSelection]);
   // Frigjør skjermdelings-streamen når shell unmountes.
   useEffect(() => () => rec.release(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -207,6 +240,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [showValidation, setShowValidation] = useState(false);
   const [showLearned, setShowLearned] = useState(false);
   const [driftTargets, setDriftTargets] = useState<LearnedTarget[]>([]);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const zoomBy = (delta: number) => setPreviewZoom((z) => Math.min(3, Math.max(0.5, Math.round((z + delta) * 100) / 100)));
   const [capturing, setCapturing] = useState(false);
   const [captureCount, setCaptureCount] = useState(0);
@@ -800,13 +835,45 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
               {/* Scene-flow-kort */}
               <div style={{ marginTop: 22 }}>
-                <h3 style={{ fontSize: 16, marginBottom: 6 }}>Demo-flow</h3>
-                <div style={{ fontSize: 12.5, color: C.inkSoft, marginBottom: 14 }}>Scenene settes sammen til én produktvideo. Klikk for å redigere. Du styrer opptaket steg for steg.</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <h3 style={{ fontSize: 16, margin: 0 }}>Demo-flow</h3>
+                  <div style={{ flex: 1 }} />
+                  {/* Undo/redo */}
+                  <button onClick={() => undo()} disabled={!canUndo()} title="Angre (⌘Z)"
+                    style={{ ...btn, padding: '5px 9px', fontSize: 12, opacity: canUndo() ? 1 : 0.4 }}>↶ Angre</button>
+                  <button onClick={() => redo()} disabled={!canRedo()} title="Gjør om (⌘⇧Z)"
+                    style={{ ...btn, padding: '5px 9px', fontSize: 12, opacity: canRedo() ? 1 : 0.4 }}>↷ Gjør om</button>
+                </div>
+                {selectedSceneIds.length > 0 ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, background: C.creamActive, border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '6px 10px' }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>{selectedSceneIds.length} scene{selectedSceneIds.length === 1 ? '' : 'r'} valgt</span>
+                    <div style={{ flex: 1 }} />
+                    <button style={{ ...btn, padding: '4px 9px', fontSize: 12, color: '#9a2b2b', borderColor: '#f0b8b8' }} onClick={() => removeSelectedScenes()}>Slett valgte</button>
+                    <button style={{ ...btn, padding: '4px 9px', fontSize: 12 }} onClick={() => clearSceneSelection()}>Avbryt</button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12.5, color: C.inkSoft, marginBottom: 14 }}>Dra for å endre rekkefølge · ⌘-klikk for å velge flere · ⌘Z angrer.</div>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
-                  {scenes.map((s) => (
-                    <div key={s.id} onClick={() => { selectScene(s.id); if (recording) goToStep(s.index); }}
-                      style={{ border: `2px solid ${s.id === selectedSceneId ? C.accent : C.line}`, borderRadius: 10, padding: 10, cursor: 'pointer', background: '#fff' }}>
+                  {scenes.map((s) => {
+                    const multiSel = selectedSceneIds.includes(s.id);
+                    const isPrimary = s.id === selectedSceneId;
+                    const dropBefore = dragOverIndex === s.index && dragIndex != null && dragIndex !== s.index;
+                    return (
+                    <div key={s.id}
+                      data-testid="scene-card"
+                      draggable
+                      onDragStart={(e) => { setDragIndex(s.index); e.dataTransfer.effectAllowed = 'move'; }}
+                      onDragOver={(e) => { e.preventDefault(); if (dragOverIndex !== s.index) setDragOverIndex(s.index); }}
+                      onDrop={(e) => { e.preventDefault(); if (dragIndex != null && dragIndex !== s.index) reorderScenes(dragIndex, s.index); setDragIndex(null); setDragOverIndex(null); }}
+                      onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
+                      onClick={(e) => {
+                        if (e.metaKey || e.ctrlKey || e.shiftKey) { toggleSceneSelected(s.id, true); return; }
+                        clearSceneSelection(); selectScene(s.id); if (recording) goToStep(s.index);
+                      }}
+                      style={{ border: `2px solid ${multiSel ? C.dark : isPrimary ? C.accent : C.line}`, borderRadius: 10, padding: 10, cursor: 'grab', background: multiSel ? C.creamActive : '#fff', opacity: dragIndex === s.index ? 0.4 : 1, boxShadow: dropBefore ? `-3px 0 0 ${C.accent}` : 'none' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
+                        <span style={{ color: C.inkFaint, fontSize: 12, cursor: 'grab' }} title="Dra for å flytte">⠿</span>
                         <span style={{ fontWeight: 700, fontSize: 11 }}>{s.index + 1}</span>
                         <span style={{ fontSize: 10, color: C.inkFaint }}>{DEVICE_LABEL[s.device]}</span>
                         <div style={{ flex: 1 }} />
@@ -820,7 +887,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                       <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</div>
                       <div style={{ fontSize: 11, color: C.inkFaint }}>{fmt(s.duration)} · {SCENE_STATUS_LABELS[s.status]}</div>
                     </div>
-                  ))}
+                    );
+                  })}
                   <div onClick={() => addScene(scenes.length - 1)}
                     style={{ border: `1px dashed ${C.lineStrong}`, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', color: C.inkSoft, fontSize: 22, minHeight: 110 }}>+</div>
                 </div>
