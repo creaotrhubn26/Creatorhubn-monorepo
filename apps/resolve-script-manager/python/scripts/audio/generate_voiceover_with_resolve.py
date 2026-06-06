@@ -97,7 +97,36 @@ def run(params: dict, dry_run: bool) -> None:
         sys.exit(1)
     bridge.log(f"Bruker {gen_owner}.GenerateSpeech")
 
-    timecode = (params.get("timecode") or "").strip()
+    import time
+    media_pool = project.GetMediaPool()
+    try:
+        fps_int = int(round(float(timeline.GetSetting("timelineFrameRate") or 24.0))) or 24
+    except Exception:
+        fps_int = 24
+
+    def dur_to_frames(tc):
+        try:
+            h, m, s, f = [int(x) for x in str(tc).split(":")]
+            return (h * 3600 + m * 60 + s) * fps_int + f
+        except Exception:
+            return fps_int * 3
+
+    # Nytt DEDIKERT lydspor for voiceover → overskriver aldri eksisterende opptak.
+    try:
+        timeline.AddTrack("audio")
+    except Exception as exc:
+        bridge.warn(f"AddTrack feilet: {exc}")
+    try:
+        new_track = int(timeline.GetTrackCount("audio"))  # det nyeste sporet
+    except Exception:
+        new_track = audio_track
+    try:
+        record = int(timeline.GetStartFrame())
+    except Exception:
+        record = 0
+    gap = max(2, fps_int // 4)
+    bridge.log(f"Legger voiceover sekvensielt på nytt lydspor A{new_track}")
+
     generated = 0
     failed = 0
     for i, text in enumerate(texts):
@@ -107,32 +136,56 @@ def run(params: dict, dry_run: bool) -> None:
             "Speed": speed,
             "Variation": variation,
             "Pitch": pitch,
-            "AddToTimeline": True,
-            "AudioTrack": audio_track,
+            "AddToTimeline": False,  # generér til media pool, plassér selv
             "Filename": f"vo_scene_{i + 1}",
         }
         if custom_voice:
             settings["CustomVoiceFile"] = custom_voice
-        try:
-            item = gen(settings, timecode) if timecode else gen(settings)
+
+        # Retry-with-backoff på flaky GenerateSpeech.
+        item = None
+        for attempt in range(3):
+            try:
+                item = gen(settings)
+            except Exception as exc:
+                bridge.warn(f"GenerateSpeech scene {i + 1} forsøk {attempt + 1} feilet: {exc}")
+                item = None
             if item:
+                break
+            time.sleep(0.6 * (attempt + 1))
+
+        if not item:
+            failed += 1
+            bridge.warn(f"Scene {i + 1} ga ingen voiceover etter 3 forsøk")
+            bridge.progress(i + 1, len(texts), f"Voiceover {i + 1}/{len(texts)}")
+            continue
+
+        try:
+            frames = dur_to_frames(item.GetClipProperty("Duration"))
+            clip_info = {
+                "mediaPoolItem": item, "startFrame": 0, "endFrame": max(0, frames - 1),
+                "recordFrame": record, "trackIndex": new_track, "mediaType": 2,
+            }
+            placed = media_pool.AppendToTimeline([clip_info])
+            if placed:
                 generated += 1
-                bridge.log(f"Voiceover scene {i + 1}/{len(texts)} generert")
+                bridge.log(f"Voiceover scene {i + 1}/{len(texts)} lagt på A{new_track} @ frame {record}")
+                record += frames + gap
             else:
                 failed += 1
-                bridge.warn(f"GenerateSpeech scene {i + 1} returnerte ingen item")
+                bridge.warn(f"AppendToTimeline scene {i + 1} feilet")
         except Exception as exc:
             failed += 1
-            bridge.warn(f"GenerateSpeech scene {i + 1} feilet: {exc}")
+            bridge.warn(f"Plassering scene {i + 1} feilet: {exc}")
         bridge.progress(i + 1, len(texts), f"Voiceover {i + 1}/{len(texts)}")
 
     bridge.result({
         "generated": generated,
         "failed": failed,
         "total": len(texts),
-        "voiceModel": settings.get("VoiceModel"),
-        "audioTrack": audio_track,
-        "note": "Bruk generate_music_ducking_plan + transcribe_with_resolve_ai for miks + undertekster.",
+        "voiceModel": "Custom Voice" if custom_voice else voice_model,
+        "audioTrack": new_track,
+        "note": "Voiceover lagt på eget lydspor (overskriver ikke eksisterende). Bruk generate_music_ducking_plan + transcribe_with_resolve_ai for miks + undertekster.",
     })
 
 
