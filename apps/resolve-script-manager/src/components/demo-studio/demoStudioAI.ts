@@ -21,6 +21,7 @@ import {
   CHANNEL_PRESETS, FRAMEWORKS, FUNNEL_INTENT, FUNNEL_LABELS,
   type ScannedElement, type DirectorCritique, type CritiqueIssue, type CritiqueSeverity,
   type MarketingBrief, type MarketingChannel, type FunnelStage, type MarketingObjective,
+  type ProductEvidence,
 } from './demoStudioModel';
 
 export type ImproveAction =
@@ -749,6 +750,51 @@ Svar med KUN ett JSON-objekt med disse feltene.`;
   };
 }
 
+/**
+ * Les produktet inn i et typet bevis-inventar (funksjoner/bevis/seksjoner), slik
+ * at hver rammeverk-beat kan festes til en KONKRET del av produktet. Grunnlaget
+ * for at metodene faktisk anvendes mot produktet — ikke generisk markedsprat.
+ */
+export async function analyzeProductEvidence(params: {
+  url: string; siteContext?: string; elements?: ScannedElement[];
+}): Promise<ProductEvidence> {
+  const { url, siteContext = '', elements = [] } = params;
+  const elCatalog = elements.slice(0, 30).map((e) => `"${e.label}"${e.ctaType ? ` (${e.ctaType})` : ''}`).join(', ');
+  const user = `Les produktet og bygg et BEVIS-INVENTAR vi kan demonstrere.
+
+Produkt-URL: ${url}
+${siteContext ? `Sidens innhold:\n${siteContext.slice(0, 2400)}\n` : ''}${elCatalog ? `Interaktive elementer: ${elCatalog}\n` : ''}
+Hent KUN det som faktisk finnes på siden (ikke dikt opp):
+- summary: én setning om hva produktet er
+- features: produktets konkrete funksjoner — name, solves (hvilken smerte), elementLabel (matchende element hvis noen)
+- proof: bevis som STÅR på siden — claim + type ("metric"|"testimonial"|"logo"|"award"|"guarantee"|"other")
+- sections: navngitte seksjoner/skjermer (Priser, Slik fungerer det, …) — label + purpose
+
+Svar med KUN ett JSON-objekt: { "summary": "...", "features": [...], "proof": [...], "sections": [...] }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: MARKETING_SYSTEM, messages: [{ role: 'user', content: user }], maxTokens: 1400,
+  });
+  const p = extractJson<Partial<ProductEvidence>>(raw);
+  const proofTypes = ['metric', 'testimonial', 'logo', 'award', 'guarantee', 'other'];
+  return {
+    summary: typeof p?.summary === 'string' ? p.summary : '',
+    features: Array.isArray(p?.features) ? p!.features.filter((f) => f && typeof f.name === 'string').slice(0, 10).map((f) => ({ name: f.name, solves: typeof f.solves === 'string' ? f.solves : '', elementLabel: typeof f.elementLabel === 'string' ? f.elementLabel : undefined })) : [],
+    proof: Array.isArray(p?.proof) ? p!.proof.filter((x) => x && typeof x.claim === 'string').slice(0, 8).map((x) => ({ claim: x.claim, type: proofTypes.includes(x.type as string) ? x.type : 'other' })) : [],
+    sections: Array.isArray(p?.sections) ? p!.sections.filter((s) => s && typeof s.label === 'string').slice(0, 10).map((s) => ({ label: s.label, purpose: typeof s.purpose === 'string' ? s.purpose : '' })) : [],
+  };
+}
+
+/** Render bevis-inventaret som et kompakt blokk til prompten. */
+function evidenceBlock(ev?: ProductEvidence): string {
+  if (!ev || (!ev.features.length && !ev.proof.length && !ev.sections.length)) return '';
+  let s = '\nPRODUKT-BEVIS (fest hver beat til ETT konkret punkt herfra — navngi det i visualInstruction):\n';
+  if (ev.summary) s += `Produkt: ${ev.summary}\n`;
+  if (ev.features.length) s += `Funksjoner:\n${ev.features.map((f) => `  • ${f.name} — løser: ${f.solves}${f.elementLabel ? ` (element: "${f.elementLabel}")` : ''}`).join('\n')}\n`;
+  if (ev.proof.length) s += `Bevis: ${ev.proof.map((p) => `${p.claim} [${p.type}]`).join(' · ')}\n`;
+  if (ev.sections.length) s += `Seksjoner: ${ev.sections.map((x) => x.label).join(' · ')}\n`;
+  return s;
+}
+
 /** Generer en MÅLRETTET marketing-flow: persona × funnel × kanal × rammeverk. */
 export async function generateMarketingFlow(params: {
   url: string;
@@ -757,8 +803,9 @@ export async function generateMarketingFlow(params: {
   elements?: ScannedElement[];
   siteContext?: string;
   meta?: ScriptMeta;
+  evidence?: ProductEvidence;
 }): Promise<DemoScene[]> {
-  const { url, brief, devices, elements = [], siteContext = '' } = params;
+  const { url, brief, devices, elements = [], siteContext = '', evidence } = params;
   const preset = CHANNEL_PRESETS[brief.channel];
   const framework = FRAMEWORKS[brief.framework || preset.framework];
   const funnel = FUNNEL_INTENT[brief.funnelStage];
@@ -775,7 +822,12 @@ ${brief.proof?.length ? `Bevis: ${brief.proof.join(' · ')}\n` : ''}${brief.obje
 FUNNEL-STEG: ${FUNNEL_LABELS[brief.funnelStage]} → mål: ${funnel.goal}. CTA-energi: ${funnel.ctaHint}.
 KANAL: ${preset.label} → ${preset.toneHint}. Total lengde ~${preset.maxSeconds}s, hook i de første ${preset.hookSeconds} sek.${preset.captions ? ' Skriv korte caption-vennlige linjer.' : ''}
 RAMMEVERK: ${framework.label}. Følg disse beatene i rekkefølge, én eller flere scener per beat: ${framework.beats.join(' → ')}.
-${brief.desiredAction ? `ØNSKET HANDLING (siste CTA): ${brief.desiredAction}\n` : ''}${siteContext ? `\nKontekst fra siden:\n${siteContext.slice(0, 1500)}\n` : ''}${catalog}${voicePrefBlock(url)}
+${brief.desiredAction ? `ØNSKET HANDLING (siste CTA): ${brief.desiredAction}\n` : ''}${siteContext ? `\nKontekst fra siden:\n${siteContext.slice(0, 1500)}\n` : ''}${evidenceBlock(evidence)}${catalog}${voicePrefBlock(url)}
+SLIK ANVENDES METODEN PÅ PRODUKTET (viktigst):
+- Fest HVER beat til ÉN konkret produktdel fra PRODUKT-BEVIS over. Eksempel for ${framework.label}: ${framework.beats.map((b) => `«${b}»`).join(' → ')} skal hver vise en navngitt funksjon/bevis/seksjon — ikke generisk prat.
+- «Bevis»-beats MÅ bruke et faktisk bevis (tall/testimonial/logo) som står på siden.
+- «Løsning»/«Etter»/«Benefit»-beats MÅ vise den konkrete funksjonen som løser personaens smerte, og navigere til/markere det riktige elementet (targetIndex).
+- I visualInstruction: skriv NØYAKTIG hvilken funksjon/seksjon/bevis som vises i scenen.
 Krav:
 - Åpne med en hook som treffer personaens smertepunkt (ikke generisk feature-intro).
 - Hver scene: narration (det som sies, matchet personaen + kanalens tone), visualInstruction, requiredAction, og når relevant targetIndex/targetLabel + actionType + hotspot.

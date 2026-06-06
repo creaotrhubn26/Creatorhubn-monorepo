@@ -885,6 +885,39 @@ export function applyObjectiveToBrief(brief: MarketingBrief, objective: Marketin
   return { ...brief, objective, funnelStage: o.funnelStage, framework: o.framework, channel: o.channels[0] ?? brief.channel };
 }
 
+/**
+ * Produkt-bevis-inventar: AI leser produktet inn i typede artefakter, slik at
+ * hver rammeverk-beat kan festes til en KONKRET del av produktet (ikke generisk
+ * prat). En funksjon løser en smerte; et bevis underbygger et løfte; en seksjon
+ * er stedet å navigere til. Brukes av generateMarketingFlow til beat→bevis-binding.
+ */
+export interface ProductFeature {
+  /** Funksjonens navn slik den heter i produktet. */
+  name: string;
+  /** Hvilken smerte / hvilket behov den løser. */
+  solves: string;
+  /** Label på det interaktive elementet som demonstrerer den (matcher katalogen). */
+  elementLabel?: string;
+}
+export interface ProductProof {
+  /** Selve påstanden/beviset, f.eks. «3 200 byråer» eller «sparer 8 t/uke». */
+  claim: string;
+  type: 'metric' | 'testimonial' | 'logo' | 'award' | 'guarantee' | 'other';
+}
+export interface ProductSection {
+  /** Seksjonens navn, f.eks. «Priser» / «Slik fungerer det». */
+  label: string;
+  /** Hva seksjonen er til for (hvorfor en beat vil vise den). */
+  purpose: string;
+}
+export interface ProductEvidence {
+  /** Kort oppsummering av hva produktet er. */
+  summary: string;
+  features: ProductFeature[];
+  proof: ProductProof[];
+  sections: ProductSection[];
+}
+
 // ── Stemme-/tone-læring (G): innholdsprodusentens stemme læres over tid ──
 const VOICE_PREFS_KEY = 'trrpa.demoStudio.voicePrefs';
 export interface VoicePrefs { liked: string[]; disliked: string[] }

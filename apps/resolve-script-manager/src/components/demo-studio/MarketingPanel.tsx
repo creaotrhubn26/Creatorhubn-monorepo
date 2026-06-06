@@ -15,13 +15,13 @@ import { scanDom, captureScreenshot, isCaptureAvailable } from '../../services/d
 import { useDemoStudio } from './demoStudioStore';
 import {
   suggestMarketingBrief, generateMarketingFlow, generateVariants, fetchSiteContext,
-  ocrDetectElements, type GeneratedVariant, type VariantSpec,
+  ocrDetectElements, analyzeProductEvidence, type GeneratedVariant, type VariantSpec,
 } from './demoStudioAI';
 import {
   CHANNEL_PRESETS, FRAMEWORKS, FUNNEL_LABELS, emptyMarketingBrief, recordVoicePref,
   MARKETING_OBJECTIVES, applyObjectiveToBrief,
   type MarketingBrief, type MarketingChannel, type MarketingFramework, type FunnelStage,
-  type MarketingObjective,
+  type MarketingObjective, type ProductEvidence,
 } from './demoStudioModel';
 
 const C = {
@@ -49,6 +49,7 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
   const brief: MarketingBrief = project?.marketingBrief ?? emptyMarketingBrief();
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState<ProductEvidence | null>(null);
   const [variants, setVariants] = useState<GeneratedVariant[]>([]);
   const [picked, setPicked] = useState<Record<string, boolean>>(
     () => Object.fromEntries(VARIANT_PRESETS.map((v) => [v.label, v.channel === 'reels'])),
@@ -88,13 +89,28 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
     finally { setBusy(null); }
   };
 
+  const analyzeProduct = async () => {
+    if (!aiReady) return onOpenSignIn();
+    setBusy('evidence'); setMsg('AI leser produktet inn i et bevis-inventar…');
+    try {
+      const { elements, siteContext } = await scanContext();
+      const ev = await analyzeProductEvidence({ url: project.url, siteContext, elements });
+      setEvidence(ev);
+      setMsg(`✓ Produkt-forståelse: ${ev.features.length} funksjoner, ${ev.proof.length} bevis, ${ev.sections.length} seksjoner.`);
+    } catch (e) { setMsg('Feil: ' + (e as Error).message); }
+    finally { setBusy(null); }
+  };
+
   const generate = async () => {
     if (!aiReady) return onOpenSignIn();
     if (!brief.persona.trim()) { setMsg('Fyll inn persona først (eller la AI foreslå en).'); return; }
     setBusy('flow'); setMsg(`Marketing Director lager ${preset.label}-demo (${FRAMEWORKS[brief.framework].label})…`);
     try {
       const { elements, siteContext } = await scanContext();
-      const scenes = await generateMarketingFlow({ url: project.url, brief, devices: project.devices, elements, siteContext, meta: project.scriptMeta });
+      // Sørg for at metoden festes til konkrete produktdeler (beat→bevis-binding).
+      let ev = evidence;
+      if (!ev) { ev = await analyzeProductEvidence({ url: project.url, siteContext, elements }).catch(() => null); if (ev) setEvidence(ev); }
+      const scenes = await generateMarketingFlow({ url: project.url, brief, devices: project.devices, elements, siteContext, meta: project.scriptMeta, evidence: ev ?? undefined });
       replaceScenes(scenes);
       setProjectField('format', preset.format);
       setProjectField('mode', 'marketing');
@@ -208,6 +224,37 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
           </button>
         </section>
       </div>
+
+      {/* ── Produkt-forståelse: slik festes metoden til produktet ── */}
+      <section style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: 16, marginTop: 16, maxWidth: 900 }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>Produkt-forståelse</h3>
+          <span style={{ fontSize: 11, color: C.inkFaint, marginLeft: 8 }}>— hver metode-beat festes til en konkret del herfra</span>
+          <div style={{ flex: 1 }} />
+          <button style={{ ...btn, fontSize: 11.5, padding: '6px 10px', opacity: busy ? 0.6 : 1 }} disabled={!!busy} onClick={() => void analyzeProduct()}>
+            {busy === 'evidence' ? 'Leser…' : '✦ Analyser produktet'}
+          </button>
+        </div>
+        {!evidence ? (
+          <p style={{ fontSize: 12, color: C.inkSoft, margin: 0 }}>Kjør analysen (eller bare generér — den kjøres automatisk) så AI binder funksjoner, bevis og seksjoner til rammeverkets beats.</p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px,1fr))', gap: 12 }}>
+            <div>
+              <div style={{ ...label }}>Funksjoner ({evidence.features.length})</div>
+              {evidence.features.slice(0, 6).map((f, i) => <div key={i} style={{ fontSize: 11.5, color: C.ink, marginBottom: 3 }}><strong>{f.name}</strong>{f.solves ? <span style={{ color: C.inkSoft }}> — {f.solves}</span> : null}</div>)}
+            </div>
+            <div>
+              <div style={{ ...label }}>Bevis ({evidence.proof.length})</div>
+              {evidence.proof.slice(0, 6).map((p, i) => <div key={i} style={{ fontSize: 11.5, color: C.ink, marginBottom: 3 }}>{p.claim} <span style={{ fontSize: 10, color: C.inkFaint }}>[{p.type}]</span></div>)}
+              {!evidence.proof.length && <div style={{ fontSize: 11.5, color: C.inkFaint }}>Ingen bevis funnet — legg til tall/testimonials på siden for sterkere demoer.</div>}
+            </div>
+            <div>
+              <div style={{ ...label }}>Seksjoner ({evidence.sections.length})</div>
+              {evidence.sections.slice(0, 8).map((s, i) => <div key={i} style={{ fontSize: 11.5, color: C.ink, marginBottom: 3 }}>{s.label}</div>)}
+            </div>
+          </div>
+        )}
+      </section>
 
       {msg && <div style={{ fontSize: 12, color: msg.startsWith('Feil') ? '#c4453b' : C.inkSoft, margin: '14px 0 4px', maxWidth: 900 }}>{msg}</div>}
 
