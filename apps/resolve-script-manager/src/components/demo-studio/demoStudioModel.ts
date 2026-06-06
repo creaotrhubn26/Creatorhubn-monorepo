@@ -602,6 +602,16 @@ function saveLearnedCtas(m: Record<string, CtaType>): void {
   try { localStorage.setItem(LEARNED_CTA_KEY, JSON.stringify(m)); } catch { /* full/blokkert */ }
 }
 
+/** Menneske-lesbar posisjon fra hotspot-rect (viewport-prosent) — så instrukser/
+ *  manus refererer DER elementet FAKTISK er. Gjelder ethvert element, ikke bare CTA. */
+export function describePosition(h?: { x: number; y: number; w: number; h: number }): string {
+  if (!h) return '';
+  const cx = h.x + h.w / 2, cy = h.y + h.h / 2;
+  const vert = cy < 0.33 ? 'øverst' : cy > 0.66 ? 'nederst' : 'på midten';
+  const horiz = cx < 0.33 ? 'til venstre' : cx > 0.66 ? 'til høyre' : 'i midten';
+  return (vert === 'på midten' && horiz === 'i midten') ? 'midt på skjermen' : `${vert} ${horiz}`;
+}
+
 /** Klassifiser et label: innebygd bank → lært bank. */
 export function classifyCta(label: string): CtaType | null {
   const stat = classifyCtaStatic(label);
@@ -633,6 +643,31 @@ export function learnCtas(elements: Array<{ label?: string; tag?: string; action
 }
 
 export function learnedCtaCount(): number { return Object.keys(loadLearnedCtas()).length; }
+
+// ── Lærte mål-korreksjoner (brukeren lærer opp AI-en) ──
+// Når brukeren manuelt plasserer hotspot / fikser target, husker vi det per
+// side+label og overstyrer AI-ens gjetting neste gang på samme side.
+const LEARNED_TARGETS_KEY = 'trrpa.demoStudio.learnedTargets';
+export interface LearnedTarget { label: string; selector?: string; hotspot?: { x: number; y: number; w: number; h: number } }
+function hostOf(url: string): string { try { return new URL(url).host; } catch { return (url || '').slice(0, 80); } }
+function loadLearnedTargets(): Record<string, LearnedTarget> {
+  try { return JSON.parse(localStorage.getItem(LEARNED_TARGETS_KEY) || '{}') as Record<string, LearnedTarget>; } catch { return {}; }
+}
+/** Husk en manuell korreksjon (hotspot/selector for et element på en side). */
+export function recordLearnedTarget(url: string, label: string, data: { selector?: string; hotspot?: { x: number; y: number; w: number; h: number } }): void {
+  const lab = (label || '').trim();
+  if (!lab || (!data.hotspot && !data.selector)) return;
+  const m = loadLearnedTargets();
+  m[`${hostOf(url)}|${normCta(lab)}`] = { label: lab, selector: data.selector, hotspot: data.hotspot };
+  try { localStorage.setItem(LEARNED_TARGETS_KEY, JSON.stringify(m)); } catch { /* */ }
+}
+/** Hent en lært korreksjon for et element på en side (eller null). */
+export function getLearnedTarget(url: string, label: string): LearnedTarget | null {
+  const lab = (label || '').trim();
+  if (!lab) return null;
+  return loadLearnedTargets()[`${hostOf(url)}|${normCta(lab)}`] ?? null;
+}
+export function learnedTargetCount(): number { return Object.keys(loadLearnedTargets()).length; }
 
 /** Et interaktivt element katalogisert av DOM-skannet (AI-binding). */
 export interface ScannedElement {

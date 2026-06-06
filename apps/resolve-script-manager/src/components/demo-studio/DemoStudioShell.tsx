@@ -26,7 +26,7 @@ import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
-import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, type CommandResult } from './demoStudioAI';
+import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, type CommandResult } from './demoStudioAI';
 import { executeScript } from '../../api';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
@@ -36,6 +36,7 @@ import {
   ACTION_MATCH_LABELS, ACTION_MATCH_COLORS, CRITIQUE_SEVERITY_COLORS,
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
   sceneActionMatch, expectedActionText, validateScene, learnCtas, CTA_LABELS,
+  recordLearnedTarget, learnedTargetCount,
   type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
@@ -159,9 +160,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
   const runVoiceover = async (voiceModel?: string) => {
     if (!project) return;
-    const scenes = project.scenes.filter((s) => s.narration?.trim()).map((s) => ({ narration: s.narration }));
-    if (!scenes.length) { setCmdReply('Ingen manus å lese opp — generér eller skriv manus først.'); return; }
-    setCmdReply('Genererer voiceover i Resolve (kun engelsk)…');
+    const narrations = project.scenes.filter((s) => s.narration?.trim()).map((s) => s.narration!.trim());
+    if (!narrations.length) { setCmdReply('Ingen manus å lese opp — generér eller skriv manus først.'); return; }
+    setCmdReply('Oversetter manus → engelsk + genererer voiceover i Resolve…');
+    let texts = narrations;
+    try { texts = await translateForVoiceover(narrations, 'engelsk'); } catch { /* behold norsk ved feil */ }
+    const scenes = texts.map((t) => ({ narration: t }));
     try {
       const sum = await executeScript('generate_voiceover_with_resolve', { scenes, voiceModel: voiceModel || project.voiceModel || 'Female 1', audioTrack: 7, isStudio: true }, false);
       setCmdReply(sum?.succeeded ? '✓ Voiceover generert i Resolve' : 'Voiceover fullførte ikke — sjekk at Resolve Studio kjører med aktiv timeline.');
@@ -311,9 +315,14 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const placeHotspot = (xPct: number, yPct: number) => {
     if (!selected) return;
     const w = 0.22, h = 0.09; // knapp-aktig standardstørrelse
-    updateScene(selected.id, {
-      hotspot: { x: Math.max(0, Math.min(1 - w, xPct - w / 2)), y: Math.max(0, Math.min(1 - h, yPct - h / 2)), w, h },
-    });
+    const hotspot = { x: Math.max(0, Math.min(1 - w, xPct - w / 2)), y: Math.max(0, Math.min(1 - h, yPct - h / 2)), w, h };
+    updateScene(selected.id, { hotspot });
+    // Lær opp AI-en: manuell plassering huskes per side+label og overstyrer
+    // AI-ens gjetting neste gang man genererer en flow på samme nettside.
+    if (project?.url && selected.targetLabel) {
+      recordLearnedTarget(project.url, selected.targetLabel, { hotspot, selector: selected.targetSelector });
+      setCmdReply(`✓ Lærte hvor «${selected.targetLabel}» er — AI husker dette for ${(() => { try { return new URL(project.url).host; } catch { return 'denne siden'; } })()} neste gang.`);
+    }
     setPlacingHotspot(false);
   };
 
@@ -683,9 +692,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 {selected && (
                   <button
                     onClick={() => setPlacingHotspot((v) => !v)}
-                    title="Klikk på preview-en for å markere elementet handlingen gjelder"
+                    title={`Klikk på preview-en for å markere elementet handlingen gjelder. AI har lært ${learnedTargetCount()} korreksjon(er).`}
                     style={{ ...btn, height: 34, background: placingHotspot ? C.accent : '#fff', color: placingHotspot ? '#fff' : C.ink, borderColor: placingHotspot ? C.accent : C.lineStrong }}>
-                    ◎ {placingHotspot ? 'Klikk på elementet…' : selected.hotspot ? 'Flytt hotspot' : 'Sett hotspot'}
+                    ◎ {placingHotspot ? 'Klikk på elementet…' : selected.hotspot ? 'Flytt hotspot' : 'Lær AI hvor'}
                   </button>
                 )}
                 {/* Zoom på enhets-preview */}

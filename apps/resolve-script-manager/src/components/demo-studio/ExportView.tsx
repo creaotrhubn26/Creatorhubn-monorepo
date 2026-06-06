@@ -20,6 +20,7 @@ import { useDemoStudio } from './demoStudioStore';
 import { totalDuration, VOICE_MODELS } from './demoStudioModel';
 import { buildSrt, buildScriptHtml, renderThumbnail, buildInteractiveGuideHtml } from './demoStudioExports';
 import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
+import { translateForVoiceover } from './demoStudioAI';
 
 const C = {
   navBg: '#1c1a18', bg: '#f6f3ee', panel: '#ffffff', cream: '#faf7f2', line: '#eae5dd',
@@ -134,9 +135,12 @@ export function ExportView() {
 
   const voiceoverResolve = async () => {
     if (!project) return;
-    const scenes = project.scenes.filter((s) => s.narration?.trim()).map((s) => ({ narration: s.narration }));
-    if (!scenes.length) { setFileMsg('Ingen manus å lese opp — skriv narration på scenene først.'); return; }
-    setFileMsg('Genererer voiceover i Resolve (AI Speech Generator)…');
+    const narrations = project.scenes.filter((s) => s.narration?.trim()).map((s) => s.narration!.trim());
+    if (!narrations.length) { setFileMsg('Ingen manus å lese opp — skriv narration på scenene først.'); return; }
+    setFileMsg('Oversetter manus → engelsk + genererer voiceover i Resolve…');
+    let texts = narrations;
+    try { texts = await translateForVoiceover(narrations, 'engelsk'); } catch { /* behold original */ }
+    const scenes = texts.map((t) => ({ narration: t }));
     try {
       const sum = await executeScript('generate_voiceover_with_resolve', { scenes, voiceModel: project.voiceModel || 'Female 1', audioTrack: 7, isStudio: true }, false);
       setFileMsg(sum.succeeded ? '✓ Voiceover generert i Resolve på Fairlight-spor A7' : 'Voiceover-kjøring fullførte ikke — sjekk at Resolve Studio kjører med aktiv timeline.');

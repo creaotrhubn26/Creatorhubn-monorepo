@@ -17,7 +17,7 @@ import {
   makeScene, viewportForDevice, ACTION_META,
   type DemoScene, type ScriptMeta, type DemoType, type DemoDevice, type DemoActionType,
   type ResponsiveReport, type ResponsiveViewportResult, type ResponsiveStatus, type ResponsiveFix,
-  classifyCta,
+  classifyCta, describePosition, getLearnedTarget,
   type ScannedElement, type DirectorCritique, type CritiqueIssue, type CritiqueSeverity,
 } from './demoStudioModel';
 
@@ -336,6 +336,23 @@ Svar med KUN ett JSON-objekt:
   };
 }
 
+/** Oversett manus-linjer for voiceover (Resolve-stemmer er engelske). Beholder
+ *  rekkefølge; faller tilbake til original ved feil. */
+export async function translateForVoiceover(texts: string[], targetLang = 'engelsk'): Promise<string[]> {
+  const clean = texts.filter((t) => t && t.trim());
+  if (!clean.length) return texts;
+  const user = `Oversett hver linje til ${targetLang} for naturlig opplesning (voiceover). Behold rekkefølge og antall linjer.\n` +
+    `Linjer:\n${clean.map((t, i) => `${i}: ${t}`).join('\n')}\n` +
+    `Svar med KUN ett JSON-objekt: { "lines": ["...", "..."] }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du oversetter manus for voiceover. Svar ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 1500,
+  });
+  const p = extractJson<{ lines: string[] }>(raw);
+  return p?.lines && p.lines.length === clean.length ? p.lines : clean;
+}
+
 /** Conversational Director: tolk en naturlig-språk-kommando til én handling,
  *  eller still ETT oppklarings-spørsmål med valg når info mangler. */
 export type CommandAction = 'generate' | 'complete' | 'voiceover' | 'responsive' | 'critic' | 'none';
@@ -551,7 +568,7 @@ export async function generateDemoFlow(params: {
 }): Promise<DemoScene[]> {
   const { url, demoType, devices, meta, targetSeconds = 75, siteContext = '', elements = [], goal = '', task = '' } = params;
   const catalog = elements.length
-    ? `\nElement-katalog (ekte interaktive elementer på siden) — velg targetIndex for hver scene (prioriter CTA-er for konvertering):\n${elements.map((e, i) => `${i}: "${e.label}" [${e.tag}${e.ctaType ? `, CTA:${e.ctaType}` : ''}${e.belowFold ? ', under fold' : ''}]`).join('\n')}\n`
+    ? `\nElement-katalog (ekte interaktive elementer på siden, med FAKTISK posisjon) — velg targetIndex per scene (prioriter CTA-er), og referer den ekte posisjonen i required action:\n${elements.map((e, i) => `${i}: "${e.label}" [${e.tag}${e.ctaType ? `, CTA:${e.ctaType}` : ''}${describePosition(e.hotspot) ? `, ${describePosition(e.hotspot)}` : ''}${e.belowFold ? ', under fold' : ''}]`).join('\n')}\n`
     : '';
   const user = `Lag en komplett produktdemo-flow.
 
@@ -610,6 +627,13 @@ Svar med KUN ett JSON-objekt:
       hotspot = picked.hotspot;
       targetLocators = picked.locators;
       if (!actionType && validActions.includes(picked.actionType as DemoActionType)) actionType = picked.actionType as DemoActionType;
+    }
+    // Menneske-i-loopen: en manuell korreksjon brukeren har lært AI-en for dette
+    // elementet på denne siden VINNER over AI-ens (og katalogens) gjetting.
+    const learned = getLearnedTarget(url, targetLabel || '');
+    if (learned) {
+      if (learned.hotspot) hotspot = learned.hotspot;
+      if (learned.selector) targetSelector = learned.selector;
     }
     return {
       ...base,
