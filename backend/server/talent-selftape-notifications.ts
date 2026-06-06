@@ -20,6 +20,7 @@
 
 import type { Pool } from "pg";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
+import { composeEmail, type EmailCategory } from "./email-design-system.js";
 
 export type SelftapeNotificationKind = "viewed" | "shortlisted" | "reminder_to_upload";
 
@@ -79,13 +80,13 @@ export async function notifySelftapeActivity(
     if (!ctx.talent.email) return;
 
     const subject = buildSubject(ctx, args.kind);
-    const { html, text } = buildBody(ctx, args.kind, args.actorLabel ?? null);
+    const composed = buildComposed(ctx, args.kind, args.actorLabel ?? null);
 
     const result = await sendTransactionalEmail({
       to: ctx.talent.email,
       subject,
-      html,
-      text,
+      html: composed.html,
+      text: composed.text,
       fromLabel: "The Role Room",
       kind: `selftape_${args.kind}`,
       pool,
@@ -192,7 +193,7 @@ function buildSubject(ctx: ContextRow, kind: SelftapeNotificationKind): string {
   return `Du er shortlistet for ${target} ⭐`;
 }
 
-function buildBody(
+function buildComposed(
   ctx: ContextRow,
   kind: SelftapeNotificationKind,
   actor: string | null,
@@ -206,63 +207,44 @@ function buildBody(
     ?? process.env.PUBLIC_BASE_URL
     ?? "https://theroleroom.com";
   const sharedLink = `${baseUrl}/talents/profil#mine-delte`;
+  const uploadLink = `${baseUrl}/talents/self-tapes`;
 
   const isShortlisted = kind === "shortlisted";
   const isReminder = kind === "reminder_to_upload";
+
+  const category: EmailCategory = isShortlisted
+    ? "shortlisted"
+    : isReminder
+      ? "reminder"
+      : "viewed";
+
   const headline = isShortlisted
     ? "Gratulerer — du er shortlistet"
     : isReminder
       ? `Vi venter på din self-tape for ${target}`
       : "Self-tapen din er sett";
-  const intro = isShortlisted
-    ? `Veldig fin nyhet, ${firstName}! ${target} har plassert deg på shortlisten etter å ha sett ${takeLabel.toLowerCase()} fra <strong>${escapeHtml(projectName)}</strong>.`
+
+  const subhead = isShortlisted
+    ? `Veldig fin nyhet, ${firstName}! ${target} har plassert deg på shortlisten etter å ha sett ${takeLabel.toLowerCase()} fra "${projectName}".`
     : isReminder
-      ? `${firstName} — produksjonsteamet for <strong>${escapeHtml(projectName)}</strong> venter på at du laster opp en self-tape. ${actor ? `(Sendt av ${escapeHtml(actor)})` : ""}`
-      : `${firstName} — ${target}${actor ? ` (${escapeHtml(actor)})` : ""} har nettopp sett ${takeLabel.toLowerCase()} fra <strong>${escapeHtml(projectName)}</strong>.`;
+      ? `${firstName} — produksjonsteamet for "${projectName}" venter på at du laster opp en self-tape.${actor ? ` (Sendt av ${actor})` : ""}`
+      : `${firstName} — ${target}${actor ? ` (${actor})` : ""} har nettopp sett ${takeLabel.toLowerCase()} fra "${projectName}".`;
 
   const ctaLabel = isReminder
     ? "Last opp self-tape"
     : isShortlisted ? "Se aktiviteten" : "Se hele oversikten";
+  const ctaHref = isReminder ? uploadLink : sharedLink;
 
-  const html = [
-    `<!doctype html>`,
-    `<html><body style="margin:0;padding:0;background:#0a0118;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Inter,sans-serif;">`,
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0118;padding:32px 16px;">`,
-    `<tr><td align="center">`,
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#150b2e;border:1px solid rgba(168,85,247,0.18);border-radius:14px;overflow:hidden;">`,
-    `<tr><td style="padding:32px 32px 8px;">`,
-    `<div style="display:inline-block;background:linear-gradient(135deg,#a855f7 0%,#d946ef 100%);color:#fff;font-weight:700;font-size:12px;letter-spacing:0.6px;text-transform:uppercase;padding:4px 10px;border-radius:999px;margin-bottom:16px;">${isShortlisted ? "Shortlistet" : "Sett"}</div>`,
-    `<h1 style="color:#f5f3ff;font-size:22px;line-height:1.25;margin:0 0 12px;">${escapeHtml(headline)}</h1>`,
-    `<p style="color:#c4b5fd;font-size:15px;line-height:1.55;margin:0 0 20px;">${intro}</p>`,
-    `<a href="${sharedLink}" style="display:inline-block;background:linear-gradient(135deg,#a855f7 0%,#d946ef 100%);color:#fff;font-weight:700;text-decoration:none;padding:12px 22px;border-radius:10px;font-size:14px;box-shadow:0 4px 14px rgba(168,85,247,0.38);">${escapeHtml(ctaLabel)}</a>`,
-    `</td></tr>`,
-    `<tr><td style="padding:20px 32px 28px;border-top:1px solid rgba(168,85,247,0.10);">`,
-    `<p style="color:#8b7ec4;font-size:12px;line-height:1.5;margin:0;">Du kan til enhver tid trekke tilbake tilgangen fra <a href="${sharedLink}" style="color:#c084fc;">Mine delte self-tapes</a> i profilen din. Disse varslene kan slås av i innstillinger.</p>`,
-    `</td></tr></table>`,
-    `</td></tr></table>`,
-    `</body></html>`,
-  ].join("\n");
-
-  const text = [
+  return composeEmail({
+    category,
+    subject: headline,
+    preheader: subhead.slice(0, 140),
     headline,
-    "",
-    isShortlisted
-      ? `${firstName}! ${target} har plassert deg på shortlisten etter å ha sett ${takeLabel.toLowerCase()} fra "${projectName}".`
-      : `${firstName} — ${target}${actor ? ` (${actor})` : ""} har sett ${takeLabel.toLowerCase()} fra "${projectName}".`,
-    "",
-    `${ctaLabel}: ${sharedLink}`,
-    "",
-    "Du kan trekke tilbake tilgangen fra Mine delte self-tapes i profilen.",
-  ].join("\n");
-
-  return { html, text };
-}
-
-function escapeHtml(input: string): string {
-  return input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    subhead,
+    cta: { label: ctaLabel, href: ctaHref },
+    footer: {
+      reason: "Du kan trekke tilbake tilgangen fra Mine delte self-tapes i profilen. Varslene kan slås av i innstillinger.",
+      preferencesUrl: `${baseUrl}/talents/innstillinger`,
+    },
+  });
 }
