@@ -803,14 +803,18 @@ function evidenceBlock(ev?: ProductEvidence): string {
  */
 export async function draftOnePager(params: {
   url: string; siteContext?: string; elements?: ScannedElement[]; evidence?: ProductEvidence;
+  branding?: { brandName?: string; brandColor?: string; logoUrl?: string };
 }): Promise<string> {
-  const { url, siteContext = '', elements = [], evidence } = params;
+  const { url, siteContext = '', elements = [], evidence, branding } = params;
   const elCatalog = elements.slice(0, 25).map((e) => `"${e.label}"${e.ctaType ? ` (${e.ctaType})` : ''}`).join(', ');
+  const brandLine = branding && (branding.brandName || branding.brandColor || branding.logoUrl)
+    ? `MERKEVARE (hentet fra siden — bruk det ekte navnet, ikke gjett): ${branding.brandName ? `navn «${branding.brandName}»` : 'navn ukjent'}${branding.brandColor ? `, merkefarge ${branding.brandColor}` : ''}${branding.logoUrl ? ', logo finnes' : ''}.\n`
+    : '';
   const user = `Vi har INGEN one-pager. Skriv et kort utkast basert KUN på det vi fant på siden (ikke dikt opp tall/kunder).
 
 Produkt-URL: ${url}
-${evidence ? `Funksjoner: ${evidence.features.map((f) => `${f.name}${f.solves ? ` (løser ${f.solves})` : ''}`).join('; ') || '—'}\nBevis: ${evidence.proof.map((p) => p.claim).join(' · ') || '—'}\nSeksjoner: ${evidence.sections.map((s) => s.label).join(', ') || '—'}\n` : ''}${elCatalog ? `Klikkbare elementer: ${elCatalog}\n` : ''}${siteContext ? `Sidetekst (utdrag):\n${siteContext.slice(0, 2200)}\n` : ''}
-Skriv en one-pager med overskrifter: Hva det er · For hvem · Problem · Funksjoner · Verdiløfter · Bevis · CTA.
+${brandLine}${evidence ? `Funksjoner: ${evidence.features.map((f) => `${f.name}${f.solves ? ` (løser ${f.solves})` : ''}`).join('; ') || '—'}\nBevis: ${evidence.proof.map((p) => p.claim).join(' · ') || '—'}\nSeksjoner: ${evidence.sections.map((s) => s.label).join(', ') || '—'}\n` : ''}${elCatalog ? `Klikkbare elementer: ${elCatalog}\n` : ''}${siteContext ? `Sidetekst (utdrag):\n${siteContext.slice(0, 2200)}\n` : ''}
+Skriv en one-pager med tittel = produktets/merkevarens ekte navn, og overskrifter: Hva det er · For hvem · Problem · Funksjoner · Verdiløfter · Bevis · CTA.
 Der noe mangler på siden (f.eks. ingen bevis/tall), skriv «[mangler — fyll inn]» så brukeren ser hullet.
 Svar med ren tekst (ikke JSON).`;
   const raw = await claudeProxyService.send({

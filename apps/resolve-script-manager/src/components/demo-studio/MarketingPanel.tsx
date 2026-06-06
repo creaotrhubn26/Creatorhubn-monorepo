@@ -65,7 +65,7 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
   const patchBrief = (patch: Partial<MarketingBrief>) => setProjectField('marketingBrief', { ...brief, ...patch });
   const list = (v: string) => v.split('\n').map((s) => s.trim()).filter(Boolean);
 
-  /** Skann siden én gang → elementer + kontekst (delt av brief + flow). */
+  /** Skann siden én gang → elementer + kontekst + merkevare (delt av alle steg). */
   const scanContext = async () => {
     const scan = await scanDom(project.url).catch(() => null);
     let elements = scan?.elements ?? [];
@@ -74,7 +74,16 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
       if (shot) elements = await ocrDetectElements({ screenshot: shot }).catch(() => []);
     }
     const siteContext = scan?.pageText || await fetchSiteContext(project.url).catch(() => '');
-    return { elements, siteContext };
+    const branding = scan?.branding;
+    // Auto-merkevare: hent navn/farge/logo fra siden og bruk på prosjektet (logo
+    // + farger flyter inn i interaktiv guide + eksport) hvis ikke satt fra før.
+    if (branding && (branding.brandName || branding.brandColor || branding.logoUrl)) {
+      const cur = project.branding;
+      if (!cur || (!cur.brandName && !cur.brandColor && !cur.logoUrl)) {
+        setProjectField('branding', { brandName: branding.brandName || undefined, brandColor: branding.brandColor || undefined, logoUrl: branding.logoUrl || undefined });
+      }
+    }
+    return { elements, siteContext, branding };
   };
 
   const suggestBrief = async () => {
@@ -96,10 +105,10 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
     if (!aiReady) return onOpenSignIn();
     setBusy('draft'); setMsg('AI skriver et one-pager-utkast fra siden…');
     try {
-      const { elements, siteContext } = await scanContext();
+      const { elements, siteContext, branding } = await scanContext();
       let ev = evidence;
       if (!ev) { ev = await analyzeProductEvidence({ url: project.url, siteContext, elements }).catch(() => null); if (ev) setEvidence(ev); }
-      const text = await aiDraftOnePager({ url: project.url, siteContext, elements, evidence: ev ?? undefined });
+      const text = await aiDraftOnePager({ url: project.url, siteContext, elements, evidence: ev ?? undefined, branding });
       if (text) setOnePager(text);
       setMsg('✓ One-pager-utkast laget fra siden. Rediger ved behov, så «Bygg tankekart».');
     } catch (e) { setMsg('Feil: ' + (e as Error).message); }
