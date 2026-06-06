@@ -27,6 +27,7 @@ import {
   signStreamThumbnailUrl,
 } from "./cloudflare-stream-service.js";
 import { notifySelftapeActivity } from "./talent-selftape-notifications.js";
+import { composeEmail } from "./email-design-system.js";
 
 // 500 MB grense — én typisk self-tape (60-90s @ 1080p) ligger på 50-150 MB
 const MAX_SELFTAPE_BYTES = 500 * 1024 * 1024;
@@ -1485,32 +1486,28 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
               ? `${row.casting_project_name}${row.casting_role_name ? ` (${row.casting_role_name})` : ""}`
               : "rollen";
             const firstName = String(row.display_name ?? "").split(" ")[0] || "Hei";
+
+            const composed = composeEmail({
+              category: "comment",
+              subject: `Ny kommentar på din self-tape for ${target}`,
+              preheader: trimmed.slice(0, 120),
+              headline: "Ny tilbakemelding fra produksjonen",
+              subhead: `${firstName} — kommentar på self-tapen din for "${target}":`,
+              quote: trimmed,
+              cta: { label: "Se alle kommentarer", href: sharedLink },
+              footer: {
+                reason: "Du får denne e-posten fordi produksjonsteamet la igjen en kommentar på din self-tape. Du eier all videoen og kan trekke tilbake tilgangen når som helst.",
+                preferencesUrl: `${baseUrl}/talents/innstillinger`,
+              },
+            });
             await sendTransactionalEmail({
               to: row.email,
               subject: `Ny kommentar på din self-tape for ${target}`,
               fromLabel: "The Role Room",
               kind: "selftape_comment",
               pool,
-              text: [
-                `${firstName} — produksjonsteamet har lagt igjen en kommentar på self-tapen din for ${target}.`,
-                "",
-                `"${trimmed}"`,
-                "",
-                `Se hele aktiviteten: ${sharedLink}`,
-              ].join("\n"),
-              html: [
-                `<!doctype html><html><body style="margin:0;padding:0;background:#0a0118;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">`,
-                `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0118;padding:32px 16px;">`,
-                `<tr><td align="center"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#150b2e;border:1px solid rgba(168,85,247,0.18);border-radius:14px;overflow:hidden;">`,
-                `<tr><td style="padding:32px 32px 8px;">`,
-                `<div style="display:inline-block;background:linear-gradient(135deg,#a855f7 0%,#d946ef 100%);color:#fff;font-weight:700;font-size:12px;letter-spacing:0.6px;text-transform:uppercase;padding:4px 10px;border-radius:999px;margin-bottom:16px;">Kommentar</div>`,
-                `<h1 style="color:#f5f3ff;font-size:22px;line-height:1.25;margin:0 0 12px;">Ny tilbakemelding fra produksjonen</h1>`,
-                `<p style="color:#c4b5fd;font-size:15px;line-height:1.55;margin:0 0 18px;">${firstName} — kommentar på self-tapen din for <strong>${target.replace(/</g,"&lt;")}</strong>:</p>`,
-                `<blockquote style="margin:0 0 24px;padding:16px 20px;border-left:3px solid #c084fc;background:rgba(168,85,247,0.10);color:#f5f3ff;font-size:14px;line-height:1.55;border-radius:0 8px 8px 0;">${trimmed.replace(/</g,"&lt;").replace(/\n/g,"<br/>")}</blockquote>`,
-                `<a href="${sharedLink}" style="display:inline-block;background:linear-gradient(135deg,#a855f7 0%,#d946ef 100%);color:#fff;font-weight:700;text-decoration:none;padding:12px 22px;border-radius:10px;font-size:14px;box-shadow:0 4px 14px rgba(168,85,247,0.38);">Se alle kommentarer</a>`,
-                `</td></tr></table></td></tr></table>`,
-                `</body></html>`,
-              ].join(""),
+              text: composed.text,
+              html: composed.html,
             });
           }
         } catch (mailErr) {

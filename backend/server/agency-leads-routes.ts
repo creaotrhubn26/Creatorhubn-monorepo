@@ -14,6 +14,7 @@ import type express from "express";
 import type { Pool } from "pg";
 
 import { sendTransactionalEmail } from "./transactional-email-service.js";
+import { composeEmail } from "./email-design-system.js";
 import {
   generateImage,
   isFalConfigured,
@@ -152,77 +153,94 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
       void (async () => {
         try {
           const baseUrl = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
+
+          // ── 1. Bekreftelse til lead ────────────────────────────
+          const ackBodyHtml = `
+            <p style="margin:0 0 16px 0;color:${"#c4b5fd"};font-family:-apple-system,sans-serif;font-size:14px;line-height:1.6;">
+              I mellomtiden kan du utforske:
+            </p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+              <tr>
+                <td style="padding:8px 0;border-bottom:1px solid rgba(168,85,247,0.10);">
+                  <a href="${baseUrl}/pricing" style="color:#c084fc;font-weight:700;text-decoration:none;font-size:14px;">
+                    💎 Priser →
+                  </a>
+                  <span style="color:#8b7ec4;font-size:13px;display:block;margin-top:2px;">Fra 495 kr/mnd</span>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:8px 0;border-bottom:1px solid rgba(168,85,247,0.10);">
+                  <a href="${baseUrl}/faq" style="color:#c084fc;font-weight:700;text-decoration:none;font-size:14px;">
+                    💬 FAQ →
+                  </a>
+                  <span style="color:#8b7ec4;font-size:13px;display:block;margin-top:2px;">Korte svar på vanlige spørsmål</span>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:8px 0;">
+                  <a href="${baseUrl}/pitch" style="color:#c084fc;font-weight:700;text-decoration:none;font-size:14px;">
+                    🎬 Hva er The Role Room? →
+                  </a>
+                  <span style="color:#8b7ec4;font-size:13px;display:block;margin-top:2px;">2-minutters pitch-deck</span>
+                </td>
+              </tr>
+            </table>
+          `;
+
+          const ackComposed = composeEmail({
+            category: "lead_ack",
+            subject: "Vi har mottatt forespørselen din — The Role Room",
+            preheader: `Daniel kommer tilbake innen 24 timer med demo-tider for ${agencyName}.`,
+            headline: "Takk! Vi tar kontakt innen 24 timer",
+            subhead: `Hei ${contactName.split(" ")[0]} — vi har mottatt forespørselen fra ${agencyName} og kommer tilbake med 3 demo-tider du kan velge mellom. Du får e-post fra Daniel direkte.`,
+            bodyHtml: ackBodyHtml,
+            footer: {
+              reason: "Du får denne e-posten fordi du sendte inn forespørsel via /for-byraer.",
+            },
+          });
+
           await sendTransactionalEmail({
             to: email,
             subject: "Vi har mottatt forespørselen din — The Role Room",
             kind: "agency_lead_ack",
             fromLabel: "The Role Room",
             pool,
-            text: [
-              `Hei ${contactName.split(" ")[0]},`,
-              "",
-              `Vi har mottatt forespørselen din fra ${agencyName} og kommer tilbake innen 24 timer med 3 demo-tider å velge mellom.`,
-              "",
-              "I mellomtiden kan du lese mer her:",
-              `· Priser: ${baseUrl}/pricing`,
-              `· FAQ: ${baseUrl}/faq`,
-              "",
-              "— The Role Room",
-            ].join("\n"),
-            html: [
-              `<!doctype html><html><body style="margin:0;padding:0;background:#0a0118;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">`,
-              `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0118;padding:32px 16px;"><tr><td align="center">`,
-              `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#150b2e;border:1px solid rgba(168,85,247,0.18);border-radius:14px;overflow:hidden;">`,
-              `<tr><td style="padding:32px;">`,
-              `<div style="display:inline-block;background:linear-gradient(135deg,#a855f7 0%,#d946ef 100%);color:#fff;font-weight:700;font-size:12px;letter-spacing:0.6px;text-transform:uppercase;padding:4px 10px;border-radius:999px;margin-bottom:16px;">Mottatt</div>`,
-              `<h1 style="color:#f5f3ff;font-size:22px;line-height:1.25;margin:0 0 12px;">Vi har mottatt forespørselen din</h1>`,
-              `<p style="color:#c4b5fd;font-size:15px;line-height:1.55;margin:0 0 16px;">Hei ${escapeHtml(contactName.split(" ")[0])} — vi tar kontakt innen 24 timer med 3 demo-tider å velge mellom. Du får e-post fra <strong>daniel@creatorhubn.com</strong>.</p>`,
-              `<p style="color:#8b7ec4;font-size:13px;margin:0 0 8px;">I mellomtiden:</p>`,
-              `<p style="margin:0 0 8px;"><a href="${baseUrl}/pricing" style="color:#c084fc;font-weight:600;text-decoration:none;">Priser →</a></p>`,
-              `<p style="margin:0;"><a href="${baseUrl}/faq" style="color:#c084fc;font-weight:600;text-decoration:none;">FAQ →</a></p>`,
-              `</td></tr></table></td></tr></table></body></html>`,
-            ].join(""),
+            text: ackComposed.text,
+            html: ackComposed.html,
           });
 
-          // Intern notifikasjon til Daniel
+          // ── 2. Intern notifikasjon til Daniel ──────────────────
           const internalEmail = process.env.AGENCY_LEAD_NOTIFY_EMAIL
             ?? "daniel@creatorhubn.com";
+
+          const internalComposed = composeEmail({
+            category: "lead_internal",
+            subject: `🎯 Ny byrå-lead: ${agencyName}`,
+            preheader: `${contactName} fra ${agencyName} — ${segment}`,
+            headline: `Ny lead fra ${agencyName}`,
+            subhead: `${contactName} kommer fra ${segment}-segmentet og venter på svar innen 24 timer.`,
+            table: [
+              { label: 'Byrå', value: agencyName },
+              { label: 'Kontakt', value: `${contactName} <${email}>` },
+              { label: 'Telefon', value: phone ?? '—' },
+              { label: 'Antall talents', value: rosterSize ?? '—' },
+              { label: 'Segment', value: segment },
+              ...(message ? [{ label: 'Melding', value: message, pre: true }] : []),
+            ],
+            cta: { label: 'Åpne Admin Room CRM', href: `${baseUrl}/admin-room#crm` },
+            footer: {
+              reason: 'Intern notifikasjon — du mottar denne fordi du eier The Role Room.',
+            },
+          });
+
           await sendTransactionalEmail({
             to: internalEmail,
             subject: `🎯 Ny byrå-lead: ${agencyName}`,
             kind: "agency_lead_internal",
             fromLabel: "The Role Room — Leads",
             pool,
-            text: [
-              `Ny byrå-lead via landingssiden:`,
-              "",
-              `Byrå: ${agencyName}`,
-              `Kontakt: ${contactName}`,
-              `E-post: ${email}`,
-              `Telefon: ${phone ?? "(ikke oppgitt)"}`,
-              `Antall talents: ${rosterSize ?? "(ikke oppgitt)"}`,
-              `Segment: ${segment}`,
-              "",
-              message ? `Melding:\n${message}` : "(ingen melding)",
-              "",
-              `Admin Room: ${baseUrl}/admin-room#crm`,
-            ].join("\n"),
-            html: [
-              `<!doctype html><html><body style="margin:0;padding:0;background:#0a0118;font-family:-apple-system,sans-serif;">`,
-              `<table width="100%" style="background:#0a0118;padding:24px;"><tr><td align="center">`,
-              `<table style="max-width:560px;background:#150b2e;border:1px solid rgba(168,85,247,0.18);border-radius:12px;padding:24px;color:#f5f3ff;">`,
-              `<h2 style="margin:0 0 16px;font-size:18px;">🎯 Ny byrå-lead</h2>`,
-              `<dl style="font-size:13px;line-height:1.6;color:#c4b5fd;">`,
-              `<dt style="color:#8b7ec4;font-weight:600;">Byrå</dt><dd style="margin:0 0 8px 0;color:#f5f3ff;">${escapeHtml(agencyName)}</dd>`,
-              `<dt style="color:#8b7ec4;font-weight:600;">Kontakt</dt><dd style="margin:0 0 8px 0;color:#f5f3ff;">${escapeHtml(contactName)} &lt;${escapeHtml(email)}&gt;</dd>`,
-              `<dt style="color:#8b7ec4;font-weight:600;">Telefon</dt><dd style="margin:0 0 8px 0;color:#f5f3ff;">${escapeHtml(phone ?? "—")}</dd>`,
-              `<dt style="color:#8b7ec4;font-weight:600;">Talents</dt><dd style="margin:0 0 8px 0;color:#f5f3ff;">${escapeHtml(rosterSize ?? "—")}</dd>`,
-              `<dt style="color:#8b7ec4;font-weight:600;">Segment</dt><dd style="margin:0 0 8px 0;color:#f5f3ff;">${escapeHtml(segment)}</dd>`,
-              message ? `<dt style="color:#8b7ec4;font-weight:600;">Melding</dt><dd style="margin:0 0 8px 0;color:#f5f3ff;white-space:pre-wrap;">${escapeHtml(message)}</dd>` : "",
-              `</dl>`,
-              `<a href="${baseUrl}/admin-room#crm" style="display:inline-block;background:linear-gradient(135deg,#a855f7 0%,#d946ef 100%);color:#fff;font-weight:700;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:13px;margin-top:12px;">Åpne Admin Room CRM</a>`,
-              `</table></td></tr></table></body></html>`,
-            ].join(""),
+            text: internalComposed.text,
+            html: internalComposed.html,
           });
         } catch (err) {
           console.warn("[agency-lead] mail-notification feilet", err);
@@ -403,11 +421,3 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
   });
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
