@@ -62,6 +62,22 @@ export function installDemoMock() {
     },
   };
 
+  // Mock getDisplayMedia så Guided Recorder kan starte web-opptak headless
+  // (ekte skjermdeling finnes ikke i Playwright). En canvas-stream gir frames
+  // til MediaRecorder, så recording-state settes og recorder-panelet vises.
+  try {
+    const md = navigator.mediaDevices as unknown as { getDisplayMedia?: unknown };
+    if (md) {
+      md.getDisplayMedia = async () => {
+        const c = document.createElement('canvas');
+        c.width = 320; c.height = 180;
+        const ctx = c.getContext('2d');
+        if (ctx) { ctx.fillStyle = '#222'; ctx.fillRect(0, 0, 320, 180); }
+        return (c as unknown as { captureStream: (fps: number) => MediaStream }).captureStream(10);
+      };
+    }
+  } catch { /* ignore */ }
+
   localStorage.setItem('trrpa.firstRunComplete', 'skipped');
   localStorage.setItem('trrpa.settings', JSON.stringify({ RR_BEARER_TOKEN: 'test-token', RR_POST_AGENT_BASE_URL: 'https://example.test/api/post-agent' }));
 }

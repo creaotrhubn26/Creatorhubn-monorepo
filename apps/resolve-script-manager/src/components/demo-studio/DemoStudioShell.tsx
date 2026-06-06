@@ -451,7 +451,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         ) : nav === 'export' ? (
           <div style={{ flex: 1, minHeight: 0 }}><ExportView /></div>
         ) : nav === 'create' ? (
-          <div style={{ flex: 1, minHeight: 0 }}><CreateDemoView /></div>
+          <div style={{ flex: 1, minHeight: 0 }}><CreateDemoView onCreated={() => setNav('flow')} /></div>
         ) : nav === 'preview' ? (
           <div style={{ flex: 1, minHeight: 0 }}><DevicePreviewView /></div>
         ) : (
@@ -846,13 +846,17 @@ function SceneThumb({ scene, url, height = 80 }: { scene: DemoScene; url: string
 }
 
 /** Create Demo — start/oversikt: gjeldende demo + skjema for å starte en ny. */
-function CreateDemoView() {
+function CreateDemoView({ onCreated }: { onCreated?: () => void }) {
   const { project, createProject } = useDemoStudio();
   const [urlInput, setUrlInput] = useState('');
   const [demoType, setDemoType] = useState<DemoType>('product_demo');
   const normalizedUrl = normalizeUrl(urlInput);
   const valid = /^https?:\/\/\S+\.\S+/i.test(normalizedUrl);
-  const start = () => { if (!project || window.confirm('Erstatte gjeldende demo med en ny? (Du kan eksportere først.)')) createProject(normalizedUrl, demoType); };
+  const start = () => {
+    if (project && !window.confirm('Erstatte gjeldende demo med en ny? (Du kan eksportere først.)')) return;
+    createProject(normalizedUrl, demoType);
+    onCreated?.(); // gå rett til Flow Builder for å redigere den nye demoen
+  };
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: C.bg }}>
       <div style={{ maxWidth: 680, margin: '0 auto', padding: '36px 32px' }}>
