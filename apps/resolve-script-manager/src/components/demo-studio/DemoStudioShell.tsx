@@ -822,7 +822,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   width: `${baseWPct * previewZoom}%`, maxWidth: baseMaxW * previewZoom,
                 }}>
                   <FramedDevice variant={previewVariant} url={project.url} width="100%"
-                    overlay={<SceneInteractionOverlay hotspot={selected?.hotspot} render={render} device={previewDevice} />}
+                    overlay={<SceneInteractionOverlay hotspot={selected?.hotspot} render={render} device={previewDevice} actionType={selected?.actionType} animate={!placingHotspot} />}
+                    focusZoom={render.autoZoom && selected?.hotspot && !placingHotspot ? { cx: selected.hotspot.x + selected.hotspot.w / 2, cy: selected.hotspot.y + selected.hotspot.h / 2, scale: 1.5 } : undefined}
                     onScreenClick={placingHotspot ? placeHotspot : undefined} />
                 </div>
                 {/* Jordet kontaktskygge under enheten */}

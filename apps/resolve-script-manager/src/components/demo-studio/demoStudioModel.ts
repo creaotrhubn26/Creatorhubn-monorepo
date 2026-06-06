@@ -191,6 +191,8 @@ export interface DemoRenderOptions {
   highlightInteractions: boolean;
   /** Respekter enhetens safe-area (notch/home-indikator), særlig for 9:16. */
   safeArea: boolean;
+  /** Push-in (auto-zoom/pan) mot scenens hotspot for fokus på handlingen. */
+  autoZoom: boolean;
 }
 
 export const RENDER_OPTION_LABELS: Record<keyof DemoRenderOptions, string> = {
@@ -198,10 +200,11 @@ export const RENDER_OPTION_LABELS: Record<keyof DemoRenderOptions, string> = {
   showTouchPoints: 'Show Touch Points',
   highlightInteractions: 'Highlight Interactions',
   safeArea: 'Safe Area',
+  autoZoom: 'Auto-zoom mot hotspot',
 };
 
 export function defaultRenderOptions(): DemoRenderOptions {
-  return { showCursor: true, showTouchPoints: true, highlightInteractions: true, safeArea: true };
+  return { showCursor: true, showTouchPoints: true, highlightInteractions: true, safeArea: true, autoZoom: false };
 }
 
 /** Merkevare/white-label for sluttproduktet. */
