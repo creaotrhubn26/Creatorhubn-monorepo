@@ -274,7 +274,7 @@ export function IgHashtagInspector() {
               {suggestions.map((s) => (
                 <Chip
                   key={s.hashtag}
-                  label={`#${s.hashtag}${s.hashtagId ? ' ✓' : ''}`}
+                  label={`#${s.hashtag}`}
                   onClick={() => { setInput(s.hashtag); void handleSearch(s.hashtag); }}
                   color={s.hashtagId ? 'primary' : 'default'}
                   variant={s.hashtagId ? 'filled' : 'outlined'}
@@ -352,7 +352,7 @@ export function IgHashtagInspector() {
                           }}
                         >
                           <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                            ♥ {fmtNum(p.likeCount)} · 💬 {fmtNum(p.commentsCount)}
+                            {fmtNum(p.likeCount)} liker · {fmtNum(p.commentsCount)} kommentarer
                           </Typography>
                         </Box>
                       </Box>

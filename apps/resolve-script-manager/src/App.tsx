@@ -37,6 +37,7 @@ import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
+import { StoryTestHarness } from "./components/story/StoryTestHarness";
 import { AgentEditorView } from "./components/AgentEditorView";
 import MUSIC_VIDEO_AGENT_CONFIG from "./agents/music_video";
 import CORPORATE_AGENT_CONFIG from "./agents/corporate";
@@ -56,8 +57,10 @@ import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSe
 import { UpdaterDialog } from "./components/UpdaterDialog";
 import { WatchFolderModal } from "./components/WatchFolderModal";
 import { PhotoshopBridgeDialog } from "./components/PhotoshopBridgeDialog";
+import { FireflyPromptDialog } from "./components/FireflyPromptDialog";
+import { PhotoshopWorkspaceDialog } from "./components/PhotoshopWorkspaceDialog";
+import { MultiAgentDirectorDialog } from "./components/MultiAgentDirectorDialog";
 import { PhotoshopTemplateDialog } from "./components/PhotoshopTemplateDialog";
-import { PhotoshopAgentDialog } from "./components/PhotoshopAgentDialog";
 import { PsdGalleryDialog } from "./components/PsdGalleryDialog";
 import { PhotoshopHealthCheckDialog } from "./components/PhotoshopHealthCheckDialog";
 import {
@@ -79,7 +82,22 @@ import { useProjectTemplate } from "./hooks/useProjectTemplate";
 
 const MAX_LOG_EVENTS = 500;
 
+/**
+ * Test-bypass: når URL har `?test=story`, eksporter vi en harness som
+ * direkte mounter StoryView med pre-loaded picks fra window.__POST_AGENT_TEST_PICKS__.
+ * Brukes av Playwright e2e — ingen prod-effekt fordi flagget kun
+ * finnes når Playwright setter det.
+ */
+function isStoryTestMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("test") === "story";
+}
+
 export default function App() {
+  if (isStoryTestMode()) {
+    return <StoryTestHarness />;
+  }
+
   const [registry, setRegistry] = useState<Registry | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowMap>({});
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
@@ -145,8 +163,10 @@ export default function App() {
   const [showFirstRun, setShowFirstRun] = useState(() => shouldShowFirstRun());
   const [showWatch, setShowWatch] = useState(false);
   const [showPhotoshopBridge, setShowPhotoshopBridge] = useState(false);
+  const [showFireflyPrompt, setShowFireflyPrompt] = useState(false);
+  const [showPhotoshopWorkspace, setShowPhotoshopWorkspace] = useState(false);
+  const [showMultiAgent, setShowMultiAgent] = useState(false);
   const [showPhotoshopTemplates, setShowPhotoshopTemplates] = useState(false);
-  const [showPhotoshopAgent, setShowPhotoshopAgent] = useState(false);
   const [showPsdGallery, setShowPsdGallery] = useState(false);
   const [showPhotoshopHealth, setShowPhotoshopHealth] = useState(false);
   const [showPhotoshopTour, setShowPhotoshopTour] = useState(
@@ -678,8 +698,10 @@ export default function App() {
         onOpenDependencies={() => setShowDependencies(true)}
         onOpenWatch={() => setShowWatch(true)}
         onOpenPhotoshopBridge={() => setShowPhotoshopBridge(true)}
+        onOpenFireflyPrompt={() => setShowFireflyPrompt(true)}
+        onOpenPhotoshopWorkspace={() => setShowPhotoshopWorkspace(true)}
+        onOpenMultiAgent={() => setShowMultiAgent(true)}
         onOpenPhotoshopTemplates={() => setShowPhotoshopTemplates(true)}
-        onOpenPhotoshopAgent={() => setShowPhotoshopAgent(true)}
         onOpenPsdGallery={() => setShowPsdGallery(true)}
         onOpenPhotoshopHealth={() => setShowPhotoshopHealth(true)}
         onOpenPhotoshopTour={() => setShowPhotoshopTour(true)}
@@ -1001,11 +1023,32 @@ export default function App() {
       {showPhotoshopBridge && (
         <PhotoshopBridgeDialog onClose={() => setShowPhotoshopBridge(false)} />
       )}
+
+      <FireflyPromptDialog
+        open={showFireflyPrompt}
+        onClose={() => setShowFireflyPrompt(false)}
+        onApply={(prompt) => {
+          // Lagre i clipboard som default action — parent kan plugge inn
+          // egen handler senere når gen.fill-panel er bygd.
+          void navigator.clipboard?.writeText(prompt);
+        }}
+      />
+
+      <PhotoshopWorkspaceDialog
+        open={showPhotoshopWorkspace}
+        onClose={() => setShowPhotoshopWorkspace(false)}
+        onOpenFireflyPrompt={() => {
+          setShowPhotoshopWorkspace(false);
+          setShowFireflyPrompt(true);
+        }}
+      />
+
+      <MultiAgentDirectorDialog
+        open={showMultiAgent}
+        onClose={() => setShowMultiAgent(false)}
+      />
       {showPhotoshopTemplates && (
         <PhotoshopTemplateDialog onClose={() => setShowPhotoshopTemplates(false)} />
-      )}
-      {showPhotoshopAgent && (
-        <PhotoshopAgentDialog onClose={() => setShowPhotoshopAgent(false)} />
       )}
       {showPsdGallery && (
         <PsdGalleryDialog onClose={() => setShowPsdGallery(false)} />

@@ -754,14 +754,14 @@ export default function PriceManagementDashboard({
   const activeBillingTemplateCount = creatorHubEmailSettings.email.templates.length;
   const priceManagementSurfaceSx = {
     borderRadius: '24px',
-    border: '1px solid rgba(17, 24, 39, 0.08)',
-    bgcolor: '#ffffff',
+    border: '1px solid rgba(255,255,255,0.10)',
+    bgcolor: 'rgba(255,255,255,0.04)',
     boxShadow: '0 18px 44px rgba(15, 23, 42, 0.06)',
   } as const;
   const priceManagementInsetSx = {
     borderRadius: '18px',
-    border: '1px solid rgba(17, 24, 39, 0.07)',
-    bgcolor: '#fcfaf7',
+    border: '1px solid rgba(255,255,255,0.10)',
+    bgcolor: 'rgba(255,255,255,0.04)',
     p: 1.75,
   } as const;
 
@@ -1228,24 +1228,24 @@ export default function PriceManagementDashboard({
               Endringene her skal være lesbare både for teamet og for det som faktisk publiseres på CreatorHub.
             </Typography>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
-              <Chip label={`${activePlanCount} aktive planer`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
-              <Chip label={`${annualPlanCount} med årsbetaling`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
-              <Chip label={`${enabledFeatureCount} aktive features`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }} />
+              <Chip label={`${activePlanCount} aktive planer`} sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }} />
+              <Chip label={`${annualPlanCount} med årsbetaling`} sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }} />
+              <Chip label={`${enabledFeatureCount} aktive features`} sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }} />
               {highlightedPlan ? (
                 <Chip
                   label={`Hovedplan: ${highlightedPlan.name}`}
-                  sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }}
+                  sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }}
                 />
               ) : null}
               {hasLegacyFreePlan ? (
                 <Chip
                   label="Gratisplan skjules internt"
-                  sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }}
+                  sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }}
                 />
               ) : (
                 <Chip
                   label="Kun betalte planer publiseres"
-                  sx={{ bgcolor: '#ffffff', border: '1px solid rgba(15, 52, 96, 0.08)' }}
+                  sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }}
                 />
               )}
             </Stack>
@@ -1262,8 +1262,8 @@ export default function PriceManagementDashboard({
             <Box
               sx={{
                 borderRadius: '18px',
-                border: '1px solid rgba(17, 24, 39, 0.08)',
-                bgcolor: 'rgba(255,255,255,0.72)',
+                border: '1px solid rgba(255,255,255,0.10)',
+                bgcolor: 'rgba(255,255,255,0.04)',
                 px: 1.75,
                 py: 1.5,
               }}
@@ -1278,8 +1278,8 @@ export default function PriceManagementDashboard({
             <Box
               sx={{
                 borderRadius: '18px',
-                border: '1px solid rgba(17, 24, 39, 0.08)',
-                bgcolor: 'rgba(255,255,255,0.72)',
+                border: '1px solid rgba(255,255,255,0.10)',
+                bgcolor: 'rgba(255,255,255,0.04)',
                 px: 1.75,
                 py: 1.5,
               }}
@@ -1325,8 +1325,8 @@ export default function PriceManagementDashboard({
           mb: 3,
           p: 0.75,
           borderRadius: '18px',
-          border: '1px solid rgba(17, 24, 39, 0.08)',
-          bgcolor: '#fbfbfc',
+          border: '1px solid rgba(255,255,255,0.10)',
+          bgcolor: 'rgba(255,255,255,0.04)',
         }}
       >
         <Tabs
@@ -1349,8 +1349,8 @@ export default function PriceManagementDashboard({
               fontWeight: 700,
             },
             '& .Mui-selected': {
-              bgcolor: '#ffffff',
-              color: '#111827',
+              bgcolor: 'rgba(255,255,255,0.08)',
+              color: '#ffffff',
               boxShadow: '0 6px 18px rgba(15, 23, 42, 0.08)',
             },
           }}
@@ -1424,9 +1424,9 @@ export default function PriceManagementDashboard({
                   sx={{
                     height: '100%',
                     borderRadius: '22px',
-                    border: '1px solid rgba(17, 24, 39, 0.08)',
+                    border: '1px solid rgba(255,255,255,0.10)',
                     boxShadow: '0 14px 34px rgba(15, 23, 42, 0.05)',
-                    bgcolor: '#ffffff',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                     '&:hover': { boxShadow: '0 20px 42px rgba(15, 23, 42, 0.08)' },
                   }}
                 >
@@ -1511,24 +1511,24 @@ export default function PriceManagementDashboard({
                   </Box>
                   <Chip
                     label={`${selfServePlans.length} planer ute i salg`}
-                    sx={{ bgcolor: '#f8fafc', border: '1px solid rgba(15, 23, 42, 0.08)', fontWeight: 700 }}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)', fontWeight: 700 }}
                   />
                 </Stack>
                 <TableContainer
                   sx={{
                     borderRadius: '20px',
-                    border: '1px solid rgba(17, 24, 39, 0.08)',
-                    bgcolor: '#fffdfa',
+                    border: '1px solid rgba(255,255,255,0.10)',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                   }}
                 >
                   <Table
                     size="small"
                     sx={{
                       '& thead th': {
-                        bgcolor: '#f8f5ef',
+                        bgcolor: 'rgba(255,255,255,0.04)',
                         color: '#6b6257',
                         fontSize: '0.78rem',
-                        borderBottom: '1px solid rgba(17, 24, 39, 0.08)',
+                        borderBottom: '1px solid rgba(255,255,255,0.10)',
                       },
                       '& tbody td': {
                         borderBottom: '1px solid rgba(17, 24, 39, 0.06)',
@@ -1903,7 +1903,7 @@ export default function PriceManagementDashboard({
                   Når disse mailene går ut
                 </Typography>
                 <Stack spacing={1.5}>
-                  <Box sx={{ ...priceManagementInsetSx, bgcolor: '#f8fafc' }}>
+                  <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(255,255,255,0.04)' }}>
                     <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
                       Første vellykkede betaling
                     </Typography>
@@ -1911,7 +1911,7 @@ export default function PriceManagementDashboard({
                       Sendes etter første vellykkede Stripe-checkout, slik at brukeren får en tydelig bekreftelse på at CreatorHub-abonnementet er aktivt.
                     </Typography>
                   </Box>
-                  <Box sx={{ ...priceManagementInsetSx, bgcolor: '#eff6ff' }}>
+                  <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(33,150,243,0.08)' }}>
                     <Typography variant="overline" sx={{ color: '#1d4ed8', fontWeight: 700 }}>
                       Konto aktivert
                     </Typography>
@@ -1919,7 +1919,7 @@ export default function PriceManagementDashboard({
                       Sendes sammen med første aktivering når kontoen faktisk er aktivert og brukeren kan logge inn i CreatorHub med den registrerte e-posten.
                     </Typography>
                   </Box>
-                  <Box sx={{ ...priceManagementInsetSx, bgcolor: '#fff7ed' }}>
+                  <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(255,152,0,0.12)' }}>
                     <Typography variant="overline" sx={{ color: '#c2410c', fontWeight: 700 }}>
                       Betaling feilet
                     </Typography>
@@ -1927,7 +1927,7 @@ export default function PriceManagementDashboard({
                       Sendes når Stripe melder `invoice.payment_failed` eller abonnementet blir stoppet før betalingen er tilbake på plass.
                     </Typography>
                   </Box>
-                  <Box sx={{ ...priceManagementInsetSx, bgcolor: '#ecfdf5' }}>
+                  <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(76,175,80,0.10)' }}>
                     <Typography variant="overline" sx={{ color: '#047857', fontWeight: 700 }}>
                       Betaling gjenopprettet
                     </Typography>
@@ -1935,14 +1935,14 @@ export default function PriceManagementDashboard({
                       Sendes når en konto som tidligere sto som feilet får en ny vellykket `invoice.paid` og abonnementet blir aktivt igjen.
                     </Typography>
                   </Box>
-                  <Box sx={{ ...priceManagementInsetSx, bgcolor: '#f5f3ff' }}>
+                  <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(124,58,237,0.10)' }}>
                     <Typography variant="overline" sx={{ color: '#6d28d9', fontWeight: 700 }}>
                       Alias i bruk
                     </Typography>
                     <Stack spacing={1} sx={{ mt: 1 }}>
-                      <Chip label={`billing: ${creatorHubEmailSettings.email.fromEmail}`} sx={{ width: 'fit-content', bgcolor: '#ffffff' }} />
-                      <Chip label={`hello: ${creatorHubEmailSettings.email.welcomeFromEmail}`} sx={{ width: 'fit-content', bgcolor: '#ffffff' }} />
-                      <Chip label={`noreply: ${creatorHubEmailSettings.email.systemFromEmail}`} sx={{ width: 'fit-content', bgcolor: '#ffffff' }} />
+                      <Chip label={`billing: ${creatorHubEmailSettings.email.fromEmail}`} sx={{ width: 'fit-content', bgcolor: 'rgba(255,255,255,0.04)' }} />
+                      <Chip label={`hello: ${creatorHubEmailSettings.email.welcomeFromEmail}`} sx={{ width: 'fit-content', bgcolor: 'rgba(255,255,255,0.04)' }} />
+                      <Chip label={`noreply: ${creatorHubEmailSettings.email.systemFromEmail}`} sx={{ width: 'fit-content', bgcolor: 'rgba(255,255,255,0.04)' }} />
                     </Stack>
                   </Box>
                 </Stack>
@@ -1970,25 +1970,25 @@ export default function PriceManagementDashboard({
                   </Box>
                   <Chip
                     label={`${activeBillingTemplateCount} aktive billing-maler`}
-                    sx={{ bgcolor: '#f8fafc', border: '1px solid rgba(15, 23, 42, 0.08)', fontWeight: 700 }}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)', fontWeight: 700 }}
                   />
                 </Stack>
 
                 <TableContainer
                   sx={{
                     borderRadius: '20px',
-                    border: '1px solid rgba(17, 24, 39, 0.08)',
-                    bgcolor: '#fffdfa',
+                    border: '1px solid rgba(255,255,255,0.10)',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                   }}
                 >
                   <Table
                     size="small"
                     sx={{
                       '& thead th': {
-                        bgcolor: '#f8f5ef',
+                        bgcolor: 'rgba(255,255,255,0.04)',
                         color: '#6b6257',
                         fontSize: '0.78rem',
-                        borderBottom: '1px solid rgba(17, 24, 39, 0.08)',
+                        borderBottom: '1px solid rgba(255,255,255,0.10)',
                       },
                       '& tbody td': {
                         borderBottom: '1px solid rgba(17, 24, 39, 0.06)',
@@ -2442,8 +2442,8 @@ export default function PriceManagementDashboard({
               mt: 3,
               p: 2,
               borderRadius: '12px',
-              border: '1px solid rgba(15, 23, 42, 0.12)',
-              bgcolor: '#f8fafc',
+              border: '1px solid rgba(255,255,255,0.10)',
+              bgcolor: 'rgba(255,255,255,0.04)',
             }}
           >
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
@@ -2515,8 +2515,8 @@ export default function PriceManagementDashboard({
                   mt: 2,
                   p: 1.75,
                   borderRadius: '10px',
-                  bgcolor: '#fff7ed',
-                  border: '1px solid #fed7aa',
+                  bgcolor: 'rgba(255,152,0,0.12)',
+                  border: '1px solid rgba(255,152,0,0.24)',
                 }}
               >
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>

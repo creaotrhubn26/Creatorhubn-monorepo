@@ -28,11 +28,13 @@ npm install
 npm run tauri dev
 ```
 
-## TODO før første release
+## TODO før første real-bruker release
 
-- [ ] Erstatt placeholder-ikoner i `src-tauri/icons/` (kopiert fra Post Agent — må byttes med Desk-branding før release)
-- [ ] Generér nye minisign-nøkler (IKKE gjenbruk Post Agent-nøklene)
-- [ ] Sett opp release-workflow (kommer i F7)
+- [ ] **Roter minisign-nøkkel** fra passordløs dev-key (id `44F19650DE0B1E3A`) til en eier-eksklusiv nøkkel med passord. Se "Roter nøkkel før real release" nedenfor.
+- [ ] **Apple Developer ID-signing** — appen er per nå usignert. Brukere møter Gatekeeper-warning og må right-click → Open. For betalte kunder bør vi enten:
+   1. Få Apple Developer ID-cert ($99/år) og sette `APPLE_CERTIFICATE` + `APPLE_CERTIFICATE_PASSWORD` + `APPLE_SIGNING_IDENTITY` som GitHub secrets, ELLER
+   2. Notarize gjennom Apple's notarytool så DMG-en åpner uten warning.
+- [ ] **Erstatt placeholder-ikoner** i `src-tauri/icons/` (kopiert fra Post Agent — må byttes med Desk-branding før real release).
 
 ## Bygg lokalt
 
@@ -61,10 +63,52 @@ Sett dem via `Settings → Secrets and variables → Actions` på GitHub-repoet.
 
 ### Slik lager du en release
 ```bash
+# 1. Verifiser keypar + pubkey-konsistens lokalt (anbefalt før push)
+./scripts/verify-updater-key.sh
+
+# 2. Push tag for å trigge release-workflow
 git tag creatorhub-one-desk-v0.1.1
 git push origin creatorhub-one-desk-v0.1.1
 # Watch: .github/workflows/release-creatorhub-one-desk.yml
 ```
+
+Release-workflowen har en **pre-flight-step** som stopper builden hvis:
+- `TAURI_SIGNING_PRIVATE_KEY_ONE_DESK`-secret er tom (forhindrer usignerte release-binærer som auto-updater ville avvist stille)
+- `plugins.updater.pubkey` i `tauri.conf.json` ikke er gyldig minisign-format
+- Den fortsatt bruker placeholder/dev-keyen (advarsel, ikke fatal — kan overstyres når du har bevisst valgt å bruke den)
+
+### Roter nøkkel før real release
+
+Dev-keyen (`44F19650DE0B1E3A`) er passordløs og generert fra utviklerens lokale maskin — IKKE en sikker langtidsidentitet for produksjon.
+
+```bash
+# 1. Generér ny nøkkel MED passord (lagre passordet i 1Password eller lignende)
+minisign -G -s ~/.tauri/one-desk -p ~/.tauri/one-desk.pub
+chmod 600 ~/.tauri/one-desk
+
+# 2. Lim base64-encoded pubkey inn i tauri.conf.json
+cat ~/.tauri/one-desk.pub | base64 | tr -d '\n'
+# Erstatt verdi av plugins.updater.pubkey i src-tauri/tauri.conf.json
+
+# 3. Verifiser konsistens
+./scripts/verify-updater-key.sh
+
+# 4. Oppdater GitHub secrets:
+#    - TAURI_SIGNING_PRIVATE_KEY_ONE_DESK     = innholdet av ~/.tauri/one-desk
+#    - TAURI_SIGNING_PRIVATE_KEY_ONE_DESK_PASSWORD = passordet du satte
+#    Bruk: gh secret set TAURI_SIGNING_PRIVATE_KEY_ONE_DESK < ~/.tauri/one-desk
+
+# 5. Commit + tag som vanlig
+git add src-tauri/tauri.conf.json
+git commit -m "chore(one-desk): rotér updater-nøkkel til prod-key"
+git tag creatorhub-one-desk-v0.2.0
+git push origin main creatorhub-one-desk-v0.2.0
+```
+
+**Viktig**: brukere som har gammel-signerte binærer (signert med dev-key) vil IKKE få oppdateringen automatisk — nye release-binærer er signert med ny key, og deres app verifiserer med gammel pubkey. Du må enten:
+- Sende dem en migration-melding (manuell re-install)
+- Beholde dual-key under en migrasjons-periode (krever Tauri-updater-konfig som ikke er ferdig støttet)
+- Akseptere at dev-key-brukere ikke får oppdateringer (akseptabelt hvis dev-keyen aldri ble distribuert til real-kunder)
 
 Workflowen lager en GitHub Release med:
 - `creatorhub-one-desk-darwin-aarch64.app.tar.gz` (+ `.sig`)

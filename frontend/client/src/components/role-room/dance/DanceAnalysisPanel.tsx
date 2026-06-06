@@ -12,6 +12,7 @@
  * (10) for å unngå N+1-belastning ved store prosjekter.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import { Box, Stack, Typography, Card, CardContent, Chip, CircularProgress, LinearProgress } from '@mui/material';
 import {
@@ -134,14 +135,14 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
   if (loading && !data) {
     return (
       <Box data-testid="dance-analysis-panel" sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
-        <CircularProgress size={28} sx={{ color: '#8b5cf6' }} />
+        <CircularProgress size={28} sx={{ color: danceFlowColors.lavenderDark }} />
       </Box>
     );
   }
   if (error || !data) {
     return (
       <Box data-testid="dance-analysis-panel" sx={{ p: 3 }}>
-        <Typography sx={{ color: '#fca5a5' }}>{error ?? 'Ingen data'}</Typography>
+        <Typography sx={{ color: danceFlowColors.errorSoft }}>{error ?? 'Ingen data'}</Typography>
       </Box>
     );
   }
@@ -152,17 +153,17 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
   return (
     <Box
       data-testid="dance-analysis-panel"
-      sx={{ p: { xs: 2, md: 3 }, bgcolor: '#0a0a0a', minHeight: '100%', color: '#e5e7eb' }}
+      sx={{ p: { xs: 2, md: 3 }, bgcolor: danceFlowColors.bgBase, minHeight: '100%', color: danceFlowColors.textSecondary }}
     >
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-        <InsightsIcon sx={{ color: '#a78bfa', fontSize: 22 }} />
+        <InsightsIcon sx={{ color: danceFlowColors.lavender, fontSize: 22 }} />
         <Typography sx={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>
           Analysis
         </Typography>
         <Chip
           size="small"
           label={`${data.totalAnnotations} annotasjoner · ${data.formationsCount} formasjoner · ${data.rehearsalsCount} prøver`}
-          sx={{ ml: 1, height: 22, fontSize: 11, bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd' }}
+          sx={{ ml: 1, height: 22, fontSize: 11, bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight }}
         />
       </Stack>
 
@@ -174,11 +175,11 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
         }}
       >
         {/* ─── Annotations per kategori ───────────────────────────── */}
-        <Card data-testid="analysis-annotations-by-category" sx={{ bgcolor: '#0f1318', border: '1px solid rgba(139,92,246,0.18)' }}>
+        <Card data-testid="analysis-annotations-by-category" sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid rgba(139,92,246,0.18)' }}>
           <CardContent>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-              <TagIcon sx={{ fontSize: 16, color: '#a78bfa' }} />
-              <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: '#a78bfa', fontWeight: 700 }}>
+              <TagIcon sx={{ fontSize: 16, color: danceFlowColors.lavender }} />
+              <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: danceFlowColors.lavender, fontWeight: 700 }}>
                 ANNOTATIONS PER KATEGORI
               </Typography>
             </Stack>
@@ -192,7 +193,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
                       <Typography sx={{ fontSize: 11, color: cat.color, fontWeight: 700, letterSpacing: 0.5 }}>
                         {cat.label}
                       </Typography>
-                      <Typography sx={{ fontSize: 11, color: '#e5e7eb', fontVariantNumeric: 'tabular-nums' }}>
+                      <Typography sx={{ fontSize: 11, color: danceFlowColors.textSecondary, fontVariantNumeric: 'tabular-nums' }}>
                         {count}
                       </Typography>
                     </Stack>
@@ -212,8 +213,8 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
               {(data.annotationsByCategory.get('__uncat__') ?? 0) > 0 ? (
                 <Box>
                   <Stack direction="row" justifyContent="space-between">
-                    <Typography sx={{ fontSize: 11, color: '#6b7280', fontWeight: 700 }}>Uten kategori</Typography>
-                    <Typography sx={{ fontSize: 11, color: '#9ca3af' }}>
+                    <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontWeight: 700 }}>Uten kategori</Typography>
+                    <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted }}>
                       {data.annotationsByCategory.get('__uncat__')}
                     </Typography>
                   </Stack>
@@ -224,16 +225,16 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
         </Card>
 
         {/* ─── Rehearsal-outcomes ─────────────────────────────────── */}
-        <Card data-testid="analysis-rehearsal-outcomes" sx={{ bgcolor: '#0f1318', border: '1px solid rgba(139,92,246,0.18)' }}>
+        <Card data-testid="analysis-rehearsal-outcomes" sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid rgba(139,92,246,0.18)' }}>
           <CardContent>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-              <CheckIcon sx={{ fontSize: 16, color: '#34d399' }} />
-              <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: '#a78bfa', fontWeight: 700 }}>
+              <CheckIcon sx={{ fontSize: 16, color: danceFlowColors.successPrimary }} />
+              <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: danceFlowColors.lavender, fontWeight: 700 }}>
                 REHEARSAL OUTCOMES
               </Typography>
             </Stack>
             {totalOutcomes === 0 ? (
-              <Typography sx={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>
+              <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
                 Ingen segment-reviews ennå.
               </Typography>
             ) : (
@@ -247,16 +248,16 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
         </Card>
 
         {/* ─── Top-5 dansere ──────────────────────────────────────── */}
-        <Card data-testid="analysis-top-dancers" sx={{ bgcolor: '#0f1318', border: '1px solid rgba(139,92,246,0.18)' }}>
+        <Card data-testid="analysis-top-dancers" sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid rgba(139,92,246,0.18)' }}>
           <CardContent>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-              <PeopleIcon sx={{ fontSize: 16, color: '#60a5fa' }} />
-              <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: '#a78bfa', fontWeight: 700 }}>
+              <PeopleIcon sx={{ fontSize: 16, color: danceFlowColors.infoLight }} />
+              <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: danceFlowColors.lavender, fontWeight: 700 }}>
                 MEST ANNOTERTE DANSERE
               </Typography>
             </Stack>
             {data.topDancers.length === 0 ? (
-              <Typography sx={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>
+              <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
                 Ingen danser-annotasjoner ennå.
               </Typography>
             ) : (
@@ -269,7 +270,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
                     spacing={1}
                     data-testid={`analysis-top-dancer-${d.id}`}
                   >
-                    <Typography sx={{ fontSize: 11, color: '#6b7280', fontWeight: 700, width: 14 }}>
+                    <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontWeight: 700, width: 14 }}>
                       #{i + 1}
                     </Typography>
                     <Typography sx={{ fontSize: 12, color: '#fff', flex: 1 }} noWrap>
@@ -278,7 +279,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
                     <Chip
                       size="small"
                       label={`${d.count}`}
-                      sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(96,165,250,0.18)', color: '#93c5fd' }}
+                      sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoSoft }}
                     />
                   </Stack>
                 ))}
@@ -288,15 +289,15 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
         </Card>
 
         {/* ─── Formasjons-tagger ──────────────────────────────────── */}
-        <Card data-testid="analysis-formation-tags" sx={{ bgcolor: '#0f1318', border: '1px solid rgba(139,92,246,0.18)' }}>
+        <Card data-testid="analysis-formation-tags" sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid rgba(139,92,246,0.18)' }}>
           <CardContent>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-              <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: '#a78bfa', fontWeight: 700 }}>
+              <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: danceFlowColors.lavender, fontWeight: 700 }}>
                 FORMASJONS-TAGGER ({data.formationsByTag.size})
               </Typography>
             </Stack>
             {data.formationsByTag.size === 0 ? (
-              <Typography sx={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>
+              <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
                 Ingen formasjoner har tags ennå.
               </Typography>
             ) : (
@@ -308,7 +309,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
                       key={tag}
                       size="small"
                       label={`${tag} · ${count}`}
-                      sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd' }}
+                      sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight }}
                     />
                   ))}
               </Stack>
@@ -334,7 +335,7 @@ const OutcomeBar: React.FC<OutcomeBarProps> = ({ label, color, count, total, tes
     <Box data-testid={`analysis-outcome-${testId}`}>
       <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.25 }}>
         <Typography sx={{ fontSize: 11, color, fontWeight: 700 }}>{label}</Typography>
-        <Typography sx={{ fontSize: 11, color: '#e5e7eb', fontVariantNumeric: 'tabular-nums' }}>
+        <Typography sx={{ fontSize: 11, color: danceFlowColors.textSecondary, fontVariantNumeric: 'tabular-nums' }}>
           {count} · {pct.toFixed(0)}%
         </Typography>
       </Stack>

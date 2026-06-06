@@ -145,6 +145,10 @@ import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
 import { useLeadImport } from '@/hooks/useLeadImport';
 import ProjectHealthCheck from './ProjectHealthCheck';
 import ProjectCollaborators from './ProjectCollaborators';
+import CloudDestinationActivator from '@/components/storage/CloudDestinationActivator';
+import CloudErasePanel from '@/components/storage/CloudErasePanel';
+import DeliverFromArchiveDialog from '@/components/storage/DeliverFromArchiveDialog';
+import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
 import { getCamerasByProfession, getLogFormatsByCamera, getCameraBrand } from '../../data/video-camera-database';
 import { getPhotoCamerasByProfession, getPhotoCameraBrand } from '../../data/photo-camera-database';
 import { MemoryCardRecommendationEngine, getMemoryCardTypesByProfession, formatCurrency } from '../../data/memory-card-database';
@@ -1842,6 +1846,7 @@ useEffect(() => {
   // Load meeting preferences from server (replaces localStorage)
   
   const [memoryCardLabeling, setMemoryCardLabeling] = useState<LabelingKey>('ABCD');
+  const [deliverDialogOpen, setDeliverDialogOpen] = useState(false);
   const [showScriptManager, setShowScriptManager] = useState<boolean>(false);
   const [showPreview, setShowPreview] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -3295,14 +3300,14 @@ useEffect(() => {
                     placeholder="Skriv for å søke..." 
                     size="small"
                     sx={{
-                      '& .MuiInputLabel-root': { color: '#1a1a1a', fontWeight: 600 },
+                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)', fontWeight: 600 },
                       '& .MuiOutlinedInput-root': {
                         '& fieldset': { borderColor: '#1565c0', borderWidth: 1.5 },
                         '&:hover fieldset': { borderColor: '#0d47a1' },
                         '&.Mui-focused fieldset': { borderColor: '#1565c0', borderWidth: 2 }
                       },
-                      '& .MuiInputBase-input': { color: '#1a1a1a', fontWeight: 500 },
-                      '& .MuiInputBase-input::placeholder': { color: '#666', opacity: 1 }
+                      '& .MuiInputBase-input': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 },
+                      '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.70)', opacity: 1 }
                     }}
                   />
                 )}
@@ -3316,13 +3321,13 @@ useEffect(() => {
                 size="small"
                 slotProps={{ input: { readOnly: true } }}
                 sx={{
-                  '& .MuiInputLabel-root': { color: '#1a1a1a', fontWeight: 600 },
+                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)', fontWeight: 600 },
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': { borderColor: '#1565c0', borderWidth: 1.5 },
                     '&:hover fieldset': { borderColor: '#0d47a1' },
                     '&.Mui-focused fieldset': { borderColor: '#1565c0', borderWidth: 2 }
                   },
-                  '& .MuiInputBase-input': { color: '#1a1a1a', fontWeight: 500 }
+                  '& .MuiInputBase-input': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 }
                 }}
               />
             </Box>
@@ -3440,7 +3445,7 @@ useEffect(() => {
               )
             ) : (
               <Box>
-                <Typography variant="body2" sx={{ mb: 1, color: '#1a1a1a', fontWeight: 500 }}>
+                <Typography variant="body2" sx={{ mb: 1, color: 'rgba(255,255,255,0.95)', fontWeight: 500 }}>
                   Ingen bryllupstidslinje. Opprett i Wedding Timeline Administration.
                 </Typography>
                 <Stack direction="row" spacing={1}>
@@ -3571,49 +3576,49 @@ useEffect(() => {
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
             <Box sx={{ flex: 1 }}>
-              <Typography variant="body2" fontWeight={700} sx={{ color: '#1a1a1a', mb: 0.5 }}>Prosjekt</Typography>
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" fontWeight={700} sx={{ color: 'rgba(255,255,255,0.95)', mb: 0.5 }}>Prosjekt</Typography>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Project ID: {currentProject?.id || 'Ikke opprettet enda'}
               </Typography>
               {!currentProject?.id && (
-                <Typography variant="body2" display="block" sx={{ color: '#333', fontWeight: 500, lineHeight: 1.8 }}>
+                <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.85)', fontWeight: 500, lineHeight: 1.8 }}>
                   Draft ID: {sessionId}
                 </Typography>
               )}
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Gjester: {projectData.guestCount || '-'}
               </Typography>
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Dato: {projectData.eventDate || '-'}
               </Typography>
               {projectData.eventDates && Object.keys(projectData.eventDates).length > 0 && (
-                <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+                <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                   Datoer: {Object.keys(projectData.eventDates)
                     .sort((a, b) => Number(a) - Number(b))
                     .map((k) => projectData.eventDates[Number(k)])
                     .join(', ')}
                 </Typography>
               )}
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Lokasjon: {projectData.location || '-'}
               </Typography>
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Prosjekttype: {projectData.projectType || '-'}
               </Typography>
             </Box>
             <Box sx={{ flex: 1 }}>
-              <Typography variant="body2" fontWeight={700} sx={{ color: '#1a1a1a', mb: 0.5 }}>Kontakt</Typography>
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" fontWeight={700} sx={{ color: 'rgba(255,255,255,0.95)', mb: 0.5 }}>Kontakt</Typography>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Navn: {selectedContact?.displayName || projectData.clientName || '-'}
               </Typography>
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 E-post: {selectedContact?.email || projectData.clientEmail || '-'}
               </Typography>
-              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Telefon: {selectedContact?.phone || projectData.clientPhone || '-'}
               </Typography>
               {(selectedContact?.companyName) && (
-                <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
+                <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                   Firma: {selectedContact.companyName}
                 </Typography>
               )}
@@ -3667,8 +3672,14 @@ useEffect(() => {
         PaperProps={{
           sx: {
             borderRadius: 3,
-            background: '#fafbfc',
-            boxShadow: '0 12px 30px rgba(0, 0, 0, 0.18)'
+            background: '#0f0a07',
+            color: 'rgba(255,255,255,0.95)',
+            boxShadow: '0 12px 30px rgba(0, 0, 0, 0.45)',
+            // Card-flater inni modalen — overstyrer hvit default
+            '& .MuiCard-root, & .MuiPaper-root[class*="elevation"]': {
+              background: 'rgba(255,255,255,0.04)',
+              color: 'rgba(255,255,255,0.95)',
+            },
           }
         }}
       >
@@ -3916,11 +3927,11 @@ useEffect(() => {
 
       {/* Evendi Photo Shots Bridge — Show couple's photo wishes from Evendi */}
       {evendiPhotoShotsBridge && evendiPhotoShotsBridge.shots.length > 0 && (
-        <Card sx={{ mt: 3, background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', color: '#1a1a1a' }}>
+        <Card sx={{ mt: 3, background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', color: 'rgba(255,255,255,0.95)' }}>
           <CardContent>
             <Stack direction="row" spacing={2} alignItems="center">
               <Avatar sx={{ bgcolor: 'rgba(0,0,0,0.1)', width: 56, height: 56 }}>
-                <CameraAlt sx={{ fontSize: 32, color: '#1a1a1a' }} />
+                <CameraAlt sx={{ fontSize: 32, color: 'rgba(255,255,255,0.95)' }} />
               </Avatar>
               <Box sx={{ flex: 1 }}>
                 <Typography variant="h6" fontWeight={600}>
@@ -3941,7 +3952,7 @@ useEffect(() => {
                 disabled={!projectData.shotList?.filter((s) => !s.id?.startsWith('evendi-')).length}
                 sx={{
                   bgcolor: 'rgba(0,0,0,0.15)',
-                  color: '#1a1a1a',
+                  color: 'rgba(255,255,255,0.95)',
                   fontWeight: 600,
                   '&:hover': { bgcolor: 'rgba(0,0,0,0.25)' },
                 }}
@@ -3958,7 +3969,7 @@ useEffect(() => {
                       key={scene}
                       label={`${scene}: ${count}`}
                       size="small"
-                      sx={{ bgcolor: 'rgba(0,0,0,0.1)', color: '#1a1a1a', fontWeight: 500 }}
+                      sx={{ bgcolor: 'rgba(0,0,0,0.1)', color: 'rgba(255,255,255,0.95)', fontWeight: 500 }}
                     />
                   ) : null;
                 })
@@ -3997,7 +4008,7 @@ useEffect(() => {
             <Assignment sx={{ fontSize: 28 }} /> Prosjekttype
           </Typography>
           <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel sx={{ color: '#1a1a1a', fontWeight: 600, '&.Mui-focused': { color: '#1565c0' } }}>Velg prosjekttype</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 600, '&.Mui-focused': { color: '#1565c0' } }}>Velg prosjekttype</InputLabel>
             <Select
               value={projectData.projectType || ''}
               onChange={(e) => {
@@ -4019,7 +4030,7 @@ useEffect(() => {
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: '#1565c0', borderWidth: 1.5 },
                 '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#0d47a1' },
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#1565c0', borderWidth: 2 },
-                '& .MuiSelect-select': { color: '#1a1a1a', fontWeight: 500 }
+                '& .MuiSelect-select': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 }
               }}
               MenuProps={{
                 PaperProps: {
@@ -4352,7 +4363,7 @@ useEffect(() => {
               </Paper>
             )}
             {selectedLocation && (
-              <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+              <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }}>
                 <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
                   <Check sx={{ fontSize: 16, mr: 0.5, color: 'success.main' }} /> {selectedLocation.name || selectedLocation.address}
                 </Typography>
@@ -4489,6 +4500,58 @@ useEffect(() => {
           </Button>
         </CardContent>
       </Card>
+
+      {/* ==========================================
+         OFFSITE BACKUP (B2)
+         ========================================== */}
+      {currentProject?.id && (
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 1 }}>
+              Ekstern backup (offsite)
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Aktiver en Backblaze-bucket som offsite-destinasjon for dette
+              prosjektet. Filene lastes opp direkte fra Creatorhub One Desk
+              under backup-økten — vi ser dem aldri.
+            </Typography>
+            <CloudDestinationActivator
+              projectId={String(currentProject.id)}
+              onActivated={() => {
+                showSuccessToast?.('Offsite-backup aktivert — den nye destinasjonen vises i One Desk neste gang du starter en backup.', 5000);
+              }}
+            />
+            <Box sx={{ mt: 2 }}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => setDeliverDialogOpen(true)}
+                sx={{ borderRadius: 2 }}
+              >
+                📤 Lever til klient fra arkiv
+              </Button>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                Velg filer som er backup'et til Backblaze og send som tilgangs-galleri. Klienten ser filene direkte fra B2 via Cloudflare-cache (ingen ekstra lagring eller egress-kost).
+              </Typography>
+            </Box>
+            <Box sx={{ mt: 3 }}>
+              <OneDeskDownloadCard />
+            </Box>
+            <Box sx={{ mt: 3 }}>
+              <CloudErasePanel
+                projectId={String(currentProject.id)}
+                projectName={projectData.projectName || String(currentProject.id)}
+              />
+            </Box>
+            <DeliverFromArchiveDialog
+              projectId={String(currentProject.id)}
+              defaultGalleryLabel={projectData.projectName || ''}
+              open={deliverDialogOpen}
+              onClose={() => setDeliverDialogOpen(false)}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* ==========================================
          PROJECT COLLABORATORS

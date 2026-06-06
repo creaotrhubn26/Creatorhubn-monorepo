@@ -3230,19 +3230,48 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       if (!content) {
         return res.status(400).json({ error: 'message is required' });
       }
+      if (!recipient) {
+        return res.status(400).json({ error: 'to is required' });
+      }
 
+      // #7 — actually DELIVER via Gmail (this endpoint used to only persist a
+      // row with status:'queued' and never send — a silent no-op). A "send"
+      // that never sends is worse than an honest error.
+      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req, payload);
+      const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
+      if (!workspaceContext) {
+        return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren. Koble Gmail i Innstillinger for å sende e-post.' });
+      }
+      if (!roleRoomGoogleConnectionHasAnyScope({ scopes: workspaceContext.connection.scopes }, GMAIL_SEND_SCOPES)) {
+        return res.status(409).json({
+          error: 'Google Workspace er koblet til, men mangler Gmail send-tilgang. Koble Gmail på nytt for å sende e-post fra CreatorHub.',
+        });
+      }
+
+      const gmail = google.gmail({ version: 'v1', auth: workspaceContext.oauthClient });
+      const rawMessage = [
+        `From: ${workspaceContext.connection.googleEmail ? `<${workspaceContext.connection.googleEmail}>` : 'CreatorHub'}`,
+        `To: ${recipient}`,
+        `Subject: ${subject}`,
+        'Content-Type: text/plain; charset="UTF-8"',
+        'MIME-Version: 1.0',
+        '',
+        content,
+      ].join('\r\n');
+      const sent = await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: { raw: Buffer.from(rawMessage, 'utf8').toString('base64url') },
+      });
+      const threadId = toNonEmptyString(sent.data.threadId);
+
+      // Persist a log row reflecting the REAL delivery (not a fake queue).
       await ensureChannelExists(conversationId, `Email ${conversationId}`, 'email');
       const persisted = await persistMessage({
         channelId: conversationId,
         senderId,
         content,
         messageType: 'email',
-        metadata: {
-          to: recipient,
-          subject,
-          deliveryStatus: 'queued',
-          transport: 'creatorhub-email',
-        },
+        metadata: { to: recipient, subject, deliveryStatus: 'sent', transport: 'gmail', gmailMessageId: toNonEmptyString(sent.data.id), threadId },
       });
 
       res.json({
@@ -3255,12 +3284,18 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
           subject,
           content,
           timestamp: persisted.timestamp,
-          status: 'queued',
+          status: 'sent',
+          gmailMessageId: toNonEmptyString(sent.data.id),
+          threadId,
         },
       });
     } catch (error) {
       console.error('Error sending email:', error);
-      res.status(500).json({ error: 'Failed to send email' });
+      const reconnectIssue = deriveGoogleWorkspaceReconnectIssue(error);
+      if (reconnectIssue) {
+        return res.status(reconnectIssue.statusCode).json({ error: reconnectIssue.message, reconnectRequired: reconnectIssue.status === 'needs_reconnect' });
+      }
+      res.status(getGoogleWorkspaceApiStatus(error)).json({ error: formatGoogleWorkspaceApiError('Gmail API', error) });
     }
   };
 
@@ -3272,6 +3307,56 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   // Compatibility alias used by UniversalChatWidget
   router.post('/api/emails/send', async (req, res) => {
     await handleSendEmail(req, res);
+  });
+
+  // CRM inbound capture (#51) — pull recent inbox messages, match the sender to
+  // an owner's CRM customer (by normalized email), and log each as an inbound
+  // 'email' activity (deduped by Gmail message id) so client replies show up on
+  // the timeline. Honest error when Gmail isn't connected.
+  router.post('/api/universal-crm/inbound/gmail-sync', async (req, res) => {
+    try {
+      const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);
+      const ownerUserId = preferredIdentity.userId;
+      if (!ownerUserId) return res.status(400).json({ error: 'Mangler bruker-identitet.' });
+      const workspaceContext = await resolveLiveGoogleWorkspaceContext(preferredIdentity.userId, preferredIdentity.userEmail);
+      if (!workspaceContext) {
+        return res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren. Koble Gmail i Innstillinger for å synke svar.' });
+      }
+      const gmail = google.gmail({ version: 'v1', auth: workspaceContext.oauthClient });
+      const list = await gmail.users.messages.list({ userId: 'me', q: 'in:inbox newer_than:30d', maxResults: 25 });
+      const msgs = Array.isArray(list.data.messages) ? list.data.messages : [];
+      let scanned = 0, imported = 0;
+      for (const m of msgs) {
+        if (!m.id) continue;
+        scanned++;
+        const full = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'metadata', metadataHeaders: ['From', 'Subject', 'Date'] });
+        const headers = Array.isArray(full.data.payload?.headers) ? full.data.payload!.headers as Array<{ name?: string | null; value?: string | null }> : [];
+        const from = parseMailboxHeader(getGmailHeaderValue(headers, 'From'));
+        const senderEmail = from?.email?.toLowerCase();
+        if (!senderEmail) continue;
+        const cust = await pool.query(
+          `SELECT id FROM crm_customers WHERE owner_user_id = $1 AND email_normalized = $2 AND deleted_at IS NULL LIMIT 1`,
+          [ownerUserId, senderEmail],
+        );
+        if (cust.rows.length === 0) continue;
+        const subject = getGmailHeaderValue(headers, 'Subject') || '(uten emne)';
+        const ins = await pool.query(
+          `INSERT INTO crm_activities (id, customer_id, type, subject, description, direction, channel, source_message_id, owner_user_id, created_at, updated_at)
+           SELECT gen_random_uuid(), $1, 'email', $2, 'Innkommende e-post fra klient', 'inbound', 'email', $3, $4, now(), now()
+           WHERE NOT EXISTS (SELECT 1 FROM crm_activities WHERE owner_user_id = $4 AND source_message_id = $3)
+           RETURNING id`,
+          [cust.rows[0].id, subject, m.id, ownerUserId],
+        );
+        if (ins.rows.length > 0) {
+          imported++;
+          await pool.query(`UPDATE crm_customers SET last_contact = now() WHERE id = $1`, [cust.rows[0].id]).catch(() => {});
+        }
+      }
+      return res.json({ ok: true, scanned, imported });
+    } catch (error) {
+      console.error('CRM inbound gmail-sync error:', error);
+      return res.status(getGoogleWorkspaceApiStatus(error)).json({ error: formatGoogleWorkspaceApiError('Gmail API', error) });
+    }
   });
 
   router.get('/api/google-tasks/lists', async (req, res) => {

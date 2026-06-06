@@ -74,6 +74,7 @@ import {
   flattenIgWebhookEvent,
   persistSocialEvent,
 } from "./social-events.js";
+import { persistInboundDmFromWebhook } from "./role-room-ig-messaging.js";
 import {
   fetchDataDeletionRequest,
   parseSignedRequest,
@@ -99,6 +100,13 @@ export interface RoleRoomSocialMetaRoutesDeps {
     res: express.Response,
   ) => AdminSession | null;
   isCompatAdminFeatureEnabled: (featureId: string) => boolean;
+}
+
+/** Escape untrusted values before embedding in the OAuth callback HTML. */
+function escapeHtml(value: unknown): string {
+  return String(value ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string),
+  );
 }
 
 export function setupRoleRoomSocialMetaRoutes(
@@ -134,7 +142,7 @@ export function setupRoleRoomSocialMetaRoutes(
     const state = typeof req.query.state === "string" ? req.query.state : null;
     const error = typeof req.query.error === "string" ? req.query.error : null;
     if (error) {
-      return res.status(400).send(`<html><body><h1>Meta returnerte feil</h1><p>${error}</p></body></html>`);
+      return res.status(400).send(`<html><body><h1>Meta returnerte feil</h1><p>${escapeHtml(error)}</p></body></html>`);
     }
     if (!code || !state) {
       return res.status(400).send("Mangler code/state");
@@ -197,7 +205,7 @@ export function setupRoleRoomSocialMetaRoutes(
         `<html><body style="font-family:system-ui;padding:40px;background:#0b1220;color:#e2e8f0;">` +
           `<h1>Instagram er koblet til</h1>` +
           `<p>${saved.length} konto(er) lagret. Du kan lukke dette vinduet og gå tilbake til The Role Room.</p>` +
-          `<ul>${saved.map((a) => `<li>@${a.igUsername ?? "(ukjent)"} — ${a.igBusinessAccountId}</li>`).join("")}</ul>` +
+          `<ul>${saved.map((a) => `<li>@${escapeHtml(a.igUsername ?? "(ukjent)")} — ${escapeHtml(a.igBusinessAccountId)}</li>`).join("")}</ul>` +
           `<script>window.opener && window.opener.postMessage({type:'instagram-connected',count:${saved.length}}, '*'); setTimeout(()=>window.close(), 4000);</script>` +
           `</body></html>`,
       );
@@ -729,6 +737,15 @@ export function setupRoleRoomSocialMetaRoutes(
         }
       } catch (err) {
         console.warn("[ig-webhook] persist failed (non-fatal)", err);
+      }
+
+      // Persist inbound Instagram DMs into the unified CRM inbox. Best-effort —
+      // never blocks the ack. Handles object='instagram'/'page' messaging events.
+      try {
+        const dms = await persistInboundDmFromWebhook(pool, event);
+        if (dms > 0) console.log(`[ig-webhook] persisted ${dms} inbound DM(s) to inbox`);
+      } catch (err) {
+        console.warn("[ig-webhook] DM persist failed (non-fatal)", err);
       }
 
       // Ack quickly — Meta treats >10s as a failure and will retry.

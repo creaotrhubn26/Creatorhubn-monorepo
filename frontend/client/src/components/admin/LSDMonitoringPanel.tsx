@@ -698,7 +698,7 @@ export function LSDMonitoringPanel(): JSX.Element {
           <Grid container spacing={2}>
             <Grid item xs={6} sm={3}>
               <Box textAlign="center">
-                <Typography variant="h3" color="success.main" sx={{ color: theming.colors.primary }}>
+                <Typography variant="h4" color="success.main" sx={{ color: theming.colors.primary }}>
                   {currentDiagnostics.summary.healthy}
                 </Typography>
                 <Typography variant="body2">Healthy</Typography>
@@ -706,7 +706,7 @@ export function LSDMonitoringPanel(): JSX.Element {
             </Grid>
             <Grid item xs={6} sm={3}>
               <Box textAlign="center">
-                <Typography variant="h3" color="warning.main" sx={{ color: theming.colors.primary }}>
+                <Typography variant="h4" color="warning.main" sx={{ color: theming.colors.primary }}>
                   {currentDiagnostics.summary.warning}
                 </Typography>
                 <Typography variant="body2">Warning</Typography>
@@ -714,7 +714,7 @@ export function LSDMonitoringPanel(): JSX.Element {
             </Grid>
             <Grid item xs={6} sm={3}>
               <Box textAlign="center">
-                <Typography variant="h3" color="error.main" sx={{ color: theming.colors.primary }}>
+                <Typography variant="h4" color="error.main" sx={{ color: theming.colors.primary }}>
                   {currentDiagnostics.summary.critical}
                 </Typography>
                 <Typography variant="body2">Critical</Typography>
@@ -722,7 +722,7 @@ export function LSDMonitoringPanel(): JSX.Element {
             </Grid>
             <Grid item xs={6} sm={3}>
               <Box textAlign="center">
-                <Typography variant="h3" color="error.dark" sx={{ color: theming.colors.primary }}>
+                <Typography variant="h4" color="error.dark" sx={{ color: theming.colors.primary }}>
                   {currentDiagnostics.summary.error}
                 </Typography>
                 <Typography variant="body2">Error</Typography>

@@ -378,24 +378,24 @@ async function resolveCreatorHubGoogleLoginUser(
   // hele Google-login-flyten kollapser med "column ... does not exist".
   let result: { rows: Array<Record<string, unknown>>; rowCount?: number };
   try {
-    result = await pool.query(
+    result = (await pool.query(
       `SELECT id, email, username, first_name, last_name, role, profession, company_name
        FROM users
        WHERE LOWER(email) = LOWER($1)
        LIMIT 1`,
       [normalizedEmail],
-    );
+    )) as unknown as { rows: Array<Record<string, unknown>>; rowCount?: number };
   } catch (err: any) {
     if (err?.code === '42703') {
       // "column does not exist" — fall back til minimal SELECT
       console.warn('[creatorhub-google] users-tabell mangler kolonner — bruker minimal SELECT:', err.message);
-      result = await pool.query(
+      result = (await pool.query(
         `SELECT id, email, username, first_name, last_name, role
          FROM users
          WHERE LOWER(email) = LOWER($1)
          LIMIT 1`,
         [normalizedEmail],
-      );
+      )) as unknown as { rows: Array<Record<string, unknown>>; rowCount?: number };
     } else {
       throw err;
     }

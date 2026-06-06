@@ -11,6 +11,7 @@
     <!-- Slice 9X.29 — PWA installerbar med offline-støtte -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Creatorhubn" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -631,6 +632,23 @@
       });
       window.addEventListener('unhandledrejection', function(e) {
         console.error('[UNHANDLED REJECTION]', e.reason?.message || e.reason);
+      });
+
+      // Stale-chunk self-heal. Når en ny deploy roterer chunk-hashene mens
+      // en fane allerede er åpen, feiler lazy-import-ene: filen finnes ikke
+      // lenger, SPA-fallbacken svarer index.html (text/html), og nettleseren
+      // avviser modulen → error boundary krasjer. Vi laster siden på nytt én
+      // gang for å hente fersk index.html med gyldige hasher. sessionStorage-
+      // guarden hindrer reload-loop hvis chunken er ekte ødelagt (ikke bare
+      // utdatert).
+      window.addEventListener('vite:preloadError', function (e) {
+        var KEY = 'chunk-reload-at';
+        var last = Number(sessionStorage.getItem(KEY) || '0');
+        if (Date.now() - last > 15000) {
+          if (e && typeof e.preventDefault === 'function') e.preventDefault();
+          sessionStorage.setItem(KEY, String(Date.now()));
+          window.location.reload();
+        }
       });
     </script>
     <script type="module" src="/src/main.tsx"></script>

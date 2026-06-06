@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useLocation, Link } from 'wouter';
 import {
   Box, Typography, Paper, Tabs, Tab, Stack, Button, TextField,
-  Chip, CircularProgress, Divider, IconButton,
+  Chip, CircularProgress, Divider, IconButton, MenuItem,
 } from '@mui/material';
 import {
   ArrowBack, Person, Email, Phone, LocationOn, Edit, Save, Close,
@@ -26,6 +26,8 @@ interface ClientDetail {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  customerType?: 'person' | 'company';
+  organizationNumber?: string | null;
 }
 
 interface GalleryRow {
@@ -210,6 +212,29 @@ export default function PhotographerClientDetail() {
           </Stack>
         ) : (
           <Stack spacing={2}>
+            <Stack direction="row" spacing={2}>
+              <TextField
+                select
+                label="Kundetype"
+                size="small"
+                sx={{ width: 200 }}
+                value={edits.customerType ?? c.customerType ?? 'person'}
+                onChange={(e) => setEdits((p) => ({ ...p, customerType: e.target.value as 'person' | 'company' }))}
+                helperText="Bestemmer hvordan kunden registreres i PowerOffice"
+              >
+                <MenuItem value="person">Privatperson</MenuItem>
+                <MenuItem value="company">Bedrift</MenuItem>
+              </TextField>
+              {(edits.customerType ?? c.customerType) === 'company' && (
+                <TextField
+                  label="Org.nr"
+                  size="small"
+                  sx={{ width: 180 }}
+                  defaultValue={c.organizationNumber ?? ''}
+                  onChange={(e) => setEdits((p) => ({ ...p, organizationNumber: e.target.value }))}
+                />
+              )}
+            </Stack>
             <Stack direction="row" spacing={2}>
               <TextField
                 label="Fornavn" size="small" fullWidth

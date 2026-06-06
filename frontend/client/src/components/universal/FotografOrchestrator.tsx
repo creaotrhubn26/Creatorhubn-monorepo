@@ -927,7 +927,7 @@ function FotografOrchestrator({
       </Grid>
 
       {/* Lag ditt eget workflow - så enkelt som bestemor kan forstå */}
-      <Box sx={{ mt: 4, p: 3, bgcolor: '#f0f8ff', borderRadius: 2, border: '1px solid #e3f2fd'}}>
+      <Box sx={{ mt: 4, p: 3, bgcolor: 'rgba(33,150,243,0.08)', borderRadius: 2, border: '1px solid rgba(33,150,243,0.20)'}}>
         <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
           <AutoAwesome sx={{ color: '#2196f3' }} />
           Lag ditt eget arbeidsflyt
@@ -1043,7 +1043,7 @@ function FotografOrchestrator({
       </Box>
 
       {/* Status som er lett å forstå */}
-      <Box sx={{ mt: 4, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
+      <Box sx={{ mt: 4, p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.10)' }}>
         <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1}}>
           <Info sx={{ fontSize: 18 }} />
           Status
@@ -1106,7 +1106,7 @@ function FotografOrchestrator({
 
       {/* Profesjonsinfo og tilgjengelige profesjoner */}
       {professionAdapter && (
-        <Box sx={{ mt: 3, p: 2, bgcolor: '#fafafa', borderRadius: 2, border: '1px solid #e0e0e0' }}>
+        <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.10)' }}>
           <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
             <Assessment sx={{ fontSize: 18, color: theming.colors.primary }} />
             Profesjonsoppsett
@@ -1131,7 +1131,7 @@ function FotografOrchestrator({
       )}
 
       {/* System Metrics Panel */}
-      <Box sx={{ mt: 3, p: 2, bgcolor: '#fafafa', borderRadius: 2, border: '1px solid #e0e0e0' }}>
+      <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.10)' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <TrendingUp sx={{ fontSize: 18, color: theming.colors.primary }} />
@@ -1283,7 +1283,7 @@ function FotografOrchestrator({
 
               {/* Vis valgte handlinger først hvis det er noen */}
               {newWorkflow.actions.length > 0 && (
-                <Box sx={{ mb: 3, p: 2, bgcolor: '#f0f8ff', borderRadius: 2, border: '1px solid #e3f2fd' }}>
+                <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(33,150,243,0.08)', borderRadius: 2, border: '1px solid rgba(33,150,243,0.20)' }}>
                   <Typography variant="subtitle2" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1}}>
                     <CheckCircle sx={{ color: '#2196f3' }} />
                     Valgte handlinger ({newWorkflow.actions.length}):

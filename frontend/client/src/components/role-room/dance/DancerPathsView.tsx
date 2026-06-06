@@ -11,6 +11,7 @@
 import React from 'react';
 import { Box, Stack, Tooltip, Typography } from '@mui/material';
 import type { Dancer, Formation } from './formationTypes';
+import { danceFlowColors } from './danceFlowTheme';
 
 const ROW_HEIGHT = 56;
 const ROW_GAP = 6;
@@ -55,7 +56,7 @@ export function DancerPathsView({ formations, dancers }: DancerPathsViewProps): 
         p: 1,
       }}
     >
-      <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: '#a78bfa', fontWeight: 700, mb: 0.5 }}>
+      <Typography sx={{ fontSize: 9, letterSpacing: 1.8, color: danceFlowColors.lavender, fontWeight: 700, mb: 0.5 }}>
         DANCERS · BANER OVER FORMASJONS-REKKEFØLGE
       </Typography>
       <Stack spacing={`${ROW_GAP}px`}>
@@ -70,7 +71,7 @@ export function DancerPathsView({ formations, dancers }: DancerPathsViewProps): 
                 width: LABEL_WIDTH,
                 fontSize: 10,
                 fontWeight: 700,
-                color: s.dancer.color ?? '#a78bfa',
+                color: s.dancer.color ?? danceFlowColors.lavender,
                 flexShrink: 0,
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
@@ -112,7 +113,7 @@ export function DancerPathsView({ formations, dancers }: DancerPathsViewProps): 
                       y1={y1}
                       x2={x2}
                       y2={y2}
-                      stroke={s.dancer.color ?? '#a78bfa'}
+                      stroke={s.dancer.color ?? danceFlowColors.lavender}
                       strokeWidth={1.2}
                       opacity={0.85}
                       vectorEffect="non-scaling-stroke"
@@ -139,7 +140,7 @@ export function DancerPathsView({ formations, dancers }: DancerPathsViewProps): 
                         height: NODE_R * 2,
                         marginLeft: `-${NODE_R}px`,
                         borderRadius: '50%',
-                        bgcolor: s.dancer.color ?? '#a78bfa',
+                        bgcolor: s.dancer.color ?? danceFlowColors.lavender,
                         border: '1.5px solid #0d0f14',
                       }}
                     />

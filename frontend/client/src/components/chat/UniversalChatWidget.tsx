@@ -5413,7 +5413,7 @@ export default function UniversalChatWidget({
         bgcolor: 'rgba(255,255,255,0.04)',
         '&:hover': {
           color: '#0f172a',
-          bgcolor: 'rgba(255,255,255,1)',
+          bgcolor: 'rgba(255,255,255,0.04)',
           borderColor: getColorWithAlpha('#94a3b8', 0.85),
         },
       }
@@ -5930,7 +5930,7 @@ export default function UniversalChatWidget({
           p: compact ? 0.85 : 1,
           borderRadius: compact ? 2.4 : 2.8,
           border: `1px solid ${getColorWithAlpha('#2563eb', 0.18)}`,
-          bgcolor: 'rgba(239,246,255,0.84)',
+          bgcolor: 'rgba(33,150,243,0.10)',
         }}
       >
         <Typography variant="caption" sx={{ fontWeight: 800, color: '#1d4ed8' }}>
@@ -7659,7 +7659,7 @@ export default function UniversalChatWidget({
                   gap: 1.2,
                   borderRadius: 3.4,
                   border: `1px solid ${workspaceCardBorder}`,
-                  backgroundColor: '#fffaf6',
+                  backgroundColor: 'rgba(255,255,255,0.04)',
                   backgroundImage: 'radial-gradient(rgba(251,146,60,0.12) 0.8px, transparent 0.8px)',
                   backgroundSize: '22px 22px',
                   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.75)',
@@ -8110,7 +8110,7 @@ export default function UniversalChatWidget({
   );
 
   const mobileInternalDetailView = selectedChatPreview ? (
-    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: '#f8f7f5' }}>
+    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)' }}>
       <Box
         sx={{
           px: 1.2,
@@ -8179,7 +8179,7 @@ export default function UniversalChatWidget({
           py: 1.2,
           display: 'grid',
           gap: 1,
-          backgroundColor: '#fff8f3',
+          backgroundColor: 'rgba(255,255,255,0.04)',
           backgroundImage: 'radial-gradient(rgba(251,146,60,0.08) 0.8px, transparent 0.8px)',
           backgroundSize: '18px 18px',
         }}
@@ -8704,7 +8704,7 @@ export default function UniversalChatWidget({
             </Typography>
           </Box>
 
-          <Box ref={emailMessagesContainerRef} sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.5, display: 'grid', gap: 1.1, bgcolor: '#f8fafc' }}>
+          <Box ref={emailMessagesContainerRef} sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.5, display: 'grid', gap: 1.1, bgcolor: 'rgba(255,255,255,0.04)' }}>
             {gmailMessagesLoading && gmailThreadMessages.length === 0 ? (
               <Box sx={{ alignSelf: 'center', justifySelf: 'center', textAlign: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
@@ -8946,7 +8946,7 @@ export default function UniversalChatWidget({
   );
 
   const mobileGoogleDetailView = selectedGoogleSpacePreview ? (
-    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: '#f7f9fc' }}>
+    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)' }}>
       <Box
         sx={{
           px: 1.2,
@@ -8996,7 +8996,7 @@ export default function UniversalChatWidget({
           py: 1.2,
           display: 'grid',
           gap: 1,
-          backgroundColor: '#f8fbff',
+          backgroundColor: 'rgba(33,150,243,0.08)',
           backgroundImage: 'radial-gradient(rgba(66,133,244,0.08) 0.8px, transparent 0.8px)',
           backgroundSize: '18px 18px',
         }}
@@ -9268,7 +9268,7 @@ export default function UniversalChatWidget({
   );
 
   const mobileEvendiDetailView = selectedEvendiConversation ? (
-    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: '#f8f7f5' }}>
+    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)' }}>
       <Box
         sx={{
           px: 1.2,
@@ -9312,7 +9312,7 @@ export default function UniversalChatWidget({
           py: 1.2,
           display: 'grid',
           gap: 1,
-          backgroundColor: '#fff7fb',
+          backgroundColor: 'rgba(255,255,255,0.04)',
           backgroundImage: 'radial-gradient(rgba(233,30,99,0.08) 0.8px, transparent 0.8px)',
           backgroundSize: '18px 18px',
         }}
@@ -9419,7 +9419,7 @@ export default function UniversalChatWidget({
   ) : null;
 
   const mobileEmailListView = (
-    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: '#f4f7fb' }}>
+    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(33,150,243,0.08)' }}>
       <Box sx={{ px: 2, pt: 2.1, pb: 1.5, bgcolor: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(226,232,240,0.9)' }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
           <Box>
@@ -9629,7 +9629,7 @@ export default function UniversalChatWidget({
   );
 
   const mobileEmailDetailView = selectedEmailThreadPreview ? (
-    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: '#f4f7fb' }}>
+    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(33,150,243,0.08)' }}>
       <Box
         sx={{
           px: 1.2,
@@ -9699,7 +9699,7 @@ export default function UniversalChatWidget({
           py: 1.2,
           display: 'grid',
           gap: 0.95,
-          backgroundColor: '#f4f7fb',
+          backgroundColor: 'rgba(33,150,243,0.08)',
         }}
       >
         {!!emailCommercialWorkflow && (
@@ -11963,7 +11963,7 @@ export default function UniversalChatWidget({
                     <>
                       {/* Feedback Stats */}
                       <Box sx={{ mb: 2, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(95px, 1fr))', gap: 1 }}>
-                        <Paper sx={{ p: 1, textAlign: 'center', bgcolor: '#e3f2fd', border: '1px solid #bfdbfe', ...theming.getThemedCardSx() }}>
+                        <Paper sx={{ p: 1, textAlign: 'center', bgcolor: 'rgba(33,150,243,0.08)', border: '1px solid #bfdbfe', ...theming.getThemedCardSx() }}>
                           <Typography variant="h6" color="primary" sx={{ color: theming.colors.primary }}>{feedbackStats.open}</Typography>
                           <Typography variant="caption">Åpne</Typography>
                         </Paper>
@@ -11979,7 +11979,7 @@ export default function UniversalChatWidget({
                           <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>{feedbackStats.verified}</Typography>
                           <Typography variant="caption">✅ Verifisert</Typography>
                         </Paper>
-                        <Paper sx={{ p: 1, textAlign: 'center', bgcolor: '#ffebee', border: '1px solid #fecaca', ...theming.getThemedCardSx() }}>
+                        <Paper sx={{ p: 1, textAlign: 'center', bgcolor: 'rgba(244,67,54,0.10)', border: '1px solid rgba(244,67,54,0.24)', ...theming.getThemedCardSx() }}>
                           <Typography variant="h6" color="error.main" sx={{ color: theming.colors.primary }}>{feedbackStats.failed}</Typography>
                           <Typography variant="caption">❌ Feilet</Typography>
                         </Paper>
@@ -12136,7 +12136,7 @@ export default function UniversalChatWidget({
                                 p: 1.5,
                                 maxWidth: '75%',
                                 borderRadius: 2,
-                                bgcolor: msg.sender_type === 'vendor' ? '#E91E63' : '#f5f5f5',
+                                bgcolor: msg.sender_type === 'vendor' ? '#E91E63' : 'rgba(255,255,255,0.04)',
                                 color: msg.sender_type === 'vendor' ? 'white' : 'text.primary'
                               }}
                             >
@@ -12184,7 +12184,7 @@ export default function UniversalChatWidget({
                   ) : (
                     // Conversation list
                     <>
-                      <Box sx={{ mb: 2, p: 1.5, bgcolor: '#fce4ec', borderRadius: 2, border: '1px solid #E91E6330' }}>
+                      <Box sx={{ mb: 2, p: 1.5, bgcolor: 'rgba(233,30,99,0.12)', borderRadius: 2, border: '1px solid #E91E6330' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                           <img src="/evendi-logo.png" alt="Evendi" style={{ width: 22, height: 22, borderRadius: '50%' }} />
                           <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#880E4F' }}>
@@ -12219,7 +12219,7 @@ export default function UniversalChatWidget({
                         </Button>
 
                         {showDeliveryNotify && evendiDeliveries.length > 0 && (
-                          <Box sx={{ mt: 1, p: 1, bgcolor: '#f5f5f5', borderRadius: 1, maxHeight: 200, overflow: 'auto' }}>
+                          <Box sx={{ mt: 1, p: 1, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, maxHeight: 200, overflow: 'auto' }}>
                             {evendiDeliveries.filter((d: any) => !d.chat_notified).map((d: any) => (
                               <Box
                                 key={d.id}
@@ -12538,7 +12538,7 @@ export default function UniversalChatWidget({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  bgcolor: wsConnection.isConnected ? '#e8f5e9' : '#fff3e0',
+                  bgcolor: wsConnection.isConnected ? '#e8f5e9' : 'rgba(255,152,0,0.12)',
                   borderTop: `1px solid ${chatWidgetDesign.border}`
                 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -13409,7 +13409,7 @@ export default function UniversalChatWidget({
           {selectedFeedback && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-                <Paper sx={{ p: 2, bgcolor: '#f5f5f5', ...theming.getThemedCardSx() }}>
+                <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', ...theming.getThemedCardSx() }}>
                   <Typography variant="subtitle2" gutterBottom>Status</Typography>
                   <Chip
                     label={selectedFeedback.status}
@@ -13419,7 +13419,7 @@ export default function UniversalChatWidget({
                     }}
                   />
                 </Paper>
-                <Paper sx={{ p: 2, bgcolor: '#f5f5f5', ...theming.getThemedCardSx() }}>
+                <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', ...theming.getThemedCardSx() }}>
                   <Typography variant="subtitle2" gutterBottom>Prioritet</Typography>
                   <Chip
                     label={selectedFeedback.priority}
@@ -13467,7 +13467,7 @@ export default function UniversalChatWidget({
               {selectedFeedback.adminNotes && (
                 <Box>
                   <Typography variant="subtitle2" gutterBottom>Admin Notater</Typography>
-                  <Paper sx={{ p: 2, bgcolor: '#f5f5f5', ...theming.getThemedCardSx() }}>
+                  <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', ...theming.getThemedCardSx() }}>
                     <div dangerouslySetInnerHTML={{ __html: selectedFeedback.adminNotes }} />
                   </Paper>
                 </Box>
@@ -13486,7 +13486,7 @@ export default function UniversalChatWidget({
 
               {/* AI Analysis Section */}
               {selectedFeedback.aiAnalysis && (
-                <Box sx={{ mt: 3, p: 2, bgcolor: '#f3e5f5', borderRadius: 1, border: '1px solid #9c27b0' }}>
+                <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(156,39,176,0.10)', borderRadius: 1, border: '1px solid rgba(156,39,176,0.40)' }}>
                   <Typography variant="subtitle2" gutterBottom sx={{ color: '#9c27b0', fontWeight: 600}}>
                     🤖 AI Analysis Results:
                   </Typography>

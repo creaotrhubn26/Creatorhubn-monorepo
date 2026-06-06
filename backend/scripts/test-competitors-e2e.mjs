@@ -53,6 +53,19 @@ async function del(id) {
   });
   return { status: r.status, body: await r.json() };
 }
+async function patch(id, body) {
+  const r = await fetch(`${BASE}/api/role-room/marketing-cockpit/competitors/${id}?token=${TOKEN}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return { status: r.status, body: await r.json() };
+}
+async function triggerWorker() {
+  const r = await fetch(`${BASE}/api/role-room/marketing-cockpit/competitors/trigger-auto-worker?token=${TOKEN}`, {
+    method: 'POST',
+  });
+  return { status: r.status, body: await r.json() };
+}
 
 async function runIteration(i) {
   console.log(`\n${DIM}── Iteration ${i + 1}/${N} ──${RESET}`);
@@ -86,14 +99,29 @@ async function runIteration(i) {
   check(Array.isArray(h.body.snapshots), `history.snapshots is array`);
   check(h.body.snapshots?.length >= 1, `history has ≥1 snapshot (got ${h.body.snapshots?.length})`);
 
-  // 5. Delete (cleanup)
+  // 5. PATCH: toggle auto_snapshot=true
+  const togOn = await patch(competitorId, { autoSnapshot: true });
+  check(togOn.status === 200, `patch auto=true status 200 (got ${togOn.status})`);
+  check(togOn.body.ok === true, `patch auto=true ok=true`);
+  check(togOn.body.competitor?.autoSnapshot === true, `auto_snapshot saved as true`);
+
+  // 6. List should reflect autoSnapshot=true
+  const lAfter = await list();
+  const afterPatch = lAfter.body.competitors?.find((c) => c.id === competitorId);
+  check(afterPatch?.autoSnapshot === true, `list reflects autoSnapshot=true`);
+
+  // 7. PATCH back to false (cleanup of state)
+  const togOff = await patch(competitorId, { autoSnapshot: false });
+  check(togOff.body.competitor?.autoSnapshot === false, `auto_snapshot toggled back to false`);
+
+  // 8. Delete (cleanup)
   const d = await del(competitorId);
   check(d.status === 200, `delete status 200`);
   check(d.body.ok === true, `delete.ok=true`);
 
-  // 6. Verify deleted
-  const lAfter = await list();
-  const stillThere = lAfter.body.competitors?.find((c) => c.id === competitorId);
+  // 9. Verify deleted
+  const lFinal = await list();
+  const stillThere = lFinal.body.competitors?.find((c) => c.id === competitorId);
   check(!stillThere, `competitor ${competitorId} removed after delete`);
 
   const elapsed = Date.now() - t0;
@@ -108,6 +136,12 @@ async function main() {
     catch (err) { check(false, `iteration crashed: ${err.message}`); }
     if (i < N - 1) await new Promise((r) => setTimeout(r, 1_000));
   }
+  // Final: verify worker-trigger endpoint responds (no auto-rows so checked=0).
+  console.log(`\n${DIM}── Final: worker-trigger endpoint ──${RESET}`);
+  const w = await triggerWorker();
+  check(w.status === 200, `trigger-worker status 200 (got ${w.status})`);
+  check(typeof w.body.checked === 'number', `worker.checked is number`);
+  check(typeof w.body.snapshotted === 'number', `worker.snapshotted is number`);
   console.log(`\n${DIM}════════════════════════════════════════════${RESET}`);
   console.log(`Total assertions: ${total}`);
   console.log(`Failed:           ${failed > 0 ? RED + failed + RESET : GREEN + '0' + RESET}`);

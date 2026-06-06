@@ -91,12 +91,24 @@ export const StorageUsageBanner: React.FC<Props> = ({
 
   useEffect(() => {
     let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
 
     const fetchStatus = async () => {
       try {
         const res = await fetch('/api/storage/status', {
           credentials: 'include',
         });
+        if (res.status === 401) {
+          // Ikke logget inn — stopp polling. Forhindrer 401-spam i konsollen
+          // ved tab-bytte (re-mounting). Ny mount fra logget bruker fyrer den
+          // initielle fetchen igjen.
+          if (interval) {
+            clearInterval(interval);
+            interval = null;
+          }
+          if (!cancelled) setError('auth');
+          return;
+        }
         if (!res.ok) {
           throw new Error(`status ${res.status}`);
         }
@@ -113,10 +125,10 @@ export const StorageUsageBanner: React.FC<Props> = ({
     };
 
     void fetchStatus();
-    const interval = setInterval(fetchStatus, pollIntervalMs);
+    interval = setInterval(fetchStatus, pollIntervalMs);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
     };
   }, [pollIntervalMs]);
 

@@ -901,4 +901,77 @@ export function setupChunkedUploadRoutes(
     if (!session) return;
     res.json({ success: true, ...getStorageStatus() });
   });
+
+  // STREAM READINESS — Cloudflare Stream transcoding tar 5-30 minutter
+  // for 4K-video. Frontend poller dette endepunktet for å vite når
+  // videoen kan deles med klient. Eier-only.
+  app.get(
+    "/api/chunked-upload/files/:fileId/stream-status",
+    async (req, res) => {
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = session.userId;
+      const { fileId } = req.params;
+
+      try {
+        const r = await pool.query(
+          `SELECT metadata
+             FROM chunked_uploads
+            WHERE final_file_id = $1 AND user_id = $2 AND status = 'completed'`,
+          [fileId, userId],
+        );
+        if ((r.rowCount ?? 0) === 0) {
+          return res.status(404).json({ error: "not_found" });
+        }
+        const metadata =
+          r.rows[0].metadata && typeof r.rows[0].metadata === "object"
+            ? r.rows[0].metadata
+            : {};
+        const backend = metadata.storageBackend as string | undefined;
+
+        if (backend !== "cloudflare_stream" || !metadata.streamUid) {
+          // Ikke en Stream-video → den er "ready" pr definisjon
+          return res.json({
+            success: true,
+            isStreamVideo: false,
+            ready: true,
+          });
+        }
+
+        const { getStreamVideoStatus } = await import(
+          "./cloudflare-stream-service.js"
+        );
+        const status = await getStreamVideoStatus(String(metadata.streamUid));
+        if (!status) {
+          return res.json({
+            success: true,
+            isStreamVideo: true,
+            ready: false,
+            checkAgainInSeconds: 30,
+            message:
+              "Kunne ikke verifisere status med Cloudflare. Prøver igjen.",
+          });
+        }
+
+        res.json({
+          success: true,
+          isStreamVideo: true,
+          ready: status.ready,
+          playbackUrl: status.playbackUrl,
+          thumbnailUrl: status.thumbnailUrl,
+          duration: status.duration,
+          checkAgainInSeconds: status.ready ? null : 30,
+          message: status.ready
+            ? "Video er klar for streaming"
+            : "Cloudflare transkoder videoen (typisk 5-30 minutter for 4K). Ikke del klient-galleri-lenken før dette er ferdig.",
+        });
+      } catch (err: any) {
+        console.error("[stream-status] failed:", err);
+        res.status(500).json({
+          error: "status_check_failed",
+          message: String(err?.message || err).slice(0, 200),
+        });
+      }
+    },
+  );
 }

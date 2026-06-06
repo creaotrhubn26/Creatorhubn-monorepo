@@ -47,6 +47,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Add as AddIcon,
+  Keyboard as KeyboardIcon,
   Movie as SceneIcon,
   Person as CharacterIcon,
   SentimentSatisfied as PositiveIcon,
@@ -1222,6 +1223,25 @@ export const BeatBoard: FC<BeatBoardProps> = ({
             sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: 'white' } }}
             onClick={() => { setRoomMode(true); setRoomIdx(0); }}>
             <FullscreenIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip
+          arrow
+          title={
+            <Box sx={{ p: 0.5 }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5 }}>Tastatursnarveier</Typography>
+              <Typography variant="caption" sx={{ display: 'block' }}>Enter — nytt beat</Typography>
+              <Typography variant="caption" sx={{ display: 'block' }}>Cmd/Ctrl + → — flytt til høyre</Typography>
+              <Typography variant="caption" sx={{ display: 'block' }}>Cmd/Ctrl + ↑ / ↓ — omorganiser</Typography>
+              <Typography variant="caption" sx={{ display: 'block' }}>Cmd/Ctrl + D — dupliser</Typography>
+            </Box>
+          }
+        >
+          <IconButton size="small"
+            aria-label="Vis tastatursnarveier"
+            sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: 'white' } }}>
+            <KeyboardIcon fontSize="small" />
           </IconButton>
         </Tooltip>
 

@@ -117,10 +117,12 @@ export function validateSfxLibrary(library: unknown): ValidationResult {
  * minneforbruk for store biblioteker.
  */
 export function hydrateLibrarySamples(library: SfxLibrary): Array<SfxLibrarySample & { embedding: Float32Array }> {
+  // Eksplisitt cast: TS 5.7+ skiller Float32Array<ArrayBuffer> fra
+  // Float32Array<ArrayBufferLike> — vi vil ha den brede typen.
   return library.samples.map((sample) => ({
     ...sample,
-    embedding: new Float32Array(sample.embedding),
-  }));
+    embedding: new Float32Array(sample.embedding) as Float32Array,
+  })) as Array<SfxLibrarySample & { embedding: Float32Array }>;
 }
 
 /**

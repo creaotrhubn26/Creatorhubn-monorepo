@@ -68,13 +68,13 @@ async function safeQueryWithDemoFilter<T = unknown>(
   params: unknown[],
 ): Promise<{ rows: T[] }> {
   try {
-    return (await pool.query(withFilter, params)) as { rows: T[] };
+    return (await pool.query(withFilter, params)) as unknown as { rows: T[] };
   } catch (err) {
     const code = (err as { code?: string }).code;
     const msg = (err as Error).message ?? "";
     if (code === "42703" || /is_demo.*does not exist/i.test(msg)) {
       console.warn("[talent-partners] is_demo-kolonne mangler — bruker fallback uten demo-filter");
-      return (await pool.query(withoutFilter, params)) as { rows: T[] };
+      return (await pool.query(withoutFilter, params)) as unknown as { rows: T[] };
     }
     throw err;
   }
@@ -84,7 +84,7 @@ async function safeQueryWithDemoFilter<T = unknown>(
  *  Defensive: tolererer at is_demo-kolonnen mangler.
  */
 async function fetchTalentForUser(pool: Pool, userId: string) {
-  const r = await safeQueryWithDemoFilter<{ id: string }>(
+  const r = await safeQueryWithDemoFilter<Record<string, unknown> & { id: string; display_name?: string }>(
     pool,
     `SELECT * FROM talents WHERE owner_user_id = $1 AND COALESCE(is_demo, FALSE) = FALSE LIMIT 1`,
     `SELECT * FROM talents WHERE owner_user_id = $1 LIMIT 1`,
@@ -177,7 +177,23 @@ export function setupRoleRoomTalentPartnersRoutes(
       // partner_ref kan være UUID til agency_orgs.id eller en e-post — vi
       // joiner på UUID-formet og faller tilbake til partner_display_name
       // for resten.
-      const consentsResult = await safeQueryWithDemoFilter(
+      const consentsResult = await safeQueryWithDemoFilter<{
+        id: string;
+        partner_type: string;
+        partner_ref: string;
+        partner_display_name: string | null;
+        scope: string;
+        status: string;
+        granted_at: string;
+        expires_at: string | null;
+        agency_id: string | null;
+        agency_name: string | null;
+        agency_slug: string | null;
+        agency_email: string | null;
+        agency_website: string | null;
+        agency_logo: string | null;
+        agency_verified: boolean | null;
+      }>(
         pool,
         `SELECT
             c.id, c.partner_type, c.partner_ref, c.partner_display_name, c.scope,
@@ -261,7 +277,11 @@ export function setupRoleRoomTalentPartnersRoutes(
       }
 
       // Hent siste access fra audit-tabellen for "Last Activity"
-      const auditResult = await safeQueryWithDemoFilter(
+      const auditResult = await safeQueryWithDemoFilter<{
+        partner_type: string;
+        partner_ref: string;
+        last_accessed: string;
+      }>(
         pool,
         `SELECT partner_type, partner_ref, MAX(accessed_at) AS last_accessed
            FROM talent_access_audit

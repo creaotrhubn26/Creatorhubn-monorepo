@@ -1427,7 +1427,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
               alt={`${equipment.brand} ${equipment.model}`}
               sx={{
                 objectFit: 'contain',
-                bgcolor: roleRoomBranding ? 'rgba(255,255,255,0.04)' : '#f5f5f5',
+                bgcolor: roleRoomBranding ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.04)',
                 p: compactMode ? 1.5 : 2,
               }}
             />
@@ -1838,7 +1838,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
                   label={`${eq.brand} ${eq.model}`}
                   onDelete={() => toggleCompare(eq)}
                   size="small"
-                  sx={{ bgcolor: 'white' }}
+                  sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
                 />
               ))}
             </Box>
@@ -2019,7 +2019,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
                   sx={{
                     p: 1.2,
                     borderRadius: 1.5,
-                    bgcolor: roleRoomBranding ? 'rgba(15,23,42,0.64)' : 'rgba(241,245,249,0.75)',
+                    bgcolor: roleRoomBranding ? 'rgba(15,23,42,0.64)' : 'rgba(255,255,255,0.04)',
                     border: '1px dashed rgba(148,163,184,0.35)',
                   }}
                 >
@@ -2036,7 +2036,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
                     sx={{
                       p: 1,
                       borderRadius: 1.2,
-                      bgcolor: roleRoomBranding ? 'rgba(15,23,42,0.74)' : 'rgba(241,245,249,0.75)',
+                      bgcolor: roleRoomBranding ? 'rgba(15,23,42,0.74)' : 'rgba(255,255,255,0.04)',
                       border: '1px solid rgba(148,163,184,0.25)',
                     }}
                   >
@@ -2187,7 +2187,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
                         width: '100%',
                         aspectRatio: '4 / 3',
                         objectFit: 'contain',
-                        bgcolor: roleRoomBranding ? 'rgba(15,23,42,0.95)' : '#f5f5f5',
+                        bgcolor: roleRoomBranding ? 'rgba(15,23,42,0.95)' : 'rgba(255,255,255,0.04)',
                         borderRadius: 1.5,
                         border: roleRoomBranding
                           ? '1px solid rgba(148,163,184,0.26)'
@@ -2365,7 +2365,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
                                 background:
                                   'linear-gradient(180deg, rgba(15,23,42,0.78) 0%, rgba(2,6,23,0.88) 100%)',
                               }
-                            : { mb: 2, p: 2, bgcolor: '#f8f9fa', borderRadius: 2 }
+                            : { mb: 2, p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2 }
                         }
                       >
                         <Typography
@@ -2670,7 +2670,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
                               component="img"
                               src={getEquipmentImage(eq) || getPlaceholderImage(eq)}
                               alt={eq.model}
-                              sx={{ width: '100%', maxHeight: 120, objectFit: 'contain', bgcolor: '#f5f5f5', borderRadius: 1, p: 1 }}
+                              sx={{ width: '100%', maxHeight: 120, objectFit: 'contain', bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, p: 1 }}
                             />
                             {cmsMode && (
                               <IconButton
@@ -2692,7 +2692,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
                             sx={{
                               width: '100%',
                               height: 120,
-                              bgcolor: '#f5f5f5',
+                              bgcolor: 'rgba(255,255,255,0.04)',
                               borderRadius: 1,
                               display: 'flex',
                               flexDirection: 'column',
@@ -2750,7 +2750,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
                   </TableHead>
                   <TableBody>
                     {comparisonResults?.map((row) => (
-                      <TableRow key={row.spec} sx={{ '&:nth-of-type(odd)': { bgcolor: '#f9f9f9' } }}>
+                      <TableRow key={row.spec} sx={{ '&:nth-of-type(odd)': { bgcolor: 'rgba(255,255,255,0.04)' } }}>
                         <TableCell sx={{ fontWeight: 500}}>{row.spec}</TableCell>
                         {row.values.map((v, idx) => (
                           <TableCell
@@ -2820,14 +2820,14 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
               )}
 
               {/* Recommendations */}
-              <Box sx={{ mt: 3, p: 2, bgcolor: '#f8f9fa', borderRadius: 2 }}>
+              <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2 }}>
                 <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600}}>
                   💡 Vår anbefaling
                 </Typography>
                 {compareList.map((eq) => {
                   const { pros, bestFor } = getWhyChooseThis(eq);
                   return (
-                    <Box key={getEquipmentIdentity(eq)} sx={{ mb: 2, pb: 2, borderBottom: '1px solid #eee' }}>
+                    <Box key={getEquipmentIdentity(eq)} sx={{ mb: 2, pb: 2, borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
                         {eq.brand} {eq.model}
                       </Typography>
@@ -2936,7 +2936,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
                     maxHeight: 200,
                     objectFit: 'contain',
                     borderRadius: 1,
-                    border: '1px solid #ddd'}}
+                    border: '1px solid rgba(255,255,255,0.10)'}}
                   onError={() => {
                     setSnackbar({
                       open: true,

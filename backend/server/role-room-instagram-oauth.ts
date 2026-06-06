@@ -39,6 +39,9 @@ const REQUIRED_SCOPES = [
   'ads_read',
   'ads_management',
   'attribution_read',
+  // Unified social inbox (read + reply to Instagram DMs). App admins/testers
+  // can grant this pre-approval; all users once App Review approves it.
+  'instagram_manage_messages',
 ];
 
 export interface MetaAppConfig {
@@ -103,8 +106,29 @@ interface StateClaims {
   iat: number;
 }
 
+let warnedWeakOauthSecret = false;
+/**
+ * OAuth state-signing secret. Falls back to a dev secret locally, but loudly
+ * warns (once) in production — a missing AUTH_SECRET there means the signed
+ * state is forgeable, so this must surface in monitoring.
+ */
+function getOauthStateSecret(): string {
+  const secret = process.env.AUTH_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production' && !warnedWeakOauthSecret) {
+      warnedWeakOauthSecret = true;
+      console.error(
+        '[ig-oauth] SECURITY: AUTH_SECRET is not set in production — OAuth state ' +
+          'signing is using a known dev fallback and is forgeable. Set AUTH_SECRET.',
+      );
+    }
+    return 'dev-secret-not-for-prod';
+  }
+  return secret;
+}
+
 export function signOauthState(claims: Omit<StateClaims, 'nonce' | 'iat'>): string {
-  const secret = process.env.AUTH_SECRET || 'dev-secret-not-for-prod';
+  const secret = getOauthStateSecret();
   const payload: StateClaims = {
     ...claims,
     nonce: crypto.randomBytes(16).toString('base64url'),
@@ -117,7 +141,7 @@ export function signOauthState(claims: Omit<StateClaims, 'nonce' | 'iat'>): stri
 
 export function verifyOauthState(state: string | undefined | null): StateClaims | null {
   if (!state) return null;
-  const secret = process.env.AUTH_SECRET || 'dev-secret-not-for-prod';
+  const secret = getOauthStateSecret();
   const [payloadPart, sig] = state.split('.');
   if (!payloadPart || !sig) return null;
   try {
@@ -670,7 +694,7 @@ async function subscribeAssetWebhookFields(
 export async function subscribeIgWebhookFields(
   igBusinessAccountId: string,
   pageAccessToken: string,
-  fields: string[] = ['comments', 'mentions', 'live_comments'],
+  fields: string[] = ['comments', 'mentions', 'live_comments', 'messages'],
 ): Promise<boolean> {
   return subscribeAssetWebhookFields(igBusinessAccountId, pageAccessToken, fields, 'ig-oauth');
 }

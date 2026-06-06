@@ -4,12 +4,13 @@
  * DanceWorkspace mounter direkte.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import { Box, Typography, Stack, Chip } from '@mui/material';
 import { EntityCrudPanel, type EntityField } from './EntityCrudPanel';
 import * as svc from './danceStudioOpsService';
 
-const PURPLE_LIGHT = '#a78bfa';
+const PURPLE_LIGHT = danceFlowColors.lavender;
 
 export interface StudioPanelProps {
   projectId: string | null;
@@ -22,15 +23,15 @@ const ClassesStatStrip: React.FC<{ classes: svc.DanceClass[]; enrollmentsCount: 
   const fillPct = totalCapacity > 0 ? Math.round((enrollmentsCount / totalCapacity) * 100) : 0;
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="classes-stat-strip">
-      <Chip size="small" label={`${classes.length} klasser`} sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd', fontWeight: 700 }} />
-      <Chip size="small" label={`${enrollmentsCount} elever`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399' }} />
+      <Chip size="small" label={`${classes.length} klasser`} sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }} />
+      <Chip size="small" label={`${enrollmentsCount} elever`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       {totalCapacity > 0 ? (
         <Chip
           size="small"
           label={`Fylling: ${fillPct}% (${enrollmentsCount}/${totalCapacity})`}
           sx={{
             bgcolor: fillPct >= 90 ? 'rgba(52,211,153,0.18)' : fillPct >= 50 ? 'rgba(251,191,36,0.18)' : 'rgba(96,165,250,0.18)',
-            color:   fillPct >= 90 ? '#34d399' : fillPct >= 50 ? '#fbbf24' : '#60a5fa',
+            color:   fillPct >= 90 ? danceFlowColors.successPrimary : fillPct >= 50 ? danceFlowColors.gold : danceFlowColors.infoLight,
             fontWeight: 700,
           }}
         />
@@ -131,7 +132,7 @@ const ClassEnrollments: React.FC<{ classId: string }> = ({ classId }) => {
         <Stack spacing={0.5}>
           {enrollments.map((e) => (
             <Stack key={e.id} direction="row" spacing={1} alignItems="center">
-              <Typography sx={{ fontSize: 12, flex: 1, color: '#e5e7eb' }}>{e.studentDancerId}</Typography>
+              <Typography sx={{ fontSize: 12, flex: 1, color: danceFlowColors.textSecondary }}>{e.studentDancerId}</Typography>
               <Chip
                 size="small"
                 label={e.paymentStatus}
@@ -146,9 +147,9 @@ const ClassEnrollments: React.FC<{ classId: string }> = ({ classId }) => {
                   bgcolor: e.paymentStatus === 'paid' ? 'rgba(16,185,129,0.18)' :
                     e.paymentStatus === 'invoiced' ? 'rgba(251,191,36,0.18)' :
                     e.paymentStatus === 'comp' ? 'rgba(167,139,250,0.18)' : 'rgba(239,68,68,0.18)',
-                  color: e.paymentStatus === 'paid' ? '#10b981' :
-                    e.paymentStatus === 'invoiced' ? '#fbbf24' :
-                    e.paymentStatus === 'comp' ? PURPLE_LIGHT : '#fca5a5',
+                  color: e.paymentStatus === 'paid' ? danceFlowColors.successDark :
+                    e.paymentStatus === 'invoiced' ? danceFlowColors.gold :
+                    e.paymentStatus === 'comp' ? PURPLE_LIGHT : danceFlowColors.errorSoft,
                   fontWeight: 700,
                 }}
               />
@@ -160,7 +161,7 @@ const ClassEnrollments: React.FC<{ classId: string }> = ({ classId }) => {
                   await svc.deleteEnrollment(e.id);
                   await refresh();
                 }}
-                sx={{ height: 20, fontSize: 10, cursor: 'pointer', bgcolor: 'rgba(239,68,68,0.10)', color: '#fca5a5' }}
+                sx={{ height: 20, fontSize: 10, cursor: 'pointer', bgcolor: 'rgba(239,68,68,0.10)', color: danceFlowColors.errorSoft }}
               />
             </Stack>
           ))}
@@ -173,7 +174,7 @@ const ClassEnrollments: React.FC<{ classId: string }> = ({ classId }) => {
           onChange={(e) => setNewDancerId(e.target.value)}
           style={{
             flex: 1, padding: '6px 8px', fontSize: 11,
-            background: '#0a0a0a', color: '#e5e7eb',
+            background: danceFlowColors.bgBase, color: danceFlowColors.textSecondary,
             border: '1px solid rgba(139,92,246,0.25)', borderRadius: 4,
           }}
         />
@@ -218,14 +219,14 @@ const InstructorsStatStrip: React.FC<{ list: svc.DanceInstructor[] }> = ({ list 
   };
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="instructors-stat-strip">
-      <Chip size="small" label={`${list.length} instruktører`} sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd', fontWeight: 700 }} />
-      <Chip size="small" label={`${totalThisMonth}t denne måneden`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399' }} />
+      <Chip size="small" label={`${list.length} instruktører`} sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }} />
+      <Chip size="small" label={`${totalThisMonth}t denne måneden`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       {Object.entries(byContract).map(([k, n]) => (
         <Chip
           key={k}
           size="small"
           label={`${contractLabels[k] ?? k}: ${n}`}
-          sx={{ bgcolor: 'rgba(96,165,250,0.15)', color: '#93c5fd' }}
+          sx={{ bgcolor: 'rgba(96,165,250,0.15)', color: danceFlowColors.infoSoft }}
         />
       ))}
     </Stack>
@@ -314,13 +315,13 @@ const RoomsStatStrip: React.FC<{ rooms: svc.DanceRoom[]; bookingsByRoom: Map<str
   };
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="rooms-stat-strip">
-      <Chip size="small" label={`${rooms.length} saler · ${totalCapacity} plasser`} sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd', fontWeight: 700 }} />
-      <Chip size="small" label={`${totalBookings} bookings denne uka`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: '#93c5fd' }} />
+      <Chip size="small" label={`${rooms.length} saler · ${totalCapacity} plasser`} sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }} />
+      <Chip size="small" label={`${totalBookings} bookings denne uka`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoSoft }} />
       {mostUsed && mostUsed.count > 0 ? (
-        <Chip size="small" label={`Mest brukt: ${mostUsed.name} (${mostUsed.count})`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399' }} />
+        <Chip size="small" label={`Mest brukt: ${mostUsed.name} (${mostUsed.count})`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       ) : null}
       {Object.entries(byKind).map(([k, n]) => (
-        <Chip key={k} size="small" label={`${kindLabels[k] ?? k}: ${n}`} sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: '#cbd5e1' }} />
+        <Chip key={k} size="small" label={`${kindLabels[k] ?? k}: ${n}`} sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: danceFlowColors.grayLight }} />
       ))}
     </Stack>
   );
@@ -428,7 +429,7 @@ const RoomBookings: React.FC<{ roomId: string }> = ({ roomId }) => {
         <Stack spacing={0.5}>
           {bookings.map((b) => (
             <Stack key={b.id} direction="row" spacing={1} alignItems="center">
-              <Typography sx={{ fontSize: 11, flex: 1, color: '#e5e7eb' }}>
+              <Typography sx={{ fontSize: 11, flex: 1, color: danceFlowColors.textSecondary }}>
                 {new Date(b.startsAt).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                 {' → '}
                 {new Date(b.endsAt).toLocaleString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
@@ -442,7 +443,7 @@ const RoomBookings: React.FC<{ roomId: string }> = ({ roomId }) => {
                   await svc.deleteBooking(b.id);
                   await refresh();
                 }}
-                sx={{ height: 20, fontSize: 10, cursor: 'pointer', bgcolor: 'rgba(239,68,68,0.10)', color: '#fca5a5' }}
+                sx={{ height: 20, fontSize: 10, cursor: 'pointer', bgcolor: 'rgba(239,68,68,0.10)', color: danceFlowColors.errorSoft }}
               />
             </Stack>
           ))}
@@ -455,7 +456,7 @@ const RoomBookings: React.FC<{ roomId: string }> = ({ roomId }) => {
           onChange={(e) => setPurpose(e.target.value)}
           style={{
             flex: 2, padding: '6px 8px', fontSize: 11,
-            background: '#0a0a0a', color: '#e5e7eb',
+            background: danceFlowColors.bgBase, color: danceFlowColors.textSecondary,
             border: '1px solid rgba(139,92,246,0.25)', borderRadius: 4,
           }}
         />
@@ -465,7 +466,7 @@ const RoomBookings: React.FC<{ roomId: string }> = ({ roomId }) => {
           onChange={(e) => setStartsAt(e.target.value)}
           style={{
             flex: 1, padding: '6px 8px', fontSize: 11,
-            background: '#0a0a0a', color: '#e5e7eb',
+            background: danceFlowColors.bgBase, color: danceFlowColors.textSecondary,
             border: '1px solid rgba(139,92,246,0.25)', borderRadius: 4,
           }}
         />
@@ -475,7 +476,7 @@ const RoomBookings: React.FC<{ roomId: string }> = ({ roomId }) => {
           onChange={(e) => setEndsAt(e.target.value)}
           style={{
             flex: 1, padding: '6px 8px', fontSize: 11,
-            background: '#0a0a0a', color: '#e5e7eb',
+            background: danceFlowColors.bgBase, color: danceFlowColors.textSecondary,
             border: '1px solid rgba(139,92,246,0.25)', borderRadius: 4,
           }}
         />
@@ -514,13 +515,13 @@ const VocabStatStrip: React.FC<{ terms: svc.MovementVocabTerm[] }> = ({ terms })
     return acc;
   }, {});
   const catLabels: Record<string, { label: string; color: string }> = {
-    turn:       { label: 'Turn',       color: '#f472b6' },
-    leap:       { label: 'Leap',       color: '#60a5fa' },
-    lift:       { label: 'Lift',       color: '#fbbf24' },
-    extension:  { label: 'Extension',  color: '#a78bfa' },
-    partnering: { label: 'Partnering', color: '#34d399' },
+    turn:       { label: 'Turn',       color: danceFlowColors.pinkAccentLight },
+    leap:       { label: 'Leap',       color: danceFlowColors.infoLight },
+    lift:       { label: 'Lift',       color: danceFlowColors.gold },
+    extension:  { label: 'Extension',  color: danceFlowColors.lavender },
+    partnering: { label: 'Partnering', color: danceFlowColors.successPrimary },
     improv:     { label: 'Improv',     color: '#22d3ee' },
-    other:      { label: 'Annet',      color: '#9ca3af' },
+    other:      { label: 'Annet',      color: danceFlowColors.textMuted },
   };
   const difLabels: Record<string, string> = {
     beginner:     'Nybegynner',
@@ -534,14 +535,14 @@ const VocabStatStrip: React.FC<{ terms: svc.MovementVocabTerm[] }> = ({ terms })
         <Chip
           size="small"
           label={`${terms.length} termer`}
-          sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#c4b5fd', fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }}
         />
         {Object.entries(byDifficulty).map(([k, n]) => (
           <Chip
             key={k}
             size="small"
             label={`${difLabels[k] ?? k}: ${n}`}
-            sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: '#cbd5e1' }}
+            sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: danceFlowColors.grayLight }}
           />
         ))}
       </Stack>

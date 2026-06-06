@@ -669,23 +669,23 @@ export default memo(function AcademyAdminPanel() {
           data={coursesData}
           style={{ height: '100%' }}
           fixedHeaderContent={() => (
-            <TableRow sx={{ bgcolor: '#f5f5f5' }}>
-              <TableCell padding="checkbox" sx={{ bgcolor: '#f5f5f5' }}>
+            <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}>
+              <TableCell padding="checkbox" sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}>
                 <Checkbox
                   checked={coursesData.length > 0 && selectedCourseIds.length === coursesData.length}
                   indeterminate={selectedCourseIds.length > 0 && selectedCourseIds.length < coursesData.length}
                   onChange={handleSelectAll}
                 />
               </TableCell>
-              <TableCell sx={{ bgcolor: '#f5f5f5' }}><strong>Kurs</strong></TableCell>
-              <TableCell sx={{ bgcolor: '#f5f5f5' }}><strong>Instruktør</strong></TableCell>
-              <TableCell sx={{ bgcolor: '#f5f5f5' }}><strong>Kategori</strong></TableCell>
-              <TableCell sx={{ bgcolor: '#f5f5f5' }}><strong>Nivå</strong></TableCell>
-              <TableCell sx={{ bgcolor: '#f5f5f5' }}><strong>Status</strong></TableCell>
-              <TableCell align="center" sx={{ bgcolor: '#f5f5f5' }}><strong>Videoer</strong></TableCell>
-              <TableCell align="center" sx={{ bgcolor: '#f5f5f5' }}><strong>Påmeldinger</strong></TableCell>
-              <TableCell align="center" sx={{ bgcolor: '#f5f5f5' }}><strong>Vurdering</strong></TableCell>
-              <TableCell align="center" sx={{ bgcolor: '#f5f5f5' }}><strong>Handlinger</strong></TableCell>
+              <TableCell sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Kurs</strong></TableCell>
+              <TableCell sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Instruktør</strong></TableCell>
+              <TableCell sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Kategori</strong></TableCell>
+              <TableCell sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Nivå</strong></TableCell>
+              <TableCell sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Status</strong></TableCell>
+              <TableCell align="center" sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Videoer</strong></TableCell>
+              <TableCell align="center" sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Påmeldinger</strong></TableCell>
+              <TableCell align="center" sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Vurdering</strong></TableCell>
+              <TableCell align="center" sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Handlinger</strong></TableCell>
             </TableRow>
           )}
           itemContent={(index, course) => (
@@ -916,11 +916,11 @@ export default memo(function AcademyAdminPanel() {
                 data={instructorsData}
                 style={{ height: '100%' }}
                 fixedHeaderContent={() => (
-                  <TableRow sx={{ bgcolor: '#f5f5f5' }}>
-                    <TableCell sx={{ bgcolor: '#f5f5f5' }}><strong>Navn</strong></TableCell>
-                    <TableCell sx={{ bgcolor: '#f5f5f5' }}><strong>E-post</strong></TableCell>
-                    <TableCell align="center" sx={{ bgcolor: '#f5f5f5' }}><strong>Antall kurs</strong></TableCell>
-                    <TableCell align="center" sx={{ bgcolor: '#f5f5f5' }}><strong>Handlinger</strong></TableCell>
+                  <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}>
+                    <TableCell sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Navn</strong></TableCell>
+                    <TableCell sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>E-post</strong></TableCell>
+                    <TableCell align="center" sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Antall kurs</strong></TableCell>
+                    <TableCell align="center" sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Handlinger</strong></TableCell>
                   </TableRow>
                 )}
                 itemContent={(index, instructor) => (
@@ -985,13 +985,13 @@ export default memo(function AcademyAdminPanel() {
                 data={enrollmentsData}
                 style={{ height: '100%' }}
                 fixedHeaderContent={() => (
-                  <TableRow sx={{ bgcolor: '#f5f5f5' }}>
-                    <TableCell sx={{ bgcolor: '#f5f5f5' }}><strong>Student</strong></TableCell>
-                    <TableCell sx={{ bgcolor: '#f5f5f5' }}><strong>Kurs</strong></TableCell>
-                    <TableCell sx={{ bgcolor: '#f5f5f5' }}><strong>Status</strong></TableCell>
-                    <TableCell align="center" sx={{ bgcolor: '#f5f5f5' }}><strong>Fremgang</strong></TableCell>
-                    <TableCell sx={{ bgcolor: '#f5f5f5' }}><strong>Påmeldt</strong></TableCell>
-                    <TableCell align="center" sx={{ bgcolor: '#f5f5f5' }}><strong>Handlinger</strong></TableCell>
+                  <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}>
+                    <TableCell sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Student</strong></TableCell>
+                    <TableCell sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Kurs</strong></TableCell>
+                    <TableCell sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Status</strong></TableCell>
+                    <TableCell align="center" sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Fremgang</strong></TableCell>
+                    <TableCell sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Påmeldt</strong></TableCell>
+                    <TableCell align="center" sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Handlinger</strong></TableCell>
                   </TableRow>
                 )}
                 itemContent={(index, enrollment) => (

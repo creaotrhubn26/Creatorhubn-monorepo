@@ -1531,9 +1531,9 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
   };
 
   const panelSurfaceSx = {
-    border: '1px solid #ece5db',
+    border: '1px solid rgba(255,255,255,0.10)',
     borderRadius: '24px',
-    bgcolor: '#ffffff',
+    bgcolor: 'rgba(255,255,255,0.04)',
     overflow: 'hidden',
     boxShadow: '0 14px 40px rgba(29, 22, 12, 0.04)',
   } as const;
@@ -1645,7 +1645,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               sx={{
                 borderRadius: '18px',
                 border: '1px solid rgba(17, 24, 39, 0.08)',
-                bgcolor: 'rgba(255,255,255,0.78)',
+                bgcolor: 'rgba(255,255,255,0.04)',
                 px: 1.75,
                 py: 1.5,
               }}
@@ -1662,7 +1662,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               sx={{
                 borderRadius: '18px',
                 border: '1px solid rgba(17, 24, 39, 0.08)',
-                bgcolor: 'rgba(255,255,255,0.78)',
+                bgcolor: 'rgba(255,255,255,0.04)',
                 px: 1.75,
                 py: 1.5,
               }}
@@ -1702,7 +1702,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               sx={{
                 borderRadius: '18px',
                 border: '1px solid rgba(17, 24, 39, 0.08)',
-                bgcolor: 'rgba(255,255,255,0.88)',
+                bgcolor: 'rgba(255,255,255,0.04)',
                 px: 1.75,
                 py: 1.5,
               }}
@@ -1727,8 +1727,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
           mb: 3.5,
           p: 0.75,
           borderRadius: '16px',
-          border: '1px solid #ece5db',
-          bgcolor: '#faf8f4',
+          border: '1px solid rgba(255,255,255,0.10)',
+          bgcolor: 'rgba(255,255,255,0.04)',
         }}
       >
         <Tabs
@@ -1751,7 +1751,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               fontWeight: 600,
             },
             '& .Mui-selected': {
-              bgcolor: '#ffffff',
+              bgcolor: 'rgba(255,255,255,0.04)',
               color: '#181512',
               boxShadow: '0 6px 18px rgba(24, 21, 18, 0.06)',
             },
@@ -1809,8 +1809,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               sx={{
                 px: { xs: 2, sm: 3 },
                 py: { xs: 2, sm: 2.5 },
-                borderBottom: '1px solid #f0ebe3',
-                bgcolor: '#fcfbf8',
+                borderBottom: '1px solid rgba(255,255,255,0.10)',
+                bgcolor: 'rgba(255,255,255,0.04)',
               }}
             >
               <Box
@@ -1862,7 +1862,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                       width: { xs: '100%', sm: 240 },
                       '& .MuiOutlinedInput-root': {
                         borderRadius: '12px',
-                        bgcolor: '#ffffff',
+                        bgcolor: 'rgba(255,255,255,0.04)',
                       },
                     }}
                     InputProps={{
@@ -1902,7 +1902,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                         }
                         sx={{
                           borderRadius: '12px',
-                          bgcolor: '#ffffff',
+                          bgcolor: 'rgba(255,255,255,0.04)',
                           pl: 2,
                         }}
                       >
@@ -1943,7 +1943,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               sx={{
                 px: { xs: 2, sm: 3 },
                 py: { xs: 2, sm: 2.5 },
-                borderBottom: '1px solid #f0ebe3',
+                borderBottom: '1px solid rgba(255,255,255,0.10)',
                 bgcolor: '#ffffff',
               }}
             >
@@ -2007,11 +2007,11 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                   <Box
                     key={item.key}
                     sx={{
-                      border: '1px solid #f0ebe3',
+                      border: '1px solid rgba(255,255,255,0.10)',
                       borderRadius: '16px',
                       px: 1.75,
                       py: 1.5,
-                      bgcolor: '#fcfbf8',
+                      bgcolor: 'rgba(255,255,255,0.04)',
                     }}
                   >
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
@@ -2050,8 +2050,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                   <TableRow
                     sx={{
                       '& .MuiTableCell-root': {
-                        bgcolor: '#fcfbf8',
-                        borderBottom: '1px solid #f0ebe3',
+                        bgcolor: 'rgba(255,255,255,0.04)',
+                        borderBottom: '1px solid rgba(255,255,255,0.10)',
                         color: '#857c71',
                         fontSize: '0.74rem',
                         fontWeight: 700,
@@ -2324,8 +2324,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                   justifyContent: 'center',
                   px: 3,
                   py: 2.25,
-                  borderTop: '1px solid #f0ebe3',
-                  bgcolor: '#fcfbf8',
+                  borderTop: '1px solid rgba(255,255,255,0.10)',
+                  bgcolor: 'rgba(255,255,255,0.04)',
                 }}
               >
                 <Pagination
@@ -2430,8 +2430,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               sx={{
                 px: { xs: 2, sm: 3 },
                 py: { xs: 2, sm: 2.5 },
-                borderBottom: '1px solid #f0ebe3',
-                bgcolor: '#fcfbf8',
+                borderBottom: '1px solid rgba(255,255,255,0.10)',
+                bgcolor: 'rgba(255,255,255,0.04)',
               }}
             >
               <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a1713' }}>

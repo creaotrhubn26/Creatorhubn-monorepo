@@ -27,6 +27,9 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import CompetitorsPanel from './CompetitorsPanel';
+import CompetitorReportPanel from './CompetitorReportPanel';
+import PostDraftsPanel from './PostDraftsPanel';
+import SocialConnectionsPanel from './SocialConnectionsPanel';
 
 interface Section<T> { ok: boolean; data: T | null; error?: string; status?: number; }
 
@@ -381,6 +384,15 @@ export default function MarketingCockpitTab() {
         </Box>
       )}
 
+      {/* SocialConnectionsPanel — hoistet ut av {data && ...}-blokken slik
+          at den vises selv om cockpit-summary feiler (auth, network). Panelet
+          gjør sine egne fetches og er ikke avhengig av parent-data. */}
+      <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }}>
+        <Chip label="SOSIALE KOBLINGER" size="small"
+          sx={{ background: 'rgba(34,197,94,0.15)', color: '#86efac', fontSize: '0.7rem' }} />
+      </Divider>
+      <SocialConnectionsPanel />
+
       {data && (
         <>
           {!data.configured.pageId && (
@@ -578,10 +590,12 @@ export default function MarketingCockpitTab() {
           </Card>
 
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }}>
-            <Chip label="KONKURRENT-MONITOR" size="small"
+            <Chip label="KONKURRENT-INTELLIGENCE" size="small"
               sx={{ background: 'rgba(168,85,247,0.15)', color: '#c4b5fd', fontSize: '0.7rem' }} />
           </Divider>
 
+          <CompetitorReportPanel />
+          <PostDraftsPanel />
           <CompetitorsPanel />
 
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }}>

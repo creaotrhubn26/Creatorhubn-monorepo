@@ -29,6 +29,7 @@ const PODCAST_CHAPTERS = [
     pacingPct: 3,
     description: "10-30s av det sterkeste quote fra episoden — før intro starter. Pakker seer inn: 'jeg må høre resten av denne samtalen'. Klippes ofte fra midt-episode.",
     priorityHint: "high-energy" as const,
+    narrativeBeat: "hook" as const,
   },
   {
     id: "intro",
@@ -36,6 +37,7 @@ const PODCAST_CHAPTERS = [
     pacingPct: 5,
     description: "Vert presenterer episode, eventuell sponsor-roll, kort tema-etablering. Hold under 60s — folk vil til samtalen.",
     priorityHint: "transitional" as const,
+    narrativeBeat: "setup" as const,
   },
   {
     id: "guest_bio",
@@ -43,6 +45,7 @@ const PODCAST_CHAPTERS = [
     pacingPct: 6,
     description: "Hvem er gjesten, hvorfor de er her. Kan være visuell B-roll av gjest med voice-over fra vert, eller en kort gjest-presentasjon.",
     priorityHint: "informational" as const,
+    narrativeBeat: "setup" as const,
   },
   {
     id: "warmup",
@@ -50,6 +53,7 @@ const PODCAST_CHAPTERS = [
     pacingPct: 8,
     description: "Lett innledende prat før hoved-tema. Etablerer kjemi mellom vert + gjest. Trim aggressive silenser, men la noe naturlig flow.",
     priorityHint: "atmospheric" as const,
+    narrativeBeat: "setup" as const,
   },
   {
     id: "main_conversation",
@@ -57,6 +61,7 @@ const PODCAST_CHAPTERS = [
     pacingPct: 50,
     description: "Kjernen av episoden. Multi-host: cut PÅ TALER-SKIFTE, ikke per linje. Hold på taler i lengre takes. Wide-shot eller two-shot under intense utvekslinger. La latter få plass.",
     priorityHint: "informational" as const,
+    narrativeBeat: "build" as const,
   },
   {
     id: "standout_moment",
@@ -64,6 +69,7 @@ const PODCAST_CHAPTERS = [
     pacingPct: 10,
     description: "Det sterkeste sitatet, mest emosjonelle øyeblikket, eller mest delbare innsikten. Identifiser dette — det blir hoved-sosial-cuten + cold-open-kandidaten.",
     priorityHint: "emotional-peak" as const,
+    narrativeBeat: "peak" as const,
   },
   {
     id: "rapid_fire_q",
@@ -71,6 +77,7 @@ const PODCAST_CHAPTERS = [
     pacingPct: 5,
     description: "Korte avsluttende spørsmål (favoritt-bok, beste råd, hvem du vil ha på showen, etc.). Bra for personlighet og memorable closing.",
     priorityHint: "transitional" as const,
+    narrativeBeat: "celebration" as const,
   },
   {
     id: "outro",
@@ -78,6 +85,7 @@ const PODCAST_CHAPTERS = [
     pacingPct: 5,
     description: "Takk gjest, sponsor-roll, abonner-CTA, hvor folk kan finne gjest (sosial-håndtak), neste-episode-teaser hvis aktuelt.",
     priorityHint: "atmospheric" as const,
+    narrativeBeat: "outro" as const,
   },
   {
     id: "social_cuts",

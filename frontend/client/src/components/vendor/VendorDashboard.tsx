@@ -305,7 +305,7 @@ export default function VendorDashboard({
       </Box>
 
       {/* Vendor Stats Cards */}
-      <Grid container spacing={3} sx={{ mb:  4 }}>
+      <Grid container spacing={2} sx={{ mb:  4 }}>
         {vendorStatsCards.map((stat, index) => (
           <Grid size={{ xs:  12, sm:  6, md:  3 }} key={index}>
             <motion.div
@@ -318,10 +318,10 @@ export default function VendorDashboard({
                 border: `1px solid ${stat.color}30`,
                 height: '100%'
           ,  ...theming.getThemedCardSx() }}>
-                <CardContent sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
+                <CardContent sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb:  2 }}>
                     <Box>
-                      <Typography variant="h4" sx={{  fontWeight: 700, color: stat.color, mb:  1  }}>
+                      <Typography variant="h5" sx={{  fontWeight: 700, color: stat.color, mb:  1  }}>
                         {stat.value}
                       </Typography>
                       <Typography variant="body2" sx={{ color: 'text.secondary'}}>

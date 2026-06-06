@@ -732,6 +732,77 @@ export function setupPhotographerGalleriesRoutes(
     }
   });
 
+  // PATCH /api/photographer/galleries/:id/comments/:commentId — Mark klient-
+  // image-kommentar som addressert + valgfritt photographer_response.
+  // Body: { status?: 'open'|'resolved'|'archived', photographerResponse?: string }
+  // Reuser samme schema som video-comments PATCH (status enum + responded_at).
+  app.patch("/api/photographer/galleries/:id/comments/:commentId", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const galleryId = String(req.params.id || '').trim();
+    const commentId = String(req.params.commentId || '').trim();
+    if (!galleryId || !commentId) return res.status(400).json({ error: "missing_ids" });
+
+    const statusRaw = typeof req.body?.status === 'string'
+      ? req.body.status.toLowerCase()
+      : null;
+    const photographerResponse = typeof req.body?.photographerResponse === 'string'
+      ? req.body.photographerResponse.trim().slice(0, 2000)
+      : null;
+
+    if (statusRaw !== null && !['open', 'resolved', 'archived'].includes(statusRaw)) {
+      return res.status(400).json({ error: "invalid_status" });
+    }
+    if (statusRaw === null && photographerResponse === null) {
+      return res.status(400).json({ error: "nothing_to_update" });
+    }
+
+    try {
+      const owned = await pool.query(
+        `SELECT id FROM photographer_client_galleries
+          WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
+        [galleryId, session.userId],
+      );
+      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+
+      // Bygg UPDATE-fragmenter dynamisk så vi bare oppdaterer feltene
+      // som faktisk ble sendt inn.
+      const fragments: string[] = [];
+      const params: unknown[] = [];
+      if (statusRaw !== null) {
+        params.push(statusRaw);
+        fragments.push(`status = $${params.length}`);
+      }
+      if (photographerResponse !== null) {
+        params.push(photographerResponse);
+        fragments.push(`photographer_response = $${params.length}`);
+        fragments.push(`responded_at = NOW()`);
+      }
+      fragments.push(`updated_at = NOW()`);
+      params.push(commentId);
+      params.push(galleryId);
+
+      const updated = await pool.query(
+        `UPDATE client_image_comments
+            SET ${fragments.join(', ')}
+          WHERE id = $${params.length - 1} AND gallery_id = $${params.length}
+          RETURNING id, status, photographer_response, responded_at, comment, client_email`,
+        params,
+      );
+      if (updated.rowCount === 0) return res.status(404).json({ error: "comment_not_found" });
+      const row = updated.rows[0];
+      res.json({
+        id: row.id,
+        status: row.status,
+        photographerResponse: row.photographer_response,
+        respondedAt: row.responded_at,
+      });
+    } catch (error) {
+      console.error("[photographer-galleries] comment patch failed", error);
+      res.status(500).json({ error: "patch_failed" });
+    }
+  });
+
   // POST /api/photographer/galleries/:id/notify-client — send share-URL på epost.
   // Body: { customMessage?: string }
   app.post("/api/photographer/galleries/:id/notify-client", async (req, res) => {

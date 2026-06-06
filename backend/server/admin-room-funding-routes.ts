@@ -21,6 +21,7 @@
 import type { AdminRoomRoutesDeps } from "./_shared";
 import { asString, asNumberOrNull, asJsonbArray, asJsonbObject } from "./_shared";
 import { logAIUsage } from "./ai-usage-tracker.js";
+import { archiveToRoleRoomB2, fundingAppKey } from "./b2-archive-helper.js";
 
 export function setupAdminFundingRoutes(deps: AdminRoomRoutesDeps): void {
   const {
@@ -259,6 +260,45 @@ Skrivestil:
         res.status(404).json({ error: "Søknad ikke funnet" });
         return;
       }
+
+      // ── B2-arkivering (fire-and-forget) ─────────────────────────────
+      // Snapshot søknaden ved hver PATCH som endrer status. Vi arkiverer
+      // til funding-apps/{scheme}/{appId}-{projectSlug}-{status}.json
+      // (overskriver per status, så hver status får ett snapshot).
+      if ("status" in body) {
+        try {
+          const row = result.rows[0];
+          const snapshot = {
+            id: row.id,
+            scheme: row.scheme,
+            schemeLabel: row.scheme_label,
+            projectName: row.project_name,
+            applicantCompany: row.applicant_company,
+            status: row.status,
+            amountRequested: row.amount_requested,
+            currency: row.currency,
+            description: row.description,
+            milestones: row.milestones,
+            budgetBreakdown: row.budget_breakdown,
+            contactPerson: row.contact_person,
+            contactEmail: row.contact_email,
+            submissionDate: row.submission_date,
+            decisionDate: row.decision_date,
+            deadline: row.deadline,
+            notes: row.notes,
+            metadata: row.metadata,
+            archivedAt: new Date().toISOString(),
+          };
+          void archiveToRoleRoomB2(
+            fundingAppKey(row.scheme, row.id, row.project_name ?? "ukjent", row.status, "json"),
+            JSON.stringify(snapshot, null, 2),
+            "application/json; charset=utf-8",
+          ).catch((err) => console.warn("[funding-apps] B2-arkivering feilet", (err as Error).message));
+        } catch (err) {
+          console.warn("[funding-apps] B2-arkivering oppsett feilet", (err as Error).message);
+        }
+      }
+
       res.json({ item: result.rows[0] });
     } catch (err) {
       console.error("admin-room funding-apps patch error", err);

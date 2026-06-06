@@ -42,6 +42,7 @@ import {
   DeleteOutline as DeleteIcon,
   LocalOffer as TagIcon,
   HelpOutline as HelpIcon,
+  PlayCircleOutline as PlayCircleOutlineIcon,
 } from '@mui/icons-material';
 import KanbanGuide from './KanbanGuide';
 import type { Candidate, Role, CastingProject, Schedule } from '../models/casting';
@@ -52,6 +53,11 @@ import { useAuth } from '../../../hooks/useAuth';
 import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
+import SelfTapePreviewModal from './selftape/SelfTapePreviewModal';
+import {
+  listCastingRoleSelftapes,
+  type CastingRoleSelftape,
+} from '../services/roleRoomSelfTapesService';
 
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
@@ -570,6 +576,43 @@ function KanbanPanelInner({
   // Realtime WebSocket
   const { connected: wsConnected } = useKanbanRealtime(project?.id, onCandidatesChange);
 
+  // Self-tape fetch — én gang per role-set + ved candidate-endring
+  useEffect(() => {
+    if (!project?.id || roles.length === 0) {
+      setSelftapesByTalent(new Map());
+      return;
+    }
+    let cancelled = false;
+    const fetchAll = async () => {
+      try {
+        const results = await Promise.all(
+          roles.map(async (r) => {
+            try {
+              const { selftapes } = await listCastingRoleSelftapes(r.id);
+              return selftapes;
+            } catch {
+              return [] as CastingRoleSelftape[];
+            }
+          }),
+        );
+        if (cancelled) return;
+        const map = new Map<string, CastingRoleSelftape[]>();
+        for (const list of results) {
+          for (const s of list) {
+            const existing = map.get(s.talent_id) ?? [];
+            existing.push(s);
+            map.set(s.talent_id, existing);
+          }
+        }
+        setSelftapesByTalent(map);
+      } catch (err) {
+        console.warn('[KanbanPanel] selftape-fetch failed', err);
+      }
+    };
+    fetchAll();
+    return () => { cancelled = true; };
+  }, [project?.id, roles, candidates.length]);
+
   // State
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRoleId, setFilterRoleId] = useState('all');
@@ -590,6 +633,12 @@ function KanbanPanelInner({
   const [assignEventIds, setAssignEventIds] = useState<string[]>([]);
   // Guide
   const [guideOpen, setGuideOpen] = useState(false);
+  // Self-tape state — Map[talent_id, CastingRoleSelftape[]] (alle aktive submissions
+  // for prosjektets roller). Fetches én gang per role-set.
+  const [selftapesByTalent, setSelftapesByTalent] = useState<Map<string, CastingRoleSelftape[]>>(
+    new Map(),
+  );
+  const [selftapePreview, setSelftapePreview] = useState<CastingRoleSelftape | null>(null);
 
   const containerPadding = { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 };
 
@@ -1307,6 +1356,42 @@ function KanbanPanelInner({
                               )}
                             </Box>
                           </Box>
+                          {/* Self-tape-badge: vises hvis kandidaten har talent_id med aktiv submission */}
+                          {(() => {
+                            const talentId = (candidate as { talent_id?: string }).talent_id;
+                            if (!talentId) return null;
+                            const tapes = selftapesByTalent.get(talentId);
+                            if (!tapes || tapes.length === 0) return null;
+                            const tape = tapes[0];
+                            return (
+                              <Box
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelftapePreview(tape);
+                                }}
+                                sx={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 0.4,
+                                  mt: 0.8,
+                                  px: 1,
+                                  py: 0.3,
+                                  borderRadius: 999,
+                                  bgcolor: 'rgba(168,85,247,0.18)',
+                                  color: '#c084fc',
+                                  fontWeight: 700,
+                                  fontSize: '0.7rem',
+                                  cursor: 'pointer',
+                                  border: '1px solid rgba(168,85,247,0.32)',
+                                  '&:hover': { bgcolor: 'rgba(168,85,247,0.28)' },
+                                }}
+                                title="Se talentens self-tape"
+                              >
+                                <PlayCircleOutlineIcon sx={{ fontSize: 12 }} />
+                                Self-tape{tapes.length > 1 ? ` (${tapes.length})` : ''}
+                              </Box>
+                            );
+                          })()}
                           {(candidate.assignedRoles?.length ?? 0) > 0 && (
                             <Box sx={{ mt: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 }, display: 'flex', flexWrap: 'wrap', gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 } }}>
                               {(candidate.assignedRoles || []).slice(0, 2).map((roleId) => (
@@ -1440,6 +1525,14 @@ function KanbanPanelInner({
 
       {/* Kanban Guide */}
       <KanbanGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
+
+      {/* Self-tape preview modal — åpnes ved klikk på 📹-badge */}
+      <SelfTapePreviewModal
+        open={!!selftapePreview}
+        selftape={selftapePreview}
+        viewerLabel={user?.email ?? 'Produksjon'}
+        onClose={() => setSelftapePreview(null)}
+      />
     </Box>
   );
 }

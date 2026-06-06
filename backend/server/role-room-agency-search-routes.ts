@@ -57,6 +57,56 @@ function isDemoRequest(req: express.Request): boolean {
   return req.query?.demo === "1" || req.query?.demo === "true";
 }
 
+/**
+ * Bygger en agency-kontekst hvis brukeren har bedt om et SPESIFIKT byrå
+ * via ?agency_type=&agency_id= (produksjonsteam-eier søker via en
+ * akseptert partnership, Phase 9).
+ * Returnerer null hvis params ikke er gitt.
+ */
+async function resolveAgencyContextFromPartnership(
+  pool: Pool,
+  userId: string,
+  agencyType: string,
+  agencyId: string,
+  demo: boolean,
+): Promise<
+  | { ok: true; agency: { id: string; type: string; name: string; slug: string; agency_role: string } }
+  | { ok: false; error: string; status: number }
+> {
+  if (demo) {
+    const r = await pool.query(
+      `SELECT id::text, type, name, slug
+         FROM agency_orgs
+        WHERE id = $1::uuid AND type = $2 AND COALESCE(is_demo, FALSE) = TRUE
+        LIMIT 1`,
+      [agencyId, agencyType],
+    );
+    if (!r.rows[0]) return { ok: false, error: "Demo-byrå ikke funnet", status: 404 };
+    return { ok: true, agency: { ...r.rows[0], agency_role: "demo_viewer" } };
+  }
+
+  const r = await pool.query(
+    `SELECT a.id::text, a.type, a.name, a.slug
+       FROM agency_production_partnerships p
+       JOIN agency_orgs a ON a.id = p.agency_org_id
+      WHERE p.production_user_id = $1
+        AND p.agency_org_id = $2::uuid
+        AND a.type = $3
+        AND p.status = 'accepted'
+        AND p.paused_at IS NULL
+      LIMIT 1`,
+    [userId, agencyId, agencyType],
+  );
+  if (!r.rows[0]) {
+    return {
+      ok: false,
+      error: "Du har ikke aktivt partnership med dette byrået",
+      status: 403,
+    };
+  }
+  return { ok: true, agency: { ...r.rows[0], agency_role: "partner_viewer" } };
+}
+
 type SearchFilters = {
   q?: string;
   location?: string;       // matcher city ILIKE
@@ -264,13 +314,29 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
     const demo = isDemoRequest(req);
     let agency: { id: string; type: string; name: string; slug: string; agency_role: string } | null = null;
 
-    if (demo) {
+    // Phase 9 — produksjonsteam-eier kan be om kontekst via
+    // ?agency_type=&agency_id= (gjelder akseptert partnership).
+    const ctxAgencyType = typeof req.query.agency_type === "string" ? req.query.agency_type : null;
+    const ctxAgencyId = typeof req.query.agency_id === "string" ? req.query.agency_id : null;
+    const wantsPartnershipCtx = Boolean(ctxAgencyType && ctxAgencyId);
+
+    if (demo && wantsPartnershipCtx) {
+      const ctx = await resolveAgencyContextFromPartnership(pool, "demo", ctxAgencyType!, ctxAgencyId!, true);
+      if (!ctx.ok) return res.status(ctx.status).json({ error: ctx.error });
+      agency = ctx.agency;
+    } else if (demo) {
       agency = getDemoAgency();
     } else {
       const session = getActiveSession(req);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-      agency = await fetchAgencyForUser(pool, session.userId);
-      if (!agency) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+      if (wantsPartnershipCtx) {
+        const ctx = await resolveAgencyContextFromPartnership(pool, session.userId, ctxAgencyType!, ctxAgencyId!, false);
+        if (!ctx.ok) return res.status(ctx.status).json({ error: ctx.error });
+        agency = ctx.agency;
+      } else {
+        agency = await fetchAgencyForUser(pool, session.userId);
+        if (!agency) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+      }
     }
 
     try {
@@ -298,13 +364,28 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
   app.get("/api/role-room/agency/registry-overview", async (req, res) => {
     const demo = isDemoRequest(req);
     let agency: { id: string; type: string; name: string } | null = null;
-    if (demo) {
+
+    const ctxAgencyType = typeof req.query.agency_type === "string" ? req.query.agency_type : null;
+    const ctxAgencyId = typeof req.query.agency_id === "string" ? req.query.agency_id : null;
+    const wantsPartnershipCtx = Boolean(ctxAgencyType && ctxAgencyId);
+
+    if (demo && wantsPartnershipCtx) {
+      const ctx = await resolveAgencyContextFromPartnership(pool, "demo", ctxAgencyType!, ctxAgencyId!, true);
+      if (!ctx.ok) return res.status(ctx.status).json({ error: ctx.error });
+      agency = ctx.agency;
+    } else if (demo) {
       agency = getDemoAgency();
     } else {
       const session = getActiveSession(req);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-      agency = await fetchAgencyForUser(pool, session.userId);
-      if (!agency) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+      if (wantsPartnershipCtx) {
+        const ctx = await resolveAgencyContextFromPartnership(pool, session.userId, ctxAgencyType!, ctxAgencyId!, false);
+        if (!ctx.ok) return res.status(ctx.status).json({ error: ctx.error });
+        agency = ctx.agency;
+      } else {
+        agency = await fetchAgencyForUser(pool, session.userId);
+        if (!agency) return res.status(403).json({ error: "Du tilhører ikke en agency" });
+      }
     }
     try {
       const demoFlag = demo ? "TRUE" : "FALSE";

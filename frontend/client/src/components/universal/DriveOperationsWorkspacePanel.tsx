@@ -301,13 +301,13 @@ export default function DriveOperationsWorkspacePanel({
                 textAlign: 'left',
                 borderRadius: 4,
                 overflow: 'hidden',
-                border: `1px solid ${selected ? alpha(theming.colors.primary, 0.24) : 'rgba(15, 23, 42, 0.08)'}`,
+                border: `1px solid ${selected ? alpha(theming.colors.primary, 0.32) : 'rgba(255,255,255,0.10)'}`,
                 background: selected
-                  ? `linear-gradient(135deg, ${alpha(theming.colors.primary, 0.1)} 0%, rgba(255,255,255,0.98) 100%)`
-                  : 'rgba(255,255,255,0.96)',
+                  ? `linear-gradient(135deg, ${alpha(theming.colors.primary, 0.14)} 0%, rgba(255,255,255,0.04) 100%)`
+                  : 'rgba(255,255,255,0.04)',
                 boxShadow: selected
-                  ? `0 22px 52px ${alpha(theming.colors.primary, 0.12)}`
-                  : `0 16px 36px ${alpha('#0f172a', 0.05)}`,
+                  ? `0 22px 52px ${alpha(theming.colors.primary, 0.18)}`
+                  : 'none',
               }}
             >
               <Box sx={{ p: 2.25, width: '100%' }}>
@@ -320,7 +320,7 @@ export default function DriveOperationsWorkspacePanel({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      bgcolor: selected ? alpha(theming.colors.primary, 0.14) : 'rgba(15, 23, 42, 0.06)',
+                      bgcolor: selected ? alpha(theming.colors.primary, 0.14) : 'rgba(255,255,255,0.06)',
                       color: selected ? theming.colors.primary : 'text.secondary',
                     }}
                   >
@@ -333,7 +333,7 @@ export default function DriveOperationsWorkspacePanel({
                     variant={selected ? 'filled' : 'outlined'}
                   />
                 </Stack>
-                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#0f172a', mt: 2, mb: 0.75 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: 'text.primary', mt: 2, mb: 0.75 }}>
                   {mode.label}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -350,9 +350,8 @@ export default function DriveOperationsWorkspacePanel({
         sx={{
           p: { xs: 1.5, md: 2.25 },
           borderRadius: 4,
-          border: '1px solid rgba(15, 23, 42, 0.08)',
-          backgroundColor: 'rgba(255,255,255,0.97)',
-          boxShadow: `0 20px 44px ${alpha('#0f172a', 0.07)}`,
+          border: '1px solid rgba(255,255,255,0.10)',
+          backgroundColor: 'rgba(255,255,255,0.04)',
         }}
       >
         {activeMode === 'upload' && (
@@ -473,8 +472,8 @@ export default function DriveOperationsWorkspacePanel({
               sx={{
                 p: 2.25,
                 borderRadius: 3,
-                border: '1px solid rgba(15, 23, 42, 0.08)',
-                backgroundColor: 'rgba(255,255,255,0.92)',
+                border: '1px solid rgba(255,255,255,0.10)',
+                backgroundColor: 'rgba(255,255,255,0.04)',
               }}
             >
               <GoogleWorkspaceStorageInfo

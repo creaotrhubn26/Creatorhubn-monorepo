@@ -73,7 +73,7 @@ async function ensureSchema(pool: any): Promise<void> {
   ).catch(() => undefined);
 }
 
-function getMailer(): nodemailer.Transporter | null {
+function getMailer(): ReturnType<typeof nodemailer.createTransport> | null {
   const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || "").trim();
   const mailPass = (process.env.GMAIL_APP_PASSWORD || "").trim().replace(/\s+/g, "");
   if (!mailUser || !mailPass) return null;
@@ -174,7 +174,7 @@ export async function runOfferCreationSweep(pool: any): Promise<{ created: numbe
                   uten Enterprise-tilgang (men beholder kontoer på Basic-tier).
                 </p>
               </div>`,
-          }).catch((err) => console.error("[tester-enterprise] mail failed:", err?.message || err));
+          }).catch((err: unknown) => console.error("[tester-enterprise] mail failed:", (err as { message?: string })?.message || err));
         }
       } catch (err) {
         console.error("[tester-enterprise] failed to create offer for", m.id, err);

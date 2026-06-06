@@ -15,7 +15,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { Refresh as RefreshIcon } from '@mui/icons-material';
+import { Refresh as RefreshIcon, QueryStats as AnalyticsHeaderIcon } from '@mui/icons-material';
 import {
   Bar,
   BarChart,
@@ -210,16 +210,17 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
   return (
     <Stack spacing={2} data-testid="social-analytics-panel">
       <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Stack>
-          <Typography sx={{ color: '#e2e8f0', fontSize: '1.1rem', fontWeight: 700 }}>
-            Cross-platform analytics
-          </Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.78rem' }}>
-            Måler resultatene av strategien — inbound events, sentiment, reach
-          </Typography>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <AnalyticsHeaderIcon sx={{ color: '#22d3ee' }} />
+          <Box>
+            <Typography sx={{ color: '#f8fafc', fontSize: '1.05rem', fontWeight: 800 }}>Analyse</Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem' }}>
+              Måler resultatene av strategien — henvendelser, stemning og rekkevidde.
+            </Typography>
+          </Box>
         </Stack>
         <Tooltip title="Oppdater">
-          <IconButton size="small" onClick={() => void refresh()} disabled={loading}>
+          <IconButton size="small" aria-label="Oppdater analyse" onClick={() => void refresh()} disabled={loading}>
             <RefreshIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} />
           </IconButton>
         </Tooltip>

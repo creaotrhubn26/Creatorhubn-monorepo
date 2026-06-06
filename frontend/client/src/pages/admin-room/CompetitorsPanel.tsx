@@ -10,9 +10,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Stack,
-  Typography, TextField, IconButton, Tooltip, Divider,
+  Alert, Avatar, Box, Button, Card, CardContent, Chip, CircularProgress, Stack,
+  Typography, TextField, IconButton, Tooltip, Divider, Switch, FormControlLabel,
+  ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
+import FacebookIcon from '@mui/icons-material/Facebook';
+import InstagramIcon from '@mui/icons-material/Instagram';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -30,6 +33,7 @@ interface LatestSnapshot {
   recent_post_count_30d: number | null;
   snapshot_at: string;
   fetch_error: string | null;
+  picture_url: string | null;
 }
 
 interface Competitor {
@@ -40,6 +44,10 @@ interface Competitor {
   notes: string | null;
   active: boolean;
   addedAt: string;
+  autoSnapshot: boolean;
+  lastSnapshotAt: string | null;
+  accountType: 'facebook' | 'instagram';
+  igUsername: string | null;
   latestSnapshot: LatestSnapshot | null;
 }
 
@@ -106,21 +114,35 @@ function FanCountTrend({ snapshots }: { snapshots: Snapshot[] }) {
 }
 
 function CompetitorRow({
-  competitor, onSnapshot, onDelete, snapshots, snapshotsLoading, snapshotBusy,
+  competitor, onSnapshot, onDelete, onToggleAuto, snapshots, snapshotsLoading, snapshotBusy, autoToggleBusy,
 }: {
   competitor: Competitor;
   onSnapshot: (id: number) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
+  onToggleAuto: (id: number, next: boolean) => Promise<void>;
   snapshots: Snapshot[];
   snapshotsLoading: boolean;
   snapshotBusy: boolean;
+  autoToggleBusy: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const fan = competitor.latestSnapshot?.fan_count;
   return (
     <Box sx={{ borderBottom: '1px solid rgba(148,163,184,0.10)' }} data-testid={`competitor-row-${competitor.id}`}>
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ py: 1 }}>
-        <GroupIcon sx={{ color: '#a78bfa', fontSize: 18 }} />
+        <Avatar
+          src={competitor.latestSnapshot?.picture_url || undefined}
+          alt={competitor.nickname}
+          sx={{
+            width: 32, height: 32,
+            background: 'rgba(2,6,23,0.6)',
+            border: '1px solid rgba(148,163,184,0.18)',
+            fontSize: '0.78rem',
+            color: '#e2e8f0',
+          }}
+        >
+          {competitor.latestSnapshot?.picture_url ? null : <GroupIcon sx={{ color: '#a78bfa', fontSize: 18 }} />}
+        </Avatar>
         <Stack sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" alignItems="center" spacing={1}>
             <Typography sx={{ fontWeight: 600, color: '#e2e8f0', fontSize: '0.92rem' }}>
@@ -131,12 +153,19 @@ function CompetitorRow({
                 sx={{ background: 'rgba(168,85,247,0.15)', color: '#c4b5fd', height: 16, fontSize: '0.6rem' }} />
             )}
           </Stack>
-          <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.5)' }}>
-            Page ID: {competitor.pageId} ·
-            {competitor.latestSnapshot?.snapshot_at
-              ? ` Sist snapshot: ${new Date(competitor.latestSnapshot.snapshot_at).toLocaleString('nb-NO')}`
-              : ' Aldri snapshot'}
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={0.5}>
+            {competitor.accountType === 'instagram'
+              ? <InstagramIcon sx={{ fontSize: 12, color: '#ec4899' }} />
+              : <FacebookIcon sx={{ fontSize: 12, color: '#60a5fa' }} />}
+            <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.5)' }}>
+              {competitor.accountType === 'instagram'
+                ? `@${competitor.igUsername || '?'}`
+                : `Page ID: ${competitor.pageId}`}
+              · {competitor.latestSnapshot?.snapshot_at
+                ? `Sist snapshot: ${new Date(competitor.latestSnapshot.snapshot_at).toLocaleString('nb-NO')}`
+                : 'Aldri snapshot'}
+            </Typography>
+          </Stack>
         </Stack>
         <Stack direction="row" alignItems="center" spacing={1}>
           <Stack alignItems="flex-end">
@@ -158,7 +187,22 @@ function CompetitorRow({
                 : <TrendingUpIcon sx={{ fontSize: 16, color: '#7dd3fc' }} />}
             </IconButton>
           </Tooltip>
-          <Tooltip title="Hent nytt snapshot fra Meta API">
+          <Tooltip title={competitor.autoSnapshot ? 'Auto-snapshot ON (1×/døgn)' : 'Auto-snapshot OFF — kun manuell'}>
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={competitor.autoSnapshot}
+                  onChange={(e) => void onToggleAuto(competitor.id, e.target.checked)}
+                  disabled={autoToggleBusy}
+                  data-testid={`competitor-auto-toggle-${competitor.id}`}
+                />
+              }
+              label={<Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.6)' }}>auto</Typography>}
+              sx={{ m: 0 }}
+            />
+          </Tooltip>
+          <Tooltip title="Hent nytt snapshot fra Meta API (manuell)">
             <IconButton size="small" onClick={() => void onSnapshot(competitor.id)}
               disabled={snapshotBusy} data-testid={`competitor-snapshot-${competitor.id}`}>
               {snapshotBusy ? <CircularProgress size={14} /> : <RefreshIcon sx={{ fontSize: 16, color: '#fbbf24' }} />}
@@ -188,12 +232,14 @@ export default function CompetitorsPanel() {
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [addAccountType, setAddAccountType] = useState<'facebook' | 'instagram'>('instagram');
   const [addPageId, setAddPageId] = useState('');
   const [addNickname, setAddNickname] = useState('');
   const [addBusy, setAddBusy] = useState(false);
   const [snapshotBusy, setSnapshotBusy] = useState<number | null>(null);
   const [snapshotData, setSnapshotData] = useState<Record<number, Snapshot[]>>({});
   const [snapshotLoading, setSnapshotLoading] = useState<Record<number, boolean>>({});
+  const [autoToggleBusy, setAutoToggleBusy] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ kind: 'success' | 'error' | 'info'; msg: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -215,19 +261,29 @@ export default function CompetitorsPanel() {
 
   const handleAdd = useCallback(async () => {
     if (!addPageId.trim() || !addNickname.trim()) {
-      setNotice({ kind: 'error', msg: 'Page ID + nickname påkrevd.' });
+      setNotice({ kind: 'error', msg: addAccountType === 'facebook' ? 'Page ID + nickname påkrevd.' : 'IG-handle + nickname påkrevd.' });
       return;
     }
     setAddBusy(true);
     try {
+      const payload: Record<string, unknown> = {
+        brandKey: 'theroleroom',
+        accountType: addAccountType,
+        nickname: addNickname.trim(),
+      };
+      if (addAccountType === 'facebook') {
+        payload.pageId = addPageId.trim();
+      } else {
+        payload.igUsername = addPageId.trim().replace(/^@/, '');
+      }
       const r = await fetch('/api/role-room/marketing-cockpit/competitors', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pageId: addPageId.trim(), nickname: addNickname.trim(), brandKey: 'theroleroom' }),
+        body: JSON.stringify(payload),
       });
       const d = await r.json();
       if (d.ok) {
-        setNotice({ kind: 'success', msg: `Lagt til "${addNickname.trim()}". Klikk refresh-ikon for å hente første snapshot.` });
+        setNotice({ kind: 'success', msg: `Lagt til "${addNickname.trim()}" som ${addAccountType.toUpperCase()}. Klikk refresh-ikon for å hente første snapshot.` });
         setAddPageId(''); setAddNickname('');
         await load();
       } else {
@@ -238,7 +294,7 @@ export default function CompetitorsPanel() {
     } finally {
       setAddBusy(false);
     }
-  }, [addPageId, addNickname, load]);
+  }, [addAccountType, addPageId, addNickname, load]);
 
   const handleSnapshot = useCallback(async (id: number) => {
     setSnapshotBusy(id);
@@ -266,6 +322,37 @@ export default function CompetitorsPanel() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, snapshotData]);
+
+  const handleToggleAuto = useCallback(async (id: number, next: boolean) => {
+    setAutoToggleBusy(id);
+    // Optimistic update so the Switch reflects immediately.
+    setCompetitors((cs) => cs.map((c) => c.id === id ? { ...c, autoSnapshot: next } : c));
+    try {
+      const r = await fetch(`/api/role-room/marketing-cockpit/competitors/${id}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoSnapshot: next }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setNotice({
+          kind: 'success',
+          msg: next
+            ? 'Auto-snapshot på. Worker tar nytt snapshot innen 1 time, deretter daglig.'
+            : 'Auto-snapshot av. Bare manuelle snapshots fra nå.',
+        });
+      } else {
+        // Rollback optimistic update
+        setCompetitors((cs) => cs.map((c) => c.id === id ? { ...c, autoSnapshot: !next } : c));
+        setNotice({ kind: 'error', msg: d.error || 'Toggle failed' });
+      }
+    } catch (err) {
+      setCompetitors((cs) => cs.map((c) => c.id === id ? { ...c, autoSnapshot: !next } : c));
+      setNotice({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setAutoToggleBusy(null);
+    }
+  }, []);
 
   const handleDelete = useCallback(async (id: number) => {
     if (!confirm('Slett konkurrent fra liste? Alle snapshots beholdes i DB.')) return;
@@ -332,19 +419,41 @@ export default function CompetitorsPanel() {
         )}
 
         {/* Add-form */}
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1.5 }} data-testid="competitors-add-form">
-          <TextField size="small" placeholder="Page ID (15+ digits)" value={addPageId}
-            onChange={(e) => setAddPageId(e.target.value)} data-testid="competitor-page-id-input"
-            sx={{ flex: 2, '& .MuiInputBase-root': { color: '#e2e8f0' } }} />
-          <TextField size="small" placeholder="Nickname (e.g. Filmweb)" value={addNickname}
-            onChange={(e) => setAddNickname(e.target.value)} data-testid="competitor-nickname-input"
-            sx={{ flex: 2, '& .MuiInputBase-root': { color: '#e2e8f0' } }} />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => void handleAdd()}
-            disabled={addBusy} data-testid="competitor-add-button"
-            sx={{ background: 'rgba(168,85,247,0.25)', color: '#c4b5fd',
-              '&:hover': { background: 'rgba(168,85,247,0.4)' } }}>
-            {addBusy ? '…' : 'Legg til'}
-          </Button>
+        <Stack spacing={1} sx={{ mb: 1.5 }} data-testid="competitors-add-form">
+          <ToggleButtonGroup
+            value={addAccountType}
+            exclusive
+            onChange={(_, v) => v && setAddAccountType(v)}
+            size="small"
+            data-testid="competitor-type-toggle"
+            sx={{ '& .MuiToggleButton-root': {
+              color: 'rgba(203,213,225,0.6)', textTransform: 'none',
+              '&.Mui-selected': { background: 'rgba(168,85,247,0.25)', color: '#c4b5fd' },
+            } }}
+          >
+            <ToggleButton value="instagram">
+              <InstagramIcon sx={{ fontSize: 16, mr: 0.5, color: '#ec4899' }} /> Instagram-handle
+            </ToggleButton>
+            <ToggleButton value="facebook">
+              <FacebookIcon sx={{ fontSize: 16, mr: 0.5, color: '#60a5fa' }} /> Facebook Page-ID
+            </ToggleButton>
+          </ToggleButtonGroup>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            <TextField size="small"
+              placeholder={addAccountType === 'facebook' ? 'Page ID (15+ digits)' : '@username (e.g. studiobinder)'}
+              value={addPageId}
+              onChange={(e) => setAddPageId(e.target.value)} data-testid="competitor-page-id-input"
+              sx={{ flex: 2, '& .MuiInputBase-root': { color: '#e2e8f0' } }} />
+            <TextField size="small" placeholder="Nickname (e.g. StudioBinder)" value={addNickname}
+              onChange={(e) => setAddNickname(e.target.value)} data-testid="competitor-nickname-input"
+              sx={{ flex: 2, '& .MuiInputBase-root': { color: '#e2e8f0' } }} />
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => void handleAdd()}
+              disabled={addBusy} data-testid="competitor-add-button"
+              sx={{ background: 'rgba(168,85,247,0.25)', color: '#c4b5fd',
+                '&:hover': { background: 'rgba(168,85,247,0.4)' } }}>
+              {addBusy ? '…' : 'Legg til'}
+            </Button>
+          </Stack>
         </Stack>
 
         <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)', my: 1 }} />
@@ -361,9 +470,11 @@ export default function CompetitorsPanel() {
                 competitor={c}
                 onSnapshot={handleSnapshot}
                 onDelete={handleDelete}
+                onToggleAuto={handleToggleAuto}
                 snapshots={snapshotData[c.id] || []}
                 snapshotsLoading={snapshotLoading[c.id] || false}
                 snapshotBusy={snapshotBusy === c.id}
+                autoToggleBusy={autoToggleBusy === c.id}
               />
             ))}
           </Box>

@@ -202,6 +202,8 @@ import PhotographerProjectDetail from '@/pages/photographer-project-detail';
 import PhotographerProfitability from '@/pages/photographer-profitability';
 import PhotographerIntegrations from '@/pages/photographer-integrations';
 import PhotographerGalleryDetail from '@/pages/photographer-gallery-detail';
+import PublicLeadForm from '@/pages/public-lead-form';
+import CrmStandalone from '@/pages/crm-standalone';
 import PortalPage from '@/pages/portal';
 import PhotographerProjectUpload from '@/pages/photographer-project-upload';
 import PhotographerEquipment from '@/pages/photographer-equipment';
@@ -835,6 +837,7 @@ function App() {
                   <Route path="/subscription" component={SubscriptionSelectionPage as React.ComponentType<any>} />
                   <Route path="/subscription-selection" component={SubscriptionSelectionPage as React.ComponentType<any>} />
                   <Route path="/about-us" component={About as React.ComponentType<any>} />
+                  <Route path="/lead/:token" component={PublicLeadForm as React.ComponentType<any>} />
                   <Route path="/client/gallery/:projectId/:accessToken" component={ClientGallery as React.ComponentType<any>} />
                   <Route path="/client/gallery/:accessToken" component={ClientGallery as React.ComponentType<any>} />
                   <Route path="/client/portal/:token" component={ClientPortalMarketingPage as React.ComponentType<any>} />
@@ -852,6 +855,7 @@ function App() {
                     component={WeddingTimelineClientResponsive}
                   />
                   <Route path="/dashboard" component={() => <SmartDashboardRoute />} />
+                  <Route path="/crm" component={CrmStandalone as React.ComponentType<any>} />
                   <Route path="/story-arc-studio" component={StoryArcStudioRouteWrapper} />
                   <Route
                     path="/fotograf"

@@ -9,6 +9,7 @@
  * en fokusert komponent som leser direkte fra dance-profil-API.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -37,7 +38,7 @@ import {
   type DancerAvailabilityWindow,
 } from './dancerProfileService';
 
-const PURPLE = '#8b5cf6';
+const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_SOFT = 'rgba(139,92,246,0.12)';
 
 export interface DanceProjectCalendarProps {

@@ -16,6 +16,7 @@
  * match the rest of the dance vertical.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -59,11 +60,11 @@ import type { Rehearsal } from './rehearsalTypes';
 import type { Dancer, Formation } from './formationTypes';
 import { getInitials } from './dancerProfile';
 
-const PURPLE = '#8b5cf6';
-const PURPLE_LIGHT = '#a78bfa';
+const PURPLE = danceFlowColors.lavenderDark;
+const PURPLE_LIGHT = danceFlowColors.lavender;
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 const PALETTE = [
-  '#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899',
+  danceFlowColors.info, danceFlowColors.amber, danceFlowColors.successDark, danceFlowColors.lavenderDark, danceFlowColors.pinkAccent,
   '#06b6d4', '#f97316', '#84cc16', '#a855f7', '#f43f5e',
 ];
 
@@ -314,7 +315,7 @@ export function RehearsalPlannerConnected({
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => void initialLoad()}
-          sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none' }}
+          sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep }, textTransform: 'none' }}
         >
           Last på nytt
         </Button>
@@ -343,7 +344,7 @@ export function RehearsalPlannerConnected({
             icon={<SavedIcon sx={{ fontSize: 16 }} />}
             label="Lagret"
             size="small"
-            sx={{ bgcolor: 'rgba(16,185,129,0.18)', color: '#10b981', fontWeight: 600 }}
+            sx={{ bgcolor: 'rgba(16,185,129,0.18)', color: danceFlowColors.successDark, fontWeight: 600 }}
           />
         ) : null}
         {saveStatus === 'error' ? (
@@ -351,7 +352,7 @@ export function RehearsalPlannerConnected({
             icon={<ErrorIcon sx={{ fontSize: 16 }} />}
             label={saveError ?? 'Lagring feilet'}
             size="small"
-            sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#fca5a5', fontWeight: 600 }}
+            sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: danceFlowColors.errorSoft, fontWeight: 600 }}
           />
         ) : null}
       </Stack>

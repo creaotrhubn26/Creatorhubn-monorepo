@@ -26,7 +26,7 @@ import { loadSettings } from "./SettingsModal";
 import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
 import CheckCircleOutlinedIcon from "@mui/icons-material/CheckCircleOutlined";
-import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutlineOutlined";
 import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import CircularProgress from "@mui/material/CircularProgress";

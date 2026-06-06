@@ -9,11 +9,8 @@ import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { useQuery } from '@tanstack/react-query';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { apiRequest } from '@/lib/queryClient';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import {
   Box,
   Card as MuiCard,
@@ -44,11 +41,8 @@ import {
   Warning as WarningIcon,
 } from '@mui/icons-material';
 import { useUniversalNotificationContext } from './UniversalNotificationProvider';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import GoogleMeetIntegration from '../meet/GoogleMeetIntegration';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import SmartMeetingPreparation from '../meet/SmartMeetingPreparation';
-import { getAuthHeader } from '@/lib/google/impersonation';
 
 interface UniversalDashboardNotificationIntegrationProps {
   profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
