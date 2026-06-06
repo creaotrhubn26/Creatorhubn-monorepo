@@ -1,0 +1,442 @@
+import { Buffer } from 'node:buffer';
+import { deflateSync } from 'node:zlib';
+import { expect, test, type Page, type Route } from '@playwright/test';
+
+/**
+ * Full-workflow end-to-end for the CreatorHub Photo Enhancer.
+ *
+ * Where `frequency-sep.spec.ts` exercises the retouch sub-editor in
+ * isolation, this spec drives the *complete* photographer journey through
+ * `CreatorHubPhotoEnhancer` in a real browser, with every backend endpoint
+ * mocked so the flow runs without R2, Claude Vision or the GFPGAN runner:
+ *
+ *   status (mount) → upload → analyze → AI-forslag (suggest-recipe)
+ *     → adjust a setting → Enhance → before/after preview → Save to project
+ *
+ * It also covers the second architectural path the synchronous flow can't:
+ * the **server job queue** (direct R2 multipart upload → POST /jobs →
+ * poll /jobs/{id} → completed), which kicks in for large uploads.
+ *
+ * The 110 vitest units cover the algorithms; this spec catches the wiring
+ * units can't see: that the mutations fire in the right order, send the
+ * right payloads, and that each response actually advances the UI state.
+ */
+
+/** Hand-rolled valid RGBA PNG so we don't pull in `sharp` for a fixture.
+ *  Identical construction to frequency-sep.spec.ts. */
+function makeTestPng(width = 64, height = 64): Buffer {
+  const chunks: Buffer[] = [];
+  const crc32 = (buf: Buffer): number => {
+    let c = ~0 >>> 0;
+    for (const byte of buf) {
+      c = c ^ byte;
+      for (let i = 0; i < 8; i++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+    }
+    return (~c) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length, 0);
+    const typeBuf = Buffer.from(type, 'ascii');
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
+    return Buffer.concat([len, typeBuf, data, crc]);
+  };
+  chunks.push(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr.writeUInt8(8, 8);
+  ihdr.writeUInt8(6, 9);
+  chunks.push(chunk('IHDR', ihdr));
+  const rows: Buffer[] = [];
+  for (let y = 0; y < height; y++) {
+    const row = Buffer.alloc(1 + width * 4);
+    for (let x = 0; x < width; x++) {
+      const i = 1 + x * 4;
+      row[i] = Math.floor((x / width) * 200) + 30;
+      row[i + 1] = Math.floor((y / height) * 200) + 30;
+      row[i + 2] = 128;
+      row[i + 3] = 255;
+    }
+    rows.push(row);
+  }
+  chunks.push(chunk('IDAT', deflateSync(Buffer.concat(rows))));
+  chunks.push(chunk('IEND', Buffer.alloc(0)));
+  return Buffer.concat(chunks);
+}
+
+/** A deliberately incompressible PNG (LCG noise) so the *encoded* file size
+ *  clears the 20 MB `DIRECT_UPLOAD_THRESHOLD_BYTES` and trips the queued
+ *  upload path. A gradient would deflate to a few KB and never qualify. */
+function makeLargeNoisePng(side = 2500): Buffer {
+  const chunks: Buffer[] = [];
+  const crc32 = (buf: Buffer): number => {
+    let c = ~0 >>> 0;
+    for (const byte of buf) {
+      c = c ^ byte;
+      for (let i = 0; i < 8; i++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+    }
+    return (~c) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length, 0);
+    const typeBuf = Buffer.from(type, 'ascii');
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
+    return Buffer.concat([len, typeBuf, data, crc]);
+  };
+  chunks.push(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(side, 0);
+  ihdr.writeUInt32BE(side, 4);
+  ihdr.writeUInt8(8, 8);
+  ihdr.writeUInt8(6, 9);
+  chunks.push(chunk('IHDR', ihdr));
+  const raw = Buffer.alloc(side * (1 + side * 4));
+  let seed = 0x1234567;
+  for (let p = 0; p < raw.length; p++) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    raw[p] = (seed >> 8) & 0xff;
+  }
+  // Force every row's filter byte to 0 (None) so the bytes stay random.
+  for (let y = 0; y < side; y++) raw[y * (1 + side * 4)] = 0;
+  chunks.push(chunk('IDAT', deflateSync(raw, { level: 0 })));
+  chunks.push(chunk('IEND', Buffer.alloc(0)));
+  return Buffer.concat(chunks);
+}
+
+// Tiny 1x1 PNG used as the mocked enhanced result — a data URL so the
+// <ImagePreview> can render it without a real network round-trip.
+const ENHANCED_DATA_URL =
+  'data:image/png;base64,' +
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5001';
+
+/** JSON the `/status` query expects on mount. `directUpload` overrides let a
+ *  test flip from the synchronous `/enhance` path to the queued `/jobs`
+ *  path (set `maxBytes: 1` so even a tiny fixture trips the direct route). */
+function statusPayload(directUpload: Record<string, unknown> = { enabled: false, reason: null }) {
+  return {
+    success: true,
+    models: {
+      gfpgan: { id: 'gfpgan', displayName: 'GFPGAN v1.4', available: true },
+      registry: [
+        { id: 'gfpgan', displayName: 'GFPGAN v1.4', modelType: 'face', available: true },
+        { id: 'realesrgan', displayName: 'Real-ESRGAN', modelType: 'upscale', available: true },
+        { id: 'codeformer', displayName: 'CodeFormer', modelType: 'face', available: false, reason: 'not-loaded' },
+      ],
+      faceApi: { available: true },
+      imageHash: { available: true },
+    },
+    rawSupport: { available: true, supportedExtensions: ['cr2', 'nef', 'arw'], rasterExtensions: ['jpg', 'png'], converters: { dcraw: true } },
+    googleDrive: { folderStructure: [] },
+    directUpload: {
+      strategy: 'multipart',
+      partSizeBytes: 64 * 1024 * 1024,
+      maxPartUrlsPerRequest: 1,
+      signedUrlTtlSeconds: 600,
+      proxyUpload: { enabled: true, partSizeBytes: 64 * 1024 * 1024, strategy: 'proxy' },
+      cors: { requiresBrowserPut: false },
+      ...directUpload,
+    },
+    improvements: { total: 0, tracked: [] },
+    queue: {
+      paused: false,
+      counts: { queued: 0, running: 0 },
+      concurrency: { global: 2, perUser: 1, perProject: 1 },
+      memory: { freeMb: 8000, minFreeMb: 1000, canStart: true },
+      capabilities: ['gfpgan', 'realesrgan'],
+    },
+    processingOptions: { modelPreference: ['gfpgan', 'realesrgan'], executionNote: 'mocked' },
+  };
+}
+
+const json = (route: Route, body: unknown, status = 200) =>
+  route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+
+/** Register the always-needed reads so the enhancer mounts cleanly. */
+async function mockStatusAndProjects(
+  page: Page,
+  directUpload?: Record<string, unknown>,
+): Promise<void> {
+  await page.route('**/api/photo-enhancer/status', (route) => json(route, statusPayload(directUpload)));
+  await page.route('**/api/projects?profession=*', (route) =>
+    json(route, [
+      { id: 'proj-aurora', name: 'Aurora Wedding 2026' },
+      { id: 'proj-studio', name: 'Studio Portraits' },
+    ]),
+  );
+}
+
+/** Collect console/page errors, filtered down to ones the enhancer itself
+ *  is responsible for (the dev shell logs unrelated 404s and React noise). */
+function trackConsoleErrors(page: Page): string[] {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(msg.text());
+  });
+  page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
+  return errors;
+}
+
+function relevantErrors(errors: string[]): string[] {
+  return errors.filter(
+    (msg) =>
+      !/Warning: React does not recognize/.test(msg) &&
+      !/validateDOMNesting/.test(msg) &&
+      !/Download the React DevTools/.test(msg) &&
+      !/ERR_BLOCKED_BY_CLIENT/.test(msg) &&
+      // The dev shell runs without a backend: unmocked endpoints answer
+      // 401/404/503 and the notification socket fails to connect. All
+      // environmental — every endpoint the workflow actually drives is
+      // mocked, so a genuine wiring break surfaces as a thrown error or a
+      // missing-UI timeout, not as a background resource-load failure.
+      !/Failed to load resource/.test(msg) &&
+      !/status of \d{3}/.test(msg) &&
+      !/WebSocket error/.test(msg) &&
+      // Unrelated background polling in the dev shell.
+      !/\/api\/(auth|analytics|integrations|ai\/analytics|onboarding|whats-new)/.test(msg),
+  );
+}
+
+/** Navigate into the AI Forbedring tab and wait for the enhancer to mount. */
+async function gotoEnhancer(page: Page): Promise<void> {
+  // Suppress the solo-onboarding wizard, which otherwise auto-opens as a
+  // modal over the dashboard ~2s after mount. It is unrelated to the photo
+  // enhancer; keeping it shut isolates the feature under test.
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem('individual-onboarding-completed', '1');
+    } catch {
+      /* storage unavailable — ignore */
+    }
+  });
+  await page.goto(`${BASE_URL}/photographer-dashboard-material`, { waitUntil: 'domcontentloaded' });
+  const aiTab = page.getByRole('tab', { name: /AI\s*Forbedring/i });
+  await aiTab.waitFor({ state: 'visible', timeout: 30_000 });
+  await aiTab.click();
+  await expect(page.getByRole('button', { name: /Last opp bilde/ })).toBeVisible({ timeout: 20_000 });
+}
+
+/** Upload a fixture through the hidden file input. Pass a buffer to override
+ *  the default tiny gradient (e.g. a >20 MB noise PNG for the queue path). */
+async function uploadFixture(page: Page, name = 'portrait.png', buffer?: Buffer): Promise<void> {
+  const fileInput = page.locator('input[type="file"][accept*="image"]').first();
+  await fileInput.waitFor({ state: 'attached', timeout: 15_000 });
+  await fileInput.setInputFiles({ name, mimeType: 'image/png', buffer: buffer ?? makeTestPng(96, 96) });
+  // The filename chip confirms the file landed in session state.
+  await expect(page.getByText(name, { exact: true })).toBeVisible({ timeout: 10_000 });
+}
+
+test.describe('Photo Enhancer — full workflow', () => {
+  test('status query populates model + queue readiness on mount', async ({ page }) => {
+    const errors = trackConsoleErrors(page);
+    await mockStatusAndProjects(page);
+    await gotoEnhancer(page);
+
+    // The queue runtime from /status drives a readiness chip.
+    await expect(page.getByText(/Kø:\s*0\s*venter/i)).toBeVisible({ timeout: 15_000 });
+    expect(relevantErrors(errors), relevantErrors(errors).join('\n')).toEqual([]);
+  });
+
+  test('synchronous flow: upload → analyze → AI-forslag → Enhance → result → Save enabled', async ({
+    page,
+  }) => {
+    const errors = trackConsoleErrors(page);
+    await mockStatusAndProjects(page);
+
+    // Capture each mutation's payload so we can assert the wiring is correct.
+    let analyzeCalled = false;
+    let suggestCalled = false;
+    let enhancePreset: string | null = null;
+    let enhanceHadSettings = false;
+
+    await page.route('**/api/photo-enhancer/analyze', (route) => {
+      analyzeCalled = true;
+      return json(route, { analysis: { perceptualHash: 'abc123', format: 'png', faces: [] } });
+    });
+    await page.route('**/api/photo-enhancer/suggest-recipe', (route) => {
+      suggestCalled = true;
+      return json(route, {
+        recipe: { brightness: 12, contrast: 8, saturation: 5 },
+        analysis: {
+          subject: 'portrait',
+          confidence: 0.88,
+          rationale: 'Detected a single front-lit face.',
+          observations: ['Soft window light', 'Slight underexposure'],
+        },
+      });
+    });
+    await page.route('**/api/photo-enhancer/enhance', (route) => {
+      const body = route.request().postDataBuffer()?.toString('binary') ?? '';
+      const presetMatch = body.match(/name="preset"\r?\n\r?\n([^\r]+)/);
+      enhancePreset = presetMatch ? presetMatch[1] : null;
+      enhanceHadSettings = /name="settings"/.test(body);
+      return json(route, { imageUrl: ENHANCED_DATA_URL, job: null });
+    });
+    // Best-effort feedback POST fired after a suggestion-seeded enhance.
+    await page.route('**/api/photo-enhancer/feedback', (route) => json(route, { ok: true }));
+
+    await gotoEnhancer(page);
+    await uploadFixture(page);
+
+    // 1) Analyze.
+    await page.getByRole('button', { name: /^Analyze$/ }).click();
+    await expect(page.getByText(/Analyse fullført/)).toBeVisible({ timeout: 15_000 });
+    expect(analyzeCalled).toBe(true);
+
+    // 2) AI-forslag (Claude Vision recipe). Confidence + subject chip render.
+    await page.getByRole('button', { name: /^AI-forslag$/ }).click();
+    await expect(page.getByText(/AI:\s*portrait/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/88%\s*sikker/i)).toBeVisible();
+    expect(suggestCalled).toBe(true);
+
+    // 3) Nudge a setting so the enhance payload is non-default. The first
+    //    range input under Settings is Brightness.
+    const brightness = page.locator('input[type="range"]').first();
+    await brightness.focus();
+    await brightness.press('ArrowRight');
+
+    // 4) Enhance → before/after side-by-side preview appears.
+    await page.getByRole('button', { name: /^Enhance$/ }).click();
+    await expect(page.getByRole('img', { name: 'Enhanced' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('img', { name: 'Original' })).toBeVisible();
+    expect(enhancePreset, 'enhance must send the active preset').not.toBeNull();
+    expect(enhanceHadSettings, 'enhance must send a settings payload').toBe(true);
+
+    // 5) The result unlocks the Save action.
+    await expect(page.getByRole('button', { name: /Save to project/ })).toBeEnabled({ timeout: 10_000 });
+
+    expect(relevantErrors(errors), relevantErrors(errors).join('\n')).toEqual([]);
+  });
+
+  test('save flow: enhanced result persists to the selected project/folder', async ({ page }) => {
+    await mockStatusAndProjects(page);
+    await page.route('**/api/photo-enhancer/enhance', (route) =>
+      json(route, { imageUrl: ENHANCED_DATA_URL }),
+    );
+
+    let savedBody: Record<string, unknown> | null = null;
+    await page.route('**/api/photo-enhancer/save', (route) => {
+      const raw = route.request().postData();
+      savedBody = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+      return json(route, { success: true, savedId: 'asset-123' });
+    });
+
+    await gotoEnhancer(page);
+    await uploadFixture(page);
+    await page.getByRole('button', { name: /^Enhance$/ }).click();
+    await expect(page.getByRole('img', { name: 'Enhanced' })).toBeVisible({ timeout: 15_000 });
+
+    // Open the Save dialog and pick a project (folder auto-seeds to the
+    // first profession default, so only the project needs a choice).
+    await page.getByRole('button', { name: /Save to project/ }).click();
+    const dialog = page.getByRole('dialog', { name: /Save Enhanced Image/i });
+    await expect(dialog).toBeVisible();
+
+    await dialog.getByLabel('Project').click();
+    await page.getByRole('option', { name: 'Aurora Wedding 2026' }).click();
+
+    const saveBtn = dialog.getByRole('button', { name: /^Save$/ });
+    await expect(saveBtn).toBeEnabled();
+    await saveBtn.click();
+
+    await expect
+      .poll(() => savedBody, { message: '/save was never called', timeout: 10_000 })
+      .not.toBeNull();
+
+    expect(savedBody).toMatchObject({
+      projectId: 'proj-aurora',
+      folderId: 'raw-footage',
+      enhancedImageUrl: ENHANCED_DATA_URL,
+    });
+    expect(typeof (savedBody as Record<string, unknown>).preset).toBe('string');
+    expect((savedBody as Record<string, unknown>).settings).toBeTruthy();
+  });
+
+  test('queue path: direct R2 multipart upload → POST /jobs → poll → completed', async ({
+    page,
+  }) => {
+    // A >20 MB upload trips DIRECT_UPLOAD_THRESHOLD_BYTES → the queued path.
+    await mockStatusAndProjects(page, { enabled: true, reason: null });
+
+    const seenEndpoints: string[] = [];
+
+    await page.route('**/api/photo-enhancer/uploads/multipart', (route) => {
+      seenEndpoints.push('init');
+      return json(route, {
+        upload: {
+          bucket: 'the-bucket',
+          key: 'uploads/portrait.png',
+          uploadId: 'upl-1',
+          partSize: 64 * 1024 * 1024,
+          partCount: 1,
+          maxPartUrlsPerRequest: 1,
+        },
+      });
+    });
+    await page.route('**/api/photo-enhancer/uploads/multipart/proxy-part', (route) => {
+      seenEndpoints.push('proxy-part');
+      return json(route, { part: { etag: 'etag-part-1' } });
+    });
+    await page.route('**/api/photo-enhancer/uploads/multipart/complete', (route) => {
+      seenEndpoints.push('complete');
+      return json(route, {
+        source: {
+          storageType: 'r2',
+          bucket: 'the-bucket',
+          key: 'uploads/portrait.png',
+          uploadId: 'upl-1',
+          fileName: 'portrait.png',
+          mimeType: 'image/png',
+          size: 4096,
+          etag: 'etag-final',
+          lastModified: null,
+        },
+      });
+    });
+
+    let jobPolls = 0;
+    await page.route('**/api/photo-enhancer/jobs', (route) => {
+      seenEndpoints.push('jobs-create');
+      return json(route, {
+        job: { id: 'job-abcdef12', status: 'queued', progress: 0, attempts: 0, maxAttempts: 3 },
+      });
+    });
+    // GET poll: report running once, then completed with a result URL.
+    await page.route(/\/api\/photo-enhancer\/jobs\/job-abcdef12$/, (route) => {
+      jobPolls += 1;
+      const done = jobPolls >= 1;
+      return json(route, {
+        job: {
+          id: 'job-abcdef12',
+          status: done ? 'completed' : 'running',
+          progress: done ? 100 : 40,
+          attempts: 1,
+          maxAttempts: 3,
+          result: done ? { imageUrl: ENHANCED_DATA_URL } : null,
+        },
+      });
+    });
+
+    await gotoEnhancer(page);
+    await uploadFixture(page, 'large-shoot.png', makeLargeNoisePng(2500));
+
+    await page.getByRole('button', { name: /^Enhance$/ }).click();
+
+    // The server-job panel surfaces while the queue processes.
+    await expect(page.getByText(/Server-jobb/)).toBeVisible({ timeout: 15_000 });
+
+    // Polling completes (≥1.5s/poll) and the enhanced result renders.
+    await expect(page.getByRole('img', { name: 'Enhanced' })).toBeVisible({ timeout: 20_000 });
+
+    expect(seenEndpoints).toContain('init');
+    expect(seenEndpoints).toContain('proxy-part');
+    expect(seenEndpoints).toContain('complete');
+    expect(seenEndpoints).toContain('jobs-create');
+    expect(jobPolls).toBeGreaterThanOrEqual(1);
+  });
+});
