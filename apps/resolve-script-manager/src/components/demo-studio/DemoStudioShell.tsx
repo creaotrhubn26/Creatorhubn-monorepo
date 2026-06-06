@@ -21,6 +21,7 @@ import { ScriptBuilderView } from './ScriptBuilderView';
 import { GuidedRecorderView } from './GuidedRecorderView';
 import { ExportView } from './ExportView';
 import { MarketingPanel } from './MarketingPanel';
+import { speak, cancelSpeech, getWebVoices, isWebSpeechSupported, type WebVoice } from './webSpeechVoiceover';
 import { FramedDevice, VIEWPORT_W } from './FramedDevice';
 import { SceneInteractionOverlay } from './SceneInteractionOverlay';
 import { type FrameVariant } from './deviceFrames';
@@ -974,6 +975,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   <div style={fldLabel}>{tab === 'Notes' ? 'Notater' : 'Manus / narration'}</div>
                   <textarea style={{ ...field, height: 70, resize: 'vertical', fontFamily: 'inherit' }} value={selected.narration}
                     placeholder="Hva som skal sies i denne scenen…" onChange={(e) => updateScene(selected.id, { narration: e.target.value })} />
+                  {tab !== 'Notes' && <WebSpeechBar scene={selected} language={project.language} />}
 
                   <div style={row2}>
                     <div><div style={fldLabel}>Enhet</div>
@@ -1421,5 +1423,45 @@ const titleField: React.CSSProperties = { background: 'transparent', border: 0, 
 const sel: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' };
 const row2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 };
 const chip: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#fff', padding: '2px 8px', borderRadius: 10, display: 'inline-block' };
+
+/**
+ * Resolve-fri voiceover-forhåndsvisning (Web Speech). Les opp scenens manus i
+ * nettleseren — velg kjønn — uten DaVinci Resolve. For eksportert lydfil brukes
+ * Resolve-provideren når den er tilgjengelig.
+ */
+function WebSpeechBar({ scene, language }: { scene: DemoScene; language: string }) {
+  const [voices, setVoices] = useState<WebVoice[]>([]);
+  const [gender, setGender] = useState<'female' | 'male'>('female');
+  const [speaking, setSpeaking] = useState(false);
+  useEffect(() => { void getWebVoices().then(setVoices); return () => cancelSpeech(); }, []);
+  if (!isWebSpeechSupported()) return null;
+  const lang = language === 'en' ? 'en' : 'nb';
+  const langVoices = voices.filter((v) => v.lang.toLowerCase().startsWith(lang.slice(0, 2)));
+  const hasNarration = !!scene.narration?.trim();
+  const play = () => {
+    if (!hasNarration) return;
+    setSpeaking(true);
+    speak(scene.narration, { gender, lang, onEnd: () => setSpeaking(false), onError: () => setSpeaking(false) });
+  };
+  const stop = () => { cancelSpeech(); setSpeaking(false); };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+      <button onClick={speaking ? stop : play} disabled={!hasNarration}
+        title="Les opp manus i nettleseren (uten Resolve)"
+        style={{ ...btn, padding: '5px 11px', fontSize: 12, opacity: hasNarration ? 1 : 0.5 }}>
+        {speaking ? '■ Stopp' : '▶ Les opp'}
+      </button>
+      <div style={{ display: 'inline-flex', gap: 2, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 8, padding: 2 }}>
+        {(['female', 'male'] as const).map((g) => (
+          <button key={g} onClick={() => setGender(g)}
+            style={{ ...btn, border: 'none', padding: '4px 9px', fontSize: 11.5, background: gender === g ? C.accent : 'transparent', color: gender === g ? '#fff' : C.ink }}>
+            {g === 'female' ? 'Kvinne' : 'Mann'}
+          </button>
+        ))}
+      </div>
+      <span style={{ fontSize: 10.5, color: C.inkFaint }}>Resolve-fri · {langVoices.length || voices.length} stemmer</span>
+    </div>
+  );
+}
 
 export default DemoStudioShell;
