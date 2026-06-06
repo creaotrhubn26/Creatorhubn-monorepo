@@ -110,6 +110,13 @@ export interface DemoScene {
   detectedSelector?: string;
   /** CTA-type for mål-elementet (fra CTA-banken) — brukes til prioritering/innsikt. */
   ctaType?: CtaType;
+  /**
+   * Hvor sikker bindingen til mål-elementet er (aktiv læring):
+   *   - 'high':   bundet til ekte skannet element ELLER en lært korreksjon
+   *   - 'medium': AI ga targetLabel + omtrentlig hotspot (ikke verifisert)
+   *   - 'low':    ingen/uklart mål — AI bør spørre brukeren hvor elementet er
+   */
+  bindingConfidence?: 'high' | 'medium' | 'low';
   /** Marker scenen som et kritisk steg (fremheves i Script Builder/recorder). */
   critical?: boolean;
   /** Valideringsregel — når regnes handlingen som utført (f.eks. «Vent til modal åpnes»). */
@@ -648,26 +655,122 @@ export function learnedCtaCount(): number { return Object.keys(loadLearnedCtas()
 // Når brukeren manuelt plasserer hotspot / fikser target, husker vi det per
 // side+label og overstyrer AI-ens gjetting neste gang på samme side.
 const LEARNED_TARGETS_KEY = 'trrpa.demoStudio.learnedTargets';
-export interface LearnedTarget { label: string; selector?: string; hotspot?: { x: number; y: number; w: number; h: number } }
+export interface LearnedTarget {
+  label: string;
+  selector?: string;
+  hotspot?: { x: number; y: number; w: number; h: number };
+  /** Action-type-retting (AI sa click, det er egentlig type/scroll). */
+  actionType?: DemoActionType;
+  /** Label-retting (AI kalte den «Sign in», ekte tekst er «Logg inn»). */
+  correctLabel?: string;
+  /** Negative: selectors brukeren har avvist for dette elementet. */
+  rejectSelectors?: string[];
+  /** Hvordan den ble lært. */
+  source: 'manual' | 'capture';
+  /** Hvor mange ganger forsterket (manuell + capture). */
+  count: number;
+  /** ISO-tidsstempel for siste oppdatering (forvaltning/drift). */
+  updatedAt: string;
+}
 function hostOf(url: string): string { try { return new URL(url).host; } catch { return (url || '').slice(0, 80); } }
 function loadLearnedTargets(): Record<string, LearnedTarget> {
   try { return JSON.parse(localStorage.getItem(LEARNED_TARGETS_KEY) || '{}') as Record<string, LearnedTarget>; } catch { return {}; }
 }
-/** Husk en manuell korreksjon (hotspot/selector for et element på en side). */
-export function recordLearnedTarget(url: string, label: string, data: { selector?: string; hotspot?: { x: number; y: number; w: number; h: number } }): void {
-  const lab = (label || '').trim();
-  if (!lab || (!data.hotspot && !data.selector)) return;
-  const m = loadLearnedTargets();
-  m[`${hostOf(url)}|${normCta(lab)}`] = { label: lab, selector: data.selector, hotspot: data.hotspot };
+function saveLearnedTargets(m: Record<string, LearnedTarget>): void {
   try { localStorage.setItem(LEARNED_TARGETS_KEY, JSON.stringify(m)); } catch { /* */ }
+}
+function learnedKey(url: string, label: string): string { return `${hostOf(url)}|${normCta(label)}`; }
+
+/**
+ * Husk en korreksjon for et element på en side. Slår sammen med eksisterende
+ * (forsterker count, beholder felt som ikke overstyres). source='capture' når
+ * brukeren viste flowen («vis meg én gang»), 'manual' ved hotspot-plassering.
+ */
+export function recordLearnedTarget(
+  url: string,
+  label: string,
+  data: {
+    selector?: string;
+    hotspot?: { x: number; y: number; w: number; h: number };
+    actionType?: DemoActionType;
+    correctLabel?: string;
+    rejectSelector?: string;
+    source?: 'manual' | 'capture';
+  },
+): void {
+  const lab = (label || '').trim();
+  if (!lab) return;
+  if (!data.hotspot && !data.selector && !data.actionType && !data.correctLabel && !data.rejectSelector) return;
+  const m = loadLearnedTargets();
+  const key = learnedKey(url, lab);
+  const prev = m[key];
+  const rejects = new Set(prev?.rejectSelectors ?? []);
+  if (data.rejectSelector) rejects.add(data.rejectSelector);
+  m[key] = {
+    label: lab,
+    selector: data.selector ?? prev?.selector,
+    hotspot: data.hotspot ?? prev?.hotspot,
+    actionType: data.actionType ?? prev?.actionType,
+    correctLabel: data.correctLabel ?? prev?.correctLabel,
+    rejectSelectors: rejects.size ? Array.from(rejects) : undefined,
+    source: data.source ?? prev?.source ?? 'manual',
+    count: (prev?.count ?? 0) + 1,
+    updatedAt: new Date().toISOString(),
+  };
+  saveLearnedTargets(m);
 }
 /** Hent en lært korreksjon for et element på en side (eller null). */
 export function getLearnedTarget(url: string, label: string): LearnedTarget | null {
   const lab = (label || '').trim();
   if (!lab) return null;
-  return loadLearnedTargets()[`${hostOf(url)}|${normCta(lab)}`] ?? null;
+  return loadLearnedTargets()[learnedKey(url, lab)] ?? null;
 }
 export function learnedTargetCount(): number { return Object.keys(loadLearnedTargets()).length; }
+
+// ── Forvaltning & tillit (D) ──
+/** List alle lærte korreksjoner (nyeste først). */
+export function listLearnedTargets(): LearnedTarget[] {
+  return Object.values(loadLearnedTargets()).sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+}
+/** List lærte korreksjoner for én vert (nøkkel-host-prefiks). */
+export function listLearnedTargetsForHost(url: string): LearnedTarget[] {
+  const h = hostOf(url);
+  const m = loadLearnedTargets();
+  return Object.entries(m)
+    .filter(([k]) => k.startsWith(`${h}|`))
+    .map(([, v]) => v)
+    .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+}
+/** Glem én lært korreksjon. */
+export function removeLearnedTarget(url: string, label: string): void {
+  const m = loadLearnedTargets();
+  delete m[learnedKey(url, label)];
+  saveLearnedTargets(m);
+}
+/** Glem alle lærte korreksjoner (evt. kun for én vert). */
+export function clearLearnedTargets(url?: string): void {
+  if (!url) { saveLearnedTargets({}); return; }
+  const h = hostOf(url);
+  const m = loadLearnedTargets();
+  for (const k of Object.keys(m)) if (k.startsWith(`${h}|`)) delete m[k];
+  saveLearnedTargets(m);
+}
+/**
+ * Drift-deteksjon: en lært korreksjon er «utdatert» når dens selector ikke
+ * lenger finnes blant skannede elementer OG labelen ikke matcher noen. Da bør
+ * brukeren læres opp på nytt (siden er trolig redesignet).
+ */
+export function detectLearnedDrift(url: string, elements: ScannedElement[]): LearnedTarget[] {
+  const learned = listLearnedTargetsForHost(url);
+  if (!learned.length || !elements.length) return [];
+  const selectors = new Set(elements.map((e) => e.selector));
+  const labels = new Set(elements.map((e) => normCta(e.label || '')));
+  return learned.filter((t) => {
+    const selOk = t.selector ? selectors.has(t.selector) : false;
+    const labOk = labels.has(normCta(t.correctLabel || t.label));
+    return !selOk && !labOk;
+  });
+}
 
 /** Et interaktivt element katalogisert av DOM-skannet (AI-binding). */
 export interface ScannedElement {

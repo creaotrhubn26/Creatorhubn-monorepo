@@ -36,7 +36,8 @@ import {
   ACTION_MATCH_LABELS, ACTION_MATCH_COLORS, CRITIQUE_SEVERITY_COLORS,
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
   sceneActionMatch, expectedActionText, validateScene, learnCtas, CTA_LABELS,
-  recordLearnedTarget, learnedTargetCount,
+  recordLearnedTarget, learnedTargetCount, listLearnedTargetsForHost, removeLearnedTarget,
+  clearLearnedTargets, detectLearnedDrift, type LearnedTarget,
   type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
@@ -202,6 +203,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [placingHotspot, setPlacingHotspot] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1); // zoom på enhets-preview (0.5–3)
   const [showValidation, setShowValidation] = useState(false);
+  const [showLearned, setShowLearned] = useState(false);
+  const [driftTargets, setDriftTargets] = useState<LearnedTarget[]>([]);
   const zoomBy = (delta: number) => setPreviewZoom((z) => Math.min(3, Math.max(0.5, Math.round((z + delta) * 100) / 100)));
   const [capturing, setCapturing] = useState(false);
   const [captureCount, setCaptureCount] = useState(0);
@@ -271,7 +274,15 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         }
         const match = sceneActionMatch({ ...sc, detectedSelector: v.selector });
         const status = visionOk === false ? 'needs_review' : (match === 'match' || visionOk === true) ? 'done' : 'needs_review';
-        updateScene(sc.id, { detectedSelector: v.selector, status });
+        updateScene(sc.id, { detectedSelector: v.selector, status, bindingConfidence: 'high' });
+        // Lær av verifiseringen (A): det brukeren faktisk klikket er fasiten.
+        // Avvik fra AI-ens gjetning → lær riktig selector + avvis den gamle.
+        if (sc.targetLabel) {
+          recordLearnedTarget(st.project.url, sc.targetLabel, {
+            selector: v.selector, hotspot: sc.hotspot, source: 'manual',
+            rejectSelector: sc.targetSelector && sc.targetSelector !== v.selector ? sc.targetSelector : undefined,
+          });
+        }
       }
     } finally {
       setVerifyBusy(false);
@@ -292,6 +303,23 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         const st = useDemoStudio.getState();
         const device = st.project?.scenes[0]?.device ?? 'macbook';
         st.replaceScenes(captureStepsToScenes(steps, device));
+        // «Vis meg én gang» (B): hvert klikk brukeren gjorde blir en lært target,
+        // så AI binder presist neste gang den lager en flow på samme nettside.
+        const url = st.project?.url;
+        if (url) {
+          let learned = 0;
+          for (const s of steps) {
+            const label = (s.targetLabel || '').trim();
+            if (!label || (!s.selector && !s.hotspot)) continue;
+            recordLearnedTarget(url, label, {
+              selector: s.selector, hotspot: s.hotspot,
+              actionType: s.actionType as DemoActionType | undefined,
+              source: 'capture',
+            });
+            learned++;
+          }
+          if (learned) setCmdReply(`✓ Lærte ${learned} element${learned === 1 ? '' : 'er'} fra opptaket — AI binder presist på denne siden neste gang.`);
+        }
       }),
     ];
     return () => { pending.forEach((p) => void p.then((un) => un())); };
@@ -324,6 +352,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       setCmdReply(`✓ Lærte hvor «${selected.targetLabel}» er — AI husker dette for ${(() => { try { return new URL(project.url).host; } catch { return 'denne siden'; } })()} neste gang.`);
     }
     setPlacingHotspot(false);
+  };
+
+  /** Aktiv læring (C): hopp til en scene AI er usikker på og start hotspot-plassering. */
+  const teachScene = (id: string) => {
+    selectScene(id); setStoryMode(false); setNav('flow'); setPlacingHotspot(true);
   };
 
   // Responsive Check: vurder siden i desktop/tablet/mobil → vis rapport med
@@ -361,6 +394,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         if (shot) elements = await ocrDetectElements({ screenshot: shot }).catch(() => []);
       }
       learnCtas(elements); // auto-utvid CTA-banken fra det vi fant
+      // Drift-deteksjon (D): har siden endret seg slik at lærte targets er utdaterte?
+      if (elements.length) setDriftTargets(detectLearnedDrift(project.url, elements));
       // Foretrekk JS-rendret pageText fra skannet (rikere enn anonym reqwest).
       const siteContext = scan?.pageText || await fetchSiteContext(project.url);
       applyScannedBranding(scan);
@@ -605,6 +640,33 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               title="La AI vurdere hele demoen mot målet og foreslå forbedringer">
               ★ {critiqueBusy ? 'Vurderer…' : 'Vurder demoen (Critic)'}
             </button>
+
+            {/* Læring & presisjon (menneske-loop A/C/D) */}
+            <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 12, paddingTop: 10 }}>
+              <div style={{ fontSize: 10.5, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Læring & presisjon</div>
+              {(() => {
+                const uncertain = scenes.filter((s) => s.bindingConfidence === 'low');
+                return uncertain.length > 0 ? (
+                  <div style={{ background: '#fff8ec', border: '1px solid #f0d9a8', borderRadius: 8, padding: '7px 9px', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11.5, color: '#8a6516', marginBottom: 5 }}>AI er usikker på hvor {uncertain.length} element{uncertain.length === 1 ? '' : 'er'} er. Lær den hvor:</div>
+                    <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', fontSize: 12 }}
+                      onClick={() => teachScene(uncertain[0].id)}>◎ Lær AI: «{(uncertain[0].targetLabel || uncertain[0].title).slice(0, 28)}»</button>
+                  </div>
+                ) : null;
+              })()}
+              {driftTargets.length > 0 && (
+                <div style={{ background: '#fdecec', border: '1px solid #f0b8b8', borderRadius: 8, padding: '7px 9px', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11.5, color: '#9a2b2b', marginBottom: 5 }}>{driftTargets.length} lært element{driftTargets.length === 1 ? '' : 'er'} finnes ikke lenger på siden (redesignet?). Lær på nytt eller glem.</div>
+                  <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', fontSize: 12 }}
+                    onClick={() => setShowLearned(true)}>Se utdaterte ({driftTargets.length})</button>
+                </div>
+              )}
+              <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', fontSize: 12 }}
+                onClick={() => setShowLearned(true)}
+                title="Se, rediger og slett det AI har lært om hvor elementene er">
+                ◈ Det AI har lært ({learnedTargetCount()})
+              </button>
+            </div>
           </div>
         </div>
 
@@ -938,6 +1000,72 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           onSetStatus={(id, status) => updateScene(id, { status })}
         />
       )}
+      {showLearned && project && (
+        <LearnedTargetsModal
+          url={project.url}
+          drift={driftTargets}
+          onClose={() => setShowLearned(false)}
+          onForget={(label) => { removeLearnedTarget(project.url, label); setDriftTargets((d) => d.filter((t) => t.label !== label)); }}
+          onClearAll={() => { clearLearnedTargets(project.url); setDriftTargets([]); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** «Det AI har lært» (D): se/glem korreksjoner pr. side + utdaterte (drift). */
+function LearnedTargetsModal({ url, drift, onClose, onForget, onClearAll }: {
+  url: string;
+  drift: LearnedTarget[];
+  onClose: () => void;
+  onForget: (label: string) => void;
+  onClearAll: () => void;
+}) {
+  const [, force] = useState(0);
+  const items = listLearnedTargetsForHost(url);
+  const driftSet = new Set(drift.map((d) => d.label));
+  let host = url; try { host = new URL(url).host; } catch { /* */ }
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.32)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 560, maxWidth: '94vw', maxHeight: '86vh', overflowY: 'auto', background: C.panel, borderRadius: 14, padding: 22, fontFamily: C.font, color: C.ink, boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Det AI har lært</h3>
+          <div style={{ flex: 1 }} />
+          <div onClick={onClose} style={{ ...iconBtn, cursor: 'pointer' }}>✕</div>
+        </div>
+        <div style={{ fontSize: 12.5, color: C.inkSoft, marginBottom: 14 }}>Korreksjoner for <strong>{host}</strong> — overstyrer AI-ens gjetting når du lager en flow på denne siden.</div>
+        {items.length === 0 ? (
+          <div style={{ fontSize: 13, color: C.inkSoft, padding: '18px 0' }}>Ingenting lært ennå. Plasser et hotspot («Lær AI hvor») eller kjør «Klikk-capture fra side» — så husker AI elementene her.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {items.map((t) => {
+              const stale = driftSet.has(t.label);
+              return (
+                <div key={t.label} style={{ border: `1px solid ${stale ? '#f0b8b8' : C.line}`, background: stale ? '#fdf3f3' : '#fff', borderRadius: 9, padding: '9px 11px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{t.correctLabel || t.label}</div>
+                    <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, background: t.source === 'capture' ? '#e8f0fe' : '#eef7ee', color: t.source === 'capture' ? '#2a5bd7' : '#2e7d32' }}>
+                      {t.source === 'capture' ? 'fra opptak' : 'manuelt'}
+                    </span>
+                    {t.count > 1 && <span style={{ fontSize: 10, color: C.inkFaint }}>×{t.count}</span>}
+                    {stale && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, background: '#fdecec', color: '#9a2b2b' }}>utdatert</span>}
+                    <div style={{ flex: 1 }} />
+                    <button style={{ ...btn, padding: '3px 9px', fontSize: 11.5, background: '#fff' }}
+                      onClick={() => { onForget(t.label); force((n) => n + 1); }}>Glem</button>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: C.inkFaint, marginTop: 4, fontFamily: 'ui-monospace, monospace', wordBreak: 'break-all' }}>
+                    {t.selector || '(kun hotspot)'}{t.actionType ? ` · ${t.actionType}` : ''}{t.hotspot ? ' · hotspot' : ''}{t.rejectSelectors?.length ? ` · avvist ${t.rejectSelectors.length}` : ''}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {items.length > 0 && (
+          <button style={{ ...btn, marginTop: 14, background: '#fff', color: '#9a2b2b', borderColor: '#f0b8b8' }}
+            onClick={() => { onClearAll(); force((n) => n + 1); }}>Glem alt for {host}</button>
+        )}
+      </div>
     </div>
   );
 }

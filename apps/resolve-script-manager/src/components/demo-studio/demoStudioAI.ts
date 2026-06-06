@@ -621,20 +621,33 @@ Svar med KUN ett JSON-objekt:
     let targetLocators: typeof elements[number]['locators'] | undefined;
     // Bind til EKTE element fra katalogen når AI valgte en gyldig targetIndex.
     const picked = typeof d.targetIndex === 'number' ? elements[d.targetIndex] : undefined;
-    if (picked) {
+    let boundToReal = false;
+    // En lært korreksjon kan ha avvist nettopp dette elementet (negativ læring).
+    const preLearned = getLearnedTarget(url, picked?.label || targetLabel || '');
+    const rejected = picked && preLearned?.rejectSelectors?.includes(picked.selector);
+    if (picked && !rejected) {
       targetSelector = picked.selector;
       targetLabel = picked.label || targetLabel;
       hotspot = picked.hotspot;
       targetLocators = picked.locators;
+      boundToReal = true;
       if (!actionType && validActions.includes(picked.actionType as DemoActionType)) actionType = picked.actionType as DemoActionType;
     }
-    // Menneske-i-loopen: en manuell korreksjon brukeren har lært AI-en for dette
+    // Menneske-i-loopen: en korreksjon brukeren har lært AI-en for dette
     // elementet på denne siden VINNER over AI-ens (og katalogens) gjetting.
     const learned = getLearnedTarget(url, targetLabel || '');
     if (learned) {
-      if (learned.hotspot) hotspot = learned.hotspot;
+      if (learned.correctLabel) targetLabel = learned.correctLabel;       // label-retting (A)
+      if (learned.hotspot) { hotspot = learned.hotspot; boundToReal = true; }
       if (learned.selector) targetSelector = learned.selector;
+      if (learned.actionType) actionType = learned.actionType;            // action-type-retting (A)
     }
+    // Konfidens for aktiv læring (C): ekte/ lært binding = high; bare label+gjettet
+    // hotspot = medium; ingenting håndfast = low (AI bør spørre brukeren).
+    const bindingConfidence: 'high' | 'medium' | 'low' =
+      boundToReal || learned ? 'high'
+      : targetLabel && hotspot ? 'medium'
+      : 'low';
     return {
       ...base,
       title: d.title || `Scene ${i + 1}`,
@@ -647,6 +660,7 @@ Svar med KUN ett JSON-objekt:
       targetSelector,
       targetLocators,
       ctaType: classifyCta(targetLabel || '') ?? undefined,
+      bindingConfidence,
       actionType,
       hotspot,
       overlayText: d.overlayText || '',
