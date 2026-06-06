@@ -192,6 +192,8 @@ import TermsAndConditions from '@/pages/terms-and-conditions';
 import ClientWorkspaceShell from '@/components/role-room/components/client-workspace/ClientWorkspaceShell';
 import PublicCV from '@/pages/public-cv';
 import NextRoleLanding from '@/pages/nextrole-landing';
+import AgencyLandingPage from '@/pages/agency-landing';
+import AgencyFAQPage from '@/pages/agency-faq';
 import CreatorhubInnovationPage from '@/pages/CreatorhubInnovationPage';
 import GoogleVerificationDemoPage from '@/pages/GoogleVerificationDemoPage';
 import PhotographerClientsList from '@/pages/photographer-clients-list';
@@ -809,6 +811,10 @@ function App() {
                   <Route path="/resume-builder" component={ResumeBuilder} />
                   <Route path="/cv/:slug" component={PublicCV as React.ComponentType<any>} />
                   <Route path="/nextrole" component={NextRoleLanding as React.ComponentType<any>} />
+                  <Route path="/for-byraer" component={AgencyLandingPage as React.ComponentType<any>} />
+                  <Route path="/for-byråer" component={AgencyLandingPage as React.ComponentType<any>} />
+                  <Route path="/agencies" component={AgencyLandingPage as React.ComponentType<any>} />
+                  <Route path="/faq" component={AgencyFAQPage as React.ComponentType<any>} />
                   <Route path="/showcase-admin" component={ShowcaseAdminRouteWrapper as React.ComponentType<any>} />
                   {/* Plugin management routes removed - file doesn't exist */}
                   <Route path="/request-access" component={RequestAccess as React.ComponentType<any>} />
