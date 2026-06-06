@@ -171,3 +171,14 @@ test('lesbarhets-score (LIX) vises i Script Builder', async ({ page }) => {
   await page.getByText('Script Builder').click();
   await expect(page.getByText(/Lesbarhet \(LIX\)/)).toBeVisible({ timeout: 10000 });
 });
+
+test('auto-merkevare hentes fra siden + white-label', async ({ page }) => {
+  await seedDemo(page);
+  await page.getByRole('button', { name: /^Export/ }).click(); // topbar Export (Flow Builder)
+  await expect(page.getByText('Merkevare & white-label')).toBeVisible();
+  await page.getByRole('button', { name: 'Hent merkevare fra siden' }).click();
+  await expect(page.getByText(/Merkevare hentet fra siden/)).toBeVisible({ timeout: 10000 });
+  await expect(page.getByPlaceholder(/Merkenavn/)).toHaveValue('TestMerke');
+  await expect(page.getByPlaceholder(/Merkefarge/)).toHaveValue('#3366ff');
+  await page.getByText('White-label (skjul «Powered by»)').click();
+});

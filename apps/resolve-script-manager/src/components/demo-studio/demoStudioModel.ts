@@ -195,6 +195,17 @@ export function defaultRenderOptions(): DemoRenderOptions {
   return { showCursor: true, showTouchPoints: true, highlightInteractions: true, safeArea: true };
 }
 
+/** Merkevare/white-label for sluttproduktet. */
+export interface DemoBranding {
+  brandName?: string;
+  /** Aksent-/merkefarge (hex) brukt i interaktiv guide. */
+  brandColor?: string;
+  /** Logo (URL eller data:image) vist i guide-headeren. */
+  logoUrl?: string;
+  /** White-label: skjul «Powered by»-vannmerke (typisk betalt tier). */
+  hidePoweredBy?: boolean;
+}
+
 // ── Responsive Check (§ sjekk siden i desktop/tablet/mobil) ──
 export type ResponsiveStatus = 'ok' | 'warning' | 'error';
 
@@ -247,6 +258,8 @@ export interface DemoProject {
   render?: DemoRenderOptions;
   /** Konverteringsmål for demoen (mål-drevet AI Director). F.eks. «få flere til å booke demo». */
   goal?: string;
+  /** Merkevare/white-label for output (interaktiv guide + video). */
+  branding?: DemoBranding;
   /** Global progresjons-modus (kan overstyres per scene). Default 'manual'. */
   continueMode?: 'manual' | 'assisted' | 'auto';
   /**
@@ -535,6 +548,8 @@ export interface DomScanResult {
   elements: ScannedElement[];
   /** JS-rendret synlig tekst (rikere AI-kontekst enn anonym reqwest). */
   pageText?: string;
+  /** Auto-uthentet merkevare fra siden (navn/logo/farger). */
+  branding?: DemoBranding & { palette?: string[] };
 }
 
 /** Ett innsamlet klikk-steg fra «klikk-gjennom»-capture (Fase 2). */

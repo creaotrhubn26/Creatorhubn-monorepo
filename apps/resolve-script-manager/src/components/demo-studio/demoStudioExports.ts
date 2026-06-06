@@ -111,13 +111,18 @@ export function buildInteractiveGuideHtml(project: DemoProject): string {
     thumb: s.thumbnailDataUrl || null,
     startScrollPct: s.startScrollPct ?? 0,
   }));
-  const data = JSON.stringify({ name: project.name, steps }).replace(/</g, '\\u003c');
+  const b = project.branding || {};
+  const accent = (b.brandColor && /^#[0-9a-fA-F]{3,8}$/.test(b.brandColor)) ? b.brandColor : '#ef8a5d';
+  const brandName = b.brandName || project.name;
+  const logo = b.logoUrl ? `<img src="${esc(b.logoUrl)}" alt="" style="height:22px;width:auto;border-radius:4px">` : `<span style="color:var(--accent)">▶</span>`;
+  const watermark = b.hidePoweredBy ? '' : `<a href="https://theroleroom.com" target="_blank" style="margin-left:auto;font-size:11px;color:var(--soft);text-decoration:none;opacity:.8">Powered by Product Demo Studio</a>`;
+  const data = JSON.stringify({ name: brandName, steps }).replace(/</g, '\\u003c');
 
   return `<!doctype html><html lang="no"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(project.name)} — interaktiv guide</title>
+<title>${esc(brandName)} — interaktiv guide</title>
 <style>
-  :root { --accent:#ef8a5d; --ink:#1d1b19; --soft:#6b6358; --line:#eae5dd; --bg:#f3efe9; }
+  :root { --accent:${accent}; --ink:#1d1b19; --soft:#6b6358; --line:#eae5dd; --bg:#f3efe9; }
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; color:var(--ink); background:var(--bg); }
   header { display:flex; align-items:center; gap:10px; padding:12px 18px; background:#fff; border-bottom:1px solid var(--line); }
@@ -135,11 +140,11 @@ export function buildInteractiveGuideHtml(project: DemoProject): string {
   .dots i { width:7px; height:7px; border-radius:4px; background:#d8d2c8; display:block; transition:all .2s; }
   .dots i.on { width:18px; background:var(--accent); }
   button { font:inherit; border:1px solid #ddd6cc; background:#fff; color:var(--ink); border-radius:9px; padding:9px 16px; cursor:pointer; font-weight:600; }
-  button.primary { background:linear-gradient(135deg,#ef8a5d,#d96a3a); color:#fff; border:0; }
+  button.primary { background:var(--accent); color:#fff; border:0; }
   button:disabled { opacity:.45; cursor:default; }
   .cap { flex:1; color:var(--soft); font-size:12.5px; }
 </style></head><body>
-<header><span style="color:var(--accent)">▶</span><h1>${esc(project.name)}</h1><span class="step" id="stepLabel"></span></header>
+<header>${logo}<h1>${esc(brandName)}</h1><span class="step" id="stepLabel"></span></header>
 <div class="stage"><div class="screen" id="screen"></div></div>
 <footer>
   <button id="prev">‹ Forrige</button>
@@ -147,6 +152,7 @@ export function buildInteractiveGuideHtml(project: DemoProject): string {
   <div class="cap" id="cap"></div>
   <button class="primary" id="next">Neste ›</button>
 </footer>
+<div style="display:flex;padding:8px 18px;background:#fff;border-top:1px solid var(--line)">${watermark}</div>
 <script>
   var DATA = ${data};
   var steps = DATA.steps || [];

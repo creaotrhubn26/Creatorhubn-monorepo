@@ -35,7 +35,7 @@ import {
   ACTION_MATCH_LABELS, ACTION_MATCH_COLORS, CRITIQUE_SEVERITY_COLORS,
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
   sceneActionMatch, expectedActionText, validateScene,
-  type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique,
+  type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
 
@@ -114,6 +114,18 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [respReport, setRespReport] = useState<ResponsiveReport | null>(null);
   const [critique, setCritique] = useState<DirectorCritique | null>(null);
   const [critiqueBusy, setCritiqueBusy] = useState(false);
+
+  // Auto-merkevare: bruk farger/logo/navn hentet fra siden (overskriver ikke
+  // manuelt satt branding).
+  const applyScannedBranding = (scan: DomScanResult | null) => {
+    const bd = scan?.branding;
+    if (!bd) return;
+    const cur = useDemoStudio.getState().project?.branding;
+    if (cur && (cur.brandName || cur.brandColor || cur.logoUrl)) return;
+    if (bd.brandName || bd.brandColor || bd.logoUrl) {
+      setProjectField('branding', { brandName: bd.brandName || undefined, brandColor: bd.brandColor || undefined, logoUrl: bd.logoUrl || undefined });
+    }
+  };
 
   // Director Critic: AI vurderer hele demoen mot målet → score + forbedringer.
   const runCritic = async () => {
@@ -273,6 +285,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       const elements = scan?.elements ?? [];
       // Foretrekk JS-rendret pageText fra skannet (rikere enn anonym reqwest).
       const siteContext = scan?.pageText || await fetchSiteContext(project.url);
+      applyScannedBranding(scan);
       setDirectorMsg(elements.length ? `Fant ${elements.length} elementer — AI Director designer flowen…` : 'AI Director designer flowen…');
       const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
       const scenes = await generateDemoFlow({
@@ -298,6 +311,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       const scan = await scanDom(project.url).catch(() => null);
       const elements = scan?.elements ?? [];
       const siteContext = scan?.pageText || await fetchSiteContext(project.url);
+      applyScannedBranding(scan);
       const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
       const patches = await completeDemoFlow({ url: project.url, demoType: project.demoType, meta, scenes: project.scenes, elements, siteContext });
       const validActions = Object.keys(ACTION_META) as DemoActionType[];

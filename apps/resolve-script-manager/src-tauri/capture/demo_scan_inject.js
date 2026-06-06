@@ -78,6 +78,35 @@
     return out;
   }
 
+  // ── Auto-merkevare: hent navn, logo og farger fra siden ──
+  function metaContent(sel) { var e = document.querySelector(sel); return e ? (e.getAttribute('content') || '').trim() : ''; }
+  function parseColor(c) {
+    var m = (c || '').match(/rgba?\(([^)]+)\)/);
+    if (!m) return null;
+    var p = m[1].split(',').map(function (x) { return parseFloat(x); });
+    if (p.length >= 4 && p[3] === 0) return null;
+    return { r: p[0], g: p[1], b: p[2] };
+  }
+  function vivid(rgb) { if (!rgb) return false; var mx = Math.max(rgb.r, rgb.g, rgb.b), mn = Math.min(rgb.r, rgb.g, rgb.b); return (mx - mn) > 24 && mx > 30 && mx < 250; }
+  function toHex(rgb) { function h(n) { return ('0' + Math.round(n).toString(16)).slice(-2); } return '#' + h(rgb.r) + h(rgb.g) + h(rgb.b); }
+  function extractBranding() {
+    var brandName = metaContent('meta[property="og:site_name"]') || metaContent('meta[name="application-name"]') || (document.title || '').split(/[|–—\-]/)[0].trim();
+    var logoUrl = '';
+    var icons = ['link[rel="apple-touch-icon"]', 'link[rel="apple-touch-icon-precomposed"]', 'meta[property="og:image"]', 'link[rel="icon"]', 'link[rel="shortcut icon"]'];
+    for (var i = 0; i < icons.length; i++) {
+      var el = document.querySelector(icons[i]);
+      if (el) { var href = el.getAttribute('href') || el.getAttribute('content'); if (href) { try { logoUrl = new URL(href, location.href).href; break; } catch (e) { /* */ } } }
+    }
+    if (!logoUrl) { var img = document.querySelector('header img, [class*="logo" i] img, img[alt*="logo" i], img[class*="logo" i]'); if (img && img.src) logoUrl = img.src; }
+    var palette = [], seen = {};
+    function add(c) { var rgb = parseColor(c); if (rgb && vivid(rgb)) { var hex = toHex(rgb); if (!seen[hex]) { seen[hex] = 1; palette.push(hex); } } }
+    var theme = metaContent('meta[name="theme-color"]');
+    if (theme && /^#?[0-9a-fA-F]{3,8}$/.test(theme)) { var th = theme[0] === '#' ? theme : '#' + theme; seen[th] = 1; palette.push(th); }
+    var nodes = deepQueryAll('button,a[class*="btn" i],[class*="button" i],[class*="cta" i],header');
+    for (var j = 0; j < nodes.length && palette.length < 8; j++) { try { var cs = getComputedStyle(nodes[j]); add(cs.backgroundColor); add(cs.color); } catch (e) { /* */ } }
+    return { brandName: brandName || '', logoUrl: logoUrl || '', brandColor: palette[0] || '', palette: palette.slice(0, 6) };
+  }
+
   function scan() {
     var iw = window.innerWidth || 1, ih = window.innerHeight || 1;
     var nodes = deepQueryAll('a,button,input,textarea,select,[role="button"],[role="link"],[onclick],h1,h2');
@@ -111,7 +140,9 @@
     // JS-rendret synlig tekst (rikere kontekst enn anonym reqwest).
     var pageText = '';
     try { pageText = (document.body.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 1600); } catch (e) { /* */ }
-    invoke('demo_scan_result', { url: location.href, title: document.title || '', elements: out, pageText: pageText });
+    var branding = {};
+    try { branding = extractBranding(); } catch (e) { /* */ }
+    invoke('demo_scan_result', { url: location.href, title: document.title || '', elements: out, pageText: pageText, branding: branding });
   }
 
   function go() { setTimeout(scan, 1200); } // gi SPA-en tid til å rendre

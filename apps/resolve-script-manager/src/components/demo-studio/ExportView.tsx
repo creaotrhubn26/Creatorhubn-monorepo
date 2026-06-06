@@ -19,6 +19,7 @@ import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plug
 import { useDemoStudio } from './demoStudioStore';
 import { totalDuration } from './demoStudioModel';
 import { buildSrt, buildScriptHtml, renderThumbnail, buildInteractiveGuideHtml } from './demoStudioExports';
+import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
 
 const C = {
   navBg: '#1c1a18', bg: '#f6f3ee', panel: '#ffffff', cream: '#faf7f2', line: '#eae5dd',
@@ -53,7 +54,9 @@ const TOGGLES: ToggleDef[] = [
 const COMING_SOON = ['Vis cursor i video', 'Overlays / callouts i video'];
 
 export function ExportView() {
-  const { project } = useDemoStudio();
+  const { project, setProjectField } = useDemoStudio();
+  const [brandBusy, setBrandBusy] = useState(false);
+  const [palette, setPalette] = useState<string[]>([]);
   const [format, setFormat] = useState<typeof FORMATS[number]['id']>('16:9');
   const [resolution, setResolution] = useState<typeof RESOLUTIONS[number]>('1080p');
   const [fps, setFps] = useState<typeof FPS[number]>(30);
@@ -109,6 +112,24 @@ export function ExportView() {
     if (typeof path !== 'string') return;
     try { const p = await demoWriteText(path, buildInteractiveGuideHtml(project)); setFileMsg(`✓ Interaktiv guide lagret: ${p}`); void openPath(p).catch(() => {}); }
     catch (e) { setFileMsg('Feil ved interaktiv guide: ' + String(e)); }
+  };
+
+  const setBrand = (patch: Record<string, unknown>) => { if (project) setProjectField('branding', { ...(project.branding ?? {}), ...patch }); };
+
+  const brandFetch = async () => {
+    if (!project) return;
+    if (!isCaptureAvailable()) { setFileMsg('Auto-merkevare krever Tauri-appen.'); return; }
+    setBrandBusy(true);
+    try {
+      const scan = await scanDom(project.url);
+      const bd = scan?.branding;
+      if (bd && (bd.brandName || bd.brandColor || bd.logoUrl)) {
+        setProjectField('branding', { ...(project.branding ?? {}), brandName: bd.brandName || project.branding?.brandName, brandColor: bd.brandColor || project.branding?.brandColor, logoUrl: bd.logoUrl || project.branding?.logoUrl });
+        setPalette(bd.palette ?? []);
+        setFileMsg('✓ Merkevare hentet fra siden');
+      } else setFileMsg('Fant ingen merkevare-data på siden');
+    } catch (e) { setFileMsg('Feil ved merkevare-henting: ' + String(e)); }
+    finally { setBrandBusy(false); }
   };
 
   const exportThumbnail = async () => {
@@ -249,6 +270,36 @@ export function ExportView() {
           {fileMsg && <div style={{ marginTop: 8, fontSize: 12, color: fileMsg.startsWith('Feil') ? C.red : C.green, wordBreak: 'break-all' }}>{fileMsg}</div>}
         </Section>
 
+        {/* Merkevare & white-label — auto-hentet fra siden */}
+        <Section label="Merkevare & white-label">
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button style={{ ...outlineBtn }} disabled={brandBusy} onClick={() => void brandFetch()}>{brandBusy ? 'Henter…' : 'Hent merkevare fra siden'}</button>
+            {project.branding?.logoUrl && <img src={project.branding.logoUrl} alt="" style={{ height: 24, borderRadius: 4 }} />}
+            {project.branding?.brandColor && <span style={{ width: 22, height: 22, borderRadius: 6, background: project.branding.brandColor, border: `1px solid ${C.line}` }} />}
+          </div>
+          {palette.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+              {palette.map((c) => (
+                <div key={c} title={c} onClick={() => setBrand({ brandColor: c })}
+                  style={{ width: 24, height: 24, borderRadius: 6, background: c, cursor: 'pointer', border: `2px solid ${project.branding?.brandColor === c ? C.ink : 'transparent'}` }} />
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+            <input style={brandInp} value={project.branding?.brandName ?? ''} placeholder="Merkenavn (auto)" onChange={(e) => setBrand({ brandName: e.target.value })} />
+            <input style={brandInp} value={project.branding?.brandColor ?? ''} placeholder="Merkefarge #hex (auto)" onChange={(e) => setBrand({ brandColor: e.target.value })} />
+          </div>
+          <input style={{ ...brandInp, width: '100%', marginTop: 8 }} value={project.branding?.logoUrl ?? ''} placeholder="Logo-URL (auto)" onChange={(e) => setBrand({ logoUrl: e.target.value })} />
+          <div onClick={() => setBrand({ hidePoweredBy: !project.branding?.hidePoweredBy })}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontSize: 13, marginTop: 12 }}>
+            White-label (skjul «Powered by»)
+            <span style={{ width: 36, height: 20, borderRadius: 10, background: project.branding?.hidePoweredBy ? C.accent : '#d8d2c8', position: 'relative', transition: 'background .15s' }}>
+              <span style={{ position: 'absolute', top: 2, left: project.branding?.hidePoweredBy ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 8 }}>Auto-hentes også når du genererer demoen. Brukes i interaktiv guide-eksport.</div>
+        </Section>
+
         {/* Eksport-knapp + progress */}
         <div style={{ marginTop: 28, borderTop: `1px solid ${C.line}`, paddingTop: 20 }}>
           {!canExport && (
@@ -325,5 +376,6 @@ const pill: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderR
 const pillActive: React.CSSProperties = { borderColor: C.accent, background: C.cream, fontWeight: 600 };
 const primaryBtn: React.CSSProperties = { background: 'linear-gradient(135deg, #ef8a5d, #d96a3a)', border: 0, color: '#fff', fontSize: 14, fontWeight: 600, padding: '12px 22px', borderRadius: 9, cursor: 'pointer' };
 const outlineBtn: React.CSSProperties = { background: '#fff', border: `1px solid ${C.lineStrong}`, color: C.ink, fontSize: 13, padding: '8px 14px', borderRadius: 8, cursor: 'pointer' };
+const brandInp: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12.5, color: C.ink, background: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' };
 
 export default ExportView;

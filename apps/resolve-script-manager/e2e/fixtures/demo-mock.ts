@@ -49,7 +49,7 @@ export function installDemoMock() {
         case 'plugin:dialog|open': return '/tmp/demo-input';
         case 'start_demo_capture': return null; // spec styrer steg via __demoEmit
         case 'demo_capture_done': return null;
-        case 'demo_scan_dom': later(() => emit('demo-capture://dom', { url: args.url, title: 'Test', elements: SCAN_ELEMENTS, pageText: 'Test-side: Start free trial. Request a demo. Pricing.' })); return null;
+        case 'demo_scan_dom': later(() => emit('demo-capture://dom', { url: args.url, title: 'Test', elements: SCAN_ELEMENTS, pageText: 'Test-side: Start free trial. Request a demo. Pricing.', branding: { brandName: 'TestMerke', brandColor: '#3366ff', logoUrl: 'https://example.test/logo.png', palette: ['#3366ff', '#ff6633'] } })); return null;
         case 'demo_verify_action': later(() => emit('demo-capture://verify', { cancelled: false, selector: '#start', label: 'Start free trial' })); return null;
         // Selector-bevisst: «broken/missing»-selektorer feiler → trigger self-healing.
         case 'demo_auto_execute': { const found = !/broken|missing/.test(String(args.selector || '')); later(() => emit('demo-capture://auto', { ok: found, found, selector: args.selector })); return null; }
