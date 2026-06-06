@@ -14,13 +14,14 @@ import { isAiConnected } from '../../services/claudeProxyService';
 import { scanDom, captureScreenshot, isCaptureAvailable } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import { ProductBrainMap } from './ProductBrainMap';
-import { buildBrainHtml } from './demoStudioExports';
+import { buildBrainHtml, svgToPngDataUrl } from './demoStudioExports';
 import { demoPrintHtml } from '../../api';
 import {
   suggestMarketingBrief, generateMarketingFlow, generateVariants, fetchSiteContext,
   ocrDetectElements, analyzeProductEvidence, buildProductBrain, draftOnePager as aiDraftOnePager,
   gatherSiteContext, readScreenVision, critiqueOnePager, improveOnePager,
-  type GeneratedVariant, type VariantSpec, type OnePagerCritique,
+  generateInfographic, INFOGRAPHIC_LABELS,
+  type GeneratedVariant, type VariantSpec, type OnePagerCritique, type InfographicKind,
 } from './demoStudioAI';
 import {
   CHANNEL_PRESETS, FRAMEWORKS, FUNNEL_LABELS, emptyMarketingBrief, recordVoicePref,
@@ -60,6 +61,8 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
   const [critique, setCritique] = useState<OnePagerCritique | null>(null);
   const [answers, setAnswers] = useState('');
   const [brainView, setBrainView] = useState<'outline' | 'map'>('outline');
+  const [infoKind, setInfoKind] = useState<InfographicKind>('overview');
+  const [infoSvg, setInfoSvg] = useState<string | null>(null);
   const visionCache = useRef<{ url: string; text: string } | null>(null);
   const [variants, setVariants] = useState<GeneratedVariant[]>([]);
   const [picked, setPicked] = useState<Record<string, boolean>>(
@@ -183,6 +186,51 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
     next = { ...next, framework: brain.recommendedFramework };
     patchBrief(next);
     setMsg(`✓ Brukte anbefaling: ${FRAMEWORKS[brain.recommendedFramework].label.split(' (')[0]}${brain.recommendedObjective ? ` for ${MARKETING_OBJECTIVES[brain.recommendedObjective].label.toLowerCase()}` : ''}.`);
+  };
+
+  /** Bygg kontekst for infographic fra verifiserte data (Brain + bevis + brief). */
+  const infographicContext = (): string => {
+    const parts: string[] = [];
+    if (evidence?.summary) parts.push(`Produkt: ${evidence.summary}`);
+    if (brief.persona) parts.push(`Målgruppe: ${brief.persona}`);
+    if (evidence?.features.length) parts.push(`Funksjoner:\n${evidence.features.map((f) => `- ${f.name}${f.solves ? `: ${f.solves}` : ''}`).join('\n')}`);
+    else if (brief.valueProps.length) parts.push(`Verdiløfter:\n${brief.valueProps.map((v) => `- ${v}`).join('\n')}`);
+    if (evidence?.proof.length) parts.push(`Bevis: ${evidence.proof.map((p) => p.claim).join(' · ')}`);
+    if (brief.painPoints.length) parts.push(`Smertepunkter: ${brief.painPoints.join(' · ')}`);
+    if (brief.competitors?.length) parts.push(`Konkurrenter (differensier): ${brief.competitors.join(', ')}`);
+    if (brain?.gaps.length) parts.push(`(Utelat udokumenterte påstander: ${brain.gaps.join('; ')})`);
+    return parts.join('\n\n');
+  };
+
+  const makeInfographic = async () => {
+    if (!aiReady) return onOpenSignIn();
+    const ctx = infographicContext();
+    if (!ctx.trim()) { setMsg('Kjør «Analyser produktet» eller fyll brief først — infographic bygges fra de dataene.'); return; }
+    setBusy('infographic'); setMsg(`Claude designer ${INFOGRAPHIC_LABELS[infoKind].toLowerCase()}-infographic fra produktets data…`);
+    try {
+      const svg = await generateInfographic({
+        kind: infoKind, context: ctx,
+        title: project.branding?.brandName || project.name,
+        brandColor: project.branding?.brandColor,
+        logoUrl: project.branding?.logoUrl,
+      });
+      setInfoSvg(svg);
+      setMsg('✓ Infographic generert — last ned PNG/SVG.');
+    } catch (e) { setMsg('Feil: ' + (e as Error).message); }
+    finally { setBusy(null); }
+  };
+
+  const downloadDataUrl = (dataUrl: string, filename: string) => {
+    const a = document.createElement('a'); a.href = dataUrl; a.download = filename; a.click();
+  };
+  const downloadInfoPng = async () => {
+    if (!infoSvg) return;
+    try { const png = await svgToPngDataUrl(infoSvg, 1080, 1350, 2); downloadDataUrl(png, 'infographic.png'); }
+    catch (e) { setMsg('Feil: ' + (e as Error).message); }
+  };
+  const downloadInfoSvg = () => {
+    if (!infoSvg) return;
+    downloadDataUrl(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(infoSvg)}`, 'infographic.svg');
   };
 
   const analyzeProduct = async () => {
@@ -493,6 +541,33 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
               {evidence.sections.slice(0, 8).map((s, i) => <div key={i} style={{ fontSize: 11.5, color: C.ink, marginBottom: 3 }}>{s.label}</div>)}
             </div>
           </div>
+        )}
+      </section>
+
+      {/* ── Kontekstuell infographic (Claude designer branded SVG fra dataene) ── */}
+      <section style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: 16, marginTop: 16, maxWidth: 900 }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>Infographic</h3>
+          <span style={{ fontSize: 11, color: C.inkFaint }}>— branded SVG bygget fra produktets verifiserte data</span>
+          <div style={{ flex: 1 }} />
+          <select style={{ ...field, width: 'auto' }} value={infoKind} onChange={(e) => setInfoKind(e.target.value as InfographicKind)}>
+            {(Object.keys(INFOGRAPHIC_LABELS) as InfographicKind[]).map((k) => <option key={k} value={k}>{INFOGRAPHIC_LABELS[k]}</option>)}
+          </select>
+          <button style={{ ...btn, fontSize: 11.5, padding: '6px 10px', opacity: busy ? 0.6 : 1 }} disabled={!!busy} onClick={() => void makeInfographic()}>
+            {busy === 'infographic' ? 'Designer…' : '✦ Generér infographic'}
+          </button>
+        </div>
+        {infoSvg ? (
+          <div>
+            <div style={{ border: `1px solid ${C.line}`, borderRadius: 9, overflow: 'hidden', maxWidth: 360, background: '#fff' }}
+              dangerouslySetInnerHTML={{ __html: infoSvg }} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button style={{ ...btn, fontSize: 11.5, padding: '5px 10px' }} onClick={() => void downloadInfoPng()}>Last ned PNG</button>
+              <button style={{ ...btn, fontSize: 11.5, padding: '5px 10px' }} onClick={downloadInfoSvg}>Last ned SVG</button>
+            </div>
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: C.inkSoft, margin: 0 }}>Bygges fra Product Brain / bevis-inventar / brief — kjør «Analyser produktet» eller «Bygg tankekart» først for best resultat.</p>
         )}
       </section>
 

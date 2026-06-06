@@ -45,6 +45,28 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/** Rastrer en SVG-streng til en PNG data-URL via canvas (for deling/eksport). */
+export function svgToPngDataUrl(svg: string, width: number, height: number, scale = 2): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+    const urlObj = URL.createObjectURL(blob);
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = width * scale; canvas.height = height * scale;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('Canvas-kontekst utilgjengelig')); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(urlObj);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (e) { URL.revokeObjectURL(urlObj); reject(e as Error); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(urlObj); reject(new Error('Klarte ikke å rastre SVG')); };
+    img.src = urlObj;
+  });
+}
+
 /** Print-klar manus-HTML (åpnes i print-vindu → lagre som PDF). */
 export function buildScriptHtml(project: DemoProject): string {
   const rows = project.scenes.map((s, i) => {

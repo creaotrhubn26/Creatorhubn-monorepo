@@ -1061,6 +1061,53 @@ Svar med KUN ett JSON-objekt:
   return buildScenesFromDrafts(parsed.scenes, { url, devices, elements });
 }
 
+/** Kontekstuell infographic: Claude designer en branded SVG fra produktets data. */
+export type InfographicKind = 'overview' | 'features' | 'comparison' | 'funnel';
+export const INFOGRAPHIC_LABELS: Record<InfographicKind, string> = {
+  overview: 'Produkt-oversikt', features: 'Funksjons-rutenett', comparison: 'Differensiering', funnel: 'Funnel / verdireise',
+};
+export async function generateInfographic(params: {
+  kind: InfographicKind;
+  /** Kontekst bygget fra Product Brain / bevis-inventar / brief. */
+  context: string;
+  title: string;
+  brandColor?: string;
+  logoUrl?: string;
+  width?: number;
+  height?: number;
+}): Promise<string> {
+  const { kind, context, title, brandColor = '#ef8a5d', logoUrl, width = 1080, height = 1350 } = params;
+  const layoutHint: Record<InfographicKind, string> = {
+    overview: 'Tittel øverst, 3–5 nøkkelpunkter som kort med ikon-aktige former, ett fremhevet bevis-tall stort.',
+    features: 'Rutenett av funksjons-kort (2 kolonner): hver med kort tittel + hva den løser.',
+    comparison: 'To kolonner: «Uten» vs «Med [produkt]» — tydelig kontrast som viser fordelen.',
+    funnel: 'Vertikal funnel/trakt med 3–4 steg fra oppmerksomhet til handling, med korte etiketter.',
+  };
+  const user = `Lag EN selvstendig, høy-kvalitets SVG-infographic (${width}×${height} px) for et produkt.
+
+TITTEL: ${title}
+MERKEFARGE (bruk som aksent): ${brandColor}
+TYPE: ${INFOGRAPHIC_LABELS[kind]} — ${layoutHint[kind]}
+${logoUrl ? `LOGO: legg en <image href="${logoUrl}" .../> diskret øverst.\n` : ''}
+INNHOLD (bruk KUN dette — ikke dikt opp tall):
+${context.slice(0, 2400)}
+
+Krav:
+- Returner KUN ett gyldig <svg ...>…</svg>-element (ingen forklaring, ingen markdown-fence).
+- Selvstendig: bruk system-fonter (font-family="-apple-system, Segoe UI, sans-serif"), ingen eksterne CSS/JS. Bilder kun via <image href> hvis logo er gitt.
+- Moderne, ren, luftig layout. God typografisk hierarki. Bruk merkefargen + nøytrale toner.
+- viewBox="0 0 ${width} ${height}" og width/height satt.
+- Tekst skal være ekte <text>-elementer (ikke bilde), så den er skarp.`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du er en senior informasjonsdesigner som lager rene, branded SVG-infographics. Du svarer ALLTID med kun ett <svg>-element.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 4000,
+  });
+  const m = raw.match(/<svg[\s\S]*<\/svg>/i);
+  if (!m) throw new Error('Klarte ikke å tolke SVG fra AI');
+  return m[0];
+}
+
 /** En målrettet variant-spesifikasjon (per persona / kanal / vinkel). */
 export interface VariantSpec {
   label: string;
