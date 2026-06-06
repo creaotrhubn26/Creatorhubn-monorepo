@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { RoleRoomAgentIcon } from './RoleRoomAgentIcon';
 import {
   Alert,
   Box,
@@ -396,8 +397,8 @@ export default function RoleRoomAgentDialog({
   const canGenerate = companyName.trim().length > 0 || websiteUrl.trim().length > 0 || organizationNumber.trim().length > 0;
   const providerLabel = useMemo(() => {
     if (!result) return null;
-    if (result.provider === 'openai') return `OpenAI · ${result.model}`;
-    if (result.provider === 'anthropic') return `Anthropic Claude · ${result.model}`;
+    if (result.provider === 'openai') return 'Creatorhub Intelligence';
+    if (result.provider === 'anthropic') return 'Creatorhub Intelligence';
     return 'Fallback-analyse';
   }, [result]);
   const runtimeLabel = useMemo(() => {
@@ -571,22 +572,7 @@ export default function RoleRoomAgentDialog({
             alignItems={{ xs: 'stretch', md: 'center' }}
           >
             <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
-              <Box
-                sx={{
-                  width: { xs: 38, md: 46 },
-                  height: { xs: 38, md: 46 },
-                  borderRadius: 2.5,
-                  display: 'grid',
-                  placeItems: 'center',
-                  color: '#22d3ee',
-                  border: '1px solid rgba(34,211,238,0.26)',
-                  bgcolor: 'rgba(8,47,73,0.22)',
-                  boxShadow: '0 0 28px rgba(34,211,238,0.12)',
-                  flexShrink: 0,
-                }}
-              >
-                <AutoFixHighIcon sx={{ fontSize: { xs: 20, md: 24 } }} />
-              </Box>
+              <RoleRoomAgentIcon size={44} working={generating || progressStatus === 'streaming'} />
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography
                   sx={{

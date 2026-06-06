@@ -29,7 +29,7 @@ const STAGE_LABELS: Record<ResearchStageKey, string> = {
   merchSuppliers: 'Merch-leverandører',
   metaPagesEnrichment: 'Meta Pages-berikelse',
   colorExtraction: 'Logo-paletten',
-  claudeSynthesis: 'Claude-syntese',
+  claudeSynthesis: 'CI-syntese',
   openaiSynthesis: 'OpenAI-syntese',
 };
 

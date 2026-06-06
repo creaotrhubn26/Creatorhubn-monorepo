@@ -83,6 +83,8 @@ import {
 } from "./role-room-instagram-deauth.js";
 import { isInstagramImageUploadConfigured } from "./role-room-instagram-image-upload.js";
 import { checkAgentEntitlement } from "./role-room-agent-entitlements.js";
+import { resolveClientPortalSession } from "./role-room-client-portal.js";
+import { getProjectProducerUserId } from "./client-portal-connected-platforms.js";
 
 interface AdminSession {
   userId: string;
@@ -132,6 +134,35 @@ export function setupRoleRoomSocialMetaRoutes(
     }
     const projectId = typeof req.query.projectId === "string" ? req.query.projectId : null;
     const state = signOauthState({ userId: session.userId, projectId });
+    const url = buildAuthorizationUrl(state);
+    if (!url) return res.status(500).json({ success: false, error: "Kunne ikke bygge auth-URL." });
+    return res.json({ success: true, url, scopes: META_REQUIRED_SCOPES });
+  });
+
+  // Klient-initiert Instagram/Meta-kobling: klienten (via portal-token) gir
+  // selv tilgang fra portalen. Vi mynter samme signerte state som
+  // produsentens start — men med PROSJEKTEIERENS userId — slik at den delte
+  // callbacken lagrer koblingen under produsenten + prosjektet, og Stig
+  // faktisk kan publisere. Consent gis med klientens egen Meta-innlogging.
+  // Tokens utveksles server-side i callbacken; klienten får kun authorize-URL.
+  app.get("/api/client/portal/oauth/instagram/start", async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token) return res.status(400).json({ success: false, error: "missing_token" });
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) return res.status(404).json({ success: false, error: "invalid_or_expired_token" });
+    const config = getMetaAppConfig();
+    if (!config) {
+      return res.status(503).json({ success: false, error: "Meta App er ikke konfigurert." });
+    }
+    const producerUserId = await getProjectProducerUserId(pool, session.projectId);
+    if (!producerUserId) {
+      return res.status(409).json({
+        success: false,
+        error: "Prosjektet mangler en produsent å koble kontoen til.",
+      });
+    }
+    const returnPath = `/client/portal/${encodeURIComponent(token)}`;
+    const state = signOauthState({ userId: producerUserId, projectId: session.projectId, returnPath });
     const url = buildAuthorizationUrl(state);
     if (!url) return res.status(500).json({ success: false, error: "Kunne ikke bygge auth-URL." });
     return res.json({ success: true, url, scopes: META_REQUIRED_SCOPES });
@@ -201,6 +232,12 @@ export function setupRoleRoomSocialMetaRoutes(
           });
         }
       }
+      // Klient-initiert kobling (returnPath satt): send klienten tilbake til
+      // portalen i stedet for en generisk success-side.
+      if (claims.returnPath && claims.returnPath.startsWith("/")) {
+        const sep = claims.returnPath.includes("?") ? "&" : "?";
+        return res.redirect(`${claims.returnPath}${sep}connected=instagram`);
+      }
       return res.send(
         `<html><body style="font-family:system-ui;padding:40px;background:#0b1220;color:#e2e8f0;">` +
           `<h1>Instagram er koblet til</h1>` +
@@ -211,6 +248,10 @@ export function setupRoleRoomSocialMetaRoutes(
       );
     } catch (oauthError) {
       console.error("[ig-oauth] callback failed", oauthError);
+      if (claims.returnPath && claims.returnPath.startsWith("/")) {
+        const sep = claims.returnPath.includes("?") ? "&" : "?";
+        return res.redirect(`${claims.returnPath}${sep}connect_error=instagram`);
+      }
       return res.status(500).send(
         `<html><body><h1>Innlogging feilet</h1><p>${(oauthError as Error).message}</p></body></html>`,
       );

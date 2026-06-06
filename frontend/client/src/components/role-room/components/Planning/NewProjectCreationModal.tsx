@@ -141,6 +141,24 @@ const readFirstNonEmptyString = (...values: unknown[]): string | undefined => {
   return undefined;
 };
 
+/**
+ * Avgjør om en feil fra `apiRequest` skyldes at backend er midlertidig
+ * utilgjengelig (token-utløp, timeout, rate-limit, server-feil eller ren
+ * nettverksfeil) — i motsetning til en validerings-/permission-feil som
+ * brukeren selv må rette. Brukes til å trigge offline-fallback ved
+ * prosjektopprettelse så en utfylt brief aldri går tapt på en backend-hikke.
+ */
+const isBackendUnavailableError = (error: unknown): boolean => {
+  const status = (error as { status?: number } | null | undefined)?.status;
+  if (typeof status !== 'number') {
+    // Ingen HTTP-status → fetch kastet (offline / DNS / CORS). Behandle som offline.
+    return true;
+  }
+  // 401 = utløpt/ugyldig token, 408 = timeout, 429 = rate-limit, 5xx = server-feil.
+  // Alle er forbigående/infrastruktur — trygt å persistere lokalt og synke senere.
+  return status === 401 || status === 408 || status === 429 || status >= 500;
+};
+
 const buildProjectActorMetadata = () => {
   const session = authSessionService.getSessionSync();
   const sessionRecord = session as Record<string, unknown>;
@@ -1984,10 +2002,57 @@ export default function NewProjectCreationModal({
       // vault-secrets). Bytt DEV_LOG=true lokalt og console.log selv om
       // du trenger payload for debugging.
 
-      const response = await apiRequest(endpoint, {
-        method: 'POST',
-        body: JSON.stringify(projectPayload),
-      }) as { data?: { id?: string }; id?: string } | { id?: string };
+      // Offline-first robusthet: dersom backend er utilgjengelig (utløpt token,
+      // 5xx eller nettverksfeil) skal ikke produsenten miste hele briefen.
+      // Vi persisterer prosjektet lokalt via castingService — som bruker samme
+      // offline-kø som `saveProject` — og lar resten av flyten fortsette.
+      // Endringen synkroniseres automatisk når backend er tilbake. Validerings-
+      // og permission-feil (4xx utenom 401/408/429) re-kastes så brukeren får
+      // rettet input.
+      let usedLocalFallback = false;
+      let response: { data?: { id?: string }; id?: string } | { id?: string };
+      try {
+        response = await apiRequest(endpoint, {
+          method: 'POST',
+          body: JSON.stringify(projectPayload),
+        }) as { data?: { id?: string }; id?: string } | { id?: string };
+      } catch (postError: unknown) {
+        if (isCastingPlanner && isBackendUnavailableError(postError)) {
+          const localProject = {
+            id: projectId,
+            name: projectData.projectName.trim(),
+            description: projectData.description || '',
+            status: 'casting',
+            clientName: projectData.clientName || '',
+            clientEmail: projectData.clientEmail || '',
+            clientPhone: projectData.clientPhone || '',
+            clientCompanyName: projectData.clientCompanyName || '',
+            clientOrganizationNumber: projectData.clientOrganizationNumber || '',
+            clientCompanyAddress: projectData.clientCompanyAddress || '',
+            eventDate: projectData.eventDate || '',
+            location: projectData.location || '',
+            projectType: projectData.projectType || '',
+            guestCount: projectData.guestCount || '',
+            roles: [],
+            candidates: [],
+            schedules: [],
+            crew,
+            locations: [],
+            props: [],
+            shotLists: [],
+            ...projectActorMetadata,
+          } as unknown as Parameters<typeof castingService.saveProject>[0];
+          await castingService.saveProject(localProject);
+          usedLocalFallback = true;
+          response = { id: projectId };
+          console.warn(
+            '[NewProjectCreationModal] Backend utilgjengelig — prosjektet er lagret lokalt og lagt i synk-kø.',
+            postError,
+          );
+        } else {
+          throw postError;
+        }
+      }
 
       if (DEV_LOG) console.log('[NewProjectCreationModal] Save returned id:', (response as any)?.id ?? (response as any)?.data?.id);
 
@@ -1998,8 +2063,10 @@ export default function NewProjectCreationModal({
         ? (typedResponse?.data?.id || typedResponse?.id || projectId)
         : (typedResponse?.data?.id || typedResponse?.id || projectId);
 
-      // Verify that project was actually saved to database before creating split sheet
-      if (isCastingPlanner && finalProjectId) {
+      // Verify that project was actually saved to database before creating split sheet.
+      // Hoppes over ved lokal fallback — da finnes prosjektet kun lokalt (i synk-kø)
+      // og en backend-verifisering ville alltid feile.
+      if (isCastingPlanner && finalProjectId && !usedLocalFallback) {
         let verified = false;
         let retries = 0;
         const maxRetries = 5;
@@ -2038,8 +2105,10 @@ export default function NewProjectCreationModal({
         }
       }
 
-      // Create split sheet if enabled - ONLY after project is verified
-      if (projectData.enableSplitSheet && projectData.splitSheetData && finalProjectId) {
+      // Create split sheet if enabled - ONLY after project is verified.
+      // Ved lokal fallback hoppes remote split-sheet-opprettelse over; teamavtaler
+      // håndteres uansett i økonomi-arbeidsflaten når backend er tilbake.
+      if (projectData.enableSplitSheet && projectData.splitSheetData && finalProjectId && !usedLocalFallback) {
         // Remove contributor IDs to let backend generate new ones (prevents duplicate key errors)
         const contributorsWithoutIds = (projectData.splitSheetData.contributors || []).map((c: any) => {
           const { id, ...contributorWithoutId } = c;
@@ -2080,7 +2149,11 @@ export default function NewProjectCreationModal({
       }
 
       // Show success message
-      setSuccessMessage(`Prosjektet "${projectData.projectName}" ble opprettet!`);
+      setSuccessMessage(
+        usedLocalFallback
+          ? `Prosjektet "${projectData.projectName}" ble lagret lokalt og synkroniseres når tilkoblingen er tilbake.`
+          : `Prosjektet "${projectData.projectName}" ble opprettet!`,
+      );
       setSavedProjectIdForInvite(finalProjectId || null);
 
       const projectResponse = (typedResponse?.data || response) as Record<string, unknown>;
@@ -2094,7 +2167,11 @@ export default function NewProjectCreationModal({
         showClientInviteAfterSave &&
         isCastingPlanner &&
         validateEmail(projectData.clientEmail || '') &&
-        Boolean(finalProjectId)
+        Boolean(finalProjectId) &&
+        // Klient-invitasjon krever en ekte magic-link fra backend. Ved lokal
+        // fallback er backend nede, så vi hopper over invitasjonsvisningen —
+        // produsenten kan sende den når prosjektet er synket.
+        !usedLocalFallback
       );
 
       // Clear draft after successful save

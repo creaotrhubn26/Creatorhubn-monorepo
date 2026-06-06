@@ -47,6 +47,7 @@ import type {
   RoleRoomFeedTemplatePayload,
 } from '../../services/roleRoomAgentService';
 import { CONCEPT_LABELS, FEED_POST_CONCEPT_ORDER, buildFeedPost } from '../../utils/feedPlanner';
+import { describeProducerError } from '../../utils/producerErrorMessage';
 import FeedPostTile from './FeedPostTile';
 import GoogleDriveImagePicker from './GoogleDriveImagePicker';
 import FeedPostApprovalActions from './FeedPostApprovalActions';
@@ -198,6 +199,9 @@ export default function FeedPostDetailPanel({
   const [fbSelectedPageId, setFbSelectedPageId] = useState<string>('');
   const [fbPublishing, setFbPublishing] = useState(false);
   const [fbPublishStatus, setFbPublishStatus] = useState<string | null>(null);
+  // Skille mellom «klarte ikke å hente sider» (nettverk/feil) og «ingen sider
+  // koblet» — ellers ser Stig samme «koble Meta på nytt»-melding uansett årsak.
+  const [fbPagesError, setFbPagesError] = useState<string | null>(null);
   const [hashtagSuggesting, setHashtagSuggesting] = useState(false);
   const [hashtagSuggestError, setHashtagSuggestError] = useState<string | null>(null);
   const [hashtagSuggestions, setHashtagSuggestions] = useState<Array<{
@@ -224,15 +228,21 @@ export default function FeedPostDetailPanel({
     const headers: Record<string, string> = {};
     const tok = resolveAuthToken();
     if (tok) headers['Authorization'] = `Bearer ${tok}`;
+    setFbPagesError(null);
     fetch('/api/role-room/facebook/pages', { headers, credentials: 'include' })
-      .then((r) => r.json().catch(() => ({})))
-      .then((body) => {
-        if (body?.success && Array.isArray(body.pages)) {
+      .then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) }))
+      .then(({ ok, body }) => {
+        if (ok && body?.success && Array.isArray(body.pages)) {
           setFbPages(body.pages);
           if (body.pages.length > 0) setFbSelectedPageId(body.pages[0].id);
+        } else {
+          // Svaret kom, men ikke som forventet (auth/scope/feil) — vis tydelig.
+          setFbPagesError('Kunne ikke hente Facebook-sider. Sjekk at Meta-kontoen er koblet med riktige rettigheter, og prøv igjen.');
         }
       })
-      .catch(() => { /* silently ignore — button handles errors */ });
+      .catch(() => {
+        setFbPagesError('Klarte ikke å hente Facebook-sider (offline eller nettverksfeil). Prøv igjen når du er tilkoblet.');
+      });
   }, []);
 
   const publishToFacebookPage = async () => {
@@ -264,7 +274,18 @@ export default function FeedPostDetailPanel({
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setFbPublishStatus(body?.error || `HTTP ${response.status}`);
+        const backendMsg = typeof body?.error === 'string' ? body.error : '';
+        const human =
+          response.status === 401
+            ? 'Meta-tilkoblingen har utløpt. Koble Meta-kontoen på nytt og prøv igjen.'
+            : response.status === 403
+              ? 'Ingen tilgang til denne Facebook-siden. Sjekk at Meta-kontoen er koblet med riktige rettigheter.'
+              : response.status === 429
+                ? 'For mange forespørsler mot Facebook akkurat nå. Vent et øyeblikk og prøv igjen.'
+                : response.status >= 500
+                  ? 'Facebook svarer ikke akkurat nå. Prøv igjen om litt.'
+                  : backendMsg || `Publisering feilet (kode ${response.status}). Prøv igjen.`;
+        setFbPublishStatus(backendMsg && response.status < 500 && response.status !== 403 ? `${human} (${backendMsg})` : human);
         return;
       }
       if (body?.video?.scheduled) {
@@ -399,7 +420,7 @@ export default function FeedPostDetailPanel({
         setAiError(message);
         onEntitlementBlocked?.(message);
       } else {
-        setAiError(caught instanceof Error ? caught.message : 'Kunne ikke hente AI-anbefaling.');
+        setAiError(describeProducerError(caught, 'hente AI-anbefalingen'));
       }
     } finally {
       setAiLoading(false);
@@ -1225,8 +1246,9 @@ export default function FeedPostDetailPanel({
             </Typography>
           </Stack>
           {fbPages.length === 0 ? (
-            <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.72rem' }}>
-              Ingen FB Pages funnet — koble Meta-kontoen på nytt for å få pages_manage_posts + publish_video scopes.
+            <Typography sx={{ color: fbPagesError ? '#fca5a5' : 'rgba(226,232,240,0.62)', fontSize: '0.72rem' }}>
+              {fbPagesError
+                ?? 'Ingen Facebook-sider er koblet ennå — koble Meta-kontoen for å få pages_manage_posts + publish_video scopes.'}
             </Typography>
           ) : (
             <TextField

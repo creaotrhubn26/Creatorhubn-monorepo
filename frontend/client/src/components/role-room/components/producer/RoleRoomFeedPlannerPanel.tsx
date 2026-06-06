@@ -51,6 +51,7 @@ import FeedPostDetailPanel from './FeedPostDetailPanel';
 import FeedPlanTimeline from './FeedPlanTimeline';
 import SocialBrandLogo, { InstagramBrandLogo } from './SocialBrandLogo';
 import { buildFeedPost } from '../../utils/feedPlanner';
+import { describeProducerError } from '../../utils/producerErrorMessage';
 import SortableFeedPostTile from './SortableFeedPostTile';
 
 type RoleRoomFeedPlannerPanelProps = {
@@ -185,7 +186,7 @@ export default function RoleRoomFeedPlannerPanel({
         if (result?.updatedAt) setLastSavedAt(result.updatedAt);
         setDirty(false);
       } catch (error) {
-        setSaveError(error instanceof Error ? error.message : 'Kunne ikke lagre feed-planen.');
+        setSaveError(describeProducerError(error, 'lagre feed-planen'));
       } finally {
         setSaving(false);
       }
@@ -353,8 +354,14 @@ export default function RoleRoomFeedPlannerPanel({
       if (result.success) {
         setStrategyRefreshNote(`Strategi for ${platform} oppdatert.`);
       } else {
-        setStrategyRefreshNote(`Refresh feilet: ${result.error ?? 'ukjent feil'}`);
+        setStrategyRefreshNote(
+          result.error
+            ? `Strategioppdateringen feilet: ${result.error}`
+            : 'Strategioppdateringen kunne ikke fullføres. Prøv igjen.',
+        );
       }
+    } catch (refreshError) {
+      setStrategyRefreshNote(describeProducerError(refreshError, 'oppdatere feed-strategien'));
     } finally {
       setRefreshingStrategy(false);
       window.setTimeout(() => setStrategyRefreshNote(null), 6000);
@@ -556,7 +563,7 @@ export default function RoleRoomFeedPlannerPanel({
               startIcon={<RestartAltIcon fontSize="small" />}
               onClick={refreshStrategy}
               disabled={refreshingStrategy}
-              title={strategyRefreshNote ?? 'Tving Claude+web_search-oppdatering av plattform-strategi'}
+              title={strategyRefreshNote ?? 'Tving CI-oppdatering av plattform-strategi'}
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,

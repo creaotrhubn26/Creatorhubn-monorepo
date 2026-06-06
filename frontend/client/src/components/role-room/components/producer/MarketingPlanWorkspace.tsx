@@ -41,6 +41,8 @@ import VersionPicker, { type VersionItem } from './VersionPicker';
 import PostEditDialog from './PostEditDialog';
 import MarketingPlanActivityFeed from './MarketingPlanActivityFeed';
 import MarketingPlanCalendarView from './MarketingPlanCalendarView';
+import { MarketingGenerationProgress } from './MarketingGenerationProgress';
+import { RoleRoomAgentIcon } from './RoleRoomAgentIcon';
 
 interface Props {
   projectId: string;
@@ -48,6 +50,12 @@ interface Props {
   onOpenAdvancedEditor?: () => void;
   /** Klient-modus: skjul "Endre plan", VersionPicker og PostEditDialog. */
   readOnly?: boolean;
+  /**
+   * Bump denne for å tvinge en re-henting (f.eks. når Agent-dialogen lukkes
+   * etter at en plan ble generert der). Uten dette ville en tom, allerede
+   * mountet fane ikke fanget opp en plan generert i en annen flate.
+   */
+  reloadSignal?: number;
 }
 
 const STATUS_LABELS: Record<MarketingPlanPost['status'], string> = {
@@ -74,7 +82,7 @@ const FORMAT_LABELS: Record<MarketingPlanPost['format'], string> = {
   youtube_short: 'YT Short',
 };
 
-export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOnly = false }: Props) {
+export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOnly = false, reloadSignal }: Props) {
   const [plan, setPlan] = useState<MarketingPlan | null>(null);
   const [posts, setPosts] = useState<MarketingPlanPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,6 +122,13 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
   }, [projectId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Re-hent når et eksternt signal bumpes (Agent-dialogen lukket etter
+  // generering). Hopper over første render (reloadSignal udefinert/0).
+  useEffect(() => {
+    if (!reloadSignal) return;
+    void load();
+  }, [reloadSignal, load]);
 
   // Real-time polling — sjekker etter endrede posts hvert 7. sek slik
   // at klient + team ser hverandres redigeringer live. Etter en run
@@ -236,7 +251,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
         {onOpenAdvancedEditor && (
           <Button variant="contained"
                   onClick={onOpenAdvancedEditor}
-                  startIcon={<AutoAwesomeIcon />}
+                  startIcon={<RoleRoomAgentIcon size={18} />}
                   sx={{ mt: 2.4, bgcolor: '#ec4899', '&:hover': { bgcolor: '#db2777' } }}>
             Åpne markedsplan-generator
           </Button>
@@ -471,6 +486,11 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
                 {generatingPosts ? 'Genererer posts …' : 'Generer 30 posts nå'}
               </Button>
             )}
+            {generatingPosts && (
+              <Box sx={{ mt: 2, textAlign: 'left' }}>
+                <MarketingGenerationProgress active mode="posts" />
+              </Box>
+            )}
             {generateError && (
               <Typography sx={{ color: '#ef4f6f', fontSize: '0.84rem', mt: 1.4 }}>
                 {generateError}
@@ -678,8 +698,9 @@ function PostRow({ post, pillar, onEdit }: {
 }
 
 function PostThumbnail({ post }: { post: MarketingPlanPost }) {
-  const thumb = (post as MarketingPlanPost & { previewStreamThumbnailUrl?: string | null })
-    .previewStreamThumbnailUrl;
+  // previewStreamThumbnailUrl er nå et felt på MarketingPlanPost (ikke lenger
+  // en cast-hack) — backend har alltid sendt det.
+  const thumb = post.previewStreamThumbnailUrl;
   const Icon = STATUS_COLORS[post.status].icon;
   if (thumb) {
     return (
