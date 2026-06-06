@@ -14,7 +14,11 @@ import type express from "express";
 import type { Pool } from "pg";
 
 import { sendTransactionalEmail } from "./transactional-email-service.js";
-import { composeEmail } from "./email-design-system.js";
+import {
+  composeEmail,
+  emailIcon,
+  emailPalette,
+} from "./email-design-system.js";
 import {
   generateImage,
   isFalConfigured,
@@ -155,35 +159,31 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
           const baseUrl = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
 
           // ── 1. Bekreftelse til lead ────────────────────────────
+          const resourceRow = (icon: string, href: string, label: string, sub: string, isLast = false) => `
+            <tr>
+              <td style="padding:10px 0;${isLast ? '' : `border-bottom:1px solid ${emailPalette.borderSubtle};`}">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+                  <tr>
+                    <td style="width:28px;vertical-align:top;padding-top:2px;">${icon}</td>
+                    <td>
+                      <a href="${href}" style="color:${emailPalette.accentBright};font-weight:700;text-decoration:none;font-size:14px;font-family:-apple-system,sans-serif;">
+                        ${label} →
+                      </a>
+                      <span style="color:${emailPalette.textMuted};font-size:13px;display:block;margin-top:2px;font-family:-apple-system,sans-serif;">${sub}</span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          `;
           const ackBodyHtml = `
-            <p style="margin:0 0 16px 0;color:${"#c4b5fd"};font-family:-apple-system,sans-serif;font-size:14px;line-height:1.6;">
+            <p style="margin:0 0 16px 0;color:${emailPalette.textSecondary};font-family:-apple-system,sans-serif;font-size:14px;line-height:1.6;">
               I mellomtiden kan du utforske:
             </p>
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
-              <tr>
-                <td style="padding:8px 0;border-bottom:1px solid rgba(168,85,247,0.10);">
-                  <a href="${baseUrl}/pricing" style="color:#c084fc;font-weight:700;text-decoration:none;font-size:14px;">
-                    💎 Priser →
-                  </a>
-                  <span style="color:#8b7ec4;font-size:13px;display:block;margin-top:2px;">Fra 495 kr/mnd</span>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0;border-bottom:1px solid rgba(168,85,247,0.10);">
-                  <a href="${baseUrl}/faq" style="color:#c084fc;font-weight:700;text-decoration:none;font-size:14px;">
-                    💬 FAQ →
-                  </a>
-                  <span style="color:#8b7ec4;font-size:13px;display:block;margin-top:2px;">Korte svar på vanlige spørsmål</span>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0;">
-                  <a href="${baseUrl}/pitch" style="color:#c084fc;font-weight:700;text-decoration:none;font-size:14px;">
-                    🎬 Hva er The Role Room? →
-                  </a>
-                  <span style="color:#8b7ec4;font-size:13px;display:block;margin-top:2px;">2-minutters pitch-deck</span>
-                </td>
-              </tr>
+              ${resourceRow(emailIcon('paid', emailPalette.accentBright, 18), `${baseUrl}/pricing`, 'Priser', 'Fra 495 kr/mnd')}
+              ${resourceRow(emailIcon('help', emailPalette.accentBright, 18), `${baseUrl}/faq`, 'FAQ', 'Korte svar på vanlige spørsmål')}
+              ${resourceRow(emailIcon('slideshow', emailPalette.accentBright, 18), `${baseUrl}/pitch`, 'Hva er The Role Room?', '2-minutters pitch-deck', true)}
             </table>
           `;
 
@@ -215,7 +215,7 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
 
           const internalComposed = composeEmail({
             category: "lead_internal",
-            subject: `🎯 Ny byrå-lead: ${agencyName}`,
+            subject: `Ny byrå-lead: ${agencyName}`,
             preheader: `${contactName} fra ${agencyName} — ${segment}`,
             headline: `Ny lead fra ${agencyName}`,
             subhead: `${contactName} kommer fra ${segment}-segmentet og venter på svar innen 24 timer.`,
@@ -235,7 +235,7 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
 
           await sendTransactionalEmail({
             to: internalEmail,
-            subject: `🎯 Ny byrå-lead: ${agencyName}`,
+            subject: `Ny byrå-lead: ${agencyName}`,
             kind: "agency_lead_internal",
             fromLabel: "The Role Room — Leads",
             pool,
