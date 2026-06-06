@@ -261,7 +261,7 @@ test('auto-execute som ikke finner element setter needs_review', async ({ page }
 
 test('Responsive Check «Godta forslag» anvender start-scroll på scenen', async ({ page }) => {
   await seedDemo(page);
-  await page.getByText('Responsive Check').click();
+  await page.getByRole('button', { name: /Responsive Check/ }).click();
   await expect(page.getByText('All good').first()).toBeVisible({ timeout: 10000 });
   await page.getByText(/Godta forslag/).click();
   await expect(page.getByText(/✓ Justert/)).toBeVisible();

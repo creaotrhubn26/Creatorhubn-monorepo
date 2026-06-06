@@ -54,6 +54,7 @@ export function installDemoMock() {
         // Selector-bevisst: «broken/missing»-selektorer feiler → trigger self-healing.
         case 'demo_auto_execute': { const found = !/broken|missing/.test(String(args.selector || '')); later(() => emit('demo-capture://auto', { ok: found, found, selector: args.selector })); return null; }
         case 'demo_screenshot': later(() => emit('demo-capture://shot', { ok: true, dataUrl: TINY_JPEG })); return null;
+        case 'execute_script': return { succeeded: true, run_id: 'mock', events: [], exit_code: 0 };
         case 'demo_fetch_site_context': return 'Tittel: Test\nKlikkbare elementer: Start free trial · Request a demo';
         case 'demo_write_text': return args.path;
         case 'demo_write_binary': return args.path;

@@ -36,6 +36,10 @@ async function setupRoutes(page: Page) {
         { device: 'macbook', status: 'ok', message: 'All good' },
         { device: 'iphone', status: 'warning', message: 'CTA lavt på mobil', recommendation: 'Start etter 20% scroll', fix: { kind: 'start_scroll', sceneIndex: 0, startScrollPct: 20, summary: 'Start mobilscene etter 20% scroll' } },
       ] });
+    } else if (text.includes('forrige oppklaring')) {
+      payload = anthropic({ action: 'voiceover', params: { voiceModel: 'Male 1' }, clarify: null, reply: 'Lager voiceover med Male 1' });
+    } else if (text.includes('Bruker-instruks for Product Demo Studio')) {
+      payload = anthropic({ action: 'none', params: {}, clarify: { question: 'Vil du ha kvinne- eller mannsstemme? (voiceover støttes kun på engelsk)', options: ['Female 1', 'Male 1'] }, reply: '' });
     } else if (text.includes('Auto-annotér frame-en')) {
       payload = anthropic({ caption: 'Dashboard-oversikt', overlayText: 'Alt på ett sted', keyElements: ['Start free trial', 'Pricing'] });
     } else if (text.includes('OCR-/vision-fallback')) {
@@ -129,7 +133,7 @@ test('Validation-modal viser Expected ↔ Detected', async ({ page }) => {
 
 test('Responsive Check viser status + Godta forslag', async ({ page }) => {
   await seedDemo(page);
-  await page.getByText('Responsive Check').click();
+  await page.getByRole('button', { name: /Responsive Check/ }).click();
   await expect(page.getByText('All good').first()).toBeVisible({ timeout: 10000 });
   await expect(page.getByText(/Godta forslag/)).toBeVisible();
 });
@@ -159,7 +163,7 @@ test('Script Builder viser ekte innlogget bruker', async ({ page }) => {
 
 test('Director Critic gir score + forbedringer', async ({ page }) => {
   await seedDemo(page);
-  await page.getByText(/Vurder demoen/).click();
+  await page.getByRole('button', { name: /Vurder demoen/ }).click();
   await expect(page.getByText('Director Critic')).toBeVisible({ timeout: 10000 });
   await expect(page.getByText('72')).toBeVisible();
   await expect(page.getByText(/Start sterkere/)).toBeVisible();
@@ -207,4 +211,22 @@ test('CTA-bank klassifiserer capture-elementer', async ({ page }) => {
   });
   await page.getByText('Start free trial').first().click();
   await expect(page.getByText('CTA: Prøveperiode')).toBeVisible({ timeout: 10000 });
+});
+
+test('AI-kommando spør tilbake om stemme før voiceover', async ({ page }) => {
+  await seedDemo(page);
+  const cmd = page.getByPlaceholder(/Si til AI/);
+  await cmd.fill('lag en voiceover');
+  await cmd.press('Enter');
+  await expect(page.getByText(/kvinne- eller mannsstemme/)).toBeVisible({ timeout: 10000 });
+  await page.getByRole('button', { name: 'Male 1' }).first().click();
+  await expect(page.getByText(/Voiceover generert i Resolve|fullførte ikke/)).toBeVisible({ timeout: 10000 });
+});
+
+test('quick-kommando: egen kommando kan legges til', async ({ page }) => {
+  await seedDemo(page);
+  page.removeAllListeners('dialog');
+  page.on('dialog', (d) => d.accept('min egen kommando'));
+  await page.getByText('+ Egen').click();
+  await expect(page.getByText('min egen kommando')).toBeVisible();
 });

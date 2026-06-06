@@ -336,6 +336,46 @@ Svar med KUN ett JSON-objekt:
   };
 }
 
+/** Conversational Director: tolk en naturlig-språk-kommando til én handling,
+ *  eller still ETT oppklarings-spørsmål med valg når info mangler. */
+export type CommandAction = 'generate' | 'complete' | 'voiceover' | 'responsive' | 'critic' | 'none';
+export interface CommandResult {
+  action: CommandAction;
+  params: { voiceModel?: string; goal?: string; task?: string };
+  clarify: { question: string; options: string[] } | null;
+  reply: string;
+}
+
+export async function interpretCommand(params: {
+  instruction: string;
+  demoType: DemoType;
+  sceneCount: number;
+  hasNarration: boolean;
+  answeredWith?: string;
+}): Promise<CommandResult> {
+  const user = `Bruker-instruks for Product Demo Studio: «${params.instruction}»` +
+    (params.answeredWith ? `\nBrukerens svar på forrige oppklaring: «${params.answeredWith}»` : '') +
+    `\nKontekst: demo-type=${params.demoType}, ${params.sceneCount} scener, manus ${params.hasNarration ? 'finnes' : 'mangler'}.\n` +
+    `Tolk instruksen til ÉN handling. Mangler nødvendig info, still ETT oppklarings-spørsmål med valg i stedet for å gjette.\n` +
+    `Actions: generate (generér hele demoen), complete (fyll hull i manus/target), voiceover (lag voiceover i Resolve — STØTTES KUN PÅ ENGELSK; krever VoiceModel «Female 1» eller «Male 1»), responsive (responsive check), critic (vurder demoen), none.\n` +
+    `For voiceover UTEN spesifisert kjønn: returner clarify {question:"Vil du ha kvinne- eller mannsstemme? (voiceover støttes kun på engelsk)", options:["Female 1","Male 1"]}.\n` +
+    `Svar med KUN ett JSON-objekt: { "action":"...", "params":{"voiceModel":"Female 1","goal":"...","task":"..."}, "clarify":{"question":"...","options":["...","..."]}|null, "reply":"kort bekreftelse på hva som gjøres" }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du er en kommando-tolk for Product Demo Studio. Still oppklaring når info mangler — ikke gjett. Svar ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 400,
+  });
+  const p = extractJson<Partial<CommandResult>>(raw);
+  if (!p) return { action: 'none', params: {}, clarify: null, reply: 'Forsto ikke kommandoen.' };
+  const valid: CommandAction[] = ['generate', 'complete', 'voiceover', 'responsive', 'critic', 'none'];
+  return {
+    action: valid.includes(p.action as CommandAction) ? (p.action as CommandAction) : 'none',
+    params: p.params ?? {},
+    clarify: p.clarify && p.clarify.question ? { question: p.clarify.question, options: Array.isArray(p.clarify.options) ? p.clarify.options.slice(0, 4) : [] } : null,
+    reply: p.reply ?? '',
+  };
+}
+
 /** Patch fra «AI fullfør demoen» — kun felt som skal fylles for én scene. */
 export interface ScenePatch {
   index: number;

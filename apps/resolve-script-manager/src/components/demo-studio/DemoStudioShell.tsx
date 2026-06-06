@@ -26,7 +26,8 @@ import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
-import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision } from './demoStudioAI';
+import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, type CommandResult } from './demoStudioAI';
+import { executeScript } from '../../api';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
@@ -114,6 +115,58 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [respReport, setRespReport] = useState<ResponsiveReport | null>(null);
   const [critique, setCritique] = useState<DirectorCritique | null>(null);
   const [critiqueBusy, setCritiqueBusy] = useState(false);
+  const [cmdInput, setCmdInput] = useState('');
+  const [cmdBusy, setCmdBusy] = useState(false);
+  const [cmdReply, setCmdReply] = useState<string | null>(null);
+  const [cmdClarify, setCmdClarify] = useState<{ question: string; options: string[] } | null>(null);
+  const pendingInstruction = useRef('');
+  const [customCmds, setCustomCmds] = useState<string[]>([]);
+  useEffect(() => { try { setCustomCmds(JSON.parse(localStorage.getItem('trrpa.demoStudio.quickCmds') || '[]')); } catch { /* */ } }, []);
+  const saveCustomCmds = (list: string[]) => { setCustomCmds(list); try { localStorage.setItem('trrpa.demoStudio.quickCmds', JSON.stringify(list)); } catch { /* */ } };
+  const addCustomCmd = () => { const v = window.prompt('Ny quick-kommando (naturlig språk, f.eks. «lag voiceover med mannsstemme»):'); if (v && v.trim()) saveCustomCmds([...customCmds, v.trim()]); };
+
+  // Conversational Director: skrevet kommando → AI tolker → handling (eller spør tilbake).
+  const runCommand = async (instruction: string, answeredWith?: string) => {
+    if (!project || !instruction.trim() || cmdBusy) return;
+    if (!aiReady) { setShowSignIn(true); return; }
+    setCmdBusy(true); setCmdReply(null); setCmdClarify(null);
+    try {
+      const hasNarration = project.scenes.some((s) => !!s.narration?.trim());
+      const r = await interpretCommand({ instruction, demoType: project.demoType, sceneCount: project.scenes.length, hasNarration, answeredWith });
+      if (r.clarify && r.clarify.options.length) { pendingInstruction.current = instruction; setCmdClarify(r.clarify); return; }
+      setCmdReply(r.reply || 'OK');
+      await executeCommandAction(r);
+    } catch (e) {
+      setCmdReply('Feil: ' + (e as Error).message);
+    } finally {
+      setCmdBusy(false);
+    }
+  };
+
+  const executeCommandAction = async (r: CommandResult) => {
+    if (r.params.task) setProjectField('task', r.params.task);
+    if (r.params.goal) setProjectField('goal', r.params.goal);
+    if (r.params.voiceModel) setProjectField('voiceModel', r.params.voiceModel);
+    switch (r.action) {
+      case 'generate': await runDirector(); break;
+      case 'complete': await completeDemo(); break;
+      case 'responsive': await runResponsiveCheck_(); break;
+      case 'critic': await runCritic(); break;
+      case 'voiceover': await runVoiceover(r.params.voiceModel); break;
+      default: break;
+    }
+  };
+
+  const runVoiceover = async (voiceModel?: string) => {
+    if (!project) return;
+    const scenes = project.scenes.filter((s) => s.narration?.trim()).map((s) => ({ narration: s.narration }));
+    if (!scenes.length) { setCmdReply('Ingen manus å lese opp — generér eller skriv manus først.'); return; }
+    setCmdReply('Genererer voiceover i Resolve (kun engelsk)…');
+    try {
+      const sum = await executeScript('generate_voiceover_with_resolve', { scenes, voiceModel: voiceModel || project.voiceModel || 'Female 1', audioTrack: 7, isStudio: true }, false);
+      setCmdReply(sum?.succeeded ? '✓ Voiceover generert i Resolve' : 'Voiceover fullførte ikke — sjekk at Resolve Studio kjører med aktiv timeline.');
+    } catch (e) { setCmdReply('Feil ved voiceover: ' + String(e)); }
+  };
 
   // Auto-merkevare: bruk farger/logo/navn hentet fra siden (overskriver ikke
   // manuelt satt branding).
@@ -454,7 +507,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* ── Left nav ── */}
-        <div style={{ width: 208, background: C.panel, borderRight: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', padding: '12px 10px', flexShrink: 0 }}>
+        <div style={{ width: 208, background: C.panel, borderRight: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', padding: '12px 10px', flexShrink: 0, overflowY: 'auto', minHeight: 0 }}>
           {NAV_ITEMS.map((it) => (
             <div key={it.id} onClick={() => { setNav(it.id); setStoryMode(false); }}
               style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 11px', borderRadius: 9, fontSize: 13, cursor: 'pointer', marginBottom: 2,
@@ -476,6 +529,41 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 {aiReady ? 'AI klar' : 'Ikke koblet'}
               </span>
             </h4>
+            {/* ── AI-kommando (Conversational Director) ── */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              <input style={{ ...field, flex: 1 }} value={cmdInput} placeholder="Si til AI: «lag en voiceover»…"
+                onChange={(e) => setCmdInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && cmdInput.trim()) { const v = cmdInput; setCmdInput(''); void runCommand(v); } }} />
+              <button style={{ ...btn, opacity: cmdBusy ? 0.6 : 1 }} disabled={cmdBusy}
+                onClick={() => { const v = cmdInput; setCmdInput(''); void runCommand(v); }}>{cmdBusy ? '…' : '➤'}</button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
+              {['Generér demoen', 'Fyll hull i manus', 'Lag en voiceover', 'Responsive check', 'Vurder demoen', 'Lag veiledning for innlogging'].map((q) => (
+                <span key={q} onClick={() => { if (!cmdBusy) void runCommand(q); }}
+                  style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 7, border: `1px solid ${C.line}`, background: '#fff', color: C.inkSoft, cursor: cmdBusy ? 'default' : 'pointer' }}>{q}</span>
+              ))}
+              {customCmds.map((q) => (
+                <span key={q} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, padding: '3px 6px 3px 8px', borderRadius: 7, border: `1px solid ${C.accent}`, background: '#fdf0e7', color: '#b5651d' }}>
+                  <span onClick={() => { if (!cmdBusy) void runCommand(q); }} style={{ cursor: cmdBusy ? 'default' : 'pointer' }}>{q}</span>
+                  <span onClick={() => saveCustomCmds(customCmds.filter((x) => x !== q))} title="Fjern" style={{ cursor: 'pointer', opacity: 0.7 }}>✕</span>
+                </span>
+              ))}
+              <span onClick={addCustomCmd} title="Lag egen quick-kommando"
+                style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 7, border: `1px dashed ${C.lineStrong}`, background: '#fff', color: C.inkSoft, cursor: 'pointer' }}>+ Egen</span>
+            </div>
+            {cmdClarify && (
+              <div style={{ border: `1px solid ${C.accent}`, borderRadius: 9, padding: 10, marginBottom: 8, background: '#fdf0e7' }}>
+                <div style={{ fontSize: 12, marginBottom: 7 }}>{cmdClarify.question}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {cmdClarify.options.map((o) => (
+                    <button key={o} style={{ ...btn, padding: '5px 10px', fontSize: 12 }}
+                      onClick={() => { const ins = pendingInstruction.current; setCmdClarify(null); void runCommand(ins, o); }}>{o}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {cmdReply && <div style={{ fontSize: 11.5, color: cmdReply.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginBottom: 8 }}>{cmdReply}</div>}
+
             <p style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.45, marginBottom: 8 }}>La AI lese nettsiden og foreslå en hel scene-flow med manus.</p>
             <input style={{ ...field, marginBottom: 8 }} value={project.task ?? ''} placeholder="Hva skal veiledningen vise? f.eks. «hele innloggings-prosessen»"
               onChange={(e) => setProjectField('task', e.target.value)} />
