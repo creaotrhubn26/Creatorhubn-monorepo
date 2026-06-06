@@ -17,7 +17,7 @@ import type { UnlistenFn } from '@tauri-apps/api/event';
 import { openPath } from '@tauri-apps/plugin-opener';
 import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { useDemoStudio } from './demoStudioStore';
-import { totalDuration } from './demoStudioModel';
+import { totalDuration, VOICE_MODELS } from './demoStudioModel';
 import { buildSrt, buildScriptHtml, renderThumbnail, buildInteractiveGuideHtml } from './demoStudioExports';
 import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
 
@@ -138,7 +138,7 @@ export function ExportView() {
     if (!scenes.length) { setFileMsg('Ingen manus å lese opp — skriv narration på scenene først.'); return; }
     setFileMsg('Genererer voiceover i Resolve (AI Speech Generator)…');
     try {
-      const sum = await executeScript('generate_voiceover_with_resolve', { scenes, voiceModel: 'Female 1', audioTrack: 7, isStudio: true }, false);
+      const sum = await executeScript('generate_voiceover_with_resolve', { scenes, voiceModel: project.voiceModel || 'Female 1', audioTrack: 7, isStudio: true }, false);
       setFileMsg(sum.succeeded ? '✓ Voiceover generert i Resolve på Fairlight-spor A7' : 'Voiceover-kjøring fullførte ikke — sjekk at Resolve Studio kjører med aktiv timeline.');
     } catch (e) { setFileMsg('Feil ved Resolve-voiceover: ' + String(e)); }
   };
@@ -274,6 +274,9 @@ export function ExportView() {
             <button style={{ ...outlineBtn }} onClick={() => void exportSrt()}>Undertekster (.srt)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportScriptPdf()}>Manus (PDF)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportThumbnail()}>Thumbnail (PNG)</button>
+            <select style={{ ...brandInp }} value={project.voiceModel ?? 'Female 1'} onChange={(e) => setProjectField('voiceModel', e.target.value)} title="Resolve AI-stemme">
+              {VOICE_MODELS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+            </select>
             <button style={{ ...outlineBtn }} onClick={() => void voiceoverResolve()}>Voiceover i Resolve (AI)</button>
           </div>
           <div style={{ marginTop: 8, fontSize: 11.5, color: C.inkFaint }}>

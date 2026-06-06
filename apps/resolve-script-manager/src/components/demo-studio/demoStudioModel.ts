@@ -262,6 +262,8 @@ export interface DemoProject {
   goal?: string;
   /** Spesifikk oppgave/prosess veiledningen skal vise. F.eks. «hele innloggings-prosessen». */
   task?: string;
+  /** Valgt Resolve AI-stemme for voiceover (VoiceModel). Default «Female 1». */
+  voiceModel?: string;
   /** Merkevare/white-label for output (interaktiv guide + video). */
   branding?: DemoBranding;
   /** Global progresjons-modus (kan overstyres per scene). Default 'manual'. */
@@ -760,6 +762,15 @@ export function loadLastProject(): DemoProject | null {
 export function totalDuration(scenes: DemoScene[]): number {
   return scenes.reduce((s, sc) => s + (sc.duration || 0), 0);
 }
+
+/** Resolve AI Speech Generator-stemmer (VoiceModel). Engelske modeller i 21.x;
+ *  «Custom Voice» bruker en egen stemme-fil. */
+export const VOICE_MODELS: Array<{ id: string; label: string }> = [
+  { id: 'Female 1', label: 'Kvinne 1' },
+  { id: 'Female 2', label: 'Kvinne 2' },
+  { id: 'Male 1', label: 'Mann 1' },
+  { id: 'Male 2', label: 'Mann 2' },
+];
 
 // ── Lesbarhet (LIX — norsk standard) ──
 export interface Readability { lix: number; label: string }
