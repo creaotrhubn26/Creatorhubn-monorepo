@@ -25,6 +25,7 @@ import {
   CopySessionCompletedEvent,
   CopySessionStartedEvent,
   listCopySessions,
+  macosNotification,
   SessionStatus,
   setTrayStatus,
 } from "../api";
@@ -193,6 +194,21 @@ export default function CopyProgressView() {
         delete next[e.payload.session_id];
         return next;
       });
+
+      // macOS Notification Center: vis ferdig-melding så Fredrik vet
+      // når backup er klar uten å åpne hovedvinduet.
+      const { succeeded, failed, cancelled } = e.payload;
+      if (!cancelled && succeeded > 0) {
+        const title = failed > 0
+          ? "Backup ferdig med advarsler"
+          : "Backup ferdig";
+        const body = failed > 0
+          ? `${succeeded} filer kopiert, ${failed} feilet`
+          : `${succeeded} filer kopiert`;
+        void macosNotification(title, body).catch(() => {
+          // osascript ikke tilgjengelig (web preview/non-Mac) — ikke kritisk
+        });
+      }
     }).then((un) => unlisteners.push(un));
 
     listen<CopyDestDisabledEvent>("copy-dest-disabled", (e) => {
