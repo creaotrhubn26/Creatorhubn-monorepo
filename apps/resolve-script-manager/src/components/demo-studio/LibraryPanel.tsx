@@ -21,6 +21,7 @@ const FILTERS: Array<{ id: AssetKind | 'all'; label: string }> = [
   { id: 'infographic', label: 'Infographics' },
   { id: 'onepager', label: 'One-pagers' },
   { id: 'brain', label: 'Product Brain' },
+  { id: 'guide', label: 'Guider' },
   { id: 'variant', label: 'Varianter' },
 ];
 
@@ -43,7 +44,11 @@ export function LibraryPanel() {
       try { download(await svgToPngDataUrl(a.svg, 1080, 1350, 2), `${a.title}.png`); }
       catch { download(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(a.svg)}`, `${a.title}.svg`); }
     } else if (a.dataUrl) download(a.dataUrl, `${a.title}.png`);
-    else if (a.text) download(`data:text/plain;charset=utf-8,${encodeURIComponent(a.text)}`, `${a.title}.txt`);
+    else if (a.text) {
+      const isHtml = a.kind === 'guide' || /^\s*<!doctype|^\s*<html/i.test(a.text);
+      const mime = isHtml ? 'text/html' : 'text/plain';
+      download(`data:${mime};charset=utf-8,${encodeURIComponent(a.text)}`, `${a.title}.${isHtml ? 'html' : 'txt'}`);
+    }
   };
 
   return (

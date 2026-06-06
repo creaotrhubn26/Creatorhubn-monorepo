@@ -5,7 +5,7 @@
  * store filer (video) refereres via sti. Nøklet pr. vert så det er prosjekt-nært.
  */
 
-export type AssetKind = 'infographic' | 'onepager' | 'brain' | 'variant' | 'thumbnail' | 'other';
+export type AssetKind = 'infographic' | 'onepager' | 'brain' | 'variant' | 'thumbnail' | 'guide' | 'other';
 
 export const ASSET_KIND_LABELS: Record<AssetKind, string> = {
   infographic: 'Infographic',
@@ -13,6 +13,7 @@ export const ASSET_KIND_LABELS: Record<AssetKind, string> = {
   brain: 'Product Brain',
   variant: 'Variant',
   thumbnail: 'Thumbnail',
+  guide: 'Interaktiv guide',
   other: 'Annet',
 };
 

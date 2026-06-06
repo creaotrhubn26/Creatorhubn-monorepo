@@ -19,6 +19,7 @@ import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plug
 import { useDemoStudio } from './demoStudioStore';
 import { totalDuration, VOICE_MODELS, exportReadiness } from './demoStudioModel';
 import { buildSrt, buildScriptHtml, renderThumbnail, buildInteractiveGuideHtml } from './demoStudioExports';
+import { addAsset } from './assetLibrary';
 import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
 import { translateForVoiceover } from './demoStudioAI';
 
@@ -109,10 +110,16 @@ export function ExportView() {
   const exportGuide = async () => {
     if (!project) return;
     setFileMsg(null);
+    const html = buildInteractiveGuideHtml(project);
     const path = await saveFileDialog({ defaultPath: `${safeName()}-guide.html`, filters: [{ name: 'HTML', extensions: ['html'] }] });
     if (typeof path !== 'string') return;
-    try { const p = await demoWriteText(path, buildInteractiveGuideHtml(project)); setFileMsg(`✓ Interaktiv guide lagret: ${p}`); void openPath(p).catch(() => {}); }
-    catch (e) { setFileMsg('Feil ved interaktiv guide: ' + String(e)); }
+    try {
+      const p = await demoWriteText(path, html);
+      // Lagre i biblioteket + merk at fila er selvstendig/delbar.
+      addAsset({ kind: 'guide', title: `Interaktiv guide — ${project.branding?.brandName || project.name}`, text: html, url: project.url, note: 'Selvstendig HTML — del direkte (åpner i enhver nettleser)' });
+      setFileMsg(`✓ Interaktiv guide lagret + i biblioteket: ${p}. Selvstendig fil — send den direkte; den åpner i enhver nettleser.`);
+      void openPath(p).catch(() => {});
+    } catch (e) { setFileMsg('Feil ved interaktiv guide: ' + String(e)); }
   };
 
   const setBrand = (patch: Record<string, unknown>) => { if (project) setProjectField('branding', { ...(project.branding ?? {}), ...patch }); };
