@@ -258,14 +258,27 @@ export const AttachUploadsDialog: React.FC<AttachUploadsDialogProps> = ({
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <Dialog
+        open={open}
+        onClose={onClose}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+          },
+        }}
+      >
         <DialogTitle sx={{ pb: 1 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
                 Legg til fra opplastinger
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)' }}>
                 {galleryTitle ? `Galleri: ${galleryTitle}` : `Galleri-id: ${galleryId}`}
               </Typography>
             </Box>
@@ -285,11 +298,17 @@ export const AttachUploadsDialog: React.FC<AttachUploadsDialogProps> = ({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               InputProps={{
+                sx: { color: '#fff' },
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon fontSize="small" />
+                    <SearchIcon fontSize="small" sx={{ color: 'rgba(255,255,255,0.7)' }} />
                   </InputAdornment>
                 ),
+              }}
+              sx={{
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+                '& .Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' },
+                '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.5)', opacity: 1 },
               }}
             />
             <ToggleButtonGroup
@@ -316,7 +335,7 @@ export const AttachUploadsDialog: React.FC<AttachUploadsDialogProps> = ({
 
           {/* Header med count + select-all */}
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
               {files.length} fil(er) vist · {selectedIds.size} valgt
             </Typography>
             <FormControlLabel
@@ -339,7 +358,7 @@ export const AttachUploadsDialog: React.FC<AttachUploadsDialogProps> = ({
               minHeight: 320,
               maxHeight: 480,
               overflowY: 'auto',
-              border: '1px solid rgba(15,23,42,0.08)',
+              border: '1px solid rgba(255,255,255,0.12)',
               borderRadius: 1,
             }}
           >
@@ -349,7 +368,7 @@ export const AttachUploadsDialog: React.FC<AttachUploadsDialogProps> = ({
               </Box>
             ) : files.length === 0 ? (
               <Box sx={{ p: 4, textAlign: 'center' }}>
-                <Typography color="text.secondary">
+                <Typography sx={{ color: 'rgba(255,255,255,0.7)' }}>
                   Ingen opplastinger matcher dine filtre.
                 </Typography>
               </Box>
@@ -367,13 +386,13 @@ export const AttachUploadsDialog: React.FC<AttachUploadsDialogProps> = ({
                         gap: 1.5,
                         p: 1.25,
                         cursor: 'pointer',
-                        borderBottom: '1px solid rgba(15,23,42,0.05)',
-                        bgcolor: isSelected ? 'rgba(139,92,246,0.08)' : 'transparent',
-                        '&:hover': { bgcolor: isSelected ? 'rgba(139,92,246,0.12)' : 'rgba(15,23,42,0.03)' },
+                        borderBottom: '1px solid rgba(255,255,255,0.08)',
+                        bgcolor: isSelected ? 'rgba(139,92,246,0.18)' : 'transparent',
+                        '&:hover': { bgcolor: isSelected ? 'rgba(139,92,246,0.25)' : 'rgba(255,255,255,0.05)' },
                       }}
                     >
-                      <Checkbox size="small" checked={isSelected} onClick={(e) => e.stopPropagation()} onChange={() => toggleFile(file.fileId)} />
-                      <Box sx={{ color: 'text.secondary' }}>{fileIcon(file)}</Box>
+                      <Checkbox size="small" checked={isSelected} onClick={(e) => e.stopPropagation()} onChange={() => toggleFile(file.fileId)} sx={{ color: 'rgba(255,255,255,0.7)', '&.Mui-checked': { color: '#fff' } }} />
+                      <Box sx={{ color: 'rgba(255,255,255,0.7)' }}>{fileIcon(file)}</Box>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography
                           variant="body2"
@@ -388,7 +407,7 @@ export const AttachUploadsDialog: React.FC<AttachUploadsDialogProps> = ({
                           {file.fileName}
                         </Typography>
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.25 }}>
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                             {formatBytes(file.size)} · {formatDate(file.createdAt)}
                           </Typography>
                           {file.encryptedAtRest && (
