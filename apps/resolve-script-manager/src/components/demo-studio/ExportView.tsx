@@ -17,7 +17,7 @@ import type { UnlistenFn } from '@tauri-apps/api/event';
 import { openPath } from '@tauri-apps/plugin-opener';
 import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { useDemoStudio } from './demoStudioStore';
-import { totalDuration, VOICE_MODELS } from './demoStudioModel';
+import { totalDuration, VOICE_MODELS, exportReadiness } from './demoStudioModel';
 import { buildSrt, buildScriptHtml, renderThumbnail, buildInteractiveGuideHtml } from './demoStudioExports';
 import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
 import { translateForVoiceover } from './demoStudioAI';
@@ -162,7 +162,9 @@ export function ExportView() {
 
   const scenes = project.scenes;
   const recorded = scenes.filter((s) => s.recordingPath);
-  const canExport = recorded.length > 0;
+  // Integritets-gate (D): blokkér video-eksport ved alvorlige mangler.
+  const readiness = exportReadiness(scenes);
+  const canExport = recorded.length > 0 && readiness.ready;
 
   const startExport = async () => {
     setError(null); setResultPath(null); resultRef.current = null; runIdRef.current = null;
@@ -211,6 +213,22 @@ export function ExportView() {
         <p style={{ color: C.inkSoft, fontSize: 13, margin: '0 0 24px' }}>
           {scenes.length} scener · {fmtDur(totalDuration(scenes))} · {recorded.length} med opptak
         </p>
+
+        {/* Integritets-gate (D) */}
+        {(readiness.blocking.length > 0 || readiness.warnings.length > 0) && (
+          <div style={{ marginBottom: 22, border: `1px solid ${readiness.ready ? '#f0d9a8' : '#f0b8b8'}`, background: readiness.ready ? '#fff8ec' : '#fdecec', borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: readiness.ready ? '#8a6516' : '#9a2b2b', marginBottom: 6 }}>
+              {readiness.ready ? `Klar til eksport — ${readiness.warnings.length} advarsel${readiness.warnings.length === 1 ? '' : 'er'}` : `Eksport blokkert — ${readiness.blocking.length} må fikses`}
+            </div>
+            {readiness.blocking.map((b, i) => (
+              <div key={`b${i}`} style={{ fontSize: 12, color: '#9a2b2b', marginBottom: 2 }}>✕ {b.index >= 0 ? `Scene ${b.index + 1} (${b.title}): ` : ''}{b.issue}</div>
+            ))}
+            {readiness.warnings.map((w, i) => (
+              <div key={`w${i}`} style={{ fontSize: 12, color: '#8a6516', marginBottom: 2 }}>⚠ {w.index >= 0 ? `Scene ${w.index + 1} (${w.title}): ` : ''}{w.issue}</div>
+            ))}
+            {!readiness.ready && <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 6 }}>Video-eksport er deaktivert til de blokkerende punktene er løst. Tekst/bilde-leveranser kan fortsatt lages.</div>}
+          </div>
+        )}
 
         {/* Format */}
         <Section label="Videoformat">

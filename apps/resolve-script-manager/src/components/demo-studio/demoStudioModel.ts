@@ -377,6 +377,30 @@ export function validateScene(s: DemoScene): { ready: boolean; issues: string[] 
   return { ready: issues.length === 0, issues };
 }
 
+/**
+ * Integritets-gate før eksport (D): vurder hele flowen.
+ *   - blocking  → kan ikke produsere meningsfull output (blokkerer eksport)
+ *   - warnings  → degradert kvalitet (tillatt, men flagget)
+ */
+export interface ExportIssue { index: number; title: string; issue: string }
+export interface ExportReadiness { ready: boolean; blocking: ExportIssue[]; warnings: ExportIssue[] }
+export function exportReadiness(scenes: DemoScene[]): ExportReadiness {
+  const blocking: ExportIssue[] = [];
+  const warnings: ExportIssue[] = [];
+  if (!scenes.length) { blocking.push({ index: -1, title: '', issue: 'Ingen scener i demoen' }); return { ready: false, blocking, warnings }; }
+  scenes.forEach((s, i) => {
+    const title = s.title || `Scene ${i + 1}`;
+    if (!s.duration || s.duration <= 0) blocking.push({ index: i, title, issue: 'Ugyldig varighet' });
+    if (!s.narration?.trim() && !s.overlayText?.trim()) warnings.push({ index: i, title, issue: 'Ingen manus eller overlay' });
+    const hasTarget = !!(s.targetLabel?.trim() || s.targetSelector?.trim() || s.hotspot);
+    if (s.actionType && s.actionType !== 'wait' && !hasTarget) warnings.push({ index: i, title, issue: 'Handling uten target/hotspot' });
+    if (s.actionType && s.actionType !== 'wait' && s.detectedSelector && s.targetSelector && s.detectedSelector !== s.targetSelector) {
+      warnings.push({ index: i, title, issue: 'Uverifisert handling (detected ≠ expected)' });
+    }
+  });
+  return { ready: blocking.length === 0, blocking, warnings };
+}
+
 export const DEVICE_LABELS: Record<DemoDevice, string> = {
   macbook: 'MacBook', ipad: 'iPad', iphone: 'iPhone',
 };
