@@ -253,7 +253,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
             <AutoAwesomeIcon sx={{ color: palette.accentBright, fontSize: 20 }} />
             <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Avanserte filtre</Typography>
           </Stack>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, 1fr)' }, gap: 1.4 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(5, 1fr)' }, gap: 1.4 }}>
             <FilterField label="By" value={filters.location || ''} onChange={(v) => setFilters({ ...filters, location: v || undefined })} options={['', ...NORWEGIAN_CITIES]} placeholder="Alle byer" />
             <PlayingAgeField filters={filters} onChange={(f) => setFilters({ ...filters, ...f })} />
             <MultiField label="Språk" values={filters.languages} options={LANGUAGE_OPTIONS} onChange={(v) => setFilters({ ...filters, languages: v.length ? v : undefined })} />
@@ -285,7 +285,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
               <AutoAwesomeIcon sx={{ color: palette.accentBright, fontSize: 20 }} />
               <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Fremhevede talenter</Typography>
             </Stack>
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 1.4 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(auto-fill, minmax(140px, 1fr))', sm: 'repeat(auto-fill, minmax(190px, 1fr))' }, gap: { xs: 1, md: 1.4 } }}>
               {featured.map((t) => <FeaturedCard key={t.id} talent={t} />)}
             </Box>
           </Box>

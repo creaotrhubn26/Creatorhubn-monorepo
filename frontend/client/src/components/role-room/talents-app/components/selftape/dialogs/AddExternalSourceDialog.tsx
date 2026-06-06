@@ -7,7 +7,7 @@
  */
 import {
   Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
-  IconButton, Stack, TextField, Typography,
+  IconButton, Stack, TextField, Typography, useMediaQuery, useTheme,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import YouTubeIcon from '@mui/icons-material/YouTube';
@@ -28,6 +28,8 @@ interface Props {
 export default function AddExternalSourceDialog({
   open, projectId, onClose, onAdded,
 }: Props) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [url, setUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,12 +56,17 @@ export default function AddExternalSourceDialog({
       onClose={saving ? undefined : onClose}
       fullWidth
       maxWidth="sm"
+      fullScreen={isMobile}
       PaperProps={{
         sx: {
           bgcolor: palette.bgShell,
           color: palette.textPrimary,
-          border: `1px solid ${palette.border}`,
-          borderRadius: radius.lg,
+          border: isMobile ? 'none' : `1px solid ${palette.border}`,
+          borderRadius: isMobile ? 0 : radius.lg,
+          ...(isMobile && {
+            paddingTop: 'env(safe-area-inset-top, 0)',
+            paddingBottom: 'env(safe-area-inset-bottom, 0)',
+          }),
         },
       }}
     >

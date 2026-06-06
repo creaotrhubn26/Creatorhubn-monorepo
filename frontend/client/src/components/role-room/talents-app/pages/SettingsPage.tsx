@@ -89,8 +89,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 720, mx: 'auto' }}>
-      <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1.15, mb: 3 }}>
+    <Box sx={{ p: { xs: 1.5, sm: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>
+      <Typography sx={{ fontSize: { xs: '1.5rem', sm: '1.8rem' }, fontWeight: 800, color: palette.textPrimary, lineHeight: 1.15, mb: 3 }}>
         Innstillinger
       </Typography>
 

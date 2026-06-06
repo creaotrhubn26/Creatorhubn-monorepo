@@ -311,7 +311,7 @@ export default function PartnersCollaborationPage() {
         {error ? <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert> : null}
 
         {/* ─── 3 stat-cards (fjernet Shared Talent Pools — ikke implementert) ─── */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, mb: 3 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2, mb: 3 }}>
           <StatCard label="Aktive partnere" value={String(overview.stats.activePartners)} desc="Har tilgang til profilen din" Icon={GroupIcon} />
           <StatCard label="Ventende invitasjoner" value={String(overview.stats.pendingRequests)} desc="Sendt, ikke svart ennå" Icon={HourglassEmptyIcon} />
           <StatCard label="GDPR-trygg" value={`${overview.stats.gdprCompliantPercent}%`} desc="All datatilgang er styrt av samtykke" Icon={ShieldIcon} />
@@ -362,9 +362,9 @@ export default function PartnersCollaborationPage() {
         ) : filteredPartners.length === 0 ? (
           <EmptyTabState onInvite={() => setInviteOpen(true)} hasAnyPartners={overview.partners.length > 0} />
         ) : (
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 2, mb: 3 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.4fr 1fr' }, gap: 2, mb: 3 }}>
             <Box sx={{ ...cardSx, p: 0, overflow: 'hidden' }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: '36px 1.6fr 1fr 1fr 1fr 36px', gap: 1.2, px: 2, py: 1.4, borderBottom: `1px solid ${palette.borderSubtle}`, color: palette.textMuted, fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '36px 1fr 36px', md: '36px 1.6fr 1fr 1fr 1fr 36px' }, gap: 1.2, px: 2, py: 1.4, borderBottom: `1px solid ${palette.borderSubtle}`, color: palette.textMuted, fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 <Box />
                 <Box>Partner</Box>
                 <Box>Type</Box>
@@ -381,7 +381,7 @@ export default function PartnersCollaborationPage() {
                     onClick={() => setSelectedId(p.id)}
                     sx={{
                       display: 'grid',
-                      gridTemplateColumns: '36px 1.6fr 1fr 1fr 1fr 36px',
+                      gridTemplateColumns: { xs: '36px 1fr 36px', md: '36px 1.6fr 1fr 1fr 1fr 36px' },
                       gap: 1.2,
                       px: 2,
                       py: 1.4,
@@ -503,7 +503,7 @@ export default function PartnersCollaborationPage() {
               Ingen aktivitet ennå. Når en partner ser profilen din, dukker det opp her.
             </Typography>
           ) : (
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 1.4 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(5, 1fr)' }, gap: 1.4 }}>
               {overview.feed.slice(0, 5).map((f) => (
                 <FeedCard key={`${f.kind}-${f.id}`} event={f} />
               ))}

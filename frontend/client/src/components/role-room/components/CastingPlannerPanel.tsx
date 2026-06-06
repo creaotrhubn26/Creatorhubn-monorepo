@@ -302,7 +302,9 @@ import RoleRoomBillingAccountDialog from './RoleRoomBillingAccountDialog';
 import SelectionMeetPlannerCard from './SelectionMeetPlannerCard';
 import SelfTapePreviewModal from './selftape/SelfTapePreviewModal';
 import {
+  availabilityChipStyle,
   listCastingRoleSelftapes,
+  selftapeAvailability,
   type CastingRoleSelftape,
 } from '../services/roleRoomSelfTapesService';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
@@ -10833,38 +10835,44 @@ type RoleRoomProjectWorkspaceState = {
                                         border: '1px solid rgba(125,211,252,0.45)',
                                       }}
                                     />
-                                    {/* 📹 Self-tape-badge (utvelgelse-fane) */}
-                                    {candidateSelftapes && candidateSelftapes.length > 0 ? (
-                                      <Box
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSelftapePreview(candidateSelftapes[0]);
-                                        }}
-                                        sx={{
-                                          position: 'absolute',
-                                          top: 6,
-                                          right: 6,
-                                          display: 'inline-flex',
-                                          alignItems: 'center',
-                                          gap: 0.3,
-                                          height: 20,
-                                          px: 0.7,
-                                          borderRadius: 999,
-                                          bgcolor: 'rgba(168,85,247,0.85)',
-                                          color: '#fff',
-                                          fontSize: '0.62rem',
-                                          fontWeight: 800,
-                                          cursor: 'pointer',
-                                          border: '1px solid rgba(192,132,252,0.6)',
-                                          boxShadow: '0 0 8px rgba(168,85,247,0.5)',
-                                          '&:hover': { bgcolor: 'rgba(168,85,247,0.95)' },
-                                        }}
-                                        title="Se talentens self-tape"
-                                      >
-                                        <PlayCircleOutlineIcon sx={{ fontSize: 12 }} />
-                                        {candidateSelftapes.length > 1 ? candidateSelftapes.length : 'Tape'}
-                                      </Box>
-                                    ) : null}
+                                    {/* 📹 Self-tape-badge (utvelgelse-fane) — tilstand-bevisst */}
+                                    {candidateSelftapes && candidateSelftapes.length > 0 ? (() => {
+                                      const tape = candidateSelftapes[0];
+                                      const availability = selftapeAvailability(tape);
+                                      const style = availabilityChipStyle(availability);
+                                      return (
+                                        <Box
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelftapePreview(tape);
+                                          }}
+                                          sx={{
+                                            position: 'absolute',
+                                            top: 6,
+                                            right: 6,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 0.3,
+                                            height: 20,
+                                            px: 0.7,
+                                            borderRadius: 999,
+                                            bgcolor: style.bg,
+                                            color: style.fg,
+                                            fontSize: '0.62rem',
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                            border: `1px solid ${style.border}`,
+                                            boxShadow: `0 0 8px ${style.border}`,
+                                            '&:hover': { filter: 'brightness(1.15)' },
+                                          }}
+                                          title={`${style.label} — klikk for å åpne`}
+                                        >
+                                          <PlayCircleOutlineIcon sx={{ fontSize: 12 }} />
+                                          {style.label}
+                                          {candidateSelftapes.length > 1 ? ` (${candidateSelftapes.length})` : ''}
+                                        </Box>
+                                      );
+                                    })() : null}
                                   </Box>
 
                                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.55 }}>
