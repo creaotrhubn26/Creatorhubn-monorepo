@@ -87,7 +87,9 @@ ingen forklaring rundt.`;
 function imageBlock(dataUrl: string): ClaudeContentBlock | null {
   const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/s);
   if (!m) return null;
-  return { type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } };
+  // Claude vision støtter png/jpeg; capture gir jpeg/png, default jpeg.
+  const media_type: 'image/png' | 'image/jpeg' = m[1] === 'image/png' ? 'image/png' : 'image/jpeg';
+  return { type: 'image', source: { type: 'base64', media_type, data: m[2] } };
 }
 
 const VALID_ACTIONS = Object.keys(ACTION_META) as DemoActionType[];
@@ -1011,8 +1013,13 @@ export async function generateMarketingFlow(params: {
   evidence?: ProductEvidence;
   /** Verifisert dekningssti fra Product Brain — styrer rekkefølge/dekning. */
   coverageHint?: string[];
+  /** Kontekst fra konkurrent-sider — for skarpere differensiering. */
+  competitorContext?: string;
 }): Promise<DemoScene[]> {
-  const { url, brief, devices, elements = [], siteContext = '', evidence, coverageHint = [] } = params;
+  const { url, brief, devices, elements = [], siteContext = '', evidence, coverageHint = [], competitorContext = '' } = params;
+  const competitorBlock = (brief.competitors?.length || competitorContext)
+    ? `\nKONKURRENTER (differensier tydelig — si hvorfor DETTE produktet er bedre, uten å nevne konkurrenten ved navn i manus):\n${(brief.competitors || []).join(', ')}${competitorContext ? `\nUtdrag fra konkurrent-sider:\n${competitorContext.slice(0, 1200)}` : ''}\n`
+    : '';
   const preset = CHANNEL_PRESETS[brief.channel];
   const framework = FRAMEWORKS[brief.framework || preset.framework];
   const funnel = FUNNEL_INTENT[brief.funnelStage];
@@ -1029,7 +1036,7 @@ ${brief.proof?.length ? `Bevis: ${brief.proof.join(' · ')}\n` : ''}${brief.obje
 FUNNEL-STEG: ${FUNNEL_LABELS[brief.funnelStage]} → mål: ${funnel.goal}. CTA-energi: ${funnel.ctaHint}.
 KANAL: ${preset.label} → ${preset.toneHint}. Total lengde ~${preset.maxSeconds}s, hook i de første ${preset.hookSeconds} sek.${preset.captions ? ' Skriv korte caption-vennlige linjer.' : ''}
 RAMMEVERK: ${framework.label}. Følg disse beatene i rekkefølge, én eller flere scener per beat: ${framework.beats.join(' → ')}.
-${coverageHint.length ? `\nVERIFISERT DEKNINGSSTI (Product Brain) — sørg for at demoen dekker disse stegene, i denne rekkefølgen, vevd inn i rammeverkets beats:\n${coverageHint.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n` : ''}${brief.desiredAction ? `ØNSKET HANDLING (siste CTA): ${brief.desiredAction}\n` : ''}${siteContext ? `\nKontekst fra siden:\n${siteContext.slice(0, 1500)}\n` : ''}${evidenceBlock(evidence)}${catalog}${voicePrefBlock(url)}
+${coverageHint.length ? `\nVERIFISERT DEKNINGSSTI (Product Brain) — sørg for at demoen dekker disse stegene, i denne rekkefølgen, vevd inn i rammeverkets beats:\n${coverageHint.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n` : ''}${competitorBlock}${brief.desiredAction ? `ØNSKET HANDLING (siste CTA): ${brief.desiredAction}\n` : ''}${siteContext ? `\nKontekst fra siden:\n${siteContext.slice(0, 1500)}\n` : ''}${evidenceBlock(evidence)}${catalog}${voicePrefBlock(url)}
 SLIK ANVENDES METODEN PÅ PRODUKTET (viktigst):
 - Fest HVER beat til ÉN konkret produktdel fra PRODUKT-BEVIS over. Eksempel for ${framework.label}: ${framework.beats.map((b) => `«${b}»`).join(' → ')} skal hver vise en navngitt funksjon/bevis/seksjon — ikke generisk prat.
 - «Bevis»-beats MÅ bruke et faktisk bevis (tall/testimonial/logo) som står på siden.

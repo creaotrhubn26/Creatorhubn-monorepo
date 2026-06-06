@@ -863,7 +863,8 @@ export const FRAMEWORKS: Record<MarketingFramework, { label: string; beats: stri
 
 /** Markedsføringsmål — hva du vil oppnå. Anbefaler funnel-steg + metode + kanaler. */
 export type MarketingObjective =
-  | 'awareness' | 'lead_gen' | 'conversion' | 'activation' | 'retention' | 'expansion' | 'advocacy';
+  | 'awareness' | 'lead_gen' | 'conversion' | 'activation' | 'retention' | 'expansion' | 'advocacy'
+  | 'abm' | 'webinar' | 'freemium';
 export interface ObjectiveSpec {
   label: string;
   description: string;
@@ -879,6 +880,9 @@ export const MARKETING_OBJECTIVES: Record<MarketingObjective, ObjectiveSpec> = {
   retention:  { label: 'Behold kunder', description: 'Vis verdi, reduser frafall, dyp bruk', funnelStage: 'bofu', framework: 'bab', channels: ['email', 'youtube'] },
   expansion:  { label: 'Mersalg / oppgrader', description: 'Få eksisterende kunder til å utvide', funnelStage: 'bofu', framework: 'fab', channels: ['email', 'sales_demo'] },
   advocacy:   { label: 'Skap ambassadører', description: 'Få fornøyde kunder til å anbefale', funnelStage: 'bofu', framework: 'star', channels: ['linkedin', 'reels'] },
+  abm:        { label: 'ABM (navngitte kontoer)', description: 'Skreddersydd demo mot spesifikke målkontoer/beslutningstakere', funnelStage: 'bofu', framework: 'pastor', channels: ['linkedin', 'sales_demo', 'email'] },
+  webinar:    { label: 'Webinar-funnel', description: 'Driv påmeldinger + varm opp før/etter et webinar', funnelStage: 'mofu', framework: 'quest', channels: ['email', 'landing', 'youtube'] },
+  freemium:   { label: 'Freemium-aktivering', description: 'Få gratis-brukere til «aha» og oppgradering', funnelStage: 'mofu', framework: 'jtbd', channels: ['email', 'youtube', 'landing'] },
 };
 
 /** Marketing-brief: AI-ens forståelse av markedsføreren og målgruppen. */
@@ -902,6 +906,8 @@ export interface MarketingBrief {
   framework: MarketingFramework;
   /** Ønsket handling (CTA-intensjon). */
   desiredAction?: string;
+  /** Konkurrent-URLer/navn — gir skarpere posisjonering/differensiering. */
+  competitors?: string[];
 }
 export function emptyMarketingBrief(): MarketingBrief {
   return { objective: 'conversion', persona: '', painPoints: [], valueProps: [], funnelStage: 'mofu', channel: 'reels', framework: 'pas' };

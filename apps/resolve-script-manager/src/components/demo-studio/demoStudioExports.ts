@@ -9,7 +9,8 @@
 
 import {
   ACTION_META, DEMO_TYPE_LABELS, DEVICE_LABELS, totalDuration,
-  type DemoProject, type DemoScene,
+  BRAIN_KIND_LABELS, VERIFICATION_META, FRAMEWORKS, MARKETING_OBJECTIVES,
+  type DemoProject, type DemoScene, type ProductBrain, type BrainNodeKind,
 } from './demoStudioModel';
 
 /** SRT-timecode: «HH:MM:SS,mmm». */
@@ -87,6 +88,63 @@ export function buildScriptHtml(project: DemoProject): string {
 </header>
 ${rows}
 <footer>Generert av Product Demo Studio</footer>
+</body></html>`;
+}
+
+/**
+ * Print-klar PDF av Product Brain (verifisert tankekart): anbefalt metode +
+ * begrunnelse, noder gruppert pr. type med ✓/!/+-status, dekningssti og gap.
+ */
+export function buildBrainHtml(brain: ProductBrain, projectName: string, url: string): string {
+  const kinds = Object.keys(BRAIN_KIND_LABELS) as BrainNodeKind[];
+  const nodeGroups = kinds.map((kind) => {
+    const ns = brain.nodes.filter((n) => n.kind === kind);
+    if (!ns.length) return '';
+    const items = ns.map((n) => {
+      const m = VERIFICATION_META[n.status];
+      return `<li><span class="ic" style="color:${m.color}">${m.icon}</span> ${esc(n.text)}${n.matchedOn ? ` <span class="dim">· ${esc(n.matchedOn)}</span>` : ''}</li>`;
+    }).join('');
+    return `<div class="grp"><h3>${BRAIN_KIND_LABELS[kind]}</h3><ul>${items}</ul></div>`;
+  }).join('');
+  const coverage = brain.coveragePath.length
+    ? `<h2>Hva vi må gjennom (dekningssti)</h2><ol>${brain.coveragePath.map((s) => `<li>${esc(s.label)}${s.elementLabel ? ` <span class="dim">→ ${esc(s.elementLabel)}</span>` : ''}</li>`).join('')}</ol>`
+    : '';
+  const gaps = brain.gaps.length
+    ? `<div class="gaps"><h2>Gap — hevdet, ikke verifisert på siden</h2><ul>${brain.gaps.map((g) => `<li>⚠ ${esc(g)}</li>`).join('')}</ul></div>`
+    : '';
+  const rec = `${FRAMEWORKS[brain.recommendedFramework].label}${brain.recommendedObjective ? ` · ${MARKETING_OBJECTIVES[brain.recommendedObjective].label}` : ''}`;
+  return `<!doctype html><html lang="no"><head><meta charset="utf-8">
+<title>${esc(projectName)} — Product Brain</title>
+<style>
+  @page { margin: 20mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font: 13px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: #1d1b19; margin: 0; }
+  header { border-bottom: 2px solid #ef8a5d; padding-bottom: 12px; margin-bottom: 16px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #6b6358; font-size: 12px; }
+  .rec { background: #fdeee6; border: 1px solid #f3d3c1; border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; }
+  .rec b { color: #3a2f2a; }
+  h2 { font-size: 14px; margin: 16px 0 6px; }
+  .grps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
+  .grp h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: #9a9186; margin: 8px 0 4px; }
+  ul, ol { margin: 0 0 6px; padding-left: 18px; }
+  li { margin-bottom: 2px; }
+  .ic { font-weight: 700; }
+  .dim { color: #9a9186; }
+  .gaps { background: #fff8ec; border: 1px solid #f0d9a8; border-radius: 8px; padding: 8px 12px; margin-top: 12px; }
+  footer { margin-top: 14px; color: #9a9186; font-size: 11px; }
+</style></head><body>
+<header>
+  <h1>${esc(projectName)} — Product Brain</h1>
+  <div class="sub">${esc(url)} · ${brain.nodes.filter((n) => n.status === 'verified').length} verifisert · ${brain.gaps.length} gap</div>
+</header>
+${brain.summary ? `<p>${esc(brain.summary)}</p>` : ''}
+<div class="rec"><b>Anbefalt metode:</b> ${esc(rec)}${brain.reasoning ? `<br><span class="dim">${esc(brain.reasoning)}</span>` : ''}</div>
+<h2>Verifisert tankekart</h2>
+<div class="grps">${nodeGroups}</div>
+${coverage}
+${gaps}
+<footer>Generert av Product Demo Studio · Marketing mode</footer>
 </body></html>`;
 }
 

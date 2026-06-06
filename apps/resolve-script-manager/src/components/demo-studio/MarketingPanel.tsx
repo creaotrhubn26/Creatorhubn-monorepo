@@ -14,6 +14,8 @@ import { isAiConnected } from '../../services/claudeProxyService';
 import { scanDom, captureScreenshot, isCaptureAvailable } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import { ProductBrainMap } from './ProductBrainMap';
+import { buildBrainHtml } from './demoStudioExports';
+import { demoPrintHtml } from '../../api';
 import {
   suggestMarketingBrief, generateMarketingFlow, generateVariants, fetchSiteContext,
   ocrDetectElements, analyzeProductEvidence, buildProductBrain, draftOnePager as aiDraftOnePager,
@@ -205,7 +207,18 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
       let ev = evidence;
       if (!ev) { ev = await analyzeProductEvidence({ url: project.url, siteContext, elements }).catch(() => null); if (ev) setEvidence(ev); }
       const coverageHint = brain?.coveragePath.map((c) => c.elementLabel ? `${c.label} (${c.elementLabel})` : c.label);
-      const scenes = await generateMarketingFlow({ url: project.url, brief, devices: project.devices, elements, siteContext, meta: project.scriptMeta, evidence: ev ?? undefined, coverageHint });
+      // Konkurrent-kontekst: hent kort tekst fra hver konkurrent-URL for differensiering.
+      let competitorContext = '';
+      const comps = (brief.competitors ?? []).filter(Boolean).slice(0, 2);
+      if (comps.length) {
+        const ctxs = await Promise.all(comps.map(async (c) => {
+          const u = /^https?:\/\//i.test(c) ? c : `https://${c}`;
+          const t = await fetchSiteContext(u).catch(() => '');
+          return t ? `[${c}] ${t.slice(0, 700)}` : '';
+        }));
+        competitorContext = ctxs.filter(Boolean).join('\n\n');
+      }
+      const scenes = await generateMarketingFlow({ url: project.url, brief, devices: project.devices, elements, siteContext, meta: project.scriptMeta, evidence: ev ?? undefined, coverageHint, competitorContext });
       replaceScenes(scenes);
       setProjectField('format', preset.format);
       setProjectField('mode', 'marketing');
@@ -311,7 +324,13 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
             <div style={{ background: '#fdeee6', border: `1px solid #f3d3c1`, borderRadius: 9, padding: '9px 11px', marginBottom: 12 }}>
               <div style={{ fontSize: 12.5, fontWeight: 600, color: C.dark }}>Anbefalt: {FRAMEWORKS[brain.recommendedFramework].label}{brain.recommendedObjective ? ` · ${MARKETING_OBJECTIVES[brain.recommendedObjective].label}` : ''}</div>
               {brain.reasoning && <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 3 }}>{brain.reasoning}</div>}
-              <button style={{ ...btn, fontSize: 11.5, padding: '5px 10px', marginTop: 8 }} onClick={applyBrainRecommendation}>Bruk anbefaling</button>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                <button style={{ ...btn, fontSize: 11.5, padding: '5px 10px' }} onClick={applyBrainRecommendation}>Bruk anbefaling</button>
+                <button style={{ ...btn, fontSize: 11.5, padding: '5px 10px' }}
+                  onClick={() => { void demoPrintHtml(buildBrainHtml(brain, project.name, project.url)).then(() => setMsg('Tankekart åpnet i eget vindu — velg «Lagre som PDF».')).catch((e) => setMsg('Feil: ' + (e as Error).message)); }}>
+                  Eksporter tankekart (PDF)
+                </button>
+              </div>
             </div>
             {/* Disposisjon ↔ tankekart-veksler */}
             <div style={{ display: 'inline-flex', gap: 2, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 9, padding: 3, marginBottom: 12 }}>
@@ -392,8 +411,12 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
           <input style={{ ...field, marginBottom: 10 }} value={brief.objection ?? ''} placeholder="f.eks. «for dyrt / for vanskelig»"
             onChange={(e) => patchBrief({ objection: e.target.value })} />
           <label style={label}>Ønsket handling (CTA)</label>
-          <input style={field} value={brief.desiredAction ?? ''} placeholder="f.eks. book demo"
+          <input style={{ ...field, marginBottom: 10 }} value={brief.desiredAction ?? ''} placeholder="f.eks. book demo"
             onChange={(e) => patchBrief({ desiredAction: e.target.value })} />
+          <label style={label}>Konkurrenter (URL/navn, én per linje — for differensiering)</label>
+          <textarea style={{ ...field, minHeight: 44, resize: 'vertical' }} value={(brief.competitors ?? []).join('\n')}
+            placeholder="f.eks. arcade.software"
+            onChange={(e) => patchBrief({ competitors: list(e.target.value) })} />
         </section>
 
         {/* ── Mål: funnel + kanal + rammeverk ── */}
