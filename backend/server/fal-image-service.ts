@@ -36,8 +36,13 @@ const STYLE_SUFFIX: Record<NonNullable<FalImageOptions['style']>, string> = {
   lifestyle: ', natural lighting, candid moment, authentic',
 };
 
+function resolveFalKey(): string | null {
+  // Akseptér både FAL_API_KEY og FAL_KEY (Render har sistnevnte fra før).
+  return (process.env.FAL_API_KEY?.trim() || process.env.FAL_KEY?.trim()) || null;
+}
+
 export function isFalConfigured(): boolean {
-  return !!(process.env.FAL_API_KEY?.trim());
+  return !!resolveFalKey();
 }
 
 /**
@@ -45,9 +50,9 @@ export function isFalConfigured(): boolean {
  * Bilde lagres ikke automatisk i Cloudflare R2 — det er caller-ansvar.
  */
 export async function generateImage(opts: FalImageOptions): Promise<FalImageResult> {
-  const apiKey = process.env.FAL_API_KEY?.trim();
+  const apiKey = resolveFalKey();
   if (!apiKey) {
-    throw new Error('fal_not_configured: FAL_API_KEY mangler på serveren');
+    throw new Error('fal_not_configured: FAL_API_KEY eller FAL_KEY mangler på serveren');
   }
 
   const width = opts.width ?? 1280;
