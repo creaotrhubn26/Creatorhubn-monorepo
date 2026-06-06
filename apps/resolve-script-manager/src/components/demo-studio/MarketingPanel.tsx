@@ -9,14 +9,15 @@
  *   - Kanal-grammatikk: presets styrer format, lengde, tone, captions.
  *   - Lær min stemme (G): tommel opp/ned på manus → AI lærer produsentens tone.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { scanDom, captureScreenshot, isCaptureAvailable } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
   suggestMarketingBrief, generateMarketingFlow, generateVariants, fetchSiteContext,
   ocrDetectElements, analyzeProductEvidence, buildProductBrain, draftOnePager as aiDraftOnePager,
-  gatherSiteContext, type GeneratedVariant, type VariantSpec,
+  gatherSiteContext, readScreenVision, critiqueOnePager, improveOnePager,
+  type GeneratedVariant, type VariantSpec, type OnePagerCritique,
 } from './demoStudioAI';
 import {
   CHANNEL_PRESETS, FRAMEWORKS, FUNNEL_LABELS, emptyMarketingBrief, recordVoicePref,
@@ -53,6 +54,9 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
   const [evidence, setEvidence] = useState<ProductEvidence | null>(null);
   const [onePager, setOnePager] = useState('');
   const [brain, setBrain] = useState<ProductBrain | null>(null);
+  const [critique, setCritique] = useState<OnePagerCritique | null>(null);
+  const [answers, setAnswers] = useState('');
+  const visionCache = useRef<{ url: string; text: string } | null>(null);
   const [variants, setVariants] = useState<GeneratedVariant[]>([]);
   const [picked, setPicked] = useState<Record<string, boolean>>(
     () => Object.fromEntries(VARIANT_PRESETS.map((v) => [v.label, v.channel === 'reels'])),
@@ -65,8 +69,10 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
   const patchBrief = (patch: Partial<MarketingBrief>) => setProjectField('marketingBrief', { ...brief, ...patch });
   const list = (v: string) => v.split('\n').map((s) => s.trim()).filter(Boolean);
 
-  /** Skann siden én gang → elementer + kontekst + merkevare (delt av alle steg). */
-  const scanContext = async () => {
+  /** Skann siden én gang → elementer + kontekst + merkevare (delt av alle steg).
+   *  vision=true legger på et vision-pass (Claude «ser» skjermbildet → tekst i
+   *  bilder/grafikk) — cachet pr. URL så det ikke kjøres unødig flere ganger. */
+  const scanContext = async (opts?: { vision?: boolean }) => {
     const scan = await scanDom(project.url).catch(() => null);
     let elements = scan?.elements ?? [];
     if (elements.length === 0 && isCaptureAvailable()) {
@@ -76,8 +82,17 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
     // Fler-side-skann: berik forsiden med /pricing, /features, /about … for et
     // mye rikere grunnlag til one-pager + Product Brain.
     const gathered = await gatherSiteContext(project.url, { mainText: scan?.pageText, maxPages: 5 }).catch(() => null);
-    const siteContext = gathered?.context || scan?.pageText || await fetchSiteContext(project.url).catch(() => '');
+    let siteContext = gathered?.context || scan?.pageText || await fetchSiteContext(project.url).catch(() => '');
     const pagesScanned = gathered?.pages ?? [];
+    // Vision-pass: fang tekst i bilder/grafikk DOM-scan mister (cachet pr. URL).
+    if (opts?.vision && isCaptureAvailable()) {
+      let vision = visionCache.current?.url === project.url ? visionCache.current.text : '';
+      if (!vision) {
+        const shot = await captureScreenshot(project.url).catch(() => null);
+        if (shot) { vision = await readScreenVision({ screenshot: shot, url: project.url }).catch(() => ''); if (vision) visionCache.current = { url: project.url, text: vision }; }
+      }
+      if (vision) siteContext = `${siteContext}\n\n=== Vision (tekst i bilder/grafikk) ===\n${vision}`;
+    }
     const branding = scan?.branding;
     // Auto-merkevare: hent navn/farge/logo fra siden og bruk på prosjektet (logo
     // + farger flyter inn i interaktiv guide + eksport) hvis ikke satt fra før.
@@ -109,12 +124,35 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
     if (!aiReady) return onOpenSignIn();
     setBusy('draft'); setMsg('AI skriver et one-pager-utkast fra siden…');
     try {
-      const { elements, siteContext, branding, pagesScanned } = await scanContext();
+      const { elements, siteContext, branding, pagesScanned } = await scanContext({ vision: true });
       let ev = evidence;
       if (!ev) { ev = await analyzeProductEvidence({ url: project.url, siteContext, elements }).catch(() => null); if (ev) setEvidence(ev); }
       const text = await aiDraftOnePager({ url: project.url, siteContext, elements, evidence: ev ?? undefined, branding });
-      if (text) setOnePager(text);
-      setMsg(`✓ One-pager-utkast laget fra ${pagesScanned.length || 1} side${pagesScanned.length === 1 ? '' : 'r'}${pagesScanned.length > 1 ? ` (${pagesScanned.join(', ')})` : ''}. Rediger ved behov, så «Bygg tankekart».`);
+      if (text) { setOnePager(text); setCritique(null); }
+      setMsg(`✓ One-pager-utkast laget fra ${pagesScanned.length || 1} side${pagesScanned.length === 1 ? '' : 'r'}${pagesScanned.length > 1 ? ` (${pagesScanned.join(', ')})` : ''} + vision. Rediger eller «Vurder kvalitet».`);
+    } catch (e) { setMsg('Feil: ' + (e as Error).message); }
+    finally { setBusy(null); }
+  };
+
+  const critiqueDraft = async () => {
+    if (!aiReady) return onOpenSignIn();
+    if (!onePager.trim()) { setMsg('Lag eller lim inn en one-pager først.'); return; }
+    setBusy('critique'); setMsg('AI vurderer kvaliteten på utkastet…');
+    try {
+      const c = await critiqueOnePager({ onePager, evidence: evidence ?? undefined, url: project.url });
+      setCritique(c);
+      setMsg(`✓ Kvalitet: ${c.score}/100 · ${c.weaknesses.length} svakheter · ${c.questions.length} spørsmål å besvare.`);
+    } catch (e) { setMsg('Feil: ' + (e as Error).message); }
+    finally { setBusy(null); }
+  };
+
+  const improveDraft = async () => {
+    if (!aiReady || !critique) return;
+    setBusy('improve'); setMsg('AI forbedrer utkastet…');
+    try {
+      const text = await improveOnePager({ onePager, critique, answers, evidence: evidence ?? undefined });
+      if (text) { setOnePager(text); setCritique(null); setAnswers(''); }
+      setMsg('✓ Utkast forbedret. Vurder på nytt eller «Bygg tankekart».');
     } catch (e) { setMsg('Feil: ' + (e as Error).message); }
     finally { setBusy(null); }
   };
@@ -124,7 +162,7 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
     if (!onePager.trim()) { setMsg('Lim inn one-pager-teksten først.'); return; }
     setBusy('brain'); setMsg('AI bygger tankekart og kryssverifiserer mot siden…');
     try {
-      const { elements, siteContext } = await scanContext();
+      const { elements, siteContext } = await scanContext({ vision: true });
       let ev = evidence;
       if (!ev) { ev = await analyzeProductEvidence({ url: project.url, siteContext, elements }).catch(() => null); if (ev) setEvidence(ev); }
       const b = await buildProductBrain({ url: project.url, onePager, siteContext, elements, evidence: ev ?? undefined, objective: brief.objective });
@@ -217,9 +255,52 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
         <textarea style={{ ...field, minHeight: 72, resize: 'vertical', marginBottom: 8 }} value={onePager}
           placeholder="Lim inn one-pager / produktbeskrivelse her — eller klikk «Lag utkast fra siden» så skriver AI et utkast du kan redigere."
           onChange={(e) => setOnePager(e.target.value)} />
-        <button style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={!!busy} onClick={() => void buildBrain()}>
-          {busy === 'brain' ? 'Bygger tankekart…' : '◈ Bygg tankekart + verifiser'}
-        </button>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <button style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={!!busy} onClick={() => void buildBrain()}>
+            {busy === 'brain' ? 'Bygger tankekart…' : '◈ Bygg tankekart + verifiser'}
+          </button>
+          <button style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={!!busy || !onePager.trim()} onClick={() => void critiqueDraft()}
+            title="La AI score utkastet og peke på svakheter + spørsmål å besvare">
+            {busy === 'critique' ? 'Vurderer…' : '★ Vurder kvalitet'}
+          </button>
+        </div>
+
+        {critique && (
+          <div style={{ marginTop: 12, border: `1px solid ${C.line}`, borderRadius: 9, padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <div style={{ width: 44, height: 44, borderRadius: '50%', border: `4px solid ${critique.score >= 75 ? C.green : critique.score >= 50 ? '#f59e0b' : '#ef4444'}`, display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 700, flexShrink: 0 }}>{critique.score}</div>
+              <div style={{ fontSize: 12, color: C.inkSoft }}>Kvalitetsscore på one-pager-utkastet. Svar på spørsmålene under → «Forbedre med svar».</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px,1fr))', gap: 12 }}>
+              {critique.strengths.length > 0 && (
+                <div>
+                  <div style={{ ...label, color: C.green }}>Styrker</div>
+                  {critique.strengths.map((s, i) => <div key={i} style={{ fontSize: 11.5, color: C.ink, marginBottom: 2 }}>+ {s}</div>)}
+                </div>
+              )}
+              {critique.weaknesses.length > 0 && (
+                <div>
+                  <div style={{ ...label, color: '#c4453b' }}>Svakheter</div>
+                  {critique.weaknesses.map((s, i) => <div key={i} style={{ fontSize: 11.5, color: C.ink, marginBottom: 2 }}>− {s}</div>)}
+                </div>
+              )}
+            </div>
+            {critique.questions.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ ...label }}>Svar på dette så AI kan løfte utkastet</div>
+                <ul style={{ margin: '2px 0 8px', paddingLeft: 18, fontSize: 11.5, color: C.inkSoft }}>
+                  {critique.questions.map((q, i) => <li key={i}>{q}</li>)}
+                </ul>
+                <textarea style={{ ...field, minHeight: 56, resize: 'vertical', marginBottom: 8 }} value={answers}
+                  placeholder="Skriv svarene her (pris, kunder, differensiering, ROI …)"
+                  onChange={(e) => setAnswers(e.target.value)} />
+              </div>
+            )}
+            <button style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={!!busy} onClick={() => void improveDraft()}>
+              {busy === 'improve' ? 'Forbedrer…' : '✦ Forbedre med svar'}
+            </button>
+          </div>
+        )}
 
         {brain && (
           <div style={{ marginTop: 14 }}>

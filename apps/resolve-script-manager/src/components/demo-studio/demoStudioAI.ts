@@ -162,6 +162,75 @@ export async function verifyOutcomeVision(params: { screenshot: string; expected
   return { success: !!p?.success, reason: p?.reason || '' };
 }
 
+/**
+ * Vision-pass: la Claude «se» et skjermbilde og lese ut synlig tekst/påstander
+ * — inkludert det som ligger i bilder, grafikk og hero-banner som DOM-scan
+ * mister. Beriker konteksten til one-pager + Product Brain.
+ */
+export async function readScreenVision(params: { screenshot: string; url?: string }): Promise<string> {
+  const img = imageBlock(params.screenshot);
+  if (!img) return '';
+  const txt = `Du SER et skjermbilde av en produktside${params.url ? ` (${params.url})` : ''}. ` +
+    `Les ut ALL synlig tekst og budskap — inkludert overskrifter, verdiløfter, tall/bevis og tekst INNI bilder/grafikk/skjermbilder. ` +
+    `Ta også med åpenbare visuelle elementer (skjermdumper av produktet, logoer). Ikke dikt opp noe som ikke vises. ` +
+    `Svar med ren tekst, gruppert kort.`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du leser produktsider fra skjermbilder og gjengir synlig tekst/budskap presist.',
+    messages: [{ role: 'user', content: [img, { type: 'text', text: txt }] }],
+    maxTokens: 900,
+  });
+  return (raw || '').trim();
+}
+
+/** Kvalitets-vurdering av et one-pager-utkast (score + svakheter + spørsmål). */
+export interface OnePagerCritique {
+  score: number;
+  strengths: string[];
+  weaknesses: string[];
+  /** Spørsmål AI trenger svar på for å løfte utkastet (det siden ikke avslører). */
+  questions: string[];
+}
+export async function critiqueOnePager(params: {
+  onePager: string; evidence?: ProductEvidence; url?: string;
+}): Promise<OnePagerCritique> {
+  const { onePager, evidence, url } = params;
+  const user = `Vurder dette one-pager-utkastet for et produkt${url ? ` (${url})` : ''} som grunnlag for en markedsføringsdemo.
+
+UTKAST:
+${onePager.slice(0, 3500)}
+${evidence ? `\nVerifisert fra siden — funksjoner: ${evidence.features.map((f) => f.name).join(', ') || '—'} · bevis: ${evidence.proof.map((p) => p.claim).join(' · ') || '—'}\n` : ''}
+Vurder: klarhet, konkret verdi, bevis-styrke, målgruppe-skarphet, CTA. Vær streng.
+Svar med KUN ett JSON-objekt:
+{ "score": 0-100, "strengths": ["..."], "weaknesses": ["..."], "questions": ["spørsmål om det siden ikke avslører (pris, kunder, differensiering, ROI)"] }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: MARKETING_SYSTEM, messages: [{ role: 'user', content: user }], maxTokens: 900,
+  });
+  const p = extractJson<Partial<OnePagerCritique>>(raw);
+  const arr = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 6) : [];
+  const score = typeof p?.score === 'number' ? Math.max(0, Math.min(100, Math.round(p.score))) : 0;
+  return { score, strengths: arr(p?.strengths), weaknesses: arr(p?.weaknesses), questions: arr(p?.questions) };
+}
+
+/** Skriv om one-pager-utkastet basert på kritikk + brukerens svar på spørsmål. */
+export async function improveOnePager(params: {
+  onePager: string; critique: OnePagerCritique; answers?: string; evidence?: ProductEvidence;
+}): Promise<string> {
+  const { onePager, critique, answers = '', evidence } = params;
+  const user = `Forbedre dette one-pager-utkastet. Behold sann info, fyll hull, fjern svakheter.
+
+NÅVÆRENDE UTKAST:
+${onePager.slice(0, 3500)}
+
+SVAKHETER Å FIKSE:
+${critique.weaknesses.map((w) => `- ${w}`).join('\n') || '- (ingen oppgitt)'}
+${answers.trim() ? `\nBRUKERENS SVAR (bruk disse til å fylle hull — ikke dikt opp annet):\n${answers.slice(0, 1500)}\n` : ''}${evidence ? `\nVerifiserbart fra siden: ${evidence.features.map((f) => f.name).join(', ')}${evidence.proof.length ? ` · bevis: ${evidence.proof.map((p) => p.claim).join(' · ')}` : ''}\n` : ''}
+Behold «[mangler — fyll inn]» kun der vi fortsatt ikke vet. Svar med ren tekst (hele den forbedrede one-pageren).`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: MARKETING_SYSTEM, messages: [{ role: 'user', content: user }], maxTokens: 1400,
+  });
+  return (raw || '').trim();
+}
+
 export async function generateSceneScript(params: {
   url: string;
   demoType: DemoType;
