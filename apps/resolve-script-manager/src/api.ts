@@ -61,6 +61,110 @@ export async function openScriptFolder(): Promise<string> {
   return invoke<string>("open_script_folder");
 }
 
+/**
+ * MockupConfig speiler frontend/.../mockup-video/mockupConfig.ts. Holdt som
+ * en åpen Record her så Tauri-frontenden ikke trenger å duplisere hele typen
+ * — UI-en bygger objektet og sender det rått til Rust-broen.
+ */
+export type MockupConfig = Record<string, unknown>;
+
+/**
+ * Render en mockup-video via den native pipelinen (scripts/mockup-polish-pro.mts).
+ * Fremdrift kommer som "script-event" (bruk onScriptEvent). Resolver med
+ * RunSummary når ferdig; result-eventet inneholder { outputPath, format }.
+ */
+export async function mockupRenderVideo(
+  config: MockupConfig,
+  clips: string[],
+  outputPath: string,
+  musicPath?: string | null,
+): Promise<RunSummary> {
+  return invoke<RunSummary>("mockup_render_video", {
+    config,
+    clips,
+    outputPath,
+    musicPath: musicPath ?? null,
+  });
+}
+
+/**
+ * Lagre et Guided Recorder-scene-opptak til disk. `dataBase64` er rå base64
+ * (uten data:-prefiks). Returnerer absolutt sti til .webm — lagres som
+ * scene.recordingPath og mates senere til mockupRenderVideo.
+ */
+export async function saveDemoRecording(
+  projectId: string,
+  sceneId: string,
+  dataBase64: string,
+): Promise<string> {
+  return invoke<string>("save_demo_recording", { projectId, sceneId, dataBase64 });
+}
+
+/** Skriv ren tekst (f.eks. .srt) til en bruker-valgt sti. Returnerer stien. */
+export async function demoWriteText(path: string, contents: string): Promise<string> {
+  return invoke<string>("demo_write_text", { path, contents });
+}
+
+/** Skriv binærfil (f.eks. PNG) fra base64/dataURL til en sti. Returnerer stien. */
+export async function demoWriteBinary(path: string, base64Data: string): Promise<string> {
+  return invoke<string>("demo_write_binary", { path, base64Data });
+}
+
+/** Åpne manus-HTML i et print-vindu (→ «Lagre som PDF»). */
+export async function demoPrintHtml(html: string): Promise<void> {
+  return invoke<void>("demo_print_html", { html });
+}
+
+/** Hent ekte side-kontekst via reqwest (ingen CORS) — for AI Director. */
+export async function demoFetchSiteContext(url: string): Promise<string> {
+  return invoke<string>("demo_fetch_site_context", { url });
+}
+
+export interface EmbedCheck { embeddable: boolean; reason: string }
+
+/** Sjekk om en URL kan vises i en <iframe> (X-Frame-Options/CSP). Fail-open. */
+export async function checkUrlEmbeddable(url: string): Promise<EmbedCheck> {
+  return invoke<EmbedCheck>("check_url_embeddable", { url });
+}
+
+export interface CaptureSource {
+  kind: "mac_screen" | "ios_device" | "ios_simulator" | "iphone_mirroring";
+  id: string;
+  label: string;
+  available: boolean;
+}
+
+/** List tilgjengelige capture-kilder (Mac-skjerm, kablede iOS-enheter, simulatorer, iPhone Mirroring). */
+export async function listCaptureSources(): Promise<CaptureSource[]> {
+  return invoke<CaptureSource[]>("list_capture_sources");
+}
+
+/** Åpne Apples iPhone Mirroring (trådløs speiling, macOS 15+). */
+export async function openIphoneMirroring(): Promise<boolean> {
+  return invoke<boolean>("open_iphone_mirroring");
+}
+
+/** Ta opp fra AVFoundation video-device-indeks (Mac-skjerm / kablet iOS) → mp4. */
+export async function recordAvfoundation(
+  projectId: string, sceneId: string, deviceIndex: string, durationSec: number,
+): Promise<string> {
+  return invoke<string>("record_avfoundation", { projectId, sceneId, deviceIndex, durationSec });
+}
+
+/** Ta opp en bootet iOS-simulator (krever full Xcode) → normalisert mp4. */
+export async function recordSimulator(
+  projectId: string, sceneId: string, udid: string, durationSec: number,
+): Promise<string> {
+  return invoke<string>("record_simulator", { projectId, sceneId, udid, durationSec });
+}
+
+/** Ta opp iPhone Mirroring-VINDUET (crop til vindusgeometri) → mp4. */
+export async function recordIphoneMirroring(
+  projectId: string, sceneId: string, screenIndex: string, durationSec: number,
+): Promise<string> {
+  return invoke<string>("record_iphone_mirroring", { projectId, sceneId, screenIndex, durationSec });
+}
+
 export async function getPythonRoot(): Promise<string> {
   return invoke<string>("get_python_root");
 }

@@ -41,6 +41,14 @@ export interface ClaudeMessage {
   content: string | ClaudeContentBlock[];
 }
 
+/** Send-melding som også kan bære bilde-blokker (vision). ClaudeMessage er
+ *  assignbar hit, så eksisterende tekst-kallere er uberørt. Proxyen
+ *  videresender content rått til Anthropic. */
+export interface ClaudeSendMessage {
+  role: "user" | "assistant";
+  content: string | ClaudeContentBlock[];
+}
+
 export interface ClaudeResponse {
   id: string;
   model: string;
@@ -59,10 +67,15 @@ function getBearer(): string | null {
   return s.RR_BEARER_TOKEN?.trim() || null;
 }
 
+/** Er AI koblet til (Role Room-token satt)? Brukes for å vise innloggings-CTA. */
+export function isAiConnected(): boolean {
+  return !!getBearer();
+}
+
 export const claudeProxyService = {
   async send(opts: {
     systemPrompt: string;
-    messages: ClaudeMessage[];
+    messages: ClaudeSendMessage[];
     /** Default: claude-sonnet-4-6 (rask + dyktig). */
     model?: string;
     maxTokens?: number;

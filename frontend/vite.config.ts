@@ -194,6 +194,11 @@ export default defineConfig({
         if (id.includes('/Volumes/Samsung_T9_4TB1/')) return true;
         // Exclude rgthree dependencies
         if (id.startsWith('rgthree/')) return true;
+        // @tauri-apps/api er KUN tilgjengelig i Post Agent-klienten (Tauri), ikke
+        // i web-frontenden. mockup-video/tauriBridge importerer den dynamisk bak
+        // en isTauri()-guard, så den kjøres aldri i nettleser. Eksternaliser så
+        // Rollup ikke prøver å resolve den under web-bygget.
+        if (id === '@tauri-apps/api/core' || id === '@tauri-apps/api/event' || id.startsWith('@tauri-apps/api')) return true;
         return false;
       },
       output: {

@@ -7,7 +7,12 @@ mod creations;
 mod cull;
 mod folder_watcher;
 mod history;
+mod capture_sources;
+mod demo_capture;
+mod demo_export;
+mod demo_recording;
 mod media_probe;
+mod mockup_render;
 mod photoshop_bridge;
 mod psd_indexer;
 mod python;
@@ -906,6 +911,29 @@ pub fn run() {
             role_room_api::role_room_fetch_clip_download_urls,
             role_room_api::role_room_download_clip,
             media_probe::probe_media_files,
+            mockup_render::mockup_render_video,
+            demo_recording::save_demo_recording,
+            demo_recording::check_url_embeddable,
+            demo_capture::start_demo_capture,
+            demo_capture::demo_capture_step,
+            demo_capture::demo_capture_done,
+            demo_capture::demo_fetch_site_context,
+            demo_capture::demo_scan_dom,
+            demo_capture::demo_scan_result,
+            demo_capture::demo_verify_action,
+            demo_capture::demo_verify_result,
+            demo_capture::demo_auto_execute,
+            demo_capture::demo_auto_result,
+            demo_capture::demo_screenshot,
+            demo_capture::demo_shot_result,
+            demo_export::demo_write_text,
+            demo_export::demo_write_binary,
+            demo_export::demo_print_html,
+            capture_sources::list_capture_sources,
+            capture_sources::record_avfoundation,
+            capture_sources::record_simulator,
+            capture_sources::record_iphone_mirroring,
+            capture_sources::open_iphone_mirroring,
             photoshop_bridge::photoshop_send_command,
             photoshop_bridge::photoshop_status,
             psd_indexer::psd_index_directory,

@@ -85,8 +85,8 @@ interface Props {
   onOpenFolder: () => void;
   onRefreshProject: () => void;
   onConnect: () => void;
-  view: "pipeline" | "cull" | "audio" | "color";
-  onViewChange: (next: "pipeline" | "cull" | "audio" | "color") => void;
+  view: "pipeline" | "cull" | "audio" | "color" | "demo";
+  onViewChange: (next: "pipeline" | "cull" | "audio" | "color" | "demo") => void;
   projectTemplates: ProjectTemplateSummary[];
   activeTemplateId: string;
   onTemplateChange: (id: string) => void;
@@ -191,6 +191,7 @@ export function HeaderBar({
             <button className={view === "cull" ? "active" : ""} onClick={() => onViewChange("cull")}>Cull</button>
             <button className={view === "audio" ? "active" : ""} onClick={() => onViewChange("audio")}>Audio</button>
             <button className={view === "color" ? "active" : ""} onClick={() => onViewChange("color")}>Color</button>
+            <button className={view === "demo" ? "active" : ""} onClick={() => onViewChange("demo")}>Demo Studio</button>
           </div>
         )}
 

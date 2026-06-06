@@ -1,6 +1,6 @@
 [package]
 name = "resolve-script-manager"
-version = "0.2.5"
+version = "0.2.19"
 description = "The Role Room Post Agent — DaVinci Resolve pipeline automation"
 authors = ["The Role Room"]
 edition = "2024"
@@ -32,3 +32,4 @@ dashmap = "6"
 psd = "0.3"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 base64 = "0.22"
+regex = "1"
