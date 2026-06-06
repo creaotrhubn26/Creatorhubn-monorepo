@@ -151,6 +151,10 @@ import {
   AdminPanelSettings,
   Close,
   VideoLibrary,
+  LocationOn as LocationOnIcon,
+  Star as StarIcon,
+  PhotoCamera as PhotoCameraIcon,
+  WarningAmber as WarningAmberIcon,
 } from '@mui/icons-material';
 
 // Import profession-specific components
@@ -5281,9 +5285,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                         <WbSunny sx={{ color: '#F59E0B' }} />
                         Lokasjonsintelligens
                         {detectedLocation && (
-                          <Chip 
-                            label={locationPermissionDenied ? '📍 Oslo (standard)' : '📍 Din posisjon'} 
-                            size="small" 
+                          <Chip
+                            icon={<LocationOnIcon sx={{ fontSize: 14 }} />}
+                            label={locationPermissionDenied ? 'Oslo (standard)' : 'Din posisjon'}
+                            size="small"
                             sx={{ 
                               ml: 1,
                               bgcolor: locationPermissionDenied ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
@@ -6284,7 +6289,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'team-management')}>
               <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                  <Box component="img" src="/norwed.png" alt="Norwedfilm" sx={{ width: 48, height: 48, borderRadius: 2, objectFit: 'contain', bgcolor: '#f5f5f5', p: 0.5 }} />
+                  <Box component="img" src="/norwed.png" alt="Norwedfilm" sx={{ width: 48, height: 48, borderRadius: 2, objectFit: 'contain', bgcolor: 'rgba(255,255,255,0.92)', p: 0.5 }} />
                   <Box>
                     <Typography variant="h5" sx={{ fontWeight: 700, color: '#6c3483' }}>Teamadministrasjon</Typography>
                     <Typography variant="body2" color="text.secondary">Administrer teammedlemmer, roller og tilganger</Typography>
@@ -7027,7 +7032,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                         </Box>
                       </Grid2>
                       <Grid2 size={{ xs: 12, lg: 4 }}>
-                        <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 2, mb: 3 }}>
+                        <Box sx={{
+                          p: 2,
+                          bgcolor: 'rgba(7, 10, 16, 0.6)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: '10px',
+                          mb: 3,
+                          color: '#edf0f7',
+                        }}>
                           <GoogleWorkspaceStorageInfo userId={userId} />
                         </Box>
                         
@@ -7382,9 +7394,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           
                           {/* Featured App: NextRole by CreatorHub */}
                           <Box sx={{ mb: 3 }}>
-                            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, color: theming.colors.primary }}>
-                              ⭐ Featured App
-                            </Typography>
+                            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
+                              <StarIcon sx={{ color: theming.colors.primary, fontSize: 18 }} />
+                              <Typography variant="subtitle1" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                                Anbefalt app
+                              </Typography>
+                            </Stack>
                             <CreatorHubMarketplace 
                               profession={profession}
                               userId={userId}
@@ -7473,7 +7488,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                             </Typography>
                             <Grid2 container spacing={2}>
                               <Grid2 size={{ xs: 12 }}>
-                                <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                                <Paper sx={{
+                                  p: 2,
+                                  bgcolor: 'rgba(7, 10, 16, 0.6)',
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  borderRadius: '10px',
+                                  color: '#edf0f7',
+                                }}>
                                   <Typography variant="subtitle2" gutterBottom>Tema</Typography>
                                   <Stack direction="row" spacing={1}>
                                     <Chip 
@@ -7498,7 +7519,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                                 </Paper>
                               </Grid2>
                               <Grid2 size={{ xs: 12 }}>
-                                <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                                <Paper sx={{
+                                  p: 2,
+                                  bgcolor: 'rgba(7, 10, 16, 0.6)',
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  borderRadius: '10px',
+                                  color: '#edf0f7',
+                                }}>
                                   <Typography variant="subtitle2" gutterBottom>Språk</Typography>
                                   <Stack direction="row" spacing={1}>
                                     <Chip 
@@ -7523,7 +7550,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                                 </Paper>
                               </Grid2>
                               <Grid2 size={{ xs: 12 }}>
-                                <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                                <Paper sx={{
+                                  p: 2,
+                                  bgcolor: 'rgba(7, 10, 16, 0.6)',
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  borderRadius: '10px',
+                                  color: '#edf0f7',
+                                }}>
                                   <Typography variant="subtitle2" gutterBottom>Skriftstørrelse</Typography>
                                   <Stack direction="row" spacing={1}>
                                     <Chip 
@@ -7806,11 +7839,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: 'background.default',
+            bgcolor: '#06080d',
             backgroundImage: 'none',
             borderRadius: 3,
             border: `2px solid ${customBranding.color}40`,
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)'
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.45)',
+            color: '#edf0f7'
       }
     }}
       >
@@ -8631,17 +8665,23 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               borderRadius: 2,
               border: '1px solid rgba(2, 4, 4, 67, 54, 0.3)'
             }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
-                📸 {selectedProject!.title || selectedProject!.name}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                <PhotoCameraIcon fontSize="small" />
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                  {selectedProject!.title || selectedProject!.name}
+                </Typography>
+              </Stack>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                 Klient: {selectedProject!.clientName || 'Ikke angitt'}
               </Typography>
             </Box>
           )}
-          <Typography variant="body2" color="error" sx={{ mt: 2, fontWeight: 600}}>
-            ⚠️ Dette kan ikke angres!
-          </Typography>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 2 }}>
+            <WarningAmberIcon color="error" fontSize="small" />
+            <Typography variant="body2" color="error" sx={{ fontWeight: 600 }}>
+              Dette kan ikke angres
+            </Typography>
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button 
@@ -8678,7 +8718,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         aria-labelledby="academy-overlay-title"
         PaperProps={{
           sx: {
-            bgcolor: 'background.default',
+            bgcolor: '#06080d',
+            color: '#edf0f7',
             zIndex: dashboardFullscreenZIndex,
           },
         }}
@@ -8713,7 +8754,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         aria-labelledby="showcase-overlay-title"
         PaperProps={{
           sx: {
-            bgcolor: 'background.default',
+            bgcolor: '#06080d',
+            color: '#edf0f7',
             zIndex: dashboardFullscreenZIndex,
           },
         }}

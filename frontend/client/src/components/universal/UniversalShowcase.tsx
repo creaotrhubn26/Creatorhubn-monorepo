@@ -253,6 +253,23 @@ import {
   NoteAdd,
   AutoAwesome,
   PlaylistAdd,
+  Description as DescriptionIcon,
+  Extension as ExtensionIcon,
+  RocketLaunch as RocketLaunchIcon,
+  MenuBook as MenuBookIcon,
+  CheckCircle as CheckCircleIcon,
+  WarningAmber as WarningAmberIcon,
+  PhotoCamera as PhotoCameraIcon,
+  Videocam as VideocamIcon,
+  MusicNote as MusicNoteIcon,
+  BusinessCenter as BusinessCenterIcon,
+  ContentCut as ContentCutIcon,
+  CameraAlt as CameraAltIcon,
+  GrassOutlined as GrassIcon,
+  School as SchoolIcon,
+  LocationOn as LocationOnIcon,
+  GpsFixed as GpsFixedIcon,
+  Folder,
 } from '@mui/icons-material';
 import { ProjectSelectorModal } from '../shared/ProjectSelectorModal';
 import ProjectTimeline from '../project/ProjectTimeline';
@@ -4029,10 +4046,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   }
       
       // Show enhanced success message with detailed project context
-      let successMessage = `✅ ${imageIds.length} bilde${imageIds.length !== 1 ? 'r' : ','} er sendt til Google Photos for redigering!`;
+      let successMessage = `${imageIds.length} bilde${imageIds.length !== 1 ? 'r' : ','} er sendt til Google Photos for redigering.`;
       
       if (projectInfo) {
-        successMessage += `\n\n📁 Prosjekt: ${projectInfo?.name}`;
+        successMessage += `\n\nProsjekt: ${projectInfo?.name}`;
         if (projectInfo?.clientName) {
           successMessage += `\n👤 Klient: ${projectInfo.clientName}`;
     }
@@ -4040,9 +4057,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           successMessage += `\n📅 Dato: ${new Date(projectInfo.eventDate).toLocaleDateString('')}`;
     }
         if (projectInfo?.location) {
-          successMessage += `\n📍 Sted: ${projectInfo.location}`;
+          successMessage += `\nSted: ${projectInfo.location}`;
     }
-        successMessage += `\n\n🎯 Bildene er nå tilgjengelige i Google Photos med full prosjektkontext for redigering.`;
+        successMessage += `\n\nBildene er nå tilgjengelige i Google Photos med full prosjektkontekst for redigering.`;
   }
       
         showToastWithActions(
@@ -6098,7 +6115,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               rows={3}
               value={shareForm.message}
               onChange={(e) => setShareForm(prev => ({ ...prev, message: e.target.value }))}
-              placeholder="Add a personal message to include with the showcase..."
+              placeholder="Skriv en personlig melding som inkluderes i showcaset…"
               sx={{ mb: 3 }}
             />
 
@@ -6117,13 +6134,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             {/* Project Linking - Show when no project is linked */}
             {shareForm.selectedShowcase && !shareForm.projectId && (
               <Box sx={{ mb: 3 }}>
-                <Paper sx={{ p: 2, bgcolor: 'info.light', border: '1px solid', borderColor: 'info.main' }}>
+                <Paper sx={{
+                  p: 2,
+                  bgcolor: 'rgba(7, 10, 16, 0.6)',
+                  border: '1px solid rgba(82, 121, 204, 0.32)',
+                  borderRadius: '10px',
+                  color: '#edf0f7',
+                }}>
                   <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Info fontSize="small" />
-                    Link to Project (Optional)
+                    Koble til prosjekt (valgfritt)
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Link this showcase to a project to enable project state management and timeline tracking.
+                  <Typography variant="body2" sx={{ mb: 2, color: 'rgba(237,240,247,0.7)' }}>
+                    Koble dette showcaset til et prosjekt for å aktivere prosjekt-state-styring og timeline-sporing.
                   </Typography>
                   <Button 
                     variant="outlined" 
@@ -6202,21 +6225,33 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
             {/* Info message when no project is linked */}
             {shareForm.selectedShowcase && !shareForm.projectId && (
-              <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.100' }}>
-                <Typography variant="body2" color="text.secondary">
+              <Paper sx={{
+                p: 2,
+                mb: 2,
+                bgcolor: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '10px',
+              }}>
+                <Typography variant="body2" sx={{ color: 'rgba(237,240,247,0.7)' }}>
                   <Info fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
-                  No project linked. Project state management is only available when a project is linked.
+                  Ingen prosjekt koblet til. Prosjekt-state-styring er kun tilgjengelig når et prosjekt er koblet.
                 </Typography>
               </Paper>
             )}
 
             {/* Preview */}
             {shareForm.selectedShowcase && (
-              <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Preview: </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {shareForm.message || 'Your showcase is ready! Click the link below to view your photos.'}
+              <Paper sx={{
+                p: 2,
+                bgcolor: 'rgba(7, 10, 16, 0.6)',
+                border: '1px solid rgba(245,166,35,0.22)',
+                borderRadius: '10px',
+              }}>
+                <Typography variant="subtitle2" gutterBottom sx={{ color: '#edf0f7' }}>
+                  Forhåndsvisning
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(237,240,247,0.7)' }}>
+                  {shareForm.message || 'Showcaset ditt er klart. Klikk lenken under for å se bildene.'}
                 </Typography>
               </Paper>
             )}
@@ -6347,9 +6382,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           <Box sx={{ mt: 2 }}>
             {/* Contract Summary */}
             <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(255,186,108,0.08)', border: '1px solid #ff6f00' }}>
-              <Typography variant="h6" color="#ff6f00" gutterBottom>
-                📊 Contract Summary
-              </Typography>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+                <DescriptionIcon sx={{ color: '#ff6f00' }} />
+                <Typography variant="h6" color="#ff6f00">
+                  Contract Summary
+                </Typography>
+              </Stack>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                 <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
                   <Typography variant="body2" color="text.secondary">
@@ -6435,7 +6473,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
                 <TextField
                   fullWidth
-                  label="Price per Image (NOK)"
+                  label="Pris per bilde (NOK)"
                   type="number"
                   value={overageForm.pricePerImage}
                   onChange={(e) => setOverageForm(prev => ({ ...prev, pricePerImage: parseInt(e.target.value) || 300 }))}
@@ -6450,7 +6488,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   rows={3}
                   value={overageForm.customMessage}
                   onChange={(e) => setOverageForm(prev => ({ ...prev, customMessage: e.target.value }))}
-                  placeholder="Add any custom message to include in the email..."
+                  placeholder="Legg til en melding som inkluderes i e-posten…"
                 />
               </Box>
             </Box>
@@ -6516,9 +6554,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         description: "Klikk på 'Last ned' for å få CreatorHub Norge Lightroom plugin",
         content: (
           <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography variant="h6" gutterBottom>
-              📸 CreatorHub Norge Lightroom Plugin v2.0
-            </Typography>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'center', mb: 1 }}>
+              <ExtensionIcon />
+              <Typography variant="h6">
+                CreatorHub Norge Lightroom Plugin v2.0
+              </Typography>
+            </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Direkte integrasjon mellom Lightroom, Google Drive og CreatorHub showcase
             </Typography>
@@ -6715,9 +6756,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
             {/* Benefits Section */}
             <Box sx={{ mt: 4, p: 3, bgcolor: 'rgba(255, 140, 0, 0.05)', borderRadius: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                🚀 Fordeler med CreatorHub Norge Plugin
-              </Typography>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+                <RocketLaunchIcon />
+                <Typography variant="h6">
+                  Fordeler med CreatorHub Norge Plugin
+                </Typography>
+              </Stack>
               <Box component="ul" sx={{ pl: 2 }}>
                 <li>
                   <Typography variant="body2">
@@ -6758,15 +6802,25 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Box>
 
             {/* Profession-specific Categories */}
-            <Box sx={{ mt: 3, p: 3, bgcolor: 'rgba(33, 150, 243, 0.05)', borderRadius: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                📁 Tilgjengelige Kategorier for {professionConfig.title}
-              </Typography>
+            <Box sx={{
+              mt: 3,
+              p: 3,
+              bgcolor: 'rgba(82, 121, 204, 0.10)',
+              border: '1px solid rgba(82, 121, 204, 0.28)',
+              borderRadius: '10px',
+            }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+                <Folder fontSize="small" />
+                <Typography variant="h6">
+                  Tilgjengelige kategorier for {professionConfig.title}
+                </Typography>
+              </Stack>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                 {professionCategories.map((category, index) => (
                   <Chip
                     key={index}
-                    label={`📁 ${category}`}
+                    icon={<Folder sx={{ fontSize: 14 }} />}
+                    label={category}
                     variant="outlined"
                     size="small"
                     sx={{ mb: 1 }}
@@ -7216,10 +7270,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           <Box sx={{ mt: 2 }}>
             {/* Selected Item Preview */}
             {item && (
-              <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(255, 140, 0, 0.05)', border: '1px solid rgba(255, 140, 0, 0.2)' }}>
-                <Typography variant="subtitle2" gutterBottom sx={{ color: '#ff8c00', fontWeight: 600}}>
-                  📄 Valgt innhold
-                </Typography>
+              <Paper sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: 'rgba(7, 10, 16, 0.6)',
+                border: '1px solid rgba(245,166,35,0.22)',
+                borderRadius: '10px',
+              }}>
+                <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mb: 1 }}>
+                  <DescriptionIcon fontSize="small" sx={{ color: '#f5a623' }} />
+                  <Typography variant="subtitle2" sx={{ color: '#f5a623', fontWeight: 600 }}>
+                    Valgt innhold
+                  </Typography>
+                </Stack>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Box 
                     component="img" 
@@ -7328,12 +7391,36 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                         onChange={(e) => setNewCourseData(prev => ({ ...prev, category: e.target.value }))}
                         label="Kategori"
                       >
-                        <MenuItem value="photography">📸 Fotografering</MenuItem>
-                        <MenuItem value="videography">🎥 Videografi</MenuItem>
-                        <MenuItem value="music-production">🎵 Musikkproduksjon</MenuItem>
-                        <MenuItem value="business">💼 Business & Marketing</MenuItem>
-                        <MenuItem value="editing">✂️ Redigering</MenuItem>
-                        <MenuItem value="equipment">📷 Utstyr</MenuItem>
+                        <MenuItem value="photography">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <PhotoCameraIcon fontSize="small" /><span>Fotografering</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="videography">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <VideocamIcon fontSize="small" /><span>Videografi</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="music-production">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <MusicNoteIcon fontSize="small" /><span>Musikkproduksjon</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="business">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <BusinessCenterIcon fontSize="small" /><span>Business & Marketing</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="editing">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <ContentCutIcon fontSize="small" /><span>Redigering</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="equipment">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <CameraAltIcon fontSize="small" /><span>Utstyr</span>
+                          </Stack>
+                        </MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>
@@ -7345,9 +7432,21 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                         onChange={(e) => setNewCourseData(prev => ({ ...prev, difficulty: e.target.value as 'beginner' | 'intermediate' | 'advanced' }))}
                         label="Vanskelighetsgrad"
                       >
-                        <MenuItem value="beginner">🌱 Nybegynner</MenuItem>
-                        <MenuItem value="intermediate">📈 Middels</MenuItem>
-                        <MenuItem value="advanced">🎓 Avansert</MenuItem>
+                        <MenuItem value="beginner">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <GrassIcon fontSize="small" /><span>Nybegynner</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="intermediate">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <TrendingUpIcon fontSize="small" /><span>Middels</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="advanced">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <SchoolIcon fontSize="small" /><span>Avansert</span>
+                          </Stack>
+                        </MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>
@@ -7364,10 +7463,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 </Grid>
 
                 {/* Preview */}
-                <Paper sx={{ p: 2, mt: 3, bgcolor: 'rgba(255, 140, 0, 0.05)', border: '1px solid rgba(255, 140, 0, 0.2)' }}>
-                  <Typography variant="subtitle2" gutterBottom sx={{ color: '#ff8c00' }}>
-                    📚 Kursforhåndsvisning
-                  </Typography>
+                <Paper sx={{
+                  p: 2,
+                  mt: 3,
+                  bgcolor: 'rgba(7, 10, 16, 0.6)',
+                  border: '1px solid rgba(245,166,35,0.22)',
+                  borderRadius: '10px',
+                }}>
+                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mb: 0.5 }}>
+                    <MenuBookIcon fontSize="small" sx={{ color: '#f5a623' }} />
+                    <Typography variant="subtitle2" sx={{ color: '#f5a623' }}>
+                      Kursforhåndsvisning
+                    </Typography>
+                  </Stack>
                   <Typography variant="h6">{newCourseData.title || 'Kurstittel'}</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     {newCourseData.description || 'Kursbeskrivelse...'}
@@ -7859,9 +7967,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   Frist: {proofingSession.deadline ? new Date(proofingSession.deadline).toLocaleDateString('no-NO') : 'Ikke satt'}
                 </Typography>
                 {showDeadlineWarning && (
-                  <Typography variant="body2" sx={{ color: '#ff4444' }}>
-                    ⚠️ Mindre enn 24 timer igjen!
-                  </Typography>
+                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                    <WarningAmberIcon sx={{ color: '#ff4444', fontSize: 18 }} />
+                    <Typography variant="body2" sx={{ color: '#ff4444' }}>
+                      Mindre enn 24 timer igjen
+                    </Typography>
+                  </Stack>
                 )}
               </Box>
             </Stack>
@@ -8210,7 +8321,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  placeholder="Sok showcase, prosjekt, kategori..."
+                  placeholder="Søk i showcase, prosjekt, kategori…"
                   variant="outlined"
                   size="small"
                   sx={{
@@ -8684,7 +8795,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  placeholder="Search..."
+                  placeholder="Søk…"
                   variant="outlined"
                   size="small"
                   sx={{
@@ -10295,12 +10406,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Paper>
             
             {/* Price Calculation */}
-            <Paper sx={{ p: 2, mb: 3, bgcolor: 'success.light', color: 'success.contrastText' }}>
-              <Typography variant="h6">
+            <Paper sx={{
+              p: 2,
+              mb: 3,
+              bgcolor: 'rgba(74, 212, 138, 0.08)',
+              border: '1px solid rgba(74, 212, 138, 0.32)',
+              borderRadius: '10px',
+              color: '#edf0f7',
+            }}>
+              <Typography variant="h6" sx={{ color: '#4ad48a' }}>
                 Totalpris: {calculatePrice()} NOK
               </Typography>
-              <Typography variant="body2">
-                {selectedImages.size > (pricingData?.projectPricing?.contracted_images || 0) 
+              <Typography variant="body2" sx={{ color: 'rgba(237,240,247,0.8)' }}>
+                {selectedImages.size > (pricingData?.projectPricing?.contracted_images || 0)
                   ? `Inkluderer ${Math.max(0, selectedImages.size - (pricingData?.projectPricing?.contracted_images || 0))} ekstra ${profession === 'photographer' ? 'bilder' : 'elementer'}`
                   : 'Alle valgte elementer er inkludert i kontrakten'
                 }
@@ -10309,12 +10427,26 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             
             {/* Package Options */}
             {pricingData?.pricing?.packages && (
-              <Paper sx={{ p: 2, mb: 3 }}>
-                <Typography variant="h6" gutterBottom>Pakketilbud</Typography>
+              <Paper sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: 'rgba(7, 10, 16, 0.6)',
+                border: '1px solid rgba(245,166,35,0.22)',
+                borderRadius: '10px',
+                color: '#edf0f7',
+              }}>
+                <Typography variant="h6" gutterBottom sx={{ color: '#edf0f7' }}>Pakketilbud</Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                   {pricingData.pricing.packages.map((pkg: { id: string; name: string; price: number; description: string; images?: number; minutes?: number; tracks?: number; savings?: number }) => (
                     <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }} key={pkg.id}>
-                      <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                      <Paper sx={{
+                        p: 2,
+                        textAlign: 'center',
+                        bgcolor: 'rgba(7, 10, 16, 0.6)',
+                        border: '1px solid rgba(245,166,35,0.22)',
+                        borderRadius: '10px',
+                        color: '#edf0f7',
+                      }}>
                         <Typography variant="subtitle1" fontWeight="bold">
                           {profession === 'photographer' || profession === 'enterprise' ? `${pkg.images} bilder` : `${pkg.minutes || pkg.tracks} ${profession === 'videographer' ? 'minutter' : 'låter'}`}
                         </Typography>
@@ -10374,8 +10506,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Paper>
             
             {/* Enhancement Presets */}
-            <Paper sx={{ p: 2, mb: 3 }}>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Paper sx={{
+              p: 2,
+              mb: 3,
+              bgcolor: 'rgba(7, 10, 16, 0.6)',
+              border: '1px solid rgba(245,166,35,0.22)',
+              borderRadius: '10px',
+              color: '#edf0f7',
+            }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#edf0f7' }}>
                 <AutoFixHigh />
                 Forhåndsinnstillinger
               </Typography>
@@ -10404,8 +10543,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             
             {/* Custom Enhancement Options - Only visible when custom is selected */}
             {selectedPhotoPreset === 'custom' && (
-              <Paper sx={{ p: 2, mb: 3 }}>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Paper sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: 'rgba(7, 10, 16, 0.6)',
+                border: '1px solid rgba(245,166,35,0.22)',
+                borderRadius: '10px',
+                color: '#edf0f7',
+              }}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#edf0f7' }}>
                   <Tune />
                   Tilpassede innstillinger
                 </Typography>
@@ -10482,8 +10628,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             
             {/* Progress Indicator */}
             {isEnhancing && (
-              <Paper sx={{ p: 2, mb: 3, bgcolor: 'primary.light' }}>
-                <Typography variant="h6" gutterBottom>Forbedrer bilder...</Typography>
+              <Paper sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: 'rgba(82, 121, 204, 0.10)',
+                border: '1px solid rgba(82, 121, 204, 0.32)',
+                borderRadius: '10px',
+                color: '#edf0f7',
+              }}>
+                <Typography variant="h6" gutterBottom sx={{ color: '#edf0f7' }}>Forbedrer bilder…</Typography>
                 <LinearProgress 
                   variant="determinate" 
                   value={enhancementProgress}
@@ -12728,9 +12881,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           </FormControl>
 
           {selectedPreset === '4k-master' && (
-            <Paper sx={{ p: 2, mb: 2, bgcolor: 'info.light' }}>
-              <Typography variant="body2">
-                4K Master: ProRes 422 Q, 3840x2160, 23.98fps - For arkiv og fremtidig redigering
+            <Paper sx={{
+              p: 2,
+              mb: 2,
+              bgcolor: 'rgba(82, 121, 204, 0.10)',
+              border: '1px solid rgba(82, 121, 204, 0.32)',
+              borderRadius: '10px',
+              color: '#edf0f7',
+            }}>
+              <Typography variant="body2" sx={{ color: 'rgba(237,240,247,0.85)' }}>
+                4K Master: ProRes 422 Q, 3840×2160, 23.98 fps — for arkiv og fremtidig redigering
               </Typography>
             </Paper>
           )}
@@ -13627,7 +13787,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         <DialogContent>
           {evendiResult ? (
             <Box sx={{ textAlign: 'center', py: 3 }}>
-              <Typography variant="h6" sx={{ color: '#4CAF50', mb: 2 }}>✅ Leveranse opprettet!</Typography>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'center', mb: 2 }}>
+                <CheckCircleIcon sx={{ color: '#4CAF50' }} />
+                <Typography variant="h6" sx={{ color: '#4CAF50' }}>Leveranse opprettet</Typography>
+              </Stack>
               <Box sx={{ bgcolor: 'rgba(233, 30, 99, 0.1)', borderRadius: 2, p: 3, mb: 2, border: '1px solid rgba(233, 30, 99, 0.3)' }}>
                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 1 }}>Tilgangskode</Typography>
                 <Typography variant="h4" sx={{ color: '#E91E63', fontFamily: 'monospace', letterSpacing: 4, fontWeight: 700 }}>
