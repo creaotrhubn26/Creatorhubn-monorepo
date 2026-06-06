@@ -26,7 +26,7 @@ PROJECT        = "CaptureApp.xcodeproj"
 
 platform :ios do
   before_all do
-    ensure_xcode_version(version: "16.4")
+    ensure_xcode_version(version: "26.5")
   end
 
   desc "Bump CFBundleVersion by 1"
@@ -47,7 +47,7 @@ platform :ios do
       scheme: SCHEME,
       configuration: "Release",
       export_method: "app-store",
-      export_options: "../ExportOptions.plist",
+      export_options: "ExportOptions.plist",
       clean: true,
       output_directory: "build/",
       output_name: "CreatorHubOne.ipa",
@@ -76,7 +76,7 @@ platform :ios do
       scheme: SCHEME,
       configuration: "Release",
       export_method: "app-store",
-      export_options: "../ExportOptions.plist",
+      export_options: "ExportOptions.plist",
       clean: true,
       output_directory: "build/",
       output_name: "CreatorHubOne.ipa",

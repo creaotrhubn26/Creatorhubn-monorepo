@@ -28,11 +28,23 @@ export interface MeetingNotesRoutesDeps {
     row: any,
     creatorId: string,
   ) => Promise<any>;
+  /**
+   * Matcher faktisk impl-signatur i notebooklm-workspace.ts:775.
+   * Returnerer NotebookLmWorkspaceSummary | null, men route-handler
+   * trenger ikke return-verdi — derfor unknown for å akseptere subset.
+   */
   syncNotebookLmWorkspaceForMeetingNote: (
     pool: Pool,
-    row: any,
-    creatorId: string,
-  ) => Promise<void>;
+    noteRow: {
+      creator_id?: string | null;
+      project_id?: string | null;
+      client_id?: string | null;
+      profession?: string | null;
+      meeting_id?: string | null;
+      meeting_title?: string | null;
+    },
+    preferredUserId?: string | null,
+  ) => Promise<unknown>;
   syncMeetingNotesLifecycleArtifacts: (
     row: any,
     creatorId: string,

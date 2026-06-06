@@ -6,7 +6,6 @@ import { useDepHealth, type DepHealth } from "../hooks/useDepHealth";
 import { PhotoshopStatusPill } from "./PhotoshopStatusPill";
 import CheckCircleOutlinedIcon from "@mui/icons-material/CheckCircleOutlined";
 import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
-import BrushOutlinedIcon from "@mui/icons-material/BrushOutlined";
 import AddIcon from "@mui/icons-material/Add";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import HistoryIcon from "@mui/icons-material/History";
@@ -99,7 +98,6 @@ interface Props {
   onOpenWatch: () => void;
   onOpenPhotoshopBridge: () => void;
   onOpenPhotoshopTemplates: () => void;
-  onOpenPhotoshopAgent: () => void;
   onOpenPsdGallery: () => void;
   onOpenPhotoshopHealth: () => void;
   onOpenPhotoshopTour: () => void;
@@ -107,6 +105,9 @@ interface Props {
   onOpenHelp: () => void;
   onOpenPhotoshopSetup: () => void;
   onOpenPhotoshopScaffold: () => void;
+  onOpenFireflyPrompt: () => void;
+  onOpenPhotoshopWorkspace: () => void;
+  onOpenMultiAgent: () => void;
   onOpenAiImage: () => void;
   onOpenArtDirector: () => void;
   onOpenCreations: () => void;
@@ -150,7 +151,6 @@ export function HeaderBar({
   onOpenWatch,
   onOpenPhotoshopBridge,
   onOpenPhotoshopTemplates,
-  onOpenPhotoshopAgent,
   onOpenPsdGallery,
   onOpenPhotoshopHealth,
   onOpenPhotoshopTour,
@@ -158,6 +158,9 @@ export function HeaderBar({
   onOpenHelp,
   onOpenPhotoshopSetup,
   onOpenPhotoshopScaffold,
+  onOpenFireflyPrompt,
+  onOpenPhotoshopWorkspace,
+  onOpenMultiAgent,
   onOpenAiImage,
   onOpenArtDirector,
   onOpenCreations,
@@ -264,6 +267,36 @@ export function HeaderBar({
                   <AutoAwesomeIcon fontSize="small" /> AI image generation…
                 </button>
                 <button
+                  onClick={() => { setMenuOpen(false); onOpenFireflyPrompt(); }}
+                  data-testid="header-firefly-prompt-btn"
+                >
+                  <AutoAwesomeIcon fontSize="small" /> Firefly Prompt Assistant…
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenPhotoshopWorkspace(); }}
+                  data-testid="header-photoshop-workspace-btn"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(167,139,250,0.22), rgba(110,63,199,0.22))",
+                    border: "1px solid rgba(167,139,250,0.45)",
+                    color: "#e8e0ff",
+                    fontWeight: 600,
+                  }}
+                >
+                  <AutoAwesomeIcon fontSize="small" /> Photoshop Workspace…
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenMultiAgent(); }}
+                  data-testid="header-multi-agent-btn"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(244,114,182,0.22), rgba(167,139,250,0.22))",
+                    border: "1px solid rgba(244,114,182,0.45)",
+                    color: "#fce7f3",
+                    fontWeight: 700,
+                  }}
+                >
+                  <AutoAwesomeIcon fontSize="small" /> Multi-Agent Director…
+                </button>
+                <button
                   onClick={() => { setMenuOpen(false); onOpenArtDirector(); }}
                   style={{
                     background: "linear-gradient(135deg, rgba(167,139,250,0.22), rgba(110,63,199,0.22))",
@@ -276,17 +309,6 @@ export function HeaderBar({
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenCreations(); }}>
                   <HistoryIcon fontSize="small" /> Mine AI-kreasjoner…
-                </button>
-                <button
-                  onClick={() => { setMenuOpen(false); onOpenPhotoshopAgent(); }}
-                  style={{
-                    background: "linear-gradient(135deg, rgba(167,139,250,0.18), rgba(110,63,199,0.18))",
-                    border: "1px solid rgba(167,139,250,0.35)",
-                    color: "#e8e0ff",
-                    fontWeight: 600,
-                  }}
-                >
-                  <BrushOutlinedIcon fontSize="small" /> Photoshop Agent…
                 </button>
                 <button onClick={() => { setMenuOpen(false); onOpenPsdGallery(); }}>
                   PSD-galleri…

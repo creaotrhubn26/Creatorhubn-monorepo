@@ -32,6 +32,8 @@ type GoogleMeetPayload = {
   clientName?: string | null;
   calendarId?: string | null;
   timeZone?: string | null;
+  location?: string | null;
+  meetingLocation?: string | null;
 };
 
 export type GoogleMeetCreationResult = {
@@ -316,6 +318,8 @@ export async function createGoogleMeetLink(
       requestBody: {
         summary: title,
         description: description || undefined,
+        // #8 — attach the meeting/shoot location when provided by the CRM.
+        location: readStringValue(payload.location) ?? readStringValue(payload.meetingLocation) ?? undefined,
         start: {
           dateTime: startDateTime,
           timeZone,
@@ -325,6 +329,14 @@ export async function createGoogleMeetLink(
           timeZone,
         },
         attendees,
+        // #31 — auto-reminders so neither photographer nor client forgets the shoot.
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: 'email', minutes: 24 * 60 },
+            { method: 'popup', minutes: 60 },
+          ],
+        },
         conferenceData: {
           createRequest: {
             requestId: crypto.randomUUID(),

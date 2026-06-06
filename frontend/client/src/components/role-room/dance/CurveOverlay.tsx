@@ -13,6 +13,7 @@
  * canvas-bredden eksakt.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import { Box, Tooltip } from '@mui/material';
 import type { Dancer, DancerTransitionPath, Formation } from './formationTypes';
@@ -159,7 +160,7 @@ export function CurveOverlay({
           const cps = getControlsFor(dancerId);
           if (cps.length < 2) return null;
           const dancer = dancersById.get(dancerId);
-          const color = dancer?.color ?? '#a78bfa';
+          const color = dancer?.color ?? danceFlowColors.lavender;
           // M start C cp0 cp1 end
           const path = `M ${start.x * 100} ${start.y * 100} C ${cps[0].x * 100} ${cps[0].y * 100}, ${cps[1].x * 100} ${cps[1].y * 100}, ${end.x * 100} ${end.y * 100}`;
           return (

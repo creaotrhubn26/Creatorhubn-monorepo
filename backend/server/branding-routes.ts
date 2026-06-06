@@ -100,9 +100,11 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
     }
   });
 
-  app.put("/api/branding/business-info/:userId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
-    const userId = readString(req.params.userId);
+  const handleBusinessInfoUpdate = async (
+    req: any,
+    res: any,
+    userId: string | null | undefined,
+  ): Promise<void> => {
     if (!userId) {
       res.status(400).json({ error: "userId is required" });
       return;
@@ -143,6 +145,28 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
         .status(500)
         .json({ error: "Failed to update branding business info" });
     }
+  };
+
+  // userId i URL-en (eksisterende kontrakt).
+  app.put("/api/branding/business-info/:userId", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    await handleBusinessInfoUpdate(req, res, readString(req.params.userId));
+  });
+
+  // Uten userId i URL-en: utled fra session/header/query (samme oppslag som
+  // GET-ruta). IndividualOnboardingWizard kaller PUT /api/branding/business-info
+  // uten userId i pathen — uten denne ruta falt kallet til catch-all 404
+  // («Endpoint not implemented») og bedriftsinfo ble aldri lagret.
+  app.put("/api/branding/business-info", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const userId =
+      session.userId ||
+      readString(req.headers["x-user-id"]) ||
+      readString(req.query.userId) ||
+      readString(req.query.user_id);
+    await handleBusinessInfoUpdate(req, res, userId);
   });
 
   app.post(

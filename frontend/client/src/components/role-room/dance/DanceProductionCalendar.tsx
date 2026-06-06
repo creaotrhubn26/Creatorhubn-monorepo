@@ -13,6 +13,7 @@
  *  • Mobil-drawer + print-stylesheet + recurring-affordance
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -56,8 +57,8 @@ import {
   type CalendarEventKind,
 } from './calendarTypes';
 
-const PURPLE = '#8b5cf6';
-const PURPLE_LIGHT = '#a78bfa';
+const PURPLE = danceFlowColors.lavenderDark;
+const PURPLE_LIGHT = danceFlowColors.lavender;
 const PURPLE_SOFT = 'rgba(139,92,246,0.12)';
 const ALL_KINDS: readonly CalendarEventKind[] = ['rehearsal', 'performance', 'class', 'audition', 'availability'];
 const WEEKDAY_LABELS = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
@@ -373,7 +374,7 @@ export function DanceProductionCalendar({
   return (
     <Box
       data-testid="dance-production-calendar"
-      sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%', bgcolor: '#0a0a0a' }}
+      sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%', bgcolor: danceFlowColors.bgBase }}
       className="dance-calendar-root"
     >
       {/* Toolbar — horizontal-scroll på mobil slik at alle knapper er nåbar
@@ -397,7 +398,7 @@ export function DanceProductionCalendar({
         <IconButton size="small" onClick={goPrev} sx={{ color: PURPLE_LIGHT }} data-testid="calendar-prev">
           <ChevronLeft />
         </IconButton>
-        <Typography sx={{ fontSize: 13, color: '#e5e7eb', minWidth: 180, textAlign: 'center' }}>
+        <Typography sx={{ fontSize: 13, color: danceFlowColors.textSecondary, minWidth: 180, textAlign: 'center' }}>
           {title}
         </Typography>
         <IconButton size="small" onClick={goNext} sx={{ color: PURPLE_LIGHT }} data-testid="calendar-next">
@@ -488,7 +489,7 @@ export function DanceProductionCalendar({
               <CircularProgress sx={{ color: PURPLE }} />
             </Stack>
           ) : error ? (
-            <Typography sx={{ color: '#fca5a5' }}>{error}</Typography>
+            <Typography sx={{ color: danceFlowColors.errorSoft }}>{error}</Typography>
           ) : view === 'month' ? (
             <MonthGrid
               anchorDate={anchorDate}
@@ -566,7 +567,7 @@ export function DanceProductionCalendar({
       <Dialog
         open={!!createDay}
         onClose={() => setCreateDay(null)}
-        PaperProps={{ sx: { bgcolor: '#0f0a1c', color: '#e5e7eb', minWidth: 360 } }}
+        PaperProps={{ sx: { bgcolor: '#0f0a1c', color: danceFlowColors.textSecondary, minWidth: 360 } }}
       >
         <DialogTitle sx={{ color: PURPLE_LIGHT, fontWeight: 700 }}>
           Nytt event {createDay ? `· ${formatDateShort(createDay)}` : ''}
@@ -627,7 +628,7 @@ export function DanceProductionCalendar({
             onClick={() => void submitCreate()}
             disabled={!createTitle.trim()}
             data-testid="calendar-create-submit"
-            sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' } }}
+            sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
           >
             Opprett
           </Button>
@@ -638,7 +639,7 @@ export function DanceProductionCalendar({
       <Dialog
         open={!!detailEvent}
         onClose={() => setDetailEvent(null)}
-        PaperProps={{ sx: { bgcolor: '#0f0a1c', color: '#e5e7eb', minWidth: 360 } }}
+        PaperProps={{ sx: { bgcolor: '#0f0a1c', color: danceFlowColors.textSecondary, minWidth: 360 } }}
       >
         {detailEvent ? (() => {
           const meta = KIND_META[detailEvent.kind];
@@ -650,15 +651,15 @@ export function DanceProductionCalendar({
               </DialogTitle>
               <DialogContent>
                 <Stack spacing={1}>
-                  <Typography sx={{ fontSize: 12, color: '#cbd5e1' }}>
+                  <Typography sx={{ fontSize: 12, color: danceFlowColors.grayLight }}>
                     {new Date(detailEvent.startSec).toLocaleString('nb-NO')}
                     {detailEvent.endSec ? ` – ${formatTimeShort(detailEvent.endSec)}` : ''}
                   </Typography>
                   {detailEvent.location ? (
-                    <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>📍 {detailEvent.location}</Typography>
+                    <Typography sx={{ fontSize: 12, color: danceFlowColors.textMuted }}>📍 {detailEvent.location}</Typography>
                   ) : null}
                   {detailEvent.description ? (
-                    <Typography sx={{ fontSize: 11.5, color: '#e5e7eb' }}>
+                    <Typography sx={{ fontSize: 11.5, color: danceFlowColors.textSecondary }}>
                       {detailEvent.description}
                     </Typography>
                   ) : null}
@@ -670,8 +671,8 @@ export function DanceProductionCalendar({
                       data-testid="calendar-event-collision-warning"
                       sx={{ p: 1, borderRadius: 1, bgcolor: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)' }}
                     >
-                      <WarningIcon sx={{ fontSize: 16, color: '#f87171' }} />
-                      <Typography sx={{ fontSize: 11, color: '#fca5a5' }}>
+                      <WarningIcon sx={{ fontSize: 16, color: danceFlowColors.errorPrimary }} />
+                      <Typography sx={{ fontSize: 11, color: danceFlowColors.errorSoft }}>
                         Kolliderer med: {collisions.map((c) => c.title).join(', ')}
                       </Typography>
                     </Stack>
@@ -684,7 +685,7 @@ export function DanceProductionCalendar({
                   onClick={() => navToSourceTab(detailEvent.kind)}
                   variant="contained"
                   data-testid="calendar-event-open-tab"
-                  sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' } }}
+                  sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
                 >
                   Åpne i {meta.label}-tab
                 </Button>
@@ -699,7 +700,7 @@ export function DanceProductionCalendar({
         anchor="bottom"
         open={!!drawerDay}
         onClose={() => setDrawerDay(null)}
-        PaperProps={{ sx: { bgcolor: '#0f0a1c', color: '#e5e7eb', borderTopLeftRadius: 12, borderTopRightRadius: 12, p: 2 } }}
+        PaperProps={{ sx: { bgcolor: '#0f0a1c', color: danceFlowColors.textSecondary, borderTopLeftRadius: 12, borderTopRightRadius: 12, p: 2 } }}
       >
         {drawerDay ? (
           <>
@@ -707,7 +708,7 @@ export function DanceProductionCalendar({
               <Typography sx={{ fontSize: 14, fontWeight: 700, color: '#fff', flex: 1 }}>
                 {drawerDay.toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' })}
               </Typography>
-              <IconButton size="small" onClick={() => setDrawerDay(null)} sx={{ color: '#9ca3af' }}>
+              <IconButton size="small" onClick={() => setDrawerDay(null)} sx={{ color: danceFlowColors.textMuted }}>
                 <CloseIcon />
               </IconButton>
             </Stack>
@@ -781,7 +782,7 @@ const MonthGrid: React.FC<MonthGridProps> = ({ anchorDate, events, allEvents, on
     <Box data-testid="calendar-month-grid">
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5, mb: 0.5 }}>
         {WEEKDAY_LABELS.map((wd) => (
-          <Typography key={wd} sx={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textAlign: 'center', letterSpacing: 1 }}>
+          <Typography key={wd} sx={{ fontSize: 10, color: danceFlowColors.textMuted, fontWeight: 700, textAlign: 'center', letterSpacing: 1 }}>
             {wd.toUpperCase()}
           </Typography>
         ))}
@@ -818,7 +819,7 @@ const MonthGrid: React.FC<MonthGridProps> = ({ anchorDate, events, allEvents, on
                 p: { xs: 0.25, md: 0.5 },
                 borderRadius: 0.5,
                 border: `1px solid ${isToday ? PURPLE_LIGHT : 'rgba(255,255,255,0.06)'}`,
-                bgcolor: inMonth ? '#0f1318' : 'rgba(255,255,255,0.01)',
+                bgcolor: inMonth ? danceFlowColors.bgPanel : 'rgba(255,255,255,0.01)',
                 opacity: inMonth ? 1 : 0.45,
                 cursor: 'pointer',
                 position: 'relative',
@@ -826,12 +827,12 @@ const MonthGrid: React.FC<MonthGridProps> = ({ anchorDate, events, allEvents, on
               }}
             >
               <Stack direction="row" alignItems="center" sx={{ mb: 0.25 }}>
-                <Typography sx={{ fontSize: 11, fontWeight: isToday ? 700 : 500, color: isToday ? PURPLE_LIGHT : '#e5e7eb', flex: 1 }}>
+                <Typography sx={{ fontSize: 11, fontWeight: isToday ? 700 : 500, color: isToday ? PURPLE_LIGHT : danceFlowColors.textSecondary, flex: 1 }}>
                   {d.getDate()}
                 </Typography>
                 {collisionFlag ? (
                   <Tooltip title="Ressurs-kollisjon">
-                    <WarningIcon sx={{ fontSize: 12, color: '#f87171' }} />
+                    <WarningIcon sx={{ fontSize: 12, color: danceFlowColors.errorPrimary }} />
                   </Tooltip>
                 ) : null}
               </Stack>
@@ -875,7 +876,7 @@ const MonthGrid: React.FC<MonthGridProps> = ({ anchorDate, events, allEvents, on
                     );
                   })}
                   {dayEvents.length > 3 ? (
-                    <Typography sx={{ fontSize: 9, color: '#9ca3af', pl: 0.5 }}>
+                    <Typography sx={{ fontSize: 9, color: danceFlowColors.textMuted, pl: 0.5 }}>
                       + {dayEvents.length - 3} flere
                     </Typography>
                   ) : null}
@@ -911,12 +912,12 @@ const WeekView: React.FC<{ anchorDate: Date; events: readonly CalendarEvent[]; o
           sx={{
             minHeight: { xs: 80, md: 320 },
             p: 0.75,
-            bgcolor: '#0f1318',
+            bgcolor: danceFlowColors.bgPanel,
             borderRadius: 0.5,
             border: '1px solid rgba(255,255,255,0.06)',
           }}
         >
-          <Typography sx={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, mb: 0.5, letterSpacing: 0.5 }}>
+          <Typography sx={{ fontSize: 10, color: danceFlowColors.textMuted, fontWeight: 700, mb: 0.5, letterSpacing: 0.5 }}>
             {d.toLocaleDateString('nb-NO', { weekday: 'short', day: 'numeric' })}
           </Typography>
           <Stack spacing={0.25}>
@@ -952,7 +953,7 @@ const DayView: React.FC<{ anchorDate: Date; events: readonly CalendarEvent[]; on
     <Box data-testid="calendar-day-view">
       <Stack spacing={0.5}>
         {list.length === 0 ? (
-          <Typography sx={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>Ingen events denne dagen.</Typography>
+          <Typography sx={{ fontSize: 12, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>Ingen events denne dagen.</Typography>
         ) : null}
         {list.map((ev) => {
           const meta = KIND_META[ev.kind];
@@ -967,7 +968,7 @@ const DayView: React.FC<{ anchorDate: Date; events: readonly CalendarEvent[]; on
                 {formatTimeShort(ev.startSec)}{ev.endSec ? ` – ${formatTimeShort(ev.endSec)}` : ''} · {meta.label}
               </Typography>
               <Typography sx={{ fontSize: 13, color: '#fff', fontWeight: 600 }}>{ev.title}</Typography>
-              {ev.location ? <Typography sx={{ fontSize: 11, color: '#9ca3af' }}>📍 {ev.location}</Typography> : null}
+              {ev.location ? <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted }}>📍 {ev.location}</Typography> : null}
             </Box>
           );
         })}
@@ -986,7 +987,7 @@ const AgendaView: React.FC<{ anchorDate: Date; events: readonly CalendarEvent[];
   return (
     <Stack spacing={0.5} data-testid="calendar-agenda-view">
       {list.length === 0 ? (
-        <Typography sx={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>Ingen events i denne måneden.</Typography>
+        <Typography sx={{ fontSize: 12, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>Ingen events i denne måneden.</Typography>
       ) : null}
       {list.map((ev) => {
         const meta = KIND_META[ev.kind];

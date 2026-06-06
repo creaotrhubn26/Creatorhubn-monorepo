@@ -4,9 +4,7 @@ import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useCallback } from 'react';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { useQuery } from '@tanstack/react-query';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import {
   Box,
   Card as MuiCard,
@@ -54,9 +52,7 @@ import {
   Insights as AnalysisIcon,
 } from '@mui/icons-material';
 import { UniversalFileUpload } from '../UniversalFileUpload';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { apiRequest } from '@/lib/queryClient';
-import { getAuthHeader } from '@/lib/google/impersonation';
 
 interface VideoAnalysisResult {
   metadata: {

@@ -193,6 +193,11 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  // ETA + throughput per filnavn for store opplastinger (chunked path).
+  // Lar UI vise "12:34 igjen · 8.2 MB/s" i stedet for kun en spinner.
+  const [uploadEta, setUploadEta] = useState<
+    Record<string, { etaSeconds: number | null; throughputKbps: number | null }>
+  >({});
   const [validationErrors, setValidationErrors] = useState<Array<{ file: File; reason: string }>>([]);
   const [showSupportedFormats, setShowSupportedFormats] = useState(false);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
@@ -717,6 +722,13 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
                 onProgress: (info) => {
                   const pct = Math.round((info.bytesUploaded / info.totalBytes) * 100);
                   setUploadProgress(prev => ({ ...prev, [file.name]: pct }));
+                  setUploadEta(prev => ({
+                    ...prev,
+                    [file.name]: {
+                      etaSeconds: info.etaSeconds,
+                      throughputKbps: info.throughputKbps,
+                    },
+                  }));
                 },
               });
               results.push({ file, result: chunked, success: true });
@@ -1165,12 +1177,45 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
                   secondary={`${(file.size / 1024 / 1024).toFixed(2)} MB • ${file.type || 'Ukjent type'}`}
                 />
                 {uploading && uploadProgress[file.name] !== undefined && (
-                  <Box sx={{ width: 10, mr:  1 }}>
+                  <Box sx={{ minWidth: 140, mr: 1 }}>
                     <LinearProgress
                       variant="determinate"
                       value={uploadProgress[file.name]}
                       color="primary"
+                      sx={{ height: 6, borderRadius: 3 }}
                     />
+                    {(() => {
+                      const eta = uploadEta[file.name];
+                      if (!eta) return null;
+                      const parts: string[] = [];
+                      if (eta.etaSeconds != null && eta.etaSeconds > 0) {
+                        const m = Math.floor(eta.etaSeconds / 60);
+                        const s = eta.etaSeconds % 60;
+                        parts.push(
+                          m > 0
+                            ? `${m}:${String(s).padStart(2, '0')} igjen`
+                            : `${s}s igjen`,
+                        );
+                      }
+                      if (eta.throughputKbps != null && eta.throughputKbps > 0) {
+                        const mbps = eta.throughputKbps / 1024;
+                        parts.push(
+                          mbps >= 1
+                            ? `${mbps.toFixed(1)} MB/s`
+                            : `${eta.throughputKbps} kB/s`,
+                        );
+                      }
+                      if (parts.length === 0) return null;
+                      return (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: 'block', mt: 0.25, fontSize: '0.65rem' }}
+                        >
+                          {parts.join(' · ')}
+                        </Typography>
+                      );
+                    })()}
                   </Box>
                 )}
                 <IconButton

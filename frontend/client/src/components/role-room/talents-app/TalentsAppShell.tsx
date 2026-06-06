@@ -79,7 +79,7 @@ const MENU: Array<{ id: TalentsAppPage; label: string; Icon: React.ComponentType
   { id: 'partners', label: 'Partnere', Icon: HandshakeOutlinedIcon, ready: true },
   { id: 'partnerships', label: 'Partnerships', Icon: BusinessCenterOutlinedIcon, ready: true },
   { id: 'audit', label: 'Hvem har sett meg?', Icon: VisibilityIcon, ready: true },
-  { id: 'selftapes', label: 'Self-Tapes', Icon: PlayCircleOutlineIcon },
+  { id: 'selftapes', label: 'Self-Tapes', Icon: PlayCircleOutlineIcon, ready: true },
   { id: 'auditions', label: 'Auditions', Icon: EventNoteIcon },
   { id: 'settings', label: 'Innstillinger', Icon: SettingsOutlinedIcon, ready: true },
 ];

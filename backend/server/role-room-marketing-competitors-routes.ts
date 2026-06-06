@@ -17,8 +17,14 @@
  */
 
 import type { Application, Request, Response } from 'express';
+import crypto from 'node:crypto';
 import type { Pool } from 'pg';
 import { runCompetitorSnapshotWorkerOnce } from './role-room-competitor-snapshot-worker.js';
+import {
+  generateCompetitorReport,
+  type CompetitorReportInput,
+} from './role-room-competitor-report-claude.js';
+import { THEROLERROOM_BOOTSTRAP } from './role-room-agent-profile-recommendations.js';
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0';
 
@@ -29,16 +35,70 @@ export interface SetupCompetitorsRoutesDeps {
 }
 
 interface SnapshotData {
-  fanCount: number | null;
+  fanCount: number | null;          // FB fan_count ELLER IG followers_count
   name: string | null;
   category: string | null;
   website: string | null;
-  about: string | null;
+  about: string | null;              // FB about ELLER IG biography
   recentPostCount7d: number | null;
   recentPostCount30d: number | null;
   rawProfile: unknown;
   rawPosts: unknown;
   fetchError: string | null;
+}
+
+async function fetchInstagramSnapshot(
+  igUsername: string,
+  callerIgUserId: string,
+  accessToken: string,
+): Promise<SnapshotData> {
+  const empty: SnapshotData = {
+    fanCount: null, name: null, category: null, website: null, about: null,
+    recentPostCount7d: null, recentPostCount30d: null, rawProfile: null, rawPosts: null,
+    fetchError: null,
+  };
+  try {
+    // business_discovery henter offentlig IG-profil + 50 nyeste media for activity
+    const params = new URLSearchParams({
+      fields: `business_discovery.username(${igUsername}){username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website,media.limit(50){id,timestamp}}`,
+      access_token: accessToken,
+    });
+    const r = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(callerIgUserId)}?${params.toString()}`);
+    const body = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!r.ok || !body.business_discovery) {
+      const err = body.error as Record<string, unknown> | undefined;
+      return { ...empty, rawProfile: body, fetchError: typeof err?.message === 'string' ? err.message : `status ${r.status}` };
+    }
+    const bd = body.business_discovery as Record<string, unknown>;
+    // Count recent media in last 7d / 30d
+    let count7 = 0, count30 = 0;
+    const media = (bd.media as Record<string, unknown> | undefined)?.data;
+    const now = Date.now();
+    if (Array.isArray(media)) {
+      for (const m of media as Array<Record<string, unknown>>) {
+        const created = typeof m.timestamp === 'string' ? Date.parse(m.timestamp) : NaN;
+        if (!Number.isFinite(created)) continue;
+        const ageDays = (now - created) / 86_400_000;
+        if (ageDays < 7) count7++;
+        if (ageDays < 30) count30++;
+      }
+    }
+    return {
+      fanCount: typeof bd.followers_count === 'number' ? bd.followers_count : null,
+      name: typeof bd.name === 'string' ? bd.name : null,
+      // IG har ikke FB-style 'category' — bruk null
+      category: null,
+      website: typeof bd.website === 'string' ? bd.website : null,
+      about: typeof bd.biography === 'string' ? bd.biography : null,
+      recentPostCount7d: count7,
+      recentPostCount30d: count30,
+      rawProfile: bd,
+      rawPosts: null,
+      fetchError: null,
+    };
+  } catch (err) {
+    return { ...empty, fetchError: String(err) };
+  }
 }
 
 async function fetchPageSnapshot(pageId: string, accessToken: string): Promise<SnapshotData> {
@@ -50,7 +110,7 @@ async function fetchPageSnapshot(pageId: string, accessToken: string): Promise<S
 
   try {
     const profileParams = new URLSearchParams({
-      fields: 'id,name,fan_count,category,website,about',
+      fields: 'id,name,fan_count,category,website,about,picture.type(large)',
       access_token: accessToken,
     });
     const profileR = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(pageId)}?${profileParams}`);
@@ -110,12 +170,16 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
       const r = await pool.query(
         `SELECT
            p.id, p.page_id, p.nickname, p.category, p.notes, p.active, p.added_at,
-           p.auto_snapshot, p.last_snapshot_at,
+           p.auto_snapshot, p.last_snapshot_at, p.account_type, p.ig_username,
            (
              SELECT row_to_json(s)
              FROM (
                SELECT fan_count, name, category, website, recent_post_count_7d, recent_post_count_30d,
-                      snapshot_at, fetch_error
+                      snapshot_at, fetch_error,
+                      COALESCE(
+                        raw_profile_json->'picture'->'data'->>'url',
+                        raw_profile_json->>'profile_picture_url'
+                      ) AS picture_url
                FROM marketing_competitor_snapshots
                WHERE competitor_id = p.id
                ORDER BY snapshot_at DESC LIMIT 1
@@ -139,6 +203,8 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
           addedAt: row.added_at,
           autoSnapshot: row.auto_snapshot ?? false,
           lastSnapshotAt: row.last_snapshot_at,
+          accountType: row.account_type || 'facebook',
+          igUsername: row.ig_username,
           latestSnapshot: row.latest_snapshot,
         })),
       });
@@ -152,21 +218,51 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
     if (!requireAdminOrDemoBypass(req, res)) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
     const brandKey = typeof body.brandKey === 'string' && body.brandKey.trim() ? body.brandKey.trim() : 'theroleroom';
-    const pageId = typeof body.pageId === 'string' ? body.pageId.trim() : '';
+    const accountType = typeof body.accountType === 'string' ? body.accountType.trim().toLowerCase() : 'facebook';
     const nickname = typeof body.nickname === 'string' ? body.nickname.trim() : '';
     const notes = typeof body.notes === 'string' ? body.notes.trim() : null;
-    if (!pageId || !nickname) {
-      res.status(400).json({ ok: false, error: 'pageId + nickname required' });
+
+    if (!['facebook', 'instagram'].includes(accountType)) {
+      res.status(400).json({ ok: false, error: 'accountType must be facebook|instagram' });
       return;
     }
+    if (!nickname) {
+      res.status(400).json({ ok: false, error: 'nickname required' });
+      return;
+    }
+
+    let pageId = '';
+    let igUsername: string | null = null;
+
+    if (accountType === 'facebook') {
+      pageId = typeof body.pageId === 'string' ? body.pageId.trim() : '';
+      if (!pageId) {
+        res.status(400).json({ ok: false, error: 'pageId required for facebook account-type' });
+        return;
+      }
+    } else {
+      // For IG: aksepter @handle eller bare username
+      const handleInput = typeof body.igUsername === 'string' ? body.igUsername.trim()
+        : (typeof body.pageId === 'string' ? body.pageId.trim() : '');
+      igUsername = handleInput.replace(/^@/, '').toLowerCase();
+      if (!igUsername) {
+        res.status(400).json({ ok: false, error: 'igUsername required for instagram account-type' });
+        return;
+      }
+      // page_id-feltet får IG-username som unique-konfliktbase (kunne hentet IG user_id, men det krever
+      // ekstra API-call; username er unikt på IG og fungerer som stabil identifikator)
+      pageId = `ig:${igUsername}`;
+    }
+
     try {
       const r = await pool.query(
-        `INSERT INTO marketing_competitor_pages (brand_key, page_id, nickname, notes, added_by)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO marketing_competitor_pages (brand_key, page_id, nickname, notes, added_by, account_type, ig_username)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (brand_key, page_id) DO UPDATE
-           SET nickname = EXCLUDED.nickname, notes = EXCLUDED.notes, active = true
-         RETURNING id, page_id, nickname, added_at`,
-        [brandKey, pageId, nickname, notes, 'admin'],
+           SET nickname = EXCLUDED.nickname, notes = EXCLUDED.notes, active = true,
+               account_type = EXCLUDED.account_type, ig_username = EXCLUDED.ig_username
+         RETURNING id, page_id, nickname, added_at, account_type, ig_username`,
+        [brandKey, pageId, nickname, notes, 'admin', accountType, igUsername],
       );
       res.json({
         ok: true,
@@ -174,6 +270,8 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
           id: Number(r.rows[0].id),
           pageId: r.rows[0].page_id,
           nickname: r.rows[0].nickname,
+          accountType: r.rows[0].account_type,
+          igUsername: r.rows[0].ig_username,
           addedAt: r.rows[0].added_at,
         },
       });
@@ -273,14 +371,30 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
     }
 
     try {
-      const compR = await pool.query('SELECT page_id FROM marketing_competitor_pages WHERE id = $1', [id]);
+      const compR = await pool.query(
+        'SELECT page_id, account_type, ig_username FROM marketing_competitor_pages WHERE id = $1',
+        [id],
+      );
       if (!compR.rowCount || compR.rowCount === 0) {
         res.status(404).json({ ok: false, error: 'competitor not found' });
         return;
       }
-      const pageId = compR.rows[0].page_id as string;
+      const row = compR.rows[0];
+      const pageId = row.page_id as string;
+      const accountType = String(row.account_type || 'facebook');
+      const igUsername = row.ig_username as string | null;
 
-      const snapshot = await fetchPageSnapshot(pageId, accessToken);
+      let snapshot: SnapshotData;
+      if (accountType === 'instagram' && igUsername) {
+        const callerIgUserId = (process.env.THEROLERROOM_IG_USER_ID || '').trim();
+        if (!callerIgUserId) {
+          res.status(503).json({ ok: false, error: 'THEROLERROOM_IG_USER_ID required for IG snapshots' });
+          return;
+        }
+        snapshot = await fetchInstagramSnapshot(igUsername, callerIgUserId, accessToken);
+      } else {
+        snapshot = await fetchPageSnapshot(pageId, accessToken);
+      }
 
       // Get previous snapshot for diff.
       const prevR = await pool.query(
@@ -382,6 +496,356 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
           recentPostCount7d: row.recent_post_count_7d,
           recentPostCount30d: row.recent_post_count_30d,
           fetchError: row.fetch_error,
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+
+  // ── POST generate-report ─────────────────────────────────────────────────
+  // Reads 30-day snapshot history for all active competitors of brandKey,
+  // builds a structured input, calls Claude. Stores result for history.
+  app.post('/api/role-room/marketing-cockpit/competitors/generate-report', async (req, res) => {
+    if (!requireAdminOrDemoBypass(req, res)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const brandKey = typeof body.brandKey === 'string' && body.brandKey.trim()
+      ? body.brandKey.trim() : 'theroleroom';
+    const useCache = body.useCache !== false; // default true
+
+    try {
+      // Fetch competitors with 30d data window.
+      const compR = await pool.query(
+        `SELECT id, page_id, nickname, category
+         FROM marketing_competitor_pages
+         WHERE brand_key = $1 AND active = true
+         ORDER BY added_at ASC`,
+        [brandKey],
+      );
+      if (!compR.rowCount || compR.rowCount === 0) {
+        res.status(400).json({ ok: false, error: 'no active competitors tracked for this brand' });
+        return;
+      }
+
+      // For each competitor: latest snapshot + 30-d-ago snapshot.
+      const competitors: (CompetitorReportInput['competitors'][number] & { pictureUrl?: string | null })[] = [];
+      for (const c of compR.rows) {
+        const histR = await pool.query(
+          `SELECT fan_count, recent_post_count_7d, recent_post_count_30d, name, category, website, about, snapshot_at,
+                  raw_profile_json->'picture'->'data'->>'url' AS picture_url
+           FROM marketing_competitor_snapshots
+           WHERE competitor_id = $1 AND fetch_error IS NULL
+           ORDER BY snapshot_at DESC`,
+          [Number(c.id)],
+        );
+        const all = histR.rows;
+        if (all.length === 0) {
+          competitors.push({
+            id: Number(c.id),
+            nickname: c.nickname as string,
+            pageId: c.page_id as string,
+            category: (c.category as string | null) ?? null,
+            latestFanCount: null,
+            fanCount30dAgo: null,
+            fanCountDelta30d: null,
+            fanCountDeltaPct30d: null,
+            recentPostCount7d: null,
+            recentPostCount30d: null,
+            snapshotCount: 0,
+          });
+          continue;
+        }
+        const latest = all[0];
+        // Pick snapshot closest to 30d ago.
+        const target30dAgo = Date.now() - 30 * 86_400_000;
+        let oldest = all[all.length - 1];
+        for (const s of all) {
+          if (new Date(s.snapshot_at).getTime() < target30dAgo) { oldest = s; break; }
+        }
+        const fanLatest = typeof latest.fan_count === 'number' ? latest.fan_count : null;
+        const fanOld = typeof oldest.fan_count === 'number' ? oldest.fan_count : null;
+        const delta = fanLatest != null && fanOld != null ? fanLatest - fanOld : null;
+        const deltaPct = delta != null && fanOld ? (delta / fanOld) * 100 : null;
+        competitors.push({
+          id: Number(c.id),
+          nickname: c.nickname as string,
+          pageId: c.page_id as string,
+          category: (latest.category as string | null) ?? (c.category as string | null) ?? null,
+          latestFanCount: fanLatest,
+          fanCount30dAgo: fanOld,
+          fanCountDelta30d: delta,
+          fanCountDeltaPct30d: deltaPct,
+          recentPostCount7d: typeof latest.recent_post_count_7d === 'number' ? latest.recent_post_count_7d : null,
+          recentPostCount30d: typeof latest.recent_post_count_30d === 'number' ? latest.recent_post_count_30d : null,
+          snapshotCount: all.length,
+          about: latest.about as string | null,
+          website: latest.website as string | null,
+          pictureUrl: latest.picture_url as string | null,
+        });
+      }
+
+      // Fetch latest brand-metrics for self-state input → Claude can set kpiTargets.
+      let selfMetrics: CompetitorReportInput['brand']['selfMetrics'] = undefined;
+      try {
+        const smR = await pool.query(
+          `SELECT platform, metrics_json,
+                  (SELECT COUNT(*) FROM brand_metrics_snapshots s2
+                   WHERE s2.brand_key = $1 AND s2.platform = s.platform AND s2.fetch_error IS NULL) AS snapshot_count
+           FROM brand_metrics_snapshots s
+           WHERE brand_key = $1 AND fetch_error IS NULL
+             AND id IN (
+               SELECT MAX(id) FROM brand_metrics_snapshots
+               WHERE brand_key = $1 AND fetch_error IS NULL
+               GROUP BY platform
+             )`,
+          [brandKey],
+        );
+        if (smR.rowCount && smR.rowCount > 0) {
+          const sm: NonNullable<CompetitorReportInput['brand']['selfMetrics']> = {};
+          for (const row of smR.rows) {
+            const platform = String(row.platform);
+            const m = row.metrics_json as Record<string, unknown>;
+            const count = Number(row.snapshot_count ?? 0);
+            if (platform === 'facebook') {
+              sm.facebook = {
+                fanCount: typeof m.fanCount === 'number' ? m.fanCount : null,
+                followersCount: typeof m.followersCount === 'number' ? m.followersCount : null,
+                pageImpressions7d: typeof m.pageImpressions7d === 'number' ? m.pageImpressions7d : null,
+                pageEngagedUsers7d: typeof m.pageEngagedUsers7d === 'number' ? m.pageEngagedUsers7d : null,
+                posts7d: typeof m.posts7d === 'number' ? m.posts7d : null,
+                posts30d: typeof m.posts30d === 'number' ? m.posts30d : null,
+              };
+              sm.facebookSnapshotsCount = count;
+            } else if (platform === 'instagram') {
+              sm.instagram = {
+                username: typeof m.username === 'string' ? m.username : null,
+                followersCount: typeof m.followersCount === 'number' ? m.followersCount : null,
+                mediaCount: typeof m.mediaCount === 'number' ? m.mediaCount : null,
+                recent10MediaAvgLikes: typeof m.recent10MediaAvgLikes === 'number' ? m.recent10MediaAvgLikes : null,
+                recent10MediaAvgComments: typeof m.recent10MediaAvgComments === 'number' ? m.recent10MediaAvgComments : null,
+              };
+              sm.instagramSnapshotsCount = count;
+            }
+          }
+          selfMetrics = sm;
+        }
+      } catch (err) {
+        console.warn('[generate-report] fetch self-metrics failed', err);
+      }
+
+      // Fetch top-performers from post_engagement_snapshots (30d)
+      try {
+        const tpR = await pool.query(
+          `SELECT d.platform, d.caption, d.source_insight, d.published_at, d.external_post_id,
+                  (SELECT row_to_json(s) FROM (
+                    SELECT reach, reactions_total, comments_count, engagement_rate, snapshot_at
+                    FROM post_engagement_snapshots
+                    WHERE draft_id = d.id AND fetch_error IS NULL
+                    ORDER BY snapshot_at DESC LIMIT 1
+                  ) s) AS latest
+           FROM marketing_post_drafts d
+           WHERE d.status = 'published'
+             AND d.published_at > now() - interval '30 days'
+             AND EXISTS (
+               SELECT 1 FROM post_engagement_snapshots
+               WHERE draft_id = d.id AND fetch_error IS NULL AND engagement_rate IS NOT NULL
+             )
+           ORDER BY (
+             SELECT engagement_rate FROM post_engagement_snapshots
+             WHERE draft_id = d.id AND fetch_error IS NULL
+             ORDER BY snapshot_at DESC LIMIT 1
+           ) DESC NULLS LAST
+           LIMIT 5`,
+        );
+        if (tpR.rowCount && tpR.rowCount > 0 && selfMetrics) {
+          selfMetrics.topPerformers = tpR.rows.map((r) => {
+            const lt = r.latest as Record<string, unknown> | null;
+            const publishedAt = new Date(r.published_at);
+            const hoursLive = (Date.now() - publishedAt.getTime()) / 3_600_000;
+            return {
+              platform: String(r.platform),
+              caption: typeof r.caption === 'string' ? r.caption.slice(0, 200) : '',
+              sourceInsight: r.source_insight as string | null,
+              publishedAt: r.published_at as string,
+              reach: lt?.reach != null ? Number(lt.reach) : null,
+              reactionsTotal: lt?.reactions_total != null ? Number(lt.reactions_total) : null,
+              commentsCount: lt?.comments_count != null ? Number(lt.comments_count) : null,
+              engagementRate: lt?.engagement_rate != null ? Number(lt.engagement_rate) : null,
+              hoursLive: Math.round(hoursLive),
+            };
+          });
+        }
+      } catch (err) {
+        console.warn('[generate-report] fetch top-performers failed', err);
+      }
+
+      // Build full input for Claude.
+      const input: CompetitorReportInput = {
+        brand: {
+          name: THEROLERROOM_BOOTSTRAP.companyName,
+          industry: THEROLERROOM_BOOTSTRAP.industry,
+          positioning: THEROLERROOM_BOOTSTRAP.positioning,
+          voice: THEROLERROOM_BOOTSTRAP.toneOfVoice?.voice,
+          contentPillars: THEROLERROOM_BOOTSTRAP.contentPillars,
+          selfMetrics,
+        },
+        competitors,
+        language: 'nb',
+      };
+
+      // Hash input for cache-detection.
+      const inputHash = crypto.createHash('sha1').update(JSON.stringify(input)).digest('hex');
+
+      // Cache: same hash within 6 hours → return cached.
+      if (useCache) {
+        const cacheR = await pool.query(
+          `SELECT id, report_json, generated_with_model, cost_nok, generated_at
+           FROM marketing_competitor_reports
+           WHERE brand_key = $1 AND input_hash = $2
+             AND generated_at > now() - interval '6 hours'
+           ORDER BY generated_at DESC LIMIT 1`,
+          [brandKey, inputHash],
+        );
+        if (cacheR.rowCount && cacheR.rowCount > 0) {
+          const row = cacheR.rows[0];
+          const cachedPictures: Record<string, string | null> = {};
+          for (const c of competitors) {
+            cachedPictures[c.nickname] = (c as unknown as { pictureUrl?: string | null }).pictureUrl ?? null;
+          }
+          res.json({
+            ok: true,
+            cached: true,
+            reportId: Number(row.id),
+            generatedAt: row.generated_at,
+            generatedWithModel: row.generated_with_model,
+            costNok: row.cost_nok ? Number(row.cost_nok) : null,
+            competitorCount: competitors.length,
+            competitorPictures: cachedPictures,
+            report: row.report_json,
+          });
+          return;
+        }
+      }
+
+      const report = await generateCompetitorReport(input);
+      if (!report) {
+        res.status(502).json({ ok: false, error: 'claude_generation_failed' });
+        return;
+      }
+
+      let reportId: number | null = null;
+      try {
+        const ins = await pool.query(
+          `INSERT INTO marketing_competitor_reports
+             (brand_key, input_hash, competitor_count, report_json, generated_with_model, cost_nok, triggered_by)
+           VALUES ($1, $2, $3, $4, $5, $6, 'manual')
+           RETURNING id, generated_at`,
+          [brandKey, inputHash, competitors.length, report, report.generatedWithModel, report.usage?.costNok ?? null],
+        );
+        reportId = Number(ins.rows[0]?.id ?? 0);
+      } catch (err) {
+        console.error('[competitor-report] persist failed', err);
+      }
+
+      // Build nickname→pictureUrl map for frontend rendering
+      const competitorPictures: Record<string, string | null> = {};
+      for (const c of competitors) {
+        competitorPictures[c.nickname] = (c as unknown as { pictureUrl?: string | null }).pictureUrl ?? null;
+      }
+
+      res.json({
+        ok: true,
+        cached: false,
+        reportId,
+        generatedAt: new Date().toISOString(),
+        generatedWithModel: report.generatedWithModel,
+        costNok: report.usage?.costNok ?? null,
+        competitorCount: competitors.length,
+        competitorPictures,
+        report,
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+
+  // ── GET reports/latest ───────────────────────────────────────────────────
+  app.get('/api/role-room/marketing-cockpit/competitors/reports/latest', async (req, res) => {
+    if (!requireAdminOrDemoBypass(req, res)) return;
+    const brandKey = typeof req.query.brandKey === 'string' && req.query.brandKey.trim()
+      ? req.query.brandKey.trim() : 'theroleroom';
+    try {
+      const r = await pool.query(
+        `SELECT id, report_json, generated_with_model, cost_nok, generated_at, competitor_count, triggered_by
+         FROM marketing_competitor_reports
+         WHERE brand_key = $1
+         ORDER BY generated_at DESC LIMIT 1`,
+        [brandKey],
+      );
+      if (!r.rowCount || r.rowCount === 0) {
+        res.status(404).json({ ok: false, error: 'no_reports_yet' });
+        return;
+      }
+      const row = r.rows[0];
+
+      // Pull pictures by joining competitors+snapshots for nicknames mentioned in scorecard
+      let competitorPictures: Record<string, string | null> = {};
+      try {
+        const picsR = await pool.query(
+          `SELECT p.nickname,
+                  (SELECT s.raw_profile_json->'picture'->'data'->>'url'
+                   FROM marketing_competitor_snapshots s
+                   WHERE s.competitor_id = p.id AND s.fetch_error IS NULL
+                   ORDER BY s.snapshot_at DESC LIMIT 1) AS picture_url
+           FROM marketing_competitor_pages p
+           WHERE p.brand_key = $1 AND p.active = true`,
+          [brandKey],
+        );
+        for (const pr of picsR.rows) {
+          competitorPictures[pr.nickname] = pr.picture_url;
+        }
+      } catch { /* ignore */ }
+
+      res.json({
+        ok: true,
+        reportId: Number(row.id),
+        report: row.report_json,
+        generatedWithModel: row.generated_with_model,
+        costNok: row.cost_nok ? Number(row.cost_nok) : null,
+        generatedAt: row.generated_at,
+        competitorCount: row.competitor_count,
+        triggeredBy: row.triggered_by,
+        competitorPictures,
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+
+  // ── GET reports (history) ────────────────────────────────────────────────
+  app.get('/api/role-room/marketing-cockpit/competitors/reports', async (req, res) => {
+    if (!requireAdminOrDemoBypass(req, res)) return;
+    const brandKey = typeof req.query.brandKey === 'string' && req.query.brandKey.trim()
+      ? req.query.brandKey.trim() : 'theroleroom';
+    const limit = Math.min(parseInt(String(req.query.limit || '10'), 10) || 10, 50);
+    try {
+      const r = await pool.query(
+        `SELECT id, generated_with_model, cost_nok, generated_at, competitor_count, triggered_by
+         FROM marketing_competitor_reports
+         WHERE brand_key = $1
+         ORDER BY generated_at DESC LIMIT $2`,
+        [brandKey, limit],
+      );
+      res.json({
+        ok: true,
+        brandKey,
+        reports: r.rows.map((row) => ({
+          id: Number(row.id),
+          generatedWithModel: row.generated_with_model,
+          costNok: row.cost_nok ? Number(row.cost_nok) : null,
+          generatedAt: row.generated_at,
+          competitorCount: row.competitor_count,
+          triggeredBy: row.triggered_by,
         })),
       });
     } catch (err) {

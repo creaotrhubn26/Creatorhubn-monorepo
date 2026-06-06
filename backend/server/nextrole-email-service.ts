@@ -33,9 +33,9 @@ interface SendResult {
   error?: string;
 }
 
-let cachedTransporter: nodemailer.Transporter | null = null;
+let cachedTransporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
-function getTransporter(): nodemailer.Transporter | null {
+function getTransporter(): ReturnType<typeof nodemailer.createTransport> | null {
   if (cachedTransporter) return cachedTransporter;
   const user =
     process.env.GMAIL_USER ||

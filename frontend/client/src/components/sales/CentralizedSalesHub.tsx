@@ -417,56 +417,56 @@ export default function CentralizedSalesHub({
       </Grid>
 
       {/* Analytics Overview */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
+      <Grid container spacing={2} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
                   <Typography color="text.secondary" gutterBottom>Totale Leads</Typography>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{analytics.totalLeads || 0}</Typography>
+                  <Typography variant="h5" sx={{ color: theming.colors.primary }}>{analytics.totalLeads || 0}</Typography>
                 </Box>
                 <TrendingUp color="primary" />
               </Box>
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
                   <Typography color="text.secondary" gutterBottom>Aktive Deals</Typography>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{analytics.activeDeals || 0}</Typography>
+                  <Typography variant="h5" sx={{ color: theming.colors.primary }}>{analytics.activeDeals || 0}</Typography>
                 </Box>
                 <Assignment color="primary" />
               </Box>
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
                   <Typography color="text.secondary" gutterBottom>Konverteringsrate</Typography>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{analytics.conversionRate || 0}%</Typography>
+                  <Typography variant="h5" sx={{ color: theming.colors.primary }}>{analytics.conversionRate || 0}%</Typography>
                 </Box>
                 <StarRate color="primary" />
               </Box>
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
                   <Typography color="text.secondary" gutterBottom>Total Verdi</Typography>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{formatCurrencyLocal(analytics.totalValue || 0)}</Typography>
+                  <Typography variant="h5" sx={{ color: theming.colors.primary }}>{formatCurrencyLocal(analytics.totalValue || 0)}</Typography>
                 </Box>
                 <AttachMoney color="primary" />
               </Box>

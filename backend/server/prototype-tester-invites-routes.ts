@@ -98,7 +98,7 @@ async function ensureSchema(pool: any): Promise<void> {
   ).catch(() => undefined);
 }
 
-function getMailer(): nodemailer.Transporter | null {
+function getMailer(): ReturnType<typeof nodemailer.createTransport> | null {
   const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || "").trim();
   const mailPass = (process.env.GMAIL_APP_PASSWORD || "").trim().replace(/\s+/g, "");
   if (!mailUser || !mailPass) return null;
@@ -252,7 +252,7 @@ export async function createInviteFromApprovedRequest(
         to: email,
         subject: "Du er godkjent som prototype-tester i Creatorhubn",
         html: buildInviteEmailHtml(name, inviteUrl, null),
-      }).catch((err) => console.error("[prototype-tester-invite] mail failed:", err?.message || err));
+      }).catch((err: unknown) => console.error("[prototype-tester-invite] mail failed:", (err as { message?: string })?.message || err));
     } else {
       console.warn("[prototype-tester-invite] Mailer not configured — invitasjon opprettet uten e-post");
     }
@@ -321,7 +321,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           to: email,
           subject: "Du er invitert som prototype-tester i Creatorhubn",
           html: buildInviteEmailHtml(name, inviteUrl, personalMessage),
-        }).catch((err) => console.error("[prototype-tester-invite] mail failed:", err?.message || err));
+        }).catch((err: unknown) => console.error("[prototype-tester-invite] mail failed:", (err as { message?: string })?.message || err));
       }
 
       res.status(201).json({

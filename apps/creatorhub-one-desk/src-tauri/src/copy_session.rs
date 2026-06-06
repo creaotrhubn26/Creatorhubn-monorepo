@@ -22,7 +22,7 @@
 //!   - `copy-file-completed`    { session_id, source_path, dest_id, success, error?, hash?, skipped }
 //!   - `copy-session-completed` { session_id, succeeded, failed, cancelled }
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -54,6 +54,24 @@ pub struct DestinationSpec {
     /// lokal kopi uten backend-spor (f.eks. ad-hoc-mappe valgt i dialog).
     #[serde(default)]
     pub backend_id: Option<String>,
+    /// Hvis satt: cloud-destinasjon. F.eks. "b2". `path` brukes da som
+    /// prefix i bucket-en (samme semantikk som lokal-path).
+    #[serde(default)]
+    pub cloud_provider: Option<String>,
+    /// B2 bucket-id (immutabel). Sendes til b2_get_upload_url.
+    #[serde(default)]
+    pub cloud_bucket_id: Option<String>,
+    /// Dekrypterte cloud-credentials. ALDRI lagret på disk på desktop —
+    /// kun in-memory mens en backup-økt kjører. Mottatt fra
+    /// /api/dit/projects/:id/destinations/with-creds.
+    #[serde(default)]
+    pub cloud_credentials: Option<CloudCredentials>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudCredentials {
+    pub key_id: String,
+    pub application_key: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +97,11 @@ pub struct SessionStatus {
 struct SessionHandle {
     status: SessionStatus,
     cancel: Arc<AtomicBool>,
+    /// Per-session sett av dest-IDer som er DEAKTIVERT for resten av
+    /// sesjonen pga persistent feil (ENOSPC, EPERM). run_session
+    /// filtrerer dem ut før hver per-dest-spawn, så en full disk
+    /// stopper IKKE backup til andre disker.
+    disabled_dests: Arc<Mutex<HashSet<String>>>,
 }
 
 #[derive(Default)]
@@ -100,11 +123,25 @@ impl CopySessionState {
         }
     }
 
-    fn insert(&self, status: SessionStatus, cancel: Arc<AtomicBool>) {
+    /// Returnerer per-session disabled-dest-handle. Bruk denne fra
+    /// run_session for å dele state med process_destination.
+    fn disabled_dests_handle(&self, session_id: &str) -> Option<Arc<Mutex<HashSet<String>>>> {
         self.sessions
             .lock()
             .unwrap()
-            .insert(status.session_id.clone(), SessionHandle { status, cancel });
+            .get(session_id)
+            .map(|h| h.disabled_dests.clone())
+    }
+
+    fn insert(&self, status: SessionStatus, cancel: Arc<AtomicBool>) {
+        self.sessions.lock().unwrap().insert(
+            status.session_id.clone(),
+            SessionHandle {
+                status,
+                cancel,
+                disabled_dests: Arc::new(Mutex::new(HashSet::new())),
+            },
+        );
     }
 
     fn update<F: FnOnce(&mut SessionStatus)>(&self, session_id: &str, f: F) {
@@ -170,6 +207,44 @@ struct FileCompletedEvent {
     hash: Option<String>,
     error: Option<String>,
     skipped: bool,
+}
+
+/// Hjelpe-funksjon for å emit'e `copy-file-completed`-event uten
+/// duplisering av FileCompletedEvent-konstruksjonen på hver call-site.
+/// Brukes spesielt av cloud-flow (process_b2_destination) som har 8+
+/// emit-punkter for ulike feiltilstander.
+#[allow(clippy::too_many_arguments)]
+fn emit_completed(
+    app: &AppHandle,
+    session_id: &str,
+    source_path: &str,
+    dest_id: &str,
+    success: bool,
+    hash: Option<String>,
+    error: Option<String>,
+    skipped: bool,
+) {
+    let _ = app.emit(
+        "copy-file-completed",
+        FileCompletedEvent {
+            session_id: session_id.to_string(),
+            source_path: source_path.to_string(),
+            dest_id: dest_id.to_string(),
+            success,
+            hash,
+            error,
+            skipped,
+        },
+    );
+}
+
+#[derive(Serialize, Clone)]
+struct DestDisabledEvent {
+    session_id: String,
+    dest_id: String,
+    dest_label: String,
+    reason_code: String, // "DEST_NO_SPACE" | "DEST_PERM_DENIED"
+    reason_message: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -372,8 +447,17 @@ async fn process_destination(
     dest_path: PathBuf,
     cfg: Option<Arc<Config>>,
     cancel: Arc<AtomicBool>,
+    disabled_dests: Arc<Mutex<HashSet<String>>>,
     log: Option<Arc<SessionLog>>,
 ) {
+    // Cloud-destinasjon → B2-upload via b2_uploader, separat code-path.
+    if dest_spec.cloud_provider.as_deref() == Some("b2") {
+        process_b2_destination(
+            app, state, session_id, src, src_disp, src_hash, size, dest_spec, cfg, cancel,
+        )
+        .await;
+        return;
+    }
     // Helper: append en FileResult-event til crash-recovery loggen.
     // Best-effort — feiler ikke kallet hvis disk-skriv mislykkes.
     let append_log = |outcome: FileOutcome, hash: Option<String>, error: Option<String>| {
@@ -560,20 +644,68 @@ async fn process_destination(
             );
         }
         Err(err) => {
+            // Klassifiser feilen for backend-reporting + per-dest-recovery.
+            // Substring-matching pga at copy_engine på main returnerer
+            // String (PR #104 introduserer typed CopyError som vil gjøre
+            // dette stringfritt). Mønstrene matcher BÅDE plain-tekst
+            // norsk fra copy_engine + DEST_NO_SPACE-prefiks fra typed
+            // versjon, så denne PR-en virker på begge baseliner.
+            let lower = err.to_lowercase();
+            let is_no_space = lower.contains("no space")
+                || lower.contains("ingen plass")
+                || lower.contains("dest_no_space")
+                || lower.contains("enospc");
+            let is_perm_denied = lower.contains("permission denied")
+                || lower.contains("dest_perm_denied")
+                || lower.contains("eacces")
+                || lower.contains("ikke tillatelse");
+            let code = if err.contains("HASH MISMATCH") {
+                "HASH_MISMATCH"
+            } else if err.contains("Opprett destinasjon") {
+                "DEST_CREATE_FAILED"
+            } else if is_no_space {
+                "DEST_NO_SPACE"
+            } else if is_perm_denied {
+                "DEST_PERM_DENIED"
+            } else {
+                "COPY_FAILED"
+            };
             if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
-                let code = if err.contains("HASH MISMATCH") {
-                    "HASH_MISMATCH"
-                } else if err.contains("Opprett destinasjon") {
-                    "DEST_CREATE_FAILED"
-                } else {
-                    "COPY_FAILED"
-                };
                 if let Err(report_err) = dit_reporter::report_failed(cfg, job_id, code, &err).await {
                     eprintln!("[dit] failed-report failed: {}", report_err);
                 }
             }
             append_log(FileOutcome::Failed, None, Some(err.clone()));
             state.update(&session_id, |s| s.failed += 1);
+
+            // Per-dest-recovery: hvis feilen er PERSISTENT (full disk,
+            // perm-denied), legg destinasjonen i session's disabled-set
+            // så fremtidige filer skipper den i stedet for å re-prøve.
+            // Andre feil (HASH_MISMATCH, transient I/O) er ikke
+            // grunn til å gi opp hele destinasjonen — bare filen.
+            if is_no_space || is_perm_denied {
+                let already_disabled = {
+                    let mut set = disabled_dests.lock().unwrap();
+                    !set.insert(dest_spec.id.clone())
+                };
+                if !already_disabled {
+                    let _ = app.emit(
+                        "copy-dest-disabled",
+                        DestDisabledEvent {
+                            session_id: session_id.clone(),
+                            dest_id: dest_spec.id.clone(),
+                            dest_label: dest_spec.label.clone(),
+                            reason_code: code.to_string(),
+                            reason_message: if is_no_space {
+                                "Destinasjonen er full. Resten av sesjonen skipper denne disken.".into()
+                            } else {
+                                "Manglende skrivetillatelse. Resten av sesjonen skipper denne disken.".into()
+                            },
+                        },
+                    );
+                }
+            }
+
             let _ = app.emit(
                 "copy-file-completed",
                 FileCompletedEvent {
@@ -585,6 +717,180 @@ async fn process_destination(
                     error: Some(err),
                     skipped: false,
                 },
+            );
+        }
+    }
+}
+
+/// B2-upload code-path. Hverken idempotens-check eller lokal write —
+/// vi laster opp direkte med SHA-1-header. Backend-rapportering
+/// (dit_reporter) skjer identisk med lokal-flyten hvis backend_id finnes.
+#[allow(clippy::too_many_arguments)]
+async fn process_b2_destination(
+    app: AppHandle,
+    state: Arc<CopySessionState>,
+    session_id: String,
+    src: PathBuf,
+    src_disp: String,
+    src_hash: String, // xxh64 — beholdes for session_log/local-paritet
+    size: u64,
+    dest_spec: DestinationSpec,
+    cfg: Option<Arc<Config>>,
+    _cancel: Arc<AtomicBool>,
+) {
+    use crate::b2_uploader;
+
+    // Validér at vi har det vi trenger for cloud-flow
+    let Some(creds) = dest_spec.cloud_credentials.as_ref() else {
+        emit_completed(
+            &app, &session_id, &src_disp, &dest_spec.id, false, None,
+            Some("Cloud-creds mangler — fotograf må konfigurere storage-provider".into()),
+            false,
+        );
+        return;
+    };
+    let Some(bucket_id) = dest_spec.cloud_bucket_id.as_ref() else {
+        emit_completed(
+            &app, &session_id, &src_disp, &dest_spec.id, false, None,
+            Some("cloud_bucket_id mangler".into()),
+            false,
+        );
+        return;
+    };
+
+    // Bygg fil-nøkkel i bucket: dest_spec.path er prefix (f.eks.
+    // "dit-backup/proj_abc/"). source-path-suffix bygges fra filnavnet
+    // og prepended med volume_label hvis ikke allerede inkludert.
+    // Vi bruker hele relative-stien fra mount, slik at flerre kameraer
+    // ikke kolliderer på filnavn.
+    let prefix = dest_spec.path.trim_matches('/').to_string();
+    let file_basename = src.file_name().and_then(|s| s.to_str()).unwrap_or("ukjent");
+    // Bevar DCIM-strukturen så kamera-detektoren kan plukke det opp på
+    // restore. Vi tar de siste 3 sti-segmentene som fallback.
+    let mut tail = Vec::new();
+    for comp in src.components().rev().take(3) {
+        if let Some(s) = comp.as_os_str().to_str() {
+            tail.push(s.to_string());
+        }
+    }
+    tail.reverse();
+    let dest_name = if prefix.is_empty() {
+        tail.join("/")
+    } else {
+        format!("{}/{}", prefix, tail.join("/"))
+    };
+    let _ = file_basename;
+
+    // Backend-jobb opprettes FØR upload starter (samme som lokal-flow)
+    let backend_job_id: Option<String> = match (&dest_spec.backend_id, &cfg) {
+        (Some(backend_id), Some(cfg)) => {
+            match dit_reporter::create_job(cfg, backend_id, &src_disp, size, &src_hash).await {
+                Ok(job_id) => Some(job_id),
+                Err(err) => {
+                    eprintln!("[dit/b2] create_job failed for {}: {}", dest_spec.label, err);
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
+
+    // Steg 1: SHA-1 av kildefilen (B2 krever det)
+    let sha1 = match b2_uploader::compute_sha1(&src).await {
+        Ok(h) => h,
+        Err(err) => {
+            state.update(&session_id, |s| s.failed += 1);
+            emit_completed(
+                &app, &session_id, &src_disp, &dest_spec.id, false, None,
+                Some(format!("SHA-1-beregning feilet: {}", err)),
+                false,
+            );
+            return;
+        }
+    };
+
+    // Steg 2: authorize (få ny token per upload; retry-with-backoff
+    // håndterer transient 5xx/timeout inni authorize selv)
+    let auth = match b2_uploader::authorize(&creds.key_id, &creds.application_key).await {
+        Ok(a) => a,
+        Err(err) => {
+            state.update(&session_id, |s| s.failed += 1);
+            emit_completed(
+                &app, &session_id, &src_disp, &dest_spec.id, false, None,
+                Some(format!("B2 authorize feilet: {}", err)),
+                false,
+            );
+            return;
+        }
+    };
+
+    // Steg 3: upload via upload_file_smart som ruter mellom single-
+    // part og multipart basert på filstørrelse (200 MiB threshold).
+    // Progress emit'es throttled på 250ms — samme rate som lokal.
+    let app_for_progress = app.clone();
+    let sid_for_progress = session_id.clone();
+    let src_disp_for_progress = src_disp.clone();
+    let dest_id_for_progress = dest_spec.id.clone();
+    let last_emit = Arc::new(Mutex::new(Instant::now()));
+    let on_progress = move |bytes_sent: u64, total: u64| {
+        let now = Instant::now();
+        let mut last = last_emit.lock().unwrap();
+        if now.duration_since(*last).as_millis() < PROGRESS_THROTTLE_MS {
+            return;
+        }
+        *last = now;
+        drop(last);
+        let _ = app_for_progress.emit(
+            "copy-file-progress",
+            FileProgressEvent {
+                session_id: sid_for_progress.clone(),
+                source_path: src_disp_for_progress.clone(),
+                dest_id: dest_id_for_progress.clone(),
+                bytes_copied: bytes_sent,
+                bytes_total: total,
+            },
+        );
+    };
+
+    match b2_uploader::upload_file_smart(&auth, bucket_id, &src, &dest_name, &sha1, on_progress).await {
+        Ok(result) => {
+            if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
+                if let Err(err) = dit_reporter::report_verified(
+                    cfg,
+                    job_id,
+                    &format!("b2://{}/{}", bucket_id, result.file_name),
+                    result.content_length,
+                    &result.content_sha1,
+                )
+                .await
+                {
+                    eprintln!("[dit/b2] verified-report failed: {}", err);
+                }
+            }
+            state.update(&session_id, |s| s.succeeded += 1);
+            emit_completed(
+                &app, &session_id, &src_disp, &dest_spec.id, true,
+                Some(result.content_sha1),
+                None, false,
+            );
+        }
+        Err(err) => {
+            if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
+                let code = if err.contains("transport-korrupsjon") {
+                    "HASH_MISMATCH"
+                } else if err.contains("over 5 GB") {
+                    "FILE_TOO_LARGE"
+                } else {
+                    "B2_UPLOAD_FAILED"
+                };
+                if let Err(rep_err) = dit_reporter::report_failed(cfg, job_id, code, &err).await {
+                    eprintln!("[dit/b2] failed-report failed: {}", rep_err);
+                }
+            }
+            state.update(&session_id, |s| s.failed += 1);
+            emit_completed(
+                &app, &session_id, &src_disp, &dest_spec.id, false, None,
+                Some(err), false,
             );
         }
     }
@@ -651,13 +957,21 @@ async fn run_session(
 
         let mut handles = Vec::new();
         let src_disp_check = source.display().to_string();
+        // Snapshot disabled-set ÉN gang per fil — billigere enn å
+        // lock'e per dest, og semantisk fint at en disable midt i
+        // en fil-batch ikke trer i kraft før neste fil.
+        let disabled_snapshot: HashSet<String> = match state.disabled_dests_handle(&session_id) {
+            Some(h) => h.lock().unwrap().clone(),
+            None => HashSet::new(),
+        };
         for dest_spec in &spec.destinations {
-            // Resume-skip: hvis dette (source, dest)-paret er logget som
-            // ferdig i en tidligere session-run, hopp over uten å gjøre
-            // noe. Idempotens-sjekken i process_destination ville fanget
-            // dette uansett (samme størrelse + hash → skip), men ved å
-            // hoppe HER unngår vi å hashe kilden + dest på nytt for
-            // tusenvis av filer — viktig perf ved resume av stor backup.
+            // Per-dest-recovery: skipp destinasjoner som er deaktivert
+            // for resten av sesjonen pga vedvarende feil (ENOSPC, EPERM).
+            if disabled_snapshot.contains(&dest_spec.id) {
+                continue;
+            }
+            // Resume-skip: hvis (source, dest)-paret er logget som ferdig
+            // i en tidligere session-run, hopp over uten å re-hashe.
             if resume_skip.contains(&(src_disp_check.clone(), dest_spec.id.clone())) {
                 state.update(&session_id, |s| s.succeeded += 1);
                 let _ = app.emit(
@@ -712,6 +1026,8 @@ async fn run_session(
             let cancel_em = cancel.clone();
             let dest_spec_clone = dest_spec.clone();
             let cfg_clone = cfg.clone();
+            let disabled_dests_clone = state.disabled_dests_handle(&session_id)
+                .unwrap_or_else(|| Arc::new(Mutex::new(HashSet::new())));
 
             let log_clone = log.clone();
             handles.push(tokio::spawn(async move {
@@ -727,6 +1043,7 @@ async fn run_session(
                     dest_path,
                     cfg_clone,
                     cancel_em,
+                    disabled_dests_clone,
                     log_clone,
                 )
                 .await;
@@ -782,4 +1099,73 @@ async fn run_session(
             cancelled,
         },
     );
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    /// Klassifiserings-logikk er duplisert her i en helper-funksjon
+    /// for testbarhet — selve copy_session.rs gjør substring-match
+    /// inline. Hvis du endrer mønstrene én plass, endrer testene fanger
+    /// regressjonen.
+    fn classify(err: &str) -> &'static str {
+        let lower = err.to_lowercase();
+        let is_no_space = lower.contains("no space")
+            || lower.contains("ingen plass")
+            || lower.contains("dest_no_space")
+            || lower.contains("enospc");
+        let is_perm_denied = lower.contains("permission denied")
+            || lower.contains("dest_perm_denied")
+            || lower.contains("eacces")
+            || lower.contains("ikke tillatelse");
+        if err.contains("HASH MISMATCH") {
+            "HASH_MISMATCH"
+        } else if err.contains("Opprett destinasjon") {
+            "DEST_CREATE_FAILED"
+        } else if is_no_space {
+            "DEST_NO_SPACE"
+        } else if is_perm_denied {
+            "DEST_PERM_DENIED"
+        } else {
+            "COPY_FAILED"
+        }
+    }
+
+    #[test]
+    fn enospc_strings_classify_as_no_space() {
+        assert_eq!(classify("Skriv til /Volumes/Foo/bar: No space left on device"), "DEST_NO_SPACE");
+        assert_eq!(classify("ENOSPC error"), "DEST_NO_SPACE");
+        assert_eq!(classify("DEST_NO_SPACE: write failed"), "DEST_NO_SPACE");
+        assert_eq!(classify("Sync /Volumes/RAID/file: ingen plass igjen"), "DEST_NO_SPACE");
+    }
+
+    #[test]
+    fn perm_denied_strings_classify_as_perm() {
+        assert_eq!(classify("Opprett mappe /Volumes/X: Permission denied (os error 13)"), "DEST_PERM_DENIED");
+        assert_eq!(classify("EACCES on /Volumes/Y"), "DEST_PERM_DENIED");
+        assert_eq!(classify("DEST_PERM_DENIED: no write access"), "DEST_PERM_DENIED");
+        assert_eq!(classify("ikke tillatelse til skriving"), "DEST_PERM_DENIED");
+    }
+
+    #[test]
+    fn hash_mismatch_takes_precedence_over_no_space() {
+        // En kunstig melding som inneholder begge — HASH_MISMATCH skal
+        // vinne så vi ikke deaktiverer destinasjonen pga corrupted byte
+        // (transient, kan fikses med retry på enkeltfil).
+        assert_eq!(
+            classify("HASH MISMATCH for /file: source=abc, dest=xyz (no space hint)"),
+            "HASH_MISMATCH"
+        );
+    }
+
+    #[test]
+    fn generic_failures_classify_as_copy_failed_not_recovery() {
+        assert_eq!(classify("noe ukjent skjedde"), "COPY_FAILED");
+        assert_eq!(classify("network timeout"), "COPY_FAILED");
+    }
+
+    #[test]
+    fn empty_and_short_errors_dont_panic() {
+        assert_eq!(classify(""), "COPY_FAILED");
+        assert_eq!(classify("x"), "COPY_FAILED");
+    }
 }

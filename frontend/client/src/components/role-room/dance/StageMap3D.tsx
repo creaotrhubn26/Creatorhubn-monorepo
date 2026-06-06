@@ -12,6 +12,7 @@
  * inspeksjon.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React, { Suspense } from 'react';
 import { Box } from '@mui/material';
 import { Canvas } from '@react-three/fiber';
@@ -47,7 +48,7 @@ const Dancer3D: React.FC<DancerProps3D> = ({ dancer, x, y, facing = 0, isLead, s
   // y ∈ [0,1] → world-Z ∈ [-D/2, +D/2]
   const worldX = (x - 0.5) * STAGE_WIDTH_M;
   const worldZ = (y - 0.5) * STAGE_DEPTH_M;
-  const color = dancer.color ?? '#a78bfa';
+  const color = dancer.color ?? danceFlowColors.lavender;
   return (
     <group
       position={[worldX, PUCK_HEIGHT_M / 2, worldZ]}
@@ -61,7 +62,7 @@ const Dancer3D: React.FC<DancerProps3D> = ({ dancer, x, y, facing = 0, isLead, s
           color={color}
           roughness={0.55}
           metalness={0.15}
-          emissive={isLead ? '#fbbf24' : color}
+          emissive={isLead ? danceFlowColors.gold : color}
           emissiveIntensity={isLead ? 0.25 : 0.04}
         />
       </mesh>

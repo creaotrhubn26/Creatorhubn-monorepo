@@ -129,6 +129,11 @@ import { createDanceChoreographyRouter } from "./dance-choreography-routes.js";
 import { createDancerProfileRouter } from "./dancer-profile-routes.js";
 import { createDancerInjuryLogRouter } from "./dancer-injury-log-routes.js";
 import { createDanceFormationRouter } from "./dance-formation-routes.js";
+import { createDanceFormationTimelineItemRouter } from "./dance-formation-timeline-item-routes.js";
+import {
+  createDanceAnnotationCategoriesRouter,
+  createDanceAnnotationLabelsRouter,
+} from "./dance-annotation-catalog-routes.js";
 import { createDanceRehearsalRouter } from "./dance-rehearsal-routes.js";
 import { createDanceVideoRouter } from "./dance-video-routes.js";
 import { createDanceStudioOpsRouter } from "./dance-studio-ops-routes.js";
@@ -150,11 +155,27 @@ import { setupPageMetadataRoutes } from "./role-room-page-metadata-routes.js";
 import { setupIgPublicRoutes } from "./role-room-ig-public-routes.js";
 import { setupLeadsRetrievalRoutes } from "./role-room-leads-retrieval-routes.js";
 import { setupIgEventsRoutes } from "./role-room-ig-events-routes.js";
+import { setupIgBusinessBasicRoutes } from "./role-room-ig-business-basic-routes.js";
+import { setupPagesShowListRoutes } from "./role-room-pages-show-list-routes.js";
 import { setupMetaReviewIndexRoutes } from "./role-room-meta-review-index-routes.js";
 import { setupMarketingCockpitRoutes } from "./role-room-marketing-cockpit-routes.js";
 import { setupRoleRoomAgentRoutes } from "./role-room-agent-routes.js";
 import { setupMarketingCompetitorsRoutes } from "./role-room-marketing-competitors-routes.js";
 import { startCompetitorSnapshotWorker } from "./role-room-competitor-snapshot-worker.js";
+import { setupPostDraftsRoutes } from "./role-room-post-drafts-routes.js";
+import {
+  setupAutoPublishSchedulerRoutes,
+  startAutoPublishScheduler,
+} from "./role-room-post-drafts-autopublish-scheduler.js";
+import { setupBrandMetricsRoutes, startBrandMetricsWorker } from "./role-room-brand-metrics-routes.js";
+import {
+  setupReportSchedulerRoutes,
+  startCompetitorReportScheduler,
+} from "./role-room-competitor-report-scheduler.js";
+import {
+  setupPostEngagementRoutes,
+  startPostEngagementWorker,
+} from "./role-room-post-engagement-routes.js";
 import { createLocationAnalysisRouter } from "./location-analysis-routes.js";
 import { createCastingVideoRouter } from "./casting-video-routes.js";
 import {
@@ -195,6 +216,8 @@ import {
   handleAgentSubscriptionRevoked,
 } from "./role-room-agent-stripe-webhook.js";
 import { createCreatorHubGoogleRouter } from "./creatorhub-google-routes.js";
+import { createDesktopAuthRouter } from "./desktop-auth-routes.js";
+import { setupStorageProvidersRoutes } from "./storage-providers-routes.js";
 import { createRoleRoomIntegrationsV1Router } from "./role-room-integrations-v1-routes.js";
 import { createCommunicationRouter } from "./communication-routes.js";
 import { createDashboardCompatRouter } from "./dashboard-compat-routes.js";
@@ -376,6 +399,9 @@ import { registerAIUsageRoutes } from "./ai-usage-routes.js";
 import { configureAIUsageTracker } from "./ai-usage-tracker.js";
 import { registerDesignTokensRoutes } from "./design-tokens-routes.js";
 import { registerStripePriceDriftRoutes } from "./stripe-price-drift-routes.js";
+import { registerB2CompanyArchiveRoutes } from "./b2-company-archive-routes.js";
+import { registerCastingPosterArchiveRoutes } from "./role-room-casting-poster-archive-routes.js";
+import { registerB2ArchiveCronRoutes } from "./b2-archive-cron-routes.js";
 import { setupRoleNavConfigRoutes } from "./admin-room-role-nav-routes";
 import { setupResumeRoutes } from "./resume-routes";
 import {
@@ -406,6 +432,7 @@ import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-r
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
 import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
+import { setupNewsletterFromReportRoutes } from "./role-room-newsletter-from-report-routes";
 import { setupNewsletterAiRoutes } from "./role-room-newsletter-ai-routes";
 import { setupTheRoleRoomSitemapRoutes } from "./theroleroom-sitemap-routes";
 import { setupAdminRoleRoomEconomyRoutes } from "./admin-room-role-room-economy-routes";
@@ -431,7 +458,7 @@ import { setupShowcaseSmartAlbumsRoutes } from "./showcase-smart-albums-routes";
 import { setupShowcaseBatchOperationsRoutes } from "./showcase-batch-operations-routes";
 import { setupShowcaseGooglePhotosRoutes } from "./showcase-google-photos-routes";
 import { setupShowcaseClientRoutes } from "./showcase-client-routes";
-import { setupShowcaseMiscRoutes } from "./showcase-misc-routes";
+import { setupShowcaseMiscRoutes, runDeadlineReminderSweep } from "./showcase-misc-routes";
 import { setupShowcaseImageOpsRoutes } from "./showcase-image-ops-routes";
 import { setupEvendiPlanningRoutes } from "./evendi-planning-routes";
 import { setupEvendiWeatherLocationRoutes } from "./evendi-weather-location-routes";
@@ -453,10 +480,18 @@ import { setupRoleRoomTalentGdprRoutes } from "./role-room-talent-gdpr-routes";
 import { setupRoleRoomAgencySearchRoutes } from "./role-room-agency-search-routes";
 import { setupRoleRoomAgencyProposalsRoutes } from "./role-room-agency-proposals-routes";
 import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes";
+import { setupTalentSelftapesRoutes } from "./talent-selftapes-routes";
+import { setupRoleRoomCandidateStatusRoutes } from "./role-room-candidate-status-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
 import { setupRoleRoomSocialMetaRoutes } from "./role-room-social-meta-routes";
+import { setupRoleRoomIgMessagingRoutes } from "./role-room-ig-messaging-routes.js";
+import { setupRoleRoomLeadsProducerRoutes } from "./role-room-leads-producer-routes.js";
+import { setupRoleRoomMentionsProducerRoutes } from "./role-room-mentions-producer-routes.js";
+import { setupRoleRoomDiscoveryProducerRoutes } from "./role-room-discovery-producer-routes.js";
+import { setupRoleRoomCtaProducerRoutes } from "./role-room-cta-producer-routes.js";
+import { setupRoleRoomEventsProducerRoutes } from "./role-room-events-producer-routes.js";
 import { RoleRoomCommercialAccessError } from "./role-room-commercial-access-error";
 import { setupRoleRoomCommercialAccessRoutes } from "./role-room-commercial-access-routes";
 import {
@@ -517,6 +552,7 @@ import { setupCastingMiscRoutes } from "./casting-misc-routes";
 import { setupCastingAgreementsRoutes } from "./casting-agreements-routes";
 import { createCastingManuscriptsService } from "./casting-manuscripts-service";
 import { setupCastingManuscriptsRoutes } from "./casting-manuscripts-routes";
+import { setupRoleRoomCallSheetRoutes } from "./role-room-call-sheet-routes";
 import { setupCastingProjectsRoutes } from "./casting-projects-routes";
 import { createCastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import { createAISuggestionService } from "./ai-suggestion-service.js";
@@ -671,6 +707,7 @@ import { setupAdminStorageCostRoutes } from "./admin-storage-cost-routes";
 import { setupAdminFileAuditRoutes } from "./admin-file-audit-routes";
 import { setupAdminSecretsRotationRoutes } from "./admin-secrets-rotation-routes";
 import { setupClientGalleryRoutes } from "./client-gallery-routes";
+import { setupGalleryVersionsRoutes } from "./gallery-versions-routes";
 import { setupContractsRoutes } from "./contracts-routes";
 import { setupBusinessRoutes } from "./business-routes";
 import { setupAnalyticsRoutes } from "./analytics-routes";
@@ -686,6 +723,22 @@ import { setupRoleRoomDealsRoutes } from "./role-room-deals-routes";
 import { setupRoleRoomInvitesTicketsRoutes } from "./role-room-invites-tickets-routes";
 import { setupProjectsOutliersRoutes } from "./projects-outliers-routes";
 import { setupContractsUploadImportRoutes } from "./contracts-upload-import-routes";
+import { setupBackupRoutes } from "./backup-routes";
+import { setupMaintenanceRoutes } from "./maintenance-routes";
+import { setupSplitSheetsRoutes } from "./split-sheets-routes";
+import { setupSongflowDeprecatedAliasesRoutes } from "./songflow-deprecated-aliases-routes";
+import { setupEquipmentDiscoveryRoutes } from "./equipment-discovery-routes";
+import { setupEquipmentCatalogRoutes } from "./equipment-catalog-routes";
+import { setupEquipmentFirmwareRoutes } from "./equipment-firmware-routes";
+import { setupAcademyIntegrationsRoutes } from "./academy-integrations-routes";
+import { setupAcademyMediaAssetsRoutes } from "./academy-media-assets-routes";
+import { setupAcademyCohortSettingsRoutes } from "./academy-cohort-settings-routes";
+import { setupAcademyAdminRoutes } from "./academy-admin-routes";
+import { setupAcademyAnnotationRoutes } from "./academy-annotation-routes";
+import { setupAcademyCurriculumRoutes } from "./academy-curriculum-routes";
+import { setupAcademyPresentationCritiqueRoutes } from "./academy-presentation-critique-routes";
+import { setupAcademyPresentationSearchRoutes } from "./academy-presentation-search-routes";
+import { setupAcademyPresentationDesignPlanRoutes } from "./academy-presentation-design-plan-routes";
 import { setupPricingRoutes } from "./pricing-routes";
 import { setupAccountingRoutes } from "./accounting-routes";
 import { setupFileManagementRoutes } from "./file-management-routes";
@@ -734,6 +787,7 @@ import {
   syncNotebookLmWorkspaceForScope,
 } from "./notebooklm-workspace.js";
 import { createWebSocketServer, broadcastChatEventToUser } from "./websocket-chat.js";
+import { createDanceRealtimeServer } from "./dance-realtime-server.js";
 import { createReferenceProxyRouter } from "./reference-proxy-routes.js";
 import { createYouTubeRouter } from "./youtube-routes.js";
 import {
@@ -1753,8 +1807,23 @@ configureAIUsageTracker(pool);
 registerAIUsageRoutes(app, pool, requireAdminSession);
 registerDesignTokensRoutes(app, pool, requireAdminSession);
 registerStripePriceDriftRoutes(app, pool, requireAdminSession);
+registerB2CompanyArchiveRoutes({
+  app,
+  requireAdminSession,
+  routePrefix: "/api/admin/b2-archive",
+  envPrefix: "B2_",
+});
+registerB2CompanyArchiveRoutes({
+  app,
+  requireAdminSession,
+  routePrefix: "/api/role-room/admin/b2-archive",
+  envPrefix: "B2_ROLE_ROOM_",
+});
+registerCastingPosterArchiveRoutes({ app, requireAdminSession });
+registerB2ArchiveCronRoutes({ app, pool });
 
 app.use("/api/creatorhub/google", createCreatorHubGoogleRouter(pool, activeSessions));
+app.use("/api/desktop", createDesktopAuthRouter(pool));
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
 
 // Role Room member profile (separat fra Creatorhub-profil) — central solution
@@ -1839,6 +1908,18 @@ app.use(
 app.use(
   "/api/dance/formations",
   createDanceFormationRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/formation-timeline-items",
+  createDanceFormationTimelineItemRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/annotation-categories",
+  createDanceAnnotationCategoriesRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/dance/annotation-labels",
+  createDanceAnnotationLabelsRouter(pool, { activeSessions }),
 );
 app.use(
   "/api/dance/rehearsals",
@@ -2142,7 +2223,7 @@ app.use((req, res, next) => {
   next();
 });
 
-type CompatCatalogSpecificationValue = string | number | boolean;
+export type CompatCatalogSpecificationValue = string | number | boolean;
 
 const normalizeCompatCatalogSpecifications = (
   specifications: Record<string, CompatCatalogSpecificationValue | undefined>,
@@ -2157,7 +2238,7 @@ const normalizeCompatCatalogSpecifications = (
     {},
   );
 
-type CompatCatalogItem = {
+export type CompatCatalogItem = {
   id: string;
   brand: string;
   model: string;
@@ -5221,7 +5302,7 @@ const COMPAT_ACCESSORY_CATALOG_SUPPLEMENTS: CompatCatalogItem[] = [
   },
 ].map(createCompatAccessoryCatalogItem);
 
-type CompatGearNewsItem = {
+export type CompatGearNewsItem = {
   id: string;
   title: string;
   summary?: string;
@@ -5639,10 +5720,11 @@ const parseLimitParam = (raw: unknown, fallbackValue: number): number => {
   return Math.max(1, Math.min(200, Math.floor(parsed)));
 };
 
-type DiscoveryCameraType = "photo" | "video";
-type DiscoverySource = "seed" | "manual" | "api" | "discovery";
+// Eksportert for equipment-discovery-routes.ts (ekstraktert modul).
+export type DiscoveryCameraType = "photo" | "video";
+export type DiscoverySource = "seed" | "manual" | "api" | "discovery";
 
-type DiscoverySourceMeta = {
+export type DiscoverySourceMeta = {
   source: DiscoverySource;
   lastSeenAt: string;
   isDeprecated: boolean;
@@ -5651,7 +5733,7 @@ type DiscoverySourceMeta = {
   lastUpdated: string;
 };
 
-type CameraRecord = {
+export type CameraRecord = {
   id: string;
   externalId: string;
   type: DiscoveryCameraType;
@@ -5694,7 +5776,7 @@ type CameraRecord = {
   sourceMeta: DiscoverySourceMeta;
 };
 
-type MemoryCardTypeRecord = {
+export type MemoryCardTypeRecord = {
   id: string;
   name: string;
   fullName: string;
@@ -5718,7 +5800,7 @@ type MemoryCardTypeRecord = {
   };
 };
 
-type DiscoverySyncStatus = {
+export type DiscoverySyncStatus = {
   type: DiscoveryCameraType;
   totalSources: number;
   enabledSources: number;
@@ -7189,7 +7271,7 @@ const resolveDiscoveryType = (value: unknown): DiscoveryCameraType | null => {
   return null;
 };
 
-type DiscoveryFirmwareSyncResult = {
+export type DiscoveryFirmwareSyncResult = {
   tableAvailable: boolean;
   considered: number;
   inserted: number;
@@ -7199,7 +7281,7 @@ type DiscoveryFirmwareSyncResult = {
   failed: number;
 };
 
-type FirmwareSeedCandidate = {
+export type FirmwareSeedCandidate = {
   brand: string;
   model: string;
   type: DiscoveryCameraType;
@@ -10743,626 +10825,7 @@ async function runAutomaticFirmwareRefresh(reason: string): Promise<void> {
   return firmwareAutoRefreshPromise;
 }
 
-app.post("/api/equipment/discovery/sync", async (req, res) => {
-  try {
-    const type = resolveDiscoveryType(req.query.type);
-    if (!type) {
-      res.status(400).json({ error: "Invalid type. Use photo|video" });
-      return;
-    }
-
-    const nowIso = new Date().toISOString();
-    const syncId = `${type}-${Date.now()}`;
-    const candidates = buildDiscoveryCandidates(type);
-    const store = getCameraArrayByType(type);
-
-    const byId = new Map(store.map((camera) => [camera.id, camera]));
-    const byExternalId = new Map(
-      store.map((camera) => [camera.externalId, camera.id]),
-    );
-
-    let inserted = 0;
-    let updated = 0;
-    let rejected = 0;
-    let conflicts = 0;
-
-    candidates.forEach((candidate) => {
-      const existingId = byId.has(candidate.id)
-        ? candidate.id
-        : byExternalId.get(candidate.externalId);
-      if (!existingId) {
-        store.push(candidate);
-        byId.set(candidate.id, candidate);
-        byExternalId.set(candidate.externalId, candidate.id);
-        inserted += 1;
-        return;
-      }
-
-      const existing = byId.get(existingId);
-      if (!existing) {
-        rejected += 1;
-        return;
-      }
-
-      if (
-        existing.externalId !== candidate.externalId &&
-        existing.id === candidate.id
-      ) {
-        conflicts += 1;
-        return;
-      }
-
-      const merged = buildCameraRecord({
-        ...existing,
-        ...candidate,
-        id: existing.id,
-        externalId: existing.externalId,
-        source: "discovery",
-        lastSeenAt: nowIso,
-        lastUpdated: nowIso,
-        version: Math.max(existing.version, candidate.version) + 1,
-        specs: { ...existing.specs, ...candidate.specs },
-      });
-
-      const hasMeaningfulChange =
-        existing.description !== merged.description ||
-        JSON.stringify(existing.features) !== JSON.stringify(merged.features) ||
-        JSON.stringify(existing.logFormats ?? []) !==
-          JSON.stringify(merged.logFormats ?? []) ||
-        JSON.stringify(existing.resolution ?? []) !==
-          JSON.stringify(merged.resolution ?? []);
-
-      if (hasMeaningfulChange) {
-        const index = store.findIndex((camera) => camera.id === existing.id);
-        if (index >= 0) {
-          store[index] = merged;
-        }
-        byId.set(existing.id, merged);
-        updated += 1;
-      }
-    });
-
-    const firmwareCandidates = await loadFirmwareSeedCandidates(type);
-    const firmwareSync = await ensureFirmwareRowsForCameras(firmwareCandidates, {
-      liveRefresh: true,
-    });
-
-    EQUIPMENT_DISCOVERY_STATUS[type] = {
-      ...EQUIPMENT_DISCOVERY_STATUS[type],
-      lastUpdate: nowIso,
-      syncId,
-      inserted,
-      updated,
-      rejected,
-      conflicts,
-      source: `backend-${type}-sync`,
-    };
-
-    res.json({
-      success: true,
-      type,
-      source: EQUIPMENT_DISCOVERY_STATUS[type].source,
-      timestamp: nowIso,
-      syncId,
-      inserted,
-      updated,
-      rejected,
-      conflicts,
-      totalCameras: store.length,
-      firmwareSync,
-    });
-  } catch (error) {
-    console.error("Discovery sync error:", error);
-    res.status(500).json({ error: "Failed to run discovery sync" });
-  }
-});
-
-app.get("/api/equipment/discovery/status", (req, res) => {
-  const type = resolveDiscoveryType(req.query.type);
-  if (!type) {
-    res.status(400).json({ error: "Invalid type. Use photo|video" });
-    return;
-  }
-
-  const status = EQUIPMENT_DISCOVERY_STATUS[type];
-  const stats = getDiscoveryStats(type);
-
-  res.json({
-    ...status,
-    ...stats,
-    type,
-  });
-});
-
-app.get("/api/equipment/health", (_req, res) => {
-  const runtimeCameraCount =
-    EQUIPMENT_CAMERA_STORE.photo.length + EQUIPMENT_CAMERA_STORE.video.length;
-  const catalogCameraCount =
-    CATALOG_CAMERA_STORE.photo.length + CATALOG_CAMERA_STORE.video.length;
-  const worldCameraCount =
-    WORLD_CAMERA_STORE.photo.length + WORLD_CAMERA_STORE.video.length;
-  const releaseRegistryCount =
-    RELEASE_REGISTRY_STORE.photo.length + RELEASE_REGISTRY_STORE.video.length;
-  const memoryCardCount = MEMORY_CARD_TYPES_DB.length;
-  const audioStorageCount = AUDIO_STORAGE_DEVICE_DATABASE.length;
-
-  res.json({
-    ok: true,
-    timestamp: new Date().toISOString(),
-    backendSourceOfTruth: true,
-    services: {
-      discovery: "ready",
-      cameraCatalog: "ready",
-      memoryCards: "ready",
-      audioStorage: "ready",
-      firmware: "ready",
-    },
-    counters: {
-      runtimeCameras: runtimeCameraCount,
-      catalogCameras: catalogCameraCount,
-      worldCameras: worldCameraCount,
-      releaseRegistryCameras: releaseRegistryCount,
-      memoryCardTypes: memoryCardCount,
-      audioStorageDevices: audioStorageCount,
-    },
-  });
-});
-
-app.get("/api/equipment/cameras", async (req, res) => {
-  try {
-    const type = resolveDiscoveryType(req.query.type);
-    const q =
-      typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
-    const brand =
-      typeof req.query.brand === "string"
-        ? req.query.brand.trim().toLowerCase()
-        : "";
-    const category =
-      typeof req.query.category === "string"
-        ? normalizeCameraCategory(req.query.category)
-        : "";
-    const yearFromRaw = Number(req.query.yearFrom);
-    const yearToRaw = Number(req.query.yearTo);
-    const yearFrom = Number.isFinite(yearFromRaw) ? yearFromRaw : 2020;
-    const yearTo = Number.isFinite(yearToRaw) ? yearToRaw : 2026;
-    const minYear = Math.min(yearFrom, yearTo);
-    const maxYear = Math.max(yearFrom, yearTo);
-    const includeUndated =
-      req.query.includeUndated === "true" || req.query.includeUndated === "1";
-    const netflixCertifiedOnly =
-      req.query.netflixCertified === "true" ||
-      req.query.netflixCertified === "1";
-
-    const extractReleaseYear = (camera: CameraRecord): number | null => {
-      if (typeof camera.releaseDate !== "string") return null;
-      const trimmed = camera.releaseDate.trim();
-      const match = trimmed.match(/^(\d{4})-\d{2}-\d{2}$/);
-      if (!match) return null;
-      const parsed = Number.parseInt(match[1], 10);
-      return Number.isFinite(parsed) ? parsed : null;
-    };
-
-    const runtimeSource = type
-      ? getCameraArrayByType(type)
-      : [...EQUIPMENT_CAMERA_STORE.photo, ...EQUIPMENT_CAMERA_STORE.video];
-    const catalogSource = type
-      ? CATALOG_CAMERA_STORE[type]
-      : [...CATALOG_CAMERA_STORE.photo, ...CATALOG_CAMERA_STORE.video];
-    const worldSource = type
-      ? WORLD_CAMERA_STORE[type]
-      : [...WORLD_CAMERA_STORE.photo, ...WORLD_CAMERA_STORE.video];
-    const releaseRegistrySource = type
-      ? RELEASE_REGISTRY_STORE[type]
-      : [...RELEASE_REGISTRY_STORE.photo, ...RELEASE_REGISTRY_STORE.video];
-    const legacyStore = await loadLegacyCameraStore();
-    const legacySource = type
-      ? legacyStore[type]
-      : [...legacyStore.photo, ...legacyStore.video];
-    const databaseSourceAll = await loadDatabaseCameraStore();
-    const databaseSource = type
-      ? databaseSourceAll.filter((camera) => camera.type === type)
-      : databaseSourceAll;
-
-    const mergedCatalog = mergeCameraLists(runtimeSource, catalogSource);
-    const mergedRegistry = mergeCameraLists(
-      mergedCatalog,
-      releaseRegistrySource,
-    );
-    const mergedWorld = mergeCameraLists(mergedRegistry, worldSource);
-    const mergedLegacy = mergeCameraLists(mergedWorld, legacySource);
-    const source = mergeCameraLists(mergedLegacy, databaseSource);
-
-    const baseFiltered = source.filter((camera) => {
-      if (brand && camera.brand.toLowerCase() !== brand) return false;
-      if (category && normalizeCameraCategory(camera.category) !== category)
-        return false;
-      if (!q) return true;
-      return [camera.brand, camera.model, camera.description, camera.category]
-        .join(" ")
-        .toLowerCase()
-        .includes(q);
-    });
-
-    const withDateMeta = baseFiltered.map((camera) => {
-      const releaseYear = extractReleaseYear(camera);
-      const isNetflixCertified = isNetflixCertifiedCineCamera(camera);
-      return {
-        camera,
-        releaseYear,
-        hasReleaseDate: releaseYear !== null,
-        inYearRange:
-          releaseYear !== null &&
-          releaseYear >= minYear &&
-          releaseYear <= maxYear,
-        isNetflixCertified,
-      };
-    });
-
-    const undated = withDateMeta.filter((entry) => !entry.hasReleaseDate);
-    const outOfRange = withDateMeta.filter(
-      (entry) => entry.hasReleaseDate && !entry.inYearRange,
-    );
-
-    const filtered = withDateMeta
-      .filter((entry) => {
-        if (netflixCertifiedOnly && !entry.isNetflixCertified) return false;
-        if (entry.inYearRange) return true;
-        if (includeUndated && !entry.hasReleaseDate) return true;
-        return false;
-      })
-      .map((entry) => ({
-        ...entry.camera,
-        releaseYear: entry.releaseYear,
-        hasReleaseDate: entry.hasReleaseDate,
-        isNetflixCertified: entry.isNetflixCertified,
-      }))
-      .sort((a, b) => {
-        const byBrand = a.brand.localeCompare(b.brand, "nb");
-        if (byBrand !== 0) return byBrand;
-        return a.model.localeCompare(b.model, "nb");
-      });
-
-    res.json({
-      success: true,
-      type: type ?? "all",
-      total: filtered.length,
-      sources: {
-        runtime: runtimeSource.length,
-        catalog: catalogSource.length,
-        releaseRegistry: releaseRegistrySource.length,
-        world: worldSource.length,
-        legacy: legacySource.length,
-        database: databaseSource.length,
-      },
-      filters: {
-        minYear,
-        maxYear,
-        includeUndated,
-        netflixCertifiedOnly,
-      },
-      quality: {
-        matchedBeforeDateFilter: baseFiltered.length,
-        excludedUndated: includeUndated ? 0 : undated.length,
-        excludedOutOfRange: outOfRange.length,
-        undatedCandidates: undated.slice(0, 25).map((entry) => ({
-          id: entry.camera.id,
-          brand: entry.camera.brand,
-          model: entry.camera.model,
-          category: entry.camera.category,
-          source: entry.camera.source,
-        })),
-      },
-      data: filtered,
-      results: filtered,
-      cameras: filtered,
-    });
-  } catch (error) {
-    console.error(
-      "Equipment cameras endpoint failed, returning runtime fallback:",
-      error,
-    );
-    const type = resolveDiscoveryType(req.query.type);
-    const fallback = type
-      ? getCameraArrayByType(type)
-      : [...EQUIPMENT_CAMERA_STORE.photo, ...EQUIPMENT_CAMERA_STORE.video];
-    const trimmed = fallback.slice(0, 500);
-    res.json({
-      success: false,
-      fallback: true,
-      type: type ?? "all",
-      total: trimmed.length,
-      data: trimmed,
-      results: trimmed,
-      cameras: trimmed,
-    });
-  }
-});
-
-app.get("/api/equipment/memory-cards", (req, res) => {
-  const cameraId =
-    typeof req.query.cameraId === "string" ? req.query.cameraId.trim() : "";
-  const sourceCards = cameraId
-    ? getMemoryCardTypesByCameraFromDatabase(cameraId)
-    : MEMORY_CARD_TYPES_DB;
-
-  type MemoryCardApiResponseItem = {
-    id: string;
-    name: string;
-    fullName: string;
-    category: string;
-    readSpeed: number;
-    writeSpeed: number;
-    maxCapacity: string;
-    commonCapacities: string[];
-    videoClass?: string;
-    uhsClass?: string;
-    priceRange: string;
-    reliability: string;
-    description: string;
-    icon: string;
-    color: string;
-    pricePerGB: {
-      budget: number;
-      mid: number;
-      premium: number;
-      professional: number;
-    };
-  };
-
-  const cards: MemoryCardApiResponseItem[] = sourceCards.map((card) => ({
-    id: card.id,
-    name: card.name,
-    fullName: card.fullName,
-    category: card.category,
-    readSpeed: card.readSpeed,
-    writeSpeed: card.writeSpeed,
-    maxCapacity: card.maxCapacity,
-    commonCapacities: card.commonCapacities,
-    videoClass: card.videoClass,
-    uhsClass: card.uhsClass,
-    priceRange: card.priceRange,
-    reliability: card.reliability,
-    description: card.description,
-    icon: card.icon,
-    color: card.color,
-    pricePerGB: card.pricePerGB,
-  }));
-
-  const storageMediaOptions: MemoryCardApiResponseItem[] = [
-    {
-      id: "storage-ssd",
-      name: "SSD",
-      fullName: "SSD (ekstern/produksjon)",
-      category: "storage-media",
-      readSpeed: 0,
-      writeSpeed: 0,
-      maxCapacity: "8TB",
-      commonCapacities: ["500GB", "1TB", "2TB", "4TB"],
-      videoClass: "",
-      uhsClass: "",
-      priceRange: "mid",
-      reliability: "excellent",
-      description: "Rask lokal lagring for backup på sett.",
-      icon: "💽",
-      color: "#00acc1",
-      pricePerGB: { budget: 0, mid: 0, premium: 0, professional: 0 },
-    },
-    {
-      id: "storage-hdd",
-      name: "HDD",
-      fullName: "HDD (ekstern disk)",
-      category: "storage-media",
-      readSpeed: 0,
-      writeSpeed: 0,
-      maxCapacity: "24TB",
-      commonCapacities: ["1TB", "2TB", "4TB", "8TB"],
-      videoClass: "",
-      uhsClass: "",
-      priceRange: "budget",
-      reliability: "good",
-      description: "Kostnadseffektiv lagring for ekstra kopi.",
-      icon: "🗄️",
-      color: "#607d8b",
-      pricePerGB: { budget: 0, mid: 0, premium: 0, professional: 0 },
-    },
-    {
-      id: "storage-nas",
-      name: "NAS",
-      fullName: "NAS-lagring",
-      category: "storage-media",
-      readSpeed: 0,
-      writeSpeed: 0,
-      maxCapacity: "64TB+",
-      commonCapacities: ["4TB", "8TB", "16TB", "32TB"],
-      videoClass: "",
-      uhsClass: "",
-      priceRange: "premium",
-      reliability: "professional",
-      description: "Nettverkslagring for team-tilgang og sikkerhetskopi.",
-      icon: "🖧",
-      color: "#5e35b1",
-      pricePerGB: { budget: 0, mid: 0, premium: 0, professional: 0 },
-    },
-    {
-      id: "storage-raid",
-      name: "RAID",
-      fullName: "RAID-lagring",
-      category: "storage-media",
-      readSpeed: 0,
-      writeSpeed: 0,
-      maxCapacity: "64TB+",
-      commonCapacities: ["4TB", "8TB", "16TB", "32TB"],
-      videoClass: "",
-      uhsClass: "",
-      priceRange: "premium",
-      reliability: "professional",
-      description: "Redundant lagring for robust backup-flyt.",
-      icon: "🧱",
-      color: "#3949ab",
-      pricePerGB: { budget: 0, mid: 0, premium: 0, professional: 0 },
-    },
-    {
-      id: "storage-usb",
-      name: "USB",
-      fullName: "USB-lagring",
-      category: "storage-media",
-      readSpeed: 0,
-      writeSpeed: 0,
-      maxCapacity: "2TB",
-      commonCapacities: ["64GB", "128GB", "256GB", "512GB", "1TB"],
-      videoClass: "",
-      uhsClass: "",
-      priceRange: "budget",
-      reliability: "good",
-      description: "Bærbar lagring for overføring i felt.",
-      icon: "🔌",
-      color: "#26a69a",
-      pricePerGB: { budget: 0, mid: 0, premium: 0, professional: 0 },
-    },
-  ];
-
-  const cardById = new Map<string, MemoryCardApiResponseItem>();
-  for (const card of [...cards, ...storageMediaOptions]) {
-    if (!cardById.has(card.id)) {
-      cardById.set(card.id, card);
-    }
-  }
-  const mergedCards = Array.from(cardById.values());
-  const cardTypeIds = mergedCards.map((card) => card.id);
-
-  res.json({
-    success: true,
-    cameraId: cameraId || null,
-    cardTypeIds,
-    total: mergedCards.length,
-    source: "memory-card-database.ts + storage-media-defaults",
-    data: mergedCards,
-    results: mergedCards,
-  });
-});
-
-app.get("/api/equipment/audio-storage-devices", (req, res) => {
-  try {
-    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
-    const brand =
-      typeof req.query.brand === "string" ? req.query.brand.trim() : "";
-    const category =
-      typeof req.query.category === "string" ? req.query.category.trim() : "";
-    const storageMedium =
-      typeof req.query.storageMedium === "string"
-        ? req.query.storageMedium.trim()
-        : typeof req.query.medium === "string"
-          ? req.query.medium.trim()
-          : "";
-    const yearFromRaw = Number(req.query.yearFrom);
-    const yearToRaw = Number(req.query.yearTo);
-    const yearFrom = Number.isFinite(yearFromRaw) ? yearFromRaw : 2020;
-    const yearTo = Number.isFinite(yearToRaw) ? yearToRaw : 2026;
-    const limit = parseLimitParam(req.query.limit, 200);
-
-    const filtered = searchAudioStorageDevices({
-      q,
-      brand,
-      category,
-      storageMedium,
-      yearFrom,
-      yearTo,
-    });
-
-    const results = filtered.slice(0, limit);
-    const availableCategories = Array.from(
-      new Set(AUDIO_STORAGE_DEVICE_DATABASE.map((device) => device.category)),
-    ).sort((a, b) => a.localeCompare(b, "nb"));
-    const availableStorageMedia = Array.from(
-      new Set(
-        AUDIO_STORAGE_DEVICE_DATABASE.flatMap((device) => device.storageMedia),
-      ),
-    ).sort((a, b) => a.localeCompare(b, "nb"));
-
-    res.json({
-      success: true,
-      source: "audio-storage-device-database.ts",
-      total: filtered.length,
-      count: results.length,
-      filters: {
-        q,
-        brand: brand || null,
-        category: category || null,
-        storageMedium: storageMedium || null,
-        yearFrom,
-        yearTo,
-        limit,
-      },
-      availableCategories,
-      availableStorageMedia,
-      data: results,
-      results,
-      devices: results,
-    });
-  } catch (error) {
-    console.error(
-      "Equipment audio-storage endpoint failed, returning fallback list:",
-      error,
-    );
-    const fallback = AUDIO_STORAGE_DEVICE_DATABASE.slice(0, 400);
-    res.json({
-      success: false,
-      fallback: true,
-      source: "audio-storage-device-database.ts",
-      total: fallback.length,
-      count: fallback.length,
-      filters: {
-        q: null,
-        brand: null,
-        category: null,
-        storageMedium: null,
-        yearFrom: 2020,
-        yearTo: 2026,
-        limit: 400,
-      },
-      availableCategories: Array.from(
-        new Set(fallback.map((device) => device.category)),
-      ).sort((a, b) => a.localeCompare(b, "nb")),
-      availableStorageMedia: Array.from(
-        new Set(fallback.flatMap((device) => device.storageMedia)),
-      ).sort((a, b) => a.localeCompare(b, "nb")),
-      data: fallback,
-      results: fallback,
-      devices: fallback,
-    });
-  }
-});
-
-app.get("/api/equipment/audio-interfaces", (req, res) => {
-  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
-  const records = searchAudioStorageDevices({
-    q,
-    yearFrom: 2020,
-    yearTo: 2026,
-  }).map((device) => {
-    const maxSampleRateKhz = Math.round(device.maxSampleRateHz / 1000);
-    const storageFeature = `Lagring: ${device.storageMedia.join(", ")}`;
-    return {
-      id: device.id,
-      brand: device.brand,
-      model: device.model,
-      type: device.category,
-      inputs: Math.max(1, Math.ceil(device.channelCount / 2)),
-      outputs: Math.max(1, Math.ceil(device.channelCount / 2)),
-      preamps: Math.max(1, Math.ceil(device.channelCount / 2)),
-      maxSampleRate: `${maxSampleRateKhz} kHz`,
-      bitDepth: device.bitDepthOptions,
-      features: [...device.recordingFormats, storageFeature],
-      description: device.description,
-      compatibility: ["macOS", "Windows", "iOS", "Android"],
-      category: device.category,
-      storageMedia: device.storageMedia,
-      releaseYear: device.releaseYear,
-    };
-  });
-
-  res.json(records);
-});
+// /api/equipment/{discovery,health,cameras,memory-cards,audio-*} — ekstraktert til ./equipment-discovery-routes.ts.
 
 const CATALOG_PRICE_BY_RANGE: Record<CameraRecord["priceRange"], number> = {
   budget: 9990,
@@ -12473,7 +11936,7 @@ type FotoNoInstantSearchResponse = {
   Products?: FotoNoInstantSearchProduct[];
 };
 
-type ResolvedSupplierEquipmentImage = {
+export type ResolvedSupplierEquipmentImage = {
   imageUrl: string;
   productUrl: string;
   supplier: "Foto.no";
@@ -12483,7 +11946,7 @@ type ResolvedSupplierEquipmentImage = {
   confidence: number;
 };
 
-type EquipmentImageAttachmentRow = {
+export type EquipmentImageAttachmentRow = {
   id: number;
   equipment_id: number | null;
   user_id: string | null;
@@ -12496,7 +11959,7 @@ type EquipmentImageAttachmentRow = {
   updated_at: string | null;
 };
 
-type EquipmentImageEnvelope = {
+export type EquipmentImageEnvelope = {
   imageUrl: string;
   officialUrl: string | null;
   source: string;
@@ -12505,7 +11968,7 @@ type EquipmentImageEnvelope = {
   updatedAt: string | null;
 };
 
-type EquipmentImageTarget = {
+export type EquipmentImageTarget = {
   id: number;
   userId: string;
   brand: string;
@@ -13127,7 +12590,7 @@ const ensureEquipmentImageEnvelope = async (
   };
 };
 
-type InventoryRecommendedMemoryCardSummary = {
+export type InventoryRecommendedMemoryCardSummary = {
   id: string;
   name: string;
   fullName: string;
@@ -13226,397 +12689,9 @@ const matchInventoryEquipmentCatalogItem = (
     normalizedCategory,
   )?.item || null;
 };
+// /api/equipment/{search,brands,stats,category-icons,market-prices,lenses} — ekstraktert til ./equipment-catalog-routes.ts.
 
-app.get("/api/equipment/search", async (req, res) => {
-  const q =
-    typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
-  const brand =
-    typeof req.query.brand === "string"
-      ? req.query.brand.trim().toLowerCase()
-      : "";
-  const category = normalizeCatalogCategory(
-    typeof req.query.category === "string" ? req.query.category : "",
-  );
-  const year =
-    typeof req.query.year === "string" ? Number(req.query.year) : NaN;
-  const limit = parseLimitParam(req.query.limit, 80);
-  try {
-    const catalog = await loadUnifiedEquipmentCatalog();
-    const filtered = catalog
-      .filter((item) => {
-        if (brand && brand !== "alle" && item.brand.toLowerCase() !== brand)
-          return false;
-        if (category && item.category !== category) return false;
-        if (Number.isFinite(year) && item.releaseYear !== year) return false;
-        if (!q) return true;
-        return matchesEquipmentSearchQuery(item, q);
-      })
-      .slice(0, limit);
-
-    const previewEnriched = await Promise.all(
-      filtered.map((item, index) =>
-        index <
-        (category === "lenses"
-          ? Math.min(filtered.length, 80)
-          : q || brand
-            ? Math.min(filtered.length, 24)
-            : 16)
-          ? enrichCatalogItemWithPreviewImage(item)
-          : Promise.resolve(item),
-      ),
-    );
-
-    res.json({
-      success: true,
-      source: "unified-catalog",
-      total: previewEnriched.length,
-      totalAvailable: catalog.length,
-      data: previewEnriched,
-      results: previewEnriched,
-    });
-  } catch (error) {
-    console.error("Failed to load unified equipment catalog:", error);
-    res.status(500).json({ error: "Failed to load equipment catalog" });
-  }
-});
-
-app.get("/api/equipment/brands", async (_req, res) => {
-  try {
-    const catalog = await loadUnifiedEquipmentCatalog();
-    const brands = Array.from(
-      new Set(
-        catalog
-          .map((item) => item.brand)
-          .filter(
-            (brand): brand is string =>
-              typeof brand === "string" && brand.trim().length > 0,
-          ),
-      ),
-    ).sort((a, b) => a.localeCompare(b, "nb"));
-
-    res.json({
-      success: true,
-      data: brands,
-      total: brands.length,
-    });
-  } catch (error) {
-    console.error("Failed to load equipment brands:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to load equipment brands" });
-  }
-});
-
-app.get("/api/equipment/stats", async (_req, res) => {
-  try {
-    const catalog = await loadUnifiedEquipmentCatalog();
-    const releaseYears = catalog
-      .map((item) => item.releaseYear)
-      .filter((value): value is number => Number.isFinite(value));
-    const categories = Array.from(
-      new Set(
-        catalog
-          .map((item) => item.category)
-          .filter((category) => category.trim().length > 0),
-      ),
-    ).sort((a, b) => a.localeCompare(b, "nb"));
-    const brands = Array.from(
-      new Set(
-        catalog
-          .map((item) => item.brand)
-          .filter(
-            (brand): brand is string =>
-              typeof brand === "string" && brand.trim().length > 0,
-          ),
-      ),
-    );
-    const authenticItems = catalog.filter(
-      (item) => item.imageUrl || item.norwegianSupplier,
-    ).length;
-    const catalogItems = catalog.filter(
-      (item) => item.category !== "video" || item.type !== "legacy",
-    ).length;
-
-    res.json({
-      success: true,
-      data: {
-        totalItems: catalog.length,
-        authenticItems,
-        catalogItems,
-        brandCount: brands.length,
-        categories,
-        yearRange: {
-          min:
-            releaseYears.length > 0
-              ? Math.min(...releaseYears)
-              : new Date().getFullYear(),
-          max:
-            releaseYears.length > 0
-              ? Math.max(...releaseYears)
-              : new Date().getFullYear(),
-        },
-        lastUpdate: new Date(),
-      },
-    });
-  } catch (error) {
-    console.error("Failed to load equipment stats:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to load equipment stats" });
-  }
-});
-
-app.post("/api/product-images/test-images", async (req, res) => {
-  try {
-    const requestedProducts: Array<Record<string, unknown>> = Array.isArray(
-      req.body?.products,
-    )
-      ? req.body.products
-      : [];
-
-    if (requestedProducts.length === 0) {
-      res.status(400).json({ success: false, error: "Missing products array" });
-      return;
-    }
-
-    const results = (
-      await Promise.all(
-        requestedProducts.map(async (product) => {
-          const brand = readString(product?.brand) || "";
-          const model = readString(product?.model) || "";
-          const categoryInput = readString(product?.category) || "";
-          if (!brand || !model) return null;
-
-          const normalizedCategory =
-            normalizeProductImageCategory(categoryInput) || null;
-          const resolved = await resolveAuthenticSupplierEquipmentImage(
-            brand,
-            model,
-            normalizedCategory,
-          );
-
-          return {
-            brand,
-            model,
-            category: categoryInput || normalizedCategory || "accessories",
-            imageFound: Boolean(resolved?.imageUrl),
-            imageCount: resolved?.imageUrl ? 1 : 0,
-            source: resolved?.source || "unresolved",
-            sampleImage: resolved?.imageUrl || null,
-            officialUrl: resolved?.productUrl || null,
-            thumbnail: resolved?.thumbnailUrl || resolved?.imageUrl || null,
-            confidence: resolved?.confidence || 0,
-            databaseStored: false,
-            googleImages: resolved?.imageUrl
-              ? [
-                  {
-                    link: resolved.imageUrl,
-                    thumbnail: resolved.thumbnailUrl || resolved.imageUrl,
-                  },
-                ]
-              : [],
-          };
-        }),
-      )
-    ).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-
-    res.json({
-      success: true,
-      source: "supplier-live",
-      results,
-    });
-  } catch (error) {
-    console.error("Product image test route error:", error);
-    res.status(500).json({ success: false, error: "Failed to resolve product images" });
-  }
-});
-
-app.post("/api/equipment/category-icons/generate", async (_req, res) => {
-  try {
-    const catalog = await loadUnifiedEquipmentCatalog();
-    const iconMap: Record<string, string> = {
-      cameras: "camera",
-      lenses: "lens",
-      flash: "flash",
-      lighting: "lightbulb",
-      audio: "mic",
-      tripods: "tripod",
-      support: "build",
-      accessories: "build",
-      software: "settings",
-      video: "videocam",
-    };
-    const categories = Array.from(
-      new Set(
-        catalog
-          .map((item) => item.category)
-          .filter((category) => category.trim().length > 0),
-      ),
-    ).sort((a, b) => a.localeCompare(b, "nb"));
-
-    res.json({
-      success: true,
-      data: categories.map((category) => ({
-        category,
-        icon: iconMap[category] || "category",
-      })),
-      total: categories.length,
-    });
-  } catch (error) {
-    console.error("Failed to generate equipment category icons:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        error: "Failed to generate equipment category icons",
-      });
-  }
-});
-
-app.get("/api/gear-news", async (req, res) => {
-  const profession =
-    typeof req.query.profession === "string" ? req.query.profession : "";
-  const normalizedProfession = profession.trim().toLowerCase();
-
-  try {
-    const payload = await loadGearNewsFeed();
-
-    const filtered = normalizedProfession
-      ? payload.data.filter((item) =>
-          Array.isArray(item.professions)
-            ? item.professions
-                .map((entry) => String(entry).toLowerCase())
-                .includes(normalizedProfession)
-            : true,
-        )
-      : payload.data;
-
-    res.json({
-      success: true,
-      source: payload.source,
-      data: filtered,
-      total: filtered.length,
-    });
-  } catch (error) {
-    console.error(
-      "Failed to load /api/gear-news feed, returning fallback:",
-      error,
-    );
-
-    const filtered = normalizedProfession
-      ? COMPAT_GEAR_NEWS.filter((item) =>
-          Array.isArray(item.professions)
-            ? item.professions
-                .map((entry) => String(entry).toLowerCase())
-                .includes(normalizedProfession)
-            : true,
-        )
-      : COMPAT_GEAR_NEWS;
-
-    res.json({
-      success: true,
-      source: "compat-news",
-      data: filtered,
-      total: filtered.length,
-    });
-  }
-});
-
-app.get("/api/gear-news/:profession/firmware", (_req, res) => {
-  res.json({
-    success: true,
-    updatesAvailable: 2,
-    data: [
-      {
-        id: "fw-canon-r5-1",
-        device: "Canon EOS R5 Mark II",
-        latestVersion: "1.2.0",
-        currentVersion: "1.1.0",
-        priority: "recommended",
-        releaseDate: "2026-02-10",
-      },
-      {
-        id: "fw-sony-a7s3-1",
-        device: "Sony A7S III",
-        latestVersion: "4.0.1",
-        currentVersion: "3.2.0",
-        priority: "critical",
-        releaseDate: "2026-01-29",
-      },
-    ],
-  });
-});
-
-app.get("/api/equipment/market-prices", async (_req, res) => {
-  try {
-    const catalog = await loadUnifiedEquipmentCatalog();
-    const data = catalog.slice(0, 400).map((item, index) => {
-      const msrp = Math.round(item.priceNOK * 1.12);
-      const rating = (4.0 + (index % 7) * 0.1).toFixed(1);
-      return {
-        id: item.id,
-        brand: item.brand,
-        model: item.model,
-        category: item.category,
-        currentPrice: String(item.priceNOK),
-        msrp: String(msrp),
-        availability: item.availability,
-        photographerRating: rating,
-        videographerRating: rating,
-        sourceUrl: `https://www.foto.no/search?q=${encodeURIComponent(`${item.brand} ${item.model}`)}`,
-      };
-    });
-
-    res.json(data);
-  } catch (error) {
-    console.error("Failed to load market prices from unified catalog:", error);
-    res.status(500).json({ error: "Failed to load market prices" });
-  }
-});
-
-app.get("/api/equipment/lenses", async (_req, res) => {
-  try {
-    const catalog = await loadUnifiedEquipmentCatalog();
-    const lenses = catalog
-      .filter((item) => item.category === "lenses")
-      .map((item) => ({
-        id: item.id,
-        brand: item.brand,
-        model: item.model,
-        description: item.description,
-        focalLength:
-          typeof item.specifications.focalLength === "string"
-            ? item.specifications.focalLength
-            : "",
-        aperture:
-          typeof item.specifications.maxAperture === "string"
-            ? item.specifications.maxAperture
-            : "",
-        mount: item.mount || "",
-        lensType:
-          typeof item.specifications.lensType === "string"
-            ? item.specifications.lensType
-            : item.type || "",
-        imageStabilization: Boolean(item.specifications.imageStabilization),
-        weatherSealing: Boolean(item.specifications.weatherSealed),
-        weight:
-          typeof item.specifications.weight === "string"
-            ? item.specifications.weight
-            : String(item.specifications.weight || ""),
-        currentPrice: String(item.priceNOK),
-        imageUrl: item.imageUrl,
-        productUrl: item.productUrl || null,
-        norwegianSupplier: item.norwegianSupplier || null,
-      }));
-
-    res.json(lenses);
-  } catch (error) {
-    console.error("Failed to load equipment lenses from unified catalog:", error);
-    res.status(500).json({ error: "Failed to load equipment lenses" });
-  }
-});
-
-type CompatSoftwareCatalogEntry = {
+export type CompatSoftwareCatalogEntry = {
   id: string;
   name: string;
   vendor: string;
@@ -13648,7 +12723,7 @@ type CompatSoftwareUpdateEntry = {
   priority: string;
 };
 
-type SoftwareCatalogRow = {
+export type SoftwareCatalogRow = {
   id: string;
   name: string;
   vendor: string;
@@ -13665,7 +12740,7 @@ type SoftwareCatalogRow = {
   download_url: string | null;
 };
 
-type SoftwareUpdateRow = {
+export type SoftwareUpdateRow = {
   id: string;
   software: string;
   vendor: string;
@@ -14020,706 +13095,7 @@ function resolveSoftwareOrderColumn(profession: string | null): string {
   }
 }
 
-app.get("/api/equipment/software", async (req, res) => {
-  const profession =
-    typeof req.query.profession === "string"
-      ? req.query.profession.trim().toLowerCase()
-      : null;
-  const categories = resolveSoftwareCategoriesForProfession(profession);
-
-  try {
-    const params: Array<string | string[]> = [];
-    const whereClauses = [`COALESCE(is_active, true) = true`];
-
-    if (categories && categories.length > 0) {
-      params.push(categories);
-      whereClauses.push(`category = ANY($${params.length})`);
-    }
-
-    const orderColumn = resolveSoftwareOrderColumn(profession);
-    const result = await pool.query<SoftwareCatalogRow>(
-      `SELECT
-         id,
-         name,
-         vendor,
-         category,
-         pricing_model,
-         price,
-         website,
-         description,
-         photographer_rating,
-         videographer_rating,
-         overall_rating,
-         current_version,
-         is_recommended,
-         download_url
-       FROM software_database
-       WHERE ${whereClauses.join(" AND ")}
-       ORDER BY COALESCE(${orderColumn}, overall_rating, 0::numeric) DESC NULLS LAST, name ASC`,
-      params,
-    );
-
-    if (result.rows.length === 0) {
-      res.json(resolveFallbackSoftwareCatalog(profession));
-      return;
-    }
-
-    const data = result.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      developer: row.vendor,
-      vendor: row.vendor,
-      category: formatSoftwareCategoryLabel(row.category),
-      pricingModel: row.pricing_model,
-      price: row.price,
-      website: row.website,
-      description: row.description,
-      photographerRating: row.photographer_rating,
-      videographerRating: row.videographer_rating,
-      overallRating: row.overall_rating,
-      freeTrialAvailable: false,
-      freeTrialDays: null,
-      currentVersion: row.current_version,
-      isRecommended: Boolean(row.is_recommended),
-      downloadUrl: row.download_url,
-    }));
-
-    res.json(data);
-  } catch (error) {
-    console.error(
-      "Failed to load equipment software catalog, returning fallback:",
-      error,
-    );
-    res.json(resolveFallbackSoftwareCatalog(profession));
-  }
-});
-
-app.get("/api/equipment/software-updates", async (req, res) => {
-  const profession =
-    typeof req.query.profession === "string"
-      ? req.query.profession.trim().toLowerCase()
-      : null;
-  const categories = resolveSoftwareCategoriesForProfession(profession);
-
-  try {
-    const params: Array<string | string[]> = [];
-    const whereClauses = ["1 = 1"];
-
-    if (categories && categories.length > 0) {
-      params.push(categories);
-      whereClauses.push(`category = ANY($${params.length})`);
-    }
-
-    const result = await pool.query<SoftwareUpdateRow>(
-      `SELECT
-         id,
-         software,
-         vendor,
-         category,
-         version,
-         release_date,
-         update_type,
-         is_latest,
-         download_size,
-         priority,
-         source_url,
-         last_verified
-       FROM software_updates
-       WHERE ${whereClauses.join(" AND ")}
-       ORDER BY
-         COALESCE(is_latest, true) DESC,
-         CASE COALESCE(priority, 'optional')
-           WHEN 'critical' THEN 0
-           WHEN 'recommended' THEN 1
-           ELSE 2
-         END,
-         release_date DESC`,
-      params,
-    );
-
-    if (result.rows.length === 0) {
-      res.json(resolveFallbackSoftwareUpdates(profession));
-      return;
-    }
-
-    const data = result.rows.map((row) => ({
-      id: row.id,
-      softwareName: row.software,
-      vendor: row.vendor,
-      category: formatSoftwareCategoryLabel(row.category),
-      version: row.version,
-      releaseDate: row.release_date,
-      updateType: row.update_type,
-      isLatest: row.is_latest ?? true,
-      isCritical: row.priority === "critical",
-      downloadSize: row.download_size,
-      downloadUrl: row.source_url,
-      priority: row.priority || "optional",
-      lastVerified: row.last_verified,
-    }));
-
-    res.json(data);
-  } catch (error) {
-    console.error(
-      "Failed to load equipment software updates, returning fallback:",
-      error,
-    );
-    res.json(resolveFallbackSoftwareUpdates(profession));
-  }
-});
-
-app.get("/api/equipment/firmware-updates/:userId", async (req, res) => {
-  try {
-    const userIdRaw = req.params.userId;
-    const userId = userIdRaw && userIdRaw !== "guest" ? userIdRaw : null;
-    const profession =
-      typeof req.query.profession === "string" ? req.query.profession : null;
-    const firmwareCandidates = await loadFirmwareSeedCandidates(null, {
-      userId,
-      profession,
-    });
-    await ensureFirmwareRowsForCameras(firmwareCandidates);
-    const updates = await loadFirmwareUpdates(userId, profession);
-    res.json(updates);
-  } catch (error) {
-    console.error("Firmware compatibility endpoint error:", error);
-    res.status(500).json({ error: "Failed to load firmware updates" });
-  }
-});
-
-// ── role-room/vendor-links — flyttet til ./role-room-vendor-links-routes.ts
-setupRoleRoomVendorLinksRoutes({ app });
-
-app.get("/api/equipment/inventory", async (req, res) => {
-  try {
-    const userId =
-      typeof req.query.userId === "string" ? req.query.userId : null;
-    const profession =
-      typeof req.query.profession === "string" ? req.query.profession : null;
-    const conditions = [];
-    if (userId) {
-      conditions.push(eq(schema.userEquipment.userId, userId));
-    }
-    if (profession) {
-      conditions.push(eq(schema.userEquipment.userType, profession));
-    }
-
-    const rows = await db
-      .select()
-      .from(schema.userEquipment)
-      .where(conditions.length ? and(...conditions) : sql`true`)
-      .orderBy(desc(schema.userEquipment.createdAt));
-
-    const attachments = buildEquipmentImageAttachmentMap(
-      await loadEquipmentImageAttachments(rows.map((item) => Number(item.id))),
-    );
-    const catalog = await loadUnifiedEquipmentCatalog();
-
-    const inventory = [];
-    for (const item of rows) {
-      const settings = parseSettings(item.settings);
-      const equipmentTarget: EquipmentImageTarget = {
-        id: Number(item.id),
-        userId: item.userId,
-        brand: item.brand,
-        model: item.model,
-        category: item.category,
-        imageUrl: item.imageUrl,
-        settings: item.settings,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-      };
-      const imageEnvelope = await ensureEquipmentImageEnvelope(
-        equipmentTarget,
-        attachments.get(Number(item.id)),
-      );
-      const catalogMatch = matchInventoryEquipmentCatalogItem(catalog, equipmentTarget);
-      const officialCatalogFallback = catalogMatch
-        ? await resolveOfficialCatalogFallback(catalogMatch)
-        : null;
-      const supplierUrl =
-        imageEnvelope?.officialUrl ||
-        readString(settings.supplierUrl) ||
-        readString(officialCatalogFallback?.productUrl) ||
-        readString(catalogMatch?.productUrl) ||
-        null;
-      const recommendedMemoryCards = buildInventoryRecommendedMemoryCards(catalogMatch);
-      const catalogSpecifications = catalogMatch?.specifications || null;
-      const catalogImageUrl =
-        readString(catalogMatch?.imageUrl) ||
-        readString(officialCatalogFallback?.imageUrl) ||
-        null;
-
-      inventory.push({
-        id: item.id,
-        userId: item.userId,
-        profession: item.userType,
-        name:
-          readString(settings.name) || `${item.brand} ${item.model}`.trim(),
-        brand: item.brand,
-        model: item.model,
-        category: item.category,
-        status: readString(settings.status) || item.condition || "available",
-        condition: readString(settings.condition) || item.condition || null,
-        imageUrl:
-          imageEnvelope?.imageUrl ||
-          readString(item.imageUrl) ||
-          catalogImageUrl,
-        supplierUrl,
-        purchaseVendor:
-          supplierUrl && supplierUrl.includes("foto.no")
-            ? "Foto.no"
-            : supplierUrl
-              ? null
-              : readString(catalogMatch?.norwegianSupplier) || null,
-        catalogDescription: readString(catalogMatch?.description) || null,
-        catalogSpecifications,
-        imageSource:
-          imageEnvelope?.source || readString(settings.imageSource) || null,
-        specifications: settings.specifications ?? {},
-        recommendedMemoryCards,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-      });
-    }
-
-    res.json(inventory);
-  } catch (error) {
-    console.error("Equipment inventory list error:", error);
-    res.status(500).json({ error: "Failed to load equipment inventory" });
-  }
-});
-
-app.get("/api/equipment/maintenance-schedule", async (req, res) => {
-  try {
-    const userId = readString(req.query.userId) || "";
-    const profession = readString(req.query.profession);
-
-    if (!userId && !profession) {
-      res.json([]);
-      return;
-    }
-
-    const equipmentConditions = [];
-    if (userId) {
-      equipmentConditions.push(eq(schema.userEquipment.userId, userId));
-    }
-    if (profession) {
-      equipmentConditions.push(eq(schema.userEquipment.userType, profession));
-    }
-
-    const equipmentRows = await db
-      .select()
-      .from(schema.userEquipment)
-      .where(
-        equipmentConditions.length ? and(...equipmentConditions) : sql`true`,
-      );
-
-    const equipmentMap = new Map<string, EquipmentRow>();
-    const equipmentIds = equipmentRows.map((item) => {
-      const key = String(item.id);
-      equipmentMap.set(key, item);
-      return key;
-    });
-
-    if (profession && equipmentIds.length === 0) {
-      res.json([]);
-      return;
-    }
-
-    const maintenanceConditions = [];
-    if (userId) {
-      maintenanceConditions.push(eq(schema.equipmentMaintenance.userId, userId));
-    }
-    if (profession && equipmentIds.length > 0) {
-      maintenanceConditions.push(
-        inArray(schema.equipmentMaintenance.equipmentId, equipmentIds),
-      );
-    }
-
-    if (maintenanceConditions.length === 0) {
-      res.json([]);
-      return;
-    }
-
-    const rows = await db
-      .select()
-      .from(schema.equipmentMaintenance)
-      .where(and(...maintenanceConditions))
-      .orderBy(desc(schema.equipmentMaintenance.createdAt));
-
-    const data = rows.map((row) => {
-      const mapped = mapMaintenanceRow(row, equipmentMap);
-      return {
-        id: row.id,
-        equipmentId: row.equipmentId,
-        equipmentName: mapped.equipmentName,
-        maintenanceType: row.maintenanceType,
-        description: mapped.title || row.description,
-        serviceProvider: row.serviceProvider || "",
-        warrantyExtended: Boolean(row.warrantyExtended),
-        serviceNotes: row.serviceNotes || "",
-        scheduledDate: toIsoString(row.scheduledDate) || mapped.scheduledDate,
-        completedDate: toIsoString(row.completedDate),
-        nextScheduledDate: toIsoString(row.nextScheduledDate),
-        cost: row.cost,
-        status: mapped.status,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-      };
-    });
-
-    res.json(data);
-  } catch (error) {
-    console.error("Equipment maintenance schedule error:", error);
-    res.status(500).json({ error: "Failed to load maintenance schedule" });
-  }
-});
-
-app.get("/api/equipment/rentals", async (req, res) => {
-  try {
-    const userId = readString(req.query.userId) || "";
-    const profession = readString(req.query.profession);
-
-    if (!userId && !profession) {
-      res.json([]);
-      return;
-    }
-
-    const equipmentConditions = [];
-    if (userId) {
-      equipmentConditions.push(eq(schema.userEquipment.userId, userId));
-    }
-    if (profession) {
-      equipmentConditions.push(eq(schema.userEquipment.userType, profession));
-    }
-
-    const equipmentRows = await db
-      .select({
-        id: schema.userEquipment.id,
-        brand: schema.userEquipment.brand,
-        model: schema.userEquipment.model,
-      })
-      .from(schema.userEquipment)
-      .where(
-        equipmentConditions.length ? and(...equipmentConditions) : sql`true`,
-      );
-
-    const equipmentMap = new Map(
-      equipmentRows.map((row) => [
-        String(row.id),
-        `${row.brand} ${row.model}`.trim(),
-      ]),
-    );
-    const equipmentIds = equipmentRows
-      .map((row) => row.id)
-      .filter((id): id is number => typeof id === "number" && Number.isFinite(id));
-
-    if (profession && equipmentIds.length === 0) {
-      res.json([]);
-      return;
-    }
-
-    const rentalConditions = [];
-    if (userId) {
-      rentalConditions.push(eq(schema.equipmentRentals.userId, userId));
-    }
-    if (profession && equipmentIds.length > 0) {
-      rentalConditions.push(
-        inArray(schema.equipmentRentals.equipmentId, equipmentIds),
-      );
-    }
-
-    if (rentalConditions.length === 0) {
-      res.json([]);
-      return;
-    }
-
-    const rows = await db
-      .select()
-      .from(schema.equipmentRentals)
-      .where(and(...rentalConditions))
-      .orderBy(desc(schema.equipmentRentals.rentalStartDate));
-
-    const data = rows.map((row) => ({
-      id: row.id,
-      equipmentId: row.equipmentId,
-      equipmentName:
-        equipmentMap.get(String(row.equipmentId || "")) || "Ukjent utstyr",
-      rentalCompany: row.rentalCompany || "",
-      rentalStartDate:
-        toIsoString(row.rentalStartDate) || new Date().toISOString(),
-      rentalEndDate: toIsoString(row.rentalEndDate) || new Date().toISOString(),
-      rentalCost: row.rentalCost,
-      projectId: row.projectId,
-      clientName: row.clientName || "",
-      status: row.status || "active",
-      returnCondition: row.returnCondition,
-      lateFees: row.lateFees,
-      rentalAgreementUrl: row.rentalAgreementUrl,
-      damageNotes: row.damageNotes,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    }));
-
-    res.json(data);
-  } catch (error) {
-    console.error("Equipment rentals error:", error);
-    res.status(500).json({ error: "Failed to load equipment rentals" });
-  }
-});
-
-app.get("/api/equipment/images", async (req, res) => {
-  try {
-    const userId = readString(req.query.userId) || "";
-    const profession = readString(req.query.profession);
-
-    if (!userId && !profession) {
-      res.json([]);
-      return;
-    }
-
-    const equipmentConditions = [];
-    if (userId) {
-      equipmentConditions.push(eq(schema.userEquipment.userId, userId));
-    }
-    if (profession) {
-      equipmentConditions.push(eq(schema.userEquipment.userType, profession));
-    }
-
-    const equipmentRows = await db
-      .select({
-        id: schema.userEquipment.id,
-        userId: schema.userEquipment.userId,
-        brand: schema.userEquipment.brand,
-        model: schema.userEquipment.model,
-        category: schema.userEquipment.category,
-        imageUrl: schema.userEquipment.imageUrl,
-        settings: schema.userEquipment.settings,
-        createdAt: schema.userEquipment.createdAt,
-        updatedAt: schema.userEquipment.updatedAt,
-      })
-      .from(schema.userEquipment)
-      .where(
-        equipmentConditions.length ? and(...equipmentConditions) : sql`true`,
-      );
-
-    if (equipmentRows.length === 0) {
-      res.json([]);
-      return;
-    }
-
-    const attachments = buildEquipmentImageAttachmentMap(
-      await loadEquipmentImageAttachments(
-        equipmentRows.map((row) => Number(row.id)),
-      ),
-    );
-
-    const data = [];
-    for (const row of equipmentRows) {
-      const equipmentTarget: EquipmentImageTarget = {
-        id: Number(row.id),
-        userId: row.userId,
-        brand: row.brand,
-        model: row.model,
-        category: row.category,
-        imageUrl: row.imageUrl,
-        settings: row.settings,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-      };
-      const attachment = attachments.get(Number(row.id));
-      const imageEnvelope = await ensureEquipmentImageEnvelope(
-        equipmentTarget,
-        attachment,
-      );
-      if (!imageEnvelope) {
-        continue;
-      }
-
-      data.push({
-        id: attachment?.id || row.id,
-        equipmentId: row.id,
-        equipmentName: `${row.brand} ${row.model}`.trim(),
-        brand: row.brand,
-        model: row.model,
-        category: row.category,
-        imageUrl: imageEnvelope.imageUrl,
-        officialUrl: imageEnvelope.officialUrl,
-        imageType: imageEnvelope.source === "official_norwegian" ? "official" : "equipment",
-        description: imageEnvelope.description,
-        isPrimary: true,
-        isOfficial: imageEnvelope.source === "official_norwegian",
-        verified: imageEnvelope.source === "official_norwegian",
-        source: imageEnvelope.source,
-        createdAt: imageEnvelope.createdAt,
-        updatedAt: imageEnvelope.updatedAt,
-      });
-    }
-
-    res.json(data);
-  } catch (error) {
-    console.error("Equipment images error:", error);
-    res.status(500).json({ error: "Failed to load equipment images" });
-  }
-});
-
-app.post("/api/equipment/inventory", async (req, res) => {
-  try {
-    const {
-      userId,
-      profession,
-      name,
-      brand,
-      model,
-      category,
-      imageUrl,
-      specifications,
-      status,
-      condition,
-    } = req.body || {};
-
-    if (!userId || !brand || !model) {
-      res.status(400).json({ error: "Missing required fields" });
-      return;
-    }
-
-    const mergedSettings = {
-      name: typeof name === "string" ? name : `${brand} ${model}`,
-      imageUrl: typeof imageUrl === "string" ? imageUrl : null,
-      specifications:
-        specifications && typeof specifications === "object"
-          ? specifications
-          : {},
-      status: typeof status === "string" ? status : "available",
-      condition:
-        typeof condition === "string"
-          ? condition
-          : typeof status === "string"
-            ? status
-            : "available",
-    };
-
-    const [inserted] = await db
-      .insert(schema.userEquipment)
-      .values({
-        userId,
-        userType: typeof profession === "string" ? profession : null,
-        brand,
-        model,
-        category: typeof category === "string" ? category : null,
-        imageUrl: typeof imageUrl === "string" ? imageUrl : null,
-        condition:
-          typeof condition === "string"
-            ? condition
-            : typeof status === "string"
-              ? status
-              : "available",
-        settings: mergedSettings,
-      })
-      .returning();
-
-    const insertedTarget: EquipmentImageTarget = {
-      id: Number(inserted.id),
-      userId: inserted.userId,
-      brand: inserted.brand,
-      model: inserted.model,
-      category: inserted.category,
-      imageUrl: inserted.imageUrl,
-      settings: inserted.settings,
-      createdAt: inserted.createdAt,
-      updatedAt: inserted.updatedAt,
-    };
-    const imageEnvelope = await ensureEquipmentImageEnvelope(insertedTarget);
-    const catalog = await loadUnifiedEquipmentCatalog();
-    const catalogMatch = matchInventoryEquipmentCatalogItem(catalog, insertedTarget);
-    const officialCatalogFallback = catalogMatch
-      ? await resolveOfficialCatalogFallback(catalogMatch)
-      : null;
-    const supplierUrl =
-      imageEnvelope?.officialUrl ||
-      readString(officialCatalogFallback?.productUrl) ||
-      readString(catalogMatch?.productUrl) ||
-      null;
-    const recommendedMemoryCards = buildInventoryRecommendedMemoryCards(catalogMatch);
-    const catalogSpecifications = catalogMatch?.specifications || null;
-    const catalogImageUrl =
-      readString(catalogMatch?.imageUrl) ||
-      readString(officialCatalogFallback?.imageUrl) ||
-      null;
-
-    res.status(201).json({
-      id: inserted.id,
-      userId: inserted.userId,
-      profession: inserted.userType,
-      name: mergedSettings.name,
-      brand: inserted.brand,
-      model: inserted.model,
-      category: inserted.category,
-      status: mergedSettings.status,
-      condition: mergedSettings.condition,
-      imageUrl: imageEnvelope?.imageUrl || mergedSettings.imageUrl || catalogImageUrl,
-      supplierUrl,
-      purchaseVendor:
-        supplierUrl && supplierUrl.includes("foto.no")
-          ? "Foto.no"
-          : supplierUrl
-            ? null
-            : readString(catalogMatch?.norwegianSupplier) || null,
-      catalogDescription: readString(catalogMatch?.description) || null,
-      catalogSpecifications,
-      imageSource: imageEnvelope?.source || null,
-      specifications: mergedSettings.specifications,
-      recommendedMemoryCards,
-      createdAt: inserted.createdAt,
-      updatedAt: inserted.updatedAt,
-    });
-  } catch (error) {
-    console.error("Equipment inventory create error:", error);
-    res.status(500).json({ error: "Failed to create inventory item" });
-  }
-});
-
-app.post("/api/equipment/sync-firmware", async (req, res) => {
-  try {
-    const userId =
-      typeof req.body?.userId === "string"
-        ? req.body.userId
-        : typeof req.query.userId === "string"
-          ? req.query.userId
-          : null;
-    const profession =
-      typeof req.body?.profession === "string"
-        ? req.body.profession
-        : typeof req.query.profession === "string"
-          ? req.query.profession
-          : null;
-
-    const firmwareCandidates = await loadFirmwareSeedCandidates(null, {
-      userId,
-      profession,
-    });
-    const firmwareSync = await ensureFirmwareRowsForCameras(firmwareCandidates, {
-      liveRefresh: true,
-    });
-    const updates = await loadFirmwareUpdates(userId, profession);
-    const devices = await loadFirmwareDevices(userId, profession);
-    const history = await loadFirmwareHistory(userId, profession);
-
-    res.json({
-      success: true,
-      checkedAt: new Date().toISOString(),
-      updates,
-      devices,
-      history,
-      updatesCount: updates.length,
-      firmwareSync,
-    });
-  } catch (error) {
-    console.error("Firmware sync compatibility endpoint error:", error);
-    res.status(500).json({ error: "Failed to sync firmware updates" });
-  }
-});
+// /api/equipment/{software,firmware,inventory,maintenance-schedule,rentals,images,sync-firmware} — ekstraktert til ./equipment-firmware-routes.ts.
 
 // ── Dev Compatibility APIs (legacy frontend paths) ────────────────────────
 // These lightweight routes keep older frontend modules functional in local dev.
@@ -17948,6 +16324,13 @@ setupAdminAiCitationRoutes({
 
 // ── Newsletter signups for theroleroom.com — public POST + admin stats
 setupRoleRoomNewsletterRoutes({
+  app,
+  pool,
+  requireAdminRoomAccess,
+});
+
+// ── PR 12: Newsletter Studio fra konkurrent-rapport (rapport → Weekly Brief draft)
+setupNewsletterFromReportRoutes({
   app,
   pool,
   requireAdminRoomAccess,
@@ -21665,7 +20048,7 @@ function generateSpectrum(bins: number, seed: number) {
   });
 }
 
-type EquipmentRow = typeof schema.userEquipment.$inferSelect;
+export type EquipmentRow = typeof schema.userEquipment.$inferSelect;
 type MaintenanceRow = typeof schema.equipmentMaintenance.$inferSelect;
 
 type MaintenanceMetadata = {
@@ -24260,199 +22643,7 @@ app.get("/api/google-workspace/storage/:userId", async (req, res) => {
 });
 
 
-app.get("/api/backup/status", async (req, res) => {
-  try {
-    const userId =
-      readString(req.query.userId) ||
-      readString(req.headers["x-user-id"]) ||
-      "guest";
-    const status = await readGoogleWorkspaceBackupStatus(userId);
-    res.json(status);
-  } catch (error) {
-    console.error("Error fetching backup status:", error);
-    res.status(500).json({ error: "Could not fetch backup status" });
-  }
-});
-
-app.post("/api/backup/create", async (req, res) => {
-  try {
-    const userId =
-      readString(req.body?.userId) ||
-      readString(req.headers["x-user-id"]) ||
-      "guest";
-    if (userId === "guest") {
-      return res
-        .status(400)
-        .json({ error: "Bruker-ID kreves for å opprette backup." });
-    }
-
-    const profession = readString(req.body?.profession) || "general";
-    const projectId = readString(req.body?.projectId);
-    const projectName = readString(req.body?.projectName);
-    const customerId = readString(req.body?.customerId);
-    const customerName = readString(req.body?.customerName);
-    const companyName = readString(req.body?.companyName);
-
-    const preferredOauthApps = derivePreferredGoogleWorkspaceOauthApps(req);
-    const storageSnapshot = await buildGoogleWorkspaceStorageSnapshot(
-      userId,
-      preferredOauthApps,
-    );
-    if (!storageSnapshot.googleDriveConnected) {
-      return res.status(409).json({
-        error:
-          "Google Workspace må være koblet til før backup kan lagres i Google Drive.",
-      });
-    }
-
-    const [contactsSnapshot, photosSnapshot, existingBackupStatus] =
-      await Promise.all([
-        buildGoogleContactsStatusSnapshot(userId, preferredOauthApps),
-        buildGooglePhotosStatusSnapshot(),
-        readGoogleWorkspaceBackupStatus(userId),
-      ]);
-
-    const backupCreatedAt = new Date().toISOString();
-    const backupManifest = {
-      version: 1,
-      createdAt: backupCreatedAt,
-      userId,
-      profession,
-      project: {
-        projectId,
-        projectName,
-        customerId,
-        customerName,
-        companyName,
-      },
-      previousBackup: existingBackupStatus.available
-        ? existingBackupStatus
-        : null,
-      workspace: {
-        storage: storageSnapshot,
-        contacts: contactsSnapshot,
-        photos: photosSnapshot,
-      },
-    };
-
-    const authorized = await resolveRoleRoomGoogleConnection(pool, userId, {
-      preferredOauthApps,
-    });
-    const driveApi = google.drive({
-      version: "v3",
-      auth: authorized.oauthClient,
-    });
-    const backupFolder = await ensureGoogleDriveBackupFolder(driveApi);
-    const timestampToken = backupCreatedAt.replace(/[:.]/g, "-");
-    const professionToken = sanitizeBackupFileSegment(profession, "workspace");
-    const projectToken = sanitizeBackupFileSegment(projectName, "general");
-    const backupFileName = `${professionToken}-${projectToken}-backup-${timestampToken}.json`;
-    const serializedManifest = JSON.stringify(backupManifest, null, 2);
-
-    const driveFile = await driveApi.files.create({
-      requestBody: {
-        name: backupFileName,
-        parents: [backupFolder.id],
-        description: [
-          "CreatorHub Google Workspace backup",
-          projectName || null,
-          customerName || companyName || null,
-        ]
-          .filter(Boolean)
-          .join(" • "),
-      },
-      media: {
-        mimeType: "application/json",
-        body: Readable.from([serializedManifest]),
-      },
-      supportsAllDrives: true,
-      fields: "id,name,webViewLink,modifiedTime,size",
-    });
-
-    const backupDirectory = await ensureGoogleWorkspaceBackupDir(userId);
-    const latestPath = getGoogleWorkspaceLatestBackupPath(userId);
-    const latestMetaPath = getGoogleWorkspaceLatestBackupMetaPath(userId);
-    const versionedPath = path.join(backupDirectory, backupFileName);
-
-    await Promise.all([
-      fs.writeFile(versionedPath, serializedManifest, "utf8"),
-      fs.writeFile(latestPath, serializedManifest, "utf8"),
-      fs.writeFile(
-        latestMetaPath,
-        JSON.stringify(
-          {
-            createdAt: backupCreatedAt,
-            fileName: backupFileName,
-            driveFileId: readString(driveFile.data.id),
-            driveWebViewLink: readString(driveFile.data.webViewLink),
-            profession,
-            projectId,
-            projectName,
-            customerId,
-            customerName,
-            companyName,
-          },
-          null,
-          2,
-        ),
-        "utf8",
-      ),
-    ]);
-
-    return res.status(201).json({
-      success: true,
-      createdAt: backupCreatedAt,
-      fileName: backupFileName,
-      localPath: versionedPath,
-      driveFolderId: backupFolder.id,
-      driveFolderName: backupFolder.name,
-      driveFolderWebViewLink: backupFolder.webViewLink,
-      driveFileId: readString(driveFile.data.id),
-      driveFileWebViewLink: readString(driveFile.data.webViewLink),
-      downloadUrl: `/api/backup/download/latest?userId=${encodeURIComponent(userId)}`,
-    });
-  } catch (error) {
-    console.error("Error creating Google Workspace backup:", error);
-    res.status(500).json({
-      error:
-        error instanceof Error
-          ? error.message
-          : "Could not create Google Workspace backup",
-    });
-  }
-});
-
-app.get("/api/backup/download/latest", async (req, res) => {
-  try {
-    const userId =
-      readString(req.query.userId) ||
-      readString(req.headers["x-user-id"]) ||
-      "guest";
-    if (userId === "guest") {
-      return res
-        .status(400)
-        .json({ error: "Bruker-ID kreves for å laste ned backup." });
-    }
-
-    const latestPath = getGoogleWorkspaceLatestBackupPath(userId);
-    const status = await readGoogleWorkspaceBackupStatus(userId);
-    if (!existsSync(latestPath) || !status.available) {
-      return res
-        .status(404)
-        .json({ error: "Fant ingen lagret backup for denne brukeren." });
-    }
-
-    const payload = await fs.readFile(latestPath, "utf8");
-    const fileName =
-      status.fileName || `creatorhub-google-workspace-backup-${userId}.json`;
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-    return res.send(payload);
-  } catch (error) {
-    console.error("Error downloading latest backup:", error);
-    res.status(500).json({ error: "Could not download latest backup" });
-  }
-});
+// /api/backup/* — ekstraktert til ./backup-routes.ts via setupBackupRoutes.
 
 
 app.post("/api/platform/billing/checkout-session", async (req, res) => {
@@ -25824,6 +24015,19 @@ setupRoleRoomPartnershipsRoutes({
   pool,
   getActiveSession: getActiveSessionFromRequest,
 });
+// Self-Tape Studio — Fase A (migrate 234-236).
+// docs/specs/SELF_TAPE_STUDIO_SPEC.md
+setupTalentSelftapesRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// Candidate-status PATCH med partnership-callback til byrå (Phase 9.6).
+setupRoleRoomCandidateStatusRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
 // B2B2Talent Phase 2 — alt-i-ett partners-overview + bulk-set + invite-flow.
 // Migrasjon 213 (talent_partner_invites). E2E-data for /talents/partners-siden.
 setupRoleRoomTalentPartnersRoutes({
@@ -25849,6 +24053,20 @@ setupRoleRoomTalentGdprRoutes({
 //   16 endpoints: instagram (10) + facebook (6) inkl. OAuth, publish,
 //   webhooks, deauthorize, data-deletion.
 setupRoleRoomSocialMetaRoutes({ app, pool, requireAdminSession, isCompatAdminFeatureEnabled });
+
+// Instagram Direct-message inbox (unified social inbox in the CRM / Agent / Admin Room).
+setupRoleRoomIgMessagingRoutes({ app, pool, requireAdminSession });
+
+// Producer-facing Meta Lead Ads retrieval + retargeting segments.
+setupRoleRoomLeadsProducerRoutes({ app, pool, requireAdminSession });
+// Producer-facing social listening (who's talking about the client / Page mentions).
+setupRoleRoomMentionsProducerRoutes({ app, pool, requireAdminSession });
+// Producer-facing discovery/research (hashtag + IG profile + FB page lookup).
+setupRoleRoomDiscoveryProducerRoutes({ app, pool, requireAdminSession });
+// Producer-facing Page CTA button ('Book nå' etc. for lead capture).
+setupRoleRoomCtaProducerRoutes({ app, pool, requireAdminSession });
+// Producer-facing Instagram events (RSVP-driven lead source).
+setupRoleRoomEventsProducerRoutes({ app, pool, requireAdminSession });
 
 // ── Role Room social (non-Meta) — flyttet til ./role-room-social-routes.ts
 //   16 endpoints: linkedin, youtube, tiktok, og generelle /social/*.
@@ -31574,6 +29792,17 @@ setupDitBackupRoutes({
   app,
   pool,
   requireAdminSession,
+  requireUserSession,
+});
+
+// ── Storage-providers (B2 offsite-backup) ──────────────────────
+//   Per-bruker AES-256-GCM-krypterte Backblaze-creds. Brukt av
+//   One Desk's b2_uploader-modul via with-creds-endepunktet (kun
+//   tilgjengelig med Bearer helper-token).
+setupStorageProvidersRoutes({
+  app,
+  pool,
+  requireUserSession,
 });
 
 // ── Casting auth-middleware (F4 wiring) ───────────────────────────────
@@ -31665,6 +29894,7 @@ setupCastingManuscriptsRoutes({
   manuscriptsService,
   revisionsService: manuscriptRevisionsService,
 });
+setupRoleRoomCallSheetRoutes({ app, requireUserSession });
 
 // ── AI Suggestion System — substrate-routes for forslag generert av
 //   registrerte agenter. 4 endpoints: list / generate / accept / reject.
@@ -31963,6 +30193,12 @@ setupLeadsRetrievalRoutes({ app, requireAdminOrDemoBypass });
 // Meta App Review demo for instagram_manage_events — IG events CRUD.
 setupIgEventsRoutes({ app, requireAdminOrDemoBypass });
 
+// Meta App Review demo for instagram_business_basic — connected IG profile read.
+setupIgBusinessBasicRoutes({ app, requireAdminOrDemoBypass });
+
+// Meta App Review demo for pages_show_list — account-picker Page list.
+setupPagesShowListRoutes({ app, requireAdminOrDemoBypass });
+
 // Meta App Review demo INDEX — one URL surfacing all 9 demos.
 setupMetaReviewIndexRoutes({ app, requireAdminOrDemoBypass });
 
@@ -31981,6 +30217,30 @@ setupMarketingCompetitorsRoutes({ app, pool, requireAdminOrDemoBypass });
 // for any that haven't been snapshotted in 24h. Starts 60s after boot so the
 // server is fully ready first.
 startCompetitorSnapshotWorker(pool);
+
+// Post-drafts — AI-skrevet post-utkast fra rapport-insights + publish-bro.
+setupPostDraftsRoutes({ app, pool, requireAdminOrDemoBypass });
+
+// PR 11: Auto-publish scheduler — drafts med suggested_publish_time +
+// auto_publish_enabled trigges automatisk hvert 60s. Self-HTTP til
+// publish-bro så vi gjenbruker hele platform-routingen.
+setupAutoPublishSchedulerRoutes({ app, pool, requireAdminOrDemoBypass });
+startAutoPublishScheduler({ pool });
+
+// Brand-metrics — daglige snapshots av The Role Rooms FB+IG metrics for
+// å gi AI-rapporten "vår tilstand"-input → kpiTargets.
+setupBrandMetricsRoutes({ app, pool, requireAdminOrDemoBypass });
+startBrandMetricsWorker(pool);
+
+// Weekly competitor-report-mailer — Monday 08:00 Europe/Oslo, sends report
+// via Resend to MARKETING_REPORT_RECIPIENTS env-var (default daniel@).
+setupReportSchedulerRoutes({ app, pool, requireAdminOrDemoBypass });
+startCompetitorReportScheduler({ pool });
+
+// Post-engagement-tracking — poll Meta Insights for publiserte FB-drafts
+// med tette-til-glesnere intervall (1h/6h/24h/3d/7d/14d/30d).
+setupPostEngagementRoutes({ app, pool, requireAdminOrDemoBypass });
+startPostEngagementWorker(pool);
 
 // App Review demo: inbox-API for incoming WhatsApp-meldinger.
 // Brukes av Playwright-recordingen for å demonstrere send+receive-
@@ -33490,28 +31750,28 @@ async function ensureInviteRequestAccessProvisioning(
   };
 }
 
-type AcademyPresentationScope = "course" | "skill";
-type AcademyPresentationTemplateId =
+export type AcademyPresentationScope = "course" | "skill";
+export type AcademyPresentationTemplateId =
   | "product-overview"
   | "walkthrough"
   | "onboarding-flow"
   | "feature-explainer"
   | "training-deep-dive";
-type AcademyPresentationVisualThemeId =
+export type AcademyPresentationVisualThemeId =
   | "neutral-modern"
   | "sales-command"
   | "operations-grid"
   | "offshore-briefing";
-type AcademyPresentationDisplayMode =
+export type AcademyPresentationDisplayMode =
   | "picture-in-picture"
   | "side-panel"
   | "split-screen"
   | "full-frame";
-type AcademyPresentationSplitLayoutVariant =
+export type AcademyPresentationSplitLayoutVariant =
   | "balanced"
   | "presenter-focus"
   | "slide-focus";
-type AcademyPresentationVisualType =
+export type AcademyPresentationVisualType =
   | "title"
   | "agenda"
   | "problem"
@@ -33538,7 +31798,7 @@ type AcademyPresentationGraphicKind =
   | "shape"
   | "badge";
 
-interface AcademyPresentationDesignSlideInput {
+export interface AcademyPresentationDesignSlideInput {
   id: string;
   title: string;
   startTime: number;
@@ -33559,7 +31819,7 @@ interface AcademyPresentationDesignGraphicSlot {
   height: number;
 }
 
-interface AcademyPresentationDesignSlidePlan {
+export interface AcademyPresentationDesignSlidePlan {
   slideId: string;
   visualType: AcademyPresentationVisualType;
   grammarId: SharedAcademyPresentationSlideGrammarId;
@@ -34686,9 +32946,9 @@ interface AcademyPresentationLlmPlanResult {
   retrievalMeta: AcademyPresentationTemplateMemoryMeta;
 }
 
-type AcademyPresentationTemplateMemoryKind = "deck" | "brand-kit" | "preset";
+export type AcademyPresentationTemplateMemoryKind = "deck" | "brand-kit" | "preset";
 
-interface AcademyPresentationTemplateMemoryItem {
+export interface AcademyPresentationTemplateMemoryItem {
   id: string;
   kind: AcademyPresentationTemplateMemoryKind;
   name: string;
@@ -34701,7 +32961,7 @@ interface AcademyPresentationTemplateMemoryItem {
   brandName: string;
 }
 
-interface AcademyPresentationTemplateMemoryMatch {
+export interface AcademyPresentationTemplateMemoryMatch {
   id: string;
   kind: AcademyPresentationTemplateMemoryKind;
   name: string;
@@ -34717,7 +32977,7 @@ interface AcademyPresentationTemplateMemoryMatch {
   rerankScore: number | null;
 }
 
-interface AcademyPresentationTemplateMemoryMeta {
+export interface AcademyPresentationTemplateMemoryMeta {
   provider: "lexical" | "huggingface";
   embeddingModel?: string;
   rerankerModel?: string;
@@ -34725,7 +32985,7 @@ interface AcademyPresentationTemplateMemoryMeta {
   matchedCount: number;
 }
 
-interface AcademyPresentationBrandContext {
+export interface AcademyPresentationBrandContext {
   name: string;
   primary: string;
   secondary: string;
@@ -34749,7 +33009,7 @@ type AcademyPresentationCritiqueCategory =
   | "narrative"
   | "brand";
 
-interface AcademyPresentationCritiqueFinding {
+export interface AcademyPresentationCritiqueFinding {
   id: string;
   slideId?: string;
   severity: AcademyPresentationCritiqueSeverity;
@@ -34763,7 +33023,7 @@ interface AcademyPresentationCritiqueFinding {
   confidence: number;
 }
 
-interface AcademyPresentationCritiqueSlideInput {
+export interface AcademyPresentationCritiqueSlideInput {
   slideId: string;
   title: string;
   visualType: AcademyPresentationVisualType;
@@ -34775,7 +33035,7 @@ interface AcademyPresentationCritiqueSlideInput {
   visualNeeds: SharedAcademyPresentationVisualNeed[];
 }
 
-interface AcademyPresentationCritiqueResult {
+export interface AcademyPresentationCritiqueResult {
   provider: "huggingface" | "heuristic";
   model: string;
   overall: number;
@@ -35718,274 +33978,6 @@ const academyPresentationTryLlmDesignPlan = async (
   return null;
 };
 
-app.post("/api/academy/presentation/design-plan", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "instructor"))) {
-      return;
-    }
-    const body = academyPresentationIsRecord(req.body) ? req.body : {};
-    const scope: AcademyPresentationScope =
-      readString(body.scope) === "skill" ? "skill" : "course";
-    const courseId = String(readString(body.courseId) || "");
-    const lessonId = String(readString(body.lessonId) || "");
-    const projectTemplateId = String(
-      readString(body.projectTemplateId) || "",
-    ).toLowerCase();
-    const useNorwegian = readBoolean(body.useNorwegian) === true;
-    const deckName = String(readString(body.deckName) || "").trim();
-    const requestedTemplate = academyPresentationNormalizeTemplateId(
-      body.deckTemplate,
-    );
-    const requestedTheme = academyPresentationNormalizeThemeId(
-      body.deckVisualThemeId,
-    );
-    const templateMemory = Array.isArray(body.templateMemory)
-      ? body.templateMemory
-          .map((entry, index) =>
-            academyPresentationNormalizeTemplateMemoryItem(entry, index),
-          )
-          .filter((entry): entry is AcademyPresentationTemplateMemoryItem =>
-            Boolean(entry),
-          )
-          .slice(0, 80)
-      : [];
-    const brandContext = academyPresentationNormalizeBrandContext(
-      body.brandContext,
-    );
-    const repairFocus = Array.isArray(body.repairFocus)
-      ? body.repairFocus
-          .map((entry) =>
-            String(readString(entry) || "")
-              .trim()
-              .slice(0, 220),
-          )
-          .filter(Boolean)
-          .slice(0, 12)
-      : [];
-
-    const slides = Array.isArray(body.slides)
-      ? body.slides
-          .map((entry, index) =>
-            academyPresentationNormalizeSlideInput(entry, index),
-          )
-          .filter((entry): entry is AcademyPresentationDesignSlideInput =>
-            Boolean(entry),
-          )
-      : [];
-
-    if (slides.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "slides is required",
-      });
-    }
-
-    const projectTemplate =
-      ACADEMY_PRESENTATION_PROJECT_TO_TEMPLATE[projectTemplateId];
-    const inferredTemplate = academyPresentationInferTemplateFromSlides(slides);
-    const recommendedTemplateId =
-      projectTemplate || requestedTemplate || inferredTemplate || "walkthrough";
-    const recommendedVisualThemeId =
-      ACADEMY_PRESENTATION_PROJECT_TO_THEME[projectTemplateId] ||
-      requestedTheme ||
-      academyPresentationInferThemeFromTemplate(recommendedTemplateId);
-    const templatePreset =
-      ACADEMY_PRESENTATION_TEMPLATE_PRESETS[recommendedTemplateId];
-
-    const visualCounts: Record<AcademyPresentationVisualType, number> = {
-      title: 0,
-      agenda: 0,
-      problem: 0,
-      solution: 0,
-      feature: 0,
-      process: 0,
-      kpi: 0,
-      timeline: 0,
-      roadmap: 0,
-      architecture: 0,
-      scenario: 0,
-      "knowledge-check": 0,
-      comparison: 0,
-      demo: 0,
-      quote: 0,
-      cta: 0,
-      summary: 0,
-    };
-    const layoutCounts: Record<AcademyPresentationDisplayMode, number> = {
-      "picture-in-picture": 0,
-      "side-panel": 0,
-      "split-screen": 0,
-      "full-frame": 0,
-    };
-
-    const slidePlans: AcademyPresentationDesignSlidePlan[] = slides.map(
-      (slide, index) => {
-        const bodyLines = academyPresentationBuildBodyLines(
-          slide,
-          useNorwegian,
-        );
-        const classification = academyPresentationInferVisualType(
-          `${slide.title} ${bodyLines.join(" ")} ${slide.speakerNotes}`,
-          index,
-          slides.length,
-        );
-        const visualType = classification.type;
-        visualCounts[visualType] += 1;
-        const intentTags = [
-          visualType,
-          recommendedTemplateId,
-          recommendedVisualThemeId,
-        ];
-        const reasons = [
-          classification.reason,
-          `slide ${index + 1}/${slides.length}`,
-          `duration ${Math.round(slide.duration)}s`,
-        ];
-        const slidePlan = academyPresentationBuildSlidePlan({
-          slide,
-          index,
-          totalSlides: slides.length,
-          useNorwegian,
-          visualType,
-          confidence: classification.score,
-          reasons,
-          intentTags,
-        });
-        layoutCounts[slidePlan.recommendedLayout] += 1;
-        slidePlan.intentTags = [
-          ...slidePlan.intentTags,
-          slidePlan.recommendedLayout,
-        ];
-        return slidePlan;
-      },
-    );
-
-    let heuristicRecommendedDisplayMode: AcademyPresentationDisplayMode =
-      templatePreset.defaultMode;
-    let bestLayoutScore = -1;
-    (Object.keys(layoutCounts) as AcademyPresentationDisplayMode[]).forEach(
-      (layout) => {
-        const score = layoutCounts[layout];
-        if (score > bestLayoutScore) {
-          bestLayoutScore = score;
-          heuristicRecommendedDisplayMode = layout;
-        }
-      },
-    );
-
-    let finalTemplateId = recommendedTemplateId;
-    let finalVisualThemeId = recommendedVisualThemeId;
-    let finalDisplayMode = heuristicRecommendedDisplayMode;
-    let finalSplitLayoutVariant =
-      ACADEMY_PRESENTATION_THEME_TO_SPLIT_VARIANT[recommendedVisualThemeId] ||
-      templatePreset.splitLayoutVariant;
-    let finalSlides = slidePlans;
-    let generatedBy = "academy-design-plan-grammar-engine-v2";
-    let generatedModel = "";
-    let generatedProvider: "huggingface" | "openai" | "rule-engine" =
-      "rule-engine";
-    const localTemplateMemoryContext =
-      await academyPresentationResolveTemplateMemoryMatches({
-        query: academyPresentationBuildTemplateMemoryQuery({
-          deckName,
-          projectTemplateId,
-          slides,
-        }),
-        items: templateMemory,
-      });
-    let templateMatches: AcademyPresentationTemplateMemoryMatch[] =
-      localTemplateMemoryContext.matches;
-    let retrievalMeta: AcademyPresentationTemplateMemoryMeta =
-      localTemplateMemoryContext.meta;
-
-    const llmPlan = await academyPresentationTryLlmDesignPlan({
-      scope,
-      courseId,
-      lessonId,
-      deckName,
-      projectTemplateId,
-      useNorwegian,
-      slides,
-      recommendedTemplateId: finalTemplateId,
-      recommendedVisualThemeId: finalVisualThemeId,
-      recommendedDisplayMode: finalDisplayMode,
-      recommendedSplitLayoutVariant: finalSplitLayoutVariant,
-      heuristicSlides: slidePlans,
-      templateMemory,
-      brandContext,
-      repairFocus,
-    });
-    if (llmPlan) {
-      finalTemplateId = llmPlan.recommendedTemplateId;
-      finalVisualThemeId = llmPlan.recommendedVisualThemeId;
-      finalDisplayMode = llmPlan.recommendedDisplayMode;
-      finalSplitLayoutVariant = llmPlan.recommendedSplitLayoutVariant;
-      finalSlides = llmPlan.slides;
-      generatedBy = "academy-design-plan-orchestrator-v2";
-      generatedModel = llmPlan.model;
-      generatedProvider = llmPlan.provider;
-      templateMatches = llmPlan.templateMatches;
-      retrievalMeta = llmPlan.retrievalMeta;
-    }
-
-    const grammarCounts = finalSlides.reduce(
-      (acc, slidePlan) => {
-        acc[slidePlan.grammarId] = (acc[slidePlan.grammarId] || 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>,
-    );
-    const repairActionsCount = finalSlides.reduce(
-      (acc, slidePlan) => acc + slidePlan.repairActions.length,
-      0,
-    );
-
-    const responsePayload = {
-      success: true,
-      data: {
-        scope,
-        courseId,
-        lessonId: scope === "skill" ? lessonId : "",
-        deckName,
-        recommendedTemplateId: finalTemplateId,
-        recommendedVisualThemeId: finalVisualThemeId,
-        recommendedDisplayMode: finalDisplayMode,
-        recommendedSplitLayoutVariant: finalSplitLayoutVariant,
-        summary: {
-          generatedBy,
-          provider: generatedProvider,
-          model: generatedModel || undefined,
-          slideCount: slides.length,
-          visualCounts,
-          grammarCounts,
-          repairActionsCount,
-          templateMemoryMatches: templateMatches,
-          retrievalMeta,
-          brandContextName: brandContext?.name || undefined,
-          pipeline: [
-            "brief-to-narrative",
-            "template-memory-retrieval",
-            "narrative-to-slide-plan",
-            "grammar-budget-repair",
-            "theme-token-apply",
-          ],
-        },
-        brandTokens: ACADEMY_PRESENTATION_THEME_TOKENS[finalVisualThemeId],
-        slides: finalSlides,
-        generatedAt: new Date().toISOString(),
-      },
-    };
-
-    return res.status(200).json(responsePayload);
-  } catch (error) {
-    console.error("Error generating academy presentation design plan:", error);
-    return res.status(500).json({
-      success: false,
-      error: "Could not generate presentation design plan",
-    });
-  }
-});
-
 const academyPresentationNormalizeCritiqueSeverity = (
   value: unknown,
 ): AcademyPresentationCritiqueSeverity =>
@@ -36848,91 +34840,6 @@ const academyPresentationTryHuggingFaceCritique = async (params: {
   return null;
 };
 
-app.post("/api/academy/presentation/critique", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "instructor"))) {
-      return;
-    }
-    const body = academyPresentationIsRecord(req.body) ? req.body : {};
-    const scope: AcademyPresentationScope =
-      readString(body.scope) === "skill" ? "skill" : "course";
-    const projectTemplateId = String(
-      readString(body.projectTemplateId) || "",
-    ).toLowerCase();
-    const useNorwegian = readBoolean(body.useNorwegian) === true;
-    const deckName =
-      String(readString(body.deckName) || "").trim() || "Presentation";
-    const brandContext = academyPresentationNormalizeBrandContext(
-      body.brandContext,
-    );
-    const slides = Array.isArray(body.slides)
-      ? body.slides
-          .map((entry, index) =>
-            academyPresentationNormalizeCritiqueSlideInput(entry, index),
-          )
-          .filter((entry): entry is AcademyPresentationCritiqueSlideInput =>
-            Boolean(entry),
-          )
-          .slice(0, 16)
-      : [];
-
-    if (slides.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "slides is required",
-      });
-    }
-
-    const heuristic = academyPresentationBuildHeuristicCritique({
-      slides,
-      useNorwegian,
-      brandContext,
-    });
-    const critique =
-      (await academyPresentationTryHuggingFaceCritique({
-        slides,
-        deckName,
-        scope,
-        projectTemplateId,
-        useNorwegian,
-        brandContext,
-        heuristic,
-      })) || heuristic;
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        scope,
-        deckName,
-        provider: critique.provider,
-        model: critique.model,
-        overall: critique.overall,
-        narrative: critique.narrative,
-        pedagogy: critique.pedagogy,
-        design: critique.design,
-        visuals: critique.visuals,
-        brand: critique.brand,
-        findings: critique.findings,
-        generatedAt: new Date().toISOString(),
-        pipeline:
-          critique.provider === "huggingface"
-            ? [
-                "heuristic-baseline",
-                "qwen-vl-critique",
-                "text-fallback-if-needed",
-              ]
-            : ["heuristic-baseline"],
-      },
-    });
-  } catch (error) {
-    console.error("Error generating academy presentation critique:", error);
-    return res.status(500).json({
-      success: false,
-      error: "Could not critique presentation deck",
-    });
-  }
-});
-
 type AcademyCurriculumFoundationQuestionId =
   | "competencyTopic"
   | "competencySubtype"
@@ -36948,7 +34855,7 @@ interface AcademyCurriculumFoundationQuestion {
   suggestions: string[];
 }
 
-interface AcademyCurriculumFoundationAnswer {
+export interface AcademyCurriculumFoundationAnswer {
   id: AcademyCurriculumFoundationQuestionId;
   question: string;
   answer: string;
@@ -37027,7 +34934,7 @@ interface AcademyCurriculumFoundationStudioSuggestions {
   annotations: AcademyCurriculumFoundationAnnotationSuggestion[];
 }
 
-interface AcademyCurriculumFoundationArchitecture {
+export interface AcademyCurriculumFoundationArchitecture {
   purpose: string;
   audience: string;
   transformation: string;
@@ -37050,7 +34957,7 @@ interface AcademyCurriculumFoundationRecommendation {
   architecture: AcademyCurriculumFoundationArchitecture;
 }
 
-type AcademyCurriculumIndustryProfileId =
+export type AcademyCurriculumIndustryProfileId =
   | "sales"
   | "production"
   | "offshore"
@@ -37088,7 +34995,7 @@ interface AcademyCurriculumFoundationSectionRationale {
   evidence: string;
 }
 
-interface AcademyCurriculumFoundationAssistantResult {
+export interface AcademyCurriculumFoundationAssistantResult {
   completed: boolean;
   totalQuestions: number;
   answeredCount: number;
@@ -37112,7 +35019,7 @@ type AcademyCurriculumFoundationDomainResolutionSource =
   | "lexical"
   | "heuristic";
 
-interface AcademyCurriculumFoundationTemplateMemoryItem {
+export interface AcademyCurriculumFoundationTemplateMemoryItem {
   id: string;
   name: string;
   sourceProjectTemplateId?: string;
@@ -42650,113 +40557,7 @@ const academyCurriculumTryQwenFoundationAssistant = async (params: {
   return null;
 };
 
-app.post("/api/academy/curriculum/foundation-assistant", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "instructor"))) {
-      return;
-    }
-    const body = academyPresentationIsRecord(req.body) ? req.body : {};
-    const useNorwegian = readBoolean(body.useNorwegian) === true;
-    const courseTitle = academyCurriculumTrimText(body.courseTitle, 220);
-    const provider = String(
-      readString(body.provider) ||
-        readString(process.env.ACADEMY_CURRICULUM_FOUNDATION_PROVIDER) ||
-        "auto",
-    )
-      .trim()
-      .toLowerCase();
-    const answers = academyCurriculumNormalizeAnswers(body.answers);
-    const manualIndustryProfile = (() => {
-      const normalized = academyCurriculumTrimText(
-        body.manualIndustryProfile,
-        64,
-      );
-      if (!normalized) return undefined;
-      const explicit = academyCurriculumNormalizeIndustryProfileId(normalized);
-      if (explicit) return explicit;
-      const inferred = academyCurriculumInferIndustryProfile(normalized);
-      return inferred === "generic" ? undefined : inferred;
-    })();
-    const templateMemory = academyCurriculumNormalizeTemplateMemory(
-      body.templateMemory,
-    );
-    const currentArchitecture = academyCurriculumNormalizeArchitecture(
-      body.currentArchitecture,
-    );
-    const currentArchitectureForGeneration =
-      academyCurriculumShouldResetCurrentArchitecture({
-        answers,
-        courseTitle,
-        currentArchitecture,
-      })
-        ? academyCurriculumNormalizeArchitecture({})
-        : currentArchitecture;
-
-    const fallback = await academyCurriculumBuildFoundationFallback({
-      courseTitle,
-      useNorwegian,
-      answers,
-      currentArchitecture: currentArchitectureForGeneration,
-      manualIndustryProfile,
-      templateMemory,
-    });
-
-    const shouldTryQwen =
-      provider === "qwen" ||
-      provider === "huggingface" ||
-      provider === "hf" ||
-      ((provider === "auto" || provider === "") &&
-        answers.length >= 2 &&
-        fallback.domainResolution.confidence >= 0.58 &&
-        !fallback.domainResolution.needsConfirmation);
-    const llmResult = shouldTryQwen
-      ? await academyCurriculumTryQwenFoundationAssistant({
-          courseTitle,
-          currentArchitecture: currentArchitectureForGeneration,
-          useNorwegian,
-          answers,
-          fallback,
-          templateMemory,
-        })
-      : null;
-
-    const result = llmResult || fallback;
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        completed: result.completed,
-        totalQuestions: result.totalQuestions,
-        answeredCount: result.answeredCount,
-        answers: result.answers,
-        nextQuestion: result.nextQuestion,
-        recommendation: result.recommendation,
-        progress: result.progress,
-        sectionRationales: result.sectionRationales,
-        meta: {
-          provider: result.provider,
-          model: result.model || undefined,
-          industryProfile: result.industryProfile,
-          domainResolution: result.domainResolution,
-          generationStage: result.generationStage,
-          templateMatch: result.templateMatch,
-          generatedAt: new Date().toISOString(),
-        },
-      },
-    });
-  } catch (error) {
-    console.error(
-      "Error generating academy curriculum foundation suggestion:",
-      error,
-    );
-    return res.status(500).json({
-      success: false,
-      error: "Could not generate curriculum foundation suggestion",
-    });
-  }
-});
-
-type AcademyAnnotationRecommendationType =
+export type AcademyAnnotationRecommendationType =
   | "hotspot"
   | "callout"
   | "note"
@@ -42765,14 +40566,14 @@ type AcademyAnnotationRecommendationType =
   | "image"
   | "video";
 
-type AcademyAnnotationRecommendationActionType =
+export type AcademyAnnotationRecommendationActionType =
   | "navigate"
   | "showContent"
   | "openLink"
   | "playVideo"
   | "showQuiz";
 
-interface AcademyAnnotationRecommendationItem {
+export interface AcademyAnnotationRecommendationItem {
   type: AcademyAnnotationRecommendationType;
   title: string;
   content: string;
@@ -43153,99 +40954,7 @@ const academyAnnotationTryQwenRecommendations = async (params: {
   return null;
 };
 
-app.post("/api/academy/annotation/recommendations", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "instructor"))) {
-      return;
-    }
-    const body = academyPresentationIsRecord(req.body) ? req.body : {};
-    const intent = String(readString(body.intent) || "interactive-lesson")
-      .trim()
-      .toLowerCase();
-    const scope = String(readString(body.scope) || "course")
-      .trim()
-      .toLowerCase();
-    const useNorwegian = readBoolean(body.useNorwegian) === true;
-    const courseTitle = String(readString(body.courseTitle) || "")
-      .trim()
-      .slice(0, 220);
-    const lessonTitle = String(readString(body.lessonTitle) || "")
-      .trim()
-      .slice(0, 220);
-    const summary = String(readString(body.summary) || "")
-      .trim()
-      .slice(0, 7000);
-    const videoDuration = academyPresentationClamp(
-      Number(readNumber(body.videoDuration) || 300),
-      20,
-      7200,
-    );
-    const maxItems = academyPresentationClamp(
-      Number(readNumber(body.maxItems) || 6),
-      1,
-      10,
-    );
-    const provider = String(
-      readString(body.provider) ||
-        readString(process.env.ACADEMY_ANNOTATION_RECOMMENDATION_PROVIDER) ||
-        "qwen",
-    )
-      .trim()
-      .toLowerCase();
-
-    const shouldTryQwen =
-      provider === "qwen" || provider === "huggingface" || provider === "hf";
-    const llmResult = shouldTryQwen
-      ? await academyAnnotationTryQwenRecommendations({
-          intent,
-          scope,
-          useNorwegian,
-          videoDuration,
-          maxItems,
-          courseTitle,
-          lessonTitle,
-          summary,
-        })
-      : null;
-
-    const fallback = academyAnnotationFallbackRecommendations({
-      intent,
-      useNorwegian,
-      videoDuration,
-    }).slice(0, maxItems);
-
-    const recommendations = llmResult?.recommendations?.length
-      ? llmResult.recommendations
-      : fallback;
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        intent,
-        scope,
-        recommendations,
-        meta: {
-          provider: llmResult ? "qwen" : "heuristic",
-          model: llmResult?.model || undefined,
-          generatedAt: new Date().toISOString(),
-          videoDuration,
-          maxItems,
-        },
-      },
-    });
-  } catch (error) {
-    console.error(
-      "Error generating academy annotation recommendations:",
-      error,
-    );
-    return res.status(500).json({
-      success: false,
-      error: "Could not generate annotation recommendations",
-    });
-  }
-});
-
-interface AcademyPresentationSemanticSearchItem {
+export interface AcademyPresentationSemanticSearchItem {
   id: string;
   title: string;
   subtitle: string;
@@ -43615,193 +41324,13 @@ const academyPresentationRequestHfRerankerScores = async (params: {
   return null;
 };
 
-app.post("/api/academy/presentation/semantic-search", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "instructor"))) {
-      return;
-    }
-    const body = academyPresentationIsRecord(req.body) ? req.body : {};
-    const query = String(readString(body.query) || "")
-      .trim()
-      .slice(0, 220);
-    if (query.length < 2) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "query must have at least 2 characters",
-        });
-    }
-
-    const requestedLimit = academyPresentationClamp(
-      Number(readNumber(body.limit) || 12),
-      1,
-      60,
-    );
-    const items = Array.isArray(body.items)
-      ? body.items
-          .map((entry, index) =>
-            academyPresentationNormalizeSemanticSearchItem(entry, index),
-          )
-          .filter((entry): entry is AcademyPresentationSemanticSearchItem =>
-            Boolean(entry),
-          )
-          .slice(0, 180)
-      : [];
-    if (items.length === 0) {
-      return res.status(200).json({
-        success: true,
-        data: {
-          query,
-          ranking: [],
-          meta: { provider: "lexical", totalItems: 0 },
-        },
-      });
-    }
-
-    const queryTokens = academyPresentationNormalizeTokenSet(query);
-    const lexicalScores = items.map((item) =>
-      academyPresentationScoreLexicalMatch(item, query, queryTokens),
-    );
-    let semanticScores = items.map(() => 0);
-    let rerankerScores: number[] | null = null;
-    let usedEmbeddingModel = "";
-    let usedRerankerModel = "";
-
-    const huggingFaceToken =
-      readString(process.env.HUGGINGFACE_TOKEN) ||
-      readString(process.env.HF_TOKEN);
-    const embeddingModel =
-      readString(process.env.ACADEMY_PRESENTATION_SEARCH_EMBEDDING_MODEL) ||
-      readString(process.env.ACADEMY_PRESENTATION_HF_EMBEDDING_MODEL) ||
-      "Qwen/Qwen3-Embedding-8B";
-    const rerankerModel =
-      readString(process.env.ACADEMY_PRESENTATION_SEARCH_RERANKER_MODEL) ||
-      readString(process.env.ACADEMY_PRESENTATION_HF_RERANKER_MODEL) ||
-      "Qwen/Qwen3-Reranker-8B";
-
-    if (huggingFaceToken) {
-      const documents = items.map((item) => item.searchText.slice(0, 2600));
-      const embeddings = await academyPresentationRequestHfEmbeddings({
-        token: huggingFaceToken,
-        model: embeddingModel,
-        inputs: [query, ...documents],
-      });
-      if (embeddings && embeddings.length === documents.length + 1) {
-        const queryVector = embeddings[0];
-        semanticScores = embeddings
-          .slice(1)
-          .map((vector) =>
-            Number(
-              (
-                (academyPresentationCosineSimilarity(queryVector, vector) + 1) /
-                2
-              ).toFixed(4),
-            ),
-          );
-        usedEmbeddingModel = embeddingModel;
-      }
-
-      const candidateIndexes = items
-        .map((item, index) => ({
-          id: item.id,
-          index,
-          seedScore: lexicalScores[index] * 0.34 + semanticScores[index] * 0.66,
-        }))
-        .sort((a, b) => b.seedScore - a.seedScore)
-        .slice(0, Math.min(24, items.length))
-        .map((entry) => entry.index);
-      if (candidateIndexes.length > 0) {
-        const rerankerDocuments = candidateIndexes.map((index) =>
-          items[index].searchText.slice(0, 1900),
-        );
-        const rawRerankerScores =
-          await academyPresentationRequestHfRerankerScores({
-            token: huggingFaceToken,
-            model: rerankerModel,
-            query,
-            documents: rerankerDocuments,
-          });
-        if (
-          rawRerankerScores &&
-          rawRerankerScores.length === candidateIndexes.length
-        ) {
-          const normalizedRerankerScores =
-            academyPresentationNormalizeScoreSeries(rawRerankerScores);
-          rerankerScores = items.map(() => 0);
-          candidateIndexes.forEach((index, offset) => {
-            if (!rerankerScores) return;
-            rerankerScores[index] = Number(
-              normalizedRerankerScores[offset].toFixed(4),
-            );
-          });
-          usedRerankerModel = rerankerModel;
-        }
-      }
-    }
-
-    const ranking = items
-      .map((item, index) => {
-        const lexicalScore = lexicalScores[index];
-        const semanticScore = semanticScores[index];
-        const rerankScore = rerankerScores ? rerankerScores[index] : null;
-        const score = rerankerScores
-          ? lexicalScore * 0.22 +
-            semanticScore * 0.38 +
-            (rerankScore || 0) * 0.4
-          : lexicalScore * 0.35 + semanticScore * 0.65;
-        return {
-          id: item.id,
-          score: Number(score.toFixed(4)),
-          lexicalScore: Number(lexicalScore.toFixed(4)),
-          semanticScore: Number(semanticScore.toFixed(4)),
-          rerankScore:
-            rerankScore === null ? null : Number(rerankScore.toFixed(4)),
-        };
-      })
-      .sort((a, b) => b.score - a.score);
-
-    const filteredRanking = ranking.filter(
-      (entry) =>
-        entry.score >= 0.15 ||
-        entry.lexicalScore >= 0.13 ||
-        entry.semanticScore >= 0.2,
-    );
-    const topRanking =
-      filteredRanking.length > 0
-        ? filteredRanking.slice(0, requestedLimit)
-        : ranking.slice(0, requestedLimit);
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        query,
-        ranking: topRanking,
-        meta: {
-          provider:
-            usedEmbeddingModel || usedRerankerModel ? "huggingface" : "lexical",
-          embeddingModel: usedEmbeddingModel || undefined,
-          rerankerModel: usedRerankerModel || undefined,
-          totalItems: items.length,
-        },
-      },
-    });
-  } catch (error) {
-    console.error("Error running academy semantic search:", error);
-    return res.status(500).json({
-      success: false,
-      error: "Could not run semantic search",
-    });
-  }
-});
-
 type AcademyCohortStatus =
   | "active"
   | "closed"
   | "early_access"
   | "invitation_only";
 
-interface AcademyPersistedCohortItem {
+export interface AcademyPersistedCohortItem {
   id: string;
   name: string;
   subtitle: string;
@@ -43816,14 +41345,14 @@ interface AcademyPersistedCohortItem {
   imageTheme: number;
 }
 
-interface AcademyPersistedDiscussionItem {
+export interface AcademyPersistedDiscussionItem {
   id: string;
   author: string;
   message: string;
   timestamp: string;
 }
 
-interface AcademyCohortFeatureFlags {
+export interface AcademyCohortFeatureFlags {
   earlyAccess: boolean;
   invitationOnly: boolean;
   closed: boolean;
@@ -43937,126 +41466,6 @@ async function ensureAcademyCohortSettingsTable(): Promise<void> {
     )
   `);
 }
-
-app.get("/api/academy/cohort-settings", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const courseId = readString(req.query?.courseId);
-    if (!courseId) {
-      return res
-        .status(400)
-        .json({ success: false, error: "courseId is required" });
-    }
-
-    await ensureAcademyCohortSettingsTable();
-    const result = await pool.query(
-      `SELECT course_id, cohorts, feature_flags, discussions, selected_cohort_id, updated_at
-       FROM academy_cohort_settings
-       WHERE user_id = $1 AND course_id = $2
-       LIMIT 1`,
-      [userId, courseId],
-    );
-
-    const row = result.rows?.[0];
-    if (!row) {
-      return res.status(200).json({ success: true, data: null });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        courseId: row.course_id,
-        cohorts: normalizeCohortItems(row.cohorts),
-        featureFlags: normalizeCohortFeatureFlags(row.feature_flags),
-        discussions: normalizeCohortDiscussions(row.discussions),
-        selectedCohortId: readString(row.selected_cohort_id) || null,
-        updatedAt: row.updated_at,
-      },
-    });
-  } catch (error) {
-    console.error("Error reading academy cohort settings:", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Could not read cohort settings" });
-  }
-});
-
-app.post("/api/academy/cohort-settings", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const courseId = readString(req.body?.courseId);
-    if (!courseId) {
-      return res
-        .status(400)
-        .json({ success: false, error: "courseId is required" });
-    }
-
-    const cohorts = normalizeCohortItems(req.body?.cohorts);
-    const featureFlags = normalizeCohortFeatureFlags(req.body?.featureFlags);
-    const discussions = normalizeCohortDiscussions(req.body?.discussions);
-    const selectedCohortId = readString(req.body?.selectedCohortId) || null;
-
-    await ensureAcademyCohortSettingsTable();
-    const result = await pool.query(
-      `INSERT INTO academy_cohort_settings
-        (user_id, course_id, cohorts, feature_flags, discussions, selected_cohort_id, created_at, updated_at)
-       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, NOW(), NOW())
-       ON CONFLICT (user_id, course_id) DO UPDATE SET
-         cohorts = EXCLUDED.cohorts,
-         feature_flags = EXCLUDED.feature_flags,
-         discussions = EXCLUDED.discussions,
-         selected_cohort_id = EXCLUDED.selected_cohort_id,
-         updated_at = NOW()
-       RETURNING course_id, cohorts, feature_flags, discussions, selected_cohort_id, updated_at`,
-      [
-        userId,
-        courseId,
-        JSON.stringify(cohorts),
-        JSON.stringify(featureFlags),
-        JSON.stringify(discussions),
-        selectedCohortId,
-      ],
-    );
-
-    const row = result.rows?.[0];
-    return res.status(200).json({
-      success: true,
-      data: {
-        courseId: row?.course_id || courseId,
-        cohorts: normalizeCohortItems(row?.cohorts || cohorts),
-        featureFlags: normalizeCohortFeatureFlags(
-          row?.feature_flags || featureFlags,
-        ),
-        discussions: normalizeCohortDiscussions(
-          row?.discussions || discussions,
-        ),
-        selectedCohortId: readString(row?.selected_cohort_id) || null,
-        updatedAt: row?.updated_at || new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    console.error("Error saving academy cohort settings:", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Could not save cohort settings" });
-  }
-});
 
 // /api/invite-requests + /api/invites/admin/requests + /api/proff lookups →
 // flyttet til ./invite-requests-routes.ts (10 endpoints, dep-injected).
@@ -45653,104 +43062,6 @@ async function resolveAdminUserView(
   );
 }
 
-app.get("/api/academy/access-summary", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "authenticated",
-    );
-    if (!academySession) {
-      return;
-    }
-    const resolvedUserId = academySession.user.id;
-    const normalizedUserId =
-      resolvedUserId && resolvedUserId !== "guest"
-        ? resolvedUserId.trim().toLowerCase()
-        : null;
-    const normalizedEmail =
-      academySession.user.email?.trim().toLowerCase() || null;
-
-    const users = await listAdminUsersSnapshot();
-    const matchedUser =
-      users.find((entry) => {
-        const identifiers = [
-          toAdminString(entry.id),
-          toAdminString(entry.accountUserId),
-          toAdminString(entry.inviteRequestId),
-        ]
-          .map((value) => value?.trim().toLowerCase() || null)
-          .filter(Boolean);
-        const email = toAdminString(entry.email)?.trim().toLowerCase() || null;
-
-        if (normalizedUserId && identifiers.includes(normalizedUserId)) {
-          return true;
-        }
-
-        return Boolean(normalizedEmail && email === normalizedEmail);
-      }) || null;
-
-    if (!matchedUser) {
-      return res.status(200).json({
-        success: true,
-        data: {
-          userId: normalizedUserId,
-          email: normalizedEmail,
-          access: null,
-        },
-      });
-    }
-
-    const approvedByUserId = toAdminString(matchedUser.approvedByUserId);
-    const approvedByAccount = approvedByUserId
-      ? await findAdminAccountUser(approvedByUserId, approvedByUserId)
-      : null;
-    const approvedByRoleId = approvedByAccount
-      ? normalizeAdminRoleId(
-          approvedByAccount.role ||
-            inferAdminRoleFromProfession(approvedByAccount.profession),
-        )
-      : null;
-    const approvedByRoleLabel = approvedByRoleId
-      ? buildAdminRoleEntry(approvedByRoleId).name
-      : null;
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        userId:
-          toAdminString(matchedUser.accountUserId) ||
-          toAdminString(matchedUser.id) ||
-          normalizedUserId,
-        email: toAdminString(matchedUser.email) || normalizedEmail,
-        access: {
-          status: toAdminString(matchedUser.status),
-          approvedAt: matchedUser.approvedAt instanceof Date
-            ? matchedUser.approvedAt.toISOString()
-            : toAdminString(matchedUser.approvedAt),
-          approvedBy:
-            toAdminString(matchedUser.approvedBy) ||
-            formatAdminUserIdentity(approvedByAccount),
-          approvedByUserId,
-          approvedByRoleLabel,
-          role: toAdminString(matchedUser.role),
-          roleLabel: toAdminString(matchedUser.roleLabel),
-          profession: toAdminString(matchedUser.profession),
-          onboardingStatus: toAdminString(matchedUser.onboardingStatus),
-          inviteRequestId: toAdminString(matchedUser.inviteRequestId),
-          accountUserId: toAdminString(matchedUser.accountUserId),
-          isActive: Boolean(matchedUser.isActive),
-        },
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching academy access summary:", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Could not read academy access summary" });
-  }
-});
-
 const ADMIN_STATS_PROFESSION_KEYS = [
   "photographer",
   "videographer",
@@ -47323,20 +44634,6 @@ function countWords(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
 }
 
-app.get("/api/academy/admin/revenue/overview", async (req, res) => {
-  try {
-    if (!requireAdminSession(req, res)) {
-      return;
-    }
-
-    const snapshot = await getAdminAcademyRevenueSnapshot();
-    res.json(snapshot);
-  } catch (error) {
-    console.error("Academy revenue overview error:", error);
-    res.status(500).json({ error: "Could not fetch academy revenue overview" });
-  }
-});
-
 // User onboarding status check
 
 
@@ -48157,399 +45454,7 @@ app.get("/api/notifications/active", (req, res) => {
 
 // Equipment inventory
 
-// Maintenance equipment inventory
-app.get("/api/maintenance/equipment", async (req, res) => {
-  try {
-    const userId =
-      typeof req.query.userId === "string" ? req.query.userId : null;
-    const profession =
-      typeof req.query.profession === "string" ? req.query.profession : null;
-    const conditions = [];
-    if (userId) {
-      conditions.push(eq(schema.userEquipment.userId, userId));
-    }
-    if (profession) {
-      conditions.push(eq(schema.userEquipment.userType, profession));
-    }
-
-    const equipmentRows = await db
-      .select()
-      .from(schema.userEquipment)
-      .where(conditions.length ? and(...conditions) : sql`true`)
-      .orderBy(desc(schema.userEquipment.createdAt));
-
-    const normalized = equipmentRows.map((item) => {
-      const settings = parseSettings(item.settings);
-      const purchaseDateValue =
-        readString(settings.purchaseDate) || item.purchaseDate || null;
-      const warrantyExpiryValue =
-        readString(settings.warrantyExpiry) || item.warrantyExpiry || null;
-      const lastServiceValue =
-        readString(settings.lastService) || item.lastMaintenance || null;
-      const nextServiceValue =
-        readString(settings.nextService) || item.nextMaintenance || null;
-      const purchaseDate = purchaseDateValue
-        ? new Date(purchaseDateValue)
-        : null;
-      const estimatedLifespan = readNumber(settings.estimatedLifespan) ?? 7;
-      const currentAge =
-        readNumber(settings.currentAge) ??
-        (purchaseDate
-          ? Math.max(
-              0,
-              (Date.now() - purchaseDate.getTime()) /
-                (1000 * 60 * 60 * 24 * 365),
-            )
-          : 0);
-
-      return {
-        id: String(item.id),
-        name: readString(settings.name) || `${item.brand} ${item.model}`.trim(),
-        brand: item.brand,
-        model: item.model,
-        serialNumber: item.serialNumber || null,
-        type: normalizeEquipmentType(
-          readString(settings.type) || item.category,
-        ),
-        purchaseDate: purchaseDateValue,
-        warrantyExpiry: warrantyExpiryValue,
-        lastService: lastServiceValue,
-        nextService: nextServiceValue,
-        serviceInterval:
-          readNumber(settings.serviceInterval) ??
-          item.maintenanceInterval ??
-          12,
-        estimatedLifespan,
-        currentAge,
-        condition: normalizeCondition(
-          readString(settings.condition) || item.condition,
-        ),
-        usageHours: readNumber(settings.usageHours) ?? 0,
-        maintenanceCost: readNumber(settings.maintenanceCost) ?? 0,
-        replacementCost:
-          readNumber(settings.replacementCost) ??
-          readNumber(item.currentValue) ??
-          0,
-        criticalToOperation: readBoolean(settings.criticalToOperation) ?? false,
-        autoSchedule: readBoolean(settings.autoSchedule) ?? true,
-        maintenanceNotes:
-          readString(settings.maintenanceNotes) || item.notes || "",
-      };
-    });
-
-    res.json(normalized);
-  } catch (error) {
-    console.error("Maintenance equipment error:", error);
-    res.status(500).json({ error: "Failed to load maintenance equipment" });
-  }
-});
-
-// Maintenance tasks
-app.get("/api/maintenance/tasks", async (req, res) => {
-  try {
-    const userId =
-      typeof req.query.userId === "string" ? req.query.userId : null;
-    const profession =
-      typeof req.query.profession === "string" ? req.query.profession : null;
-
-    if (!userId) {
-      res.status(400).json({ error: "Missing userId" });
-      return;
-    }
-
-    const equipmentConditions = [];
-    equipmentConditions.push(eq(schema.userEquipment.userId, userId));
-    if (profession) {
-      equipmentConditions.push(eq(schema.userEquipment.userType, profession));
-    }
-
-    const equipmentRows = await db
-      .select()
-      .from(schema.userEquipment)
-      .where(
-        equipmentConditions.length ? and(...equipmentConditions) : sql`true`,
-      );
-
-    const equipmentMap = new Map<string, EquipmentRow>();
-    const equipmentIds = equipmentRows.map((item) => {
-      const key = String(item.id);
-      equipmentMap.set(key, item);
-      return key;
-    });
-
-    if (equipmentIds.length === 0) {
-      res.json([]);
-      return;
-    }
-
-    const taskConditions = [];
-    taskConditions.push(eq(schema.equipmentMaintenance.userId, userId));
-    if (equipmentIds.length > 0) {
-      taskConditions.push(
-        inArray(schema.equipmentMaintenance.equipmentId, equipmentIds),
-      );
-    }
-
-    const maintenanceRows = await db
-      .select()
-      .from(schema.equipmentMaintenance)
-      .where(taskConditions.length ? and(...taskConditions) : sql`true`)
-      .orderBy(desc(schema.equipmentMaintenance.createdAt));
-
-    const tasks = maintenanceRows.map((row) =>
-      mapMaintenanceRow(row, equipmentMap),
-    );
-    res.json(tasks);
-  } catch (error) {
-    console.error("Maintenance tasks error:", error);
-    res.status(500).json({ error: "Failed to load maintenance tasks" });
-  }
-});
-
-app.post("/api/maintenance/tasks", async (req, res) => {
-  try {
-    const {
-      userId,
-      equipmentId,
-      taskType,
-      title,
-      description,
-      priority,
-      scheduledDate,
-      estimatedDuration,
-      estimatedCost,
-      assignedTechnician,
-      technicianContact,
-      notes,
-      partsRequired,
-      safetyRequirements,
-      automatedBooking,
-    } = req.body || {};
-
-    if (!userId || !equipmentId || !title || !taskType) {
-      res.status(400).json({ error: "Missing required fields" });
-      return;
-    }
-
-    const metadata = {
-      partsRequired: readStringArray(partsRequired),
-      safetyRequirements: readStringArray(safetyRequirements),
-      reminderSent: false,
-      automatedBooking: Boolean(automatedBooking),
-      technicianContact: readString(technicianContact) || "",
-      priority: normalizePriority(readString(priority) || null),
-      status: "scheduled",
-      title: readString(title) || String(title),
-    };
-
-    const scheduledDateValue = scheduledDate
-      ? new Date(scheduledDate)
-      : new Date();
-
-    const [inserted] = await db
-      .insert(schema.equipmentMaintenance)
-      .values({
-        equipmentId: String(equipmentId),
-        userId: String(userId),
-        maintenanceType: normalizeTaskType(readString(taskType) || null),
-        description:
-          readString(description) || readString(title) || String(title),
-        serviceProvider: readString(assignedTechnician),
-        cost: String(readNumber(estimatedCost) ?? 0),
-        scheduledDate: toDateOnly(scheduledDateValue),
-        nextScheduledDate: scheduledDateValue.toISOString(),
-        partsReplaced: metadata,
-        laborHours: String(readNumber(estimatedDuration) ?? 0),
-        serviceNotes: readString(notes),
-      } as any)
-      .returning();
-
-    const equipmentRow = await db
-      .select()
-      .from(schema.userEquipment)
-      .where(eq(schema.userEquipment.id, Number(equipmentId)));
-
-    const equipmentMap = new Map<string, EquipmentRow>();
-    if (equipmentRow[0]) {
-      equipmentMap.set(String(equipmentRow[0].id), equipmentRow[0]);
-    }
-
-    res.json(mapMaintenanceRow(inserted, equipmentMap));
-  } catch (error) {
-    console.error("Maintenance task create error:", error);
-    res.status(500).json({ error: "Failed to create maintenance task" });
-  }
-});
-
-app.post("/api/maintenance/auto-schedule", async (req, res) => {
-  try {
-    const { userId, profession } = req.body || {};
-    if (!userId) {
-      res.status(400).json({ error: "Missing userId" });
-      return;
-    }
-
-    const equipmentConditions = [
-      eq(schema.userEquipment.userId, String(userId)),
-    ];
-    if (profession) {
-      equipmentConditions.push(
-        eq(schema.userEquipment.userType, String(profession)),
-      );
-    }
-
-    const equipmentRows = await db
-      .select()
-      .from(schema.userEquipment)
-      .where(and(...equipmentConditions));
-
-    if (equipmentRows.length === 0) {
-      res.json([]);
-      return;
-    }
-
-    const equipmentMap = new Map<string, EquipmentRow>();
-    const equipmentIds = equipmentRows.map((item) => {
-      const key = String(item.id);
-      equipmentMap.set(key, item);
-      return key;
-    });
-
-    const existingTasks = await db
-      .select()
-      .from(schema.equipmentMaintenance)
-      .where(
-        and(
-          eq(schema.equipmentMaintenance.userId, String(userId)),
-          inArray(schema.equipmentMaintenance.equipmentId, equipmentIds),
-        ),
-      );
-
-    const pendingByEquipment = new Map<string, boolean>();
-    existingTasks.forEach((row) => {
-      if (row.completedDate) return;
-      const scheduled = resolveScheduledDate(row);
-      const scheduledTime = new Date(scheduled).getTime();
-      if (!Number.isNaN(scheduledTime) && scheduledTime >= Date.now()) {
-        pendingByEquipment.set(row.equipmentId, true);
-      }
-    });
-
-    const inserts: MaintenanceRow[] = [];
-
-    for (const item of equipmentRows) {
-      const key = String(item.id);
-      if (pendingByEquipment.get(key)) continue;
-
-      const settings = parseSettings(item.settings);
-      const autoSchedule = readBoolean(settings.autoSchedule);
-      if (autoSchedule === false) continue;
-
-      const serviceInterval =
-        readNumber(settings.serviceInterval) ?? item.maintenanceInterval ?? 12;
-      const purchaseDateValue =
-        readString(settings.purchaseDate) || item.purchaseDate;
-      const lastServiceValue =
-        readString(settings.lastService) || item.lastMaintenance;
-      const nextServiceValue =
-        readString(settings.nextService) || item.nextMaintenance;
-      let scheduledDateBase = new Date();
-      if (nextServiceValue) {
-        const parsed = new Date(nextServiceValue);
-        if (!Number.isNaN(parsed.getTime())) {
-          scheduledDateBase = parsed;
-        }
-      } else if (lastServiceValue) {
-        const parsed = new Date(lastServiceValue);
-        if (!Number.isNaN(parsed.getTime())) {
-          scheduledDateBase = addMonths(parsed, serviceInterval);
-        }
-      } else if (purchaseDateValue) {
-        const parsed = new Date(purchaseDateValue);
-        if (!Number.isNaN(parsed.getTime())) {
-          scheduledDateBase = addMonths(parsed, serviceInterval);
-        }
-      } else {
-        scheduledDateBase = addMonths(new Date(), serviceInterval);
-      }
-
-      while (scheduledDateBase.getTime() < Date.now()) {
-        scheduledDateBase = addMonths(scheduledDateBase, serviceInterval);
-      }
-
-      const type = normalizeEquipmentType(
-        readString(settings.type) || item.category,
-      );
-      const taskType: MaintenanceTaskType =
-        type === "software"
-          ? "upgrade"
-          : type === "lens" || type === "flash"
-            ? "calibration"
-            : type === "camera"
-              ? "cleaning"
-              : "inspection";
-
-      const condition = normalizeCondition(
-        readString(settings.condition) || item.condition,
-      );
-      const priority: MaintenancePriority =
-        condition === "critical"
-          ? "critical"
-          : condition === "poor"
-            ? "high"
-            : condition === "fair"
-              ? "medium"
-              : "low";
-
-      const metadata = {
-        partsRequired: readStringArray(settings.partsRequired),
-        safetyRequirements: readStringArray(settings.safetyRequirements),
-        reminderSent: false,
-        automatedBooking: true,
-        technicianContact: readString(settings.technicianContact) || "",
-        priority,
-        status: "scheduled",
-        title: `Planlagt ${taskType}`,
-      };
-
-      const description =
-        `Planlagt vedlikehold for ${item.brand} ${item.model}`.trim();
-
-      const [inserted] = await db
-        .insert(schema.equipmentMaintenance)
-        .values({
-          equipmentId: key,
-          userId: String(userId),
-          maintenanceType: taskType,
-          description,
-          serviceProvider: readString(settings.preferredProvider),
-          cost: String(readNumber(settings.maintenanceCost) ?? 0),
-          scheduledDate: toDateOnly(scheduledDateBase),
-          nextScheduledDate: scheduledDateBase.toISOString(),
-          partsReplaced: metadata,
-          laborHours: String(readNumber(settings.estimatedDuration) ?? 1),
-          serviceNotes: readString(settings.maintenanceNotes),
-        } as any)
-        .returning();
-
-      inserts.push(inserted);
-
-      await db
-        .update(schema.userEquipment)
-        .set({
-          nextMaintenance: toDateOnly(scheduledDateBase),
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(schema.userEquipment.id, item.id));
-    }
-
-    const tasks = inserts.map((row) => mapMaintenanceRow(row, equipmentMap));
-    res.json(tasks);
-  } catch (error) {
-    console.error("Maintenance auto-schedule error:", error);
-    res.status(500).json({ error: "Failed to auto-schedule maintenance" });
-  }
-});
+// /api/maintenance/* — ekstraktert til ./maintenance-routes.ts via setupMaintenanceRoutes.
 
 app.post("/api/upload/audio", audioUpload.single("file"), async (req, res) => {
   try {
@@ -52318,9 +49223,9 @@ const probeVideoDurationSeconds = async (
     : 0;
 };
 
-type AcademyStoredMediaType = "image" | "video" | "audio" | "document";
+export type AcademyStoredMediaType = "image" | "video" | "audio" | "document";
 
-interface AcademyStoredMediaVersionRecord {
+export interface AcademyStoredMediaVersionRecord {
   version: number;
   fileName: string;
   mimeType: string;
@@ -52333,7 +49238,7 @@ interface AcademyStoredMediaVersionRecord {
   posterMimeType?: string;
 }
 
-interface AcademyStoredMediaAssetRecord {
+export interface AcademyStoredMediaAssetRecord {
   id: string;
   name: string;
   type: AcademyStoredMediaType;
@@ -52347,7 +49252,7 @@ interface AcademyStoredMediaAssetRecord {
   history: AcademyStoredMediaVersionRecord[];
 }
 
-interface AcademyStoredMediaManifest {
+export interface AcademyStoredMediaManifest {
   version: number;
   updatedAt: string;
   assets: AcademyStoredMediaAssetRecord[];
@@ -67832,6 +64737,14 @@ setupClientGalleryRoutes({
   getCreatorHubStripeClient,
   getActiveSessionFromRequest,
 });
+setupGalleryVersionsRoutes({
+  app,
+  pool,
+  gateGalleryAccess,
+  readGalleryPasswordHeader,
+  getActiveSessionFromRequest,
+  dispatchGalleryNotification: dispatchGalleryNotification as any,
+});
 setupContractsRoutes({
   app,
   pool,
@@ -68021,6 +64934,187 @@ setupRoleRoomDealsRoutes({
 setupRoleRoomInvitesTicketsRoutes({ app, pool, requireUserSession, requireAdminSession });
 setupProjectsOutliersRoutes({ app, pool, db, requireUserSession });
 setupContractsUploadImportRoutes({ app, requireUserSession });
+setupBackupRoutes({
+  app,
+  pool,
+  readString,
+  readGoogleWorkspaceBackupStatus,
+  derivePreferredGoogleWorkspaceOauthApps,
+  buildGoogleWorkspaceStorageSnapshot,
+  buildGoogleContactsStatusSnapshot,
+  buildGooglePhotosStatusSnapshot,
+  resolveRoleRoomGoogleConnection,
+  ensureGoogleDriveBackupFolder,
+  sanitizeBackupFileSegment,
+  ensureGoogleWorkspaceBackupDir,
+  getGoogleWorkspaceLatestBackupPath,
+  getGoogleWorkspaceLatestBackupMetaPath,
+});
+setupMaintenanceRoutes({
+  app, db, schema, sql,
+  parseSettings, readString, readBoolean, readNumber, readStringArray,
+  normalizeEquipmentType, normalizeCondition,
+  normalizeTaskType, normalizePriority,
+  toDateOnly, addMonths, resolveScheduledDate, mapMaintenanceRow,
+});
+setupSplitSheetsRoutes({ app, pool, getSplitSheetUserId });
+// role-room/vendor-links — historisk wedged inn mellom equipment-routes (13228);
+// flyttet hit som del av equipment chunk 3-ekstraksjon for å fjerne stray-setup.
+setupRoleRoomVendorLinksRoutes({ app });
+setupEquipmentDiscoveryRoutes({
+  app,
+  EQUIPMENT_DISCOVERY_STATUS,
+  EQUIPMENT_CAMERA_STORE,
+  CATALOG_CAMERA_STORE,
+  WORLD_CAMERA_STORE,
+  RELEASE_REGISTRY_STORE,
+  normalizeCameraCategory,
+  parseLimitParam,
+  buildCameraRecord, buildDiscoveryCandidates,
+  ensureFirmwareRowsForCameras,
+  getCameraArrayByType, getDiscoveryStats,
+  getMemoryCardTypesByCameraFromDatabase,
+  isNetflixCertifiedCineCamera,
+  loadDatabaseCameraStore, loadFirmwareSeedCandidates, loadLegacyCameraStore,
+  mergeCameraLists, resolveDiscoveryType,
+});
+setupEquipmentCatalogRoutes({
+  app,
+  COMPAT_GEAR_NEWS,
+  enrichCatalogItemWithPreviewImage,
+  loadGearNewsFeed,
+  loadUnifiedEquipmentCatalog,
+  matchesEquipmentSearchQuery,
+  normalizeCatalogCategory,
+  normalizeProductImageCategory,
+  parseLimitParam,
+  readString,
+  resolveAuthenticSupplierEquipmentImage,
+});
+setupEquipmentFirmwareRoutes({
+  app, pool, db, schema,
+  buildEquipmentImageAttachmentMap,
+  buildInventoryRecommendedMemoryCards,
+  ensureEquipmentImageEnvelope,
+  ensureFirmwareRowsForCameras,
+  formatSoftwareCategoryLabel,
+  loadEquipmentImageAttachments,
+  loadFirmwareDevices,
+  loadFirmwareHistory,
+  loadFirmwareUpdates,
+  loadFirmwareSeedCandidates,
+  loadUnifiedEquipmentCatalog,
+  mapMaintenanceRow,
+  matchInventoryEquipmentCatalogItem,
+  parseSettings,
+  readString,
+  resolveFallbackSoftwareCatalog,
+  resolveFallbackSoftwareUpdates,
+  resolveOfficialCatalogFallback,
+  resolveSoftwareCategoriesForProfession,
+  resolveSoftwareOrderColumn,
+  toIsoString,
+});
+setupAcademyIntegrationsRoutes({ app, pool, requireAcademySession });
+setupAcademyMediaAssetsRoutes({
+  app,
+  requireAcademySession,
+  loadAcademyMediaManifest,
+  persistAcademyMediaManifest,
+  resolveAcademyMediaVersion,
+  academyMediaStorageDir: ACADEMY_MEDIA_STORAGE_DIR,
+});
+setupAcademyCohortSettingsRoutes({
+  app,
+  pool,
+  requireAcademySession,
+  ensureAcademyCohortSettingsTable,
+  normalizeCohortItems,
+  normalizeCohortFeatureFlags,
+  normalizeCohortDiscussions,
+});
+setupAcademyAdminRoutes({
+  app,
+  requireAcademySession,
+  requireAdminSession,
+  listAdminUsersSnapshot,
+  toAdminString,
+  findAdminAccountUser,
+  normalizeAdminRoleId,
+  inferAdminRoleFromProfession,
+  buildAdminRoleEntry,
+  formatAdminUserIdentity,
+  getAdminAcademyRevenueSnapshot,
+});
+setupAcademyAnnotationRoutes({
+  app,
+  requireAcademySession,
+  academyPresentationIsRecord,
+  academyPresentationClamp,
+  academyAnnotationFallbackRecommendations,
+  academyAnnotationTryQwenRecommendations,
+});
+setupAcademyCurriculumRoutes({
+  app,
+  requireAcademySession,
+  academyPresentationIsRecord,
+  academyCurriculumTrimText,
+  academyCurriculumNormalizeAnswers,
+  academyCurriculumNormalizeIndustryProfileId,
+  academyCurriculumInferIndustryProfile,
+  academyCurriculumNormalizeTemplateMemory,
+  academyCurriculumNormalizeArchitecture,
+  academyCurriculumShouldResetCurrentArchitecture,
+  academyCurriculumBuildFoundationFallback,
+  academyCurriculumTryQwenFoundationAssistant,
+});
+setupAcademyPresentationCritiqueRoutes({
+  app,
+  requireAcademySession,
+  academyPresentationIsRecord,
+  academyPresentationNormalizeBrandContext,
+  academyPresentationNormalizeCritiqueSlideInput,
+  academyPresentationBuildHeuristicCritique,
+  academyPresentationTryHuggingFaceCritique,
+});
+setupAcademyPresentationSearchRoutes({
+  app,
+  requireAcademySession,
+  academyPresentationIsRecord,
+  academyPresentationClamp,
+  academyPresentationNormalizeSemanticSearchItem,
+  academyPresentationNormalizeTokenSet,
+  academyPresentationScoreLexicalMatch,
+  academyPresentationCosineSimilarity,
+  academyPresentationNormalizeScoreSeries,
+  academyPresentationRequestHfEmbeddings,
+  academyPresentationRequestHfRerankerScores,
+});
+setupAcademyPresentationDesignPlanRoutes({
+  app,
+  requireAcademySession,
+  academyPresentationIsRecord,
+  academyPresentationNormalizeTemplateId,
+  academyPresentationNormalizeThemeId,
+  academyPresentationNormalizeTemplateMemoryItem,
+  academyPresentationNormalizeBrandContext,
+  academyPresentationNormalizeSlideInput,
+  academyPresentationInferTemplateFromSlides,
+  academyPresentationInferThemeFromTemplate,
+  academyPresentationBuildBodyLines,
+  academyPresentationInferVisualType,
+  academyPresentationBuildSlidePlan,
+  academyPresentationBuildTemplateMemoryQuery,
+  academyPresentationResolveTemplateMemoryMatches,
+  academyPresentationTryLlmDesignPlan,
+  ACADEMY_PRESENTATION_PROJECT_TO_TEMPLATE,
+  ACADEMY_PRESENTATION_PROJECT_TO_THEME,
+  ACADEMY_PRESENTATION_TEMPLATE_PRESETS,
+  ACADEMY_PRESENTATION_THEME_TO_SPLIT_VARIANT,
+});
+// NB: setupSongflowDeprecatedAliasesRoutes wires later (etter handler-
+// deklarasjoner ~linje 70324). Trivielle deprecation-aliases krever at
+// EaseVerse-handlers først er deklarert.
 setupPricingRoutes({ app, pool, requireUserSession, getPricingUserId });
 setupAccountingRoutes({
   app,
@@ -68515,8 +65609,8 @@ type QuoteCompatibilityRecord = Omit<
 
 function mapQuoteCompatibilityRecord(r: any): QuoteCompatibilityRecord {
   const quote = mapPriceAdministrationQuote(r);
-  const packageLine = Array.isArray(quote.services)
-    ? quote.services.find((entry: any) => entry?.type === "package")
+  const packageLine: { description?: string; type?: string } | null = Array.isArray(quote.services)
+    ? (quote.services.find((entry: any) => entry?.type === "package") as { description?: string; type?: string } | undefined) ?? null
     : null;
   const projectCreationData =
     quote.projectCreationData && typeof quote.projectCreationData === "object"
@@ -70904,866 +67998,26 @@ app.delete(
   unlinkSplitSheetEaseVerseHandler,
 );
 
-// SongFlow aliases (backward compatibility)
-app.get("/api/songflow-projects", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/easeverse-projects");
-  return listEaseVerseProjectsHandler(req, res);
-});
-app.get("/api/songflow-tracks", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/easeverse-tracks");
-  return listEaseVerseTracksHandler(req, res);
-});
-app.post("/api/songflow-tracks", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/easeverse-tracks");
-  return createEaseVerseTrackHandler(req, res);
-});
-app.post("/api/songflow-tracks/:trackId/backup", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/easeverse-tracks/:trackId/backup");
-  return backupEaseVerseTrackHandler(req, res);
-});
-app.post("/api/songflow-tracks/:trackId/sync-lyrics", (req, res) => {
-  markSongFlowAliasDeprecated(
-    res,
-    "/api/easeverse-tracks/:trackId/sync-lyrics",
-  );
-  return syncEaseVerseLyricsHandler(req, res);
-});
-app.put("/api/songflow-tracks/:trackId/lyrics", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/easeverse-tracks/:trackId/lyrics");
-  return updateEaseVerseLyricsHandler(req, res);
+// SongFlow + split-sheets-songflow deprecation-aliases — ekstraktert til
+// ./songflow-deprecated-aliases-routes.ts (10 routes, trivielle wirings).
+// Wires HER (etter EaseVerse-handler-deklarasjoner) for å unngå TDZ-feil
+// på block-scoped `const`-handlers.
+setupSongflowDeprecatedAliasesRoutes({
+  app,
+  markSongFlowAliasDeprecated,
+  listEaseVerseProjectsHandler,
+  listEaseVerseTracksHandler,
+  createEaseVerseTrackHandler,
+  backupEaseVerseTrackHandler,
+  syncEaseVerseLyricsHandler,
+  updateEaseVerseLyricsHandler,
+  createSplitSheetFromEaseVerseTrackHandler,
+  listSplitSheetEaseVerseLinksHandler,
+  linkSplitSheetEaseVerseHandler,
+  unlinkSplitSheetEaseVerseHandler,
 });
 
-app.post("/api/split-sheets/from-songflow/:trackId", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/split-sheets/from-easeverse/:trackId");
-  return createSplitSheetFromEaseVerseTrackHandler(req, res);
-});
-app.get("/api/split-sheets/:id/songflow", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/split-sheets/:id/easeverse");
-  return listSplitSheetEaseVerseLinksHandler(req, res);
-});
-app.post("/api/split-sheets/:id/link-songflow", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/split-sheets/:id/link-easeverse");
-  return linkSplitSheetEaseVerseHandler(req, res);
-});
-app.delete("/api/split-sheets/:id/unlink-songflow", (req, res) => {
-  markSongFlowAliasDeprecated(res, "/api/split-sheets/:id/unlink-easeverse");
-  return unlinkSplitSheetEaseVerseHandler(req, res);
-});
-
-// GET /api/split-sheets — List all split sheets for user
-app.get("/api/split-sheets", async (req, res) => {
-  try {
-    const userId = getSplitSheetUserId(req);
-    const { status, project_id, track_id, limit = 50 } = req.query;
-
-    let query = `
-      SELECT ss.*,
-        COUNT(DISTINCT ssc.id) as contributor_count,
-        COUNT(DISTINCT CASE WHEN ssc.signed_at IS NOT NULL THEN ssc.id END) as signed_count
-      FROM split_sheets ss
-      LEFT JOIN split_sheet_contributors ssc ON ss.id = ssc.split_sheet_id
-      WHERE ss.user_id = $1
-    `;
-    const params: any[] = [userId];
-    let idx = 2;
-
-    if (status) {
-      query += ` AND ss.status = $${idx++}`;
-      params.push(status);
-    }
-    if (project_id) {
-      query += ` AND ss.project_id = $${idx++}`;
-      params.push(project_id);
-    }
-    if (track_id) {
-      query += ` AND ss.track_id = $${idx++}`;
-      params.push(track_id);
-    }
-
-    query += ` GROUP BY ss.id ORDER BY ss.updated_at DESC LIMIT $${idx}`;
-    params.push(Number(limit));
-
-    const result = await pool.query(query, params);
-    res.json({ success: true, data: result.rows });
-  } catch (error) {
-    console.error("Error fetching split sheets:", error);
-    res.json({ success: true, data: [] });
-  }
-});
-
-// GET /api/split-sheets/stats — Dashboard stats
-// Triage-fix: /api/split-sheets/invoices ble fanget av :id-route under
-// (linje ~98720) som tolket "invoices" som UUID og kastet 500. Tomt
-// stub-svar her registrerer en konkret rute før catch-all så Express
-// matcher denne først.
-app.get("/api/split-sheets/invoices", async (_req, res) => {
-  res.json([]);
-});
-
-app.get("/api/split-sheets/stats", async (req, res) => {
-  try {
-    const userId = (req.headers["x-user-id"] as string) || "anonymous";
-
-    const totalResult = await pool.query(
-      "SELECT COUNT(*) as count FROM split_sheets WHERE user_id = $1",
-      [userId],
-    );
-    const pendingResult = await pool.query(
-      `SELECT COUNT(*) as count FROM split_sheets ss
-       JOIN split_sheet_contributors ssc ON ssc.split_sheet_id = ss.id
-       WHERE ss.user_id = $1 AND ssc.signed_at IS NULL`,
-      [userId],
-    );
-    const completedResult = await pool.query(
-      `SELECT COUNT(*) as count FROM split_sheets ss
-       WHERE ss.user_id = $1 AND ss.status = 'completed'`,
-      [userId],
-    );
-    const revenueResult = await pool.query(
-      `SELECT COALESCE(SUM(ssc.percentage), 0) as total FROM split_sheet_contributors ssc
-       JOIN split_sheets ss ON ss.id = ssc.split_sheet_id
-       WHERE ss.user_id = $1`,
-      [userId],
-    );
-
-    return res.json({
-      data: {
-        total: parseInt(totalResult.rows[0]?.count || "0"),
-        pendingSignatures: parseInt(pendingResult.rows[0]?.count || "0"),
-        totalRevenue: parseFloat(revenueResult.rows[0]?.total || "0"),
-        completed: parseInt(completedResult.rows[0]?.count || "0"),
-      },
-    });
-  } catch (error) {
-    console.error("Split sheets stats error:", error);
-    return res.json({
-      data: { total: 0, pendingSignatures: 0, totalRevenue: 0, completed: 0 },
-    });
-  }
-});
-
-// GET /api/split-sheets/revenue-analytics — Revenue trends from split sheets (BI Dashboard)
-app.get("/api/split-sheets/revenue-analytics", async (req, res) => {
-  try {
-    const profession = req.query.profession as string;
-
-    // Monthly revenue trends from split sheets
-    const trendsResult = await pool.query(
-      `SELECT
-         TO_CHAR(DATE_TRUNC('month', ss.created_at), 'YYYY-MM') AS month,
-         COUNT(ss.id) AS sheet_count,
-         SUM(ss.total_percentage) AS total_percentage
-       FROM split_sheets ss
-       GROUP BY DATE_TRUNC('month', ss.created_at)
-       ORDER BY month ASC`,
-    );
-
-    const trends = trendsResult.rows.map(
-      (row: {
-        month: string;
-        sheet_count: string;
-        total_percentage: string;
-      }) => ({
-        month: `${row.month}-01`,
-        totalRevenue: parseInt(row.sheet_count) * 5000,
-        sheetCount: parseInt(row.sheet_count),
-      }),
-    );
-
-    // Revenue by project
-    const byProjectResult = await pool.query(
-      `SELECT ss.title AS project_name, ss.total_percentage, ss.status,
-              COUNT(ssc.id) AS contributor_count
-       FROM split_sheets ss
-       LEFT JOIN split_sheet_contributors ssc ON ssc.split_sheet_id = ss.id
-       GROUP BY ss.id, ss.title, ss.total_percentage, ss.status
-       ORDER BY ss.created_at DESC
-       LIMIT 10`,
-    );
-
-    const byProject = byProjectResult.rows.map(
-      (row: {
-        project_name: string;
-        total_percentage: string;
-        contributor_count: string;
-        status: string;
-      }) => ({
-        projectName: row.project_name || "Ukjent prosjekt",
-        totalRevenue: parseFloat(row.total_percentage) * 100,
-        contributorCount: parseInt(row.contributor_count),
-        status: row.status,
-      }),
-    );
-
-    res.json({ data: { trends, byProject } });
-  } catch (error) {
-    console.error("Revenue analytics error:", error);
-    res.status(500).json({ error: "Failed to load revenue analytics" });
-  }
-});
-
-// GET /api/split-sheets/payment-analytics — Payment status distribution (BI Dashboard)
-app.get("/api/split-sheets/payment-analytics", async (req, res) => {
-  try {
-    const statusResult = await pool.query(
-      `SELECT status, COUNT(*) AS count
-       FROM split_sheets
-       GROUP BY status
-       ORDER BY count DESC`,
-    );
-
-    const statusDistribution = statusResult.rows.map(
-      (row: { status: string; count: string }) => ({
-        status: row.status || "unknown",
-        count: parseInt(row.count),
-      }),
-    );
-
-    const processingResult = await pool.query(
-      `SELECT
-         AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 86400) AS avg_days,
-         MIN(EXTRACT(EPOCH FROM (completed_at - created_at)) / 86400) AS min_days,
-         MAX(EXTRACT(EPOCH FROM (completed_at - created_at)) / 86400) AS max_days
-       FROM split_sheets
-       WHERE completed_at IS NOT NULL`,
-    );
-
-    const proc = processingResult.rows[0];
-    const averageProcessing = {
-      avgDays: parseFloat(proc?.avg_days) || 14.0,
-      minDays: parseFloat(proc?.min_days) || 3.0,
-      maxDays: parseFloat(proc?.max_days) || 30.0,
-    };
-
-    res.json({ data: { statusDistribution, averageProcessing } });
-  } catch (error) {
-    console.error("Payment analytics error:", error);
-    res.status(500).json({ error: "Failed to load payment analytics" });
-  }
-});
-
-// GET /api/split-sheets/market-insights — Industry benchmarks for split sheets (BI Dashboard)
-app.get("/api/split-sheets/market-insights", async (_req, res) => {
-  try {
-    const roleResult = await pool.query(
-      `SELECT
-         ssc.role,
-         AVG(ssc.percentage) AS avg_percentage,
-         MIN(ssc.percentage) AS min_percentage,
-         MAX(ssc.percentage) AS max_percentage,
-         COUNT(ssc.id) AS count
-       FROM split_sheet_contributors ssc
-       WHERE ssc.role IS NOT NULL AND ssc.role != ''
-       GROUP BY ssc.role
-       ORDER BY avg_percentage DESC`,
-    );
-
-    const averageSplitsByRole = roleResult.rows.map(
-      (row: {
-        role: string;
-        avg_percentage: string;
-        min_percentage: string;
-        max_percentage: string;
-        count: string;
-      }) => ({
-        role: row.role,
-        avgPercentage: parseFloat(parseFloat(row.avg_percentage).toFixed(2)),
-        minPercentage: parseFloat(parseFloat(row.min_percentage).toFixed(2)),
-        maxPercentage: parseFloat(parseFloat(row.max_percentage).toFixed(2)),
-        count: parseInt(row.count),
-      }),
-    );
-
-    const recommendations: string[] = [];
-    for (const role of averageSplitsByRole) {
-      if (role.role === "producer" && role.avgPercentage > 60) {
-        recommendations.push(
-          `Produsenter får i snitt ${role.avgPercentage.toFixed(0)}% – vurder om dette reflekterer arbeidsinnsatsen`,
-        );
-      }
-      if (role.role === "collaborator" && role.avgPercentage < 25) {
-        recommendations.push(
-          `Samarbeidspartnere får i snitt ${role.avgPercentage.toFixed(0)}% – sørg for rettferdig fordeling`,
-        );
-      }
-    }
-    if (averageSplitsByRole.length === 0) {
-      recommendations.push(
-        "Legg til split sheets for å se industri-benchmarks",
-      );
-    }
-    recommendations.push(
-      "Dokumenter alle avtaler skriftlig med signerte split sheets",
-    );
-    recommendations.push(
-      "Gjennomgå split-fordelingen regelmessig for alle pågående prosjekter",
-    );
-
-    res.json({ data: { averageSplitsByRole, recommendations } });
-  } catch (error) {
-    console.error("Market insights error:", error);
-    res.status(500).json({ error: "Failed to load market insights" });
-  }
-});
-
-// GET /api/split-sheets/:id — Get split sheet details with contributors
-app.get("/api/split-sheets/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const ssResult = await pool.query(
-      "SELECT * FROM split_sheets WHERE id = $1",
-      [id],
-    );
-    if (ssResult.rows.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Split sheet not found" });
-    }
-    const contribs = await pool.query(
-      "SELECT * FROM split_sheet_contributors WHERE split_sheet_id = $1 ORDER BY order_index ASC, created_at ASC",
-      [id],
-    );
-    res.json({
-      success: true,
-      data: { ...ssResult.rows[0], contributors: contribs.rows },
-    });
-  } catch (error) {
-    console.error("Error fetching split sheet:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to fetch split sheet" });
-  }
-});
-
-// POST /api/split-sheets — Create new split sheet
-app.post("/api/split-sheets", async (req, res) => {
-  try {
-    const userId = getSplitSheetUserId(req);
-    const {
-      project_id,
-      track_id,
-      title,
-      description,
-      contributors = [],
-    } = req.body;
-    const id = crypto.randomUUID();
-
-    await pool.query(
-      `INSERT INTO split_sheets (id, user_id, project_id, track_id, title, description, status, total_percentage, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, 'draft', 0, '{}')`,
-      [
-        id,
-        userId,
-        project_id || null,
-        track_id || null,
-        title || "Untitled Split Sheet",
-        description || null,
-      ],
-    );
-
-    for (let i = 0; i < contributors.length; i++) {
-      const c = contributors[i];
-      await pool.query(
-        `INSERT INTO split_sheet_contributors (id, split_sheet_id, name, email, role, percentage, order_index, user_id, custom_fields)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [
-          crypto.randomUUID(),
-          id,
-          c.name,
-          c.email || null,
-          c.role || "collaborator",
-          c.percentage || 0,
-          i,
-          c.user_id || null,
-          JSON.stringify(c.custom_fields || {}),
-        ],
-      );
-    }
-
-    // Update total_percentage
-    await pool.query(
-      "UPDATE split_sheets SET total_percentage = (SELECT COALESCE(SUM(percentage), 0) FROM split_sheet_contributors WHERE split_sheet_id = $1) WHERE id = $1",
-      [id],
-    );
-
-    const result = await pool.query(
-      "SELECT * FROM split_sheets WHERE id = $1",
-      [id],
-    );
-    const contribs = await pool.query(
-      "SELECT * FROM split_sheet_contributors WHERE split_sheet_id = $1 ORDER BY order_index",
-      [id],
-    );
-    res.json({
-      success: true,
-      data: { ...result.rows[0], contributors: contribs.rows },
-    });
-  } catch (error) {
-    console.error("Error creating split sheet:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to create split sheet" });
-  }
-});
-
-// PUT /api/split-sheets/:id — Update split sheet
-app.put("/api/split-sheets/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { title, description, status, project_id, track_id, contributors } =
-      req.body;
-
-    const updates: string[] = [];
-    const params: any[] = [];
-    let idx = 1;
-
-    if (title !== undefined) {
-      updates.push(`title = $${idx++}`);
-      params.push(title);
-    }
-    if (description !== undefined) {
-      updates.push(`description = $${idx++}`);
-      params.push(description);
-    }
-    if (status !== undefined) {
-      updates.push(`status = $${idx++}`);
-      params.push(status);
-    }
-    if (project_id !== undefined) {
-      updates.push(`project_id = $${idx++}`);
-      params.push(project_id);
-    }
-    if (track_id !== undefined) {
-      updates.push(`track_id = $${idx++}`);
-      params.push(track_id);
-    }
-    updates.push(`updated_at = NOW()`);
-
-    if (status === "completed") {
-      updates.push(`completed_at = NOW()`);
-    }
-
-    if (updates.length > 0) {
-      params.push(id);
-      await pool.query(
-        `UPDATE split_sheets SET ${updates.join(", ")} WHERE id = $${idx}`,
-        params,
-      );
-    }
-
-    // Replace contributors if provided
-    if (contributors && Array.isArray(contributors)) {
-      await pool.query(
-        "DELETE FROM split_sheet_contributors WHERE split_sheet_id = $1",
-        [id],
-      );
-      for (let i = 0; i < contributors.length; i++) {
-        const c = contributors[i];
-        await pool.query(
-          `INSERT INTO split_sheet_contributors (id, split_sheet_id, name, email, role, percentage, order_index, user_id, custom_fields)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [
-            crypto.randomUUID(),
-            id,
-            c.name,
-            c.email || null,
-            c.role || "collaborator",
-            c.percentage || 0,
-            i,
-            c.user_id || null,
-            JSON.stringify(c.custom_fields || {}),
-          ],
-        );
-      }
-      await pool.query(
-        "UPDATE split_sheets SET total_percentage = (SELECT COALESCE(SUM(percentage), 0) FROM split_sheet_contributors WHERE split_sheet_id = $1) WHERE id = $1",
-        [id],
-      );
-    }
-
-    const result = await pool.query(
-      "SELECT * FROM split_sheets WHERE id = $1",
-      [id],
-    );
-    const contribs = await pool.query(
-      "SELECT * FROM split_sheet_contributors WHERE split_sheet_id = $1 ORDER BY order_index",
-      [id],
-    );
-    res.json({
-      success: true,
-      data: { ...result.rows[0], contributors: contribs.rows },
-    });
-  } catch (error) {
-    console.error("Error updating split sheet:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to update split sheet" });
-  }
-});
-
-// DELETE /api/split-sheets/:id — Delete split sheet (cascades)
-app.delete("/api/split-sheets/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query(
-      "DELETE FROM split_sheet_contributors WHERE split_sheet_id = $1",
-      [id],
-    );
-    await pool.query(
-      "DELETE FROM split_sheet_comments WHERE split_sheet_id = $1",
-      [id],
-    );
-    await pool.query(
-      "DELETE FROM split_sheet_versions WHERE split_sheet_id = $1",
-      [id],
-    );
-    try {
-      await pool.query(
-        "DELETE FROM split_sheet_revenue WHERE split_sheet_id = $1",
-        [id],
-      );
-    } catch {}
-    try {
-      await pool.query(
-        "DELETE FROM split_sheet_payments WHERE split_sheet_id = $1",
-        [id],
-      );
-    } catch {}
-    await pool.query("DELETE FROM split_sheets WHERE id = $1", [id]);
-    res.json({ success: true, message: "Split sheet deleted successfully" });
-  } catch (error) {
-    console.error("Error deleting split sheet:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to delete split sheet" });
-  }
-});
-
-// POST /api/split-sheets/:id/sign — Add digital signature
-app.post("/api/split-sheets/:id/sign", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { contributor_id, signature_data } = req.body;
-
-    await pool.query(
-      `UPDATE split_sheet_contributors SET signed_at = NOW(), signature_data = $1, updated_at = NOW() WHERE id = $2 AND split_sheet_id = $3`,
-      [JSON.stringify(signature_data || {}), contributor_id, id],
-    );
-
-    // Check if all contributors signed
-    const check = await pool.query(
-      `SELECT COUNT(*) as total, COUNT(signed_at) as signed FROM split_sheet_contributors WHERE split_sheet_id = $1`,
-      [id],
-    );
-    if (
-      check.rows[0].total > 0 &&
-      check.rows[0].total === check.rows[0].signed
-    ) {
-      await pool.query(
-        `UPDATE split_sheets SET status = 'completed', completed_at = NOW(), updated_at = NOW() WHERE id = $1`,
-        [id],
-      );
-    } else {
-      await pool.query(
-        `UPDATE split_sheets SET status = 'pending_signatures', updated_at = NOW() WHERE id = $1`,
-        [id],
-      );
-    }
-
-    res.json({ success: true, message: "Signature recorded successfully" });
-  } catch (error) {
-    console.error("Error signing split sheet:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to sign split sheet" });
-  }
-});
-
-// POST /api/split-sheets/:id/share — Share via email (stub)
-app.post("/api/split-sheets/:id/share", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { contributor_ids, message } = req.body;
-
-    // Update invitation status for contributors
-    if (contributor_ids && contributor_ids.length > 0) {
-      for (const cid of contributor_ids) {
-        await pool.query(
-          `UPDATE split_sheet_contributors SET invitation_sent_at = NOW(), invitation_status = 'sent', updated_at = NOW() WHERE id = $1 AND split_sheet_id = $2`,
-          [cid, id],
-        );
-      }
-    }
-
-    res.json({ success: true, message: "Split sheet shared successfully" });
-  } catch (error) {
-    console.error("Error sharing split sheet:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to share split sheet" });
-  }
-});
-
-// GET /api/split-sheets/:id/pdf — Generate PDF (returns JSON summary)
-app.get("/api/split-sheets/:id/pdf", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const ss = await pool.query("SELECT * FROM split_sheets WHERE id = $1", [
-      id,
-    ]);
-    const contribs = await pool.query(
-      "SELECT * FROM split_sheet_contributors WHERE split_sheet_id = $1 ORDER BY order_index",
-      [id],
-    );
-
-    if (ss.rows.length === 0)
-      return res.status(404).json({ success: false, error: "Not found" });
-
-    res.json({
-      success: true,
-      data: {
-        splitSheet: ss.rows[0],
-        contributors: contribs.rows,
-        generatedAt: new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: "Failed to generate PDF" });
-  }
-});
-
-// GET /api/split-sheets/:id/versions — Get version history
-app.get("/api/split-sheets/:id/versions", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await pool.query(
-      "SELECT * FROM split_sheet_versions WHERE split_sheet_id = $1 ORDER BY created_at DESC",
-      [id],
-    );
-    res.json({ success: true, data: result.rows });
-  } catch (error) {
-    res.json({ success: true, data: [] });
-  }
-});
-
-// POST /api/split-sheets/:id/duplicate — Duplicate split sheet
-app.post("/api/split-sheets/:id/duplicate", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = getSplitSheetUserId(req);
-    const { title } = req.body;
-
-    const original = await pool.query(
-      "SELECT * FROM split_sheets WHERE id = $1",
-      [id],
-    );
-    if (original.rows.length === 0)
-      return res.status(404).json({ success: false, error: "Not found" });
-
-    const ss = original.rows[0];
-    const newId = crypto.randomUUID();
-
-    await pool.query(
-      `INSERT INTO split_sheets (id, user_id, project_id, track_id, title, description, status, total_percentage, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7, $8)`,
-      [
-        newId,
-        userId || ss.user_id,
-        ss.project_id,
-        ss.track_id,
-        title || `${ss.title} (Kopi)`,
-        ss.description,
-        ss.total_percentage,
-        JSON.stringify(ss.metadata || {}),
-      ],
-    );
-
-    const contribs = await pool.query(
-      "SELECT * FROM split_sheet_contributors WHERE split_sheet_id = $1 ORDER BY order_index",
-      [id],
-    );
-    for (const c of contribs.rows) {
-      await pool.query(
-        `INSERT INTO split_sheet_contributors (id, split_sheet_id, name, email, role, percentage, order_index, user_id, custom_fields)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [
-          crypto.randomUUID(),
-          newId,
-          c.name,
-          c.email,
-          c.role,
-          c.percentage,
-          c.order_index,
-          c.user_id,
-          JSON.stringify(c.custom_fields || {}),
-        ],
-      );
-    }
-
-    const result = await pool.query(
-      "SELECT * FROM split_sheets WHERE id = $1",
-      [newId],
-    );
-    const newContribs = await pool.query(
-      "SELECT * FROM split_sheet_contributors WHERE split_sheet_id = $1 ORDER BY order_index",
-      [newId],
-    );
-    res.json({
-      success: true,
-      data: { ...result.rows[0], contributors: newContribs.rows },
-    });
-  } catch (error) {
-    console.error("Error duplicating split sheet:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to duplicate split sheet" });
-  }
-});
-
-// POST /api/split-sheets/:id/revenue — Add revenue
-app.post("/api/split-sheets/:id/revenue", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = getSplitSheetUserId(req);
-    const {
-      amount,
-      currency = "NOK",
-      revenue_source,
-      source,
-      period_start,
-      period_end,
-      platform,
-      description,
-    } = req.body;
-    // Valid: streaming, sales, sync, performance, mechanical, publishing, other
-    const rawSource = (revenue_source || source || "other").toLowerCase();
-    const validSources = [
-      "streaming",
-      "sales",
-      "sync",
-      "performance",
-      "mechanical",
-      "publishing",
-      "other",
-    ];
-    const revenueSource = validSources.includes(rawSource)
-      ? rawSource
-      : "other";
-    const today = new Date().toISOString().split("T")[0];
-
-    const result = await pool.query(
-      `INSERT INTO split_sheet_revenue (id, split_sheet_id, amount, currency, revenue_source, period_start, period_end, platform, description, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-      [
-        crypto.randomUUID(),
-        id,
-        amount,
-        currency,
-        revenueSource,
-        period_start || today,
-        period_end || today,
-        platform || null,
-        description || null,
-        userId || "system",
-      ],
-    );
-    res.json({ success: true, data: result.rows[0] });
-  } catch (error) {
-    console.error("Error adding revenue:", error);
-    res.status(500).json({ success: false, error: "Failed to add revenue" });
-  }
-});
-
-// GET /api/split-sheets/:id/revenue — Get revenue history
-app.get("/api/split-sheets/:id/revenue", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await pool.query(
-      "SELECT * FROM split_sheet_revenue WHERE split_sheet_id = $1 ORDER BY created_at DESC",
-      [id],
-    );
-    res.json({ success: true, data: result.rows });
-  } catch (error) {
-    res.json({ success: true, data: [] });
-  }
-});
-
-// GET /api/split-sheets/:id/payments — Get payment history
-app.get("/api/split-sheets/:id/payments", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { contributor_id, status: payStatus } = req.query;
-
-    let query = "SELECT * FROM split_sheet_payments WHERE split_sheet_id = $1";
-    const params: any[] = [id];
-    let idx = 2;
-
-    if (contributor_id) {
-      query += ` AND contributor_id = $${idx++}`;
-      params.push(contributor_id);
-    }
-    if (payStatus) {
-      query += ` AND payment_status = $${idx++}`;
-      params.push(payStatus);
-    }
-    query += " ORDER BY created_at DESC";
-
-    const result = await pool.query(query, params);
-    res.json({ success: true, data: result.rows });
-  } catch (error) {
-    res.json({ success: true, data: [] });
-  }
-});
-
-// PUT /api/split-sheets/payments/:paymentId — Update payment status
-app.put("/api/split-sheets/payments/:paymentId", async (req, res) => {
-  try {
-    const { paymentId } = req.params;
-    const {
-      payment_status,
-      payment_date,
-      payment_method,
-      payment_reference,
-      notes,
-    } = req.body;
-
-    const updates: string[] = [];
-    const params: any[] = [];
-    let idx = 1;
-
-    if (payment_status) {
-      updates.push(`payment_status = $${idx++}`);
-      params.push(payment_status);
-    }
-    if (payment_date) {
-      updates.push(`payment_date = $${idx++}`);
-      params.push(payment_date);
-    }
-    if (payment_method) {
-      updates.push(`payment_method = $${idx++}`);
-      params.push(payment_method);
-    }
-    if (payment_reference) {
-      updates.push(`payment_reference = $${idx++}`);
-      params.push(payment_reference);
-    }
-    if (notes) {
-      updates.push(`notes = $${idx++}`);
-      params.push(notes);
-    }
-    updates.push("updated_at = NOW()");
-
-    params.push(paymentId);
-    const result = await pool.query(
-      `UPDATE split_sheet_payments SET ${updates.join(", ")} WHERE id = $${idx} RETURNING *`,
-      params,
-    );
-    res.json({ success: true, data: result.rows[0] });
-  } catch (error) {
-    console.error("Error updating payment:", error);
-    res.status(500).json({ success: false, error: "Failed to update payment" });
-  }
-});
+// /api/split-sheets/* inline-handlere — ekstraktert til ./split-sheets-routes.ts.
 
 // ============================================
 // PROJECT TIMELINE API - PostgreSQL-backed
@@ -73607,6 +69861,27 @@ setupShowcaseMiscRoutes({
   compatStoreSet,
   dbCompatUserKvKey,
 });
+
+// Selection-deadline reminders: daily sweep finner galleries med
+// selectionDeadline 3 eller 1 dag unna og sender e-post-påminnelse til
+// klienten. Idempotent via gallery_settings.reminderSentFor. Bruker
+// .unref() så loopen aldri holder prosessen i live.
+setInterval(() => {
+  void runDeadlineReminderSweep(pool).then((r) => {
+    if (r.sent > 0 || r.errors > 0) {
+      console.log(`[showcase-deadline-sweep] scanned=${r.scanned} sent=${r.sent} errors=${r.errors}`);
+    }
+  });
+}, 24 * 60 * 60 * 1000).unref();
+// Kjør en sweep 60s etter startup så reminders som er forfalt mens
+// serveren var nede sendes umiddelbart.
+setTimeout(() => {
+  void runDeadlineReminderSweep(pool).then((r) => {
+    if (r.sent > 0 || r.errors > 0) {
+      console.log(`[showcase-deadline-sweep] startup scanned=${r.scanned} sent=${r.sent} errors=${r.errors}`);
+    }
+  });
+}, 60_000).unref();
 
 // ── Showcase collections — flyttet til ./showcase-collections-routes.ts
 setupShowcaseCollectionsRoutes({
@@ -76135,133 +72410,6 @@ app.post("/api/notebooklm/workspace/sync", async (req, res) => {
   }
 });
 
-app.get("/api/academy/google-vids/status", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const status = await getAcademyGoogleVidsWorkspaceStatus(pool, {
-      userId,
-      courseId: readString(req.query.courseId),
-      courseTitle: readString(req.query.courseTitle),
-    });
-
-    return res.json(status);
-  } catch (error) {
-    console.error("Academy Google Vids workspace status error:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to fetch Academy Google Vids workspace status" });
-  }
-});
-
-app.post("/api/academy/google-vids/sync", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const workspace = await syncAcademyGoogleVidsWorkspace(pool, {
-      userId,
-      courseId: readString(req.body?.courseId),
-      courseTitle: readString(req.body?.courseTitle),
-      snapshot: req.body?.snapshot,
-    });
-
-    const status = await getAcademyGoogleVidsWorkspaceStatus(pool, {
-      userId,
-      courseId: workspace.courseId,
-      courseTitle: workspace.courseTitle,
-    });
-
-    return res.json(status);
-  } catch (error) {
-    console.error("Academy Google Vids workspace sync error:", error);
-    return res.status(500).json({
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to sync Academy Google Vids workspace",
-    });
-  }
-});
-
-app.get("/api/academy/notebooklm/status", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const status = await getAcademyNotebookLmWorkspaceStatus(pool, {
-      userId,
-      courseId: readString(req.query.courseId),
-      lessonId: readString(req.query.lessonId),
-      courseTitle: readString(req.query.courseTitle),
-    });
-
-    return res.json(status);
-  } catch (error) {
-    console.error("Academy NotebookLM workspace status error:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to fetch Academy NotebookLM workspace status" });
-  }
-});
-
-app.post("/api/academy/notebooklm/sync", async (req, res) => {
-  try {
-    const academySession = await requireAcademySession(
-      req,
-      res,
-      "instructor",
-    );
-    if (!academySession) {
-      return;
-    }
-    const userId = academySession.user.id;
-    const workspace = await syncAcademyNotebookLmWorkspace(pool, {
-      userId,
-      courseId: readString(req.body?.courseId),
-      lessonId: readString(req.body?.lessonId),
-      courseTitle: readString(req.body?.courseTitle),
-      snapshot: req.body?.snapshot,
-    });
-
-    const status = await getAcademyNotebookLmWorkspaceStatus(pool, {
-      userId,
-      courseId: workspace.courseId,
-      lessonId: workspace.lessonId,
-      courseTitle: workspace.courseTitle,
-    });
-
-    return res.json(status);
-  } catch (error) {
-    console.error("Academy NotebookLM workspace sync error:", error);
-    return res.status(500).json({
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to sync Academy NotebookLM workspace",
-    });
-  }
-});
-
 // ============================================================
 // Google People API (Stub endpoints for CRM integration)
 // ============================================================
@@ -76546,125 +72694,6 @@ app.post(
   },
 );
 
-app.delete("/api/academy/media-assets/:assetId", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "instructor"))) {
-      return;
-    }
-    const assetId = String(req.params.assetId || "").trim();
-    if (!assetId) {
-      return res.status(400).json({ error: "Missing asset id" });
-    }
-    const manifest = await loadAcademyMediaManifest();
-    const nextAssets = manifest.assets.filter((entry) => entry.id !== assetId);
-    if (nextAssets.length === manifest.assets.length) {
-      return res.status(404).json({ error: "Academy media asset not found" });
-    }
-
-    manifest.assets = nextAssets;
-    manifest.updatedAt = new Date().toISOString();
-    await persistAcademyMediaManifest(manifest);
-
-    const assetDir = path.join(ACADEMY_MEDIA_STORAGE_DIR, assetId);
-    try {
-      await fs.rm(assetDir, { recursive: true, force: true });
-    } catch (error) {
-      console.warn("[academy-media] failed to remove asset directory:", error);
-    }
-
-    return res.json({ success: true, assetId });
-  } catch (error) {
-    console.error("[academy-media] delete failed:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to delete academy media asset" });
-  }
-});
-
-app.get("/api/academy/media-assets/:assetId/file", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "authenticated"))) {
-      return;
-    }
-    const assetId = String(req.params.assetId || "").trim();
-    const requestedVersion = Number(req.query.version || 0);
-    const manifest = await loadAcademyMediaManifest();
-    const record = manifest.assets.find((entry) => entry.id === assetId);
-    if (!record) {
-      return res.status(404).json({ error: "Academy media asset not found" });
-    }
-    const versionRecord = resolveAcademyMediaVersion(
-      record,
-      Number.isFinite(requestedVersion) && requestedVersion > 0
-        ? requestedVersion
-        : undefined,
-    );
-    if (!versionRecord) {
-      return res.status(404).json({ error: "Academy media version not found" });
-    }
-
-    const absolutePath = path.join(
-      ACADEMY_MEDIA_STORAGE_DIR,
-      versionRecord.relativePath,
-    );
-    if (!existsSync(absolutePath)) {
-      return res
-        .status(404)
-        .json({ error: "Academy media file missing on disk" });
-    }
-
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    res.type(versionRecord.mimeType || "application/octet-stream");
-    return res.sendFile(absolutePath);
-  } catch (error) {
-    console.error("[academy-media] serve file failed:", error);
-    return res.status(500).json({ error: "Failed to load academy media file" });
-  }
-});
-
-app.get("/api/academy/media-assets/:assetId/poster", async (req, res) => {
-  try {
-    if (!(await requireAcademySession(req, res, "authenticated"))) {
-      return;
-    }
-    const assetId = String(req.params.assetId || "").trim();
-    const requestedVersion = Number(req.query.version || 0);
-    const manifest = await loadAcademyMediaManifest();
-    const record = manifest.assets.find((entry) => entry.id === assetId);
-    if (!record) {
-      return res.status(404).json({ error: "Academy media asset not found" });
-    }
-    const versionRecord = resolveAcademyMediaVersion(
-      record,
-      Number.isFinite(requestedVersion) && requestedVersion > 0
-        ? requestedVersion
-        : undefined,
-    );
-    if (!versionRecord?.posterRelativePath) {
-      return res
-        .status(404)
-        .json({ error: "Poster not available for this asset" });
-    }
-
-    const absolutePath = path.join(
-      ACADEMY_MEDIA_STORAGE_DIR,
-      versionRecord.posterRelativePath,
-    );
-    if (!existsSync(absolutePath)) {
-      return res.status(404).json({ error: "Poster file missing on disk" });
-    }
-
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    res.type(versionRecord.posterMimeType || "image/jpeg");
-    return res.sendFile(absolutePath);
-  } catch (error) {
-    console.error("[academy-media] serve poster failed:", error);
-    return res
-      .status(500)
-      .json({ error: "Failed to load academy media poster" });
-  }
-});
-
 // Communication / Chat API routes
 const dashboardCompatRouter = createDashboardCompatRouter();
 app.use(dashboardCompatRouter);
@@ -76772,6 +72801,8 @@ app.all("/api/*", (req, res) => {
 // Create HTTP server for WebSocket support
 const httpServer = createServer(app);
 createWebSocketServer(httpServer, db);
+// G25/J1: dance realtime presence + cursor sync på /ws/dance/realtime
+createDanceRealtimeServer(httpServer);
 attachCaptureWebSocket(httpServer, pool, activeSessions);
 attachUserEventsWebSocket(httpServer, pool, activeSessions);
 

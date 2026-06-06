@@ -9,13 +9,28 @@ import {
   CircularProgress,
   Container,
   Divider,
+  IconButton,
   List,
   ListItem,
   ListItemText,
+  Menu,
+  MenuItem,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
-import { clearHelperConfig, fetchProjectInfo, ProjectInfo, StoredConfig } from "../api";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutlineOutlined";
+import DeskIcon from "./DeskIcon";
+import {
+  clearHelperConfig,
+  fetchProjectInfo,
+  listProjects,
+  ProjectEntry,
+  ProjectInfo,
+  setActiveProject,
+  StoredConfig,
+} from "../api";
 import MountsSection from "./MountsSection";
 import CopyProgressView from "./CopyProgressView";
 import ResumeBanner from "./ResumeBanner";
@@ -25,12 +40,29 @@ import CaptureMirrorSection from "./CaptureMirrorSection";
 interface Props {
   config: StoredConfig;
   onLoggedOut: () => void;
+  onSwitchProject?: () => void;
 }
 
-export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
+export default function ProjectInfoScreen({ config, onLoggedOut, onSwitchProject }: Props) {
   const [info, setInfo] = useState<ProjectInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Quick-switch dropdown state: list av andre prosjekter brukeren har
+  // konfigurert. Vises som en chevron-meny ved siden av prosjekt-tittelen
+  // når det finnes >1 prosjekt totalt.
+  const [otherProjects, setOtherProjects] = useState<ProjectEntry[]>([]);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [switching, setSwitching] = useState(false);
+
+  // Last opp liste av andre prosjekter ved mount + når active config endres.
+  // Filtrerer ut aktivt prosjekt fra listen (vises uansett i tittelen).
+  useEffect(() => {
+    void listProjects()
+      .then((all) => {
+        setOtherProjects(all.filter((p) => p.project_id !== config.project_id));
+      })
+      .catch(() => setOtherProjects([]));
+  }, [config.project_id]);
 
   const reload = async () => {
     setLoading(true);
@@ -53,6 +85,19 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
     onLoggedOut();
   };
 
+  const handleSwitchTo = async (projectId: string) => {
+    setMenuAnchor(null);
+    setSwitching(true);
+    try {
+      await setActiveProject(projectId);
+      // Trigger parent-refresh som leser nytt active project og rendrer på nytt
+      onLoggedOut();
+    } catch (e) {
+      setError(typeof e === "string" ? e : String(e));
+      setSwitching(false);
+    }
+  };
+
   if (loading) {
     return (
       <Container maxWidth="md" sx={{ py: 6, textAlign: "center" }}>
@@ -67,17 +112,76 @@ export default function ProjectInfoScreen({ config, onLoggedOut }: Props) {
   return (
     <Container maxWidth="md" sx={{ py: 6 }}>
       <Stack spacing={3}>
-        <Box>
-          <Typography variant="overline" color="text.secondary">
-            Creatorhub One Desk
-          </Typography>
-          <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
-            {info?.project.name || config.project_id}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {config.api_base} · prosjekt {config.project_id}
-          </Typography>
-        </Box>
+        <Stack
+          direction="row"
+          sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 1 }}
+        >
+          <Stack direction="row" spacing={2} sx={{ flex: 1, minWidth: 0, alignItems: "center" }}>
+            <DeskIcon size={56} shadow={false} />
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography variant="overline" color="text.secondary">
+                Creatorhub One Desk
+              </Typography>
+              <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1.1 }} noWrap>
+                {info?.project.name || config.project_id}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {config.api_base} · prosjekt {config.project_id}
+              </Typography>
+            </Box>
+          </Stack>
+
+          {/* Quick-switcher: vis bare når det er flere prosjekter ELLER
+              parent har gitt oss onSwitchProject (Picker-tilgang). */}
+          {(otherProjects.length > 0 || onSwitchProject) && (
+            <Box>
+              <Tooltip title="Bytt prosjekt">
+                <IconButton
+                  onClick={(e) => setMenuAnchor(e.currentTarget)}
+                  disabled={switching}
+                  size="small"
+                >
+                  <SwapHorizIcon />
+                </IconButton>
+              </Tooltip>
+              <Menu
+                anchorEl={menuAnchor}
+                open={!!menuAnchor}
+                onClose={() => setMenuAnchor(null)}
+              >
+                {otherProjects.map((p) => (
+                  <MenuItem
+                    key={p.project_id}
+                    onClick={() => handleSwitchTo(p.project_id)}
+                  >
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {p.label}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {p.project_id}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+                {otherProjects.length > 0 && <Divider />}
+                {onSwitchProject && (
+                  <MenuItem
+                    onClick={() => {
+                      setMenuAnchor(null);
+                      onSwitchProject();
+                    }}
+                  >
+                    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                      <AddCircleOutlineIcon fontSize="small" />
+                      <Typography variant="body2">Administrer prosjekter…</Typography>
+                    </Stack>
+                  </MenuItem>
+                )}
+              </Menu>
+            </Box>
+          )}
+        </Stack>
 
         {/* Resume-banner — vises kun hvis det finnes interrupted backup-økter
             etter app-crash eller forced quit. Skjult når listen er tom. */}

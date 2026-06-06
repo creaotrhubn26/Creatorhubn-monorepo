@@ -234,6 +234,7 @@ const CastingPlannerTutorial = lazy(() => import('./CastingPlannerTutorial').the
 const TutorialEditorPanel = lazy(() => import('./TutorialEditorPanel').then(m => ({ default: m.TutorialEditorPanel })));
 const ConsentManagementPanel = lazy(() => import('./ConsentManagementPanel').then(m => ({ default: m.ConsentManagementPanel })));
 const AgencyPartnershipPicker = lazyWithRetry(() => import('./AgencyPartnershipPicker').then(m => ({ default: m.default })));
+const IncomingTalentProposalsList = lazyWithRetry(() => import('./IncomingTalentProposalsList').then(m => ({ default: m.default })));
 const ConsentContractDialog = lazy(() => import('./ConsentContractDialog').then(m => ({ default: m.ConsentContractDialog })));
 const ProjectEconomyHub = lazy(() => retryDynamicImport(() => import('./ProjectEconomyHub'), 'ProjectEconomyHub'));
 const ClientEconomyPanel = lazy(() => retryDynamicImport(() => import('./producer/ClientEconomyPanel'), 'ClientEconomyPanel'));
@@ -1520,6 +1521,35 @@ type RoleRoomProjectWorkspaceState = {
 
     return window.confirm(
       `Du har ulagret arbeid i ${reasonText}. Hvis du bytter til "${targetProject.name}", kan endringene gå tapt. Vil du fortsette?`,
+    );
+  }, []);
+
+  // Guard mot utilsiktet tap av ulagret arbeid når man forlater en Story Arc-flate
+  // (f.eks. "Tilbake" fra manus eller story-logic). `sources` begrenser sjekken til
+  // relevante kilder; uten argument sjekkes alle registrerte ulagrede kilder.
+  const confirmDiscardUnsavedIfNeeded = useCallback((sources?: string[]): boolean => {
+    const entries = Object.entries(unsavedProjectSwitchStateRef.current);
+    const relevant = sources && sources.length
+      ? entries.filter(([key]) => sources.includes(key))
+      : entries;
+    const reasons = Array.from(new Set(
+      relevant.map(([, value]) => String(value || '').trim()).filter(Boolean),
+    ));
+
+    if (reasons.length === 0) {
+      return true;
+    }
+
+    const reasonText = reasons.length === 1
+      ? reasons[0]
+      : `${reasons.slice(0, -1).join(', ')} og ${reasons[reasons.length - 1]}`;
+
+    if (typeof window === 'undefined' || typeof window.confirm !== 'function') {
+      return true;
+    }
+
+    return window.confirm(
+      `Du har ulagret arbeid i ${reasonText}. Hvis du går tilbake nå, kan endringene gå tapt. Vil du fortsette?`,
     );
   }, []);
 
@@ -3599,6 +3629,9 @@ type RoleRoomProjectWorkspaceState = {
   usePlannerOnboardingTour({
     enabled: onboardingEnabled,
     userKey: aiNudgeUserKey,
+    // Workflow-stepperen rendres kun i content_producer-modus; produksjonsteam
+    // har den ikke, så onboarding-steg 2 må tilpasses.
+    hasWorkflowStepper: isContentProducerMode,
     onOpenCommandPalette: () => setCommandPaletteOpen(true),
     onFocusWorkflowStepper: () => {
       // Scroll til toppen så stepperen er synlig
@@ -3988,6 +4021,11 @@ type RoleRoomProjectWorkspaceState = {
       TEAM_TAB_INDEX,
       EQUIPMENT_TAB_INDEX,
       ...(canViewProducerEconomy ? [PRODUCER_ECONOMY_TAB_INDEX] : []),
+      // Produksjonsteam trenger også godkjenning- + leveringsflatene, ellers
+      // har de ingen vei fra manus til klient-godkjenning/levering (panelene
+      // og labels finnes allerede, var bare ikke synlige for denne modusen).
+      PRODUCER_REVIEWS_TAB_INDEX,
+      PRODUCER_EXPORT_TAB_INDEX,
       LIVE_SET_TAB_INDEX,
     ];
   }, [canViewProducerEconomy, isClientReviewerMode, isContentProducerMode, isExternalClientPortalMode]);
@@ -9836,6 +9874,12 @@ type RoleRoomProjectWorkspaceState = {
                 />
               </Suspense>
             ) : null}
+            {/* Talent-forslag fra byråer (migrate 226) — viser kun hvis det finnes forslag */}
+            {currentProject?.id ? (
+              <Suspense fallback={null}>
+                <IncomingTalentProposalsList castingProjectId={currentProject.id} />
+              </Suspense>
+            ) : null}
             {/* Candidate filters & view mode toolbar */}
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
               <FormControl size="small" sx={{ minWidth: 130 }}>
@@ -11722,9 +11766,23 @@ type RoleRoomProjectWorkspaceState = {
                     <StoryArcIcon sx={{ color: '#fff', fontSize: 18 }} />
                   </Box>
                   <Box>
-                    <Typography sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.2 }}>
-                      Role Room Studio
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <Typography sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.2 }}>
+                        Role Room Studio
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label={isClientReviewerMode ? 'Klient' : isContentProducerMode ? 'Innholdsprodusent' : 'Produksjon'}
+                        sx={{
+                          height: 20,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          bgcolor: 'rgba(56,189,248,0.18)',
+                          color: '#bae6fd',
+                          border: '1px solid rgba(56,189,248,0.4)',
+                        }}
+                      />
+                    </Box>
                     <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.78)' }}>
                       {branding.tokens.labels.storyArcTagline}
                     </Typography>
@@ -12668,6 +12726,7 @@ type RoleRoomProjectWorkspaceState = {
                 <Button
                   startIcon={<CloseIcon />}
                   onClick={() => {
+                    if (!confirmDiscardUnsavedIfNeeded(['story_logic'])) return;
                     startTransition(() => setStoryArcView('main'));
                   }}
                   size="small"
@@ -12690,6 +12749,10 @@ type RoleRoomProjectWorkspaceState = {
                     onSave={handleStoryLogicSave}
                     onUnsavedStateChange={(hasUnsaved, reason) => {
                       setUnsavedProjectSwitchSource('story_logic', hasUnsaved, reason);
+                    }}
+                    onNavigateToStoryWriter={() => {
+                      if (!confirmDiscardUnsavedIfNeeded(['story_logic'])) return;
+                      startTransition(() => setStoryArcView('story-writer'));
                     }}
                   />
                 </Suspense>
@@ -12789,6 +12852,27 @@ type RoleRoomProjectWorkspaceState = {
                       onUnsavedStateChange={(hasUnsaved, reason) => {
                         setUnsavedProjectSwitchSource('manuscript', hasUnsaved, reason);
                       }}
+                      onSendToApproval={() => {
+                        if (!confirmDiscardUnsavedIfNeeded(['manuscript'])) return;
+                        if (isContentProducerMode) {
+                          openContentProducerPlannerSurface('approval', { focusPanel: 'reviews' });
+                        } else {
+                          navigateToTab(PRODUCER_REVIEWS_TAB_INDEX);
+                        }
+                      }}
+                      targetDurationMinutes={typeof currentProject?.targetDurationMinutes === 'number' ? currentProject.targetDurationMinutes : undefined}
+                      onTargetDurationChange={async (minutes) => {
+                        if (!currentProject) return;
+                        const updated = { ...currentProject, targetDurationMinutes: minutes ?? undefined };
+                        setCurrentProject(updated);
+                        try {
+                          await castingService.saveProject(updated);
+                          toast.showSuccess(minutes ? `Mål-lengde satt til ${minutes} min` : 'Mål-lengde fjernet');
+                        } catch (error) {
+                          console.error('Kunne ikke lagre mål-lengde:', error);
+                          toast.showError('Kunne ikke lagre mål-lengde');
+                        }
+                      }}
                       headerLeftContent={
                         <Box
                           sx={{
@@ -12806,6 +12890,7 @@ type RoleRoomProjectWorkspaceState = {
                           <Button
                             startIcon={<CloseIcon />}
                             onClick={() => {
+                              if (!confirmDiscardUnsavedIfNeeded(['manuscript'])) return;
                               startTransition(() => setStoryArcView('main'));
                             }}
                             size="small"
@@ -12826,18 +12911,27 @@ type RoleRoomProjectWorkspaceState = {
                             sx={{ mx: 0.5, borderColor: branding.colors.border }}
                           />
                           <StoryWriterIcon sx={{ color: branding.colors.primary, flexShrink: 0 }} />
-                          <Typography
-                            variant="subtitle1"
-                            sx={{
-                              fontWeight: 600,
-                              color: branding.colors.textPrimary,
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                          >
-                            {branding.tokens.labels.storyWriterHeader}
-                          </Typography>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{ color: branding.colors.textSecondary, display: 'block', lineHeight: 1.1, whiteSpace: 'nowrap' }}
+                            >
+                              Role Room Studio › Story
+                            </Typography>
+                            <Typography
+                              variant="subtitle1"
+                              sx={{
+                                fontWeight: 600,
+                                color: branding.colors.textPrimary,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                lineHeight: 1.2,
+                              }}
+                            >
+                              {branding.tokens.labels.storyWriterHeader}
+                            </Typography>
+                          </Box>
                         </Box>
                       }
                     />

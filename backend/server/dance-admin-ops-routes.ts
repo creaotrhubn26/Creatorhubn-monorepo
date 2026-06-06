@@ -339,7 +339,7 @@ export function createDanceAdminOpsRouter(
     status: z.enum(['active', 'pending', 'inactive', 'suspended']).optional(),
     joinedAt: z.string().datetime().nullable().optional(),
     workDays: z.array(workDaySchema).max(2000).optional(),
-    tariffSnapshot: z.record(z.unknown()).optional(),
+    tariffSnapshot: z.record(z.string(), z.unknown()).optional(),
     notes: z.string().max(5000).nullable().optional(),
   });
   router.get('/union', auth, async (req, res) => {

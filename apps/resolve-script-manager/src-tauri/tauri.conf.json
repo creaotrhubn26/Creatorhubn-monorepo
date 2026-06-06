@@ -33,6 +33,9 @@
     "active": true,
     "targets": "all",
     "category": "Productivity",
+    "macOS": {
+      "signingIdentity": "Developer ID Application: Creatorhub AS (9TAUZCPK95)"
+    },
     "shortDescription": "DaVinci Resolve pipeline automation for videographers",
     "longDescription": "Run the full post-production pipeline — import, organize, timeline-build, sync, rough cut, render queue, backup — as scripted DaVinci Resolve actions with dry-run safety and live logs.",
     "resources": ["../python/**/*"],

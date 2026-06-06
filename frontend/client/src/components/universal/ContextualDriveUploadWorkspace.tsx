@@ -206,8 +206,8 @@ const errorMessage = (error: unknown) => {
 
 const cardSurfaceSx = {
   borderRadius: 4,
-  border: '1px solid rgba(15, 23, 42, 0.08)',
-  background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.98) 100%)',
+  border: '1px solid rgba(255,255,255,0.10)',
+  background: 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.04) 100%)',
   boxShadow: '0 18px 40px rgba(15, 23, 42, 0.07)',
 };
 
@@ -684,7 +684,7 @@ export default function ContextualDriveUploadWorkspace({
             borderRadius: 5.5,
             overflow: 'hidden',
             position: 'relative',
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,248,240,0.96) 100%)',
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.04) 100%)',
             '&::after': {
               content: '""',
               position: 'absolute',
@@ -756,7 +756,7 @@ export default function ContextualDriveUploadWorkspace({
               variant="outlined"
               sx={{
                 borderRadius: 4,
-                borderColor: 'rgba(15,23,42,0.08)',
+                borderColor: 'rgba(255,255,255,0.10)',
                 bgcolor: 'rgba(255,255,255,0.04)',
                 p: 1.5,
               }}
@@ -1113,7 +1113,7 @@ export default function ContextualDriveUploadWorkspace({
                           '&:hover': { bgcolor: '#ff5638' },
                         }
                       : {
-                          borderColor: 'rgba(15,23,42,0.08)',
+                          borderColor: 'rgba(255,255,255,0.10)',
                           color: '#0f172a',
                         }),
                   }}
@@ -1190,8 +1190,8 @@ export default function ContextualDriveUploadWorkspace({
                   sx={{
                     p: 1.25,
                     borderRadius: 3,
-                    bgcolor: 'rgba(248,250,252,0.92)',
-                    border: '1px solid rgba(15,23,42,0.06)',
+                    bgcolor: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.10)',
                   }}
                 >
                   <Stack direction="row" spacing={1.25} alignItems="center" minWidth={0}>
@@ -1335,7 +1335,7 @@ export default function ContextualDriveUploadWorkspace({
             variant="outlined"
             sx={{
               borderRadius: 3.5,
-              borderColor: 'rgba(15, 23, 42, 0.08)',
+              borderColor: 'rgba(255,255,255,0.10)',
               bgcolor: 'rgba(255,255,255,0.04)',
               p: 2,
             }}
@@ -1467,7 +1467,7 @@ export default function ContextualDriveUploadWorkspace({
                   onClick={() => setSelectedDestinationId(option.id)}
                   sx={{
                     borderRadius: 3,
-                    border: '1px solid rgba(15, 23, 42, 0.08)',
+                    border: '1px solid rgba(255,255,255,0.10)',
                     alignItems: 'flex-start',
                     px: 1.5,
                     py: 1.25,
@@ -1587,7 +1587,7 @@ export default function ContextualDriveUploadWorkspace({
                 sx={{
                   borderRadius: 4,
                   border: dragging ? '2px solid rgba(249, 115, 22, 0.75)' : '2px dashed rgba(15, 23, 42, 0.12)',
-                  bgcolor: dragging ? 'rgba(249, 115, 22, 0.08)' : 'rgba(248, 250, 252, 0.8)',
+                  bgcolor: dragging ? 'rgba(249, 115, 22, 0.08)' : 'rgba(255,255,255,0.04)',
                   p: { xs: 3, md: 4 },
                   textAlign: 'center',
                   cursor: 'pointer',
@@ -1621,7 +1621,7 @@ export default function ContextualDriveUploadWorkspace({
                   variant="outlined"
                   sx={{
                     borderRadius: 3,
-                    borderColor: 'rgba(15, 23, 42, 0.10)',
+                    borderColor: 'rgba(255,255,255,0.10)',
                     bgcolor: 'rgba(255,255,255,0.04)',
                     p: 1.5,
                   }}
@@ -1645,8 +1645,8 @@ export default function ContextualDriveUploadWorkspace({
                           px: 1.25,
                           py: 1,
                           borderRadius: 2.5,
-                          bgcolor: 'rgba(248, 250, 252, 0.9)',
-                          border: '1px solid rgba(15, 23, 42, 0.06)',
+                          bgcolor: 'rgba(255,255,255,0.04)',
+                          border: '1px solid rgba(255,255,255,0.10)',
                         }}
                       >
                         <Stack direction="row" spacing={1.25} alignItems="center" minWidth={0}>
@@ -1762,7 +1762,7 @@ export default function ContextualDriveUploadWorkspace({
                         px: 1.5,
                         py: 1.25,
                         borderRadius: 3,
-                        border: '1px solid rgba(15, 23, 42, 0.07)',
+                        border: '1px solid rgba(255,255,255,0.10)',
                         bgcolor: 'rgba(255,255,255,0.04)',
                       }}
                     >

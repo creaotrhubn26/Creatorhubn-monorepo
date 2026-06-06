@@ -29,7 +29,7 @@ import type { ImageSize } from "../agents/templateArtDirector";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import EditIcon from "@mui/icons-material/Edit";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import SaveAsIcon from "@mui/icons-material/SaveAs";
 import CircularProgress from "@mui/material/CircularProgress";
 

@@ -36,7 +36,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { nb } from 'date-fns/locale';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+// useProfessionAdapter dedupliseert — allerede importert øverst (linje 9)
 
 interface ProjectCreationWizardProps {
   onComplete?: (project: any) => void;

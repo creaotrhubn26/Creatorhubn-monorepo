@@ -24,6 +24,7 @@ import SettingsPage from './pages/SettingsPage';
 import TalentRegistryPage from './pages/TalentRegistryPage';
 import TalentProposalAcceptPage from './pages/TalentProposalAcceptPage';
 import AgencyPartnershipsPage from './pages/AgencyPartnershipsPage';
+import SelfTapeStudioPage from './pages/SelfTapeStudioPage';
 import { palette } from './theme';
 
 const ROUTE_TO_PAGE: Record<string, TalentsAppPage> = {
@@ -137,6 +138,8 @@ export default function TalentsApp({ initialPage, onLogout }: TalentsAppProps) {
         <SettingsPage />
       ) : page === 'partnerships' ? (
         <AgencyPartnershipsPage />
+      ) : page === 'selftapes' ? (
+        <SelfTapeStudioPage demoMode={demoMode} />
       ) : (
         <ComingSoonPage page={page} />
       )}

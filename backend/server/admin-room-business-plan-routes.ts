@@ -26,6 +26,7 @@
 
 import type { AdminRoomRoutesDeps } from "./_shared";
 import { logAIUsage } from "./ai-usage-tracker.js";
+import { archiveToRoleRoomB2, businessPlanSnapshotKey } from "./b2-archive-helper.js";
 
 const BUSINESS_PLAN_TEXT_FIELDS = [
   "exec_summary",
@@ -222,6 +223,26 @@ Holy Crust (Oslo).`;
         `UPDATE admin_business_plan SET ${sets.join(", ")} WHERE user_id = $1 RETURNING *`,
         params,
       );
+
+      // ── B2-arkivering (fire-and-forget) ─────────────────────────────
+      // Hver PATCH lagrer et fullt snapshot. I tillegg kjører cron en
+      // daglig snapshot via /api/internal/b2-archive/cron/business-plan
+      // for tilfeller der Daniel ikke editerer en gitt dag.
+      try {
+        const snapshot = {
+          snapshotAt: new Date().toISOString(),
+          trigger: "patch",
+          plan: result.rows[0],
+        };
+        void archiveToRoleRoomB2(
+          businessPlanSnapshotKey(),
+          JSON.stringify(snapshot, null, 2),
+          "application/json; charset=utf-8",
+        ).catch((err) => console.warn("[business-plan] B2-arkivering feilet", (err as Error).message));
+      } catch (err) {
+        console.warn("[business-plan] B2-arkivering oppsett feilet", (err as Error).message);
+      }
+
       res.json({ plan: result.rows[0] });
     } catch (err) {
       console.error("admin-room business-plan patch error", err);

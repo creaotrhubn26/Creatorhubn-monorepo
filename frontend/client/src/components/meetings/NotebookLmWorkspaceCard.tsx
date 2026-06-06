@@ -107,9 +107,9 @@ export function NotebookLmWorkspaceCard({
         overflow: 'hidden',
         borderRadius: 4,
         border: '1px solid',
-        borderColor: 'rgba(120, 96, 52, 0.18)',
-        background: 'linear-gradient(180deg, #fbf6ee 0%, #f5efe4 100%)',
-        boxShadow: '0 20px 60px rgba(54, 43, 18, 0.12)',
+        borderColor: 'rgba(197, 168, 117, 0.30)',
+        background: 'rgba(255,255,255,0.04)',
+        boxShadow: '0 20px 60px rgba(0, 0, 0, 0.35)',
         '&::before': {
           content: '""',
           position: 'absolute',
@@ -133,7 +133,7 @@ export function NotebookLmWorkspaceCard({
                 p: dense ? 2 : 2.5,
                 borderRadius: 3,
                 border: '1px solid rgba(120, 96, 52, 0.14)',
-                background: 'linear-gradient(180deg, rgba(255,252,246,0.96) 0%, rgba(255,249,241,0.92) 100%)',
+                background: 'rgba(255,255,255,0.06)',
                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)',
               }}
             >
@@ -268,7 +268,7 @@ export function NotebookLmWorkspaceCard({
                       p: dense ? 1.75 : 2.1,
                       borderRadius: 3,
                       border: '1px solid rgba(120, 96, 52, 0.12)',
-                      background: 'linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(251,246,238,0.88) 100%)',
+                      background: 'rgba(255,255,255,0.06)',
                       backgroundImage: 'linear-gradient(to bottom, rgba(120, 96, 52, 0.06) 1px, transparent 1px)',
                       backgroundSize: '100% 34px',
                     }}

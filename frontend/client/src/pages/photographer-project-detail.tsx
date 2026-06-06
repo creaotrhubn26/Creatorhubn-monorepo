@@ -208,7 +208,14 @@ export default function PhotographerProjectDetail() {
   });
 
   const createInvoice = useMutation<
-    { invoiceId: string; invoiceNumber: string | null; alreadyInvoiced?: boolean },
+    {
+      salesOrderId: string;
+      salesOrderNumber: number | string | null;
+      sendStatus?: string | null;
+      sendError?: { status: number; detail?: unknown } | null;
+      async?: boolean;
+      alreadyInvoiced?: boolean;
+    },
     Error,
     void
   >({
@@ -896,6 +903,19 @@ export default function PhotographerProjectDetail() {
             <Typography variant="caption" color="text.secondary">
               Ekstern faktura-id: {p.externalInvoiceId}
             </Typography>
+            {p.invoiceProvider === 'poweroffice' && p.externalInvoiceId && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<OpenInNew />}
+                href={`https://godemo.poweroffice.net/#salesorders/edit/${p.externalInvoiceId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{ alignSelf: 'flex-start', mt: 0.5 }}
+              >
+                Åpne i PowerOffice GO
+              </Button>
+            )}
           </Stack>
         ) : (
           <Stack spacing={1}>
@@ -938,10 +958,23 @@ export default function PhotographerProjectDetail() {
               );
             })()}
             {createInvoice.isSuccess && createInvoice.data && (
-              <Alert severity="success">
-                Faktura opprettet: #{createInvoice.data.invoiceNumber ?? createInvoice.data.invoiceId}
-                {createInvoice.data.alreadyInvoiced && ' (allerede fakturert)'}
-              </Alert>
+              createInvoice.data.sendError ? (
+                <Alert severity="warning">
+                  Salgsordre #{createInvoice.data.salesOrderNumber ?? createInvoice.data.salesOrderId.slice(0, 8)} er
+                  opprettet i PowerOffice, men automatisk faktura-sending ble blokkert
+                  ({createInvoice.data.sendError.status}). Du må sende fakturaen manuelt fra
+                  PowerOffice GO → Salg → Salgsordre. Kontakt PO support hvis det skyldes
+                  manglende privilegium på tenant-nivå.
+                </Alert>
+              ) : (
+                <Alert severity="success">
+                  {createInvoice.data.alreadyInvoiced
+                    ? `Allerede fakturert (salgsordre ${createInvoice.data.salesOrderNumber ?? createInvoice.data.salesOrderId.slice(0, 8)})`
+                    : createInvoice.data.salesOrderNumber
+                      ? `Faktura sendt til kunde via PowerOffice (salgsordre #${createInvoice.data.salesOrderNumber}). Fakturanummer tildeles av PO ved postering.`
+                      : 'Faktura er sendt til kunde via PowerOffice. Du finner den i PowerOffice GO under Salg → Salgsordre.'}
+                </Alert>
+              )
             )}
           </Stack>
         )}

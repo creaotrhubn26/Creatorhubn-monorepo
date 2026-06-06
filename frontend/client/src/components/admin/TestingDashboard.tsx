@@ -418,7 +418,7 @@ export default function TestingDashboard() {
                 />
               </Box>
               <Box sx={{ textAlign: 'center', ml:  3 }}>
-                <Typography variant="h3" sx={{  color: 'white', fontWeight: 700 }}>
+                <Typography variant="h4" sx={{  color: 'white', fontWeight: 700 }}>
                   {calculateOverallReadiness()}%
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
@@ -475,7 +475,7 @@ export default function TestingDashboard() {
 
       {/* Test Suites Tab */}
       <TabPanel value={tabValue} index={0}>
-        <Grid container spacing={3}>
+        <Grid container spacing={2}>
           {testSuites.map((suite) => (
             <Grid item xs={12} md={6} lg={4} key={suite.id}>
               <Card sx={theming.getThemedCardSx()}>
@@ -713,7 +713,7 @@ export default function TestingDashboard() {
 
       {/* Environments Tab */}
       <TabPanel value={tabValue} index={2}>
-        <Grid container spacing={3}>
+        <Grid container spacing={2}>
           {environments.map((env) => (
             <Grid item xs={12} md={4} key={env.id}>
               <Card sx={theming.getThemedCardSx()}>
@@ -773,7 +773,7 @@ export default function TestingDashboard() {
 
       {/* Monitoring Tab */}
       <TabPanel value={tabValue} index={3}>
-        <Grid container spacing={3}>
+        <Grid container spacing={2}>
           <Grid item xs={12} md={6}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -784,7 +784,7 @@ export default function TestingDashboard() {
                 <Grid container spacing={2}>
                   <Grid item xs={6} >
                     <Box sx={{ textAlign: 'center'}}>
-                      <Typography variant="h4" sx={{  color: '#4caf50', fontWeight: 600}}>
+                      <Typography variant="h5" sx={{  color: '#4caf50', fontWeight: 600}}>
                         99.9%
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -794,7 +794,7 @@ export default function TestingDashboard() {
                   </Grid>
                   <Grid item xs={6} >
                     <Box sx={{ textAlign: 'center'}}>
-                      <Typography variant="h4" sx={{  color: '#2196f0', fontWeight: 600}}>
+                      <Typography variant="h5" sx={{  color: '#2196f0', fontWeight: 600}}>
                         145ms
                       </Typography>
                       <Typography variant="body2" color="text.secondary">

@@ -60,7 +60,7 @@ const upsertBody = z.object({
   width: z.number().int().nullable().optional(),
   height: z.number().int().nullable().optional(),
   workflowLevel: z.string().nullable().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export interface CreateStoryboardRouterDeps {
@@ -170,7 +170,7 @@ export function createStoryboardRouter(
     // pencil/charcoal-fallbacken, som tidligere overstyrte Noir-prompten
     // ("Sin City graphic novel") med motsigende "pencil sketch"-instruks.
     const defaultStyleSuffix = 'Render as black-and-white pencil/charcoal storyboard sketch with loose strokes, clear silhouettes, no text, no captions, no logos, focus on composition and lighting.';
-    const parts: string[] = [
+    const parts: (string | null)[] = [
       'Cinematic storyboard concept frame',
       sb.title ? `Shot: ${sb.title}` : null,
       body.shotType ? `Shot type: ${body.shotType}` : null,
@@ -187,7 +187,9 @@ export function createStoryboardRouter(
     const quality = body.quality === 'hd' ? 'hd' : 'standard';
     const size = body.aspectRatio ?? '1792x1024';
 
-    let openaiResponse: Response | undefined;
+    // Express' Response shadower fetch's Response her. Bruker
+    // Awaited<ReturnType<typeof fetch>> så typen er korrekt fetch-Response.
+    let openaiResponse: Awaited<ReturnType<typeof fetch>> | undefined;
     try {
       openaiResponse = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
@@ -203,17 +205,17 @@ export function createStoryboardRouter(
           quality,
           response_format: 'b64_json',
         }),
-      }) as unknown as Response;
+      });
     } catch (err) {
       res.status(502).json({ error: 'openai_network', detail: String(err) });
       return;
     }
 
-    if (!openaiResponse.ok) {
-      const errText = await openaiResponse.text().catch(() => '');
+    if (!openaiResponse || !openaiResponse.ok) {
+      const errText = openaiResponse ? await openaiResponse.text().catch(() => '') : '';
       res.status(502).json({
         error: 'openai_failed',
-        status: openaiResponse.status,
+        status: openaiResponse?.status ?? 0,
         detail: errText.slice(0, 500),
       });
       return;

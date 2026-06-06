@@ -418,7 +418,8 @@ export function setupCastingProjectsRoutes(
   });
 
   app.post("/api/casting/projects", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const payload = req.body && typeof req.body === "object" ? req.body : {};
     const id =
       typeof payload.id === "string" && payload.id.trim()

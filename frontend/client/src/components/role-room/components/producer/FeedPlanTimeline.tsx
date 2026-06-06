@@ -84,18 +84,26 @@ export default function FeedPlanTimeline({
           <Tooltip title="Foreslår man/ons/fre 09:00 fra neste mandag (ulåste posts)">
             <Button
               size="small"
-              variant="outlined"
+              variant={hasAnyScheduled ? 'outlined' : 'contained'}
               startIcon={<AutoModeIcon fontSize="small" />}
               onClick={onAutoSchedule}
+              data-testid="feed-auto-schedule"
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
-                color: '#22d3ee',
-                borderColor: 'rgba(34,211,238,0.4)',
-                '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+                ...(hasAnyScheduled
+                  ? {
+                      color: '#22d3ee',
+                      borderColor: 'rgba(34,211,238,0.4)',
+                      '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+                    }
+                  : {
+                      color: '#062a30',
+                      background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+                    }),
               }}
             >
-              Auto-planlegg
+              {hasAnyScheduled ? 'Auto-planlegg' : 'Sett datoer automatisk'}
             </Button>
           </Tooltip>
           {hasAnyScheduled ? (
@@ -114,6 +122,23 @@ export default function FeedPlanTimeline({
           ) : null}
         </Stack>
       </Stack>
+
+      {!hasAnyScheduled ? (
+        <Box
+          sx={{
+            mt: 1,
+            p: 1.2,
+            borderRadius: 2,
+            border: '1px dashed rgba(34,211,238,0.35)',
+            bgcolor: 'rgba(34,211,238,0.06)',
+          }}
+        >
+          <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem', lineHeight: 1.5 }}>
+            Postene har ingen datoer ennå. Klikk <strong>«Sett datoer automatisk»</strong> over — så
+            foreslår jeg et publiseringsskjema (man/ons/fre 09:00). Du kan justere hver dato etterpå.
+          </Typography>
+        </Box>
+      ) : null}
 
       <Box
         sx={{

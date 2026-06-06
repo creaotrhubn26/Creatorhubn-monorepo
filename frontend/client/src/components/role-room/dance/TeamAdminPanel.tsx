@@ -11,6 +11,7 @@
  * dashboard. Ingen produksjon/innholds-vokabular bløder inn.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -50,8 +51,8 @@ import type { DanceTeamRole, DanceTeamMember, DanceTeamInvite, DanceTeamSummary,
 // ─── Branding tokens ────────────────────────────────────────────────────
 
 const PURPLE_DEEP   = '#4c1d95';
-const PURPLE_BRIGHT = '#8b5cf6';
-const PURPLE_LIGHT  = '#a78bfa';
+const PURPLE_BRIGHT = danceFlowColors.lavenderDark;
+const PURPLE_LIGHT  = danceFlowColors.lavender;
 const PURPLE_GLASS  = 'rgba(139,92,246,0.10)';
 const TEXT_DIM      = 'rgba(229,231,235,0.65)';
 const TEXT_MUTED    = 'rgba(229,231,235,0.45)';
@@ -436,7 +437,7 @@ const MemberRow: React.FC<{
                 }
               }}
               data-testid={`team-member-remove-${member.memberRowId}`}
-              sx={{ color: '#f87171', fontSize: 13 }}
+              sx={{ color: danceFlowColors.errorPrimary, fontSize: 13 }}
             >
               Fjern fra team
             </MenuItem>
@@ -505,7 +506,7 @@ const InvitesList: React.FC<{
                 }
               }}
             >
-              <DeleteIcon sx={{ color: '#f87171', fontSize: 18 }} />
+              <DeleteIcon sx={{ color: danceFlowColors.errorPrimary, fontSize: 18 }} />
             </IconButton>
           </Tooltip>
         </Stack>
@@ -535,7 +536,7 @@ const RolesList: React.FC<{
                 {r.label}
               </Typography>
               {r.isOwnerRole ? (
-                <Chip label="Eier · låst" size="small" sx={{ bgcolor: 'rgba(245,158,11,0.18)', color: '#f59e0b', fontWeight: 700, height: 18, fontSize: 10 }} />
+                <Chip label="Eier · låst" size="small" sx={{ bgcolor: 'rgba(245,158,11,0.18)', color: danceFlowColors.amber, fontWeight: 700, height: 18, fontSize: 10 }} />
               ) : null}
               {r.isDefaultForInvite ? (
                 <Chip label="Default" size="small" sx={{ bgcolor: PURPLE_GLASS, color: PURPLE_LIGHT, fontWeight: 700, height: 18, fontSize: 10 }} />
@@ -554,7 +555,7 @@ const RolesList: React.FC<{
               </IconButton>
               {!r.isOwnerRole ? (
                 <IconButton size="small" onClick={() => onDelete(r)} data-testid={`team-role-delete-${r.id}`}>
-                  <DeleteIcon sx={{ color: '#f87171', fontSize: 18 }} />
+                  <DeleteIcon sx={{ color: danceFlowColors.errorPrimary, fontSize: 18 }} />
                 </IconButton>
               ) : null}
             </>
@@ -715,7 +716,7 @@ const RoleEditorDialog: React.FC<{
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: '#0f0a1c', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-role-dialog' } as never}>
       <DialogTitle sx={{ color: 'rgba(237,233,254,0.95)' }}>
         {role ? `Rediger rolle: ${role.label}` : 'Ny rolle'}
-        {isOwner ? <Chip label="Eier — capabilities er låst til alt" size="small" sx={{ ml: 2, bgcolor: 'rgba(245,158,11,0.18)', color: '#f59e0b', fontWeight: 700 }} /> : null}
+        {isOwner ? <Chip label="Eier — capabilities er låst til alt" size="small" sx={{ ml: 2, bgcolor: 'rgba(245,158,11,0.18)', color: danceFlowColors.amber, fontWeight: 700 }} /> : null}
       </DialogTitle>
       <DialogContent>
         <Stack spacing={2.5} sx={{ pt: 1 }}>

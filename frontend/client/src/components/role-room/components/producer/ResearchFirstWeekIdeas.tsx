@@ -151,7 +151,7 @@ const ResearchFirstWeekIdeas: React.FC<ResearchFirstWeekIdeasProps> = ({ result 
                   minWidth: 0,
                 }}
               >
-                {copied ? 'Kopiert ✓' : 'Kopier til feed-planner'}
+                {copied ? 'Kopiert' : 'Kopier til feed-planner'}
               </Button>
             </Box>
           );

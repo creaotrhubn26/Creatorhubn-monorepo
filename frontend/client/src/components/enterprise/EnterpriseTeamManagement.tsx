@@ -164,7 +164,7 @@ export default function EnterpriseTeamManagement({ organizationId, currentUserCo
   return (
     <Box>
       {/* Summary Cards */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} md={4}>
           <Card>
             <CardContent>
@@ -172,7 +172,7 @@ export default function EnterpriseTeamManagement({ organizationId, currentUserCo
                 <People color="primary" />
                 <Typography variant="h6">Teammedlemmer</Typography>
               </Box>
-              <Typography variant="h3" color="primary">{actualUserCount}</Typography>
+              <Typography variant="h4" color="primary">{actualUserCount}</Typography>
               <Typography variant="body2" color="text.secondary">
                 {enterprisePricing.includedUsers} inkludert i basispris
               </Typography>
@@ -187,7 +187,7 @@ export default function EnterpriseTeamManagement({ organizationId, currentUserCo
                 <AttachMoney color="success" />
                 <Typography variant="h6">Månedlig kostnad</Typography>
               </Box>
-              <Typography variant="h3" color="success.main">
+              <Typography variant="h4" color="success.main">
                 {currentPricing.pricePerMonth.toLocaleString('nb-NO')} kr
               </Typography>
               <Typography variant="body2" color="text.secondary">

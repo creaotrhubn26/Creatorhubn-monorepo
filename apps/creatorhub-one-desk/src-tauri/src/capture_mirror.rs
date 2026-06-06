@@ -11,10 +11,15 @@
 //!   6. Slett cache-fila etter kopi
 //!
 //! Mirror-state per session: enabled/disabled + set av mirrored asset-IDs.
-//! Persisteres ikke (refreshes på reconnect). For ekte produksjon kan vi
-//! vurdere en SQLite-state senere.
+//!
+//! Dedup-state persisteres til `~/.creatorhub-one-desk/mirror-dedup.jsonl`
+//! (append-only). Ved app-crash mid-shoot mister vi ikke kunnskapen om
+//! hvilke assets som allerede er kopiert til RAID — neste app-start
+//! hydrerer in-memory set fra fila, så reconnect mot iPad ikke
+//! duplikat-kopierer assets vi allerede har.
 
 use std::collections::{HashMap, HashSet};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -29,8 +34,104 @@ use crate::helper_client::{self, Config};
 pub struct MirrorState {
     /// Sessions where mirror er aktivert + hvilke destinasjoner som brukes
     enabled: Mutex<HashMap<String, Vec<MirrorDestination>>>,
-    /// Asset-IDs vi allerede har behandlet (suksess eller pågående) — dedup
+    /// Asset-IDs vi allerede har behandlet (suksess eller pågående) — dedup.
+    /// Hydreres fra dedup-fila ved oppstart via MirrorState::new_loaded().
     seen_assets: Mutex<HashSet<String>>,
+}
+
+/// Persistert dedup-event. Skrives som JSONL-linje per "mirror done".
+#[derive(Serialize, Deserialize)]
+struct DedupRecord {
+    session_id: String,
+    asset_id: String,
+    ts_ms: u64,
+}
+
+fn dedup_path() -> PathBuf {
+    helper_client::config_dir().join("mirror-dedup.jsonl")
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Les eksisterende dedup-fil og bygg asset_id-settet. Brukes ved
+/// MirrorState-konstruksjon. Best-effort — hvis fila ikke fins eller
+/// er korrupt returnerer vi tom set så ny mirror-aktivitet kan starte.
+fn load_persisted_dedup() -> HashSet<String> {
+    let path = dedup_path();
+    if !path.exists() {
+        return HashSet::new();
+    }
+    let f = match std::fs::File::open(&path) {
+        Ok(f) => f,
+        Err(err) => {
+            eprintln!(
+                "[mirror-dedup] kunne ikke åpne {} — starter med tom dedup: {}",
+                path.display(),
+                err
+            );
+            return HashSet::new();
+        }
+    };
+    let reader = BufReader::new(f);
+    let mut out = HashSet::new();
+    for line in reader.lines().map_while(Result::ok) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<DedupRecord>(&line) {
+            Ok(rec) => {
+                out.insert(rec.asset_id);
+            }
+            Err(_) => {
+                // skip ugyldig linje (gjør forwards-compat lett)
+            }
+        }
+    }
+    out
+}
+
+/// Append en dedup-record til persistert fil. Best-effort — hvis skriving
+/// feiler logger vi og fortsetter (in-memory dedup virker fortsatt for
+/// gjenværende del av sesjonen).
+fn persist_dedup(session_id: &str, asset_id: &str) {
+    let path = dedup_path();
+    if let Some(parent) = path.parent() {
+        if let Err(err) = std::fs::create_dir_all(parent) {
+            eprintln!("[mirror-dedup] opprett mappe feilet: {}", err);
+            return;
+        }
+    }
+    let rec = DedupRecord {
+        session_id: session_id.to_string(),
+        asset_id: asset_id.to_string(),
+        ts_ms: now_ms(),
+    };
+    let line = match serde_json::to_string(&rec) {
+        Ok(s) => s,
+        Err(err) => {
+            eprintln!("[mirror-dedup] serialize feilet: {}", err);
+            return;
+        }
+    };
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        Ok(mut f) => {
+            if let Err(err) = writeln!(f, "{}", line) {
+                eprintln!("[mirror-dedup] write feilet: {}", err);
+            }
+        }
+        Err(err) => {
+            eprintln!("[mirror-dedup] open feilet: {}", err);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +142,17 @@ pub struct MirrorDestination {
 }
 
 impl MirrorState {
+    /// Konstruér MirrorState med dedup-set hydrert fra disk. Brukes ved
+    /// app-startup så reconnect ikke duplikat-kopier assets vi allerede
+    /// har mirrored før crash/restart.
+    pub fn new_loaded() -> Self {
+        let persisted = load_persisted_dedup();
+        Self {
+            enabled: Mutex::new(HashMap::new()),
+            seen_assets: Mutex::new(persisted),
+        }
+    }
+
     pub fn enable(&self, session_id: String, destinations: Vec<MirrorDestination>) {
         self.enabled.lock().unwrap().insert(session_id, destinations);
     }
@@ -65,6 +177,16 @@ impl MirrorState {
 
     fn release_asset(&self, asset_id: &str) {
         self.seen_assets.lock().unwrap().remove(asset_id);
+    }
+
+    /// Marker asset som permanent mirrored — beholder i in-memory set
+    /// OG appender til persistert fil så fremtidige app-starts plukker
+    /// det opp. Kalles kun ved success-path; failures bruker
+    /// release_asset() så retry blir mulig.
+    fn mark_mirror_done(&self, session_id: &str, asset_id: &str) {
+        // Beholdes i seen_assets fra claim_asset; vi trenger ingen
+        // ekstra in-memory-mutasjon her. Bare persister.
+        persist_dedup(session_id, asset_id);
     }
 }
 
@@ -128,6 +250,99 @@ fn safe_filename(reported: &str, asset_id: &str) -> String {
         format!("asset-{}", asset_id)
     } else {
         cleaned
+    }
+}
+
+#[cfg(test)]
+mod dedup_tests {
+    use super::*;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+    use tempfile::tempdir;
+
+    fn home_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn fresh_home() -> (tempfile::TempDir, MutexGuard<'static, ()>) {
+        let guard = home_lock();
+        let d = tempdir().expect("tempdir");
+        // SAFETY (Rust 2024): set_var er unsafe pga global tilstand;
+        // home_lock() serialiserer alle test-tråder.
+        unsafe {
+            std::env::set_var("HOME", d.path());
+        }
+        (d, guard)
+    }
+
+    #[test]
+    fn load_persisted_dedup_returns_empty_when_no_file() {
+        let (_h, _g) = fresh_home();
+        let set = load_persisted_dedup();
+        assert!(set.is_empty());
+    }
+
+    #[test]
+    fn persist_then_load_round_trips_asset_ids() {
+        let (_h, _g) = fresh_home();
+        persist_dedup("sess_1", "asset_A");
+        persist_dedup("sess_1", "asset_B");
+        persist_dedup("sess_2", "asset_C");
+        let set = load_persisted_dedup();
+        assert_eq!(set.len(), 3);
+        assert!(set.contains("asset_A"));
+        assert!(set.contains("asset_B"));
+        assert!(set.contains("asset_C"));
+    }
+
+    #[test]
+    fn new_loaded_hydrates_seen_assets() {
+        let (_h, _g) = fresh_home();
+        persist_dedup("sess_x", "asset_hydrate_test");
+        let state = MirrorState::new_loaded();
+        // claim_asset returnerer false hvis asset allerede er kjent
+        assert!(
+            !state.claim_asset("asset_hydrate_test"),
+            "asset fra persistert dedup-fil skal være kjent etter new_loaded"
+        );
+        assert!(
+            state.claim_asset("asset_brand_new"),
+            "asset som ikke er persistert skal være claim-able"
+        );
+    }
+
+    #[test]
+    fn mark_mirror_done_persists_to_disk() {
+        let (_h, _g) = fresh_home();
+        let state = MirrorState::new_loaded();
+        // claim først (simulerer flow: claim → download → copy → done)
+        assert!(state.claim_asset("asset_xyz"));
+        state.mark_mirror_done("sess_x", "asset_xyz");
+        // Bekreft at en ny load ser det
+        let set = load_persisted_dedup();
+        assert!(set.contains("asset_xyz"));
+    }
+
+    #[test]
+    fn corrupt_lines_are_skipped() {
+        let (_h, _g) = fresh_home();
+        // Skriv en miks av valide og ugyldige linjer
+        let path = dedup_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "not-json\n\
+             {\"session_id\":\"s\",\"asset_id\":\"valid_1\",\"ts_ms\":1}\n\
+             {malformed\n\
+             {\"session_id\":\"s\",\"asset_id\":\"valid_2\",\"ts_ms\":2}\n",
+        )
+        .unwrap();
+        let set = load_persisted_dedup();
+        assert_eq!(set.len(), 2);
+        assert!(set.contains("valid_1"));
+        assert!(set.contains("valid_2"));
     }
 }
 
@@ -374,16 +589,19 @@ pub fn maybe_mirror_asset(
         let _ = app.emit(
             "capture-mirror-event",
             MirrorEvent {
-                session_id,
+                session_id: session_id.clone(),
                 asset_id: asset_id.clone(),
                 state: if any_failed { "failed".into() } else { "done".into() },
                 filename: Some(filename),
                 error: None,
             },
         );
-        // Slipp asset hvis det feilet (så user kan retry); behold hvis OK (dedup).
+        // Slipp asset hvis det feilet (så user kan retry); behold + persister
+        // hvis OK (dedup over app-restart).
         if any_failed {
             state.release_asset(&asset_id);
+        } else {
+            state.mark_mirror_done(&session_id, &asset_id);
         }
         let _ = size; // hold size i scope for fremtidig progress-rapportering
     });

@@ -75,7 +75,7 @@ export default tseslint.config(
   // Definert i 2 nivåer: error for cross-cutting konstanter (touch-target),
   // warning for soft-foretrukne mønstre (token-bruk).
   {
-    files: ['frontend/client/src/components/role-room/**/*.{ts,tsx}'],
+    files: ['client/src/components/role-room/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -93,6 +93,28 @@ export default tseslint.config(
           // Forbyr lokal re-deklarasjon av MOBILE_TOUCH_TARGET_SIZE
           selector: 'VariableDeclarator[id.name="MOBILE_TOUCH_TARGET_SIZE"]',
           message: 'Bruk shared import fra `constants/accessibility.ts`.',
+        },
+        // React hooks-rule guardrails — fanger hooks som ESLint's
+        // 'react-hooks/rules-of-hooks' IKKE detekterer. Begge mønstrene
+        // har shipped UI-bugs i denne kodebasen (FormationViewConnected +
+        // AnnotationExportOverlay) som brakte ned alle dance-* spec-er.
+        {
+          // Pattern B: hook kalt INNI JSX-prop-verdi.
+          // Eksempel: <Comp timelineNotes={React.useMemo(...)} />
+          // Resultat: hook kalles på nytt hver render = ny referanse =
+          // unødvendige re-renders. Verre: hvis parent er Suspense-wrappet
+          // eller bak en early-return, varierer antall hooks mellom renders.
+          selector:
+            'JSXExpressionContainer > CallExpression[callee.object.name="React"][callee.property.name=/^use[A-Z]/]',
+          message:
+            'Hook kalt inline i JSX. Ekstrahere til en const-deklarasjon FØR JSX-returnen, så referer til variabelen i prop-en. Backgrund: docs/dance/live-demo.md.',
+        },
+        {
+          // Pattern B (variant): React.use* uten React.-prefix (named import)
+          selector:
+            'JSXExpressionContainer > CallExpression[callee.type="Identifier"][callee.name=/^use[A-Z]/]',
+          message:
+            'Hook kalt inline i JSX. Ekstrahere til const FØR JSX-returnen. Hvis dette ER bare en utility-funksjon som starter med "use", whitelist via eslint-disable-next-line.',
         },
       ],
     },

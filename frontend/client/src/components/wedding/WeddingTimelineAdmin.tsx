@@ -1293,7 +1293,7 @@ export default function EvendiTimelineAdmin({
           {evendiMeetingContextAvailable ? (
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
-                <Card sx={{ height: '100%', border: '1px solid rgba(15,23,42,0.08)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.04)' }}>
+                <Card sx={{ height: '100%', border: '1px solid rgba(255,255,255,0.10)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.04)' }}>
                   <CardContent sx={{ p: 2.25 }}>
                     <Typography variant="overline" sx={{ color: '#8a4b08', fontWeight: 700 }}>
                       Siste synk
@@ -1316,7 +1316,7 @@ export default function EvendiTimelineAdmin({
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <Card sx={{ height: '100%', border: '1px solid rgba(15,23,42,0.08)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.04)' }}>
+                <Card sx={{ height: '100%', border: '1px solid rgba(255,255,255,0.10)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.04)' }}>
                   <CardContent sx={{ p: 2.25 }}>
                     <Typography variant="overline" sx={{ color: '#8a4b08', fontWeight: 700 }}>
                       Kunde og lokasjon
@@ -1349,7 +1349,7 @@ export default function EvendiTimelineAdmin({
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <Card sx={{ height: '100%', border: '1px solid rgba(15,23,42,0.08)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.04)' }}>
+                <Card sx={{ height: '100%', border: '1px solid rgba(255,255,255,0.10)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.04)' }}>
                   <CardContent sx={{ p: 2.25 }}>
                     <Typography variant="overline" sx={{ color: '#8a4b08', fontWeight: 700 }}>
                       Hva Evendi bruker
@@ -1450,7 +1450,7 @@ export default function EvendiTimelineAdmin({
       )}
 
       {/* Prosjektvelger og kulturtilpasning */}
-      <Card sx={{ mb:  3, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(15,23,42,0.08)',  ...theming.getThemedCardSx() }}>
+      <Card sx={{ mb:  3, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)',  ...theming.getThemedCardSx() }}>
         <CardContent sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
           <Typography variant="h6" sx={{  mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap:  1  }}>
             <Event sx={{ color: '#f57c00'}} />
@@ -1798,7 +1798,7 @@ export default function EvendiTimelineAdmin({
                             label="Klientendring"
                             size="small"
                             sx={{
-                              bgcolor: '#e3f2fd',
+                              bgcolor: 'rgba(33,150,243,0.08)',
                               color: '#1976d2',
                               fontSize: '0.7rem',
                               height: '20px'
@@ -1812,7 +1812,7 @@ export default function EvendiTimelineAdmin({
                           size="small"
                           sx={{
                             bgcolor: event.status === 'completed' ? '#c8e6c9' : 
-                                     event.status === 'confirmed' ? '#fff3e0' : 
+                                     event.status === 'confirmed' ? 'rgba(255,152,0,0.12)' : 
                                      event.status === 'cancelled' ? '#ffcdd2' : '#e1f5fe',
                             color: event.status === 'completed' ? '#2e7d32' : 
                                    event.status === 'confirmed' ? '#f57c00' : 
@@ -2941,7 +2941,7 @@ export default function EvendiTimelineAdmin({
                               py: 0.5,
                               borderRadius: '20px',
                               bgcolor: event.status === 'completed' ? '#c8e6c9' :
-                                       event.status === 'confirmed' ? '#fff3e0' :
+                                       event.status === 'confirmed' ? 'rgba(255,152,0,0.12)' :
                                        event.status === 'cancelled' ? '#ffcdd2' : '#e1f5fe',
                               color: event.status === 'completed' ? '#2e7d32' :
                                      event.status === 'confirmed' ? '#f57c00' :

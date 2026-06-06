@@ -29,6 +29,7 @@ import {
   Tab,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
@@ -39,11 +40,16 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import GavelOutlinedIcon from '@mui/icons-material/GavelOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
-import { useCallback, useEffect, useState } from 'react';
+import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined';
+import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+
+const ProposeTalentsDialog = lazy(() => import('../components/ProposeTalentsDialog'));
 
 import { palette, radius } from '../theme';
 import {
   acceptTerms,
+  agencyDashboard,
   closeAvailability,
   CURRENT_PARTNERSHIP_TERMS_VERSION,
   enableAvailability,
@@ -57,6 +63,7 @@ import {
   revokePartnership,
   unpauseAvailability,
   unpausePartnership,
+  type AgencyDashboard,
   type AvailabilityState,
   type AvailabilityStatus,
   type ConsequenceWarning,
@@ -99,7 +106,8 @@ function fmtDate(s: string | null): string {
 }
 
 export default function AgencyPartnershipsPage() {
-  const [tab, setTab] = useState<'availability' | 'mine' | 'incoming'>('availability');
+  const [tab, setTab] = useState<'overview' | 'availability' | 'mine' | 'incoming'>('overview');
+  const [dashboard, setDashboard] = useState<AgencyDashboard | null>(null);
   const [availability, setAvailability] = useState<AvailabilityStatus | null>(null);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
   const [invitations, setInvitations] = useState<ProjectInvitation[]>([]);
@@ -117,20 +125,25 @@ export default function AgencyPartnershipsPage() {
   } | null>(null);
   const [pauseDialogReason, setPauseDialogReason] = useState('');
 
+  // Foreslå-talenter-dialog (åpnes fra accepted prosjekt-invitasjoner)
+  const [proposeDialog, setProposeDialog] = useState<ProjectInvitation | null>(null);
+
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [avail, mine, inc] = await Promise.all([
+      const [avail, mine, inc, dash] = await Promise.all([
         getAvailability().catch((e) => {
           throw new Error(`Tilgjengelighet: ${e instanceof Error ? e.message : String(e)}`);
         }),
         listMine('agency').catch(() => ({ partnerships: [] })),
         incomingInvitations().catch(() => ({ invitations: [] })),
+        agencyDashboard().catch(() => null),
       ]);
       setAvailability(avail);
       setPartnerships(mine.partnerships);
       setInvitations(inc.invitations);
+      setDashboard(dash);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Klarte ikke å laste data');
     } finally {
@@ -224,8 +237,36 @@ export default function AgencyPartnershipsPage() {
     }
   }, [reload]);
 
+  // Demo-modus deteksjon — alle requests har ?demo=1 i URL
+  const isDemoMode = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('demo') === '1';
+
   return (
     <Box sx={{ p: 3, maxWidth: 960, mx: 'auto' }}>
+      {isDemoMode ? (
+        <Box
+          sx={{
+            mb: 2.4,
+            p: 1.4,
+            borderRadius: radius.sm,
+            border: '1px solid rgba(168,85,247,0.42)',
+            bgcolor: 'rgba(168,85,247,0.10)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.4,
+          }}
+        >
+          <ScienceOutlinedIcon sx={{ color: palette.accentBright, fontSize: 24 }} />
+          <Box sx={{ flex: 1 }}>
+            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.92rem' }}>
+              Demo-modus
+            </Typography>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
+              Du ser Stella Casting-demo. Alle endringer berører kun demo-data og kan trygt prøves ut.
+            </Typography>
+          </Box>
+        </Box>
+      ) : null}
       <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: palette.textPrimary, mb: 0.6 }}>
         Partnerships
       </Typography>
@@ -241,15 +282,39 @@ export default function AgencyPartnershipsPage() {
         onChange={(_, v) => setTab(v)}
         sx={{ mb: 2.4, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600 } }}
       >
+        <Tab value="overview" label="Oversikt" />
         <Tab value="availability" label="Tilgjengelighet" />
         <Tab value="mine" label={`Mine partnerships (${partnerships.length})`} />
-        <Tab value="incoming" label={`Innkommende invitasjoner (${invitations.length})`} />
+        <Tab value="incoming" label={`Innkommende (${invitations.length})`} />
       </Tabs>
 
       {loading && !availability ? (
-        <Box sx={{ textAlign: 'center', py: 6 }}>
-          <CircularProgress size={28} />
-        </Box>
+        <Stack spacing={2}>
+          {[0, 1, 2].map((i) => (
+            <Box
+              key={i}
+              sx={{
+                ...cardSx,
+                height: 88,
+                background: `linear-gradient(90deg, ${palette.bgCard} 0%, ${palette.bgCardElevated} 50%, ${palette.bgCard} 100%)`,
+                backgroundSize: '200% 100%',
+                animation: 'skeletonPulse 1.4s ease-in-out infinite',
+                '@keyframes skeletonPulse': {
+                  '0%': { backgroundPosition: '200% 0' },
+                  '100%': { backgroundPosition: '-200% 0' },
+                },
+              }}
+            />
+          ))}
+        </Stack>
+      ) : null}
+
+      {tab === 'overview' ? (
+        <OverviewTab
+          dashboard={dashboard}
+          availability={availability}
+          onJumpTab={(t) => setTab(t)}
+        />
       ) : null}
 
       {tab === 'availability' && availability ? (
@@ -283,7 +348,20 @@ export default function AgencyPartnershipsPage() {
             () => respondToProjectInvitation(invId, accept),
             accept ? 'Prosjekt-invitasjon akseptert.' : 'Prosjekt-invitasjon avslått.',
           )}
+          onProposeTalents={(inv) => setProposeDialog(inv)}
         />
+      ) : null}
+
+      {proposeDialog ? (
+        <Suspense fallback={null}>
+          <ProposeTalentsDialog
+            open
+            invitationId={proposeDialog.id}
+            projectName={proposeDialog.project_name}
+            roleIds={proposeDialog.role_ids}
+            onClose={() => setProposeDialog(null)}
+          />
+        </Suspense>
       ) : null}
 
       {/* Pause-anbefaling-dialog (felles for både close og revoke) */}
@@ -383,6 +461,457 @@ function humanizeKey(k: string): string {
 }
 
 // ── Availability-fanen ─────────────────────────────────────────────
+// ── Oversikts-fane (Phase 9.7) ────────────────────────────────────
+// Mini-sparkline (14d trend) — SVG. Tom-state = flat linje.
+function MiniSparkline({ data, color }: { data: Array<{ day: string; n: number }>; color: string }) {
+  if (!data || data.length === 0) {
+    return <Box sx={{ width: 80, height: 24 }} />;
+  }
+  const w = 80;
+  const h = 24;
+  const maxVal = Math.max(1, ...data.map((d) => d.n));
+  const stepX = data.length > 1 ? w / (data.length - 1) : w;
+  const points = data.map((d, i) => {
+    const x = i * stepX;
+    const y = h - (d.n / maxVal) * (h - 2) - 1;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  return (
+    <svg width={w} height={h} style={{ display: 'block' }}>
+      <polyline
+        fill="none"
+        stroke={color}
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={points.join(' ')}
+        opacity="0.75"
+      />
+      <circle cx={(points[points.length - 1] || '0,0').split(',')[0]} cy={(points[points.length - 1] || '0,0').split(',')[1]} r="2" fill={color} />
+    </svg>
+  );
+}
+
+function OverviewTab(props: {
+  dashboard: AgencyDashboard | null;
+  availability: AvailabilityStatus | null;
+  onJumpTab: (t: 'overview' | 'availability' | 'mine' | 'incoming') => void;
+}) {
+  const { dashboard, availability } = props;
+  if (!dashboard) {
+    return (
+      <Box sx={{ ...cardSx, textAlign: 'center' }}>
+        <Typography sx={{ color: palette.textMuted }}>
+          Dashboard ikke tilgjengelig. Slå på discoverability for å begynne å samle data.
+        </Typography>
+      </Box>
+    );
+  }
+  const stateBadge = availability ? STATE_BADGE[availability.state] : null;
+  const KPI = ({ label, value, color, onClick, tooltip }: {
+    label: string;
+    value: number | string;
+    color?: string;
+    onClick?: () => void;
+    tooltip?: string;
+  }) => (
+    <Tooltip title={tooltip ?? ''} arrow placement="top" enterDelay={500}>
+      <Box
+        onClick={onClick}
+        sx={{
+          ...cardSx,
+          p: 1.8,
+          textAlign: 'center',
+          flex: 1,
+          minWidth: 120,
+          cursor: onClick ? 'pointer' : 'default',
+          transition: 'border-color 0.18s, transform 0.18s',
+          '&:hover': onClick ? {
+            borderColor: palette.accentBright,
+            transform: 'translateY(-2px)',
+          } : undefined,
+        }}
+      >
+        <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: color ?? palette.textPrimary, lineHeight: 1 }}>
+          {value}
+        </Typography>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          {label}
+        </Typography>
+      </Box>
+    </Tooltip>
+  );
+
+  // Smart "Hva nå?"-anbefaling basert på dashboard-state. Velger den
+  // viktigste handlingen brukeren bør gjøre nest, basert på prioritert
+  // hierarki: pending invitasjoner > akseptere partnerships > foreslå
+  // talenter > inngenting.
+  const nextActionHint = (() => {
+    const inv = dashboard.project_invitations;
+    const pa = dashboard.partnerships;
+    const tp = dashboard.talent_proposals;
+    if (inv.pending > 0) {
+      return {
+        text: `Du har ${inv.pending} prosjekt-invitasjon${inv.pending > 1 ? 'er' : ''} som venter svar`,
+        cta: 'Åpne Innkommende',
+        action: () => props.onJumpTab('incoming'),
+      };
+    }
+    if (pa.pending > 0) {
+      return {
+        text: `Du har ${pa.pending} partnership-forespørsel${pa.pending > 1 ? 'er' : ''} som venter svar`,
+        cta: 'Åpne Mine partnerships',
+        action: () => props.onJumpTab('mine'),
+      };
+    }
+    if (inv.accepted > 0 && tp.pending === 0 && tp.accepted === 0) {
+      return {
+        text: `Du har ${inv.accepted} aktivt prosjekt — start med å foreslå talenter`,
+        cta: 'Åpne Innkommende',
+        action: () => props.onJumpTab('incoming'),
+      };
+    }
+    if (availability?.state === 'disabled') {
+      return {
+        text: 'Slå på discoverability for å bli funnet av produksjonsselskaper',
+        cta: 'Åpne Tilgjengelighet',
+        action: () => props.onJumpTab('availability'),
+      };
+    }
+    return null;
+  })();
+  return (
+    <Stack spacing={2}>
+      {/* "Hva nå?"-handling-kort — smart neste-handling basert på state */}
+      {nextActionHint ? (
+        <Box
+          onClick={nextActionHint.action}
+          sx={{
+            ...cardSx,
+            cursor: 'pointer',
+            border: '1px solid rgba(168,85,247,0.42)',
+            background: 'linear-gradient(135deg, rgba(168,85,247,0.10) 0%, rgba(217,70,239,0.06) 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            transition: 'transform 0.18s, border-color 0.18s',
+            '&:hover': {
+              borderColor: palette.accentBright,
+              transform: 'translateY(-2px)',
+            },
+          }}
+        >
+          <Box
+            sx={{
+              width: 44,
+              height: 44,
+              borderRadius: '50%',
+              bgcolor: 'rgba(168,85,247,0.18)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <HandshakeOutlinedIcon sx={{ color: palette.accentBright }} />
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              Neste handling
+            </Typography>
+            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.0rem', mt: 0.2 }}>
+              {nextActionHint.text}
+            </Typography>
+          </Box>
+          <Button
+            size="small"
+            sx={{
+              textTransform: 'none',
+              fontWeight: 700,
+              background: palette.accentGradient,
+              color: '#fff',
+              px: 2,
+              boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+              },
+            }}
+          >
+            {nextActionHint.cta} →
+          </Button>
+        </Box>
+      ) : null}
+
+      {/* Status-badge øverst */}
+      {availability && stateBadge ? (
+        <Box sx={{ ...cardSx, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              Tilgjengelighets-status
+            </Typography>
+            <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.05rem', mt: 0.4 }}>
+              {availability.agency.name}
+            </Typography>
+          </Box>
+          <Chip
+            label={stateBadge.label}
+            sx={{ bgcolor: stateBadge.bg, color: stateBadge.color, fontWeight: 700, borderRadius: radius.sm, cursor: 'pointer' }}
+            onClick={() => props.onJumpTab('availability')}
+          />
+        </Box>
+      ) : null}
+
+      {/* Smart-varselbar — invitasjoner som utløper innen 7 dager */}
+      {dashboard.upcoming_expiries && dashboard.upcoming_expiries.length > 0 ? (
+        <Alert
+          severity="warning"
+          icon={<WarningAmberOutlinedIcon />}
+          onClick={() => props.onJumpTab('incoming')}
+          sx={{
+            cursor: 'pointer',
+            '& .MuiAlert-message': { width: '100%' },
+          }}
+        >
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Box>
+              <Typography sx={{ fontWeight: 700, fontSize: '0.92rem' }}>
+                {dashboard.upcoming_expiries.length === 1
+                  ? `Prosjekt-invitasjon utløper snart`
+                  : `${dashboard.upcoming_expiries.length} prosjekt-invitasjoner utløper snart`}
+              </Typography>
+              <Typography sx={{ fontSize: '0.82rem', mt: 0.4 }}>
+                {dashboard.upcoming_expiries.slice(0, 2).map((e) => (
+                  `${e.project_name} (om ${e.days_left}d)`
+                )).join(' · ')}
+                {dashboard.upcoming_expiries.length > 2 ? ` +${dashboard.upcoming_expiries.length - 2}` : ''}
+              </Typography>
+            </Box>
+            <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>Vis →</Typography>
+          </Stack>
+        </Alert>
+      ) : null}
+
+      {/* Partnership-KPI-er — klikkbare hopper til Mine partnerships */}
+      <Box>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1, letterSpacing: 0.4 }}>
+          Partnerships
+        </Typography>
+        <Stack direction="row" spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
+          <KPI
+            label="Aktive"
+            value={dashboard.partnerships.active}
+            color="#34d399"
+            tooltip="Akseptert + ikke pauset eller avsluttet"
+            onClick={() => props.onJumpTab('mine')}
+          />
+          <KPI
+            label="Venter svar"
+            value={dashboard.partnerships.pending}
+            color="#fbbf24"
+            tooltip="Forslag som ikke er besvart av motparten"
+            onClick={() => props.onJumpTab('mine')}
+          />
+          <KPI
+            label="Pauset"
+            value={dashboard.partnerships.paused}
+            color="#fb923c"
+            tooltip="Akseptert men midlertidig pauset — nye invitasjoner blokkeres"
+            onClick={() => props.onJumpTab('mine')}
+          />
+          <KPI
+            label="Avsluttet"
+            value={dashboard.partnerships.revoked}
+            color="#9ca3af"
+            tooltip="Revokert av enten byrå eller produksjon"
+            onClick={() => props.onJumpTab('mine')}
+          />
+        </Stack>
+      </Box>
+
+      {/* Prosjekt-invitasjoner — klikkbare hopper til Innkommende */}
+      <Box>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1, letterSpacing: 0.4 }}>
+          Prosjekt-invitasjoner
+        </Typography>
+        <Stack direction="row" spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
+          <KPI
+            label="Venter svar"
+            value={dashboard.project_invitations.pending}
+            color="#fbbf24"
+            tooltip="Prosjekter du må akseptere/avslå"
+            onClick={() => props.onJumpTab('incoming')}
+          />
+          <KPI
+            label="Aktive"
+            value={dashboard.project_invitations.accepted}
+            color="#34d399"
+            tooltip="Prosjekter du jobber på nå — kan foreslå talenter"
+            onClick={() => props.onJumpTab('incoming')}
+          />
+          <KPI
+            label="Lukket"
+            value={dashboard.project_invitations.closed}
+            color="#9ca3af"
+            tooltip="Avslått, revokert eller utløpt"
+            onClick={() => props.onJumpTab('incoming')}
+          />
+        </Stack>
+      </Box>
+
+      {/* Talent-forslag */}
+      <Box>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1, letterSpacing: 0.4 }}>
+          Talent-forslag · akseptrate {dashboard.talent_proposals.accept_rate_percent ?? '—'}%
+        </Typography>
+        <Stack direction="row" spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
+          <KPI label="Venter" value={dashboard.talent_proposals.pending} color="#fbbf24" />
+          <KPI label="Akseptert" value={dashboard.talent_proposals.accepted} color="#34d399" />
+          <KPI label="Avslått" value={dashboard.talent_proposals.declined} color="#f87171" />
+          <KPI label="Trukket" value={dashboard.talent_proposals.withdrawn} color="#9ca3af" />
+        </Stack>
+      </Box>
+
+      {/* Talent-pool + sparklines */}
+      <Stack direction="row" spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
+        <Box sx={{ ...cardSx, flex: 1, minWidth: 240 }}>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            Byråets talent-pool
+          </Typography>
+          <Typography sx={{ color: palette.textPrimary, fontSize: '1.4rem', fontWeight: 800, mt: 0.4 }}>
+            {dashboard.talent_pool_size} talenter med consent
+          </Typography>
+        </Box>
+        {dashboard.partnerships_sparkline && dashboard.partnerships_sparkline.length > 0 ? (
+          <Box sx={{ ...cardSx, flex: 1, minWidth: 240 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.8 }}>
+              <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                Nye partnerships · 14d
+              </Typography>
+              <Typography sx={{ color: palette.textPrimary, fontSize: '1.1rem', fontWeight: 700 }}>
+                {dashboard.partnerships_sparkline.reduce((sum, d) => sum + d.n, 0)}
+              </Typography>
+            </Stack>
+            <MiniSparkline data={dashboard.partnerships_sparkline} color="#34d399" />
+          </Box>
+        ) : null}
+        {dashboard.proposals_sparkline && dashboard.proposals_sparkline.length > 0 ? (
+          <Box sx={{ ...cardSx, flex: 1, minWidth: 240 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.8 }}>
+              <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                Nye talent-forslag · 14d
+              </Typography>
+              <Typography sx={{ color: palette.textPrimary, fontSize: '1.1rem', fontWeight: 700 }}>
+                {dashboard.proposals_sparkline.reduce((sum, d) => sum + d.n, 0)}
+              </Typography>
+            </Stack>
+            <MiniSparkline data={dashboard.proposals_sparkline} color={palette.accentBright} />
+          </Box>
+        ) : null}
+      </Stack>
+
+      {/* Per-prosjekt-progress for accepted invitasjoner */}
+      {dashboard.active_projects && dashboard.active_projects.length > 0 ? (
+        <Box sx={cardSx}>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1.4, letterSpacing: 0.4 }}>
+            Aktive prosjekter — talent-forslag-fremgang
+          </Typography>
+          <Stack spacing={1.4}>
+            {dashboard.active_projects.map((proj) => {
+              const pct = proj.role_count > 0
+                ? Math.min(100, Math.round((proj.proposals_count / proj.role_count) * 100))
+                : 0;
+              return (
+                <Box key={proj.invitation_id}>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.6 }}>
+                    <Box>
+                      <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.92rem' }}>
+                        {proj.project_name}
+                      </Typography>
+                      <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
+                        {proj.project_type ? `${proj.project_type} · ` : ''}
+                        {proj.role_count > 0
+                          ? `${proj.proposals_count}/${proj.role_count} forslag · ${proj.proposals_accepted} akseptert`
+                          : `${proj.proposals_count} forslag · ${proj.proposals_accepted} akseptert`}
+                      </Typography>
+                    </Box>
+                    <Typography sx={{ color: palette.accentBright, fontWeight: 800, fontSize: '0.95rem' }}>
+                      {proj.role_count > 0 ? `${pct}%` : '—'}
+                    </Typography>
+                  </Stack>
+                  {proj.role_count > 0 ? (
+                    <Box
+                      sx={{
+                        height: 6,
+                        bgcolor: 'rgba(168,85,247,0.15)',
+                        borderRadius: 999,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          height: '100%',
+                          width: `${pct}%`,
+                          background: palette.accentGradient,
+                          borderRadius: 999,
+                          transition: 'width 0.4s',
+                        }}
+                      />
+                    </Box>
+                  ) : null}
+                </Box>
+              );
+            })}
+          </Stack>
+        </Box>
+      ) : null}
+
+      {/* Siste aktivitet */}
+      {dashboard.recent_activity.length > 0 ? (
+        <Box sx={cardSx}>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1.4, letterSpacing: 0.4 }}>
+            Siste aktivitet
+          </Typography>
+          <Stack spacing={0.8}>
+            {dashboard.recent_activity.slice(0, 8).map((a, idx) => (
+              <Stack key={idx} direction="row" alignItems="center" spacing={1} sx={{ fontSize: '0.85rem' }}>
+                <Typography sx={{ color: palette.textPrimary, fontWeight: 600, minWidth: 180 }}>
+                  {humanizeAction(a.action)}
+                </Typography>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', flex: 1 }} noWrap>
+                  {a.actor_name ?? 'System'}
+                </Typography>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem' }}>
+                  {fmtDate(a.created_at)}
+                </Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+      ) : null}
+    </Stack>
+  );
+}
+
+function humanizeAction(action: string): string {
+  const m: Record<string, string> = {
+    proposed: 'Partnership foreslått',
+    accepted: 'Partnership akseptert',
+    declined: 'Partnership avslått',
+    revoked: 'Partnership avsluttet',
+    paused: 'Partnership pauset',
+    unpaused: 'Partnership gjenopptatt',
+    project_invited: 'Prosjekt-invitasjon mottatt',
+    project_invitation_accepted: 'Prosjekt akseptert',
+    project_invitation_declined: 'Prosjekt avslått',
+    talent_proposed: 'Talent foreslått',
+    talent_proposal_accepted: 'Talent-forslag akseptert',
+    talent_proposal_declined: 'Talent-forslag avslått',
+    talent_proposal_withdrawn: 'Talent-forslag trukket',
+    candidate_status_changed: 'Kandidat-status endret',
+  };
+  return m[action] ?? action;
+}
+
 function AvailabilityTab(props: {
   status: AvailabilityStatus;
   busy: boolean;
@@ -596,9 +1125,26 @@ function MinePartnershipsTab(props: {
 }) {
   if (props.partnerships.length === 0) {
     return (
-      <Box sx={{ ...cardSx, textAlign: 'center' }}>
-        <Typography sx={{ color: palette.textMuted }}>
-          Ingen partnerships ennå. Slå på discoverability for å bli funnet av produksjonsselskaper.
+      <Box sx={{ ...cardSx, textAlign: 'center', py: 5 }}>
+        <Box
+          sx={{
+            width: 64,
+            height: 64,
+            borderRadius: '50%',
+            bgcolor: 'rgba(168,85,247,0.12)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mb: 2,
+          }}
+        >
+          <HandshakeOutlinedIcon sx={{ fontSize: 32, color: palette.accentBright }} />
+        </Box>
+        <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.05rem', mb: 0.6 }}>
+          Ingen partnerships ennå
+        </Typography>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.88rem', maxWidth: 380, mx: 'auto' }}>
+          Slå på discoverability i Tilgjengelighets-fanen for å bli funnet av produksjonsselskaper.
         </Typography>
       </Box>
     );
@@ -710,67 +1256,134 @@ function IncomingInvitationsTab(props: {
   invitations: ProjectInvitation[];
   busy: boolean;
   onRespond: (invId: string, accept: boolean) => Promise<void>;
+  onProposeTalents: (inv: ProjectInvitation) => void;
 }) {
   if (props.invitations.length === 0) {
     return (
-      <Box sx={{ ...cardSx, textAlign: 'center' }}>
-        <Typography sx={{ color: palette.textMuted }}>
-          Ingen aktive prosjekt-invitasjoner.
+      <Box sx={{ ...cardSx, textAlign: 'center', py: 5 }}>
+        <Box
+          sx={{
+            width: 64,
+            height: 64,
+            borderRadius: '50%',
+            bgcolor: 'rgba(168,85,247,0.12)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mb: 2,
+          }}
+        >
+          <CheckCircleOutlineIcon sx={{ fontSize: 32, color: palette.accentBright }} />
+        </Box>
+        <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.05rem', mb: 0.6 }}>
+          Ingen prosjekt-invitasjoner ennå
+        </Typography>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.88rem', maxWidth: 380, mx: 'auto' }}>
+          Når produksjonsselskaper inviterer byrået ditt til et casting-prosjekt, dukker invitasjonen opp her.
         </Typography>
       </Box>
     );
   }
+  const pending = props.invitations.filter((i) => i.status === 'pending');
+  const accepted = props.invitations.filter((i) => i.status === 'accepted');
   return (
-    <Stack spacing={1.2}>
-      {props.invitations.map((i) => (
-        <Box key={i.id} sx={cardSx}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-            <Box>
-              <Typography sx={{ fontWeight: 700, color: palette.textPrimary, fontSize: '1.05rem' }}>
-                {i.project_name}
-              </Typography>
-              <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
-                {i.project_type} · {fmtDate(i.start_date)} → {fmtDate(i.end_date)}
-              </Typography>
-            </Box>
-            <Chip
-              size="small"
-              label={`Utløper ${fmtDate(i.expires_at)}`}
-              sx={{ bgcolor: 'rgba(251,191,36,0.15)', color: '#fbbf24', fontWeight: 700 }}
-            />
-          </Stack>
-          {i.notes ? (
-            <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1.2 }}>
-              «{i.notes}»
-            </Typography>
-          ) : null}
-          {Array.isArray(i.role_ids) && i.role_ids.length > 0 ? (
-            <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1.2 }}>
-              {i.role_ids.length} valgte roller å foreslå talenter til
-            </Typography>
-          ) : null}
-          <Stack direction="row" spacing={1}>
-            <Button
-              size="small"
-              disabled={props.busy}
-              onClick={() => void props.onRespond(i.id, true)}
-              startIcon={<CheckCircleOutlineIcon />}
-              sx={primaryBtnSx}
-            >
-              Aksepter
-            </Button>
-            <Button
-              size="small"
-              disabled={props.busy}
-              onClick={() => void props.onRespond(i.id, false)}
-              startIcon={<CancelOutlinedIcon />}
-              sx={secondaryBtnSx}
-            >
-              Avslå
-            </Button>
+    <Stack spacing={2}>
+      {pending.length > 0 ? (
+        <Box>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1, letterSpacing: 0.4 }}>
+            Venter på svar ({pending.length})
+          </Typography>
+          <Stack spacing={1.2}>
+            {pending.map((i) => (
+              <Box key={i.id} sx={cardSx}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                  <Box>
+                    <Typography sx={{ fontWeight: 700, color: palette.textPrimary, fontSize: '1.05rem' }}>
+                      {i.project_name}
+                    </Typography>
+                    <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
+                      {i.project_type} · {fmtDate(i.start_date)} → {fmtDate(i.end_date)}
+                    </Typography>
+                  </Box>
+                  <Chip
+                    size="small"
+                    label={`Utløper ${fmtDate(i.expires_at)}`}
+                    sx={{ bgcolor: 'rgba(251,191,36,0.15)', color: '#fbbf24', fontWeight: 700 }}
+                  />
+                </Stack>
+                {i.notes ? (
+                  <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1.2 }}>
+                    «{i.notes}»
+                  </Typography>
+                ) : null}
+                {Array.isArray(i.role_ids) && i.role_ids.length > 0 ? (
+                  <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1.2 }}>
+                    {i.role_ids.length} valgte roller å foreslå talenter til
+                  </Typography>
+                ) : null}
+                <Stack direction="row" spacing={1}>
+                  <Button size="small" disabled={props.busy} onClick={() => void props.onRespond(i.id, true)} startIcon={<CheckCircleOutlineIcon />} sx={primaryBtnSx}>
+                    Aksepter
+                  </Button>
+                  <Button size="small" disabled={props.busy} onClick={() => void props.onRespond(i.id, false)} startIcon={<CancelOutlinedIcon />} sx={secondaryBtnSx}>
+                    Avslå
+                  </Button>
+                </Stack>
+              </Box>
+            ))}
           </Stack>
         </Box>
-      ))}
+      ) : null}
+
+      {accepted.length > 0 ? (
+        <Box>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1, letterSpacing: 0.4 }}>
+            Aktive prosjekter — du kan foreslå talenter ({accepted.length})
+          </Typography>
+          <Stack spacing={1.2}>
+            {accepted.map((i) => (
+              <Box key={i.id} sx={{ ...cardSx, borderColor: 'rgba(52,211,153,0.32)' }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                  <Box>
+                    <Typography sx={{ fontWeight: 700, color: palette.textPrimary, fontSize: '1.05rem' }}>
+                      {i.project_name}
+                    </Typography>
+                    <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
+                      {i.project_type} · {fmtDate(i.start_date)} → {fmtDate(i.end_date)}
+                    </Typography>
+                  </Box>
+                  <Chip
+                    size="small"
+                    icon={<CheckCircleOutlineIcon sx={{ fontSize: 14 }} />}
+                    label="Aktiv"
+                    sx={{
+                      bgcolor: 'rgba(52,211,153,0.16)',
+                      color: '#34d399',
+                      fontWeight: 700,
+                      '& .MuiChip-icon': { color: '#34d399' },
+                    }}
+                  />
+                </Stack>
+                {Array.isArray(i.role_ids) && i.role_ids.length > 0 ? (
+                  <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1.2 }}>
+                    {i.role_ids.length} valgte roller å foreslå talenter til
+                  </Typography>
+                ) : null}
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    size="small"
+                    onClick={() => props.onProposeTalents(i)}
+                    startIcon={<HandshakeOutlinedIcon />}
+                    sx={primaryBtnSx}
+                  >
+                    Foreslå talenter
+                  </Button>
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
+        </Box>
+      ) : null}
     </Stack>
   );
 }

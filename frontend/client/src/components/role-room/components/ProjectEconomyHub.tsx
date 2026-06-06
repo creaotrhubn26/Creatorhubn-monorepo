@@ -51,6 +51,8 @@ import {
 } from '../services/producerWorkflowFocusEvents';
 import { onProjectAgreementEvent } from '../services/projectAgreementEvents';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
+import { SimpleBudgetEstimator, computeSimpleBudgetEstimate } from './SimpleBudgetEstimator';
+import { ProducerTodoButton } from './ProducerTodoButton';
 import {
   buildProducerDeliveryManifest,
   getProducerWorkspaceLocationForSurface,
@@ -1750,10 +1752,23 @@ export default function ProjectEconomyHub({
       return;
     }
 
-    if (projectBudget <= 0 && phaseEstimateTotal <= 0 && items.length === 0) {
-      enqueueSnackbar('Legg inn totalramme eller økonomilinjer før du sender budsjettpakken.', { variant: 'warning' });
+    // Enkelt overslag fra produksjonsplanen (drivere × satser) — så et rent
+    // overslag også kan sendes til klient, og inngå i pakken.
+    const estShootDays = project.productionDays?.length ?? 0;
+    const estLocations = project.locations?.length ?? 0;
+    const simpleEstimate = computeSimpleBudgetEstimate(project.budgetRates, estShootDays, estLocations);
+
+    if (projectBudget <= 0 && phaseEstimateTotal <= 0 && items.length === 0 && simpleEstimate.total <= 0) {
+      enqueueSnackbar('Legg inn totalramme, økonomilinjer eller et budsjett-overslag før du sender budsjettpakken.', { variant: 'warning' });
       return;
     }
+
+    const formatKr = (value: number): string =>
+      new Intl.NumberFormat('nb-NO', { style: 'currency', currency: currency || 'NOK', maximumFractionDigits: 0 }).format(value);
+    const estimateNote = simpleEstimate.total > 0
+      ? `\n\nEnkelt overslag fra produksjonsplanen: ${estShootDays} opptaksdager + ${estLocations} lokasjoner ≈ ${formatKr(simpleEstimate.total)}.`
+      : '';
+    const fullDescription = `${description}${estimateNote}`.trim();
 
     setIsSubmittingBudgetReview(true);
     try {
@@ -1764,7 +1779,7 @@ export default function ProjectEconomyHub({
       await createReview({
         reviewType: 'budget_package',
         title,
-        description: description || undefined,
+        description: fullDescription || undefined,
         targetEntityType: 'economy',
         targetEntityId: budgetPackageEntityId,
         dueAt: toIsoDateTimeValue(budgetReviewDueAt),
@@ -1774,6 +1789,12 @@ export default function ProjectEconomyHub({
           currency,
           focusedPhase,
           projectBudget,
+          // Enkelt overslag fra produksjonsplanen (drivere × satser) — så klienten
+          // ser hva tallene bygger på, ikke bare en sum.
+          simpleEstimateTotal: simpleEstimate.total,
+          simpleEstimateLines: simpleEstimate.lines
+            .filter((line) => line.subtotal > 0)
+            .map((line) => ({ label: line.label, count: line.count, rate: line.rate, subtotal: line.subtotal, isDefaultRate: line.isDefault })),
           estimateTotal: toNumber(totals.estimate),
           approvedTotal: toNumber(totals.approved),
           actualTotal: toNumber(totals.actual),
@@ -2206,6 +2227,15 @@ export default function ProjectEconomyHub({
                     {getProjectWorkflowStatusLabel(project.producerWorkflowStatus)}
                   </Typography>
                 </Box>
+                <ProducerTodoButton
+                  meta={project.producerWorkflowMeta}
+                  status={project.producerWorkflowStatus}
+                  clientInputBeforeHandoff={deliveryManifest.pendingClientMoments.length}
+                  contentLogic={{ ...deliveryManifest.contentLogicSummary, successSignals: deliveryManifest.successSignals }}
+                  access={deliveryManifest.accountAccessSummary}
+                  onGoToReviews={onOpenReviews ? () => onOpenReviews() : undefined}
+                  compact
+                />
               </Stack>
               <Typography
                 sx={{
@@ -2318,6 +2348,21 @@ export default function ProjectEconomyHub({
               }}
             >
               <Stack spacing={2}>
+                <SimpleBudgetEstimator
+                  shootDays={project.productionDays?.length ?? 0}
+                  locations={project.locations?.length ?? 0}
+                  rates={project.budgetRates ?? {}}
+                  readOnly={readOnly}
+                  onRatesChange={async (budgetRates) => {
+                    const nextProject = { ...project, budgetRates, updatedAt: new Date().toISOString() };
+                    try {
+                      await castingService.saveProject(nextProject);
+                      await onProjectUpdated?.(nextProject);
+                    } catch (error) {
+                      console.error('Kunne ikke lagre budsjett-satser:', error);
+                    }
+                  }}
+                />
                 <Box
                   sx={{
                     p: 1.6,

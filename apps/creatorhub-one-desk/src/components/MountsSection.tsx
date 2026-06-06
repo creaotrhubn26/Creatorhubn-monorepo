@@ -1,19 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import {
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  IconButton,
   List,
   ListItem,
   ListItemText,
+  Snackbar,
   Stack,
   Typography,
 } from "@mui/material";
 import Refresh from "@mui/icons-material/Refresh";
 import CloudUpload from "@mui/icons-material/CloudUpload";
+import Close from "@mui/icons-material/Close";
 import {
   DetectedMount,
   DitDestination,
@@ -52,6 +56,13 @@ export default function MountsSection({ plannedCards, plannedDestinations }: Pro
   const [mounts, setMounts] = useState<DetectedMount[]>([]);
   const [busy, setBusy] = useState(false);
   const [backupMount, setBackupMount] = useState<DetectedMount | null>(null);
+  // Auto-trigger: når en NY mount detekteres som matcher en planned-card-
+  // konfig, vis en snackbar med "Start backup nå?". Dismissed paths
+  // huskes for resten av app-sesjonen så Fredrik ikke får samme prompt
+  // hver gang mount-listen oppdateres.
+  const [autoPromptMount, setAutoPromptMount] = useState<DetectedMount | null>(null);
+  const [autoPromptMatch, setAutoPromptMatch] = useState<MemoryCardConfig | null>(null);
+  const dismissedPathsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     void listDetectedMounts().then(setMounts).catch(() => setMounts([]));
@@ -66,6 +77,53 @@ export default function MountsSection({ plannedCards, plannedDestinations }: Pro
       cleanup?.();
     };
   }, []);
+
+  // Auto-trigger-detektor: trigger snackbar når en ny mount matcher
+  // planned-card. Reagerer på mounts-state-endringer.
+  useEffect(() => {
+    if (plannedCards.length === 0) return;
+    // Allerede åpen prompt eller backup-dialog → ikke trigge ny
+    if (autoPromptMount !== null || backupMount !== null) return;
+    for (const m of mounts) {
+      if (dismissedPathsRef.current.has(m.mount_path)) continue;
+      const match = matchConfig(m, plannedCards);
+      if (match) {
+        setAutoPromptMount(m);
+        setAutoPromptMatch(match);
+        return;
+      }
+    }
+  }, [mounts, plannedCards, autoPromptMount, backupMount]);
+
+  const handleAutoPromptDismiss = () => {
+    if (autoPromptMount) {
+      dismissedPathsRef.current.add(autoPromptMount.mount_path);
+    }
+    setAutoPromptMount(null);
+    setAutoPromptMatch(null);
+  };
+
+  const handleAutoPromptStart = () => {
+    if (autoPromptMount) {
+      setBackupMount(autoPromptMount);
+      dismissedPathsRef.current.add(autoPromptMount.mount_path);
+    }
+    setAutoPromptMount(null);
+    setAutoPromptMatch(null);
+  };
+
+  // Når en mount fjernes (ejected/disappeared), tøm dismissed-set for
+  // den banen så neste innsetning gir ny prompt. Bruker useMemo for å
+  // diff på paths-listen.
+  const mountPathsKey = useMemo(() => mounts.map((m) => m.mount_path).sort().join("|"), [mounts]);
+  useEffect(() => {
+    const currentPaths = new Set(mounts.map((m) => m.mount_path));
+    for (const dismissed of Array.from(dismissedPathsRef.current)) {
+      if (!currentPaths.has(dismissed)) {
+        dismissedPathsRef.current.delete(dismissed);
+      }
+    }
+  }, [mountPathsKey, mounts]);
 
   const handleRescan = async () => {
     setBusy(true);
@@ -174,6 +232,55 @@ export default function MountsSection({ plannedCards, plannedDestinations }: Pro
           /* CopyProgressView lytter via event-API */
         }}
       />
+
+      {/* Auto-trigger-snackbar: vises bunn-senter når et matchende kort
+          detekteres. Auto-dismiss etter 30s hvis Fredrik er ute av rommet;
+          klikke "Start backup" eller "Ikke nå" lukker den manuelt. */}
+      <Snackbar
+        open={autoPromptMount !== null}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        autoHideDuration={30_000}
+        onClose={handleAutoPromptDismiss}
+      >
+        <Alert
+          severity="info"
+          sx={{ width: "100%", maxWidth: 500, alignItems: "center" }}
+          icon={<CloudUpload fontSize="small" />}
+          action={
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+              <Button
+                size="small"
+                color="inherit"
+                onClick={handleAutoPromptDismiss}
+                sx={{ textTransform: "none" }}
+              >
+                Ikke nå
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={handleAutoPromptStart}
+                sx={{ textTransform: "none" }}
+              >
+                Start backup
+              </Button>
+              <IconButton size="small" color="inherit" onClick={handleAutoPromptDismiss}>
+                <Close fontSize="small" />
+              </IconButton>
+            </Stack>
+          }
+        >
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {autoPromptMount?.volume_label} matcher planlagt{" "}
+            {autoPromptMatch?.capacity} {autoPromptMatch?.type ?? "kort"}
+            {autoPromptMatch?.dayName ? ` (${autoPromptMatch.dayName})` : ""}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {autoPromptMount?.photo_count ?? 0} foto +{" "}
+            {autoPromptMount?.video_count ?? 0} video oppdaget. Klar for backup?
+          </Typography>
+        </Alert>
+      </Snackbar>
     </Card>
   );
 }

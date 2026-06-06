@@ -214,6 +214,42 @@ export async function sendWhatsAppTeamInvite(
   });
 }
 
+interface SendLeadFollowupInput {
+  config: WhatsAppSenderConfig;
+  to: string;
+  templateName: string;
+  bodyParams: string[];
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * Generic lead follow-up via an approved WhatsApp template. The template name +
+ * body parameters are caller-supplied so this works for any approved template
+ * (e.g. a "lead_followup" template with {{1}}=first name, {{2}}=business name).
+ */
+export async function sendWhatsAppLeadFollowup(
+  input: SendLeadFollowupInput,
+): Promise<WhatsAppSendResult> {
+  const e164 = normalizePhoneE164(input.to);
+  if (!e164) {
+    return { success: false, provider: "meta-cloud", error: "invalid_phone", displayName: input.config.displayName };
+  }
+  const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${input.config.phoneNumberId}/messages`;
+  const body = {
+    messaging_product: "whatsapp",
+    to: e164.replace(/^\+/, ""),
+    type: "template",
+    template: {
+      name: input.templateName,
+      language: { code: input.config.templateLanguage },
+      components: input.bodyParams.length
+        ? [{ type: "body", parameters: input.bodyParams.map((text) => ({ type: "text" as const, text })) }]
+        : [],
+    },
+  };
+  return await postToMeta({ config: input.config, url, body, fetchImpl: input.fetchImpl, templateName: input.templateName });
+}
+
 interface PostMetaInput {
   config: WhatsAppSenderConfig;
   url: string;

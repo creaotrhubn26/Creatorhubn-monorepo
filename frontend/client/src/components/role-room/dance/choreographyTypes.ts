@@ -16,6 +16,7 @@
  */
 
 import type { BrandingTextTokenKey } from '../config/branding';
+import { danceFlowColors } from './danceFlowTheme';
 
 // ─── Segment-typer (de 9 fra brukerens spec) ─────────────────────────────
 
@@ -42,12 +43,12 @@ export interface SegmentKindMeta {
  *  Brukes både i timeline-blokker og i type-velger-menyen. */
 export const SEGMENT_KINDS: readonly SegmentKindMeta[] = [
   { kind: 'intro',             labelToken: 'choreographySegmentIntro',            color: '#6366f1' }, // indigo
-  { kind: 'verse',             labelToken: 'choreographySegmentVerse',            color: '#3b82f6' }, // blue
-  { kind: 'chorus',            labelToken: 'choreographySegmentChorus',           color: '#ec4899' }, // pink
+  { kind: 'verse',             labelToken: 'choreographySegmentVerse',            color: danceFlowColors.info }, // blue
+  { kind: 'chorus',            labelToken: 'choreographySegmentChorus',           color: danceFlowColors.pinkAccent }, // pink
   { kind: 'bridge',            labelToken: 'choreographySegmentBridge',           color: '#a78bfa' }, // light purple
-  { kind: 'break',             labelToken: 'choreographySegmentBreak',            color: '#f59e0b' }, // amber
+  { kind: 'break',             labelToken: 'choreographySegmentBreak',            color: danceFlowColors.amber }, // amber
   { kind: 'outro',             labelToken: 'choreographySegmentOutro',            color: '#8b5cf6' }, // purple
-  { kind: 'freestyle',         labelToken: 'choreographySegmentFreestyle',        color: '#10b981' }, // emerald
+  { kind: 'freestyle',         labelToken: 'choreographySegmentFreestyle',        color: danceFlowColors.successDark }, // emerald
   { kind: 'lift',              labelToken: 'choreographySegmentLift',             color: '#f43f5e' }, // rose
   { kind: 'formation_change',  labelToken: 'choreographySegmentFormationChange',  color: '#06b6d4' }, // cyan
 ] as const;
@@ -66,11 +67,11 @@ export interface EnergyLevelMeta {
 
 export const ENERGY_LEVELS: readonly EnergyLevelMeta[] = [
   { level: 'low',         labelToken: 'choreographyEnergyLow',         intensity: 1, color: '#94a3b8' },
-  { level: 'controlled',  labelToken: 'choreographyEnergyControlled',  intensity: 2, color: '#60a5fa' },
+  { level: 'controlled',  labelToken: 'choreographyEnergyControlled',  intensity: 2, color: danceFlowColors.infoLight },
   { level: 'medium',      labelToken: 'choreographyEnergyMedium',      intensity: 3, color: '#34d399' },
-  { level: 'high',        labelToken: 'choreographyEnergyHigh',        intensity: 4, color: '#fbbf24' },
+  { level: 'high',        labelToken: 'choreographyEnergyHigh',        intensity: 4, color: danceFlowColors.gold },
   { level: 'sharp',       labelToken: 'choreographyEnergySharp',       intensity: 5, color: '#f97316' },
-  { level: 'explosive',   labelToken: 'choreographyEnergyExplosive',   intensity: 6, color: '#ef4444' },
+  { level: 'explosive',   labelToken: 'choreographyEnergyExplosive',   intensity: 6, color: danceFlowColors.errorStrong },
 ] as const;
 
 // ─── Godkjenningsstatus ──────────────────────────────────────────────────
@@ -85,9 +86,9 @@ export interface ApprovalStatusMeta {
 
 export const APPROVAL_STATUSES: readonly ApprovalStatusMeta[] = [
   { status: 'draft',     labelToken: 'choreographyApprovalDraft',     color: '#9ca3af' },
-  { status: 'review',    labelToken: 'choreographyApprovalReview',    color: '#fbbf24' },
+  { status: 'review',    labelToken: 'choreographyApprovalReview',    color: danceFlowColors.gold },
   { status: 'approved',  labelToken: 'choreographyApprovalApproved',  color: '#34d399' },
-  { status: 'locked',    labelToken: 'choreographyApprovalLocked',    color: '#ef4444' },
+  { status: 'locked',    labelToken: 'choreographyApprovalLocked',    color: danceFlowColors.errorStrong },
 ] as const;
 
 // ─── Timeline-lag (de 7 fra brukerens spec) ──────────────────────────────
@@ -115,9 +116,9 @@ export const TIMELINE_LAYERS: readonly TimelineLayerMeta[] = [
   { kind: 'music',        labelToken: 'choreographyLayerMusic',         segmentField: 'musicCue',     color: '#8b5cf6', variant: 'waveform' },
   { kind: 'choreography', labelToken: 'choreographyLayerChoreography',  segmentField: 'kind',         color: '#a78bfa', variant: 'block'    },
   { kind: 'formation',    labelToken: 'choreographyLayerFormation',     segmentField: 'formation',    color: '#06b6d4', variant: 'text'     },
-  { kind: 'camera',       labelToken: 'choreographyLayerCamera',        segmentField: 'camera',       color: '#3b82f6', variant: 'text'     },
-  { kind: 'lighting',     labelToken: 'choreographyLayerLighting',      segmentField: 'lighting',     color: '#f59e0b', variant: 'text'     },
-  { kind: 'costumes',     labelToken: 'choreographyLayerCostumes',      segmentField: 'costume',      color: '#ec4899', variant: 'text'     },
+  { kind: 'camera',       labelToken: 'choreographyLayerCamera',        segmentField: 'camera',       color: danceFlowColors.info, variant: 'text'     },
+  { kind: 'lighting',     labelToken: 'choreographyLayerLighting',      segmentField: 'lighting',     color: danceFlowColors.amber, variant: 'text'     },
+  { kind: 'costumes',     labelToken: 'choreographyLayerCostumes',      segmentField: 'costume',      color: danceFlowColors.pinkAccent, variant: 'text'     },
   { kind: 'notes',        labelToken: 'choreographyLayerNotes',         segmentField: 'movementNotes', color: '#9ca3af', variant: 'text'    },
 ] as const;
 
