@@ -1078,54 +1078,98 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
   );
 
   // ── GET /talents/selftapes/shared — talentens "Mine delte" oversikt
+  // Implementert som 2-trinns spørring slik at vi unngår én massiv JOIN
+  // som kan feile på type-mismatch hvis casting_*-tabellene er endret.
   app.get("/api/role-room/talents/selftapes/shared", async (req, res) => {
     const session = getActiveSession(req);
     const talentId = await resolveTalentId(pool, req, session);
     if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
+      // Trinn 1: hent submissions + project + take + agency (alle UUID-FK).
+      // Casting-prosjekt/rolle navngis i trinn 2 (VARCHAR-FK separat).
       const r = await pool.query(
         `SELECT s.id::text, s.target_type, s.status, s.submitted_at, s.viewed_at,
                 s.revoked_at, s.revoke_reason, s.deadline_at, s.view_count,
                 s.last_viewed_at, s.private_token,
+                s.casting_project_id, s.casting_role_id,
                 p.id::text AS selftape_project_id, p.name AS selftape_project_name,
                 a.name AS agency_name, a.logo_url AS agency_logo_url,
-                cp.name AS casting_project_name,
-                cr.name AS casting_role_name,
-                t.take_number, t.thumbnail_url, t.source_provider,
-                cr.id::text AS casting_role_id
+                t.take_number, t.thumbnail_url, t.source_provider
            FROM talent_selftape_submissions s
            JOIN talent_selftape_projects p ON p.id = s.project_id
            LEFT JOIN agency_orgs a         ON a.id = s.agency_org_id
-           LEFT JOIN casting_projects cp   ON cp.id = s.casting_project_id
-           LEFT JOIN casting_roles cr      ON cr.id = s.casting_role_id
            LEFT JOIN talent_selftape_takes t ON t.id = s.take_id
           WHERE p.talent_id = $1::uuid
           ORDER BY COALESCE(s.submitted_at, s.created_at) DESC NULLS LAST`,
         [talentId],
       );
-      return res.json({ shared: r.rows });
+      const rows = r.rows as Array<{
+        casting_project_id: string | null;
+        casting_role_id: string | null;
+        [k: string]: unknown;
+      }>;
+
+      // Trinn 2: hent prosjekt-/rolle-navn for de submissions som har dem
+      const projectIds = Array.from(new Set(rows.map((x) => x.casting_project_id).filter(Boolean) as string[]));
+      const roleIds = Array.from(new Set(rows.map((x) => x.casting_role_id).filter(Boolean) as string[]));
+
+      const projectNames = new Map<string, string>();
+      const roleNames = new Map<string, string>();
+      if (projectIds.length) {
+        const pr = await pool.query(
+          `SELECT id, name FROM casting_projects WHERE id = ANY($1::varchar[])`,
+          [projectIds],
+        ).catch(() => ({ rows: [] as Array<{ id: string; name: string }> }));
+        for (const row of pr.rows) projectNames.set(row.id, row.name);
+      }
+      if (roleIds.length) {
+        const rr = await pool.query(
+          `SELECT id, name FROM casting_roles WHERE id = ANY($1::varchar[])`,
+          [roleIds],
+        ).catch(() => ({ rows: [] as Array<{ id: string; name: string }> }));
+        for (const row of rr.rows) roleNames.set(row.id, row.name);
+      }
+
+      const shared = rows.map((x) => ({
+        ...x,
+        casting_project_name: x.casting_project_id ? projectNames.get(x.casting_project_id) ?? null : null,
+        casting_role_name: x.casting_role_id ? roleNames.get(x.casting_role_id) ?? null : null,
+      }));
+      return res.json({ shared });
     } catch (err) {
-      console.error("[selftapes/shared GET] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å hente delinger" });
+      console.error("[selftapes/shared GET] failed",
+        err instanceof Error ? `${err.message} | ${err.stack?.split("\n")[1]?.trim()}` : String(err));
+      return res.status(500).json({
+        error: "Klarte ikke å hente delinger",
+        detail: process.env.NODE_ENV === "production"
+          ? undefined
+          : String(err instanceof Error ? err.message : err),
+      });
     }
   });
 
   // ── GET /casting-roles/:roleId/selftapes — produksjon ser self-tapes
   // Krever at innlogget bruker eier prosjektet rollen tilhører.
+  // Demo-modus (?demo=1) hopper over eierskap-sjekken slik at preview
+  // virker uten ekte session.
   app.get("/api/role-room/casting-roles/:roleId/selftapes", async (req, res) => {
     const session = getActiveSession(req);
-    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const isDemo = isDemoRequest(req);
+    if (!isDemo && !session?.userId) {
+      return res.status(401).json({ error: "Innlogging kreves" });
+    }
     try {
-      // Verifiser at brukeren eier prosjektet
+      // Verifiser at brukeren eier prosjektet (skip i demo-modus).
+      // casting_roles.id er VARCHAR, IKKE UUID — INGEN ::uuid-cast.
       const own = await pool.query(
-        `SELECT cp.id::text AS project_id, cp.created_by
+        `SELECT cp.id AS project_id, cp.created_by
            FROM casting_roles cr
            JOIN casting_projects cp ON cp.id = cr.project_id
-          WHERE cr.id = $1::uuid LIMIT 1`,
+          WHERE cr.id = $1 LIMIT 1`,
         [req.params.roleId],
       );
       if (!own.rowCount) return res.status(404).json({ error: "Rolle ikke funnet" });
-      if (own.rows[0].created_by !== session.userId) {
+      if (!isDemo && own.rows[0].created_by !== session?.userId) {
         return res.status(403).json({ error: "Du eier ikke prosjektet" });
       }
 
@@ -1159,10 +1203,14 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
   // ── POST /casting-roles/selftapes/submissions/:id/view ─────────────
   // Produksjon registrerer en visning — øker view_count, skriver audit,
   // setter status → 'viewed' hvis 'submitted'. Idempotent på UUID.
+  // Demo-modus hopper over eierskap-sjekken slik at preview kan testes.
   app.post("/api/role-room/casting-roles/selftapes/submissions/:id/view",
     async (req, res) => {
       const session = getActiveSession(req);
-      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const isDemo = isDemoRequest(req);
+      if (!isDemo && !session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
       try {
         // Verifiser at brukeren eier prosjektet
         const own = await pool.query(
@@ -1175,10 +1223,10 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         );
         if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
         const row = own.rows[0];
-        if (!row.created_by) {
+        if (!isDemo && !row.created_by) {
           return res.status(403).json({ error: "Ingen prosjekt-eier-info" });
         }
-        if (row.created_by !== session.userId) {
+        if (!isDemo && row.created_by !== session?.userId) {
           return res.status(403).json({ error: "Du eier ikke prosjektet" });
         }
 
@@ -1203,8 +1251,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
             `INSERT INTO talent_selftape_submission_events
                (submission_id, event_type, actor_label, details)
              VALUES ($1::uuid, 'viewed', $2, $3::jsonb)`,
-            [req.params.id, session.email ?? "production", JSON.stringify({
-              user_id: session.userId,
+            [req.params.id, session?.email ?? "production", JSON.stringify({
+              user_id: session?.userId ?? null,
             })],
           );
         } catch { /* ignore */ }
@@ -1213,7 +1261,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
             `INSERT INTO talent_access_audit
                (talent_id, partner_type, partner_ref, scope, accessed_by, details)
              VALUES ($1::uuid, 'production_team', $2, 'self_tape_review', $3, $4::jsonb)`,
-            [row.talent_id, session.userId, session.email ?? null,
+            [row.talent_id, session?.userId ?? "demo", session?.email ?? null,
              JSON.stringify({ submission_id: req.params.id })],
           );
         } catch { /* ignore — audit-write skal ikke blokkere visning */ }
@@ -1222,7 +1270,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         notifySelftapeActivity(pool, {
           submissionId: req.params.id,
           kind: "viewed",
-          actorLabel: session.email ?? "Produksjon",
+          actorLabel: session?.email ?? "Produksjon",
         }).catch((err) => console.warn("[selftape-notify viewed]", err));
 
         return res.json({ submission: upd.rows[0] });

@@ -300,6 +300,12 @@ import NewProjectCreationModal from './Planning/NewProjectCreationModal';
 import RoleRoomBrandMark from './shared/RoleRoomBrandMark';
 import RoleRoomBillingAccountDialog from './RoleRoomBillingAccountDialog';
 import SelectionMeetPlannerCard from './SelectionMeetPlannerCard';
+import SelfTapePreviewModal from './selftape/SelfTapePreviewModal';
+import {
+  listCastingRoleSelftapes,
+  type CastingRoleSelftape,
+} from '../services/roleRoomSelfTapesService';
+import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 
 interface CastingPlannerPanelProps {
   onClose?: () => void;
@@ -1123,6 +1129,13 @@ type RoleRoomProjectWorkspaceState = {
   const [selectionCompareCandidateIds, setSelectionCompareCandidateIds] = useState<string[]>([]);
   const [selectionDecisionLog, setSelectionDecisionLog] = useState<SelectionDecisionLogEntry[]>([]);
   const [selectionSelfTapeIndexByCandidate, setSelectionSelfTapeIndexByCandidate] = useState<Record<string, number>>({});
+  // Self-Tape Studio-integrasjon: Map[talent_id, CastingRoleSelftape[]]
+  // Hentes per rolle ved mount/role-endring. Brukes til 📹-badge på kort
+  // i både Kandidater-Kanban og Utvelgelse-fanen.
+  const [selftapesByTalent, setSelftapesByTalent] = useState<Map<string, CastingRoleSelftape[]>>(
+    new Map(),
+  );
+  const [selftapePreview, setSelftapePreview] = useState<CastingRoleSelftape | null>(null);
   const [selectionBoardMode, setSelectionBoardMode] = useState(false);
   const [selectionShortcutsOpen, setSelectionShortcutsOpen] = useState(false);
   const [selectionNotesDraft, setSelectionNotesDraft] = useState('');
@@ -6395,6 +6408,44 @@ type RoleRoomProjectWorkspaceState = {
     )),
     [currentProject?.roles],
   );
+
+  // Self-tape fetch — én gang per (project, role-set). Resultatet
+  // brukes til 📹-badge på kandidat-kort i både Kanban og Utvelgelse.
+  useEffect(() => {
+    if (!currentProject?.id || roles.length === 0) {
+      setSelftapesByTalent(new Map());
+      return;
+    }
+    let cancelled = false;
+    const fetchAll = async () => {
+      try {
+        const results = await Promise.all(
+          roles.map(async (r) => {
+            try {
+              const { selftapes } = await listCastingRoleSelftapes(r.id);
+              return selftapes;
+            } catch {
+              return [] as CastingRoleSelftape[];
+            }
+          }),
+        );
+        if (cancelled) return;
+        const map = new Map<string, CastingRoleSelftape[]>();
+        for (const list of results) {
+          for (const s of list) {
+            const existing = map.get(s.talent_id) ?? [];
+            existing.push(s);
+            map.set(s.talent_id, existing);
+          }
+        }
+        setSelftapesByTalent(map);
+      } catch (err) {
+        console.warn('[CastingPlannerPanel] selftape-fetch failed', err);
+      }
+    };
+    fetchAll();
+    return () => { cancelled = true; };
+  }, [currentProject?.id, roles]);
   const allCandidates = useMemo(
     () => (currentProject?.candidates ?? []).filter((candidate): candidate is Candidate => (
       !!candidate
@@ -10706,6 +10757,11 @@ type RoleRoomProjectWorkspaceState = {
                               const isActive = selectedSelectionCandidateId === candidate.id;
                               const isCompared = selectionCompareCandidateIds.includes(candidate.id);
                               const auditionCount = auditionSchedulesByCandidate.get(candidate.id)?.length || 0;
+                              // Self-tape-badge: vises hvis kandidaten har talent_id med aktiv submission
+                              const candidateTalentId = (candidate as { talent_id?: string }).talent_id;
+                              const candidateSelftapes = candidateTalentId
+                                ? selftapesByTalent.get(candidateTalentId)
+                                : undefined;
                               const candidatePhoto = getCandidatePrimaryPhoto(candidate);
                               const assignedRoleIds = getCandidateAssignedRoles(candidate);
                               const assignedRoleNames = assignedRoleIds
@@ -10777,6 +10833,38 @@ type RoleRoomProjectWorkspaceState = {
                                         border: '1px solid rgba(125,211,252,0.45)',
                                       }}
                                     />
+                                    {/* 📹 Self-tape-badge (utvelgelse-fane) */}
+                                    {candidateSelftapes && candidateSelftapes.length > 0 ? (
+                                      <Box
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelftapePreview(candidateSelftapes[0]);
+                                        }}
+                                        sx={{
+                                          position: 'absolute',
+                                          top: 6,
+                                          right: 6,
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: 0.3,
+                                          height: 20,
+                                          px: 0.7,
+                                          borderRadius: 999,
+                                          bgcolor: 'rgba(168,85,247,0.85)',
+                                          color: '#fff',
+                                          fontSize: '0.62rem',
+                                          fontWeight: 800,
+                                          cursor: 'pointer',
+                                          border: '1px solid rgba(192,132,252,0.6)',
+                                          boxShadow: '0 0 8px rgba(168,85,247,0.5)',
+                                          '&:hover': { bgcolor: 'rgba(168,85,247,0.95)' },
+                                        }}
+                                        title="Se talentens self-tape"
+                                      >
+                                        <PlayCircleOutlineIcon sx={{ fontSize: 12 }} />
+                                        {candidateSelftapes.length > 1 ? candidateSelftapes.length : 'Tape'}
+                                      </Box>
+                                    ) : null}
                                   </Box>
 
                                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.55 }}>
@@ -17584,6 +17672,14 @@ type RoleRoomProjectWorkspaceState = {
         currentProjectId={currentProject?.id ?? null}
         currentProjectName={currentProject?.name ?? null}
         hidden={isLiveSetImmersive}
+      />
+
+      {/* Self-tape preview modal — åpnes ved klikk på 📹-badge */}
+      <SelfTapePreviewModal
+        open={!!selftapePreview}
+        selftape={selftapePreview}
+        viewerLabel={adminUser?.display_name || adminUser?.email || 'Produksjon'}
+        onClose={() => setSelftapePreview(null)}
       />
     </>
     </ErrorBoundary>
