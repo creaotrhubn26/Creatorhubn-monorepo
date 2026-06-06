@@ -44,6 +44,27 @@ const ALLOWED_STATUSES = new Set([
 ]);
 
 /** Lesbar norsk label for status — brukes i e-post-emne og audit. */
+/**
+ * Mapper Kanban-status → self-tape-submission-status.
+ * - 'pending'   → null (ingen propagasjon — submission beholder status)
+ * - 'requested' → null (allerede 'submitted' eller 'viewed')
+ * - 'shortlist' → 'shortlisted'
+ * - 'selected' / 'confirmed' → 'shortlisted' (positiv mot talenten)
+ * - 'rejected' → 'passed'
+ */
+function mapKanbanToSubmissionStatus(kanbanStatus: string): string | null {
+  switch (kanbanStatus) {
+    case "shortlist":
+    case "selected":
+    case "confirmed":
+      return "shortlisted";
+    case "rejected":
+      return "passed";
+    default:
+      return null;
+  }
+}
+
 function statusLabel(status: string): string {
   const m: Record<string, string> = {
     pending: "Avventer",
@@ -184,6 +205,40 @@ export function setupRoleRoomCandidateStatusRoutes(deps: RoleRoomCandidateStatus
           });
         }
       }
+
+      // Propagér til linket self-tape-submission (hvis trigger 238 har
+      // koblet kandidaten ved opprettelse). Mapper Kanban-status til
+      // submission-status så talent kan revoke / varsles korrekt.
+      // Best-effort — feiler ikke hovedflyten.
+      void (async () => {
+        try {
+          const submissionId = (existingMeta as { self_tape_submission_id?: string }).self_tape_submission_id
+            ?? (existingMeta as { submission_id?: string }).submission_id;
+          if (!submissionId) return;
+          const submissionStatus = mapKanbanToSubmissionStatus(status);
+          if (!submissionStatus) return;
+          await pool.query(
+            `UPDATE talent_selftape_submissions
+                SET status = $1, status_updated_at = now()
+              WHERE id = $2::uuid AND status NOT IN ('revoked')`,
+            [submissionStatus, submissionId],
+          );
+          // Trigger varsel hvis status ble shortlisted (PATCH-endepunkt
+          // varsler ikke når UPDATE skjer her — kall direkte).
+          if (submissionStatus === "shortlisted") {
+            const { notifySelftapeActivity } = await import(
+              "./talent-selftape-notifications.js"
+            );
+            notifySelftapeActivity(pool, {
+              submissionId,
+              kind: "shortlisted",
+              actorLabel: session.email ?? "Produksjon",
+            }).catch((err) => console.warn("[candidate-status selftape notify]", err));
+          }
+        } catch (err) {
+          console.warn("[candidate-status] selftape-propagation feilet", err);
+        }
+      })();
 
       return res.json({
         candidate: { id: candidate.id, status },
