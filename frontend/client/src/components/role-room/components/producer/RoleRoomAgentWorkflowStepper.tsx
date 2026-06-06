@@ -1,14 +1,21 @@
 import { Box, Stack, Tooltip, Typography } from '@mui/material';
 import {
-  AutoFixHigh as AnalyzeIcon,
+  AutoFixHigh as ResearchIcon,
   Rocket as PlanIcon,
   CloudUpload as PublishIcon,
-  MoveToInbox as ListenIcon,
+  MoveToInbox as InboxIcon,
+  ContactPage as LeadsIcon,
   QueryStats as MeasureIcon,
+  Check as CheckIcon,
 } from '@mui/icons-material';
 
-export type RoleRoomAgentPhase = 'analyze' | 'plan' | 'publish' | 'listen' | 'measure';
+export type RoleRoomAgentPhase = 'research' | 'plan' | 'publish' | 'inbox' | 'leads' | 'measure';
 
+// Mirrors the guided tab flow in RoleRoomAgentDialog (research → markedsplan →
+// feed-planner → inbox → leads → analytics). Labels match the tab names and
+// captions are Norwegian throughout (bestemor-vennlig, ingen språk-miks).
+// Each phase's `tabs` also lists the related power-tools so the step lights up
+// when the producer is in one of them.
 const PHASES: Array<{
   id: RoleRoomAgentPhase;
   label: string;
@@ -17,37 +24,44 @@ const PHASES: Array<{
   tabs: string[];
 }> = [
   {
-    id: 'analyze',
-    label: 'Analyze',
-    caption: 'Forstå bedriften',
-    icon: <AnalyzeIcon fontSize="small" />,
-    tabs: ['research', 'meta-page'],
+    id: 'research',
+    label: 'Research',
+    caption: 'Forstå kunden',
+    icon: <ResearchIcon fontSize="small" />,
+    tabs: ['research', 'discovery', 'meta-page', 'page-content'],
   },
   {
     id: 'plan',
-    label: 'Plan',
-    caption: 'Strategi + posts',
+    label: 'Markedsplan',
+    caption: 'Strategi + innlegg',
     icon: <PlanIcon fontSize="small" />,
-    tabs: ['marketing-plan', 'feed-planner'],
+    tabs: ['marketing-plan'],
   },
   {
     id: 'publish',
-    label: 'Publish',
-    caption: 'På tvers av plattformer',
+    label: 'Feed-planner',
+    caption: 'Lag + publiser',
     icon: <PublishIcon fontSize="small" />,
-    tabs: ['fb-publish', 'fb-mention', 'page-content'],
+    tabs: ['feed-planner', 'fb-publish'],
   },
   {
-    id: 'listen',
-    label: 'Listen',
-    caption: 'Inbox + sentiment',
-    icon: <ListenIcon fontSize="small" />,
-    tabs: ['social-inbox'],
+    id: 'inbox',
+    label: 'Inbox',
+    caption: 'Svar + omtaler',
+    icon: <InboxIcon fontSize="small" />,
+    tabs: ['social-inbox', 'mentions', 'fb-mention', 'ig-hashtag'],
+  },
+  {
+    id: 'leads',
+    label: 'Leads',
+    caption: 'Få + følg opp kunder',
+    icon: <LeadsIcon fontSize="small" />,
+    tabs: ['leads', 'events'],
   },
   {
     id: 'measure',
-    label: 'Measure',
-    caption: 'Analytics',
+    label: 'Analyse',
+    caption: 'Resultater',
     icon: <MeasureIcon fontSize="small" />,
     tabs: ['social-analytics', 'ads-attribution'],
   },
@@ -78,12 +92,15 @@ export default function RoleRoomAgentWorkflowStepper({
       spacing={0}
       alignItems="stretch"
       data-testid="role-room-agent-workflow-stepper"
+      role="list"
+      aria-label="The Role Room Agent arbeidsflyt — 6 steg"
       sx={{
         px: { xs: 1, md: 2 },
-        py: 1,
+        py: 1.25,
         bgcolor: 'rgba(15,23,42,0.55)',
         borderBottom: '1px solid rgba(148,163,184,0.18)',
         overflowX: 'auto',
+        flexShrink: 0, // don't get squished when the dialog content is tall
       }}
     >
       {PHASES.map((phase, idx) => {
@@ -97,13 +114,23 @@ export default function RoleRoomAgentWorkflowStepper({
             alignItems="center"
             sx={{ flex: '1 0 auto', minWidth: 0 }}
           >
-            <Tooltip title={`Gå til ${phase.label}`} disableInteractive>
+            <Tooltip
+              title={`Gå til ${phase.label}${isActive ? ' (aktivt steg)' : isPast ? ' (fullført)' : ''}`}
+              disableInteractive
+            >
               <Box
-                role={onJump ? 'button' : undefined}
+                role={onJump ? 'button' : 'listitem'}
                 tabIndex={onJump ? 0 : -1}
+                aria-current={isActive ? 'step' : undefined}
+                aria-label={`Steg ${idx + 1} av ${PHASES.length}: ${phase.label} — ${phase.caption}${
+                  isActive ? ' (aktivt)' : isPast ? ' (fullført)' : ' (kommende)'
+                }`}
                 onClick={() => onJump?.(phase.tabs[0])}
                 onKeyDown={(e) => {
-                  if (onJump && (e.key === 'Enter' || e.key === ' ')) onJump(phase.tabs[0]);
+                  if (onJump && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    onJump(phase.tabs[0]);
+                  }
                 }}
                 data-testid={`workflow-step-${phase.id}`}
                 data-active={isActive ? 'true' : 'false'}
@@ -113,7 +140,7 @@ export default function RoleRoomAgentWorkflowStepper({
                   alignItems: 'center',
                   gap: 1,
                   px: { xs: 1, md: 1.4 },
-                  py: 0.6,
+                  py: 0.75,
                   borderRadius: 1.4,
                   cursor: onJump ? 'pointer' : 'default',
                   border: isActive
@@ -156,8 +183,9 @@ export default function RoleRoomAgentWorkflowStepper({
                     fontSize: '0.78rem',
                     flexShrink: 0,
                   }}
+                  aria-hidden="true"
                 >
-                  {phase.icon}
+                  {isPast ? <CheckIcon fontSize="small" /> : phase.icon}
                 </Box>
                 <Stack spacing={0} sx={{ minWidth: 0 }}>
                   <Typography

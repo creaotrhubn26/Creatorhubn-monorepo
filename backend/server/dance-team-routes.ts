@@ -71,7 +71,7 @@ function requireOwner() {
 // ─── Validation schemas ─────────────────────────────────────────────────
 
 const labelSchema = z.string().trim().min(1).max(80);
-const capabilitiesSchema = z.record(z.boolean());
+const capabilitiesSchema = z.record(z.string(), z.boolean());
 const displayOrderSchema = z.number().int().min(0).max(10000);
 
 const createTeamBody = z.object({

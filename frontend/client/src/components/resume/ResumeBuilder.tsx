@@ -4400,8 +4400,8 @@ export default function ResumeBuilder() {
           background: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 80%)',
           borderRadius: 4,
           p: { xs: 2, md: 3 },
-          boxShadow: '0 12px 30px rgba(15, 23, 42, 0.06)',
-          border: '1px solid rgba(15, 23, 42, 0.08)',
+          boxShadow: '0 12px 30px rgba(255,255,255,0.06)',
+          border: '1px solid rgba(255,255,255,0.10)',
         }}
       >
       {/* Header with Brand Kit */}
@@ -4638,7 +4638,7 @@ export default function ResumeBuilder() {
                     bgcolor: '#ffffff',
                     border: '1px solid',
                     borderColor: 'divider',
-                    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.05)',
+                    boxShadow: '0 6px 18px rgba(255,255,255,0.05)',
                   }}
                 >
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
@@ -4690,13 +4690,13 @@ export default function ResumeBuilder() {
                     border: '2px dashed',
                     borderColor: '#2563eb',
                     bgcolor: '#f8fafc',
-                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+                    boxShadow: '0 10px 24px rgba(255,255,255,0.06)',
                     transition: 'transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease',
                     '&:hover': {
                       bgcolor: '#f1f5f9',
                       borderColor: '#ff8c00',
                       transform: 'translateY(-3px)',
-                      boxShadow: '0 14px 28px rgba(15, 23, 42, 0.08)',
+                      boxShadow: '0 14px 28px rgba(255,255,255,0.08)',
                     },
                   }}
                   onClick={handleCreateResume}
@@ -4732,7 +4732,7 @@ export default function ResumeBuilder() {
                     border: '1px solid',
                     borderColor: 'rgba(99, 102, 241, 0.35)',
                     bgcolor: '#ffffff',
-                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+                    boxShadow: '0 10px 24px rgba(255,255,255,0.06)',
                     transition: 'transform 0.2s ease, box-shadow 0.2s ease',
                     '&:hover': {
                       transform: 'translateY(-3px)',
@@ -4774,7 +4774,7 @@ export default function ResumeBuilder() {
                     border: '1px solid',
                     borderColor: linkedIn.state.isAuthenticated ? 'rgba(37, 99, 235, 0.35)' : 'rgba(255, 140, 0, 0.35)',
                     bgcolor: '#ffffff',
-                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+                    boxShadow: '0 10px 24px rgba(255,255,255,0.06)',
                     transition: 'transform 0.2s ease, box-shadow 0.2s ease',
                     '&:hover': {
                       transform: 'translateY(-3px)',
@@ -5297,7 +5297,7 @@ export default function ResumeBuilder() {
                     overflow: 'hidden',
                     border: '1px solid',
                     borderColor: 'divider',
-                    boxShadow: '0 10px 26px rgba(15, 23, 42, 0.08)',
+                    boxShadow: '0 10px 26px rgba(255,255,255,0.08)',
                   }}
                 >
                   <Tabs

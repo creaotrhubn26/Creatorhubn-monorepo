@@ -1,11 +1,20 @@
 import { useEffect, useState } from "react";
 import { Box, CircularProgress, Container, Typography } from "@mui/material";
-import { loadStoredConfig, StoredConfig } from "./api";
+import { desktopLogout, deviceTokenStatus, listProjects, loadStoredConfig, StoredConfig } from "./api";
 import TokenSetupScreen from "./components/TokenSetupScreen";
 import ProjectInfoScreen from "./components/ProjectInfoScreen";
+import ProjectPickerScreen from "./components/ProjectPickerScreen";
+import LoginScreen from "./components/LoginScreen";
+import NoProjectsScreen from "./components/NoProjectsScreen";
 import UpdaterDialog from "./components/UpdaterDialog";
 
-type Status = "loading" | "needs-token" | "connected";
+type Status =
+  | "loading"
+  | "needs-login"
+  | "needs-token"
+  | "no-projects"
+  | "picker"
+  | "connected";
 
 interface PendingUpdate {
   version: string;
@@ -55,21 +64,64 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  /// Hoved-rute-logikk. Tilstander etter loading:
+  ///   - needs-login: ingen device-token + ingen lagrede prosjekter → LoginScreen
+  ///   - needs-token: bruker velger "manuelt token" fra LoginScreen → TokenSetupScreen
+  ///   - picker: flere prosjekter konfigurert OG bruker har valgt
+  ///     "bytt prosjekt" (eller etter logout) → ProjectPickerScreen
+  ///   - connected: aktivt prosjekt valgt → ProjectInfoScreen
+  /// Migration fra single-project handles automatically i ProjectStore.
   const refresh = async () => {
     setStatus("loading");
     try {
+      const projs = await listProjects();
       const cfg = await loadStoredConfig();
+      const deviceToken = await deviceTokenStatus().catch(() => null);
+
+      if (projs.length === 0) {
+        setConfig(null);
+        // Skill mellom «ingen device-token» (vis login) og «innlogget men
+        // ingen prosjekter» (vis welcome-skjerm m/ forklaring + link).
+        // Tidligere logikk sendte alltid til login → opplevdes som at
+        // ingenting skjedde etter Google-login fordi UI returnerte til
+        // samme skjermbilde.
+        setStatus(deviceToken ? "no-projects" : "needs-login");
+        return;
+      }
       if (cfg && cfg.has_token) {
         setConfig(cfg);
         setStatus("connected");
       } else {
         setConfig(null);
-        setStatus("needs-token");
+        setStatus("picker");
       }
     } catch {
       setConfig(null);
-      setStatus("needs-token");
+      setStatus("needs-login");
     }
+  };
+
+  const handleSwitchProject = () => {
+    setStatus("picker");
+    setConfig(null);
+  };
+
+  const handleAddNew = () => {
+    setStatus("needs-login");
+  };
+
+  const handleManualToken = () => {
+    setStatus("needs-token");
+  };
+
+  const handleLogout = async () => {
+    try {
+      await desktopLogout();
+    } catch {
+      // best-effort — fortsetter til login uansett
+    }
+    setConfig(null);
+    setStatus("needs-login");
   };
 
   useEffect(() => {
@@ -87,13 +139,31 @@ export default function App() {
     );
   }
 
+  if (status === "needs-login") {
+    return <LoginScreen onLoggedIn={refresh} onManualToken={handleManualToken} />;
+  }
+
   if (status === "needs-token") {
-    return <TokenSetupScreen onSaved={refresh} />;
+    return <TokenSetupScreen onSaved={refresh} onBack={() => setStatus("needs-login")} />;
+  }
+
+  if (status === "picker") {
+    return <ProjectPickerScreen onProjectSelected={refresh} onAddNew={handleAddNew} />;
+  }
+
+  if (status === "no-projects") {
+    return <NoProjectsScreen onRefresh={refresh} onLogout={handleLogout} />;
   }
 
   return (
     <Box>
-      {config && <ProjectInfoScreen config={config} onLoggedOut={refresh} />}
+      {config && (
+        <ProjectInfoScreen
+          config={config}
+          onLoggedOut={refresh}
+          onSwitchProject={handleSwitchProject}
+        />
+      )}
       {updateInfo && (
         <UpdaterDialog
           version={updateInfo.version}

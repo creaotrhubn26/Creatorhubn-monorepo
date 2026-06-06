@@ -31,6 +31,7 @@ import {
   FormControlLabel,
   Stack,
   Switch,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
@@ -757,23 +758,28 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
   onReject,
 }) => {
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const renderer = rendererFor(suggestion.suggestionType);
   const Icon = renderer.icon;
 
   const handleAccept = async () => {
     setBusy(true);
+    setActionError(null);
     try {
       await onAccept(suggestion.id);
-    } catch {
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Kunne ikke godta forslaget. Prøv igjen.');
       setBusy(false);
     }
   };
 
   const handleReject = async () => {
     setBusy(true);
+    setActionError(null);
     try {
       await onReject(suggestion.id);
-    } catch {
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Kunne ikke avvise forslaget. Prøv igjen.');
       setBusy(false);
     }
   };
@@ -827,6 +833,20 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
             </Button>
           </Stack>
         </Stack>
+        {actionError && (
+          <Alert
+            severity="error"
+            sx={{ mt: 1 }}
+            action={
+              <Button color="inherit" size="small" onClick={handleAccept} disabled={busy}>
+                Prøv igjen
+              </Button>
+            }
+            onClose={() => setActionError(null)}
+          >
+            {actionError}
+          </Alert>
+        )}
       </CardContent>
     </Card>
   );
@@ -849,6 +869,12 @@ export interface AISuggestionsPanelProps {
    * kontekst). Panelet refetcher automatisk når Promise resolver.
    */
   onGenerate?: () => Promise<void>;
+  /**
+   * Kalles etter at et forslag er godtatt OG lagret på server. Lar caller
+   * faktisk anvende innholdet (f.eks. populere logline-feltet i Story Logic),
+   * slik at "Godta" ikke bare fjerner kortet uten synlig effekt.
+   */
+  onAccepted?: (suggestion: AISuggestion) => void;
 }
 
 export const AISuggestionsPanel: React.FC<AISuggestionsPanelProps> = ({
@@ -857,6 +883,7 @@ export const AISuggestionsPanel: React.FC<AISuggestionsPanelProps> = ({
   title = 'AI-forslag',
   hideUncertainToggle = false,
   onGenerate,
+  onAccepted,
 }) => {
   const [showUncertain, setShowUncertain] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -871,6 +898,19 @@ export const AISuggestionsPanel: React.FC<AISuggestionsPanelProps> = ({
 
   const { suggestions, pendingCount, loading, error, accept, reject, refetch } =
     useAISuggestions(projectId, effectiveFilter);
+
+  // Wrapper rundt accept: finn forslaget FØR optimistisk fjerning, og varsle
+  // caller etter at server bekrefter slik at innholdet faktisk kan anvendes.
+  const handleAcceptSuggestion = React.useCallback(
+    async (id: string) => {
+      const accepted = suggestions.find((s) => s.id === id);
+      await accept(id);
+      if (accepted && onAccepted) {
+        onAccepted(accepted);
+      }
+    },
+    [accept, suggestions, onAccepted],
+  );
 
   const handleGenerate = async () => {
     if (!onGenerate) return;
@@ -901,16 +941,18 @@ export const AISuggestionsPanel: React.FC<AISuggestionsPanelProps> = ({
         </Typography>
         <Stack direction="row" spacing={1} alignItems="center">
           {!hideUncertainToggle && (
-            <FormControlLabel
-              control={
-                <Switch
-                  size="small"
-                  checked={showUncertain}
-                  onChange={(e) => setShowUncertain(e.target.checked)}
-                />
-              }
-              label={<Typography variant="caption">Vis usikre</Typography>}
-            />
+            <Tooltip title="Hvert forslag har en sikkerhetsscore (0–100 %) som anslår hvor trygt modellen er på forslaget. Som standard skjules forslag under ~70 %. Slå på for å også se de mer usikre.">
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small"
+                    checked={showUncertain}
+                    onChange={(e) => setShowUncertain(e.target.checked)}
+                  />
+                }
+                label={<Typography variant="caption">Vis usikre</Typography>}
+              />
+            </Tooltip>
           )}
           {onGenerate && (
             <Button
@@ -952,14 +994,14 @@ export const AISuggestionsPanel: React.FC<AISuggestionsPanelProps> = ({
 
       <Stack spacing={1}>
         {primarySuggestions.map((s) => (
-          <SuggestionCard key={s.id} suggestion={s} onAccept={accept} onReject={reject} />
+          <SuggestionCard key={s.id} suggestion={s} onAccept={handleAcceptSuggestion} onReject={reject} />
         ))}
         {secondarySuggestions.map((s) => (
-          <SuggestionCard key={s.id} suggestion={s} onAccept={accept} onReject={reject} />
+          <SuggestionCard key={s.id} suggestion={s} onAccept={handleAcceptSuggestion} onReject={reject} />
         ))}
         {showUncertain &&
           uncertainSuggestions.map((s) => (
-            <SuggestionCard key={s.id} suggestion={s} onAccept={accept} onReject={reject} />
+            <SuggestionCard key={s.id} suggestion={s} onAccept={handleAcceptSuggestion} onReject={reject} />
           ))}
       </Stack>
     </Box>

@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Avatar, Box, Button, Card, CardContent, Chip, CircularProgress, Stack,
   Typography, TextField, IconButton, Tooltip, Divider, Dialog, DialogTitle,
-  DialogContent, DialogActions,
+  DialogContent, DialogActions, Switch, FormControlLabel,
 } from '@mui/material';
 import FacebookIcon from '@mui/icons-material/Facebook';
 import InstagramIcon from '@mui/icons-material/Instagram';
@@ -46,6 +46,13 @@ interface Draft {
   publishedAt: string | null;
   externalPostId: string | null;
   publishError: string | null;
+  autoPublishEnabled?: boolean;
+  autoPublishAttempts?: number;
+  autoPublishAttemptedAt?: string | null;
+  imageUrl?: string | null;
+  hasImageData?: boolean;
+  videoUrl?: string | null;
+  hasVideoData?: boolean;
 }
 
 const PLATFORM_META: Record<Draft['platform'], { icon: React.ReactElement; color: string; name: string }> = {
@@ -83,6 +90,8 @@ function EditDialog({
   const [caption, setCaption] = useState(draft.caption);
   const [hashtags, setHashtags] = useState((draft.hashtags || []).join(' '));
   const [imageBrief, setImageBrief] = useState(draft.imageBrief || '');
+  const [imageUrl, setImageUrl] = useState(draft.imageUrl || '');
+  const [videoUrl, setVideoUrl] = useState(draft.videoUrl || '');
   const [ctaText, setCtaText] = useState(draft.ctaText || '');
   const [ctaLink, setCtaLink] = useState(draft.ctaLink || '');
   const [saving, setSaving] = useState(false);
@@ -99,8 +108,19 @@ function EditDialog({
             sx={{ '& .MuiInputBase-root': { color: adminTokens.text.body } }} />
           <TextField label="Hashtags (space-separated)" value={hashtags} onChange={(e) => setHashtags(e.target.value)}
             fullWidth sx={{ '& .MuiInputBase-root': { color: adminTokens.text.body } }} />
-          <TextField label="Image-brief" multiline minRows={2} value={imageBrief} onChange={(e) => setImageBrief(e.target.value)}
+          <TextField label="Image-brief (intern beskrivelse for design-bruk)" multiline minRows={2}
+            value={imageBrief} onChange={(e) => setImageBrief(e.target.value)}
             fullWidth sx={{ '& .MuiInputBase-root': { color: adminTokens.text.body } }} />
+          <TextField label="Image-URL (offentlig HTTP-URL, kreves for IG auto-publish)"
+            value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} fullWidth
+            helperText={draft.platform === 'instagram' ? 'IG container-flow trenger en URL Meta kan hente bildet fra.' : 'Valgfri — kun nødvendig for IG auto-publish.'}
+            placeholder="https://cdn.example.com/post-image.jpg"
+            sx={{ '& .MuiInputBase-root': { color: adminTokens.text.body } }} />
+          <TextField label="Video-URL (offentlig HTTP-link til MP4, kreves for TikTok auto-publish)"
+            value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} fullWidth
+            helperText={draft.platform === 'tiktok' ? 'TikTok henter MP4-en fra denne URL-en for inbox-upload.' : 'Valgfri — kun nødvendig for TikTok auto-publish.'}
+            placeholder="https://cdn.example.com/post-video.mp4"
+            sx={{ '& .MuiInputBase-root': { color: adminTokens.text.body } }} />
           <Stack direction="row" spacing={1.5}>
             <TextField label="CTA-tekst" value={ctaText} onChange={(e) => setCtaText(e.target.value)} sx={{ flex: 1 }} />
             <TextField label="CTA-link" value={ctaLink} onChange={(e) => setCtaLink(e.target.value)} sx={{ flex: 2 }} />
@@ -119,7 +139,9 @@ function EditDialog({
                 caption,
                 hashtags: hashtags.split(/\s+/).filter(Boolean),
                 imageBrief, ctaText, ctaLink,
-              });
+                imageUrl: imageUrl.trim() || null,
+                videoUrl: videoUrl.trim() || null,
+              } as Partial<Draft>);
               onClose();
             } finally { setSaving(false); }
           }}
@@ -131,11 +153,12 @@ function EditDialog({
   );
 }
 
-function DraftCard({ draft, onEdit, onDelete, onPublish, publishBusy }: {
+function DraftCard({ draft, onEdit, onDelete, onPublish, onToggleAutoPublish, publishBusy }: {
   draft: Draft;
   onEdit: (d: Draft) => void;
   onDelete: (id: number) => Promise<void>;
   onPublish: (id: number) => Promise<void>;
+  onToggleAutoPublish: (id: number, value: boolean) => Promise<void>;
   publishBusy: boolean;
 }) {
   const pmeta = PLATFORM_META[draft.platform];
@@ -235,6 +258,58 @@ function DraftCard({ draft, onEdit, onDelete, onPublish, publishBusy }: {
         {draft.status === 'failed' && draft.publishError && (
           <Alert severity="error" sx={{ mt: 1 }}>Publish-feil: {draft.publishError}</Alert>
         )}
+
+        {/* PR 11: Auto-publish toggle — kun synlig hvis det er en planlagt tid + ikke publisert */}
+        {draft.suggestedPublishTime && draft.status !== 'published' && (
+          <Box sx={{
+            mt: 1.5, pt: 1.5, borderTop: `1px solid ${adminTokens.border.subtle}`,
+            display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap',
+          }}>
+            <Tooltip title={
+              draft.platform === 'facebook'
+                ? 'Auto-publiser til FB Page når tidspunkt nås'
+                : draft.platform === 'linkedin'
+                  ? 'Auto-publiser til LinkedIn UGC når tidspunkt nås'
+                  : draft.platform === 'instagram'
+                    ? (draft.imageUrl || draft.hasImageData
+                        ? 'Auto-publiser til IG via container-flow når tidspunkt nås'
+                        : 'IG krever en image URL — sett den i Rediger først')
+                    : draft.platform === 'tiktok'
+                      ? (draft.videoUrl || draft.hasVideoData
+                          ? 'Auto-publiser til TikTok-inbox når tidspunkt nås'
+                          : 'TikTok krever en video URL (MP4) — sett den i Rediger først')
+                      : 'Auto-publish støttes ikke for ' + draft.platform + ' enda'
+            }>
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small"
+                    checked={draft.autoPublishEnabled === true}
+                    onChange={(e) => void onToggleAutoPublish(draft.id, e.target.checked)}
+                    disabled={
+                      (draft.platform === 'instagram' && !draft.imageUrl && !draft.hasImageData) ||
+                      (draft.platform === 'tiktok' && !draft.videoUrl && !draft.hasVideoData)
+                    }
+                    data-testid={`draft-autopublish-toggle-${draft.id}`}
+                  />
+                }
+                label={
+                  <Typography variant="caption" sx={{ color: adminTokens.text.body }}>
+                    Auto-publiser ved planlagt tid
+                  </Typography>
+                }
+                sx={{ ml: 0 }}
+              />
+            </Tooltip>
+            {draft.autoPublishEnabled && (draft.autoPublishAttempts ?? 0) > 0 && (
+              <Chip
+                label={`${draft.autoPublishAttempts} forsøk${draft.autoPublishAttempts === 1 ? '' : ''}`}
+                size="small"
+                sx={statusChipSx((draft.autoPublishAttempts ?? 0) >= 3 ? 'error' : 'warning')}
+              />
+            )}
+          </Box>
+        )}
       </CardContent>
     </Card>
   );
@@ -290,6 +365,25 @@ export default function PostDraftsPanel() {
       const d = await r.json();
       if (d.ok) { setNotice({ kind: 'success', msg: 'Slettet.' }); void load(); }
       else setNotice({ kind: 'error', msg: d.error || 'Delete failed' });
+    } catch (err) {
+      setNotice({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
+    }
+  }, [load]);
+
+  const handleToggleAutoPublish = useCallback(async (id: number, value: boolean) => {
+    try {
+      const r = await fetch(`/api/role-room/agent/post-drafts/${id}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoPublishEnabled: value }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setNotice({ kind: 'success', msg: value ? 'Auto-publish slått PÅ — trigges ved planlagt tid.' : 'Auto-publish slått AV.' });
+        void load();
+      } else {
+        setNotice({ kind: 'error', msg: d.error || 'Toggle failed' });
+      }
     } catch (err) {
       setNotice({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
     }
@@ -362,6 +456,7 @@ export default function PostDraftsPanel() {
               onEdit={(d) => setEditing(d)}
               onDelete={handleDelete}
               onPublish={handlePublish}
+              onToggleAutoPublish={handleToggleAutoPublish}
               publishBusy={publishBusy === d.id}
             />
           ))}

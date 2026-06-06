@@ -345,7 +345,7 @@ export default function AdminNotificationManager() {
           >
             <CardContent>
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>Aktive</Typography>
-              <Typography variant="h3" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ color: theming.colors.primary }}>
                 {notifications?.data?.filter((n: any) => n.isActive).length || 0}
               </Typography>
             </CardContent>
@@ -357,7 +357,7 @@ export default function AdminNotificationManager() {
           >
             <CardContent>
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>Høy Prioritet</Typography>
-              <Typography variant="h3" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ color: theming.colors.primary }}>
                 {notifications?.data?.filter(
                   (n: any) => n.priority === 'high' || n.priority === 'urgent',
                 ).length || 0}
@@ -371,7 +371,7 @@ export default function AdminNotificationManager() {
           >
             <CardContent>
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>Totalt</Typography>
-              <Typography variant="h3" sx={{ color: theming.colors.primary }}>{notifications?.data?.length || 0}</Typography>
+              <Typography variant="h4" sx={{ color: theming.colors.primary }}>{notifications?.data?.length || 0}</Typography>
             </CardContent>
           </MuiCard>
           <MuiCard
@@ -381,7 +381,7 @@ export default function AdminNotificationManager() {
           >
             <CardContent>
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>Venter på godkjenning</Typography>
-              <Typography variant="h3" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ color: theming.colors.primary }}>
                 {pendingRequests?.data?.length || 0}
               </Typography>
             </CardContent>

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Creatorhub One Desk — app-icon plate.
+
+  Bygget på `frontend/client/public/creatorhub-one-logo.svg` (samme
+  amber radial-plate + krem C1-merke). For å skille Desk-varianten fra
+  hovedmerket + iPad-CaptureApp legges en kompakt "DESK"-badge nederst
+  i et avrundet kremfarget bånd. Bandet er størrelses-justert så det
+  fortsatt leses ved 32×32.
+
+  Source-of-truth: hold synk med frontend/client/public/creatorhub-one-logo.svg
+  hvis hovedmerket endrer farge eller geometri.
+-->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="platePremium" cx="0.32" cy="0.22" r="0.95">
+      <stop offset="0" stop-color="#FFD899" />
+      <stop offset="0.45" stop-color="#FF9A24" />
+      <stop offset="1" stop-color="#B23F00" />
+    </radialGradient>
+    <linearGradient id="markCream" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF8EC" />
+      <stop offset="1" stop-color="#FDE2B3" />
+    </linearGradient>
+  </defs>
+
+  <!-- Plate -->
+  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#platePremium)" />
+
+  <!-- C-arc crescent (forskjøvet litt opp for å frigjøre plass til DESK-badge) -->
+  <path
+    d="M 460 196
+       C 344 176 240 216 184 306
+       C 128 396 128 524 184 614
+       C 240 704 344 744 460 724"
+    stroke="url(#markCream)"
+    stroke-width="88"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+
+  <!-- "1" numeral (også forskjøvet litt opp) -->
+  <path
+    d="M 636 194
+       L 762 194
+       L 762 650
+       L 826 650
+       L 826 734
+       L 598 734
+       L 598 650
+       L 662 650
+       L 662 284
+       L 600 314
+       L 564 252
+       Z"
+    fill="url(#markCream)"
+  />
+
+  <!-- DESK badge: avrundet kremfarget bånd med mørk amber-tekst -->
+  <rect
+    x="248" y="820"
+    width="528" height="124"
+    rx="62" ry="62"
+    fill="url(#markCream)"
+  />
+  <text
+    x="512" y="908"
+    font-family="-apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif"
+    font-size="92"
+    font-weight="800"
+    letter-spacing="14"
+    text-anchor="middle"
+    fill="#8A2E00"
+  >DESK</text>
+</svg>

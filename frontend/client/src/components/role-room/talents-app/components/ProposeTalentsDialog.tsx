@@ -1,7 +1,7 @@
 /**
  * ProposeTalentsDialog.tsx
  *
- * Bryå-siden av talent-foreslåelse-flyten. Brukes fra
+ * Byrå-siden av talent-foreslåelse-flyten. Brukes fra
  * AgencyPartnershipsPage når byrå-admin klikker "Foreslå talenter" på en
  * akseptert prosjekt-invitasjon.
  *
@@ -91,6 +91,20 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
   const [pendingTalent, setPendingTalent] = useState<ProposableTalent | null>(null);
   const [agencyNotes, setAgencyNotes] = useState('');
 
+  // Bulk-select (Phase 9.8)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [bulkNotes, setBulkNotes] = useState('');
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
   const loadTalents = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -150,6 +164,29 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
       setBusy(false);
     }
   }, [pendingTalent, invitationId, agencyNotes, loadTalents, loadProposals]);
+
+  const handleBulkPropose = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { bulkProposeTalents } = await import('../../services/roleRoomPartnershipsService');
+      const result = await bulkProposeTalents(invitationId, {
+        talent_ids: Array.from(selectedIds),
+        agency_notes: bulkNotes || undefined,
+      });
+      const failedMsg = result.failed > 0 ? ` (${result.failed} kunne ikke foreslås)` : '';
+      setInfo(`${result.succeeded} talenter foreslått${failedMsg}.`);
+      setSelectedIds(new Set());
+      setBulkDialogOpen(false);
+      setBulkNotes('');
+      await Promise.all([loadTalents(), loadProposals()]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Bulk-foreslåelse feilet');
+    } finally {
+      setBusy(false);
+    }
+  }, [selectedIds, invitationId, bulkNotes, loadTalents, loadProposals]);
 
   const handleWithdraw = useCallback(async (proposalId: string) => {
     setBusy(true);
@@ -238,57 +275,139 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                 Ingen talenter funnet. Bare talenter som har gitt byrået ditt aktiv consent vises.
               </Typography>
             ) : (
-              <Stack spacing={0.8}>
-                {talents.map((t) => (
+              <>
+                {selectedIds.size > 0 ? (
                   <Box
-                    key={t.id}
                     sx={{
                       p: 1.4,
                       borderRadius: 2,
-                      border: `1px solid ${palette.border}`,
-                      bgcolor: 'rgba(0,0,0,0.18)',
+                      border: `1px solid ${palette.accentBright}`,
+                      bgcolor: 'rgba(168,85,247,0.12)',
                       display: 'flex',
                       alignItems: 'center',
+                      justifyContent: 'space-between',
                       gap: 1.4,
                     }}
                   >
-                    <Avatar src={t.headshot_url ?? undefined} sx={{ width: 44, height: 44 }}>
-                      {t.display_name?.charAt(0) ?? '?'}
-                    </Avatar>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography sx={{ fontWeight: 700, color: palette.textPrimary }}>
-                        {t.display_name}
-                      </Typography>
-                      <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
-                        {[t.city, ageLine(t), t.gender].filter(Boolean).join(' · ')}
-                      </Typography>
-                    </Box>
-                    {t.already_proposed ? (
-                      <Chip
+                    <Typography sx={{ fontWeight: 700, color: palette.textPrimary }}>
+                      {selectedIds.size} valgte talenter
+                    </Typography>
+                    <Stack direction="row" spacing={1}>
+                      <Button
                         size="small"
-                        label="Allerede foreslått"
-                        sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: '#9ca3af', fontWeight: 600 }}
-                      />
-                    ) : (
+                        onClick={() => setSelectedIds(new Set())}
+                        sx={{ textTransform: 'none', color: palette.textMuted }}
+                      >
+                        Fjern valg
+                      </Button>
                       <Button
                         size="small"
                         disabled={busy}
-                        onClick={() => { setPendingTalent(t); setAgencyNotes(''); }}
+                        onClick={() => { setBulkDialogOpen(true); setBulkNotes(''); }}
                         startIcon={<HandshakeOutlinedIcon />}
                         sx={{
                           textTransform: 'none',
                           fontWeight: 700,
-                          bgcolor: palette.accentBright,
-                          color: '#0c0a09',
-                          '&:hover': { bgcolor: palette.accent },
+                          background: palette.accentGradient,
+                          color: '#fff',
+                          boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                          '&:hover': {
+                            background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+                            boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                          },
                         }}
                       >
-                        Foreslå
+                        Foreslå alle valgte
                       </Button>
-                    )}
+                    </Stack>
                   </Box>
-                ))}
-              </Stack>
+                ) : null}
+                <Stack spacing={0.8}>
+                  {talents.map((t) => {
+                    const isSelected = selectedIds.has(t.id);
+                    return (
+                      <Box
+                        key={t.id}
+                        sx={{
+                          p: 1.4,
+                          borderRadius: 2,
+                          border: `1px solid ${isSelected ? palette.accentBright : palette.border}`,
+                          bgcolor: isSelected ? 'rgba(168,85,247,0.08)' : 'rgba(0,0,0,0.18)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1.4,
+                          cursor: t.already_proposed ? 'default' : 'pointer',
+                        }}
+                        onClick={() => { if (!t.already_proposed) toggleSelected(t.id); }}
+                      >
+                        {!t.already_proposed ? (
+                          <Box
+                            sx={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: 0.6,
+                              border: `1.5px solid ${isSelected ? palette.accentBright : palette.borderStrong}`,
+                              bgcolor: isSelected ? palette.accentBright : 'transparent',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {isSelected ? <CheckCircleOutlineIcon sx={{ fontSize: 16, color: '#0c0a09' }} /> : null}
+                          </Box>
+                        ) : (
+                          <Box sx={{ width: 22, flexShrink: 0 }} />
+                        )}
+                        <Avatar src={t.headshot_url ?? undefined} sx={{ width: 52, height: 52, border: `1px solid ${palette.borderSubtle}` }}>
+                          {t.display_name?.charAt(0) ?? '?'}
+                        </Avatar>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography sx={{ fontWeight: 700, color: palette.textPrimary }}>
+                            {t.display_name}
+                          </Typography>
+                          <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
+                            {[t.city, ageLine(t), t.gender].filter(Boolean).join(' · ')}
+                          </Typography>
+                        </Box>
+                        {t.already_proposed ? (
+                          <Chip
+                            size="small"
+                            icon={<CheckCircleOutlineIcon sx={{ fontSize: 14, color: '#34d399 !important' }} />}
+                            label="Foreslått"
+                            sx={{
+                              bgcolor: 'rgba(52,211,153,0.16)',
+                              color: '#34d399',
+                              fontWeight: 700,
+                              border: '1px solid rgba(52,211,153,0.32)',
+                            }}
+                          />
+                        ) : (
+                          <Button
+                            size="small"
+                            disabled={busy}
+                            onClick={(e) => { e.stopPropagation(); setPendingTalent(t); setAgencyNotes(''); }}
+                            startIcon={<HandshakeOutlinedIcon />}
+                            sx={{
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              background: palette.accentGradient,
+                              color: '#fff',
+                              boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                              '&:hover': {
+                                background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+                                boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                              },
+                            }}
+                          >
+                            Foreslå
+                          </Button>
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              </>
             )}
           </Stack>
         ) : null}
@@ -410,12 +529,64 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                 sx={{
                   textTransform: 'none',
                   fontWeight: 700,
-                  bgcolor: palette.accentBright,
-                  color: '#0c0a09',
-                  '&:hover': { bgcolor: palette.accent },
+                  background: palette.accentGradient,
+                  color: '#fff',
+                  boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+                    boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                  },
                 }}
               >
                 Send forslag
+              </Button>
+            </Stack>
+          </Box>
+        ) : null}
+
+        {/* Bulk-dialog */}
+        {bulkDialogOpen ? (
+          <Box sx={{ mt: 2, pt: 2, borderTop: `1px solid ${palette.border}` }}>
+            <Typography sx={{ fontWeight: 700, color: palette.textPrimary, mb: 1.2 }}>
+              Foreslå {selectedIds.size} talenter
+            </Typography>
+            <TextField
+              fullWidth
+              size="small"
+              label="Felles begrunnelse for alle (valgfri)"
+              value={bulkNotes}
+              onChange={(e) => setBulkNotes(e.target.value)}
+              multiline
+              minRows={2}
+              placeholder="F.eks. 'Alle har spilt i lignende drama tidligere'"
+              sx={{ mb: 1.4 }}
+            />
+            <Stack direction="row" spacing={1}>
+              <Button
+                disabled={busy}
+                onClick={() => { setBulkDialogOpen(false); setBulkNotes(''); }}
+                sx={{ textTransform: 'none', color: palette.textMuted }}
+              >
+                Avbryt
+              </Button>
+              <Box sx={{ flex: 1 }} />
+              <Button
+                disabled={busy}
+                onClick={() => void handleBulkPropose()}
+                startIcon={busy ? <CircularProgress size={14} /> : <HandshakeOutlinedIcon />}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  background: palette.accentGradient,
+                  color: '#fff',
+                  boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+                    boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                  },
+                }}
+              >
+                Foreslå {selectedIds.size}
               </Button>
             </Stack>
           </Box>

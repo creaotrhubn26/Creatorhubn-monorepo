@@ -157,7 +157,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
             Talent-forslag fra byråer ({pendingCount} venter svar)
           </Typography>
           <Typography sx={{ color: 'rgba(186,230,253,0.78)', fontSize: '0.8rem' }}>
-            Bryåer som har akseptert prosjekt-invitasjon foreslår talenter til rollene
+            Byråer som har akseptert prosjekt-invitasjon foreslår talenter til rollene
           </Typography>
         </Box>
       </Stack>
@@ -226,7 +226,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
               </Stack>
               {p.agency_notes ? (
                 <Typography sx={{ color: 'rgba(186,230,253,0.78)', fontSize: '0.78rem', mt: 1, fontStyle: 'italic', pl: 7 }}>
-                  Bryåets kommentar: «{p.agency_notes}»
+                  Byråets kommentar: «{p.agency_notes}»
                 </Typography>
               ) : null}
               {p.production_notes ? (
@@ -288,8 +288,8 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
             <Stack spacing={2} sx={{ pt: 1 }}>
               <Alert severity={responseTarget.accept ? 'success' : 'warning'}>
                 {responseTarget.accept
-                  ? 'Bryået varsles og talenten kan følges opp i prosjektet.'
-                  : 'Bryået får beskjed om at talenten ikke er valgt denne gangen.'}
+                  ? 'Byrået varsles og talenten kan følges opp i prosjektet.'
+                  : 'Byrået får beskjed om at talenten ikke er valgt denne gangen.'}
               </Alert>
               <TextField
                 fullWidth

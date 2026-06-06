@@ -39,6 +39,17 @@ export interface SetupOptions extends DanceMockOptions {
 export async function setupDanceTest(page: Page, opts: SetupOptions = {}): Promise<void> {
   await installDanceMocks(page, opts);
 
+  // Pre-marker FirstTimeTour completed så fullskjerm-overlay ikke blokkerer
+  // testklikk. Tour-id-er som DanceWorkspace mounter i e2e-mode:
+  //   - dance-workspace-v1 (hoved-tour ved første mount)
+  // Setter ALL tour-keys ved init-script så vi ikke trenger å pleie listen.
+  await page.addInitScript(() => {
+    const now = new Date().toISOString();
+    try {
+      window.localStorage.setItem('role-room-tour-dance-workspace-v1-completed', now);
+    } catch { /* noop */ }
+  });
+
   if (opts.skipNavigate) return;
 
   const mode = opts.mode ?? 'dance_studio';

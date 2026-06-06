@@ -14,6 +14,7 @@
  * @media print skjuler resten av appen + page-break per 25 annotations
  * for lesbarhet.
  */
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 
 import type { VideoAnnotation } from './danceVideoService';
@@ -99,15 +100,18 @@ export default function AnnotationExportOverlay({
     return () => window.removeEventListener('afterprint', afterPrint);
   }, [open]);
 
-  if (!open) return null;
-
-  const dancerLabel = (id: string): string =>
-    dancerOptions.find((d) => d.id === id)?.label ?? id;
-
+  // 🚨 React rules-of-hooks: useMemo MÅ deklareres FØR early-return på `!open`.
+  // Tidligere lå den etter — render 1 (closed): 1 hook → return null,
+  // render 2 (open): 1 hook + 1 useMemo → "Rendered more hooks". Flyttet opp.
   const sorted = React.useMemo(
     () => [...annotations].sort((a, b) => a.timestampSec - b.timestampSec),
     [annotations],
   );
+
+  if (!open) return null;
+
+  const dancerLabel = (id: string): string =>
+    dancerOptions.find((d) => d.id === id)?.label ?? id;
 
   const now = new Date();
   const totalDuration = sorted.reduce(
@@ -141,7 +145,7 @@ export default function AnnotationExportOverlay({
           position: 'fixed', top: 0, left: 0,
           width: '100vw', height: '100vh',
           background: 'white', overflow: 'auto',
-          zIndex: 9999, color: '#1f2937',
+          zIndex: 9999, color: danceFlowColors.graySteel,
           fontFamily: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',
         }}
       >
@@ -152,7 +156,7 @@ export default function AnnotationExportOverlay({
             position: 'sticky', top: 0,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '8px 16px',
-            background: '#f3f4f6',
+            background: danceFlowColors.grayPaper,
             borderBottom: '1px solid #d1d5db',
             zIndex: 10,
           }}
@@ -166,7 +170,7 @@ export default function AnnotationExportOverlay({
               onClick={() => window.print()}
               data-testid="annotation-export-print"
               style={{
-                background: '#a78bfa', color: 'white', border: 'none',
+                background: danceFlowColors.lavender, color: 'white', border: 'none',
                 borderRadius: 4, padding: '6px 14px', fontWeight: 700, cursor: 'pointer',
               }}
             >
@@ -177,7 +181,7 @@ export default function AnnotationExportOverlay({
               onClick={handleDownloadCsv}
               data-testid="annotation-export-csv"
               style={{
-                background: 'white', color: '#1f2937',
+                background: 'white', color: danceFlowColors.graySteel,
                 border: '1px solid #d1d5db',
                 borderRadius: 4, padding: '6px 14px', fontWeight: 700, cursor: 'pointer',
               }}
@@ -189,7 +193,7 @@ export default function AnnotationExportOverlay({
               onClick={onClose}
               data-testid="annotation-export-close"
               style={{
-                background: 'transparent', color: '#6b7280',
+                background: 'transparent', color: danceFlowColors.textDisabled,
                 border: '1px solid #d1d5db',
                 borderRadius: 4, padding: '6px 14px', fontWeight: 600, cursor: 'pointer',
               }}
@@ -202,7 +206,7 @@ export default function AnnotationExportOverlay({
         {/* Innhold */}
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '16px' }}>
           <h1 style={{ fontSize: 24, margin: '0 0 4px 0' }}>{projectName}</h1>
-          <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 16px 0' }}>
+          <p style={{ fontSize: 13, color: danceFlowColors.textDisabled, margin: '0 0 16px 0' }}>
             {clipTitle} · Generert {now.toLocaleString('nb-NO')} · {annotations.length} annotations ·{' '}
             Total annotert tid: {totalDuration > 0 ? formatTimecode(totalDuration) : '—'}
           </p>
@@ -213,7 +217,7 @@ export default function AnnotationExportOverlay({
           </h2>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 16 }}>
             <thead>
-              <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
+              <tr style={{ background: danceFlowColors.grayPaper, textAlign: 'left' }}>
                 <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>Kategori</th>
                 <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db', textAlign: 'right' }}>Antall</th>
                 <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db', textAlign: 'right' }}>Total varighet</th>
@@ -262,7 +266,7 @@ export default function AnnotationExportOverlay({
           </h2>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead>
-              <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
+              <tr style={{ background: danceFlowColors.grayPaper, textAlign: 'left' }}>
                 <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db', width: 28 }}>#</th>
                 <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>Start</th>
                 <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>Slutt</th>
@@ -276,7 +280,7 @@ export default function AnnotationExportOverlay({
             <tbody>
               {sorted.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: '12px 8px', textAlign: 'center', color: '#9ca3af' }}>
+                  <td colSpan={8} style={{ padding: '12px 8px', textAlign: 'center', color: danceFlowColors.textMuted }}>
                     Ingen annotations.
                   </td>
                 </tr>
@@ -289,7 +293,7 @@ export default function AnnotationExportOverlay({
                     className="annotation-export-row"
                     style={{ borderBottom: '1px solid #e5e7eb' }}
                   >
-                    <td style={{ padding: '4px 8px', color: '#6b7280' }}>{idx + 1}</td>
+                    <td style={{ padding: '4px 8px', color: danceFlowColors.textDisabled }}>{idx + 1}</td>
                     <td style={{ padding: '4px 8px', fontFamily: 'ui-monospace, monospace' }}>
                       {formatTimecode(a.timestampSec)}
                     </td>
@@ -320,7 +324,7 @@ export default function AnnotationExportOverlay({
                         ? a.targetDancerIds.map(dancerLabel).join(', ')
                         : '—'}
                     </td>
-                    <td style={{ padding: '4px 8px', color: '#4b5563', maxWidth: 240 }}>
+                    <td style={{ padding: '4px 8px', color: danceFlowColors.grayMid, maxWidth: 240 }}>
                       {a.body || ''}
                     </td>
                   </tr>

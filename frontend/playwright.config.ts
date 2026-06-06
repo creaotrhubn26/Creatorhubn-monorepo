@@ -9,7 +9,7 @@ export default defineConfig({
   reporter: [['html', { open: 'never' }], ['list']],
   timeout: 120_000,
   use: {
-    baseURL: 'http://localhost:5001',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5001',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     headless: true,
@@ -55,9 +55,12 @@ export default defineConfig({
       grep: /@tablet/,
     },
   ],
+  // webServer-port leses fra PLAYWRIGHT_PORT (default 5001) — gjør at
+  // parallelle worktrees kan kjøre Playwright mot egne dev-servere uten
+  // å kollidere. baseURL leses tilsvarende fra PLAYWRIGHT_BASE_URL.
   webServer: {
-    command: 'npx vite --port 5001 --host',
-    port: 5001,
+    command: `npx vite --port ${process.env.PLAYWRIGHT_PORT || '5001'} --host`,
+    port: Number(process.env.PLAYWRIGHT_PORT || '5001'),
     reuseExistingServer: true,
     timeout: 30_000,
   },

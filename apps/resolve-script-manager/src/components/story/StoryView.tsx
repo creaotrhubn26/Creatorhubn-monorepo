@@ -27,6 +27,7 @@ import { SceneGraphPanel } from "./SceneGraphPanel";
 import { StoryDirectorPanel } from "./StoryDirectorPanel";
 import { StoryBalancePanel } from "./StoryBalancePanel";
 import { AlternativeStoryDialog } from "./AlternativeStoryDialog";
+import { ResolveIntellisearchPanel } from "./ResolveIntellisearchPanel";
 
 interface Props {
   picks: NarrativePick[];
@@ -174,6 +175,7 @@ export function StoryView({
           }}
         />
         <StoryBalancePanel picks={picks} structure={structure} />
+        <ResolveIntellisearchPanel autoFetch={false} />
       </aside>
 
       <AlternativeStoryDialog

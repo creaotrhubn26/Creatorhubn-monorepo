@@ -137,6 +137,51 @@ function readProjectId(payload: any, fallback = ""): string {
   return snake || fallback;
 }
 
+// ── Presence (multi-viewer) ──────────────────────────────────────────
+// In-memory presence pr. manus: hvem har det åpent akkurat nå (alle, ikke
+// bare den som holder skrive-låsen). Hver klient pinger jevnlig; en oppføring
+// utløper når den ikke er sett innen TTL. Bevisst in-memory (samme rasjonal som
+// låsen) — presence er flyktig og trenger ikke persistens.
+const MANUSCRIPT_PRESENCE_TTL_MS = 45_000;
+interface PresenceEntry { userId: string; displayName: string; lastSeenMs: number }
+const manuscriptPresence = new Map<string, Map<string, PresenceEntry>>();
+
+function recordManuscriptPresence(
+  manuscriptId: string,
+  userId: string,
+  displayName: string,
+  nowMs: number,
+): void {
+  let room = manuscriptPresence.get(manuscriptId);
+  if (!room) {
+    room = new Map<string, PresenceEntry>();
+    manuscriptPresence.set(manuscriptId, room);
+  }
+  room.set(userId, { userId, displayName, lastSeenMs: nowMs });
+}
+
+function listManuscriptPresence(
+  manuscriptId: string,
+  nowMs: number,
+): Array<{ userId: string; displayName: string; lastSeenAt: string }> {
+  const room = manuscriptPresence.get(manuscriptId);
+  if (!room) return [];
+  const active: Array<{ userId: string; displayName: string; lastSeenAt: string }> = [];
+  for (const [userId, entry] of room) {
+    if (nowMs - entry.lastSeenMs > MANUSCRIPT_PRESENCE_TTL_MS) {
+      room.delete(userId);
+      continue;
+    }
+    active.push({
+      userId,
+      displayName: entry.displayName,
+      lastSeenAt: new Date(entry.lastSeenMs).toISOString(),
+    });
+  }
+  if (room.size === 0) manuscriptPresence.delete(manuscriptId);
+  return active;
+}
+
 export function setupCastingManuscriptsRoutes(
   deps: CastingManuscriptsRoutesDeps,
 ): void {
@@ -367,6 +412,42 @@ export function setupCastingManuscriptsRoutes(
     } catch (error) {
       console.error("Error reading manuscript lock:", error);
       res.status(500).json({ error: "Could not read lock" });
+    }
+  });
+
+  // ── Presence (hvem har manuset åpent nå) ───────────────────────────
+
+  app.post("/api/casting/manuscripts/:manuscriptId/presence", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+      const displayName =
+        typeof body.displayName === "string" && body.displayName.trim()
+          ? body.displayName.trim()
+          : session.userId;
+      const nowMs = Date.now();
+      recordManuscriptPresence(req.params.manuscriptId, session.userId, displayName, nowMs);
+      // Returner alle andre aktive (ekskluder seg selv) så klienten slipper ekstra GET.
+      const others = listManuscriptPresence(req.params.manuscriptId, nowMs)
+        .filter((p) => p.userId !== session.userId);
+      res.json({ presence: others });
+    } catch (error) {
+      console.error("Error recording manuscript presence:", error);
+      res.status(500).json({ error: "Could not record presence" });
+    }
+  });
+
+  app.get("/api/casting/manuscripts/:manuscriptId/presence", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const others = listManuscriptPresence(req.params.manuscriptId, Date.now())
+        .filter((p) => p.userId !== session.userId);
+      res.json({ presence: others });
+    } catch (error) {
+      console.error("Error listing manuscript presence:", error);
+      res.status(500).json({ error: "Could not list presence" });
     }
   });
 

@@ -700,7 +700,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 <Grid xs={12} sm={6} md={3}>
                   <MuiCard sx={{
                     height: '100%',
-                    bgcolor: '#fff3e0',
+                    bgcolor: 'rgba(255,152,0,0.12)',
                     border: '2px solid #ff8c00',
                     transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 4 }
                   }}>
@@ -753,7 +753,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 <Grid xs={12} sm={6} md={3}>
                   <MuiCard sx={{
                     height: '100%',
-                    bgcolor: '#e3f2fd',
+                    bgcolor: 'rgba(33,150,243,0.08)',
                     border: '2px solid #2196f3',
                     transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 4 }
                   }}>

@@ -12,6 +12,7 @@
  * names/colors match the rest of the dance vertical.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -49,7 +50,7 @@ import {
 } from './danceTimelineItemService';
 import TimelineItemModal from './TimelineItemModal';
 
-const PURPLE = '#8b5cf6';
+const PURPLE = danceFlowColors.lavenderDark;
 const AUTOSAVE_DEBOUNCE_MS = 1200;
 
 export interface FormationViewConnectedProps {
@@ -81,7 +82,7 @@ interface LoadState {
 }
 
 const PALETTE = [
-  '#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899',
+  danceFlowColors.info, danceFlowColors.amber, danceFlowColors.successDark, danceFlowColors.lavenderDark, danceFlowColors.pinkAccent,
   '#06b6d4', '#f97316', '#84cc16', '#a855f7', '#f43f5e',
 ];
 
@@ -373,13 +374,31 @@ export function FormationViewConnected({
     setTimelineItems((prev) => prev.filter((it) => it.id !== id));
   }, []);
 
+  // 🚨 React rules-of-hooks: disse useMemo-ene må deklareres FØR early-returns
+  // under (load.phase === 'loading' / 'error'). Tidligere lå de inline i JSX
+  // på render-stien og ble bare kalt i 'ready'-fasen — som forårsaket
+  // "Rendered more hooks than during the previous render" når load gikk fra
+  // loading→ready. Flyttet ut.
+  const timelineNotes = React.useMemo(
+    () => timelineItems.filter((it) => it.kind === 'note').map((it) => ({
+      id: it.id, text: it.label, startSec: it.startSec, endSec: it.endSec,
+    })),
+    [timelineItems],
+  );
+  const timelineMovements = React.useMemo(
+    () => timelineItems.filter((it) => it.kind === 'movement').map((it) => ({
+      id: it.id, label: it.label, startSec: it.startSec, endSec: it.endSec,
+    })),
+    [timelineItems],
+  );
+
   if (load.phase === 'loading') {
     return (
       <Stack
         alignItems="center"
         justifyContent="center"
         spacing={2}
-        sx={{ minHeight: 320, color: '#a78bfa' }}
+        sx={{ minHeight: 320, color: danceFlowColors.lavender }}
       >
         <CircularProgress size={28} sx={{ color: PURPLE }} />
         <Typography variant="body2" sx={{ color: 'rgba(229,231,235,0.7)' }}>
@@ -411,7 +430,7 @@ export function FormationViewConnected({
               icon={<SavingIcon sx={{ fontSize: 16 }} />}
               label="Lagrer…"
               size="small"
-              sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: '#a78bfa', fontWeight: 600 }}
+              sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: danceFlowColors.lavender, fontWeight: 600 }}
             />
           ) : null}
           {saveStatus === 'saved' ? (
@@ -419,7 +438,7 @@ export function FormationViewConnected({
               icon={<SavedIcon sx={{ fontSize: 16 }} />}
               label="Lagret"
               size="small"
-              sx={{ bgcolor: 'rgba(16,185,129,0.18)', color: '#10b981', fontWeight: 600 }}
+              sx={{ bgcolor: 'rgba(16,185,129,0.18)', color: danceFlowColors.successDark, fontWeight: 600 }}
             />
           ) : null}
           {saveStatus === 'error' ? (
@@ -427,7 +446,7 @@ export function FormationViewConnected({
               icon={<ErrorIcon sx={{ fontSize: 16 }} />}
               label={saveError ?? 'Lagring feilet'}
               size="small"
-              sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#ef4444', fontWeight: 600 }}
+              sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: danceFlowColors.errorStrong, fontWeight: 600 }}
             />
           ) : null}
         </Stack>
@@ -446,18 +465,8 @@ export function FormationViewConnected({
         onDancerClick={onDancerClick}
         videoPanelSlot={videoPanelSlot}
         readOnly={readOnly}
-        timelineNotes={React.useMemo(
-          () => timelineItems.filter((it) => it.kind === 'note').map((it) => ({
-            id: it.id, text: it.label, startSec: it.startSec, endSec: it.endSec,
-          })),
-          [timelineItems],
-        )}
-        timelineMovements={React.useMemo(
-          () => timelineItems.filter((it) => it.kind === 'movement').map((it) => ({
-            id: it.id, label: it.label, startSec: it.startSec, endSec: it.endSec,
-          })),
-          [timelineItems],
-        )}
+        timelineNotes={timelineNotes}
+        timelineMovements={timelineMovements}
       />
       {/* G18: modal for create/edit/delete av timeline-items */}
       <TimelineItemModal

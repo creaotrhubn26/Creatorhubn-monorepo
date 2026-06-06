@@ -10,6 +10,23 @@ export type ClientPortalWorkspace =
   | 'accounts'
   | 'delivery'
   | 'meetings';
+
+/**
+ * Mapper en ProducerWorkspaceSurfaceKey (superset, inkluderer
+ * 'marketing-plan') til ClientPortalWorkspace. Returner undefined hvis
+ * value-en ikke har klient-portal-ekvivalent (f.eks. 'marketing-plan'
+ * eksisterer ikke i klient-portalen).
+ */
+export const toClientPortalWorkspace = (
+  value: string | undefined | null,
+): ClientPortalWorkspace | undefined => {
+  if (!value) return undefined;
+  const supported: readonly string[] = [
+    'brief', 'materials', 'storyboard', 'manuscript', 'shotlist',
+    'brand', 'accounts', 'delivery', 'meetings',
+  ];
+  return supported.includes(value) ? (value as ClientPortalWorkspace) : undefined;
+};
 export type ClientPortalTab = 'media' | 'reviews' | 'export';
 
 export interface ClientPortalWorkspaceFocus {

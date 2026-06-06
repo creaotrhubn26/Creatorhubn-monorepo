@@ -263,7 +263,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
     container: {
       maxWidth: '8.5in',
       minHeight: '11in',
-      bgcolor: 'white',
+      bgcolor: 'rgba(255,255,255,0.04)',
       p: preview ? 2 : 4,
       fontFamily: '"Helvetica""Arial", sans-serif',
     },
@@ -423,7 +423,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
 
 export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'white', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       <Grid container spacing={3}>
         {/* Left Column */}
         <Grid item xs={4}>
@@ -594,7 +594,7 @@ export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
     </Box>
   );
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'white', p: preview ? 2 : 4, fontFamily: 'Inter, sans-serif' }}>
+    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4, fontFamily: 'Inter, sans-serif' }}>
       <Box sx={{ textAlign: 'center', mb: 4 }}>
         <Typography variant="h2" sx={{ fontWeight: 300, fontSize: '36px', letterSpacing: 2 }}>
           {(resume.personalInfo?.fullName ?? '').toUpperCase()}
@@ -680,7 +680,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
     container: {
       maxWidth: '8.5in',
       minHeight: '11in',
-      bgcolor: 'white',
+      bgcolor: 'rgba(255,255,255,0.04)',
       fontFamily: ', "Helvetica","Arial", sans-serif',
       display: 'flex',
     },
@@ -886,7 +886,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
 
 export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: '#f8f9fa', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with large photo area */}
       <Box sx={{ display: 'flex', mb: 4 }}>
         <Box sx={{ width: '200px', height: '250px', bgcolor: '#2c3e50', mr: 3, borderRadius: 2 }}>
@@ -1018,7 +1018,7 @@ export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ re
 
 export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'white', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with gradient */}
       <Box sx={{
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -1185,7 +1185,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
 
 export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'white', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with medical theme */}
       <Box sx={{ 
         bgcolor: '#e8f5e8', 
@@ -1370,7 +1370,7 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
 
 export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'white', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header */}
       <Box sx={{ textAlign: 'center', mb: 4, borderBottom: '2px solid #1976d2', pb: 3 }}>
         <Typography variant="h3" sx={{ fontWeight: 300, fontSize: '32px', color: '#1976d2', mb: 1 }}>
@@ -1392,7 +1392,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
           {/* Research Interests */}
           {resume.personalInfo.summary && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 1, borderBottom: '1px solid #e3f2fd', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 1, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Forskningsinteresser
               </Typography>
               <Typography variant="body2" sx={{ fontSize: '13px', lineHeight: 1.7, fontStyle: 'italic' }}>
@@ -1404,7 +1404,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
           {/* Education */}
           {resume.education?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid #e3f2fd', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Utdanning
               </Typography>
               {resume.education.map((edu: any) => (
@@ -1440,7 +1440,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
           {/* Research Experience */}
           {resume.experiences?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid #e3f2fd', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Forskningserfaring
               </Typography>
               {resume.experiences.map((exp: any) => (
@@ -1465,7 +1465,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
           {/* Publications */}
           {resume.projects?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid #e3f2fd', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Publikasjoner & Prosjekter
               </Typography>
               {resume.projects.map((project: any) => (
@@ -1486,7 +1486,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
           {/* Skills */}
           {resume.skills?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid #e3f2fd', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Tekniske Ferdigheter
               </Typography>
               <Stack spacing={1}>
@@ -1502,7 +1502,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
           {/* Awards */}
           {resume.certifications?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid #e3f2fd', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Priser & Anerkjennelser
               </Typography>
               <Stack spacing={1}>
@@ -1522,7 +1522,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
 
           {resume.languages?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid #e3f2fd', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Språk
               </Typography>
               {renderLanguageList(resume.languages, { accent: '#1976d2', fontSize: 12 })}
@@ -1540,7 +1540,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
 
 export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'white', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with executive styling */}
       <Box sx={{ 
         background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
@@ -1565,7 +1565,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
 
       {/* Executive Summary */}
       {resume.personalInfo.summary && (
-        <Box sx={{ mb: 4, p: 3, bgcolor: '#f8f9fa', borderRadius: 2, borderLeft: '4px solid #1a1a1a' }}>
+        <Box sx={{ mb: 4, p: 3, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2, borderLeft: '4px solid #1a1a1a' }}>
           <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a1a1a', mb: 2 }}>
             Lederskapsprofil
           </Typography>
@@ -1584,7 +1584,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
                 Ledelseserfaring
               </Typography>
               {resume.experiences.map((exp: any, index: number) => (
-                <Box key={exp.id} sx={{ mb: 3, p: 2, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                <Box key={exp.id} sx={{ mb: 3, p: 2, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 2 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                     <Box sx={{ flex: 1 }}>
                       <Typography sx={{ fontWeight: 700, fontSize: '16px', color: '#1a1a1a' }}>
@@ -1616,7 +1616,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
                 Utdanning
               </Typography>
               {resume.education.map((edu: any) => (
-                <Box key={edu.id} sx={{ mb: 2, p: 2, bgcolor: '#f8f9fa', borderRadius: 1 }}>
+                <Box key={edu.id} sx={{ mb: 2, p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1 }}>
                   <Typography sx={{ fontWeight: 600, fontSize: '14px', color: '#1a1a1a' }}>
                     {edu.degree}
                   </Typography>
@@ -1664,7 +1664,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
               </Typography>
               <Stack spacing={1}>
                 {resume.certifications.map((cert: any) => (
-                  <Box key={cert.id} sx={{ p: 1.5, bgcolor: '#f8f9fa', borderRadius: 1 }}>
+                  <Box key={cert.id} sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1 }}>
                     <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 600}}>
                       {cert.name}
                     </Typography>
@@ -1697,7 +1697,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
 
 export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   return (
-    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'white', p: preview ? 2 : 4 }}>
+    <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with sales theme */}
       <Box sx={{ 
         background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
@@ -1722,7 +1722,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
 
       {/* Sales Performance Summary */}
       {resume.personalInfo.summary && (
-        <Box sx={{ mb: 3, p: 2, bgcolor: '#fff3e0', borderRadius: 2, borderLeft: '4px solid #ff6b35' }}>
+        <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(255,152,0,0.12)', borderRadius: 2, borderLeft: '4px solid #ff6b35' }}>
           <Typography variant="h6" sx={{ fontWeight: 700, color: '#e65100', mb: 1 }}>
             Salgsprofil
           </Typography>
@@ -1821,7 +1821,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
               </Typography>
               <Stack spacing={1}>
                 {resume.certifications.map((cert: any) => (
-                  <Box key={cert.id} sx={{ p: 1.5, bgcolor: '#fff3e0', borderRadius: 1 }}>
+                  <Box key={cert.id} sx={{ p: 1.5, bgcolor: 'rgba(255,152,0,0.12)', borderRadius: 1 }}>
                     <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 600}}>
                       {cert.name}
                     </Typography>
@@ -1869,7 +1869,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
   );
   return (
     <Box sx={{
-      maxWidth: '8.5in', minHeight: '11in', bgcolor: 'white',
+      maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)',
       display: 'flex', fontFamily: 'Inter, "Segoe UI", sans-serif',
       boxShadow: preview ? 1 : 0,
     }}>
@@ -2103,7 +2103,7 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
   );
   return (
     <Box sx={{
-      maxWidth: '8.5in', minHeight: '11in', bgcolor: 'white',
+      maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)',
       display: 'flex', fontFamily: 'Inter, "Segoe UI", sans-serif',
       boxShadow: preview ? 1 : 0,
     }}>
@@ -2203,7 +2203,7 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
       </Box>
 
       {/* Main column */}
-      <Box sx={{ flex: 1, p: preview ? 2.5 : 5, bgcolor: '#fff' }}>
+      <Box sx={{ flex: 1, p: preview ? 2.5 : 5, bgcolor: 'rgba(255,255,255,0.04)' }}>
         <Typography sx={{ fontFamily: 'Inter, sans-serif', fontWeight: 800, fontSize: 32, letterSpacing: 2, color: dark, lineHeight: 1 }}>
           {(resume.personalInfo?.fullName ?? '').split(' ').map((w, i, arr) => (
             <Box component="span" key={i} sx={{ color: i === arr.length - 1 ? tan : dark }}>
@@ -2341,7 +2341,7 @@ export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume
   );
   return (
     <Box sx={{
-      maxWidth: '8.5in', minHeight: '11in', bgcolor: 'white',
+      maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)',
       fontFamily: 'Inter, "Segoe UI", sans-serif', color: dark,
       p: preview ? 2.5 : 5, boxShadow: preview ? 1 : 0,
     }}>
@@ -2577,7 +2577,7 @@ export const MinimalMonoTemplate: React.FC<ResumeTemplateProps> = ({ resume, pre
   );
   return (
     <Box sx={{
-      maxWidth: '8.5in', minHeight: '11in', bgcolor: '#fff',
+      maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)',
       fontFamily: '"IBM Plex Mono", "JetBrains Mono", "Courier New", monospace',
       color: dark, p: preview ? 2.5 : 5, boxShadow: preview ? 1 : 0,
     }}>
@@ -2716,7 +2716,7 @@ export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
   );
   return (
     <Box sx={{
-      maxWidth: '8.5in', minHeight: '11in', bgcolor: '#fff',
+      maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)',
       fontFamily: 'Inter, "Segoe UI", sans-serif', color: dark,
       p: preview ? 2.5 : 5, boxShadow: preview ? 1 : 0,
     }}>

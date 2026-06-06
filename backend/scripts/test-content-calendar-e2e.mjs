@@ -18,8 +18,8 @@ const RESET = '\x1b[0m', GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m';
 let total = 0, failed = 0;
 function check(cond, msg) { total++; if (!cond) { failed++; console.log(`  ${RED}✗${RESET} ${msg}`); } }
 
-async function getCal(from, to) {
-  const q = new URLSearchParams({ brandKey: 'theroleroom', token: TOKEN });
+async function getCal(from, to, brandKey = 'theroleroom') {
+  const q = new URLSearchParams({ brandKey, token: TOKEN });
   if (from) q.set('from', from);
   if (to) q.set('to', to);
   const r = await fetch(`${BASE}/api/role-room/marketing-cockpit/content-calendar?${q}`);
@@ -31,7 +31,7 @@ async function ensureDraftExists() {
   const r = await fetch(`${BASE}/api/role-room/agent/compose-post-from-insight?token=${TOKEN}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      brandKey: 'theroleroom-cal-test',
+      brandKey: 'theroleroom',  // match getCal default brandKey
       platform: 'linkedin',
       insightTitle: 'E2E calendar test insight',
       insightBody: 'En kort body for å lage en draft som vi kan bruke til schedule-test.',
@@ -83,10 +83,14 @@ async function runIteration(i) {
     check(p1.body.ok === true, `PATCH suggestedPublishTime ok=true`);
     check(typeof p1.body.draft?.suggestedPublishTime === 'string', `draft.suggestedPublishTime saved`);
 
-    // 4. Verify it appears in calendar
-    const cal = await getCal(new Date(Date.now()).toISOString(), new Date(Date.now() + 14 * 86400000).toISOString());
+    // 4. Verify it appears in calendar (samme brandKey som compose)
+    const cal = await getCal(
+      new Date(Date.now()).toISOString(),
+      new Date(Date.now() + 14 * 86400000).toISOString(),
+      'theroleroom-cal-test',
+    );
     const found = cal.body.scheduled?.find((p) => p.id === draftId);
-    check(!!found, `scheduled draft appears in calendar`);
+    check(!!found, `scheduled draft appears in calendar (found ${cal.body.scheduled?.length} in window)`);
 
     // 5. Unschedule
     const p2 = await patchDraft(draftId, { suggestedPublishTime: null });

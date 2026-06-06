@@ -14,6 +14,7 @@
  * igjen layout-en hvis de bytter mellom moder.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -271,8 +272,8 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
       data-mode={mode}
       sx={{
         p: { xs: 2, md: 3 },
-        bgcolor: '#0a0a0a',
-        color: '#e5e7eb',
+        bgcolor: danceFlowColors.bgBase,
+        color: danceFlowColors.textSecondary,
         minHeight: '100%',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',
       }}
@@ -290,7 +291,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
             sx={{
               fontSize: 10,
               letterSpacing: 2.5,
-              color: '#a78bfa',
+              color: danceFlowColors.lavender,
               fontWeight: 700,
               mb: 0.5,
             }}
@@ -300,10 +301,10 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
           <Typography sx={{ fontSize: { xs: 22, md: 28 }, fontWeight: 800, color: '#fff', lineHeight: 1.1 }}>
             God morgen{isStudio ? ', studio' : ''}.
           </Typography>
-          <Typography sx={{ fontSize: 13, color: '#9ca3af', mt: 0.5 }}>
+          <Typography sx={{ fontSize: 13, color: danceFlowColors.textMuted, mt: 0.5 }}>
             {rehearsalsToShow.length} {labels.danceTermRehearsalPlural.toLowerCase()} de neste 7 dagene · {performancesToShow.length} {labels.danceTermPerformancePlural.toLowerCase()} planlagt
             {liveData ? (
-              <Box component="span" sx={{ color: '#a78bfa', ml: 1 }}>
+              <Box component="span" sx={{ color: danceFlowColors.lavender, ml: 1 }}>
                 · {liveData.counts.choreographies} stykker · {liveData.counts.formations} formasjoner · {liveData.counts.dancers} dansere
               </Box>
             ) : null}
@@ -313,7 +314,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
           <Button
             startIcon={<AutoAwesomeIcon sx={{ fontSize: 16 }} />}
             size="small"
-            sx={{ textTransform: 'none', color: '#c4b5fd', borderColor: 'rgba(139,92,246,0.4)' }}
+            sx={{ textTransform: 'none', color: danceFlowColors.lavenderLight, borderColor: 'rgba(139,92,246,0.4)' }}
             variant="outlined"
             data-testid="dance-dashboard-ai-summary"
           >
@@ -348,7 +349,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
           icon={<InvoiceIcon />}
           label="Usendte fakturaer"
           value={String(stats.unsentInvoices)}
-          accent={stats.unsentInvoices > 0 ? '#fbbf24' : '#34d399'}
+          accent={stats.unsentInvoices > 0 ? danceFlowColors.gold : danceFlowColors.successPrimary}
         />
         <StatCard
           icon={<UnionIcon />}
@@ -373,7 +374,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
             actionLabel="Se alle"
             actionTabId="rehearsal_log"
             testId="dashboard-section-rehearsals"
-            icon={<ListIcon sx={{ fontSize: 18, color: '#a78bfa' }} />}
+            icon={<ListIcon sx={{ fontSize: 18, color: danceFlowColors.lavender }} />}
           >
             <Stack spacing={1}>
               {rehearsalsToShow.map((r) => (
@@ -395,7 +396,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                     <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>
                       {r.pieceTitle}
                     </Typography>
-                    <Typography sx={{ fontSize: 11, color: '#9ca3af' }}>
+                    <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted }}>
                       {formatDateTime(r.date)} · {r.durationMin} min · {r.room}
                     </Typography>
                   </Box>
@@ -408,7 +409,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                             width: 22,
                             height: 22,
                             fontSize: 9,
-                            bgcolor: '#3b82f6',
+                            bgcolor: danceFlowColors.info,
                             border: '1px solid #1e2536',
                             ml: idx === 0 ? 0 : -0.75,
                           }}
@@ -422,7 +423,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                             width: 22,
                             height: 22,
                             fontSize: 9,
-                            bgcolor: '#374151',
+                            bgcolor: danceFlowColors.grayDark,
                             border: '1px solid #1e2536',
                             ml: -0.75,
                           }}
@@ -431,7 +432,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                         </Avatar>
                       )}
                     </Box>
-                    <ChevronRightIcon sx={{ fontSize: 16, color: '#6b7280' }} />
+                    <ChevronRightIcon sx={{ fontSize: 16, color: danceFlowColors.textDisabled }} />
                   </Stack>
                 </Box>
               ))}
@@ -443,7 +444,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
             actionLabel="Se sesong"
             actionTabId="season"
             testId="dashboard-section-performances"
-            icon={<TheaterIcon sx={{ fontSize: 18, color: '#fbbf24' }} />}
+            icon={<TheaterIcon sx={{ fontSize: 18, color: danceFlowColors.gold }} />}
           >
             <Stack spacing={1.25}>
               {performancesToShow.map((p) => {
@@ -466,7 +467,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                         <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#fde68a' }}>
                           {p.title}
                         </Typography>
-                        <Typography sx={{ fontSize: 11, color: '#9ca3af', mt: 0.25 }}>
+                        <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted, mt: 0.25 }}>
                           {formatDateTime(p.date)} · {p.venue}
                         </Typography>
                       </Box>
@@ -477,7 +478,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                           height: 20,
                           fontSize: 10,
                           bgcolor: 'rgba(251,191,36,0.15)',
-                          color: '#fbbf24',
+                          color: danceFlowColors.gold,
                           border: '1px solid rgba(251,191,36,0.4)',
                         }}
                       />
@@ -485,7 +486,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                     {pct !== null && (
                       <Box sx={{ mt: 1 }}>
                         <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                          <Typography sx={{ fontSize: 10, color: '#9ca3af' }}>
+                          <Typography sx={{ fontSize: 10, color: danceFlowColors.textMuted }}>
                             Billettsalg: {sold}/{total}
                           </Typography>
                           <Typography sx={{ fontSize: 10, color: '#fde68a', fontWeight: 600 }}>
@@ -499,7 +500,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                             height: 5,
                             borderRadius: 3,
                             bgcolor: 'rgba(251,191,36,0.1)',
-                            '& .MuiLinearProgress-bar': { bgcolor: '#fbbf24' },
+                            '& .MuiLinearProgress-bar': { bgcolor: danceFlowColors.gold },
                           }}
                         />
                       </Box>
@@ -519,7 +520,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
               actionLabel="Se alle"
               actionTabId="reel"
               testId="dashboard-section-auditions"
-              icon={<AuditionIcon sx={{ fontSize: 18, color: '#34d399' }} />}
+              icon={<AuditionIcon sx={{ fontSize: 18, color: danceFlowColors.successPrimary }} />}
             >
               <Stack spacing={1}>
                 {auditionsToShow.map((a) => (
@@ -530,7 +531,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                       p: 1.25,
                       borderRadius: 1.5,
                       border: '1px solid #1e2536',
-                      bgcolor: a.applied ? 'rgba(52,211,153,0.05)' : '#0f1318',
+                      bgcolor: a.applied ? 'rgba(52,211,153,0.05)' : danceFlowColors.bgPanel,
                     }}
                   >
                     <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
@@ -538,7 +539,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                         <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#fff' }} noWrap>
                           {a.title}
                         </Typography>
-                        <Typography sx={{ fontSize: 10, color: '#9ca3af', mt: 0.25 }}>
+                        <Typography sx={{ fontSize: 10, color: danceFlowColors.textMuted, mt: 0.25 }}>
                           {a.organizer} · søknadsfrist {formatDate(a.deadline)}
                         </Typography>
                       </Box>
@@ -549,7 +550,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                           height: 20,
                           fontSize: 10,
                           bgcolor: a.applied ? 'rgba(52,211,153,0.18)' : 'rgba(139,92,246,0.18)',
-                          color: a.applied ? '#34d399' : '#c4b5fd',
+                          color: a.applied ? danceFlowColors.successPrimary : danceFlowColors.lavenderLight,
                           border: `1px solid ${a.applied ? 'rgba(52,211,153,0.4)' : 'rgba(139,92,246,0.4)'}`,
                         }}
                       />
@@ -566,7 +567,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
               actionLabel={`Se ${labels.danceTermStudentPlural.toLowerCase()}`}
               actionTabId="students"
               testId="dashboard-section-classes"
-              icon={<PlayIcon sx={{ fontSize: 18, color: '#34d399' }} />}
+              icon={<PlayIcon sx={{ fontSize: 18, color: danceFlowColors.successPrimary }} />}
             >
               <Stack spacing={1}>
                 {[
@@ -587,11 +588,11 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                       <Box>
                         <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#fff' }}>{c.name}</Typography>
-                        <Typography sx={{ fontSize: 10, color: '#9ca3af' }}>
+                        <Typography sx={{ fontSize: 10, color: danceFlowColors.textMuted }}>
                           {c.weekday} · {c.enrolled}/{c.capacity} {labels.danceTermStudentPlural.toLowerCase()}
                         </Typography>
                       </Box>
-                      <ChevronRightIcon sx={{ fontSize: 16, color: '#6b7280' }} />
+                      <ChevronRightIcon sx={{ fontSize: 16, color: danceFlowColors.textDisabled }} />
                     </Stack>
                   </Box>
                 ))}
@@ -601,7 +602,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
 
           <SectionCard
             title="Claude AI · forslag denne uka"
-            icon={<AutoAwesomeIcon sx={{ fontSize: 18, color: '#a78bfa' }} />}
+            icon={<AutoAwesomeIcon sx={{ fontSize: 18, color: danceFlowColors.lavender }} />}
             tinted
           >
             <Stack spacing={1}>
@@ -629,7 +630,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
         sx={{
           mt: 3,
           fontSize: 10,
-          color: '#4b5563',
+          color: danceFlowColors.grayMid,
           textAlign: 'center',
           fontStyle: 'italic',
         }}
@@ -651,12 +652,12 @@ interface StatCardProps {
   accent?: string;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ icon, label, value, deltaPct, deltaLabel, accent = '#8b5cf6' }) => {
+const StatCard: React.FC<StatCardProps> = ({ icon, label, value, deltaPct, deltaLabel, accent = danceFlowColors.lavenderDark }) => {
   const positive = deltaPct === undefined || deltaPct >= 0;
   return (
     <Card
       sx={{
-        bgcolor: '#0f1318',
+        bgcolor: danceFlowColors.bgPanel,
         border: '1px solid #1e2536',
         borderRadius: 2,
         boxShadow: 'none',
@@ -665,7 +666,7 @@ const StatCard: React.FC<StatCardProps> = ({ icon, label, value, deltaPct, delta
       <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
         <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.5 }}>
           <Box sx={{ color: accent, display: 'flex', alignItems: 'center' }}>{icon}</Box>
-          <Typography sx={{ fontSize: 10, color: '#9ca3af', letterSpacing: 0.5, textTransform: 'uppercase', fontWeight: 600 }}>
+          <Typography sx={{ fontSize: 10, color: danceFlowColors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase', fontWeight: 600 }}>
             {label}
           </Typography>
         </Stack>
@@ -677,7 +678,7 @@ const StatCard: React.FC<StatCardProps> = ({ icon, label, value, deltaPct, delta
             sx={{
               fontSize: 10,
               mt: 0.25,
-              color: positive ? '#34d399' : '#f87171',
+              color: positive ? danceFlowColors.successPrimary : danceFlowColors.errorPrimary,
               fontWeight: 600,
             }}
           >
@@ -705,8 +706,8 @@ const SectionCard: React.FC<SectionCardProps> = ({ title, icon, actionLabel, act
   <Card
     data-testid={testId}
     sx={{
-      bgcolor: tinted ? 'rgba(139,92,246,0.06)' : '#0f1318',
-      border: `1px solid ${tinted ? 'rgba(139,92,246,0.25)' : '#1e2536'}`,
+      bgcolor: tinted ? 'rgba(139,92,246,0.06)' : danceFlowColors.bgPanel,
+      border: `1px solid ${tinted ? 'rgba(139,92,246,0.25)' : danceFlowColors.borderStrong}`,
       borderRadius: 2,
       boxShadow: 'none',
     }}
@@ -715,7 +716,7 @@ const SectionCard: React.FC<SectionCardProps> = ({ title, icon, actionLabel, act
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
         <Stack direction="row" spacing={1} alignItems="center">
           {icon}
-          <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#e5e7eb', letterSpacing: 0.3 }}>
+          <Typography sx={{ fontSize: 12, fontWeight: 700, color: danceFlowColors.textSecondary, letterSpacing: 0.3 }}>
             {title}
           </Typography>
         </Stack>
@@ -727,7 +728,7 @@ const SectionCard: React.FC<SectionCardProps> = ({ title, icon, actionLabel, act
               window.dispatchEvent(new CustomEvent('dance:set-tab', { detail: { tabId: actionTabId } }));
             }}
             data-testid={testId ? `${testId}-action` : undefined}
-            sx={{ textTransform: 'none', fontSize: 11, color: '#a78bfa', minWidth: 0, p: 0.5 }}
+            sx={{ textTransform: 'none', fontSize: 11, color: danceFlowColors.lavender, minWidth: 0, p: 0.5 }}
           >
             {actionLabel}
           </Button>
@@ -747,10 +748,10 @@ const AiHint: React.FC<{ title: string; body: string }> = ({ title, body }) => (
       bgcolor: 'rgba(139,92,246,0.06)',
     }}
   >
-    <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#c4b5fd' }}>
+    <Typography sx={{ fontSize: 12, fontWeight: 600, color: danceFlowColors.lavenderLight }}>
       {title}
     </Typography>
-    <Typography sx={{ fontSize: 11, color: '#cbd5e1', mt: 0.25, lineHeight: 1.4 }}>
+    <Typography sx={{ fontSize: 11, color: danceFlowColors.grayLight, mt: 0.25, lineHeight: 1.4 }}>
       {body}
     </Typography>
   </Box>

@@ -17,6 +17,7 @@
 import type { MediaAsset } from '../types/MediaAssetTypes';
 import type { WorkflowTransition } from './WorkflowOrchestrator';
 import { WorkflowComponent } from './WorkflowOrchestrator';
+import { buildEventsWsUrl } from '../lib/realtimeWsUrl';
 
 export enum CrossComponentEventType {
   // Asset events
@@ -519,8 +520,11 @@ class CrossComponentEventBusClass {
     // Only initialize in browser environment
     if (typeof window === 'undefined') return;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/events`;
+    // Returnerer null i prod uten eksplisitt WS-host (Vercel proxy-er ikke
+    // WS). Da kobler vi ikke — og attemptReconnect() trigges aldri, så vi
+    // unngår den uendelige «WebSocket failed»-spammen.
+    const wsUrl = buildEventsWsUrl('/ws/events');
+    if (!wsUrl) return;
 
     try {
       this.ws = new WebSocket(wsUrl);

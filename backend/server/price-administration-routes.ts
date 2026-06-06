@@ -19,9 +19,10 @@ export interface PriceAdministrationRoutesDeps {
   buildCompatPriceAdministrationFeaturePricing: () => any;
   buildCompatPriceAdministrationSubscriptionPlans: () => any;
   ensureCompatPlatformSubscriptionPlanOverridesLoaded: () => Promise<void>;
-  getCompatPlatformSubscriptionPlan: (planId: string) => any;
+  /** Faktisk impl tolererer null (returnerer null hvis planId er ugyldig). */
+  getCompatPlatformSubscriptionPlan: (planId: string | null) => any;
   getCompatPlatformSubscriptionPlanOverride: (planId: string) => any;
-  normalizeBillingPlanId: (value: unknown) => string;
+  normalizeBillingPlanId: (value: unknown) => string | null;
   persistCreatorHubPlatformBrandingSettings: (
     settings: unknown,
     userId?: string,

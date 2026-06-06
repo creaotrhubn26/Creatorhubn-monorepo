@@ -17,6 +17,7 @@ import type { Application, Request, Response } from 'express';
 import type { Pool } from 'pg';
 import { composePost, type ComposePostInput } from './role-room-post-composer-claude.js';
 import { THEROLERROOM_BOOTSTRAP } from './role-room-agent-profile-recommendations.js';
+import { dispatchPublish } from './social-publisher.js';
 
 export interface SetupPostDraftsRoutesDeps {
   app: Application;
@@ -25,6 +26,128 @@ export interface SetupPostDraftsRoutesDeps {
 }
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0';
+
+type ImageResolveResult =
+  | { ok: true; dataUrl: string }
+  | { ok: false; reason: 'no_image'; error?: string }
+  | { ok: false; reason: 'fetch_failed'; error: string };
+
+/**
+ * For IG-publish: vi trenger data:image/...;base64,... format. Drafts kan
+ * ha enten en publicly-tilgjengelig HTTP-URL (image_url) eller en pre-
+ * generert base64-string (image_data_url). Denne resolveren preferer
+ * base64 og faller tilbake til å fetche+konvertere HTTP-URL.
+ *
+ * Bruker User-Agent siden mange CDN-er (Wikipedia, m.fl.) blokkerer
+ * default-fetch-agent.
+ */
+async function resolveImageDataUrl(draft: Record<string, unknown>): Promise<ImageResolveResult> {
+  const dataUrl = typeof draft.image_data_url === 'string' ? draft.image_data_url.trim() : '';
+  if (dataUrl.startsWith('data:image/')) return { ok: true, dataUrl };
+
+  const httpUrl = typeof draft.image_url === 'string' ? draft.image_url.trim() : '';
+  if (!httpUrl) return { ok: false, reason: 'no_image' };
+  if (!/^https?:\/\//i.test(httpUrl)) {
+    return { ok: false, reason: 'fetch_failed', error: 'image_url må starte med http:// eller https://' };
+  }
+
+  try {
+    const resp = await fetch(httpUrl, {
+      headers: {
+        'User-Agent': 'TheRoleRoom-MarketingBot/1.0 (+https://theroleroom.com)',
+        Accept: 'image/*',
+      },
+    });
+    if (!resp.ok) {
+      return { ok: false, reason: 'fetch_failed', error: `Image URL returnerte ${resp.status}` };
+    }
+    const ct = resp.headers.get('content-type') || 'image/jpeg';
+    if (!ct.startsWith('image/')) {
+      return { ok: false, reason: 'fetch_failed', error: `Image URL returnerte ikke et bilde (content-type: ${ct})` };
+    }
+    const buf = Buffer.from(await resp.arrayBuffer());
+    if (buf.length === 0) {
+      return { ok: false, reason: 'fetch_failed', error: 'Image URL returnerte tomt body' };
+    }
+    return { ok: true, dataUrl: `data:${ct};base64,${buf.toString('base64')}` };
+  } catch (err) {
+    return { ok: false, reason: 'fetch_failed', error: String(err) };
+  }
+}
+
+/**
+ * For TikTok-publish: resolver til video-data-URL. Drafts kan ha video_data_url
+ * (base64) eller video_url (HTTP MP4). Vi prefererer base64.
+ */
+async function resolveVideoDataUrl(draft: Record<string, unknown>): Promise<string | null> {
+  const dataUrl = typeof draft.video_data_url === 'string' ? draft.video_data_url.trim() : '';
+  if (dataUrl.startsWith('data:video/')) return dataUrl;
+
+  const httpUrl = typeof draft.video_url === 'string' ? draft.video_url.trim() : '';
+  if (!httpUrl) return null;
+  if (!/^https?:\/\//i.test(httpUrl)) return null;
+  // TikTok-publisher tolererer HTTP-URL direkte (fetchVideoBytes håndterer begge),
+  // så vi returnerer URL-en som den er.
+  return httpUrl;
+}
+
+async function resolveTikTokConnectionExists(pool: Pool, userId: string): Promise<boolean> {
+  try {
+    const r = await pool.query<{ exists: boolean }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM role_room_tiktok_connections
+          WHERE user_id = $1
+            AND access_token_encrypted IS NOT NULL
+            AND connection_state IN ('connected', 'active')
+       ) AS exists`,
+      [userId],
+    );
+    return r.rows[0]?.exists === true;
+  } catch (err) {
+    console.warn('[post-drafts] resolveTikTokConnectionExists failed', err);
+    return false;
+  }
+}
+
+async function resolveIgConnectionId(pool: Pool, userId: string): Promise<string | null> {
+  try {
+    const r = await pool.query<{ id: string }>(
+      `SELECT id FROM role_room_instagram_connections
+        WHERE user_id = $1
+          AND ig_business_account_id IS NOT NULL
+          AND access_token_encrypted IS NOT NULL
+        ORDER BY created_at DESC NULLS LAST
+        LIMIT 1`,
+      [userId],
+    );
+    return r.rows[0]?.id ?? null;
+  } catch (err) {
+    console.warn('[post-drafts] resolveIgConnectionId failed', err);
+    return null;
+  }
+}
+
+let cachedMarketingUserId: string | null = null;
+async function resolveMarketingUserId(pool: Pool): Promise<string | null> {
+  if (cachedMarketingUserId) return cachedMarketingUserId;
+  const envId = (process.env.ROLE_ROOM_MARKETING_USER_ID || '').trim();
+  if (envId) {
+    cachedMarketingUserId = envId;
+    return envId;
+  }
+  try {
+    const r = await pool.query<{ id: string }>(
+      `SELECT id FROM users WHERE email = 'daniel@creatorhubn.com' LIMIT 1`,
+    );
+    if (r.rows[0]?.id) {
+      cachedMarketingUserId = r.rows[0].id;
+      return r.rows[0].id;
+    }
+  } catch (err) {
+    console.warn('[post-drafts] resolveMarketingUserId failed', err);
+  }
+  return null;
+}
 
 function mapDraftRow(row: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -48,6 +171,13 @@ function mapDraftRow(row: Record<string, unknown>): Record<string, unknown> {
     publishedAt: row.published_at,
     externalPostId: row.external_post_id,
     publishError: row.publish_error,
+    autoPublishEnabled: row.auto_publish_enabled === true,
+    autoPublishAttempts: row.auto_publish_attempts ? Number(row.auto_publish_attempts) : 0,
+    autoPublishAttemptedAt: row.auto_publish_attempted_at ?? null,
+    imageUrl: row.image_url ?? null,
+    hasImageData: typeof row.image_data_url === 'string' && row.image_data_url.length > 0,
+    videoUrl: row.video_url ?? null,
+    hasVideoData: typeof row.video_data_url === 'string' && row.video_data_url.length > 0,
   };
 }
 
@@ -176,6 +306,22 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
     if (typeof body.imageBrief === 'string')   { fields.push(`image_brief = $${idx++}`); values.push(body.imageBrief); }
     if (typeof body.ctaText === 'string')      { fields.push(`cta_text = $${idx++}`); values.push(body.ctaText); }
     if (typeof body.ctaLink === 'string')      { fields.push(`cta_link = $${idx++}`); values.push(body.ctaLink); }
+    if (typeof body.imageUrl === 'string' || body.imageUrl === null) {
+      fields.push(`image_url = $${idx++}`);
+      values.push(typeof body.imageUrl === 'string' ? body.imageUrl.trim() || null : null);
+    }
+    if (typeof body.imageDataUrl === 'string' || body.imageDataUrl === null) {
+      fields.push(`image_data_url = $${idx++}`);
+      values.push(typeof body.imageDataUrl === 'string' ? body.imageDataUrl : null);
+    }
+    if (typeof body.videoUrl === 'string' || body.videoUrl === null) {
+      fields.push(`video_url = $${idx++}`);
+      values.push(typeof body.videoUrl === 'string' ? body.videoUrl.trim() || null : null);
+    }
+    if (typeof body.videoDataUrl === 'string' || body.videoDataUrl === null) {
+      fields.push(`video_data_url = $${idx++}`);
+      values.push(typeof body.videoDataUrl === 'string' ? body.videoDataUrl : null);
+    }
     if ('suggestedPublishTime' in body) {
       // null = unschedule. String = ISO 8601 → parse to Date.
       const raw = body.suggestedPublishTime;
@@ -187,6 +333,15 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
           fields.push(`suggested_publish_time = $${idx++}`);
           values.push(parsed);
         }
+      }
+    }
+    if (typeof body.autoPublishEnabled === 'boolean') {
+      fields.push(`auto_publish_enabled = $${idx++}`);
+      values.push(body.autoPublishEnabled);
+      if (body.autoPublishEnabled === true) {
+        // Reset attempt-counter når admin re-enabler — gir frisk retry
+        fields.push(`auto_publish_attempts = 0`);
+        fields.push(`auto_publish_attempted_at = NULL`);
       }
     }
     if (fields.length === 0) {
@@ -247,6 +402,11 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
         `SELECT id, platform, status, caption, hashtags, image_brief,
                 cta_text, cta_link, source_insight, suggested_publish_time,
                 published_at, external_post_id, generated_at,
+                auto_publish_enabled, auto_publish_attempts, auto_publish_attempted_at,
+                image_url,
+                (image_data_url IS NOT NULL) AS has_image_data,
+                video_url,
+                (video_data_url IS NOT NULL) AS has_video_data,
                 (SELECT row_to_json(s)
                  FROM (
                    SELECT engagement_rate, reach, reactions_total, comments_count
@@ -267,7 +427,12 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
       // 2. Unscheduled drafts (ingen suggested_publish_time, ikke publisert ennå)
       const unscheduled = await pool.query(
         `SELECT id, platform, status, caption, hashtags, image_brief,
-                cta_text, cta_link, source_insight, generated_at
+                cta_text, cta_link, source_insight, generated_at,
+                auto_publish_enabled, auto_publish_attempts, auto_publish_attempted_at,
+                image_url,
+                (image_data_url IS NOT NULL) AS has_image_data,
+                video_url,
+                (video_data_url IS NOT NULL) AS has_video_data
          FROM marketing_post_drafts
          WHERE brand_key = $1
            AND suggested_publish_time IS NULL
@@ -292,6 +457,13 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
         externalPostId: row.external_post_id,
         generatedAt: row.generated_at,
         latestEngagement: row.latest_engagement || null,
+        autoPublishEnabled: row.auto_publish_enabled === true,
+        autoPublishAttempts: row.auto_publish_attempts ? Number(row.auto_publish_attempts) : 0,
+        autoPublishAttemptedAt: row.auto_publish_attempted_at ?? null,
+        imageUrl: row.image_url ?? null,
+        hasImageData: row.has_image_data === true,
+        videoUrl: row.video_url ?? null,
+        hasVideoData: row.has_video_data === true,
       });
 
       res.json({
@@ -380,8 +552,267 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
           });
           return;
         }
+      } else if (platform === 'linkedin') {
+        // LinkedIn UGC via registrert publisher. Henter user_id fra
+        // env (ROLE_ROOM_MARKETING_USER_ID) — fallback til daniel-konto.
+        const userId = await resolveMarketingUserId(pool);
+        if (!userId) {
+          res.status(503).json({
+            ok: false,
+            error: 'Ingen marketing-bruker konfigurert. Sett ROLE_ROOM_MARKETING_USER_ID eller opprett bruker daniel@creatorhubn.com.',
+          });
+          return;
+        }
+
+        const hashtags = Array.isArray(draft.hashtags) ? draft.hashtags as string[] : [];
+        const caption = String(draft.caption || '') + (hashtags.length > 0 ? '\n\n' + hashtags.join(' ') : '');
+        const ctaLink = draft.cta_link ? String(draft.cta_link).trim() : '';
+
+        const result = await dispatchPublish('linkedin', {
+          connectionId: userId,
+          userId,
+          projectId: 'role-room-marketing',
+          mediaKind: ctaLink ? 'link' : 'text',
+          caption,
+          extras: ctaLink ? { link: ctaLink } : undefined,
+          scheduledFor: null,
+        });
+
+        if (result.ok && result.status === 'published') {
+          await pool.query(
+            `UPDATE marketing_post_drafts
+             SET status = 'published', published_at = now(),
+                 external_post_id = $2, raw_publish_response = $3, publish_error = NULL,
+                 updated_at = now()
+             WHERE id = $1`,
+            [id, result.externalPostId ?? null, JSON.stringify(result.raw ?? result)],
+          );
+          res.json({
+            ok: true,
+            status: 'published',
+            externalPostId: result.externalPostId,
+            permalink: result.permalink,
+          });
+          return;
+        }
+
+        const errMsg = result.error || result.reason || `LinkedIn publish status: ${result.status}`;
+        await pool.query(
+          `UPDATE marketing_post_drafts
+           SET status = 'failed', publish_error = $2, raw_publish_response = $3, updated_at = now()
+           WHERE id = $1`,
+          [id, errMsg, JSON.stringify(result.raw ?? result)],
+        );
+        res.status(502).json({
+          ok: false, status: 'failed', error: errMsg, reason: result.reason,
+        });
+        return;
+      } else if (platform === 'instagram') {
+        // IG container-flow via registrert publisher. Krever:
+        //   1) en IG-connection (role_room_instagram_connections) for marketing-bruker
+        //   2) et bilde — enten image_data_url (base64) eller image_url (offentlig HTTP)
+        const userId = await resolveMarketingUserId(pool);
+        if (!userId) {
+          res.status(503).json({
+            ok: false,
+            error: 'Ingen marketing-bruker konfigurert. Sett ROLE_ROOM_MARKETING_USER_ID eller opprett bruker daniel@creatorhubn.com.',
+          });
+          return;
+        }
+
+        const connectionId = await resolveIgConnectionId(pool, userId);
+        if (!connectionId) {
+          const errMsg = 'Ingen aktiv IG Business-tilkobling funnet for marketing-brukeren. Koble til IG på nytt.';
+          await pool.query(
+            `UPDATE marketing_post_drafts
+             SET status = 'failed', publish_error = $2, updated_at = now()
+             WHERE id = $1`,
+            [id, errMsg],
+          );
+          res.status(503).json({ ok: false, status: 'failed', reason: 'connection_not_found', error: errMsg });
+          return;
+        }
+
+        const imgResult = await resolveImageDataUrl(draft);
+        if (!imgResult.ok) {
+          const errMsg = imgResult.reason === 'no_image'
+            ? 'IG-publish krever bilde. Sett image_url (offentlig HTTP-URL) eller image_data_url (base64) på draften.'
+            : `Kunne ikke hente image fra image_url: ${imgResult.error}`;
+          await pool.query(
+            `UPDATE marketing_post_drafts
+             SET status = 'failed', publish_error = $2, updated_at = now()
+             WHERE id = $1`,
+            [id, errMsg],
+          );
+          res.status(imgResult.reason === 'no_image' ? 400 : 502).json({
+            ok: false, status: 'failed', reason: imgResult.reason, error: errMsg,
+          });
+          return;
+        }
+        const imageDataUrl = imgResult.dataUrl;
+
+        const hashtags = Array.isArray(draft.hashtags) ? draft.hashtags as string[] : [];
+        const caption = String(draft.caption || '') + (hashtags.length > 0 ? '\n\n' + hashtags.join(' ') : '');
+
+        const result = await dispatchPublish('instagram', {
+          connectionId,
+          userId,
+          projectId: 'role-room-marketing',
+          mediaKind: 'image',
+          caption,
+          imageUrl: imageDataUrl,
+          scheduledFor: null,
+        });
+
+        if (result.ok && result.status === 'published') {
+          await pool.query(
+            `UPDATE marketing_post_drafts
+             SET status = 'published', published_at = now(),
+                 external_post_id = $2, raw_publish_response = $3, publish_error = NULL,
+                 updated_at = now()
+             WHERE id = $1`,
+            [id, result.externalPostId ?? null, JSON.stringify(result.raw ?? result)],
+          );
+          res.json({
+            ok: true,
+            status: 'published',
+            externalPostId: result.externalPostId,
+            permalink: result.permalink,
+          });
+          return;
+        }
+
+        if (result.ok && (result.status === 'queued' || result.status === 'scheduled')) {
+          // IG-jobben er kø-lagt og publisher worker fyrer den senere.
+          // Markerer drafts som 'edited' (siden vi har commitet til publish)
+          // og lagrer jobId for sporing. NB: vi oppdaterer ikke til 'published'
+          // før Meta bekrefter; engagement-workeren plukker den opp via
+          // external_post_id-feltet senere.
+          res.json({
+            ok: true,
+            status: result.status,
+            jobId: result.jobId,
+            message: `IG-jobb ${result.status}. Worker fullfører innen 60s.`,
+          });
+          return;
+        }
+
+        const errMsg = result.error || result.reason || `Instagram publish status: ${result.status}`;
+        await pool.query(
+          `UPDATE marketing_post_drafts
+           SET status = 'failed', publish_error = $2, raw_publish_response = $3, updated_at = now()
+           WHERE id = $1`,
+          [id, errMsg, JSON.stringify(result.raw ?? result)],
+        );
+        res.status(502).json({
+          ok: false, status: 'failed', error: errMsg, reason: result.reason,
+        });
+        return;
+      } else if (platform === 'tiktok') {
+        // TikTok Content Posting API via registrert publisher. Krever:
+        //   1) en TikTok-connection (role_room_tiktok_connections) med video.upload-scope
+        //   2) en video — enten video_data_url (base64 data:video/mp4) eller video_url (HTTP MP4)
+        const userId = await resolveMarketingUserId(pool);
+        if (!userId) {
+          res.status(503).json({
+            ok: false,
+            error: 'Ingen marketing-bruker konfigurert. Sett ROLE_ROOM_MARKETING_USER_ID eller opprett bruker daniel@creatorhubn.com.',
+          });
+          return;
+        }
+
+        const hasConn = await resolveTikTokConnectionExists(pool, userId);
+        if (!hasConn) {
+          const errMsg = 'Ingen aktiv TikTok-tilkobling funnet for marketing-brukeren. Koble til TikTok-konto for The Role Room.';
+          await pool.query(
+            `UPDATE marketing_post_drafts
+             SET status = 'failed', publish_error = $2, updated_at = now()
+             WHERE id = $1`,
+            [id, errMsg],
+          );
+          res.status(503).json({ ok: false, status: 'failed', reason: 'connection_not_found', error: errMsg });
+          return;
+        }
+
+        const videoUrl = await resolveVideoDataUrl(draft);
+        if (!videoUrl) {
+          const errMsg = 'TikTok-publish krever video. Sett video_url (offentlig HTTP-link til MP4) eller video_data_url (base64) på draften.';
+          await pool.query(
+            `UPDATE marketing_post_drafts
+             SET status = 'failed', publish_error = $2, updated_at = now()
+             WHERE id = $1`,
+            [id, errMsg],
+          );
+          res.status(400).json({ ok: false, status: 'failed', reason: 'video_required', error: errMsg });
+          return;
+        }
+
+        const hashtags = Array.isArray(draft.hashtags) ? draft.hashtags as string[] : [];
+        const caption = String(draft.caption || '') + (hashtags.length > 0 ? '\n\n' + hashtags.join(' ') : '');
+
+        const result = await dispatchPublish('tiktok', {
+          connectionId: userId,
+          userId,
+          projectId: 'role-room-marketing',
+          mediaKind: 'video',
+          caption,
+          videoUrl,
+          scheduledFor: null,
+        });
+
+        if (result.ok && result.status === 'published') {
+          await pool.query(
+            `UPDATE marketing_post_drafts
+             SET status = 'published', published_at = now(),
+                 external_post_id = $2, raw_publish_response = $3, publish_error = NULL,
+                 updated_at = now()
+             WHERE id = $1`,
+            [id, result.externalPostId ?? null, JSON.stringify(result.raw ?? result)],
+          );
+          res.json({
+            ok: true,
+            status: 'published',
+            externalPostId: result.externalPostId,
+            permalink: result.permalink,
+          });
+          return;
+        }
+
+        if (result.ok && (result.status === 'queued' || result.status === 'scheduled')) {
+          // INBOX_DELIVERED: TikTok inbox-flow — videoen ligger i brukerens
+          // app-inbox og må publiseres derfra. Markerer som edited + lagrer
+          // publishId i external_post_id slik at engagement-tracking kan finne den.
+          await pool.query(
+            `UPDATE marketing_post_drafts
+             SET external_post_id = $2, raw_publish_response = $3, updated_at = now()
+             WHERE id = $1`,
+            [id, result.externalPostId ?? result.jobId ?? null, JSON.stringify(result.raw ?? result)],
+          );
+          res.json({
+            ok: true,
+            status: result.status,
+            jobId: result.jobId,
+            reason: result.reason,
+            message: result.reason === 'inbox_delivered'
+              ? 'Video sendt til TikTok-app-inbox. Åpne TikTok-app for å fullføre publisering.'
+              : `TikTok-jobb ${result.status}.`,
+          });
+          return;
+        }
+
+        const errMsg = result.error || result.reason || `TikTok publish status: ${result.status}`;
+        await pool.query(
+          `UPDATE marketing_post_drafts
+           SET status = 'failed', publish_error = $2, raw_publish_response = $3, updated_at = now()
+           WHERE id = $1`,
+          [id, errMsg, JSON.stringify(result.raw ?? result)],
+        );
+        res.status(502).json({
+          ok: false, status: 'failed', error: errMsg, reason: result.reason,
+        });
+        return;
       } else {
-        // IG/LinkedIn/TikTok — not auto-publish yet
+        // Ukjent platform — marker som manual_copy
         await pool.query(
           `UPDATE marketing_post_drafts
            SET status = 'manual_copy', updated_at = now()

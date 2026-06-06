@@ -57,6 +57,7 @@ import {
   Add,
   Remove,
   Settings,
+  Lightbulb as LightbulbIcon,
 } from '@mui/icons-material';
 
 interface KeyboardShortcut {
@@ -466,14 +467,15 @@ export const KeyboardShortcutsGuide: React.FC<KeyboardShortcutsGuideProps> = ({
           border: '1px solid rgba(255, 140, 0, 0.2)',
           borderRadius: 2
         }}>
-          <Typography variant="subtitle2" gutterBottom sx={{ 
+          <Typography variant="subtitle2" gutterBottom sx={{
             color: '#ff8c00',
             fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
             gap: 1
           }}>
-            💡 Pro Tips
+            <LightbulbIcon sx={{ fontSize: 18 }} />
+            Pro Tips
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>

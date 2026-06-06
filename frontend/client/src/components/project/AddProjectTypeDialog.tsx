@@ -305,7 +305,7 @@ const AddProjectTypeDialog: React.FC<AddProjectTypeDialogProps> = ({ open, onClo
         sx: {
           borderRadius: 3,
           boxShadow: '0 20px 60px rgba(0, 0, 0, 0.15)',
-          background: '#fafbfc',
+          background: 'rgba(255,255,255,0.04)',
         }
       }}>
       <DialogTitle sx={{ 
@@ -437,8 +437,8 @@ const AddProjectTypeDialog: React.FC<AddProjectTypeDialogProps> = ({ open, onClo
                 sx={{
                   mt: 1.5,
                   p: 1.5,
-                  bgcolor: 'rgba(33, 150, 243, 0.05)',
-                  border: '1px solid rgba(33, 150, 243, 0.2)',
+                  bgcolor: 'rgba(33,150,243,0.08)',
+                  border: '1px solid rgba(33,150,243,0.20)',
                   borderRadius: 1.5,
                   display: 'flex',
                   alignItems: 'center',
@@ -534,12 +534,12 @@ const AddProjectTypeDialog: React.FC<AddProjectTypeDialogProps> = ({ open, onClo
             {/* Icon Grid */}
             <Card 
               sx={{ 
-                maxHeight: 280, 
-                overflowY: 'auto', 
-                border: '1px solid #e0e0e0',
+                maxHeight: 280,
+                overflowY: 'auto',
+                border: '1px solid rgba(255,255,255,0.10)',
                 borderRadius: 2,
-                p: 2, 
-                bgcolor: '#fafbfc',
+                p: 2,
+                bgcolor: 'rgba(255,255,255,0.04)',
                 '&::-webkit-scrollbar': {
                   width: '8px',
                 },
@@ -610,7 +610,7 @@ const AddProjectTypeDialog: React.FC<AddProjectTypeDialogProps> = ({ open, onClo
                             border: isSelected ? '2px solid' : '1px solid',
                             borderColor: isSelected ? categoryColor : '#ddd',
                             borderRadius: 2,
-                            bgcolor: isSelected ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.12)` : 'white',
+                            bgcolor: isSelected ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.12)` : 'rgba(255,255,255,0.04)',
                             cursor: 'pointer',
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             position: 'relative',
@@ -626,7 +626,7 @@ const AddProjectTypeDialog: React.FC<AddProjectTypeDialogProps> = ({ open, onClo
                               pointerEvents: 'none',
                             } : {},
                             '&:hover': {
-                              bgcolor: isSelected ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.16)` : '#f8f9fa',
+                              bgcolor: isSelected ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.16)` : 'rgba(255,255,255,0.04)',
                               borderColor: categoryColor,
                               transform: 'scale(1.08) translateY(-2px)',
                               boxShadow: isSelected ? `0 8px 16px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.2)` : '0 4px 12px rgba(0, 0, 0, 0.08)',
@@ -991,12 +991,12 @@ const AddProjectTypeDialog: React.FC<AddProjectTypeDialogProps> = ({ open, onClo
           </Box>
         </Box>
       </DialogContent>
-      <DialogActions sx={{ p: 3, pt: 2, borderTop: '1px solid #e0e0e0', display: 'flex', gap: 1.5, alignItems: 'center', justifyContent: 'space-between' }}>
+      <DialogActions sx={{ p: 3, pt: 2, borderTop: '1px solid rgba(255,255,255,0.10)', display: 'flex', gap: 1.5, alignItems: 'center', justifyContent: 'space-between' }}>
         <Typography variant="caption" sx={{ color: '#666', ml: 1 }}>
-          <kbd style={{ 
-            padding: '2px 6px', 
-            bgcolor: '#f0f0f0', 
-            border: '1px solid #ddd', 
+          <kbd style={{
+            padding: '2px 6px',
+            bgcolor: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.10)',
             borderRadius: 3,
             fontSize: '0.7rem',
             fontFamily: 'monospace',

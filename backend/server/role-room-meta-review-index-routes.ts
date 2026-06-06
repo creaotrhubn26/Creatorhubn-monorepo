@@ -135,6 +135,32 @@ const DEMOS: DemoEntry[] = [
       "DELETE /v21.0/{event-id}",
     ],
   },
+  {
+    slug: "ig-business-basic",
+    permission: "instagram_business_basic",
+    title: "Show the connected Instagram professional account",
+    oneLiner: "Read + display the connected IG Business account's username + profile picture so the user confirms the right account is linked.",
+    badge: "#8b5cf6",
+    demoPath: "/admin/instagram-business-basic-app-review-demo",
+    runbookPath: "backend/docs/ig-business-basic-app-review-runbook.md",
+    recordingCmd: "node backend/scripts/record-ig-business-basic-app-review-demo.playwright.mjs",
+    graphCalls: [
+      "GET /v21.0/{ig-user-id}?fields=username,account_type,profile_picture_url,followers_count,media_count",
+    ],
+  },
+  {
+    slug: "pages-show-list",
+    permission: "pages_show_list",
+    title: "Account picker — choose the Page to connect",
+    oneLiner: "List the Facebook Pages a user manages (/me/accounts) so they pick which production-team Page to link.",
+    badge: "#2563eb",
+    demoPath: "/admin/pages-show-list-app-review-demo",
+    runbookPath: "backend/docs/pages-show-list-app-review-runbook.md",
+    recordingCmd: "node backend/scripts/record-pages-show-list-app-review-demo.playwright.mjs",
+    graphCalls: [
+      "GET /v21.0/me/accounts?fields=id,name,category,tasks,picture",
+    ],
+  },
 ];
 
 const WHATSAPP_DEMOS: DemoEntry[] = [

@@ -86,15 +86,15 @@ const EMPTY_METRICS: HealthMetrics = {
 
 const surfaceSx = {
   borderRadius: '24px',
-  border: '1px solid rgba(17, 24, 39, 0.08)',
-  bgcolor: '#ffffff',
+  border: '1px solid rgba(255,255,255,0.10)',
+  bgcolor: 'rgba(255,255,255,0.04)',
   boxShadow: '0 18px 44px rgba(15, 23, 42, 0.06)',
 } as const;
 
 const insetSx = {
   borderRadius: '18px',
-  border: '1px solid rgba(17, 24, 39, 0.08)',
-  bgcolor: '#fcfaf7',
+  border: '1px solid rgba(255,255,255,0.10)',
+  bgcolor: 'rgba(255,255,255,0.04)',
 } as const;
 
 function getStatusColor(status: string): ChipProps['color'] {
@@ -257,7 +257,7 @@ export default function SystemHealthPanel({
           px: { xs: 2.25, sm: 3 },
           py: { xs: 2.25, sm: 2.75 },
           background:
-            'linear-gradient(135deg, rgba(17, 24, 39, 0.05), rgba(255, 255, 255, 0.96) 46%, rgba(8, 145, 178, 0.06))',
+            'linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.04) 46%, rgba(8, 145, 178, 0.06))',
         }}
       >
         <Stack
@@ -278,9 +278,9 @@ export default function SystemHealthPanel({
               men denne siden skal gi Daniel et operativt statusbilde uten overflødig støy.
             </Typography>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
-              <Chip label={`${healthyServiceCount} operative tjenester`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(17, 24, 39, 0.08)' }} />
-              <Chip label={`${warningServiceCount} advarsler`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(17, 24, 39, 0.08)' }} />
-              <Chip label={`${criticalServiceCount} kritiske`} sx={{ bgcolor: '#ffffff', border: '1px solid rgba(17, 24, 39, 0.08)' }} />
+              <Chip label={`${healthyServiceCount} operative tjenester`} sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }} />
+              <Chip label={`${warningServiceCount} advarsler`} sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }} />
+              <Chip label={`${criticalServiceCount} kritiske`} sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)' }} />
             </Stack>
           </Box>
 
@@ -333,7 +333,7 @@ export default function SystemHealthPanel({
             value={`${systemMetrics.uptime}%`}
             helper="Tilgjengelighet over siste måleperiode"
             tone={{
-              bg: 'linear-gradient(180deg, rgba(236,255,252,0.98), rgba(255,255,255,0.98))',
+              bg: 'linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.04))',
               border: 'rgba(45, 122, 101, 0.18)',
               iconBg: '#dff7ef',
               iconColor: '#1b7b4a',
@@ -347,7 +347,7 @@ export default function SystemHealthPanel({
             value={`${systemMetrics.responseTime} ms`}
             helper="Gjennomsnittlig svartid"
             tone={{
-              bg: 'linear-gradient(180deg, rgba(240,247,255,0.98), rgba(255,255,255,0.98))',
+              bg: 'linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.04))',
               border: 'rgba(37, 95, 164, 0.18)',
               iconBg: '#e9f2ff',
               iconColor: '#235fa4',
@@ -361,7 +361,7 @@ export default function SystemHealthPanel({
             value={`${systemMetrics.memoryUsage}%`}
             helper="Høy bruk bør undersøkes før den blir kritisk"
             tone={{
-              bg: 'linear-gradient(180deg, rgba(255,247,236,0.98), rgba(255,255,255,0.98))',
+              bg: 'linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.04))',
               border: 'rgba(160, 90, 0, 0.18)',
               iconBg: '#fff0d8',
               iconColor: '#a05a00',
@@ -375,7 +375,7 @@ export default function SystemHealthPanel({
             value={`${systemMetrics.diskUsage}%`}
             helper="Lagringspress på infrastruktur"
             tone={{
-              bg: 'linear-gradient(180deg, rgba(250,244,255,0.98), rgba(255,255,255,0.98))',
+              bg: 'linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.04))',
               border: 'rgba(110, 69, 184, 0.18)',
               iconBg: '#efe7ff',
               iconColor: '#6e45b8',
@@ -460,7 +460,7 @@ export default function SystemHealthPanel({
                     sx={{
                       px: 0,
                       py: 1.25,
-                      borderTop: index === 0 ? 'none' : '1px solid rgba(17,24,39,0.08)',
+                      borderTop: index === 0 ? 'none' : '1px solid rgba(255,255,255,0.10)',
                     }}
                   >
                     <ListItemText

@@ -14,6 +14,7 @@
  * No film/photo flow imports from this file.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React, { useMemo, useState } from 'react';
 import {
   Box,
@@ -109,7 +110,6 @@ import ProfessionModeChip from '../shared/ProfessionModeChip';
 import HelpButton, { type WhatsNewItem } from '../shared/HelpButton';
 import FirstTimeTour from '../shared/FirstTimeTour';
 import RoleRoomMobileProfileSheet from '../components/RoleRoomMobileProfileSheet';
-import { useAuth } from '../../../hooks/useAuth';
 import { useRoleRoomViewportMode } from '../hooks/useRoleRoomViewportMode';
 import {
   EmojiPeople as WelcomeIcon,
@@ -139,11 +139,11 @@ const FEATURE_LABEL: Record<NonNullable<TabConfig['feature']>, string> = {
 };
 
 const FEATURE_COLOR: Record<NonNullable<TabConfig['feature']>, string> = {
-  core: '#8b5cf6',
+  core: danceFlowColors.lavenderDark,
   production: '#0ea5e9',
-  resources: '#10b981',
-  on_set: '#f59e0b',
-  finance: '#ec4899',
+  resources: danceFlowColors.successDark,
+  on_set: danceFlowColors.amber,
+  finance: danceFlowColors.pinkAccent,
   union: '#a855f7',
 };
 
@@ -154,11 +154,11 @@ interface PlaceholderProps {
 }
 
 const ComingSoonCard: React.FC<PlaceholderProps> = ({ title, body, feature }) => (
-  <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
-    <Card sx={{ maxWidth: 720, mx: 'auto', bgcolor: '#111114', border: '1px solid rgba(139,92,246,0.25)', color: '#e5e7eb' }}>
+  <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: danceFlowColors.bgBase, minHeight: '100%' }}>
+    <Card sx={{ maxWidth: 720, mx: 'auto', bgcolor: danceFlowColors.bgCard, border: '1px solid rgba(139,92,246,0.25)', color: danceFlowColors.textSecondary }}>
       <CardContent>
         <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-          <Box sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: 'rgba(139,92,246,0.18)', color: '#a78bfa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Box sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: 'rgba(139,92,246,0.18)', color: danceFlowColors.lavender, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ConstructionIcon />
           </Box>
           <Box>
@@ -442,7 +442,7 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
             sx={{
               position: 'fixed', bottom: 16, left: '50%',
               transform: 'translateX(-50%)',
-              bgcolor: '#1e2536', color: '#a78bfa',
+              bgcolor: danceFlowColors.borderStrong, color: danceFlowColors.lavender,
               border: '1px solid #a78bfa', borderRadius: 1,
               px: 2, py: 1, fontSize: 12, fontWeight: 600,
               zIndex: 2000,
@@ -488,7 +488,7 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
         // Dancers/Analysis/Review forward via dance:set-tab og lander
         // aldri her. Fallback-tekst hvis ny sub-tab introduseres uten
         // handler.
-        <Box sx={{ p: { xs: 2, md: 3 }, color: '#9ca3af' }}>
+        <Box sx={{ p: { xs: 2, md: 3 }, color: danceFlowColors.textMuted }}>
           <Typography variant="body2">
             Velg en sub-tab over.
           </Typography>
@@ -506,8 +506,8 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
             bottom: 16,
             left: '50%',
             transform: 'translateX(-50%)',
-            bgcolor: '#1e2536',
-            color: '#a78bfa',
+            bgcolor: danceFlowColors.borderStrong,
+            color: danceFlowColors.lavender,
             border: '1px solid #a78bfa',
             borderRadius: 1,
             px: 2,
@@ -779,7 +779,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
         return <DanceDashboard modeOverride={mode} projectId={projectId ?? null} />;
       case 'pieces':
         return (
-          <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
+          <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: danceFlowColors.bgBase, minHeight: '100%' }}>
             <ChoreographyBuilderConnected projectId={projectId ?? null} />
           </Box>
         );
@@ -789,19 +789,19 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
         return <FormationsTabBody projectId={projectId ?? null} />;
       case 'rehearsal_log':
         return (
-          <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
+          <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: danceFlowColors.bgBase, minHeight: '100%' }}>
             <RehearsalPlannerConnected projectId={projectId ?? null} />
           </Box>
         );
       case 'students':
         return (
-          <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
+          <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: danceFlowColors.bgBase, minHeight: '100%' }}>
             <DancerProfileGridConnected projectId={projectId ?? null} />
           </Box>
         );
       case 'season':
         return (
-          <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: '#0a0a0a', minHeight: '100%' }}>
+          <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: danceFlowColors.bgBase, minHeight: '100%' }}>
             <DanceProductionCalendar projectId={projectId ?? null} professionMode={mode} />
           </Box>
         );
@@ -1016,7 +1016,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
               fontSize: '0.875rem',
             },
             '& .Mui-selected': { color: '#fff' },
-            '& .MuiTabs-indicator': { bgcolor: '#8b5cf6', height: 3, borderRadius: 1.5 },
+            '& .MuiTabs-indicator': { bgcolor: danceFlowColors.lavenderDark, height: 3, borderRadius: 1.5 },
           }}
         >
           {visibleTabs.map((tab) => (
@@ -1064,7 +1064,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
                   alignItems: 'center',
                   justifyContent: 'center',
                   py: 6,
-                  color: '#a78bfa',
+                  color: danceFlowColors.lavender,
                   fontSize: 12,
                   letterSpacing: 1.5,
                   fontWeight: 700,

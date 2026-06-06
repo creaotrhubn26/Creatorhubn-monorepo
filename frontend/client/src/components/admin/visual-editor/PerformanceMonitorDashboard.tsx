@@ -86,7 +86,7 @@ export const PerformanceMonitorDashboard: React.FC = () => {
                 <Speed color="primary" />
                 <Typography variant="subtitle2">FPS</Typography>
               </Box>
-              <Typography variant="h3" fontWeight="bold" color={metrics.fps >= 55 ? 'success.main' : 'warning.main'}>
+              <Typography variant="h4" fontWeight="bold" color={metrics.fps >= 55 ? 'success.main' : 'warning.main'}>
                 {metrics.fps}
               </Typography>
               <LinearProgress 
@@ -109,7 +109,7 @@ export const PerformanceMonitorDashboard: React.FC = () => {
                 <Warning color="warning" />
                 <Typography variant="subtitle2">Frame Drops</Typography>
               </Box>
-              <Typography variant="h3" fontWeight="bold" color={metrics.frameDrops > 5 ? 'error.main' : 'success.main'}>
+              <Typography variant="h4" fontWeight="bold" color={metrics.frameDrops > 5 ? 'error.main' : 'success.main'}>
                 {metrics.frameDrops}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
@@ -126,7 +126,7 @@ export const PerformanceMonitorDashboard: React.FC = () => {
                 <Memory color="info" />
                 <Typography variant="subtitle2">Memory Usage</Typography>
               </Box>
-              <Typography variant="h3" fontWeight="bold" color={metrics.memoryUsage > 80 ? 'warning.main' : 'primary.main'}>
+              <Typography variant="h4" fontWeight="bold" color={metrics.memoryUsage > 80 ? 'warning.main' : 'primary.main'}>
                 {metrics.memoryUsage}%
               </Typography>
               <LinearProgress 
@@ -146,7 +146,7 @@ export const PerformanceMonitorDashboard: React.FC = () => {
                 <TrendingFlat color="secondary" />
                 <Typography variant="subtitle2">Jank Score</Typography>
               </Box>
-              <Typography variant="h3" fontWeight="bold" color={metrics.jankScore < 20 ? 'success.main' : 'warning.main'}>
+              <Typography variant="h4" fontWeight="bold" color={metrics.jankScore < 20 ? 'success.main' : 'warning.main'}>
                 {metrics.jankScore}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>

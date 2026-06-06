@@ -24,6 +24,7 @@ node_modules/
 .env.ig-public.demo.local
 .env.leads-retrieval.demo.local
 .env.ig-events.demo.local
+.env.ig-business-basic.demo.local
 
 # Logs
 logs/
@@ -69,3 +70,4 @@ temp/
 /data/sfx-library.json.tmp
 /data/sfx-manifest.json.tmp
 /data/sfx-generated/
+.env.pages-show-list.demo.local

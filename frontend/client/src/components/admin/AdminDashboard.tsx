@@ -115,6 +115,7 @@ import ReportsPanel from './ReportsPanel';
 import AutomatedBusinessReports from './AutomatedBusinessReports';
 import PrototypeFeedbackPanel from './PrototypeFeedbackPanel';
 import SystemBackupDashboard from './SystemBackupDashboard';
+import B2ArchiveTab from './B2ArchiveTab';
 import CreatorHubNotes from './Creatorhubnotesnew';
 import AdvancedNotesManager from './AdvancedNotesManager';
 import DocumentationBrowser from './DocumentationBrowser';
@@ -914,6 +915,7 @@ export default function AdminDashboard({
     { id: 'secrets-rotation', label: 'Nøkkel-rotering', icon: Security },
     { id: 'drift-helse', label: 'Drift', icon: Settings },
     { id: 'system-backup', label: 'Backup', icon: Storage },
+    { id: 'b2-archive', label: 'B2-arkiv', icon: Storage },
     { id: 'gdpr-compliance', label: 'GDPR', icon: Security },
     { id: 'development-tools', label: 'Utvikling', icon: AutoAwesome },
     { id: 'automations', label: 'Automatisering', icon: AutoAwesome },
@@ -1123,7 +1125,7 @@ export default function AdminDashboard({
   if (userLoading) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Card sx={{ p: 4, textAlign: 'center' }}>
+        <Card sx={{ p: 2.5, textAlign: 'center' }}>
           <LinearProgress sx={{ mb: 2 }} />
           <Typography variant="h6" gutterBottom>
             Sjekker brukerrettigheter...
@@ -1140,7 +1142,7 @@ export default function AdminDashboard({
   if (userError || !currentUser) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Card sx={{ p: 4, textAlign: 'center' }}>
+        <Card sx={{ p: 2.5, textAlign: 'center' }}>
           <Security sx={{ fontSize: 64, color: 'warning.main', mb: 2 }} />
           <Typography variant="h5" gutterBottom>
             Autentisering påkrevd
@@ -1166,7 +1168,7 @@ export default function AdminDashboard({
   if (!currentUser.isAdmin) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Card sx={{ p: 4, textAlign: 'center' }}>
+        <Card sx={{ p: 2.5, textAlign: 'center' }}>
           <Security sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
           <Typography variant="h5" gutterBottom>
             Ingen tilgang til Admin Dashboard
@@ -1210,7 +1212,7 @@ export default function AdminDashboard({
               borderRadius: '24px',
               border: '1px solid #eadfce',
               background:
-                'linear-gradient(135deg, rgba(255, 248, 237, 0.96), rgba(255, 255, 255, 0.98))',
+                'linear-gradient(135deg, rgba(255, 248, 237, 0.96), rgba(255,255,255,0.04))',
               boxShadow: '0 22px 44px rgba(27, 21, 12, 0.06)',
             }}
           >
@@ -1339,7 +1341,7 @@ export default function AdminDashboard({
                         px: 1.75,
                         py: 1.5,
                         bgcolor: card.background,
-                        border: '1px solid rgba(15, 23, 42, 0.04)',
+                        border: '1px solid rgba(255,255,255,0.04)',
                       }}
                     >
                       <Typography sx={{ fontSize: '0.72rem', color: '#766d61', fontWeight: 700 }}>
@@ -1403,7 +1405,7 @@ export default function AdminDashboard({
           >
             <CardContent>
               <Typography variant="h6">Plattformgebyrer (20%)</Typography>
-              <Typography variant="h3" sx={{ fontWeight: 700, my: 2 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
                 5,000
               </Typography>
               <Typography variant="body2">NOK denne måneden</Typography>
@@ -1420,7 +1422,7 @@ export default function AdminDashboard({
           >
             <CardContent>
               <Typography variant="h6">Totale Kursregistreringer</Typography>
-              <Typography variant="h3" sx={{ fontWeight: 700, my: 2 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
                 50
               </Typography>
               <Typography variant="body2">studenter denne måneden</Typography>
@@ -1437,7 +1439,7 @@ export default function AdminDashboard({
           >
             <CardContent>
               <Typography variant="h6">Aktive Instruktører</Typography>
-              <Typography variant="h3" sx={{ fontWeight: 700, my: 2 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
                 5
               </Typography>
               <Typography variant="body2">med aktive kurs</Typography>
@@ -1867,6 +1869,8 @@ export default function AdminDashboard({
         );
       case 'system-backup':
         return <SystemBackupDashboard {...sharedPanelProps} />;
+      case 'b2-archive':
+        return <B2ArchiveTab />;
       case 'gdpr-compliance':
         return <GDPRCompliancePanel />;
       case 'development-tools':

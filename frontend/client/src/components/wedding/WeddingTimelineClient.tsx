@@ -291,7 +291,7 @@ export default function WeddingTimelineClient({ timelineId, clientAccessCode }: 
       </Dialog>
 
       {/* Timeline Stats */}
-      <Box sx={{ mb: 3, p: 2, bgcolor: '#fff3e0', borderRadius: 1 }}>
+      <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(255,152,0,0.12)', borderRadius: 1 }}>
         <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'center' }}>
           <Typography variant="body2" sx={{ color: '#f57c00', fontWeight: 600 }}>
             {timeline.events?.length || 0} hendelser totalt
@@ -675,10 +675,10 @@ export default function WeddingTimelineClient({ timelineId, clientAccessCode }: 
 
                     {/* Client Notes */}
                     {event.clientNotes && (
-                      <Box sx={{ 
+                      <Box sx={{
                         mt:  2,
                         p:  2,
-                        bgcolor: '#e3f2fd',
+                        bgcolor: 'rgba(33,150,243,0.08)',
                         borderRadius: '8px',
                         border: '1px solid #2196f3'
                   }}>

@@ -1,10 +1,11 @@
 //! Brukerpreferanser persistert til ~/.creatorhub-one-desk/prefs.json.
 //!
-//! Mer struktureret enn helper_client::Config (som handler om auth):
-//! denne lagrer UI/UX-valg som auto-eject etter backup.
+//! Skilt fra helper_client::Config (som handler om auth): denne lagrer
+//! UI/UX-valg som auto-eject + default-destinasjons-utvalg.
 //!
-//! Forwards-compat: alle felter har Default, så å legge til nye felter
-//! senere bryter ikke tidligere installasjoner.
+//! Forwards-compat: alle felter har Default via serde, så å legge til
+//! nye felter senere bryter ikke tidligere installasjoner. Korrupt
+//! JSON faller stille til default i stedet for å krasje appen.
 
 use std::fs;
 use std::path::PathBuf;
@@ -13,18 +14,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::helper_client;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Prefs {
     /// Om appen skal kjøre `diskutil eject` på SD/CFexpress-volumet
     /// etter at backup-sesjonen er fullført med state="completed".
     #[serde(default)]
     pub auto_eject: bool,
-}
 
-impl Default for Prefs {
-    fn default() -> Self {
-        Self { auto_eject: false }
-    }
+    /// dit_destinations.id-er som er pre-haket av i BackupDialog.
+    /// Tom liste → fall til auto-select-all-with-path (default-behavior).
+    /// Brukes til at Fredrik kan si "alltid disse 3 diskene" uten å
+    /// klikke gjennom hver gang.
+    #[serde(default)]
+    pub default_dest_ids: Vec<String>,
 }
 
 fn prefs_path() -> PathBuf {
@@ -83,39 +85,56 @@ mod tests {
     #[test]
     fn load_returns_default_when_file_missing() {
         let (_h, _g) = fresh_home();
-        let prefs = load().expect("load");
-        assert!(!prefs.auto_eject);
+        let p = load().expect("load");
+        assert!(!p.auto_eject);
+        assert!(p.default_dest_ids.is_empty());
     }
 
     #[test]
-    fn save_then_load_round_trips() {
+    fn save_then_load_round_trips_all_fields() {
         let (_h, _g) = fresh_home();
-        save(&Prefs { auto_eject: true }).expect("save");
+        save(&Prefs {
+            auto_eject: true,
+            default_dest_ids: vec!["dest-a".into(), "dest-b".into()],
+        })
+        .expect("save");
         let loaded = load().expect("load");
         assert!(loaded.auto_eject);
+        assert_eq!(loaded.default_dest_ids, vec!["dest-a", "dest-b"]);
     }
 
     #[test]
     fn corrupt_json_falls_back_to_default() {
         let (_h, _g) = fresh_home();
-        let dir = helper_client::config_dir();
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(prefs_path(), b"not json at all").unwrap();
-        let prefs = load().expect("load");
-        assert!(!prefs.auto_eject, "korrupt fil → default = false");
+        fs::create_dir_all(helper_client::config_dir()).unwrap();
+        fs::write(prefs_path(), b"not json at all").unwrap();
+        let p = load().expect("load");
+        assert!(!p.auto_eject);
+        assert!(p.default_dest_ids.is_empty());
     }
 
     #[test]
     fn forwards_compat_unknown_fields_ignored() {
         let (_h, _g) = fresh_home();
-        let dir = helper_client::config_dir();
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
+        fs::create_dir_all(helper_client::config_dir()).unwrap();
+        fs::write(
             prefs_path(),
-            br#"{"auto_eject":true,"future_field":"ignored"}"#,
+            br#"{"auto_eject":true,"default_dest_ids":["x"],"future_field":42}"#,
         )
         .unwrap();
-        let prefs = load().expect("load");
-        assert!(prefs.auto_eject);
+        let p = load().expect("load");
+        assert!(p.auto_eject);
+        assert_eq!(p.default_dest_ids, vec!["x"]);
+    }
+
+    #[test]
+    fn backwards_compat_missing_default_dest_ids() {
+        // Gammel prefs-fil fra før default_dest_ids-feltet ble lagt til
+        let (_h, _g) = fresh_home();
+        fs::create_dir_all(helper_client::config_dir()).unwrap();
+        fs::write(prefs_path(), br#"{"auto_eject":true}"#).unwrap();
+        let p = load().expect("load");
+        assert!(p.auto_eject);
+        assert!(p.default_dest_ids.is_empty(), "default-feltet skal være tom");
     }
 }

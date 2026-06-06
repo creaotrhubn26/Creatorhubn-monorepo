@@ -2804,7 +2804,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                     position: 'relative',
                     width: '100%',
                     height: 30,
-                    backgroundColor: '#f5f5f5',
+                    backgroundColor: 'rgba(255,255,255,0.04)',
                     borderRadius:  2,
                     overflow: 'hidden',
                     border: '3px solid #2196f3'
@@ -2864,7 +2864,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                             <Box sx={{ 
                               display: 'flex', alignItems: 'center', gap:  1,
                               fontFamily: 'monospace', 
-                              backgroundColor: '#e3f2fd',
+                              backgroundColor: 'rgba(33,150,243,0.08)',
                               px: 2, py: 1, borderRadius: 1,
                               fontWeight: 600, color: '#1976d2'
                     }}>
@@ -2887,7 +2887,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                             <Box sx={{ 
                               display: 'flex', alignItems: 'center', gap:  1,
                               fontFamily: 'monospace', 
-                              backgroundColor: '#e3f2fd',
+                              backgroundColor: 'rgba(33,150,243,0.08)',
                               px: 2, py: 1, borderRadius: 1,
                               fontWeight: 600, color: '#1976d2'
                     }}>
@@ -2910,7 +2910,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                             <Box sx={{ 
                               display: 'flex', alignItems: 'center', gap:  1,
                               fontFamily: 'monospace', 
-                              backgroundColor: '#e3f2fd',
+                              backgroundColor: 'rgba(33,150,243,0.08)',
                               px: 2, py: 1, borderRadius: 1,
                               fontWeight: 600, color: '#1976d2'
                     }}>
@@ -2949,7 +2949,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                     position: 'relative',
                     width: '100%',
                     height: 30,
-                    backgroundColor: '#f5f5f5',
+                    backgroundColor: 'rgba(255,255,255,0.04)',
                     borderRadius:  2,
                     overflow: 'hidden',
                     border: '3px solid #ff9800'
@@ -2986,7 +2986,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                           <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
                             <Box sx={{ 
                               display: 'flex', alignItems: 'center', gap:  1,
-                              fontFamily: 'monospace', backgroundColor: '#fff3e0',
+                              fontFamily: 'monospace', backgroundColor: 'rgba(255,152,0,0.12)',
                               px: 2, py: 1, borderRadius: 1, fontWeight: 600, color: '#f57c00'
                     }}>
                               <CropFree sx={{ fontSize: 16}} />
@@ -3007,7 +3007,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                           <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
                             <Box sx={{ 
                               display: 'flex', alignItems: 'center', gap:  1,
-                              fontFamily: 'monospace', backgroundColor: '#fff3e0',
+                              fontFamily: 'monospace', backgroundColor: 'rgba(255,152,0,0.12)',
                               px: 2, py: 1, borderRadius: 1, fontWeight: 600, color: '#f57c00'
                     }}>
                               <Tune sx={{ fontSize: 16}} />
@@ -3028,7 +3028,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                           <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
                             <Box sx={{ 
                               display: 'flex', alignItems: 'center', gap:  1,
-                              fontFamily: 'monospace', backgroundColor: '#fff3e0',
+                              fontFamily: 'monospace', backgroundColor: 'rgba(255,152,0,0.12)',
                               px: 2, py: 1, borderRadius: 1, fontWeight: 600, color: '#f57c00'
                     }}>
                               <Rotate90DegreesCcw sx={{ fontSize: 16}} />
@@ -3060,7 +3060,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                     position: 'relative',
                     width: '100%',
                     height: 30,
-                    backgroundColor: '#f5f5f5',
+                    backgroundColor: 'rgba(255,255,255,0.04)',
                     borderRadius:  2,
                     overflow: 'hidden',
                     border: '3px solid #4caf50'
@@ -3177,7 +3177,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                     position: 'relative',
                     width: '100%',
                     height: 30,
-                    backgroundColor: '#f5f5f5',
+                    backgroundColor: 'rgba(255,255,255,0.04)',
                     borderRadius:  2,
                     overflow: 'hidden',
                     border: '3px solid #9c27b0'
@@ -3289,7 +3289,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                     position: 'relative',
                     width: '100%',
                     height: 30,
-                    backgroundColor: '#f5f5f5',
+                    backgroundColor: 'rgba(255,255,255,0.04)',
                     borderRadius:  2,
                     overflow: 'hidden',
                     border: '3px solid #f44336'
@@ -3356,7 +3356,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                           <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
                             <Box sx={{ 
                               display: 'flex', alignItems: 'center', gap:  1,
-                              fontFamily: 'monospace', backgroundColor: '#ffebee',
+                              fontFamily: 'monospace', backgroundColor: 'rgba(244,67,54,0.10)',
                               px: 2, py: 1, borderRadius: 1, fontWeight: 600, color: '#c62828'
                     }}>
                               <AspectRatio sx={{ fontSize: 16}} />
@@ -3377,7 +3377,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                           <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
                             <Box sx={{ 
                               display: 'flex', alignItems: 'center', gap:  1,
-                              fontFamily: 'monospace', backgroundColor: '#ffebee',
+                              fontFamily: 'monospace', backgroundColor: 'rgba(244,67,54,0.10)',
                               px: 2, py: 1, borderRadius: 1, fontWeight: 600, color: '#c62828'
                     }}>
                               <Rotate90DegreesCcw sx={{ fontSize: 16}} />
@@ -3398,7 +3398,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                           <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
                             <Box sx={{ 
                               display: 'flex', alignItems: 'center', gap:  1,
-                              fontFamily: 'monospace', backgroundColor: '#ffebee',
+                              fontFamily: 'monospace', backgroundColor: 'rgba(244,67,54,0.10)',
                               px: 2, py: 1, borderRadius: 1, fontWeight: 600, color: '#c62828'
                     }}>
                               <CropFree sx={{ fontSize: 16}} />
@@ -3430,7 +3430,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                     position: 'relative',
                     width: '100%',
                     height: 30,
-                    backgroundColor: '#f5f5f5',
+                    backgroundColor: 'rgba(255,255,255,0.04)',
                     borderRadius:  2,
                     overflow: 'hidden',
                     border: '3px solid #795548',
@@ -3678,7 +3678,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                           <Box sx={{ mb:  3 }}>
                             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: theming.colors.primary }}>
                               Hvordan det fungerer: </Typography>
-                            <Paper sx={{ p: 3, bgcolor: '#e3f2fd', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                            <Paper sx={{ p: 3, bgcolor: 'rgba(33,150,243,0.08)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
                               <Typography variant="body1">
                                 {tool.explanation.how}
                               </Typography>
@@ -3688,7 +3688,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                           <Box sx={{ mb:  3 }}>
                             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: theming.colors.primary }}>
                               Hensikten: </Typography>
-                            <Paper sx={{ p: 3, bgcolor: '#fff3e0', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                            <Paper sx={{ p: 3, bgcolor: 'rgba(255,152,0,0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
                               <Typography variant="body1">
                                 {tool.explanation.purpose}
                               </Typography>
@@ -3744,7 +3744,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                             { key: platform === 'windows' ? 'Tab' : 'Tab', action: 'Neste justeringsverktø', desc: 'Bytt til neste panel' },
                           ].map((shortcut, index) => (
                             <Grid item xs={12} md={4} key={index}>
-                              <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#fafafa' ,  ...theming.getThemedCardSx() }}>
+                              <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)' ,  ...theming.getThemedCardSx() }}>
                                 <Box sx={{ 
                                   display: 'inline-flex', 
                                   alignItems: 'center',
@@ -3780,7 +3780,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
 
             {!selectedToolExplanation && (
               <>
-                <Paper sx={{ p:  4, textAlign: 'center', bgcolor: '#f8f9fa', borderRadius: 2, mb:  4 ,  ...theming.getThemedCardSx() }}>
+                <Paper sx={{ p:  4, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2, mb:  4 ,  ...theming.getThemedCardSx() }}>
                   <Tune sx={{ fontSize:  48, color: '#4caf50', mb:  2 }} />
                   <Typography variant="h6" color="text.secondary" sx={{  mb:  1  }}>
                     Velg et verktøy ovenfor

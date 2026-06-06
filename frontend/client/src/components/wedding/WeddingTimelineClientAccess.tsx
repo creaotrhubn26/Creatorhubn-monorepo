@@ -212,7 +212,7 @@ export default function WeddingTimelineClientAccess({
                 borderRadius: 3,
                 minWidth: { xs: '100%', md: 260 },
                 bgcolor: 'rgba(255,255,255,0.72)',
-                border: '1px solid rgba(15, 23, 42, 0.08)',
+                border: '1px solid rgba(255,255,255,0.10)',
                 backdropFilter: 'blur(10px)',
               }}
             >
@@ -328,7 +328,7 @@ export default function WeddingTimelineClientAccess({
               height: '100%',
               p: { xs: 3, md: 4 },
               borderRadius: 4,
-              border: '1px solid rgba(15, 23, 42, 0.08)',
+              border: '1px solid rgba(255,255,255,0.10)',
               bgcolor: 'rgba(255,255,255,0.86)',
               boxShadow: '0 18px 40px rgba(15, 23, 42, 0.04)',
             }}

@@ -115,7 +115,8 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
   const [tokens, setTokens] = useState<DitHelperToken[]>([]);
   const [jobs, setJobs] = useState<DitBackupJob[]>([]);
   const [loading, setLoading] = useState(false);
-  const [newToken, setNewToken] = useState<{ token: string; expires_at: string } | null>(null);
+  const [newToken, setNewToken] = useState<{ token: string; expires_at: string; connection_url?: string } | null>(null);
+  const [copyMode, setCopyMode] = useState<'connection' | 'token'>('connection');
   const [copyConfirm, setCopyConfirm] = useState(false);
   const [addDestOpen, setAddDestOpen] = useState(false);
   const [destDraft, setDestDraft] = useState({
@@ -169,7 +170,11 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
-      setNewToken({ token: data.token, expires_at: data.expires_at });
+      setNewToken({
+        token: data.token,
+        expires_at: data.expires_at,
+        connection_url: typeof data.connection_url === 'string' ? data.connection_url : undefined,
+      });
       loadAll();
     } catch (err) {
       window.alert(`Kunne ikke generere token: ${(err as Error).message}`);
@@ -238,12 +243,15 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
 
   const copyTokenToClipboard = async () => {
     if (!newToken) return;
+    const valueToCopy = copyMode === 'connection' && newToken.connection_url
+      ? newToken.connection_url
+      : newToken.token;
     try {
-      await navigator.clipboard.writeText(newToken.token);
+      await navigator.clipboard.writeText(valueToCopy);
       setCopyConfirm(true);
       setTimeout(() => setCopyConfirm(false), 1500);
     } catch {
-      window.prompt('Kopiér manuelt:', newToken.token);
+      window.prompt('Kopiér manuelt:', valueToCopy);
     }
   };
 
@@ -431,6 +439,45 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                 <Typography sx={{ color: '#fcd34d', fontWeight: 700, fontSize: '0.82rem', mb: 1 }}>
                   ⚠ Kopiér nå — vises ikke igjen
                 </Typography>
+
+                {/* Toggle mellom connection-URL (anbefalt for One Desk-appen,
+                    inneholder både prosjekt-ID og token i én streng) og rå
+                    token (for CLI / scripts). */}
+                {newToken.connection_url && (
+                  <Stack direction="row" spacing={0.5} sx={{ mb: 1 }}>
+                    <Button
+                      size="small"
+                      onClick={() => setCopyMode('connection')}
+                      sx={{
+                        textTransform: 'none',
+                        fontSize: '0.7rem',
+                        px: 1,
+                        py: 0.25,
+                        bgcolor: copyMode === 'connection' ? 'rgba(251,191,36,0.18)' : 'transparent',
+                        color: copyMode === 'connection' ? '#fcd34d' : 'rgba(203,213,225,0.6)',
+                        borderRadius: 0.75,
+                      }}
+                    >
+                      Connection-URL (for One Desk-app)
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => setCopyMode('token')}
+                      sx={{
+                        textTransform: 'none',
+                        fontSize: '0.7rem',
+                        px: 1,
+                        py: 0.25,
+                        bgcolor: copyMode === 'token' ? 'rgba(251,191,36,0.18)' : 'transparent',
+                        color: copyMode === 'token' ? '#fcd34d' : 'rgba(203,213,225,0.6)',
+                        borderRadius: 0.75,
+                      }}
+                    >
+                      Rå token (CLI)
+                    </Button>
+                  </Stack>
+                )}
+
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Typography sx={{
                     flex: 1,
@@ -443,7 +490,9 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                     overflow: 'auto',
                     whiteSpace: 'nowrap',
                   }}>
-                    {newToken.token}
+                    {copyMode === 'connection' && newToken.connection_url
+                      ? newToken.connection_url
+                      : newToken.token}
                   </Typography>
                   <Button
                     size="small"
@@ -456,6 +505,9 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                 </Stack>
                 <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.74rem', mt: 1 }}>
                   Utløper: {new Date(newToken.expires_at).toLocaleString('nb-NO')}
+                  {newToken.connection_url && copyMode === 'connection' && (
+                    <> · Lim inn direkte i Creatorhub One Desk-appen.</>
+                  )}
                 </Typography>
                 <Button size="small" onClick={() => setNewToken(null)} sx={{ mt: 1, color: 'rgba(203,213,225,0.7)', textTransform: 'none' }}>
                   Lukk

@@ -16,6 +16,7 @@
  * { format: 'pdf' } og setter print-state. Komponenten mountes, kjører
  * window.print(), og fjernes igjen ved 'afterprint'-event eller close-knapp.
  */
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import type { Dancer, Formation } from './formationTypes';
 import { formatTimecode } from './timecode';
@@ -48,7 +49,7 @@ function durationLabel(start: number | null | undefined, end: number | null | un
 }
 
 const STAGE_SVG_BG = '#f6f7fb';
-const STAGE_SVG_BORDER = '#1e2536';
+const STAGE_SVG_BORDER = danceFlowColors.borderStrong;
 
 const StageSvg: React.FC<{
   formation: Formation;
@@ -103,7 +104,7 @@ const StageSvg: React.FC<{
               cx={cx}
               cy={cy}
               r={PUCK_R}
-              fill={d.color ?? '#a78bfa'}
+              fill={d.color ?? danceFlowColors.lavender}
               stroke="#1e2536"
               strokeWidth={1.5}
             />
@@ -195,7 +196,7 @@ export default function StagePlotPrintOverlay({
           background: 'white',
           overflow: 'auto',
           zIndex: 9999,
-          color: '#1f2937',
+          color: danceFlowColors.graySteel,
           fontFamily: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',
         }}
       >
@@ -209,7 +210,7 @@ export default function StagePlotPrintOverlay({
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '8px 16px',
-            background: '#f3f4f6',
+            background: danceFlowColors.grayPaper,
             borderBottom: '1px solid #d1d5db',
             zIndex: 10,
           }}
@@ -221,7 +222,7 @@ export default function StagePlotPrintOverlay({
               onClick={() => window.print()}
               data-testid="stage-plot-print-trigger"
               style={{
-                background: '#a78bfa', color: 'white', border: 'none',
+                background: danceFlowColors.lavender, color: 'white', border: 'none',
                 borderRadius: 4, padding: '6px 14px', fontWeight: 700, cursor: 'pointer',
               }}
             >
@@ -232,7 +233,7 @@ export default function StagePlotPrintOverlay({
               onClick={onClose}
               data-testid="stage-plot-print-close"
               style={{
-                background: 'transparent', color: '#6b7280', border: '1px solid #d1d5db',
+                background: 'transparent', color: danceFlowColors.textDisabled, border: '1px solid #d1d5db',
                 borderRadius: 4, padding: '6px 14px', fontWeight: 600, cursor: 'pointer',
               }}
             >
@@ -246,7 +247,7 @@ export default function StagePlotPrintOverlay({
           {/* Side 1: Sammendrag */}
           <div className="stage-plot-page" style={{ marginBottom: 32 }}>
             <h1 style={{ fontSize: 24, margin: '0 0 4px 0' }}>{title}</h1>
-            <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 16px 0' }}>
+            <p style={{ fontSize: 11, color: danceFlowColors.textDisabled, margin: '0 0 16px 0' }}>
               Generert {now.toLocaleString('nb-NO')} · {ordered.length} formasjoner ·{' '}
               Total varighet: {totalDuration > 0 ? formatTimecode(totalDuration) : '—'} · BPM {bpm}
             </p>
@@ -255,7 +256,7 @@ export default function StagePlotPrintOverlay({
             <h2 style={{ fontSize: 14, marginTop: 16, marginBottom: 8 }}>Dansere ({dancers.length})</h2>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
               <thead>
-                <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
+                <tr style={{ background: danceFlowColors.grayPaper, textAlign: 'left' }}>
                   <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>ID</th>
                   <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>Navn</th>
                   <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>Init.</th>
@@ -268,7 +269,7 @@ export default function StagePlotPrintOverlay({
                     <td style={{ padding: '4px 8px', borderBottom: '1px solid #e5e7eb' }}>
                       <span style={{
                         display: 'inline-block', width: 12, height: 12, borderRadius: 6,
-                        background: d.color ?? '#a78bfa', marginRight: 6, verticalAlign: 'middle',
+                        background: d.color ?? danceFlowColors.lavender, marginRight: 6, verticalAlign: 'middle',
                       }} />
                       D{i + 1}
                     </td>
@@ -284,7 +285,7 @@ export default function StagePlotPrintOverlay({
             <h2 style={{ fontSize: 14, marginTop: 20, marginBottom: 8 }}>Formasjonsrekkefølge</h2>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
               <thead>
-                <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
+                <tr style={{ background: danceFlowColors.grayPaper, textAlign: 'left' }}>
                   <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>#</th>
                   <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>Navn</th>
                   <th style={{ padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>Start</th>
@@ -328,7 +329,7 @@ export default function StagePlotPrintOverlay({
                 <h2 style={{ fontSize: 18, margin: '0 0 4px 0' }}>
                   {idx + 1}. {formation.name}
                 </h2>
-                <span style={{ fontSize: 11, color: '#6b7280' }}>
+                <span style={{ fontSize: 11, color: danceFlowColors.textDisabled }}>
                   {formation.startSec != null ? formatTimecode(formation.startSec) : '—'} —{' '}
                   {formation.endSec != null ? formatTimecode(formation.endSec) : '—'}
                   {' · '}
@@ -342,8 +343,8 @@ export default function StagePlotPrintOverlay({
 
               {formation.notes ? (
                 <div style={{ marginTop: 8 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 2 }}>NOTES</div>
-                  <div style={{ fontSize: 11, color: '#1f2937', whiteSpace: 'pre-wrap' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: danceFlowColors.grayDark, marginBottom: 2 }}>NOTES</div>
+                  <div style={{ fontSize: 11, color: danceFlowColors.graySteel, whiteSpace: 'pre-wrap' }}>
                     {formation.notes}
                   </div>
                 </div>
@@ -351,14 +352,14 @@ export default function StagePlotPrintOverlay({
 
               {formation.tags && formation.tags.length > 0 ? (
                 <div style={{ marginTop: 8 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 2 }}>TAGS</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: danceFlowColors.grayDark, marginBottom: 2 }}>TAGS</div>
                   <div>
                     {formation.tags.map((t) => (
                       <span
                         key={t}
                         style={{
                           display: 'inline-block', fontSize: 10, fontWeight: 600,
-                          background: '#f3f4f6', color: '#374151', padding: '2px 6px',
+                          background: danceFlowColors.grayPaper, color: danceFlowColors.grayDark, padding: '2px 6px',
                           marginRight: 4, borderRadius: 3,
                         }}
                       >
@@ -371,8 +372,8 @@ export default function StagePlotPrintOverlay({
 
               {formation.transitionNote ? (
                 <div style={{ marginTop: 8 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 2 }}>TRANSITION</div>
-                  <div style={{ fontSize: 11, color: '#1f2937' }}>{formation.transitionNote}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: danceFlowColors.grayDark, marginBottom: 2 }}>TRANSITION</div>
+                  <div style={{ fontSize: 11, color: danceFlowColors.graySteel }}>{formation.transitionNote}</div>
                 </div>
               ) : null}
             </div>

@@ -23,10 +23,11 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 use url::Url;
 
 use crate::capture_mirror::{self, MirrorState};
+use crate::helper_client;
 
 #[derive(Default)]
 pub struct CaptureSubscriberState {
@@ -98,13 +99,17 @@ pub fn start_subscription(
     state: Arc<CaptureSubscriberState>,
     mirror_state: Arc<MirrorState>,
     api_base: String,
-    token: String,
+    _token_at_start: String,
     session_id: String,
 ) -> Result<(), String> {
     if state.active.lock().unwrap().contains_key(&session_id) {
         return Err(format!("Allerede subscriber på session {}", session_id));
     }
-    let url = build_ws_url(&api_base, &session_id, &token)?;
+    // Vi tar IKKE token-en med som parameter mer; subscriber re-leser
+    // den fra helper_client::load_config() før hver connect-attempt
+    // slik at en oppdatert token (etter rotation) plukkes opp uten
+    // re-spawn. Argumentet beholdes for backwards-compat — kan fjernes
+    // i en senere PR når vi har flyttet alle callers.
     let cancel = Arc::new(AtomicBool::new(false));
     state.register(session_id.clone(), cancel.clone());
 
@@ -118,7 +123,7 @@ pub fn start_subscription(
             state_clone,
             mirror_state_clone,
             session_id_clone,
-            url,
+            api_base,
             cancel,
         )
         .await;
@@ -127,26 +132,111 @@ pub fn start_subscription(
     Ok(())
 }
 
+/// Klassifisering av connect-failure så caller (run_subscription) kan
+/// bestemme om backoff-retry har mening, eller om vi skal stoppe og
+/// be brukeren rotere token-en.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConnectFailure {
+    /// 401/403 — token er ugyldig/utløpt. Reconnect-loop stopper.
+    AuthExpired,
+    /// Andre feil (nettverk, DNS, server-down). Reconnect med backoff.
+    Transient,
+}
+
+fn classify_connect_error(err: &WsError) -> ConnectFailure {
+    // tungstenite returnerer HTTP-statusen via Http-varianten når
+    // backend svarer på handshake-en med en non-101 status. 401 + 403
+    // signaliserer at token-en ble avvist.
+    if let WsError::Http(response) = err {
+        let status = response.status().as_u16();
+        if status == 401 || status == 403 {
+            return ConnectFailure::AuthExpired;
+        }
+    }
+    ConnectFailure::Transient
+}
+
 async fn run_subscription(
     app: AppHandle,
     state: Arc<CaptureSubscriberState>,
     mirror_state: Arc<MirrorState>,
     session_id: String,
-    url: String,
+    api_base: String,
     cancel: Arc<AtomicBool>,
 ) {
     let mut backoff_ms: u64 = 1_000;
+    let mut last_token: Option<String> = None;
     loop {
         if cancel.load(Ordering::SeqCst) {
             break;
         }
+
+        // Re-les token før hver connect så en oppdatert token (etter
+        // rotation via TokenSetupScreen) plukkes opp uten å re-spawne
+        // subscriber. Hvis config mangler eller leser-feiler tolker
+        // vi det som "ingen tilgang" → emit auth-expired og stopp.
+        let cfg = match helper_client::load_config() {
+            Ok(Some(c)) => c,
+            Ok(None) => {
+                let _ = app.emit(
+                    "capture-subscriber-state",
+                    SubscriberStateEvent {
+                        session_id: session_id.clone(),
+                        state: "auth_expired".into(),
+                        message: Some("Token mangler — re-autentiser i CreatorHub One Desk".into()),
+                    },
+                );
+                break;
+            }
+            Err(err) => {
+                let _ = app.emit(
+                    "capture-subscriber-state",
+                    SubscriberStateEvent {
+                        session_id: session_id.clone(),
+                        state: "error".into(),
+                        message: Some(format!("Kunne ikke lese helper-config: {}", err)),
+                    },
+                );
+                // Behandle som transient så vi forsøker igjen — config-fil
+                // kan være midlertidig låst av en parallel skriver.
+                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                backoff_ms = (backoff_ms * 2).min(30_000);
+                continue;
+            }
+        };
+
+        // Bytt API-base hvis brukeren rotert backend-URL også (sjeldent,
+        // men billig sjekk). Default: bruk URL-en fra start_subscription.
+        let effective_base = if cfg.api_base.is_empty() { api_base.clone() } else { cfg.api_base.clone() };
+
+        let url = match build_ws_url(&effective_base, &session_id, &cfg.token) {
+            Ok(u) => u,
+            Err(err) => {
+                let _ = app.emit(
+                    "capture-subscriber-state",
+                    SubscriberStateEvent {
+                        session_id: session_id.clone(),
+                        state: "error".into(),
+                        message: Some(format!("Ugyldig URL: {}", err)),
+                    },
+                );
+                break;
+            }
+        };
+
+        let token_rotated = last_token.as_ref() != Some(&cfg.token);
+        last_token = Some(cfg.token.clone());
 
         let _ = app.emit(
             "capture-subscriber-state",
             SubscriberStateEvent {
                 session_id: session_id.clone(),
                 state: "connecting".into(),
-                message: None,
+                message: if token_rotated {
+                    Some("Bruker oppdatert token".into())
+                } else {
+                    None
+                },
             },
         );
 
@@ -211,14 +301,36 @@ async fn run_subscription(
                 );
             }
             Err(err) => {
-                let _ = app.emit(
-                    "capture-subscriber-state",
-                    SubscriberStateEvent {
-                        session_id: session_id.clone(),
-                        state: "error".into(),
-                        message: Some(format!("Connect failed: {}", err)),
-                    },
-                );
+                let failure = classify_connect_error(&err);
+                match failure {
+                    ConnectFailure::AuthExpired => {
+                        // Stopp reconnect-loop helt — token-en duger ikke
+                        // og det er ingen poeng å spamme backend. UI får
+                        // tydelig signal og kan prompte for token-rotation.
+                        let _ = app.emit(
+                            "capture-subscriber-state",
+                            SubscriberStateEvent {
+                                session_id: session_id.clone(),
+                                state: "auth_expired".into(),
+                                message: Some(format!(
+                                    "Backend avviste tokenet ({}). Roter token i CreatorHub Admin Room → DIT Helper Tokens, og lim inn i One Desk for å fortsette live-mirror.",
+                                    err
+                                )),
+                            },
+                        );
+                        break;
+                    }
+                    ConnectFailure::Transient => {
+                        let _ = app.emit(
+                            "capture-subscriber-state",
+                            SubscriberStateEvent {
+                                session_id: session_id.clone(),
+                                state: "error".into(),
+                                message: Some(format!("Connect failed: {}", err)),
+                            },
+                        );
+                    }
+                }
             }
         }
 
