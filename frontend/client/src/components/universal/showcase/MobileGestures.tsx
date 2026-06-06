@@ -34,6 +34,7 @@ import {
   Close,
   Info,
   Check,
+  Lightbulb as LightbulbIcon,
 } from '@mui/icons-material';
 
 interface TouchGesture {
@@ -434,8 +435,12 @@ export const MobileGestures: React.FC<MobileGesturesProps> = ({
             borderRadius: 2,
             border: '1px solid rgba(33, 150, 243, 0.3)'
           }}>
-            <Typography variant="subtitle2" sx={{ color: '#2196F3', mb: 1, fontWeight: 600}}>
-              💡 Pro Tips
+            <Typography
+              variant="subtitle2"
+              sx={{ color: '#2196F3', mb: 1, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
+            >
+              <LightbulbIcon sx={{ fontSize: 16 }} />
+              Pro Tips
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)', display: 'block', mb: 0.5 }}>
               • Use two fingers to pinch zoom on images and videos

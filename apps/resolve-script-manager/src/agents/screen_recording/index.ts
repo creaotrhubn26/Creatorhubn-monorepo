@@ -31,6 +31,7 @@ const SCREEN_REC_CHAPTERS = [
     pacingPct: 8,
     description: "Hva vi skal lære, hvem dette er for, hva resultatet blir. Vis sluttresultatet kort først hvis mulig (pattern fra moderne tutorials: 'her er hva du får til etter denne videoen'). Max 15-20s.",
     priorityHint: "high-energy" as const,
+    narrativeBeat: "hook" as const,
   },
   {
     id: "problem_demo",
@@ -38,6 +39,7 @@ const SCREEN_REC_CHAPTERS = [
     pacingPct: 14,
     description: "Vis problemet i kontekst. Demo den friksjonen folk møter. Konkret, ikke abstrakt. Bygger 'aha, det er sånn for meg også'-følelse.",
     priorityHint: "informational" as const,
+    narrativeBeat: "setup" as const,
   },
   {
     id: "walkthrough",
@@ -45,6 +47,7 @@ const SCREEN_REC_CHAPTERS = [
     pacingPct: 38,
     description: "Hovedkjernen — steg for steg. Klikk-zoom på hver kritiske handling. Auto-trim 'ums' og lange pauser. Hver UI-action bør ha verbal narration som forklarer HVORFOR (ikke bare HVA).",
     priorityHint: "informational" as const,
+    narrativeBeat: "build" as const,
   },
   {
     id: "key_feature",
@@ -52,6 +55,7 @@ const SCREEN_REC_CHAPTERS = [
     pacingPct: 16,
     description: "Det viktigste øyeblikket — hvor magien skjer. Pakk det inn med tekst-overlay, slowmo eller pause-effekt så seeren skjønner: 'dette er poenget'.",
     priorityHint: "emotional-peak" as const,
+    narrativeBeat: "peak" as const,
   },
   {
     id: "tips_gotchas",
@@ -59,6 +63,7 @@ const SCREEN_REC_CHAPTERS = [
     pacingPct: 10,
     description: "Edge-cases, common pitfalls, pro-tips. Korte segment-er på 5-15s hver. Kan presenteres med tekst-overlay som 'PRO TIP' eller liste-format.",
     priorityHint: "informational" as const,
+    narrativeBeat: "celebration" as const,
   },
   {
     id: "recap",
@@ -66,6 +71,7 @@ const SCREEN_REC_CHAPTERS = [
     pacingPct: 6,
     description: "Oppsummer det vi lærte i 3-4 punkter med tekst-overlay. Sluttbruker husker bedre når de hører + ser oppsummeringen.",
     priorityHint: "atmospheric" as const,
+    narrativeBeat: "celebration" as const,
   },
   {
     id: "cta",
@@ -73,6 +79,7 @@ const SCREEN_REC_CHAPTERS = [
     pacingPct: 8,
     description: "Konkret neste-steg: prøv selv, abonner, sjekk docs, kontakt oss. Skjerm-tekst + verbal CTA. Slutt med brand-bumper.",
     priorityHint: "high-energy" as const,
+    narrativeBeat: "outro" as const,
   },
 ];
 

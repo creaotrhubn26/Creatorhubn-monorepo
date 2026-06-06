@@ -570,7 +570,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
               <Stack direction="row" spacing={1} alignItems="center">
                 <CircularProgress size={14} />
                 <Typography sx={{ fontSize: 12, color: '#a78bfa' }}>
-                  Claude Vision tagger bildet…
+                  CI tagger bildet…
                 </Typography>
               </Stack>
             )}

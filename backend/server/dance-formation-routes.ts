@@ -30,6 +30,7 @@ import {
   listFormations,
   patchFormation,
   replaceFormations,
+  FormationVersionConflictError,
   type FormationInput,
   type FormationPatch,
 } from './dance-formation-service.js';
@@ -113,6 +114,12 @@ const createBodySchema = z.object({
   transitionNote: transitionNoteSchema.optional(),
   tags: tagsSchema.optional(),
   transitionPaths: transitionPathsSchema.optional(),
+  // Migrasjon 214 (G14)
+  locked: z.boolean().optional(),
+  // Migrasjon 215 (A2): klient sender expectedVersion for optimistic-concurrency.
+  expectedVersion: z.number().int().min(1).optional(),
+  // Migrasjon 216 (G26): section/gruppe-label.
+  sectionName: z.string().max(120).nullable().optional(),
 });
 
 const patchBodySchema = z.object({
@@ -129,6 +136,11 @@ const patchBodySchema = z.object({
   transitionNote: transitionNoteSchema.optional(),
   tags: tagsSchema.optional(),
   transitionPaths: transitionPathsSchema.optional(),
+  locked: z.boolean().optional(),
+  // Migrasjon 215 (A2): klient sender expectedVersion for optimistic-concurrency.
+  expectedVersion: z.number().int().min(1).optional(),
+  // Migrasjon 216 (G26): section/gruppe-label.
+  sectionName: z.string().max(120).nullable().optional(),
 });
 
 const replaceItemSchema = z.object({
@@ -145,6 +157,11 @@ const replaceItemSchema = z.object({
   transitionNote: transitionNoteSchema.optional(),
   tags: tagsSchema.optional(),
   transitionPaths: transitionPathsSchema.optional(),
+  locked: z.boolean().optional(),
+  // Migrasjon 215 (A2): klient sender expectedVersion for optimistic-concurrency.
+  expectedVersion: z.number().int().min(1).optional(),
+  // Migrasjon 216 (G26): section/gruppe-label.
+  sectionName: z.string().max(120).nullable().optional(),
 });
 
 const replaceBodySchema = z.object({
@@ -235,9 +252,15 @@ export function createDanceFormationRouter(
       return;
     }
     const { userId } = req as AuthedRequest;
-    const ok = await deleteFormation(pool, userId, idParsed.data);
-    if (!ok) {
+    const result = await deleteFormation(pool, userId, idParsed.data);
+    if (result === 'not_found') {
       res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    if (result === 'locked') {
+      // Migrasjon 214 (G14): låste formasjoner kan ikke slettes uten å først
+      // låse opp via PATCH { locked: false }.
+      res.status(409).json({ error: 'formation_locked', message: 'Lås opp formasjonen før du sletter den.' });
       return;
     }
     res.json({ success: true });
@@ -250,13 +273,28 @@ export function createDanceFormationRouter(
       return;
     }
     const { userId } = req as AuthedRequest;
-    const written = await replaceFormations(
-      pool,
-      userId,
-      parsed.data.projectId ?? null,
-      parsed.data.formations,
-    );
-    res.json({ success: true, data: written });
+    try {
+      const written = await replaceFormations(
+        pool,
+        userId,
+        parsed.data.projectId ?? null,
+        parsed.data.formations,
+      );
+      res.json({ success: true, data: written });
+    } catch (err) {
+      // A2: version-konflikt → 409 så klient kan reconcile
+      if (err instanceof FormationVersionConflictError) {
+        res.status(409).json({
+          error: 'version_conflict',
+          formationId: err.id,
+          serverVersion: err.serverVersion,
+          clientVersion: err.clientVersion,
+          message: 'En annen bruker eller fane har endret denne formasjonen. Last på nytt for å se siste versjon.',
+        });
+        return;
+      }
+      throw err;
+    }
   });
 
   return router;

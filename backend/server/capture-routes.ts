@@ -366,10 +366,10 @@ function requireAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
 
 function handleZod<T>(
   res: Response,
-  parse: z.SafeParseReturnType<unknown, T>,
-): parse is z.SafeParseSuccess<T> {
+  parse: z.ZodSafeParseResult<T>,
+): parse is z.ZodSafeParseSuccess<T> {
   if (!parse.success) {
-    res.status(400).json({ error: 'invalid_request', details: parse.error.format() });
+    res.status(400).json({ error: 'invalid_request', details: z.treeifyError(parse.error) });
     return false;
   }
   return true;

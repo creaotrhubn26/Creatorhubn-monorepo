@@ -212,7 +212,7 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
             ) : (
               <>
                 <Typography sx={{ fontSize: '0.78rem', color: '#34d399' }}>
-                  ✓ Kode sendt til {userEmail}. Sjekk innboksen (og spam).
+                  Kode sendt til {userEmail}. Sjekk innboksen (og spam).
                 </Typography>
                 <TextField
                   value={emailCode}

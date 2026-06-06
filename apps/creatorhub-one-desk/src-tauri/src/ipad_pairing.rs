@@ -97,6 +97,25 @@ impl IpadPairingState {
     pub fn clear_pin(&self) {
         *self.pending_pin.lock().unwrap() = None;
     }
+
+    /// Legg til en iPad manuelt — for nettverk der Bonjour er blokkert
+    /// (bedrifts-VLAN, WiFi-isolasjon, IPv6-loops). Bruker oppgir IP +
+    /// port + visningsnavn fra iPad-appens "Settings → Vis pairing-info"-
+    /// skjerm. Vi konstruerer en fullname-key som ikke kolliderer med
+    /// ekte Bonjour-oppføringer (suffiks "—manual").
+    pub fn add_manual(&self, device_name: String, ip: String, port: u16, device_id: Option<String>) -> DiscoveredIpad {
+        let fullname = format!("{}._creatorhubcap._tcp.local.—manual", device_name);
+        let entry = DiscoveredIpad {
+            fullname: fullname.clone(),
+            device_id,
+            device_name,
+            app_version: None,
+            addresses: vec![ip],
+            port,
+        };
+        self.discovered.lock().unwrap().insert(fullname, entry.clone());
+        entry
+    }
 }
 
 fn unix_ms() -> u128 {
@@ -132,9 +151,23 @@ pub fn save_paired(list: &[PairedIpad]) -> Result<(), String> {
     Ok(())
 }
 
+/// Status-event som emit'es periodisk (hver 5s) selv om ingen iPad
+/// oppdages, så UI kan vise "Søker… (N funnet etter X sek)" og
+/// brukeren får tilbakemelding på at appen er aktiv.
+#[derive(Debug, Clone, Serialize)]
+pub struct BonjourStatus {
+    pub discovered_count: usize,
+    pub elapsed_secs: u64,
+}
+
 /// Starter Bonjour-browser i bakgrunnen. mdns-sd-eventer pulles fra
 /// daemonens receiver i en egen tråd; oppdaget/forsvunnet iPader
 /// oppdaterer staten og emit'es som `ipads-discovered`-event.
+///
+/// Emitter også `bonjour-status` hvert 5. sekund med antall oppdaget +
+/// elapsed-tid, så UI kan vise "fortsatt søker"-feedback når Bonjour
+/// er trege (bedrifts-nettverk, IPv6-loops) — uten det ser det ut som
+/// appen henger.
 pub fn spawn_browser(app: AppHandle, state: Arc<IpadPairingState>) -> Result<(), String> {
     let daemon = ServiceDaemon::new().map_err(|e| format!("ServiceDaemon: {}", e))?;
     let daemon_arc = Arc::new(daemon);
@@ -147,7 +180,9 @@ pub fn spawn_browser(app: AppHandle, state: Arc<IpadPairingState>) -> Result<(),
     let app_for_browser = app.clone();
     let state_for_browser = state.clone();
     std::thread::spawn(move || {
+        let started_at = Instant::now();
         let mut last_emit = Instant::now();
+        let mut last_status_emit = Instant::now();
         let mut dirty = false;
         loop {
             match receiver.recv_timeout(Duration::from_millis(500)) {
@@ -208,6 +243,19 @@ pub fn spawn_browser(app: AppHandle, state: Arc<IpadPairingState>) -> Result<(),
                 let _ = app_for_browser.emit("ipads-discovered", &payload);
                 last_emit = Instant::now();
                 dirty = false;
+            }
+
+            // Periodisk "fortsatt søker"-status. Tikker hvert 5. sekund
+            // uavhengig av om noe nytt er oppdaget, så UI kan vise
+            // "0 funnet etter 30 sek — prøv manuell input?".
+            if last_status_emit.elapsed() >= Duration::from_secs(5) {
+                let discovered_count = state_for_browser.discovered.lock().unwrap().len();
+                let elapsed_secs = started_at.elapsed().as_secs();
+                let _ = app_for_browser.emit(
+                    "bonjour-status",
+                    BonjourStatus { discovered_count, elapsed_secs },
+                );
+                last_status_emit = Instant::now();
             }
         }
     });

@@ -21,6 +21,7 @@
  * lander direkte i Builder eller Formation View på riktig sted.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   Box,
@@ -171,8 +172,8 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
     <Box
       data-testid="rehearsal-planner"
       sx={{
-        bgcolor: '#0a0a0a',
-        color: '#e5e7eb',
+        bgcolor: danceFlowColors.bgBase,
+        color: danceFlowColors.textSecondary,
         minHeight: '100%',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',
         p: { xs: 2, md: 3 },
@@ -196,14 +197,14 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
         }}
       >
         {/* ─── PRE: Fokus-områder ────────────────────── */}
-        <Card sx={{ bgcolor: '#0f1318', border: '1px solid #1e2536', boxShadow: 'none' }}>
+        <Card sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid #1e2536', boxShadow: 'none' }}>
           <CardContent sx={{ p: 2 }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Box>
-                <Typography sx={{ fontSize: 10, letterSpacing: 1.8, color: '#a78bfa', fontWeight: 700 }}>
+                <Typography sx={{ fontSize: 10, letterSpacing: 1.8, color: danceFlowColors.lavender, fontWeight: 700 }}>
                   FØR PRØVEN · FOKUS-OMRÅDER
                 </Typography>
-                <Typography sx={{ fontSize: 11, color: '#6b7280', mt: 0.25 }}>
+                <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, mt: 0.25 }}>
                   {rehearsal.focusAreas.length} områder · estimert {totalEstimatedMin} min av {rehearsal.estimatedMinutes} min
                 </Typography>
               </Box>
@@ -211,7 +212,7 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                 size="small"
                 startIcon={<AddIcon sx={{ fontSize: 14 }} />}
                 onClick={addFocusArea}
-                sx={{ textTransform: 'none', fontSize: 11, color: '#c4b5fd', borderColor: 'rgba(139,92,246,0.4)' }}
+                sx={{ textTransform: 'none', fontSize: 11, color: danceFlowColors.lavenderLight, borderColor: 'rgba(139,92,246,0.4)' }}
                 variant="outlined"
                 data-testid="rehearsal-add-focus"
               >
@@ -225,10 +226,10 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
               sx={{
                 height: 4,
                 borderRadius: 2,
-                bgcolor: '#1e2536',
+                bgcolor: danceFlowColors.borderStrong,
                 mb: 1.5,
                 '& .MuiLinearProgress-bar': {
-                  bgcolor: focusProgressPct > 100 ? '#f87171' : '#a78bfa',
+                  bgcolor: focusProgressPct > 100 ? danceFlowColors.errorPrimary : danceFlowColors.lavender,
                 },
               }}
             />
@@ -248,7 +249,7 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                 />
               ))}
               {rehearsal.focusAreas.length === 0 && (
-                <Typography sx={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic', textAlign: 'center', py: 2 }}>
+                <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic', textAlign: 'center', py: 2 }}>
                   Ingen fokus-områder ennå. Legg til hva prøven skal handle om.
                 </Typography>
               )}
@@ -271,14 +272,14 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
         </Card>
 
         {/* ─── POST: Reviews + oppfølging ────────────── */}
-        <Card sx={{ bgcolor: '#0f1318', border: '1px solid #1e2536', boxShadow: 'none' }}>
+        <Card sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid #1e2536', boxShadow: 'none' }}>
           <CardContent sx={{ p: 2 }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Box>
                 <Typography sx={{ fontSize: 10, letterSpacing: 1.8, color: '#fde68a', fontWeight: 700 }}>
                   ETTER PRØVEN · REVIEW
                 </Typography>
-                <Typography sx={{ fontSize: 11, color: '#6b7280', mt: 0.25 }}>
+                <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, mt: 0.25 }}>
                   {approvedCount} godkjent · {repeatCount} må repeteres
                 </Typography>
               </Box>
@@ -287,7 +288,7 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                   <IconButton
                     size="small"
                     onClick={() => window.open(rehearsal.recordingUrl, '_blank', 'noopener')}
-                    sx={{ color: '#a78bfa' }}
+                    sx={{ color: danceFlowColors.lavender }}
                   >
                     <VideoIcon sx={{ fontSize: 18 }} />
                   </IconButton>
@@ -312,19 +313,19 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                   );
                 })}
               {rehearsal.focusAreas.every((f) => !f.segmentId) && (
-                <Typography sx={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic', textAlign: 'center', py: 1 }}>
+                <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic', textAlign: 'center', py: 1 }}>
                   Ingen segmenter er knyttet til fokus-områder ennå.
                 </Typography>
               )}
             </Stack>
 
-            <Divider sx={{ borderColor: '#1e2536', my: 1.5 }} />
+            <Divider sx={{ borderColor: danceFlowColors.borderStrong, my: 1.5 }} />
 
             {/* Dancer follow-ups */}
             <FieldLabel>Danser-oppfølging</FieldLabel>
             <Stack spacing={0.75}>
               {rehearsal.dancerFollowUps.length === 0 ? (
-                <Typography sx={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>
+                <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
                   Ingen oppfølginger lagt til ennå.
                 </Typography>
               ) : (
@@ -349,18 +350,18 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                               aria-label="Åpne danser-profil"
                               data-testid={`rehearsal-followup-profile-${fu.dancerId}`}
                               onClick={() => onOpenDancerProfile(fu.dancerId)}
-                              sx={{ color: '#a78bfa', p: 0.25 }}
+                              sx={{ color: danceFlowColors.lavender, p: 0.25 }}
                             >
                               <ProfileIcon sx={{ fontSize: 14 }} />
                             </IconButton>
                           </Tooltip>
                         )}
                       </Stack>
-                      <Typography sx={{ fontSize: 10.5, color: '#cbd5e1' }}>
+                      <Typography sx={{ fontSize: 10.5, color: danceFlowColors.grayLight }}>
                         {fu.followUp}
                       </Typography>
                       {fu.dueBy && (
-                        <Typography sx={{ fontSize: 9, color: '#9ca3af', mt: 0.25 }}>
+                        <Typography sx={{ fontSize: 9, color: danceFlowColors.textMuted, mt: 0.25 }}>
                           Frist: {fu.dueBy}
                         </Typography>
                       )}
@@ -424,17 +425,17 @@ const RehearsalHeader: React.FC<{
   onUpdate: (patch: Partial<Rehearsal>) => void;
 }> = ({ rehearsal, choreographyTitle, invitedCount, onUpdate }) => {
   return (
-    <Card sx={{ bgcolor: '#0f1318', border: '1px solid #1e2536', boxShadow: 'none' }}>
+    <Card sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid #1e2536', boxShadow: 'none' }}>
       <CardContent sx={{ p: 2 }}>
         <Stack direction={{ xs: 'column', md: 'row' }} alignItems="flex-start" justifyContent="space-between" spacing={1.5}>
           <Box sx={{ flex: 1 }}>
-            <Typography sx={{ fontSize: 10, letterSpacing: 2, color: '#a78bfa', fontWeight: 700, mb: 0.5 }}>
+            <Typography sx={{ fontSize: 10, letterSpacing: 2, color: danceFlowColors.lavender, fontWeight: 700, mb: 0.5 }}>
               REHEARSAL PLANNER
             </Typography>
             <Typography sx={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>
               {rehearsal.title}
             </Typography>
-            <Typography sx={{ fontSize: 11, color: '#9ca3af', mt: 0.25 }}>
+            <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted, mt: 0.25 }}>
               For: {choreographyTitle}
             </Typography>
             <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
@@ -454,17 +455,17 @@ const RehearsalHeader: React.FC<{
 };
 
 const HeaderPill: React.FC<{ label: string; icon?: React.ReactNode }> = ({ label, icon }) => (
-  <Stack direction="row" spacing={0.5} alignItems="center" sx={{ px: 1, py: 0.4, borderRadius: 12, bgcolor: '#1e2536', border: '1px solid #2a3142' }}>
-    {icon && <Box sx={{ color: '#9ca3af', display: 'flex' }}>{icon}</Box>}
-    <Typography sx={{ fontSize: 10, color: '#cbd5e1', fontWeight: 500 }}>{label}</Typography>
+  <Stack direction="row" spacing={0.5} alignItems="center" sx={{ px: 1, py: 0.4, borderRadius: 12, bgcolor: danceFlowColors.borderStrong, border: '1px solid #2a3142' }}>
+    {icon && <Box sx={{ color: danceFlowColors.textMuted, display: 'flex' }}>{icon}</Box>}
+    <Typography sx={{ fontSize: 10, color: danceFlowColors.grayLight, fontWeight: 500 }}>{label}</Typography>
   </Stack>
 );
 
 const STATUS_META: Record<RehearsalStatus, { label: string; color: string }> = {
-  planned:     { label: 'Planlagt',     color: '#60a5fa' },
-  in_progress: { label: 'I gang',       color: '#fbbf24' },
-  completed:   { label: 'Fullført',     color: '#34d399' },
-  cancelled:   { label: 'Avlyst',       color: '#9ca3af' },
+  planned:     { label: 'Planlagt',     color: danceFlowColors.infoLight },
+  in_progress: { label: 'I gang',       color: danceFlowColors.gold },
+  completed:   { label: 'Fullført',     color: danceFlowColors.successPrimary },
+  cancelled:   { label: 'Avlyst',       color: danceFlowColors.textMuted },
 };
 
 const StatusChip: React.FC<{ status: RehearsalStatus; onChange: (s: RehearsalStatus) => void }> = ({ status, onChange }) => {
@@ -544,10 +545,10 @@ const FocusAreaCard: React.FC<FocusAreaCardProps> = ({
           </Typography>
         )}
         <Stack direction="row" spacing={0.25}>
-          <IconButton size="small" onClick={() => setEditing(true)} sx={{ color: '#9ca3af', p: 0.25 }}>
+          <IconButton size="small" onClick={() => setEditing(true)} sx={{ color: danceFlowColors.textMuted, p: 0.25 }}>
             <EditIcon sx={{ fontSize: 12 }} />
           </IconButton>
-          <IconButton size="small" onClick={onDelete} sx={{ color: '#9ca3af', p: 0.25, '&:hover': { color: '#f87171' } }}>
+          <IconButton size="small" onClick={onDelete} sx={{ color: danceFlowColors.textMuted, p: 0.25, '&:hover': { color: danceFlowColors.errorPrimary } }}>
             <DeleteIcon sx={{ fontSize: 12 }} />
           </IconButton>
         </Stack>
@@ -586,13 +587,13 @@ const FocusAreaCard: React.FC<FocusAreaCardProps> = ({
           <Chip
             size="small"
             label={`${area.estimatedMinutes} min`}
-            sx={{ height: 20, fontSize: 9.5, bgcolor: '#1e2536', color: '#cbd5e1' }}
+            sx={{ height: 20, fontSize: 9.5, bgcolor: danceFlowColors.borderStrong, color: danceFlowColors.grayLight }}
           />
         )}
       </Stack>
 
       {area.goal && (
-        <Typography sx={{ fontSize: 10.5, color: '#9ca3af', fontStyle: 'italic' }}>
+        <Typography sx={{ fontSize: 10.5, color: danceFlowColors.textMuted, fontStyle: 'italic' }}>
           Mål: {area.goal}
         </Typography>
       )}
@@ -622,9 +623,9 @@ const SegmentReviewRow: React.FC<{
       }}
     >
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
-        <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#e5e7eb', flex: 1 }} noWrap>
+        <Typography sx={{ fontSize: 11, fontWeight: 600, color: danceFlowColors.textSecondary, flex: 1 }} noWrap>
           {segment.label ?? meta.kind}
-          <Box component="span" sx={{ color: '#6b7280', fontSize: 9, ml: 0.5, fontFamily: 'monospace' }}>
+          <Box component="span" sx={{ color: danceFlowColors.textDisabled, fontSize: 9, ml: 0.5, fontFamily: 'monospace' }}>
             {formatTime(segment.startSec)}–{formatTime(segment.endSec)}
           </Box>
         </Typography>
@@ -641,7 +642,7 @@ const SegmentReviewRow: React.FC<{
         value={note ?? ''}
         onChange={(e) => onSetOutcome(outcome, e.target.value)}
         placeholder="Notat (valgfri)"
-        InputProps={{ disableUnderline: true, sx: { fontSize: 10, color: '#cbd5e1' } }}
+        InputProps={{ disableUnderline: true, sx: { fontSize: 10, color: danceFlowColors.grayLight } }}
       />
     </Box>
   );
@@ -649,9 +650,9 @@ const SegmentReviewRow: React.FC<{
 
 const OutcomeButton: React.FC<{ outcome: RehearsalOutcome; active: boolean; onClick: () => void }> = ({ outcome, active, onClick }) => {
   const cfg = {
-    approved:     { Icon: CheckIcon,   color: '#34d399', tip: 'Godkjent'        },
-    needs_repeat: { Icon: ReplayIcon,  color: '#fbbf24', tip: 'Må repeteres'    },
-    pending:      { Icon: PendingIcon, color: '#9ca3af', tip: 'Avventer'        },
+    approved:     { Icon: CheckIcon,   color: danceFlowColors.successPrimary, tip: 'Godkjent'        },
+    needs_repeat: { Icon: ReplayIcon,  color: danceFlowColors.gold, tip: 'Må repeteres'    },
+    pending:      { Icon: PendingIcon, color: danceFlowColors.textMuted, tip: 'Avventer'        },
   }[outcome];
   return (
     <Tooltip title={cfg.tip}>
@@ -661,7 +662,7 @@ const OutcomeButton: React.FC<{ outcome: RehearsalOutcome; active: boolean; onCl
         aria-label={cfg.tip}
         sx={{
           p: 0.4,
-          color: active ? cfg.color : '#4b5563',
+          color: active ? cfg.color : danceFlowColors.grayMid,
           bgcolor: active ? `${cfg.color}22` : 'transparent',
           border: active ? `1px solid ${cfg.color}55` : '1px solid transparent',
         }}
@@ -697,7 +698,7 @@ const DancerFollowUpAdder: React.FC<{
         SelectProps={{ displayEmpty: true }}
         sx={inputSx}
       >
-        <MenuItem value="" sx={{ fontSize: 10, color: '#6b7280' }}>Velg…</MenuItem>
+        <MenuItem value="" sx={{ fontSize: 10, color: danceFlowColors.textDisabled }}>Velg…</MenuItem>
         {dancers.map((d) => (
           <MenuItem key={d.id} value={d.id} sx={{ fontSize: 10 }}>{d.name}</MenuItem>
         ))}
@@ -715,9 +716,9 @@ const DancerFollowUpAdder: React.FC<{
         onClick={handleAdd}
         disabled={!dancerId || !followUp.trim()}
         sx={{
-          bgcolor: '#1e2536', color: '#a78bfa',
-          '&:hover': { bgcolor: '#2a3142' },
-          '&.Mui-disabled': { color: '#4b5563' },
+          bgcolor: danceFlowColors.borderStrong, color: danceFlowColors.lavender,
+          '&:hover': { bgcolor: danceFlowColors.borderSoft },
+          '&.Mui-disabled': { color: danceFlowColors.grayMid },
         }}
       >
         <AddIcon sx={{ fontSize: 14 }} />
@@ -741,26 +742,26 @@ function formatScheduledAt(iso: string): string {
 }
 
 const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', mb: 0.5 }}>
+  <Typography sx={{ fontSize: 9, letterSpacing: 1.5, color: danceFlowColors.textDisabled, fontWeight: 700, textTransform: 'uppercase', mb: 0.5 }}>
     {children}
   </Typography>
 );
 
 const inputSx = {
-  '& .MuiInputBase-input': { fontSize: 10, color: '#e5e7eb' },
+  '& .MuiInputBase-input': { fontSize: 10, color: danceFlowColors.textSecondary },
   '& .MuiOutlinedInput-root': {
-    bgcolor: '#0a0a0a',
-    '& fieldset': { borderColor: '#1e2536' },
+    bgcolor: danceFlowColors.bgBase,
+    '& fieldset': { borderColor: danceFlowColors.borderStrong },
   },
 } as const;
 
 const textareaSx = {
-  '& .MuiInputBase-input': { fontSize: 11, color: '#e5e7eb' },
+  '& .MuiInputBase-input': { fontSize: 11, color: danceFlowColors.textSecondary },
   '& .MuiOutlinedInput-root': {
-    bgcolor: '#0a0a0a',
-    '& fieldset': { borderColor: '#1e2536' },
-    '&:hover fieldset': { borderColor: '#374151' },
-    '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
+    bgcolor: danceFlowColors.bgBase,
+    '& fieldset': { borderColor: danceFlowColors.borderStrong },
+    '&:hover fieldset': { borderColor: danceFlowColors.grayDark },
+    '&.Mui-focused fieldset': { borderColor: danceFlowColors.lavenderDark },
   },
 } as const;
 

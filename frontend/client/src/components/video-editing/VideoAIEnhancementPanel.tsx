@@ -386,7 +386,7 @@ export default function VideoAIEnhancementPanel({
   return (
     <Box sx={{ width: '100%', maxWidth: '1200px', mx: 'auto', p:  3 }}>
       {/* Header */}
-      <Paper sx={{ p: 3, mb: 3, bgcolor: '#f8f9fa', borderLeft: `4px solid ${videoSuiteColor}`, ...theming.getThemedCardSx() }}>
+      <Paper sx={{ p: 3, mb: 3, bgcolor: 'rgba(255,255,255,0.04)', borderLeft: `4px solid ${videoSuiteColor}`, ...theming.getThemedCardSx() }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
             <VideoLibrary sx={{ fontSize:  32, color: videoSuiteColor }} />
@@ -496,7 +496,7 @@ export default function VideoAIEnhancementPanel({
                         key={idx}
                         label={`${key}: ${value}`}
                         size="small"
-                        sx={{ m: 0.5, bgcolor: '#f8f9fa' }}
+                        sx={{ m: 0.5, bgcolor: 'rgba(255,255,255,0.04)' }}
                       />
                     ))}
                   </Box>
@@ -723,7 +723,7 @@ export default function VideoAIEnhancementPanel({
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 2, bgcolor: '#f8f9fa', ...theming.getThemedCardSx() }}>
+                <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', ...theming.getThemedCardSx() }}>
                   <Typography variant="h6" sx={{  mb:  1  }}>Model Information</Typography>
                   <Typography variant="body2" sx={{ mb:  1 }}>
                     • Model: {selectedModel}
@@ -798,7 +798,7 @@ export default function VideoAIEnhancementPanel({
                   </Paper>
                 </Grid>
                 <Grid item xs={4}>
-                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#e3f2fd', ...theming.getThemedCardSx() }}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'rgba(33,150,243,0.08)', ...theming.getThemedCardSx() }}>
                     <Typography variant="h4" color="primary.main" sx={{ color: theming.colors.primary }}>
                       {storyArcAnalysis.storyFlow}%
                     </Typography>
@@ -806,7 +806,7 @@ export default function VideoAIEnhancementPanel({
                   </Paper>
                 </Grid>
                 <Grid item xs={4}>
-                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#fff3e0', ...theming.getThemedCardSx() }}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'rgba(255,152,0,0.12)', ...theming.getThemedCardSx() }}>
                     <Typography variant="h4" color="warning.main" sx={{ color: theming.colors.primary }}>
                       {storyArcAnalysis.pacing}
                     </Typography>

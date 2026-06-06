@@ -48,19 +48,30 @@ export interface ClientGalleryRoutesDeps {
   ensureVideoTimecodeCommentsSchema: () => Promise<void>;
   buildGalleryShareUrl: (accessToken: string) => string;
   fetchGalleryWithSettingsByToken: (accessToken: string) => Promise<any>;
+  /**
+   * Matcher index.ts:22963. Returnerer GalleryPricing-struct som ikke
+   * eksporteres her — bruker bredt-typet any på return.
+   */
   calculateGalleryPricing: (
-    gallery: any,
-    selectedImageIds: string[],
+    gallerySettings: Record<string, unknown> | null | undefined,
+    selectedCount: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ) => any;
   checkContractSignature: (galleryId: string) => Promise<any>;
+  /** Matcher index.ts:23061. Andre parameter er clientEmail, ikke imageIds. */
   countUniqueDownloadedImages: (
     galleryId: string,
-    imageIds: string[],
+    clientEmail: string,
   ) => Promise<number>;
   notifyPhotographerOfDownload: (input: any) => Promise<void>;
+  /**
+   * Matcher index.ts:22136 type GalleryNotificationType + impl 22224.
+   * Literal-union beholdes så call-sites må sende gyldig type-streng.
+   */
   dispatchGalleryNotification: (
-    type: string,
+    type: 'comment_created' | 'selection_submitted' | 'project_milestone',
     photographerId: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     payload: any,
   ) => Promise<void>;
   getCreatorHubStripeClient: () => Stripe | null;
@@ -107,6 +118,54 @@ export function setupClientGalleryRoutes(
     "suggestion",
   ]);
 
+  // Tolker gallery_settings → konkrete policy-flagger. Sentralisert her
+  // fordi flere kall-steder må ta samme avgjørelser. Det fins to formater
+  // som har samlet seg over tid:
+  //   - Showcase-deling (PR #75):   { projectState, allowDownloads, allowComments }
+  //   - iPad-capture-flow (legacy): { allowDownload, allowComments }
+  // projectState er den autoritative source-of-truth når den er satt:
+  //   - 'in_review'  → ingen nedlasting, kommentarer tillatt, watermark
+  //   - 'delivered'  → nedlasting tillatt, kommentarer låst, ingen watermark
+  // Fallback (ingen projectState): respekter eksplisitte flagger med
+  // defaults som matcher den eksisterende oppførselen.
+  type GalleryPolicy = {
+    canDownload: boolean;
+    canComment: boolean;
+    watermarked: boolean;
+    projectState: 'in_review' | 'delivered' | null;
+  };
+  function resolveGalleryPolicy(settings: Record<string, unknown>): GalleryPolicy {
+    const stateRaw = typeof settings.projectState === 'string' ? settings.projectState : null;
+    const projectState =
+      stateRaw === 'delivered' || stateRaw === 'in_review' ? stateRaw : null;
+
+    if (projectState === 'in_review') {
+      return {
+        canDownload: false,
+        canComment: settings.allowComments !== false,
+        watermarked: settings.watermarkEnabled !== false,
+        projectState,
+      };
+    }
+    if (projectState === 'delivered') {
+      return {
+        canDownload: settings.allowDownload !== false && settings.allowDownloads !== false,
+        canComment: false,
+        watermarked: settings.watermarkEnabled === true,
+        projectState,
+      };
+    }
+    // Legacy / ustyrt gallery — gå på eksplisitte flagger.
+    const allowDownload =
+      settings.allowDownload !== false && settings.allowDownloads !== false;
+    return {
+      canDownload: allowDownload,
+      canComment: settings.allowComments !== false,
+      watermarked: settings.watermarkEnabled === true,
+      projectState: null,
+    };
+  }
+
   //
   // Unauthenticated — the accessToken IS the auth. Every request re-signs
   // Capture-sourced image URLs so the gallery keeps working past R2's
@@ -141,17 +200,78 @@ export function setupClientGalleryRoutes(
       // lyd-galleri, bilder / klipp / spor). Failure to look this up is
       // non-fatal; viewer falls back to photographer-flavoured copy.
       let photographerProfession: string | null = null;
+      // Branded landing — gjør klient-galleriet til Fredriks studio,
+      // ikke generisk Creatorhubn. Joiner showcase_configurations
+      // (per-profession config: logo, primaryColor) med users (fallback
+      // til companyName + profileImageUrl). Bare felter som er trygge
+      // for offentlig visning sendes.
+      let branding: {
+        companyName: string | null;
+        logoUrl: string | null;
+        primaryColor: string | null;
+        secondaryColor: string | null;
+        website: string | null;
+      } = {
+        companyName: null,
+        logoUrl: null,
+        primaryColor: null,
+        secondaryColor: null,
+        website: null,
+      };
       try {
         if (gallery.photographerId) {
-          const profRow = await pool.query(
-            'SELECT profession FROM users WHERE id = $1 LIMIT 1',
+          const brandRow = await pool.query(
+            `SELECT
+               u.company_name,
+               u.profile_image_url,
+               u.website,
+               u.profession,
+               sc.logo_url   AS sc_logo_url,
+               sc.primary_color,
+               sc.secondary_color
+             FROM users u
+             LEFT JOIN showcase_configurations sc
+                    ON sc.user_id = u.id
+                   AND sc.is_active = true
+                   AND (u.profession IS NULL OR sc.profession = u.profession)
+             WHERE u.id = $1
+             ORDER BY sc.updated_at DESC NULLS LAST
+             LIMIT 1`,
             [gallery.photographerId],
           );
-          const raw = profRow.rows[0]?.profession;
-          if (typeof raw === 'string' && raw.trim()) photographerProfession = raw.trim();
+          const row = brandRow.rows[0];
+          if (row) {
+            if (typeof row.profession === 'string' && row.profession.trim()) {
+              photographerProfession = row.profession.trim();
+            }
+            const companyName = typeof row.company_name === 'string' && row.company_name.trim()
+              ? row.company_name.trim()
+              : null;
+            const logoUrl = typeof row.sc_logo_url === 'string' && row.sc_logo_url.trim()
+              ? row.sc_logo_url.trim()
+              : (typeof row.profile_image_url === 'string' && row.profile_image_url.trim()
+                  ? row.profile_image_url.trim()
+                  : null);
+            const primaryColor = typeof row.primary_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(row.primary_color)
+              ? row.primary_color
+              : null;
+            const secondaryColor = typeof row.secondary_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(row.secondary_color)
+              ? row.secondary_color
+              : null;
+            const website = typeof row.website === 'string' && row.website.trim()
+              ? row.website.trim()
+              : null;
+            branding = {
+              companyName,
+              logoUrl,
+              primaryColor,
+              secondaryColor,
+              website,
+            };
+          }
         }
       } catch (lookupErr) {
-        console.warn('[client-gallery] profession lookup failed', lookupErr);
+        console.warn('[client-gallery] profession/branding lookup failed', lookupErr);
       }
 
       return res.json({
@@ -166,6 +286,8 @@ export function setupClientGalleryRoutes(
         captureSessionId: gallery.captureSessionId,
         // Slice 9P — drives client-gallery viewer terminology.
         photographerProfession,
+        // Branded landing — viewer rendrer fotografens logo + farger.
+        branding,
         // Slice 9.4 — gate hints. Viewer reads these BEFORE attempting
         // to fetch images so it can render password-prompt or
         // expired-state cleanly.
@@ -205,7 +327,9 @@ export function setupClientGalleryRoutes(
           ...(access.requiresPassword ? { requiresPassword: true } : {}),
         });
       }
-      const images = await listClientGalleryImages(db, access.gallery.id);
+      const images = await listClientGalleryImages(db, access.gallery.id, {
+        accessToken,
+      });
       return res.json({
         galleryId: access.gallery.id,
         images,
@@ -218,6 +342,434 @@ export function setupClientGalleryRoutes(
       return res.status(500).json({ error: "gallery_images_failed" });
     }
   });
+
+  // GET /api/client/gallery/:accessToken/files/:imageId/download
+  // Token-gated decrypt-proxy for chunked-upload-bilder. Validerer
+  // accessToken via samme gate som /images, slår opp imageId mot
+  // client_gallery_images + chunked_uploads, og piper plaintext til
+  // klienten. Stream-videoer kan ikke serveres her (Cloudflare må
+  // kunne lese for transcoding) — returnerer 409 i så fall.
+  app.get(
+    "/api/client/gallery/:accessToken/files/:imageId/download",
+    async (req, res) => {
+      const accessToken = String(req.params.accessToken || "").trim();
+      const imageId = String(req.params.imageId || "").trim();
+      if (!accessToken || !imageId) {
+        return res.status(400).json({ error: "missing_params" });
+      }
+
+      try {
+        const access = await gateGalleryAccess(
+          accessToken,
+          readGalleryPasswordHeader(req),
+        );
+        if (!access.ok) {
+          return res.status(access.status).json({
+            error: access.error,
+            ...(access.requiresPassword ? { requiresPassword: true } : {}),
+          });
+        }
+
+        // Slå opp galleri-bildet for å finne chunkedUploadId
+        const imgRes = await pool.query(
+          `SELECT id, gallery_id, image_metadata, photographer_id
+             FROM client_gallery_images
+            WHERE id = $1 AND gallery_id = $2 AND is_visible = TRUE`,
+          [imageId, access.gallery.id],
+        );
+        if ((imgRes.rowCount ?? 0) === 0) {
+          return res.status(404).json({ error: "image_not_found" });
+        }
+        const imgRow = imgRes.rows[0];
+        const md =
+          imgRow.image_metadata && typeof imgRow.image_metadata === "object"
+            ? imgRow.image_metadata
+            : {};
+        const chunkedUploadId =
+          typeof md.chunkedUploadId === "string" ? md.chunkedUploadId : null;
+        if (!chunkedUploadId) {
+          return res.status(404).json({
+            error: "no_chunked_upload",
+            message:
+              "Dette bildet er ikke en chunked-upload (har ingen chunkedUploadId).",
+          });
+        }
+
+        // Slå opp chunked_uploads med eier-sjekk mot fotografens user_id.
+        // Defense-in-depth: selv om accessToken validerte, sikrer vi at
+        // fila tilhører galleriets eier.
+        const chunkedRes = await pool.query(
+          `SELECT user_id, file_name, mime_type, final_file_path, metadata, file_size
+             FROM chunked_uploads
+            WHERE final_file_id = $1 AND status = 'completed'`,
+          [chunkedUploadId],
+        );
+        if ((chunkedRes.rowCount ?? 0) === 0) {
+          return res.status(404).json({ error: "file_not_found" });
+        }
+        const chunkedRow = chunkedRes.rows[0];
+        if (chunkedRow.user_id !== imgRow.photographer_id) {
+          // Owner-mismatch — sett aldri tilgang. Lagger denne som
+          // mistenkelig fordi det betyr at noen har tuklet med
+          // image_metadata på en eksisterende rad.
+          console.warn(
+            `[client-gallery] owner-mismatch på file ${chunkedUploadId} for image ${imageId}`,
+          );
+          return res.status(403).json({ error: "owner_mismatch" });
+        }
+
+        const metadata =
+          chunkedRow.metadata && typeof chunkedRow.metadata === "object"
+            ? chunkedRow.metadata
+            : {};
+        const backend = metadata.storageBackend as string | undefined;
+        const isEncrypted = metadata.encryptedAtRest === true;
+        const mime = chunkedRow.mime_type || "application/octet-stream";
+
+        if (backend === "cloudflare_stream") {
+          return res.status(409).json({
+            error: "video_in_stream",
+            message:
+              "Videoen ligger i Cloudflare Stream og kan ikke lastes ned som fil. Bruk preview-funksjonen i stedet.",
+          });
+        }
+
+        // Last encryption-helpers dynamisk
+        let dek: Buffer | null = null;
+        let DecryptStream: any = null;
+        let ciphertextSize = 0;
+        if (isEncrypted) {
+          const enc = await import("./file-encryption.js");
+          if (!enc.isEncryptionAvailable()) {
+            return res.status(503).json({
+              error: "encryption_key_missing",
+              message: "Master-KEK mangler — kan ikke dekryptere fila.",
+            });
+          }
+          try {
+            const userKek = enc.deriveUserKek(chunkedRow.user_id);
+            dek = enc.decryptDek(String(metadata.encryptedDek), userKek);
+          } catch (err) {
+            console.error("[client-gallery] DEK decrypt failed", err);
+            return res.status(500).json({ error: "decrypt_failed" });
+          }
+          ciphertextSize = Number(metadata.ciphertextSize ?? 0);
+          if (ciphertextSize <= 0) {
+            return res.status(500).json({ error: "ciphertext_size_missing" });
+          }
+          DecryptStream = enc.DecryptStream;
+        }
+
+        res.setHeader("Content-Type", mime);
+        res.setHeader(
+          "Content-Disposition",
+          `inline; filename="${(chunkedRow.file_name || "fil").replace(/"/g, "")}"`,
+        );
+
+        // R2-pathen
+        if (backend === "r2" && metadata.r2Key) {
+          const { S3Client, GetObjectCommand } = await import(
+            "@aws-sdk/client-s3"
+          );
+          const r2 = new S3Client({
+            region: "auto",
+            endpoint:
+              process.env.GENERIC_UPLOADS_R2_ENDPOINT ||
+              process.env.CLOUDFLARE_R2_ENDPOINT ||
+              process.env.R2_ENDPOINT,
+            credentials: {
+              accessKeyId:
+                process.env.GENERIC_UPLOADS_R2_ACCESS_KEY_ID ||
+                process.env.CLOUDFLARE_R2_ACCESS_KEY_ID ||
+                process.env.R2_ACCESS_KEY_ID ||
+                "",
+              secretAccessKey:
+                process.env.GENERIC_UPLOADS_R2_SECRET_ACCESS_KEY ||
+                process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ||
+                process.env.R2_SECRET_ACCESS_KEY ||
+                "",
+            },
+          });
+          const bucket =
+            process.env.GENERIC_UPLOADS_R2_BUCKET ||
+            process.env.CLOUDFLARE_R2_BUCKET ||
+            process.env.R2_BUCKET ||
+            "";
+          if (!bucket) {
+            return res.status(503).json({ error: "r2_not_configured" });
+          }
+          const obj = await r2.send(
+            new GetObjectCommand({
+              Bucket: bucket,
+              Key: String(metadata.r2Key),
+            }),
+          );
+          if (!obj.Body) {
+            return res.status(502).json({ error: "r2_empty_body" });
+          }
+          const source = obj.Body as NodeJS.ReadableStream;
+          if (isEncrypted) {
+            const ds = new DecryptStream(dek!, ciphertextSize);
+            source.pipe(ds).pipe(res);
+          } else {
+            source.pipe(res);
+          }
+          return;
+        }
+
+        // Filesystem-pathen
+        const path = await import("path");
+        const os = await import("os");
+        const fsSync = await import("fs");
+        const UPLOAD_ROOT =
+          process.env.CHUNKED_UPLOAD_DIR ||
+          path.join(os.tmpdir(), "creatorhub-chunked-uploads");
+        const fullPath = path.join(UPLOAD_ROOT, chunkedRow.final_file_path);
+        if (!fullPath.startsWith(UPLOAD_ROOT)) {
+          return res.status(403).json({ error: "path_traversal_blocked" });
+        }
+        const readStream = fsSync.createReadStream(fullPath);
+        if (isEncrypted) {
+          const ds = new DecryptStream(dek!, ciphertextSize);
+          readStream.pipe(ds).pipe(res);
+        } else {
+          readStream.pipe(res);
+        }
+      } catch (err: any) {
+        console.error("[client-gallery] download failed:", err);
+        return res.status(500).json({ error: "download_failed" });
+      }
+    },
+  );
+
+  // GET /api/photographer/chunked-uploads
+  // Lister innlogget fotografs ferdig-opplastede filer slik at frontend
+  // kan vise en picker for å legge dem til i et galleri.
+  //
+  // Query params:
+  //   ?search=substring     (matcher mot file_name, case-insensitive)
+  //   ?mimePrefix=image/    (filter på MIME, eks "image/" eller "video/")
+  //   ?encryptedOnly=true   (kun encryptedAtRest=true filer)
+  //   ?cursor=ISO_TIMESTAMP (paginering — created_at < cursor)
+  //   ?limit=N              (1–200, default 50)
+  app.get("/api/photographer/chunked-uploads", async (req, res) => {
+    const session = getActiveSessionFromRequest(req);
+    if (!session?.userId) {
+      return res.status(401).json({ error: "not_authenticated" });
+    }
+    const search =
+      typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const mimePrefix =
+      typeof req.query.mimePrefix === "string"
+        ? req.query.mimePrefix.trim()
+        : "";
+    const encryptedOnly = req.query.encryptedOnly === "true";
+    const cursor =
+      typeof req.query.cursor === "string" && req.query.cursor.trim()
+        ? req.query.cursor.trim()
+        : null;
+    const limit = Math.min(
+      200,
+      Math.max(1, parseInt(String(req.query.limit ?? "50"), 10) || 50),
+    );
+
+    const where: string[] = [
+      "user_id = $1",
+      "status = 'completed'",
+      "final_file_id IS NOT NULL",
+    ];
+    const params: any[] = [session.userId];
+    let i = 2;
+    if (search) {
+      where.push(`file_name ILIKE $${i++}`);
+      params.push(`%${search}%`);
+    }
+    if (mimePrefix) {
+      where.push(`mime_type LIKE $${i++}`);
+      params.push(`${mimePrefix}%`);
+    }
+    if (encryptedOnly) {
+      where.push(`(metadata->>'encryptedAtRest')::boolean = true`);
+    }
+    if (cursor) {
+      where.push(`created_at < $${i++}`);
+      params.push(cursor);
+    }
+
+    try {
+      const r = await pool.query<{
+        final_file_id: string;
+        file_name: string;
+        mime_type: string | null;
+        file_size: string | number | null;
+        created_at: string;
+        metadata: Record<string, unknown> | null;
+      }>(
+        `SELECT final_file_id, file_name, mime_type, file_size, created_at, metadata
+           FROM chunked_uploads
+          WHERE ${where.join(" AND ")}
+          ORDER BY created_at DESC
+          LIMIT ${limit}`,
+        params,
+      );
+
+      const rows = r.rows.map((row) => {
+        const md = row.metadata || {};
+        return {
+          fileId: row.final_file_id,
+          fileName: row.file_name,
+          mimeType: row.mime_type,
+          size: Number(row.file_size ?? 0),
+          createdAt: row.created_at,
+          encryptedAtRest: md.encryptedAtRest === true,
+          storageBackend: md.storageBackend ?? null,
+          isVideo:
+            (row.mime_type ?? "").startsWith("video/") ||
+            md.storageBackend === "cloudflare_stream",
+        };
+      });
+
+      const nextCursor =
+        rows.length === limit ? rows[rows.length - 1].createdAt : null;
+
+      res.json({
+        success: true,
+        files: rows,
+        nextCursor,
+      });
+    } catch (err: any) {
+      console.error("[photographer-chunked-uploads] list failed", err);
+      res.status(500).json({
+        error: "list_failed",
+        message: String(err?.message || err).slice(0, 200),
+      });
+    }
+  });
+
+  // POST /api/photographer/galleries/:galleryId/attach-uploads
+  // Owner-endepunkt: koble chunked_uploads (krypterte eller ikke) inn
+  // som client_gallery_images. Brukes når fotograf vil legge til
+  // krypterte filer i et eksisterende galleri uten å gå via
+  // photo-delivery-service eller capture-bridge.
+  //
+  // Body: { fileIds: string[], titles?: string[] }
+  // Returnerer { added: number, skipped: number, imageIds: string[] }
+  app.post(
+    "/api/photographer/galleries/:galleryId/attach-uploads",
+    async (req, res) => {
+      const session = getActiveSessionFromRequest(req);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "not_authenticated" });
+      }
+      const { galleryId } = req.params;
+      const fileIds: string[] = Array.isArray(req.body?.fileIds)
+        ? req.body.fileIds.filter((s: any) => typeof s === "string")
+        : [];
+      const titles: string[] | null = Array.isArray(req.body?.titles)
+        ? req.body.titles
+        : null;
+      if (fileIds.length === 0) {
+        return res.status(400).json({
+          error: "missing_file_ids",
+          message: "fileIds må være en array med minst én chunked_upload final_file_id.",
+        });
+      }
+      if (fileIds.length > 5000) {
+        return res
+          .status(400)
+          .json({ error: "too_many_files", message: "Max 5000 filer per kall." });
+      }
+
+      try {
+        // 1. Verifiser at galleriet tilhører innlogget bruker
+        const galleryRes = await pool.query(
+          `SELECT id, photographer_id
+             FROM photographer_client_galleries
+            WHERE id = $1`,
+          [galleryId],
+        );
+        if ((galleryRes.rowCount ?? 0) === 0) {
+          return res.status(404).json({ error: "gallery_not_found" });
+        }
+        if (galleryRes.rows[0].photographer_id !== session.userId) {
+          return res.status(403).json({ error: "not_gallery_owner" });
+        }
+
+        // 2. Verifiser eierskap på alle filene
+        const owned = await pool.query<{
+          final_file_id: string;
+          file_name: string;
+        }>(
+          `SELECT final_file_id, file_name
+             FROM chunked_uploads
+            WHERE final_file_id = ANY($1::text[])
+              AND user_id = $2
+              AND status = 'completed'`,
+          [fileIds, session.userId],
+        );
+        const ownedMap = new Map(owned.rows.map((r) => [r.final_file_id, r]));
+        const missing = fileIds.filter((id) => !ownedMap.has(id));
+        if (missing.length > 0) {
+          return res.status(403).json({
+            error: "file_not_owned",
+            message: `Du eier ikke ${missing.length} av filene.`,
+            missing,
+          });
+        }
+
+        // 3. Insert client_gallery_images-rader
+        const inserted: string[] = [];
+        const skipped: string[] = [];
+        for (let i = 0; i < fileIds.length; i++) {
+          const fileId = fileIds[i];
+          const fileRow = ownedMap.get(fileId)!;
+          const title =
+            titles && typeof titles[i] === "string" && titles[i].trim()
+              ? titles[i]
+              : fileRow.file_name;
+          try {
+            const ins = await pool.query<{ id: string }>(
+              `INSERT INTO client_gallery_images
+                 (gallery_id, photographer_id, image_title, image_description,
+                  thumbnail_url, full_size_url, image_metadata, sort_order,
+                  is_visible)
+               VALUES ($1, $2::text, $3, NULL, '', '',
+                       jsonb_build_object(
+                         'chunkedUploadId', $4::text,
+                         'encryptedAtRest', TRUE,
+                         'attachedBy', $2::text,
+                         'attachedAt', now()::text
+                       ),
+                       $5::int, TRUE)
+               RETURNING id`,
+              [galleryId, session.userId, title, fileId, i],
+            );
+            inserted.push(ins.rows[0].id);
+          } catch (err) {
+            console.warn(
+              `[client-gallery] insert failed for ${fileId}:`,
+              err,
+            );
+            skipped.push(fileId);
+          }
+        }
+
+        res.json({
+          success: true,
+          added: inserted.length,
+          skipped: skipped.length,
+          imageIds: inserted,
+          skippedFileIds: skipped,
+        });
+      } catch (err: any) {
+        console.error("[client-gallery] attach-uploads failed", err);
+        res.status(500).json({
+          error: "attach_failed",
+          message: String(err?.message || err).slice(0, 200),
+        });
+      }
+    },
+  );
 
   // ── Client-facing interactions ─────────────────────────────────────────
   // The gallery viewer (frontend/client/src/pages/client-gallery.tsx) has
@@ -253,48 +805,49 @@ export function setupClientGalleryRoutes(
       }
       const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
       if (!gallery) return res.status(404).json({ error: "not_found" });
-      // Upsert by (gallery, image, client_email) so each repeat click just
-      // toggles the row's selectionType rather than piling up duplicates.
-      await pool.query(
-        `INSERT INTO client_image_selections (
-           gallery_id, image_id, client_email, selection_type, priority, client_notes, created_at, updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-         ON CONFLICT (gallery_id, image_id, client_email)
-         DO UPDATE SET
-           selection_type = EXCLUDED.selection_type,
-           priority       = EXCLUDED.priority,
-           client_notes   = COALESCE(EXCLUDED.client_notes, client_image_selections.client_notes),
-           updated_at     = NOW()`,
-        [gallery.id, imageId, clientEmail || gallery.clientEmail, selectionType, priority, clientNotes],
-      ).catch(async (err) => {
-        // No unique constraint yet on (gallery_id, image_id, client_email)?
-        // Fall back to a manual upsert so a fresh DB still works.
-        if (String(err?.message || "").includes("ON CONFLICT")) {
-          const existing = await pool.query(
-            `SELECT id FROM client_image_selections
-             WHERE gallery_id = $1 AND image_id = $2 AND client_email = $3 LIMIT 1`,
-            [gallery.id, imageId, clientEmail || gallery.clientEmail],
-          );
-          if (existing.rowCount && existing.rows[0]) {
-            await pool.query(
-              `UPDATE client_image_selections
-               SET selection_type = $1, priority = $2,
-                   client_notes = COALESCE($3, client_notes), updated_at = NOW()
-               WHERE id = $4`,
-              [selectionType, priority, clientNotes, existing.rows[0].id],
-            );
-          } else {
-            await pool.query(
-              `INSERT INTO client_image_selections (
-                 gallery_id, image_id, client_email, selection_type, priority, client_notes
-               ) VALUES ($1, $2, $3, $4, $5, $6)`,
-              [gallery.id, imageId, clientEmail || gallery.clientEmail, selectionType, priority, clientNotes],
-            );
-          }
-          return;
-        }
-        throw err;
-      });
+
+      // Multi-round: hver runde har sin egen selections-rad så Fredrik
+      // kan sammenligne runde 1 vs runde 2. Round leses fra gallery_
+      // settings.proofingRound (default 1, oppdateres av /start-new-round).
+      // Manual upsert keyed på (gallery, image, email, round) for å unngå
+      // ON CONFLICT-constraint som ikke nødvendigvis er installert.
+      const currentRound = Number(
+        (access.settings as any)?.proofingRound ?? 1,
+      ) || 1;
+      try {
+        await pool.query(
+          `ALTER TABLE client_image_selections
+             ADD COLUMN IF NOT EXISTS proofing_round INTEGER DEFAULT 1`,
+        );
+      } catch { /* idempotent */ }
+      const effectiveEmail = clientEmail || gallery.clientEmail;
+      const existing = await pool.query(
+        `SELECT id FROM client_image_selections
+          WHERE gallery_id = $1 AND image_id = $2 AND client_email = $3
+            AND COALESCE(proofing_round, 1) = $4
+          LIMIT 1`,
+        [gallery.id, imageId, effectiveEmail, currentRound],
+      );
+      if (existing.rowCount && existing.rows[0]) {
+        await pool.query(
+          `UPDATE client_image_selections
+             SET selection_type = $1, priority = $2,
+                 client_notes = COALESCE($3, client_notes), updated_at = NOW()
+           WHERE id = $4`,
+          [selectionType, priority, clientNotes, existing.rows[0].id],
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO client_image_selections (
+             gallery_id, image_id, client_email, selection_type, priority,
+             client_notes, proofing_round, created_at, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+          [
+            gallery.id, imageId, effectiveEmail, selectionType, priority,
+            clientNotes, currentRound,
+          ],
+        );
+      }
 
       // Push a realtime event to the photographer's connected clients
       // (iPad + any open tabs) AND persist to the project change-log
@@ -355,14 +908,35 @@ export function setupClientGalleryRoutes(
       }
       const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
       if (!gallery) return res.status(404).json({ error: "not_found" });
-      const result = await pool.query(
-        `SELECT id, image_id, client_email, selection_type, priority, client_notes, updated_at
-         FROM client_image_selections WHERE gallery_id = $1
-         ORDER BY updated_at DESC`,
-        [gallery.id],
-      );
+      // proofing_round-kolonnen kan mangle på galler-DB-er som aldri
+      // har sett en multi-round flow — bruk COALESCE for å degradere
+      // pent til round=1 hvis kolonnen ikke fins ennå.
+      const currentRound = Number(
+        (access.settings as any)?.proofingRound ?? 1,
+      ) || 1;
+      let result;
+      try {
+        result = await pool.query(
+          `SELECT id, image_id, client_email, selection_type, priority,
+                  client_notes, updated_at,
+                  COALESCE(proofing_round, 1) AS proofing_round
+             FROM client_image_selections
+            WHERE gallery_id = $1
+            ORDER BY updated_at DESC`,
+          [gallery.id],
+        );
+      } catch {
+        // Kolonnen finnes ikke ennå — fallback uten den.
+        result = await pool.query(
+          `SELECT id, image_id, client_email, selection_type, priority, client_notes, updated_at
+             FROM client_image_selections WHERE gallery_id = $1
+             ORDER BY updated_at DESC`,
+          [gallery.id],
+        );
+      }
       res.json({
         galleryId: gallery.id,
+        currentRound,
         selections: result.rows.map((r: any) => ({
           id: r.id,
           imageId: r.image_id,
@@ -371,6 +945,7 @@ export function setupClientGalleryRoutes(
           priority: r.priority,
           clientNotes: r.client_notes,
           updatedAt: r.updated_at,
+          proofingRound: Number(r.proofing_round ?? 1) || 1,
         })),
       });
     } catch (error) {
@@ -480,6 +1055,16 @@ export function setupClientGalleryRoutes(
         return res.status(access.status).json({
           error: access.error,
           ...(access.requiresPassword ? { requiresPassword: true } : {}),
+        });
+      }
+      const policy = resolveGalleryPolicy(access.settings ?? {});
+      if (!policy.canComment) {
+        return res.status(403).json({
+          error: 'comments_disabled',
+          projectState: policy.projectState,
+          message: policy.projectState === 'delivered'
+            ? 'Prosjektet er levert. Kommentarer er låst — kontakt fotograf for endringer.'
+            : 'Kommentarer er deaktivert for dette galleriet.',
         });
       }
       await ensureVideoTimecodeCommentsSchema();
@@ -688,6 +1273,16 @@ export function setupClientGalleryRoutes(
         return res.status(access.status).json({
           error: access.error,
           ...(access.requiresPassword ? { requiresPassword: true } : {}),
+        });
+      }
+      const policy = resolveGalleryPolicy(access.settings ?? {});
+      if (!policy.canComment) {
+        return res.status(403).json({
+          error: 'comments_disabled',
+          projectState: policy.projectState,
+          message: policy.projectState === 'delivered'
+            ? 'Prosjektet er levert. Kommentarer er låst — kontakt fotograf for endringer.'
+            : 'Kommentarer er deaktivert for dette galleriet.',
         });
       }
       const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
@@ -1398,8 +1993,15 @@ export function setupClientGalleryRoutes(
       }
       const gallery = access.gallery;
       const settings = access.settings;
-      if (settings.allowDownload === false) {
-        return res.status(403).json({ error: "download_disabled" });
+      const policy = resolveGalleryPolicy(settings ?? {});
+      if (!policy.canDownload) {
+        return res.status(403).json({
+          error: 'download_disabled',
+          projectState: policy.projectState,
+          message: policy.projectState === 'in_review'
+            ? 'Prosjektet er fortsatt i klient-review. Nedlasting åpnes når fotograf merker det som levert.'
+            : 'Nedlasting er deaktivert for dette galleriet.',
+        });
       }
 
       // Slice 9X.11 — kontrakt-gate. Hvis galleriet er linket til en
@@ -1486,7 +2088,45 @@ export function setupClientGalleryRoutes(
       if (picked.length === 0) {
         return res.status(404).json({ error: "no_matching_images" });
       }
-      const watermarked = settings.watermarkEnabled === true;
+      // Bruk policy-helperen (samme som i comments/download-gating) for å
+      // unngå avvik mellom hva som er tillatt og hva som faktisk leveres.
+      const watermarked = policy.watermarked;
+
+      // Sharp-pipeline for on-the-fly watermark. Importeres dynamisk så
+      // vi unngår å laste ~50MB av sharp's binær når galleriet ikke
+      // krever det. Cached på første call.
+      let sharpModulePromise: Promise<typeof import('sharp')> | null = null;
+      const getSharp = () => {
+        if (!sharpModulePromise) {
+          sharpModulePromise = import('sharp').then((m) => (m as any).default ?? m);
+        }
+        return sharpModulePromise;
+      };
+      const watermarkText = String(
+        settings.watermarkText ?? gallery.projectTitle ?? 'PROOF',
+      ).slice(0, 60);
+      const watermarkOpacity = Math.max(
+        0.05,
+        Math.min(1, Number(settings.watermarkOpacity ?? 0.55)),
+      );
+      const escapeXml = (v: string): string =>
+        v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      const buildWatermarkSvg = (width: number, height: number): Buffer => {
+        // Størrelse skalerer med bildets bredde så watermarket er synlig
+        // på både full-res RAW og web-thumbs. ~5% av bredden ≈ leselig.
+        const fontSize = Math.max(28, Math.round(width * 0.05));
+        const padding = Math.round(fontSize * 0.6);
+        const safeText = escapeXml(watermarkText);
+        return Buffer.from(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+            <style>
+              .wm { fill: rgba(255,255,255,${watermarkOpacity}); font-family: Helvetica, Arial, sans-serif; font-weight: 700; font-size: ${fontSize}px; text-shadow: 2px 2px 4px rgba(0,0,0,0.6); }
+            </style>
+            <text x="${width - padding}" y="${height - padding}" text-anchor="end" class="wm">${safeText}</text>
+          </svg>`,
+        );
+      };
 
       const zipFilename = `gallery-${gallery.id.slice(0, 8)}-${Date.now()}.zip`;
       res.setHeader('Content-Type', 'application/zip');
@@ -1503,27 +2143,121 @@ export function setupClientGalleryRoutes(
       archive.pipe(res);
 
       // Pull each image as a node-fetch stream and append. archiver
-      // handles back-pressure so we only buffer one in flight at a
-      // time (the connection drives consumption).
+      // handles back-pressure så vi kun har én in flight om gangen.
+      //
+      // Per-image-strategi avhenger av to flagger:
+      //   stripExif (default true)  — fjerner GPS, kamera-serie, lens-info.
+      //                                Kritisk compliance-vern for pro-fotografer
+      //                                (bryllup/celeb). Opt-out via
+      //                                gallery_settings.preserveExif = true
+      //                                f.eks. ved RAW-leveranse til retusjør.
+      //   watermarked              — fra policy.watermarked (PR #76).
+      //
+      // Beslutningsmatrise:
+      //   pre-watermarkedUrl + !stripExif  → pass-through (gratis)
+      //   watermark on-the-fly             → sharp.composite (already strips
+      //                                      metadata by sharp's default;
+      //                                      explicit ingen withMetadata)
+      //   stripExif uten watermark         → sharp roundtrip kun for å strippe
+      //                                      (litt CPU men ingen composite)
+      //   ingen av delene                  → pass-through (gratis)
+      const preserveExif = settings.preserveExif === true;
+      const stripExif = !preserveExif;
       let appended = 0;
       for (const img of picked) {
-        const sourceUrl = watermarked && img.watermarkedUrl
+        const preWatermarkedUrl = watermarked && img.watermarkedUrl
           ? img.watermarkedUrl
-          : (img.autoCleanedUrl ?? img.fullSizeUrl);
+          : null;
+        const sourceUrl = preWatermarkedUrl
+          ?? img.autoCleanedUrl
+          ?? img.fullSizeUrl;
+        const safeName = `${img.imageTitle.replace(/[\\/:*?"<>|]/g, '_')}.jpg`;
         try {
           const fetchRes = await fetch(sourceUrl);
           if (!fetchRes.ok || !fetchRes.body) {
             console.warn(`[client-gallery] zip skip ${img.id}: ${fetchRes.status}`);
             continue;
           }
-          // node-fetch v3 returns a web ReadableStream; archiver wants a
-          // Node Readable. The Node-native fetch gives us .body as a
-          // web stream too — convert via Readable.fromWeb.
-          const { Readable } = await import('node:stream');
-          const nodeStream = Readable.fromWeb(fetchRes.body as never);
-          const safeName = `${img.imageTitle.replace(/[\\/:*?"<>|]/g, '_')}.jpg`;
-          archive.append(nodeStream, { name: safeName });
-          appended++;
+
+          const needsOnTheFlyWatermark = watermarked && !preWatermarkedUrl;
+          // Pre-watermarked variants er allerede branded, men de kan
+          // fortsatt bære EXIF fra original-eksport — så vi går gjennom
+          // sharp også der hvis stripExif krever det.
+          const needsSharpForExif = stripExif && !needsOnTheFlyWatermark;
+
+          if (needsOnTheFlyWatermark) {
+            // Buffrer + transformerer. Vi ofrer streaming for å garantere
+            // at klienten ALDRI får original uten watermark — selv hvis
+            // sharp feiler hopper vi over bildet (logg + skip). sharp
+            // default-stripper metadata når .withMetadata() ikke kalles.
+            try {
+              const sourceBuffer = Buffer.from(await fetchRes.arrayBuffer());
+              const sharp = await getSharp();
+              const meta = await sharp(sourceBuffer).metadata();
+              const w = meta.width ?? 1600;
+              const h = meta.height ?? 1200;
+              const overlay = buildWatermarkSvg(w, h);
+              const watermarkedBuffer = await sharp(sourceBuffer)
+                .rotate() // auto-orient + strip EXIF orientation
+                .composite([{ input: overlay, gravity: 'southeast', blend: 'over' }])
+                .jpeg({ quality: 90 })
+                .toBuffer();
+              archive.append(watermarkedBuffer, { name: safeName });
+              appended++;
+            } catch (sharpErr) {
+              console.warn(
+                `[client-gallery] watermark composite failed for ${img.id} — SKIPPING for safety:`,
+                sharpErr,
+              );
+              // Skip-på-feil er sikkerhetsdekk: bedre tomt zip-entry
+              // enn å lekke original-piksler ved sharp-krasj.
+            }
+          } else if (needsSharpForExif) {
+            // Kun strip-pipeline, ingen composite. Litt CPU men null
+            // bildebehandling utover re-encoding for å droppe metadata.
+            // Fallback-on-error: streamer originalen heller enn å miste
+            // bildet helt — siden ingen security-gevinst forsvinner her
+            // (klienten har lovlig tilgang når denne pathen tas).
+            try {
+              const sourceBuffer = Buffer.from(await fetchRes.arrayBuffer());
+              const sharp = await getSharp();
+              const strippedBuffer = await sharp(sourceBuffer)
+                .rotate()
+                .jpeg({ quality: 92 })
+                .toBuffer();
+              archive.append(strippedBuffer, { name: safeName });
+              appended++;
+            } catch (sharpErr) {
+              console.warn(
+                `[client-gallery] exif-strip failed for ${img.id} — faller tilbake til original:`,
+                sharpErr,
+              );
+              // Best-effort: append original-bufferet om strip feilet.
+              // Klienten har uansett rett til bildet i denne pathen.
+              try {
+                const fallbackRes = await fetch(sourceUrl);
+                if (fallbackRes.ok && fallbackRes.body) {
+                  const { Readable } = await import('node:stream');
+                  archive.append(Readable.fromWeb(fallbackRes.body as never), {
+                    name: safeName,
+                  });
+                  appended++;
+                }
+              } catch (fallbackErr) {
+                console.warn(
+                  `[client-gallery] fallback fetch failed ${img.id}:`,
+                  fallbackErr,
+                );
+              }
+            }
+          } else {
+            // Pass-through stream — kun når preserveExif=true (eksplisitt
+            // opt-out) og ingen watermark trengs.
+            const { Readable } = await import('node:stream');
+            const nodeStream = Readable.fromWeb(fetchRes.body as never);
+            archive.append(nodeStream, { name: safeName });
+            appended++;
+          }
         } catch (err) {
           console.warn(`[client-gallery] zip fetch failed ${img.id}:`, err);
         }

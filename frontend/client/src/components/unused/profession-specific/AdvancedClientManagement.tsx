@@ -4,9 +4,7 @@ import { useTheming } from '../../../utils/theming-helper';
 import React from 'react';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { useQuery } from '@tanstack/react-query';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import {
   Box,
   Typography,
@@ -21,9 +19,7 @@ import {
   Button,
   Chip,
 } from '@mui/material';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { apiRequest } from '@/lib/queryClient';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import {
   Person,
   Email,
@@ -33,7 +29,6 @@ import {
   LibraryMusic,
   Store,
 } from '@mui/icons-material';
-import { getAuthHeader } from '@/lib/google/impersonation';
 
 interface AdvancedClientManagementProps {
   profession?: 'photographer' | 'videographer' | 'musicproducer' | 'vendor';

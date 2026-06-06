@@ -2505,7 +2505,7 @@ function AcademyDashboard() {
   return (
     <ErrorBoundary showDetails={true}>
       <LazyMotion features={domAnimation} strict>
-        <Box sx={{ height: '100vh', display: 'flex', bgcolor: '#fafafa' }}>
+        <Box sx={{ height: '100vh', display: 'flex', bgcolor: 'rgba(255,255,255,0.04)' }}>
       {/* Demo Mode Indicator */}
       {renderDemoModeIndicator()}
 

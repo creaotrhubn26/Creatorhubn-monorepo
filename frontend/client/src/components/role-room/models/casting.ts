@@ -1737,6 +1737,13 @@ export type ProducerWorkflowProjectStatus =
   | 'changes_requested'
   | 'approved';
 
+export interface ProducerPhaseCompletion {
+  /** ISO-tidspunkt da Levering ble markert fullført, ellers null. */
+  delivery?: string | null;
+  /** ISO-tidspunkt da Økonomi ble markert fullført, ellers null. */
+  economy?: string | null;
+}
+
 export interface ProducerWorkflowProjectMeta {
   totalReviews: number;
   pendingReviews: number;
@@ -1803,6 +1810,22 @@ export interface CastingProject {
    * for film/commercial bør sette dette eksplisitt på prosjektnivå.
    */
   cinemaFormat?: StoryboardDocumentAspectRatio;
+  /**
+   * Mål-lengde på ferdig film/episode i minutter. Brukes til å varsle når
+   * manusets estimerte runtime (≈ sidetall) avviker for mye, f.eks. før
+   * man sender til godkjenning. Persisteres på prosjektet (schemaless compat-store).
+   */
+  targetDurationMinutes?: number;
+  /**
+   * Enkle budsjett-satser produsenten selv setter. Systemet regner et
+   * transparent overslag fra de ekte driverne (opptaksdager, lokasjoner) ×
+   * disse satsene — det finner ALDRI på beløp selv. Persisteres schemaless.
+   */
+  budgetRates?: {
+    perShootDay?: number;
+    perLocation?: number;
+    otherFixed?: number;
+  };
   startDate?: string;
   endDate?: string;
   budget?: number;
@@ -1815,6 +1838,13 @@ export interface CastingProject {
   producerPlanning?: ProducerProjectPlanning;
   producerWorkflowStatus?: ProducerWorkflowProjectStatus;
   producerWorkflowMeta?: ProducerWorkflowProjectMeta;
+  /**
+   * Eksplisitt fullført-markering for Levering- og Økonomi-fasene. Disse
+   * fasene har ingen pålitelig avledet «ferdig»-signal (delivery er ren
+   * konfig, økonomi lever utenfor planning), så produsenten markerer dem
+   * manuelt. ISO-tidspunkt = fullført, null/undefined = ikke fullført.
+   */
+  producerPhaseCompletion?: ProducerPhaseCompletion;
   roles: Role[];
   candidates: Candidate[];
   crew: CrewMember[];

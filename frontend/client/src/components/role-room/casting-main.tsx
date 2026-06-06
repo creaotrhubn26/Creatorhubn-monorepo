@@ -8,7 +8,11 @@ import { CastingLandingPage } from './components/CastingLandingPage';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
 import AgencyPortalView from './components/AgencyPortalView';
-import TalentsApp, { parseTalentsAppPage, isPartnerInviteAcceptPath, PartnerInviteAcceptPage } from './talents-app/TalentsApp';
+import TalentsApp, {
+  parseTalentsAppPage,
+  isPartnerInviteAcceptPath, PartnerInviteAcceptPage,
+  isTalentProposalAcceptPath, TalentProposalAcceptPage,
+} from './talents-app/TalentsApp';
 import CompetitorComparisonPage, { parseCompetitorFromPath } from './components/CompetitorComparisonPage';
 import StudentSEOPage, { parseStudentPageFromPath } from './components/StudentSEOPage';
 import PressKitPage, { parsePressKitFromPath } from './components/PressKitPage';
@@ -456,7 +460,8 @@ function CastingStandaloneRuntimeContent() {
   const normalizedRequestedRole = String(sessionAdminUser?.requestedRole || '').trim().toLowerCase();
   const talentsAppPage = useMemo(() => parseTalentsAppPage(), []);
   const isInviteAcceptPath = useMemo(() => isPartnerInviteAcceptPath(), []);
-  const shouldRenderTalentsApp = !guestMode && talentsAppPage !== null && !isInviteAcceptPath;
+  const isProposalAcceptPath = useMemo(() => isTalentProposalAcceptPath(), []);
+  const shouldRenderTalentsApp = !guestMode && talentsAppPage !== null && !isInviteAcceptPath && !isProposalAcceptPath;
   const shouldRenderAgencyPortal = !guestMode && !shouldRenderTalentsApp && normalizedRole === 'agency';
   const shouldRenderTalentPortal = !guestMode && !shouldRenderTalentsApp && !shouldRenderAgencyPortal && (
     Boolean(talentPortalIntent)
@@ -490,6 +495,8 @@ function CastingStandaloneRuntimeContent() {
         </Box>
       ) : isInviteAcceptPath ? (
           <PartnerInviteAcceptPage />
+        ) : isProposalAcceptPath ? (
+          <TalentProposalAcceptPage />
         ) : !isAuthenticated ? (
           <CastingLandingPage onEnter={handleEnter} />
         ) : shouldRenderTalentsApp ? (

@@ -315,6 +315,166 @@ export async function hasGoogleCustomerAccess(
   }
 }
 
+/**
+ * Status for én MCC↔kunde-link slik Google Ads-API rapporterer den.
+ * - PENDING: invitasjonen er sendt fra MCC, klient har ikke godkjent ennå
+ * - ACTIVE: linken er aktiv (samme som å finne customer i listAccessibleCustomers)
+ * - REFUSED: klient avviste
+ * - CANCELED: produsenten kansellerte invitasjonen
+ * - INACTIVE: linken er deaktivert
+ * - UNKNOWN: andre statuser vi ikke modellerer eksplisitt
+ */
+export type GoogleAdsMccLinkStatus =
+  | "PENDING"
+  | "ACTIVE"
+  | "REFUSED"
+  | "CANCELED"
+  | "INACTIVE"
+  | "UNKNOWN";
+
+export interface GoogleAdsMccLink {
+  clientCustomerId: string;
+  status: GoogleAdsMccLinkStatus;
+  managerLinkId: string | null;
+  hidden: boolean;
+}
+
+/**
+ * Sender en MCC↔kunde invitasjon fra produsentens MCC til den oppgitte
+ * client-customer-id-en. Klienten ser invitasjonen som en notifikasjon i
+ * sin Google Ads og kan godkjenne med ett klikk.
+ *
+ * Krever at produsentens OAuth-token har scope `adwords` og at
+ * `loginCustomerId` er satt til MCC-en (vi bruker GOOGLE_ADS_LOGIN_CUSTOMER_ID).
+ *
+ * Returnerer manager_link_id som vi kan bruke senere til å sjekke status
+ * eller kansellere.
+ */
+export async function sendMccInvite(
+  auth: { accessToken: string; developerToken: string; loginCustomerId: string },
+  clientCustomerId: string,
+): Promise<{ resourceName: string; managerLinkId: string | null }> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${auth.accessToken}`,
+    "developer-token": auth.developerToken,
+    "login-customer-id": auth.loginCustomerId,
+    "content-type": "application/json",
+  };
+  // POST /customers/{login_customer_id}/customerClientLinks:mutate
+  // create { client_customer: "customers/{clientCustomerId}", status: PENDING }
+  const body = {
+    operations: [
+      {
+        create: {
+          clientCustomer: `customers/${clientCustomerId}`,
+          status: "PENDING",
+        },
+      },
+    ],
+  };
+  const res = await fetchImpl(
+    `${GOOGLE_ADS_BASE}/customers/${auth.loginCustomerId}/customerClientLinks:mutate`,
+    { method: "POST", headers, body: JSON.stringify(body) },
+  );
+  const raw = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg =
+      (raw as { error?: { message?: string } })?.error?.message ||
+      `sendMccInvite failed (HTTP ${res.status})`;
+    throw new GoogleAdsApiError(res.status, msg, raw);
+  }
+  const result = ((raw as { results?: { resourceName: string }[] })?.results ?? [])[0];
+  const resourceName = result?.resourceName || "";
+  // resourceName format: customers/{mcc}/customerClientLinks/{client_customer_id}~{manager_link_id}
+  const managerLinkId = resourceName.split("~")[1] ?? null;
+  return { resourceName, managerLinkId };
+}
+
+/**
+ * Lister alle MCC↔kunde-links (pending + active + refused) fra MCC-en.
+ * Brukes til å vise dashboard med invitasjons-status per kunde.
+ *
+ * Bruker GAQL searchStream mot customer_client_link i MCC.
+ */
+export async function listMccLinks(auth: {
+  accessToken: string;
+  developerToken: string;
+  loginCustomerId: string;
+}): Promise<GoogleAdsMccLink[]> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${auth.accessToken}`,
+    "developer-token": auth.developerToken,
+    "login-customer-id": auth.loginCustomerId,
+    "content-type": "application/json",
+  };
+  const query = `
+    SELECT
+      customer_client_link.client_customer,
+      customer_client_link.manager_link_id,
+      customer_client_link.status,
+      customer_client_link.hidden
+    FROM customer_client_link
+    ORDER BY customer_client_link.status
+  `;
+  const res = await fetchImpl(
+    `${GOOGLE_ADS_BASE}/customers/${auth.loginCustomerId}/googleAds:searchStream`,
+    { method: "POST", headers, body: JSON.stringify({ query }) },
+  );
+  const raw = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg =
+      (raw as { error?: { message?: string } })?.error?.message ||
+      `listMccLinks failed (HTTP ${res.status})`;
+    throw new GoogleAdsApiError(res.status, msg, raw);
+  }
+  // searchStream returnerer array av batcher: [{ results: [{ customerClientLink: {...} }] }]
+  const batches = Array.isArray(raw) ? raw : [raw];
+  const allLinks: GoogleAdsMccLink[] = [];
+  for (const batch of batches) {
+    const results = (batch as { results?: unknown[] })?.results ?? [];
+    for (const row of results) {
+      const link = (row as { customerClientLink?: Record<string, unknown> })
+        ?.customerClientLink;
+      if (!link) continue;
+      const clientResourceName = String(link.clientCustomer || "");
+      const clientCustomerId = clientResourceName.replace(/^customers\//, "");
+      if (!clientCustomerId) continue;
+      const status = String(link.status || "UNKNOWN").toUpperCase();
+      allLinks.push({
+        clientCustomerId,
+        status: ([
+          "PENDING",
+          "ACTIVE",
+          "REFUSED",
+          "CANCELED",
+          "INACTIVE",
+        ].includes(status)
+          ? (status as GoogleAdsMccLinkStatus)
+          : "UNKNOWN"),
+        managerLinkId: link.managerLinkId ? String(link.managerLinkId) : null,
+        hidden: Boolean(link.hidden),
+      });
+    }
+  }
+  return allLinks;
+}
+
+/**
+ * Henter MCC↔kunde-link-status for én spesifikk kunde-id. Returnerer null
+ * hvis ingen invitasjon/link finnes (klienten har aldri vært invitert).
+ */
+export async function getMccLinkStatus(
+  auth: { accessToken: string; developerToken: string; loginCustomerId: string },
+  clientCustomerId: string,
+): Promise<GoogleAdsMccLink | null> {
+  try {
+    const links = await listMccLinks(auth);
+    return links.find((l) => l.clientCustomerId === clientCustomerId) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Normalize a Google Ads row to the shared NOK metrics shape. */
 export function normalizeGoogleAdsRow(
   row: GoogleAdsInsightsRow,

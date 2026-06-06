@@ -57,6 +57,14 @@ import {
   type TeamSeatRow,
 } from './post-agent-storage.js';
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 interface SessionData {
   userId: string;
   email: string;
@@ -407,32 +415,277 @@ export function createPostAgentRouter(
    */
   router.get('/me', postAgentAuth, async (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;
+    // Robust mot databaser der profession/company_name-kolonnene ikke har
+    // blitt migrert ennå (migrasjon 0001 + 212). Hvis full-select feiler
+    // med "column ... does not exist", fall tilbake til minimum-set og
+    // returner profession/companyName som null — UI viser fortsatt
+    // brukeren som pålogget istedenfor "Token utløpt".
+    const fullCols = 'id, email, first_name, last_name, role, profile_image_url, profession, company_name, is_administrator';
+    const minCols  = 'id, email, first_name, last_name, role, profile_image_url, is_administrator';
+    let u: Record<string, unknown> | undefined;
+    let degraded = false;
     try {
       const { rows } = await pool.query(
-        `SELECT id, email, first_name, last_name, role, profile_image_url, profession, company_name, is_administrator
-         FROM users WHERE id = $1 LIMIT 1`,
+        `SELECT ${fullCols} FROM users WHERE id = $1 LIMIT 1`,
         [userId],
       );
-      const u = rows[0];
-      if (!u) {
-        res.status(404).json({ error: 'user_not_found' });
+      u = rows[0];
+    } catch (err) {
+      const msg = (err as Error).message || '';
+      if (/column .* does not exist/i.test(msg)) {
+        degraded = true;
+        try {
+          const { rows } = await pool.query(
+            `SELECT ${minCols} FROM users WHERE id = $1 LIMIT 1`,
+            [userId],
+          );
+          u = rows[0];
+        } catch (err2) {
+          res.status(500).json({ error: 'profile_lookup_failed', detail: (err2 as Error).message });
+          return;
+        }
+      } else {
+        res.status(500).json({ error: 'profile_lookup_failed', detail: msg });
         return;
       }
-      const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+    }
+    if (!u) {
+      res.status(404).json({ error: 'user_not_found' });
+      return;
+    }
+    const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+    res.json({
+      id: u.id,
+      email: u.email,
+      name: fullName || (u.email as string | undefined)?.split('@')[0] || 'Bruker',
+      firstName: u.first_name,
+      lastName: u.last_name,
+      role: u.role || 'user',
+      profileImageUrl: u.profile_image_url,
+      profession: degraded ? null : u.profession,
+      companyName: degraded ? null : u.company_name,
+      isAdministrator: u.is_administrator === true,
+      schemaDegraded: degraded || undefined,
+    });
+  });
+
+  // ---- Feedback ----
+
+  /**
+   * POST /feedback — Irlin/Daniel sender bug/forslag/spørsmål direkte fra
+   * Post Agent's "📨 Send feedback"-dialog. Lagrer i DB + sender e-post
+   * til daniel@creatorhubn.com. Erstattet tidligere mailto:-fallback som
+   * krevde konfigurert mail-klient.
+   *
+   * Body: { category, message, bridge_status?, platform?, user_agent?, client_version? }
+   */
+  router.post('/feedback', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const body = (req.body ?? {}) as {
+      category?: string;
+      message?: string;
+      bridge_status?: unknown;
+      platform?: string;
+      user_agent?: string;
+      client_version?: string;
+    };
+    const category = (body.category ?? 'other').toString().slice(0, 40);
+    const message = (body.message ?? '').toString().trim();
+    if (!message) {
+      res.status(400).json({ error: 'message_required' });
+      return;
+    }
+
+    // Lagre — DB-table opprettet i migration 215. Hvis table mangler,
+    // svelg feilen og fortsett med e-post slik at brukeren ikke får
+    // 500 mens migrate venter.
+    let feedbackId: number | null = null;
+    try {
+      const { rows } = await pool.query<{ id: number }>(
+        `INSERT INTO post_agent_feedback
+          (user_id, category, message, bridge_status, platform, user_agent, client_version)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
+         RETURNING id`,
+        [
+          userId,
+          category,
+          message,
+          body.bridge_status ? JSON.stringify(body.bridge_status) : null,
+          body.platform ?? null,
+          body.user_agent ?? null,
+          body.client_version ?? null,
+        ],
+      );
+      feedbackId = rows[0]?.id ?? null;
+    } catch (err) {
+      console.warn('[post-agent feedback] DB insert failed:', (err as Error).message);
+    }
+
+    // Hent bruker-info for e-posten
+    let userEmail = 'ukjent';
+    try {
+      const { rows } = await pool.query<{ email: string }>(
+        `SELECT email FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      userEmail = rows[0]?.email ?? 'ukjent';
+    } catch {
+      /* non-critical */
+    }
+
+    // Send e-post — silent failure er ok (DB-raden er primær storage)
+    const subject = `Post Agent feedback [${category}] fra ${userEmail}`;
+    const text =
+`Fra: ${userEmail} (user_id ${userId})
+Kategori: ${category}
+${body.platform ? `Plattform: ${body.platform}` : ''}
+${body.client_version ? `Klient-versjon: ${body.client_version}` : ''}
+Feedback-ID: ${feedbackId ?? '(DB-feil)'}
+
+---
+${message}
+---
+
+Bridge-status: ${body.bridge_status ? JSON.stringify(body.bridge_status, null, 2) : '(ikke rapportert)'}
+User agent: ${body.user_agent ?? '(ikke rapportert)'}
+Tidspunkt: ${new Date().toISOString()}
+`;
+    const html = `<p><strong>Fra:</strong> ${escapeHtml(userEmail)} (user_id ${userId})</p>
+<p><strong>Kategori:</strong> ${escapeHtml(category)}</p>
+<p><strong>Feedback-ID:</strong> ${feedbackId ?? '(DB-feil)'}</p>
+<hr>
+<pre style="white-space:pre-wrap">${escapeHtml(message)}</pre>
+<hr>
+<details><summary>Diagnostikk</summary>
+<pre>${escapeHtml(text)}</pre>
+</details>`;
+
+    const emailResult = await sendEmail({
+      to: 'daniel@creatorhubn.com',
+      subject,
+      text,
+      html,
+      fromName: 'Post Agent Feedback',
+    });
+
+    res.json({
+      ok: true,
+      feedback_id: feedbackId,
+      emailed: emailResult.success,
+      email_error: emailResult.success ? undefined : emailResult.error,
+    });
+  });
+
+  // ---- AI image generation ----
+
+  /**
+   * POST /ai/generate-image — proxer mot fal.ai Flux 1.1 Pro for å lage
+   * et bilde fra et prompt. Brukes av Post Agent som Phase 2 av
+   * "AI-to-editable-PSD"-pipelinen. Resultatet er en URL eller base64
+   * som klienten henter ned og lagrer som en fil for å bruke som
+   * smart-object-innhold i scaffolded PSD.
+   *
+   * Body: { prompt, options?: { width?, height?, image_size? } }
+   * Returns: { image_url, model, seed? }
+   */
+  router.post('/ai/generate-image', postAgentAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const body = (req.body ?? {}) as {
+      prompt?: string;
+      options?: {
+        image_size?: string;       // "square_hd" | "portrait_16_9" | "landscape_16_9" | ...
+        num_inference_steps?: number;
+        guidance_scale?: number;
+        seed?: number | null;
+      };
+    };
+    const prompt = (body.prompt ?? '').toString().trim();
+    if (!prompt) {
+      res.status(400).json({ error: 'prompt_required' });
+      return;
+    }
+
+    const falKey = process.env.FAL_KEY?.trim();
+    if (!falKey) {
+      res.status(503).json({
+        error: 'image_provider_not_configured',
+        detail: 'FAL_KEY env var er ikke satt på serveren. Sett FAL_KEY i Render env og restart.',
+      });
+      return;
+    }
+
+    const opts = body.options ?? {};
+    const falBody = {
+      prompt,
+      image_size: opts.image_size ?? 'square_hd',
+      num_inference_steps: opts.num_inference_steps ?? 28,
+      guidance_scale: opts.guidance_scale ?? 3.5,
+      ...(opts.seed != null ? { seed: opts.seed } : {}),
+    };
+
+    try {
+      const r = await fetch('https://fal.run/fal-ai/flux-pro/v1.1', {
+        method: 'POST',
+        headers: {
+          Authorization: `Key ${falKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(falBody),
+      });
+      if (!r.ok) {
+        const txt = await r.text();
+        res.status(r.status).json({
+          error: 'image_provider_failed',
+          status: r.status,
+          detail: txt.slice(0, 500),
+        });
+        return;
+      }
+      const data = await r.json() as {
+        images?: Array<{ url?: string; width?: number; height?: number }>;
+        seed?: number;
+        timings?: unknown;
+      };
+      const firstImage = data.images?.[0];
+      if (!firstImage?.url) {
+        res.status(502).json({ error: 'no_image_in_response', detail: JSON.stringify(data).slice(0, 500) });
+        return;
+      }
+
+      // Audit-log: lagre en rad så vi har historikk på hva brukerne genererer.
+      // Best-effort — hvis tabellen mangler, fortsett uten.
+      try {
+        await pool.query(
+          `CREATE TABLE IF NOT EXISTS post_agent_ai_image_log (
+            id          SERIAL PRIMARY KEY,
+            user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            prompt      TEXT NOT NULL,
+            image_url   TEXT NOT NULL,
+            seed        BIGINT,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )`,
+        );
+        await pool.query(
+          `INSERT INTO post_agent_ai_image_log (user_id, prompt, image_url, seed)
+           VALUES ($1, $2, $3, $4)`,
+          [userId, prompt, firstImage.url, data.seed ?? null],
+        );
+      } catch (logErr) {
+        console.warn('[post-agent ai/generate-image] log insert failed:', (logErr as Error).message);
+      }
+
       res.json({
-        id: u.id,
-        email: u.email,
-        name: fullName || u.email?.split('@')[0] || 'Bruker',
-        firstName: u.first_name,
-        lastName: u.last_name,
-        role: u.role || 'user',
-        profileImageUrl: u.profile_image_url,
-        profession: u.profession,
-        companyName: u.company_name,
-        isAdministrator: u.is_administrator === true,
+        image_url: firstImage.url,
+        width: firstImage.width ?? null,
+        height: firstImage.height ?? null,
+        model: 'black-forest-labs/flux-pro-1.1',
+        seed: data.seed ?? null,
       });
     } catch (err) {
-      res.status(500).json({ error: 'profile_lookup_failed', detail: (err as Error).message });
+      res.status(500).json({
+        error: 'image_provider_error',
+        detail: (err as Error).message,
+      });
     }
   });
 

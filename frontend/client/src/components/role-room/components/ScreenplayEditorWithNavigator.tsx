@@ -28,6 +28,7 @@ import {
   Snackbar,
   Badge,
   Typography,
+  Collapse,
   useMediaQuery,
   Drawer,
 } from '@mui/material';
@@ -48,9 +49,15 @@ import {
   FullscreenExit as FullscreenExitIcon,
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
+  AutoStories as StoryFoundationIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+  ChatBubbleOutline as CommentIcon,
 } from '@mui/icons-material';
 import { ScreenplayEditor } from './ScreenplayEditor';
-import { SceneNavigatorSidebar, type ParsedScene } from './SceneNavigatorSidebar';
+import { SceneNavigatorSidebar, reorderScenesInContent, buildLineCommentAnchor, resolveLineCommentAnchor, type ParsedScene } from './SceneNavigatorSidebar';
+import { PostCommentLayer } from './PostCommentLayer';
+import authSessionService from '../services/authSessionService';
 import { BeatBoard } from './BeatBoard';
 import { TableReadPanel } from './TableReadPanel';
 import { ScriptAnalysisPanel } from './ScriptAnalysisPanel';
@@ -58,6 +65,7 @@ import { StoryStructurePanel } from './StoryStructurePanel';
 import { GrammarCheckPanel } from './screenplay/GrammarCheckPanel';
 import { StoryboardIntegrationView } from './StoryboardIntegrationView';
 import type { SceneBreakdown, UserRoleType, Role, Candidate } from '../models/casting';
+import type { StoryLogicState } from '../services/storyLogicService';
 import { analyzeScript, type BeatCard } from '../services/scriptAnalysisService';
 import { castingAuthService } from '../services/castingAuthService';
 import { ScreenplayGuide } from './ScreenplayGuide';
@@ -195,7 +203,7 @@ const getResponsiveValues = (tier: ScreenTier) => {
 };
 
 export type ScriptLockState = 'unlocked' | 'locked' | 'final';
-export type RightPanelType = 'none' | 'analysis' | 'beatboard' | 'tableread' | 'structure' | 'grammar' | 'storyboard';
+export type RightPanelType = 'none' | 'analysis' | 'beatboard' | 'tableread' | 'structure' | 'grammar' | 'storyboard' | 'comments';
 export type HeaderSaveState = 'saved' | 'saving' | 'unsaved' | 'error';
 
 export interface ScreenplayHeaderSummary {
@@ -252,6 +260,16 @@ export interface ScreenplayEditorWithNavigatorProps {
   // Script title for sharing
   scriptTitle?: string;
   headerSummary?: ScreenplayHeaderSummary | null;
+
+  /**
+   * Story-fundamentet fra Story Logic (logline, tema, sjanger). Når satt vises
+   * en kollapsbar "Story Foundation"-stripe øverst i editoren, så produsenten
+   * har historiens DNA synlig mens han skriver — i stedet for at det er borte.
+   */
+  storyLogicData?: StoryLogicState | null;
+
+  /** Manus-id — brukes som anker for kommentar-tråder i editoren. */
+  manuscriptId?: string;
 }
 
 const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorProps> = ({
@@ -280,8 +298,37 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   scriptTitle = 'Untitled',
   headerSummary = null,
   editorKey,
+  storyLogicData = null,
+  manuscriptId,
 }) => {
   const { tier, isMobile, isTablet, isDesktop: _isDesktop, is4K } = useScreenTier();
+  const [storyFoundationOpen, setStoryFoundationOpen] = useState(false);
+  // Per-linje kommentarer: rå ankre fra server (scene-relative), pluss valgt
+  // tråd. Markør-linjene utledes fra ankrene + GJELDENDE innhold (useMemo under),
+  // så markørene følger teksten ved skriving/reorder uten å lagre absolutt linje.
+  const [lineCommentAnchors, setLineCommentAnchors] = useState<string[]>([]);
+  const [activeCommentAnchor, setActiveCommentAnchor] = useState<string | null>(null);
+  const storyFoundationLogline = storyLogicData?.logline?.fullLogline?.trim() || '';
+  const hasStoryFoundation = Boolean(
+    storyFoundationLogline ||
+    storyLogicData?.theme?.centralTheme ||
+    storyLogicData?.concept?.genre,
+  );
+  // Marg-markør-linjer: løs hvert (scene-relative) anker mot GJELDENDE innhold.
+  const commentLineSet = useMemo(() => {
+    const set = new Set<number>();
+    if (!manuscriptId) return set;
+    for (const ref of lineCommentAnchors) {
+      const line = resolveLineCommentAnchor(value, manuscriptId, ref);
+      if (line != null && line > 0) set.add(line);
+    }
+    return set;
+  }, [lineCommentAnchors, value, manuscriptId]);
+  // Gjeldende linje for den åpne tråden (for "Linje X"-chip + gå-til-linje).
+  const activeCommentLine = useMemo(() => {
+    if (!activeCommentAnchor || !manuscriptId) return null;
+    return resolveLineCommentAnchor(value, manuscriptId, activeCommentAnchor);
+  }, [activeCommentAnchor, value, manuscriptId]);
   const responsive = getResponsiveValues(tier);
 
   // ── Consolidated UI state via reducer ─────────────────────────────────────
@@ -301,6 +348,19 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   const [currentLine, setCurrentLine] = useState(1);
   const [_highlightedLine, setHighlightedLine] = useState<number | null>(null);
   const [showGuide, setShowGuide] = useState(false);
+  // Åpne Fountain-guiden automatisk FØRSTE gang en bruker er i manus-editoren,
+  // så ikke-tekniske produsenter ikke møter en blank editor uten å vite formatet.
+  useEffect(() => {
+    try {
+      const KEY = 'role_room_screenplay_guide_seen';
+      if (typeof window !== 'undefined' && !window.localStorage.getItem(KEY)) {
+        setShowGuide(true);
+        window.localStorage.setItem(KEY, '1');
+      }
+    } catch {
+      /* private mode / quota — ignorer */
+    }
+  }, []);
   const [selectedScene, setSelectedScene] = useState<SceneBreakdown | null>(null);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'warning' | 'error' }>({
     open: false, message: '', severity: 'success',
@@ -473,6 +533,51 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     }
     onChange(newValue);
   }, [isReadOnly, onChange]);
+
+  // Scene-reorder: Fountain-teksten er source-of-truth, så vi flytter scenens
+  // linje-blokk i teksten og ruter gjennom handleChange (respekterer lås).
+  // Kommentarer er scene-relativt forankret (sceneId + offset), så de følger
+  // automatisk med — ingen re-mapping nødvendig.
+  const handleReorderScenes = useCallback((fromIndex: number, toIndex: number) => {
+    const next = reorderScenesInContent(value, fromIndex, toIndex);
+    if (next === value) return;
+    handleChange(next);
+    setSnackbar({ open: true, message: 'Scene flyttet', severity: 'success' });
+  }, [value, handleChange]);
+
+  // Hent linje-ankrede kommentarer for dette manuset → marg-markører. Poll så
+  // markører oppdateres når teamet kommenterer. anchorRef-format: `<manusId>#<linje>`.
+  useEffect(() => {
+    const token = authSessionService.getSessionTokenSync();
+    if (!projectId || !manuscriptId || !token) {
+      setLineCommentAnchors([]);
+      return;
+    }
+    let cancelled = false;
+    const prefix = `${manuscriptId}#`;
+    const fetchAnchors = async () => {
+      try {
+        const res = await fetch(`/api/role-room/editor-comments?projectId=${encodeURIComponent(projectId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const items: Array<{ anchorType?: string; anchorRef?: string | null }> =
+          Array.isArray(data?.comments) ? data.comments : Array.isArray(data) ? data : [];
+        const anchors = Array.from(new Set(
+          items
+            .filter((c) => c.anchorType === 'screenplay_line' && typeof c.anchorRef === 'string' && c.anchorRef.startsWith(prefix))
+            .map((c) => c.anchorRef as string),
+        ));
+        if (!cancelled) setLineCommentAnchors(anchors);
+      } catch {
+        /* best-effort */
+      }
+    };
+    void fetchAnchors();
+    const timer = setInterval(fetchAnchors, 20000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [projectId, manuscriptId]);
 
   const issueCount = analysis.characterConflicts.length + analysis.consistencyIssues.length;
 
@@ -845,18 +950,24 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                 <TableReadIcon sx={{ fontSize: responsive.iconSize }} />
               </Tooltip>
             </ToggleButton>
-            {!isTablet && [
-              <ToggleButton key="grammar" value="grammar" aria-label="grammar">
-                <Tooltip title="Grammatikk & Stavekontroll (ML)">
-                  <SpellcheckIcon sx={{ fontSize: responsive.iconSize }} />
-                </Tooltip>
-              </ToggleButton>,
-              <ToggleButton key="storyboard" value="storyboard" aria-label="storyboard">
+            {/* Grammatikk er nyttig også på tablet — vis den alltid. */}
+            <ToggleButton value="grammar" aria-label="grammar">
+              <Tooltip title="Grammatikk & Stavekontroll (ML)">
+                <SpellcheckIcon sx={{ fontSize: responsive.iconSize }} />
+              </Tooltip>
+            </ToggleButton>
+            <ToggleButton value="comments" aria-label="comments">
+              <Tooltip title="Kommentarer & teamfeedback på manuset">
+                <CommentIcon sx={{ fontSize: responsive.iconSize }} />
+              </Tooltip>
+            </ToggleButton>
+            {!isTablet && (
+              <ToggleButton value="storyboard" aria-label="storyboard">
                 <Tooltip title="Storyboard">
                   <StoryboardIcon sx={{ fontSize: responsive.iconSize }} />
                 </Tooltip>
               </ToggleButton>
-            ]}
+            )}
           </ToggleButtonGroup>
         )}
       </Paper>
@@ -898,6 +1009,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
               }}
               collapsed={false}
               onToggleCollapse={() => {}}
+              onReorderScenes={isReadOnly ? undefined : handleReorderScenes}
               width={responsive.sidebarWidth - 16}
               darkMode={true}
             />
@@ -911,20 +1023,70 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             onSceneSelect={handleSceneSelect}
             collapsed={sidebarCollapsed}
             onToggleCollapse={() => dispatchUi({ type: 'TOGGLE_SIDEBAR' })}
+            onReorderScenes={isReadOnly ? undefined : handleReorderScenes}
             width={responsive.sidebarWidth}
             darkMode={true}
           />
         )}
 
         {/* Main Editor */}
-        <Box 
-          sx={{ 
-            flex: 1, 
-            height: '100%', 
+        <Box
+          sx={{
+            flex: 1,
+            height: '100%',
             overflow: 'hidden',
             position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
+          {hasStoryFoundation && (
+            <Box sx={{ flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.08)', bgcolor: 'rgba(139,92,246,0.06)' }}>
+              <Box
+                onClick={() => setStoryFoundationOpen((prev) => !prev)}
+                sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' } }}
+              >
+                <StoryFoundationIcon sx={{ fontSize: responsive.iconSize - 2, color: '#a78bfa' }} />
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#c4b5fd' }}>
+                  Story Foundation
+                </Typography>
+                {!storyFoundationOpen && storyFoundationLogline && (
+                  <Typography
+                    variant="caption"
+                    sx={{ color: 'rgba(255,255,255,0.6)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}
+                  >
+                    {storyFoundationLogline}
+                  </Typography>
+                )}
+                <Box sx={{ flex: storyFoundationOpen || !storyFoundationLogline ? 1 : 'unset' }} />
+                {storyFoundationOpen ? <ExpandLessIcon sx={{ fontSize: 18, color: '#a78bfa' }} /> : <ExpandMoreIcon sx={{ fontSize: 18, color: '#a78bfa' }} />}
+              </Box>
+              <Collapse in={storyFoundationOpen}>
+                <Box sx={{ px: 1.5, pb: 1.25, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  {storyFoundationLogline && (
+                    <Typography variant="body2" sx={{ color: '#fff', fontStyle: 'italic' }}>
+                      "{storyFoundationLogline}"
+                    </Typography>
+                  )}
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 0.25 }}>
+                    {storyLogicData?.concept?.genre && (
+                      <Chip size="small" label={`Sjanger: ${storyLogicData.concept.genre}`} sx={{ bgcolor: 'rgba(139,92,246,0.15)', color: '#ddd6fe' }} />
+                    )}
+                    {storyLogicData?.theme?.centralTheme && (
+                      <Chip size="small" label={`Tema: ${storyLogicData.theme.centralTheme}`} sx={{ bgcolor: 'rgba(139,92,246,0.15)', color: '#ddd6fe' }} />
+                    )}
+                    {storyLogicData?.logline?.antagonisticForce && (
+                      <Chip size="small" label={`Konflikt: ${storyLogicData.logline.antagonisticForce}`} sx={{ bgcolor: 'rgba(239,68,68,0.12)', color: '#fecaca' }} />
+                    )}
+                    {storyLogicData?.logline?.stakes && (
+                      <Chip size="small" label={`Innsats: ${storyLogicData.logline.stakes}`} sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: '#fde68a' }} />
+                    )}
+                  </Box>
+                </Box>
+              </Collapse>
+            </Box>
+          )}
+          <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
           {isReadOnly && (
             <Alert
               severity="info"
@@ -960,7 +1122,17 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             showLineNumbers={showLineNumbers && !isMobile}
             onCursorChange={handleCursorChange}
             spellCheck={enableSpellcheck}
+            commentLines={commentLineSet}
+            onCommentLineClick={(line) => {
+              if (manuscriptId) {
+                const ref = lineCommentAnchors.find((r) => resolveLineCommentAnchor(value, manuscriptId, r) === line)
+                  ?? buildLineCommentAnchor(value, manuscriptId, line);
+                setActiveCommentAnchor(ref);
+              }
+              dispatchUi({ type: 'SET_RIGHT_PANEL', payload: 'comments' });
+            }}
           />
+          </Box>
         </Box>
 
         {!isMobile && rightPanel !== 'none' && (
@@ -1158,6 +1330,59 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                   </Typography>
                 </Box>
               )}
+              {rightPanel === 'comments' && (() => {
+                const token = authSessionService.getSessionTokenSync();
+                if (!projectId || !token) {
+                  return (
+                    <Box sx={{ p: isMobile ? 2 : 3, textAlign: 'center', color: 'text.secondary' }}>
+                      <CommentIcon sx={{ fontSize: is4K ? 64 : 48, opacity: 0.5, mb: 2 }} />
+                      <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
+                        Logg inn og åpne et prosjekt for å se og legge til kommentarer på manuset.
+                      </Typography>
+                    </Box>
+                  );
+                }
+                const lineMode = activeCommentAnchor != null && Boolean(manuscriptId);
+                const orphaned = lineMode && activeCommentLine == null;
+                return (
+                  <Box sx={{ p: 1.5, height: '100%', overflow: 'auto' }}>
+                    {/* Modus-bryter: hele manuset vs. en konkret linje */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+                      {lineMode ? (
+                        <>
+                          <Chip
+                            size="small"
+                            color={orphaned ? 'default' : 'warning'}
+                            label={orphaned ? 'Scene slettet' : `Linje ${activeCommentLine}`}
+                            onClick={() => activeCommentLine != null && gotoLine(activeCommentLine)}
+                          />
+                          <Button size="small" onClick={() => setActiveCommentAnchor(null)}>
+                            Vis hele manuset
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<CommentIcon sx={{ fontSize: 16 }} />}
+                          disabled={isReadOnly || !manuscriptId}
+                          onClick={() => manuscriptId && setActiveCommentAnchor(buildLineCommentAnchor(value, manuscriptId, currentLine || 1))}
+                        >
+                          Kommenter linje {currentLine || 1}
+                        </Button>
+                      )}
+                    </Box>
+                    <PostCommentLayer
+                      key={lineMode ? activeCommentAnchor! : 'manuscript'}
+                      projectId={projectId}
+                      anchorType={lineMode ? 'screenplay_line' : 'manuscript'}
+                      anchorRef={lineMode ? activeCommentAnchor! : (manuscriptId || projectId)}
+                      auth={{ kind: 'bearer', token }}
+                      readOnly={isReadOnly}
+                    />
+                  </Box>
+                );
+              })()}
             </Box>
           )
         )}

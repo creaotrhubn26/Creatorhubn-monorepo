@@ -30,6 +30,7 @@ const SHORT_FILM_CHAPTERS = [
     pacingPct: 6,
     description: "Pre-title hook. Et visuelt eller dialog-moment som gir tonen og spørsmål-vekteren. I korte shorts kan dette være filmens første scene; i lengre shorts er det noe atypisk som kommer før Akt 1.",
     priorityHint: "high-energy" as const,
+    narrativeBeat: "hook" as const,
   },
   {
     id: "act1_setup",
@@ -37,6 +38,7 @@ const SHORT_FILM_CHAPTERS = [
     pacingPct: 18,
     description: "Etablering. Hvem er hovedpersonen, hva er deres ordinære verden, hva mangler de. Pacing skal være kontemplativt mer enn dramatisk. Visuell etablering > eksposisjon.",
     priorityHint: "informational" as const,
+    narrativeBeat: "setup" as const,
   },
   {
     id: "inciting_incident",
@@ -44,6 +46,7 @@ const SHORT_FILM_CHAPTERS = [
     pacingPct: 6,
     description: "Det øyeblikket alt endres. En oppdagelse, et møte, en beslutning. Skal være TYDELIG — ikke gli umerkbart inn. Cut + sound-design bør forsterke skiftet.",
     priorityHint: "emotional-peak" as const,
+    narrativeBeat: "build" as const,
   },
   {
     id: "act2_rising",
@@ -51,6 +54,7 @@ const SHORT_FILM_CHAPTERS = [
     pacingPct: 28,
     description: "Hovedpersonen møter motgang, lærer, prøver, feiler. Pacing øker gradvis. Midt i akt 2 ofte 'all is lost'-øyeblikk. Hold visuell motif fra setup, men varier komposisjon.",
     priorityHint: "informational" as const,
+    narrativeBeat: "build" as const,
   },
   {
     id: "climax",
@@ -58,6 +62,7 @@ const SHORT_FILM_CHAPTERS = [
     pacingPct: 14,
     description: "Det høyeste følelsesmessige eller fysiske punktet. Den store konfrontasjonen, valget, oppdagelsen. Cuts kan være raskere her hvis action; eller LANGE takes hvis emosjonell vekt.",
     priorityHint: "emotional-peak" as const,
+    narrativeBeat: "peak" as const,
   },
   {
     id: "act3_resolution",
@@ -65,6 +70,7 @@ const SHORT_FILM_CHAPTERS = [
     pacingPct: 14,
     description: "Konsekvensene. Hva som har endret seg. Pacing roer ned. Hovedperson-en er ikke samme som ved start — vis det visuelt.",
     priorityHint: "atmospheric" as const,
+    narrativeBeat: "celebration" as const,
   },
   {
     id: "coda",
@@ -72,6 +78,7 @@ const SHORT_FILM_CHAPTERS = [
     pacingPct: 4,
     description: "Det aller siste øyeblikket. Ofte et stillesittende shot, en motif-callback, eller en åpen-slutt-detalj. Skal føles uunngåelig. Hold lengre enn du tror du må.",
     priorityHint: "atmospheric" as const,
+    narrativeBeat: "outro" as const,
   },
   {
     id: "credits",
@@ -79,6 +86,7 @@ const SHORT_FILM_CHAPTERS = [
     pacingPct: 10,
     description: "Cast + crew-roll. Kan være tekst-only mot sort, eller spill over en kontekst-shot. Hvis filmen vises på festival: følg festival-template-en.",
     priorityHint: "atmospheric" as const,
+    narrativeBeat: "outro" as const,
   },
 ];
 

@@ -87,8 +87,8 @@ const ACCOUNT_RE = /\b\d{4}[\.\s]?\d{2}[\.\s]?\d{5}\b/g;
 const POSTAL_ADDR_RE = /\b\d{4}\s+[A-ZÆØÅ][a-zæøåA-ZÆØÅ\- ]{2,40}\b/g;
 const STREET_ADDR_RE = /\b[A-ZÆØÅ][a-zæøå]+(?:gata|veien|vegen|gate|plassen|svingen|alleen|stien)\s+\d+\w?\b/gi;
 
-export function scrubPII(text: string | null | undefined): string {
-  if (!text) return "";
+export function scrubPII(text: string | null | undefined | unknown): string {
+  if (!text || typeof text !== "string") return "";
   return text
     // Fødselsnummer eller annet 11-sifret ID
     .replace(FNR_RE, "[fjernet-id]")

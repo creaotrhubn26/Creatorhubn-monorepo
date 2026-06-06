@@ -234,6 +234,8 @@ export const KeyboardShortcutsTutorial: React.FC<KeyboardShortcutsTutorialProps>
       PaperProps={{
         sx: {
           borderRadius: 3,
+          background: '#0f0a07',
+          color: 'rgba(255,255,255,0.95)',
           ...theming.getThemedCardSx()
         }
       }}
@@ -272,10 +274,10 @@ export const KeyboardShortcutsTutorial: React.FC<KeyboardShortcutsTutorialProps>
           sx={{
           p: 3,
           mb: 3,
-          background: `linear-gradient(135deg, ${theming.colors.primary}15 0%, ${theming.colors.secondary}15 100%)`,
+          background: `linear-gradient(135deg, ${theming.colors.primary}20 0%, ${theming.colors.secondary}20 100%)`,
           borderRadius: 2,
-          border: `1px solid ${theming.colors.primary}30`,
-          bgcolor: 'background.paper'
+          border: `1px solid ${theming.colors.primary}40`,
+          color: 'rgba(255,255,255,0.95)'
           }}
         >
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -351,7 +353,7 @@ export const KeyboardShortcutsTutorial: React.FC<KeyboardShortcutsTutorialProps>
                   sx={{
                     p: 2,
                     mb: 2,
-                    bgcolor: 'background.default',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                     borderLeft: `3px solid ${theming.colors.primary}`,
                     borderRadius: 1
                   }}

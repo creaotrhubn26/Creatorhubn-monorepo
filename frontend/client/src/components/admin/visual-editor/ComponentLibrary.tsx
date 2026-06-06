@@ -842,8 +842,8 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
                           sx={{
                             p: 1.25,
                             borderRadius: 2,
-                            bgcolor: '#f8fafc',
-                            border: '1px solid #e5e7eb',
+                            bgcolor: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.10)',
                             minHeight: 96,
                           }}
                         >
@@ -1091,8 +1091,8 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
                 sx={{
                   p: 2,
                   borderRadius: 2,
-                  bgcolor: '#f8fafc',
-                  border: '1px solid #e5e7eb',
+                  bgcolor: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.10)',
                 }}
               >
                 <Typography variant="subtitle2" gutterBottom>

@@ -112,15 +112,27 @@ export async function fetchClientGalleryByAccessToken(
  * List every visible image on the gallery with URLs that are fresh
  * right now. Capture-sourced images (identified by image_metadata
  * .captureAssetId) are re-signed from the current captureAssets row's
- * R2 keys; other images pass through their stored URLs unchanged.
+ * R2 keys; chunked-upload-sourced images (image_metadata
+ * .chunkedUploadId) get URL-er som peker til vårt eget decrypt-
+ * proxy-endepunkt slik at krypterte filer dekrypteres on-the-fly når
+ * klienten henter dem. Andre bilder passerer gjennom de lagrede
+ * URL-ene uendret.
  *
  * The signer is injectable so tests can stub it without touching the
  * real R2 client.
+ *
+ * Når `accessToken` er gitt, brukes den til å bygge per-bilde URL-er
+ * for chunked-upload-bilder. Hvis den ikke er gitt, beholder krypterte
+ * bilder sine stored URLs (fallback for callers som ikke kjenner
+ * tokenet — i praksis ingen av de eksisterende kalleren).
  */
 export async function listClientGalleryImages(
   db: Db,
   galleryId: string,
-  options: { signKey?: (key: string | null) => Promise<string | null> } = {},
+  options: {
+    signKey?: (key: string | null) => Promise<string | null>;
+    accessToken?: string;
+  } = {},
 ): Promise<ClientGalleryImageRendered[]> {
   const signer = options.signKey ?? signAssetReadUrl;
   const images = await db
@@ -172,13 +184,25 @@ export async function listClientGalleryImages(
     const md = (row.imageMetadata ?? {}) as Record<string, unknown>;
     const captureAssetId =
       typeof md.captureAssetId === 'string' ? md.captureAssetId : null;
+    const chunkedUploadId =
+      typeof md.chunkedUploadId === 'string' ? md.chunkedUploadId : null;
 
     let thumbnailUrl = row.thumbnailUrl;
     let fullSizeUrl = row.fullSizeUrl;
     let autoCleanedUrl: string | null = null;
     let signingFailed = false;
 
-    if (captureAssetId) {
+    // Chunked-upload-bilder: rute URL-er gjennom vårt decrypt-proxy
+    // endpoint slik at krypterte filer dekrypteres on-the-fly. Krever
+    // accessToken så endepunktet kan validere klient-tilgangen.
+    if (chunkedUploadId && options.accessToken) {
+      const base = `/api/client/gallery/${encodeURIComponent(options.accessToken)}/files/${encodeURIComponent(row.id)}/download`;
+      // Vi har ikke en separat thumbnail-kanal for krypterte filer i
+      // dag; samme URL brukes for både thumbnail og full size. Klient-
+      // siden render det fine ved at browseren cacher etter første GET.
+      thumbnailUrl = base;
+      fullSizeUrl = base;
+    } else if (captureAssetId) {
       const keys = keysByAssetId.get(captureAssetId) ?? null;
       const previewKey = keys?.previewKey ?? null;
       const fullKey = keys?.fullKey ?? previewKey;

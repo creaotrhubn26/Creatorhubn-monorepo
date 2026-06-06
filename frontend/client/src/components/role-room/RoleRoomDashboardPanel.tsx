@@ -30,6 +30,7 @@ import RoleRoomProjectSwitcher from './components/RoleRoomProjectSwitcher';
 import RoleRoomMobileInboxSheet, { InboxItem } from './components/RoleRoomMobileInboxSheet';
 import RoleRoomMobileProfileSheet from './components/RoleRoomMobileProfileSheet';
 import ProjectTabAccessDialog from './components/ProjectTabAccessDialog';
+import IgDmInbox from '../crm/IgDmInbox';
 import ProjectMembersDialog from './components/ProjectMembersDialog';
 import { roleRoomProjectTabConfigService } from './services/roleRoomProjectTabConfigService';
 import RoleRoomMobileApprovalView from './components/mobile-approval/RoleRoomMobileApprovalView';
@@ -109,6 +110,7 @@ import {
   AutoFixHigh as AutoFixHighIcon,
   AccountCircle as AccountCircleIcon,
   Paid as PaidIcon,
+  Instagram as InstagramIcon,
 } from '@mui/icons-material';
 import { getActiveProfessionMode, isDanceMode, isProductionMode } from './config/professionMode';
 import { PostAgentReadyCard } from './components/PostAgentReadyCard';
@@ -306,6 +308,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   const [inboxAnchor, setInboxAnchor] = useState<HTMLElement | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileAnchor, setProfileAnchor] = useState<HTMLElement | null>(null);
+  const [showIgInbox, setShowIgInbox] = useState(false);
   const [recentProjectIds, setRecentProjectIds] = useState<string[]>(() => readRecentProjects());
   const [restoredFromSession, setRestoredFromSession] = useState(false);
   const restoreAttemptedRef = useRef(false);
@@ -1188,6 +1191,17 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                 )}
                 {subTab === 'publishing' && canUsePublishing && (
                   <Box sx={{ display: 'grid', gap: 2 }}>
+                    <Box>
+                      <Button
+                        variant="outlined"
+                        startIcon={<InstagramIcon />}
+                        onClick={() => setShowIgInbox(true)}
+                        data-testid="role-room-ig-inbox-open"
+                      >
+                        Instagram-innboks
+                      </Button>
+                    </Box>
+                    <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor="#8b5cf6" />
                     {!publishingProjectId && (
                       <Alert severity="info" variant="outlined">
                         YouTube-publisering virker nå i The Role Room, men dette prosjektet er ikke koblet til et CreatorHub-prosjekt ennå.

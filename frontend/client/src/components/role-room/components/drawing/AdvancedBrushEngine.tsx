@@ -329,7 +329,10 @@ export class AdvancedBrushEngine {
     const dist = Math.hypot(to.x - from.x, to.y - from.y);
     const steps = Math.max(1, Math.ceil(dist / 1.5));
     // Tilt utvider strøken sideveis — emulerer at man holder graphiten flatt.
-    const tilt = ((from.tilt ?? 0) + (to.tilt ?? 0)) / 2;
+    // PencilPoint har tiltX + tiltY (radianer); vi summerer magnitude.
+    const tiltFrom = Math.hypot(from.tiltX ?? 0, from.tiltY ?? 0);
+    const tiltTo = Math.hypot(to.tiltX ?? 0, to.tiltY ?? 0);
+    const tilt = (tiltFrom + tiltTo) / 2;
     const tiltBroaden = 1 + tilt * tiltSensitivity * 1.2;
 
     for (let i = 0; i <= steps; i++) {

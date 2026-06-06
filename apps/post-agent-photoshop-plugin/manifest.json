@@ -1,0 +1,30 @@
+{
+  "manifestVersion": 6,
+  "id": "no.creatorhubn.post-agent-bridge",
+  "name": "Post Agent Bridge",
+  "version": "0.1.0",
+  "main": "index.html",
+  "host": [
+    {
+      "app": "PS",
+      "minVersion": "23.0.0"
+    }
+  ],
+  "entrypoints": [
+    {
+      "type": "panel",
+      "id": "postAgentBridgePanel",
+      "label": { "default": "Post Agent Bridge" },
+      "minimumSize": { "width": 240, "height": 200 },
+      "maximumSize": { "width": 2000, "height": 2000 },
+      "preferredDockedSize": { "width": 320, "height": 320 },
+      "preferredFloatingSize": { "width": 360, "height": 360 }
+    }
+  ],
+  "requiredPermissions": {
+    "network": {
+      "domains": ["ws://localhost:1733", "ws://127.0.0.1:1733"]
+    },
+    "localFileSystem": "fullAccess"
+  }
+}

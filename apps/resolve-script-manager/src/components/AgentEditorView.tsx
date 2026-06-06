@@ -1198,7 +1198,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                     {CFG.primaryAgent.name.toUpperCase()}
                   </div>
                 )}
-                {m.content}
+                {typeof m.content === "string" ? m.content : "[multimodal message]"}
               </div>
             ))}
             {chatThinking && (

@@ -2543,6 +2543,8 @@ export const roleRoomAgentService = {
     postId: string;
     projectId: string;
     scheduledFor?: string | null;
+    /** Plan-ID for batch-context (audit-spor i backend). Valgfri. */
+    planId?: string | null;
   }): Promise<{ planPost: MarketingPlanPost; feedPlanPostId: string }> {
     const response = await fetch(
       `/api/role-room/marketing-plan/posts/${encodeURIComponent(input.postId)}/accept`,
@@ -2552,6 +2554,7 @@ export const roleRoomAgentService = {
         body: JSON.stringify({
           projectId: input.projectId,
           scheduledFor: input.scheduledFor ?? null,
+          planId: input.planId ?? null,
         }),
       },
     );
@@ -3472,6 +3475,13 @@ export interface MarketingPlanPost {
    *  farget badge i Markedsplan-dashboardet så det er klart hvem
    *  som endret. */
   lastEditedByKind?: 'team' | 'client' | null;
+  /** Preview-content (Cloudflare Stream primær, R2 fallback). Sendes allerede
+   *  av backend — brukes til å vise små thumbnails i kalender/tabell når innhold
+   *  er produsert. */
+  previewStreamThumbnailUrl?: string | null;
+  previewStreamPlaybackUrl?: string | null;
+  previewStreamReady?: boolean;
+  previewVideoR2Url?: string | null;
 }
 
 export default roleRoomAgentService;

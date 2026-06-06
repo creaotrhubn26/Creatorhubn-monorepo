@@ -313,14 +313,20 @@ export function useTheming(profession?: string): ThemingReturn {
     const prof = config?.profession || profession || 'photographer';
     const colors = getProfessionColors(prof);
 
+    // Daniel-fix: profesjons-pastell-bg ('#E8F5E8' for fotograf etc.) brøt
+    // dark-theme i alle themed cards (Support, Settings, etc.). Bytter til
+    // dark transparent + bevarer profesjons-aksent i border og hover.
     return {
-      bgcolor: colors.secondary,
-      border: `2px solid ${colors.accent}`, '&:hover': {
+      bgcolor: 'rgba(255,255,255,0.04)',
+      color: 'rgba(255,255,255,0.95)',
+      border: `1px solid ${colors.accent}50`,
+      '&:hover': {
         borderColor: colors.primary,
-        boxShadow: `0 4px 12px ${colors.primary}20`
-    }
+        bgcolor: 'rgba(255,255,255,0.06)',
+        boxShadow: `0 4px 12px ${colors.primary}30`,
+      },
+    };
   };
-};
 
   // Build dynamic profession config (uses ThemingAdminService if available)
   const professionConfig = React.useMemo(() => {

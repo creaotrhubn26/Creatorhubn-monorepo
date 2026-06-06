@@ -37,6 +37,15 @@ const TIMELINE_NAMESPACE = 'role-room-producer-timeline';
 const ECONOMY_NAMESPACE = 'role-room-producer-economy';
 const REVIEWS_NAMESPACE = 'role-room-producer-reviews';
 const CLIENT_MATERIALS_NAMESPACE = 'role-room-producer-client-materials';
+const CLIENT_INTAKE_NAMESPACE = 'role-room-producer-client-intake';
+// Offline-mirror-namespaces. BEVISST atskilt fra de eldre TIMELINE/ECONOMY/
+// REVIEWS_NAMESPACE-ene over: de er migreringskilder (migrateLegacy*IfNeeded
+// laster opp innholdet til backend og tømmer dem). Hadde vi speilet backend-
+// data inn der, ville migreringen forsøkt å re-laste det opp. Disse *-cache-
+// namespacene er rene lese-speil og røres aldri av migreringen.
+const TIMELINE_MIRROR_NAMESPACE = 'role-room-producer-timeline-cache';
+const ECONOMY_MIRROR_NAMESPACE = 'role-room-producer-economy-cache';
+const REVIEWS_MIRROR_NAMESPACE = 'role-room-producer-reviews-cache';
 const SYNTHETIC_REVIEW_SOURCES = new Set(['codex-smoke', 'cli-smoke', 'smoke-test']);
 const SYNTHETIC_REVIEW_TITLE_PATTERN = /^(auto review|smoke review|rbac review|qa review(?:\s+\d+)?|qa budget sync|budget package \d+|codex-review-)/i;
 const CLIENT_INTAKE_TIMELINE_ENTITY_ID = 'client-intake';
@@ -140,6 +149,22 @@ export interface ProducerClientReview {
   created_at: string;
   updated_at: string;
   comments: ProducerReviewComment[];
+}
+
+export interface ProducerClientPresence {
+  email: string;
+  name: string | null;
+  workspace: string | null;
+  joinedAt: string;
+  lastSeenAt: string;
+}
+
+export interface ProducerClientConsent {
+  platform: string;
+  clientName: string | null;
+  clientEmail: string;
+  consentedAt: string;
+  action: 'granted' | 'revoked';
 }
 
 export interface ProducerProjectNotification {
@@ -875,7 +900,11 @@ async function producerWorkflowRequest<T>(endpoint: string, options: RequestInit
       throw new Error('Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.');
     }
 
-    throw new Error(detail);
+    // Fest HTTP-status på feilen så offline-replay-køen kan skille transient
+    // (401/408/429/5xx → behold og prøv igjen) fra permanent (4xx → dropp).
+    const requestError = new Error(detail) as Error & { status?: number };
+    requestError.status = response.status;
+    throw requestError;
   }
 
   if (response.status === 204) {
@@ -1380,43 +1409,294 @@ function buildDefinedBody(entries: Array<[string, unknown]>): Record<string, unk
   return body;
 }
 
+// ── Offline lese-speil for timeline/economy/reviews ────────────────────────
+// Skriver hele listen til et eget *-cache-namespace ved hver vellykket fetch,
+// og leser fra speilet når backend er nede. Røret aldri legacy-namespacene.
+
+async function readTimelineMirror(projectId: string): Promise<ProducerTimelineItem[]> {
+  const stored = await settingsService.getSetting<ProducerTimelineItem[]>(TIMELINE_MIRROR_NAMESPACE, { projectId });
+  if (!Array.isArray(stored)) return [];
+  return sortTimelineItems(stored.map((item, index) => normalizeTimelineItem(item, projectId, index)));
+}
+
+async function readEconomyMirror(projectId: string): Promise<ProducerEconomyItem[]> {
+  const stored = await settingsService.getSetting<ProducerEconomyItem[]>(ECONOMY_MIRROR_NAMESPACE, { projectId });
+  if (!Array.isArray(stored)) return [];
+  return sortEconomyItems(stored.map((item, index) => normalizeEconomyItem(item, projectId, index)));
+}
+
+async function readReviewsMirror(projectId: string): Promise<ProducerClientReview[]> {
+  const stored = await settingsService.getSetting<ProducerClientReview[]>(REVIEWS_MIRROR_NAMESPACE, { projectId });
+  if (!Array.isArray(stored)) return [];
+  return sortReviews(stored.map((review) => normalizeReview(review, projectId)));
+}
+
+async function writeTimelineMirror(projectId: string, items: ProducerTimelineItem[]): Promise<void> {
+  await settingsService.setSetting(TIMELINE_MIRROR_NAMESPACE, items, { projectId });
+}
+
+async function writeEconomyMirror(projectId: string, items: ProducerEconomyItem[]): Promise<void> {
+  await settingsService.setSetting(ECONOMY_MIRROR_NAMESPACE, items, { projectId });
+}
+
+async function writeReviewsMirror(projectId: string, items: ProducerClientReview[]): Promise<void> {
+  await settingsService.setSetting(REVIEWS_MIRROR_NAMESPACE, items, { projectId });
+}
+
+// ── Offline replay-kø for producer-mutasjoner ──────────────────────────────
+// Producer-tjenesten er backend-først. Når en mutasjon feiler fordi backend er
+// nede, køes det EKSAKTE HTTP-kallet (endpoint + method + body) her og replayes
+// ved neste vellykkede kontakt — FØR fetch overskriver speilet — så offline-
+// skrivinger ikke går tapt ved reconnect. Optimistisk speiling gir umiddelbar
+// UI-feedback; backend-deriverte kaskader reconcileres ved refetch.
+
+const PRODUCER_MUTATION_QUEUE_NAMESPACE = 'role-room-producer-mutation-queue';
+
+type ProducerMutationDomain = 'timeline' | 'economy' | 'reviews';
+
+interface QueuedProducerMutation {
+  id: string;
+  domain: ProducerMutationDomain;
+  method: 'POST' | 'PATCH' | 'DELETE';
+  endpoint: string;
+  body?: unknown;
+  createdLocalId?: string;
+  queuedAt: string;
+}
+
+function isTransientBackendError(error: unknown): boolean {
+  const status = (error as { status?: number } | null | undefined)?.status;
+  if (typeof status !== 'number') return true;
+  return status === 401 || status === 408 || status === 429 || status >= 500;
+}
+
+function extractCreatedId(response: unknown): string | undefined {
+  const record = asRecord(response);
+  for (const key of ['item', 'review', 'comment']) {
+    const nested = asRecord(record[key]);
+    const id = readFirstNonEmptyString(nested.id);
+    if (id) return id;
+  }
+  return readFirstNonEmptyString(record.id);
+}
+
+async function readMutationQueue(projectId: string): Promise<QueuedProducerMutation[]> {
+  const stored = await settingsService.getSetting<QueuedProducerMutation[]>(PRODUCER_MUTATION_QUEUE_NAMESPACE, { projectId });
+  return Array.isArray(stored) ? [...stored] : [];
+}
+
+async function writeMutationQueue(projectId: string, queue: QueuedProducerMutation[]): Promise<void> {
+  await settingsService.setSetting(PRODUCER_MUTATION_QUEUE_NAMESPACE, queue, { projectId });
+}
+
+const queueLocks = new Map<string, Promise<unknown>>();
+
+function withQueueLock<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = queueLocks.get(projectId) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  queueLocks.set(projectId, next.then(() => undefined, () => undefined));
+  return next;
+}
+
+async function enqueueProducerMutation(
+  projectId: string,
+  entry: Omit<QueuedProducerMutation, 'id' | 'queuedAt'>,
+): Promise<void> {
+  await withQueueLock(projectId, async () => {
+    const queue = await readMutationQueue(projectId);
+    queue.push({ ...entry, id: generateId('producer-mutation'), queuedAt: nowIso() });
+    await writeMutationQueue(projectId, queue);
+  });
+}
+
+async function flushProducerMutationQueue(projectId: string): Promise<void> {
+  await withQueueLock(projectId, async () => {
+    let queue = await readMutationQueue(projectId);
+    if (queue.length === 0) return;
+
+    const idRemap = new Map<string, string>();
+
+    while (queue.length > 0) {
+      const entry = queue[0];
+      let endpoint = entry.endpoint;
+      for (const [localId, realId] of idRemap) {
+        if (endpoint.includes(localId)) endpoint = endpoint.split(localId).join(realId);
+      }
+
+      try {
+        const response = await producerWorkflowRequest<Record<string, unknown>>(endpoint, {
+          method: entry.method,
+          ...(entry.body !== undefined ? { body: JSON.stringify(entry.body) } : {}),
+        });
+        if (entry.createdLocalId) {
+          const realId = extractCreatedId(response);
+          if (realId) idRemap.set(entry.createdLocalId, realId);
+        }
+      } catch (error) {
+        if (isTransientBackendError(error)) {
+          return;
+        }
+        console.warn('[producerWorkflowService] dropper køet mutasjon etter permanent feil:', endpoint, error);
+      }
+
+      queue = queue.slice(1);
+      await writeMutationQueue(projectId, queue);
+    }
+  });
+}
+
+async function runProducerMutation<T>(opts: {
+  projectId: string;
+  domain: ProducerMutationDomain;
+  method: 'POST' | 'PATCH' | 'DELETE';
+  endpoint: string;
+  body?: unknown;
+  createdLocalId?: string;
+  parse: (response: unknown) => T;
+  optimistic: () => Promise<T>;
+}): Promise<T> {
+  await flushProducerMutationQueue(opts.projectId).catch(() => {});
+
+  const pending = await readMutationQueue(opts.projectId);
+  const enqueue = () =>
+    enqueueProducerMutation(opts.projectId, {
+      domain: opts.domain,
+      method: opts.method,
+      endpoint: opts.endpoint,
+      body: opts.body,
+      createdLocalId: opts.createdLocalId,
+    });
+
+  if (pending.length > 0) {
+    await enqueue();
+    return opts.optimistic();
+  }
+
+  try {
+    const response = await producerWorkflowRequest<unknown>(opts.endpoint, {
+      method: opts.method,
+      ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
+    });
+    return opts.parse(response);
+  } catch (error) {
+    if (!isTransientBackendError(error)) throw error;
+    await enqueue();
+    return opts.optimistic();
+  }
+}
+
+// In-flight dedupe-cache (fra main): forhindrer at parallelle komponenter som
+// bruker samme hook fyrer hver sin fetch for samme prosjekt.
+const inFlightRequests = new Map<string, Promise<unknown>>();
+
+function dedupedFetch<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const existing = inFlightRequests.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+  const promise = (async () => {
+    try {
+      return await fn();
+    } finally {
+      inFlightRequests.delete(key);
+    }
+  })();
+  inFlightRequests.set(key, promise);
+  return promise;
+}
+
 async function fetchTimeline(projectId: string): Promise<ProducerTimelineItem[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/timeline`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return sortTimelineItems(items.map((item, index) => normalizeTimelineItem(item, projectId, index)));
+  return dedupedFetch(`timeline:${projectId}`, async () => {
+    await flushProducerMutationQueue(projectId).catch(() => {});
+    try {
+      const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/timeline`);
+      const items = Array.isArray(response.items) ? response.items : [];
+      const normalized = sortTimelineItems(items.map((item, index) => normalizeTimelineItem(item, projectId, index)));
+      await writeTimelineMirror(projectId, normalized);
+      return normalized;
+    } catch (error) {
+      console.warn('[producerWorkflowService] fetchTimeline falt tilbake til localStorage-speil:', error);
+      return readTimelineMirror(projectId);
+    }
+  });
 }
 
 async function fetchEconomy(projectId: string): Promise<ProducerEconomyItem[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/economy/items`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return sortEconomyItems(items.map((item, index) => normalizeEconomyItem(item, projectId, index)));
+  return dedupedFetch(`economy:${projectId}`, async () => {
+    await flushProducerMutationQueue(projectId).catch(() => {});
+    try {
+      const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/economy/items`);
+      const items = Array.isArray(response.items) ? response.items : [];
+      const normalized = sortEconomyItems(items.map((item, index) => normalizeEconomyItem(item, projectId, index)));
+      await writeEconomyMirror(projectId, normalized);
+      return normalized;
+    } catch (error) {
+      console.warn('[producerWorkflowService] fetchEconomy falt tilbake til localStorage-speil:', error);
+      return readEconomyMirror(projectId);
+    }
+  });
 }
 
 async function fetchReviews(projectId: string): Promise<ProducerClientReview[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/reviews`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return sortReviews(items.map((review) => normalizeReview(review, projectId)));
+  return dedupedFetch(`reviews:${projectId}`, async () => {
+    await flushProducerMutationQueue(projectId).catch(() => {});
+    try {
+      const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/reviews`);
+      const items = Array.isArray(response.items) ? response.items : [];
+      const normalized = sortReviews(items.map((review) => normalizeReview(review, projectId)));
+      await writeReviewsMirror(projectId, normalized);
+      return normalized;
+    } catch (error) {
+      console.warn('[producerWorkflowService] fetchReviews falt tilbake til localStorage-speil:', error);
+      return readReviewsMirror(projectId);
+    }
+  });
 }
 
 async function fetchNotifications(projectId: string): Promise<ProducerProjectNotification[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/notifications`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return items
-    .map((item) => normalizeNotification(item, projectId))
-    .sort((left, right) => compareIso(right.updated_at, left.updated_at));
+  return dedupedFetch(`notifications:${projectId}`, async () => {
+    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/notifications`);
+    const items = Array.isArray(response.items) ? response.items : [];
+    return items
+      .map((item) => normalizeNotification(item, projectId))
+      .sort((left, right) => compareIso(right.updated_at, left.updated_at));
+  });
 }
 
 async function fetchExpenses(projectId: string): Promise<ProducerExpense[]> {
-  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/expenses`);
-  const items = Array.isArray(response.items) ? response.items : [];
-  return items
-    .map((item) => normalizeExpense(item, projectId))
-    .sort((left, right) => compareIso(right.updatedAt, left.updatedAt));
+  return dedupedFetch(`expenses:${projectId}`, async () => {
+    const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/expenses`);
+    const items = Array.isArray(response.items) ? response.items : [];
+    return items
+      .map((item) => normalizeExpense(item, projectId))
+      .sort((left, right) => compareIso(right.updatedAt, left.updatedAt));
+  });
+}
+
+async function readClientIntakeFromStorage(projectId: string): Promise<ProducerClientIntake | null> {
+  const stored = await settingsService.getSetting<unknown>(CLIENT_INTAKE_NAMESPACE, { projectId });
+  if (!stored || typeof stored !== 'object') {
+    return null;
+  }
+  return normalizeClientIntake(stored);
+}
+
+async function writeClientIntakeToStorage(projectId: string, intake: ProducerClientIntake): Promise<void> {
+  await settingsService.setSetting(CLIENT_INTAKE_NAMESPACE, intake, { projectId });
 }
 
 async function fetchClientIntake(projectId: string): Promise<ProducerClientIntake> {
-  const response = await producerWorkflowRequest<{ intake?: unknown | null }>(`/projects/${projectId}/producer/client-intake`);
-  return normalizeClientIntake(response.intake ?? {});
+  try {
+    const response = await producerWorkflowRequest<{ intake?: unknown | null }>(`/projects/${projectId}/producer/client-intake`);
+    const normalized = normalizeClientIntake(response.intake ?? {});
+    // Speil til localStorage så offline-lesninger og e2e-harness uten backend
+    // ser siste kjente brief. Samme mønster som fetchClientMaterials.
+    await writeClientIntakeToStorage(projectId, normalized);
+    return normalized;
+  } catch (error) {
+    // Backend ikke tilgjengelig (offline / e2e-harness uten server) — bruk
+    // localStorage-speilet skrevet av updateClientIntake/forrige fetch.
+    console.warn('[producerWorkflowService] fetchClientIntake falt tilbake til localStorage:', error);
+    return (await readClientIntakeFromStorage(projectId)) ?? normalizeClientIntake({});
+  }
 }
 
 async function readClientMaterialsFromStorage(projectId: string): Promise<ProducerClientMaterial[]> {
@@ -1504,26 +1784,32 @@ async function migrateLegacyTimelineIfNeeded(projectId: string, currentItems: Pr
     return currentItems;
   }
 
-  for (const item of legacyItems) {
-    await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/timeline`, {
-      method: 'POST',
-      body: JSON.stringify({
-        phase: item.phase,
-        title: item.title,
-        description: item.description ?? null,
-        ownerUserId: item.owner_user_id ?? null,
-        dueAt: item.due_at ?? null,
-        status: item.status,
-        linkedEntityType: item.linked_entity_type ?? null,
-        linkedEntityId: item.linked_entity_id ?? null,
-        sortOrder: item.sort_order,
-        metadata: item.metadata ?? {},
-      }),
-    });
+  try {
+    for (const item of legacyItems) {
+      await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/timeline`, {
+        method: 'POST',
+        body: JSON.stringify({
+          phase: item.phase,
+          title: item.title,
+          description: item.description ?? null,
+          ownerUserId: item.owner_user_id ?? null,
+          dueAt: item.due_at ?? null,
+          status: item.status,
+          linkedEntityType: item.linked_entity_type ?? null,
+          linkedEntityId: item.linked_entity_id ?? null,
+          sortOrder: item.sort_order,
+          metadata: item.metadata ?? {},
+        }),
+      });
+    }
+    await clearLegacyTimelineStore(projectId);
+    return fetchTimeline(projectId);
+  } catch (error) {
+    // Backend nede — utsett migreringen (behold legacy-store for senere) og
+    // returner det vi har, så lese-fallback ikke bryter offline.
+    console.warn('[producerWorkflowService] migrateLegacyTimeline utsatt (backend utilgjengelig):', error);
+    return currentItems;
   }
-
-  await clearLegacyTimelineStore(projectId);
-  return fetchTimeline(projectId);
 }
 
 async function migrateLegacyEconomyIfNeeded(projectId: string, currentItems: ProducerEconomyItem[]): Promise<ProducerEconomyItem[]> {
@@ -1540,30 +1826,34 @@ async function migrateLegacyEconomyIfNeeded(projectId: string, currentItems: Pro
     return currentItems;
   }
 
-  for (const item of legacyItems) {
-    await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/economy/items`, {
-      method: 'POST',
-      body: JSON.stringify({
-        phase: item.phase,
-        category: item.category,
-        itemName: item.item_name,
-        description: item.description ?? null,
-        estimate: normalizeNumber(item.estimate),
-        approved: normalizeNumber(item.approved),
-        actual: normalizeNumber(item.actual),
-        currency: item.currency,
-        status: item.status,
-        clientVisible: item.client_visible,
-        linkedEntityType: item.linked_entity_type ?? null,
-        linkedEntityId: item.linked_entity_id ?? null,
-        sortOrder: item.sort_order,
-        metadata: item.metadata ?? {},
-      }),
-    });
+  try {
+    for (const item of legacyItems) {
+      await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/economy/items`, {
+        method: 'POST',
+        body: JSON.stringify({
+          phase: item.phase,
+          category: item.category,
+          itemName: item.item_name,
+          description: item.description ?? null,
+          estimate: normalizeNumber(item.estimate),
+          approved: normalizeNumber(item.approved),
+          actual: normalizeNumber(item.actual),
+          currency: item.currency,
+          status: item.status,
+          clientVisible: item.client_visible,
+          linkedEntityType: item.linked_entity_type ?? null,
+          linkedEntityId: item.linked_entity_id ?? null,
+          sortOrder: item.sort_order,
+          metadata: item.metadata ?? {},
+        }),
+      });
+    }
+    await clearLegacyEconomyStore(projectId);
+    return fetchEconomy(projectId);
+  } catch (error) {
+    console.warn('[producerWorkflowService] migrateLegacyEconomy utsatt (backend utilgjengelig):', error);
+    return currentItems;
   }
-
-  await clearLegacyEconomyStore(projectId);
-  return fetchEconomy(projectId);
 }
 
 async function migrateLegacyReviewsIfNeeded(projectId: string, currentItems: ProducerClientReview[]): Promise<ProducerClientReview[]> {
@@ -1580,51 +1870,56 @@ async function migrateLegacyReviewsIfNeeded(projectId: string, currentItems: Pro
     return currentItems;
   }
 
-  for (const review of legacyReviews) {
-    const createdResponse = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews`, {
-      method: 'POST',
-      body: JSON.stringify({
-        reviewType: review.review_type,
-        title: review.title,
-        description: review.description ?? null,
-        targetEntityType: review.target_entity_type ?? null,
-        targetEntityId: review.target_entity_id ?? null,
-        dueAt: review.due_at ?? null,
-        metadata: review.metadata ?? {},
-      }),
-    });
-
-    let migratedReview = normalizeReview(createdResponse.review, projectId);
-
-    for (const comment of review.comments ?? []) {
-      await producerWorkflowRequest<{ comment?: unknown }>(`/projects/${projectId}/producer/reviews/${migratedReview.id}/comments`, {
+  try {
+    for (const review of legacyReviews) {
+      const createdResponse = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews`, {
         method: 'POST',
         body: JSON.stringify({
-          commentText: comment.comment_text,
-          timestampSeconds: comment.timestamp_seconds ?? undefined,
+          reviewType: review.review_type,
+          title: review.title,
+          description: review.description ?? null,
+          targetEntityType: review.target_entity_type ?? null,
+          targetEntityId: review.target_entity_id ?? null,
+          dueAt: review.due_at ?? null,
+          metadata: review.metadata ?? {},
         }),
       });
+
+      let migratedReview = normalizeReview(createdResponse.review, projectId);
+
+      for (const comment of review.comments ?? []) {
+        await producerWorkflowRequest<{ comment?: unknown }>(`/projects/${projectId}/producer/reviews/${migratedReview.id}/comments`, {
+          method: 'POST',
+          body: JSON.stringify({
+            commentText: comment.comment_text,
+            timestampSeconds: comment.timestamp_seconds ?? undefined,
+          }),
+        });
+      }
+
+      if (
+        review.status === 'approved'
+        || review.status === 'rejected'
+        || review.status === 'changes_requested'
+      ) {
+        const updatedResponse = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews/${migratedReview.id}/decision`, {
+          method: 'POST',
+          body: JSON.stringify({
+            decision: review.status,
+            reason: review.decision_reason ?? undefined,
+            timestampSeconds: normalizeNumber(review.metadata?.decisionTimestampSeconds, Number.NaN),
+          }),
+        });
+        migratedReview = normalizeReview(updatedResponse.review, projectId);
+      }
     }
 
-    if (
-      review.status === 'approved'
-      || review.status === 'rejected'
-      || review.status === 'changes_requested'
-    ) {
-      const updatedResponse = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews/${migratedReview.id}/decision`, {
-        method: 'POST',
-        body: JSON.stringify({
-          decision: review.status,
-          reason: review.decision_reason ?? undefined,
-          timestampSeconds: normalizeNumber(review.metadata?.decisionTimestampSeconds, Number.NaN),
-        }),
-      });
-      migratedReview = normalizeReview(updatedResponse.review, projectId);
-    }
+    await clearLegacyReviewStore(projectId);
+    return fetchReviews(projectId);
+  } catch (error) {
+    console.warn('[producerWorkflowService] migrateLegacyReviews utsatt (backend utilgjengelig):', error);
+    return currentItems;
   }
-
-  await clearLegacyReviewStore(projectId);
-  return fetchReviews(projectId);
 }
 
 type ProducerWorkflowReadDomain = 'timeline' | 'reviews';
@@ -2659,22 +2954,41 @@ export const producerWorkflowService = {
 
   async createTimelineItem(projectId: string, payload: CreateProducerTimelineItemInput): Promise<ProducerTimelineItem> {
     const items = await this.getTimeline(projectId);
-    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/timeline`, {
+    const localId = generateId('producer-timeline');
+    const body = {
+      phase: payload.phase,
+      title: payload.title,
+      description: payload.description ?? null,
+      ownerUserId: payload.ownerUserId ?? null,
+      dueAt: payload.dueAt ?? null,
+      status: payload.status ?? 'planned',
+      linkedEntityType: payload.linkedEntityType ?? null,
+      linkedEntityId: payload.linkedEntityId ?? null,
+      sortOrder: payload.sortOrder ?? items.length,
+      metadata: payload.metadata ?? {},
+    };
+    const created = await runProducerMutation<ProducerTimelineItem>({
+      projectId,
+      domain: 'timeline',
       method: 'POST',
-      body: JSON.stringify({
-        phase: payload.phase,
-        title: payload.title,
-        description: payload.description ?? null,
-        ownerUserId: payload.ownerUserId ?? null,
-        dueAt: payload.dueAt ?? null,
-        status: payload.status ?? 'planned',
-        linkedEntityType: payload.linkedEntityType ?? null,
-        linkedEntityId: payload.linkedEntityId ?? null,
-        sortOrder: payload.sortOrder ?? items.length,
-        metadata: payload.metadata ?? {},
-      }),
+      endpoint: `/projects/${projectId}/producer/timeline`,
+      body,
+      createdLocalId: localId,
+      parse: (response) => normalizeTimelineItem(asRecord(response).item, projectId, items.length),
+      optimistic: async () => {
+        const optimisticItem = normalizeTimelineItem(
+          { ...body, id: localId, created_at: nowIso(), updated_at: nowIso() },
+          projectId,
+          items.length,
+        );
+        const mirror = await readTimelineMirror(projectId);
+        await writeTimelineMirror(
+          projectId,
+          sortTimelineItems([...mirror.filter((i) => i.id !== optimisticItem.id), optimisticItem]),
+        );
+        return optimisticItem;
+      },
     });
-    const created = normalizeTimelineItem(response.item, projectId, items.length);
     clearProducerWorkflowReadCache(projectId, ['timeline']);
     emitProducerWorkflowEvent({
       projectId,
@@ -2690,22 +3004,51 @@ export const producerWorkflowService = {
     itemId: string,
     payload: UpdateProducerTimelineItemInput,
   ): Promise<ProducerTimelineItem> {
-    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/timeline/${itemId}`, {
+    const body = buildDefinedBody([
+      ['phase', payload.phase],
+      ['title', payload.title],
+      ['description', payload.description],
+      ['ownerUserId', payload.ownerUserId],
+      ['dueAt', payload.dueAt],
+      ['status', payload.status],
+      ['linkedEntityType', payload.linkedEntityType],
+      ['linkedEntityId', payload.linkedEntityId],
+      ['sortOrder', payload.sortOrder],
+      ['metadata', payload.metadata],
+    ]);
+    const persisted = await runProducerMutation<ProducerTimelineItem>({
+      projectId,
+      domain: 'timeline',
       method: 'PATCH',
-      body: JSON.stringify(buildDefinedBody([
-        ['phase', payload.phase],
-        ['title', payload.title],
-        ['description', payload.description],
-        ['ownerUserId', payload.ownerUserId],
-        ['dueAt', payload.dueAt],
-        ['status', payload.status],
-        ['linkedEntityType', payload.linkedEntityType],
-        ['linkedEntityId', payload.linkedEntityId],
-        ['sortOrder', payload.sortOrder],
-        ['metadata', payload.metadata],
-      ])),
+      endpoint: `/projects/${projectId}/producer/timeline/${itemId}`,
+      body,
+      parse: (response) => normalizeTimelineItem(asRecord(response).item, projectId),
+      optimistic: async () => {
+        const mirror = await readTimelineMirror(projectId);
+        const existing = mirror.find((i) => i.id === itemId);
+        const snakePatch = buildDefinedBody([
+          ['phase', payload.phase],
+          ['title', payload.title],
+          ['description', payload.description],
+          ['owner_user_id', payload.ownerUserId],
+          ['due_at', payload.dueAt],
+          ['status', payload.status],
+          ['linked_entity_type', payload.linkedEntityType],
+          ['linked_entity_id', payload.linkedEntityId],
+          ['sort_order', payload.sortOrder],
+          ['metadata', payload.metadata],
+        ]);
+        const merged = normalizeTimelineItem(
+          { ...(existing ?? { id: itemId }), ...snakePatch, id: itemId, updated_at: nowIso() },
+          projectId,
+        );
+        await writeTimelineMirror(
+          projectId,
+          sortTimelineItems(existing ? mirror.map((i) => (i.id === itemId ? merged : i)) : [...mirror, merged]),
+        );
+        return merged;
+      },
     });
-    const persisted = normalizeTimelineItem(response.item, projectId);
     clearProducerWorkflowReadCache(projectId, ['timeline']);
     emitProducerWorkflowEvent({
       projectId,
@@ -2718,8 +3061,16 @@ export const producerWorkflowService = {
 
   async deleteTimelineItem(projectId: string, itemId: string): Promise<void> {
     try {
-      await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/timeline/${itemId}`, {
+      await runProducerMutation<void>({
+        projectId,
+        domain: 'timeline',
         method: 'DELETE',
+        endpoint: `/projects/${projectId}/producer/timeline/${itemId}`,
+        parse: () => undefined,
+        optimistic: async () => {
+          const mirror = await readTimelineMirror(projectId);
+          await writeTimelineMirror(projectId, mirror.filter((i) => i.id !== itemId));
+        },
       });
     } catch (error) {
       if (!isMissingProducerTimelineItemError(error)) {
@@ -2779,27 +3130,40 @@ export const producerWorkflowService = {
     projectId: string,
     intake: ProducerClientIntake,
   ): Promise<ProducerClientIntake> {
-    const response = await producerWorkflowRequest<{ intake?: unknown | null }>(`/projects/${projectId}/producer/client-intake`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        projectGoal: intake.projectGoal ?? '',
-        deliverables: intake.deliverables ?? '',
-        targetAudience: intake.targetAudience ?? '',
-        keyMessage: intake.keyMessage ?? '',
-        timingConstraints: intake.timingConstraints ?? '',
-        brandNotes: intake.brandNotes ?? '',
-        materialOverview: intake.materialOverview ?? '',
-        referenceLinks: intake.referenceLinks ?? '',
-        contactName: intake.contactName ?? '',
-        contactEmail: intake.contactEmail ?? '',
-        contactPhone: intake.contactPhone ?? '',
-        additionalNotes: intake.additionalNotes ?? '',
-      }),
-    });
-    const normalized = normalizeClientIntake(response.intake ?? {});
+    let normalized: ProducerClientIntake;
+    let offline = false;
+    try {
+      const response = await producerWorkflowRequest<{ intake?: unknown | null }>(`/projects/${projectId}/producer/client-intake`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          projectGoal: intake.projectGoal ?? '',
+          deliverables: intake.deliverables ?? '',
+          targetAudience: intake.targetAudience ?? '',
+          keyMessage: intake.keyMessage ?? '',
+          timingConstraints: intake.timingConstraints ?? '',
+          brandNotes: intake.brandNotes ?? '',
+          materialOverview: intake.materialOverview ?? '',
+          referenceLinks: intake.referenceLinks ?? '',
+          contactName: intake.contactName ?? '',
+          contactEmail: intake.contactEmail ?? '',
+          contactPhone: intake.contactPhone ?? '',
+          additionalNotes: intake.additionalNotes ?? '',
+        }),
+      });
+      normalized = normalizeClientIntake(response.intake ?? {});
+    } catch (error) {
+      // Backend ikke tilgjengelig — behold briefen optimistisk og lagre lokalt.
+      // Matcher createClientMaterial: ingen data-tap når serveren er nede.
+      console.warn('[producerWorkflowService] updateClientIntake falt tilbake til localStorage:', error);
+      normalized = normalizeClientIntake(intake);
+      offline = true;
+    }
+    // Speil alltid til localStorage — også ved suksess — så offline-lesninger
+    // og e2e-harness uten backend ser siste lagrede brief.
+    await writeClientIntakeToStorage(projectId, normalized);
     clearClientInputReadCache(projectId);
     clearProducerWorkflowReadCache(projectId);
-    if (canCurrentSessionMutateProducerWorkflow()) {
+    if (!offline && canCurrentSessionMutateProducerWorkflow()) {
       await syncClientGroundingTimeline(projectId);
       await syncClientGroundingReviews(projectId);
       clearProducerWorkflowReadCache(projectId);
@@ -2927,26 +3291,45 @@ export const producerWorkflowService = {
 
   async createEconomyItem(projectId: string, payload: CreateProducerEconomyItemInput): Promise<ProducerEconomyItem> {
     const items = await this.getEconomyItems(projectId);
-    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/economy/items`, {
+    const localId = generateId('producer-economy');
+    const body = {
+      phase: payload.phase,
+      category: payload.category,
+      itemName: payload.itemName,
+      description: payload.description ?? null,
+      estimate: payload.estimate ?? 0,
+      approved: payload.approved ?? 0,
+      actual: payload.actual ?? 0,
+      currency: payload.currency ?? 'NOK',
+      status: payload.status ?? 'draft',
+      clientVisible: payload.clientVisible ?? true,
+      linkedEntityType: payload.linkedEntityType ?? null,
+      linkedEntityId: payload.linkedEntityId ?? null,
+      sortOrder: payload.sortOrder ?? items.length,
+      metadata: payload.metadata ?? {},
+    };
+    const created = await runProducerMutation<ProducerEconomyItem>({
+      projectId,
+      domain: 'economy',
       method: 'POST',
-      body: JSON.stringify({
-        phase: payload.phase,
-        category: payload.category,
-        itemName: payload.itemName,
-        description: payload.description ?? null,
-        estimate: payload.estimate ?? 0,
-        approved: payload.approved ?? 0,
-        actual: payload.actual ?? 0,
-        currency: payload.currency ?? 'NOK',
-        status: payload.status ?? 'draft',
-        clientVisible: payload.clientVisible ?? true,
-        linkedEntityType: payload.linkedEntityType ?? null,
-        linkedEntityId: payload.linkedEntityId ?? null,
-        sortOrder: payload.sortOrder ?? items.length,
-        metadata: payload.metadata ?? {},
-      }),
+      endpoint: `/projects/${projectId}/producer/economy/items`,
+      body,
+      createdLocalId: localId,
+      parse: (response) => normalizeEconomyItem(asRecord(response).item, projectId, items.length),
+      optimistic: async () => {
+        const optimisticItem = normalizeEconomyItem(
+          { ...body, id: localId, created_at: nowIso(), updated_at: nowIso() },
+          projectId,
+          items.length,
+        );
+        const mirror = await readEconomyMirror(projectId);
+        await writeEconomyMirror(
+          projectId,
+          sortEconomyItems([...mirror.filter((i) => i.id !== optimisticItem.id), optimisticItem]),
+        );
+        return optimisticItem;
+      },
     });
-    const created = normalizeEconomyItem(response.item, projectId, items.length);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'economy',
@@ -2961,26 +3344,59 @@ export const producerWorkflowService = {
     itemId: string,
     payload: UpdateProducerEconomyItemInput,
   ): Promise<ProducerEconomyItem> {
-    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/economy/items/${itemId}`, {
+    const body = buildDefinedBody([
+      ['phase', payload.phase],
+      ['category', payload.category],
+      ['itemName', payload.itemName],
+      ['description', payload.description],
+      ['estimate', payload.estimate],
+      ['approved', payload.approved],
+      ['actual', payload.actual],
+      ['currency', payload.currency],
+      ['status', payload.status],
+      ['clientVisible', payload.clientVisible],
+      ['linkedEntityType', payload.linkedEntityType],
+      ['linkedEntityId', payload.linkedEntityId],
+      ['sortOrder', payload.sortOrder],
+      ['metadata', payload.metadata],
+    ]);
+    const persisted = await runProducerMutation<ProducerEconomyItem>({
+      projectId,
+      domain: 'economy',
       method: 'PATCH',
-      body: JSON.stringify(buildDefinedBody([
-        ['phase', payload.phase],
-        ['category', payload.category],
-        ['itemName', payload.itemName],
-        ['description', payload.description],
-        ['estimate', payload.estimate],
-        ['approved', payload.approved],
-        ['actual', payload.actual],
-        ['currency', payload.currency],
-        ['status', payload.status],
-        ['clientVisible', payload.clientVisible],
-        ['linkedEntityType', payload.linkedEntityType],
-        ['linkedEntityId', payload.linkedEntityId],
-        ['sortOrder', payload.sortOrder],
-        ['metadata', payload.metadata],
-      ])),
+      endpoint: `/projects/${projectId}/producer/economy/items/${itemId}`,
+      body,
+      parse: (response) => normalizeEconomyItem(asRecord(response).item, projectId),
+      optimistic: async () => {
+        const mirror = await readEconomyMirror(projectId);
+        const existing = mirror.find((i) => i.id === itemId);
+        const snakePatch = buildDefinedBody([
+          ['phase', payload.phase],
+          ['category', payload.category],
+          ['item_name', payload.itemName],
+          ['description', payload.description],
+          ['estimate', payload.estimate],
+          ['approved', payload.approved],
+          ['actual', payload.actual],
+          ['currency', payload.currency],
+          ['status', payload.status],
+          ['client_visible', payload.clientVisible],
+          ['linked_entity_type', payload.linkedEntityType],
+          ['linked_entity_id', payload.linkedEntityId],
+          ['sort_order', payload.sortOrder],
+          ['metadata', payload.metadata],
+        ]);
+        const merged = normalizeEconomyItem(
+          { ...(existing ?? { id: itemId }), ...snakePatch, id: itemId, updated_at: nowIso() },
+          projectId,
+        );
+        await writeEconomyMirror(
+          projectId,
+          sortEconomyItems(existing ? mirror.map((i) => (i.id === itemId ? merged : i)) : [...mirror, merged]),
+        );
+        return merged;
+      },
     });
-    const persisted = normalizeEconomyItem(response.item, projectId);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'economy',
@@ -2991,8 +3407,16 @@ export const producerWorkflowService = {
   },
 
   async deleteEconomyItem(projectId: string, itemId: string): Promise<void> {
-    await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/economy/items/${itemId}`, {
+    await runProducerMutation<void>({
+      projectId,
+      domain: 'economy',
       method: 'DELETE',
+      endpoint: `/projects/${projectId}/producer/economy/items/${itemId}`,
+      parse: () => undefined,
+      optimistic: async () => {
+        const mirror = await readEconomyMirror(projectId);
+        await writeEconomyMirror(projectId, mirror.filter((i) => i.id !== itemId));
+      },
     });
     emitProducerWorkflowEvent({
       projectId,
@@ -3004,6 +3428,85 @@ export const producerWorkflowService = {
 
   async getReviews(projectId: string): Promise<ProducerClientReview[]> {
     return getCachedReviews(projectId);
+  },
+
+  /**
+   * Hvilke klienter har klientportalen åpen akkurat nå (sanntid). Best-effort —
+   * returnerer tom liste ved feil/offline i stedet for å kaste, så presence
+   * aldri velter review-panelet.
+   */
+  async getClientPresence(projectId: string): Promise<ProducerClientPresence[]> {
+    try {
+      const response = await producerWorkflowRequest<{ clients?: unknown[] }>(`/projects/${projectId}/client-presence`);
+      const clients = Array.isArray(response.clients) ? response.clients : [];
+      return clients
+        .map((value) => {
+          const record = asRecord(value);
+          const email = readFirstNonEmptyString(record.email);
+          if (!email) return null;
+          return {
+            email,
+            name: readFirstNonEmptyString(record.name) ?? null,
+            workspace: readFirstNonEmptyString(record.workspace) ?? null,
+            joinedAt: readFirstNonEmptyString(record.joinedAt, record.joined_at) ?? nowIso(),
+            lastSeenAt: readFirstNonEmptyString(record.lastSeenAt, record.last_seen_at) ?? nowIso(),
+          } as ProducerClientPresence;
+        })
+        .filter((entry): entry is ProducerClientPresence => entry !== null);
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Klient-samtykker per plattform — så produsenten ser at klienten faktisk
+   * har godkjent tilgangen. Defensiv: tom liste ved feil/offline.
+   */
+  async getClientConsents(projectId: string): Promise<ProducerClientConsent[]> {
+    try {
+      const response = await producerWorkflowRequest<{ consents?: unknown[] }>(`/projects/${projectId}/client-consents`);
+      const consents = Array.isArray(response.consents) ? response.consents : [];
+      return consents
+        .map((value) => {
+          const record = asRecord(value);
+          const platform = readFirstNonEmptyString(record.platform);
+          const clientEmail = readFirstNonEmptyString(record.clientEmail, record.client_email);
+          if (!platform || !clientEmail) return null;
+          return {
+            platform,
+            clientName: readFirstNonEmptyString(record.clientName, record.client_name) ?? null,
+            clientEmail,
+            consentedAt: readFirstNonEmptyString(record.consentedAt, record.consented_at) ?? nowIso(),
+            action: record.action === 'revoked' ? 'revoked' : 'granted',
+          } as ProducerClientConsent;
+        })
+        .filter((entry): entry is ProducerClientConsent => entry !== null);
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Laster ned en klient-opplastet fil (logo/brand/brief) — auth-gated stream
+   * fra backend. Trigger en blob-nedlasting i nettleseren.
+   */
+  async downloadClientMaterialFile(projectId: string, materialId: string, fileName: string): Promise<void> {
+    const response = await fetch(
+      `${API_BASE}/projects/${projectId}/producer/client-materials/${materialId}/file`,
+      { headers: buildAuthHeaders() },
+    );
+    if (!response.ok) {
+      throw new Error(`Kunne ikke laste ned filen (${response.status})`);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName || 'fil';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
   },
 
   async getNotifications(projectId: string): Promise<ProducerProjectNotification[]> {
@@ -3163,19 +3666,37 @@ export const producerWorkflowService = {
   },
 
   async createReview(projectId: string, payload: CreateProducerReviewInput): Promise<ProducerClientReview> {
-    const response = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews`, {
+    const localId = generateId('producer-review');
+    const body = {
+      reviewType: payload.reviewType,
+      title: payload.title,
+      description: payload.description ?? null,
+      targetEntityType: payload.targetEntityType ?? null,
+      targetEntityId: payload.targetEntityId ?? null,
+      dueAt: payload.dueAt ?? null,
+      metadata: payload.metadata ?? {},
+    };
+    const created = await runProducerMutation<ProducerClientReview>({
+      projectId,
+      domain: 'reviews',
       method: 'POST',
-      body: JSON.stringify({
-        reviewType: payload.reviewType,
-        title: payload.title,
-        description: payload.description ?? null,
-        targetEntityType: payload.targetEntityType ?? null,
-        targetEntityId: payload.targetEntityId ?? null,
-        dueAt: payload.dueAt ?? null,
-        metadata: payload.metadata ?? {},
-      }),
+      endpoint: `/projects/${projectId}/producer/reviews`,
+      body,
+      createdLocalId: localId,
+      parse: (response) => normalizeReview(asRecord(response).review, projectId),
+      optimistic: async () => {
+        const optimisticReview = normalizeReview(
+          { ...body, id: localId, status: 'pending', comments: [], created_at: nowIso(), updated_at: nowIso() },
+          projectId,
+        );
+        const mirror = await readReviewsMirror(projectId);
+        await writeReviewsMirror(
+          projectId,
+          sortReviews([...mirror.filter((r) => r.id !== optimisticReview.id), optimisticReview]),
+        );
+        return optimisticReview;
+      },
     });
-    const created = normalizeReview(response.review, projectId);
     clearProducerWorkflowReadCache(projectId, ['reviews']);
     emitProducerWorkflowEvent({
       projectId,
@@ -3191,19 +3712,45 @@ export const producerWorkflowService = {
     reviewId: string,
     payload: UpdateProducerReviewInput,
   ): Promise<ProducerClientReview> {
-    const response = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews/${reviewId}`, {
+    const body = buildDefinedBody([
+      ['reviewType', payload.reviewType],
+      ['title', payload.title],
+      ['description', payload.description],
+      ['targetEntityType', payload.targetEntityType],
+      ['targetEntityId', payload.targetEntityId],
+      ['dueAt', payload.dueAt],
+      ['metadata', payload.metadata],
+    ]);
+    const updated = await runProducerMutation<ProducerClientReview>({
+      projectId,
+      domain: 'reviews',
       method: 'PATCH',
-      body: JSON.stringify(buildDefinedBody([
-        ['reviewType', payload.reviewType],
-        ['title', payload.title],
-        ['description', payload.description],
-        ['targetEntityType', payload.targetEntityType],
-        ['targetEntityId', payload.targetEntityId],
-        ['dueAt', payload.dueAt],
-        ['metadata', payload.metadata],
-      ])),
+      endpoint: `/projects/${projectId}/producer/reviews/${reviewId}`,
+      body,
+      parse: (response) => normalizeReview(asRecord(response).review, projectId),
+      optimistic: async () => {
+        const mirror = await readReviewsMirror(projectId);
+        const existing = mirror.find((r) => r.id === reviewId);
+        const snakePatch = buildDefinedBody([
+          ['review_type', payload.reviewType],
+          ['title', payload.title],
+          ['description', payload.description],
+          ['target_entity_type', payload.targetEntityType],
+          ['target_entity_id', payload.targetEntityId],
+          ['due_at', payload.dueAt],
+          ['metadata', payload.metadata],
+        ]);
+        const merged = normalizeReview(
+          { ...(existing ?? { id: reviewId }), ...snakePatch, id: reviewId, updated_at: nowIso() },
+          projectId,
+        );
+        await writeReviewsMirror(
+          projectId,
+          sortReviews(existing ? mirror.map((r) => (r.id === reviewId ? merged : r)) : [...mirror, merged]),
+        );
+        return merged;
+      },
     });
-    const updated = normalizeReview(response.review, projectId);
     clearProducerWorkflowReadCache(projectId, ['reviews']);
     emitProducerWorkflowEvent({
       projectId,
@@ -3234,8 +3781,16 @@ export const producerWorkflowService = {
 
   async deleteReview(projectId: string, reviewId: string): Promise<void> {
     const timelineItems = await this.getTimeline(projectId);
-    await producerWorkflowRequest<undefined>(`/projects/${projectId}/producer/reviews/${reviewId}`, {
+    await runProducerMutation<void>({
+      projectId,
+      domain: 'reviews',
       method: 'DELETE',
+      endpoint: `/projects/${projectId}/producer/reviews/${reviewId}`,
+      parse: () => undefined,
+      optimistic: async () => {
+        const mirror = await readReviewsMirror(projectId);
+        await writeReviewsMirror(projectId, mirror.filter((r) => r.id !== reviewId));
+      },
     });
     clearProducerWorkflowReadCache(projectId, ['reviews']);
     const linkedTimelineItems = timelineItems.filter((item) => isReviewTimelineItem(item, reviewId));
@@ -3609,14 +4164,35 @@ export const producerWorkflowService = {
     reviewId: string,
     payload: AddProducerReviewCommentInput,
   ): Promise<ProducerReviewComment> {
-    const response = await producerWorkflowRequest<{ comment?: unknown }>(`/projects/${projectId}/producer/reviews/${reviewId}/comments`, {
+    const body = {
+      commentText: payload.commentText,
+      timestampSeconds: payload.timestampSeconds ?? null,
+    };
+    const comment = await runProducerMutation<ProducerReviewComment>({
+      projectId,
+      domain: 'reviews',
       method: 'POST',
-      body: JSON.stringify({
-        commentText: payload.commentText,
-        timestampSeconds: payload.timestampSeconds ?? null,
-      }),
+      endpoint: `/projects/${projectId}/producer/reviews/${reviewId}/comments`,
+      body,
+      parse: (response) => normalizeReviewComment(asRecord(response).comment, projectId, reviewId),
+      optimistic: async () => {
+        const optimisticComment = normalizeReviewComment(
+          { comment_text: payload.commentText, timestamp_seconds: payload.timestampSeconds ?? null, id: generateId('producer-review-comment'), created_at: nowIso() },
+          projectId,
+          reviewId,
+        );
+        const mirror = await readReviewsMirror(projectId);
+        await writeReviewsMirror(
+          projectId,
+          mirror.map((r) =>
+            r.id === reviewId
+              ? { ...r, comments: [...(r.comments ?? []), optimisticComment], updated_at: nowIso() }
+              : r,
+          ),
+        );
+        return optimisticComment;
+      },
     });
-    const comment = normalizeReviewComment(response.comment, projectId, reviewId);
     clearProducerWorkflowReadCache(projectId, ['reviews']);
 
     const reviews = await this.getReviews(projectId);
@@ -3645,15 +4221,39 @@ export const producerWorkflowService = {
     reviewId: string,
     payload: SetProducerReviewDecisionInput,
   ): Promise<ProducerClientReview> {
-    const response = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews/${reviewId}/decision`, {
+    const body = {
+      decision: payload.decision,
+      reason: payload.reason ?? null,
+      timestampSeconds: payload.timestampSeconds ?? null,
+    };
+    const persisted = await runProducerMutation<ProducerClientReview>({
+      projectId,
+      domain: 'reviews',
       method: 'POST',
-      body: JSON.stringify({
-        decision: payload.decision,
-        reason: payload.reason ?? null,
-        timestampSeconds: payload.timestampSeconds ?? null,
-      }),
+      endpoint: `/projects/${projectId}/producer/reviews/${reviewId}/decision`,
+      body,
+      parse: (response) => normalizeReview(asRecord(response).review, projectId),
+      optimistic: async () => {
+        const mirror = await readReviewsMirror(projectId);
+        const existing = mirror.find((r) => r.id === reviewId);
+        const merged = normalizeReview(
+          {
+            ...(existing ?? { id: reviewId }),
+            id: reviewId,
+            status: payload.decision,
+            decision_reason: payload.reason ?? null,
+            decision_at: nowIso(),
+            updated_at: nowIso(),
+          },
+          projectId,
+        );
+        await writeReviewsMirror(
+          projectId,
+          sortReviews(existing ? mirror.map((r) => (r.id === reviewId ? merged : r)) : [...mirror, merged]),
+        );
+        return merged;
+      },
     });
-    const persisted = normalizeReview(response.review, projectId);
     clearProducerWorkflowReadCache(projectId, ['reviews']);
     emitProducerWorkflowEvent({
       projectId,

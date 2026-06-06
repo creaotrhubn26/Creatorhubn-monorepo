@@ -15,7 +15,7 @@
  * Skriver til /api/branding/business-info (eksisterende endpoint) + localStorage-flag.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog, DialogContent, DialogActions, Box, Stack, Typography, Button,
   IconButton, TextField, Stepper, Step, StepLabel, Avatar, Chip, Alert,
@@ -28,7 +28,9 @@ import {
   Videocam as VideoIcon, LibraryMusic as MusicIcon, Storefront as VendorIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import StorageProviderStep from '@/components/onboarding/StorageProviderStep';
+import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
 
 const PROFESSIONS = [
   { id: 'photographer', label: 'Fotograf', icon: <CameraIcon />, color: '#ffba6c', tagline: 'Bryllup, portrett, kommersielt' },
@@ -60,7 +62,42 @@ const TIER_RECOMMENDATIONS: Record<string, { name: string; price: string; reason
   },
 };
 
-const STEPS = ['Velkomst', 'Profesjon', 'Brand', 'Marketplace', 'Ferdig'] as const;
+const STEPS = ['Velkomst', 'Profesjon', 'Brand', 'Marketplace', 'Backup', 'Ferdig'] as const;
+
+const DRAFT_KEY = 'individual-onboarding-draft';
+const PENDING_SAVE_KEY = 'individual-onboarding-pending-save';
+const MAX_SAVE_ATTEMPTS = 3;
+const BACKOFF_MS = [0, 1500, 3500];
+
+interface DraftData {
+  firstName?: string;
+  businessName?: string;
+  profession?: string;
+  brandColor?: string;
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const persistWithRetry = async (
+  payload: DraftData,
+  attempts: number = MAX_SAVE_ATTEMPTS,
+): Promise<void> => {
+  let lastError: unknown = null;
+  for (let i = 0; i < attempts; i++) {
+    if (BACKOFF_MS[i] > 0) await sleep(BACKOFF_MS[i]);
+    try {
+      await apiRequest('/api/branding/business-info', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      return;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Lagring feilet etter flere forsøk');
+};
 
 interface Props {
   open: boolean;
@@ -74,32 +111,77 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
   open, onClose, initialProfession, ownerEmail, onComplete,
 }) => {
   const queryClient = useQueryClient();
+
+  const initialDraft: DraftData = (() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = window.localStorage.getItem(DRAFT_KEY);
+      return raw ? (JSON.parse(raw) as DraftData) : {};
+    } catch {
+      return {};
+    }
+  })();
+
   const [step, setStep] = useState(0);
-  const [firstName, setFirstName] = useState('');
-  const [businessName, setBusinessName] = useState('');
-  const [profession, setProfession] = useState(initialProfession || 'photographer');
+  const [firstName, setFirstName] = useState(initialDraft.firstName || '');
+  const [businessName, setBusinessName] = useState(initialDraft.businessName || '');
+  const [profession, setProfession] = useState(
+    initialDraft.profession || initialProfession || 'photographer',
+  );
   const [brandColor, setBrandColor] = useState(() => {
+    if (initialDraft.brandColor) return initialDraft.brandColor;
     const found = PROFESSIONS.find((p) => p.id === (initialProfession || 'photographer'));
     return found?.color || '#ffba6c';
   });
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [resumingFromPending, setResumingFromPending] = useState(false);
+  const flushedPendingRef = useRef(false);
 
   const activeProfession = PROFESSIONS.find((p) => p.id === profession) || PROFESSIONS[0];
   const recommendedTier = TIER_RECOMMENDATIONS[profession] || TIER_RECOMMENDATIONS.photographer;
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest('/api/branding/business-info', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          businessName,
-          firstName,
-          profession,
-          brandColor,
-        }),
-      }).catch(() => null); // ikke fail-stopper hvis endpoint ikke finnes
-    },
-  });
+  // Auto-persist draft til localStorage så data ikke mistes om bruker lukker fanen
+  useEffect(() => {
+    if (!open) return;
+    try {
+      window.localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ firstName, businessName, profession, brandColor }),
+      );
+    } catch {}
+  }, [open, firstName, businessName, profession, brandColor]);
+
+  // På mount: hvis det finnes pending save fra forrige forsøk, prøv å flushe den
+  useEffect(() => {
+    if (!open || flushedPendingRef.current) return;
+    flushedPendingRef.current = true;
+    let cancelled = false;
+    (async () => {
+      let raw: string | null = null;
+      try {
+        raw = window.localStorage.getItem(PENDING_SAVE_KEY);
+      } catch {}
+      if (!raw) return;
+      try {
+        const pending = JSON.parse(raw) as DraftData;
+        setResumingFromPending(true);
+        await persistWithRetry(pending);
+        if (cancelled) return;
+        try {
+          window.localStorage.removeItem(PENDING_SAVE_KEY);
+        } catch {}
+        queryClient.invalidateQueries({ queryKey: ['/api/branding/business-info'] });
+      } catch {
+        // beholdes for neste forsøk
+      } finally {
+        if (!cancelled) setResumingFromPending(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, queryClient]);
 
   const canProceed = (() => {
     if (step === 0) return firstName.trim().length > 0;
@@ -108,11 +190,32 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
   })();
 
   const handleFinish = async () => {
-    await saveMutation.mutateAsync();
+    setSaveError(null);
+    setSaving(true);
+    const payload: DraftData = { firstName, businessName, profession, brandColor };
+    try {
+      await persistWithRetry(payload);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ukjent feil';
+      try {
+        window.localStorage.setItem(
+          PENDING_SAVE_KEY,
+          JSON.stringify({ ...payload, savedAt: new Date().toISOString() }),
+        );
+      } catch {}
+      setSaveError(
+        `Kunne ikke lagre bedriftsinfo (${message}). Vi har lagret det lokalt og forsøker igjen automatisk neste gang. Prøv på nytt nå hvis du vil.`,
+      );
+      setSaving(false);
+      return;
+    }
     try {
       window.localStorage.setItem('individual-onboarding-completed', '1');
+      window.localStorage.removeItem(DRAFT_KEY);
+      window.localStorage.removeItem(PENDING_SAVE_KEY);
     } catch {}
     queryClient.invalidateQueries({ queryKey: ['/api/branding/business-info'] });
+    setSaving(false);
     onComplete?.({ profession, businessName });
     onClose();
   };
@@ -414,8 +517,20 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
           </Stack>
         )}
 
-        {/* STEG 5: Ferdig */}
+        {/* STEG 5: Backup-provider (offsite) — valgfritt for alle profesjoner */}
         {step === 4 && (
+          <Stack spacing={3}>
+            <StorageProviderStep
+              variant="wizard"
+              onCompleted={() => setStep((s) => s + 1)}
+              onSkip={() => setStep((s) => s + 1)}
+            />
+            <OneDeskDownloadCard />
+          </Stack>
+        )}
+
+        {/* STEG 6: Ferdig */}
+        {step === 5 && (
           <Stack spacing={3}>
             <Box sx={{ textAlign: 'center', py: 2 }}>
               <DoneIcon sx={{ fontSize: 72, color: '#10b981', mb: 1 }} />
@@ -455,6 +570,22 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
         )}
       </DialogContent>
 
+      {resumingFromPending && (
+        <Alert severity="info" sx={{ mx: 3, mb: 1 }}>
+          Forsøker å lagre bedriftsinfo fra forrige forsøk…
+        </Alert>
+      )}
+
+      {saveError && (
+        <Alert
+          severity="error"
+          onClose={() => setSaveError(null)}
+          sx={{ mx: 3, mb: 1 }}
+        >
+          {saveError}
+        </Alert>
+      )}
+
       <DialogActions sx={{
         px: 3, py: 2.5,
         borderTop: '1px solid rgba(255,255,255,0.08)',
@@ -489,7 +620,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
           <Button
             endIcon={<DoneIcon />}
             variant="contained"
-            disabled={saveMutation.isPending}
+            disabled={saving}
             onClick={handleFinish}
             sx={{
               borderRadius: '999px', px: 3, py: 1.1,
@@ -498,7 +629,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
               '&:hover': { bgcolor: '#059669' },
             }}
           >
-            {saveMutation.isPending ? 'Lagrer…' : 'Ta meg til dashboardet'}
+            {saving ? 'Lagrer…' : 'Ta meg til dashboardet'}
           </Button>
         )}
       </DialogActions>

@@ -376,6 +376,8 @@ export const WorklogTutorial: React.FC<WorklogTutorialProps> = ({
       PaperProps={{
         sx: {
           borderRadius: 3,
+          background: '#0f0a07',
+          color: 'rgba(255,255,255,0.95)',
           ...theming.getThemedCardSx()
         }
       }}
@@ -489,7 +491,7 @@ export const WorklogTutorial: React.FC<WorklogTutorialProps> = ({
                   sx={{
                     p: 2,
                     mb: 2,
-                    bgcolor: 'background.default',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                     borderLeft: `3px solid ${theming.colors.primary}`,
                     borderRadius: 1
                   }}

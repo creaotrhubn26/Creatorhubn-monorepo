@@ -329,7 +329,7 @@ export const PageTreeNavigator: React.FC<PageTreeNavigatorProps> = ({
             borderRadius: 1,
             mb: 0.25,
             '&.Mui-selected': {
-              bgcolor: '#E3F2FD',
+              bgcolor: 'rgba(33,150,243,0.08)',
               '&:hover': {
                 bgcolor: '#BBDEFB',
               },
@@ -441,7 +441,7 @@ export const PageTreeNavigator: React.FC<PageTreeNavigatorProps> = ({
     <Box
       sx={{
         width: 300,
-        bgcolor: '#FAFAFA',
+        bgcolor: 'rgba(255,255,255,0.04)',
         borderRight: 1,
         borderColor: 'divider',
         display: 'flex',
@@ -449,7 +449,7 @@ export const PageTreeNavigator: React.FC<PageTreeNavigatorProps> = ({
         height: '100%',
         overflow: 'hidden'}}>
       {/* Header */}
-      <Box sx={{ p: 2, bgcolor: 'white', borderBottom: 1, borderColor: 'divider' }}>
+      <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderBottom: 1, borderColor: 'divider' }}>
         <Box
           sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -495,7 +495,7 @@ export const PageTreeNavigator: React.FC<PageTreeNavigatorProps> = ({
           sx={{
             '& .MuiOutlinedInput-root': {
               fontSize: '0.875rem',
-              bgcolor: '#F5F5F5',
+              bgcolor: 'rgba(255,255,255,0.04)',
             }}}
         />
       </Box>
@@ -533,7 +533,7 @@ export const PageTreeNavigator: React.FC<PageTreeNavigatorProps> = ({
       </Box>
 
       {/* Stats Footer */}
-      <Box sx={{ p: 1.5, bgcolor: 'white', borderTop: 1, borderColor: 'divider' }}>
+      <Box sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.04)', borderTop: 1, borderColor: 'divider' }}>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
           {pageStats.totalPages} total pages • {pageStats.categories} categories
         </Typography>

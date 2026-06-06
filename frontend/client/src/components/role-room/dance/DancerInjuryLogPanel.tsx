@@ -6,6 +6,7 @@
  * NAV-søknadsgrunnlag (Slice 2) bygger videre på samme datasett.
  */
 
+import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import {
   Box,
@@ -51,9 +52,9 @@ import {
   type DancerProfile,
 } from './dancerProfileService';
 
-const PURPLE = '#8b5cf6';
-const BG_DARK = '#0a0a0a';
-const CARD_BG = '#111114';
+const PURPLE = danceFlowColors.lavenderDark;
+const BG_DARK = danceFlowColors.bgBase;
+const CARD_BG = danceFlowColors.bgCard;
 const BORDER = 'rgba(139,92,246,0.25)';
 
 const BODY_PART_LABEL: Record<InjuryBodyPart, string> = {
@@ -89,9 +90,9 @@ const STATUS_LABEL: Record<InjuryEntryStatus, string> = {
 };
 
 const STATUS_COLOR: Record<InjuryEntryStatus, string> = {
-  active: '#ef4444',
-  healing: '#f59e0b',
-  resolved: '#10b981',
+  active: danceFlowColors.errorStrong,
+  healing: danceFlowColors.amber,
+  resolved: danceFlowColors.successDark,
 };
 
 function todayIso(): string {
@@ -248,7 +249,7 @@ export function DancerInjuryLogPanel({
   return (
     <Box
       data-testid="dancer-injury-log-panel"
-      sx={{ bgcolor: BG_DARK, color: '#e5e7eb', minHeight: '100%', p: { xs: 2, md: 3 } }}
+      sx={{ bgcolor: BG_DARK, color: danceFlowColors.textSecondary, minHeight: '100%', p: { xs: 2, md: 3 } }}
     >
       <Stack
         direction={{ xs: 'column', md: 'row' }}
@@ -264,7 +265,7 @@ export function DancerInjuryLogPanel({
               height: 44,
               borderRadius: 2,
               bgcolor: 'rgba(139,92,246,0.18)',
-              color: '#a78bfa',
+              color: danceFlowColors.lavender,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -273,7 +274,7 @@ export function DancerInjuryLogPanel({
             <InjuryIcon />
           </Box>
           <Box>
-            <Typography sx={{ fontSize: 10, letterSpacing: 2, color: '#a78bfa', fontWeight: 700 }}>
+            <Typography sx={{ fontSize: 10, letterSpacing: 2, color: danceFlowColors.lavender, fontWeight: 700 }}>
               SKADELOGG
             </Typography>
             <Typography variant="h6" sx={{ fontWeight: 800, color: '#fff' }}>
@@ -288,7 +289,7 @@ export function DancerInjuryLogPanel({
           disabled={loading || profiles.length === 0}
           sx={{
             bgcolor: PURPLE,
-            '&:hover': { bgcolor: '#7c3aed' },
+            '&:hover': { bgcolor: danceFlowColors.lavenderDeep },
             textTransform: 'none',
             fontWeight: 600,
           }}
@@ -389,7 +390,7 @@ export function DancerInjuryLogPanel({
                     label={`Alvor ${entry.severity}/5`}
                     sx={{
                       bgcolor: 'rgba(229,231,235,0.08)',
-                      color: '#e5e7eb',
+                      color: danceFlowColors.textSecondary,
                       height: 22,
                     }}
                   />
@@ -416,7 +417,7 @@ export function DancerInjuryLogPanel({
                   </Typography>
                 ) : null}
                 {entry.expectedReturnDate && entry.status !== 'resolved' ? (
-                  <Typography sx={{ fontSize: 12, color: '#a78bfa', mt: 0.5, fontWeight: 600 }}>
+                  <Typography sx={{ fontSize: 12, color: danceFlowColors.lavender, mt: 0.5, fontWeight: 600 }}>
                     Forventet retur:{' '}
                     {new Date(entry.expectedReturnDate).toLocaleDateString('nb-NO', {
                       day: 'numeric', month: 'long',
@@ -438,7 +439,7 @@ export function DancerInjuryLogPanel({
                     <Button
                       size="small"
                       onClick={() => void updateStatus(entry, 'healing')}
-                      sx={{ color: '#f59e0b', textTransform: 'none' }}
+                      sx={{ color: danceFlowColors.amber, textTransform: 'none' }}
                     >
                       Heler
                     </Button>
@@ -603,7 +604,7 @@ export function DancerInjuryLogPanel({
             onClick={() => void handleSubmit()}
             variant="contained"
             disabled={submitting}
-            sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#7c3aed' } }}
+            sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
             data-testid="injury-form-submit"
           >
             {submitting ? 'Lagrer…' : 'Lagre'}

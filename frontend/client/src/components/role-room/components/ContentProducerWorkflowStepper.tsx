@@ -85,11 +85,31 @@ interface ContentProducerWorkflowStepperProps {
   hidden?: boolean;
 }
 
-const APPROVAL_BADGE_CONFIG: Record<NonNullable<WorkflowApprovalStatus>, { label: string; bg: string; color: string }> = {
-  planning: { label: 'Planlegging', bg: 'rgba(148,163,184,0.18)', color: '#cbd5e1' },
-  awaiting_client: { label: 'Venter klient', bg: 'rgba(59,130,246,0.18)', color: '#bfdbfe' },
-  changes_requested: { label: 'Endringer ønsket', bg: 'rgba(251,146,60,0.2)', color: '#fed7aa' },
-  approved: { label: 'Godkjent', bg: 'rgba(34,197,94,0.2)', color: '#bbf7d0' },
+const APPROVAL_BADGE_CONFIG: Record<NonNullable<WorkflowApprovalStatus>, { label: string; bg: string; color: string; hint: string }> = {
+  planning: {
+    label: 'Planlegging',
+    bg: 'rgba(148,163,184,0.18)',
+    color: '#cbd5e1',
+    hint: 'Ikke sendt til klient ennå. Åpne Klient-steget for å sende en godkjenningsforespørsel.',
+  },
+  awaiting_client: {
+    label: 'Sendt til klient',
+    bg: 'rgba(59,130,246,0.18)',
+    color: '#bfdbfe',
+    hint: 'Sendt til klient — venter på tilbakemelding. Klikk for å se status og purre.',
+  },
+  changes_requested: {
+    label: 'Endringer ønsket',
+    bg: 'rgba(251,146,60,0.2)',
+    color: '#fed7aa',
+    hint: 'Klienten har bedt om endringer. Åpne Klient-steget for å se kommentarene og sende på nytt.',
+  },
+  approved: {
+    label: 'Godkjent',
+    bg: 'rgba(34,197,94,0.2)',
+    color: '#bbf7d0',
+    hint: 'Klienten har godkjent. Du kan gå videre til Levering.',
+  },
 };
 
 export const ContentProducerWorkflowStepper = ({
@@ -124,6 +144,11 @@ export const ContentProducerWorkflowStepper = ({
         const isCompleted = completedSet.has(step.key);
         const isLast = index === WORKFLOW_STEPS.length - 1;
         const StepIcon = isCompleted ? CheckCircleFilledIcon : step.icon;
+        // Klient-steget: vis det forklarende status-hintet i tooltip så Stig
+        // forstår hva «Sendt til klient» / «Endringer ønsket» betyr og hva han gjør nå.
+        const approvalHint =
+          step.key === 'approval' && approvalStatus ? APPROVAL_BADGE_CONFIG[approvalStatus]?.hint : undefined;
+        const tooltipTitle = approvalHint ?? step.description;
 
         const stateColor = isActive
           ? '#b86bff'
@@ -136,7 +161,7 @@ export const ContentProducerWorkflowStepper = ({
             key={step.key}
             sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}
           >
-            <Tooltip title={step.description} placement="bottom" arrow>
+            <Tooltip title={tooltipTitle} placement="bottom" arrow>
               <Box
                 component="button"
                 type="button"

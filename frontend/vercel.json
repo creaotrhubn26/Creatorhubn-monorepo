@@ -386,6 +386,10 @@
       "destination": "/theroleroom-terms.html"
     },
     {
+      "source": "/api/showcase/cdn/(.*)",
+      "destination": "https://showcase-cdn.creatorhubn.workers.dev/api/showcase/cdn/$1"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "https://creatorhub-backend-rtbl.onrender.com/api/$1"
     },

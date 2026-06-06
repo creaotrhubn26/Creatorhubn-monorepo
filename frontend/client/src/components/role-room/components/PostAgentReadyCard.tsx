@@ -280,7 +280,7 @@ export const PostAgentReadyCard: React.FC<Props> = ({ projectId }) => {
           {howOpen ? 'Skjul forklaring' : 'Hvordan fungerer Post Agent?'}
         </Button>
         <Collapse in={howOpen} unmountOnExit>
-          <Box sx={{ mt: 1, pl: 0.5, borderLeft: `2px solid ${ACCENT}`, pl: 1.5 }}>
+          <Box sx={{ mt: 1, pl: 1.5, borderLeft: `2px solid ${ACCENT}` }}>
             <Typography variant="caption" component="div" sx={{ mb: 1.25, color: 'text.secondary' }}>
               <Box component="span" sx={{ fontWeight: 700, color: 'text.primary' }}>1. Konfigurer prosjektet</Box>
               <br />Legg til scener, utstyr og crew her i Role Room — Post Agent leser dette automatisk.
@@ -295,7 +295,7 @@ export const PostAgentReadyCard: React.FC<Props> = ({ projectId }) => {
             </Typography>
             <Typography variant="caption" component="div" sx={{ mb: 1.25, color: 'text.secondary' }}>
               <Box component="span" sx={{ fontWeight: 700, color: 'text.primary' }}>4. AI-post-produksjon i Resolve</Box>
-              <br />Post Agent pre-genererer bins per scene, auto-konfigurerer Resolve etter kamera-utstyret, og kjører Claude Vision-cull + beat-sync på fangede klipp — alt lokalt på Mac-en, ingen filer forlater maskinen.
+              <br />Post Agent pre-genererer bins per scene, auto-konfigurerer Resolve etter kamera-utstyret, og kjører CI-cull + beat-sync på fangede klipp — alt lokalt på Mac-en, ingen filer forlater maskinen.
             </Typography>
             <Typography variant="caption" component="div" sx={{ color: 'text.secondary' }}>
               <Box component="span" sx={{ fontWeight: 700, color: 'text.primary' }}>5. Live Set-handoff</Box>

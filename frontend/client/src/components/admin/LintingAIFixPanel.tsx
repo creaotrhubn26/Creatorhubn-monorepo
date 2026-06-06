@@ -357,7 +357,7 @@ export const LintingAIFixPanel: React.FC = () => {
             <Grid container spacing={2}>
               <Grid item xs={6} md={3}>
                 <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'error.light' }}>
-                  <Typography variant="h3" sx={{ color: 'error.contrastText' }}>
+                  <Typography variant="h4" sx={{ color: 'error.contrastText' }}>
                     {scanResult.totalErrors}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'error.contrastText' }}>
@@ -367,7 +367,7 @@ export const LintingAIFixPanel: React.FC = () => {
               </Grid>
               <Grid item xs={6} md={3}>
                 <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'warning.light' }}>
-                  <Typography variant="h3" sx={{ color: 'warning.contrastText' }}>
+                  <Typography variant="h4" sx={{ color: 'warning.contrastText' }}>
                     {scanResult.totalWarnings}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'warning.contrastText' }}>
@@ -377,7 +377,7 @@ export const LintingAIFixPanel: React.FC = () => {
               </Grid>
               <Grid item xs={6} md={3}>
                 <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'info.light' }}>
-                  <Typography variant="h3" sx={{ color: 'info.contrastText' }}>
+                  <Typography variant="h4" sx={{ color: 'info.contrastText' }}>
                     {scanResult.filesWithErrors}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'info.contrastText' }}>
@@ -387,7 +387,7 @@ export const LintingAIFixPanel: React.FC = () => {
               </Grid>
               <Grid item xs={6} md={3}>
                 <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'success.light' }}>
-                  <Typography variant="h3" sx={{ color: 'success.contrastText' }}>
+                  <Typography variant="h4" sx={{ color: 'success.contrastText' }}>
                     {scanResult.totalFiles}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'success.contrastText' }}>

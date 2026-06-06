@@ -6,6 +6,14 @@ apps/*/src-tauri/target/
 tools/*/src-tauri/target/
 .env
 .env.whatsapp.demo.local
+.env.oembed.demo.local
+.env.pages-cta.demo.local
+.env.page-public-content.demo.local
+.env.page-mentions.demo.local
+.env.page-metadata.demo.local
+.env.ig-public.demo.local
+.env.leads-retrieval.demo.local
+.env.ig-events.demo.local
 .role-room-admin-state.json
 .role-room-demo-state.json
 .whatsapp-web-state.json
@@ -18,6 +26,13 @@ models/
 !frontend/client/src/components/role-room/models/
 !frontend/client/src/components/role-room/models/casting.ts
 !frontend/client/src/components/role-room/models/derivedState.ts
+# iPad CaptureApp har en konvensjonell Swift `Models/`-mappe. `models/`-
+# pattern'en over var ment for ML/pretrained-models, men matchet
+# Swift-mappa stille — det skjulte 7 foundation-modeller fra commit
+# bac8bc13 og brøt iPad-bygget. Whitelist'er hele Models-undertreet så
+# git add fungerer uten -f for nye Swift-modeller.
+!ipad/CaptureApp/CaptureApp/Core/Models/
+!ipad/CaptureApp/CaptureApp/Core/Models/*.swift
 pretrained_models/
 pretrained_models.backup/
 python_ml_service/models/
@@ -61,8 +76,38 @@ docs/
 !docs/
 !docs/role-room/
 !docs/role-room/mobile-ipad-ux-500-improvements.md
+!docs/PRICING.md
+!docs/security/
+!docs/security/*.md
+!docs/post-agent/
+!docs/post-agent/*.md
+!docs/dance/
+!docs/dance/*.md
+!docs/specs/
+!docs/specs/*.md
+!docs/partnerships-demo/
+!docs/partnerships-demo/*.md
+!apps/resolve-script-manager/src/docs/
+!apps/resolve-script-manager/src/docs/*.md
+!apps/creatorhub-one-desk/docs/
+!apps/creatorhub-one-desk/docs/*.md
+!apps/creatorhub-one-desk/docs/legal/
+!apps/creatorhub-one-desk/docs/legal/*.md
+!backend/docs/META_APP_REVIEW_SUBMISSION.md
 !backend/docs/whatsapp-app-review-runbook.md
+!backend/docs/oembed-app-review-runbook.md
+!backend/docs/pages-manage-cta-app-review-runbook.md
+!backend/docs/page-public-content-app-review-runbook.md
+!backend/docs/page-mentions-app-review-runbook.md
+!backend/docs/page-public-metadata-app-review-runbook.md
+!backend/docs/ig-public-content-app-review-runbook.md
+!backend/docs/leads-retrieval-app-review-runbook.md
+!backend/docs/ig-manage-events-app-review-runbook.md
+!backend/docs/dance-formation-pixel-perfect-roadmap.md
 !backend/docs/role-room-agent-ux.md
+!backend/docs/dance-formation-pixel-perfect-roadmap.md
+!backend/docs/dance-formation-workflow-audit.md
+!backend/docs/dance-formation-workflow-audit-v2.md
 !TheRoleRoom-Admin-Room-Operating-System.md
 *.glb
 *.gltf
@@ -76,12 +121,16 @@ Frameworks/
 .vercel/
 .npm-cache/
 .playwright-cli/
+.playwright-mcp/
 frontend/.playwright-cli/
 frontend/playwright-report/
 frontend/test-results/
 backend/test-results/
 recordings/
-.claude/
+.claude/*
+!.claude/agents/
+.claude/agents/*
+!.claude/agents/*.md
 backend/*.traineddata
 output_*.png
 .tmp-*

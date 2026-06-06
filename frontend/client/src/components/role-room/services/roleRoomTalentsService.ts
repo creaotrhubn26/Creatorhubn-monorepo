@@ -240,9 +240,154 @@ const roleRoomTalentsService = {
     return payload.talent as RoleRoomMaskedTalent;
   },
 
+  // ── Phase 7: Talent Registry (agency-search) ──────────────────────
+  async searchTalents(
+    filters: TalentSearchFilters,
+    opts?: { agencyType?: string; agencyId?: string; demo?: boolean },
+  ): Promise<TalentSearchResult> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v == null || v === '') return;
+      if (Array.isArray(v)) {
+        if (v.length > 0) params.set(k, v.join(','));
+      } else if (typeof v === 'boolean') {
+        if (v) params.set(k, '1');
+      } else {
+        params.set(k, String(v));
+      }
+    });
+    if (opts?.agencyType && opts?.agencyId) {
+      params.set('agency_type', opts.agencyType);
+      params.set('agency_id', opts.agencyId);
+    }
+    if (opts?.demo) params.set('demo', '1');
+    const r = await authFetch(`${AGENCY_BASE}/agency/talents/search?${params.toString()}`);
+    if (!r.ok) return { agency: null, filters, total: 0, talents: [] };
+    return await r.json();
+  },
+
+  async fetchRegistryOverview(
+    opts?: { agencyType?: string; agencyId?: string; demo?: boolean },
+  ): Promise<RegistryOverview> {
+    const params = new URLSearchParams();
+    if (opts?.agencyType && opts?.agencyId) {
+      params.set('agency_type', opts.agencyType);
+      params.set('agency_id', opts.agencyId);
+    }
+    if (opts?.demo) params.set('demo', '1');
+    const qs = params.toString();
+    const r = await authFetch(`${AGENCY_BASE}/agency/registry-overview${qs ? `?${qs}` : ''}`);
+    if (!r.ok) return { agency: null, total_visible: 0, new_30d: 0, available_now: 0 };
+    return await r.json();
+  },
+
+  async fetchSavedSearches(): Promise<SavedSearch[]> {
+    const r = await authFetch(`${AGENCY_BASE}/agency/saved-searches`);
+    if (!r.ok) return [];
+    const payload = await r.json().catch(() => null);
+    return Array.isArray(payload?.searches) ? payload.searches : [];
+  },
+
+  async createSavedSearch(input: {
+    name: string;
+    filters: TalentSearchFilters;
+    shared?: boolean;
+    estimated_count?: number;
+  }): Promise<SavedSearch | { error: string }> {
+    const r = await authFetch(`${AGENCY_BASE}/agency/saved-searches`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Kunne ikke lagre' };
+    return payload.search as SavedSearch;
+  },
+
+  // ── Phase 7.5 reverse-consent proposals ─────────────────────────
+  async proposeNewTalent(input: {
+    proposed_email: string;
+    proposed_display_name?: string;
+    proposed_phone?: string;
+    requested_scopes?: RoleRoomTalentConsentScope[];
+    personal_message?: string;
+    context_role?: string;
+  }): Promise<TalentProposal | { error: string; existing?: TalentProposal }> {
+    const r = await authFetch(`${AGENCY_BASE}/agency/talent-proposals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) {
+      return {
+        error: payload?.error || 'Kunne ikke sende forslag',
+        existing: payload?.existing,
+      };
+    }
+    return payload.proposal as TalentProposal;
+  },
+
+  async fetchAgencyProposals(): Promise<TalentProposal[]> {
+    const r = await authFetch(`${AGENCY_BASE}/agency/talent-proposals`);
+    if (!r.ok) return [];
+    const payload = await r.json().catch(() => null);
+    return Array.isArray(payload?.proposals) ? payload.proposals : [];
+  },
+
+  async cancelAgencyProposal(id: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await authFetch(`${AGENCY_BASE}/agency/talent-proposals/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (!r.ok) {
+      const payload = await r.json().catch(() => null);
+      return { ok: false, error: payload?.error || 'Kunne ikke avbryte' };
+    }
+    return { ok: true };
+  },
+
+  async lookupTalentProposal(token: string): Promise<{ proposal: TalentProposalDetail; expired: boolean } | { error: string }> {
+    const r = await fetch(`${AGENCY_BASE}/talent-proposals/${encodeURIComponent(token)}`);
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Ikke funnet' };
+    return payload;
+  },
+
+  async acceptTalentProposal(token: string): Promise<{ ok: boolean; talentId?: string; scopesGranted?: string[]; error?: string }> {
+    const r = await authFetch(`${AGENCY_BASE}/talent-proposals/${encodeURIComponent(token)}/accept`, {
+      method: 'POST',
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { ok: false, error: payload?.error || 'Kunne ikke akseptere' };
+    return { ok: true, talentId: payload.talentId, scopesGranted: payload.scopesGranted };
+  },
+
+  async declineTalentProposal(token: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await fetch(`${AGENCY_BASE}/talent-proposals/${encodeURIComponent(token)}/decline`, {
+      method: 'POST',
+    });
+    if (!r.ok) {
+      const payload = await r.json().catch(() => null);
+      return { ok: false, error: payload?.error || 'Kunne ikke avslå' };
+    }
+    return { ok: true };
+  },
+
+  async deleteSavedSearch(id: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await authFetch(`${AGENCY_BASE}/agency/saved-searches/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (!r.ok) {
+      const payload = await r.json().catch(() => null);
+      return { ok: false, error: payload?.error || 'Kunne ikke slette' };
+    }
+    return { ok: true };
+  },
+
   // ── Phase 2 e2e ──────────────────────────────────────────────────
-  async fetchPartnersOverview(): Promise<PartnersOverview> {
-    const r = await authFetch(`${BASE}/me/partners-overview`);
+  async fetchPartnersOverview(opts?: { demo?: boolean }): Promise<PartnersOverview> {
+    const qs = opts?.demo ? '?demo=1' : '';
+    const r = await authFetch(`${BASE}/me/partners-overview${qs}`);
     if (!r.ok) {
       return {
         talent: null,
@@ -253,6 +398,125 @@ const roleRoomTalentsService = {
     }
     const payload = await r.json().catch(() => null);
     return payload as PartnersOverview;
+  },
+
+  async fetchUploadConfig(): Promise<UploadConfig> {
+    const r = await authFetch(`${BASE}/me/uploads/config`);
+    if (!r.ok) return { enabled: false, maxBytes: {}, allowedTypes: {} };
+    const payload = await r.json().catch(() => null);
+    return payload as UploadConfig;
+  },
+
+  /**
+   * Stream-upload: ber Cloudflare Stream om en one-shot upload-URL,
+   * laster opp filen som multipart/form-data direkte til Stream.
+   * Returnerer finalUrl (iframe-embed) ved suksess.
+   */
+  async uploadShowreelToStream(
+    file: File,
+    onProgress?: (pct: number) => void,
+  ): Promise<{ ok: true; result: StreamUploadSignResult } | { ok: false; error: string }> {
+    const signRes = await authFetch(`${BASE}/me/uploads/sign-stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const signed = await signRes.json().catch(() => null) as StreamUploadSignResult | { error: string };
+    if (!signRes.ok || !signed || 'error' in signed) {
+      return { ok: false, error: (signed as { error?: string })?.error || 'Kunne ikke initiere Stream-upload' };
+    }
+
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', signed.uploadUrl);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ ok: true, result: signed });
+        } else {
+          resolve({ ok: false, error: `Stream-upload feilet (HTTP ${xhr.status})` });
+        }
+      };
+      xhr.onerror = () => resolve({ ok: false, error: 'Nettverksfeil ved Stream-upload' });
+      const form = new FormData();
+      form.append('file', file, file.name);
+      xhr.send(form);
+    });
+  },
+
+  /** Signerer en presigned PUT-URL for direkte R2-opplastning. */
+  async signUpload(input: {
+    kind: 'headshot' | 'showreel' | 'resume' | 'alt_photo';
+    contentType: string;
+    size_bytes: number;
+    filename: string;
+  }): Promise<UploadSignResult | { error: string }> {
+    const r = await authFetch(`${BASE}/me/uploads/sign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Kunne ikke generere upload-URL' };
+    return payload as UploadSignResult;
+  },
+
+  /**
+   * Streamer en File direkte til R2 via presigned PUT-URL.
+   * Bruker XMLHttpRequest for progress-event (fetch har ingen upload-progress).
+   * Returnerer finalUrl ved suksess.
+   */
+  async uploadFileToR2(
+    file: File,
+    kind: 'headshot' | 'showreel' | 'resume' | 'alt_photo',
+    onProgress?: (pct: number) => void,
+  ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+    const signed = await this.signUpload({
+      kind,
+      contentType: file.type,
+      size_bytes: file.size,
+      filename: file.name,
+    });
+    if ('error' in signed) return { ok: false, error: signed.error };
+
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', signed.uploadUrl);
+      xhr.setRequestHeader('Content-Type', signed.contentType);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ ok: true, url: signed.finalUrl });
+        } else {
+          resolve({ ok: false, error: `Opplasting feilet (HTTP ${xhr.status})` });
+        }
+      };
+      xhr.onerror = () => resolve({ ok: false, error: 'Nettverksfeil ved opplasting' });
+      xhr.send(file);
+    });
+  },
+
+  async pausePartnerAccess(input: {
+    partner_type: RoleRoomTalentPartnerType;
+    partner_ref: string;
+    days?: number;
+  }): Promise<{ ok: boolean; paused_scopes?: string[]; days?: number; error?: string }> {
+    const r = await authFetch(`${BASE}/me/consents/pause`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { ok: false, error: payload?.error || 'Kunne ikke pause' };
+    return { ok: true, paused_scopes: payload.paused_scopes, days: payload.days };
   },
 
   async bulkSetConsents(input: {
@@ -379,6 +643,134 @@ export interface RoleRoomPartnerInvite {
   token: string;
   acceptUrl?: string;
   maskedEmail?: string;
+}
+
+export interface TalentSearchFilters {
+  q?: string;
+  location?: string;
+  gender?: string;
+  age_min?: number;
+  age_max?: number;
+  languages?: string[];
+  skills?: string[];
+  dialects?: string[];
+  availability?: string;
+  has_selftape?: boolean;
+  representation?: 'represented' | 'independent' | 'any';
+  sort?: 'recent' | 'name' | 'available_first';
+  limit?: number;
+  offset?: number;
+}
+
+export interface TalentSearchHit {
+  id: string;
+  display_name: string;
+  city: string | null;
+  country: string | null;
+  bio: string | null;
+  represented: boolean;
+  granted_scopes: RoleRoomTalentConsentScope[];
+  skills: Array<{ id: string; label: string }>;
+  languages: Array<{ code: string; label: string; level?: string }>;
+  dialects: string[];
+  // maskerte felter (kun hvis scope er gitt):
+  headshot_url?: string | null;
+  showreel_url?: string | null;
+  has_showreel?: boolean;
+  playing_age_min?: number | null;
+  playing_age_max?: number | null;
+  gender?: string | null;
+  availability_status?: 'open' | 'limited' | 'unavailable';
+  agency_name?: string | null;
+}
+
+export interface TalentSearchResult {
+  agency: { id: string; name: string; type: string } | null;
+  filters: TalentSearchFilters;
+  total: number;
+  talents: TalentSearchHit[];
+}
+
+export interface RegistryOverview {
+  agency: { id: string; name: string } | null;
+  total_visible: number;
+  new_30d: number;
+  available_now: number;
+  /** 30-dagers daglig sparkline-data: nye consent-grants per dag. */
+  sparkline?: Array<{ day: string; n: number }>;
+}
+
+export interface SavedSearch {
+  id: string;
+  name: string;
+  filters: TalentSearchFilters;
+  estimated_count: number | null;
+  estimated_at: string | null;
+  shared: boolean;
+  created_at: string;
+  updated_at: string;
+  last_run_at: string | null;
+  owner_user_id: string;
+}
+
+export interface TalentProposal {
+  id: string;
+  proposed_email: string;
+  proposed_display_name: string | null;
+  requested_scopes: RoleRoomTalentConsentScope[];
+  status: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled';
+  personal_message: string | null;
+  context_role: string | null;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  declined_at: string | null;
+  resolved_talent_id: string | null;
+  token: string;
+  acceptUrl?: string;
+}
+
+export interface TalentProposalDetail {
+  id: string;
+  proposed_email: string;
+  proposed_display_name: string | null;
+  requested_scopes: RoleRoomTalentConsentScope[];
+  status: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled';
+  personal_message: string | null;
+  context_role: string | null;
+  expires_at: string;
+  agency_name: string;
+  agency_type: RoleRoomTalentPartnerType;
+  agency_about: string | null;
+  agency_verified: boolean;
+}
+
+export interface UploadConfig {
+  enabled: boolean;
+  streamEnabled?: boolean;
+  streamSubdomain?: string | null;
+  maxBytes: Partial<Record<'headshot' | 'showreel' | 'resume' | 'alt_photo', number>>;
+  allowedTypes: Partial<Record<'headshot' | 'showreel' | 'resume' | 'alt_photo', string[]>>;
+}
+
+export interface StreamUploadSignResult {
+  uploadUrl: string;     // klient POST'er filen hit (multipart/form-data, field: 'file')
+  uid: string;
+  finalUrl: string;      // /iframe — lagres i talent.showreel_url
+  hlsManifestUrl: string;
+  dashManifestUrl: string;
+  thumbnailUrl: string;
+  previewMp4Url: string;
+  expiresAt: string;
+}
+
+export interface UploadSignResult {
+  uploadUrl: string;
+  finalUrl: string;
+  key: string;
+  expiresIn: number;
+  contentType: string;
+  instructions?: string;
 }
 
 export interface PartnerInviteDetail {

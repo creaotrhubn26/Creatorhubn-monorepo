@@ -86,6 +86,7 @@ import {
 import { getCourseCategoryIcon, getCourseLevelIcon } from '@/utils/profession-icons';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { apiRequest } from '@/lib/queryClient';
+import { buildEventsWsUrl } from '@/lib/realtimeWsUrl';
 import { formatDistanceToNow } from 'date-fns';
 import { nb } from 'date-fns/locale';
 import ReportDialog from './ReportDialog';
@@ -724,9 +725,11 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
     // Initial fetch
     fetchChannelMessages(selectedChannel.id);
 
-    // Connect to WebSocket
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/events`;
+    // Connect to WebSocket. null i prod uten eksplisitt WS-host (Vercel
+    // proxy-er ikke WS) — da hopper vi over koblingen så vi ikke spammer
+    // failed-connections i konsollen.
+    const wsUrl = buildEventsWsUrl('/ws/events');
+    if (!wsUrl) return;
 
     try {
       wsRef.current = new WebSocket(wsUrl);

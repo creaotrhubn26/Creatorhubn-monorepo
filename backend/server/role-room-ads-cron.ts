@@ -45,6 +45,8 @@ import {
   ensureFreshConnection,
 } from "./role-room-instagram-oauth.js";
 import { resolveAdsAccessToken } from "./role-room-ads-oauth.js";
+import { runMccLinkStatusSweep } from "./role-room-mcc-link-detector.js";
+import { buildRoleRoomAdsMeterEmitter } from "./role-room-ads-meter-emitter.js";
 import type { AdsPlatform } from "./role-room-ads-shared.js";
 import {
   runAdsAutoPauseSweep,
@@ -106,10 +108,18 @@ export async function runAdsAttributionSweepWithDefaults(
   pool: Pool,
   opts?: { meterEmitter?: MeterEmitter | null; sinceISO?: string; untilISO?: string },
 ): Promise<SweepSummary> {
+  // Default: forsøk å bygge en ekte Stripe-meter-emitter (env-gated). Hvis
+  // ROLE_ROOM_STRIPE_METER_ADS_FEE_ENABLED ikke er "true" eller Stripe-
+  // nøkkelen mangler, returnerer builderen `null` og oppførselen er
+  // identisk med før (ledger-skriv uten Stripe-push).
+  const meterEmitter =
+    opts?.meterEmitter !== undefined
+      ? opts.meterEmitter
+      : buildRoleRoomAdsMeterEmitter(pool);
   return runAdsAttributionSweep(pool, {
     connectors: buildAdsConnectorRegistry(),
     resolveToken: buildPlatformTokenResolver(pool),
-    meterEmitter: opts?.meterEmitter ?? null,
+    meterEmitter,
     sinceISO: opts?.sinceISO,
     untilISO: opts?.untilISO,
   });
@@ -297,7 +307,16 @@ export function setupRoleRoomAdsCron(deps: RoleRoomAdsCronDeps): void {
       } catch (error) {
         console.error("[ads-recommendations] sweep failed (non-fatal)", error);
       }
-      res.json({ ok: true, summary, autoPause, recommendations });
+      // MCC-link-detector: poll Google Ads MCC for status-endring (PENDING→ACTIVE
+      // / REFUSED / etc.) per produsent. Fyrer producer-notifikasjon ved endring.
+      // Trenger samme periode-disiplin: non-fatal, må aldri felle de andre.
+      let mccLinks: Awaited<ReturnType<typeof runMccLinkStatusSweep>> | null = null;
+      try {
+        mccLinks = await runMccLinkStatusSweep(pool);
+      } catch (error) {
+        console.error("[mcc-link-detector] sweep failed (non-fatal)", error);
+      }
+      res.json({ ok: true, summary, autoPause, recommendations, mccLinks });
     } catch (error) {
       res.status(500).json({ error: "ads_attribution_tick_failed", detail: String(error) });
     }
@@ -314,6 +333,9 @@ export function setupRoleRoomAdsCron(deps: RoleRoomAdsCronDeps): void {
           ))
           .then(() => runAdsRecommendationsSweepWithDefaults(pool).catch((e) =>
             console.error("[ads-recommendations] interval run failed (non-fatal)", e),
+          ))
+          .then(() => runMccLinkStatusSweep(pool).catch((e) =>
+            console.error("[mcc-link-detector] interval run failed (non-fatal)", e),
           ))
           .catch((e) => console.error("[ads-sweep] interval run failed", e));
       },

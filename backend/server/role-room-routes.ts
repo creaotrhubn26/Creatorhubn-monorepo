@@ -21,6 +21,13 @@ import {
   loadOauthTransfer,
   deleteOauthTransfer,
 } from './role-room-oauth-store.js';
+import { resolveClientPortalSession } from './role-room-client-portal.js';
+import {
+  getProjectProducerUserId,
+  loadProjectProducerInfo,
+  recordClientOauthConsent,
+  revokeProjectPlatformConnection,
+} from './client-portal-connected-platforms.js';
 import { existsSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
@@ -176,6 +183,7 @@ import {
   sumManagementFeeForPeriod,
   sumSpendForProjectPeriod,
   getChannelResultRows,
+  getCampaignResultRows,
 } from './role-room-ads-db.js';
 import {
   getBudget,
@@ -216,6 +224,9 @@ import {
   hasGoogleCustomerAccess,
   listAccessibleCustomers as listGoogleAccessibleCustomers,
   parseCampaignResourceName as parseGoogleCampaignResourceName,
+  sendMccInvite,
+  listMccLinks,
+  getMccLinkStatus,
   GoogleAdsApiError,
   type GoogleAdsAuth,
 } from './role-room-google-ads.js';
@@ -760,6 +771,8 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const PROJECT_FILE_STORAGE_ROOT = path.join(REPO_ROOT, 'uploads', 'project-files');
 const ROLE_ROOM_TALENT_UPLOAD_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-talent');
 const ROLE_ROOM_RECEIPT_UPLOAD_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-receipts');
+const ROLE_ROOM_CLIENT_ASSET_UPLOAD_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-client-assets');
+const ROLE_ROOM_CLIENT_ASSET_MAX_BYTES = 50 * 1024 * 1024;
 const ROLE_ROOM_RECEIPT_OCR_CACHE_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-ocr-cache');
 const ROLE_ROOM_TALENT_UPLOAD_MAX_BYTES = 512 * 1024 * 1024;
 const ROLE_ROOM_RECEIPT_UPLOAD_MAX_BYTES = 35 * 1024 * 1024;
@@ -823,6 +836,32 @@ const roleRoomReceiptUpload = multer({
     }
 
     cb(new Error('Ugyldig kvitteringsformat. Bruk PDF, JPG, PNG, WebP, HEIC eller TIFF.'));
+  },
+});
+// Klient-asset-opplasting (logo, brand-filer, brief). Bredere format-tillatelse
+// enn kvitteringer siden logoer ofte er SVG/AI/EPS. Filene serveres alltid som
+// nedlasting (Content-Disposition: attachment), aldri inline — så SVG ikke kan
+// rendres som aktivt innhold i nettleseren.
+const roleRoomClientAssetUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: ROLE_ROOM_CLIENT_ASSET_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    const mimetype = String(file.mimetype || '').toLowerCase();
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const allowedExtensions = [
+      '.pdf', '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.tif', '.tiff',
+      '.gif', '.svg', '.ai', '.eps', '.psd', '.zip', '.doc', '.docx', '.ppt', '.pptx',
+    ];
+    const blockedExtensions = ['.exe', '.sh', '.bat', '.cmd', '.js', '.app', '.dll', '.msi'];
+    if (blockedExtensions.includes(extension)) {
+      cb(new Error('Filtypen er ikke tillatt.'));
+      return;
+    }
+    if (mimetype.startsWith('image/') || mimetype === 'application/pdf' || allowedExtensions.includes(extension)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Ugyldig filformat for klient-opplasting.'));
   },
 });
 const ROLE_ROOM_GOOGLE_SCOPES = [
@@ -8933,6 +8972,72 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   });
 
+  // Klient-initiert Google Workspace-kobling fra portalen (alltid link-modus).
+  // Samme state-payload som produsentens link-start, men med prosjekteierens
+  // userId. Hopper over commercial-login-gaten (den gjelder kun mode='login').
+  router.post('/client-portal/oauth/google/start', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredRoleRoomGoogleState();
+      const token = typeof req.query.token === 'string' ? req.query.token : '';
+      if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+      const session = await resolveClientPortalSession(pool, token);
+      if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+      const producerUserId = await getProjectProducerUserId(pool, session.projectId);
+      if (!producerUserId) {
+        res.status(409).json({ error: 'Prosjektet mangler en produsent å koble kontoen til.' });
+        return;
+      }
+
+      const browserOrigin = sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req);
+      const requestScopedRedirectUri = browserOrigin
+        ? `${browserOrigin}/api/role-room/google/oauth/callback`
+        : null;
+      const config = getRoleRoomGoogleConfig(req, requestScopedRedirectUri);
+      if (!config.configured) {
+        res.status(400).json({ error: 'Google Workspace er ikke konfigurert', missing: config.missing });
+        return;
+      }
+      const oauthClient = createRoleRoomGoogleOAuthClient(req, config.redirectUri);
+      if (!oauthClient) {
+        res.status(500).json({ error: 'Google OAuth-klient er ikke tilgjengelig' });
+        return;
+      }
+
+      const stateId = crypto.randomUUID();
+      // Redirect klienten tilbake til portalen etter kobling.
+      const returnPath = `/client/portal/${encodeURIComponent(token)}?connected=google`;
+      const oauthStatePayload: RoleRoomGoogleOauthState = {
+        mode: 'link',
+        returnPath,
+        browserOrigin,
+        redirectUri: config.redirectUri ?? null,
+        loginAs: null,
+        requestedRole: null,
+        projectId: session.projectId,
+        createdByUserId: producerUserId,
+        createdByEmail: null,
+        targetConnectionUserId: null,
+        targetConnectionEmail: null,
+        createdAt: Date.now(),
+      };
+      roleRoomGoogleOauthStateStore.set(stateId, oauthStatePayload);
+      void persistOauthState(pool, stateId, oauthStatePayload, new Date(Date.now() + 10 * 60 * 1000));
+
+      const authorizationUrl = oauthClient.generateAuthUrl({
+        access_type: 'offline',
+        scope: [...ROLE_ROOM_GOOGLE_SCOPES],
+        include_granted_scopes: true,
+        prompt: 'consent',
+        state: stateId,
+      });
+
+      res.json({ success: true, mode: 'link' as const, authorizationUrl });
+    } catch (error) {
+      console.error('Role Room client Google oauth start error:', error);
+      res.status(500).json({ error: 'Kunne ikke starte Google OAuth' });
+    }
+  });
+
   router.get('/google/oauth/callback', async (req: Request, res: Response) => {
     pruneExpiredRoleRoomGoogleState();
     const fallbackReturnPath = sanitizeRoleRoomReturnPath(req.query.returnPath, req);
@@ -9593,6 +9698,57 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       });
     } catch (error) {
       console.error('Role Room LinkedIn oauth start error:', error);
+      res.status(500).json({ error: 'Kunne ikke starte LinkedIn OAuth' });
+    }
+  });
+
+  // Klient-initiert LinkedIn-kobling fra portalen. Mynter samme state-store-
+  // entry som produsentens start, men med PROSJEKTEIERENS userId, slik at den
+  // delte callbacken lagrer koblingen under produsenten + prosjektet.
+  // Klient-token gater hvem som kan starte; consent gis med klientens konto.
+  router.post('/client-portal/oauth/linkedin/start', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredRoleRoomGoogleState();
+      const token = typeof req.query.token === 'string' ? req.query.token : '';
+      if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+      const session = await resolveClientPortalSession(pool, token);
+      if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+      const producerUserId = await getProjectProducerUserId(pool, session.projectId);
+      if (!producerUserId) {
+        res.status(409).json({ error: 'Prosjektet mangler en produsent å koble kontoen til.' });
+        return;
+      }
+
+      const config = getRoleRoomLinkedInConfig(req);
+      if (!config.configured || !config.clientId || !config.redirectUri) {
+        res.status(400).json({ error: 'LinkedIn er ikke konfigurert', missing: config.missing });
+        return;
+      }
+
+      const stateId = crypto.randomUUID();
+      // Redirect klienten tilbake til portalen etter kobling.
+      const returnPath = `/client/portal/${encodeURIComponent(token)}?connected=linkedin`;
+      roleRoomLinkedInOauthStateStore.set(stateId, {
+        returnPath,
+        browserOrigin: sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req),
+        projectId: session.projectId,
+        createdByUserId: producerUserId,
+        createdAt: Date.now(),
+      });
+
+      const authorizationUrl = `https://www.linkedin.com/oauth/v2/authorization?${
+        new URLSearchParams({
+          response_type: 'code',
+          client_id: config.clientId,
+          redirect_uri: config.redirectUri,
+          scope: [...ROLE_ROOM_LINKEDIN_SCOPES].join(' '),
+          state: stateId,
+        }).toString()
+      }`;
+
+      res.json({ success: true, mode: 'link' as const, authorizationUrl });
+    } catch (error) {
+      console.error('Role Room client LinkedIn oauth start error:', error);
       res.status(500).json({ error: 'Kunne ikke starte LinkedIn OAuth' });
     }
   });
@@ -12431,6 +12587,53 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // Producer Workflow (Timeline / Economy / Client Reviews)
   // ═══════════════════════════════════════════════════════════
 
+  // Klient-tilstedeværelse: hvilke klienter har klientportalen åpen akkurat nå.
+  // Mates av POST /api/client/portal/presence (klientportalens heartbeat).
+  router.get('/projects/:projectId/client-presence', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til prosjektet' });
+        return;
+      }
+      const { clientsForProject } = await import('./client-portal-presence-service.js');
+      const clients = clientsForProject(projectId);
+      res.json({
+        status: 'ok',
+        projectId,
+        clients: clients.map((entry) => ({
+          email: entry.email,
+          name: entry.name,
+          workspace: entry.workspace,
+          joinedAt: new Date(entry.joinedAt).toISOString(),
+          lastSeenAt: new Date(entry.lastSeenAt).toISOString(),
+        })),
+      });
+    } catch (error) {
+      console.error('[role-room] client-presence failed', error);
+      res.status(500).json({ error: 'Kunne ikke hente klient-tilstedeværelse' });
+    }
+  });
+
+  // Produsent-side: se hvilke samtykker klienten har gitt (chip i UI).
+  router.get('/projects/:projectId/client-consents', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til prosjektet' });
+        return;
+      }
+      const { latestClientConsentsForProject } = await import('./client-portal-connected-platforms.js');
+      const consents = await latestClientConsentsForProject(pool, projectId);
+      res.json({ status: 'ok', projectId, consents });
+    } catch (error) {
+      console.error('[role-room] client-consents failed', error);
+      res.status(500).json({ error: 'Kunne ikke hente klient-samtykker' });
+    }
+  });
+
   router.get('/projects/:projectId/producer/timeline', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!(await ensureProducerWorkflowTables())) {
       res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
@@ -15026,6 +15229,298 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       console.error('Producer client material create error:', error);
       res.status(500).json({ error: 'Kunne ikke opprette klientmateriale' });
     }
+  });
+
+  // ── Klient-filopplasting fra portalen ────────────────────────────────────
+  // Klienten (Helene) laster opp logo/brand-filer/brief direkte fra portalen.
+  // Filen lagres på disk + en role_room_client_materials-rad (created_by_role
+  // = 'client', metadata.file) opprettes, slik at produsenten ser den i sin
+  // klientgrunnlag-visning og kan laste den ned. Klient-token gater opplasting.
+  router.post('/client-portal/materials', roleRoomClientAssetUpload.single('file'), async (req: Request, res: Response) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+    const uploadedFile = (req as Request & { file?: Express.Multer.File }).file;
+    if (!uploadedFile) { res.status(400).json({ error: 'Mangler fil' }); return; }
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Klientmateriale er ikke tilgjengelig akkurat nå' });
+      return;
+    }
+    try {
+      const projectId = session.projectId;
+      const rawType = typeof req.body?.entryType === 'string' ? req.body.entryType.trim().toLowerCase() : '';
+      const allowedTypes = ['brand_asset', 'asset_link', 'reference', 'document', 'brief_note', 'feedback'];
+      const entryType = allowedTypes.includes(rawType) ? rawType : 'brand_asset';
+      const titleRaw = typeof req.body?.title === 'string' && req.body.title.trim()
+        ? req.body.title.trim()
+        : (uploadedFile.originalname || 'Klientfil');
+      const description = typeof req.body?.description === 'string' && req.body.description.trim()
+        ? req.body.description.trim()
+        : null;
+
+      const materialId = crypto.randomUUID();
+      const safeOriginalName = sanitizeRoleRoomTalentFileSegment(uploadedFile.originalname || 'fil');
+      const extension = path.extname(safeOriginalName) || '.bin';
+      const fileName = `${materialId}${extension}`;
+      const storageDirectory = path.join(ROLE_ROOM_CLIENT_ASSET_UPLOAD_ROOT, sanitizeRoleRoomTalentFileSegment(projectId));
+      await fs.mkdir(storageDirectory, { recursive: true });
+      const storagePath = path.join(storageDirectory, fileName);
+      await fs.writeFile(storagePath, uploadedFile.buffer);
+      const sha256 = crypto.createHash('sha256').update(uploadedFile.buffer).digest('hex');
+
+      const metadata = {
+        file: {
+          fileName,
+          originalName: uploadedFile.originalname || fileName,
+          mimeType: uploadedFile.mimetype || 'application/octet-stream',
+          fileSize: uploadedFile.size,
+          sha256,
+          storagePath,
+        },
+        uploadedByClient: true,
+        clientEmail: session.clientEmail,
+        clientName: session.clientName ?? null,
+      };
+
+      const result = await pool.query(
+        `INSERT INTO role_room_client_materials (
+          id, project_id, entry_type, title, description, external_url, phase,
+          linked_shot_list_id, status, metadata, created_by_user_id, created_by_role, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, 'provided', $6::jsonb, $7, 'client', NOW(), NOW())
+        RETURNING id, entry_type AS "entryType", title, description, status, created_at AS "createdAt"`,
+        [materialId, projectId, entryType, titleRaw, description, JSON.stringify(metadata), session.clientEmail],
+      );
+
+      // Proaktivt varsel til produsent-teamet (push + inbox) — så de ser at
+      // klienten har sendt en fil uten å vente på poll.
+      try {
+        await notifyProducerTeamAboutClientMaterial(
+          projectId,
+          {
+            id: materialId,
+            title: titleRaw,
+            entry_type: entryType,
+            description,
+            phase: null,
+          } as unknown as ProducerClientMaterialRow,
+          session.clientEmail,
+          'client',
+          'created',
+        );
+      } catch (notifyError) {
+        console.warn('[client-portal] material-varsel feilet', notifyError);
+      }
+
+      res.status(201).json({
+        item: {
+          ...result.rows[0],
+          file: {
+            originalName: metadata.file.originalName,
+            mimeType: metadata.file.mimeType,
+            fileSize: metadata.file.fileSize,
+          },
+        },
+      });
+    } catch (error) {
+      console.error('[client-portal] material upload failed', error);
+      res.status(500).json({ error: 'Kunne ikke laste opp filen' });
+    }
+  });
+
+  // Klienten ser sine egne opplastede filer i portalen.
+  router.get('/client-portal/materials', async (req: Request, res: Response) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+    if (!(await ensureProducerWorkflowTables())) { res.json({ items: [] }); return; }
+    try {
+      const result = await pool.query(
+        `SELECT id, entry_type AS "entryType", title, description, status, metadata, created_at AS "createdAt"
+           FROM role_room_client_materials
+          WHERE project_id = $1 AND created_by_role = 'client'
+          ORDER BY created_at DESC`,
+        [session.projectId],
+      );
+      const items = result.rows.map((row) => {
+        const meta = (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as {
+          file?: { originalName?: string; mimeType?: string; fileSize?: number };
+        };
+        return {
+          id: row.id,
+          entryType: row.entryType,
+          title: row.title,
+          description: row.description,
+          status: row.status,
+          createdAt: row.createdAt,
+          file: meta.file
+            ? { originalName: meta.file.originalName ?? null, mimeType: meta.file.mimeType ?? null, fileSize: meta.file.fileSize ?? null }
+            : null,
+        };
+      });
+      res.json({ items });
+    } catch (error) {
+      console.error('[client-portal] material list failed', error);
+      res.json({ items: [] });
+    }
+  });
+
+  // Produsenten laster ned en klient-opplastet fil (auth-gated stream).
+  router.get('/projects/:projectId/producer/client-materials/:materialId/file', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const { projectId, materialId } = req.params;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til klientmateriale' });
+        return;
+      }
+      const result = await pool.query(
+        `SELECT metadata FROM role_room_client_materials WHERE id = $1 AND project_id = $2 LIMIT 1`,
+        [materialId, projectId],
+      );
+      const meta = (result.rows[0]?.metadata && typeof result.rows[0].metadata === 'object'
+        ? result.rows[0].metadata
+        : {}) as { file?: { storagePath?: string; originalName?: string; mimeType?: string } };
+      const file = meta.file;
+      if (!file?.storagePath) { res.status(404).json({ error: 'Fant ikke filen' }); return; }
+      // Sti-traversal-vern: filen MÅ ligge under klient-asset-roten.
+      const resolved = path.resolve(file.storagePath);
+      if (!resolved.startsWith(path.resolve(ROLE_ROOM_CLIENT_ASSET_UPLOAD_ROOT) + path.sep)) {
+        res.status(400).json({ error: 'Ugyldig fil-sti' });
+        return;
+      }
+      const buffer = await fs.readFile(resolved);
+      res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.originalName || 'fil')}"`);
+      res.send(buffer);
+    } catch (error) {
+      console.error('[role-room] client material download failed', error);
+      res.status(500).json({ error: 'Kunne ikke laste ned filen' });
+    }
+  });
+
+  // Klient-samtykke til OAuth-tilgang. Ligger her (ikke i client-portal-routes)
+  // for å kunne varsle produsent-teamet via upsertProducerProjectNotification.
+  // Logges FØR redirect → sporbart GDPR-bevis.
+  const CLIENT_OAUTH_CONSENT_SUMMARY: Record<string, string> = {
+    instagram: 'Publisere innlegg, reels og stories til Instagram (via Meta).',
+    facebook: 'Publisere innlegg til den tilkoblede Facebook-siden (via Meta).',
+    tiktok: 'Publisere videoer til TikTok-kontoen.',
+    linkedin: 'Publisere innlegg til LinkedIn på vegne av kontoen.',
+    google: 'Lese/skrive dokumenter og filer i Google Workspace knyttet til prosjektet.',
+  };
+  router.post('/client-portal/oauth-consent', async (req: Request, res: Response) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+    const platform = typeof req.body?.platform === 'string' ? req.body.platform.toLowerCase() : '';
+    if (!CLIENT_OAUTH_CONSENT_SUMMARY[platform]) { res.status(400).json({ error: 'invalid_platform' }); return; }
+    const producer = await loadProjectProducerInfo(pool, session.projectId);
+    if (!producer) { res.status(409).json({ error: 'no_producer_on_project' }); return; }
+
+    const forwarded = req.headers['x-forwarded-for'];
+    const ipAddress = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : null) || req.ip || null;
+    const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null;
+    await recordClientOauthConsent(pool, {
+      projectId: session.projectId,
+      clientEmail: session.clientEmail,
+      clientName: session.clientName ?? null,
+      producerUserId: producer.userId,
+      producerName: producer.name,
+      producerAgency: producer.agency,
+      platform,
+      scopesSummary: CLIENT_OAUTH_CONSENT_SUMMARY[platform],
+      ipAddress,
+      userAgent,
+    });
+
+    // Proaktivt varsel til produsent-teamet (push + inbox).
+    try {
+      const platformLabel = platform.charAt(0).toUpperCase() + platform.slice(1);
+      await upsertProducerProjectNotification({
+        projectId: session.projectId,
+        audience: 'producer_team',
+        eventType: 'client_granted_oauth_access',
+        title: 'Klienten ga tilgang til en konto',
+        message: `${session.clientName || session.clientEmail} ga tilgang til å publisere på ${platformLabel}.`,
+        linkedEntityType: 'client_oauth_consent',
+        linkedEntityId: platform,
+        metadata: {
+          source: 'client_oauth_consent',
+          platform,
+          clientEmail: session.clientEmail,
+          clientName: session.clientName ?? null,
+        },
+        createdByUserId: session.clientEmail,
+        createdByRole: 'client',
+      });
+    } catch (notifyError) {
+      console.warn('[client-portal] consent-varsel feilet', notifyError);
+    }
+
+    res.json({ status: 'ok' });
+  });
+
+  // Klient trekker tilbake tilgang (GDPR-retten til å trekke samtykke).
+  // Setter koblingen til 'revoked' (tilgangen opphører), logger tilbaketrekkingen
+  // i samme spor (action='revoked'), og varsler produsenten.
+  router.post('/client-portal/oauth-revoke', async (req: Request, res: Response) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+    const platform = typeof req.body?.platform === 'string' ? req.body.platform.toLowerCase() : '';
+    if (!CLIENT_OAUTH_CONSENT_SUMMARY[platform]) { res.status(400).json({ error: 'invalid_platform' }); return; }
+    const producer = await loadProjectProducerInfo(pool, session.projectId);
+
+    // 1) Koblingen settes til revoked → tilgangen opphører.
+    await revokeProjectPlatformConnection(pool, session.projectId, producer?.userId ?? null, platform);
+
+    // 2) Logg tilbaketrekkingen (GDPR-bevis).
+    const forwarded = req.headers['x-forwarded-for'];
+    const ipAddress = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : null) || req.ip || null;
+    const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null;
+    await recordClientOauthConsent(pool, {
+      projectId: session.projectId,
+      clientEmail: session.clientEmail,
+      clientName: session.clientName ?? null,
+      producerUserId: producer?.userId ?? 'unknown',
+      producerName: producer?.name ?? null,
+      producerAgency: producer?.agency ?? null,
+      platform,
+      scopesSummary: 'Tilgang trukket tilbake av klienten.',
+      ipAddress,
+      userAgent,
+      action: 'revoked',
+    });
+
+    // 3) Varsle produsent-teamet.
+    try {
+      const platformLabel = platform.charAt(0).toUpperCase() + platform.slice(1);
+      await upsertProducerProjectNotification({
+        projectId: session.projectId,
+        audience: 'producer_team',
+        eventType: 'client_revoked_oauth_access',
+        title: 'Klienten trakk tilbake tilgang',
+        message: `${session.clientName || session.clientEmail} trakk tilbake tilgangen til ${platformLabel}.`,
+        linkedEntityType: 'client_oauth_consent',
+        linkedEntityId: platform,
+        metadata: {
+          source: 'client_oauth_revoke',
+          platform,
+          clientEmail: session.clientEmail,
+          clientName: session.clientName ?? null,
+        },
+        createdByUserId: session.clientEmail,
+        createdByRole: 'client',
+      });
+    } catch (notifyError) {
+      console.warn('[client-portal] revoke-varsel feilet', notifyError);
+    }
+
+    res.json({ status: 'ok' });
   });
 
   router.patch('/projects/:projectId/producer/client-materials/:materialId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
@@ -18690,7 +19185,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     operatorId: z.string().min(1).max(160),
     deviceId: z.string().min(1).max(240),
     shootingDayId: z.string().min(1).max(160).optional(),
-    metadata: z.record(z.unknown()).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   });
 
   const liveSetEventSchema = z.object({
@@ -18698,7 +19193,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     sessionId: z.string().min(2).max(128),
     seq: z.number().int().positive(),
     type: z.enum(liveSetEventTypeValues),
-    payload: z.record(z.unknown()).default({}),
+    payload: z.record(z.string(), z.unknown()).default({}),
     capturedAt: z.string().min(4),
     deviceId: z.string().min(1).max(240),
     operatorId: z.string().min(1).max(160),
@@ -22111,6 +22606,123 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     },
   );
 
+  // ── MCC ↔ kunde-invitasjons-flyt (ett-klikk i stedet for 9 manuelle steg) ─
+  // Produsent: lim inn kundens 10-sifrede Google Ads customer-id → POST /mcc/invite.
+  // Klient: ser invitasjon som notifikasjon i sin Google Ads → ett klikk for å godta.
+  // Poll: GET /mcc/links eller /mcc/links/:id/status til status = ACTIVE.
+
+  // Helper: normaliser 10-sifret customer-id (godta "880-900-5872" → "8809005872").
+  function normalizeGoogleCustomerId(raw: unknown): string | null {
+    if (typeof raw !== 'string') return null;
+    const digits = raw.replace(/[^0-9]/g, '');
+    if (digits.length !== 10) return null;
+    return digits;
+  }
+
+  // Sender invitasjon fra produsent-MCC til en kunde-id.
+  router.post(
+    '/ads/google/mcc/invite',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const customerId = normalizeGoogleCustomerId(req.body?.customerId);
+        if (!customerId) {
+          return res.status(400).json({
+            error: 'invalid_customer_id',
+            detail: 'Forventer 10 siffer (bindestreker stripes automatisk)',
+          });
+        }
+        const accessToken = await resolveAdsAccessToken(pool, 'google', userId);
+        const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+        const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+        if (!accessToken || !developerToken || !loginCustomerId) {
+          return res.status(412).json({
+            error: 'google_ads_not_configured',
+            detail: 'Krever Google Ads-OAuth + GOOGLE_ADS_DEVELOPER_TOKEN + GOOGLE_ADS_LOGIN_CUSTOMER_ID',
+          });
+        }
+        const result = await sendMccInvite(
+          { accessToken, developerToken, loginCustomerId },
+          customerId,
+        );
+        res.json({
+          ok: true,
+          clientCustomerId: customerId,
+          managerLinkId: result.managerLinkId,
+          resourceName: result.resourceName,
+          status: 'PENDING' as const,
+        });
+      } catch (error) {
+        if (error instanceof GoogleAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to send MCC invite', detail: String(error) });
+      }
+    },
+  );
+
+  // List alle MCC ↔ kunde-links (pending + active + refused) for dashboard.
+  router.get(
+    '/ads/google/mcc/links',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const accessToken = await resolveAdsAccessToken(pool, 'google', userId);
+        const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+        const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+        if (!accessToken || !developerToken || !loginCustomerId) {
+          return res.status(412).json({
+            error: 'google_ads_not_configured',
+            detail: 'Krever Google Ads-OAuth + GOOGLE_ADS_DEVELOPER_TOKEN + GOOGLE_ADS_LOGIN_CUSTOMER_ID',
+          });
+        }
+        const links = await listMccLinks({ accessToken, developerToken, loginCustomerId });
+        res.json({ links });
+      } catch (error) {
+        if (error instanceof GoogleAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to list MCC links', detail: String(error) });
+      }
+    },
+  );
+
+  // Sjekk status for én spesifikk kunde-id (poll-vennlig).
+  router.get(
+    '/ads/google/mcc/links/:customerId/status',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const customerId = normalizeGoogleCustomerId(req.params.customerId);
+        if (!customerId) {
+          return res.status(400).json({ error: 'invalid_customer_id' });
+        }
+        const accessToken = await resolveAdsAccessToken(pool, 'google', userId);
+        const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+        const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+        if (!accessToken || !developerToken || !loginCustomerId) {
+          return res.status(412).json({
+            error: 'google_ads_not_configured',
+            detail: 'Krever Google Ads-OAuth + GOOGLE_ADS_DEVELOPER_TOKEN + GOOGLE_ADS_LOGIN_CUSTOMER_ID',
+          });
+        }
+        const link = await getMccLinkStatus(
+          { accessToken, developerToken, loginCustomerId },
+          customerId,
+        );
+        res.json({ clientCustomerId: customerId, link });
+      } catch (error) {
+        if (error instanceof GoogleAdsApiError) {
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+        }
+        res.status(500).json({ error: 'Failed to check MCC link status', detail: String(error) });
+      }
+    },
+  );
+
   router.post(
     '/ads/google/campaigns',
     apiKeyAuth(pool, activeSessions),
@@ -22513,6 +23125,268 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ period, ...results });
       } catch (error) {
         res.status(500).json({ error: 'Failed to load channel results', detail: String(error) });
+      }
+    },
+  );
+
+  // Per-campaign breakdown for the client transparency view (read-only).
+  // Brukes av ClientAdsPerformancePanel i ClientEconomyPanel.
+  router.get(
+    '/ads/results/by-campaign',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : '';
+        if (!projectId) return res.status(400).json({ error: 'projectId_required' });
+        const period =
+          typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
+            ? req.query.period
+            : new Date().toISOString().slice(0, 7);
+        const campaigns = await getCampaignResultRows(pool, projectId, period);
+        const campaignsWithRoas = campaigns.map((c) => ({
+          ...c,
+          roas: c.spendNok > 0 ? Number((c.conversionValueNok / c.spendNok).toFixed(2)) : null,
+          costPerConversionNok: c.conversions > 0 ? Number((c.spendNok / c.conversions).toFixed(2)) : null,
+        }));
+        res.json({ period, campaigns: campaignsWithRoas });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load campaign results', detail: String(error) });
+      }
+    },
+  );
+
+  // ── Klient-kommentar på kampanje (migrasjon 237) ────────────────────────
+  // Klienten kan be om endringer (øk budsjett / pause / juster mål) uten
+  // selv å ha skrive-tilgang til kampanjen. Produsenten ser kommentaren i
+  // sin Ads-panel og kan svare eller utføre handlingen.
+
+  const ALLOWED_COMMENT_INTENTS = new Set([
+    'increase_budget',
+    'decrease_budget',
+    'pause',
+    'resume',
+    'change_targeting',
+    'change_creative',
+    'general_feedback',
+    'producer_reply',
+  ]);
+
+  // Hent alle kommentar-tråder for en kampanje (begge roller leser samme data).
+  router.get(
+    '/ads/campaigns/:campaignId/client-comments',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const campaignId = String(req.params.campaignId);
+        const userId = getUserId(req);
+        // Tilgang: klient/produsent på samme prosjekt. Vi sjekker prosjekt-
+        // tilhørighet via kampanjen (campaign.project_id).
+        const campaign = await getCampaignById(pool, campaignId);
+        if (!campaign) return res.status(404).json({ error: 'campaign_not_found' });
+        // produsent (eier) eller noen med project-access.
+        if (campaign.userId !== userId) {
+          const hasAccess = await pool.query<{ ok: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM casting_user_roles
+               WHERE project_id = $1 AND user_id = $2
+             ) AS ok`,
+            [campaign.projectId, userId],
+          );
+          if (!hasAccess.rows[0]?.ok) {
+            return res.status(403).json({ error: 'forbidden' });
+          }
+        }
+        const result = await pool.query(
+          `SELECT id, campaign_id, project_id, author_user_id, author_role,
+                  body, intent, created_at, resolved_at, resolved_by_user_id
+             FROM client_ads_campaign_comments
+            WHERE campaign_id = $1
+         ORDER BY created_at ASC
+            LIMIT 200`,
+          [campaignId],
+        );
+        res.json({
+          comments: result.rows.map((r) => ({
+            id: String(r.id),
+            campaignId: r.campaign_id,
+            projectId: r.project_id,
+            authorUserId: r.author_user_id,
+            authorRole: r.author_role,
+            body: r.body,
+            intent: r.intent,
+            createdAt: r.created_at,
+            resolvedAt: r.resolved_at,
+            resolvedByUserId: r.resolved_by_user_id,
+          })),
+        });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to load comments', detail: String(error) });
+      }
+    },
+  );
+
+  // Legg til ny kommentar (klient: be om endring | produsent: svar).
+  router.post(
+    '/ads/campaigns/:campaignId/client-comments',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const campaignId = String(req.params.campaignId);
+        const userId = getUserId(req);
+        const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+        const intent = typeof req.body?.intent === 'string' ? req.body.intent : null;
+
+        if (!body || body.length > 4000) {
+          return res.status(400).json({ error: 'body_required_or_too_long' });
+        }
+        if (intent !== null && !ALLOWED_COMMENT_INTENTS.has(intent)) {
+          return res.status(400).json({ error: 'invalid_intent' });
+        }
+
+        const campaign = await getCampaignById(pool, campaignId);
+        if (!campaign) return res.status(404).json({ error: 'campaign_not_found' });
+
+        // Avgjør rolle: er bruker = kampanje-eier → producer, ellers → client.
+        // (Klient-reviewer er en project-rolle, vi forenkler her: er du IKKE
+        // eier av kampanjen, regnes du som klient-side avsender.)
+        const authorRole = campaign.userId === userId ? 'producer' : 'client';
+
+        // Klient må ha project-access; producer trivially OK siden hen eier.
+        if (authorRole === 'client') {
+          const hasAccess = await pool.query<{ ok: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM casting_user_roles
+               WHERE project_id = $1 AND user_id = $2
+             ) AS ok`,
+            [campaign.projectId, userId],
+          );
+          if (!hasAccess.rows[0]?.ok) {
+            return res.status(403).json({ error: 'forbidden' });
+          }
+        }
+
+        const result = await pool.query<{
+          id: number;
+          campaign_id: string;
+          project_id: string;
+          author_user_id: string;
+          author_role: string;
+          body: string;
+          intent: string | null;
+          created_at: Date;
+        }>(
+          `INSERT INTO client_ads_campaign_comments
+            (campaign_id, project_id, author_user_id, author_role, body, intent)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING id, campaign_id, project_id, author_user_id, author_role, body, intent, created_at`,
+          [campaignId, campaign.projectId, userId, authorRole, body, intent],
+        );
+
+        // Fire producer-notification: kun når klient er avsender (produsenten
+        // skal IKKE få notifikasjon på sine egne svar). Vi bruker producer_team-
+        // audience så hele teamet ser den, ikke bare eieren av kampanjen.
+        if (authorRole === 'client') {
+          const intentLabel = (() => {
+            switch (intent) {
+              case 'increase_budget': return 'Be om økning av budsjett';
+              case 'decrease_budget': return 'Be om reduksjon av budsjett';
+              case 'pause': return 'Be om pause';
+              case 'resume': return 'Be om restart';
+              case 'change_targeting': return 'Be om endring av målgruppe';
+              case 'change_creative': return 'Be om endring av kreativ/tekst';
+              case 'general_feedback': return 'Generell tilbakemelding';
+              default: return 'Ny kommentar';
+            }
+          })();
+          const truncatedBody = body.length > 140 ? `${body.slice(0, 140)}…` : body;
+          // Campaign-navn hentes med fallback: creative_config.campaignName →
+          // external_campaign_id → kort campaign-id. ads_campaigns har ikke
+          // et 'name'-felt direkte (samme fallback-kjede som getCampaignResultRows).
+          const creativeCfg = (campaign.creativeConfig ?? {}) as Record<string, unknown>;
+          const campaignDisplayName =
+            (typeof creativeCfg.campaignName === 'string' && creativeCfg.campaignName) ||
+            (typeof creativeCfg.name === 'string' && creativeCfg.name) ||
+            campaign.externalCampaignId ||
+            `Kampanje ${String(campaign.id).slice(0, 8)}`;
+          try {
+            await upsertProducerProjectNotification({
+              projectId: campaign.projectId,
+              audience: 'producer_team',
+              eventType: 'ads_client_comment',
+              title: `Klient: ${intentLabel} på "${campaignDisplayName}"`,
+              message: truncatedBody,
+              linkedEntityType: 'ads_campaign',
+              linkedEntityId: campaignId,
+              metadata: {
+                commentId: String(result.rows[0].id),
+                platform: campaign.platform,
+                campaignName: campaignDisplayName,
+                intent,
+                authorUserId: userId,
+              },
+              createdByUserId: userId,
+              createdByRole: 'client',
+            });
+            // Marker at vi har varslet (idempotent — neste cron-iter unngår dupliserings-spam)
+            await pool.query(
+              `UPDATE client_ads_campaign_comments
+                  SET producer_notified_at = NOW()
+                WHERE id = $1 AND producer_notified_at IS NULL`,
+              [result.rows[0].id],
+            );
+          } catch (notifyError) {
+            // Notifikasjon-feil skal IKKE rulle tilbake kommentaren — logg og fortsett
+            console.warn('Failed to fire producer notification for ads-comment:', notifyError);
+          }
+        }
+
+        res.status(201).json({
+          comment: {
+            id: String(result.rows[0].id),
+            campaignId: result.rows[0].campaign_id,
+            projectId: result.rows[0].project_id,
+            authorUserId: result.rows[0].author_user_id,
+            authorRole: result.rows[0].author_role,
+            body: result.rows[0].body,
+            intent: result.rows[0].intent,
+            createdAt: result.rows[0].created_at,
+          },
+        });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to save comment', detail: String(error) });
+      }
+    },
+  );
+
+  // Marker en kommentar-tråd som løst (kun produsenten).
+  router.post(
+    '/ads/client-comments/:commentId/resolve',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const commentId = String(req.params.commentId);
+        const userId = getUserId(req);
+        // Sjekk eierskap via kampanje → produsent.
+        const ownerResult = await pool.query<{ user_id: string }>(
+          `SELECT c.user_id
+             FROM client_ads_campaign_comments cc
+             JOIN ads_campaigns c ON c.id = cc.campaign_id
+            WHERE cc.id = $1`,
+          [commentId],
+        );
+        if (!ownerResult.rows[0]) return res.status(404).json({ error: 'comment_not_found' });
+        if (ownerResult.rows[0].user_id !== userId) {
+          return res.status(403).json({ error: 'only_producer_can_resolve' });
+        }
+        await pool.query(
+          `UPDATE client_ads_campaign_comments
+              SET resolved_at = NOW(), resolved_by_user_id = $2
+            WHERE id = $1 AND resolved_at IS NULL`,
+          [commentId, userId],
+        );
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to resolve', detail: String(error) });
       }
     },
   );

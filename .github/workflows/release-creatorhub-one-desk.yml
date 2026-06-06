@@ -60,6 +60,46 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Pre-flight — verifiser signing-secrets + pubkey
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_ONE_DESK }}
+        shell: bash
+        run: |
+          # Stopp tidlig hvis secrets mangler — bedre enn å bygge en
+          # usignert binær som auto-updater vil avvise stille hos
+          # sluttbrukere.
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Secret TAURI_SIGNING_PRIVATE_KEY_ONE_DESK er tom eller mangler. Generér nøkkel med minisign og legg innholdet av ~/.tauri/one-desk inn som GitHub secret."
+            exit 1
+          fi
+          echo "✓ Signing-private-key secret er satt"
+
+          # Verifiser at pubkey i tauri.conf.json er base64-decode-bar og
+          # har minisign-format-headeren. Catcher placeholder/wipe-feil
+          # før vi forplikter en release.
+          PUBKEY_B64=$(python3 -c "import json; c = json.load(open('apps/creatorhub-one-desk/src-tauri/tauri.conf.json')); print(c['plugins']['updater']['pubkey'])")
+          if [ -z "$PUBKEY_B64" ]; then
+            echo "::error::plugins.updater.pubkey i tauri.conf.json er tom"
+            exit 1
+          fi
+          DECODED=$(echo "$PUBKEY_B64" | base64 -d 2>/dev/null || true)
+          if ! echo "$DECODED" | grep -q "untrusted comment: minisign public key"; then
+            echo "::error::pubkey i tauri.conf.json er ikke et gyldig minisign-format. Forventet 'untrusted comment: minisign public key' i decoded innhold."
+            echo "Decoded:"
+            echo "$DECODED" | head -2
+            exit 1
+          fi
+          echo "✓ pubkey i tauri.conf.json er gyldig minisign-format"
+
+          # Sjekk at den IKKE matcher kjente placeholder-mønstre. Hvis du
+          # genererte en ny nøkkel via verify-updater-key.sh, fjern denne
+          # sjekken eller flytt placeholder-mønsteret nedover for å hindre
+          # falsk-positiv.
+          PLACEHOLDER_KEY_ID="44F19650DE0B1E3A"
+          if echo "$DECODED" | grep -q "$PLACEHOLDER_KEY_ID"; then
+            echo "::warning::pubkey i tauri.conf.json er det opprinnelige passordløse dev-key (id $PLACEHOLDER_KEY_ID). For en real release bør du rotere til en eier-eksklusiv nøkkel — se scripts/verify-updater-key.sh og README."
+          fi
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -72,16 +112,135 @@ jobs:
         working-directory: apps/creatorhub-one-desk
         run: npm ci || npm install
 
-      - name: Build Tauri app
+      # Importer Apple Developer ID-sertifikatet til en midlertidig
+      # keychain. Tauri-build leser signingIdentity fra tauri.conf.json
+      # og signerer .app + .dmg + .app.tar.gz automatisk.
+      - name: Import Apple Developer ID certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        shell: bash
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          CERT_PATH=$RUNNER_TEMP/cert.p12
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm -f "$CERT_PATH"
+
+          # Bekreft at signing identity faktisk er tilgjengelig
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Build Tauri app (signed)
         working-directory: apps/creatorhub-one-desk
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_ONE_DESK }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_ONE_DESK_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: npm run tauri build -- --target ${{ matrix.target }}
 
-      - name: Note — unsigned by Apple (F7 baseline)
+      # Notariser med App Store Connect API. notarytool venter på
+      # Apple's malware-skanning (typisk 1-5 min, max 1 time). Etter
+      # suksess stapler vi notarisasjon-billetten på .app + .dmg så
+      # Gatekeeper godkjenner offline.
+      #
+      # Apple's notary-API har av og til transient network-feil under
+      # poll. Vi submitter UTEN --wait, så bruker --wait i en separat
+      # retry-loop med 5 min timeout per forsøk, max 3 forsøk.
+      - name: Notarize .app + .dmg
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        # 90 min total = romslig for 3 × 25 min retry-attempts + sleeps.
+        # En enkelt notary-submission tar normalt 5-15 min; bumpet etter
+        # 2026-06-05-incident der Apple-siden hang i 45 min på første
+        # forsøk, og outer-timeout killet før retry rakk å starte.
+        timeout-minutes: 90
         run: |
-          echo "::notice::App built UNSIGNED av Apple Developer ID. Brukerne må right-click → Open første gang. Codesigning kan legges til senere ved å konfigurere APPLE_CERTIFICATE-secrets."
+          BUNDLE_DIR="apps/creatorhub-one-desk/src-tauri/target/${{ matrix.target }}/release/bundle"
+          APP_PATH=$(find "$BUNDLE_DIR/macos" -name "*.app" | head -1)
+          DMG_PATH=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" 2>/dev/null | head -1)
+
+          notarize_with_retry() {
+            local target="$1"
+            local label="$2"
+            local submission_id=""
+            local attempts=0
+            local max_attempts=3
+
+            # Steg 1: submit UTEN --wait (raskt, henter bare submission ID)
+            echo "::group::Submit $label for notarization"
+            submission_id=$(xcrun notarytool submit "$target" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --output-format json | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))")
+            echo "Submission ID: $submission_id"
+            echo "::endgroup::"
+
+            if [ -z "$submission_id" ]; then
+              echo "::error::Failed to submit $label for notarization"
+              return 1
+            fi
+
+            # Steg 2: poll status med retry på transient feil
+            while [ $attempts -lt $max_attempts ]; do
+              attempts=$((attempts + 1))
+              echo "::group::Wait for notarization (attempt $attempts/$max_attempts)"
+              if xcrun notarytool wait "$submission_id" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" \
+                --timeout 25m; then
+                echo "::endgroup::"
+                # Bekreft accepted-status
+                local status
+                status=$(xcrun notarytool info "$submission_id" \
+                  --apple-id "$APPLE_ID" \
+                  --password "$APPLE_PASSWORD" \
+                  --team-id "$APPLE_TEAM_ID" \
+                  --output-format json | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))")
+                if [ "$status" = "Accepted" ]; then
+                  echo "::notice::$label notarized successfully"
+                  return 0
+                fi
+                echo "::error::Notarization status: $status (expected Accepted)"
+                return 1
+              fi
+              echo "::endgroup::"
+              echo "::warning::Notary wait failed (likely Apple-side network blip), retrying..."
+              sleep $((attempts * 30))
+            done
+            echo "::error::Notarization wait failed after $max_attempts attempts"
+            return 1
+          }
+
+          # Zip .app for notarisering
+          APP_ZIP=$RUNNER_TEMP/app.zip
+          ditto -c -k --keepParent "$APP_PATH" "$APP_ZIP"
+
+          notarize_with_retry "$APP_ZIP" ".app"
+          xcrun stapler staple "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+
+          if [ -n "$DMG_PATH" ]; then
+            notarize_with_retry "$DMG_PATH" ".dmg"
+            xcrun stapler staple "$DMG_PATH"
+            xcrun stapler validate "$DMG_PATH"
+          fi
+
+          rm -f "$APP_ZIP"
+          echo "::notice::✓ App + DMG signed and notarized — no Gatekeeper warning for users"
 
       - name: Collect artifacts
         id: artifacts
