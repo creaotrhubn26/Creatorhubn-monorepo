@@ -26,6 +26,7 @@ import {
   signStreamPlaybackUrl,
   signStreamThumbnailUrl,
 } from "./cloudflare-stream-service.js";
+import { notifySelftapeActivity } from "./talent-selftape-notifications.js";
 
 // 500 MB grense — én typisk self-tape (60-90s @ 1080p) ligger på 50-150 MB
 const MAX_SELFTAPE_BYTES = 500 * 1024 * 1024;
@@ -808,6 +809,17 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         vals,
       );
       if (!r.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
+
+      // Fase E: varsel når status settes til 'shortlisted' (fire-and-forget)
+      const newStatus = (req.body as { status?: string } | undefined)?.status;
+      if (newStatus === "shortlisted") {
+        notifySelftapeActivity(pool, {
+          submissionId: req.params.id,
+          kind: "shortlisted",
+          actorLabel: session.email ?? "Produksjon",
+        }).catch((err) => console.warn("[selftape-notify shortlisted]", err));
+      }
+
       return res.json({ submission: r.rows[0] });
     } catch (err) {
       console.error("[selftapes/submissions PATCH] failed", err);
@@ -1205,6 +1217,13 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
              JSON.stringify({ submission_id: req.params.id })],
           );
         } catch { /* ignore — audit-write skal ikke blokkere visning */ }
+
+        // Varsel-hook (fire-and-forget — feiler ALDRI hovedflyten)
+        notifySelftapeActivity(pool, {
+          submissionId: req.params.id,
+          kind: "viewed",
+          actorLabel: session.email ?? "Produksjon",
+        }).catch((err) => console.warn("[selftape-notify viewed]", err));
 
         return res.json({ submission: upd.rows[0] });
       } catch (err) {
