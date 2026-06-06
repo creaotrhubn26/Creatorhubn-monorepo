@@ -2920,6 +2920,20 @@
       "dryRunSupported": true,
       "requiresProject": false,
       "requiresTimeline": false
+    },
+    {
+      "id": "generate_voiceover_with_resolve",
+      "name": "Generate Voiceover with Resolve AI (Studio Speech Generator)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/generate_voiceover_with_resolve.py",
+      "description": "Resolve 21 Studio AI Speech Generator (timeline.GenerateSpeech) lager voiceover-audio fra Demo Studio-manus og legger den på Fairlight-timeline. Kombiner med generate_music_ducking_plan + transcribe_with_resolve_ai for ferdig miks + undertekster.",
+      "requiredInputs": [],
+      "resolvePageDependency": "fairlight",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
     }
   ]
 }

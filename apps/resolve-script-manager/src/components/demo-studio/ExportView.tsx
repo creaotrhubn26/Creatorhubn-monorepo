@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { mockupRenderVideo, onScriptEvent, cancelScript, demoWriteText, demoWriteBinary, demoPrintHtml } from '../../api';
+import { mockupRenderVideo, onScriptEvent, cancelScript, demoWriteText, demoWriteBinary, demoPrintHtml, executeScript } from '../../api';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { openPath } from '@tauri-apps/plugin-opener';
 import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog';
@@ -130,6 +130,17 @@ export function ExportView() {
       } else setFileMsg('Fant ingen merkevare-data på siden');
     } catch (e) { setFileMsg('Feil ved merkevare-henting: ' + String(e)); }
     finally { setBrandBusy(false); }
+  };
+
+  const voiceoverResolve = async () => {
+    if (!project) return;
+    const scenes = project.scenes.filter((s) => s.narration?.trim()).map((s) => ({ narration: s.narration }));
+    if (!scenes.length) { setFileMsg('Ingen manus å lese opp — skriv narration på scenene først.'); return; }
+    setFileMsg('Genererer voiceover i Resolve (AI Speech Generator)…');
+    try {
+      const sum = await executeScript('generate_voiceover_with_resolve', { scenes, voiceModel: 'Female 1', audioTrack: 7, isStudio: true }, false);
+      setFileMsg(sum.succeeded ? '✓ Voiceover generert i Resolve på Fairlight-spor A7' : 'Voiceover-kjøring fullførte ikke — sjekk at Resolve Studio kjører med aktiv timeline.');
+    } catch (e) { setFileMsg('Feil ved Resolve-voiceover: ' + String(e)); }
   };
 
   const exportThumbnail = async () => {
@@ -263,6 +274,7 @@ export function ExportView() {
             <button style={{ ...outlineBtn }} onClick={() => void exportSrt()}>Undertekster (.srt)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportScriptPdf()}>Manus (PDF)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportThumbnail()}>Thumbnail (PNG)</button>
+            <button style={{ ...outlineBtn }} onClick={() => void voiceoverResolve()}>Voiceover i Resolve (AI)</button>
           </div>
           <div style={{ marginTop: 8, fontSize: 11.5, color: C.inkFaint }}>
             .srt fra manus + varigheter · Manus åpnes i print-vindu (lagre som PDF) · Thumbnail i valgt format.
