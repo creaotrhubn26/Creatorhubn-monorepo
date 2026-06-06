@@ -16,7 +16,7 @@ import { useDemoStudio } from './demoStudioStore';
 import {
   suggestMarketingBrief, generateMarketingFlow, generateVariants, fetchSiteContext,
   ocrDetectElements, analyzeProductEvidence, buildProductBrain, draftOnePager as aiDraftOnePager,
-  type GeneratedVariant, type VariantSpec,
+  gatherSiteContext, type GeneratedVariant, type VariantSpec,
 } from './demoStudioAI';
 import {
   CHANNEL_PRESETS, FRAMEWORKS, FUNNEL_LABELS, emptyMarketingBrief, recordVoicePref,
@@ -73,7 +73,11 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
       const shot = await captureScreenshot(project.url).catch(() => null);
       if (shot) elements = await ocrDetectElements({ screenshot: shot }).catch(() => []);
     }
-    const siteContext = scan?.pageText || await fetchSiteContext(project.url).catch(() => '');
+    // Fler-side-skann: berik forsiden med /pricing, /features, /about … for et
+    // mye rikere grunnlag til one-pager + Product Brain.
+    const gathered = await gatherSiteContext(project.url, { mainText: scan?.pageText, maxPages: 5 }).catch(() => null);
+    const siteContext = gathered?.context || scan?.pageText || await fetchSiteContext(project.url).catch(() => '');
+    const pagesScanned = gathered?.pages ?? [];
     const branding = scan?.branding;
     // Auto-merkevare: hent navn/farge/logo fra siden og bruk på prosjektet (logo
     // + farger flyter inn i interaktiv guide + eksport) hvis ikke satt fra før.
@@ -83,7 +87,7 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
         setProjectField('branding', { brandName: branding.brandName || undefined, brandColor: branding.brandColor || undefined, logoUrl: branding.logoUrl || undefined });
       }
     }
-    return { elements, siteContext, branding };
+    return { elements, siteContext, branding, pagesScanned };
   };
 
   const suggestBrief = async () => {
@@ -105,12 +109,12 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
     if (!aiReady) return onOpenSignIn();
     setBusy('draft'); setMsg('AI skriver et one-pager-utkast fra siden…');
     try {
-      const { elements, siteContext, branding } = await scanContext();
+      const { elements, siteContext, branding, pagesScanned } = await scanContext();
       let ev = evidence;
       if (!ev) { ev = await analyzeProductEvidence({ url: project.url, siteContext, elements }).catch(() => null); if (ev) setEvidence(ev); }
       const text = await aiDraftOnePager({ url: project.url, siteContext, elements, evidence: ev ?? undefined, branding });
       if (text) setOnePager(text);
-      setMsg('✓ One-pager-utkast laget fra siden. Rediger ved behov, så «Bygg tankekart».');
+      setMsg(`✓ One-pager-utkast laget fra ${pagesScanned.length || 1} side${pagesScanned.length === 1 ? '' : 'r'}${pagesScanned.length > 1 ? ` (${pagesScanned.join(', ')})` : ''}. Rediger ved behov, så «Bygg tankekart».`);
     } catch (e) { setMsg('Feil: ' + (e as Error).message); }
     finally { setBusy(null); }
   };

@@ -238,6 +238,51 @@ export async function improveScript(params: {
  * en webapp; da returnerer vi tom kontekst og lar Director jobbe ut fra
  * URL + demo-type alene. (Best-effort, aldri fatal.)
  */
+/** Vanlige markedssider å berike konteksten med (relativt til origin). */
+const COMMON_MARKETING_PATHS = [
+  '/pricing', '/priser', '/features', '/funksjoner', '/product', '/produkt',
+  '/how-it-works', '/slik-fungerer-det', '/solutions', '/use-cases', '/about',
+  '/om-oss', '/customers', '/case-studies', '/kunder',
+];
+
+/**
+ * Fler-side-skann: hent forsiden + et utvalg vanlige markedssider (/pricing,
+ * /features, /about …) og slå sammen til én rik kontekst. Gir mye bedre grunnlag
+ * for one-pager + Product Brain enn bare forsiden. Sider som 404-er / er tomme
+ * filtreres bort; duplikater (samme tekst) fjernes.
+ */
+export async function gatherSiteContext(url: string, opts?: { mainText?: string; maxPages?: number }): Promise<{ context: string; pages: string[] }> {
+  const maxPages = opts?.maxPages ?? 5;
+  let origin = '';
+  try { origin = new URL(url).origin; } catch { origin = url.replace(/\/$/, ''); }
+  const seen = new Set<string>();
+  const norm = (t: string) => t.replace(/\s+/g, ' ').trim().slice(0, 160).toLowerCase();
+
+  const sections: Array<{ path: string; text: string }> = [];
+  const mainText = (opts?.mainText || '').trim() || await fetchSiteContext(url).catch(() => '');
+  if (mainText) { sections.push({ path: 'Forside', text: mainText }); seen.add(norm(mainText)); }
+
+  // Hent kandidat-sidene parallelt (hver med egen feilfangst).
+  const candidates = COMMON_MARKETING_PATHS.map((p) => `${origin}${p}`);
+  const fetched = await Promise.all(candidates.map(async (cand) => {
+    const t = await fetchSiteContext(cand).catch(() => '');
+    return { cand, t };
+  }));
+  for (const { cand, t } of fetched) {
+    const text = (t || '').trim();
+    if (text.length < 140) continue;            // tom / 404 / redirect-til-forside-stub
+    const key = norm(text);
+    if (seen.has(key)) continue;                // duplikat (typisk redirect til forside)
+    seen.add(key);
+    let path = cand; try { path = new URL(cand).pathname; } catch { /* */ }
+    sections.push({ path, text: text.slice(0, 1400) });
+    if (sections.length >= maxPages) break;
+  }
+
+  const context = sections.map((s) => `=== ${s.path} ===\n${s.text}`).join('\n\n');
+  return { context, pages: sections.map((s) => s.path) };
+}
+
 export async function fetchSiteContext(url: string): Promise<string> {
   // Foretrekk native Tauri-fetch (reqwest, ingen CORS) — så AI-en faktisk
   // leser siden. Fall tilbake til browser-fetch (CORS-begrenset) i web-dev.
