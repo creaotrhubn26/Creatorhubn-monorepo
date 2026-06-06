@@ -13,6 +13,7 @@ import { useRef, useState } from 'react';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { scanDom, captureScreenshot, isCaptureAvailable } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
+import { ProductBrainMap } from './ProductBrainMap';
 import {
   suggestMarketingBrief, generateMarketingFlow, generateVariants, fetchSiteContext,
   ocrDetectElements, analyzeProductEvidence, buildProductBrain, draftOnePager as aiDraftOnePager,
@@ -56,6 +57,7 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
   const [brain, setBrain] = useState<ProductBrain | null>(null);
   const [critique, setCritique] = useState<OnePagerCritique | null>(null);
   const [answers, setAnswers] = useState('');
+  const [brainView, setBrainView] = useState<'outline' | 'map'>('outline');
   const visionCache = useRef<{ url: string; text: string } | null>(null);
   const [variants, setVariants] = useState<GeneratedVariant[]>([]);
   const [picked, setPicked] = useState<Record<string, boolean>>(
@@ -311,7 +313,18 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
               {brain.reasoning && <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 3 }}>{brain.reasoning}</div>}
               <button style={{ ...btn, fontSize: 11.5, padding: '5px 10px', marginTop: 8 }} onClick={applyBrainRecommendation}>Bruk anbefaling</button>
             </div>
+            {/* Disposisjon ↔ tankekart-veksler */}
+            <div style={{ display: 'inline-flex', gap: 2, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 9, padding: 3, marginBottom: 12 }}>
+              {(['outline', 'map'] as const).map((v) => (
+                <button key={v} onClick={() => setBrainView(v)}
+                  style={{ ...btn, border: 'none', padding: '5px 12px', fontSize: 11.5, background: brainView === v ? C.accent : 'transparent', color: brainView === v ? '#fff' : C.ink }}>
+                  {v === 'outline' ? 'Disposisjon' : 'Tankekart'}
+                </button>
+              ))}
+            </div>
+            {brainView === 'map' && <div style={{ marginBottom: 12 }}><ProductBrainMap brain={brain} /></div>}
             {/* Verifiserte noder gruppert pr. type */}
+            {brainView === 'outline' && (<>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px,1fr))', gap: 12, marginBottom: 12 }}>
               {(Object.keys(BRAIN_KIND_LABELS) as BrainNodeKind[]).map((kind) => {
                 const ns = brain.nodes.filter((n) => n.kind === kind);
@@ -348,6 +361,7 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
                 {brain.gaps.map((g, i) => <div key={i} style={{ fontSize: 11.5, color: '#8a6516' }}>⚠ {g}</div>)}
               </div>
             )}
+            </>)}
           </div>
         )}
       </section>
