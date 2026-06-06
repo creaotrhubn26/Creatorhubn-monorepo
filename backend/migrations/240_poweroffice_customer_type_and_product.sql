@@ -1,4 +1,4 @@
--- 0093_poweroffice_customer_type_and_product.sql
+-- 240_poweroffice_customer_type_and_product.sql
 --
 -- Forberedelse for korrekt PowerOffice Go v2-integrasjon. Migrasjonen
 -- gir oss to ting som PO sin OutgoingInvoice/SalesOrder-flow krever:
