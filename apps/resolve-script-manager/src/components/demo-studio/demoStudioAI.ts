@@ -17,6 +17,7 @@ import {
   makeScene, viewportForDevice, ACTION_META,
   type DemoScene, type ScriptMeta, type DemoType, type DemoDevice, type DemoActionType,
   type ResponsiveReport, type ResponsiveViewportResult, type ResponsiveStatus, type ResponsiveFix,
+  classifyCta,
   type ScannedElement, type DirectorCritique, type CritiqueIssue, type CritiqueSeverity,
 } from './demoStudioModel';
 
@@ -83,6 +84,78 @@ function imageBlock(dataUrl: string): ClaudeContentBlock | null {
   const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/s);
   if (!m) return null;
   return { type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } };
+}
+
+const VALID_ACTIONS = Object.keys(ACTION_META) as DemoActionType[];
+function clampRect(h: unknown): { x: number; y: number; w: number; h: number } {
+  const r = (h && typeof h === 'object') ? h as Record<string, number> : {};
+  const c = (n: unknown, f: number) => (typeof n === 'number' && n >= 0 && n <= 1 ? n : f);
+  return { x: c(r.x, 0.4), y: c(r.y, 0.4), w: c(r.w, 0.2), h: c(r.h, 0.08) };
+}
+
+export interface FrameAnnotation { caption: string; overlayText: string; keyElements: string[] }
+
+/** Vision auto-annotering: Claude ser scenens skjermbilde og foreslår caption,
+ *  overlay-tekst og nøkkel-UI-elementer. */
+export async function annotateFrame(params: { url: string; scene: DemoScene; screenshot: string }): Promise<FrameAnnotation> {
+  const img = imageBlock(params.screenshot);
+  if (!img) throw new Error('Mangler skjermbilde for annotering');
+  const txt = `Du SER et skjermbilde av scenen «${params.scene.title}» (${params.scene.device}) fra ${params.url}. ` +
+    `Auto-annotér frame-en: beskriv kort hva som vises, foreslå en kort overlay-tekst (maks 6 ord), og list nøkkel-UI-elementer du ser.\n` +
+    `Svar med KUN ett JSON-objekt: { "caption": "...", "overlayText": "...", "keyElements": ["...", "..."] }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du auto-annoterer produktdemo-frames fra skjermbilder. Svar ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: [img, { type: 'text', text: txt }] }],
+    maxTokens: 500,
+  });
+  const p = extractJson<FrameAnnotation>(raw);
+  if (!p) throw new Error('Klarte ikke å tolke annoteringen');
+  return { caption: p.caption || '', overlayText: p.overlayText || '', keyElements: Array.isArray(p.keyElements) ? p.keyElements.slice(0, 8) : [] };
+}
+
+/** OCR-/vision-hotspot-fallback: når DOM-scan ikke finner elementer, la Claude
+ *  finne interaktive elementer (label + omtrentlig hotspot) fra skjermbildet. */
+export async function ocrDetectElements(params: { screenshot: string }): Promise<ScannedElement[]> {
+  const img = imageBlock(params.screenshot);
+  if (!img) return [];
+  const txt = `Du SER et skjermbilde. Finn de interaktive elementene (knapper, lenker, felt) du SER — dette er en OCR-/vision-fallback fordi DOM-scan ikke fant noe. ` +
+    `For hvert element: label (synlig tekst), actionType (click/type/scroll), og hotspot (x,y,w,h i 0–1 av bildet).\n` +
+    `Svar med KUN ett JSON-objekt: { "elements": [ { "label": "...", "actionType": "click", "hotspot": {"x":0.4,"y":0.3,"w":0.2,"h":0.08} } ] }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du er en OCR-/UI-deteksjons-motor. Svar ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: [img, { type: 'text', text: txt }] }],
+    maxTokens: 900,
+  });
+  const p = extractJson<{ elements?: Array<{ label?: string; actionType?: string; hotspot?: unknown }> }>(raw);
+  if (!p?.elements) return [];
+  return p.elements
+    .map((e) => ({
+      selector: '',
+      label: (e.label || '').trim(),
+      tag: 'vision',
+      actionType: VALID_ACTIONS.includes(e.actionType as DemoActionType) ? (e.actionType as DemoActionType) : 'click',
+      belowFold: false,
+      hotspot: clampRect(e.hotspot),
+      ctaType: classifyCta((e.label || '')) ?? undefined,
+    }))
+    .filter((e) => e.label);
+}
+
+/** Vision-runtime-verifisering: bekreft at handlingen FAKTISK lyktes ved å se på
+ *  et skjermbilde tatt etterpå (modal åpnet / state endret), ikke bare selector-match. */
+export async function verifyOutcomeVision(params: { screenshot: string; expected: string }): Promise<{ success: boolean; reason: string }> {
+  const img = imageBlock(params.screenshot);
+  if (!img) return { success: false, reason: 'Mangler skjermbilde' };
+  const txt = `Du SER et skjermbilde TATT ETTER en handling. Forventet utfall: «${params.expected}». ` +
+    `Skjedde det forventede (f.eks. modal åpnet, riktig side, state endret)?\n` +
+    `Svar med KUN ett JSON-objekt: { "success": true|false, "reason": "kort begrunnelse" }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du verifiserer utfall fra skjermbilder. Svar ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: [img, { type: 'text', text: txt }] }],
+    maxTokens: 200,
+  });
+  const p = extractJson<{ success?: boolean; reason?: string }>(raw);
+  return { success: !!p?.success, reason: p?.reason || '' };
 }
 
 export async function generateSceneScript(params: {
@@ -434,10 +507,11 @@ export async function generateDemoFlow(params: {
   siteContext?: string;
   elements?: ScannedElement[];
   goal?: string;
+  task?: string;
 }): Promise<DemoScene[]> {
-  const { url, demoType, devices, meta, targetSeconds = 75, siteContext = '', elements = [], goal = '' } = params;
+  const { url, demoType, devices, meta, targetSeconds = 75, siteContext = '', elements = [], goal = '', task = '' } = params;
   const catalog = elements.length
-    ? `\nElement-katalog (ekte interaktive elementer på siden) — velg targetIndex for hver scene:\n${elements.map((e, i) => `${i}: "${e.label}" [${e.tag}${e.belowFold ? ', under fold' : ''}]`).join('\n')}\n`
+    ? `\nElement-katalog (ekte interaktive elementer på siden) — velg targetIndex for hver scene (prioriter CTA-er for konvertering):\n${elements.map((e, i) => `${i}: "${e.label}" [${e.tag}${e.ctaType ? `, CTA:${e.ctaType}` : ''}${e.belowFold ? ', under fold' : ''}]`).join('\n')}\n`
     : '';
   const user = `Lag en komplett produktdemo-flow.
 
@@ -447,7 +521,9 @@ Tilgjengelige enheter: ${devices.join(', ')}
 Tone: ${meta.tone} · Publikum: ${meta.audience} · Språk: ${meta.language} · Lengde: ${meta.length}
 ${goal ? `KONVERTERINGSMÅL (optimaliser hele flowen + CTA mot dette): ${goal}\n` : ''}Ønsket total varighet: ~${targetSeconds} sekunder
 ${siteContext ? `\nKontekst fra nettsiden:\n${siteContext}\n` : ''}${catalog}
-Foreslå 5-7 scener som forteller en sammenhengende historie (intro → kjernefunksjon → bevis/verdi → CTA → outro).
+${task
+  ? `OPPGAVE/PROSESS veiledningen skal vise STEG-FOR-STEG: «${task}». Lag én scene per faktiske steg i denne prosessen, i riktig rekkefølge, bundet til de riktige elementene (f.eks. innlogging: klikk «Logg inn» → fyll e-post → fyll passord → klikk «Send»). Ikke lag en generisk markedsdemo — følg prosessen.\n`
+  : 'Foreslå 5-7 scener som forteller en sammenhengende historie (intro → kjernefunksjon → bevis/verdi → CTA → outro).'}
 Velg device per scene fra de tilgjengelige (bruk mobil for mobil-flyt hvis relevant).
 For hver scene: angi handlingstypen (actionType: click/hover/type/scroll/highlight/open_url/switch_device/zoom/wait).
 ${elements.length
@@ -506,6 +582,7 @@ Svar med KUN ett JSON-objekt:
       targetLabel,
       targetSelector,
       targetLocators,
+      ctaType: classifyCta(targetLabel || '') ?? undefined,
       actionType,
       hotspot,
       overlayText: d.overlayText || '',

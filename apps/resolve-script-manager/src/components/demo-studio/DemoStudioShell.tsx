@@ -26,15 +26,15 @@ import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
-import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck, healTarget, runDirectorCritic } from './demoStudioAI';
-import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, type CapturedStep } from '../../services/demoCaptureService';
+import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision } from './demoStudioAI';
+import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
   RENDER_OPTION_LABELS, RESPONSIVE_STATUS_LABELS, RESPONSIVE_STATUS_COLORS, ACTION_META,
   ACTION_MATCH_LABELS, ACTION_MATCH_COLORS, CRITIQUE_SEVERITY_COLORS,
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
-  sceneActionMatch, expectedActionText, validateScene,
+  sceneActionMatch, expectedActionText, validateScene, learnCtas, CTA_LABELS,
   type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
@@ -204,8 +204,17 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     try {
       const v = await verifyAction(st.project.url, sc.targetLabel);
       if (v && !v.cancelled && v.selector) {
+        // Vision-runtime-verifisering: ta skjermbilde ETTER handlingen og sjekk
+        // at forventet utfall faktisk skjedde — ikke bare selector-match.
+        let visionOk: boolean | null = null;
+        const expected = sc.validationRule || sc.targetLabel || sc.requiredAction;
+        if (expected && isCaptureAvailable()) {
+          const shot = await captureScreenshot(st.project.url).catch(() => null);
+          if (shot) { const o = await verifyOutcomeVision({ screenshot: shot, expected }).catch(() => null); if (o) visionOk = o.success; }
+        }
         const match = sceneActionMatch({ ...sc, detectedSelector: v.selector });
-        updateScene(sc.id, { detectedSelector: v.selector, status: match === 'match' ? 'done' : 'needs_review' });
+        const status = visionOk === false ? 'needs_review' : (match === 'match' || visionOk === true) ? 'done' : 'needs_review';
+        updateScene(sc.id, { detectedSelector: v.selector, status });
       }
     } finally {
       setVerifyBusy(false);
@@ -282,14 +291,21 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     try {
       // Skann de ekte interaktive elementene (presis element-binding) + les kontekst.
       const scan = await scanDom(project.url).catch(() => null);
-      const elements = scan?.elements ?? [];
+      let elements = scan?.elements ?? [];
+      // OCR-/vision-fallback: ingen DOM-elementer → la Claude finne elementer fra et skjermbilde.
+      if (elements.length === 0 && isCaptureAvailable()) {
+        setDirectorMsg('Ingen DOM-elementer — bruker vision (OCR)…');
+        const shot = await captureScreenshot(project.url).catch(() => null);
+        if (shot) elements = await ocrDetectElements({ screenshot: shot }).catch(() => []);
+      }
+      learnCtas(elements); // auto-utvid CTA-banken fra det vi fant
       // Foretrekk JS-rendret pageText fra skannet (rikere enn anonym reqwest).
       const siteContext = scan?.pageText || await fetchSiteContext(project.url);
       applyScannedBranding(scan);
       setDirectorMsg(elements.length ? `Fant ${elements.length} elementer — AI Director designer flowen…` : 'AI Director designer flowen…');
       const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
       const scenes = await generateDemoFlow({
-        url: project.url, demoType: project.demoType, devices: project.devices, meta, siteContext, elements, goal: project.goal,
+        url: project.url, demoType: project.demoType, devices: project.devices, meta, siteContext, elements, goal: project.goal, task: project.task,
       });
       replaceScenes(scenes);
       setDirectorMsg(`✓ ${scenes.length} scener generert`);
@@ -310,6 +326,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     try {
       const scan = await scanDom(project.url).catch(() => null);
       const elements = scan?.elements ?? [];
+      learnCtas(elements);
       const siteContext = scan?.pageText || await fetchSiteContext(project.url);
       applyScannedBranding(scan);
       const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
@@ -460,6 +477,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               </span>
             </h4>
             <p style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.45, marginBottom: 8 }}>La AI lese nettsiden og foreslå en hel scene-flow med manus.</p>
+            <input style={{ ...field, marginBottom: 8 }} value={project.task ?? ''} placeholder="Hva skal veiledningen vise? f.eks. «hele innloggings-prosessen»"
+              onChange={(e) => setProjectField('task', e.target.value)} />
             <input style={{ ...field, marginBottom: 8 }} value={project.goal ?? ''} placeholder="Mål? f.eks. «få flere til å booke demo»"
               onChange={(e) => setProjectField('goal', e.target.value)} />
             <input style={{ ...field, marginBottom: 8 }} value={project.scriptMeta?.audience ?? ''} placeholder="Målgruppe / persona"
@@ -757,6 +776,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   {selected.hotspot
                     ? <div style={{ fontSize: 11, color: C.green, marginTop: 5 }}>✓ Element markert — fremheves i opptak</div>
                     : <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 5 }}>Marker elementet på preview-en så Guided Recorder kan fremheve det.</div>}
+                  {selected.ctaType && (
+                    <span style={{ display: 'inline-block', marginTop: 6, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: '#fdf0e7', color: '#b5651d' }}>CTA: {CTA_LABELS[selected.ctaType]}</span>
+                  )}
 
                   <div style={fldLabel}>Overlay-tekst</div>
                   <input style={field} value={selected.overlayText ?? ''} onChange={(e) => updateScene(selected.id, { overlayText: e.target.value })} />

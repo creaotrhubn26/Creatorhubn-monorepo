@@ -48,6 +48,10 @@ async function setupRoutes(page: Page) {
         { device: 'macbook', status: 'ok', message: 'All good' },
         { device: 'iphone', status: 'warning', message: 'CTA lavt på mobil', recommendation: 'Start etter 20% scroll', fix: { kind: 'start_scroll', sceneIndex: 0, startScrollPct: 35, summary: 'Start mobilscene etter 35% scroll' } },
       ] });
+    } else if (text.includes('Skjedde det forventede')) {
+      payload = anthropic({ success: false, reason: 'Ingen endring synlig' });
+    } else if (text.includes('Auto-annotér frame-en')) {
+      payload = anthropic({ caption: 'c', overlayText: 'o', keyElements: ['x'] });
     } else if (text.includes('selector brutt')) {
       payload = anthropic({ index: 0 }); // self-healing → velg #start
     } else if (text.includes('Skriv manus for DENNE scenen')) {

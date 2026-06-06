@@ -108,6 +108,8 @@ export interface DemoScene {
    * Detected → Match/Warning).
    */
   detectedSelector?: string;
+  /** CTA-type for mål-elementet (fra CTA-banken) — brukes til prioritering/innsikt. */
+  ctaType?: CtaType;
   /** Marker scenen som et kritisk steg (fremheves i Script Builder/recorder). */
   critical?: boolean;
   /** Valideringsregel — når regnes handlingen som utført (f.eks. «Vent til modal åpnes»). */
@@ -258,6 +260,8 @@ export interface DemoProject {
   render?: DemoRenderOptions;
   /** Konverteringsmål for demoen (mål-drevet AI Director). F.eks. «få flere til å booke demo». */
   goal?: string;
+  /** Spesifikk oppgave/prosess veiledningen skal vise. F.eks. «hele innloggings-prosessen». */
+  task?: string;
   /** Merkevare/white-label for output (interaktiv guide + video). */
   branding?: DemoBranding;
   /** Global progresjons-modus (kan overstyres per scene). Default 'manual'. */
@@ -529,6 +533,105 @@ export function defaultSceneFlow(device: DemoDevice = 'macbook'): DemoScene[] {
 export type LocatorStrategy = 'id' | 'testid' | 'aria' | 'text' | 'css';
 export interface TargetLocator { strategy: LocatorStrategy; value: string }
 
+// ── CTA-bank: klassifiser knapper/lenker etter intensjon (NO + EN, bred) ──
+export type CtaType =
+  | 'trial' | 'signup' | 'purchase' | 'demo' | 'contact' | 'download' | 'subscribe'
+  | 'login' | 'learn' | 'quote' | 'waitlist' | 'apply' | 'schedule' | 'watch'
+  | 'donate' | 'share' | 'invite' | 'refer' | 'search' | 'submit' | 'install'
+  | 'reserve' | 'gift' | 'enroll' | 'chat' | 'feedback' | 'next' | 'menu';
+
+export const CTA_LABELS: Record<CtaType, string> = {
+  trial: 'Prøveperiode', signup: 'Registrering', purchase: 'Kjøp', demo: 'Book demo',
+  contact: 'Kontakt', download: 'Nedlasting', subscribe: 'Abonnement', login: 'Innlogging',
+  learn: 'Les mer', quote: 'Få tilbud', waitlist: 'Venteliste', apply: 'Søk', schedule: 'Book møte',
+  watch: 'Se video', donate: 'Doner', share: 'Del', invite: 'Inviter', refer: 'Verv',
+  search: 'Søk', submit: 'Send inn', install: 'Installer', reserve: 'Reserver', gift: 'Gave',
+  enroll: 'Meld på', chat: 'Chat', feedback: 'Tilbakemelding', next: 'Neste', menu: 'Meny',
+};
+
+// Mest spesifikke mønstre først (rekkefølge teller — første treff vinner).
+const CTA_BANK: Array<{ type: CtaType; re: RegExp }> = [
+  { type: 'trial', re: /free trial|prøv gratis|start (free|trial)|try (it )?free|gratis prøve|start.*gratis|\d+[- ]?day(s)? free|gratis i \d+/i },
+  { type: 'demo', re: /book (a |en )?demo|request (a )?demo|se demo|get a demo|bestill demo|watch (a )?demo/i },
+  { type: 'schedule', re: /book (a |et )?(call|meeting|møte|samtale)|schedule|avtal(e)? (et )?møte|sett opp møte|book (en )?tid|reserver tid/i },
+  { type: 'quote', re: /get (a )?quote|request (a )?quote|få (et )?tilbud|be om tilbud|pristilbud|get pricing/i },
+  { type: 'waitlist', re: /wait ?list|venteliste|join the list|early access|tidlig tilgang|notify me|varsle meg/i },
+  { type: 'purchase', re: /\bbuy\b|kjøp|add to (cart|bag)|legg i (kurv|handlekurv)|checkout|kasse|\border\b|bestill|pricing|priser|upgrade|oppgrader|subscribe now|velg plan|choose plan/i },
+  { type: 'signup', re: /sign ?up|get started|kom i gang|registrer|opprett (en )?konto|create (an )?account|\bjoin\b|bli med|start now|start nå/i },
+  { type: 'apply', re: /apply( now)?|søk( nå| her)?|send (en )?søknad|application/i },
+  { type: 'enroll', re: /enroll|meld (deg )?på|påmelding|register for|sign up for the course/i },
+  { type: 'reserve', re: /reserve|reserver|book (a )?(table|room|seat)|book (bord|rom|plass)/i },
+  { type: 'contact', re: /contact|kontakt|talk to (us|sales)|snakk med|\bsales\b|salg|get in touch|ta kontakt/i },
+  { type: 'chat', re: /chat( with us| now)?|live ?chat|start (a )?chat|prat med oss|åpne chat/i },
+  { type: 'download', re: /download|last ned|get the app|app store|google play|installer|hent appen/i },
+  { type: 'install', re: /install|installer|add to chrome|legg til i|get extension/i },
+  { type: 'subscribe', re: /subscribe|abonner|newsletter|nyhetsbrev|følg oss/i },
+  { type: 'donate', re: /donate|doner|gi (et )?bidrag|støtt|support us|fund/i },
+  { type: 'gift', re: /gift|gave(kort)?|send (a )?gift/i },
+  { type: 'refer', re: /refer (a friend)?|verv (en )?venn|referral|invitasjonskode/i },
+  { type: 'invite', re: /invite|inviter|send invite|legg til medlem/i },
+  { type: 'share', re: /\bshare\b|\bdel\b|share this|del denne|dele/i },
+  { type: 'watch', re: /watch( video| now)?|se video|play( video)?|spill av|se filmen/i },
+  { type: 'feedback', re: /feedback|tilbakemelding|rate (us|this)|gi vurdering|review us/i },
+  { type: 'login', re: /log ?in|logg (deg )?inn|sign in/i },
+  { type: 'search', re: /\bsearch\b|\bsøk\b|finn|look up/i },
+  { type: 'submit', re: /\bsubmit\b|send inn|send (skjema|melding)|lever/i },
+  { type: 'next', re: /\bnext\b|\bneste\b|continue|fortsett|proceed|gå videre/i },
+  // Meny-/navigasjonsknapper (anker mot hele label så CTA-er ikke stjeles).
+  { type: 'menu', re: /^(menu|meny|☰|≡|products?|produkter|solutions?|løsninger|resources?|ressurser|company|selskap|features?|funksjoner|about( us)?|om( oss)?|blog|docs|documentation|dokumentasjon|support|home|hjem|overview|oversikt|use cases|customers|kunder|integrations|integrasjoner|platform|plattform)$/i },
+  { type: 'learn', re: /learn more|les mer|read more|find out|se mer|utforsk|explore|how it works|slik virker/i },
+];
+
+/** Statisk klassifisering (kun innebygde mønstre). */
+export function classifyCtaStatic(label: string): CtaType | null {
+  const t = (label || '').trim();
+  if (!t) return null;
+  for (const e of CTA_BANK) if (e.re.test(t)) return e.type;
+  return null;
+}
+
+// ── Selvlærende CTA-bank (auto-utvider seg fra skannede elementer) ──
+const LEARNED_CTA_KEY = 'trrpa.demoStudio.ctaBank';
+function normCta(s: string): string { return s.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 60); }
+function loadLearnedCtas(): Record<string, CtaType> {
+  try { return JSON.parse(localStorage.getItem(LEARNED_CTA_KEY) || '{}') as Record<string, CtaType>; } catch { return {}; }
+}
+function saveLearnedCtas(m: Record<string, CtaType>): void {
+  try { localStorage.setItem(LEARNED_CTA_KEY, JSON.stringify(m)); } catch { /* full/blokkert */ }
+}
+
+/** Klassifiser et label: innebygd bank → lært bank. */
+export function classifyCta(label: string): CtaType | null {
+  const stat = classifyCtaStatic(label);
+  if (stat) return stat;
+  const n = normCta(label || '');
+  return n ? (loadLearnedCtas()[n] ?? null) : null;
+}
+
+/**
+ * Auto-utvid banken fra skannede elementer: knapper/CTA-aktige lenker som ikke
+ * matcher de innebygde mønstrene lagres (som 'learn' om typen er ukjent), så de
+ * gjenkjennes neste gang. Returnerer antall nye lærte CTA-er.
+ */
+export function learnCtas(elements: Array<{ label?: string; tag?: string; actionType?: string }>): number {
+  const learned = loadLearnedCtas();
+  let added = 0;
+  for (const e of elements) {
+    const lab = (e.label || '').trim();
+    if (!lab || lab.length > 40) continue;
+    const n = normCta(lab);
+    if (learned[n]) continue;
+    const known = classifyCtaStatic(lab);
+    const structural = e.tag === 'button' || (e.actionType === 'click' && e.tag === 'a');
+    if (known) { learned[n] = known; added++; }
+    else if (structural) { learned[n] = 'learn'; added++; }
+  }
+  if (added) saveLearnedCtas(learned);
+  return added;
+}
+
+export function learnedCtaCount(): number { return Object.keys(loadLearnedCtas()).length; }
+
 /** Et interaktivt element katalogisert av DOM-skannet (AI-binding). */
 export interface ScannedElement {
   selector: string;
@@ -539,6 +642,8 @@ export interface ScannedElement {
   hotspot: { x: number; y: number; w: number; h: number };
   /** Multi-strategi-locators (resilient replay). */
   locators?: TargetLocator[];
+  /** CTA-klassifisering fra CTA-banken (om elementet er en CTA). */
+  ctaType?: CtaType;
 }
 
 /** Resultat av et DOM-skann av en side. */
@@ -581,6 +686,7 @@ export function captureStepsToScenes(steps: CapturedStepLike[], device: DemoDevi
       targetLabel: label || undefined,
       targetSelector: s.selector || undefined,
       targetLocators: s.locators && s.locators.length ? s.locators : undefined,
+      ctaType: classifyCta(label) ?? undefined,
       // Capture = brukeren klikket faktisk elementet → detektert == forventet.
       detectedSelector: s.selector || undefined,
       hotspot: s.hotspot,

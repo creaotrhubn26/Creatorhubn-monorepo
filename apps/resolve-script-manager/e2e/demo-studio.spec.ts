@@ -36,6 +36,12 @@ async function setupRoutes(page: Page) {
         { device: 'macbook', status: 'ok', message: 'All good' },
         { device: 'iphone', status: 'warning', message: 'CTA lavt på mobil', recommendation: 'Start etter 20% scroll', fix: { kind: 'start_scroll', sceneIndex: 0, startScrollPct: 20, summary: 'Start mobilscene etter 20% scroll' } },
       ] });
+    } else if (text.includes('Auto-annotér frame-en')) {
+      payload = anthropic({ caption: 'Dashboard-oversikt', overlayText: 'Alt på ett sted', keyElements: ['Start free trial', 'Pricing'] });
+    } else if (text.includes('OCR-/vision-fallback')) {
+      payload = anthropic({ elements: [{ label: 'Start free trial', actionType: 'click', hotspot: { x: 0.4, y: 0.3, w: 0.2, h: 0.08 } }] });
+    } else if (text.includes('Skjedde det forventede')) {
+      payload = anthropic({ success: true, reason: 'Modal åpnet' });
     } else if (text.includes('Vurder denne produktdemoen kritisk')) {
       payload = anthropic({ score: 72, summary: 'Solid flow, men svak hook og utydelig CTA.', issues: [
         { severity: 'high', area: 'hook', message: 'Start sterkere i de første 3 sekundene.', sceneIndex: 0 },
@@ -181,4 +187,24 @@ test('auto-merkevare hentes fra siden + white-label', async ({ page }) => {
   await expect(page.getByPlaceholder(/Merkenavn/)).toHaveValue('TestMerke');
   await expect(page.getByPlaceholder(/Merkefarge/)).toHaveValue('#3366ff');
   await page.getByText('White-label (skjul «Powered by»)').click();
+});
+
+test('vision auto-annotering fyller overlay fra skjermbilde', async ({ page }) => {
+  await seedDemo(page);
+  await page.getByText('Script Builder').click();
+  // Auto-annotér henter selv skjermbilde (demo_screenshot-mock) + vision-annoterer.
+  await page.getByRole('button', { name: 'Auto-annotér' }).click();
+  await expect(page.getByPlaceholder('Get a real-time overview of your practice')).toHaveValue('Alt på ett sted', { timeout: 10000 });
+});
+
+test('CTA-bank klassifiserer capture-elementer', async ({ page }) => {
+  await seedDemo(page);
+  await page.getByText(/Klikk-capture/).click();
+  await page.evaluate(() => {
+    const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
+    emit('demo-capture://step', { url: 'x', selector: '#start', targetLabel: 'Start free trial', actionType: 'click', hotspot: { x: 0.4, y: 0.3, w: 0.2, h: 0.08 }, scrollPct: 0 });
+    emit('demo-capture://done', false);
+  });
+  await page.getByText('Start free trial').first().click();
+  await expect(page.getByText('CTA: Prøveperiode')).toBeVisible({ timeout: 10000 });
 });

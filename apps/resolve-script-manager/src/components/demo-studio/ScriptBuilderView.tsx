@@ -15,7 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
 import { fetchCurrentUser, roleLabel, userInitials, type CurrentUser } from '../../services/currentUserService';
 import { captureScreenshot, isCaptureAvailable } from '../../services/demoCaptureService';
-import { generateSceneScript, improveScript, type ImproveAction } from './demoStudioAI';
+import { generateSceneScript, improveScript, annotateFrame, type ImproveAction } from './demoStudioAI';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { FramedDevice } from './FramedDevice';
@@ -113,6 +113,23 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
       if (d) updateScene(selected.id, { thumbnailDataUrl: d });
       else setAiError('Klarte ikke ta skjermbilde');
     } finally { setAiBusy(null); }
+  };
+
+  const onAnnotate = async () => {
+    if (!project || !selected) return;
+    if (!aiReady) { setShowSignIn(true); return; }
+    setAiError(null); setAiBusy('annotate');
+    try {
+      let shot = selected.thumbnailDataUrl;
+      if (!shot && isCaptureAvailable()) { const d = await captureScreenshot(project.url); if (d) { updateScene(selected.id, { thumbnailDataUrl: d }); shot = d; } }
+      if (!shot) { setAiError('Ta skjermbilde først (vision trenger et bilde)'); return; }
+      const a = await annotateFrame({ url: project.url, scene: selected, screenshot: shot });
+      updateScene(selected.id, {
+        overlayText: selected.overlayText?.trim() ? selected.overlayText : a.overlayText,
+        visualInstruction: selected.visualInstruction?.trim() ? selected.visualInstruction : a.caption,
+        notes: a.keyElements.length ? `Nøkkel-elementer: ${a.keyElements.join(', ')}` : selected.notes,
+      });
+    } catch (e) { setAiError((e as Error).message); } finally { setAiBusy(null); }
   };
 
   const onImprove = async (action: ImproveAction) => {
@@ -340,6 +357,9 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <button style={{ ...btn, padding: '6px 11px', fontSize: 12, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onShot()}>
                 {aiBusy === 'shot' ? 'Tar skjermbilde…' : 'Ta skjermbilde'}
+              </button>
+              <button style={{ ...btn, padding: '6px 11px', fontSize: 12, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onAnnotate()}>
+                {aiBusy === 'annotate' ? 'Annoterer…' : 'Auto-annotér'}
               </button>
               <span style={{ fontSize: 11, color: selected.thumbnailDataUrl ? C.green : C.inkFaint }}>
                 {selected.thumbnailDataUrl ? '✓ Generate Script bruker vision' : 'For AI vision (ser skjermen)'}
