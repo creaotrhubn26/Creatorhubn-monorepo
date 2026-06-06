@@ -15,13 +15,14 @@ import { scanDom, captureScreenshot, isCaptureAvailable } from '../../services/d
 import { useDemoStudio } from './demoStudioStore';
 import {
   suggestMarketingBrief, generateMarketingFlow, generateVariants, fetchSiteContext,
-  ocrDetectElements, analyzeProductEvidence, type GeneratedVariant, type VariantSpec,
+  ocrDetectElements, analyzeProductEvidence, buildProductBrain, draftOnePager as aiDraftOnePager,
+  type GeneratedVariant, type VariantSpec,
 } from './demoStudioAI';
 import {
   CHANNEL_PRESETS, FRAMEWORKS, FUNNEL_LABELS, emptyMarketingBrief, recordVoicePref,
-  MARKETING_OBJECTIVES, applyObjectiveToBrief,
+  MARKETING_OBJECTIVES, applyObjectiveToBrief, BRAIN_KIND_LABELS, VERIFICATION_META,
   type MarketingBrief, type MarketingChannel, type MarketingFramework, type FunnelStage,
-  type MarketingObjective, type ProductEvidence,
+  type MarketingObjective, type ProductEvidence, type ProductBrain, type BrainNodeKind,
 } from './demoStudioModel';
 
 const C = {
@@ -50,6 +51,8 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<ProductEvidence | null>(null);
+  const [onePager, setOnePager] = useState('');
+  const [brain, setBrain] = useState<ProductBrain | null>(null);
   const [variants, setVariants] = useState<GeneratedVariant[]>([]);
   const [picked, setPicked] = useState<Record<string, boolean>>(
     () => Object.fromEntries(VARIANT_PRESETS.map((v) => [v.label, v.channel === 'reels'])),
@@ -89,6 +92,44 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
     finally { setBusy(null); }
   };
 
+  const draftOnePager = async () => {
+    if (!aiReady) return onOpenSignIn();
+    setBusy('draft'); setMsg('AI skriver et one-pager-utkast fra siden…');
+    try {
+      const { elements, siteContext } = await scanContext();
+      let ev = evidence;
+      if (!ev) { ev = await analyzeProductEvidence({ url: project.url, siteContext, elements }).catch(() => null); if (ev) setEvidence(ev); }
+      const text = await aiDraftOnePager({ url: project.url, siteContext, elements, evidence: ev ?? undefined });
+      if (text) setOnePager(text);
+      setMsg('✓ One-pager-utkast laget fra siden. Rediger ved behov, så «Bygg tankekart».');
+    } catch (e) { setMsg('Feil: ' + (e as Error).message); }
+    finally { setBusy(null); }
+  };
+
+  const buildBrain = async () => {
+    if (!aiReady) return onOpenSignIn();
+    if (!onePager.trim()) { setMsg('Lim inn one-pager-teksten først.'); return; }
+    setBusy('brain'); setMsg('AI bygger tankekart og kryssverifiserer mot siden…');
+    try {
+      const { elements, siteContext } = await scanContext();
+      let ev = evidence;
+      if (!ev) { ev = await analyzeProductEvidence({ url: project.url, siteContext, elements }).catch(() => null); if (ev) setEvidence(ev); }
+      const b = await buildProductBrain({ url: project.url, onePager, siteContext, elements, evidence: ev ?? undefined, objective: brief.objective });
+      setBrain(b);
+      const verified = b.nodes.filter((n) => n.status === 'verified').length;
+      setMsg(`✓ Tankekart: ${verified} verifisert, ${b.gaps.length} gap, ${b.coveragePath.length} steg. Anbefalt: ${FRAMEWORKS[b.recommendedFramework].label.split(' (')[0]}.`);
+    } catch (e) { setMsg('Feil: ' + (e as Error).message); }
+    finally { setBusy(null); }
+  };
+
+  const applyBrainRecommendation = () => {
+    if (!brain) return;
+    let next = brain.recommendedObjective ? applyObjectiveToBrief(brief, brain.recommendedObjective) : { ...brief };
+    next = { ...next, framework: brain.recommendedFramework };
+    patchBrief(next);
+    setMsg(`✓ Brukte anbefaling: ${FRAMEWORKS[brain.recommendedFramework].label.split(' (')[0]}${brain.recommendedObjective ? ` for ${MARKETING_OBJECTIVES[brain.recommendedObjective].label.toLowerCase()}` : ''}.`);
+  };
+
   const analyzeProduct = async () => {
     if (!aiReady) return onOpenSignIn();
     setBusy('evidence'); setMsg('AI leser produktet inn i et bevis-inventar…');
@@ -110,7 +151,8 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
       // Sørg for at metoden festes til konkrete produktdeler (beat→bevis-binding).
       let ev = evidence;
       if (!ev) { ev = await analyzeProductEvidence({ url: project.url, siteContext, elements }).catch(() => null); if (ev) setEvidence(ev); }
-      const scenes = await generateMarketingFlow({ url: project.url, brief, devices: project.devices, elements, siteContext, meta: project.scriptMeta, evidence: ev ?? undefined });
+      const coverageHint = brain?.coveragePath.map((c) => c.elementLabel ? `${c.label} (${c.elementLabel})` : c.label);
+      const scenes = await generateMarketingFlow({ url: project.url, brief, devices: project.devices, elements, siteContext, meta: project.scriptMeta, evidence: ev ?? undefined, coverageHint });
       replaceScenes(scenes);
       setProjectField('format', preset.format);
       setProjectField('mode', 'marketing');
@@ -148,6 +190,73 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
       <p style={{ fontSize: 12.5, color: C.inkSoft, marginTop: 6, marginBottom: 16, maxWidth: 620 }}>
         AI lager målrettet innhold som flytter én målgruppe ett funnel-steg på kanalens språk — ikke en generisk feature-tur.
       </p>
+
+      {/* ── 0 · Product Brain (one-pager → verifisert tankekart) ── */}
+      <section style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: 16, marginBottom: 16, maxWidth: 900 }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>0 · Product Brain</h3>
+          <span style={{ fontSize: 11, color: C.inkFaint, marginLeft: 8 }}>— lim inn one-pager → AI kryssverifiserer mot siden</span>
+          <div style={{ flex: 1 }} />
+          <button style={{ ...btn, fontSize: 11.5, padding: '6px 10px', opacity: busy ? 0.6 : 1 }} disabled={!!busy} onClick={() => void draftOnePager()}>
+            {busy === 'draft' ? 'Skriver…' : 'Ingen one-pager? Lag utkast fra siden'}
+          </button>
+        </div>
+        <textarea style={{ ...field, minHeight: 72, resize: 'vertical', marginBottom: 8 }} value={onePager}
+          placeholder="Lim inn one-pager / produktbeskrivelse her — eller klikk «Lag utkast fra siden» så skriver AI et utkast du kan redigere."
+          onChange={(e) => setOnePager(e.target.value)} />
+        <button style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={!!busy} onClick={() => void buildBrain()}>
+          {busy === 'brain' ? 'Bygger tankekart…' : '◈ Bygg tankekart + verifiser'}
+        </button>
+
+        {brain && (
+          <div style={{ marginTop: 14 }}>
+            {brain.summary && <div style={{ fontSize: 12.5, color: C.ink, marginBottom: 10 }}>{brain.summary}</div>}
+            {/* Anbefalt metode */}
+            <div style={{ background: '#fdeee6', border: `1px solid #f3d3c1`, borderRadius: 9, padding: '9px 11px', marginBottom: 12 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: C.dark }}>Anbefalt: {FRAMEWORKS[brain.recommendedFramework].label}{brain.recommendedObjective ? ` · ${MARKETING_OBJECTIVES[brain.recommendedObjective].label}` : ''}</div>
+              {brain.reasoning && <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 3 }}>{brain.reasoning}</div>}
+              <button style={{ ...btn, fontSize: 11.5, padding: '5px 10px', marginTop: 8 }} onClick={applyBrainRecommendation}>Bruk anbefaling</button>
+            </div>
+            {/* Verifiserte noder gruppert pr. type */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px,1fr))', gap: 12, marginBottom: 12 }}>
+              {(Object.keys(BRAIN_KIND_LABELS) as BrainNodeKind[]).map((kind) => {
+                const ns = brain.nodes.filter((n) => n.kind === kind);
+                if (!ns.length) return null;
+                return (
+                  <div key={kind}>
+                    <div style={{ ...label }}>{BRAIN_KIND_LABELS[kind]}</div>
+                    {ns.map((n, i) => {
+                      const m = VERIFICATION_META[n.status];
+                      return (
+                        <div key={i} style={{ fontSize: 11.5, color: C.ink, marginBottom: 3, display: 'flex', gap: 6 }}>
+                          <span title={m.label} style={{ color: m.color, fontWeight: 700, width: 12, flexShrink: 0 }}>{m.icon}</span>
+                          <span>{n.text}{n.matchedOn ? <span style={{ color: C.inkFaint }}> · {n.matchedOn}</span> : null}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Dekningssti */}
+            {brain.coveragePath.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ ...label }}>Hva vi må gjennom (dekningssti)</div>
+                <ol style={{ margin: '4px 0 0', paddingLeft: 20, fontSize: 11.5, color: C.ink }}>
+                  {brain.coveragePath.map((s, i) => <li key={i} style={{ marginBottom: 2 }}>{s.label}{s.elementLabel ? <span style={{ color: C.inkFaint }}> → {s.elementLabel}</span> : null}</li>)}
+                </ol>
+              </div>
+            )}
+            {/* Gap */}
+            {brain.gaps.length > 0 && (
+              <div style={{ background: '#fff8ec', border: '1px solid #f0d9a8', borderRadius: 9, padding: '8px 11px' }}>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: '#8a6516', marginBottom: 3 }}>Gap — hevdet i one-pager, ikke verifiserbart på siden:</div>
+                {brain.gaps.map((g, i) => <div key={i} style={{ fontSize: 11.5, color: '#8a6516' }}>⚠ {g}</div>)}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, maxWidth: 900 }}>
         {/* ── Brief ── */}

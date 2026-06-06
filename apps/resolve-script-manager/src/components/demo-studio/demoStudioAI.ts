@@ -21,7 +21,8 @@ import {
   CHANNEL_PRESETS, FRAMEWORKS, FUNNEL_INTENT, FUNNEL_LABELS,
   type ScannedElement, type DirectorCritique, type CritiqueIssue, type CritiqueSeverity,
   type MarketingBrief, type MarketingChannel, type FunnelStage, type MarketingObjective,
-  type ProductEvidence,
+  type ProductEvidence, type ProductBrain, type BrainNode, type BrainNodeKind,
+  type VerificationStatus, type CoverageStep, type MarketingFramework,
 } from './demoStudioModel';
 
 export type ImproveAction =
@@ -795,6 +796,92 @@ function evidenceBlock(ev?: ProductEvidence): string {
   return s;
 }
 
+/**
+ * Ingen one-pager? Skriv et UTKAST fra det vi faktisk skanner live, så brukeren
+ * har et grunnlag å redigere + bygge Product Brain fra. Bygger kun på funn fra
+ * siden (ikke oppdiktet), og markerer åpenbare hull til brukeren.
+ */
+export async function draftOnePager(params: {
+  url: string; siteContext?: string; elements?: ScannedElement[]; evidence?: ProductEvidence;
+}): Promise<string> {
+  const { url, siteContext = '', elements = [], evidence } = params;
+  const elCatalog = elements.slice(0, 25).map((e) => `"${e.label}"${e.ctaType ? ` (${e.ctaType})` : ''}`).join(', ');
+  const user = `Vi har INGEN one-pager. Skriv et kort utkast basert KUN på det vi fant på siden (ikke dikt opp tall/kunder).
+
+Produkt-URL: ${url}
+${evidence ? `Funksjoner: ${evidence.features.map((f) => `${f.name}${f.solves ? ` (løser ${f.solves})` : ''}`).join('; ') || '—'}\nBevis: ${evidence.proof.map((p) => p.claim).join(' · ') || '—'}\nSeksjoner: ${evidence.sections.map((s) => s.label).join(', ') || '—'}\n` : ''}${elCatalog ? `Klikkbare elementer: ${elCatalog}\n` : ''}${siteContext ? `Sidetekst (utdrag):\n${siteContext.slice(0, 2200)}\n` : ''}
+Skriv en one-pager med overskrifter: Hva det er · For hvem · Problem · Funksjoner · Verdiløfter · Bevis · CTA.
+Der noe mangler på siden (f.eks. ingen bevis/tall), skriv «[mangler — fyll inn]» så brukeren ser hullet.
+Svar med ren tekst (ikke JSON).`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: MARKETING_SYSTEM, messages: [{ role: 'user', content: user }], maxTokens: 1200,
+  });
+  return (raw || '').trim();
+}
+
+/**
+ * PRODUCT BRAIN: parse en one-pager → kryssverifiser mot live-skann → dekningssti
+ * + anbefalt mål/metode. Svarer på «hvordan henger systemet sammen, og stemmer
+ * det one-pageren sier med det som faktisk finnes på siden?».
+ */
+export async function buildProductBrain(params: {
+  url: string;
+  onePager: string;
+  siteContext?: string;
+  elements?: ScannedElement[];
+  evidence?: ProductEvidence;
+  objective?: MarketingObjective;
+}): Promise<ProductBrain> {
+  const { url, onePager, siteContext = '', elements = [], evidence, objective } = params;
+  const elCatalog = elements.slice(0, 30).map((e) => `"${e.label}"${e.ctaType ? ` (${e.ctaType})` : ''}`).join(', ');
+  const frameworkList = (Object.keys(FRAMEWORKS) as MarketingFramework[]).map((k) => `${k}=${FRAMEWORKS[k].label.split(' (')[0]} (${FRAMEWORKS[k].bestFor})`).join('; ');
+  const user = `Du får en ONE-PAGER om et produkt + det vi faktisk fant LIVE på nettsiden.
+Bygg et "product brain": parse one-pageren, og KRYSSVERIFISER hver påstand mot det live-funnet.
+
+ONE-PAGER:
+${onePager.slice(0, 4000)}
+
+LIVE PÅ SIDEN (${url}):
+${evidence ? `Produkt: ${evidence.summary}\nFunksjoner: ${evidence.features.map((f) => f.name).join(', ') || '—'}\nBevis: ${evidence.proof.map((p) => p.claim).join(' · ') || '—'}\nSeksjoner: ${evidence.sections.map((s) => s.label).join(', ') || '—'}\n` : ''}${elCatalog ? `Klikkbare elementer: ${elCatalog}\n` : ''}${siteContext ? `Sidetekst (utdrag): ${siteContext.slice(0, 1200)}\n` : ''}
+Oppgave:
+1) Lag noder for produktets funksjoner/verdiløfter/bevis/CTA-er/målgrupper/integrasjoner fra one-pageren.
+2) Sett status på hver node: "verified" (finnes live / har element), "unverified" (hevdet i one-pager, IKKE funnet live). Legg også til "extra"-noder for ting som finnes live men IKKE i one-pageren. Angi matchedOn (hva den matchet).
+3) coveragePath: ordnet liste over hva man MÅ gjennom for å demonstrere produktet ende-til-ende (kun verifiserbare ting), hvert steg med elementLabel når mulig.
+4) gaps: påstander i one-pageren vi ikke kan vise på siden.
+5) Anbefal metode (recommendedFramework) + recommendedObjective + reasoning, basert på grafens form (mye bevis → proof-tung metode; svakt bevis men sterk transformasjon → BAB; ny kategori → jtbd). Tilgjengelige metoder: ${frameworkList}.
+${objective ? `Brukerens valgte mål er "${objective}" — vurder om det passer, ellers foreslå bedre.\n` : ''}
+Svar med KUN ett JSON-objekt:
+{ "summary": "...", "nodes": [ { "kind": "feature|value|proof|cta|audience|integration", "text": "...", "status": "verified|unverified|extra", "matchedOn": "..." } ], "coveragePath": [ { "label": "...", "elementLabel": "..." } ], "gaps": ["..."], "recommendedObjective": "conversion", "recommendedFramework": "pastor", "reasoning": "..." }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: MARKETING_SYSTEM, messages: [{ role: 'user', content: user }], maxTokens: 2400,
+  });
+  const p = extractJson<Partial<ProductBrain>>(raw);
+  const kinds: BrainNodeKind[] = ['feature', 'value', 'proof', 'cta', 'audience', 'integration'];
+  const statuses: VerificationStatus[] = ['verified', 'unverified', 'extra'];
+  const frameworks = Object.keys(FRAMEWORKS) as MarketingFramework[];
+  const objectives: MarketingObjective[] = ['awareness', 'lead_gen', 'conversion', 'activation', 'retention', 'expansion', 'advocacy'];
+  const nodes: BrainNode[] = Array.isArray(p?.nodes)
+    ? p!.nodes.filter((n) => n && typeof n.text === 'string' && kinds.includes(n.kind as BrainNodeKind)).slice(0, 40).map((n) => ({
+        kind: n.kind as BrainNodeKind,
+        text: n.text,
+        status: statuses.includes(n.status as VerificationStatus) ? n.status as VerificationStatus : 'unverified',
+        matchedOn: typeof n.matchedOn === 'string' ? n.matchedOn : undefined,
+      }))
+    : [];
+  const coveragePath: CoverageStep[] = Array.isArray(p?.coveragePath)
+    ? p!.coveragePath.filter((s) => s && typeof s.label === 'string').slice(0, 20).map((s) => ({ label: s.label, elementLabel: typeof s.elementLabel === 'string' ? s.elementLabel : undefined }))
+    : [];
+  return {
+    summary: typeof p?.summary === 'string' ? p.summary : '',
+    nodes,
+    coveragePath,
+    gaps: Array.isArray(p?.gaps) ? p!.gaps.filter((g) => typeof g === 'string').slice(0, 12) : [],
+    recommendedObjective: objectives.includes(p?.recommendedObjective as MarketingObjective) ? p!.recommendedObjective as MarketingObjective : undefined,
+    recommendedFramework: frameworks.includes(p?.recommendedFramework as MarketingFramework) ? p!.recommendedFramework as MarketingFramework : 'pas',
+    reasoning: typeof p?.reasoning === 'string' ? p.reasoning : '',
+  };
+}
+
 /** Generer en MÅLRETTET marketing-flow: persona × funnel × kanal × rammeverk. */
 export async function generateMarketingFlow(params: {
   url: string;
@@ -804,8 +891,10 @@ export async function generateMarketingFlow(params: {
   siteContext?: string;
   meta?: ScriptMeta;
   evidence?: ProductEvidence;
+  /** Verifisert dekningssti fra Product Brain — styrer rekkefølge/dekning. */
+  coverageHint?: string[];
 }): Promise<DemoScene[]> {
-  const { url, brief, devices, elements = [], siteContext = '', evidence } = params;
+  const { url, brief, devices, elements = [], siteContext = '', evidence, coverageHint = [] } = params;
   const preset = CHANNEL_PRESETS[brief.channel];
   const framework = FRAMEWORKS[brief.framework || preset.framework];
   const funnel = FUNNEL_INTENT[brief.funnelStage];
@@ -822,7 +911,7 @@ ${brief.proof?.length ? `Bevis: ${brief.proof.join(' · ')}\n` : ''}${brief.obje
 FUNNEL-STEG: ${FUNNEL_LABELS[brief.funnelStage]} → mål: ${funnel.goal}. CTA-energi: ${funnel.ctaHint}.
 KANAL: ${preset.label} → ${preset.toneHint}. Total lengde ~${preset.maxSeconds}s, hook i de første ${preset.hookSeconds} sek.${preset.captions ? ' Skriv korte caption-vennlige linjer.' : ''}
 RAMMEVERK: ${framework.label}. Følg disse beatene i rekkefølge, én eller flere scener per beat: ${framework.beats.join(' → ')}.
-${brief.desiredAction ? `ØNSKET HANDLING (siste CTA): ${brief.desiredAction}\n` : ''}${siteContext ? `\nKontekst fra siden:\n${siteContext.slice(0, 1500)}\n` : ''}${evidenceBlock(evidence)}${catalog}${voicePrefBlock(url)}
+${coverageHint.length ? `\nVERIFISERT DEKNINGSSTI (Product Brain) — sørg for at demoen dekker disse stegene, i denne rekkefølgen, vevd inn i rammeverkets beats:\n${coverageHint.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n` : ''}${brief.desiredAction ? `ØNSKET HANDLING (siste CTA): ${brief.desiredAction}\n` : ''}${siteContext ? `\nKontekst fra siden:\n${siteContext.slice(0, 1500)}\n` : ''}${evidenceBlock(evidence)}${catalog}${voicePrefBlock(url)}
 SLIK ANVENDES METODEN PÅ PRODUKTET (viktigst):
 - Fest HVER beat til ÉN konkret produktdel fra PRODUKT-BEVIS over. Eksempel for ${framework.label}: ${framework.beats.map((b) => `«${b}»`).join(' → ')} skal hver vise en navngitt funksjon/bevis/seksjon — ikke generisk prat.
 - «Bevis»-beats MÅ bruke et faktisk bevis (tall/testimonial/logo) som står på siden.

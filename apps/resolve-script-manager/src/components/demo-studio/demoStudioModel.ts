@@ -918,6 +918,49 @@ export interface ProductEvidence {
   sections: ProductSection[];
 }
 
+/**
+ * PRODUCT BRAIN — tankekart som kobler en one-pager mot virkeligheten.
+ * AI parser one-pageren til påstander, krysser dem mot det vi skanner live, og
+ * merker hver node verifisert/ikke funnet/ekstra. Gir en dekningssti («hva må vi
+ * gjennom») + anbefalt mål/metode med begrunnelse. Fase 1 = verifisert
+ * disposisjon; et dra-bart node-kart kan rendres av samme data senere.
+ */
+export type BrainNodeKind = 'feature' | 'value' | 'proof' | 'cta' | 'audience' | 'integration';
+export type VerificationStatus = 'verified' | 'unverified' | 'extra';
+export const BRAIN_KIND_LABELS: Record<BrainNodeKind, string> = {
+  feature: 'Funksjoner', value: 'Verdiløfter', proof: 'Bevis', cta: 'CTA-er', audience: 'Målgrupper', integration: 'Integrasjoner',
+};
+export const VERIFICATION_META: Record<VerificationStatus, { label: string; icon: string; color: string }> = {
+  verified:   { label: 'Verifisert', icon: '✓', color: '#2e7d32' },
+  unverified: { label: 'Ikke funnet på siden', icon: '!', color: '#9a6516' },
+  extra:      { label: 'På siden, ikke i one-pager', icon: '+', color: '#2a5bd7' },
+};
+export interface BrainNode {
+  kind: BrainNodeKind;
+  text: string;
+  status: VerificationStatus;
+  /** Hva den ble verifisert mot (element-label / seksjon / bevis-tekst). */
+  matchedOn?: string;
+}
+export interface CoverageStep {
+  /** Hva som skal vises/gjøres i dette steget. */
+  label: string;
+  /** Ekte element/seksjon å navigere til (matcher katalogen om mulig). */
+  elementLabel?: string;
+}
+export interface ProductBrain {
+  summary: string;
+  nodes: BrainNode[];
+  /** «Hva må vi gjennom» — ordnet sti for å demonstrere produktet ende-til-ende. */
+  coveragePath: CoverageStep[];
+  /** Gap: hevdet i one-pager men ikke verifiserbart på siden. */
+  gaps: string[];
+  recommendedObjective?: MarketingObjective;
+  recommendedFramework: MarketingFramework;
+  /** Hvorfor denne metoden passer, gitt grafens form. */
+  reasoning: string;
+}
+
 // ── Stemme-/tone-læring (G): innholdsprodusentens stemme læres over tid ──
 const VOICE_PREFS_KEY = 'trrpa.demoStudio.voicePrefs';
 export interface VoicePrefs { liked: string[]; disliked: string[] }
