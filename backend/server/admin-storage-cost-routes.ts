@@ -209,6 +209,46 @@ export function setupAdminStorageCostRoutes(
       try {
         // Aggregert spørring som joiner subscriptions + user_storage_consumption.
         // LEFT JOIN slik at brukere uten upload ennå også vises hvis de har sub.
+        //
+        // Defensiv kolonnesjekk: enkelte produksjons-DB-er har drift'et og
+        // mangler `plan_type` (krasjet med
+        // 'column "plan_type" does not exist'). Vi sjekker
+        // information_schema og fall tilbake til `plan_id`/literal
+        // 'unknown' hvis kolonnen ikke finnes — slik at admin-overviewet
+        // ikke krasjer på miljøer med schema-drift.
+        const colCheck = await pool.query<{ column_name: string }>(
+          `SELECT column_name
+             FROM information_schema.columns
+            WHERE table_name = 'subscriptions'
+              AND column_name IN (
+                'plan_type',
+                'plan_id',
+                'subscription_plan_id',
+                'stripe_storage_meter_item_id'
+              )`,
+        );
+        const subCols = new Set(colCheck.rows.map((row) => row.column_name));
+        const planExpr = subCols.has("plan_type")
+          ? "s.plan_type"
+          : subCols.has("plan_id")
+            ? "s.plan_id AS plan_type"
+            : subCols.has("subscription_plan_id")
+              ? "s.subscription_plan_id AS plan_type"
+              : "'unknown'::text AS plan_type";
+        const planInner = subCols.has("plan_type")
+          ? "plan_type"
+          : subCols.has("plan_id")
+            ? "plan_id AS plan_type"
+            : subCols.has("subscription_plan_id")
+              ? "subscription_plan_id AS plan_type"
+              : "'unknown'::text AS plan_type";
+        const meterExpr = subCols.has("stripe_storage_meter_item_id")
+          ? "s.stripe_storage_meter_item_id"
+          : "NULL::text AS stripe_storage_meter_item_id";
+        const meterInner = subCols.has("stripe_storage_meter_item_id")
+          ? "stripe_storage_meter_item_id"
+          : "NULL::text AS stripe_storage_meter_item_id";
+
         const r = await pool.query<{
           user_id: string;
           plan_type: string | null;
@@ -221,17 +261,17 @@ export function setupAdminStorageCostRoutes(
         }>(
           `SELECT
              COALESCE(s.user_id, u.user_id) AS user_id,
-             s.plan_type,
+             ${planExpr},
              s.amount,
              s.status,
              s.stripe_subscription_id,
-             s.stripe_storage_meter_item_id,
+             ${meterExpr},
              u.total_bytes,
              u.last_updated
            FROM user_storage_consumption u
            LEFT JOIN LATERAL (
-             SELECT plan_type, amount, status, stripe_subscription_id,
-                    stripe_storage_meter_item_id
+             SELECT ${planInner}, amount, status, stripe_subscription_id,
+                    ${meterInner}
                FROM subscriptions s2
               WHERE s2.user_id = u.user_id
                 AND s2.status IN ('active', 'trialing')

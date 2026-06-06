@@ -21,18 +21,18 @@ CREATE TABLE IF NOT EXISTS secret_rotation_tracker (
     -- email/userId av admin som markerte rotering
   rotation_interval_days INTEGER NOT NULL DEFAULT 90,
     -- Hvor ofte vi forventer rotering (90 = kvartalsvis)
-  next_rotation_due TIMESTAMPTZ GENERATED ALWAYS AS (
-    rotated_at + (rotation_interval_days || ' days')::interval
-  ) STORED,
+    -- Tidligere brukte vi en GENERATED ALWAYS AS-kolonne (rotated_at +
+    -- interval), men Postgres aksepterer ikke den uttrykksformen som
+    -- immutable. Beregnes nå i SELECT-queryer i admin-secrets-rotation
+    -- istedet.
   notes TEXT,
     -- Fri tekst — f.eks. "Roteres sammen med CLOUDFLARE_R2_ACCESS_KEY_ID"
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS secret_rotation_due_idx
-  ON secret_rotation_tracker (next_rotation_due ASC)
-  WHERE rotated_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS secret_rotation_rotated_idx
+  ON secret_rotation_tracker (rotated_at ASC NULLS FIRST);
 
 -- Audit-logg over hver rotering
 CREATE TABLE IF NOT EXISTS secret_rotation_history (

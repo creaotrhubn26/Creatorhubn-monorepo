@@ -608,8 +608,34 @@ export function registerTidumAdminRoutes(
         return;
       }
 
-      const vendors = await fetchFromTidum("/api/internal/creatorhub/vendors");
-      res.json(normalizeTidumVendorRecords(vendors));
+      try {
+        const vendors = await fetchFromTidum(
+          "/api/internal/creatorhub/vendors",
+        );
+        const normalized = normalizeTidumVendorRecords(vendors);
+        const total = Array.isArray(normalized)
+          ? normalized.length
+          : Array.isArray((normalized as { vendors?: unknown[] })?.vendors)
+            ? (normalized as { vendors: unknown[] }).vendors.length
+            : 0;
+        // Eksisterende kontrakt: returner array direkte (bakoverkompatibel),
+        // men AdminDashboard godtar også { vendors, total } via normalize.
+        res.json(normalized);
+        void total;
+      } catch (innerErr) {
+        // Tidum-integrasjonen er ikke alltid konfigurert i alle miljøer.
+        // Returner 200 med tom liste slik at AdminDashboard kan rendre
+        // i stedet for å vise generic 500-error.
+        console.warn(
+          "[tidum-admin] vendors-fetch feilet, returnerer tom liste:",
+          innerErr,
+        );
+        res.json({
+          vendors: [],
+          total: 0,
+          error: "Tidum integration not configured",
+        });
+      }
     } catch (error) {
       console.error("Failed to fetch Tidum vendors:", error);
       res.status(500).json({ error: "Could not fetch Tidum vendors" });

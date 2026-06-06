@@ -89,7 +89,7 @@ export default function GroupManagement() {
   const fetchGroups = async () => {
     try {
       setLoading(true);
-      const response = await apiRequest('/api/community/admin/groups,', {
+      const response = await apiRequest('/api/community/admin/groups', {
         method: 'GET',
       }) as { success: boolean; groups: CommunityGroup[] };
 

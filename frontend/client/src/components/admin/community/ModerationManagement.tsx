@@ -111,7 +111,7 @@ export default function ModerationManagement() {
     setLoading(true);
     try {
       // Load stats
-      const statsData = await apiRequest('/api/community/moderation/stats,', {
+      const statsData = await apiRequest('/api/community/moderation/stats', {
         method: 'GET',
       }) as { success: boolean; stats: ModerationStats };
       

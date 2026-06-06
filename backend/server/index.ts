@@ -745,6 +745,24 @@ import { setupFileManagementRoutes } from "./file-management-routes";
 import { setupAudioRoutes } from "./audio-routes";
 import { setupPlatformRoutes } from "./platform-routes";
 import { setupAdminMiscRoutes } from "./admin-misc-routes";
+// UX-consistency-pass: 16 nye admin-routes-filer for å fjerne stubs
+// fra AdminDashboard-fanene (audit fant ~25 broken endepunkter).
+import { setupAdminBillingExtrasRoutes } from "./admin-billing-extras-routes";
+import { setupAdminEnterprisePricingRoutes } from "./admin-enterprise-pricing-routes";
+import { setupAdminCustomersRoutes } from "./admin-customers-routes";
+import { setupAdminMonitoringRoutes } from "./admin-monitoring-routes";
+import { setupAdminProtocolRoutes } from "./admin-protocol-routes";
+import { setupAdminIntegrationsExtrasRoutes } from "./admin-integrations-extras-routes";
+import { setupAdminSystemBackupRoutes } from "./admin-system-backup-routes";
+import { setupAdminGdprLegalRoutes } from "./admin-gdpr-legal-routes";
+import { setupAdminCommunityExtrasRoutes } from "./admin-community-extras-routes";
+import { setupAdminCommunicationExtrasRoutes } from "./admin-communication-extras-routes";
+import { setupAdminProvisioningExtrasRoutes } from "./admin-provisioning-extras-routes";
+import { setupAdminAutomationsRoutes } from "./admin-automations-routes";
+import { setupAdminEmailAnalyticsRoutes } from "./admin-email-analytics-routes";
+import { setupAdminGoogleWalletExtrasRoutes } from "./admin-google-wallet-extras-routes";
+import { setupAdminMarketplaceFixRoutes } from "./admin-marketplace-fix-routes";
+import { setupAdminFeatureCustomizationsRoutes } from "./admin-feature-customizations-routes";
 import { setupOrchestrationRoutes } from "./orchestration-routes";
 import { setupAuthRoutes } from "./auth-routes";
 import { setupFirmwareRoutes } from "./firmware-routes";
@@ -1802,11 +1820,11 @@ function requireAdminSession(
 }
 
 registerTidumAdminRoutes(app, pool, requireAdminSession);
+registerStripePriceDriftRoutes(app, pool, requireAdminSession);
 registerMarketplaceAppConfigRoutes(app, pool, requireAdminSession);
 configureAIUsageTracker(pool);
 registerAIUsageRoutes(app, pool, requireAdminSession);
 registerDesignTokensRoutes(app, pool, requireAdminSession);
-registerStripePriceDriftRoutes(app, pool, requireAdminSession);
 registerB2CompanyArchiveRoutes({
   app,
   requireAdminSession,
@@ -24364,6 +24382,26 @@ setupAdminUsersRoutes({
 
 // /api/davinci-resolve/* (8 endpoints) → ./davinci-resolve-routes.ts
 
+// ── UX-consistency-pass: 16 nye admin-routes for AdminDashboard
+//   Fyller hull avdekket i deep-audit av Oversikt/Forretning/Plattform/Lab.
+//   Alle returnerer foreløpig tom liste / sensible defaults; senere
+//   kobles de mot ekte DB-tabeller eller eksterne APIs.
+setupAdminBillingExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminEnterprisePricingRoutes({ app, pool, requireAdminSession });
+setupAdminCustomersRoutes({ app, pool, requireAdminSession });
+setupAdminMonitoringRoutes({ app, pool, requireAdminSession });
+setupAdminProtocolRoutes({ app, pool, requireAdminSession });
+setupAdminIntegrationsExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminSystemBackupRoutes({ app, pool, requireAdminSession });
+setupAdminGdprLegalRoutes({ app, pool, requireAdminSession });
+setupAdminCommunityExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminCommunicationExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminProvisioningExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminAutomationsRoutes({ app, pool, requireAdminSession });
+setupAdminEmailAnalyticsRoutes({ app, pool, requireAdminSession });
+setupAdminGoogleWalletExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminMarketplaceFixRoutes({ app, pool, requireAdminSession });
+setupAdminFeatureCustomizationsRoutes({ app, pool, requireAdminSession });
 
 // ── Evendi misc — flyttet til ./evendi-misc-routes.ts
 //   16 endpoints: vendor-categories, products, photo-shots, schedule-events,

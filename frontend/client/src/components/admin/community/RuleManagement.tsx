@@ -83,7 +83,7 @@ export default function RuleManagement() {
   const loadRules = async () => {
     setLoading(true);
     try {
-      const response = await apiRequest('/api/community/moderation/rules,', {
+      const response = await apiRequest('/api/community/moderation/rules', {
         method: 'GET',
       }) as { success: boolean; rules: Rule[] };
 
