@@ -241,7 +241,7 @@ export default function YouTubeChannelSetup({
         <SetupCard intent="info" title="Ingen YouTube-kanal funnet ennå">
           <Typography sx={{ color: 'rgba(226,232,240,0.75)', fontSize: '0.82rem', mb: 1 }}>
             YouTube krever at du oppretter kanalen manuelt på youtube.com — det kan ikke gjøres via API.
-            Claude kan lage et gjennomtenkt utgangspunkt basert på kunden din: navn, beskrivelse,
+            CI kan lage et gjennomtenkt utgangspunkt basert på kunden din: navn, beskrivelse,
             content pillars, video-ideer og publiseringskadens.
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -258,7 +258,7 @@ export default function YouTubeChannelSetup({
                 '&:hover': { bgcolor: '#dc2626' },
               }}
             >
-              {planLoading ? 'Lager plan…' : 'Lag kanal-plan med Claude'}
+              {planLoading ? 'Lager plan…' : 'Lag kanal-plan med CI'}
             </Button>
             <Button
               size="small"

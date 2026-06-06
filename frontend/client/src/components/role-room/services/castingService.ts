@@ -1942,6 +1942,14 @@ export const castingService = {
   async saveProject(project: CastingProject, options?: ProjectMutationOptions): Promise<void> {
     const existingProject = getProjectsFromStorage().find((entry) => entry.id === project.id);
     let nextProject = {
+      // Slå sammen med HELE det eksisterende lagrede prosjektet — ikke bare
+      // eier-feltene. Uten dette nullstiller et delvis save (f.eks. når panelet
+      // kun skriver crew, userRoles eller producerWorkflow-status etter at et
+      // prosjekt er åpnet) navn, status, klientdata og lister, fordi de feltene
+      // ikke finnes på det innkommende objektet. Online maskeres dette av at
+      // backend re-henter sannheten; offline (eller ved full-replace-backend)
+      // forsvinner dataene. Innkommende felter vinner fortsatt via spread under.
+      ...(existingProject ?? {}),
       ownerId: existingProject?.ownerId,
       ownerEmail: existingProject?.ownerEmail,
       ownerLabel: existingProject?.ownerLabel,

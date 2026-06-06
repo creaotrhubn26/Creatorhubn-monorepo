@@ -170,12 +170,14 @@ import {
   type ProjectFileRecord,
 } from '../../utils/projectFiles';
 import { buildClientPortalUrl, toClientPortalWorkspace, type ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
+import { describeProducerError } from '../../utils/producerErrorMessage';
 import type { StoryArcNavigationFocus } from '../../utils/storyArcFocus';
 import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
 import RoleRoomAgentDialog from './RoleRoomAgentDialog';
+import { RoleRoomAgentIcon } from './RoleRoomAgentIcon';
 import MarketingPlanWorkspace from './MarketingPlanWorkspace';
 import { useResearchProgress } from '../../hooks/useResearchProgress';
 import DataSourcesPanel from './DataSourcesPanel';
@@ -1970,6 +1972,9 @@ export default function ProducerMediaPanel({
   const [roleRoomAgentAccess, setRoleRoomAgentAccess] = useState<RoleRoomAgentAccess | null>(null);
   const [loadingRoleRoomAgentAccess, setLoadingRoleRoomAgentAccess] = useState(false);
   const [roleRoomAgentDialogOpen, setRoleRoomAgentDialogOpen] = useState(false);
+  // Bumpes når Agent-dialogen lukkes, så Markedsplan-fanen re-henter en plan
+  // som kan ha blitt generert inne i dialogen.
+  const [marketingReloadNonce, setMarketingReloadNonce] = useState(0);
   const [roleRoomAgentDialogInitialTab, setRoleRoomAgentDialogInitialTab] =
     useState<'research' | 'marketing-plan'>('research');
   const [roleRoomAgentGenerating, setRoleRoomAgentGenerating] = useState(false);
@@ -2709,7 +2714,15 @@ export default function ProducerMediaPanel({
         useLocalAgreementFallback
           ? readLocalAgreements()
           : projectAgreementsApi.getAll(projectId),
-        googleWorkspaceApi.getStatus(projectId).catch(() => null),
+        googleWorkspaceApi.getStatus(projectId).catch((statusError) => {
+          // Ikke helt stille: en ekte Google-nedetid skal være sporbar i
+          // diagnostikk (artefakt-listen degraderer til tom uansett).
+          logRoleRoomDiagnostic('delivery-workspace-assets:google-status-failed', {
+            projectId,
+            message: statusError instanceof Error ? statusError.message : String(statusError),
+          });
+          return null;
+        }),
       ]);
       const normalizedProjectFiles = normalizeProjectFileRecords(projectFiles);
       setProjectFiles(normalizedProjectFiles);
@@ -2752,7 +2765,7 @@ export default function ProducerMediaPanel({
         projectId,
         message: vaultError instanceof Error ? vaultError.message : String(vaultError),
       });
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke hente Client Access Vault.');
+      setAccessVaultError(describeProducerError(vaultError, 'hente Client Access Vault'));
     } finally {
       setLoadingAccessVault(false);
     }
@@ -3141,6 +3154,7 @@ export default function ProducerMediaPanel({
       savedIntakeSnapshotRef.current = serializeIntakeSnapshot(nextDraft);
       setRoleRoomAgentResult(result);
       setRoleRoomAgentDialogOpen(false);
+      setMarketingReloadNonce((n) => n + 1);
       setRoleRoomAgentNotice('The Role Room Agent fylte nå brief, branding-utkast og story logikk i prosjektet.');
     } catch (agentError) {
       console.error('[ProducerMediaPanel] Failed to apply Role Room Agent result', agentError);
@@ -3247,6 +3261,7 @@ export default function ProducerMediaPanel({
       },
     });
     setRoleRoomAgentDialogOpen(false);
+    setMarketingReloadNonce((n) => n + 1);
     setRoleRoomAgentNotice('Prosjektmodalen er forhåndsutfylt med Brreg-data og agentens avtaleforslag. Kontroller kontaktfelt og lagre prosjektet.');
   }, [onCreateProjectFromAgent]);
 
@@ -3595,7 +3610,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to save access vault secret', vaultError);
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke lagre secret.');
+      setAccessVaultError(describeProducerError(vaultError, 'lagre secret-en'));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -3609,7 +3624,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to revoke access vault secret', vaultError);
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke tilbakekalle secret.');
+      setAccessVaultError(describeProducerError(vaultError, 'tilbakekalle secret-en'));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -3726,7 +3741,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to decide access vault reveal', vaultError);
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke oppdatere reveal-forespørselen.');
+      setAccessVaultError(describeProducerError(vaultError, 'oppdatere reveal-forespørselen'));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -3746,7 +3761,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to reveal access vault secret', vaultError);
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke åpne secret.');
+      setAccessVaultError(describeProducerError(vaultError, 'åpne secret-en'));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -5200,7 +5215,7 @@ export default function ProducerMediaPanel({
     {
       key: 'decision',
       label: 'Beslutning',
-      value: foundationBlockingItems.length > 0 ? 'Låst til grunnlaget er klart' : `${pendingReviewCount} åpne reviews · ${openMeetingFollowUpCount} oppfølging`,
+      value: foundationBlockingItems.length > 0 ? `Låst — ${foundationBlockingItems.length} mangler i grunnlaget` : `${pendingReviewCount} åpne reviews · ${openMeetingFollowUpCount} oppfølging`,
       tone: foundationBlockingItems.length > 0 ? '#94a3b8' : (pendingReviewCount > 0 || openMeetingFollowUpCount > 0 ? '#fcd34d' : '#86efac'),
     },
   ]), [
@@ -5498,7 +5513,7 @@ export default function ProducerMediaPanel({
       setError(null);
     } catch (uploadError) {
       console.error('[ProducerMediaPanel] Failed to upload client material file', uploadError);
-      setError('Kunne ikke laste opp filen til prosjektet.');
+      setError(describeProducerError(uploadError, 'laste opp filen til prosjektet'));
     } finally {
       setUploadingMaterialFile(false);
     }
@@ -5570,7 +5585,7 @@ export default function ProducerMediaPanel({
       await persistPlanningDraft(nextPlanning);
     } catch (brandLogoError) {
       console.error('[ProducerMediaPanel] Failed to upload or analyze brand logo', brandLogoError);
-      setError('Kunne ikke laste opp og analysere logoen.');
+      setError(describeProducerError(brandLogoError, 'laste opp og analysere logoen'));
     } finally {
       setUploadingBrandLogo(false);
       if (brandLogoFileInputRef.current) {
@@ -6496,7 +6511,11 @@ export default function ProducerMediaPanel({
         intro: activeWorkspace === 'brief'
           ? 'Fullfør briefen før produksjon og godkjenning åpnes opp som parallelle spor.'
           : 'Hold fokus på produksjonsgrunnlaget først. Resten av flyten skal vente til briefen er tydelig.',
-        chipLabel: `${foundationBlockingItems.length} mangler`,
+        // Navngi det første som mangler så chipen er handlingsorientert, ikke
+        // bare et tall — Stig ser umiddelbart hvor han skal begynne.
+        chipLabel: foundationBlockingItems[0]
+          ? `${foundationBlockingItems.length} mangler — start med «${foundationBlockingItems[0].label}»`
+          : `${foundationBlockingItems.length} mangler`,
         priority: foundationBlockingItems.length >= 3 ? 'critical' : 'warning',
         sections,
       };
@@ -6678,12 +6697,20 @@ export default function ProducerMediaPanel({
                 id: `account-status-${entry.platform}`,
                 eyebrow: `${PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method]} · ${PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}`,
                 title: PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform],
+                // Forklar hva statusen betyr og hva som venter — ellers ser
+                // Stig bare «Ikke koblet» uten å vite om han skal gjøre noe selv
+                // eller vente på klienten.
                 detail: readFirstNonEmptyString(
                   entry.accountLabel || '',
                   entry.accessScope || '',
                   entry.notes || '',
-                  'Tilgangen er ikke avklart ennå.',
-                ),
+                ) ?? (({
+                  not_started: 'Ikke startet — åpne kontotilgang for å koble kontoen, eller be klienten om tilgang.',
+                  client_action: 'Venter på klienten — be klienten koble kontoen eller godta invitasjonen.',
+                  invite_sent: 'Invitasjon sendt — venter på at klienten godtar.',
+                  connected: 'Koblet og klar.',
+                  revoked: 'Tilgangen er trukket tilbake — koble på nytt hvis den fortsatt trengs.',
+                } as Record<string, string>)[entry.status] ?? 'Tilgangen er ikke avklart ennå.'),
               }))
               : [
                 {
@@ -7763,7 +7790,7 @@ export default function ProducerMediaPanel({
               <Button
                 size="small"
                 variant="contained"
-                startIcon={<AutoFixHighIcon />}
+                startIcon={<RoleRoomAgentIcon size={18} working={roleRoomAgentGenerating} />}
                 onClick={() => {
                   setRoleRoomAgentError(null);
                   setRoleRoomAgentNotice(null);
@@ -14466,6 +14493,7 @@ export default function ProducerMediaPanel({
           {!showClientWorkspaceEmptyState && activeWorkspace === 'marketing-plan' ? (
             <MarketingPlanWorkspace
               projectId={projectId}
+              reloadSignal={marketingReloadNonce}
               onOpenAdvancedEditor={() => {
                 setRoleRoomAgentDialogInitialTab('marketing-plan');
                 setRoleRoomAgentDialogOpen(true);
@@ -16430,7 +16458,7 @@ export default function ProducerMediaPanel({
       </Menu>
       <RoleRoomAgentDialog
         open={roleRoomAgentDialogOpen}
-        onClose={() => setRoleRoomAgentDialogOpen(false)}
+        onClose={() => { setRoleRoomAgentDialogOpen(false); setMarketingReloadNonce((n) => n + 1); }}
         projectId={projectId}
         projectName={projectName}
         currentUserId={currentRoleRoomUserId || undefined}

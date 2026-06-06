@@ -21,7 +21,9 @@ import {
   Save as SaveIcon,
   Schedule as ScheduleIcon,
 } from '@mui/icons-material';
+import { useSnackbar } from 'notistack';
 import { useProducerTimeline } from '../../hooks/useProducerTimeline';
+import { describeProducerError } from '../../utils/producerErrorMessage';
 import { useProjectProductionEstimate } from '../../hooks/useProjectProductionEstimate';
 import type { ProducerPhase, ProducerTimelineItem } from '../../services/producerWorkflowService';
 import {
@@ -305,6 +307,7 @@ export default function ProducerTimelinePanel({
   onOpenMedia,
 }: ProducerTimelinePanelProps) {
   const { groupedByPhase, loading, error, createItem, updateItem, removeItem } = useProducerTimeline(projectId);
+  const { enqueueSnackbar } = useSnackbar();
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [phase, setPhase] = useState<ProducerPhase>('preproduction');
   const [title, setTitle] = useState('');
@@ -693,23 +696,30 @@ export default function ProducerTimelinePanel({
   const handleCreate = async () => {
     const nextTitle = title.trim();
     if (!nextTitle) return;
-    await createItem({
-      phase,
-      title: nextTitle,
-      description: description.trim() || undefined,
-      ownerUserId: ownerUserId.trim() || undefined,
-      dueAt: dueAt || undefined,
-      status: itemStatus,
-      linkedEntityType: linkedEntityType || undefined,
-      linkedEntityId: linkedEntityId.trim() || undefined,
-    });
-    setTitle('');
-    setDescription('');
-    setOwnerUserId('');
-    setDueAt('');
-    setItemStatus('planned');
-    setLinkedEntityType('');
-    setLinkedEntityId('');
+    try {
+      await createItem({
+        phase,
+        title: nextTitle,
+        description: description.trim() || undefined,
+        ownerUserId: ownerUserId.trim() || undefined,
+        dueAt: dueAt || undefined,
+        status: itemStatus,
+        linkedEntityType: linkedEntityType || undefined,
+        linkedEntityId: linkedEntityId.trim() || undefined,
+      });
+      // Tøm skjemaet KUN etter at milepælen faktisk er opprettet — ellers ville
+      // Stig sett feltene nullstilt og trodd det gikk bra selv om det feilet.
+      setTitle('');
+      setDescription('');
+      setOwnerUserId('');
+      setDueAt('');
+      setItemStatus('planned');
+      setLinkedEntityType('');
+      setLinkedEntityId('');
+      enqueueSnackbar('Milepælen er lagt til.', { variant: 'success' });
+    } catch (createError) {
+      enqueueSnackbar(describeProducerError(createError, 'legge til milepælen'), { variant: 'error' });
+    }
   };
 
   const handleStatusDraftChange = (itemId: string, nextStatus: string) => {
@@ -727,6 +737,9 @@ export default function ProducerTimelinePanel({
         delete next[itemId];
         return next;
       });
+      enqueueSnackbar('Statusen er oppdatert.', { variant: 'success' });
+    } catch (saveError) {
+      enqueueSnackbar(describeProducerError(saveError, 'oppdatere statusen'), { variant: 'error' });
     } finally {
       setBusyItemId(null);
     }
@@ -741,6 +754,9 @@ export default function ProducerTimelinePanel({
         delete next[itemId];
         return next;
       });
+      enqueueSnackbar('Milepælen er slettet.', { variant: 'success' });
+    } catch (deleteError) {
+      enqueueSnackbar(describeProducerError(deleteError, 'slette milepælen'), { variant: 'error' });
     } finally {
       setBusyItemId(null);
     }

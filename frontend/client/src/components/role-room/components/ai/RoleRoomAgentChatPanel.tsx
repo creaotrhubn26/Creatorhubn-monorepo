@@ -249,7 +249,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             '& .MuiAlert-icon': { color: '#a5f3fc' },
           }}
         >
-          Spør The Role Room Agent om prosjektet. Alle svar kommer fra Claude via
+          Spør The Role Room Agent om prosjektet. Alle svar kommer fra CI via
           en server-side rutine som sjekker samtykke og pseudonymiserer kandidater/crew
           før kallet.
         </Alert>

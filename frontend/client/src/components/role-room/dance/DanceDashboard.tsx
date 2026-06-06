@@ -601,7 +601,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
           )}
 
           <SectionCard
-            title="Claude AI · forslag denne uka"
+            title="CI · forslag denne uka"
             icon={<AutoAwesomeIcon sx={{ fontSize: 18, color: danceFlowColors.lavender }} />}
             tinted
           >

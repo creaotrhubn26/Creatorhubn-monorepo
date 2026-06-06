@@ -110,6 +110,10 @@ function PostTile({ post, readOnly, onClickPost }: {
   onClickPost?: (post: MarketingPlanPost) => void;
 }) {
   const color = FORMAT_COLOR[post.format];
+  // Thumbnail vises når innhold er produsert (Stream-preview). Video-posts
+  // får et lite play-merke så det er tydelig at det er en video.
+  const thumb = post.previewStreamThumbnailUrl ?? null;
+  const hasVideo = Boolean(post.previewVideoR2Url || post.previewStreamPlaybackUrl);
   return (
     <Tooltip title={post.hook} placement="top">
       <Box
@@ -127,13 +131,35 @@ function PostTile({ post, readOnly, onClickPost }: {
           '&:active': readOnly ? undefined : { cursor: 'grabbing' },
           '&:hover': onClickPost ? { bgcolor: 'rgba(236,72,153,0.10)' } : undefined,
         }}>
-        <Typography sx={{
-          fontSize: '0.68rem', fontWeight: 700,
-          color: '#f8fafc',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {post.hook}
-        </Typography>
+        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
+          {thumb ? (
+            <Box sx={{ position: 'relative', width: 22, height: 22, flexShrink: 0 }}>
+              <Box
+                component="img"
+                src={thumb}
+                alt=""
+                loading="lazy"
+                sx={{ width: 22, height: 22, borderRadius: 0.5, objectFit: 'cover', border: '1px solid rgba(148,163,184,0.25)', display: 'block' }}
+              />
+              {hasVideo ? (
+                <Box sx={{
+                  position: 'absolute', inset: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontSize: '0.6rem', textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+                }}>
+                  ▶
+                </Box>
+              ) : null}
+            </Box>
+          ) : null}
+          <Typography sx={{
+            fontSize: '0.68rem', fontWeight: 700,
+            color: '#f8fafc',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {post.hook}
+          </Typography>
+        </Stack>
         {post.lastEditedByKind && (
           <Chip size="small"
                 label={post.lastEditedByKind === 'client' ? 'K' : 'T'}
