@@ -482,6 +482,7 @@ import { setupRoleRoomAgencyProposalsRoutes } from "./role-room-agency-proposals
 import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes";
 import { setupTalentSelftapesRoutes } from "./talent-selftapes-routes";
 import { setupAgencyLeadsRoutes } from "./agency-leads-routes";
+import { setupCockpitB2BRoutes } from "./cockpit-b2b-routes";
 import { setupRoleRoomCandidateStatusRoutes } from "./role-room-candidate-status-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
@@ -24025,6 +24026,13 @@ setupTalentSelftapesRoutes({
 });
 // Agency-leads (byrå-akkvisisjon fra /for-byraer landingsside)
 setupAgencyLeadsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Marketing Cockpit B2B-stack (9 features: LinkedIn, funnel, scoring, PR, webinars, referrals, competitor, nurture, case-studies)
+setupCockpitB2BRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
