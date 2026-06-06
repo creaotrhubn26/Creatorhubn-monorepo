@@ -37,6 +37,50 @@ export const emailPalette = {
 
 const PUBLIC_URL = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
 
+// ── Inline SVG-ikoner (matchet til @mui/icons-material outlined-stil) ──
+// Material Icons SVG-path-data (Apache 2.0, samme paths som MUI bruker).
+// Brukes i e-post fordi React-komponenter ikke kan inlines i HTML-strenger.
+// Per UI-konvensjon: aldri emojis i ikon-posisjoner — alltid MUI-style SVG.
+const ICON_PATHS = {
+  // VisibilityOutlinedIcon
+  visibility: 'M12 6c3.79 0 7.17 2.13 8.82 5.5C19.17 14.87 15.79 17 12 17s-7.17-2.13-8.82-5.5C4.83 8.13 8.21 6 12 6m0-2C7 4 2.73 7.11 1 11.5 2.73 15.89 7 19 12 19s9.27-3.11 11-7.5C21.27 7.11 17 4 12 4zm0 5c1.38 0 2.5 1.12 2.5 2.5S13.38 14 12 14s-2.5-1.12-2.5-2.5S10.62 9 12 9m0-2c-2.48 0-4.5 2.02-4.5 4.5S9.52 16 12 16s4.5-2.02 4.5-4.5S14.48 7 12 7z',
+  // StarOutlineIcon
+  star: 'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',
+  // NotificationsActiveOutlinedIcon — for påminnelse
+  notification: 'M7.58 4.08L6.15 2.65C3.75 4.48 2.17 7.3 2.03 10.5h2c.15-2.65 1.51-4.97 3.55-6.42zm12.39 6.42h2c-.15-3.2-1.73-6.02-4.12-7.85l-1.42 1.43c2.02 1.45 3.39 3.77 3.54 6.42zM18 11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2v-5zm-6 11c.14 0 .27-.01.4-.04.65-.14 1.18-.58 1.44-1.18.1-.24.15-.5.15-.78h-4c.01 1.1.9 2 2.01 2z',
+  // ChatBubbleOutlineIcon
+  chat: 'M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18zM20 4v13.17L18.83 16H4V4h16z',
+  // CheckCircleOutlineIcon
+  checkCircle: 'M16.59 7.58L10 14.17l-3.59-3.58L5 12l5 5 8-8zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z',
+  // TrackChangesOutlinedIcon — for "lead/target"
+  trackChanges: 'M19.07 4.93l-1.41 1.41C19.1 7.79 20 9.79 20 12c0 4.42-3.58 8-8 8s-8-3.58-8-8c0-4.08 3.05-7.44 7-7.93v2.02C8.16 6.57 6 9.03 6 12c0 3.31 2.69 6 6 6s6-2.69 6-6c0-1.66-.67-3.16-1.76-4.24l-1.41 1.41C15.55 9.9 16 10.9 16 12c0 2.21-1.79 4-4 4s-4-1.79-4-4c0-1.86 1.28-3.41 3-3.86v2.14c-.6.35-1 .98-1 1.72 0 1.1.9 2 2 2s2-.9 2-2c0-.74-.4-1.38-1-1.72V2h-1C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10c0-2.76-1.12-5.26-2.93-7.07z',
+  // PaidOutlinedIcon — for priser
+  paid: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5.5h-2.34v1.19c-1.5.32-2.71 1.3-2.71 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.73-2.77-.01-2.2-1.9-2.96-3.66-3.42z',
+  // HelpOutlineIcon — for FAQ
+  help: 'M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z',
+  // SlideshowOutlinedIcon — for pitch deck
+  slideshow: 'M10 16.5l6-4.5-6-4.5v9zM19 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.11-.9-2-2-2zm0 16H5V5h14v14z',
+  // PlayCircleOutlineIcon
+  playCircle: 'M10 16.5l6-4.5-6-4.5zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z',
+  // VideocamOutlinedIcon
+  videocam: 'M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4zM15 16H5V8h10v8z',
+} as const;
+
+type IconName = keyof typeof ICON_PATHS;
+
+/**
+ * Renders an inline SVG-icon matching MUI Material Icons outlined-style.
+ * @param name Path-key fra ICON_PATHS
+ * @param color CSS-color (default: textPrimary)
+ * @param size pixel-størrelse (default: 14)
+ */
+export function emailIcon(name: IconName, color: string = emailPalette.textPrimary, size = 14): string {
+  const path = ICON_PATHS[name];
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="${color}" style="vertical-align:middle;display:inline-block;">
+    <path d="${path}"/>
+  </svg>`;
+}
+
 // ── Kategorier for badge i header ────────────────────────────────
 export type EmailCategory =
   | 'viewed'
@@ -48,15 +92,15 @@ export type EmailCategory =
   | 'lead_ack'
   | 'general';
 
-const CATEGORY_BADGE: Record<EmailCategory, { label: string; bg: string; fg: string }> = {
-  viewed:        { label: 'Sett',         bg: 'rgba(96,165,250,0.22)',  fg: '#60a5fa' },
-  shortlisted:   { label: 'Shortlistet',  bg: 'rgba(251,191,36,0.22)',  fg: '#fbbf24' },
-  reminder:      { label: 'Påminnelse',   bg: 'rgba(251,191,36,0.22)',  fg: '#fbbf24' },
-  comment:       { label: 'Kommentar',    bg: 'rgba(168,85,247,0.22)',  fg: '#c084fc' },
-  welcome:       { label: 'Velkommen',    bg: 'rgba(52,211,153,0.22)',  fg: '#34d399' },
-  lead_internal: { label: 'Ny lead 🎯',   bg: 'rgba(217,70,239,0.22)',  fg: '#e879f9' },
-  lead_ack:      { label: 'Mottatt',      bg: 'rgba(52,211,153,0.22)',  fg: '#34d399' },
-  general:       { label: 'The Role Room', bg: 'rgba(168,85,247,0.22)', fg: '#c084fc' },
+const CATEGORY_BADGE: Record<EmailCategory, { label: string; bg: string; fg: string; icon: IconName }> = {
+  viewed:        { label: 'Sett',          bg: 'rgba(96,165,250,0.22)',  fg: '#60a5fa', icon: 'visibility' },
+  shortlisted:   { label: 'Shortlistet',   bg: 'rgba(251,191,36,0.22)',  fg: '#fbbf24', icon: 'star' },
+  reminder:      { label: 'Påminnelse',    bg: 'rgba(251,191,36,0.22)',  fg: '#fbbf24', icon: 'notification' },
+  comment:       { label: 'Kommentar',     bg: 'rgba(168,85,247,0.22)',  fg: '#c084fc', icon: 'chat' },
+  welcome:       { label: 'Velkommen',     bg: 'rgba(52,211,153,0.22)',  fg: '#34d399', icon: 'checkCircle' },
+  lead_internal: { label: 'Ny lead',       bg: 'rgba(217,70,239,0.22)',  fg: '#e879f9', icon: 'trackChanges' },
+  lead_ack:      { label: 'Mottatt',       bg: 'rgba(52,211,153,0.22)',  fg: '#34d399', icon: 'checkCircle' },
+  general:       { label: 'The Role Room', bg: 'rgba(168,85,247,0.22)',  fg: '#c084fc', icon: 'playCircle' },
 };
 
 // ── Utility: HTML-escape ─────────────────────────────────────────
@@ -134,9 +178,10 @@ export function emailHeader(category: EmailCategory = 'general'): string {
                 font-size:11px;
                 letter-spacing:0.6px;
                 text-transform:uppercase;
-                padding:5px 10px;
+                padding:5px 10px 5px 8px;
                 border-radius:999px;
-              ">${escapeHtml(cat.label)}</span>
+                line-height:1;
+              ">${emailIcon(cat.icon, cat.fg, 11)} <span style="vertical-align:middle;margin-left:4px;">${escapeHtml(cat.label)}</span></span>
             </td>
           </tr>
         </table>

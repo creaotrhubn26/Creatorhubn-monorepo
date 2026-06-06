@@ -185,12 +185,12 @@ function targetLabel(ctx: ContextRow): string {
 function buildSubject(ctx: ContextRow, kind: SelftapeNotificationKind): string {
   const target = targetLabel(ctx);
   if (kind === "viewed") {
-    return `${target} har sett self-tapen din 🎬`;
+    return `${target} har sett self-tapen din`;
   }
   if (kind === "reminder_to_upload") {
     return `Påminnelse: last opp self-tape for ${target}`;
   }
-  return `Du er shortlistet for ${target} ⭐`;
+  return `Du er shortlistet for ${target}`;
 }
 
 function buildComposed(
