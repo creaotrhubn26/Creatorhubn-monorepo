@@ -245,6 +245,8 @@ export interface DemoProject {
   devices: DemoDevice[];
   /** Visnings-/render-innstillinger (cursor, touch points, highlight, safe area). */
   render?: DemoRenderOptions;
+  /** Konverteringsmål for demoen (mål-drevet AI Director). F.eks. «få flere til å booke demo». */
+  goal?: string;
   /** Global progresjons-modus (kan overstyres per scene). Default 'manual'. */
   continueMode?: 'manual' | 'assisted' | 'auto';
   /**
@@ -637,3 +639,27 @@ export function loadLastProject(): DemoProject | null {
 export function totalDuration(scenes: DemoScene[]): number {
   return scenes.reduce((s, sc) => s + (sc.duration || 0), 0);
 }
+
+// ── Lesbarhet (LIX — norsk standard) ──
+export interface Readability { lix: number; label: string }
+
+/** LIX-lesbarhetsindeks: ord/setninger + (lange ord × 100)/ord. Lavere = lettere. */
+export function readabilityScore(text: string): Readability {
+  const t = (text || '').trim();
+  const words = t.split(/\s+/).filter(Boolean);
+  if (!words.length) return { lix: 0, label: '—' };
+  const sentences = Math.max(1, (t.match(/[.!?]+/g) || []).length);
+  const longWords = words.filter((w) => w.replace(/[^\p{L}]/gu, '').length > 6).length;
+  const lix = Math.round(words.length / sentences + (longWords * 100) / words.length);
+  const label = lix < 30 ? 'Veldig lett' : lix < 40 ? 'Lett' : lix < 50 ? 'Middels' : lix < 60 ? 'Vanskelig' : 'Veldig vanskelig';
+  return { lix, label };
+}
+
+// ── Director Critic (AI selv-kritikk av hele demoen) ──
+export type CritiqueSeverity = 'high' | 'medium' | 'low';
+export interface CritiqueIssue { severity: CritiqueSeverity; area: string; message: string; sceneIndex?: number }
+export interface DirectorCritique { score: number; summary: string; issues: CritiqueIssue[] }
+
+export const CRITIQUE_SEVERITY_COLORS: Record<CritiqueSeverity, string> = {
+  high: '#ef4444', medium: '#f59e0b', low: '#6b7280',
+};

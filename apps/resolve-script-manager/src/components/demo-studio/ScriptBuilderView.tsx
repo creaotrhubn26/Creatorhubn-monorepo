@@ -24,7 +24,7 @@ import { SceneInteractionOverlay } from './SceneInteractionOverlay';
 import {
   SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, SCRIPT_TONE_LABELS, SCRIPT_LENGTH_LABELS,
   ACTION_MATCH_LABELS, ACTION_MATCH_COLORS,
-  sceneActionMatch, expectedActionText, defaultRenderOptions,
+  sceneActionMatch, expectedActionText, defaultRenderOptions, readabilityScore,
   type DemoDevice, type DemoActionType, type ScriptTone, type ScriptLength, type DemoScene, type DemoRenderOptions,
 } from './demoStudioModel';
 
@@ -213,6 +213,11 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
             <Block n={1} ic="🎙" title="Narration" sub="What you will say in this scene">
               <textarea style={ta} value={selected.narration} placeholder="Hva du skal si i denne scenen…"
                 onChange={(e) => updateScene(selected.id, { narration: e.target.value })} />
+              {selected.narration?.trim() && (() => {
+                const r = readabilityScore(selected.narration);
+                const col = r.lix < 40 ? C.green : r.lix < 50 ? '#b5651d' : '#c4453b';
+                return <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 5 }}>Lesbarhet (LIX): <span style={{ color: col, fontWeight: 600 }}>{r.lix} · {r.label}</span> · ≈ {readingTime}s lesetid</div>;
+              })()}
               <div style={metaRow}>
                 <Lab>Tone</Lab>
                 <select style={miniSel} value={meta.tone} onChange={(e) => setMeta({ tone: e.target.value as ScriptTone })}>

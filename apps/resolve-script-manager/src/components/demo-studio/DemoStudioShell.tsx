@@ -26,16 +26,16 @@ import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
-import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck, healTarget } from './demoStudioAI';
+import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck, healTarget, runDirectorCritic } from './demoStudioAI';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
   RENDER_OPTION_LABELS, RESPONSIVE_STATUS_LABELS, RESPONSIVE_STATUS_COLORS, ACTION_META,
-  ACTION_MATCH_LABELS, ACTION_MATCH_COLORS,
+  ACTION_MATCH_LABELS, ACTION_MATCH_COLORS, CRITIQUE_SEVERITY_COLORS,
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
   sceneActionMatch, expectedActionText, validateScene,
-  type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix,
+  type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
 
@@ -112,6 +112,24 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [aiReady, setAiReady] = useState(isAiConnected());
   const [respBusy, setRespBusy] = useState(false);
   const [respReport, setRespReport] = useState<ResponsiveReport | null>(null);
+  const [critique, setCritique] = useState<DirectorCritique | null>(null);
+  const [critiqueBusy, setCritiqueBusy] = useState(false);
+
+  // Director Critic: AI vurderer hele demoen mot målet → score + forbedringer.
+  const runCritic = async () => {
+    if (!project || critiqueBusy) return;
+    if (!aiReady) { setShowSignIn(true); return; }
+    setCritiqueBusy(true);
+    try {
+      const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
+      const c = await runDirectorCritic({ url: project.url, demoType: project.demoType, goal: project.goal, meta, scenes: project.scenes });
+      setCritique(c);
+    } catch (e) {
+      setCritique({ score: 0, summary: 'Director Critic feilet: ' + (e as Error).message, issues: [] });
+    } finally {
+      setCritiqueBusy(false);
+    }
+  };
   const [placingHotspot, setPlacingHotspot] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1); // zoom på enhets-preview (0.5–3)
   const [showValidation, setShowValidation] = useState(false);
@@ -258,7 +276,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       setDirectorMsg(elements.length ? `Fant ${elements.length} elementer — AI Director designer flowen…` : 'AI Director designer flowen…');
       const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
       const scenes = await generateDemoFlow({
-        url: project.url, demoType: project.demoType, devices: project.devices, meta, siteContext, elements,
+        url: project.url, demoType: project.demoType, devices: project.devices, meta, siteContext, elements, goal: project.goal,
       });
       replaceScenes(scenes);
       setDirectorMsg(`✓ ${scenes.length} scener generert`);
@@ -427,7 +445,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 {aiReady ? 'AI klar' : 'Ikke koblet'}
               </span>
             </h4>
-            <p style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.45, marginBottom: 10 }}>La AI lese nettsiden og foreslå en hel scene-flow med manus.</p>
+            <p style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.45, marginBottom: 8 }}>La AI lese nettsiden og foreslå en hel scene-flow med manus.</p>
+            <input style={{ ...field, marginBottom: 8 }} value={project.goal ?? ''} placeholder="Mål? f.eks. «få flere til å booke demo»"
+              onChange={(e) => setProjectField('goal', e.target.value)} />
+            <input style={{ ...field, marginBottom: 8 }} value={project.scriptMeta?.audience ?? ''} placeholder="Målgruppe / persona"
+              onChange={(e) => setProjectField('scriptMeta', { ...(project.scriptMeta ?? { tone: 'professional', audience: '', language: 'Norsk', length: 'medium' }), audience: e.target.value })} />
             {!aiReady && (
               <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginBottom: 8 }}
                 onClick={() => setShowSignIn(true)}>Koble til AI (Role Room)</button>
@@ -448,6 +470,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               {capturing ? `Tar opp klikk… (${captureCount})` : '☞ Klikk-capture fra side'}
             </button>
             {capturing && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>Klikk deg gjennom i capture-vinduet. Trykk «Fullfør» der når du er ferdig.</div>}
+            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: critiqueBusy ? 0.6 : 1 }}
+              disabled={critiqueBusy} onClick={() => void runCritic()}
+              title="La AI vurdere hele demoen mot målet og foreslå forbedringer">
+              ★ {critiqueBusy ? 'Vurderer…' : 'Vurder demoen (Critic)'}
+            </button>
           </div>
         </div>
 
@@ -766,6 +793,10 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         <ResponsiveCheckModal report={respReport} onClose={() => setRespReport(null)}
           onApply={(fix) => applyResponsiveFix(fix)} />
       )}
+      {critique && (
+        <DirectorCritiqueModal critique={critique} onClose={() => setCritique(null)}
+          onGoto={(idx) => { const sc = scenes.find((s) => s.index === idx); if (sc) { selectScene(sc.id); setStoryMode(false); setNav('flow'); } setCritique(null); }} />
+      )}
       {showValidation && project && (
         <ValidationModal
           scenes={project.scenes}
@@ -774,6 +805,44 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           onSetStatus={(id, status) => updateScene(id, { status })}
         />
       )}
+    </div>
+  );
+}
+
+/** Director Critic-panel: score (0–100) + konkrete forbedringer per område/scene. */
+function DirectorCritiqueModal({ critique, onClose, onGoto }: {
+  critique: DirectorCritique;
+  onClose: () => void;
+  onGoto: (sceneIndex: number) => void;
+}) {
+  const scoreColor = critique.score >= 75 ? C.green : critique.score >= 50 ? '#f59e0b' : '#ef4444';
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.32)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 560, maxWidth: '94vw', maxHeight: '86vh', overflowY: 'auto', background: C.panel, borderRadius: 14, padding: 22, fontFamily: C.font, color: C.ink, boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+          <div style={{ width: 54, height: 54, borderRadius: '50%', border: `4px solid ${scoreColor}`, display: 'grid', placeItems: 'center', fontSize: 18, fontWeight: 700, flexShrink: 0 }}>{critique.score}</div>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Director Critic</h3>
+            <div style={{ fontSize: 12.5, color: C.inkSoft, marginTop: 2 }}>{critique.summary}</div>
+          </div>
+          <div style={{ flex: 1 }} />
+          <div onClick={onClose} style={{ ...iconBtn, cursor: 'pointer' }}>✕</div>
+        </div>
+        <div style={{ fontSize: 11, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, margin: '12px 0 8px' }}>{critique.issues.length} forbedringer</div>
+        {critique.issues.map((iss, i) => (
+          <div key={i} style={{ display: 'flex', gap: 10, border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: CRITIQUE_SEVERITY_COLORS[iss.severity], marginTop: 5, flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.3 }}>{iss.area}</div>
+              <div style={{ fontSize: 12.5 }}>{iss.message}</div>
+            </div>
+            {typeof iss.sceneIndex === 'number' && (
+              <button style={{ ...outlineBtn, fontSize: 11.5, padding: '5px 10px', alignSelf: 'center' }} onClick={() => onGoto(iss.sceneIndex!)}>Scene {iss.sceneIndex + 1}</button>
+            )}
+          </div>
+        ))}
+        <button style={{ ...outlineBtn, width: '100%', marginTop: 4 }} onClick={onClose}>Lukk</button>
+      </div>
     </div>
   );
 }

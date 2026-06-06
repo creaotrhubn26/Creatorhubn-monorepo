@@ -36,6 +36,11 @@ async function setupRoutes(page: Page) {
         { device: 'macbook', status: 'ok', message: 'All good' },
         { device: 'iphone', status: 'warning', message: 'CTA lavt på mobil', recommendation: 'Start etter 20% scroll', fix: { kind: 'start_scroll', sceneIndex: 0, startScrollPct: 20, summary: 'Start mobilscene etter 20% scroll' } },
       ] });
+    } else if (text.includes('Vurder denne produktdemoen kritisk')) {
+      payload = anthropic({ score: 72, summary: 'Solid flow, men svak hook og utydelig CTA.', issues: [
+        { severity: 'high', area: 'hook', message: 'Start sterkere i de første 3 sekundene.', sceneIndex: 0 },
+        { severity: 'medium', area: 'cta', message: 'Gjør CTA tydeligere mot målet.' },
+      ] });
     } else if (text.includes('Skriv manus for DENNE scenen')) {
       payload = anthropic({ narration: 'Scene-manus fra AI', visualInstruction: 'vis', requiredAction: 'Klikk Start', overlayText: 'Overlay' });
     } else if (sys.includes('manus-redaktør')) {
@@ -144,4 +149,25 @@ test('Script Builder viser ekte innlogget bruker', async ({ page }) => {
   await page.getByText('Script Builder').click();
   await expect(page.getByText('Test Bruker')).toBeVisible({ timeout: 10000 });
   await expect(page.getByText('Action Validation')).toBeVisible();
+});
+
+test('Director Critic gir score + forbedringer', async ({ page }) => {
+  await seedDemo(page);
+  await page.getByText(/Vurder demoen/).click();
+  await expect(page.getByText('Director Critic')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText('72')).toBeVisible();
+  await expect(page.getByText(/Start sterkere/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Scene 1' })).toBeVisible();
+});
+
+test('mål-drevet Director: mål-input lagres', async ({ page }) => {
+  await seedDemo(page);
+  await page.getByPlaceholder(/Mål\?/).fill('få flere til å booke demo');
+  await expect(page.getByPlaceholder(/Mål\?/)).toHaveValue('få flere til å booke demo');
+});
+
+test('lesbarhets-score (LIX) vises i Script Builder', async ({ page }) => {
+  await seedDemo(page);
+  await page.getByText('Script Builder').click();
+  await expect(page.getByText(/Lesbarhet \(LIX\)/)).toBeVisible({ timeout: 10000 });
 });

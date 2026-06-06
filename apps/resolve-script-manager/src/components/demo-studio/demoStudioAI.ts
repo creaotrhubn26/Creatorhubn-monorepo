@@ -17,7 +17,7 @@ import {
   makeScene, viewportForDevice, ACTION_META,
   type DemoScene, type ScriptMeta, type DemoType, type DemoDevice, type DemoActionType,
   type ResponsiveReport, type ResponsiveViewportResult, type ResponsiveStatus, type ResponsiveFix,
-  type ScannedElement,
+  type ScannedElement, type DirectorCritique, type CritiqueIssue, type CritiqueSeverity,
 } from './demoStudioModel';
 
 export type ImproveAction =
@@ -217,6 +217,52 @@ export async function healTarget(params: {
   return parsed.index;
 }
 
+/**
+ * Director Critic: AI vurderer HELE demoen mot målet og gir en score (0–100) +
+ * konkrete forbedringsforslag (pacing, hook, CTA, klarhet, dramaturgi). Gjør
+ * AI-en fra «fyller felt» til «produserer en demo som konverterer».
+ */
+export async function runDirectorCritic(params: {
+  url: string;
+  demoType: DemoType;
+  goal?: string;
+  meta: ScriptMeta;
+  scenes: DemoScene[];
+}): Promise<DirectorCritique> {
+  const { url, demoType, goal, meta, scenes } = params;
+  const sceneList = scenes.map((s, i) => `${i}: "${s.title}" (${s.device}, ${s.duration}s) — manus: ${(s.narration || '(tomt)').slice(0, 90)} | handling: ${s.requiredAction || '(ingen)'}`).join('\n');
+  const user = `Vurder denne produktdemoen kritisk som en erfaren creative director.
+
+Produkt-URL: ${url}
+Demo-type: ${demoType}
+${goal ? `Konverteringsmål: ${goal}\n` : ''}Tone: ${meta.tone} · Publikum: ${meta.audience} · Lengde: ${meta.length}
+Scener:
+${sceneList}
+
+Vurder: hook (de første sekundene), dramaturgi/rekkefølge, pacing/varighet, klarhet i manus, tydelig CTA mot målet, og om noe mangler/er overflødig.
+Svar med KUN ett JSON-objekt:
+{ "score": <0-100>, "summary": "1-2 setninger helhetsvurdering",
+  "issues": [ { "severity": "high|medium|low", "area": "hook|pacing|cta|klarhet|dramaturgi|...", "message": "konkret forbedring", "sceneIndex": <tall eller utelat> } ] }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du er en knallhard, konstruktiv creative director for produktdemoer. Du svarer ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 1200,
+  });
+  const parsed = extractJson<{ score?: number; summary?: string; issues?: Array<Partial<CritiqueIssue>> }>(raw);
+  if (!parsed) throw new Error('Klarte ikke å tolke Director Critic-svaret');
+  const sev = (s: unknown): CritiqueSeverity => (s === 'high' || s === 'medium' || s === 'low' ? s : 'medium');
+  return {
+    score: typeof parsed.score === 'number' ? Math.max(0, Math.min(100, Math.round(parsed.score))) : 0,
+    summary: parsed.summary || '',
+    issues: (parsed.issues || []).map((i) => ({
+      severity: sev(i.severity),
+      area: i.area || 'generelt',
+      message: i.message || '',
+      sceneIndex: typeof i.sceneIndex === 'number' ? i.sceneIndex : undefined,
+    })).filter((i) => i.message),
+  };
+}
+
 /** Patch fra «AI fullfør demoen» — kun felt som skal fylles for én scene. */
 export interface ScenePatch {
   index: number;
@@ -387,8 +433,9 @@ export async function generateDemoFlow(params: {
   targetSeconds?: number;
   siteContext?: string;
   elements?: ScannedElement[];
+  goal?: string;
 }): Promise<DemoScene[]> {
-  const { url, demoType, devices, meta, targetSeconds = 75, siteContext = '', elements = [] } = params;
+  const { url, demoType, devices, meta, targetSeconds = 75, siteContext = '', elements = [], goal = '' } = params;
   const catalog = elements.length
     ? `\nElement-katalog (ekte interaktive elementer på siden) — velg targetIndex for hver scene:\n${elements.map((e, i) => `${i}: "${e.label}" [${e.tag}${e.belowFold ? ', under fold' : ''}]`).join('\n')}\n`
     : '';
@@ -398,7 +445,7 @@ Produkt-URL: ${url}
 Demo-type: ${demoType}
 Tilgjengelige enheter: ${devices.join(', ')}
 Tone: ${meta.tone} · Publikum: ${meta.audience} · Språk: ${meta.language} · Lengde: ${meta.length}
-Ønsket total varighet: ~${targetSeconds} sekunder
+${goal ? `KONVERTERINGSMÅL (optimaliser hele flowen + CTA mot dette): ${goal}\n` : ''}Ønsket total varighet: ~${targetSeconds} sekunder
 ${siteContext ? `\nKontekst fra nettsiden:\n${siteContext}\n` : ''}${catalog}
 Foreslå 5-7 scener som forteller en sammenhengende historie (intro → kjernefunksjon → bevis/verdi → CTA → outro).
 Velg device per scene fra de tilgjengelige (bruk mobil for mobil-flyt hvis relevant).
