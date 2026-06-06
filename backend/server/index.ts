@@ -481,6 +481,7 @@ import { setupRoleRoomAgencySearchRoutes } from "./role-room-agency-search-route
 import { setupRoleRoomAgencyProposalsRoutes } from "./role-room-agency-proposals-routes";
 import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes";
 import { setupTalentSelftapesRoutes } from "./talent-selftapes-routes";
+import { setupAgencyLeadsRoutes } from "./agency-leads-routes";
 import { setupRoleRoomCandidateStatusRoutes } from "./role-room-candidate-status-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
@@ -24021,6 +24022,13 @@ setupTalentSelftapesRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
+});
+// Agency-leads (byrå-akkvisisjon fra /for-byraer landingsside)
+setupAgencyLeadsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
 });
 // Candidate-status PATCH med partnership-callback til byrå (Phase 9.6).
 setupRoleRoomCandidateStatusRoutes({
