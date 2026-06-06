@@ -21,7 +21,7 @@
 import type { Pool } from "pg";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 
-export type SelftapeNotificationKind = "viewed" | "shortlisted";
+export type SelftapeNotificationKind = "viewed" | "shortlisted" | "reminder_to_upload";
 
 interface TalentRow {
   display_name: string | null;
@@ -58,12 +58,17 @@ export async function notifySelftapeActivity(
     const ctx = await loadContext(pool, args.submissionId);
     if (!ctx) return;
 
-    // Idempotens: sjekk om vi allerede har sendt denne typen for denne submission
+    // Idempotens: sjekk om vi allerede har sendt denne typen for denne submission.
+    // For reminder: 1 påminnelse per 24h (ikke per submission lifetime).
+    const idempotencyWindow = args.kind === "reminder_to_upload"
+      ? "AND created_at > now() - INTERVAL '24 hours'"
+      : "";
     const dup = await pool.query(
       `SELECT 1 FROM talent_selftape_submission_events
         WHERE submission_id = $1::uuid
           AND event_type = $2
           AND details ? 'notification_sent_at'
+          ${idempotencyWindow}
         LIMIT 1`,
       [args.submissionId, args.kind],
     );
@@ -181,6 +186,9 @@ function buildSubject(ctx: ContextRow, kind: SelftapeNotificationKind): string {
   if (kind === "viewed") {
     return `${target} har sett self-tapen din 🎬`;
   }
+  if (kind === "reminder_to_upload") {
+    return `Påminnelse: last opp self-tape for ${target}`;
+  }
   return `Du er shortlistet for ${target} ⭐`;
 }
 
@@ -200,14 +208,21 @@ function buildBody(
   const sharedLink = `${baseUrl}/talents/profil#mine-delte`;
 
   const isShortlisted = kind === "shortlisted";
+  const isReminder = kind === "reminder_to_upload";
   const headline = isShortlisted
     ? "Gratulerer — du er shortlistet"
-    : "Self-tapen din er sett";
+    : isReminder
+      ? `Vi venter på din self-tape for ${target}`
+      : "Self-tapen din er sett";
   const intro = isShortlisted
     ? `Veldig fin nyhet, ${firstName}! ${target} har plassert deg på shortlisten etter å ha sett ${takeLabel.toLowerCase()} fra <strong>${escapeHtml(projectName)}</strong>.`
-    : `${firstName} — ${target}${actor ? ` (${escapeHtml(actor)})` : ""} har nettopp sett ${takeLabel.toLowerCase()} fra <strong>${escapeHtml(projectName)}</strong>.`;
+    : isReminder
+      ? `${firstName} — produksjonsteamet for <strong>${escapeHtml(projectName)}</strong> venter på at du laster opp en self-tape. ${actor ? `(Sendt av ${escapeHtml(actor)})` : ""}`
+      : `${firstName} — ${target}${actor ? ` (${escapeHtml(actor)})` : ""} har nettopp sett ${takeLabel.toLowerCase()} fra <strong>${escapeHtml(projectName)}</strong>.`;
 
-  const ctaLabel = isShortlisted ? "Se aktiviteten" : "Se hele oversikten";
+  const ctaLabel = isReminder
+    ? "Last opp self-tape"
+    : isShortlisted ? "Se aktiviteten" : "Se hele oversikten";
 
   const html = [
     `<!doctype html>`,

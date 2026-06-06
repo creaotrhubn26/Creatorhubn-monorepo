@@ -847,7 +847,46 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
          VALUES ($1::uuid, 'submitted', $2, '{}'::jsonb)`,
         [req.params.id, session.userId],
       );
-      // TODO Fase D: send e-post via Resend
+      // Producer-inbox-notifikasjon: når talent har lastet opp + sendt til
+      // role_specific submission, skal prosjekt-eier få inbox-rad. Best-effort.
+      void (async () => {
+        try {
+          const ctx = await pool.query(
+            `SELECT s.target_type, s.casting_project_id, cp.created_by,
+                    tl.display_name AS talent_display_name,
+                    cr.name AS casting_role_name
+               FROM talent_selftape_submissions s
+               JOIN talent_selftape_projects p ON p.id = s.project_id
+               JOIN talents tl ON tl.id = p.talent_id
+               LEFT JOIN casting_projects cp ON cp.id = s.casting_project_id
+               LEFT JOIN casting_roles cr ON cr.id = s.casting_role_id
+              WHERE s.id = $1::uuid LIMIT 1`,
+            [req.params.id],
+          );
+          const row = ctx.rows[0];
+          if (!row || row.target_type !== "role_specific" || !row.casting_project_id || !row.created_by) {
+            return;
+          }
+          const roleLabel = row.casting_role_name
+            ? ` for ${row.casting_role_name}-rollen`
+            : "";
+          await pool.query(
+            `INSERT INTO producer_project_notifications (
+               project_id, assigned_to_user_id, inbox_type, event_type,
+               title, message, read, created_at, updated_at
+             ) VALUES ($1, $2, 'casting', 'selftape_submitted', $3, $4, FALSE, now(), now())`,
+            [
+              row.casting_project_id,
+              row.created_by,
+              `${row.talent_display_name} har sendt self-tape${roleLabel}`,
+              `Åpne kandidat-kortet i Utvelgelse for å se videoen og legge igjen kommentar.`,
+            ],
+          );
+        } catch (err) {
+          console.warn("[selftape send producer-inbox]", err);
+        }
+      })();
+
       return res.json({ submission: r.rows[0] });
     } catch (err) {
       console.error("[selftapes/submissions send] failed", err);
@@ -1277,6 +1316,246 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
       } catch (err) {
         console.error("[selftapes/casting-roles view] failed", err);
         return res.status(500).json({ error: "View-tracking feilet" });
+      }
+    },
+  );
+  // ── POST /casting-roles/selftapes/submissions/:id/remind ─────────
+  // Produsent ber talent laste opp self-tape. Sender Resend-e-post (24t
+  // idempotent) + logger 'reminded'-event. Demo-bypass støttet.
+  app.post("/api/role-room/casting-roles/selftapes/submissions/:id/remind",
+    async (req, res) => {
+      const session = getActiveSession(req);
+      const isDemo = isDemoRequest(req);
+      if (!isDemo && !session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      try {
+        // Verifiser eierskap
+        const own = await pool.query(
+          `SELECT s.id::text, cp.created_by
+             FROM talent_selftape_submissions s
+             LEFT JOIN casting_projects cp ON cp.id = s.casting_project_id
+            WHERE s.id = $1::uuid LIMIT 1`,
+          [req.params.id],
+        );
+        if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
+        if (!isDemo && own.rows[0].created_by !== session?.userId) {
+          return res.status(403).json({ error: "Du eier ikke prosjektet" });
+        }
+
+        // Fire-and-forget — feiler aldri kallet
+        notifySelftapeActivity(pool, {
+          submissionId: req.params.id,
+          kind: "reminder_to_upload",
+          actorLabel: session?.email ?? "Produksjon",
+        }).catch((err) => console.warn("[selftape remind]", err));
+
+        return res.json({ ok: true, message: "Påminnelse sendt (kan ta noen sekunder)" });
+      } catch (err) {
+        console.error("[selftapes/remind] failed", err);
+        return res.status(500).json({ error: "Påminnelse feilet" });
+      }
+    },
+  );
+
+  // ── PATCH /casting-roles/selftapes/submissions/:id/deadline ─────
+  // Produsent setter deadline_at på submission. ISO-8601 dato.
+  app.patch("/api/role-room/casting-roles/selftapes/submissions/:id/deadline",
+    async (req, res) => {
+      const session = getActiveSession(req);
+      const isDemo = isDemoRequest(req);
+      if (!isDemo && !session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      const { deadline_at } = (req.body || {}) as { deadline_at?: string | null };
+
+      // Validér dato hvis satt (null = fjern deadline)
+      if (deadline_at !== null && deadline_at !== undefined) {
+        const d = new Date(String(deadline_at));
+        if (Number.isNaN(d.getTime())) {
+          return res.status(400).json({ error: "deadline_at må være ISO-8601 dato eller null" });
+        }
+      }
+
+      try {
+        const own = await pool.query(
+          `SELECT s.id::text, cp.created_by
+             FROM talent_selftape_submissions s
+             LEFT JOIN casting_projects cp ON cp.id = s.casting_project_id
+            WHERE s.id = $1::uuid LIMIT 1`,
+          [req.params.id],
+        );
+        if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
+        if (!isDemo && own.rows[0].created_by !== session?.userId) {
+          return res.status(403).json({ error: "Du eier ikke prosjektet" });
+        }
+
+        const r = await pool.query(
+          `UPDATE talent_selftape_submissions
+              SET deadline_at = $1::timestamptz,
+                  status_updated_at = now()
+            WHERE id = $2::uuid
+            RETURNING id::text, deadline_at`,
+          [deadline_at ?? null, req.params.id],
+        );
+
+        // Audit
+        try {
+          await pool.query(
+            `INSERT INTO talent_selftape_submission_events
+               (submission_id, event_type, actor_label, details)
+             VALUES ($1::uuid, 'deadline_set', $2, $3::jsonb)`,
+            [req.params.id, session?.email ?? "production",
+             JSON.stringify({ deadline_at: deadline_at ?? null })],
+          );
+        } catch { /* best-effort */ }
+
+        return res.json({ submission: r.rows[0] });
+      } catch (err) {
+        console.error("[selftapes/deadline] failed", err);
+        return res.status(500).json({ error: "Sett deadline feilet" });
+      }
+    },
+  );
+
+  // ── POST /casting-roles/selftapes/submissions/:id/comment ───────
+  // Produsent skriver kommentar/tilbakemelding til talenten.
+  // Lagres som event + utløser e-post-varsel.
+  app.post("/api/role-room/casting-roles/selftapes/submissions/:id/comment",
+    async (req, res) => {
+      const session = getActiveSession(req);
+      const isDemo = isDemoRequest(req);
+      if (!isDemo && !session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      const { body } = (req.body || {}) as { body?: string };
+      const trimmed = String(body ?? "").trim();
+      if (!trimmed) {
+        return res.status(400).json({ error: "Kommentar kan ikke være tom" });
+      }
+      if (trimmed.length > 2000) {
+        return res.status(400).json({ error: "Kommentar er for lang (maks 2000 tegn)" });
+      }
+
+      try {
+        const own = await pool.query(
+          `SELECT s.id::text, p.talent_id::text, cp.created_by
+             FROM talent_selftape_submissions s
+             LEFT JOIN talent_selftape_projects p ON p.id = s.project_id
+             LEFT JOIN casting_projects cp ON cp.id = s.casting_project_id
+            WHERE s.id = $1::uuid LIMIT 1`,
+          [req.params.id],
+        );
+        if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
+        if (!isDemo && own.rows[0].created_by !== session?.userId) {
+          return res.status(403).json({ error: "Du eier ikke prosjektet" });
+        }
+
+        const r = await pool.query(
+          `INSERT INTO talent_selftape_submission_events
+             (submission_id, event_type, actor_label, details)
+           VALUES ($1::uuid, 'production_comment', $2, $3::jsonb)
+           RETURNING id::text, created_at`,
+          [
+            req.params.id,
+            session?.email ?? "production",
+            JSON.stringify({ body: trimmed, actor: session?.email ?? null }),
+          ],
+        );
+
+        // Notify talent (Resend) — gjenbruk samme mønster
+        try {
+          const { sendTransactionalEmail } = await import("./transactional-email-service.js");
+          const ctx = await pool.query(
+            `SELECT tl.display_name, tl.email, cp.name AS casting_project_name,
+                    cr.name AS casting_role_name
+               FROM talent_selftape_submissions s
+               JOIN talent_selftape_projects p ON p.id = s.project_id
+               JOIN talents tl ON tl.id = p.talent_id
+               LEFT JOIN casting_projects cp ON cp.id = s.casting_project_id
+               LEFT JOIN casting_roles cr ON cr.id = s.casting_role_id
+              WHERE s.id = $1::uuid LIMIT 1`,
+            [req.params.id],
+          );
+          const row = ctx.rows[0];
+          if (row?.email) {
+            const baseUrl = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
+            const sharedLink = `${baseUrl}/talents/profil#mine-delte`;
+            const target = row.casting_project_name
+              ? `${row.casting_project_name}${row.casting_role_name ? ` (${row.casting_role_name})` : ""}`
+              : "rollen";
+            const firstName = String(row.display_name ?? "").split(" ")[0] || "Hei";
+            await sendTransactionalEmail({
+              to: row.email,
+              subject: `Ny kommentar på din self-tape for ${target}`,
+              fromLabel: "The Role Room",
+              kind: "selftape_comment",
+              pool,
+              text: [
+                `${firstName} — produksjonsteamet har lagt igjen en kommentar på self-tapen din for ${target}.`,
+                "",
+                `"${trimmed}"`,
+                "",
+                `Se hele aktiviteten: ${sharedLink}`,
+              ].join("\n"),
+              html: [
+                `<!doctype html><html><body style="margin:0;padding:0;background:#0a0118;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">`,
+                `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0118;padding:32px 16px;">`,
+                `<tr><td align="center"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#150b2e;border:1px solid rgba(168,85,247,0.18);border-radius:14px;overflow:hidden;">`,
+                `<tr><td style="padding:32px 32px 8px;">`,
+                `<div style="display:inline-block;background:linear-gradient(135deg,#a855f7 0%,#d946ef 100%);color:#fff;font-weight:700;font-size:12px;letter-spacing:0.6px;text-transform:uppercase;padding:4px 10px;border-radius:999px;margin-bottom:16px;">Kommentar</div>`,
+                `<h1 style="color:#f5f3ff;font-size:22px;line-height:1.25;margin:0 0 12px;">Ny tilbakemelding fra produksjonen</h1>`,
+                `<p style="color:#c4b5fd;font-size:15px;line-height:1.55;margin:0 0 18px;">${firstName} — kommentar på self-tapen din for <strong>${target.replace(/</g,"&lt;")}</strong>:</p>`,
+                `<blockquote style="margin:0 0 24px;padding:16px 20px;border-left:3px solid #c084fc;background:rgba(168,85,247,0.10);color:#f5f3ff;font-size:14px;line-height:1.55;border-radius:0 8px 8px 0;">${trimmed.replace(/</g,"&lt;").replace(/\n/g,"<br/>")}</blockquote>`,
+                `<a href="${sharedLink}" style="display:inline-block;background:linear-gradient(135deg,#a855f7 0%,#d946ef 100%);color:#fff;font-weight:700;text-decoration:none;padding:12px 22px;border-radius:10px;font-size:14px;box-shadow:0 4px 14px rgba(168,85,247,0.38);">Se alle kommentarer</a>`,
+                `</td></tr></table></td></tr></table>`,
+                `</body></html>`,
+              ].join(""),
+            });
+          }
+        } catch (mailErr) {
+          console.warn("[selftape comment mail]", mailErr);
+        }
+
+        return res.status(201).json({ event: r.rows[0] });
+      } catch (err) {
+        console.error("[selftapes/comment] failed", err);
+        return res.status(500).json({ error: "Kommentar feilet" });
+      }
+    },
+  );
+
+  // ── GET /talents/selftapes/submissions/:id/comments ─────────────
+  // Talent henter produksjons-kommentarer for sin egen submission
+  app.get("/api/role-room/talents/selftapes/submissions/:id/comments",
+    async (req, res) => {
+      const session = getActiveSession(req);
+      const talentId = await resolveTalentId(pool, req, session);
+      if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        // Verifiser at submission tilhører talenten
+        const own = await pool.query(
+          `SELECT 1
+             FROM talent_selftape_submissions s
+             JOIN talent_selftape_projects p ON p.id = s.project_id
+            WHERE s.id = $1::uuid AND p.talent_id = $2::uuid LIMIT 1`,
+          [req.params.id, talentId],
+        );
+        if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
+
+        const r = await pool.query(
+          `SELECT id::text, event_type, actor_label, details, created_at
+             FROM talent_selftape_submission_events
+            WHERE submission_id = $1::uuid
+              AND event_type IN ('production_comment','reminded','deadline_set')
+            ORDER BY created_at DESC
+            LIMIT 200`,
+          [req.params.id],
+        );
+        return res.json({ events: r.rows });
+      } catch (err) {
+        console.error("[selftapes/comments GET] failed", err);
+        return res.status(500).json({ error: "Klarte ikke å hente kommentarer" });
       }
     },
   );

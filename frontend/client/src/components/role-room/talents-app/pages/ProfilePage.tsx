@@ -140,7 +140,7 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
   }
 
   return (
-    <Box sx={{ p: 3, maxWidth: 1080, mx: 'auto' }}>
+    <Box sx={{ p: { xs: 1.5, sm: 2, md: 3 }, maxWidth: 1080, mx: 'auto' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 3 }}>
         <Box>
           <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1.15 }}>

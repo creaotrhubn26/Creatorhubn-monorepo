@@ -5,7 +5,7 @@
  * Fase B-2: video-element med play/pause/seek/volum/fullskjerm-binding.
  * Fase C: record-knapp åpner RecordTakeDialog, upload-knapp tar i mot fil.
  */
-import { Box, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import { Box, IconButton, Stack, Tooltip, Typography, useMediaQuery, useTheme } from '@mui/material';
 import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 import Replay10Icon from '@mui/icons-material/Replay10';
@@ -39,6 +39,8 @@ interface Props {
 export default function SelfTapeVideoPlayer({
   take, onRecordClick, onUploadFile, onGuidesClick, onAddExternalClick,
 }: Props) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);

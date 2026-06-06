@@ -55,7 +55,9 @@ import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import SelfTapePreviewModal from './selftape/SelfTapePreviewModal';
 import {
+  availabilityChipStyle,
   listCastingRoleSelftapes,
+  selftapeAvailability,
   type CastingRoleSelftape,
 } from '../services/roleRoomSelfTapesService';
 
@@ -1356,13 +1358,15 @@ function KanbanPanelInner({
                               )}
                             </Box>
                           </Box>
-                          {/* Self-tape-badge: vises hvis kandidaten har talent_id med aktiv submission */}
+                          {/* Self-tape-badge: tilstand-bevisst (Video tilgjengelig / Behandles / Sendt) */}
                           {(() => {
                             const talentId = (candidate as { talent_id?: string }).talent_id;
                             if (!talentId) return null;
                             const tapes = selftapesByTalent.get(talentId);
                             if (!tapes || tapes.length === 0) return null;
                             const tape = tapes[0];
+                            const availability = selftapeAvailability(tape);
+                            const style = availabilityChipStyle(availability);
                             return (
                               <Box
                                 onClick={(e) => {
@@ -1377,18 +1381,18 @@ function KanbanPanelInner({
                                   px: 1,
                                   py: 0.3,
                                   borderRadius: 999,
-                                  bgcolor: 'rgba(168,85,247,0.18)',
-                                  color: '#c084fc',
+                                  bgcolor: style.bg,
+                                  color: style.fg,
                                   fontWeight: 700,
                                   fontSize: '0.7rem',
                                   cursor: 'pointer',
-                                  border: '1px solid rgba(168,85,247,0.32)',
-                                  '&:hover': { bgcolor: 'rgba(168,85,247,0.28)' },
+                                  border: `1px solid ${style.border}`,
+                                  '&:hover': { filter: 'brightness(1.15)' },
                                 }}
-                                title="Se talentens self-tape"
+                                title={`${style.label} — klikk for å åpne`}
                               >
                                 <PlayCircleOutlineIcon sx={{ fontSize: 12 }} />
-                                Self-tape{tapes.length > 1 ? ` (${tapes.length})` : ''}
+                                {style.label}{tapes.length > 1 ? ` (${tapes.length})` : ''}
                               </Box>
                             );
                           })()}

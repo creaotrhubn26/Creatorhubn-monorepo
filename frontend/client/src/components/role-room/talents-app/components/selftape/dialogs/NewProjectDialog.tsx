@@ -6,7 +6,7 @@
  */
 import {
   Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
-  Stack, TextField,
+  Stack, TextField, useMediaQuery, useTheme,
 } from '@mui/material';
 import { useState } from 'react';
 
@@ -20,6 +20,8 @@ interface Props {
 }
 
 export default function NewProjectDialog({ open, onClose, onCreated }: Props) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [name, setName] = useState('');
   const [roleName, setRoleName] = useState('');
   const [sceneLabel, setSceneLabel] = useState('');
@@ -64,12 +66,13 @@ export default function NewProjectDialog({ open, onClose, onCreated }: Props) {
       onClose={onClose}
       fullWidth
       maxWidth="sm"
+      fullScreen={isMobile}
       PaperProps={{
         sx: {
           bgcolor: palette.bgShell,
           color: palette.textPrimary,
-          border: `1px solid ${palette.border}`,
-          borderRadius: radius.lg,
+          border: isMobile ? 'none' : `1px solid ${palette.border}`,
+          borderRadius: isMobile ? 0 : radius.lg,
         },
       }}
     >

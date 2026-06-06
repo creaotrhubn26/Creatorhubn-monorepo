@@ -446,6 +446,86 @@ export async function listCastingRoleSelftapes(
   return payload as { selftapes: CastingRoleSelftape[] };
 }
 
+/** Produksjon-action: ber talent laste opp self-tape (Resend e-post, 24t idempotent). */
+export async function remindTalentToUpload(submissionId: string): Promise<{ ok: true }> {
+  const url = buildUrl(`/casting-roles/selftapes/submissions/${submissionId}/remind`)
+    .replace('/api/role-room/talents/selftapes', '/api/role-room');
+  const r = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const payload: unknown = await r.json().catch(() => null);
+  if (!r.ok) {
+    const msg = payload && typeof payload === 'object'
+      ? (payload as { error?: string }).error
+      : null;
+    throw new Error(msg ?? `HTTP ${r.status}`);
+  }
+  return payload as { ok: true };
+}
+
+/** Produksjon-action: sett (eller fjern med null) deadline_at på submission. */
+export async function setSelftapeDeadline(
+  submissionId: string,
+  deadlineAt: string | null,
+): Promise<{ submission: { id: string; deadline_at: string | null } }> {
+  const url = buildUrl(`/casting-roles/selftapes/submissions/${submissionId}/deadline`)
+    .replace('/api/role-room/talents/selftapes', '/api/role-room');
+  const r = await fetch(url, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deadline_at: deadlineAt }),
+  });
+  const payload: unknown = await r.json().catch(() => null);
+  if (!r.ok) {
+    const msg = payload && typeof payload === 'object'
+      ? (payload as { error?: string }).error
+      : null;
+    throw new Error(msg ?? `HTTP ${r.status}`);
+  }
+  return payload as { submission: { id: string; deadline_at: string | null } };
+}
+
+/** Produksjon skriver kommentar/tilbakemelding til talent. */
+export async function addProductionComment(
+  submissionId: string,
+  body: string,
+): Promise<{ event: { id: string; created_at: string } }> {
+  const url = buildUrl(`/casting-roles/selftapes/submissions/${submissionId}/comment`)
+    .replace('/api/role-room/talents/selftapes', '/api/role-room');
+  const r = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body }),
+  });
+  const payload: unknown = await r.json().catch(() => null);
+  if (!r.ok) {
+    const msg = payload && typeof payload === 'object'
+      ? (payload as { error?: string }).error
+      : null;
+    throw new Error(msg ?? `HTTP ${r.status}`);
+  }
+  return payload as { event: { id: string; created_at: string } };
+}
+
+export interface SubmissionEvent {
+  id: string;
+  event_type: 'production_comment' | 'reminded' | 'deadline_set' | string;
+  actor_label: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}
+
+/** Talent henter kommentar-strømmen for en submission. */
+export function getSubmissionComments(
+  submissionId: string,
+): Promise<{ events: SubmissionEvent[] }> {
+  return api(`/submissions/${submissionId}/comments`);
+}
+
 /** Registrer at produksjon har sett en self-tape (audit + view_count). */
 export async function trackSelftapeView(
   submissionId: string,
@@ -465,6 +545,60 @@ export async function trackSelftapeView(
     throw new Error(msg ?? `HTTP ${r.status}`);
   }
   return payload as { submission: { id: string; status: string; view_count: number; last_viewed_at: string } };
+}
+
+// ── Availability-status for video-spilleren ──────────────────────
+export type SelftapeAvailability = 'available' | 'processing' | 'metadata_only';
+
+/**
+ * Avled video-tilgjengelighet fra en CastingRoleSelftape-rad. Brukes til
+ * å vise riktig chip-farge/-tekst på Kanban + Utvelgelse-kortene.
+ *
+ *   available     — video_url ELLER external_url finnes (kan spilles)
+ *   processing    — stream_uid finnes men video_url er null (CF transkoder)
+ *   metadata_only — ingen video lastet opp ennå
+ */
+export function selftapeAvailability(
+  s: Pick<CastingRoleSelftape, 'video_url' | 'external_url' | 'hls_manifest' | 'stream_uid'>,
+): SelftapeAvailability {
+  if (s.video_url || s.external_url || s.hls_manifest) return 'available';
+  if (s.stream_uid) return 'processing';
+  return 'metadata_only';
+}
+
+export interface AvailabilityChipStyle {
+  label: string;
+  bg: string;
+  fg: string;
+  border: string;
+}
+
+/** Konsistent farge + label per availability-tilstand. */
+export function availabilityChipStyle(a: SelftapeAvailability): AvailabilityChipStyle {
+  switch (a) {
+    case 'available':
+      return {
+        label: 'Video tilgjengelig',
+        bg: 'rgba(52,211,153,0.18)',
+        fg: '#34d399',
+        border: 'rgba(52,211,153,0.45)',
+      };
+    case 'processing':
+      return {
+        label: 'Behandles',
+        bg: 'rgba(251,191,36,0.18)',
+        fg: '#fbbf24',
+        border: 'rgba(251,191,36,0.45)',
+      };
+    case 'metadata_only':
+    default:
+      return {
+        label: 'Sendt — uten video',
+        bg: 'rgba(148,163,184,0.18)',
+        fg: '#cbd5e1',
+        border: 'rgba(148,163,184,0.40)',
+      };
+  }
 }
 
 // ── Helpers for external video provider rendering ────────────────
