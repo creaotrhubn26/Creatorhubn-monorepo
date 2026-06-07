@@ -64,6 +64,26 @@ const SEGMENTS = new Set([
 export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
   const { app, pool, getActiveSession, isAdminEmail } = deps;
 
+  // ── GET /api/public/ads-config — Google Ads conversion-tag config ─
+  // Returnerer AW-ID + conversion-labels fra env, så frontend kan fire
+  // gtag('event', 'conversion', { send_to: ... }) på key actions.
+  // Krever ingen auth — kun publiske ID-er, ingen secrets.
+  app.get("/api/public/ads-config", (_req, res) => {
+    const conversionId = (process.env.GOOGLE_ADS_CONVERSION_ID || "").trim();
+    if (!conversionId || !conversionId.startsWith("AW-")) {
+      return res.json({ enabled: false });
+    }
+    return res.json({
+      enabled: true,
+      conversionId,
+      labels: {
+        lead: (process.env.GOOGLE_ADS_LABEL_LEAD || "").trim() || null,
+        demo: (process.env.GOOGLE_ADS_LABEL_DEMO || "").trim() || null,
+        signup: (process.env.GOOGLE_ADS_LABEL_SIGNUP || "").trim() || null,
+      },
+    });
+  });
+
   // ── POST /api/public/agency-lead — fra landingsside-skjema ───────
   app.post("/api/public/agency-lead", async (req, res) => {
     const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()

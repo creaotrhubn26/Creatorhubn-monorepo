@@ -31,6 +31,7 @@ import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { useEffect, useState } from 'react';
 import { trackPageView, trackEvent } from '@/utils/ga4-client-tracking';
+import { fireGoogleAdsConversion } from '@/utils/google-ads-conversions';
 
 // ── Design-tokens (samme palett som Talents-app) ──────────────────
 const palette = {
@@ -1196,18 +1197,18 @@ function LeadForm() {
     setBusy(true);
     setErrorMsg(null);
     try {
-      // Capture attribution: UTM-params + referrer + landing-flate.
+      // Capture attribution: UTM-params + click-IDs + referrer.
       const params = new URLSearchParams(window.location.search);
       const utmSource = params.get('utm_source') || undefined;
       const utmMedium = params.get('utm_medium') || undefined;
       const utmCampaign = params.get('utm_campaign') || undefined;
       const utmTerm = params.get('utm_term') || undefined;
       const utmContent = params.get('utm_content') || undefined;
-      const gclid = params.get('gclid') || undefined;       // Google Ads click ID
-      const fbclid = params.get('fbclid') || undefined;     // Meta/Instagram Ads click ID
-      const ttclid = params.get('ttclid') || undefined;     // TikTok Ads click ID
-      const liFatId = params.get('li_fat_id') || undefined; // LinkedIn click ID
-      const igshid = params.get('igshid') || undefined;     // Instagram share-ID (organisk)
+      const gclid = params.get('gclid') || undefined;       // Google Ads
+      const fbclid = params.get('fbclid') || undefined;     // Meta/Instagram Ads
+      const ttclid = params.get('ttclid') || undefined;     // TikTok Ads
+      const liFatId = params.get('li_fat_id') || undefined; // LinkedIn
+      const igshid = params.get('igshid') || undefined;     // Instagram organisk
 
       const r = await fetch('/api/public/agency-lead', {
         method: 'POST',
@@ -1224,7 +1225,6 @@ function LeadForm() {
           utm_source: utmSource,
           utm_medium: utmMedium,
           utm_campaign: utmCampaign,
-          // request_context plukkes opp av backend i agency-leads-routes.ts.
           request_context: {
             utm_term: utmTerm,
             utm_content: utmContent,
@@ -1246,9 +1246,7 @@ function LeadForm() {
         trackEvent('agency_lead_failed', { error: `HTTP ${r.status}` });
         throw new Error(payload.error ?? `HTTP ${r.status}`);
       }
-      // Markér som conversion i GA4 → Admin → Events → "Mark as conversion".
-      // Attribusjon-felt videresendt så Admin Room (B2BAcquisitionPanel) kan
-      // krysse mot agency_leads-tabellen og se source-fordeling.
+      // GA4 conversion-event — markér i GA4 Admin → Events → "Mark as conversion".
       trackEvent('agency_lead_submitted', {
         roster_size: talents.trim() || 'unknown',
         has_phone: phone.trim().length > 0,
@@ -1258,6 +1256,8 @@ function LeadForm() {
         utm_campaign: utmCampaign,
         referrer: document.referrer || undefined,
       });
+      // Google Ads conversion-tag (no-op uten GOOGLE_ADS_CONVERSION_ID env-var).
+      void fireGoogleAdsConversion('lead', { value: 1, currency: 'NOK' });
       setStatus('success');
       // Clear felter
       setAgency(''); setName(''); setEmail(''); setPhone(''); setTalents(''); setMessage('');
