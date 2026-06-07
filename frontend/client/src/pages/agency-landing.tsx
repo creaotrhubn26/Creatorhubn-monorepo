@@ -1204,8 +1204,10 @@ function LeadForm() {
       const utmTerm = params.get('utm_term') || undefined;
       const utmContent = params.get('utm_content') || undefined;
       const gclid = params.get('gclid') || undefined;       // Google Ads click ID
-      const fbclid = params.get('fbclid') || undefined;     // Meta click ID
-      const liFatId = params.get('li_fat_id') || undefined; // LinkedIn fbq-id
+      const fbclid = params.get('fbclid') || undefined;     // Meta/Instagram Ads click ID
+      const ttclid = params.get('ttclid') || undefined;     // TikTok Ads click ID
+      const liFatId = params.get('li_fat_id') || undefined; // LinkedIn click ID
+      const igshid = params.get('igshid') || undefined;     // Instagram share-ID (organisk)
 
       const r = await fetch('/api/public/agency-lead', {
         method: 'POST',
@@ -1228,7 +1230,9 @@ function LeadForm() {
             utm_content: utmContent,
             gclid,
             fbclid,
+            ttclid,
             li_fat_id: liFatId,
+            igshid,
             referrer: document.referrer || null,
             landing_page: '/for-byraer',
             screen: `${window.screen.width}x${window.screen.height}`,
