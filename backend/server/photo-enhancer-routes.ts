@@ -2718,7 +2718,34 @@ async function extractEmbeddedPreviewImage(file: Express.Multer.File): Promise<E
   }
 }
 
-async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
+// RawTherapee processing profile (.pp3) that enables Lensfun automatic lens
+// correction from the file's EXIF. Lensfun corrections are per-type on/off
+// (no partial strength), so we map the photographer's request to which
+// correction types to enable. Requires rawtherapee-cli + a Lensfun database
+// on the runner box; if absent we simply fall through to a plain conversion.
+function buildRawTherapeeLensfunPp3(lens: LensCorrection): string {
+  const useDistortion = lens.auto || lens.distortion > 0;
+  const useVignette = lens.auto || lens.vignette > 0;
+  const useCA = lens.chromaticAberration > 0;
+  return [
+    "[Version]",
+    "AppVersion=5.9",
+    "Version=346",
+    "",
+    "[Lens Profile]",
+    "LcMode=lfauto",
+    "LCPFile=",
+    `UseDistortion=${useDistortion ? "true" : "false"}`,
+    `UseVignette=${useVignette ? "true" : "false"}`,
+    `UseCA=${useCA ? "true" : "false"}`,
+    "",
+  ].join("\n");
+}
+
+async function convertRawWithExternalTool(
+  file: Express.Multer.File,
+  options?: { lensCorrection?: LensCorrection },
+): Promise<{
   file: Express.Multer.File;
   conversion: Record<string, unknown>;
 } | null> {
@@ -2729,7 +2756,17 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
   const inputPath = path.join(tempDir, `source${extension}`);
   const outputPath = path.join(tempDir, "converted.png");
   const outputTiffPath = path.join(tempDir, "source.tiff");
+  const lensfunPp3Path = path.join(tempDir, "lensfun.pp3");
   await fs.writeFile(inputPath, file.buffer);
+
+  // When the photographer enabled lens correction, write a Lensfun PP3 so we
+  // can prefer a RawTherapee pass that applies optical correction. dcraw /
+  // ImageMagick can't do Lensfun, so this only fires when correction is on.
+  const lens = options?.lensCorrection;
+  const lensfunEnabled = Boolean(lens?.enabled);
+  if (lensfunEnabled && lens) {
+    await fs.writeFile(lensfunPp3Path, buildRawTherapeeLensfunPp3(lens));
+  }
 
   const attempts: Array<{
     id: string;
@@ -2781,6 +2818,21 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
       resolutionMode: "converter-default",
     },
   ];
+
+  // Prefer a RawTherapee pass with Lensfun lens correction when requested.
+  // If rawtherapee-cli is missing, commandPath() returns null below and we
+  // fall through to the normal converters (without correction).
+  if (lensfunEnabled) {
+    attempts.unshift({
+      id: "rawtherapee-lensfun",
+      binaries: ["rawtherapee-cli"],
+      args: ["-o", outputPath, "-p", lensfunPp3Path, "-c", inputPath],
+      outputPath,
+      outputMimeType: "image/png",
+      resolutionMode: "converter-default",
+    });
+  }
+
   const configuredOrder = (process.env.PHOTO_ENHANCER_RAW_CONVERTER_ORDER || "")
     .split(",")
     .map((value) => value.trim().toLowerCase())
@@ -2846,6 +2898,7 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
               height: metadata.height ?? null,
               format: metadata.format ?? null,
               resolutionMode: attempt.resolutionMode,
+              lensCorrectionApplied: attempt.id === "rawtherapee-lensfun",
             },
           };
         } catch (validationError) {
@@ -2960,7 +3013,10 @@ async function convertHeicWithExternalTool(file: Express.Multer.File): Promise<{
   }
 }
 
-async function prepareProcessableImage(file: Express.Multer.File): Promise<{
+async function prepareProcessableImage(
+  file: Express.Multer.File,
+  options?: { lensCorrection?: LensCorrection },
+): Promise<{
   file: Express.Multer.File;
   raw: Record<string, unknown>;
 }> {
@@ -2995,7 +3051,7 @@ async function prepareProcessableImage(file: Express.Multer.File): Promise<{
     };
   }
 
-  const converted = await convertRawWithExternalTool(file);
+  const converted = await convertRawWithExternalTool(file, options);
   if (!converted || converted.file === file) {
     const conversion = converted?.conversion || {
       raw: true,
@@ -3407,7 +3463,9 @@ async function buildPhotoEnhancerEnhancementPayload(params: {
   pool?: Pool;
   ownerUserId?: string | null;
 }) {
-  const prepared = await prepareProcessableImage(params.file);
+  const prepared = await prepareProcessableImage(params.file, {
+    lensCorrection: params.settings?.lensCorrection,
+  });
   if (hasUnavailableSourceConversion(prepared.raw)) {
     return {
       ok: false as const,
@@ -3798,7 +3856,9 @@ async function enhanceUploadedFile(params: {
   metadata: Record<string, unknown>;
   raw: Record<string, unknown>;
 }> {
-  const prepared = await prepareProcessableImage(params.file);
+  const prepared = await prepareProcessableImage(params.file, {
+    lensCorrection: params.settings?.lensCorrection,
+  });
   if (hasUnavailableSourceConversion(prepared.raw)) {
     throw new Error(`${conversionErrorCode(prepared.raw)}: ${conversionErrorMessage(prepared.raw)}`);
   }

@@ -2041,6 +2041,11 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                             ? `Profil: ${matchedLensName}`
                             : 'Ingen linseprofil matchet ennå — kjør Analyze, eller bruk manuell styrke.'}
                         </Typography>
+                        {rawConverters.rawtherapee === false ? (
+                          <Typography variant="caption" color="warning.main">
+                            RAW-korreksjon bruker RawTherapee + Lensfun på serveren — ikke aktivt her ennå.
+                          </Typography>
+                        ) : null}
                         <FormControlLabelSwitch
                           label="Automatisk fra linseprofil"
                           checked={lensCorrection.auto}
