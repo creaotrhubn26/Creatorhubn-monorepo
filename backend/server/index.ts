@@ -785,6 +785,7 @@ import { setupAcademyStripeWebhookRoutes } from "./academy-stripe-webhook-routes
 import { setupAdminAcademyB2Routes } from "./admin-academy-b2-routes";
 import { setupUserB2CredentialsRoutes } from "./user-b2-credentials-routes";
 import { startB2SyncCron } from "./user-b2-sync-worker";
+import { setupUserDriveCredentialsRoutes } from "./user-drive-credentials-routes";
 import { setupAdminMarketingSeoRoutes } from "./admin-marketing-seo-routes";
 import { setupAdminIntegrationTestsRoutes } from "./admin-integration-tests-routes";
 import { setupOrchestrationRoutes } from "./orchestration-routes";
@@ -24484,6 +24485,7 @@ setupAdminAcademyRoutes({ app, pool, requireAdminSession });
 setupAdminAcademyB2Routes({ app, pool, requireAdminSession });
 setupUserB2CredentialsRoutes({ app, pool, requireUserSession });
 startB2SyncCron({ pool });
+setupUserDriveCredentialsRoutes({ app, pool, requireUserSession });
 
 // Task #121a — Marketing SEO-fanen:
 //   /api/seo/keywords, /api/seo/pages, /api/seo/backlinks,
