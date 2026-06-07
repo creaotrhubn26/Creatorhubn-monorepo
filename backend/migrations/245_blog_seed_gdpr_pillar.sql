@@ -28,7 +28,8 @@ VALUES (
     'author_role', 'Founder, The Role Room',
     'published_at', '2026-06-07T12:00:00+02:00',
     'reading_minutes', 8,
-    'cover_image', NULL,
+    'cover_image', 'https://v3b.fal.media/files/b/0a9d5c72/EfKoMOfGThafHwHK_v_S0_b53ad15712ca4aee9662b7c4d51b7c2a.jpg',
+    'cover_alt', 'Hender lukker en grå mappe merket TALENT DATA på et skandinavisk birch-skrivebord — redaksjonell GDPR-illustrasjon.',
     'tags', jsonb_build_array('GDPR', 'compliance', 'skuespillerbyrå', 'talent-administrasjon'),
     'body_markdown', $body$
 Norske skuespillerbyråer sitter på sensitive data — portretter, helse-info, kontaktopplysninger til umyndige, audition-vurderinger som kan påvirke arbeidsmuligheter. Etter Schrems II er det ikke lenger trygt å lene seg på amerikanske leverandører for talent-administrasjon.
