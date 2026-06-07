@@ -217,8 +217,7 @@ private struct WKWebViewRepresentable: UIViewRepresentable {
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void,
         ) {
             if let url = navigationAction.request.url,
-               url.scheme == DeepLinkRouter.scheme
-            {
+               url.scheme == DeepLinkRouter.scheme {
                 if let intent = DeepLinkRouter.parse(url) {
                     Task { @MainActor in self.onDeepLink(intent) }
                 }

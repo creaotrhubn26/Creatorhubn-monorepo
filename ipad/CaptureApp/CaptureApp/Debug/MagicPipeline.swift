@@ -411,11 +411,11 @@ final class MagicPipeline {
         // "strawberry_ice_cream" / "french_bulldog" / "sports_car";
         // pre-fix exact matching missed almost every compound. Now
         // any label containing a hint substring counts.
-        if Self.matchesAny(labels, in: Self.aviationHints)  { return .aviation }
-        if Self.matchesAny(labels, in: Self.vehicleHints)   { return .vehicle }
-        if Self.matchesAny(labels, in: Self.foodHints)      { return .food }
+        if Self.matchesAny(labels, in: Self.aviationHints) { return .aviation }
+        if Self.matchesAny(labels, in: Self.vehicleHints) { return .vehicle }
+        if Self.matchesAny(labels, in: Self.foodHints) { return .food }
         if Self.matchesAny(labels, in: Self.landscapeHints) { return .landscape }
-        if Self.matchesAny(labels, in: Self.productHints)   { return .product }
+        if Self.matchesAny(labels, in: Self.productHints) { return .product }
 
         // No confident scene match — try faces with a strict floor.
         return faceFallback(cgImage: cgImage)
@@ -427,8 +427,8 @@ final class MagicPipeline {
     /// "sports_car" that won't match a flat set of base nouns.
     private static func matchesAny(_ labels: [String], in hints: Set<String>) -> Bool {
         for label in labels {
-            for hint in hints {
-                if label.contains(hint) { return true }
+            for hint in hints where label.contains(hint) {
+                return true
             }
         }
         return false
@@ -475,7 +475,7 @@ final class MagicPipeline {
         "coffee", "tea_cup", "teacup",
         "fruit", "vegetable", "tomato", "apple", "orange", "banana", "lemon",
         "strawberry", "broccoli", "carrot", "cucumber", "pepper", "mushroom",
-        "egg", "omelet", "bacon",
+        "egg", "omelet", "bacon"
     ]
     private static let landscapeHints: Set<String> = [
         "landscape", "mountain", "beach", "seashore", "valley", "lake", "river",

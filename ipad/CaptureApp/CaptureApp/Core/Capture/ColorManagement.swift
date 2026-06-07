@@ -112,7 +112,7 @@ enum ColorManagement {
         return CIContext(options: [
             .useSoftwareRenderer: false,
             .workingColorSpace: space,
-            .outputColorSpace: space,
+            .outputColorSpace: space
         ])
     }
 
@@ -159,7 +159,7 @@ enum ColorManagement {
         let space = outputColorSpace(for: purpose)
         let options: [CFString: Any] = [
             kCGImageDestinationLossyCompressionQuality: quality,
-            kCGImagePropertyProfileName: (space.name as String?) ?? "",
+            kCGImagePropertyProfileName: (space.name as String?) ?? ""
         ]
         CGImageDestinationAddImage(destination, cgImage, options as CFDictionary)
         guard CGImageDestinationFinalize(destination) else {

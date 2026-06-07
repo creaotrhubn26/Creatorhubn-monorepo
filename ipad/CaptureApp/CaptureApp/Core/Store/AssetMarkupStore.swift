@@ -44,7 +44,7 @@ struct AssetMarkupStore: Sendable {
                 """,
                 arguments: [
                     assetId.uuidString.uppercased(),
-                    ownerUserId,
+                    ownerUserId
                 ],
             )
         }
@@ -89,7 +89,7 @@ struct AssetMarkupStore: Sendable {
                 """,
                 arguments: [
                     assetId.uuidString.uppercased(),
-                    ownerUserId,
+                    ownerUserId
                 ],
             ) else {
                 throw AssetMarkupStoreError.notFound
@@ -143,7 +143,7 @@ struct AssetMarkupStore: Sendable {
                 """,
                 arguments: [
                     assetId.uuidString.uppercased(),
-                    ownerUserId,
+                    ownerUserId
                 ],
             ) else {
                 throw AssetMarkupStoreError.notFound

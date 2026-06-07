@@ -249,8 +249,8 @@ actor ImageAnalyser {
         guard r > 0.1, g > 0.1, b > 0.1 else { return .neutral }
         let rb = r / max(b, 0.001)
         let rg = r / max(g, 0.001)
-        if rb > 1.6  { return .tooWarm }   // orange/amber cast
-        if rb < 1.1  { return .tooCool }   // blue cast
+        if rb > 1.6 { return .tooWarm }   // orange/amber cast
+        if rb < 1.1 { return .tooCool }   // blue cast
         if rg < 0.95 { return .tooGreen }  // green cast (fluorescent)
         if rg > 1.25 { return .tooMagenta } // magenta cast
         return .neutral

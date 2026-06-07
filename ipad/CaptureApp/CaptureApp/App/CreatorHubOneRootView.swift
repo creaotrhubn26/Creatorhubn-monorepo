@@ -65,8 +65,7 @@ struct CreatorHubOneRootView: View {
         fallback: Fallback,
     ) -> some View {
         if let stored = SignInService.shared.session,
-           let url = URL(string: path, relativeTo: stored.backendBaseURL)
-        {
+           let url = URL(string: path, relativeTo: stored.backendBaseURL) {
             AuthenticatedWebView(
                 url: url,
                 session: stored,

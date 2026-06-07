@@ -146,7 +146,7 @@ enum SkinToneUnifyFilter {
             CGRect(x: extent.minX, y: faceRect.minY,
                    width: max(0, faceRect.minX - extent.minX), height: faceRect.height),
             CGRect(x: faceRect.maxX, y: faceRect.minY,
-                   width: max(0, extent.maxX - faceRect.maxX), height: faceRect.height),
+                   width: max(0, extent.maxX - faceRect.maxX), height: faceRect.height)
         ].filter { $0.width > 1 && $0.height > 1 }
 
         var sumR: CGFloat = 0, sumG: CGFloat = 0, sumB: CGFloat = 0, sumA: CGFloat = 0

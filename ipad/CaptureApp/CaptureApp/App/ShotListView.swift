@@ -265,7 +265,7 @@ struct ShotListView: View {
             "must_have",
             "musthave",
             "high",
-            "critical",
+            "critical"
         ].contains(priority)
     }
 }

@@ -1,32 +1,26 @@
 disabled_rules:
-  # Eksisterende stilistiske regler — ikke gjelder ny kode
-  - trailing_comma
+  # BEVISST avskrudd for en stor, moden kodebase — re-enable ville gi tusenvis av
+  # kosmetiske violations uten verdi (LiveCaptureView er ~7k linjer).
   - line_length
   - file_length
   - type_body_length
   - function_body_length
   - identifier_name
-  # Pre-existing teknisk gjeld i CaptureApp pr 2026-06-05 (144 violations).
-  # IKKE introdusert av aktuell PR. Egen cleanup-task spores separat.
-  # Re-enables gradvis etter at gjelden er ryddet.
-  - comma                                   # 36 violations: " ,x" → ", x"
-  - opening_brace                           # 31 violations: brace-plassering
-  - force_unwrapping                        # 26 violations: try!/value!
-  - non_optional_string_data_conversion     # 11 violations: .data(using:)!
-  - todo                                    # 6 violations: TODO-/FIXME-kommentarer
-  - cyclomatic_complexity                   # 6 violations: komplekse funksjoner
-  - colon                                   # 6 violations: kolon-spacing
-  - implicit_optional_initialization        # 5 violations: var x: T? = nil
-  - function_parameter_count                # 3 violations: lange parameter-lister
-  - static_over_final_class                 # 2 violations
-  - statement_position                      # 2 violations: else-plassering
-  - nesting                                 # 2 violations: dyp type-nesting
-  - large_tuple                             # 2 violations: 3+ medlemmer
-  - unused_optional_binding                 # 1 violation
-  - syntactic_sugar                         # 1 violation: Array<T> → [T]
-  - for_where                               # 1 violation
-  - multiple_closures_with_trailing_closure # 1 violation
-  - empty_parameters                        # 1 violation
+  # TODO-/FIXME-kommentarer er legitim sporing (43 stk), ikke violations.
+  - todo
+  # Idiomatisk SwiftUI: .sheet(onDismiss:){ content } trigger denne — kjent
+  # false-positive for SwiftUI-modifikatorer.
+  - multiple_closures_with_trailing_closure
+  # 2026-06-07: Resten av den gamle «tech debt»-blokken er RYDDET (auto-fix +
+  # manuelle fikser: comma, opening_brace, colon, syntactic_sugar, for_where,
+  # unused_optional_binding, statement_position m.fl. — se git-historikk).
+  # Følgende holdes avskrudd FORDI fiksen ville endre KAMERA-VERIFISERT kode
+  # rett før release (regresjons-risiko > lint-verdi). Egen re-testet refaktor-task:
+  - cyclomatic_complexity          # iboende komplekse kamera-state-maskiner / event-dispatch
+  - function_parameter_count       # delivery/recorder-API-er (param-bunting = churn på verifisert kode)
+  - large_tuple                    # 2 sites (ImageAnalysis/Debug) — minor, spores
+  - nesting                        # 2 sites — minor, spores
+  - non_optional_string_data_conversion  # eksisterende `?? Data()` er trygt; sitene er multipart-body i kamera-leveranse — editering risikerer å bryte opplasting
 
 opt_in_rules:
   - implicit_return

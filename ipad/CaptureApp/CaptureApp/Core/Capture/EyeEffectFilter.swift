@@ -77,7 +77,7 @@ enum EyeEffectFilter {
             context: nil,
             options: [
                 CIDetectorAccuracy: CIDetectorAccuracyHigh,
-                CIDetectorImageOrientation: 1,  // CGImagePropertyOrientation.up
+                CIDetectorImageOrientation: 1  // CGImagePropertyOrientation.up
             ],
         )
         let features = detector?.features(in: image) ?? []

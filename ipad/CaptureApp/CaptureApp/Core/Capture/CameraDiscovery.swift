@@ -147,9 +147,9 @@ final class CameraDiscovery: ObservableObject {
     ///   - https://host:8443  — alternate TLS port some newer bodies use
     /// Probe all three in parallel per IP and take the first valid responder.
     private static let probeVariants: [(scheme: String, port: Int?)] = [
-        ("http",  8080),
+        ("http", 8080),
         ("https", nil),   // default 443
-        ("https", 8443),
+        ("https", 8443)
     ]
 
     private func probeIP(host: String) async {
