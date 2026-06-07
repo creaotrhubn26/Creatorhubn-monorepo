@@ -23,6 +23,7 @@ import { ExportView } from './ExportView';
 import { MarketingPanel } from './MarketingPanel';
 import { LibraryPanel } from './LibraryPanel';
 import { speak, cancelSpeech, getWebVoices, isWebSpeechSupported, type WebVoice } from './webSpeechVoiceover';
+import { staticChecks, captureProbe, overallStatus, type Check } from './preflight';
 import { FramedDevice, VIEWPORT_W } from './FramedDevice';
 import { SceneInteractionOverlay } from './SceneInteractionOverlay';
 import { type FrameVariant } from './deviceFrames';
@@ -247,6 +248,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [visualBeats, setVisualBeats] = useState<VisualBeat[] | null>(null);
   const [visualBusy, setVisualBusy] = useState(false);
+  const [showPreflight, setShowPreflight] = useState(false);
   const zoomBy = (delta: number) => setPreviewZoom((z) => Math.min(3, Math.max(0.5, Math.round((z + delta) * 100) / 100)));
   const [capturing, setCapturing] = useState(false);
   const [captureCount, setCaptureCount] = useState(0);
@@ -628,6 +630,10 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 11px', borderRadius: 9, fontSize: 13, cursor: 'pointer', marginBottom: 2,
               background: storyMode ? C.creamActive : 'transparent', color: storyMode ? C.ink : C.inkSoft, fontWeight: storyMode ? 600 : 500 }}>
             <span style={{ width: 18, opacity: 0.85 }}>✦</span> Story
+          </div>
+          <div onClick={() => setShowPreflight(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 11px', borderRadius: 9, fontSize: 13, cursor: 'pointer', marginBottom: 2, color: C.inkSoft }}>
+            <span style={{ width: 18, opacity: 0.85 }}>◇</span> Sjekk oppsett
           </div>
           <div style={{ flex: 1 }} />
           <div style={{ background: C.cream, border: `1px solid ${C.line}`, borderRadius: 12, padding: 14, marginBottom: 12 }}>
@@ -1117,6 +1123,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           onClearAll={() => { clearLearnedTargets(project.url); setDriftTargets([]); }}
         />
       )}
+      {showPreflight && (
+        <PreflightModal url={project?.url ?? ''} onClose={() => setShowPreflight(false)} onConnect={() => { setShowPreflight(false); setShowSignIn(true); }} />
+      )}
       {visualBeats && project && (
         <VisualBeatsModal
           beats={visualBeats}
@@ -1183,6 +1192,61 @@ function LearnedTargetsModal({ url, drift, onClose, onForget, onClearAll }: {
           <button style={{ ...btn, marginTop: 14, background: '#fff', color: '#9a2b2b', borderColor: '#f0b8b8' }}
             onClick={() => { onClearAll(); force((n) => n + 1); }}>Glem alt for {host}</button>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Pre-flight «Sjekk oppsett»: klar/ikke-klar + ekte capture-test. */
+function PreflightModal({ url, onClose, onConnect }: { url: string; onClose: () => void; onConnect: () => void }) {
+  const [checks, setChecks] = useState<Check[]>(() => staticChecks());
+  const [probing, setProbing] = useState(false);
+  const overall = overallStatus(checks);
+  const COLOR: Record<Check['status'], string> = { ok: C.green, warn: '#b5651d', fail: '#c4453b', pending: C.inkFaint };
+  const ICON: Record<Check['status'], string> = { ok: '✓', warn: '!', fail: '✕', pending: '…' };
+  const runProbe = async () => {
+    setProbing(true);
+    const c = await captureProbe(url);
+    setChecks((cur) => [...cur.filter((x) => x.id !== 'capture'), c]);
+    setProbing(false);
+  };
+  const banner = overall === 'ready'
+    ? { t: 'Klar til å starte', c: C.green, bg: '#e6f3ec' }
+    : overall === 'blocked'
+      ? { t: 'Ikke klar — noe må fikses', c: '#c4453b', bg: '#fdecec' }
+      : { t: 'Klar med forbehold', c: '#b5651d', bg: '#fff8ec' };
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.32)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 540, maxWidth: '94vw', maxHeight: '86vh', overflowY: 'auto', background: C.panel, borderRadius: 14, padding: 22, fontFamily: C.font, color: C.ink, boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Sjekk oppsett</h3>
+          <div style={{ flex: 1 }} />
+          <div onClick={onClose} style={{ ...iconBtn, cursor: 'pointer' }}>✕</div>
+        </div>
+        <div style={{ background: banner.bg, color: banner.c, fontWeight: 700, fontSize: 13.5, borderRadius: 9, padding: '9px 12px', marginBottom: 14 }}>{banner.t}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {checks.map((c) => (
+            <div key={c.id} style={{ display: 'flex', gap: 10, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px' }}>
+              <span style={{ color: COLOR[c.status], fontWeight: 700, width: 14, flexShrink: 0 }}>{ICON[c.status]}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600 }}>{c.label}</div>
+                <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 2 }}>{c.detail}</div>
+                {c.fix && <div style={{ fontSize: 11.5, color: COLOR[c.status], marginTop: 3 }}>→ {c.fix}</div>}
+                {c.id === 'ai' && c.status === 'fail' && (
+                  <button style={{ ...btn, padding: '4px 10px', fontSize: 11.5, marginTop: 6 }} onClick={onConnect}>Koble til AI</button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <button style={{ ...btn, opacity: probing ? 0.6 : 1 }} disabled={probing} onClick={() => void runProbe()}>
+            {probing ? 'Tester capture…' : `Kjør capture-test${url ? ` mot ${(() => { try { return new URL(url).host; } catch { return url; } })()}` : ''}`}
+          </button>
+          <button style={{ ...btn }} onClick={() => setChecks(staticChecks())}>Oppdater</button>
+          <div style={{ flex: 1 }} />
+          <button style={{ ...outlineBtn }} onClick={onClose}>Lukk</button>
+        </div>
       </div>
     </div>
   );
