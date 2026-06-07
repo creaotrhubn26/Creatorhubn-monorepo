@@ -239,7 +239,7 @@ actor DeliveryService {
             )
             return url.path
         } catch {
-            print("[DeliveryService] RAW render fallback for \(pick.localId): \(error)")
+            AppLog.sync.error("[DeliveryService] RAW render fallback for \(String(describing: pick.localId), privacy: .public): \(error.localizedDescription, privacy: .public)")
             return pick.previewPath
         }
     }
@@ -330,7 +330,7 @@ actor DeliveryService {
                 // linkage is stale. Counter reconciliation is idempotent
                 // so a later retry (or a manual mark-complete from the
                 // web) will catch up.
-                print("[DeliveryService] linkShotToAsset failed: \(error)")
+                AppLog.sync.error("[DeliveryService] linkShotToAsset failed: \(error.localizedDescription, privacy: .public)")
             }
         }
 

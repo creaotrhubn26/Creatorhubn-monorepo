@@ -5095,7 +5095,7 @@ final class LiveCaptureModel {
                 if Task.isCancelled { return }
                 try await store.attachEnhancedKey(id: primaryAssetId, key: url.path)
             } catch {
-                print("[LiveCaptureModel] RAW preview retune failed for \(primaryAssetId): \(error)")
+                AppLog.liveCapture.error("[LiveCaptureModel] RAW preview retune failed for \(String(describing: primaryAssetId), privacy: .public): \(error.localizedDescription, privacy: .public)")
                 _ = self
             }
         }
@@ -5739,7 +5739,7 @@ final class LiveCaptureModel {
             // hint so the photographer knows AI-enhanced versions
             // won't appear, but no toast (deliver-success was the
             // load-bearing UX).
-            print("[LiveCaptureModel] Enhancement kickoff failed: \(error)")
+            AppLog.liveCapture.error("[LiveCaptureModel] Enhancement kickoff failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -6545,7 +6545,7 @@ final class LiveCaptureModel {
                     // remains as a perfectly usable fallback. Logged
                     // below so devs can see render failures during
                     // bring-up without disturbing the photographer.
-                    print("[LiveCaptureModel] RAW preview render failed for \(primaryAssetId): \(error)")
+                    AppLog.liveCapture.error("[LiveCaptureModel] RAW preview render failed for \(String(describing: primaryAssetId), privacy: .public): \(error.localizedDescription, privacy: .public)")
                     _ = self
                 }
             }

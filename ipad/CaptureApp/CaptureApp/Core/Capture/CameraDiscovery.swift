@@ -71,7 +71,7 @@ final class CameraDiscovery: ObservableObject {
                 switch state {
                 case .failed(let error):
                     self.permissionDenied = true
-                    print("CameraDiscovery: browser failed — \(error)")
+                    AppLog.capture.error("CameraDiscovery: browser failed — \(error.localizedDescription, privacy: .public)")
                 case .cancelled:
                     break
                 default:
@@ -112,11 +112,11 @@ final class CameraDiscovery: ObservableObject {
     private func scanLocalSubnets() async {
         let subnets = Self.localIPv4Subnets()
         if subnets.isEmpty {
-            print("CameraDiscovery: no private IPv4 subnets found — getifaddrs empty")
+            AppLog.capture.error("CameraDiscovery: no private IPv4 subnets found — getifaddrs empty")
             return
         }
         for s in subnets {
-            print("CameraDiscovery: scanning \(s.base).1-254 (skipping \(s.base).\(s.mine))")
+            AppLog.capture.notice("CameraDiscovery: scanning \(s.base, privacy: .public).1-254 (skipping \(s.base, privacy: .public).\(s.mine, privacy: .public))")
         }
         let hosts = subnets.flatMap(\.hosts)
         let batchSize = 16
@@ -136,7 +136,7 @@ final class CameraDiscovery: ObservableObject {
         }
         await MainActor.run {
             self.isSearching = false
-            print("CameraDiscovery: scan complete — \(self.cameras.count) camera(s) found")
+            AppLog.capture.notice("CameraDiscovery: scan complete — \(self.cameras.count, privacy: .public) camera(s) found")
         }
     }
 
@@ -179,7 +179,7 @@ final class CameraDiscovery: ObservableObject {
             _ = try await withTimeout(seconds: 3.5) {
                 try await client.connect()
             }
-            print("CameraDiscovery: CCAPI responder at \(baseURL.absoluteString)")
+            AppLog.capture.notice("CameraDiscovery: CCAPI responder at \(baseURL.absoluteString, privacy: .public)")
             let info = try? await client.deviceInformation()
             let found = Found(
                 id: key,
