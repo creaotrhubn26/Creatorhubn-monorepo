@@ -782,6 +782,7 @@ import { setupAdminTesterSkillsRoutes } from "./admin-tester-skills-routes";
 import { setupAdminTestCaseGeneratorRoutes } from "./admin-test-case-generator-routes";
 import { setupAdminAcademyRoutes } from "./admin-academy-routes";
 import { setupAcademyStripeWebhookRoutes } from "./academy-stripe-webhook-routes";
+import { setupAdminAcademyB2Routes } from "./admin-academy-b2-routes";
 import { setupAdminMarketingSeoRoutes } from "./admin-marketing-seo-routes";
 import { setupAdminIntegrationTestsRoutes } from "./admin-integration-tests-routes";
 import { setupOrchestrationRoutes } from "./orchestration-routes";
@@ -24478,6 +24479,7 @@ setupAdminFeatureCustomizationsRoutes({ app, pool, requireAdminSession });
 setupAdminTesterSkillsRoutes({ app, pool, requireAdminSession });
 setupAdminTestCaseGeneratorRoutes({ app, pool, requireAdminSession });
 setupAdminAcademyRoutes({ app, pool, requireAdminSession });
+setupAdminAcademyB2Routes({ app, pool, requireAdminSession });
 
 // Task #121a — Marketing SEO-fanen:
 //   /api/seo/keywords, /api/seo/pages, /api/seo/backlinks,

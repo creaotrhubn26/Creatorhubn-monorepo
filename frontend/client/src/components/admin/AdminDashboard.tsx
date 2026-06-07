@@ -91,6 +91,9 @@ import {
   Send,
   Receipt,
   HourglassEmpty,
+  CloudUpload,
+  CloudDownload,
+  DeleteOutline,
 } from '@mui/icons-material';
 import AdminStats from './AdminStats';
 import {
@@ -286,7 +289,18 @@ export default function AdminDashboard({
     onboardingUrl: string | null;
     expiresAt: string | null;
   }>({ open: false, instructorId: null, instructorName: null, instructorEmail: null, onboardingUrl: null, expiresAt: null });
-  const [academySection, setAcademySection] = useState<'instructors' | 'payouts' | 'transfers'>('instructors');
+  const [academySection, setAcademySection] = useState<'instructors' | 'payouts' | 'transfers' | 'b2-archive'>('instructors');
+  // Academy B2-arkiv (admin-only): upload-dialog state
+  const [academyB2UploadDialog, setAcademyB2UploadDialog] = useState<{
+    open: boolean;
+    courseId: string;
+    file: File | null;
+    isMaster: boolean;
+    progress: number;
+    isUploading: boolean;
+    error: string | null;
+  }>({ open: false, courseId: '', file: null, isMaster: true, progress: 0, isUploading: false, error: null });
+  const [academyB2DeleteConfirm, setAcademyB2DeleteConfirm] = useState<{ open: boolean; key: string | null }>({ open: false, key: null });
   const [hasSessionToken, setHasSessionToken] = useState<boolean>(() => {
     try {
       return Boolean(localStorage.getItem('creatorhub_auth_token'));
@@ -636,6 +650,193 @@ export default function AdminDashboard({
     staleTime: 60000,
     retry: false,
   });
+
+  // ─── Academy B2-arkiv (admin-only) ────────────────────────────
+  // Tabbed inn under Academy → "B2-arkiv". Vis filer i academy/-prefixet,
+  // aggregert stats, upload/download/delete.
+  type AcademyB2File = {
+    key: string;
+    sizeBytes: number;
+    lastModified: string | null;
+    isMaster: boolean;
+    courseId: string | null;
+    fileName: string;
+  };
+  type AcademyB2Stats = {
+    totalFiles: number;
+    totalSizeBytes: number;
+    byCourse: Array<{
+      courseId: string;
+      courseName: string | null;
+      fileCount: number;
+      sizeBytes: number;
+    }>;
+    byType: Array<{ ext: string; count: number; sizeBytes: number }>;
+    b2Configured: boolean;
+    bucketName?: string;
+  };
+  type AcademyCourseSummary = {
+    id: string;
+    title: string;
+  };
+
+  const academyB2ListQueryKey = ['/api/admin/academy/b2/list'] as const;
+  const academyB2StatsQueryKey = ['/api/admin/academy/b2/stats'] as const;
+
+  const { data: academyB2ListData, isLoading: academyB2ListLoading } = useQuery({
+    queryKey: academyB2ListQueryKey,
+    queryFn: () =>
+      fetchOptionalAdminData<{
+        files?: AcademyB2File[];
+        total?: number;
+        b2Configured?: boolean;
+        bucketName?: string;
+      } | null>('/api/admin/academy/b2/list?limit=500', null),
+    enabled: Boolean(currentUser?.isAdmin) && academySection === 'b2-archive',
+    staleTime: 30000,
+    retry: false,
+  });
+
+  const { data: academyB2StatsData, isLoading: academyB2StatsLoading } = useQuery({
+    queryKey: academyB2StatsQueryKey,
+    queryFn: () =>
+      fetchOptionalAdminData<AcademyB2Stats | null>(
+        '/api/admin/academy/b2/stats',
+        null,
+      ),
+    enabled: Boolean(currentUser?.isAdmin) && academySection === 'b2-archive',
+    staleTime: 30000,
+    retry: false,
+  });
+
+  // Kurs-dropdown for upload-dialog
+  const { data: academyCoursesData } = useQuery({
+    queryKey: ['/api/admin/academy/courses', 'b2-upload-dropdown'] as const,
+    queryFn: () =>
+      fetchOptionalAdminData<{
+        courses?: AcademyCourseSummary[];
+      } | null>('/api/admin/academy/courses?limit=500', null),
+    enabled: Boolean(currentUser?.isAdmin) && academySection === 'b2-archive',
+    staleTime: 60000,
+    retry: false,
+  });
+
+  const academyB2DeleteMutation = useMutation({
+    mutationFn: async (key: string) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(
+        `/api/admin/academy/b2/object?key=${encodeURIComponent(key)}`,
+        { method: 'DELETE', headers },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: academyB2ListQueryKey });
+      queryClient.invalidateQueries({ queryKey: academyB2StatsQueryKey });
+      setSnackbar({ open: true, message: 'Fil slettet fra B2.', severity: 'success' });
+    },
+    onError: (err) => {
+      console.error('[academy-b2] delete failed:', err);
+      setSnackbar({ open: true, message: 'Kunne ikke slette fil.', severity: 'error' });
+    },
+  });
+
+  const academyB2DownloadMutation = useMutation({
+    mutationFn: async (key: string) => {
+      const headers = await auth.getAuthHeader();
+      const response = (await apiRequest('/api/admin/academy/b2/download-url', {
+        method: 'POST',
+        headers,
+        body: { key },
+      })) as { downloadUrl: string | null; expiresAt: string | null; b2Configured?: boolean };
+      return response;
+    },
+    onSuccess: (data) => {
+      if (data?.downloadUrl) {
+        window.open(data.downloadUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        setSnackbar({
+          open: true,
+          message: 'Kunne ikke generere nedlastings-URL (B2 ikke konfigurert?).',
+          severity: 'warning',
+        });
+      }
+    },
+    onError: (err) => {
+      console.error('[academy-b2] download-url failed:', err);
+      setSnackbar({ open: true, message: 'Kunne ikke generere nedlastings-URL.', severity: 'error' });
+    },
+  });
+
+  const academyB2StartUpload = async () => {
+    const { courseId, file, isMaster } = academyB2UploadDialog;
+    if (!courseId || !file) {
+      setAcademyB2UploadDialog((prev) => ({
+        ...prev,
+        error: 'Velg kurs og fil før opplasting.',
+      }));
+      return;
+    }
+    setAcademyB2UploadDialog((prev) => ({ ...prev, isUploading: true, error: null, progress: 0 }));
+    try {
+      const headers = await auth.getAuthHeader();
+      const presign = (await apiRequest('/api/admin/academy/b2/upload-url', {
+        method: 'POST',
+        headers,
+        body: {
+          courseId,
+          fileName: file.name,
+          contentType: file.type || 'application/octet-stream',
+          isMaster,
+        },
+      })) as { uploadUrl: string | null; key: string | null; expiresAt: string | null; b2Configured?: boolean };
+
+      if (!presign?.uploadUrl) {
+        setAcademyB2UploadDialog((prev) => ({
+          ...prev,
+          isUploading: false,
+          error: 'B2 ikke konfigurert — kan ikke laste opp.',
+        }));
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', presign.uploadUrl as string, true);
+        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            setAcademyB2UploadDialog((prev) => ({ ...prev, progress: pct }));
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(new Error(`B2 PUT feilet med status ${xhr.status}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error('Nettverksfeil under opplasting til B2.'));
+        xhr.send(file);
+      });
+
+      queryClient.invalidateQueries({ queryKey: academyB2ListQueryKey });
+      queryClient.invalidateQueries({ queryKey: academyB2StatsQueryKey });
+      setSnackbar({ open: true, message: 'Fil lastet opp til B2.', severity: 'success' });
+      setAcademyB2UploadDialog({
+        open: false,
+        courseId: '',
+        file: null,
+        isMaster: true,
+        progress: 0,
+        isUploading: false,
+        error: null,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ukjent feil under opplasting.';
+      setAcademyB2UploadDialog((prev) => ({ ...prev, isUploading: false, error: message }));
+    }
+  };
 
   const generateOnboardingLinkMutation = useMutation({
     mutationFn: async (instructor: { id: string; name: string | null; email: string | null }) => {
@@ -1866,6 +2067,14 @@ export default function AdminDashboard({
             icon={<Receipt />}
             iconPosition="start"
           />
+          <Tab
+            value="b2-archive"
+            label={`B2-arkiv${
+              academyB2StatsData?.totalFiles ? ` (${academyB2StatsData.totalFiles})` : ''
+            }`}
+            icon={<Storage />}
+            iconPosition="start"
+          />
         </Tabs>
 
         {/* Instruktør-seksjon */}
@@ -2484,6 +2693,391 @@ export default function AdminDashboard({
                 )}
               </CardContent>
             </Card>
+          </>
+        )}
+
+        {/* B2-arkiv-seksjon (admin-only) */}
+        {academySection === 'b2-archive' && (
+          <>
+            {academyB2ListData?.b2Configured === false && (
+              <Alert severity="warning" sx={{ mb: 3 }}>
+                B2 ikke konfigurert. Sett <code>B2_APPLICATION_KEY_ID</code> +{' '}
+                <code>B2_APPLICATION_KEY</code> + <code>B2_BUCKET_NAME</code> på Render.
+              </Alert>
+            )}
+
+            {/* B2 KPI-rad */}
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12} sm={6} md={4}>
+                <Card sx={darkCardSx}>
+                  <CardContent>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                      Totalt antall filer
+                    </Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 700, my: 1, color: '#ff8c00' }}>
+                      {academyB2StatsLoading ? (
+                        <CircularProgress size={24} sx={{ color: '#ff8c00' }} />
+                      ) : (
+                        fmt(academyB2StatsData?.totalFiles ?? 0)
+                      )}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                      i academy/-prefixet
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <Card sx={darkCardSx}>
+                  <CardContent>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                      Total størrelse
+                    </Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 700, my: 1, color: '#fff' }}>
+                      {academyB2StatsLoading ? (
+                        <CircularProgress size={24} sx={{ color: '#fff' }} />
+                      ) : (
+                        (() => {
+                          const bytes = academyB2StatsData?.totalSizeBytes ?? 0;
+                          if (bytes >= 1e12) return `${(bytes / 1e12).toFixed(2)} TB`;
+                          if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
+                          if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(2)} MB`;
+                          if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(2)} KB`;
+                          return `${bytes} B`;
+                        })()
+                      )}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                      master-videoer + assets
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <Card sx={darkCardSx}>
+                  <CardContent>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                      Kurs med arkiv
+                    </Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 700, my: 1, color: '#fff' }}>
+                      {academyB2StatsLoading ? (
+                        <CircularProgress size={24} sx={{ color: '#fff' }} />
+                      ) : (
+                        fmt(academyB2StatsData?.byCourse?.length ?? 0)
+                      )}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                      unike course-IDer i bucket
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+
+            {/* Per-kurs breakdown */}
+            {(academyB2StatsData?.byCourse?.length ?? 0) > 0 && (
+              <Card sx={{ ...darkCardSx, mb: 3 }}>
+                <CardContent>
+                  <Typography variant="h6" sx={{ color: '#fff', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Storage sx={{ color: '#ff8c00' }} />
+                    Per kurs
+                  </Typography>
+                  <Grid container spacing={1}>
+                    {academyB2StatsData?.byCourse.slice(0, 8).map((row) => (
+                      <Grid item xs={12} sm={6} md={4} key={row.courseId}>
+                        <Paper
+                          sx={{
+                            p: 1.5,
+                            bgcolor: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: 2,
+                            color: '#fff',
+                          }}
+                        >
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {row.courseName ?? row.courseId}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', display: 'block' }}>
+                            {row.fileCount} filer · {(row.sizeBytes / 1e6).toFixed(1)} MB
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Fil-liste + upload-knapp */}
+            <Card sx={darkCardSx}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                  <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
+                    <Storage sx={{ color: '#ff8c00' }} />
+                    Filer i academy/
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<CloudUpload />}
+                    onClick={() =>
+                      setAcademyB2UploadDialog({
+                        open: true,
+                        courseId: '',
+                        file: null,
+                        isMaster: true,
+                        progress: 0,
+                        isUploading: false,
+                        error: null,
+                      })
+                    }
+                    disabled={academyB2ListData?.b2Configured === false}
+                    sx={{
+                      bgcolor: '#ff8c00',
+                      '&:hover': { bgcolor: '#e67e00' },
+                      textTransform: 'none',
+                    }}
+                  >
+                    Upload master
+                  </Button>
+                </Box>
+
+                {academyB2ListLoading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                    <CircularProgress sx={{ color: '#ff8c00' }} />
+                  </Box>
+                ) : (academyB2ListData?.files?.length ?? 0) === 0 ? (
+                  <Alert severity="info" sx={{ bgcolor: 'rgba(33,150,243,0.12)' }}>
+                    Ingen filer i academy/-prefixet enda.
+                  </Alert>
+                ) : (
+                  <Grid container spacing={1}>
+                    {academyB2ListData?.files?.map((file) => (
+                      <Grid item xs={12} key={file.key}>
+                        <Paper
+                          sx={{
+                            p: 1.5,
+                            bgcolor: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: 2,
+                            color: '#fff',
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                            <Box sx={{ flex: 1, minWidth: 220 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-all' }}>
+                                {file.key}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                sx={{ color: 'rgba(255,255,255,0.6)', display: 'block' }}
+                              >
+                                {fmtDateTime(file.lastModified)} ·{' '}
+                                {(file.sizeBytes / 1e6).toFixed(2)} MB
+                                {file.courseId ? ` · kurs: ${file.courseId}` : ''}
+                              </Typography>
+                            </Box>
+                            {file.isMaster && (
+                              <Chip
+                                label="MASTER"
+                                size="small"
+                                sx={{
+                                  bgcolor: 'rgba(255,140,0,0.18)',
+                                  color: '#ffb74d',
+                                  fontWeight: 600,
+                                }}
+                              />
+                            )}
+                            <Tooltip title="Last ned (signed URL, 30 min)">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => academyB2DownloadMutation.mutate(file.key)}
+                                  disabled={academyB2DownloadMutation.isPending}
+                                  sx={{ color: 'rgba(255,255,255,0.8)' }}
+                                >
+                                  <CloudDownload fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Slett fra B2">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  onClick={() =>
+                                    setAcademyB2DeleteConfirm({ open: true, key: file.key })
+                                  }
+                                  disabled={academyB2DeleteMutation.isPending}
+                                  sx={{ color: '#ef9a9a' }}
+                                >
+                                  <DeleteOutline fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Box>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Upload-dialog */}
+            <Dialog
+              open={academyB2UploadDialog.open}
+              onClose={() =>
+                !academyB2UploadDialog.isUploading &&
+                setAcademyB2UploadDialog((prev) => ({ ...prev, open: false }))
+              }
+              fullWidth
+              maxWidth="sm"
+            >
+              <DialogTitle>Last opp til Academy B2-arkiv</DialogTitle>
+              <DialogContent>
+                <DialogContentText sx={{ mb: 2 }}>
+                  Filen skrives til{' '}
+                  <code>
+                    academy/courses/{academyB2UploadDialog.courseId || '<courseId>'}/
+                    {academyB2UploadDialog.isMaster ? 'masters' : 'assets'}/
+                    {academyB2UploadDialog.file?.name || '<filnavn>'}
+                  </code>
+                </DialogContentText>
+                <TextField
+                  select
+                  fullWidth
+                  label="Kurs"
+                  value={academyB2UploadDialog.courseId}
+                  onChange={(e) =>
+                    setAcademyB2UploadDialog((prev) => ({
+                      ...prev,
+                      courseId: e.target.value,
+                      error: null,
+                    }))
+                  }
+                  sx={{ mb: 2 }}
+                  disabled={academyB2UploadDialog.isUploading}
+                >
+                  <MenuItem value="">— velg kurs —</MenuItem>
+                  {(academyCoursesData?.courses ?? []).map((course) => (
+                    <MenuItem key={course.id} value={course.id}>
+                      {course.title} ({course.id.slice(0, 8)})
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    startIcon={<CloudUpload />}
+                    disabled={academyB2UploadDialog.isUploading}
+                  >
+                    Velg fil
+                    <input
+                      type="file"
+                      hidden
+                      onChange={(e) =>
+                        setAcademyB2UploadDialog((prev) => ({
+                          ...prev,
+                          file: e.target.files?.[0] ?? null,
+                          error: null,
+                        }))
+                      }
+                    />
+                  </Button>
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    {academyB2UploadDialog.file?.name || 'Ingen fil valgt'}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                  <input
+                    id="academy-b2-is-master"
+                    type="checkbox"
+                    checked={academyB2UploadDialog.isMaster}
+                    onChange={(e) =>
+                      setAcademyB2UploadDialog((prev) => ({
+                        ...prev,
+                        isMaster: e.target.checked,
+                      }))
+                    }
+                    disabled={academyB2UploadDialog.isUploading}
+                  />
+                  <label htmlFor="academy-b2-is-master">
+                    Master-fil (lagres under <code>masters/</code> — ellers under <code>assets/</code>)
+                  </label>
+                </Box>
+                {academyB2UploadDialog.isUploading && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      Laster opp… {academyB2UploadDialog.progress}%
+                    </Typography>
+                    <LinearProgress
+                      variant="determinate"
+                      value={academyB2UploadDialog.progress}
+                      sx={{ mt: 0.5 }}
+                    />
+                  </Box>
+                )}
+                {academyB2UploadDialog.error && (
+                  <Alert severity="error" sx={{ mb: 1 }}>
+                    {academyB2UploadDialog.error}
+                  </Alert>
+                )}
+              </DialogContent>
+              <DialogActions>
+                <Button
+                  onClick={() =>
+                    setAcademyB2UploadDialog((prev) => ({ ...prev, open: false }))
+                  }
+                  disabled={academyB2UploadDialog.isUploading}
+                >
+                  Avbryt
+                </Button>
+                <Button
+                  onClick={academyB2StartUpload}
+                  variant="contained"
+                  disabled={
+                    academyB2UploadDialog.isUploading ||
+                    !academyB2UploadDialog.courseId ||
+                    !academyB2UploadDialog.file
+                  }
+                  sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+                >
+                  {academyB2UploadDialog.isUploading ? 'Laster opp…' : 'Last opp'}
+                </Button>
+              </DialogActions>
+            </Dialog>
+
+            {/* Slett-confirm-dialog */}
+            <Dialog
+              open={academyB2DeleteConfirm.open}
+              onClose={() => setAcademyB2DeleteConfirm({ open: false, key: null })}
+            >
+              <DialogTitle>Slett fil fra B2?</DialogTitle>
+              <DialogContent>
+                <DialogContentText>
+                  Dette fjerner objektet permanent fra Backblaze. Handlingen kan ikke angres.
+                  <br />
+                  <code>{academyB2DeleteConfirm.key}</code>
+                </DialogContentText>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setAcademyB2DeleteConfirm({ open: false, key: null })}>
+                  Avbryt
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (academyB2DeleteConfirm.key) {
+                      academyB2DeleteMutation.mutate(academyB2DeleteConfirm.key);
+                    }
+                    setAcademyB2DeleteConfirm({ open: false, key: null });
+                  }}
+                  color="error"
+                  variant="contained"
+                >
+                  Slett
+                </Button>
+              </DialogActions>
+            </Dialog>
           </>
         )}
       </Box>
