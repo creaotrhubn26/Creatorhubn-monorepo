@@ -114,7 +114,7 @@ jobs:
         # En enkelt notary-submission tar normalt 5-15 min; bumpet etter
         # 2026-06-05-incident på release-creatorhub-one-desk der Apple-
         # siden hang i 45 min og outer-timeout killet før retry startet.
-        timeout-minutes: 90
+        timeout-minutes: 160
         run: |
           BUNDLE_DIR="apps/resolve-script-manager/src-tauri/target/${{ matrix.target }}/release/bundle"
           APP_PATH=$(find "$BUNDLE_DIR/macos" -name "*.app" | head -1)
@@ -148,7 +148,7 @@ jobs:
                 --apple-id "$APPLE_ID" \
                 --password "$APPLE_PASSWORD" \
                 --team-id "$APPLE_TEAM_ID" \
-                --timeout 25m; then
+                --timeout 40m; then
                 echo "::endgroup::"
                 local status
                 status=$(xcrun notarytool info "$submission_id" \
@@ -167,21 +167,27 @@ jobs:
               echo "::warning::Notary wait failed (likely Apple-side network blip), retrying..."
               sleep $((attempts * 30))
             done
-            echo "::error::Notarization wait failed after $max_attempts attempts"
-            return 1
+            # IKKE-fatal ved timeout: Apple-køen kan henge i timevis (incident
+            # 2026-06-05/07) selv om innsendingen til slutt blir Accepted. Vi lar
+            # releasen publisere USTAPLET — appen er fortsatt notarisert async og
+            # passerer Gatekeeper online. Staple kan gjøres ved re-kjøring senere.
+            echo "::warning::$label: notarisering ikke bekreftet innen vinduet ($submission_id). Publiserer ustaplet — sjekk 'notarytool info $submission_id' senere; re-kjør for staple."
+            return 0
           }
 
           APP_ZIP=$RUNNER_TEMP/app.zip
           ditto -c -k --keepParent "$APP_PATH" "$APP_ZIP"
 
           notarize_with_retry "$APP_ZIP" ".app"
-          xcrun stapler staple "$APP_PATH"
-          xcrun stapler validate "$APP_PATH"
+          # Best-effort staple: feiler hvis notarisering ikke er bekreftet ennå —
+          # da publiserer vi ustaplet (virker online) i stedet for å felle releasen.
+          xcrun stapler staple "$APP_PATH" || echo "::warning::.app ikke staplet (notarisering ikke bekreftet ennå)"
+          xcrun stapler validate "$APP_PATH" || true
 
           if [ -n "$DMG_PATH" ]; then
             notarize_with_retry "$DMG_PATH" ".dmg"
-            xcrun stapler staple "$DMG_PATH"
-            xcrun stapler validate "$DMG_PATH"
+            xcrun stapler staple "$DMG_PATH" || echo "::warning::.dmg ikke staplet (notarisering ikke bekreftet ennå)"
+            xcrun stapler validate "$DMG_PATH" || true
           fi
 
           rm -f "$APP_ZIP"

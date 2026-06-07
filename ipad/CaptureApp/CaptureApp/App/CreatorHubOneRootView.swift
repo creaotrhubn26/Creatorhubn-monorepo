@@ -166,9 +166,12 @@ struct CreatorHubOneRootView: View {
             .tabItem { Label("Meldinger", systemImage: "envelope") }
             .tag(Tab.messages)
 
+            // Debug-fanen følger KUN med i DEBUG-builds — skjules i release.
+            #if DEBUG
             FoundationDebugView()
                 .tabItem { Label("Debug", systemImage: "wrench.and.screwdriver") }
                 .tag(Tab.debug)
+            #endif
         }
     }
 }
