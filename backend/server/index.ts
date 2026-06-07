@@ -484,6 +484,7 @@ import { setupTalentSelftapesRoutes } from "./talent-selftapes-routes";
 import { setupAgencyLeadsRoutes } from "./agency-leads-routes";
 import { setupCockpitB2BRoutes } from "./cockpit-b2b-routes";
 import { setupLinkedInOAuthRoutes } from "./linkedin-oauth-routes";
+import { setupLinkedInPrepRoutes } from "./linkedin-prep-routes";
 import { setupRoleRoomCandidateStatusRoutes } from "./role-room-candidate-status-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
@@ -24041,6 +24042,13 @@ setupCockpitB2BRoutes({
 });
 // LinkedIn OAuth-setup for Creatorhub AS + The Role Room Showcase
 setupLinkedInOAuthRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// LinkedIn Lead Sync + Conversions API klargjøring (kjøres under review)
+setupLinkedInPrepRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
