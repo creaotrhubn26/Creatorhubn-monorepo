@@ -190,8 +190,11 @@ function safeRedirectBase(): string {
 }
 
 function googleOAuthConfig(): { clientId: string; clientSecret: string; redirectUri: string } | null {
-  const clientId = process.env.GOOGLE_CREATORHUB_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CREATORHUB_CLIENT_SECRET;
+  // Fallback-kjede: GOOGLE_CREATORHUB_* (om explicit satt) → GOOGLE_*
+  // (legacy/delt OAuth-client). Vi bruker drive.file-scope så samme
+  // client kan brukes til andre Google-tjenester uten konflikt.
+  const clientId = process.env.GOOGLE_CREATORHUB_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CREATORHUB_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) return null;
   return {
     clientId,
