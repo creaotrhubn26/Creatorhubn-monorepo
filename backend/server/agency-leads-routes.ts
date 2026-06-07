@@ -24,6 +24,7 @@ import {
   isFalConfigured,
   MARKETING_PROMPTS,
 } from "./fal-image-service.js";
+import { fireAgencyLeadConversion } from "./linkedin-conversions-service.js";
 
 interface SessionLike {
   userId: string;
@@ -151,6 +152,22 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
            VALUES ($1::uuid, 'created', $2)`,
           [lead.id, email],
         );
+      } catch { /* best-effort */ }
+
+      // Queue LinkedIn Conversion API event (Lead) — fires regardless of
+      // whether LinkedIn approval is in yet; cron drainer sender når godkjent.
+      try {
+        const li_fat_id = (body as { li_fat_id?: string })?.li_fat_id ?? null;
+        const firstWord = contactName.split(" ")[0];
+        const lastWords = contactName.split(" ").slice(1).join(" ");
+        await fireAgencyLeadConversion(pool, {
+          leadId: lead.id,
+          email,
+          firstName: firstWord,
+          lastName: lastWords,
+          agencyName,
+          linkedinClickId: li_fat_id ?? undefined,
+        });
       } catch { /* best-effort */ }
 
       // Bekreftelses-mail til lead + intern notifikasjon (fire-and-forget)
