@@ -695,6 +695,21 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
           onClose={() => setEditDialog(false)}
           maxWidth="sm"
           fullWidth
+          PaperProps={{
+            sx: {
+              bgcolor: 'rgba(15,23,42,0.96)',
+              backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: '#fff',
+              '& .MuiOutlinedInput-root': { color: '#fff' },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+              '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' },
+              '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+              '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.6)' },
+              '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+              '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.5)', opacity: 1 },
+            },
+          }}
         >
           <DialogTitle>Rediger kategori</DialogTitle>
           <DialogContent>
@@ -825,7 +840,18 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
       )}
 
       {/* Confirm Delete Category Dialog */}
-      <Dialog open={!!confirmDeleteCategoryId} onClose={() => setConfirmDeleteCategoryId(null)}>
+      <Dialog
+        open={!!confirmDeleteCategoryId}
+        onClose={() => setConfirmDeleteCategoryId(null)}
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+          },
+        }}
+      >
         <DialogTitle>Bekreft sletting</DialogTitle>
         <DialogContent>
           <Typography>Er du sikker på at du vil slette denne kategorien? Denne handlingen kan ikke angres.</Typography>
@@ -848,7 +874,27 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
       </Dialog>
 
       {/* Add Category Dialog */}
-      <Dialog open={showAddDialog} onClose={() => setShowAddDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={showAddDialog}
+        onClose={() => setShowAddDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiOutlinedInput-root': { color: '#fff' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+            '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' },
+            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.6)' },
+            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.5)', opacity: 1 },
+          },
+        }}
+      >
         <DialogTitle>Opprett ny kategori</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>

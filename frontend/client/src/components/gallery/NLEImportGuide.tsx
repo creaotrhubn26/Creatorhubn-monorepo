@@ -27,12 +27,15 @@ import {
 } from '@mui/icons-material';
 
 const SERIF_STACK = '"Cormorant Garamond", "Playfair Display", Georgia, serif';
-const INK = '#1a1612';
-const PAPER = '#fdfaf5';
-const PAPER_DEEP = '#f7f1e8';
+// Dashboard-konsistent mørk palett (tidligere cream/editorial-tokens).
+// INK = primær tekstfarge, PAPER = dialog-bg, PAPER_DEEP = sekundær bg,
+// ACCENT = aksent, MUTED = sekundær tekst, HAIRLINE = subtil border.
+const INK = '#fff';
+const PAPER = 'rgba(15,23,42,0.96)';
+const PAPER_DEEP = 'rgba(255,255,255,0.04)';
 const ACCENT = '#d97706';
-const MUTED = '#5a4f42';
-const HAIRLINE = 'rgba(168, 149, 126, 0.42)';
+const MUTED = 'rgba(255,255,255,0.7)';
+const HAIRLINE = 'rgba(255,255,255,0.08)';
 
 interface Props {
   open: boolean;
@@ -183,10 +186,11 @@ const NLEImportGuide: React.FC<Props> = ({ open, onClose }) => {
       PaperProps={{
         sx: {
           bgcolor: PAPER,
+          backdropFilter: 'blur(8px)',
           color: INK,
           borderRadius: 0,
           border: `1px solid ${HAIRLINE}`,
-          boxShadow: '0 20px 60px rgba(26, 22, 18, 0.32)',
+          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.6)',
         },
       }}
     >
@@ -339,8 +343,8 @@ const NLEImportGuide: React.FC<Props> = ({ open, onClose }) => {
                   width: 36,
                   height: 36,
                   borderRadius: '50%',
-                  bgcolor: INK,
-                  color: PAPER,
+                  bgcolor: ACCENT,
+                  color: '#fff',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

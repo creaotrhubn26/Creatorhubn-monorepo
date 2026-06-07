@@ -149,8 +149,10 @@ const PrintOrderDialog: React.FC<Props> = ({
       fullWidth
       PaperProps={{
         sx: {
-          background: 'linear-gradient(180deg, #fdfaf5 0%, #f7f1e8 100%)',
-          color: '#1a1612',
+          bgcolor: 'rgba(15,23,42,0.96)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          color: '#fff',
           minHeight: { xs: '100vh', sm: '85vh' },
           borderRadius: { xs: 0, sm: 3 },
           overflow: 'hidden',
@@ -163,9 +165,9 @@ const PrintOrderDialog: React.FC<Props> = ({
           disabled={submitting}
           aria-label="Lukk"
           sx={{
-            color: '#1a1612',
-            bgcolor: 'rgba(255,255,255,0.6)',
-            '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' },
+            color: '#fff',
+            bgcolor: 'rgba(255,255,255,0.08)',
+            '&:hover': { bgcolor: 'rgba(255,255,255,0.16)' },
           }}
         >
           <CloseIcon />
@@ -180,7 +182,7 @@ const PrintOrderDialog: React.FC<Props> = ({
               fontSize: '0.7rem',
               fontWeight: 700,
               letterSpacing: '0.32em',
-              color: '#a8957e',
+              color: '#d97706',
               textTransform: 'uppercase',
               mb: 1.5,
             }}
@@ -195,7 +197,7 @@ const PrintOrderDialog: React.FC<Props> = ({
               fontSize: { xs: '2rem', sm: '2.8rem' },
               lineHeight: 1.0,
               letterSpacing: '-0.02em',
-              color: '#1a1612',
+              color: '#fff',
               mb: 1,
             }}
           >
@@ -206,7 +208,7 @@ const PrintOrderDialog: React.FC<Props> = ({
               fontFamily: SERIF_STACK,
               fontStyle: 'italic',
               fontSize: '1rem',
-              color: '#5a4f42',
+              color: 'rgba(255,255,255,0.7)',
             }}
           >
             Velg størrelse og materiale
@@ -220,7 +222,7 @@ const PrintOrderDialog: React.FC<Props> = ({
               maxWidth: 280,
               mx: 'auto',
               mb: 4,
-              boxShadow: '0 12px 32px rgba(26,22,18,0.18)',
+              boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
               borderRadius: 0.5,
               overflow: 'hidden',
             }}
@@ -244,8 +246,9 @@ const PrintOrderDialog: React.FC<Props> = ({
             severity="info"
             sx={{
               bgcolor: 'rgba(217,119,6,0.08)',
-              color: '#1a1612',
+              color: '#fff',
               border: '1px solid rgba(217,119,6,0.32)',
+              '& .MuiAlert-icon': { color: '#d97706' },
             }}
           >
             Print-katalogen er ikke konfigurert ennå. Kontakt fotografen.
@@ -281,14 +284,14 @@ const PrintOrderDialog: React.FC<Props> = ({
                   sx={{
                     cursor: 'pointer',
                     p: 2.5,
-                    bgcolor: isSelected ? 'rgba(217,119,6,0.10)' : 'rgba(255,255,255,0.6)',
-                    border: `2px solid ${isSelected ? '#d97706' : 'rgba(168,149,126,0.32)'}`,
+                    bgcolor: isSelected ? 'rgba(217,119,6,0.16)' : 'rgba(255,255,255,0.04)',
+                    border: `2px solid ${isSelected ? '#d97706' : 'rgba(255,255,255,0.12)'}`,
                     borderRadius: 1,
                     position: 'relative',
                     transition: 'all 0.2s ease',
                     '&:hover': {
                       borderColor: '#d97706',
-                      bgcolor: 'rgba(217,119,6,0.04)',
+                      bgcolor: 'rgba(217,119,6,0.08)',
                     },
                     '&:focus-visible': { outline: '2px solid #d97706', outlineOffset: 2 },
                   }}
@@ -309,7 +312,7 @@ const PrintOrderDialog: React.FC<Props> = ({
                       fontFamily: SERIF_STACK,
                       fontSize: '1.4rem',
                       fontWeight: 500,
-                      color: '#1a1612',
+                      color: '#fff',
                       mb: 0.5,
                       pr: 3,
                     }}
@@ -320,7 +323,7 @@ const PrintOrderDialog: React.FC<Props> = ({
                     <Typography
                       variant="caption"
                       sx={{
-                        color: '#5a4f42',
+                        color: 'rgba(255,255,255,0.7)',
                         fontStyle: 'italic',
                         display: 'block',
                         mb: 1,
@@ -332,18 +335,18 @@ const PrintOrderDialog: React.FC<Props> = ({
                   {p.description && (
                     <Typography
                       variant="body2"
-                      sx={{ color: '#5a4f42', mb: 1.5, lineHeight: 1.5, fontSize: '0.85rem' }}
+                      sx={{ color: 'rgba(255,255,255,0.6)', mb: 1.5, lineHeight: 1.5, fontSize: '0.85rem' }}
                     >
                       {p.description}
                     </Typography>
                   )}
-                  <Divider sx={{ my: 1.5, borderColor: 'rgba(168,149,126,0.24)' }} />
+                  <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.08)' }} />
                   <Typography
                     sx={{
                       fontFamily: SERIF_STACK,
                       fontSize: '1.6rem',
                       fontWeight: 500,
-                      color: '#1a1612',
+                      color: '#fff',
                     }}
                   >
                     {formatPrice(p.unitPrice, p.currency)}
@@ -363,14 +366,14 @@ const PrintOrderDialog: React.FC<Props> = ({
             justifyContent="center"
             sx={{ mb: 3 }}
           >
-            <Typography sx={{ fontFamily: SERIF_STACK, fontStyle: 'italic', color: '#5a4f42' }}>
+            <Typography sx={{ fontFamily: SERIF_STACK, fontStyle: 'italic', color: 'rgba(255,255,255,0.7)' }}>
               Antall
             </Typography>
             <IconButton
               size="small"
               onClick={() => setQuantity((q) => Math.max(1, q - 1))}
               aria-label="Færre"
-              sx={{ border: '1px solid #a8957e', color: '#1a1612' }}
+              sx={{ border: '1px solid rgba(255,255,255,0.23)', color: '#fff' }}
             >
               <MinusIcon fontSize="small" />
             </IconButton>
@@ -381,6 +384,7 @@ const PrintOrderDialog: React.FC<Props> = ({
                 minWidth: 32,
                 textAlign: 'center',
                 fontWeight: 500,
+                color: '#fff',
               }}
             >
               {quantity}
@@ -389,7 +393,7 @@ const PrintOrderDialog: React.FC<Props> = ({
               size="small"
               onClick={() => setQuantity((q) => Math.min(99, q + 1))}
               aria-label="Flere"
-              sx={{ border: '1px solid #a8957e', color: '#1a1612' }}
+              sx={{ border: '1px solid rgba(255,255,255,0.23)', color: '#fff' }}
             >
               <PlusIcon fontSize="small" />
             </IconButton>
@@ -410,7 +414,7 @@ const PrintOrderDialog: React.FC<Props> = ({
                 fontFamily: SERIF_STACK,
                 fontStyle: 'italic',
                 fontSize: '1rem',
-                color: '#5a4f42',
+                color: 'rgba(255,255,255,0.7)',
                 mb: 0.5,
               }}
             >
@@ -421,7 +425,7 @@ const PrintOrderDialog: React.FC<Props> = ({
                 fontFamily: SERIF_STACK,
                 fontSize: '2.4rem',
                 fontWeight: 400,
-                color: '#1a1612',
+                color: '#fff',
                 mb: 3,
                 letterSpacing: '-0.02em',
               }}
@@ -431,10 +435,10 @@ const PrintOrderDialog: React.FC<Props> = ({
             <Button
               onClick={handleCheckout}
               disabled={submitting}
-              startIcon={submitting ? <CircularProgress size={18} sx={{ color: '#fdfaf5' }} /> : <BagIcon />}
+              startIcon={submitting ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <BagIcon />}
               sx={{
-                bgcolor: '#1a1612',
-                color: '#fdfaf5',
+                bgcolor: '#d97706',
+                color: '#fff',
                 fontFamily: '"Inter", "Segoe UI", sans-serif',
                 fontWeight: 600,
                 letterSpacing: '0.04em',
@@ -444,15 +448,15 @@ const PrintOrderDialog: React.FC<Props> = ({
                 py: 1.8,
                 borderRadius: 0,
                 minWidth: 240,
-                '&:hover': { bgcolor: '#2d2620' },
-                '&.Mui-disabled': { bgcolor: '#a8957e', color: '#fdfaf5' },
+                '&:hover': { bgcolor: '#b45309' },
+                '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)' },
               }}
             >
               {submitting ? 'Sender til betaling…' : 'Gå til betaling'}
             </Button>
             <Typography
               variant="caption"
-              sx={{ display: 'block', mt: 2, color: '#a8957e', fontStyle: 'italic' }}
+              sx={{ display: 'block', mt: 2, color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}
             >
               Sikker betaling via Stripe · Levering 7–14 dager
             </Typography>

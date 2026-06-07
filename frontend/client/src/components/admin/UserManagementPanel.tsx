@@ -1624,11 +1624,12 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 label={`${filteredUsers.length} i nåværende søk`}
                 size="small"
                 sx={{
-                  bgcolor: '#ffffff',
+                  bgcolor: 'rgba(255,255,255,0.06)',
                   color: '#4e473f',
                   borderRadius: '999px',
-                  border: '1px solid #ebe4da',
+                  border: '1px solid rgba(255,255,255,0.12)',
                   fontWeight: 600,
+                  backdropFilter: 'blur(8px)',
                 }}
               />
             </Box>
@@ -1944,7 +1945,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 px: { xs: 2, sm: 3 },
                 py: { xs: 2, sm: 2.5 },
                 borderBottom: '1px solid rgba(255,255,255,0.10)',
-                bgcolor: '#ffffff',
+                bgcolor: 'rgba(255,255,255,0.04)',
+                backdropFilter: 'blur(8px)',
               }}
             >
               <Alert

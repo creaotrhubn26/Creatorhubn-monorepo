@@ -262,16 +262,27 @@ export const ClientVersionTabs: React.FC<Props> = ({
 
   return (
     <>
-      <Card sx={{ borderRadius: 2 }}>
+      <Card
+        sx={{
+          borderRadius: 2,
+          bgcolor: 'rgba(15,23,42,0.6)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          color: '#fff',
+          backdropFilter: 'blur(8px)',
+        }}
+      >
         <Tabs
           value={activeIdx}
           onChange={(_, v) => setActiveIdx(v as number)}
           variant="scrollable"
           scrollButtons="auto"
           sx={{
-            borderBottom: '1px solid rgba(15,23,42,0.08)',
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
             px: 2,
             minHeight: 48,
+            '& .MuiTab-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .Mui-selected': { color: '#fff !important' },
+            '& .MuiTabs-indicator': { backgroundColor: '#d97706' },
           }}
         >
           {versions.map((v, i) => (
@@ -306,10 +317,10 @@ export const ClientVersionTabs: React.FC<Props> = ({
                 flexWrap="wrap"
               >
                 <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>
                     {activeVersion.label}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                     {activeVersion.imageCount} fil(er)
                     {activeVersion.publishedAt
                       ? ` · publisert ${formatDate(activeVersion.publishedAt)}`
@@ -381,12 +392,30 @@ export const ClientVersionTabs: React.FC<Props> = ({
         onClose={() => setRequestChangesOpen(false)}
         maxWidth="sm"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiOutlinedInput-root': {
+              color: '#fff',
+              '& fieldset': { borderColor: 'rgba(255,255,255,0.23)' },
+              '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
+            },
+            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiOutlinedInput-input::placeholder': {
+              color: 'rgba(255,255,255,0.5)',
+              opacity: 1,
+            },
+          },
+        }}
       >
-        <DialogTitle>
+        <DialogTitle sx={{ color: '#fff' }}>
           Be om endringer på {activeVersion?.label}
         </DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography variant="body2" sx={{ mb: 2, color: 'rgba(255,255,255,0.7)' }}>
             Beskriv kort hva som skal endres. Fotografen får tilbakemeldingen
             på e-post umiddelbart.
           </Typography>
@@ -401,7 +430,11 @@ export const ClientVersionTabs: React.FC<Props> = ({
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRequestChangesOpen(false)} disabled={submitting}>
+          <Button
+            onClick={() => setRequestChangesOpen(false)}
+            disabled={submitting}
+            sx={{ color: 'rgba(255,255,255,0.7)' }}
+          >
             Avbryt
           </Button>
           <Button

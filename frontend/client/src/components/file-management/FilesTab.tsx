@@ -315,11 +315,11 @@ const FilesTab: React.FC<FilesTabProps> = ({
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
           {/* Google Drive logo */}
-          <Box sx={{ 
-            width:  40, 
+          <Box sx={{
+            width:  40,
             height: 40,
             borderRadius: 2,
-            bgcolor: 'grey.100',
+            bgcolor: 'rgba(255,255,255,0.06)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -423,8 +423,8 @@ const FilesTab: React.FC<FilesTabProps> = ({
         p: 0,
         mb: 3, 
         borderRadius: 3,
-        background: 'linear-gradient(135deg, rgba(26, 115, 232, 0.1) 0%, rgba(26, 115, 232, 0.05) 100%)',
-        border: '1px solid rgba(6, 115, 232, 0.2)',
+        background: 'linear-gradient(135deg, rgba(30,64,175,0.25) 0%, rgba(30,64,175,0.15) 100%)',
+        border: '1px solid rgba(255,255,255,0.12)',
         overflow: 'hidden' ,  ...theming.getThemedCardSx() }}>
         {/* Header */}
         <Box sx={{ 
@@ -464,10 +464,10 @@ const FilesTab: React.FC<FilesTabProps> = ({
               display: 'flex',
               alignItems: 'center',
               gap: 1}}>
-            <Box sx={{ 
-              width:  4, 
-              height:  20, 
-              bgcolor: 'grey.100', 
+            <Box sx={{
+              width:  4,
+              height:  20,
+              bgcolor: 'rgba(255,255,255,0.5)',
               borderRadius: 1}} />
             Mappestruktur
           </Typography>
@@ -643,16 +643,16 @@ const FilesTab: React.FC<FilesTabProps> = ({
 
       {/* Empty state */}
       {!foldersLoading && (!folders || folders.length === 0) && (
-        <Paper sx={{ p:  4, textAlign: 'center', bgcolor: 'grey.50' ,  ...theming.getThemedCardSx() }}>
-          <FolderOpen sx={{ fontSize:  64, color: 'grey.30', mb:  2 }} />
-          <Typography variant="h6" sx={{  mb:  1  }}>
+        <Paper sx={{ p:  4, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff' ,  ...theming.getThemedCardSx() }}>
+          <FolderOpen sx={{ fontSize:  64, color: 'rgba(255,255,255,0.5)', mb:  2 }} />
+          <Typography variant="h6" sx={{  mb:  1, color: '#fff'  }}>
             Ingen prosjektmapper funnet
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-            Prosjektmapper vises her når du oppretter dem via Google Drive-integrasjonen. 
+          <Typography variant="body2" sx={{ mb:  3, color: 'rgba(255,255,255,0.7)' }}>
+            Prosjektmapper vises her når du oppretter dem via Google Drive-integrasjonen.
             Alle mapper følger systemets standardiserte struktur som definert i innstillinger.
           </Typography>
-          <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
+          <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'rgba(255,255,255,0.7)' }}>
             💡 Tip: Bruk "Opprett Prosjektmappe" funksjonen i Google Drive-seksjonen for å lage strukturerte prosjektmapper
           </Typography>
         </Paper>
@@ -842,9 +842,10 @@ const FilesTab: React.FC<FilesTabProps> = ({
         fullWidth
         PaperProps={{
           sx: {
-            background: 'linear-gradient(135deg, white 0%, white 100%)',
+            background: 'rgba(15,23,42,0.94)',
             backdropFilter: 'blur(10px)',
-            border: '1px solid white' }
+            border: '1px solid rgba(255,255,255,0.12)',
+            color: '#fff' }
     }}
       >
         <DialogTitle sx={{ 

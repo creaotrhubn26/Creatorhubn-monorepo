@@ -6631,12 +6631,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       sx={{
                         p: { xs: 1.25, md: 2 },
                         borderRadius: 4,
-                        border: `1px solid ${alpha(customBranding.color, 0.08)}`,
-                        backgroundColor: alpha('#ffffff', 0.96),
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        bgcolor: 'rgba(15,23,42,0.94)',
+                        backdropFilter: 'blur(8px)',
+                        color: '#fff',
                         boxShadow: `0 18px 42px ${alpha('#0f172a', 0.06)}`,
                       }}
                     >
-                      <UniversalCRMDashboard 
+                      <UniversalCRMDashboard
                         profession={profession}
                         onCustomerSelect={(customer) => {
                           setUniversalSelectedClient(customer as any);
@@ -6651,17 +6653,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       elevation={0}
                       sx={{
                         borderRadius: 4,
-                        border: `1px solid ${alpha(customBranding.color, 0.08)}`,
-                        backgroundColor: alpha('#ffffff', 0.96),
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        bgcolor: 'rgba(15,23,42,0.94)',
+                        backdropFilter: 'blur(8px)',
+                        color: '#fff',
                         boxShadow: `0 18px 42px ${alpha('#0f172a', 0.06)}`,
                       }}
                     >
                       <MuiCardContent>
-                        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
+                        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', color: '#fff' }}>
                           <AttachMoney sx={{ mr: 1, fontSize: 28, color: customBranding.color }} />
                           Prisadministrasjon
                         </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                        <Typography variant="body2" sx={{ mb: 3, color: 'rgba(255,255,255,0.7)' }}>
                           Administrer alle dine priser, pakker og tilbud på ett sted.
                         </Typography>
                         <PriceAdministration 
@@ -6682,18 +6686,20 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       elevation={0}
                       sx={{
                         borderRadius: 4,
-                        border: `1px solid ${alpha(customBranding.color, 0.08)}`,
-                        backgroundColor: alpha('#ffffff', 0.96),
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        bgcolor: 'rgba(15,23,42,0.94)',
+                        backdropFilter: 'blur(8px)',
+                        color: '#fff',
                         boxShadow: `0 18px 42px ${alpha('#0f172a', 0.06)}`,
                         height: 'fit-content',
                       }}
                     >
                       <MuiCardContent>
-                        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
+                        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', color: '#fff' }}>
                           <Event sx={{ mr: 1, fontSize: 28, color: customBranding.color }} />
                           Google Workspace Møter
                         </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        <Typography variant="body2" sx={{ mb: 2, color: 'rgba(255,255,255,0.7)' }}>
                           Administrer møter og del showcase-linker direkte med kunder.
                         </Typography>
                         <GoogleWorkspaceMeetingManager 
@@ -7899,7 +7905,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         PaperProps={{
           sx: {
             borderRadius: 0,
-            background: '#f5f5f0'
+            bgcolor: 'rgba(15,23,42,0.94)',
+            color: '#fff',
+            backdropFilter: 'blur(8px)',
           }
         }}
       >

@@ -507,7 +507,7 @@ const CinematicAudioPlayer: React.FC<Props> = ({
                 bgcolor: '#fdfaf5',
                 width: 48,
                 height: 48,
-                '&:hover': { bgcolor: '#fff' },
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.12)' },
                 '&.Mui-disabled': { bgcolor: 'rgba(253,250,245,0.4)' },
               }}>
               {isPlaying ? <PauseIcon /> : <PlayIcon />}
@@ -611,8 +611,10 @@ const CinematicAudioPlayer: React.FC<Props> = ({
             sx={{
               maxWidth: 480,
               width: '100%',
-              bgcolor: '#fdfaf5',
-              color: '#1a1612',
+              bgcolor: 'rgba(15,23,42,0.96)',
+              backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: '#fff',
               borderRadius: 1,
               p: { xs: 3, sm: 4 },
               boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
@@ -622,17 +624,17 @@ const CinematicAudioPlayer: React.FC<Props> = ({
             <IconButton
               onClick={() => setShowCommentModal(false)}
               aria-label="Lukk"
-              sx={{ position: 'absolute', top: 8, right: 8, color: '#1a1612' }}
+              sx={{ position: 'absolute', top: 8, right: 8, color: 'rgba(255,255,255,0.7)' }}
             >
               <CloseIcon />
             </IconButton>
-            <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.32em', color: '#a8957e', textTransform: 'uppercase', mb: 1 }}>
+            <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.32em', color: '#d97706', textTransform: 'uppercase', mb: 1 }}>
               · Notat ved {fmtTime(pendingCommentTime)} ·
             </Typography>
-            <Typography sx={{ fontFamily: SERIF_STACK, fontWeight: 400, fontSize: { xs: '1.6rem', sm: '2rem' }, lineHeight: 1.0, letterSpacing: '-0.02em', color: '#1a1612', mb: 2 }}>
+            <Typography sx={{ fontFamily: SERIF_STACK, fontWeight: 400, fontSize: { xs: '1.6rem', sm: '2rem' }, lineHeight: 1.0, letterSpacing: '-0.02em', color: '#fff', mb: 2 }}>
               Hva hører du?
             </Typography>
-            <Typography sx={{ fontFamily: SERIF_STACK, fontStyle: 'italic', fontSize: '0.95rem', color: '#5a4f42', mb: 2.5 }}>
+            <Typography sx={{ fontFamily: SERIF_STACK, fontStyle: 'italic', fontSize: '0.95rem', color: 'rgba(255,255,255,0.7)', mb: 2.5 }}>
               {clientName ? `${clientName} — ` : ''}fortell hva du tenker om dette øyeblikket i miksen
             </Typography>
             <TextField
@@ -649,10 +651,15 @@ const CinematicAudioPlayer: React.FC<Props> = ({
                   fontFamily: SERIF_STACK,
                   fontStyle: 'italic',
                   fontSize: '1.05rem',
-                  bgcolor: 'rgba(255,255,255,0.6)',
-                  '& fieldset': { borderColor: '#d4c4b0' },
-                  '&:hover fieldset': { borderColor: '#a8957e' },
+                  color: '#fff',
+                  bgcolor: 'rgba(255,255,255,0.04)',
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.23)' },
+                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
                   '&.Mui-focused fieldset': { borderColor: '#d97706' },
+                },
+                '& .MuiOutlinedInput-input::placeholder': {
+                  color: 'rgba(255,255,255,0.5)',
+                  opacity: 1,
                 },
               }}
             />
@@ -660,7 +667,7 @@ const CinematicAudioPlayer: React.FC<Props> = ({
               <Button
                 onClick={() => setShowCommentModal(false)}
                 disabled={commentSubmitting}
-                sx={{ fontFamily: SERIF_STACK, fontStyle: 'italic', color: '#5a4f42', textTransform: 'none', fontSize: '0.95rem' }}
+                sx={{ fontFamily: SERIF_STACK, fontStyle: 'italic', color: 'rgba(255,255,255,0.7)', textTransform: 'none', fontSize: '0.95rem' }}
               >
                 Avbryt
               </Button>
@@ -669,8 +676,8 @@ const CinematicAudioPlayer: React.FC<Props> = ({
                 disabled={commentSubmitting || !pendingCommentText.trim()}
                 startIcon={<SendIcon />}
                 sx={{
-                  bgcolor: '#1a1612',
-                  color: '#fdfaf5',
+                  bgcolor: '#d97706',
+                  color: '#fff',
                   fontFamily: '"Inter", "Segoe UI", sans-serif',
                   fontWeight: 600,
                   letterSpacing: '0.04em',
@@ -679,8 +686,8 @@ const CinematicAudioPlayer: React.FC<Props> = ({
                   px: 3,
                   py: 1.5,
                   borderRadius: 0,
-                  '&:hover': { bgcolor: '#2d2620' },
-                  '&.Mui-disabled': { bgcolor: '#a8957e', color: '#fdfaf5' },
+                  '&:hover': { bgcolor: '#b45309' },
+                  '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)' },
                 }}
               >
                 {commentSubmitting ? 'Sender…' : 'Send notat'}

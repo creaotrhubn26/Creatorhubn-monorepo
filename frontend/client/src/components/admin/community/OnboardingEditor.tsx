@@ -100,7 +100,7 @@ export default function OnboardingEditor() {
 
   const fetchOnboardingConfigs = async () => {
     try {
-      const response = await apiRequest('/api/community/admin/onboarding,', {
+      const response = await apiRequest('/api/community/admin/onboarding', {
         method: 'GET',
       }) as { success: boolean; configs: OnboardingConfig[] };
 

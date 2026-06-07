@@ -218,9 +218,9 @@ function PreviewJson({ value }: { value: unknown }) {
         mt: 1.5,
         p: 1.5,
         borderRadius: 2,
-        border: `1px solid ${alpha('#0f172a', 0.08)}`,
-        bgcolor: alpha('#0f172a', 0.03),
-        color: '#0f172a',
+        border: '1px solid rgba(255,255,255,0.16)',
+        bgcolor: 'rgba(0,0,0,0.4)',
+        color: alpha('#ffffff', 0.85),
         fontSize: '0.74rem',
         lineHeight: 1.55,
         overflowX: 'auto',
@@ -310,8 +310,10 @@ function StageSection({
       sx={{
         p: { xs: 2.25, md: 2.75 },
         borderRadius: 4,
-        border: `1px solid ${alpha('#0f172a', 0.08)}`,
-        bgcolor: '#ffffff',
+        border: '1px solid rgba(255,255,255,0.12)',
+        bgcolor: 'rgba(255,255,255,0.06)',
+        backdropFilter: 'blur(8px)',
+        color: '#fff',
       }}
     >
       <Stack spacing={2.25}>
@@ -320,10 +322,10 @@ function StageSection({
             <Typography variant="overline" sx={{ color: alpha(accent, 0.84), letterSpacing: 1.2 }}>
               {eyebrow}
             </Typography>
-            <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.08, color: '#0f172a' }}>
+            <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.08, color: '#fff' }}>
               {title}
             </Typography>
-            <Typography variant="body2" sx={{ mt: 0.8, color: alpha('#0f172a', 0.68) }}>
+            <Typography variant="body2" sx={{ mt: 0.8, color: alpha('#ffffff', 0.7) }}>
               {description}
             </Typography>
           </Box>
@@ -407,12 +409,19 @@ function ActionCard({
       sx={{
         p: 2,
         borderRadius: 3.5,
-        border: `1px solid ${alpha('#0f172a', 0.08)}`,
+        border: `1px solid ${
+          state.status === 'success'
+            ? alpha('#10b981', 0.45)
+            : state.status === 'error'
+              ? alpha('#ef4444', 0.45)
+              : 'rgba(255,255,255,0.12)'
+        }`,
         bgcolor: state.status === 'success'
-          ? alpha('#10b981', 0.03)
+          ? alpha('#10b981', 0.12)
           : state.status === 'error'
-            ? alpha('#ef4444', 0.035)
-            : alpha('#f8fafc', 0.82),
+            ? alpha('#ef4444', 0.12)
+            : 'rgba(255,255,255,0.06)',
+        color: '#fff',
       }}
     >
       <Stack spacing={1.5}>
@@ -434,10 +443,10 @@ function ActionCard({
           <Box
             sx={{ minWidth: 0 }}
           >
-            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#fff' }}>
               {title}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
               {description}
             </Typography>
           </Box>
@@ -470,7 +479,7 @@ function ActionCard({
             {isRunning ? 'Kjører…' : buttonLabel}
           </Button>
           {state.status === 'idle' && (
-            <Typography variant="caption" sx={{ color: alpha('#0f172a', 0.58) }}>
+            <Typography variant="caption" sx={{ color: alpha('#ffffff', 0.6) }}>
               Kjør handlingen direkte fra CreatorHub under opptaket.
             </Typography>
           )}
@@ -492,8 +501,8 @@ function ActionCard({
             sx={{
               mt: 0.25,
               borderRadius: 2.5,
-              border: `1px solid ${alpha('#0f172a', 0.08)}`,
-              bgcolor: alpha('#f8fafc', 0.74),
+              border: '1px solid rgba(255,255,255,0.12)',
+              bgcolor: 'rgba(255,255,255,0.04)',
               px: 1.5,
               py: 1.25,
               '& > summary': {
@@ -501,7 +510,7 @@ function ActionCard({
                 listStyle: 'none',
                 fontSize: '0.8rem',
                 fontWeight: 700,
-                color: '#0f172a',
+                color: alpha('#ffffff', 0.88),
               },
               '& > summary::-webkit-details-marker': {
                 display: 'none',
@@ -1257,7 +1266,8 @@ export default function GoogleVerificationDemoPage() {
       sx={{
         minHeight: '100vh',
         py: { xs: 4, md: 6 },
-        background: `linear-gradient(180deg, ${alpha('#f59e0b', 0.08)} 0%, ${alpha('#fff7ed', 0.96)} 40%, #ffffff 100%)`,
+        background: `linear-gradient(180deg, ${alpha('#0f172a', 0.98)} 0%, ${alpha('#111827', 0.98)} 40%, #0b1220 100%)`,
+        color: '#fff',
       }}
     >
       <Container maxWidth="xl">
@@ -1415,15 +1425,17 @@ export default function GoogleVerificationDemoPage() {
                 sx={{
                   p: 2.5,
                   borderRadius: 4,
-                  border: `1px solid ${alpha('#0f172a', 0.08)}`,
-                  bgcolor: '#ffffff',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  bgcolor: 'rgba(255,255,255,0.06)',
+                  backdropFilter: 'blur(8px)',
+                  color: '#fff',
                 }}
               >
                 <Stack spacing={1.5}>
-                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#fff' }}>
                     Recording checklist
                   </Typography>
-                  <Typography variant="body2" sx={{ color: alpha('#0f172a', 0.68) }}>
+                  <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
                     Hold the recording inside the browser, keep the URL visible during OAuth, and run the stages in order.
                   </Typography>
                   <Stack spacing={1}>
@@ -1453,23 +1465,25 @@ export default function GoogleVerificationDemoPage() {
                 sx={{
                   p: 2.5,
                   borderRadius: 4,
-                  border: `1px solid ${alpha('#0f172a', 0.08)}`,
-                  bgcolor: '#ffffff',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  bgcolor: 'rgba(255,255,255,0.06)',
+                  backdropFilter: 'blur(8px)',
+                  color: '#fff',
                 }}
               >
                 <Stack spacing={1.5}>
-                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#fff' }}>
                     Raw diagnostics
                   </Typography>
-                  <Typography variant="body2" sx={{ color: alpha('#0f172a', 0.68) }}>
+                  <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
                     This stays available for debugging, but it is visually secondary so the recording stays clean.
                   </Typography>
                   <Box
                     component="details"
                     sx={{
                       borderRadius: 3,
-                      border: `1px solid ${alpha('#0f172a', 0.08)}`,
-                      bgcolor: alpha('#f8fafc', 0.82),
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      bgcolor: 'rgba(255,255,255,0.04)',
                       px: 1.5,
                       py: 1.25,
                       '& > summary': {
@@ -1477,7 +1491,7 @@ export default function GoogleVerificationDemoPage() {
                         listStyle: 'none',
                         fontSize: '0.84rem',
                         fontWeight: 700,
-                        color: '#0f172a',
+                        color: '#fff',
                       },
                       '& > summary::-webkit-details-marker': {
                         display: 'none',

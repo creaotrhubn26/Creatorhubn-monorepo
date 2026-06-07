@@ -608,8 +608,38 @@ export function registerTidumAdminRoutes(
         return;
       }
 
-      const vendors = await fetchFromTidum("/api/internal/creatorhub/vendors");
-      res.json(normalizeTidumVendorRecords(vendors));
+      // Rotårsak: Tidum-integrasjonen krever TIDUM_CREATORHUB_SYNC_SECRET
+      // som ikke alltid er satt i dev/preview. Uten den vil fetchFromTidum
+      // kaste — så vi sjekker først og returnerer riktig formet tom liste
+      // i stedet for å 500'e. Frontend (TidumAccessRequestsPanel) forventer
+      // TidumVendor[] (array), ikke et objekt — så vi returnerer [] her.
+      if (!TIDUM_CREATORHUB_SYNC_SECRET) {
+        console.warn(
+          "[tidum-admin] TIDUM_CREATORHUB_SYNC_SECRET er ikke konfigurert; " +
+            "returnerer tom vendors-liste. Sett env-varen for å aktivere " +
+            "Tidum-integrasjonen mot " + TIDUM_SYNC_API_BASE_URL + ".",
+        );
+        return res.json([]);
+      }
+
+      try {
+        const vendors = await fetchFromTidum(
+          "/api/internal/creatorhub/vendors",
+        );
+        const normalized = normalizeTidumVendorRecords(vendors);
+        // Frontend (TidumAccessRequestsPanel) forventer TidumVendor[].
+        res.json(normalized);
+      } catch (innerErr) {
+        // Den eksterne Tidum-APIen kan være nede / 401 / 5xx. Returner
+        // tom liste i riktig form for at AdminDashboard skal rendre i
+        // stedet for å vise generic 500-error, men logg som warn for
+        // synlighet i drift.
+        console.warn(
+          "[tidum-admin] vendors-fetch mot Tidum feilet, returnerer tom liste:",
+          innerErr instanceof Error ? innerErr.message : innerErr,
+        );
+        res.json([]);
+      }
     } catch (error) {
       console.error("Failed to fetch Tidum vendors:", error);
       res.status(500).json({ error: "Could not fetch Tidum vendors" });

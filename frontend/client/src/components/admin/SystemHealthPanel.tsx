@@ -200,10 +200,10 @@ export default function SystemHealthPanel({
   const { auth } = useEnhancedMasterIntegration();
 
   const { data: healthData, isLoading, refetch } = useQuery<HealthResponse>({
-    queryKey: ['/api/admin/system-health'],
+    queryKey: ['/api/admin/system/health'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/system-health', { headers });
+      return apiRequest('/api/admin/system/health', { headers });
     },
     refetchInterval: 30000,
     retry: 1,

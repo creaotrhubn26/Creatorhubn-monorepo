@@ -118,12 +118,24 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
       fullWidth
       PaperProps={{
         sx: {
-          // Pic-Time 2.0: editorial paper med cream-canvas + subtle warmth
-          background: 'linear-gradient(180deg, #fdfaf5 0%, #f7f1e8 100%)',
-          color: '#1a1612',
+          // Dashboard-konsistens: mørk glass-bg, men bevarer editorial typografi
+          bgcolor: 'rgba(15,23,42,0.96)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          color: '#fff',
           minHeight: '85vh',
           borderRadius: { xs: 0, sm: 3 },
           overflow: 'hidden',
+          '& .MuiOutlinedInput-root': {
+            color: '#fff',
+            '& fieldset': { borderColor: 'rgba(255,255,255,0.23)' },
+            '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
+            '&.Mui-focused fieldset': { borderColor: '#d97706' },
+          },
+          '& .MuiOutlinedInput-input::placeholder': {
+            color: 'rgba(255,255,255,0.5)',
+            opacity: 1,
+          },
         },
       }}
     >
@@ -134,9 +146,9 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
           disabled={isSubmitting}
           aria-label="Lukk"
           sx={{
-            color: '#1a1612',
-            bgcolor: 'rgba(255,255,255,0.6)',
-            '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' },
+            color: '#fff',
+            bgcolor: 'rgba(255,255,255,0.08)',
+            '&:hover': { bgcolor: 'rgba(255,255,255,0.16)' },
           }}
         >
           <CloseIcon />
@@ -158,6 +170,7 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
                   fontSize: { xs: '2rem', sm: '3rem' },
                   lineHeight: 1.1,
                   letterSpacing: '-0.02em',
+                  color: '#fff',
                   mb: 2,
                 }}
               >
@@ -168,7 +181,7 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
                   fontFamily: SERIF_STACK,
                   fontStyle: 'italic',
                   fontSize: '1.25rem',
-                  color: '#5a4f42',
+                  color: 'rgba(255,255,255,0.7)',
                   maxWidth: 480,
                   mx: 'auto',
                   lineHeight: 1.5,
@@ -187,7 +200,7 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
                   fontSize: '0.7rem',
                   fontWeight: 700,
                   letterSpacing: '0.32em',
-                  color: '#a8957e',
+                  color: '#d97706',
                   textTransform: 'uppercase',
                   mb: 2,
                 }}
@@ -202,7 +215,7 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
                   fontSize: { xs: '2.4rem', sm: '3.6rem', md: '4.2rem' },
                   lineHeight: 1.0,
                   letterSpacing: '-0.02em',
-                  color: '#1a1612',
+                  color: '#fff',
                   mb: 1.5,
                 }}
               >
@@ -213,7 +226,7 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
                   fontFamily: SERIF_STACK,
                   fontStyle: 'italic',
                   fontSize: { xs: '1rem', sm: '1.2rem' },
-                  color: '#5a4f42',
+                  color: 'rgba(255,255,255,0.7)',
                   maxWidth: 460,
                   mx: 'auto',
                   lineHeight: 1.55,
@@ -242,7 +255,7 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
                   overflowY: { xs: 'visible', md: 'auto' },
                   // Smooth scrollbar
                   '&::-webkit-scrollbar': { width: 6 },
-                  '&::-webkit-scrollbar-thumb': { background: '#d4c4b0', borderRadius: 3 },
+                  '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.16)', borderRadius: 3 },
                 }}
               >
                 {favorites.slice(0, 40).map((item, idx) => (
@@ -278,7 +291,7 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
                           sx={{
                             width: '100%',
                             height: '100%',
-                            bgcolor: '#e8ddd0',
+                            bgcolor: 'rgba(255,255,255,0.08)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -312,7 +325,7 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
                     sx={{
                       aspectRatio: '1 / 1',
                       borderRadius: 1,
-                      bgcolor: '#e8ddd0',
+                      bgcolor: 'rgba(255,255,255,0.08)',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
@@ -320,10 +333,10 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
                       fontFamily: SERIF_STACK,
                     }}
                   >
-                    <Typography sx={{ fontSize: '1.8rem', fontWeight: 400, color: '#1a1612', lineHeight: 1 }}>
+                    <Typography sx={{ fontSize: '1.8rem', fontWeight: 400, color: '#fff', lineHeight: 1 }}>
                       +{count - 40}
                     </Typography>
-                    <Typography sx={{ fontSize: '0.7rem', color: '#5a4f42', mt: 0.5, letterSpacing: '0.1em' }}>
+                    <Typography sx={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)', mt: 0.5, letterSpacing: '0.1em' }}>
                       til
                     </Typography>
                   </Box>
@@ -339,7 +352,7 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
                     fontFamily: SERIF_STACK,
                     fontStyle: 'italic',
                     fontSize: '1rem',
-                    color: '#5a4f42',
+                    color: 'rgba(255,255,255,0.7)',
                     mb: 1.5,
                     textAlign: 'center',
                   }}
@@ -356,13 +369,10 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
                   inputProps={{ maxLength: 800 }}
                   sx={{
                     '& .MuiOutlinedInput-root': {
-                      bgcolor: 'rgba(255,255,255,0.6)',
+                      bgcolor: 'rgba(255,255,255,0.04)',
                       fontFamily: SERIF_STACK,
                       fontStyle: 'italic',
                       fontSize: '1rem',
-                      '& fieldset': { borderColor: '#d4c4b0' },
-                      '&:hover fieldset': { borderColor: '#a8957e' },
-                      '&.Mui-focused fieldset': { borderColor: '#d97706' },
                     },
                   }}
                 />
@@ -396,11 +406,11 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
             sx={{
               fontFamily: SERIF_STACK,
               fontStyle: 'italic',
-              color: '#5a4f42',
+              color: 'rgba(255,255,255,0.7)',
               textTransform: 'none',
               fontSize: '1rem',
               px: 3,
-              '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' },
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' },
             }}
           >
             Lukk og fortsett å velge
@@ -409,10 +419,10 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
             <Button
               onClick={handleSubmit}
               disabled={isSubmitting || count === 0}
-              startIcon={isSubmitting ? <CircularProgress size={18} sx={{ color: '#fdfaf5' }} /> : <SendIcon />}
+              startIcon={isSubmitting ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SendIcon />}
               sx={{
-                bgcolor: '#1a1612',
-                color: '#fdfaf5',
+                bgcolor: '#d97706',
+                color: '#fff',
                 fontFamily: '"Inter", "Segoe UI", sans-serif',
                 fontWeight: 600,
                 letterSpacing: '0.04em',
@@ -422,8 +432,8 @@ const GallerySelectionSubmitDialog: React.FC<Props> = ({
                 py: 1.8,
                 borderRadius: 0, // Magazine-stil: hard kant
                 minWidth: 220,
-                '&:hover': { bgcolor: '#2d2620' },
-                '&.Mui-disabled': { bgcolor: '#a8957e', color: '#fdfaf5' },
+                '&:hover': { bgcolor: '#b45309' },
+                '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)' },
               }}
             >
               {isSubmitting ? 'Sender…' : 'Send mitt utvalg'}
