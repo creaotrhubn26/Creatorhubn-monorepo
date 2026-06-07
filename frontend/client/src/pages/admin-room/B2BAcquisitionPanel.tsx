@@ -25,7 +25,55 @@ import ShareOutlinedIcon from '@mui/icons-material/ShareOutlined';
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import NotificationsActiveOutlinedIcon from '@mui/icons-material/NotificationsActiveOutlined';
+import PublicOutlinedIcon from '@mui/icons-material/PublicOutlined';
 import { useCallback, useEffect, useState } from 'react';
+
+// Brand-logoer via Google s2 favicons (gratis, ingen API-nøkkel, alltid live).
+// Clearbit Logo API ble lagt ned av HubSpot i 2024. Google s2 returnerer høy-
+// kvalitets favicon for ethvert domene. Fallback til DuckDuckGo hvis Google
+// returnerer null-icon, og til slutt MUI globe hvis begge feiler.
+const CHANNEL_LOGO_DOMAINS: Record<string, string | null> = {
+  google_ads: 'google.com',
+  meta_ads: 'facebook.com',
+  instagram_ads: 'instagram.com',
+  instagram_organic: 'instagram.com',
+  tiktok_ads: 'tiktok.com',
+  tiktok_organic: 'tiktok.com',
+  linkedin_ads: 'linkedin.com',
+  organic_or_direct: null,
+};
+
+function ChannelLogo({ channel, size = 20 }: { channel: string; size?: number }) {
+  const domain = CHANNEL_LOGO_DOMAINS[channel];
+  const [errored, setErrored] = useState(false);
+  const [fallback, setFallback] = useState(false);
+  if (!domain || errored) {
+    return <PublicOutlinedIcon sx={{ color: 'rgba(148,163,184,0.7)', fontSize: size }} />;
+  }
+  const src = fallback
+    ? `https://icons.duckduckgo.com/ip3/${domain}.ico`
+    : `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+  return (
+    <Box
+      component="img"
+      key={src}
+      src={src}
+      alt={`${channel} logo`}
+      sx={{
+        width: size,
+        height: size,
+        borderRadius: '4px',
+        display: 'block',
+        objectFit: 'contain',
+        bgcolor: 'rgba(255,255,255,0.92)',
+      }}
+      onError={() => {
+        if (!fallback) setFallback(true);
+        else setErrored(true);
+      }}
+    />
+  );
+}
 
 interface FunnelStats {
   funnel: Record<string, number>;
@@ -318,8 +366,8 @@ export default function B2BAcquisitionPanel() {
                         p: 1.2,
                       }}
                     >
-                      <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 0.4 }}>
-                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: color }} />
+                      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.6 }}>
+                        <ChannelLogo channel={c.channel} size={18} />
                         <Typography sx={{ color: '#f5f3ff', fontSize: '0.82rem', fontWeight: 700 }}>
                           {PAID_CHANNEL_LABELS[c.channel]}
                         </Typography>
