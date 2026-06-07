@@ -19,11 +19,23 @@
 //        → { instructors: [...], total }
 //        Instruktører + per-instruktør enrollment/revenue-aggregat.
 //
-//   GET /api/admin/academy/payouts?instructorId=X
-//        → { payouts: [...], total }
-//        Liste over registrerte utbetalinger. Ingen payouts-tabell
-//        finnes enda — vi returnerer tom liste, men endepunktet er
-//        klart til å hentes så snart en payouts-tabell legges til.
+//   GET /api/admin/academy/payouts?status=pending&limit=50
+//        → { payouts: [...], total, tableMissing? }
+//        Liste over utbetalingsforespørsler JOIN'et med instruktør-navn.
+//        Status-filter: 'pending' | 'approved' | 'paid' | 'rejected'.
+//        Hvis academy_payouts ikke finnes (migrasjon 254 ikke kjørt) →
+//        tableMissing: true.
+//
+//   POST /api/admin/academy/payouts/:id/approve
+//        → status pending → approved. approved_by = session.email.
+//
+//   POST /api/admin/academy/payouts/:id/reject
+//        body: { reason } — påkrevd
+//        → status pending → rejected.
+//
+//   POST /api/admin/academy/payouts/:id/mark-paid
+//        body: { stripeTransferId? }
+//        → status approved → paid. paid_at = now().
 //
 // Alle endepunkter krever admin-sesjon. Hvis migrasjon 243 ikke er
 // kjørt → returner tom struktur med 200 (ikke 500) slik at frontend
@@ -47,6 +59,13 @@ const VALID_COURSE_STATUSES = new Set<string>([
   "draft",
   "published",
   "archived",
+]);
+
+const VALID_PAYOUT_STATUSES = new Set<string>([
+  "pending",
+  "approved",
+  "paid",
+  "rejected",
 ]);
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -263,6 +282,9 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
             courseCount: 0,
             enrollmentCount: 0,
             activeInstructorCount: 0,
+            pendingPayoutsCount: 0,
+            pendingPayoutsAmount: 0,
+            paidThisMonth: 0,
           });
         }
         throw err;
@@ -283,6 +305,36 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
         if (!isUndefinedTableError(err)) throw err;
       }
 
+      // Pending payouts + paid-this-month aggregeres fra academy_payouts.
+      // Hvis migrasjon 254 ikke er kjørt — returner 0/0/0 (frontend tåler det).
+      let pendingPayoutsCount = 0;
+      let pendingPayoutsAmount = 0;
+      let paidThisMonth = 0;
+      try {
+        const payoutAggResult = await pool.query<{
+          pending_count: string | null;
+          pending_amount: string | null;
+          paid_this_month: string | null;
+        }>(
+          `SELECT
+             COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0)::text         AS pending_count,
+             COALESCE(SUM(CASE WHEN status = 'pending' THEN amount_nok ELSE 0 END), 0)::text AS pending_amount,
+             COALESCE(SUM(
+               CASE WHEN status = 'paid' AND paid_at >= date_trunc('month', now())
+                    THEN amount_nok ELSE 0 END
+             ), 0)::text AS paid_this_month
+           FROM academy_payouts`,
+        );
+        const row = payoutAggResult.rows[0];
+        if (row) {
+          pendingPayoutsCount = Number(row.pending_count) || 0;
+          pendingPayoutsAmount = Number(row.pending_amount) || 0;
+          paidThisMonth = Number(row.paid_this_month) || 0;
+        }
+      } catch (err) {
+        if (!isUndefinedTableError(err)) throw err;
+      }
+
       res.json({
         totalRevenue,
         totalPayouts,
@@ -291,6 +343,9 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
         courseCount,
         enrollmentCount,
         activeInstructorCount,
+        pendingPayoutsCount,
+        pendingPayoutsAmount,
+        paidThisMonth,
       });
     } catch (err) {
       console.error("[admin-academy] summary failed:", err);
@@ -457,64 +512,270 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
   });
 
   // ─── GET /api/admin/academy/payouts ───────────────────────
-  // Utbetalingsforespørsler. Vi har ingen payouts-tabell enda (det vil
-  // sannsynligvis komme i en senere migrasjon når flowen er klar), så
-  // dette endepunktet returnerer tom liste — frontend skal håndtere
-  // tomt sett uten å feile.
+  // Utbetalingsforespørsler JOIN'et med instruktør-navn fra
+  // academy_instructors. Migrasjon 254 oppretter academy_payouts;
+  // før den er kjørt returneres tableMissing: true.
   //
-  // ?instructorId=X (valgfritt) — filter når payouts-tabell finnes.
+  // Query-params:
+  //   ?status=pending|approved|paid|rejected (valgfritt)
+  //   ?instructorId=X                        (valgfritt)
+  //   ?limit=50                              (default 50, max 500)
   app.get("/api/admin/academy/payouts", async (req, res) => {
     if (!requireAdminSession(req, res)) return;
     try {
+      const status = readString(req.query.status);
       const instructorId = readString(req.query.instructorId);
+      const limit = readLimit(req.query.limit, 50, 500);
 
-      // Forsøk å spørre fra en eventuell academy_payouts-tabell. Hvis
-      // tabellen ikke finnes (42P01), returner tom liste med 200.
+      if (status && !VALID_PAYOUT_STATUSES.has(status)) {
+        return res.status(400).json({
+          error:
+            "Ugyldig status. Lovlige: " +
+            Array.from(VALID_PAYOUT_STATUSES).join(", "),
+        });
+      }
+
       const params: unknown[] = [];
-      let whereClause = "";
+      const whereParts: string[] = [];
+      if (status) {
+        params.push(status);
+        whereParts.push(`p.status = $${params.length}`);
+      }
       if (instructorId) {
         params.push(instructorId);
-        whereClause = `WHERE instructor_id = $${params.length}::uuid`;
+        whereParts.push(`p.instructor_id = $${params.length}::uuid`);
       }
+      const whereClause =
+        whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+      params.push(limit);
+      const limitPlaceholder = `$${params.length}`;
 
       try {
         const result = await pool.query<{
           id: string;
           instructor_id: string;
+          instructor_name: string | null;
           amount_nok: number;
           status: string;
+          bank_account_last4: string | null;
           requested_at: Date | string;
-          completed_at: Date | string | null;
+          approved_at: Date | string | null;
+          paid_at: Date | string | null;
+          rejected_at: Date | string | null;
+          rejection_reason: string | null;
+          stripe_transfer_id: string | null;
+          notes: string | null;
         }>(
-          `SELECT id::text, instructor_id::text, amount_nok, status,
-                  requested_at, completed_at
-             FROM academy_payouts
+          `SELECT p.id::text                  AS id,
+                  p.instructor_id::text       AS instructor_id,
+                  i.display_name              AS instructor_name,
+                  p.amount_nok,
+                  p.status,
+                  p.bank_account_last4,
+                  p.requested_at,
+                  p.approved_at,
+                  p.paid_at,
+                  p.rejected_at,
+                  p.rejection_reason,
+                  p.stripe_transfer_id,
+                  p.notes
+             FROM academy_payouts p
+             LEFT JOIN academy_instructors i ON i.id = p.instructor_id
              ${whereClause}
-             ORDER BY requested_at DESC
-             LIMIT 200`,
+             ORDER BY p.requested_at DESC
+             LIMIT ${limitPlaceholder}`,
           params,
         );
 
         const payouts = result.rows.map((row) => ({
           id: row.id,
           instructorId: row.instructor_id,
-          amountNok: row.amount_nok,
+          instructorName: row.instructor_name,
+          amount: row.amount_nok,
           status: row.status,
+          bankAccountLast4: row.bank_account_last4,
           requestedAt: toIsoOrNull(row.requested_at),
-          completedAt: toIsoOrNull(row.completed_at),
+          approvedAt: toIsoOrNull(row.approved_at),
+          paidAt: toIsoOrNull(row.paid_at),
+          rejectedAt: toIsoOrNull(row.rejected_at),
+          rejectionReason: row.rejection_reason,
+          stripeTransferId: row.stripe_transfer_id,
+          notes: row.notes,
         }));
 
         return res.json({ payouts, total: payouts.length });
       } catch (err) {
         if (isUndefinedTableError(err)) {
-          // Ingen payouts-tabell enda — tomt sett er forventet.
-          return res.json({ payouts: [], total: 0 });
+          // Migrasjon 254 ikke kjørt — frontend tåler tableMissing.
+          return res.json({ payouts: [], total: 0, tableMissing: true });
         }
         throw err;
       }
     } catch (err) {
       console.error("[admin-academy] payouts list failed:", err);
       res.status(500).json({ error: "Could not fetch academy payouts" });
+    }
+  });
+
+  // ─── POST /api/admin/academy/payouts/:id/approve ──────────
+  // Sett pending → approved. approved_by = session.email.
+  // 400 hvis status ikke er 'pending' (invalid_status_transition).
+  // 404 hvis payout-rad ikke finnes.
+  app.post("/api/admin/academy/payouts/:id/approve", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const id = readString(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: "missing_payout_id" });
+    }
+    try {
+      const current = await pool.query<{ status: string }>(
+        `SELECT status FROM academy_payouts WHERE id = $1::uuid`,
+        [id],
+      );
+      if (current.rowCount === 0) {
+        return res.status(404).json({ error: "payout_not_found" });
+      }
+      if (current.rows[0].status !== "pending") {
+        return res.status(400).json({
+          error: "invalid_status_transition",
+          currentStatus: current.rows[0].status,
+          message: "Bare 'pending' payouts kan godkjennes",
+        });
+      }
+
+      const updated = await pool.query<{
+        id: string;
+        instructor_id: string;
+        amount_nok: number;
+        status: string;
+        approved_at: Date | string | null;
+        approved_by: string | null;
+      }>(
+        `UPDATE academy_payouts
+            SET status = 'approved',
+                approved_at = now(),
+                approved_by = $2
+          WHERE id = $1::uuid
+          RETURNING id::text, instructor_id::text, amount_nok, status,
+                    approved_at, approved_by`,
+        [id, session.email],
+      );
+
+      const row = updated.rows[0];
+      return res.json({
+        success: true,
+        payout: {
+          id: row.id,
+          instructorId: row.instructor_id,
+          amount: row.amount_nok,
+          status: row.status,
+          approvedAt: toIsoOrNull(row.approved_at),
+          approvedBy: row.approved_by,
+        },
+      });
+    } catch (err) {
+      if (isUndefinedTableError(err)) {
+        return res.status(503).json({
+          error: "payouts_table_missing",
+          message: "Migrasjon 254 må kjøres først",
+        });
+      }
+      console.error("[admin-academy] payout approve failed:", err);
+      return res.status(500).json({ error: "Could not approve payout" });
+    }
+  });
+
+  // ─── POST /api/admin/academy/payouts/:id/reject ───────────
+  // Body: { reason: string } — påkrevd.
+  // Sett pending → rejected.
+  app.post("/api/admin/academy/payouts/:id/reject", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const id = readString(req.params.id);
+    if (!id) return res.status(400).json({ error: "missing_payout_id" });
+    const reason = readString((req.body ?? {}).reason);
+    if (!reason) {
+      return res.status(400).json({ error: "missing_reason" });
+    }
+    try {
+      const current = await pool.query<{ status: string }>(
+        `SELECT status FROM academy_payouts WHERE id = $1::uuid`,
+        [id],
+      );
+      if (current.rowCount === 0) {
+        return res.status(404).json({ error: "payout_not_found" });
+      }
+      if (current.rows[0].status !== "pending") {
+        return res.status(400).json({
+          error: "invalid_status_transition",
+          currentStatus: current.rows[0].status,
+          message: "Bare 'pending' payouts kan avvises",
+        });
+      }
+      await pool.query(
+        `UPDATE academy_payouts
+            SET status = 'rejected',
+                rejected_at = now(),
+                rejected_by = $2,
+                rejection_reason = $3
+          WHERE id = $1::uuid`,
+        [id, session.email, reason],
+      );
+      return res.json({ success: true });
+    } catch (err) {
+      if (isUndefinedTableError(err)) {
+        return res.status(503).json({
+          error: "payouts_table_missing",
+          message: "Migrasjon 254 må kjøres først",
+        });
+      }
+      console.error("[admin-academy] payout reject failed:", err);
+      return res.status(500).json({ error: "Could not reject payout" });
+    }
+  });
+
+  // ─── POST /api/admin/academy/payouts/:id/mark-paid ────────
+  // Body: { stripeTransferId? } — valgfritt.
+  // Sett approved → paid. paid_at = now().
+  app.post("/api/admin/academy/payouts/:id/mark-paid", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const id = readString(req.params.id);
+    if (!id) return res.status(400).json({ error: "missing_payout_id" });
+    const stripeTransferId = readString((req.body ?? {}).stripeTransferId);
+    try {
+      const current = await pool.query<{ status: string }>(
+        `SELECT status FROM academy_payouts WHERE id = $1::uuid`,
+        [id],
+      );
+      if (current.rowCount === 0) {
+        return res.status(404).json({ error: "payout_not_found" });
+      }
+      if (current.rows[0].status !== "approved") {
+        return res.status(400).json({
+          error: "invalid_status_transition",
+          currentStatus: current.rows[0].status,
+          message: "Bare 'approved' payouts kan markeres betalt",
+        });
+      }
+      await pool.query(
+        `UPDATE academy_payouts
+            SET status = 'paid',
+                paid_at = now(),
+                stripe_transfer_id = COALESCE($2, stripe_transfer_id)
+          WHERE id = $1::uuid`,
+        [id, stripeTransferId],
+      );
+      return res.json({ success: true });
+    } catch (err) {
+      if (isUndefinedTableError(err)) {
+        return res.status(503).json({
+          error: "payouts_table_missing",
+          message: "Migrasjon 254 må kjøres først",
+        });
+      }
+      console.error("[admin-academy] payout mark-paid failed:", err);
+      return res.status(500).json({ error: "Could not mark payout paid" });
     }
   });
 }

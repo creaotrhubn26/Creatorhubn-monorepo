@@ -39,8 +39,9 @@ import {
   InputAdornment,
   Snackbar,
   TextField,
+  CircularProgress,
 } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Assessment,
   Settings,
@@ -72,6 +73,7 @@ import {
   Check,
   Close,
   AccountCircle,
+  Payments,
   Campaign,
   Event,
   Search,
@@ -85,6 +87,7 @@ import {
   apiRequest,
   isApiEndpointMissing,
   isKnownUnavailableApiEndpoint,
+  queryClient,
 } from '@/lib/queryClient';
 import PriceManagementDashboard from './PriceManagementDashboard';
 import MarketplaceAppConfigManager from './MarketplaceAppConfigManager';
@@ -488,6 +491,102 @@ export default function AdminDashboard({
     enabled: overviewFeedAvailability.automations && Boolean(currentUser?.isAdmin),
     staleTime: 30000,
     retry: false,
+  });
+
+  // ─── Academy: ekte tall + pending payouts ───────────────────
+  // Erstatter den hardkodede mockup-en i renderAcademyPanel.
+  // Endepunkter ligger i backend/server/admin-academy-routes.ts.
+  const academySummaryQueryKey = ['/api/admin/academy/summary'] as const;
+  const academyPayoutsQueryKey = ['/api/admin/academy/payouts', 'pending'] as const;
+
+  const { data: academySummary, isLoading: academySummaryLoading } = useQuery({
+    queryKey: academySummaryQueryKey,
+    queryFn: () => fetchOptionalAdminData<{
+      totalRevenue?: number;
+      platformShare?: number;
+      instructorShare?: number;
+      activeInstructorCount?: number;
+      enrollmentCount?: number;
+      pendingPayoutsCount?: number;
+      pendingPayoutsAmount?: number;
+      paidThisMonth?: number;
+    } | null>('/api/admin/academy/summary', null),
+    enabled: Boolean(currentUser?.isAdmin),
+    staleTime: 30000,
+    retry: false,
+  });
+
+  const { data: academyPayoutsData, isLoading: academyPayoutsLoading } = useQuery({
+    queryKey: academyPayoutsQueryKey,
+    queryFn: () => fetchOptionalAdminData<{
+      payouts?: Array<{
+        id: string;
+        instructorId: string;
+        instructorName: string | null;
+        amount: number;
+        status: string;
+        bankAccountLast4: string | null;
+        requestedAt: string | null;
+        notes: string | null;
+      }>;
+      total?: number;
+      tableMissing?: boolean;
+    } | null>('/api/admin/academy/payouts?status=pending', null),
+    enabled: Boolean(currentUser?.isAdmin),
+    staleTime: 30000,
+    retry: false,
+  });
+
+  const invalidateAcademy = () => {
+    queryClient.invalidateQueries({ queryKey: ['/api/admin/academy/payouts'] });
+    queryClient.invalidateQueries({ queryKey: academySummaryQueryKey });
+  };
+
+  const approvePayoutMutation = useMutation({
+    mutationFn: async (payoutId: string) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/admin/academy/payouts/${payoutId}/approve`, {
+        method: 'POST',
+        headers,
+      });
+    },
+    onSuccess: () => {
+      invalidateAcademy();
+      setSnackbar({
+        open: true,
+        message: 'Utbetaling godkjent — Stripe Connect prosesserer overføringen.',
+        severity: 'success',
+      });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error ? err.message : 'Kunne ikke godkjenne utbetaling';
+      setSnackbar({ open: true, message: msg, severity: 'error' });
+    },
+  });
+
+  const rejectPayoutMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/admin/academy/payouts/${id}/reject`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+    },
+    onSuccess: () => {
+      invalidateAcademy();
+      setSnackbar({
+        open: true,
+        message: 'Utbetaling avvist',
+        severity: 'warning',
+      });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error ? err.message : 'Kunne ikke avvise utbetaling';
+      setSnackbar({ open: true, message: msg, severity: 'error' });
+    },
   });
 
   const activateTab = (newValue: number) => {
@@ -1381,198 +1480,261 @@ export default function AdminDashboard({
     </Box>
   );
 
-  const renderAcademyPanel = () => (
-    <Box sx={{ p: 3 }}>
-      <Typography
-        variant="h5"
-        gutterBottom
-        sx={{ display: 'flex', alignItems: 'center', gap: 2, color: '#fff' }}
-      >
-        <School sx={{ color: '#ff8c00' }} />
-        Academy Management
-      </Typography>
-      <Typography variant="body2" sx={{ mb: 4, color: 'rgba(255,255,255,0.7)' }}>
-        Administrer kursutbetalinger til instruktører og plattformgebyrer
-      </Typography>
+  const renderAcademyPanel = () => {
+    const pendingPayouts = academyPayoutsData?.payouts ?? [];
+    const pendingPayoutsCount =
+      academySummary?.pendingPayoutsCount ?? pendingPayouts.length;
+    const pendingPayoutsAmount =
+      academySummary?.pendingPayoutsAmount ??
+      pendingPayouts.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const platformShare = academySummary?.platformShare ?? 0;
+    const enrollmentCount = academySummary?.enrollmentCount ?? 0;
+    const activeInstructorCount = academySummary?.activeInstructorCount ?? 0;
+    const tableMissing = academyPayoutsData?.tableMissing === true;
+    const fmt = (n: number) => n.toLocaleString('nb-NO');
 
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={4}>
-          <Card
-            sx={{
-              background: 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)',
-              color: 'white',
-            }}
-          >
-            <CardContent>
-              <Typography variant="h6">Plattformgebyrer (20%)</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
-                5,000
-              </Typography>
-              <Typography variant="body2">NOK denne måneden</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography
+          variant="h5"
+          gutterBottom
+          sx={{ display: 'flex', alignItems: 'center', gap: 2, color: '#fff' }}
+        >
+          <School sx={{ color: '#ff8c00' }} />
+          Academy Management
+        </Typography>
+        <Typography variant="body2" sx={{ mb: 4, color: 'rgba(255,255,255,0.7)' }}>
+          Administrer kursutbetalinger til instruktører og plattformgebyrer
+        </Typography>
 
-        <Grid item xs={12} md={4}>
-          <Card
-            sx={{
-              background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
-              color: 'white',
-            }}
-          >
-            <CardContent>
-              <Typography variant="h6">Totale Kursregistreringer</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
-                50
-              </Typography>
-              <Typography variant="body2">studenter denne måneden</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Card
-            sx={{
-              background: 'linear-gradient(135deg, #2196f3 0%, #1976d2 100%)',
-              color: 'white',
-            }}
-          >
-            <CardContent>
-              <Typography variant="h6">Aktive Instruktører</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
-                5
-              </Typography>
-              <Typography variant="body2">med aktive kurs</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      <Card>
-        <CardContent>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              mb: 2,
-            }}
-          >
-            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              💸 Utbetalingsforespørsler
-            </Typography>
-            <Chip label="3 ventende" color="warning" sx={{ fontWeight: 600 }} />
-          </Box>
-
-          <Alert severity="warning" sx={{ mb: 3 }}>
-            <strong>20,500 NOK</strong> venter på godkjenning
+        {tableMissing && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Migrasjon 254 (academy_payouts) er ikke kjørt enda. Kjør den for å se
+            ekte payout-data.
           </Alert>
+        )}
 
-          <Grid container spacing={2}>
-            {[
-              {
-                id: '1',
-                instructorId: 'instructor-1',
-                name: 'John Doe Photography',
-                amount: 12000,
-                requestedAt: '2025-10-28',
-                bank: '****8901',
-              },
-              {
-                id: '2',
-                instructorId: 'instructor-2',
-                name: 'Jane Smith Video',
-                amount: 5500,
-                requestedAt: '2025-10-29',
-                bank: '****4523',
-              },
-              {
-                id: '3',
-                instructorId: 'instructor-3',
-                name: 'Bob Johnson Music',
-                amount: 3000,
-                requestedAt: '2025-10-30',
-                bank: '****7890',
-              },
-            ].map((payout) => (
-              <Grid item xs={12} key={payout.id}>
-                <Paper
-                  sx={{
-                    p: 2,
-                    bgcolor: 'rgba(255,193,7,0.1)',
-                    border: '1px solid rgba(255,193,7,0.3)',
-                    borderRadius: 2,
-                  }}
-                >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Avatar sx={{ bgcolor: '#ff9800' }}>
-                      <AccountCircle />
-                    </Avatar>
-
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                        {payout.name}
-                      </Typography>
-                      <Typography variant="h6" sx={{ color: '#ff9800', fontWeight: 700 }}>
-                        {payout.amount.toLocaleString('nb-NO')} NOK
-                      </Typography>
-                      <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
-                        <Chip label="bank_transfer" size="small" />
-                        <Chip label={`Forespurt: ${payout.requestedAt}`} size="small" />
-                        <Chip label={`Bank: ${payout.bank}`} size="small" />
-                      </Box>
-                    </Box>
-
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Tooltip title="Godkjenn utbetaling">
-                        <IconButton
-                          color="success"
-                          onClick={() => setPayoutConfirmDialog({ open: true, payout })}
-                        >
-                          <Check />
-                        </IconButton>
-                      </Tooltip>
-
-                      <Tooltip title="Avvis utbetaling">
-                        <IconButton
-                          color="error"
-                          onClick={() => {
-                            setSnackbar({
-                              open: true,
-                              message: '❌ Utbetaling avvist',
-                              severity: 'error',
-                            });
-                          }}
-                        >
-                          <Close />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </Box>
-                </Paper>
-              </Grid>
-            ))}
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} md={4}>
+            <Card
+              sx={{
+                background: 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)',
+                color: 'white',
+              }}
+            >
+              <CardContent>
+                <Typography variant="h6">Plattformgebyrer (20%)</Typography>
+                <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
+                  {academySummaryLoading ? (
+                    <CircularProgress size={28} sx={{ color: 'white' }} />
+                  ) : (
+                    fmt(platformShare)
+                  )}
+                </Typography>
+                <Typography variant="body2">NOK plattform-andel</Typography>
+              </CardContent>
+            </Card>
           </Grid>
 
-          <Button
-            variant="outlined"
-            startIcon={<History />}
-            fullWidth
-            sx={{ mt: 3 }}
-            onClick={() =>
-              setSnackbar({
-                open: true,
-                message: 'Historikk kommer snart...',
-                severity: 'info',
-              })
-            }
-          >
-            Vis historikk
-          </Button>
-        </CardContent>
-      </Card>
-    </Box>
-  );
+          <Grid item xs={12} md={4}>
+            <Card
+              sx={{
+                background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
+                color: 'white',
+              }}
+            >
+              <CardContent>
+                <Typography variant="h6">Totale Kursregistreringer</Typography>
+                <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
+                  {academySummaryLoading ? (
+                    <CircularProgress size={28} sx={{ color: 'white' }} />
+                  ) : (
+                    fmt(enrollmentCount)
+                  )}
+                </Typography>
+                <Typography variant="body2">aktive + fullførte enrollments</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} md={4}>
+            <Card
+              sx={{
+                background: 'linear-gradient(135deg, #2196f3 0%, #1976d2 100%)',
+                color: 'white',
+              }}
+            >
+              <CardContent>
+                <Typography variant="h6">Aktive Instruktører</Typography>
+                <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
+                  {academySummaryLoading ? (
+                    <CircularProgress size={28} sx={{ color: 'white' }} />
+                  ) : (
+                    fmt(activeInstructorCount)
+                  )}
+                </Typography>
+                <Typography variant="body2">med aktive kurs</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+
+        <Card>
+          <CardContent>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                mb: 2,
+              }}
+            >
+              <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Payments sx={{ color: '#ff9800' }} />
+                Utbetalingsforespørsler
+              </Typography>
+              <Chip
+                label={`${pendingPayoutsCount} ventende`}
+                color="warning"
+                sx={{ fontWeight: 600 }}
+              />
+            </Box>
+
+            {pendingPayoutsAmount > 0 && (
+              <Alert severity="warning" sx={{ mb: 3 }}>
+                <strong>{fmt(pendingPayoutsAmount)} NOK</strong> venter på godkjenning
+              </Alert>
+            )}
+
+            {academyPayoutsLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : pendingPayouts.length === 0 ? (
+              <Alert severity="success">
+                Ingen ventende utbetalinger akkurat nå.
+              </Alert>
+            ) : (
+              <Grid container spacing={2}>
+                {pendingPayouts.map((payout) => {
+                  const displayName =
+                    payout.instructorName ||
+                    payout.notes ||
+                    `Instruktør ${payout.instructorId.slice(0, 8)}`;
+                  const bankSuffix = payout.bankAccountLast4
+                    ? `****${payout.bankAccountLast4}`
+                    : 'ikke registrert';
+                  const requestedAt = payout.requestedAt
+                    ? new Date(payout.requestedAt).toLocaleDateString('nb-NO')
+                    : '—';
+                  const isApproving =
+                    approvePayoutMutation.isPending &&
+                    approvePayoutMutation.variables === payout.id;
+                  const isRejecting =
+                    rejectPayoutMutation.isPending &&
+                    rejectPayoutMutation.variables?.id === payout.id;
+
+                  return (
+                    <Grid item xs={12} key={payout.id}>
+                      <Paper
+                        sx={{
+                          p: 2,
+                          bgcolor: 'rgba(255,193,7,0.1)',
+                          border: '1px solid rgba(255,193,7,0.3)',
+                          borderRadius: 2,
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Avatar sx={{ bgcolor: '#ff9800' }}>
+                            <AccountCircle />
+                          </Avatar>
+
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                              {displayName}
+                            </Typography>
+                            <Typography variant="h6" sx={{ color: '#ff9800', fontWeight: 700 }}>
+                              {fmt(payout.amount)} NOK
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                              <Chip label="bank_transfer" size="small" />
+                              <Chip label={`Forespurt: ${requestedAt}`} size="small" />
+                              <Chip label={`Bank: ${bankSuffix}`} size="small" />
+                            </Box>
+                          </Box>
+
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Tooltip title="Godkjenn utbetaling">
+                              <span>
+                                <IconButton
+                                  color="success"
+                                  disabled={isApproving || isRejecting}
+                                  onClick={() =>
+                                    setPayoutConfirmDialog({ open: true, payout })
+                                  }
+                                >
+                                  {isApproving ? (
+                                    <CircularProgress size={20} />
+                                  ) : (
+                                    <Check />
+                                  )}
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+
+                            <Tooltip title="Avvis utbetaling">
+                              <span>
+                                <IconButton
+                                  color="error"
+                                  disabled={isApproving || isRejecting}
+                                  onClick={() => {
+                                    const reason = window.prompt(
+                                      'Begrunnelse for avvisning?',
+                                    );
+                                    if (!reason || !reason.trim()) return;
+                                    rejectPayoutMutation.mutate({
+                                      id: payout.id,
+                                      reason: reason.trim(),
+                                    });
+                                  }}
+                                >
+                                  {isRejecting ? (
+                                    <CircularProgress size={20} />
+                                  ) : (
+                                    <Close />
+                                  )}
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Box>
+                        </Box>
+                      </Paper>
+                    </Grid>
+                  );
+                })}
+              </Grid>
+            )}
+
+            <Button
+              variant="outlined"
+              startIcon={<History />}
+              fullWidth
+              sx={{ mt: 3 }}
+              onClick={() =>
+                setSnackbar({
+                  open: true,
+                  message: 'Historikk kommer snart...',
+                  severity: 'info',
+                })
+              }
+            >
+              Vis historikk
+            </Button>
+          </CardContent>
+        </Card>
+      </Box>
+    );
+  };
 
   const renderProtocolPanel = () => (
     <Box sx={{ p: 3 }}>
@@ -2557,21 +2719,31 @@ export default function AdminDashboard({
         <DialogTitle>Godkjenn utbetaling</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Godkjenn utbetaling på {payoutConfirmDialog.payout?.amount?.toLocaleString('nb-NO')} NOK til {payoutConfirmDialog.payout?.name}?
+            Godkjenn utbetaling på {payoutConfirmDialog.payout?.amount?.toLocaleString('nb-NO')} NOK til{' '}
+            {payoutConfirmDialog.payout?.instructorName ||
+              payoutConfirmDialog.payout?.notes ||
+              payoutConfirmDialog.payout?.name ||
+              'instruktør'}
+            ?
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPayoutConfirmDialog({ open: false, payout: null })}>Avbryt</Button>
           <Button
             onClick={() => {
-              // TODO: Call approval API
+              const payoutId = payoutConfirmDialog.payout?.id;
+              if (!payoutId) {
+                setPayoutConfirmDialog({ open: false, payout: null });
+                return;
+              }
+              approvePayoutMutation.mutate(payoutId);
               setPayoutConfirmDialog({ open: false, payout: null });
-              setSnackbar({ open: true, message: '✅ Utbetaling godkjent! Stripe Connect vil prosessere overføringen.', severity: 'success' });
             }}
             variant="contained"
             color="success"
+            disabled={approvePayoutMutation.isPending}
           >
-            Godkjenn
+            {approvePayoutMutation.isPending ? 'Godkjenner…' : 'Godkjenn'}
           </Button>
         </DialogActions>
       </Dialog>
