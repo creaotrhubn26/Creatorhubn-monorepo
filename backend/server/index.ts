@@ -755,6 +755,7 @@ import { setupAdminProtocolRoutes } from "./admin-protocol-routes";
 import { setupAdminIntegrationsExtrasRoutes } from "./admin-integrations-extras-routes";
 import { setupAdminSystemBackupRoutes } from "./admin-system-backup-routes";
 import { setupAdminGdprLegalRoutes } from "./admin-gdpr-legal-routes";
+import { setupAdminReportsRoutes } from "./admin-reports-routes";
 import { setupAdminCommunityExtrasRoutes } from "./admin-community-extras-routes";
 import { setupAdminCommunicationExtrasRoutes } from "./admin-communication-extras-routes";
 import { setupAdminProvisioningExtrasRoutes } from "./admin-provisioning-extras-routes";
@@ -763,6 +764,7 @@ import { setupAdminEmailAnalyticsRoutes } from "./admin-email-analytics-routes";
 import { setupAdminGoogleWalletExtrasRoutes } from "./admin-google-wallet-extras-routes";
 import { setupAdminMarketplaceFixRoutes } from "./admin-marketplace-fix-routes";
 import { setupAdminFeatureCustomizationsRoutes } from "./admin-feature-customizations-routes";
+import { setupAdminTesterSkillsRoutes } from "./admin-tester-skills-routes";
 import { setupOrchestrationRoutes } from "./orchestration-routes";
 import { setupAuthRoutes } from "./auth-routes";
 import { setupFirmwareRoutes } from "./firmware-routes";
@@ -774,6 +776,7 @@ import {
   handleTesterEnterpriseOfferWebhook,
 } from "./tester-enterprise-offer-routes";
 import { setupAdminConfigCheckRoutes } from "./admin-config-check-routes";
+import { setupAdminDevelopmentToolsRoutes } from "./admin-development-tools-routes";
 import { setupWeddingAssistantBriefNotesRoutes } from "./wedding-assistant-brief-notes";
 import { setupWeddingAssistantGdprRoutes } from "./wedding-assistant-gdpr-routes";
 import {
@@ -24394,6 +24397,7 @@ setupAdminProtocolRoutes({ app, pool, requireAdminSession });
 setupAdminIntegrationsExtrasRoutes({ app, pool, requireAdminSession });
 setupAdminSystemBackupRoutes({ app, pool, requireAdminSession });
 setupAdminGdprLegalRoutes({ app, pool, requireAdminSession });
+setupAdminReportsRoutes({ app, pool, requireAdminSession });
 setupAdminCommunityExtrasRoutes({ app, pool, requireAdminSession });
 setupAdminCommunicationExtrasRoutes({ app, pool, requireAdminSession });
 setupAdminProvisioningExtrasRoutes({ app, pool, requireAdminSession });
@@ -24402,6 +24406,7 @@ setupAdminEmailAnalyticsRoutes({ app, pool, requireAdminSession });
 setupAdminGoogleWalletExtrasRoutes({ app, pool, requireAdminSession });
 setupAdminMarketplaceFixRoutes({ app, pool, requireAdminSession });
 setupAdminFeatureCustomizationsRoutes({ app, pool, requireAdminSession });
+setupAdminTesterSkillsRoutes({ app, pool, requireAdminSession });
 
 // ── Evendi misc — flyttet til ./evendi-misc-routes.ts
 //   16 endpoints: vendor-categories, products, photo-shots, schedule-events,
@@ -65287,6 +65292,9 @@ setInterval(() => {
 
 // Slice 9X.58 — Admin config-check (Stripe + Gmail + schema-tilstand)
 setupAdminConfigCheckRoutes({ app, pool, requireAdminSession });
+
+// Slice 9X.126 — Admin development-tools (placeholder-scan via grep-pipeline)
+setupAdminDevelopmentToolsRoutes({ app, requireAdminSession });
 
 // Slice 9X.49 — Brief-notater + AI-sammendrag.
 setupWeddingAssistantBriefNotesRoutes({ app, pool, requireUserSession, getPricingUserId });
