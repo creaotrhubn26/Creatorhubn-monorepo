@@ -622,6 +622,36 @@ test.describe('Photo Enhancer — full workflow', () => {
     await expect.poll(() => enhanceCalls, { timeout: 20_000 }).toBe(3);
     await expect(page.getByRole('img', { name: 'Enhanced' })).toBeVisible({ timeout: 10_000 });
   });
+
+  test('lens correction: the toggle rides along in the enhance settings payload', async ({ page }) => {
+    await mockStatusAndProjects(page);
+    let enhanceSettings: Record<string, unknown> | null = null;
+    await page.route('**/api/photo-enhancer/enhance', (route) => {
+      const body = route.request().postDataBuffer()?.toString('binary') ?? '';
+      const match = body.match(/name="settings"\r?\n\r?\n([^\r]+)/);
+      if (match) {
+        try {
+          enhanceSettings = JSON.parse(match[1]) as Record<string, unknown>;
+        } catch {
+          /* ignore parse error */
+        }
+      }
+      return json(route, { imageUrl: ENHANCED_DATA_URL });
+    });
+
+    await gotoEnhancer(page);
+    await uploadFixture(page);
+
+    // Enable lens correction inside the advanced accordion.
+    await page.getByText('Avanserte justeringer').click();
+    await page.getByTestId('lens-correction-toggle').getByRole('checkbox').check();
+
+    await page.getByRole('button', { name: /^Enhance$/ }).click();
+    await expect(page.getByRole('img', { name: 'Enhanced' })).toBeVisible({ timeout: 15_000 });
+
+    expect(enhanceSettings).not.toBeNull();
+    expect((enhanceSettings as Record<string, unknown>).lensCorrection).toMatchObject({ enabled: true });
+  });
 });
 
 test.describe('Photo Enhancer — robustness', () => {

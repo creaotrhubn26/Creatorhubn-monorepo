@@ -88,9 +88,11 @@ import type {
   EditModuleKey,
   EnhancementSettings as EnhancementSettingsContract,
   IntensityProfile,
+  LensCorrectionSettings,
   SubjectKind,
 } from '../../../lib/enhancer-session/module-contract';
 import {
+  DEFAULT_LENS_CORRECTION,
   DEFAULT_SETTINGS,
   INTENSITY_PROFILES,
   SUBJECT_KINDS,
@@ -1355,6 +1357,22 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
       : uploadedImage
     : null;
 
+  // Lens correction (distortion / vignetting / chromatic aberration). The
+  // amounts ride along in the enhance payload; the runner / RAW converter
+  // applies them, preferring the matched lens profile when `auto` is on.
+  const lensCorrection: LensCorrectionSettings = settings.lensCorrection ?? DEFAULT_LENS_CORRECTION;
+  const updateLensCorrection = (patch: Partial<LensCorrectionSettings>) => {
+    setSettings((previous) => ({
+      ...previous,
+      lensCorrection: { ...(previous.lensCorrection ?? DEFAULT_LENS_CORRECTION), ...patch },
+    }));
+  };
+  const matchedLensName: string | null = (() => {
+    const analysis = toRecord(toRecord(analysisResult).analysis);
+    const lens = toRecord(analysis.lensProfile);
+    return typeof lens.name === 'string' ? lens.name : null;
+  })();
+
   /**
    * Swap the enhance-pipeline input to a freshly retouched File. Invoked
    * by `FrequencySepDialog` after the user commits a frequency-sep edit.
@@ -2007,6 +2025,57 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   </AccordionSummary>
                   <AccordionDetails sx={{ px: 0, pt: 0 }}>
                     <Stack spacing={2}>
+                <Paper variant="outlined" sx={{ p: 1.25 }}>
+                  <Stack spacing={1.25}>
+                    <Box data-testid="lens-correction-toggle">
+                      <FormControlLabelSwitch
+                        label="Linsekorreksjon"
+                        checked={lensCorrection.enabled}
+                        onChange={(checked) => updateLensCorrection({ enabled: checked })}
+                      />
+                    </Box>
+                    {lensCorrection.enabled ? (
+                      <>
+                        <Typography variant="caption" color="text.secondary">
+                          {matchedLensName
+                            ? `Profil: ${matchedLensName}`
+                            : 'Ingen linseprofil matchet ennå — kjør Analyze, eller bruk manuell styrke.'}
+                        </Typography>
+                        <FormControlLabelSwitch
+                          label="Automatisk fra linseprofil"
+                          checked={lensCorrection.auto}
+                          onChange={(checked) => updateLensCorrection({ auto: checked })}
+                        />
+                        {!lensCorrection.auto
+                          ? (
+                              [
+                                { key: 'distortion' as const, label: 'Forvrengning' },
+                                { key: 'vignette' as const, label: 'Vignett' },
+                                { key: 'chromaticAberration' as const, label: 'Kromatisk aberrasjon' },
+                              ].map((control) => (
+                                <Box key={control.key}>
+                                  <Stack direction="row" justifyContent="space-between">
+                                    <Typography variant="caption">{control.label}</Typography>
+                                    <Typography variant="caption">{lensCorrection[control.key]}</Typography>
+                                  </Stack>
+                                  <Slider
+                                    value={lensCorrection[control.key]}
+                                    min={0}
+                                    max={100}
+                                    onChange={(_, value) =>
+                                      updateLensCorrection({ [control.key]: Array.isArray(value) ? value[0] : value })
+                                    }
+                                    onChangeCommitted={() => commitActiveHistory('Linsekorreksjon')}
+                                  />
+                                </Box>
+                              ))
+                            )
+                          : null}
+                      </>
+                    ) : null}
+                  </Stack>
+                </Paper>
+
                 <FormControl fullWidth size="small">
                   <InputLabel id="enhancer-model-label">Forbedrings-metode</InputLabel>
                   <Select

@@ -247,6 +247,24 @@ export interface InpaintAxis {
   recipe: InpaintRecipe | null;
 }
 
+export interface LensCorrectionSettings {
+  enabled: boolean;
+  /** When true, derive amounts from the matched lens profile; else use the
+   *  manual 0-100 strengths below. */
+  auto: boolean;
+  distortion: number;
+  vignette: number;
+  chromaticAberration: number;
+}
+
+export const DEFAULT_LENS_CORRECTION: LensCorrectionSettings = {
+  enabled: false,
+  auto: true,
+  distortion: 0,
+  vignette: 0,
+  chromaticAberration: 0,
+};
+
 export interface EnhancementSettings {
   brightness: number;
   contrast: number;
@@ -285,6 +303,7 @@ export interface EnhancementSettings {
   subjectLookStrength: number;
   hsl: HslAdjustments;
   lut: LutSelection;
+  lensCorrection?: LensCorrectionSettings;
 }
 
 export const DEFAULT_SETTINGS: EnhancementSettings = {
@@ -317,6 +336,7 @@ export const DEFAULT_SETTINGS: EnhancementSettings = {
   subjectLookStrength: 0,
   hsl: cloneHsl(HSL_IDENTITY),
   lut: { ...LUT_IDENTITY },
+  lensCorrection: { ...DEFAULT_LENS_CORRECTION },
 };
 
 export type SessionImageFlag = 'none' | 'pick' | 'reject';

@@ -190,6 +190,17 @@ type PhotoEnhancerR2Source = {
   originalHash?: string | null;
 };
 
+type LensCorrection = {
+  enabled: boolean;
+  // When true, derive the correction amounts from the matched lens profile
+  // (or the RAW's embedded correction / Lensfun). When false, the manual
+  // 0-100 strengths below are used.
+  auto: boolean;
+  distortion: number;
+  vignette: number;
+  chromaticAberration: number;
+};
+
 type PhotoEnhancerSettings = {
   brightness: number;
   contrast: number;
@@ -248,6 +259,9 @@ type PhotoEnhancerSettings = {
   // only. Faces whose index is NOT listed inherit the global sliders.
   // ``faceIndex`` matches the index returned by POST /faces.
   perFaceOverrides: PerFaceOverride[];
+  // Optical lens correction. Honoured by the runner / RAW converter when a
+  // matched lens profile (or Lensfun/LCP) is available.
+  lensCorrection: LensCorrection;
 };
 
 type PerFaceOverride = {
@@ -1208,6 +1222,13 @@ const defaultSettings: PhotoEnhancerSettings = {
   },
   lut: { name: null, strength: 0 },
   perFaceOverrides: [],
+  lensCorrection: {
+    enabled: false,
+    auto: true,
+    distortion: 0,
+    vignette: 0,
+    chromaticAberration: 0,
+  },
 };
 
 const PER_FACE_OVERRIDE_KEYS: ReadonlyArray<keyof PerFaceOverride["controls"]> = [
@@ -1623,6 +1644,17 @@ async function downloadPhotoEnhancerR2ObjectToTemp(params: {
   }
 }
 
+function normalizeLensCorrection(raw: unknown): LensCorrection {
+  const obj = parseJsonObject(raw);
+  return {
+    enabled: typeof obj.enabled === "boolean" ? obj.enabled : false,
+    auto: typeof obj.auto === "boolean" ? obj.auto : true,
+    distortion: clampNumber(readNumber(obj.distortion) ?? 0, 0, 100),
+    vignette: clampNumber(readNumber(obj.vignette) ?? 0, 0, 100),
+    chromaticAberration: clampNumber(readNumber(obj.chromaticAberration) ?? 0, 0, 100),
+  };
+}
+
 function normalizeSettings(
   rawSettings: unknown,
   preset: string,
@@ -1707,6 +1739,7 @@ function normalizeSettings(
     hsl: normalizeHsl(raw.hsl ?? merged.hsl),
     lut: normalizeLut(raw.lut ?? merged.lut),
     perFaceOverrides: normalizePerFaceOverrides(raw.perFaceOverrides ?? merged.perFaceOverrides),
+    lensCorrection: normalizeLensCorrection(raw.lensCorrection ?? merged.lensCorrection),
   };
 }
 
