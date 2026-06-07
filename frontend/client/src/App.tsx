@@ -195,6 +195,8 @@ import NextRoleLanding from '@/pages/nextrole-landing';
 import AgencyLandingPage from '@/pages/agency-landing';
 import AgencyFAQPage from '@/pages/agency-faq';
 import PitchDeckPage from '@/pages/pitch-deck';
+import BlogIndexPage from '@/pages/blog-index';
+import BlogPostPage from '@/pages/blog-post';
 import CreatorhubInnovationPage from '@/pages/CreatorhubInnovationPage';
 import GoogleVerificationDemoPage from '@/pages/GoogleVerificationDemoPage';
 import PhotographerClientsList from '@/pages/photographer-clients-list';
@@ -818,6 +820,8 @@ function App() {
                   <Route path="/agencies" component={AgencyLandingPage as React.ComponentType<any>} />
                   <Route path="/faq" component={AgencyFAQPage as React.ComponentType<any>} />
                   <Route path="/pitch" component={PitchDeckPage as React.ComponentType<any>} />
+                  <Route path="/blog" component={BlogIndexPage as React.ComponentType<any>} />
+                  <Route path="/blog/:slug" component={BlogPostPage as React.ComponentType<any>} />
                   <Route path="/showcase-admin" component={ShowcaseAdminRouteWrapper as React.ComponentType<any>} />
                   {/* Plugin management routes removed - file doesn't exist */}
                   <Route path="/request-access" component={RequestAccess as React.ComponentType<any>} />

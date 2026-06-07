@@ -488,6 +488,7 @@ import { setupAgencyLeadsRoutes } from "./agency-leads-routes";
 import { setupCockpitB2BRoutes } from "./cockpit-b2b-routes";
 import { setupLinkedInOAuthRoutes } from "./linkedin-oauth-routes";
 import { setupLinkedInPrepRoutes } from "./linkedin-prep-routes";
+import { setupBlogPublicRoutes } from "./blog-public-routes";
 import { setupRoleRoomCandidateStatusRoutes } from "./role-room-candidate-status-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
@@ -24099,6 +24100,8 @@ setupLinkedInPrepRoutes({
   getActiveSession: getActiveSessionFromRequest,
   isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
 });
+// Offentlig blog (les fra cms_pages med variant='blog')
+setupBlogPublicRoutes({ app, pool });
 // Candidate-status PATCH med partnership-callback til byrå (Phase 9.6).
 setupRoleRoomCandidateStatusRoutes({
   app,

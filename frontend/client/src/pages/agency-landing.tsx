@@ -151,6 +151,7 @@ export default function AgencyLandingPage() {
       <TopNav />
       <Hero isMobile={isMobile} />
       <PainSection />
+      <RealAgenciesSection />
       <ValueSection />
       <TrustStrip />
       <ProductPeekSection isMobile={isMobile} />
@@ -523,6 +524,104 @@ function HeroProductPeek() {
         ))}
       </Stack>
     </Box>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// RealAgenciesSection — editorial triptyk med FAL.ai-genererte bilder
+// av agenturhverdag, talent-katalog og partnerskap.
+// ──────────────────────────────────────────────────────────────────
+const LANDING_PHOTOS = {
+  agencyHero: {
+    src: 'https://v3b.fal.media/files/b/0a9d5cad/pY3EZ9l4TvCjg9mPpB6Xr_f7423f5ba38c458e88b2e27269c00008.jpg',
+    alt: 'Casting-direktør ved Scandinavian-designet skrivebord med MacBook og to skjermer som viser dashboard.',
+    title: 'Hele drift på én skjerm',
+    body: 'Pipeline, talent-tilgjengelighet, kontrakter og fakturering i ett dashboard — ingen flere fredager med Excel.',
+  },
+  talents: {
+    src: 'https://v3b.fal.media/files/b/0a9d5cad/ZUJkaJ0tAFs7E6tE8TUE2_17ef4061f22648528991da1cb2be28e1.jpg',
+    alt: 'Portrettrutenett av forskjellige nordiske talenter — diverse alder og bakgrunn.',
+    title: 'Talent-katalog med audit-trail',
+    body: 'Per-prosjekt-tilgang for produsenter, full logg over hvem som har sett hvilke talenter. GDPR-trygt fra dag 1.',
+  },
+  partnership: {
+    src: 'https://v3b.fal.media/files/b/0a9d5cad/E5vqnqv8wd_b-OO0dorXw_00d4d6fe514b4bf28782c8f2271567e1.jpg',
+    alt: 'To fagpersoner som tar hverandre i hånden over et skrivebord i moderne skandinavisk byrå-kontor.',
+    title: 'Partnerskap — ikke leverandør',
+    body: 'Talentene står i ditt byrå, du eier kunderelasjonen. Vi er infrastrukturen som lar deg fokusere på relasjoner.',
+  },
+} as const;
+
+function RealAgenciesSection() {
+  return (
+    <Container maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
+      <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 } }}>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', fontWeight: 700, letterSpacing: 1, mb: 1, textTransform: 'uppercase' }}>
+          Hva det ser ut som
+        </Typography>
+        <Typography
+          component="h2"
+          sx={{
+            fontSize: { xs: '1.8rem', md: '2.4rem' },
+            fontWeight: 800,
+            lineHeight: 1.15,
+            mb: 1.6,
+          }}
+        >
+          Tre flater av en{' '}
+          <Box component="span" sx={{
+            background: palette.accentGradient,
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}>
+            moderne byrå-arbeidsdag
+          </Box>
+        </Typography>
+      </Box>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
+          gap: { xs: 2.4, md: 3 },
+        }}
+      >
+        {(Object.values(LANDING_PHOTOS) as Array<typeof LANDING_PHOTOS[keyof typeof LANDING_PHOTOS]>).map((card) => (
+          <Box
+            key={card.title}
+            sx={{
+              bgcolor: palette.bgCard,
+              border: `1px solid ${palette.borderSubtle}`,
+              borderRadius: 3,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <Box
+              component="img"
+              src={card.src}
+              alt={card.alt}
+              loading="lazy"
+              sx={{
+                width: '100%',
+                aspectRatio: '4 / 3',
+                objectFit: 'cover',
+                display: 'block',
+              }}
+            />
+            <Box sx={{ p: { xs: 2.4, md: 3 } }}>
+              <Typography sx={{ fontWeight: 800, fontSize: '1.08rem', mb: 1, color: palette.textPrimary }}>
+                {card.title}
+              </Typography>
+              <Typography sx={{ color: palette.textSecondary, fontSize: '0.94rem', lineHeight: 1.55 }}>
+                {card.body}
+              </Typography>
+            </Box>
+          </Box>
+        ))}
+      </Box>
+    </Container>
   );
 }
 
@@ -1447,6 +1546,7 @@ function Footer() {
             {[
               { href: '/pricing', label: 'Priser' },
               { href: '/faq', label: 'FAQ' },
+              { href: '/blog', label: 'Blog' },
               { href: '/about', label: 'Om oss' },
               { href: '/privacy-policy', label: 'Personvern' },
               { href: '/terms-and-conditions', label: 'Vilkår' },
