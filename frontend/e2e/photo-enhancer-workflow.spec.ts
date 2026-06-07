@@ -169,6 +169,12 @@ async function mockStatusAndProjects(
       { id: 'proj-studio', name: 'Studio Portraits' },
     ]),
   );
+  // Auto-analyse fires on upload (default-on toggle); keep it satisfied so it
+  // never leaks an unmocked-endpoint error. Tests that assert on analyze
+  // register their own more specific route afterwards (last-registered wins).
+  const analyzeBody = { analysis: { format: 'png', faces: [] } };
+  await page.route('**/api/photo-enhancer/analyze', (route) => json(route, analyzeBody));
+  await page.route('**/api/photo-enhancer/analyze-r2', (route) => json(route, analyzeBody));
 }
 
 /** Collect console/page errors, filtered down to ones the enhancer itself
@@ -423,6 +429,9 @@ test.describe('Photo Enhancer — full workflow', () => {
     });
 
     await gotoEnhancer(page);
+    // Turn off auto-analyse so this test exercises only the queued enhance
+    // path — auto-analyse would otherwise trigger its own R2 upload first.
+    await page.getByTestId('auto-analyze-toggle').getByRole('checkbox').uncheck();
     await uploadFixture(page, 'large-shoot.png', makeLargeNoisePng(2500));
 
     await page.getByRole('button', { name: /^Enhance$/ }).click();
@@ -438,5 +447,112 @@ test.describe('Photo Enhancer — full workflow', () => {
     expect(seenEndpoints).toContain('complete');
     expect(seenEndpoints).toContain('jobs-create');
     expect(jobPolls).toBeGreaterThanOrEqual(1);
+  });
+});
+
+test.describe('Photo Enhancer — robustness', () => {
+  test('crash-sweep: opening every tool, dialog and accordion throws no errors', async ({
+    page,
+  }) => {
+    const errors = trackConsoleErrors(page);
+    await mockStatusAndProjects(page);
+    await page.route('**/api/photo-enhancer/enhance', (route) => json(route, { imageUrl: ENHANCED_DATA_URL }));
+
+    await gotoEnhancer(page);
+    await uploadFixture(page);
+
+    // Expand both advanced accordions (these render heavy sub-trees —
+    // exactly where the CompositionGuides/StepIcon class of crash hid).
+    await page.getByText('Avanserte justeringer').click();
+    await page.getByText('Farge & look').click();
+
+    // Keyboard-shortcut help popover.
+    await page.getByRole('button', { name: 'Hurtigtaster' }).click();
+    await expect(page.getByText('Hurtigtaster')).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // Tool dialogs the workflow spec never opens.
+    for (const name of [/^Fjern objekter$/, /^Auto-finn objekter$/, /^Eksporter/]) {
+      await page.getByRole('button', { name }).click();
+      await expect(page.getByRole('dialog')).toBeVisible({ timeout: 10_000 });
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toBeHidden({ timeout: 10_000 });
+    }
+
+    // Enhance, then the result-only dialogs.
+    await page.getByRole('button', { name: /^Enhance$/ }).click();
+    await expect(page.getByRole('img', { name: 'Enhanced' })).toBeVisible({ timeout: 15_000 });
+    for (const name of [/Save to project/, /Rate enhancement/]) {
+      await page.getByRole('button', { name }).click();
+      await expect(page.getByRole('dialog')).toBeVisible({ timeout: 10_000 });
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toBeHidden({ timeout: 10_000 });
+    }
+
+    // Nothing white-screened (the primary CTA is still mounted) and no code
+    // path logged an error.
+    await expect(page.getByRole('button', { name: /^Enhance$/ })).toBeVisible();
+    expect(relevantErrors(errors), relevantErrors(errors).join('\n')).toEqual([]);
+  });
+
+  test('enhance failure surfaces an error instead of silently doing nothing', async ({ page }) => {
+    await mockStatusAndProjects(page);
+    await page.route('**/api/photo-enhancer/enhance', (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Forbedringsmotoren er midlertidig nede' }),
+      }),
+    );
+
+    await gotoEnhancer(page);
+    await uploadFixture(page);
+    await page.getByRole('button', { name: /^Enhance$/ }).click();
+
+    // The error alert renders the backend message; no enhanced image appears.
+    await expect(page.getByText(/Forbedringsmotoren er midlertidig nede/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('img', { name: 'Enhanced' })).toHaveCount(0);
+    // Save stays locked because there is no result to save.
+    await expect(page.getByRole('button', { name: /Save to project/ })).toBeDisabled();
+  });
+
+  test('queue job actions: Pause posts to the job action endpoint', async ({ page }) => {
+    await mockStatusAndProjects(page, { enabled: true, reason: null });
+
+    await page.route('**/api/photo-enhancer/uploads/multipart', (route) =>
+      json(route, {
+        upload: { bucket: 'b', key: 'k', uploadId: 'u', partSize: 64 * 1024 * 1024, partCount: 1, maxPartUrlsPerRequest: 1 },
+      }),
+    );
+    await page.route('**/api/photo-enhancer/uploads/multipart/proxy-part', (route) =>
+      json(route, { part: { etag: 'e1' } }),
+    );
+    await page.route('**/api/photo-enhancer/uploads/multipart/complete', (route) =>
+      json(route, {
+        source: { storageType: 'r2', bucket: 'b', key: 'k', uploadId: 'u', fileName: 'large.png', mimeType: 'image/png', size: 4096, etag: 'e', lastModified: null },
+      }),
+    );
+    await page.route('**/api/photo-enhancer/jobs', (route) =>
+      json(route, { job: { id: 'job-pause01', status: 'queued', progress: 0, attempts: 0, maxAttempts: 3 } }),
+    );
+    // Keep the job running so the panel — and its action buttons — stay up.
+    await page.route(/\/api\/photo-enhancer\/jobs\/job-pause01$/, (route) =>
+      json(route, { job: { id: 'job-pause01', status: 'running', progress: 50, attempts: 1, maxAttempts: 3 } }),
+    );
+    let pauseCalled = false;
+    await page.route(/\/api\/photo-enhancer\/jobs\/job-pause01\/pause$/, (route) => {
+      pauseCalled = true;
+      return json(route, { job: { id: 'job-pause01', status: 'paused', progress: 50, attempts: 1, maxAttempts: 3 } });
+    });
+
+    await gotoEnhancer(page);
+    await page.getByTestId('auto-analyze-toggle').getByRole('checkbox').uncheck();
+    await uploadFixture(page, 'large-shoot.png', makeLargeNoisePng(2500));
+    await page.getByRole('button', { name: /^Enhance$/ }).click();
+
+    await expect(page.getByText(/Server-jobb/)).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: /^Pause$/ }).click();
+
+    await expect.poll(() => pauseCalled, { message: 'pause endpoint never called', timeout: 10_000 }).toBe(true);
   });
 });

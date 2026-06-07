@@ -9,6 +9,8 @@ import {
   Card,
   CardContent,
   Chip,
+  CircularProgress,
+  Popover,
   Dialog,
   DialogActions,
   DialogContent,
@@ -33,7 +35,10 @@ import {
   Assessment as AssessmentIcon,
   AutoFixHigh as AutoFixHighIcon,
   CloudDone as CloudDoneIcon,
+  Download as DownloadIcon,
   ExpandMore as ExpandMoreIcon,
+  HelpOutline as HelpIcon,
+  RestartAlt as RestartAltIcon,
   CloudUpload as CloudUploadIcon,
   Compare as CompareIcon,
   Face as FaceIcon,
@@ -480,6 +485,8 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
+  const [autoAnalyze, setAutoAnalyze] = useState(true);
+  const [shortcutsAnchor, setShortcutsAnchor] = useState<HTMLElement | null>(null);
   const [showRatingDialog, setShowRatingDialog] = useState(false);
   const [directUploadCache, setDirectUploadCache] = useState<DirectUploadCache | null>(null);
   const [directUploadProgress, setDirectUploadProgress] = useState<DirectUploadProgress | null>(null);
@@ -1086,6 +1093,37 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     setAiSuggestion(null);
     setAiSuggestedRecipe(null);
     session.selectImage(first.id);
+
+    // Reduce friction: kick off the lightweight analysis (faces, format,
+    // hash) right away unless the photographer has turned it off.
+    if (autoAnalyze) {
+      void analyzeMutation.mutateAsync(first.file).catch(() => {
+        // Auto-analysis is best-effort; the manual "Analyze" button stays
+        // available and surfaces its own error.
+      });
+    }
+  };
+
+  // Download the enhanced result directly, without going through the
+  // project-save or export-preset flow.
+  const handleDownloadEnhanced = () => {
+    if (!enhancedImageUrl) return;
+    const anchor = document.createElement('a');
+    anchor.href = enhancedImageUrl;
+    const base = uploadedImage?.name?.replace(/\.[^.]+$/, '') || 'bilde';
+    anchor.download = `${base}-forbedret.png`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  };
+
+  // Reset every adjustment back to defaults (e.g. to start over after an
+  // AI suggestion or manual tweaking).
+  const resetSettings = () => {
+    setSettings(DEFAULT_SETTINGS);
+    setAiSuggestion(null);
+    setAiSuggestedRecipe(null);
+    commitActiveHistory('Tilbakestilt');
   };
 
   const onImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1435,9 +1473,20 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
           <Card>
             <CardContent>
               <Stack spacing={2}>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  CreatorHub Photo Enhancer
-                </Typography>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    CreatorHub Photo Enhancer
+                  </Typography>
+                  <Tooltip title="Hurtigtaster">
+                    <IconButton
+                      size="small"
+                      aria-label="Hurtigtaster"
+                      onClick={(event) => setShortcutsAnchor(event.currentTarget)}
+                    >
+                      <HelpIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
                 <Typography variant="body2" color="text.secondary">
                   AI-enhancement for {profession.replace('_', ' ')} workflows.
                 </Typography>
@@ -1499,6 +1548,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
 
                 {uploadedImage ? <Chip label={uploadedImage.name} size="small" /> : null}
 
+                <Box data-testid="auto-analyze-toggle">
+                  <FormControlLabelSwitch
+                    label="Analyser automatisk ved opplasting"
+                    checked={autoAnalyze}
+                    onChange={(checked) => setAutoAnalyze(checked)}
+                  />
+                </Box>
+
                 {uploadedImage && selectedIsLargeUpload ? (
                   <Alert severity={selectedUsesDirectUpload ? 'info' : 'warning'}>
                     {selectedUsesDirectUpload
@@ -1557,7 +1614,23 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   />
                 ) : null}
 
-                <Typography variant="subtitle2">Justeringer</Typography>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="subtitle2">Justeringer</Typography>
+                  <Tooltip title="Tilbakestill alle justeringer til standard">
+                    <span>
+                      <Button
+                        size="small"
+                        color="inherit"
+                        startIcon={<RestartAltIcon fontSize="small" />}
+                        onClick={resetSettings}
+                        disabled={!uploadedImage}
+                        sx={{ textTransform: 'none' }}
+                      >
+                        Tilbakestill
+                      </Button>
+                    </span>
+                  </Tooltip>
+                </Stack>
                 {[
                   { key: 'brightness', label: 'Lysstyrke', hint: 'Gjør hele bildet lysere eller mørkere.' },
                   { key: 'contrast', label: 'Kontrast', hint: 'Øker forskjellen mellom lyse og mørke partier.' },
@@ -1576,7 +1649,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                         <Tooltip title={slider.hint} placement="top" arrow>
                           <Typography
                             variant="caption"
-                            sx={{ borderBottom: '1px dotted', borderColor: 'text.disabled', cursor: 'help' }}
+                            sx={{ borderBottom: '1px dotted', borderColor: 'text.secondary', cursor: 'help' }}
                           >
                             {slider.label}
                           </Typography>
@@ -1675,7 +1748,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                         <Tooltip title={slider.hint} placement="top" arrow>
                           <Typography
                             variant="caption"
-                            sx={{ borderBottom: '1px dotted', borderColor: 'text.disabled', cursor: 'help' }}
+                            sx={{ borderBottom: '1px dotted', borderColor: 'text.secondary', cursor: 'help' }}
                           >
                             {slider.label}
                           </Typography>
@@ -1913,7 +1986,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     Analyze
                   </Button>
                   <Button
-                    variant="outlined"
+                    variant={uploadedImage && !aiSuggestion ? 'contained' : 'outlined'}
                     color="secondary"
                     onClick={() => void runSuggestRecipe()}
                     disabled={!uploadedImage || suggestRecipeMutation.isPending}
@@ -2247,6 +2320,26 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     handlePreviewPixelPick(normX, normY);
                   }}
                 >
+                  {enhanceMutation.isPending && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        inset: 0,
+                        zIndex: 5,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 1.5,
+                        color: '#fff',
+                        bgcolor: 'rgba(0,0,0,0.55)',
+                        backdropFilter: 'blur(2px)',
+                      }}
+                    >
+                      <CircularProgress color="inherit" />
+                      <Typography variant="body2">Forbedrer bildet…</Typography>
+                    </Box>
+                  )}
                   <Box className="face-zoom-layer" sx={{ position: 'relative', width: '100%', height: '100%', minHeight: 420 }}>
                   {viewMode === 'single' && (
                     enhancedImageUrl ? (
@@ -2396,6 +2489,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.5 }}>
                 <Button
                   variant="outlined"
+                  startIcon={<DownloadIcon />}
+                  onClick={handleDownloadEnhanced}
+                  disabled={!enhancedImageUrl}
+                >
+                  Last ned
+                </Button>
+                <Button
+                  variant="outlined"
                   startIcon={<SaveIcon />}
                   onClick={() => setSaveDialogOpen(true)}
                   disabled={!enhancedImageUrl}
@@ -2424,6 +2525,40 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
           </Card>
         </Grid>
       </Grid>
+
+      <Popover
+        open={Boolean(shortcutsAnchor)}
+        anchorEl={shortcutsAnchor}
+        onClose={() => setShortcutsAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Box sx={{ p: 2, maxWidth: 300 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Hurtigtaster
+          </Typography>
+          <Stack spacing={0.5}>
+            {[
+              ['1–5', 'Gi stjerner til bildet'],
+              ['0', 'Fjern rating'],
+              ['P / X / U', 'Marker / forkast / fjern markering'],
+              ['← / →', 'Forrige / neste bilde'],
+              ['Hold \\', 'Sammenlign med original'],
+              ['⌘Z / ⌘⇧Z', 'Angre / gjør om'],
+              ['⌘⇧C', 'Kopier justeringer'],
+            ].map(([keys, desc]) => (
+              <Stack key={keys} direction="row" justifyContent="space-between" spacing={2}>
+                <Typography variant="caption" sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                  {keys}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>
+                  {desc}
+                </Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+      </Popover>
 
       <ExportPresetDialog
         open={exportDialogOpen}
