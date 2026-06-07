@@ -41,19 +41,37 @@ interface Article {
   tags: string[] | null;
 }
 
+// Pillar-taksonomi alignet mot THE-ROLE-ROOM-PRODUKTDOKUMENTASJON.md §2.1 vertikaler.
+// Legacy-slugs (gdpr/selftape/crm) mappes til Talents-vertikalen siden de tre eksisterende
+// artiklene dekker consent, self-tape og effektivisering — alle innenfor Talents-app/Registry.
 const PILLAR_LABELS: Record<string, string> = {
-  gdpr: 'GDPR + Compliance',
-  selftape: 'Self-tape-praksis',
-  crm: 'Casting-CRM',
-  ai: 'AI i casting',
+  // Nye vertikal-baserte pillarer
+  'production-os': 'Produksjons-OS',
+  'content-producer': 'Innholdsprodusent',
+  dance: 'Dansestudio',
+  talents: 'Talents + Registry',
+  agent: 'AI-Agent',
+  'cross-cutting': 'På tvers',
+  // Legacy-slugs (de tre eksisterende pillar-artiklene tilhører Talents-vertikalen)
+  gdpr: 'Talents + GDPR',
+  selftape: 'Talents + Self-tape',
+  crm: 'På tvers · Effektivisering',
+  ai: 'AI-Agent',
   survey: 'Bransje-innsikt',
   cases: 'Case studies',
 };
 
 const PILLAR_COLORS: Record<string, string> = {
+  'production-os': '#60a5fa',
+  'content-producer': '#fbbf24',
+  dance: '#e879f9',
+  talents: '#34d399',
+  agent: '#c084fc',
+  'cross-cutting': '#94a3b8',
+  // Legacy
   gdpr: '#34d399',
-  selftape: '#60a5fa',
-  crm: '#fbbf24',
+  selftape: '#34d399',
+  crm: '#94a3b8',
   ai: '#c084fc',
   survey: '#f87171',
   cases: '#e879f9',
@@ -68,11 +86,11 @@ export default function BlogIndexPage() {
   // SEO: title + description + JSON-LD CollectionPage
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = 'Blog — The Role Room | Casting-CRM for norske byråer';
+    document.title = 'Blog — The Role Room | Operativsystem for film- og innholdsproduksjon';
     const meta = document.querySelector('meta[name="description"]')
       ?? Object.assign(document.createElement('meta'), { name: 'description' });
     meta.setAttribute('content',
-      'Innsikt for norske casting-byråer — GDPR-sjekklister, self-tape-praksis, AI-feedback fra Claude, bransje-undersøkelser og case studies.',
+      'Innsikt på tvers av fire vertikaler — Produksjons-OS, Innholdsprodusent, Dansestudio og Talent Registry — for norske produksjonsteam, byråer og skapere.',
     );
     if (!meta.parentNode) document.head.appendChild(meta);
     return () => { document.title = previousTitle; };
@@ -142,7 +160,7 @@ export default function BlogIndexPage() {
             </Box>
           </Typography>
           <Typography sx={{ color: palette.textSecondary, fontSize: '1.08rem' }}>
-            GDPR-sjekklister, self-tape-praksis, AI-feedback og bransje-innsikt.
+            Innsikt på tvers av de fire vertikalene i operativsystemet vårt — Produksjons-OS, Innholdsprodusent, Dansestudio og Talent Registry.
           </Typography>
         </Container>
       </Box>
@@ -228,10 +246,10 @@ export default function BlogIndexPage() {
           }}
         >
           <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', mb: 1 }}>
-            Vil du se hvordan vi løser dette i praksis?
+            Vil du se hele operativsystemet — fra idé til sett?
           </Typography>
           <Typography sx={{ color: palette.textSecondary, fontSize: '0.96rem', mb: 2 }}>
-            Book en 30-min demo — vi viser deg en konkret casting-dag på vår plattform.
+            30-min demo skreddersydd for din vertikal — produksjonsteam, innholdsprodusent, dansestudio eller byrå.
           </Typography>
           <Button
             href="/for-byraer#book-demo"

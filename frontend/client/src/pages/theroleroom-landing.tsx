@@ -1,15 +1,17 @@
 /**
  * theroleroom-landing.tsx — root-landing for theroleroom.com
  *
- * Vises når host = theroleroom.com (eller localhost-flag).
- * For creatorhubn.com og andre domener: behold CreatorHubInvestorLanding.
+ * Bygget med strikt tro mot THE-ROLE-ROOM-PRODUKTDOKUMENTASJON.md.
  *
- * Sentral målgruppe: 3 brukersegmenter
- *   1. Skuespillere — talent-portfolio, self-tape-opptaker, audition-tilgang
- *   2. Byråer — talent-administrasjon, casting-flow, fakturering
- *   3. Produksjonsteam — casting-brief, shortlist, kontrakter, call-sheets
+ * Sentralt poeng (1.1 + 1.3):
+ *   TheRoleRoom er IKKE en castingplattform. Det er operativsystemet for
+ *   film- og innholdsproduksjon — fra idé via casting og gjennomføring
+ *   til produksjonen er distribuert og sett av publikum.
  *
- * Branding-konsistens: samme purple-gradient som /for-byraer + blog.
+ * Manifest (6.4):
+ *   "Hver god fortelling starter med de rette menneskene i de rette rollene."
+ *
+ * Vises når host = theroleroom.com (jf. LandingResponsive.tsx).
  */
 
 import {
@@ -19,10 +21,15 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import PublicOutlinedIcon from '@mui/icons-material/PublicOutlined';
-import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
-import BusinessCenterOutlinedIcon from '@mui/icons-material/BusinessCenterOutlined';
-import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
+import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined';
+import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
+import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';
 import MovieFilterOutlinedIcon from '@mui/icons-material/MovieFilterOutlined';
+import CameraOutlinedIcon from '@mui/icons-material/CameraOutlined';
+import MusicNoteOutlinedIcon from '@mui/icons-material/MusicNoteOutlined';
+import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
 import { useEffect } from 'react';
 
 const palette = {
@@ -41,102 +48,152 @@ const palette = {
 };
 
 const PHOTOS = {
+  // Atmospheric hero: empty casting room, MacBook with dashboard, no people
   hero: 'https://v3b.fal.media/files/b/0a9d5de3/Ax4Sdyk0B4ROd_cxUpB7k_e9456626ba614512a36c699df12b9915.jpg',
-  actor: 'https://v3b.fal.media/files/b/0a9d5de3/KQxFhVBZeCOi04xjqXcNO_ff5233da016b4e0d9787db15db5edc8e.jpg',
-  agency: 'https://v3b.fal.media/files/b/0a9d5de3/X9VbGN_iDFd_4g52tXmly_68411e3ab8aa4486a93e8c767d28c30e.jpg',
+  // Production room
   production: 'https://v3b.fal.media/files/b/0a9d5de3/CrJBGnwM89kTTYxehgzkg_a76b243c56624951bead4b307f5b1e17.jpg',
+  // Agency-side (talent registry context)
+  agency: 'https://v3b.fal.media/files/b/0a9d5de3/X9VbGN_iDFd_4g52tXmly_68411e3ab8aa4486a93e8c767d28c30e.jpg',
+  // Content producer
+  contentProducer: 'https://v3b.fal.media/files/b/0a9d5cad/pY3EZ9l4TvCjg9mPpB6Xr_f7423f5ba38c458e88b2e27269c00008.jpg',
 };
 
-const SEGMENTS: Array<{
-  id: 'actor' | 'agency' | 'production';
+// 4 LIVE vertikaler + 1 AI-lag i beta (2.1)
+const VERTICALS: Array<{
+  id: string;
   Icon: React.ComponentType<{ sx?: object; fontSize?: 'small' | 'inherit' | 'medium' | 'large' }>;
-  label: string;
   title: string;
+  audience: string;
+  priceNote: string;
   body: string;
   bullets: string[];
-  ctaLabel: string;
-  ctaHref: string;
-  photo: string;
+  status: 'live' | 'beta';
+  href: string;
 }> = [
   {
-    id: 'actor',
-    Icon: VideocamOutlinedIcon,
-    label: 'For skuespillere',
-    title: 'Én profil. Alle audition-ene dine. Ingen WeTransfer.',
-    body: 'Lag profesjonelle self-tapes rett fra telefonen, hold all audition-historikken samlet, og bli funnet av byrå og produsenter som faktisk leter etter deg.',
-    bullets: [
-      'Innebygget self-tape-opptaker med format-presets',
-      'AI-feedback fra Claude på lyd, lys og takt',
-      'Talent-portfolio som deles via lenke',
-      'Granulær GDPR-kontroll over hvem som ser hva',
-    ],
-    ctaLabel: 'Opprett talent-profil',
-    ctaHref: '/auth?role=actor',
-    photo: PHOTOS.actor,
-  },
-  {
-    id: 'agency',
-    Icon: BusinessCenterOutlinedIcon,
-    label: 'For skuespillerbyråer',
-    title: 'Hele drift på én skjerm — talent, casting, fakturering.',
-    body: 'CRM bygd for casting, ikke en Excel-erstatning. Per-prosjekt-tilgang til produsenter, automatisk fakturering via PowerOffice, GDPR-trygt fra dag 1.',
-    bullets: [
-      'Talent-registry med audit-trail per visning',
-      'Per-prosjekt-tilgang for produsenter (ikke hele katalogen)',
-      'Self-tape-håndtering uten WeTransfer-omveier',
-      'PowerOffice-bro for automatisk fakturering',
-    ],
-    ctaLabel: 'Se byrå-pakken',
-    ctaHref: '/for-byraer',
-    photo: PHOTOS.agency,
-  },
-  {
-    id: 'production',
+    id: 'production-os',
     Icon: MovieFilterOutlinedIcon,
-    label: 'For produksjonsteam',
-    title: 'Casting-brief inn. Shortlist + signerte kontrakter ut.',
-    body: 'Send brief til relevante byråer, motta forslag i ett dashboard, gjør callbacks og signer kontrakter — alt på samme sted, integrert med call-sheets.',
+    title: 'Produksjons-OS',
+    audience: 'Produksjonsteam (regissør, produsent, casting director, foto, manus)',
+    priceNote: '795 kr/sete · min. 3 seter',
+    body:
+      'Eier produksjonen fra rollebesetning til ferdig levert, med transparent økonomi- og godkjenningsflyt mellom leverandør og kunde. Casting er inngangsdøra; men plattformen tar produksjonen videre — gjennom manus, crew, lokasjoner, produksjonsdager, budsjett og klientgodkjenning.',
     bullets: [
-      'Brief-templates som castere faktisk svarer på',
-      'Shortlist + callbacks med innebygget self-tape-visning',
-      'Kontraktssignering + call-sheet-integrasjon',
-      'Budsjettsporing per rolle og dag',
+      'Casting & talent med dokumentert samtykke',
+      'Produksjonsledelse (crew, lokasjoner, props, shot lists)',
+      'Manus med versjonering + scene-breakdown',
+      'Klient-samarbeid + budsjett (estimat vs. faktisk, NOK)',
     ],
-    ctaLabel: 'Send casting-brief',
-    ctaHref: '/auth?role=production',
-    photo: PHOTOS.production,
+    status: 'live',
+    href: '/auth?role=production',
   },
+  {
+    id: 'content-producer',
+    Icon: CameraOutlinedIcon,
+    title: 'Innholdsprodusent-løsning',
+    audience: 'Frilans/individuell innholdsprodusent',
+    priceNote: '495 kr/sete · min. 1',
+    body:
+      'Tre jobber: digital markedsføring, innholdsplanlegging, og samarbeidssystem mellom innholdsprodusent og klient med transparent oversikt mellom partene. Alt utenom Agenten er live.',
+    bullets: [
+      'Marketing-plan + carousel-generator',
+      'Feed-strategi + social publishing',
+      'Klient-kommunikasjon med transparent oversikt',
+      'Flere løpende klienter samtidig',
+    ],
+    status: 'live',
+    href: '/auth?role=content-producer',
+  },
+  {
+    id: 'dance',
+    Icon: MusicNoteOutlinedIcon,
+    title: 'Dansestudio-vertikal',
+    audience: 'Profesjonelle dansere + dansestudio',
+    priceNote: '149–2 490 kr/mnd · frilanser → studio enterprise',
+    body:
+      'Egen vertikal for profesjonelle dansere og dansestudio. Booking, koreografi-/produksjons-planlegging, casting til danseoppdrag, medlemshåndtering, formasjonstrening og event-dashboard.',
+    bullets: [
+      'Booking av timer + medlemshåndtering',
+      'Koreografi + formasjonstrening',
+      'Casting til danseoppdrag + auditions',
+      'Skadelogg + øvingslogg',
+    ],
+    status: 'live',
+    href: '/auth?role=dance',
+  },
+  {
+    id: 'talents',
+    Icon: PeopleAltOutlinedIcon,
+    title: 'Talents-app + Talent Registry',
+    audience: 'Skuespillere + casting-byrå + produsenter',
+    priceNote: 'Ny vertikal · skuespillere bor i byrå-host',
+    body:
+      'Den talent-vendte halvdelen — der Produksjons-OS handler om prosjektet, handler Talents-app om menneskene som besetter rollene. Talent Registry er agency-flate med 7-regions UI: KUN consent-filtrerte søk, audit-trail per visning, og reverse-consent ved foreslag.',
+    bullets: [
+      'Talent Registry — consent-filtrert agency-søk',
+      'Self-tape Studio + AI-feedback',
+      'Audit-trail: «hvem har sett meg?»',
+      'BankID + per-org B2-storage i pipeline',
+    ],
+    status: 'live',
+    href: '/talents/registry',
+  },
+];
+
+const PILLARS = [
+  {
+    Icon: LayersOutlinedIcon,
+    title: 'Eier hele flyten — idé til sett',
+    body: 'De fleste verktøy stopper ved «ferdig produsert». The Role Room fortsetter til «sett av publikum». Annonsering, content marketing og publisering er bygd inn — ikke påheng.',
+  },
+  {
+    Icon: LightbulbOutlinedIcon,
+    title: 'Eier starten — idéen',
+    body: 'Idé-pipeline gjør bruken kontinuerlig, ikke episodisk. Idéer forsvinner ikke; gode idéer som ellers ville gått tapt mellom produksjoner blir tatt vare på og modnet til klar-til-å-søke-finansiering.',
+  },
+  {
+    Icon: HandshakeOutlinedIcon,
+    title: 'Integrer, ikke angrip',
+    body: 'NSF, NFI, NRK, TV2 og talent-databaser er partnere — ikke konkurrenter. Vi bygger systemet de selv vil bruke. Konkurrenten er fragmenteringen (Excel + e-post + WhatsApp), ikke en SaaS.',
+  },
+  {
+    Icon: PublicOutlinedIcon,
+    title: 'Norsk- og EU-native',
+    body: 'EU-datalagring fra dag 1 (Render Frankfurt + Neon eu-west). EHF-faktura, NAV-rapport, BRREG, norsk juridisk data. BankID på vei. Internasjonale verktøy treffer ikke dette markedet på samme måte.',
+  },
+  {
+    Icon: VisibilityOutlinedIcon,
+    title: 'Transparens — «alle i loop»',
+    body: 'Delt sannhet mellom leverandør og kunde, gjennom hele produksjonen. Klient ser fremdrift, budsjett-status og godkjenninger i samme system som produsenten — ingen e-post-tråder som dør.',
+  },
+  {
+    Icon: AutoAwesomeOutlinedIcon,
+    title: 'AI-lag på toppen',
+    body: 'The Role Room Agent (beta) — drevet av Claude — planlegger, lager content, gir innsikt. Bygd særlig for innholdsprodusenter, med transparent oversikt mellom partene. Skipes når den er reell-trygg.',
+  },
+];
+
+// Stages from idea → seen (1.1 + 1.2)
+const FLOW_STAGES = [
+  { label: 'Idé', detail: 'Modnes til klar-til-å-søke-finansiering' },
+  { label: 'Manus', detail: 'Ett kontrollert manus, ikke 12 e-postversjoner' },
+  { label: 'Casting', detail: 'Inngangsdøra: rollebesetning med dokumentert consent' },
+  { label: 'Produksjon', detail: 'Crew, lokasjoner, dager, budsjett — i ett system' },
+  { label: 'Post', detail: 'Post Agent som on-ramp, sømløst videre til Resolve' },
+  { label: 'Distribusjon', detail: 'Meta, Google, LinkedIn, TikTok — i samme grensesnitt' },
+  { label: 'Sett', detail: 'Produksjonen når publikum — løftet er ikke ferdig før dette' },
 ];
 
 const TRUST_POINTS = [
   { Icon: PublicOutlinedIcon, label: 'EU-hostet (Schrems-trygt)' },
   { Icon: LockOutlinedIcon, label: 'GDPR Artikkel 30 + 17 ferdig' },
-  { Icon: CheckCircleOutlineIcon, label: 'Norsk språk + norsk support' },
-];
-
-const PILLARS = [
-  {
-    title: 'Talent-portfolio',
-    body: 'Headshots, showreel, audition-historikk, tilgjengelighet — alt på ett sted med granulær consent-kontroll.',
-  },
-  {
-    title: 'Self-tape-opptaker',
-    body: 'Innebygget opptaker med format-presets, AI-feedback fra Claude på takt, lys og lyd. Ingen WeTransfer.',
-  },
-  {
-    title: 'Casting-flow',
-    body: 'Brief → shortlist → callbacks → kontrakter → fakturering. Alt i ett dashboard, alt logget for GDPR.',
-  },
-  {
-    title: 'Audit-trail',
-    body: 'Hver visning av talent-data logges. Talenter kan se hvem som har sett deres profil og når.',
-  },
+  { Icon: CheckCircleOutlineIcon, label: 'Norsk team, norsk språk' },
 ];
 
 const BLOG_TEASERS = [
-  { slug: 'gdpr-sjekkliste-skuespillerbyraer', title: '12-punkts GDPR-sjekkliste for skuespillerbyråer', pillar: 'GDPR' },
-  { slug: 'self-tape-praksis-norsk-skuespiller', title: 'Self-tape-praksis: hva castere ser etter i 2026', pillar: 'Self-tape' },
-  { slug: 'crm-vs-excel-norske-casting-byraer', title: 'CRM vs Excel: hva regnearket faktisk koster byrået', pillar: 'CRM' },
+  { slug: 'gdpr-sjekkliste-skuespillerbyraer', title: '12-punkts GDPR-sjekkliste for skuespillerbyråer', pillar: 'GDPR + Talents' },
+  { slug: 'self-tape-praksis-norsk-skuespiller', title: 'Self-tape-praksis: hva castere ser etter i 2026', pillar: 'Casting-prosess' },
+  { slug: 'crm-vs-excel-norske-casting-byraer', title: 'Hvorfor regnearket koster byrået 250.000 kr i året', pillar: 'Operativ effektivisering' },
 ];
 
 export default function TheRoleRoomLanding() {
@@ -146,7 +203,8 @@ export default function TheRoleRoomLanding() {
   // SEO + JSON-LD SoftwareApplication
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = 'The Role Room — Casting-plattform for norske skuespillere, byråer og produksjonsteam';
+    document.title =
+      'The Role Room — Operativsystemet for film- og innholdsproduksjon';
 
     const upsertMeta = (name: string, content: string, isProp = false) => {
       const attr = isProp ? 'property' : 'name';
@@ -161,17 +219,17 @@ export default function TheRoleRoomLanding() {
     };
 
     const description =
-      'Casting-plattform for norske skuespillere, skuespillerbyråer og produksjonsteam. Self-tape-opptaker, talent-portfolio, casting-flow og GDPR-trygg administrasjon på ett sted.';
+      'Operativsystemet som tar en norsk produksjon fra idé via casting og gjennomføring til den er distribuert og sett av publikum. Fire live vertikaler: Produksjons-OS, Innholdsprodusent, Dansestudio og Talent Registry. AI-Agent i beta. Pre-revenue, EU-hostet, bygget i Norge.';
     const tags = [
       upsertMeta('description', description),
-      upsertMeta('og:title', 'The Role Room — Casting-plattform for Norge', true),
+      upsertMeta('og:title', 'The Role Room — Operativsystem for film- og innholdsproduksjon', true),
       upsertMeta('og:description', description, true),
       upsertMeta('og:type', 'website', true),
       upsertMeta('og:url', 'https://theroleroom.com', true),
       upsertMeta('og:image', PHOTOS.hero, true),
       upsertMeta('og:locale', 'nb_NO', true),
       upsertMeta('twitter:card', 'summary_large_image'),
-      upsertMeta('twitter:title', 'The Role Room — Casting-plattform for Norge'),
+      upsertMeta('twitter:title', 'The Role Room — Operativsystem for film- og innholdsproduksjon'),
       upsertMeta('twitter:description', description),
     ];
 
@@ -181,7 +239,11 @@ export default function TheRoleRoomLanding() {
       name: 'The Role Room',
       applicationCategory: 'BusinessApplication',
       operatingSystem: 'Web',
-      offers: { '@type': 'Offer', priceCurrency: 'NOK' },
+      offers: [
+        { '@type': 'Offer', name: 'Produksjonsteam', priceCurrency: 'NOK', price: '795', description: 'per sete/mnd, min. 3 seter' },
+        { '@type': 'Offer', name: 'Innholdsprodusent', priceCurrency: 'NOK', price: '495', description: 'per sete/mnd, min. 1' },
+        { '@type': 'Offer', name: 'Dansestudio', priceCurrency: 'NOK', description: '149–2 490 kr/mnd' },
+      ],
       description,
       url: 'https://theroleroom.com',
       image: PHOTOS.hero,
@@ -191,9 +253,11 @@ export default function TheRoleRoomLanding() {
         url: 'https://creatorhubn.com',
       },
       audience: [
-        { '@type': 'Audience', audienceType: 'Actor' },
-        { '@type': 'Audience', audienceType: 'Casting Agency' },
         { '@type': 'Audience', audienceType: 'Production Team' },
+        { '@type': 'Audience', audienceType: 'Content Producer' },
+        { '@type': 'Audience', audienceType: 'Dance Studio' },
+        { '@type': 'Audience', audienceType: 'Casting Agency' },
+        { '@type': 'Audience', audienceType: 'Actor / Talent' },
       ],
     };
     const script = document.createElement('script');
@@ -213,7 +277,9 @@ export default function TheRoleRoomLanding() {
     <Box sx={{ bgcolor: palette.bgRoot, color: palette.textPrimary, minHeight: '100vh' }}>
       <TopNav />
       <Hero isMobile={isMobile} />
-      <SegmentsSection isMobile={isMobile} />
+      <ManifestoStrip />
+      <FlowSection />
+      <VerticalsSection />
       <PillarsSection />
       <TrustStripFull />
       <BlogTeaserSection />
@@ -253,9 +319,10 @@ function TopNav() {
           </Box>
           <Stack direction="row" spacing={3} sx={{ display: { xs: 'none', md: 'flex' } }}>
             {[
-              { label: 'For skuespillere', href: '#segment-actor' },
-              { label: 'For byråer', href: '/for-byraer' },
-              { label: 'For produksjonsteam', href: '#segment-production' },
+              { label: 'Produksjons-OS', href: '#vertical-production-os' },
+              { label: 'Innholdsprodusent', href: '#vertical-content-producer' },
+              { label: 'Dans', href: '#vertical-dance' },
+              { label: 'Talents', href: '#vertical-talents' },
               { label: 'Blog', href: '/blog' },
             ].map((it) => (
               <Box
@@ -315,7 +382,7 @@ function TopNav() {
 }
 
 // ──────────────────────────────────────────────────────────────────
-// Hero
+// Hero — positioneringen dok seksjon 1.1 + 1.2
 // ──────────────────────────────────────────────────────────────────
 function Hero({ isMobile }: { isMobile: boolean }) {
   return (
@@ -340,7 +407,7 @@ function Hero({ isMobile }: { isMobile: boolean }) {
         >
           <Box sx={{ flex: 1, textAlign: { xs: 'center', md: 'left' } }}>
             <Chip
-              label="Norsk casting-plattform · pre-launch"
+              label="Pre-launch · norsk · pre-revenue"
               sx={{
                 bgcolor: 'rgba(168,85,247,0.12)',
                 color: palette.accentBright,
@@ -359,14 +426,14 @@ function Hero({ isMobile }: { isMobile: boolean }) {
                 mb: 2.4,
               }}
             >
-              Hele norsk casting{' '}
+              Operativsystemet for{' '}
               <Box component="span" sx={{
                 background: palette.accentGradient,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
               }}>
-                på ett sted
+                film- og innholdsproduksjon
               </Box>
               .
             </Typography>
@@ -376,14 +443,14 @@ function Hero({ isMobile }: { isMobile: boolean }) {
                 fontSize: { xs: '1rem', md: '1.18rem' },
                 lineHeight: 1.55,
                 mb: 3.6,
-                maxWidth: 580,
+                maxWidth: 600,
               }}
             >
-              Plattformen som kobler norske skuespillere, skuespillerbyråer og produksjonsteam — uten WeTransfer, uten Excel og uten amerikansk hosting.
+              Fra idé og planlegging, gjennom casting og gjennomføring, helt til produksjonen er distribuert og sett av publikum. Casting er inngangsdøra — men reisen videre er det produktet eier.
             </Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.6} sx={{ mb: 3, justifyContent: { xs: 'center', md: 'flex-start' } }}>
               <Button
-                href="#segments"
+                href="#flow"
                 endIcon={<ArrowForwardIcon />}
                 sx={{
                   background: palette.accentGradient,
@@ -397,7 +464,7 @@ function Hero({ isMobile }: { isMobile: boolean }) {
                   '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
                 }}
               >
-                Se hvordan det fungerer
+                Se hele flyten
               </Button>
               <Button
                 href="/for-byraer#book-demo"
@@ -455,14 +522,49 @@ function Hero({ isMobile }: { isMobile: boolean }) {
 }
 
 // ──────────────────────────────────────────────────────────────────
-// SegmentsSection — 3 brukersegmenter med foto + tekst
+// ManifestoStrip — den definerende setningen (6.4)
 // ──────────────────────────────────────────────────────────────────
-function SegmentsSection({ isMobile }: { isMobile: boolean }) {
+function ManifestoStrip() {
   return (
-    <Container id="segments" maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
+    <Box sx={{ bgcolor: palette.bgShell, py: { xs: 5, md: 7 }, borderTop: `1px solid ${palette.borderSubtle}`, borderBottom: `1px solid ${palette.borderSubtle}` }}>
+      <Container maxWidth="md" sx={{ textAlign: 'center' }}>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', fontWeight: 700, letterSpacing: 2, mb: 2, textTransform: 'uppercase' }}>
+          Manifest
+        </Typography>
+        <Typography
+          component="blockquote"
+          sx={{
+            fontSize: { xs: '1.4rem', sm: '1.8rem', md: '2.2rem' },
+            fontWeight: 700,
+            lineHeight: 1.25,
+            letterSpacing: -0.3,
+            fontStyle: 'italic',
+            color: palette.textPrimary,
+            m: 0,
+            mb: 2,
+            '&::before': { content: '"\\201C"', color: palette.accentBright, fontSize: '1.4em', verticalAlign: '-0.2em', mr: 1 },
+            '&::after': { content: '"\\201D"', color: palette.accentBright, fontSize: '1.4em', verticalAlign: '-0.2em', ml: 1 },
+          }}
+        >
+          Hver god fortelling starter med de rette menneskene i de rette rollene.
+        </Typography>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.9rem' }}>
+          The Role Room — kategori-manifestet
+        </Typography>
+      </Container>
+    </Box>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// FlowSection — idé → sett (1.1, 1.2)
+// ──────────────────────────────────────────────────────────────────
+function FlowSection() {
+  return (
+    <Container id="flow" maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
       <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 } }}>
         <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', fontWeight: 700, letterSpacing: 1, mb: 1, textTransform: 'uppercase' }}>
-          Bygd for tre roller
+          Den røde tråden
         </Typography>
         <Typography
           component="h2"
@@ -473,107 +575,92 @@ function SegmentsSection({ isMobile }: { isMobile: boolean }) {
             mb: 1.6,
           }}
         >
-          Velg din vei inn
+          Fra idé til sett
         </Typography>
-        <Typography sx={{ color: palette.textSecondary, maxWidth: 640, mx: 'auto', fontSize: '1rem', lineHeight: 1.55 }}>
-          Skuespiller? Byrå? Produsent? The Role Room gir hver av dere sin del av plattformen — bygd for hvordan dere faktisk jobber.
+        <Typography sx={{ color: palette.textSecondary, maxWidth: 720, mx: 'auto', fontSize: '1rem', lineHeight: 1.6 }}>
+          De fleste verktøy dekker bare ett trinn. The Role Room samler hele produksjonens livsløp i ett system, organisert rundt <strong>produksjonen</strong> som enhet — ikke rundt en person eller en isolert oppgave.
         </Typography>
       </Box>
-
-      <Stack spacing={{ xs: 4, md: 6 }}>
-        {SEGMENTS.map((seg, idx) => (
-          <Stack
-            key={seg.id}
-            id={`segment-${seg.id}`}
-            direction={{ xs: 'column', md: idx % 2 === 0 ? 'row' : 'row-reverse' }}
-            spacing={{ xs: 3, md: 5 }}
-            alignItems="center"
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(7, 1fr)' },
+          gap: { xs: 1.4, md: 1 },
+          position: 'relative',
+        }}
+      >
+        {FLOW_STAGES.map((s, idx) => (
+          <Box
+            key={s.label}
             sx={{
+              position: 'relative',
               bgcolor: palette.bgCard,
               border: `1px solid ${palette.borderSubtle}`,
-              borderRadius: 3,
-              p: { xs: 2.4, md: 4 },
-              scrollMarginTop: 80,
+              borderRadius: 2,
+              p: { xs: 1.8, md: 1.6 },
+              minHeight: { md: 130 },
+              display: 'flex',
+              flexDirection: 'column',
+              transition: 'border-color 0.18s, transform 0.18s',
+              '&:hover': { borderColor: palette.borderStrong, transform: 'translateY(-2px)' },
             }}
           >
-            <Box
-              component="img"
-              src={seg.photo}
-              alt={`${seg.label} — illustrasjon`}
-              loading="lazy"
+            <Typography
               sx={{
-                width: { xs: '100%', md: '40%' },
-                aspectRatio: '4 / 3',
-                objectFit: 'cover',
-                borderRadius: 2,
-                display: 'block',
+                color: palette.accentBright,
+                fontSize: '0.7rem',
+                fontWeight: 800,
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+                mb: 0.6,
               }}
-            />
-            <Box sx={{ flex: 1 }}>
-              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.6 }}>
-                <seg.Icon sx={{ color: palette.accentBright, fontSize: 22 }} />
-                <Typography sx={{ color: palette.accentBright, fontSize: '0.84rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>
-                  {seg.label}
-                </Typography>
-              </Stack>
-              <Typography
-                component="h3"
-                sx={{
-                  fontSize: { xs: '1.4rem', md: '1.8rem' },
-                  fontWeight: 800,
-                  lineHeight: 1.2,
-                  mb: 1.6,
-                }}
-              >
-                {seg.title}
-              </Typography>
-              <Typography sx={{ color: palette.textSecondary, fontSize: '1rem', lineHeight: 1.6, mb: 2.4 }}>
-                {seg.body}
-              </Typography>
-              <Stack component="ul" spacing={1.2} sx={{ pl: 0, listStyle: 'none', m: 0, mb: 3 }}>
-                {seg.bullets.map((b) => (
-                  <Stack key={b} component="li" direction="row" spacing={1} alignItems="flex-start">
-                    <CheckCircleOutlineIcon sx={{ color: '#34d399', fontSize: 18, mt: 0.4, flexShrink: 0 }} />
-                    <Typography sx={{ color: palette.textSecondary, fontSize: '0.95rem', lineHeight: 1.5 }}>
-                      {b}
-                    </Typography>
-                  </Stack>
-                ))}
-              </Stack>
-              <Button
-                href={seg.ctaHref}
-                endIcon={<ArrowForwardIcon />}
-                sx={{
-                  background: palette.accentGradient,
-                  color: '#fff',
-                  textTransform: 'none',
-                  fontWeight: 700,
-                  px: 2.6,
-                  py: 1.2,
-                  borderRadius: 2,
-                  '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
-                }}
-              >
-                {seg.ctaLabel}
-              </Button>
-            </Box>
-          </Stack>
+            >
+              {idx + 1}
+            </Typography>
+            <Typography
+              sx={{
+                fontWeight: 800,
+                fontSize: '1rem',
+                color: palette.textPrimary,
+                mb: 0.8,
+                lineHeight: 1.25,
+              }}
+            >
+              {s.label}
+            </Typography>
+            <Typography sx={{ color: palette.textSecondary, fontSize: '0.78rem', lineHeight: 1.4, flex: 1 }}>
+              {s.detail}
+            </Typography>
+          </Box>
         ))}
-      </Stack>
+      </Box>
+      <Typography
+        sx={{
+          color: palette.textMuted,
+          fontSize: '0.84rem',
+          textAlign: 'center',
+          mt: 3,
+          maxWidth: 640,
+          mx: 'auto',
+          lineHeight: 1.55,
+        }}
+      >
+        Konkurrenten er <strong style={{ color: palette.textSecondary }}>fragmenteringen</strong> — Excel + e-post + WhatsApp + Facebook. Ikke en SaaS. Vi vinner ved å eie alle 7 trinnene som ett system.
+      </Typography>
     </Container>
   );
 }
 
 // ──────────────────────────────────────────────────────────────────
-// PillarsSection — produkt-funksjoner
+// VerticalsSection — 4 live + Agent beta (2.1)
 // ──────────────────────────────────────────────────────────────────
-function PillarsSection() {
+function VerticalsSection() {
   return (
     <Box sx={{ bgcolor: palette.bgShell, py: { xs: 6, md: 10 } }}>
       <Container maxWidth="lg">
         <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 } }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', fontWeight: 700, letterSpacing: 1, mb: 1, textTransform: 'uppercase' }}>
-            Hva du faktisk får
+            Fire live vertikaler + ett AI-lag i beta
           </Typography>
           <Typography
             component="h2"
@@ -584,44 +671,243 @@ function PillarsSection() {
               mb: 1.6,
             }}
           >
-            Produktet i fire deler
+            Bygget for hvordan dere faktisk jobber
+          </Typography>
+          <Typography sx={{ color: palette.textSecondary, maxWidth: 700, mx: 'auto', fontSize: '1rem', lineHeight: 1.6 }}>
+            Hver vertikal har sin egen flate, sine egne workflows og sin egen pris-tier. Talents-app er den nyeste — bygget for å koble byrå og skuespiller med GDPR-trygg consent fra dag 1.
           </Typography>
         </Box>
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' },
-            gap: { xs: 2, md: 2.4 },
-          }}
-        >
-          {PILLARS.map((p) => (
+
+        <Stack spacing={{ xs: 3, md: 4 }}>
+          {VERTICALS.map((v, idx) => (
             <Box
-              key={p.title}
+              key={v.id}
+              id={`vertical-${v.id}`}
               sx={{
                 bgcolor: palette.bgCard,
                 border: `1px solid ${palette.borderSubtle}`,
                 borderRadius: 3,
-                p: 2.8,
+                p: { xs: 2.4, md: 3.6 },
+                scrollMarginTop: 80,
                 transition: 'border-color 0.18s',
                 '&:hover': { borderColor: palette.borderStrong },
               }}
             >
-              <Typography sx={{ fontWeight: 800, fontSize: '1.04rem', mb: 1, color: palette.textPrimary }}>
-                {p.title}
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems={{ xs: 'flex-start', md: 'center' }} sx={{ mb: 2.4 }}>
+                <Box
+                  sx={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(168,85,247,0.14)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <v.Icon sx={{ color: palette.accentBright, fontSize: 28 }} />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <Stack direction="row" alignItems="center" spacing={1.2} sx={{ mb: 0.6, flexWrap: 'wrap', gap: 0.6 }}>
+                    <Typography sx={{ color: palette.textPrimary, fontSize: { xs: '1.3rem', md: '1.5rem' }, fontWeight: 800, lineHeight: 1.2 }}>
+                      {v.title}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={v.status === 'live' ? 'LIVE' : 'BETA'}
+                      sx={{
+                        bgcolor: v.status === 'live' ? 'rgba(52,211,153,0.18)' : 'rgba(251,191,36,0.18)',
+                        color: v.status === 'live' ? '#34d399' : '#fbbf24',
+                        fontWeight: 800,
+                        fontSize: '0.7rem',
+                        height: 20,
+                      }}
+                    />
+                    {idx === 3 ? (
+                      <Chip
+                        size="small"
+                        label="NY"
+                        sx={{
+                          bgcolor: 'rgba(192,132,252,0.18)',
+                          color: palette.accentBright,
+                          fontWeight: 800,
+                          fontSize: '0.7rem',
+                          height: 20,
+                        }}
+                      />
+                    ) : null}
+                  </Stack>
+                  <Typography sx={{ color: palette.textSecondary, fontSize: '0.94rem', mb: 0.4 }}>
+                    {v.audience}
+                  </Typography>
+                  <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
+                    {v.priceNote}
+                  </Typography>
+                </Box>
+                <Button
+                  href={v.href}
+                  endIcon={<ArrowForwardIcon />}
+                  sx={{
+                    background: palette.accentGradient,
+                    color: '#fff',
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    px: 2.4,
+                    py: 1.2,
+                    borderRadius: 2,
+                    flexShrink: 0,
+                    '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                  }}
+                >
+                  Utforsk
+                </Button>
+              </Stack>
+              <Typography sx={{ color: palette.textSecondary, fontSize: '0.96rem', lineHeight: 1.6, mb: 2 }}>
+                {v.body}
               </Typography>
-              <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem', lineHeight: 1.55 }}>
-                {p.body}
-              </Typography>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+                  gap: 1.4,
+                }}
+              >
+                {v.bullets.map((b) => (
+                  <Stack key={b} direction="row" spacing={1} alignItems="flex-start">
+                    <CheckCircleOutlineIcon sx={{ color: '#34d399', fontSize: 18, mt: 0.3, flexShrink: 0 }} />
+                    <Typography sx={{ color: palette.textSecondary, fontSize: '0.9rem', lineHeight: 1.5 }}>
+                      {b}
+                    </Typography>
+                  </Stack>
+                ))}
+              </Box>
             </Box>
           ))}
-        </Box>
+
+          {/* The Role Room Agent — beta */}
+          <Box
+            sx={{
+              bgcolor: 'rgba(251,191,36,0.04)',
+              border: `1px dashed rgba(251,191,36,0.32)`,
+              borderRadius: 3,
+              p: { xs: 2.4, md: 3.6 },
+            }}
+          >
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems={{ xs: 'flex-start', md: 'center' }}>
+              <Box
+                sx={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 2,
+                  bgcolor: 'rgba(251,191,36,0.14)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <AutoAwesomeOutlinedIcon sx={{ color: '#fbbf24', fontSize: 28 }} />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <Stack direction="row" alignItems="center" spacing={1.2} sx={{ mb: 0.6 }}>
+                  <Typography sx={{ color: palette.textPrimary, fontSize: { xs: '1.2rem', md: '1.4rem' }, fontWeight: 800 }}>
+                    The Role Room Agent
+                  </Typography>
+                  <Chip
+                    size="small"
+                    label="BETA · ikke skipet"
+                    sx={{
+                      bgcolor: 'rgba(251,191,36,0.18)',
+                      color: '#fbbf24',
+                      fontWeight: 800,
+                      fontSize: '0.7rem',
+                      height: 20,
+                    }}
+                  />
+                </Stack>
+                <Typography sx={{ color: palette.textSecondary, fontSize: '0.94rem', lineHeight: 1.55 }}>
+                  AI-lag drevet av Claude. Konkurrentanalyse, partner-discovery, merch-kobling, ads & markedsføring — alt med transparent oversikt mellom partene. Skipes når den er reell-trygg for kunder.
+                </Typography>
+              </Box>
+            </Stack>
+          </Box>
+        </Stack>
       </Container>
     </Box>
   );
 }
 
 // ──────────────────────────────────────────────────────────────────
-// TrustStripFull — full-bredde trust-bånd
+// PillarsSection — 6 unike posisjoner (6.5)
+// ──────────────────────────────────────────────────────────────────
+function PillarsSection() {
+  return (
+    <Container maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
+      <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 } }}>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', fontWeight: 700, letterSpacing: 1, mb: 1, textTransform: 'uppercase' }}>
+          Det ingen andre har
+        </Typography>
+        <Typography
+          component="h2"
+          sx={{
+            fontSize: { xs: '1.8rem', md: '2.4rem' },
+            fontWeight: 800,
+            lineHeight: 1.15,
+            mb: 1.6,
+          }}
+        >
+          Seks unike posisjoner
+        </Typography>
+      </Box>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' },
+          gap: { xs: 2, md: 2.8 },
+        }}
+      >
+        {PILLARS.map((p) => (
+          <Box
+            key={p.title}
+            sx={{
+              bgcolor: palette.bgCard,
+              border: `1px solid ${palette.borderSubtle}`,
+              borderRadius: 3,
+              p: 3,
+              transition: 'border-color 0.18s',
+              '&:hover': { borderColor: palette.borderStrong },
+            }}
+          >
+            <Box
+              sx={{
+                width: 44,
+                height: 44,
+                borderRadius: 1.6,
+                bgcolor: 'rgba(168,85,247,0.14)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mb: 2,
+              }}
+            >
+              <p.Icon sx={{ color: palette.accentBright, fontSize: 22 }} />
+            </Box>
+            <Typography sx={{ fontWeight: 800, fontSize: '1.06rem', mb: 1.2, color: palette.textPrimary, lineHeight: 1.25 }}>
+              {p.title}
+            </Typography>
+            <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem', lineHeight: 1.6 }}>
+              {p.body}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+    </Container>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// TrustStripFull
 // ──────────────────────────────────────────────────────────────────
 function TrustStripFull() {
   return (
@@ -646,7 +932,7 @@ function TrustStripFull() {
             { Icon: PublicOutlinedIcon, t: 'EU-hostet', s: 'Render Frankfurt + Neon eu-west' },
             { Icon: LockOutlinedIcon, t: 'GDPR-trygt', s: 'Artikkel 30, 17 + audit-trail' },
             { Icon: PeopleAltOutlinedIcon, t: 'Norsk team', s: 'Oslo-basert, norsk support' },
-            { Icon: CheckCircleOutlineIcon, t: '2 ukers gratis', s: 'Ingen kortinfo, full tilgang' },
+            { Icon: CheckCircleOutlineIcon, t: 'Pre-revenue', s: 'Modellen er klar; kunder kommer' },
           ].map((p) => (
             <Stack key={p.t} direction="row" alignItems="center" spacing={1.4}>
               <p.Icon sx={{ color: palette.accentBright, fontSize: 28 }} />
@@ -675,7 +961,7 @@ function BlogTeaserSection() {
       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'flex-end' }} sx={{ mb: { xs: 3, md: 4 }, gap: 2 }}>
         <Box>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', fontWeight: 700, letterSpacing: 1, mb: 1, textTransform: 'uppercase' }}>
-            Innsikt og praksis
+            Innsikt for hele produksjons-flyten
           </Typography>
           <Typography
             component="h2"
@@ -757,10 +1043,10 @@ function FinalCTASection() {
         }}
       >
         <Typography sx={{ fontWeight: 800, fontSize: { xs: '1.6rem', md: '2.2rem' }, mb: 1.6, lineHeight: 1.2 }}>
-          Klar for å se hvordan din arbeidsdag ser ut?
+          Klar for å se hvordan din produksjon flyter?
         </Typography>
         <Typography sx={{ color: palette.textSecondary, fontSize: '1rem', mb: 3, maxWidth: 540, mx: 'auto' }}>
-          30-min demo skreddersydd for din rolle — skuespiller, byrå eller produsent. Ingen forpliktelse, ingen salgs-pitch.
+          30-min demo skreddersydd for din vertikal — produksjonsteam, innholdsprodusent, dansestudio eller byrå. Ingen forpliktelse.
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.6} justifyContent="center">
           <Button
@@ -795,7 +1081,7 @@ function FinalCTASection() {
               '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
             }}
           >
-            Opprett gratis konto
+            Opprett konto
           </Button>
         </Stack>
       </Box>
@@ -821,11 +1107,12 @@ function Footer() {
               The Role Room
             </Typography>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.84rem' }}>
-              Et produkt fra Creatorhub AS · Oslo, Norge
+              Operativsystemet for film- og innholdsproduksjon · Et produkt fra Creatorhub AS · Oslo, Norge
             </Typography>
           </Box>
           <Stack direction="row" spacing={3} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
             {[
+              { label: 'Talent Registry', href: '/talents/registry' },
               { label: 'For byråer', href: '/for-byraer' },
               { label: 'Blog', href: '/blog' },
               { label: 'FAQ', href: '/faq' },
