@@ -123,6 +123,44 @@ export function setupAdminStorageCostRoutes(
       try {
         const status = await getStorageStatus(pool, userId);
 
+        // Defensiv kolonnesjekk for subscriptions — schema drift'er mellom
+        // miljøer (Neon-prod bruker `tier_id`, ikke `plan_type`).
+        const colCheck = await pool.query<{ column_name: string }>(
+          `SELECT column_name
+             FROM information_schema.columns
+            WHERE table_name = 'subscriptions'
+              AND column_name IN (
+                'plan_type', 'plan_id', 'subscription_plan_id', 'tier_id',
+                'amount', 'status', 'stripe_subscription_id',
+                'stripe_storage_meter_item_id', 'created_at'
+              )`,
+        );
+        const subCols = new Set(colCheck.rows.map((row) => row.column_name));
+        const planCol =
+          subCols.has("plan_type")
+            ? "plan_type"
+            : subCols.has("plan_id")
+              ? "plan_id"
+              : subCols.has("subscription_plan_id")
+                ? "subscription_plan_id"
+                : subCols.has("tier_id")
+                  ? "tier_id"
+                  : null;
+        const planSelect = planCol
+          ? `${planCol} AS plan_type`
+          : "'unknown'::text AS plan_type";
+        const amountSelect = subCols.has("amount") ? "amount" : "NULL::numeric AS amount";
+        const stripeSubSelect = subCols.has("stripe_subscription_id")
+          ? "stripe_subscription_id"
+          : "NULL::text AS stripe_subscription_id";
+        const meterSelect = subCols.has("stripe_storage_meter_item_id")
+          ? "stripe_storage_meter_item_id"
+          : "NULL::text AS stripe_storage_meter_item_id";
+        const statusFilter = subCols.has("status")
+          ? "AND status IN ('active', 'trialing')"
+          : "";
+        const orderBy = subCols.has("created_at") ? "ORDER BY created_at DESC" : "";
+
         // Slå opp månedlig pris fra subscriptions-raden (eller fallback 0)
         const sub = await pool.query<{
           plan_type: string;
@@ -130,11 +168,11 @@ export function setupAdminStorageCostRoutes(
           stripe_subscription_id: string | null;
           stripe_storage_meter_item_id: string | null;
         }>(
-          `SELECT plan_type, amount, stripe_subscription_id, stripe_storage_meter_item_id
+          `SELECT ${planSelect}, ${amountSelect}, ${stripeSubSelect}, ${meterSelect}
              FROM subscriptions
             WHERE user_id = $1
-              AND status IN ('active', 'trialing')
-            ORDER BY created_at DESC
+              ${statusFilter}
+            ${orderBy}
             LIMIT 1`,
           [userId],
         );
@@ -210,12 +248,16 @@ export function setupAdminStorageCostRoutes(
         // Aggregert spørring som joiner subscriptions + user_storage_consumption.
         // LEFT JOIN slik at brukere uten upload ennå også vises hvis de har sub.
         //
-        // Defensiv kolonnesjekk: enkelte produksjons-DB-er har drift'et og
+        // Defensiv kolonnesjekk: produksjons-DB-er har drift'et og
         // mangler `plan_type` (krasjet med
         // 'column "plan_type" does not exist'). Vi sjekker
-        // information_schema og fall tilbake til `plan_id`/literal
+        // information_schema og fall tilbake til `tier_id`/`plan_id`/literal
         // 'unknown' hvis kolonnen ikke finnes — slik at admin-overviewet
         // ikke krasjer på miljøer med schema-drift.
+        //
+        // Sjekker også `stripe_subscription_id` og `amount`/`status` siden
+        // de mangler i enkelte miljøer (Neon-prod har bare `tier_id`-baserte
+        // subscriptions per 2026-06-07).
         const colCheck = await pool.query<{ column_name: string }>(
           `SELECT column_name
              FROM information_schema.columns
@@ -224,30 +266,60 @@ export function setupAdminStorageCostRoutes(
                 'plan_type',
                 'plan_id',
                 'subscription_plan_id',
-                'stripe_storage_meter_item_id'
+                'tier_id',
+                'amount',
+                'status',
+                'stripe_subscription_id',
+                'stripe_storage_meter_item_id',
+                'created_at'
               )`,
         );
         const subCols = new Set(colCheck.rows.map((row) => row.column_name));
-        const planExpr = subCols.has("plan_type")
-          ? "s.plan_type"
-          : subCols.has("plan_id")
-            ? "s.plan_id AS plan_type"
-            : subCols.has("subscription_plan_id")
-              ? "s.subscription_plan_id AS plan_type"
-              : "'unknown'::text AS plan_type";
-        const planInner = subCols.has("plan_type")
-          ? "plan_type"
-          : subCols.has("plan_id")
-            ? "plan_id AS plan_type"
-            : subCols.has("subscription_plan_id")
-              ? "subscription_plan_id AS plan_type"
-              : "'unknown'::text AS plan_type";
-        const meterExpr = subCols.has("stripe_storage_meter_item_id")
-          ? "s.stripe_storage_meter_item_id"
-          : "NULL::text AS stripe_storage_meter_item_id";
+
+        // Velger først tilgjengelig kolonne for plan-konseptet.
+        const pickPlanCol = (): string | null => {
+          if (subCols.has("plan_type")) return "plan_type";
+          if (subCols.has("plan_id")) return "plan_id";
+          if (subCols.has("subscription_plan_id")) return "subscription_plan_id";
+          if (subCols.has("tier_id")) return "tier_id";
+          return null;
+        };
+        const planCol = pickPlanCol();
+        // Outer SELECT refererer alltid `s.plan_type` (det aliasede navnet
+        // fra den laterale subqueryen). Inner velger faktisk kolonne (eller
+        // literal) AS plan_type.
+        const planExpr = "s.plan_type";
+        const planInner = planCol
+          ? `${planCol} AS plan_type`
+          : "'unknown'::text AS plan_type";
+
+        // Outer expressions refererer alltid de aliasede navnene som inner
+        // returnerer. Inner velger faktisk kolonne (eller literal) AS alias.
+        const meterExpr = "s.stripe_storage_meter_item_id";
         const meterInner = subCols.has("stripe_storage_meter_item_id")
           ? "stripe_storage_meter_item_id"
           : "NULL::text AS stripe_storage_meter_item_id";
+
+        const stripeSubExpr = "s.stripe_subscription_id";
+        const stripeSubInner = subCols.has("stripe_subscription_id")
+          ? "stripe_subscription_id"
+          : "NULL::text AS stripe_subscription_id";
+
+        const amountExpr = "s.amount";
+        const amountInner = subCols.has("amount") ? "amount" : "NULL::numeric AS amount";
+
+        const statusExpr = "s.status";
+        const statusInner = subCols.has("status") ? "status" : "NULL::text AS status";
+
+        // WHERE-clausul og ORDER BY i den laterale subqueryen må også være
+        // defensive — hvis `status` eller `created_at` ikke finnes lar vi
+        // hver av filtrene falle til 1=1 / vilkårlig ordering.
+        const statusFilter = subCols.has("status")
+          ? "AND s2.status IN ('active', 'trialing')"
+          : "";
+        const orderBy = subCols.has("created_at")
+          ? "ORDER BY s2.created_at DESC"
+          : "";
 
         const r = await pool.query<{
           user_id: string;
@@ -260,22 +332,22 @@ export function setupAdminStorageCostRoutes(
           last_updated: string | null;
         }>(
           `SELECT
-             COALESCE(s.user_id, u.user_id) AS user_id,
+             u.user_id AS user_id,
              ${planExpr},
-             s.amount,
-             s.status,
-             s.stripe_subscription_id,
+             ${amountExpr},
+             ${statusExpr},
+             ${stripeSubExpr},
              ${meterExpr},
              u.total_bytes,
              u.last_updated
            FROM user_storage_consumption u
            LEFT JOIN LATERAL (
-             SELECT ${planInner}, amount, status, stripe_subscription_id,
+             SELECT ${planInner}, ${amountInner}, ${statusInner}, ${stripeSubInner},
                     ${meterInner}
                FROM subscriptions s2
               WHERE s2.user_id = u.user_id
-                AND s2.status IN ('active', 'trialing')
-              ORDER BY s2.created_at DESC
+                ${statusFilter}
+              ${orderBy}
               LIMIT 1
            ) s ON true`,
         );

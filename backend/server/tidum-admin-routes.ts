@@ -608,33 +608,37 @@ export function registerTidumAdminRoutes(
         return;
       }
 
+      // Rotårsak: Tidum-integrasjonen krever TIDUM_CREATORHUB_SYNC_SECRET
+      // som ikke alltid er satt i dev/preview. Uten den vil fetchFromTidum
+      // kaste — så vi sjekker først og returnerer riktig formet tom liste
+      // i stedet for å 500'e. Frontend (TidumAccessRequestsPanel) forventer
+      // TidumVendor[] (array), ikke et objekt — så vi returnerer [] her.
+      if (!TIDUM_CREATORHUB_SYNC_SECRET) {
+        console.warn(
+          "[tidum-admin] TIDUM_CREATORHUB_SYNC_SECRET er ikke konfigurert; " +
+            "returnerer tom vendors-liste. Sett env-varen for å aktivere " +
+            "Tidum-integrasjonen mot " + TIDUM_SYNC_API_BASE_URL + ".",
+        );
+        return res.json([]);
+      }
+
       try {
         const vendors = await fetchFromTidum(
           "/api/internal/creatorhub/vendors",
         );
         const normalized = normalizeTidumVendorRecords(vendors);
-        const total = Array.isArray(normalized)
-          ? normalized.length
-          : Array.isArray((normalized as { vendors?: unknown[] })?.vendors)
-            ? (normalized as { vendors: unknown[] }).vendors.length
-            : 0;
-        // Eksisterende kontrakt: returner array direkte (bakoverkompatibel),
-        // men AdminDashboard godtar også { vendors, total } via normalize.
+        // Frontend (TidumAccessRequestsPanel) forventer TidumVendor[].
         res.json(normalized);
-        void total;
       } catch (innerErr) {
-        // Tidum-integrasjonen er ikke alltid konfigurert i alle miljøer.
-        // Returner 200 med tom liste slik at AdminDashboard kan rendre
-        // i stedet for å vise generic 500-error.
+        // Den eksterne Tidum-APIen kan være nede / 401 / 5xx. Returner
+        // tom liste i riktig form for at AdminDashboard skal rendre i
+        // stedet for å vise generic 500-error, men logg som warn for
+        // synlighet i drift.
         console.warn(
-          "[tidum-admin] vendors-fetch feilet, returnerer tom liste:",
-          innerErr,
+          "[tidum-admin] vendors-fetch mot Tidum feilet, returnerer tom liste:",
+          innerErr instanceof Error ? innerErr.message : innerErr,
         );
-        res.json({
-          vendors: [],
-          total: 0,
-          error: "Tidum integration not configured",
-        });
+        res.json([]);
       }
     } catch (error) {
       console.error("Failed to fetch Tidum vendors:", error);
