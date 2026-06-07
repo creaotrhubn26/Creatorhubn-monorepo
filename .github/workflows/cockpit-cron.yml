@@ -1,0 +1,138 @@
+name: Marketing Cockpit cron-tasks
+
+# Drainer pending-køer for LinkedIn Lead Sync, Conversions API og
+# self-tape email-nurture. Alle endepunkter er token-gated via
+# CRON_TRIGGER_TOKEN (GitHub secret + Render env).
+#
+# Endepunkter:
+#   POST /api/admin-room/cockpit/linkedin/capi/send-due
+#   POST /api/admin-room/cockpit/linkedin/leadsync/poll-now
+#   POST /api/admin-room/cockpit/nurture/run-due
+#
+# Hver task er separat job slik at én feiler ikke blokkerer de andre.
+
+on:
+  schedule:
+    # Hver 5. minutt: LinkedIn CAPI + Lead Sync drain
+    # GitHub Actions cron presisjon er ~5-15 min — det er OK for våre behov
+    - cron: '*/5 * * * *'
+    # Hver 30. minutt: nurture-sekvens (mindre tidskritisk)
+    - cron: '*/30 * * * *'
+  workflow_dispatch:                    # manuell trigger for testing
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cockpit-cron-${{ github.event.schedule || 'manual' }}
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  # ── CAPI send-due (hvert 5. min) ────────────────────────────────
+  linkedin-capi-send-due:
+    name: Drain LinkedIn Conversions API pending-kø
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event.schedule == '*/5 * * * *' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: POST /cockpit/linkedin/capi/send-due
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-trigger-token: $CRON_TRIGGER_TOKEN" \
+            --max-time 120 \
+            "$BACKEND_URL/api/admin-room/cockpit/linkedin/capi/send-due")
+          CODE=$(echo "$RES" | tail -1)
+          BODY=$(echo "$RES" | sed '$d')
+          echo "HTTP $CODE"
+          echo "Body: $BODY"
+          # 401 betyr token mismatch; 503 betyr Render env ikke satt
+          if [ "$CODE" = "401" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN matcher ikke Render-env."
+            exit 1
+          fi
+          if [ "$CODE" -ge 500 ]; then
+            echo "::error::Backend-feil ($CODE)"
+            exit 1
+          fi
+          echo "::notice::CAPI send-due ferdig"
+
+  # ── Lead Sync poll (hvert 5. min) ───────────────────────────────
+  linkedin-leadsync-poll:
+    name: Poll LinkedIn Lead Gen Forms
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event.schedule == '*/5 * * * *' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: POST /cockpit/linkedin/leadsync/poll-now
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-trigger-token: $CRON_TRIGGER_TOKEN" \
+            --max-time 120 \
+            "$BACKEND_URL/api/admin-room/cockpit/linkedin/leadsync/poll-now")
+          CODE=$(echo "$RES" | tail -1)
+          BODY=$(echo "$RES" | sed '$d')
+          echo "HTTP $CODE"
+          echo "Body: $BODY"
+          if [ "$CODE" = "401" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN matcher ikke Render-env."
+            exit 1
+          fi
+          if [ "$CODE" -ge 500 ]; then
+            echo "::error::Backend-feil ($CODE)"
+            exit 1
+          fi
+          echo "::notice::Lead Sync poll ferdig"
+
+  # ── Selftape nurture (hvert 30. min) ────────────────────────────
+  selftape-nurture-run-due:
+    name: Drain selftape email-nurture-kø
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event.schedule == '*/30 * * * *' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: POST /cockpit/nurture/run-due
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-trigger-token: $CRON_TRIGGER_TOKEN" \
+            --max-time 120 \
+            "$BACKEND_URL/api/admin-room/cockpit/nurture/run-due")
+          CODE=$(echo "$RES" | tail -1)
+          BODY=$(echo "$RES" | sed '$d')
+          echo "HTTP $CODE"
+          echo "Body: $BODY"
+          if [ "$CODE" = "401" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN matcher ikke Render-env."
+            exit 1
+          fi
+          if [ "$CODE" -ge 500 ]; then
+            echo "::error::Backend-feil ($CODE)"
+            exit 1
+          fi
+          echo "::notice::Nurture run-due ferdig"
