@@ -136,16 +136,7 @@
       "destination": "/theroleroom-llms.txt"
     },
     {
-      "source": "/",
-      "has": [
-        {
-          "type": "host",
-          "value": "(www\\.)?theroleroom\\.com"
-        }
-      ],
-      "destination": "/theroleroom.html"
-    },
-    {
+      "//": "Root på theroleroom.com lever nå i React SPA-en (TheRoleRoomLanding) — domene-detekteres i LandingResponsive.tsx mot produktdok-positionering",
       "source": "/en",
       "has": [
         {
