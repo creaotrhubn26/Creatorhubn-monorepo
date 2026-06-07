@@ -74,6 +74,10 @@
   ],
   "rewrites": [
     {
+      "source": "/g/(.*)",
+      "destination": "https://creatorhub-backend-rtbl.onrender.com/g/$1"
+    },
+    {
       "source": "/robots.txt",
       "has": [
         {
