@@ -19,7 +19,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog, DialogContent, DialogActions, Box, Stack, Typography, Button,
   IconButton, TextField, Stepper, Step, StepLabel, Avatar, Chip, Alert,
-  Card, alpha,
+  Card, Link, alpha,
 } from '@mui/material';
 import {
   Close as CloseIcon, ArrowBack as BackIcon, ArrowForward as NextIcon,
@@ -27,6 +27,8 @@ import {
   Palette as PaletteIcon, Store as StoreIcon, Person as PersonIcon,
   Videocam as VideoIcon, LibraryMusic as MusicIcon, Storefront as VendorIcon,
   Backup as BackupIcon,
+  Cloud as CloudIcon, Storage as StorageIcon, OpenInNew as OpenInNewIcon,
+  Verified as VerifiedIcon, ErrorOutline as ErrorIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useQueryClient } from '@tanstack/react-query';
@@ -63,7 +65,15 @@ const TIER_RECOMMENDATIONS: Record<string, { name: string; price: string; reason
   },
 };
 
-const STEPS = ['Velkomst', 'Profesjon', 'Brand', 'Marketplace', 'Backup', 'Ferdig'] as const;
+const STEPS = ['Velkomst', 'Profesjon', 'Brand', 'Marketplace', 'Backup', 'B2 Cloud', 'Ferdig'] as const;
+
+const B2_REGION_OPTIONS = [
+  { value: 'us-west-001', label: 'US West (us-west-001)' },
+  { value: 'us-east-005', label: 'US East (us-east-005)' },
+  { value: 'eu-central-003', label: 'EU Central (eu-central-003)' },
+];
+
+const BACKBLAZE_SIGNUP_URL = 'https://www.backblaze.com/cloud-storage';
 
 const DRAFT_KEY = 'individual-onboarding-draft';
 const PENDING_SAVE_KEY = 'individual-onboarding-pending-save';
@@ -138,6 +148,22 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
   const [saving, setSaving] = useState(false);
   const [resumingFromPending, setResumingFromPending] = useState(false);
   const flushedPendingRef = useRef(false);
+
+  // ─── B2 Cloud Storage (steg 5) ────────────────────────────────────
+  // Brukerne KJØPER egen Backblaze-avtale; vi lagrer kun deres
+  // credentials kryptert i `user_b2_credentials`-tabellen. Admin's
+  // bucket eksponeres ALDRI til vanlige brukere.
+  const [b2KeyId, setB2KeyId] = useState('');
+  const [b2AppKey, setB2AppKey] = useState('');
+  const [b2BucketName, setB2BucketName] = useState('');
+  const [b2Region, setB2Region] = useState('us-west-001');
+  const [b2Saving, setB2Saving] = useState(false);
+  const [b2Testing, setB2Testing] = useState(false);
+  const [b2Status, setB2Status] = useState<
+    | { kind: 'idle' }
+    | { kind: 'saved'; isVerified: boolean; verifyError: string | null }
+    | { kind: 'error'; message: string }
+  >({ kind: 'idle' });
 
   const activeProfession = PROFESSIONS.find((p) => p.id === profession) || PROFESSIONS[0];
   const recommendedTier = TIER_RECOMMENDATIONS[profession] || TIER_RECOMMENDATIONS.photographer;
@@ -228,6 +254,76 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
     if (p) setBrandColor(p.color);
   };
 
+  // ─── B2 Cloud Storage handlers ────────────────────────────────────
+  const b2CanSave =
+    b2KeyId.trim().length >= 8 &&
+    b2AppKey.trim().length >= 16 &&
+    b2BucketName.trim().length > 0;
+
+  const handleB2Save = async () => {
+    if (!b2CanSave) return;
+    setB2Saving(true);
+    setB2Status({ kind: 'idle' });
+    try {
+      const response = await apiRequest('/api/user/b2-credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyId: b2KeyId.trim(),
+          appKey: b2AppKey.trim(),
+          bucketName: b2BucketName.trim(),
+          region: b2Region,
+        }),
+      });
+      const payload = await (response.json?.() ?? Promise.resolve({}));
+      if (!payload?.success) {
+        setB2Status({ kind: 'error', message: payload?.message || payload?.error || 'Lagring feilet' });
+      } else {
+        setB2Status({
+          kind: 'saved',
+          isVerified: !!payload.isVerified,
+          verifyError: payload.verifyError ?? null,
+        });
+        // Tøm key-felter umiddelbart fra UI-state — vi har dem ikke i klartekst lenger
+        setB2KeyId('');
+        setB2AppKey('');
+      }
+    } catch (err) {
+      setB2Status({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Ukjent feil ved lagring',
+      });
+    } finally {
+      setB2Saving(false);
+    }
+  };
+
+  const handleB2Verify = async () => {
+    setB2Testing(true);
+    try {
+      const response = await apiRequest('/api/user/b2-credentials/verify', {
+        method: 'POST',
+      });
+      const payload = await (response.json?.() ?? Promise.resolve({}));
+      if (payload?.success) {
+        setB2Status({ kind: 'saved', isVerified: true, verifyError: null });
+      } else {
+        setB2Status({
+          kind: 'saved',
+          isVerified: false,
+          verifyError: payload?.error || 'Verifisering feilet',
+        });
+      }
+    } catch (err) {
+      setB2Status({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Ukjent feil ved verifisering',
+      });
+    } finally {
+      setB2Testing(false);
+    }
+  };
+
   return (
     <Dialog
       open={open}
@@ -286,10 +382,10 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
             <Step key={label}>
               <StepLabel StepIconComponent={({ active, completed }) => {
                 // One icon per STEPS entry: Velkomst, Profesjon, Brand,
-                // Marketplace, Backup, Ferdig. Must stay 1:1 with STEPS —
-                // a missing entry makes `Icon` undefined and crashes the
-                // whole dashboard with "Element type is invalid".
-                const Icon = [WelcomeIcon, PersonIcon, PaletteIcon, StoreIcon, BackupIcon, DoneIcon][i];
+                // Marketplace, Backup, Cloud Storage, Ferdig (7 steg).
+                // Defensiv || DoneIcon-fallback hindrer "Element type is
+                // invalid"-krasj hvis STEPS skulle vokse uten matching ikon.
+                const Icon = [WelcomeIcon, PersonIcon, PaletteIcon, StoreIcon, BackupIcon, CloudIcon, DoneIcon][i] || DoneIcon;
                 return (
                   <Box sx={{
                     width: 36, height: 36, borderRadius: '50%',
@@ -534,8 +630,160 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
           </Stack>
         )}
 
-        {/* STEG 6: Ferdig */}
+        {/* STEG 6: B2 Cloud Storage — bruker oppgir EGEN Backblaze-avtale */}
         {step === 5 && (
+          <Stack spacing={3}>
+            <Box>
+              <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1 }}>
+                <Avatar sx={{ bgcolor: alpha(brandColor, 0.18), color: brandColor, width: 40, height: 40 }}>
+                  <CloudIcon />
+                </Avatar>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    Eget skylagring (valgfritt)
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.72)' }}>
+                    Lagre originalene direkte til DIN egen Backblaze B2-bucket
+                  </Typography>
+                </Box>
+              </Stack>
+              <Typography variant="body2" sx={{ color: 'rgba(246,242,234,0.85)', lineHeight: 1.7, mt: 1 }}>
+                CreatorHub anbefaler at du kobler din egen Backblaze B2-konto for å lagre originalene
+                dine. Vi tar oss av leveransen til kundene, men du eier kopiene direkte. Pris:
+                ca <strong>0.005 USD/GB/måned</strong> (40–50 NOK/TB). Du kan hoppe over dette nå
+                og legge til senere i Innstillinger.
+              </Typography>
+              <Link
+                href={BACKBLAZE_SIGNUP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  display: 'inline-flex', alignItems: 'center', gap: 0.5, mt: 1.5,
+                  color: brandColor, textDecorationColor: alpha(brandColor, 0.5),
+                  fontWeight: 600, fontSize: '0.875rem',
+                }}
+              >
+                Lag konto hos Backblaze
+                <OpenInNewIcon sx={{ fontSize: 14 }} />
+              </Link>
+            </Box>
+
+            <Stack spacing={2}>
+              <TextField
+                label="Key ID"
+                fullWidth
+                value={b2KeyId}
+                onChange={(e) => setB2KeyId(e.target.value)}
+                placeholder="K001abc…"
+                disabled={b2Saving}
+                InputProps={{ startAdornment: <StorageIcon sx={{ mr: 1, color: 'rgba(246,242,234,0.5)' }} /> }}
+              />
+              <TextField
+                label="Application Key"
+                type="password"
+                fullWidth
+                value={b2AppKey}
+                onChange={(e) => setB2AppKey(e.target.value)}
+                placeholder="K001…"
+                disabled={b2Saving}
+                autoComplete="new-password"
+              />
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <TextField
+                  label="Bucket-navn"
+                  fullWidth
+                  value={b2BucketName}
+                  onChange={(e) => setB2BucketName(e.target.value)}
+                  placeholder="creatorhub-mine-originaler"
+                  disabled={b2Saving}
+                />
+                <TextField
+                  label="Region"
+                  select
+                  fullWidth
+                  SelectProps={{ native: true }}
+                  value={b2Region}
+                  onChange={(e) => setB2Region(e.target.value)}
+                  disabled={b2Saving}
+                  sx={{ maxWidth: { sm: 240 } }}
+                >
+                  {B2_REGION_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value} style={{ background: '#0a0807', color: '#fff5e8' }}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </TextField>
+              </Stack>
+            </Stack>
+
+            {/* Status-feedback */}
+            {b2Status.kind === 'saved' && (
+              <Box sx={{
+                p: 2, borderRadius: 2,
+                bgcolor: b2Status.isVerified ? 'rgba(16,185,129,0.10)' : 'rgba(255,186,108,0.10)',
+                border: `1px solid ${b2Status.isVerified ? 'rgba(16,185,129,0.32)' : 'rgba(255,186,108,0.32)'}`,
+              }}>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  {b2Status.isVerified
+                    ? <VerifiedIcon sx={{ color: '#10b981' }} />
+                    : <ErrorIcon sx={{ color: '#ffba6c' }} />}
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {b2Status.isVerified
+                      ? 'Credentials lagret og verifisert mot bucket'
+                      : 'Credentials lagret, men test mot bucket feilet'}
+                  </Typography>
+                </Stack>
+                {!b2Status.isVerified && b2Status.verifyError && (
+                  <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'rgba(246,242,234,0.72)' }}>
+                    {b2Status.verifyError}
+                  </Typography>
+                )}
+              </Box>
+            )}
+            {b2Status.kind === 'error' && (
+              <Alert severity="error" onClose={() => setB2Status({ kind: 'idle' })}>
+                {b2Status.message}
+              </Alert>
+            )}
+
+            <Stack direction="row" spacing={1.5} justifyContent="flex-end">
+              <Button
+                onClick={() => setStep((s) => s + 1)}
+                sx={{ color: 'rgba(246,242,234,0.72)', textTransform: 'none' }}
+              >
+                Hopp over
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={handleB2Verify}
+                disabled={b2Testing || b2Status.kind !== 'saved'}
+                startIcon={<VerifiedIcon />}
+                sx={{
+                  borderRadius: '999px', px: 2.5, textTransform: 'none',
+                  borderColor: alpha(brandColor, 0.4), color: '#fff5e8',
+                  '&:hover': { borderColor: brandColor, bgcolor: alpha(brandColor, 0.08) },
+                }}
+              >
+                {b2Testing ? 'Tester…' : 'Test forbindelse'}
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleB2Save}
+                disabled={!b2CanSave || b2Saving}
+                sx={{
+                  borderRadius: '999px', px: 2.5, textTransform: 'none', fontWeight: 700,
+                  bgcolor: brandColor, color: '#150d05',
+                  '&:hover': { bgcolor: alpha(brandColor, 0.88) },
+                }}
+              >
+                {b2Saving ? 'Lagrer…' : 'Lagre'}
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+
+        {/* STEG 7: Ferdig */}
+        {step === 6 && (
           <Stack spacing={3}>
             <Box sx={{ textAlign: 'center', py: 2 }}>
               <DoneIcon sx={{ fontSize: 72, color: '#10b981', mb: 1 }} />
