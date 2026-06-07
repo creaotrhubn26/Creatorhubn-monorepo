@@ -26,6 +26,7 @@ import {
   CheckCircle as DoneIcon, PhotoCamera as CameraIcon, EmojiPeople as WelcomeIcon,
   Palette as PaletteIcon, Store as StoreIcon, Person as PersonIcon,
   Videocam as VideoIcon, LibraryMusic as MusicIcon, Storefront as VendorIcon,
+  Backup as BackupIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useQueryClient } from '@tanstack/react-query';
@@ -284,7 +285,11 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
           {STEPS.map((label, i) => (
             <Step key={label}>
               <StepLabel StepIconComponent={({ active, completed }) => {
-                const Icon = [WelcomeIcon, PersonIcon, PaletteIcon, StoreIcon, DoneIcon][i];
+                // One icon per STEPS entry: Velkomst, Profesjon, Brand,
+                // Marketplace, Backup, Ferdig. Must stay 1:1 with STEPS —
+                // a missing entry makes `Icon` undefined and crashes the
+                // whole dashboard with "Element type is invalid".
+                const Icon = [WelcomeIcon, PersonIcon, PaletteIcon, StoreIcon, BackupIcon, DoneIcon][i];
                 return (
                   <Box sx={{
                     width: 36, height: 36, borderRadius: '50%',

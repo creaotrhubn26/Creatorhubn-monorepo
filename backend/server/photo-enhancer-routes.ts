@@ -190,6 +190,17 @@ type PhotoEnhancerR2Source = {
   originalHash?: string | null;
 };
 
+type LensCorrection = {
+  enabled: boolean;
+  // When true, derive the correction amounts from the matched lens profile
+  // (or the RAW's embedded correction / Lensfun). When false, the manual
+  // 0-100 strengths below are used.
+  auto: boolean;
+  distortion: number;
+  vignette: number;
+  chromaticAberration: number;
+};
+
 type PhotoEnhancerSettings = {
   brightness: number;
   contrast: number;
@@ -248,6 +259,9 @@ type PhotoEnhancerSettings = {
   // only. Faces whose index is NOT listed inherit the global sliders.
   // ``faceIndex`` matches the index returned by POST /faces.
   perFaceOverrides: PerFaceOverride[];
+  // Optical lens correction. Honoured by the runner / RAW converter when a
+  // matched lens profile (or Lensfun/LCP) is available.
+  lensCorrection: LensCorrection;
 };
 
 type PerFaceOverride = {
@@ -1013,6 +1027,8 @@ async function runPhotoEnhancerQueuedJob(job: PhotoEnhancerQueuedJob) {
       processingMs,
       jobId: job.id,
       checksum,
+      rawConverter: readString(enhancementResult.prepared.raw.converter),
+      lensCorrectionApplied: Boolean(enhancementResult.prepared.raw.lensCorrectionApplied),
     };
     addPhotoEnhancerJobEvent(job, "completed", "Enhancement completed.", {
       modelUsed: enhancementResult.modelUsed,
@@ -1208,6 +1224,13 @@ const defaultSettings: PhotoEnhancerSettings = {
   },
   lut: { name: null, strength: 0 },
   perFaceOverrides: [],
+  lensCorrection: {
+    enabled: false,
+    auto: true,
+    distortion: 0,
+    vignette: 0,
+    chromaticAberration: 0,
+  },
 };
 
 const PER_FACE_OVERRIDE_KEYS: ReadonlyArray<keyof PerFaceOverride["controls"]> = [
@@ -1623,6 +1646,17 @@ async function downloadPhotoEnhancerR2ObjectToTemp(params: {
   }
 }
 
+function normalizeLensCorrection(raw: unknown): LensCorrection {
+  const obj = parseJsonObject(raw);
+  return {
+    enabled: typeof obj.enabled === "boolean" ? obj.enabled : false,
+    auto: typeof obj.auto === "boolean" ? obj.auto : true,
+    distortion: clampNumber(readNumber(obj.distortion) ?? 0, 0, 100),
+    vignette: clampNumber(readNumber(obj.vignette) ?? 0, 0, 100),
+    chromaticAberration: clampNumber(readNumber(obj.chromaticAberration) ?? 0, 0, 100),
+  };
+}
+
 function normalizeSettings(
   rawSettings: unknown,
   preset: string,
@@ -1707,6 +1741,7 @@ function normalizeSettings(
     hsl: normalizeHsl(raw.hsl ?? merged.hsl),
     lut: normalizeLut(raw.lut ?? merged.lut),
     perFaceOverrides: normalizePerFaceOverrides(raw.perFaceOverrides ?? merged.perFaceOverrides),
+    lensCorrection: normalizeLensCorrection(raw.lensCorrection ?? merged.lensCorrection),
   };
 }
 
@@ -2508,7 +2543,7 @@ async function execRawConverter(
 }
 
 async function resolveRuntimeSupport() {
-  const [imageMagick, darktable, rawtherapee, dcraw, dcrawEmu, simpleDcraw, heifConvert, exiftool] = await Promise.all([
+  const [imageMagick, darktable, rawtherapee, dcraw, dcrawEmu, simpleDcraw, heifConvert, exiftool, lensfunUpdate] = await Promise.all([
     commandPath("magick", "convert"),
     commandPath("darktable-cli"),
     commandPath("rawtherapee-cli"),
@@ -2517,6 +2552,7 @@ async function resolveRuntimeSupport() {
     commandPath("simple_dcraw"),
     commandPath("heif-convert"),
     commandPath("exiftool"),
+    commandPath("lensfun-update-data"),
   ]);
 
   return {
@@ -2531,6 +2567,15 @@ async function resolveRuntimeSupport() {
         dcrawEmu: Boolean(dcrawEmu),
         simpleDcraw: Boolean(simpleDcraw),
         heifConvert: Boolean(heifConvert),
+      },
+      // Optical lens correction readiness. RawTherapee has Lensfun compiled
+      // in, so its presence is enough to run LcMode=lfauto; the system
+      // Lensfun database (lensfun-update-data from liblensfun-bin) just
+      // widens lens coverage beyond RawTherapee's bundled data.
+      lensCorrection: {
+        available: Boolean(rawtherapee),
+        converter: rawtherapee ? "rawtherapee" : null,
+        systemLensfunDatabase: Boolean(lensfunUpdate),
       },
       available: Boolean(imageMagick || darktable || rawtherapee || dcraw || dcrawEmu || simpleDcraw),
       heic: {
@@ -2685,7 +2730,34 @@ async function extractEmbeddedPreviewImage(file: Express.Multer.File): Promise<E
   }
 }
 
-async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
+// RawTherapee processing profile (.pp3) that enables Lensfun automatic lens
+// correction from the file's EXIF. Lensfun corrections are per-type on/off
+// (no partial strength), so we map the photographer's request to which
+// correction types to enable. Requires rawtherapee-cli + a Lensfun database
+// on the runner box; if absent we simply fall through to a plain conversion.
+function buildRawTherapeeLensfunPp3(lens: LensCorrection): string {
+  const useDistortion = lens.auto || lens.distortion > 0;
+  const useVignette = lens.auto || lens.vignette > 0;
+  const useCA = lens.chromaticAberration > 0;
+  return [
+    "[Version]",
+    "AppVersion=5.9",
+    "Version=346",
+    "",
+    "[Lens Profile]",
+    "LcMode=lfauto",
+    "LCPFile=",
+    `UseDistortion=${useDistortion ? "true" : "false"}`,
+    `UseVignette=${useVignette ? "true" : "false"}`,
+    `UseCA=${useCA ? "true" : "false"}`,
+    "",
+  ].join("\n");
+}
+
+async function convertRawWithExternalTool(
+  file: Express.Multer.File,
+  options?: { lensCorrection?: LensCorrection },
+): Promise<{
   file: Express.Multer.File;
   conversion: Record<string, unknown>;
 } | null> {
@@ -2696,7 +2768,17 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
   const inputPath = path.join(tempDir, `source${extension}`);
   const outputPath = path.join(tempDir, "converted.png");
   const outputTiffPath = path.join(tempDir, "source.tiff");
+  const lensfunPp3Path = path.join(tempDir, "lensfun.pp3");
   await fs.writeFile(inputPath, file.buffer);
+
+  // When the photographer enabled lens correction, write a Lensfun PP3 so we
+  // can prefer a RawTherapee pass that applies optical correction. dcraw /
+  // ImageMagick can't do Lensfun, so this only fires when correction is on.
+  const lens = options?.lensCorrection;
+  const lensfunEnabled = Boolean(lens?.enabled);
+  if (lensfunEnabled && lens) {
+    await fs.writeFile(lensfunPp3Path, buildRawTherapeeLensfunPp3(lens));
+  }
 
   const attempts: Array<{
     id: string;
@@ -2748,6 +2830,21 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
       resolutionMode: "converter-default",
     },
   ];
+
+  // Prefer a RawTherapee pass with Lensfun lens correction when requested.
+  // If rawtherapee-cli is missing, commandPath() returns null below and we
+  // fall through to the normal converters (without correction).
+  if (lensfunEnabled) {
+    attempts.unshift({
+      id: "rawtherapee-lensfun",
+      binaries: ["rawtherapee-cli"],
+      args: ["-o", outputPath, "-p", lensfunPp3Path, "-c", inputPath],
+      outputPath,
+      outputMimeType: "image/png",
+      resolutionMode: "converter-default",
+    });
+  }
+
   const configuredOrder = (process.env.PHOTO_ENHANCER_RAW_CONVERTER_ORDER || "")
     .split(",")
     .map((value) => value.trim().toLowerCase())
@@ -2813,6 +2910,7 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
               height: metadata.height ?? null,
               format: metadata.format ?? null,
               resolutionMode: attempt.resolutionMode,
+              lensCorrectionApplied: attempt.id === "rawtherapee-lensfun",
             },
           };
         } catch (validationError) {
@@ -2927,7 +3025,10 @@ async function convertHeicWithExternalTool(file: Express.Multer.File): Promise<{
   }
 }
 
-async function prepareProcessableImage(file: Express.Multer.File): Promise<{
+async function prepareProcessableImage(
+  file: Express.Multer.File,
+  options?: { lensCorrection?: LensCorrection },
+): Promise<{
   file: Express.Multer.File;
   raw: Record<string, unknown>;
 }> {
@@ -2962,7 +3063,7 @@ async function prepareProcessableImage(file: Express.Multer.File): Promise<{
     };
   }
 
-  const converted = await convertRawWithExternalTool(file);
+  const converted = await convertRawWithExternalTool(file, options);
   if (!converted || converted.file === file) {
     const conversion = converted?.conversion || {
       raw: true,
@@ -3374,7 +3475,9 @@ async function buildPhotoEnhancerEnhancementPayload(params: {
   pool?: Pool;
   ownerUserId?: string | null;
 }) {
-  const prepared = await prepareProcessableImage(params.file);
+  const prepared = await prepareProcessableImage(params.file, {
+    lensCorrection: params.settings?.lensCorrection,
+  });
   if (hasUnavailableSourceConversion(prepared.raw)) {
     return {
       ok: false as const,
@@ -3765,7 +3868,9 @@ async function enhanceUploadedFile(params: {
   metadata: Record<string, unknown>;
   raw: Record<string, unknown>;
 }> {
-  const prepared = await prepareProcessableImage(params.file);
+  const prepared = await prepareProcessableImage(params.file, {
+    lensCorrection: params.settings?.lensCorrection,
+  });
   if (hasUnavailableSourceConversion(prepared.raw)) {
     throw new Error(`${conversionErrorCode(prepared.raw)}: ${conversionErrorMessage(prepared.raw)}`);
   }
@@ -4686,10 +4791,19 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         });
       }
       try {
+        // Camera RAW / HEIC can't be decoded by Sharp directly — rasterise
+        // first (same path as /analyze) so face detection works on RAW too,
+        // not just JPEG/PNG.
+        const preparedForFaces = await prepareProcessableImage(req.file as Express.Multer.File);
+        if (hasUnavailableSourceConversion(preparedForFaces.raw)) {
+          return res
+            .status(422)
+            .json({ success: false, available: false, error: "raw_conversion_unavailable" });
+        }
         const result = await withTimeout(
           runFaceApiExclusive(async () => {
             const runtime = await loadFaceApiRuntime();
-            const faceInput = await prepareFaceApiInput(req.file as Express.Multer.File);
+            const faceInput = await prepareFaceApiInput(preparedForFaces.file);
             const image = await runtime.canvas.loadImage(faceInput.buffer);
             const options = new runtime.faceApi.TinyFaceDetectorOptions({
               inputSize: PHOTO_ENHANCER_FACE_API_INPUT_SIZE,
@@ -6169,6 +6283,52 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     },
   );
 
+  // POST /preview — a browser-renderable raster of any upload, including
+  // every camera RAW format (Nikon NEF, Sony ARW, Fujifilm RAF, Canon
+  // CR2/CR3, Panasonic RW2, Olympus ORF, Pentax, DNG, …) and HEIC. The
+  // browser can't decode RAW, so the UI calls this to get a JPEG it can
+  // display in the preview and feed to the AI / face-detection endpoints.
+  // The original RAW is still sent to /enhance, where it is converted at
+  // full quality server-side — this is only the lightweight preview.
+  router.post("/preview", photoEnhancerUpload.single("image"), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: "image_required" });
+    }
+    try {
+      // Fast path: most RAWs embed a full-size JPEG preview we can pull
+      // with exiftool — far cheaper than a full dcraw/darktable decode.
+      let rasterBuffer: Buffer | null = null;
+      const embedded = await extractEmbeddedPreviewImage(req.file).catch(() => null);
+      if (embedded && embedded.buffer && embedded.buffer.byteLength > 1024) {
+        rasterBuffer = embedded.buffer;
+      } else {
+        // Full RAW/HEIC decode (or passthrough for already-raster uploads).
+        const prepared = await prepareProcessableImage(req.file);
+        if (hasUnavailableSourceConversion(prepared.raw)) {
+          return res
+            .status(422)
+            .json({ success: false, error: "raw_conversion_unavailable" });
+        }
+        rasterBuffer = prepared.file.buffer;
+      }
+
+      const sharpModule = await import("sharp");
+      const sharp = sharpModule.default;
+      const jpeg = await sharp(rasterBuffer, { failOn: "none" })
+        .rotate()
+        .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 82 })
+        .toBuffer();
+
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "no-store");
+      return res.send(jpeg);
+    } catch (error) {
+      console.error("[photo-enhancer] preview failed:", error);
+      return res.status(500).json({ success: false, error: "preview_failed" });
+    }
+  });
+
   // POST /suggest-recipe — Claude Vision-driven first-draft recipe.
   // Takes a JPEG/PNG/WebP upload, asks Claude Opus 4.7 to read the
   // image and propose values for every slider the enhancer exposes
@@ -6215,11 +6375,15 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
             );
           }
         }
+        const styleInstruction =
+          readString((req.body as Record<string, unknown> | undefined)?.instruction) ||
+          undefined;
         const result = await suggestPortraitRecipe({
           imageBase64,
           mime: mime as "image/jpeg" | "image/png" | "image/webp",
           presetHint,
           userPreferenceSummary,
+          styleInstruction,
         });
         if (!result.ok) {
           const status =
@@ -6548,6 +6712,8 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         res.json({
           ...enhancementResult.payload,
           processingMs,
+          rawConverter: readString(enhancementResult.prepared.raw.converter),
+          lensCorrectionApplied: Boolean(enhancementResult.prepared.raw.lensCorrectionApplied),
         });
         trackPhotoEnhancerEvent({
           route: "enhance",
