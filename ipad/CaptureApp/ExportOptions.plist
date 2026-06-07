@@ -27,6 +27,6 @@
     <!-- Fill in once App ID is registered on developer.apple.com.
          Leave blank while using automatic signing under a single team. -->
     <key>teamID</key>
-    <string></string>
+    <string>9TAUZCPK95</string>
 </dict>
 </plist>
