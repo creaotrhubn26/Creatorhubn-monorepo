@@ -565,6 +565,32 @@ test.describe('Photo Enhancer — full workflow', () => {
     expect(sentInstruction).toContain('Jose Villa');
     await expect(page.getByText(/AI:\s*portrait/i)).toBeVisible({ timeout: 10_000 });
   });
+
+  test('variants: generates three looks; applying one sets the result', async ({ page }) => {
+    await mockStatusAndProjects(page);
+    let enhanceCalls = 0;
+    await page.route('**/api/photo-enhancer/enhance', (route) => {
+      enhanceCalls += 1;
+      return json(route, { imageUrl: ENHANCED_DATA_URL });
+    });
+
+    await gotoEnhancer(page);
+    await uploadFixture(page);
+
+    await page.getByRole('button', { name: /^Varianter$/ }).click();
+    const dialog = page.getByRole('dialog', { name: /Velg en variant/i });
+    await expect(dialog).toBeVisible();
+
+    // Three variants render in one click…
+    const vivid = dialog.getByRole('button', { name: /^Livlig$/ });
+    await expect(vivid).toBeEnabled({ timeout: 15_000 });
+    expect(enhanceCalls).toBeGreaterThanOrEqual(3);
+
+    // …and picking one applies it as the enhanced result.
+    await vivid.click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole('img', { name: 'Enhanced' })).toBeVisible({ timeout: 10_000 });
+  });
 });
 
 test.describe('Photo Enhancer — robustness', () => {

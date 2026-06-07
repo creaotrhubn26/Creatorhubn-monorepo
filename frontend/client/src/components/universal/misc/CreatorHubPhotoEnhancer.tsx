@@ -294,6 +294,37 @@ function needsRasterPreview(file: File): boolean {
   return BROWSER_UNDECODABLE_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
 
+const clampPct = (n: number): number => Math.max(-100, Math.min(100, n));
+
+// One-click A/B/C exploration: render the current recipe three ways so the
+// photographer can pick a direction instead of dialling sliders blind.
+const ENHANCE_VARIANTS: Array<{
+  key: string;
+  label: string;
+  tweak: (settings: EnhancementSettings) => EnhancementSettings;
+}> = [
+  { key: 'natural', label: 'Naturlig', tweak: (settings) => settings },
+  {
+    key: 'vivid',
+    label: 'Livlig',
+    tweak: (settings) => ({
+      ...settings,
+      saturation: clampPct(settings.saturation + 30),
+      contrast: clampPct(settings.contrast + 15),
+      sharpness: clampPct(settings.sharpness + 10),
+    }),
+  },
+  {
+    key: 'bw',
+    label: 'Sort-hvitt',
+    tweak: (settings) => ({
+      ...settings,
+      saturation: -100,
+      contrast: clampPct(settings.contrast + 10),
+    }),
+  },
+];
+
 const DIRECT_UPLOAD_THRESHOLD_BYTES = 20 * 1024 * 1024;
 
 function normalizeProfession(value: SupportedProfession | undefined): 'photographer' | 'videographer' | 'music_producer' | 'vendor' {
@@ -509,6 +540,9 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const [rasterizing, setRasterizing] = useState(false);
   const [rasterError, setRasterError] = useState<string | null>(null);
   const [editInstruction, setEditInstruction] = useState('');
+  const [variantsOpen, setVariantsOpen] = useState(false);
+  const [variantsLoading, setVariantsLoading] = useState(false);
+  const [variants, setVariants] = useState<Array<{ key: string; label: string; url: string; settings: EnhancementSettings }>>([]);
   const [showRatingDialog, setShowRatingDialog] = useState(false);
   const [directUploadCache, setDirectUploadCache] = useState<DirectUploadCache | null>(null);
   const [directUploadProgress, setDirectUploadProgress] = useState<DirectUploadProgress | null>(null);
@@ -1014,6 +1048,50 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const runStyleInstruction = async () => {
     if (!visionFile || !editInstruction.trim()) return;
     await suggestRecipeMutation.mutateAsync({ file: visionFile, instruction: editInstruction.trim() });
+  };
+
+  // Render the current recipe three ways (Naturlig / Livlig / Sort-hvitt) so
+  // the photographer can pick a direction in one click.
+  const runVariants = async () => {
+    if (!visionFile) return;
+    setVariants([]);
+    setVariantsOpen(true);
+    setVariantsLoading(true);
+    const perFaceOverrides = session.active
+      ? serializePerFaceOverrides(session.active.perFaceOverrides)
+      : [];
+    const results = await Promise.all(
+      ENHANCE_VARIANTS.map(async (variant) => {
+        const variantSettings = variant.tweak(settings);
+        const formData = new FormData();
+        formData.append('image', visionFile);
+        formData.append('preset', activePreset);
+        formData.append('settings', JSON.stringify({ ...variantSettings, perFaceOverrides }));
+        try {
+          const response = await apiRequest('/api/photo-enhancer/enhance', {
+            method: 'POST',
+            body: formData,
+          });
+          return { key: variant.key, label: variant.label, settings: variantSettings, url: toImageUrl(response) };
+        } catch {
+          return { key: variant.key, label: variant.label, settings: variantSettings, url: '' };
+        }
+      }),
+    );
+    setVariants(results);
+    setVariantsLoading(false);
+  };
+
+  const applyVariant = (variant: { label: string; url: string; settings: EnhancementSettings }) => {
+    setSettings(variant.settings);
+    if (variant.url) {
+      setEnhancedImageUrl(variant.url);
+      setViewMode('side-by-side');
+      const id = session.active?.id;
+      if (id) session.setEnhancedUrl(id, variant.url);
+    }
+    setVariantsOpen(false);
+    commitActiveHistory(`Variant: ${variant.label}`);
   };
 
   const enhanceMutation = useMutation({
@@ -2145,6 +2223,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   </Button>
                   <Button
                     variant="outlined"
+                    onClick={() => void runVariants()}
+                    disabled={!visionFile || variantsLoading}
+                    title="Lag 3 varianter (Naturlig / Livlig / Sort-hvitt) og velg den beste"
+                  >
+                    Varianter
+                  </Button>
+                  <Button
+                    variant="outlined"
                     onClick={() => setFrequencySepOpen(true)}
                     disabled={!uploadedImage}
                     title="Åpne frekvens-separert retusj (pore-bevarende, stylus + trykk)"
@@ -2710,6 +2796,62 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
           </Card>
         </Grid>
       </Grid>
+
+      <Dialog open={variantsOpen} onClose={() => setVariantsOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Velg en variant</DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={2}>
+            {ENHANCE_VARIANTS.map((variant) => {
+              const result = variants.find((entry) => entry.key === variant.key);
+              return (
+                <Grid item xs={12} sm={4} key={variant.key}>
+                  <Stack spacing={1} alignItems="center">
+                    <Box
+                      sx={{
+                        width: '100%',
+                        aspectRatio: '1 / 1',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        overflow: 'hidden',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        bgcolor: 'action.hover',
+                      }}
+                    >
+                      {variantsLoading || !result ? (
+                        <CircularProgress size={28} />
+                      ) : result.url ? (
+                        <img
+                          src={result.url}
+                          alt={variant.label}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <Typography variant="caption" color="error">
+                          Feilet
+                        </Typography>
+                      )}
+                    </Box>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      disabled={!result?.url}
+                      onClick={() => result && applyVariant(result)}
+                    >
+                      {variant.label}
+                    </Button>
+                  </Stack>
+                </Grid>
+              );
+            })}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVariantsOpen(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={saveLookDialogOpen} onClose={() => setSaveLookDialogOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Lagre Look</DialogTitle>
