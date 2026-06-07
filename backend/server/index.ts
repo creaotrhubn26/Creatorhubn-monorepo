@@ -444,6 +444,7 @@ import { setupAdminPartnersRoutes } from "./admin-room-partners-routes";
 import { setupAdminDecksRoutes } from "./admin-room-decks-routes";
 import { setupAdminBusinessPlanRoutes } from "./admin-room-business-plan-routes";
 import { setupAdminActivityRoutes } from "./admin-room-activity-routes";
+import { setupAdminContentCalendarRoutes } from "./admin-content-calendar-routes";
 import { setupRoleRoomVendorLinksRoutes } from "./role-room-vendor-links-routes";
 import { setupRoleRoomCastingRoutes } from "./role-room-casting-routes";
 import { setupRoleRoomClientPortalRoutes } from "./role-room-client-portal-routes";
@@ -649,6 +650,7 @@ import {
   createInviteFromApprovedRequest,
 } from "./prototype-tester-invites-routes";
 import { setupAdminNotificationsRoutes } from "./admin-notifications-routes";
+import { setupAdminAnnouncementsRoutes } from "./admin-announcements-routes";
 import { setupInviteRequestsRoutes } from "./invite-requests-routes";
 import { setupSubmissionsRoutes } from "./submissions-routes";
 import { setupGoogleWalletRoutes } from "./google-wallet-routes";
@@ -762,6 +764,7 @@ import { setupAdminCommunityExtrasRoutes } from "./admin-community-extras-routes
 import { setupAdminCommunicationExtrasRoutes } from "./admin-communication-extras-routes";
 import { setupAdminProvisioningExtrasRoutes } from "./admin-provisioning-extras-routes";
 import { setupAdminAutomationsRoutes } from "./admin-automations-routes";
+import { setupAdminSocialMediaRoutes } from "./admin-social-media-routes";
 import { setupAdminEmailAnalyticsRoutes } from "./admin-email-analytics-routes";
 import { setupAdminGoogleWalletExtrasRoutes } from "./admin-google-wallet-extras-routes";
 import { setupAdminGooglePayConfigRoutes } from "./admin-google-pay-config-routes";
@@ -771,6 +774,7 @@ import { setupAdminFeatureCustomizationsRoutes } from "./admin-feature-customiza
 import { setupAdminTesterSkillsRoutes } from "./admin-tester-skills-routes";
 import { setupAdminTestCaseGeneratorRoutes } from "./admin-test-case-generator-routes";
 import { setupAdminAcademyRoutes } from "./admin-academy-routes";
+import { setupAdminMarketingSeoRoutes } from "./admin-marketing-seo-routes";
 import { setupAdminIntegrationTestsRoutes } from "./admin-integration-tests-routes";
 import { setupOrchestrationRoutes } from "./orchestration-routes";
 import { setupAuthRoutes } from "./auth-routes";
@@ -16305,6 +16309,15 @@ setupAdminFundingRoutes({
   logAdminActivity,
 });
 
+// ── Content Calendar — marketing-fanen i Admin Room (migrasjon 252)
+setupAdminContentCalendarRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
 // ── Investor contacts — endpoints flyttet til ./admin-room-investors-routes.ts
 setupAdminInvestorsRoutes({
   app,
@@ -24410,6 +24423,7 @@ setupAdminCommunityExtrasRoutes({ app, pool, requireAdminSession });
 setupAdminCommunicationExtrasRoutes({ app, pool, requireAdminSession });
 setupAdminProvisioningExtrasRoutes({ app, pool, requireAdminSession });
 setupAdminAutomationsRoutes({ app, pool, requireAdminSession });
+setupAdminSocialMediaRoutes({ app, pool, requireAdminSession });
 setupAdminEmailAnalyticsRoutes({ app, pool, requireAdminSession });
 setupAdminGoogleWalletExtrasRoutes({ app, pool, requireAdminSession });
 setupAdminGooglePayConfigRoutes({ app, pool, requireAdminSession });
@@ -24419,6 +24433,11 @@ setupAdminFeatureCustomizationsRoutes({ app, pool, requireAdminSession });
 setupAdminTesterSkillsRoutes({ app, pool, requireAdminSession });
 setupAdminTestCaseGeneratorRoutes({ app, pool, requireAdminSession });
 setupAdminAcademyRoutes({ app, pool, requireAdminSession });
+
+// Task #121a — Marketing SEO-fanen:
+//   /api/seo/keywords, /api/seo/pages, /api/seo/backlinks,
+//   /api/seo/research/stats, /api/seo/crawl, /api/seo/jsonld/generate, …
+setupAdminMarketingSeoRoutes({ app, pool, requireAdminSession });
 
 // Task #127a — Integrasjonstest-fanen:
 //   POST /api/admin/run-comprehensive-tests + GET /api/admin/integration-tests/history
@@ -65286,6 +65305,11 @@ setupEquipmentRootRoutes({ app, pool, db, parseSettings, requireUserSession });
 // faktisk er beskyttet. User-endepunktene (inbox/seen/act) trenger ikke
 // admin og hopper sjekken inne i route-filen.
 setupAdminNotificationsRoutes({ app, pool, getPricingUserId, requireAdminSession });
+
+// Task #121b — Admin Room Marketing-fane: in-app banner/modal/toast/email
+// announcements + view-/dismiss-/click-stats. Backer AnnouncementCreator +
+// AnnouncementsTab i MarketingSEODashboard som ellers kalte en orphan API.
+setupAdminAnnouncementsRoutes({ app, pool, getPricingUserId, requireAdminSession });
 
 // Slice 9X.57 — Konvertering: team-prototype-testere → Enterprise.
 // 3 mnd gratis + 25 % rabatt i 12 mnd, trigger 14 dager før program slutter.
