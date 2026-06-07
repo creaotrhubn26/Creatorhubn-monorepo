@@ -20,6 +20,7 @@ import MyContributionsPanel from '@/components/photographer/MyContributionsPanel
 import PushSettingsCard from '@/components/wedding/PushSettingsCard';
 import GoogleWorkspaceSessionBadge from '@/components/universal/GoogleWorkspaceSessionBadge';
 import UserAIUsageCard from '@/components/settings/UserAIUsageCard';
+import UserB2Panel from '@/components/settings/UserB2Panel';
 
 interface PhotographerProfile {
   id: string;
@@ -667,6 +668,12 @@ export default function PhotographerSettings() {
         {/* Slice 9X.71 — Brukerens AI-forbruk */}
         <Grid2 size={{ xs: 12 }}>
           <UserAIUsageCard />
+        </Grid2>
+
+        {/* Mitt B2-arkiv — brukerens egne Backblaze B2-credentials,
+            fil-utforsker, upload/download/slett og kostnadsoversikt. */}
+        <Grid2 size={{ xs: 12 }} id="b2">
+          <UserB2Panel />
         </Grid2>
       </Grid2>
 

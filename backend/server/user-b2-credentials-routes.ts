@@ -28,6 +28,12 @@
  *   DELETE /api/user/b2-credentials              — slett creds
  *   POST   /api/user/b2-credentials/upload-url   — presigned PUT mot
  *                                                    brukerens bucket
+ *   GET    /api/user/b2-credentials/files        — list brukerens filer (DB)
+ *   GET    /api/user/b2-credentials/stats        — storage-stats + kostnad
+ *   POST   /api/user/b2-credentials/download-url — presigned GET (30 min)
+ *   DELETE /api/user/b2-credentials/files        — slett fil i B2 + DB
+ *   POST   /api/user/b2-credentials/sync         — trigger sync-worker async
+ *   POST   /api/user/b2-credentials/files/register — intern: track upload
  *
  * Defensive:
  *   - Hvis STORAGE_MASTER_KEK_HEX mangler → 503. Vi nekter å skrive
@@ -43,8 +49,11 @@ import {
   S3Client,
   HeadBucketCommand,
   PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { runUserB2Sync } from "./user-b2-sync-worker";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface UserB2CredentialsRoutesDeps {
@@ -176,6 +185,34 @@ function isUndefinedTableError(err: unknown): boolean {
     e?.code === "42P01" ||
     /relation "user_b2_credentials" does not exist/i.test(e?.message || "")
   );
+}
+
+function isUndefinedFilesTableError(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | null;
+  return (
+    e?.code === "42P01" ||
+    /relation "user_b2_files" does not exist/i.test(e?.message || "") ||
+    /relation "user_b2_sync_runs" does not exist/i.test(e?.message || "")
+  );
+}
+
+// Backblaze B2-pricing (2026): $0.005/GB/mnd lagring. Downloads er
+// $0.01/GB men det krever transfer-stats vi ikke har — vi estimerer
+// kun lagrings-kostnad her.
+const B2_STORAGE_USD_PER_GB_PER_MONTH = 0.005;
+
+const ALLOWED_SOURCES = new Set([
+  "gallery",
+  "post-agent",
+  "role-room",
+  "direct-upload",
+  "b2-sync",
+]);
+
+function sanitizeSource(src: unknown): string | null {
+  if (typeof src !== "string") return null;
+  const s = src.trim().toLowerCase();
+  return ALLOWED_SOURCES.has(s) ? s : null;
 }
 
 function buildS3Client(opts: {
@@ -563,6 +600,527 @@ export function setupUserB2CredentialsRoutes(deps: UserB2CredentialsRoutesDeps):
     } catch (err) {
       console.error("[user-b2-credentials] upload-url failed:", err);
       res.status(500).json({ error: "upload_url_failed" });
+    }
+  });
+
+  // ─── GET /api/user/b2-credentials/files ───────────────────────────
+  // List brukerens filer (DB-tracket). Paginert + valgfri source/search.
+  app.get("/api/user/b2-credentials/files", async (req, res) => {
+    try {
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = resolveUserId(req, session);
+      if (!userId) return res.status(401).json({ error: "no_session" });
+
+      // Parse + clamp paginerings-params
+      const limitRaw = Number.parseInt(String(req.query.limit ?? "50"), 10);
+      const offsetRaw = Number.parseInt(String(req.query.offset ?? "0"), 10);
+      const limit = Number.isFinite(limitRaw)
+        ? Math.min(Math.max(limitRaw, 1), 500)
+        : 50;
+      const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
+
+      const sourceParam = sanitizeSource(req.query.source);
+      const searchRaw = typeof req.query.search === "string" ? req.query.search.trim() : "";
+      const search = searchRaw.slice(0, 200);
+
+      const where: string[] = ["user_id = $1::uuid", "is_deleted = FALSE"];
+      const params: unknown[] = [userId];
+      if (sourceParam) {
+        params.push(sourceParam);
+        where.push(`source = $${params.length}`);
+      }
+      if (search) {
+        params.push(`%${search}%`);
+        where.push(`(file_name ILIKE $${params.length} OR file_key ILIKE $${params.length})`);
+      }
+      const whereSql = where.join(" AND ");
+
+      try {
+        const totalRes = await pool.query<{ count: string }>(
+          `SELECT COUNT(*)::text AS count FROM user_b2_files WHERE ${whereSql}`,
+          params,
+        );
+        const total = Number.parseInt(totalRes.rows[0]?.count || "0", 10);
+
+        const listParams = [...params, limit, offset];
+        const listRes = await pool.query(
+          `SELECT id, file_key, file_name, size_bytes, content_type,
+                  source, source_id, uploaded_at
+             FROM user_b2_files
+            WHERE ${whereSql}
+            ORDER BY uploaded_at DESC
+            LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
+          listParams,
+        );
+
+        const files = listRes.rows.map((r) => ({
+          id: r.id,
+          fileKey: r.file_key,
+          fileName: r.file_name,
+          sizeBytes: Number(r.size_bytes || 0),
+          contentType: r.content_type,
+          source: r.source,
+          sourceId: r.source_id,
+          uploadedAt: r.uploaded_at,
+        }));
+        return res.json({ files, total, limit, offset });
+      } catch (err) {
+        if (isUndefinedFilesTableError(err)) {
+          return res.status(503).json({
+            error: "table_missing",
+            message: "Migrasjon 257_user_b2_files.sql er ikke kjørt enda",
+            files: [],
+            total: 0,
+          });
+        }
+        throw err;
+      }
+    } catch (err) {
+      console.error("[user-b2-credentials] list files failed:", err);
+      res.status(500).json({ error: "list_failed" });
+    }
+  });
+
+  // ─── GET /api/user/b2-credentials/stats ───────────────────────────
+  // Aggregat over brukerens DB-tracket B2-bruk + estimert månedlig kost.
+  app.get("/api/user/b2-credentials/stats", async (req, res) => {
+    try {
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = resolveUserId(req, session);
+      if (!userId) return res.status(401).json({ error: "no_session" });
+
+      try {
+        const totalRes = await pool.query<{
+          total_files: string;
+          total_size_bytes: string;
+        }>(
+          `SELECT COUNT(*)::text AS total_files,
+                  COALESCE(SUM(size_bytes), 0)::text AS total_size_bytes
+             FROM user_b2_files
+            WHERE user_id = $1::uuid AND is_deleted = FALSE`,
+          [userId],
+        );
+        const totalFiles = Number.parseInt(totalRes.rows[0]?.total_files || "0", 10);
+        const totalSizeBytes = Number.parseInt(
+          totalRes.rows[0]?.total_size_bytes || "0",
+          10,
+        );
+
+        const bySourceRes = await pool.query<{
+          source: string | null;
+          file_count: string;
+          size_bytes: string;
+        }>(
+          `SELECT source,
+                  COUNT(*)::text AS file_count,
+                  COALESCE(SUM(size_bytes), 0)::text AS size_bytes
+             FROM user_b2_files
+            WHERE user_id = $1::uuid AND is_deleted = FALSE
+            GROUP BY source
+            ORDER BY SUM(size_bytes) DESC`,
+          [userId],
+        );
+        const bySource = bySourceRes.rows.map((r) => ({
+          source: r.source || "unknown",
+          fileCount: Number.parseInt(r.file_count || "0", 10),
+          sizeBytes: Number.parseInt(r.size_bytes || "0", 10),
+        }));
+
+        // Backblaze B2: $0.005/GB/mnd lagring
+        const gigabytes = totalSizeBytes / (1024 ** 3);
+        const estimatedMonthlyCostUsd =
+          Math.round(gigabytes * B2_STORAGE_USD_PER_GB_PER_MONTH * 10000) / 10000;
+
+        // Siste sync-status
+        let lastSyncAt: string | null = null;
+        let syncStatus: "success" | "failed" | "running" | "never" = "never";
+        try {
+          const syncRes = await pool.query<{
+            finished_at: string | null;
+            started_at: string;
+            status: string;
+          }>(
+            `SELECT finished_at, started_at, status
+               FROM user_b2_sync_runs
+              WHERE user_id = $1::uuid
+              ORDER BY started_at DESC
+              LIMIT 1`,
+            [userId],
+          );
+          if (syncRes.rows[0]) {
+            const r = syncRes.rows[0];
+            lastSyncAt = r.finished_at || r.started_at;
+            if (r.status === "success") syncStatus = "success";
+            else if (r.status === "running") syncStatus = "running";
+            else syncStatus = "failed";
+          }
+        } catch (e) {
+          if (!isUndefinedFilesTableError(e)) throw e;
+          // sync_runs-tabellen mangler — la status være 'never'
+        }
+
+        return res.json({
+          totalFiles,
+          totalSizeBytes,
+          bySource,
+          estimatedMonthlyCostUsd,
+          lastSyncAt,
+          syncStatus,
+        });
+      } catch (err) {
+        if (isUndefinedFilesTableError(err)) {
+          return res.status(503).json({
+            error: "table_missing",
+            message: "Migrasjon 257_user_b2_files.sql er ikke kjørt enda",
+            totalFiles: 0,
+            totalSizeBytes: 0,
+            bySource: [],
+            estimatedMonthlyCostUsd: 0,
+            lastSyncAt: null,
+            syncStatus: "never",
+          });
+        }
+        throw err;
+      }
+    } catch (err) {
+      console.error("[user-b2-credentials] stats failed:", err);
+      res.status(500).json({ error: "stats_failed" });
+    }
+  });
+
+  // ─── POST /api/user/b2-credentials/download-url ───────────────────
+  // Generer presigned GET-URL for en fil — kun hvis fileKey faktisk
+  // tilhører brukeren (sjekkes mot user_b2_files).
+  app.post("/api/user/b2-credentials/download-url", async (req, res) => {
+    try {
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = resolveUserId(req, session);
+      if (!userId) return res.status(401).json({ error: "no_session" });
+
+      const body = (req.body || {}) as Record<string, unknown>;
+      const fileKey = typeof body.fileKey === "string" ? body.fileKey.trim() : "";
+      if (!fileKey) return res.status(400).json({ error: "missing_file_key" });
+
+      if (!getMasterKek()) {
+        return res.status(503).json({ error: "encryption_not_configured" });
+      }
+
+      // Verifiser eierskap via user_b2_files
+      try {
+        const ownRes = await pool.query(
+          `SELECT 1 FROM user_b2_files
+            WHERE user_id = $1::uuid
+              AND file_key = $2
+              AND is_deleted = FALSE
+            LIMIT 1`,
+          [userId, fileKey],
+        );
+        if (ownRes.rowCount === 0) {
+          return res.status(404).json({ error: "file_not_found" });
+        }
+      } catch (err) {
+        if (isUndefinedFilesTableError(err)) {
+          return res.status(503).json({
+            error: "table_missing",
+            message: "Migrasjon 257_user_b2_files.sql er ikke kjørt enda",
+          });
+        }
+        throw err;
+      }
+
+      // Hent creds
+      let row;
+      try {
+        const result = await pool.query(
+          `SELECT bucket_name, region, endpoint_url,
+                  key_id_encrypted, app_key_encrypted
+             FROM user_b2_credentials
+            WHERE user_id = $1::uuid AND is_active = TRUE
+            LIMIT 1`,
+          [userId],
+        );
+        row = result.rows[0];
+      } catch (err) {
+        if (isUndefinedTableError(err)) {
+          return res.status(503).json({ error: "table_missing" });
+        }
+        throw err;
+      }
+      if (!row) return res.status(400).json({ error: "no_credentials" });
+
+      const userKek = deriveUserKek(userId);
+      let keyId: string;
+      let appKey: string;
+      try {
+        keyId = decryptForUser(row.key_id_encrypted, userKek);
+        appKey = decryptForUser(row.app_key_encrypted, userKek);
+      } catch {
+        return res.status(500).json({ error: "decrypt_failed" });
+      }
+
+      const region: string = row.region || "us-west-001";
+      const endpointUrl: string = row.endpoint_url || defaultEndpointFor(region);
+      const expiresIn = 30 * 60; // 30 min
+
+      const client = buildS3Client({ keyId, appKey, region, endpointUrl });
+      const cmd = new GetObjectCommand({
+        Bucket: row.bucket_name,
+        Key: fileKey,
+      });
+      const downloadUrl = await getSignedUrl(client, cmd, { expiresIn });
+      const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+
+      return res.json({ downloadUrl, expiresAt });
+    } catch (err) {
+      console.error("[user-b2-credentials] download-url failed:", err);
+      res.status(500).json({ error: "download_url_failed" });
+    }
+  });
+
+  // ─── DELETE /api/user/b2-credentials/files ────────────────────────
+  // Slett en spesifikk fil i B2 + marker som slettet i DB.
+  app.delete("/api/user/b2-credentials/files", async (req, res) => {
+    try {
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = resolveUserId(req, session);
+      if (!userId) return res.status(401).json({ error: "no_session" });
+
+      const fileKey =
+        typeof req.query.fileKey === "string" ? req.query.fileKey.trim() : "";
+      if (!fileKey) return res.status(400).json({ error: "missing_file_key" });
+
+      if (!getMasterKek()) {
+        return res.status(503).json({ error: "encryption_not_configured" });
+      }
+
+      // Verifiser eierskap
+      try {
+        const ownRes = await pool.query(
+          `SELECT 1 FROM user_b2_files
+            WHERE user_id = $1::uuid
+              AND file_key = $2
+              AND is_deleted = FALSE
+            LIMIT 1`,
+          [userId, fileKey],
+        );
+        if (ownRes.rowCount === 0) {
+          return res.status(404).json({ error: "file_not_found" });
+        }
+      } catch (err) {
+        if (isUndefinedFilesTableError(err)) {
+          return res.status(503).json({
+            error: "table_missing",
+            message: "Migrasjon 257_user_b2_files.sql er ikke kjørt enda",
+          });
+        }
+        throw err;
+      }
+
+      // Hent creds
+      let row;
+      try {
+        const result = await pool.query(
+          `SELECT bucket_name, region, endpoint_url,
+                  key_id_encrypted, app_key_encrypted
+             FROM user_b2_credentials
+            WHERE user_id = $1::uuid AND is_active = TRUE
+            LIMIT 1`,
+          [userId],
+        );
+        row = result.rows[0];
+      } catch (err) {
+        if (isUndefinedTableError(err)) {
+          return res.status(503).json({ error: "table_missing" });
+        }
+        throw err;
+      }
+      if (!row) return res.status(400).json({ error: "no_credentials" });
+
+      const userKek = deriveUserKek(userId);
+      let keyId: string;
+      let appKey: string;
+      try {
+        keyId = decryptForUser(row.key_id_encrypted, userKek);
+        appKey = decryptForUser(row.app_key_encrypted, userKek);
+      } catch {
+        return res.status(500).json({ error: "decrypt_failed" });
+      }
+
+      const region: string = row.region || "us-west-001";
+      const endpointUrl: string = row.endpoint_url || defaultEndpointFor(region);
+
+      // Slett i B2
+      try {
+        const client = buildS3Client({ keyId, appKey, region, endpointUrl });
+        await client.send(
+          new DeleteObjectCommand({ Bucket: row.bucket_name, Key: fileKey }),
+        );
+      } catch (err) {
+        const msg = (err as Error)?.message?.slice(0, 500) || "delete_failed";
+        console.error(
+          `[user-b2-credentials] B2 delete failed for user=${userId} key=${fileKey}:`,
+          msg,
+        );
+        return res.status(502).json({ error: "b2_delete_failed", message: msg });
+      }
+
+      // Marker som slettet i DB
+      await pool.query(
+        `UPDATE user_b2_files
+            SET is_deleted = TRUE, deleted_at = now()
+          WHERE user_id = $1::uuid AND file_key = $2`,
+        [userId, fileKey],
+      );
+
+      console.info(
+        `[user-b2-credentials] deleted file for user=${userId} key=${fileKey}`,
+      );
+      return res.json({ success: true });
+    } catch (err) {
+      console.error("[user-b2-credentials] delete file failed:", err);
+      res.status(500).json({ error: "delete_failed" });
+    }
+  });
+
+  // ─── POST /api/user/b2-credentials/sync ───────────────────────────
+  // Trigger sync-worker async; svarer umiddelbart med runId.
+  app.post("/api/user/b2-credentials/sync", async (req, res) => {
+    try {
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = resolveUserId(req, session);
+      if (!userId) return res.status(401).json({ error: "no_session" });
+
+      if (!getMasterKek()) {
+        return res.status(503).json({ error: "encryption_not_configured" });
+      }
+
+      // Sjekk at brukeren faktisk har aktive creds
+      try {
+        const credCheck = await pool.query(
+          `SELECT 1 FROM user_b2_credentials
+            WHERE user_id = $1::uuid AND is_active = TRUE
+            LIMIT 1`,
+          [userId],
+        );
+        if (credCheck.rowCount === 0) {
+          return res.status(400).json({ error: "no_credentials" });
+        }
+      } catch (err) {
+        if (isUndefinedTableError(err)) {
+          return res.status(503).json({ error: "table_missing" });
+        }
+        throw err;
+      }
+
+      // Pre-insert sync-run så vi kan returnere runId umiddelbart
+      let runId: string;
+      try {
+        const runRes = await pool.query<{ id: string }>(
+          `INSERT INTO user_b2_sync_runs (user_id) VALUES ($1::uuid) RETURNING id`,
+          [userId],
+        );
+        runId = runRes.rows[0].id;
+      } catch (err) {
+        if (isUndefinedFilesTableError(err)) {
+          return res.status(503).json({
+            error: "table_missing",
+            message: "Migrasjon 257_user_b2_files.sql er ikke kjørt enda",
+          });
+        }
+        throw err;
+      }
+
+      // Kjør i bakgrunnen og gjenbruk pre-INSERTet runId så vi unngår
+      // dobbel sync-run-rad i DB.
+      setImmediate(() => {
+        void runUserB2Sync(pool, userId, runId);
+      });
+
+      return res.json({ runId, started: true });
+    } catch (err) {
+      console.error("[user-b2-credentials] sync trigger failed:", err);
+      res.status(500).json({ error: "sync_failed" });
+    }
+  });
+
+  // ─── POST /api/user/b2-credentials/files/register ─────────────────
+  // Intern: klienten kaller dette etter en vellykket presigned-PUT mot
+  // B2 så vi kan tracke filen i DB. Idempotent via UNIQUE (user_id, file_key).
+  app.post("/api/user/b2-credentials/files/register", async (req, res) => {
+    try {
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = resolveUserId(req, session);
+      if (!userId) return res.status(401).json({ error: "no_session" });
+
+      const body = (req.body || {}) as Record<string, unknown>;
+      const fileKey = typeof body.fileKey === "string" ? body.fileKey.trim() : "";
+      const fileName =
+        typeof body.fileName === "string" ? body.fileName.trim().slice(0, 512) : "";
+      const sizeBytesRaw = Number(body.sizeBytes);
+      const sizeBytes = Number.isFinite(sizeBytesRaw)
+        ? Math.max(0, Math.floor(sizeBytesRaw))
+        : 0;
+      const contentType =
+        typeof body.contentType === "string" && body.contentType.trim().length > 0
+          ? body.contentType.trim().slice(0, 256)
+          : null;
+      const source = sanitizeSource(body.source);
+      const sourceId =
+        typeof body.sourceId === "string" && body.sourceId.trim().length > 0
+          ? body.sourceId.trim().slice(0, 256)
+          : null;
+
+      if (!fileKey || !fileName) {
+        return res.status(400).json({ error: "missing_fields" });
+      }
+      if (!source) {
+        return res.status(400).json({
+          error: "invalid_source",
+          message: "source må være en av: gallery, post-agent, role-room, direct-upload, b2-sync",
+        });
+      }
+
+      try {
+        const ins = await pool.query<{ id: string; inserted: boolean }>(
+          `INSERT INTO user_b2_files
+             (user_id, file_key, file_name, size_bytes, content_type, source, source_id, last_seen_at)
+           VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, now())
+           ON CONFLICT (user_id, file_key) DO UPDATE SET
+             file_name = EXCLUDED.file_name,
+             size_bytes = EXCLUDED.size_bytes,
+             content_type = COALESCE(EXCLUDED.content_type, user_b2_files.content_type),
+             source = EXCLUDED.source,
+             source_id = COALESCE(EXCLUDED.source_id, user_b2_files.source_id),
+             last_seen_at = now(),
+             is_deleted = FALSE,
+             deleted_at = NULL
+           RETURNING id, (xmax = 0) AS inserted`,
+          [userId, fileKey, fileName, sizeBytes, contentType, source, sourceId],
+        );
+        const row = ins.rows[0];
+        return res.json({
+          success: true,
+          id: row.id,
+          inserted: !!row.inserted,
+        });
+      } catch (err) {
+        if (isUndefinedFilesTableError(err)) {
+          return res.status(503).json({
+            error: "table_missing",
+            message: "Migrasjon 257_user_b2_files.sql er ikke kjørt enda",
+          });
+        }
+        throw err;
+      }
+    } catch (err) {
+      console.error("[user-b2-credentials] register failed:", err);
+      res.status(500).json({ error: "register_failed" });
     }
   });
 }
