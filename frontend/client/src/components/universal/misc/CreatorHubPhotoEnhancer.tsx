@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -26,9 +29,11 @@ import {
   Typography,
 } from '@mui/material';
 import {
+  AddPhotoAlternate as AddPhotoIcon,
   Assessment as AssessmentIcon,
   AutoFixHigh as AutoFixHighIcon,
   CloudDone as CloudDoneIcon,
+  ExpandMore as ExpandMoreIcon,
   CloudUpload as CloudUploadIcon,
   Compare as CompareIcon,
   Face as FaceIcon,
@@ -422,6 +427,29 @@ const getFoldersForProfession = (profession: 'photographer' | 'videographer' | '
     { id: 'processed', name: 'Processed' },
   ];
 };
+
+// Photographers shouldn't need to know that "GFPGAN" restores faces or that
+// "Real-ESRGAN" upscales. We surface plain-language descriptions of what each
+// model *does* while the underlying value sent to the backend stays the
+// technical id (so the pipeline is unchanged).
+const MODEL_PLAIN_LABELS: Record<string, string> = {
+  auto: 'Automatisk (anbefalt)',
+  sharp: 'Bare skarphet',
+  gfpgan: 'Ansiktsforbedring (naturlig)',
+  codeformer: 'Ansiktsrekonstruksjon (kraftig)',
+  realesrgan: 'Oppskalering – mer oppløsning',
+  swinir: 'Støyfjerning',
+  bsrgan: 'Detalj-gjenoppretting',
+  diffbir: 'AI-rekonstruksjon (sterkest)',
+};
+
+function plainModelLabel(idOrName: string): string {
+  const key = idOrName.toLowerCase().replace(/[^a-z]/g, '');
+  for (const [id, label] of Object.entries(MODEL_PLAIN_LABELS)) {
+    if (key.includes(id)) return label;
+  }
+  return idOrName;
+}
 
 export default function CreatorHubPhotoEnhancer({ profession: professionProp }: CreatorHubPhotoEnhancerProps) {
   const profession = normalizeProfession(professionProp);
@@ -1553,31 +1581,46 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
 
                 <Divider />
 
-                <Typography variant="subtitle2">AI-modell og kø</Typography>
+                <Accordion
+                  disableGutters
+                  square
+                  elevation={0}
+                  sx={{ bgcolor: 'transparent', '&:before': { display: 'none' } }}
+                >
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 0, minHeight: 'auto' }}>
+                    <Stack spacing={0}>
+                      <Typography variant="subtitle2">Avanserte justeringer</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Ansiktsretusj, oppskalering, kategori-look og serverkø
+                      </Typography>
+                    </Stack>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ px: 0, pt: 0 }}>
+                    <Stack spacing={2}>
                 <FormControl fullWidth size="small">
-                  <InputLabel id="enhancer-model-label">Modellstrategi</InputLabel>
+                  <InputLabel id="enhancer-model-label">Forbedrings-metode</InputLabel>
                   <Select
                     labelId="enhancer-model-label"
-                    label="Modellstrategi"
+                    label="Forbedrings-metode"
                     value={settings.modelPreference}
                     onChange={(event) => setSettings((previous) => ({ ...previous, modelPreference: event.target.value }))}
                   >
                     {(processingOptions?.modelPreference || ['auto', 'sharp', 'gfpgan', 'codeformer', 'realesrgan', 'swinir', 'bsrgan', 'diffbir']).map((model) => (
                       <MenuItem key={model} value={model}>
-                        {model === 'auto' ? 'Auto pipeline' : model.toUpperCase()}
+                        {plainModelLabel(model)}
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
 
                 {[
-                  { key: 'gfpganQuality', label: 'GFPGAN quality', profileKey: null },
-                  { key: 'codeformerFidelity', label: 'CodeFormer fidelity', profileKey: null },
-                  { key: 'skinTextureGuard', label: 'Skin texture guard', profileKey: null },
-                  { key: 'blemishRemoval', label: 'Blemish removal', profileKey: 'blemishProfile' as const },
-                  { key: 'teethWhiteness', label: 'Teeth whiten', profileKey: 'teethProfile' as const },
-                  { key: 'eyeBrightness', label: 'Eye brighten', profileKey: 'eyeBrightnessProfile' as const },
-                  { key: 'eyeWhiteness', label: 'Eye whiten', profileKey: 'eyeWhitenessProfile' as const },
+                  { key: 'gfpganQuality', label: 'Ansiktsforbedring', profileKey: null },
+                  { key: 'codeformerFidelity', label: 'Behold opprinnelig ansikt', profileKey: null },
+                  { key: 'skinTextureGuard', label: 'Bevar hudtekstur', profileKey: null },
+                  { key: 'blemishRemoval', label: 'Fjern urenheter', profileKey: 'blemishProfile' as const },
+                  { key: 'teethWhiteness', label: 'Hvitere tenner', profileKey: 'teethProfile' as const },
+                  { key: 'eyeBrightness', label: 'Lysere øyne', profileKey: 'eyeBrightnessProfile' as const },
+                  { key: 'eyeWhiteness', label: 'Hvitere øyne', profileKey: 'eyeWhitenessProfile' as const },
                 ].map((slider) => {
                   const key = slider.key as
                     | 'gfpganQuality'
@@ -1658,16 +1701,16 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                 })}
 
                 <FormControl fullWidth size="small">
-                  <InputLabel id="enhancer-scale-label">Real-ESRGAN scale</InputLabel>
+                  <InputLabel id="enhancer-scale-label">Oppskalering</InputLabel>
                   <Select
                     labelId="enhancer-scale-label"
-                    label="Real-ESRGAN scale"
+                    label="Oppskalering"
                     value={settings.realesrganScale}
                     onChange={(event) => setSettings((previous) => ({ ...previous, realesrganScale: Number(event.target.value) }))}
                   >
                     {[2, 3, 4].map((scale) => (
                       <MenuItem key={scale} value={scale}>
-                        {scale}x
+                        {scale}× større
                       </MenuItem>
                     ))}
                   </Select>
@@ -1712,6 +1755,9 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     />
                   </Box>
                 )}
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
 
                 <HSLColorPanel
                   value={settings.hsl}
@@ -1748,11 +1794,11 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
 
                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                   {[
-                    { key: 'swinir', label: 'SwinIR' },
-                    { key: 'bsrgan', label: 'BSRGAN' },
-                    { key: 'diffbir', label: 'DiffBIR' },
-                    { key: 'faceOnlyCrop', label: 'Face-only crop' },
-                    { key: 'preserveBackground', label: 'Preserve background' },
+                    { key: 'swinir', label: 'Støyfjerning' },
+                    { key: 'bsrgan', label: 'Detalj-boost' },
+                    { key: 'diffbir', label: 'AI-rekonstruksjon' },
+                    { key: 'faceOnlyCrop', label: 'Kun ansikt' },
+                    { key: 'preserveBackground', label: 'Behold bakgrunn' },
                   ].map((toggle) => {
                     const key = toggle.key as 'swinir' | 'bsrgan' | 'diffbir' | 'faceOnlyCrop' | 'preserveBackground';
                     return (
@@ -1848,18 +1894,22 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   >
                     Auto-finn objekter
                   </Button>
-                  <Button
-                    variant="contained"
-                    onClick={() => void runEnhancement()}
-                    disabled={!uploadedImage || enhanceMutation.isPending}
-                    startIcon={<AutoFixHighIcon />}
-                  >
-                    Enhance
-                  </Button>
                 </Stack>
 
+                <Button
+                  variant="contained"
+                  size="large"
+                  fullWidth
+                  onClick={() => void runEnhancement()}
+                  disabled={!uploadedImage || enhanceMutation.isPending}
+                  startIcon={<AutoFixHighIcon />}
+                  sx={{ py: 1.25, fontWeight: 700 }}
+                >
+                  {enhanceMutation.isPending ? 'Forbedrer…' : 'Enhance'}
+                </Button>
+
                 <Typography variant="caption" color="text.secondary">
-                  Slider-preview er en WebGL-approksimasjon — Enhance kjører full pipeline (GFPGAN/CodeFormer/portrait retouch) for endelig kvalitet.
+                  Forhåndsvisningen er omtrentlig — Enhance kjører full forbedring (ansiktsretusj, detaljer og oppskalering) for endelig kvalitet.
                 </Typography>
 
                 {aiSuggestion && (
@@ -1999,7 +2049,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                 {analysisResult ? (
                   <Alert severity="success" icon={<AssessmentIcon />}>
                     Analyse fullført
-                    {toRecord(analysisResult.analysis).perceptualHash ? ' · hash klar' : ''}
+                    {toRecord(analysisResult.analysis).perceptualHash ? ' · bilde gjenkjent' : ''}
                     {toRecord(analysisResult.analysis).format ? ` · ${String(toRecord(analysisResult.analysis).format).toUpperCase()}` : ''}
                   </Alert>
                 ) : null}
@@ -2108,7 +2158,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                         showCompositionGuides={showCompositionGuides}
                         compositionAnalysis={compositionAnalysis}
                       />
-                    ) : (
+                    ) : originalImageUrl ? (
                       <Box sx={{ position: 'relative', width: '100%', height: '100%', minHeight: 420 }}>
                         <RealtimePreviewCanvas
                           imageUrl={originalImageUrl}
@@ -2125,6 +2175,32 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                           variant="filled"
                           sx={{ position: 'absolute', top: 8, left: 8, opacity: 0.9 }}
                         />
+                      </Box>
+                    ) : (
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 1.5,
+                          height: '100%',
+                          minHeight: 420,
+                          textAlign: 'center',
+                          color: 'text.secondary',
+                          border: '1px dashed rgba(148,163,184,0.35)',
+                          borderRadius: 2,
+                          p: 4,
+                        }}
+                      >
+                        <AddPhotoIcon sx={{ fontSize: 56, opacity: 0.45 }} />
+                        <Typography variant="h6" sx={{ color: 'text.primary' }}>
+                          Last opp et bilde for å starte
+                        </Typography>
+                        <Typography variant="body2" sx={{ maxWidth: 380 }}>
+                          Dra inn eller velg et bilde. Deretter kan du la <strong>AI-forslag</strong> sette
+                          anbefalte verdier automatisk, eller justere selv før du trykker <strong>Enhance</strong>.
+                        </Typography>
                       </Box>
                     )
                   )}
@@ -2211,14 +2287,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   <Paper variant="outlined" sx={{ p: 1.5, height: '100%' }}>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
                       <StorageIcon fontSize="small" sx={{ color: accentColor }} />
-                      <Typography variant="subtitle2">Modellpipeline</Typography>
+                      <Typography variant="subtitle2">Tilgjengelige forbedringer</Typography>
                     </Stack>
                     <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
                       {modelRegistry.slice(0, 8).map((model) => (
                         <Chip
                           key={model.id}
                           size="small"
-                          label={model.displayName || model.id}
+                          label={plainModelLabel(model.displayName || model.id)}
                           color={model.available ? 'success' : 'default'}
                           variant={model.available ? 'filled' : 'outlined'}
                         />
