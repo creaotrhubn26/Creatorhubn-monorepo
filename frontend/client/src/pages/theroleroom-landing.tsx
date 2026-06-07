@@ -30,7 +30,8 @@ import MovieFilterOutlinedIcon from '@mui/icons-material/MovieFilterOutlined';
 import CameraOutlinedIcon from '@mui/icons-material/CameraOutlined';
 import MusicNoteOutlinedIcon from '@mui/icons-material/MusicNoteOutlined';
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import LoginDialog from '@/components/role-room/components/LoginDialog';
 
 const palette = {
   bgRoot: '#0a0118',
@@ -59,6 +60,11 @@ const PHOTOS = {
 };
 
 // 4 LIVE vertikaler + 1 AI-lag i beta (2.1)
+// Talents-personaen dekker BÅDE agency-brukere (Talent Registry-flate) og
+// skuespillere/talents (Talents-app/Self-tape Studio). LoginDialog viser
+// fellesinngang som lar brukeren velge rolle inne i dialogen.
+type VerticalPersona = 'production_team' | 'content_producer' | 'dance_studio' | 'talents' | '';
+
 const VERTICALS: Array<{
   id: string;
   Icon: React.ComponentType<{ sx?: object; fontSize?: 'small' | 'inherit' | 'medium' | 'large' }>;
@@ -68,7 +74,11 @@ const VERTICALS: Array<{
   body: string;
   bullets: string[];
   status: 'live' | 'beta';
-  href: string;
+  /**
+   * persona pre-velger riktig variant i LoginDialog. Talents har ingen egen persona
+   * (login → vanlig landing-flow med fri valg).
+   */
+  persona: VerticalPersona;
 }> = [
   {
     id: 'production-os',
@@ -85,7 +95,7 @@ const VERTICALS: Array<{
       'Klient-samarbeid + budsjett (estimat vs. faktisk, NOK)',
     ],
     status: 'live',
-    href: '/auth?role=production',
+    persona: 'production_team',
   },
   {
     id: 'content-producer',
@@ -102,7 +112,7 @@ const VERTICALS: Array<{
       'Flere løpende klienter samtidig',
     ],
     status: 'live',
-    href: '/auth?role=content-producer',
+    persona: 'content_producer',
   },
   {
     id: 'dance',
@@ -119,7 +129,7 @@ const VERTICALS: Array<{
       'Skadelogg + øvingslogg',
     ],
     status: 'live',
-    href: '/auth?role=dance',
+    persona: 'dance_studio',
   },
   {
     id: 'talents',
@@ -136,7 +146,7 @@ const VERTICALS: Array<{
       'BankID + per-org B2-storage i pipeline',
     ],
     status: 'live',
-    href: '/talents/registry',
+    persona: 'talents',
   },
 ];
 
@@ -196,9 +206,36 @@ const BLOG_TEASERS = [
   { slug: 'crm-vs-excel-norske-casting-byraer', title: 'Hvorfor regnearket koster byrået 250.000 kr i året', pillar: 'Operativ effektivisering' },
 ];
 
-export default function TheRoleRoomLanding() {
+interface TheRoleRoomLandingProps {
+  /** Kall etter vellykket innlogging — typisk window.location.reload(). */
+  onEnter?: () => void;
+}
+
+export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps = {}) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  // Login modal — gjenbruker LoginDialog fra casting-main shell.
+  // Variant 'landing' = vanlig brukerlogg-inn, 'admin' = backoffice-tilgang.
+  type LoginVariant = 'landing' | 'admin';
+  type LoginPersonaPrefill = '' | 'production_team' | 'content_producer' | 'education_institution' | 'dance_studio' | 'talents';
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [loginVariant, setLoginVariant] = useState<LoginVariant>('landing');
+  const [loginPersona, setLoginPersona] = useState<LoginPersonaPrefill>('');
+  const openLogin = (variant: LoginVariant = 'landing', persona: LoginPersonaPrefill = '') => {
+    setLoginVariant(variant);
+    setLoginPersona(persona);
+    setLoginOpen(true);
+  };
+  const closeLogin = () => setLoginOpen(false);
+  const handleLoginSuccess = () => {
+    closeLogin();
+    if (onEnter) {
+      onEnter();
+    } else {
+      window.location.reload();
+    }
+  };
 
   // SEO + JSON-LD SoftwareApplication
   useEffect(() => {
@@ -275,16 +312,26 @@ export default function TheRoleRoomLanding() {
 
   return (
     <Box sx={{ bgcolor: palette.bgRoot, color: palette.textPrimary, minHeight: '100vh' }}>
-      <TopNav />
-      <Hero isMobile={isMobile} />
+      <TopNav
+        onLogin={() => openLogin('landing')}
+        onTalentsLogin={() => openLogin('landing', 'talents')}
+      />
+      <Hero isMobile={isMobile} onLogin={() => openLogin('landing')} />
       <ManifestoStrip />
       <FlowSection />
-      <VerticalsSection />
+      <VerticalsSection onLogin={(persona) => openLogin('landing', persona)} />
       <PillarsSection />
       <TrustStripFull />
       <BlogTeaserSection />
-      <FinalCTASection />
-      <Footer />
+      <FinalCTASection onLogin={() => openLogin('landing')} />
+      <Footer onAdminLogin={() => openLogin('admin')} />
+      <LoginDialog
+        open={loginOpen}
+        onClose={closeLogin}
+        onLoginSuccess={handleLoginSuccess}
+        isLandingPage={loginVariant === 'landing'}
+        initialPersona={loginPersona}
+      />
     </Box>
   );
 }
@@ -292,7 +339,7 @@ export default function TheRoleRoomLanding() {
 // ──────────────────────────────────────────────────────────────────
 // TopNav
 // ──────────────────────────────────────────────────────────────────
-function TopNav() {
+function TopNav({ onLogin, onTalentsLogin }: { onLogin: () => void; onTalentsLogin: () => void }) {
   return (
     <Box
       component="nav"
@@ -343,7 +390,7 @@ function TopNav() {
           </Stack>
           <Stack direction="row" spacing={1.2} alignItems="center">
             <Button
-              href="/talents/registry"
+              onClick={onTalentsLogin}
               sx={{
                 bgcolor: 'transparent',
                 color: palette.accentBright,
@@ -360,7 +407,7 @@ function TopNav() {
               Talent Registry
             </Button>
             <Button
-              href="/auth"
+              onClick={onLogin}
               sx={{
                 background: palette.accentGradient,
                 color: '#fff',
@@ -384,7 +431,7 @@ function TopNav() {
 // ──────────────────────────────────────────────────────────────────
 // Hero — positioneringen dok seksjon 1.1 + 1.2
 // ──────────────────────────────────────────────────────────────────
-function Hero({ isMobile }: { isMobile: boolean }) {
+function Hero({ isMobile, onLogin }: { isMobile: boolean; onLogin: () => void }) {
   return (
     <Box
       sx={{
@@ -654,7 +701,7 @@ function FlowSection() {
 // ──────────────────────────────────────────────────────────────────
 // VerticalsSection — 4 live + Agent beta (2.1)
 // ──────────────────────────────────────────────────────────────────
-function VerticalsSection() {
+function VerticalsSection({ onLogin }: { onLogin: (persona: VerticalPersona) => void }) {
   return (
     <Box sx={{ bgcolor: palette.bgShell, py: { xs: 6, md: 10 } }}>
       <Container maxWidth="lg">
@@ -746,7 +793,7 @@ function VerticalsSection() {
                   </Typography>
                 </Box>
                 <Button
-                  href={v.href}
+                  onClick={() => onLogin(v.persona)}
                   endIcon={<ArrowForwardIcon />}
                   sx={{
                     background: palette.accentGradient,
@@ -1030,7 +1077,7 @@ function BlogTeaserSection() {
 // ──────────────────────────────────────────────────────────────────
 // FinalCTASection
 // ──────────────────────────────────────────────────────────────────
-function FinalCTASection() {
+function FinalCTASection({ onLogin }: { onLogin: () => void }) {
   return (
     <Container maxWidth="md" sx={{ py: { xs: 6, md: 10 } }}>
       <Box
@@ -1067,7 +1114,7 @@ function FinalCTASection() {
             Book demo
           </Button>
           <Button
-            href="/auth"
+            onClick={onLogin}
             sx={{
               bgcolor: 'transparent',
               color: palette.textPrimary,
@@ -1092,7 +1139,7 @@ function FinalCTASection() {
 // ──────────────────────────────────────────────────────────────────
 // Footer
 // ──────────────────────────────────────────────────────────────────
-function Footer() {
+function Footer({ onAdminLogin }: { onAdminLogin: () => void }) {
   return (
     <Box sx={{ borderTop: `1px solid ${palette.borderSubtle}`, mt: 6 }}>
       <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 } }}>
@@ -1110,9 +1157,8 @@ function Footer() {
               Operativsystemet for film- og innholdsproduksjon · Et produkt fra Creatorhub AS · Oslo, Norge
             </Typography>
           </Box>
-          <Stack direction="row" spacing={3} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
+          <Stack direction="row" spacing={3} sx={{ flexWrap: 'wrap', gap: 1.2, alignItems: 'center' }}>
             {[
-              { label: 'Talent Registry', href: '/talents/registry' },
               { label: 'For byråer', href: '/for-byraer' },
               { label: 'Blog', href: '/blog' },
               { label: 'FAQ', href: '/faq' },
@@ -1134,6 +1180,24 @@ function Footer() {
                 {it.label}
               </Box>
             ))}
+            {/* Admin-login — egen variant av LoginDialog (isLandingPage=false). */}
+            <Box
+              component="button"
+              onClick={onAdminLogin}
+              sx={{
+                color: palette.textMuted,
+                fontSize: '0.86rem',
+                fontWeight: 600,
+                textDecoration: 'none',
+                bgcolor: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                p: 0,
+                '&:hover': { color: palette.accentBright },
+              }}
+            >
+              Admin
+            </Box>
           </Stack>
         </Stack>
       </Container>

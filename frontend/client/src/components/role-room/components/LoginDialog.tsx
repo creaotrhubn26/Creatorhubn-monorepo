@@ -68,7 +68,11 @@ interface LoginDialogProps {
   initialPersona?: LoginPersona;
 }
 
-type LoginPersona = '' | 'production_team' | 'content_producer' | 'education_institution' | 'dance_studio';
+// 2026-06-07: 'talents' lagt til som egen persona for skuespillere/talent-side.
+// Per-persona-logikken (getMinimumSeatCount/getSeatPrice/etc) faller tilbake til
+// defaults når persona = 'talents' — TheRoleRoomLanding bruker det som
+// initialPersona-hint, og dialogen vil senere kunne få egen UI for talents.
+type LoginPersona = '' | 'production_team' | 'content_producer' | 'education_institution' | 'dance_studio' | 'talents';
 type EducationInstitutionType = '' | 'upper_secondary' | 'folk_high_school' | 'vocational_college' | 'higher_education' | 'private_school';
 type EducationSeatRange = '' | 'up_to_15' | 'up_to_30' | 'up_to_60' | 'up_to_120' | 'more_than_120';
 type EducationStartWindow = '' | 'this_semester' | 'next_semester' | 'next_academic_year' | 'exploring';
