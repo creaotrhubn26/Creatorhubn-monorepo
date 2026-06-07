@@ -1447,6 +1447,7 @@ function Footer() {
             {[
               { href: '/pricing', label: 'Priser' },
               { href: '/faq', label: 'FAQ' },
+              { href: '/blog', label: 'Blog' },
               { href: '/about', label: 'Om oss' },
               { href: '/privacy-policy', label: 'Personvern' },
               { href: '/terms-and-conditions', label: 'Vilkår' },
