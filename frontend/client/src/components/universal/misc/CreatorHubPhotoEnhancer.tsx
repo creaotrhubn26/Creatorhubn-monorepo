@@ -479,6 +479,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState('');
+  const [isDragOver, setIsDragOver] = useState(false);
   const [showRatingDialog, setShowRatingDialog] = useState(false);
   const [directUploadCache, setDirectUploadCache] = useState<DirectUploadCache | null>(null);
   const [directUploadProgress, setDirectUploadProgress] = useState<DirectUploadProgress | null>(null);
@@ -1055,10 +1056,9 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     },
   });
 
-  const onImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const fileList = event.target.files;
-    const files = fileList ? Array.from(fileList) : [];
-    event.target.value = '';
+  // Shared upload path for both the file picker and drag-and-drop on the
+  // preview pane. Resets all per-image state so a new file starts clean.
+  const ingestFiles = (files: File[]) => {
     if (files.length === 0) return;
 
     // Legacy single-image blob-URL ownership — the session hook owns the
@@ -1086,6 +1086,25 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     setAiSuggestion(null);
     setAiSuggestedRecipe(null);
     session.selectImage(first.id);
+  };
+
+  const onImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = event.target.files;
+    const files = fileList ? Array.from(fileList) : [];
+    event.target.value = '';
+    ingestFiles(files);
+  };
+
+  const onPreviewDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragOver(false);
+    const dropped = event.dataTransfer?.files ? Array.from(event.dataTransfer.files) : [];
+    const images = dropped.filter(
+      (file) =>
+        file.type.startsWith('image/') ||
+        /\.(jpe?g|png|webp|hei[cf]|tiff?|dng|cr[23]|nef|arw|raf|orf|rw2)$/i.test(file.name),
+    );
+    if (images.length > 0) ingestFiles(images);
   };
 
   /**
@@ -1538,14 +1557,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   />
                 ) : null}
 
-                <Typography variant="subtitle2">Settings</Typography>
+                <Typography variant="subtitle2">Justeringer</Typography>
                 {[
-                  { key: 'brightness', label: 'Brightness' },
-                  { key: 'contrast', label: 'Contrast' },
-                  { key: 'saturation', label: 'Saturation' },
-                  { key: 'sharpness', label: 'Sharpness' },
-                  { key: 'denoising', label: 'Denoising' },
-                  { key: 'faceEnhancement', label: 'Face Enhancement' },
+                  { key: 'brightness', label: 'Lysstyrke', hint: 'Gjør hele bildet lysere eller mørkere.' },
+                  { key: 'contrast', label: 'Kontrast', hint: 'Øker forskjellen mellom lyse og mørke partier.' },
+                  { key: 'saturation', label: 'Metning', hint: 'Hvor kraftige og mettede fargene er.' },
+                  { key: 'sharpness', label: 'Skarphet', hint: 'Tydeligere kanter og finere detaljer.' },
+                  { key: 'denoising', label: 'Støyreduksjon', hint: 'Fjerner korn og grynethet fra høy ISO eller dårlig lys.' },
+                  { key: 'faceEnhancement', label: 'Ansiktsforbedring', hint: 'Glatter hud og løfter ansikter automatisk.' },
                 ].map((slider) => {
                   const key = slider.key as 'brightness' | 'contrast' | 'saturation' | 'sharpness' | 'denoising' | 'faceEnhancement';
                   // Only faceEnhancement is face-scopable in this block.
@@ -1554,7 +1573,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   return (
                     <Box key={slider.key}>
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography variant="caption">{slider.label}</Typography>
+                        <Tooltip title={slider.hint} placement="top" arrow>
+                          <Typography
+                            variant="caption"
+                            sx={{ borderBottom: '1px dotted', borderColor: 'text.disabled', cursor: 'help' }}
+                          >
+                            {slider.label}
+                          </Typography>
+                        </Tooltip>
                         <Typography variant="caption">{currentValue}</Typography>
                       </Stack>
                       <Slider
@@ -1614,13 +1640,13 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                 </FormControl>
 
                 {[
-                  { key: 'gfpganQuality', label: 'Ansiktsforbedring', profileKey: null },
-                  { key: 'codeformerFidelity', label: 'Behold opprinnelig ansikt', profileKey: null },
-                  { key: 'skinTextureGuard', label: 'Bevar hudtekstur', profileKey: null },
-                  { key: 'blemishRemoval', label: 'Fjern urenheter', profileKey: 'blemishProfile' as const },
-                  { key: 'teethWhiteness', label: 'Hvitere tenner', profileKey: 'teethProfile' as const },
-                  { key: 'eyeBrightness', label: 'Lysere øyne', profileKey: 'eyeBrightnessProfile' as const },
-                  { key: 'eyeWhiteness', label: 'Hvitere øyne', profileKey: 'eyeWhitenessProfile' as const },
+                  { key: 'gfpganQuality', label: 'Ansiktsforbedring', profileKey: null, hint: 'Hvor mye ansikter forbedres og glattes (naturlig).' },
+                  { key: 'codeformerFidelity', label: 'Behold opprinnelig ansikt', profileKey: null, hint: 'Høyt = mer likt originalansiktet; lavt = kraftigere rekonstruksjon.' },
+                  { key: 'skinTextureGuard', label: 'Bevar hudtekstur', profileKey: null, hint: 'Beholder porer og hudtekstur så huden ikke blir plastaktig.' },
+                  { key: 'blemishRemoval', label: 'Fjern urenheter', profileKey: 'blemishProfile' as const, hint: 'Fjerner kviser, flekker og midlertidige urenheter.' },
+                  { key: 'teethWhiteness', label: 'Hvitere tenner', profileKey: 'teethProfile' as const, hint: 'Gjør tenner hvitere uten å bli unaturlig blå.' },
+                  { key: 'eyeBrightness', label: 'Lysere øyne', profileKey: 'eyeBrightnessProfile' as const, hint: 'Lysner og åpner blikket.' },
+                  { key: 'eyeWhiteness', label: 'Hvitere øyne', profileKey: 'eyeWhitenessProfile' as const, hint: 'Fjerner røde og gule toner i det hvite i øyet.' },
                 ].map((slider) => {
                   const key = slider.key as
                     | 'gfpganQuality'
@@ -1646,7 +1672,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   return (
                     <Box key={slider.key}>
                       <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography variant="caption">{slider.label}</Typography>
+                        <Tooltip title={slider.hint} placement="top" arrow>
+                          <Typography
+                            variant="caption"
+                            sx={{ borderBottom: '1px dotted', borderColor: 'text.disabled', cursor: 'help' }}
+                          >
+                            {slider.label}
+                          </Typography>
+                        </Tooltip>
                         <Stack direction="row" spacing={0.5} alignItems="center">
                           {profileKey && (
                             <Stack direction="row" spacing={0.25}>
@@ -1759,6 +1792,22 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   </AccordionDetails>
                 </Accordion>
 
+                <Accordion
+                  disableGutters
+                  square
+                  elevation={0}
+                  sx={{ bgcolor: 'transparent', '&:before': { display: 'none' } }}
+                >
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 0, minHeight: 'auto' }}>
+                    <Stack spacing={0}>
+                      <Typography variant="subtitle2">Farge &amp; look</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Avansert — fargebånd og fargefilter (LUT)
+                      </Typography>
+                    </Stack>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ px: 0, pt: 0 }}>
+                    <Stack spacing={2}>
                 <HSLColorPanel
                   value={settings.hsl}
                   onChange={(next) => setSettings((previous) => ({ ...previous, hsl: next }))}
@@ -1791,6 +1840,9 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     );
                   }}
                 />
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
 
                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                   {[
@@ -1896,17 +1948,31 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   </Button>
                 </Stack>
 
-                <Button
-                  variant="contained"
-                  size="large"
-                  fullWidth
-                  onClick={() => void runEnhancement()}
-                  disabled={!uploadedImage || enhanceMutation.isPending}
-                  startIcon={<AutoFixHighIcon />}
-                  sx={{ py: 1.25, fontWeight: 700 }}
+                <Box
+                  sx={{
+                    position: 'sticky',
+                    bottom: 0,
+                    zIndex: 3,
+                    pt: 1.5,
+                    pb: 1,
+                    mt: 0.5,
+                    bgcolor: 'background.paper',
+                    borderTop: '1px solid',
+                    borderColor: 'divider',
+                  }}
                 >
-                  {enhanceMutation.isPending ? 'Forbedrer…' : 'Enhance'}
-                </Button>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    onClick={() => void runEnhancement()}
+                    disabled={!uploadedImage || enhanceMutation.isPending}
+                    startIcon={<AutoFixHighIcon />}
+                    sx={{ py: 1.25, fontWeight: 700 }}
+                  >
+                    {enhanceMutation.isPending ? 'Forbedrer…' : 'Enhance'}
+                  </Button>
+                </Box>
 
                 <Typography variant="caption" color="text.secondary">
                   Forhåndsvisningen er omtrentlig — Enhance kjører full forbedring (ansiktsretusj, detaljer og oppskalering) for endelig kvalitet.
@@ -2115,14 +2181,47 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
               </Box>
 
               {!originalImageUrl ? (
-                <Alert severity="info">Last opp et bilde for forhåndsvisning.</Alert>
+                <Box
+                  onDragOver={(event) => { event.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={onPreviewDrop}
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 1.5,
+                    minHeight: 420,
+                    textAlign: 'center',
+                    color: 'text.secondary',
+                    border: '2px dashed',
+                    borderColor: isDragOver ? 'primary.main' : 'rgba(148,163,184,0.35)',
+                    bgcolor: isDragOver ? 'action.hover' : 'transparent',
+                    borderRadius: 2,
+                    p: 4,
+                    transition: 'border-color 0.15s, background-color 0.15s',
+                  }}
+                >
+                  <AddPhotoIcon sx={{ fontSize: 56, opacity: 0.45 }} />
+                  <Typography variant="h6" sx={{ color: 'text.primary' }}>
+                    {isDragOver ? 'Slipp bildet her' : 'Last opp et bilde for å starte'}
+                  </Typography>
+                  <Typography variant="body2" sx={{ maxWidth: 380 }}>
+                    Dra bildet rett hit, eller bruk «Last opp bilde». Deretter kan du la{' '}
+                    <strong>AI-forslag</strong> sette anbefalte verdier automatisk, eller justere selv
+                    før du trykker <strong>Enhance</strong>.
+                  </Typography>
+                </Box>
               ) : (
                 <Box
+                  onDragOver={(event) => { event.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={onPreviewDrop}
                   sx={{
                     position: 'relative',
                     minHeight: 420,
                     border: '1px solid',
-                    borderColor: eyedropperActive ? 'primary.main' : focusedFace ? 'primary.light' : '#e5e7eb',
+                    borderColor: isDragOver ? 'primary.main' : eyedropperActive ? 'primary.main' : focusedFace ? 'primary.light' : '#e5e7eb',
                     borderRadius: 2,
                     overflow: 'hidden',
                     cursor: eyedropperActive ? 'crosshair' : 'default',
@@ -2158,7 +2257,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                         showCompositionGuides={showCompositionGuides}
                         compositionAnalysis={compositionAnalysis}
                       />
-                    ) : originalImageUrl ? (
+                    ) : (
                       <Box sx={{ position: 'relative', width: '100%', height: '100%', minHeight: 420 }}>
                         <RealtimePreviewCanvas
                           imageUrl={originalImageUrl}
@@ -2175,32 +2274,6 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                           variant="filled"
                           sx={{ position: 'absolute', top: 8, left: 8, opacity: 0.9 }}
                         />
-                      </Box>
-                    ) : (
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 1.5,
-                          height: '100%',
-                          minHeight: 420,
-                          textAlign: 'center',
-                          color: 'text.secondary',
-                          border: '1px dashed rgba(148,163,184,0.35)',
-                          borderRadius: 2,
-                          p: 4,
-                        }}
-                      >
-                        <AddPhotoIcon sx={{ fontSize: 56, opacity: 0.45 }} />
-                        <Typography variant="h6" sx={{ color: 'text.primary' }}>
-                          Last opp et bilde for å starte
-                        </Typography>
-                        <Typography variant="body2" sx={{ maxWidth: 380 }}>
-                          Dra inn eller velg et bilde. Deretter kan du la <strong>AI-forslag</strong> sette
-                          anbefalte verdier automatisk, eller justere selv før du trykker <strong>Enhance</strong>.
-                        </Typography>
                       </Box>
                     )
                   )}
