@@ -343,12 +343,22 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
       );
 
       // Click-ID-aggregering: hvor mange leads kom fra paid-channels?
+      // Prioritert rekkefølge — leads kan ha multiple click-IDs ved
+      // x-channel-kampanjer, vi velger den mest sannsynlig som drev sist-klikk.
+      // Instagram skilles fra Meta via utm_source eller referrer (instagram.com).
       const clickIdBreakdown = await pool.query(
         `SELECT
            CASE
              WHEN request_context->>'gclid' IS NOT NULL THEN 'google_ads'
-             WHEN request_context->>'fbclid' IS NOT NULL THEN 'meta_ads'
+             WHEN request_context->>'ttclid' IS NOT NULL THEN 'tiktok_ads'
              WHEN request_context->>'li_fat_id' IS NOT NULL THEN 'linkedin_ads'
+             WHEN request_context->>'fbclid' IS NOT NULL AND (
+               LOWER(COALESCE(utm_source,'')) = 'instagram'
+               OR LOWER(COALESCE(request_context->>'referrer','')) LIKE '%instagram.com%'
+             ) THEN 'instagram_ads'
+             WHEN request_context->>'fbclid' IS NOT NULL THEN 'meta_ads'
+             WHEN LOWER(COALESCE(request_context->>'referrer','')) LIKE '%instagram.com%' THEN 'instagram_organic'
+             WHEN LOWER(COALESCE(request_context->>'referrer','')) LIKE '%tiktok.com%' THEN 'tiktok_organic'
              ELSE 'organic_or_direct'
            END AS channel,
            COUNT(*)::int AS n,

@@ -50,6 +50,53 @@ interface FunnelStats {
   }>;
 }
 
+// Attribusjons-data fra /api/admin-room/agency-leads.
+interface AttributionData {
+  by_source: Array<{
+    source_key: string;
+    medium: string;
+    campaign: string;
+    n: number;
+    qualified: number;
+    won: number;
+  }>;
+  by_paid_channel: Array<{
+    channel:
+      | 'google_ads'
+      | 'meta_ads'
+      | 'instagram_ads'
+      | 'instagram_organic'
+      | 'tiktok_ads'
+      | 'tiktok_organic'
+      | 'linkedin_ads'
+      | 'organic_or_direct';
+    n: number;
+    won: number;
+  }>;
+}
+
+const PAID_CHANNEL_LABELS: Record<AttributionData['by_paid_channel'][number]['channel'], string> = {
+  google_ads: 'Google Ads',
+  meta_ads: 'Meta Ads (FB)',
+  instagram_ads: 'Instagram Ads',
+  instagram_organic: 'Instagram organisk',
+  tiktok_ads: 'TikTok Ads',
+  tiktok_organic: 'TikTok organisk',
+  linkedin_ads: 'LinkedIn Ads',
+  organic_or_direct: 'Organisk / direkte',
+};
+
+const PAID_CHANNEL_COLORS: Record<AttributionData['by_paid_channel'][number]['channel'], string> = {
+  google_ads: '#fbbf24',
+  meta_ads: '#1877f2',
+  instagram_ads: '#e1306c',
+  instagram_organic: '#f9a826',
+  tiktok_ads: '#000000',
+  tiktok_organic: '#69c9d0',
+  linkedin_ads: '#0a66c2',
+  organic_or_direct: '#94a3b8',
+};
+
 const STATUS_LABELS: Record<string, string> = {
   new: 'Nye',
   contacted: 'Kontaktet',
@@ -74,6 +121,7 @@ export default function B2BAcquisitionPanel() {
   const [openSection, setOpenSection] = useState<string | null>('funnel');
   const [scoringLeadId, setScoringLeadId] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const [attribution, setAttribution] = useState<AttributionData | null>(null);
 
   const reload = useCallback(async () => {
     setError(null);
@@ -82,6 +130,17 @@ export default function B2BAcquisitionPanel() {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json() as FunnelStats;
       setFunnel(data);
+      // Parallel: hent attribusjons-data fra agency-leads-endepunkt.
+      // Best-effort — feilen blokkerer ikke hovedflyten.
+      void (async () => {
+        try {
+          const ar = await fetch('/api/admin-room/agency-leads?limit=500', { credentials: 'include' });
+          if (ar.ok) {
+            const ad = await ar.json() as { attribution?: AttributionData };
+            if (ad.attribution) setAttribution(ad.attribution);
+          }
+        } catch { /* swallow */ }
+      })();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Klarte ikke å hente funnel');
     } finally {
@@ -226,6 +285,130 @@ export default function B2BAcquisitionPanel() {
           </Stack>
         ) : null}
       </Section>
+
+      {/* Attribusjon — hvor kommer leadene fra? */}
+      {attribution ? (
+        <Section
+          title={`Attribusjon (${attribution.by_source.length} kilder)`}
+          Icon={CampaignOutlinedIcon}
+          open={openSection === 'attribution'}
+          onToggle={() => toggle('attribution')}
+        >
+          {/* Paid-channel-fordeling */}
+          {attribution.by_paid_channel.length > 0 ? (
+            <Box sx={{ mb: 2.4 }}>
+              <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1 }}>
+                Per kanal
+              </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
+                {attribution.by_paid_channel.map((c) => {
+                  const total = attribution.by_paid_channel.reduce((a, b) => a + b.n, 0);
+                  const pct = total ? Math.round((c.n / total) * 100) : 0;
+                  const color = PAID_CHANNEL_COLORS[c.channel];
+                  const winRate = c.n ? Math.round((c.won / c.n) * 100) : 0;
+                  return (
+                    <Box
+                      key={c.channel}
+                      sx={{
+                        flex: 1,
+                        minWidth: 160,
+                        bgcolor: `${color}15`,
+                        border: `1px solid ${color}40`,
+                        borderRadius: 1.2,
+                        p: 1.2,
+                      }}
+                    >
+                      <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 0.4 }}>
+                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: color }} />
+                        <Typography sx={{ color: '#f5f3ff', fontSize: '0.82rem', fontWeight: 700 }}>
+                          {PAID_CHANNEL_LABELS[c.channel]}
+                        </Typography>
+                      </Stack>
+                      <Typography sx={{ fontWeight: 800, fontSize: '1.4rem', color: '#f5f3ff' }}>
+                        {c.n}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.7rem' }}>
+                        {pct}% · {c.won} kunder ({winRate}% win)
+                      </Typography>
+                      <Box sx={{ mt: 0.6, height: 4, bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+                        <Box sx={{ width: `${pct}%`, height: '100%', bgcolor: color }} />
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </Box>
+          ) : null}
+
+          {/* Source-tabell */}
+          {attribution.by_source.length > 0 ? (
+            <Box>
+              <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1 }}>
+                Per kilde (utm-tagger / direct)
+              </Typography>
+              <Box
+                component="table"
+                sx={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  '& th': {
+                    textAlign: 'left',
+                    color: 'rgba(148,163,184,0.85)',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    py: 0.8,
+                    borderBottom: '1px solid rgba(148,163,184,0.18)',
+                  },
+                  '& td': {
+                    color: '#f5f3ff',
+                    fontSize: '0.85rem',
+                    py: 1,
+                    borderBottom: '1px solid rgba(148,163,184,0.08)',
+                  },
+                  '& td.num': { textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 },
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th>Kilde</th>
+                    <th>Medium</th>
+                    <th>Kampanje</th>
+                    <th style={{ textAlign: 'right' }}>Leads</th>
+                    <th style={{ textAlign: 'right' }}>Kvalifisert</th>
+                    <th style={{ textAlign: 'right' }}>Kunder</th>
+                    <th style={{ textAlign: 'right' }}>Win-rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {attribution.by_source.map((s, i) => {
+                    const winRate = s.n ? Math.round((s.won / s.n) * 100) : 0;
+                    return (
+                      <tr key={i}>
+                        <td>{s.source_key || 'direct'}</td>
+                        <td style={{ color: 'rgba(203,213,225,0.7)' }}>{s.medium || '—'}</td>
+                        <td style={{ color: 'rgba(203,213,225,0.7)' }}>{s.campaign || '—'}</td>
+                        <td className="num">{s.n}</td>
+                        <td className="num" style={{ color: '#60a5fa' }}>{s.qualified}</td>
+                        <td className="num" style={{ color: '#34d399' }}>{s.won}</td>
+                        <td className="num" style={{ color: winRate >= 10 ? '#34d399' : 'rgba(203,213,225,0.7)' }}>
+                          {winRate}%
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Box>
+            </Box>
+          ) : null}
+
+          {attribution.by_source.length === 0 && attribution.by_paid_channel.length === 0 ? (
+            <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+              Ingen attribusjon-data ennå. Drev trafikk fra LinkedIn/Google Ads/Meta med UTM-tagger eller click-ID-er for å se kilde-fordeling her.
+            </Typography>
+          ) : null}
+        </Section>
+      ) : null}
 
       {/* Recent leads */}
       <Section
