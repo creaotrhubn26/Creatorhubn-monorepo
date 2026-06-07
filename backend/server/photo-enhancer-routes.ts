@@ -1027,6 +1027,8 @@ async function runPhotoEnhancerQueuedJob(job: PhotoEnhancerQueuedJob) {
       processingMs,
       jobId: job.id,
       checksum,
+      rawConverter: readString(enhancementResult.prepared.raw.converter),
+      lensCorrectionApplied: Boolean(enhancementResult.prepared.raw.lensCorrectionApplied),
     };
     addPhotoEnhancerJobEvent(job, "completed", "Enhancement completed.", {
       modelUsed: enhancementResult.modelUsed,
@@ -2541,7 +2543,7 @@ async function execRawConverter(
 }
 
 async function resolveRuntimeSupport() {
-  const [imageMagick, darktable, rawtherapee, dcraw, dcrawEmu, simpleDcraw, heifConvert, exiftool] = await Promise.all([
+  const [imageMagick, darktable, rawtherapee, dcraw, dcrawEmu, simpleDcraw, heifConvert, exiftool, lensfunUpdate] = await Promise.all([
     commandPath("magick", "convert"),
     commandPath("darktable-cli"),
     commandPath("rawtherapee-cli"),
@@ -2550,6 +2552,7 @@ async function resolveRuntimeSupport() {
     commandPath("simple_dcraw"),
     commandPath("heif-convert"),
     commandPath("exiftool"),
+    commandPath("lensfun-update-data"),
   ]);
 
   return {
@@ -2564,6 +2567,15 @@ async function resolveRuntimeSupport() {
         dcrawEmu: Boolean(dcrawEmu),
         simpleDcraw: Boolean(simpleDcraw),
         heifConvert: Boolean(heifConvert),
+      },
+      // Optical lens correction readiness. RawTherapee has Lensfun compiled
+      // in, so its presence is enough to run LcMode=lfauto; the system
+      // Lensfun database (lensfun-update-data from liblensfun-bin) just
+      // widens lens coverage beyond RawTherapee's bundled data.
+      lensCorrection: {
+        available: Boolean(rawtherapee),
+        converter: rawtherapee ? "rawtherapee" : null,
+        systemLensfunDatabase: Boolean(lensfunUpdate),
       },
       available: Boolean(imageMagick || darktable || rawtherapee || dcraw || dcrawEmu || simpleDcraw),
       heic: {
@@ -6700,6 +6712,8 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         res.json({
           ...enhancementResult.payload,
           processingMs,
+          rawConverter: readString(enhancementResult.prepared.raw.converter),
+          lensCorrectionApplied: Boolean(enhancementResult.prepared.raw.lensCorrectionApplied),
         });
         trackPhotoEnhancerEvent({
           route: "enhance",
