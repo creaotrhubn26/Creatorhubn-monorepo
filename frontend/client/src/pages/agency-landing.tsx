@@ -30,6 +30,7 @@ import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { useEffect, useState } from 'react';
+import { trackPageView, trackEvent } from '@/utils/ga4-client-tracking';
 
 // ── Design-tokens (samme palett som Talents-app) ──────────────────
 const palette = {
@@ -53,6 +54,12 @@ const palette = {
 export default function AgencyLandingPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  // GA4 page-view + landing-view-event.
+  useEffect(() => {
+    trackPageView('/for-byraer', 'The Role Room for byråer');
+    trackEvent('landing_view', { landing: 'for_byraer', surface: 'theroleroom.com' });
+  }, []);
 
   // SEO + GEO: meta-tags + JSON-LD structured data
   useEffect(() => {
@@ -1205,8 +1212,15 @@ function LeadForm() {
       });
       if (!r.ok) {
         const payload = await r.json().catch(() => ({}));
+        trackEvent('agency_lead_failed', { error: `HTTP ${r.status}` });
         throw new Error(payload.error ?? `HTTP ${r.status}`);
       }
+      // Markér som conversion i GA4 → Admin → Events → "Mark as conversion".
+      trackEvent('agency_lead_submitted', {
+        roster_size: talents.trim() || 'unknown',
+        has_phone: phone.trim().length > 0,
+        surface: 'for_byraer',
+      });
       setStatus('success');
       // Clear felter
       setAgency(''); setName(''); setEmail(''); setPhone(''); setTalents(''); setMessage('');

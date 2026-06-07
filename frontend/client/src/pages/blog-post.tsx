@@ -15,6 +15,7 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useEffect, useState } from 'react';
 import { useRoute } from 'wouter';
+import { trackPageView, trackEvent } from '@/utils/ga4-client-tracking';
 
 const palette = {
   bgRoot: '#0a0118',
@@ -105,6 +106,41 @@ export default function BlogPostPage() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [slug]);
+
+  // GA4 page-view + article-view-event.
+  useEffect(() => {
+    if (!article) return;
+    trackPageView(`/blog/${article.public_slug}`, article.title);
+    trackEvent('blog_article_view', {
+      slug: article.public_slug,
+      pillar: article.pillar ?? 'unknown',
+      reading_minutes: article.reading_minutes,
+      surface: 'blog_post',
+    });
+  }, [article]);
+
+  // GA4 scroll-depth — fire ved 25/50/75/100%.
+  useEffect(() => {
+    if (!article) return;
+    const fired = new Set<number>();
+    const onScroll = () => {
+      const total = document.documentElement.scrollHeight - window.innerHeight;
+      if (total <= 0) return;
+      const pct = Math.round((window.scrollY / total) * 100);
+      [25, 50, 75, 100].forEach((threshold) => {
+        if (pct >= threshold && !fired.has(threshold)) {
+          fired.add(threshold);
+          trackEvent('scroll_depth', {
+            surface: 'blog_post',
+            slug: article.public_slug,
+            depth_pct: threshold,
+          });
+        }
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [article]);
 
   // SEO + Open Graph + JSON-LD BlogPosting
   useEffect(() => {
