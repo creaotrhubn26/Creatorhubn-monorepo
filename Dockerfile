@@ -37,6 +37,17 @@ RUN apt-get update \
     rawtherapee \
   && rm -rf /var/lib/apt/lists/*
 
+# Lensfun lens database for RawTherapee's automatic lens correction
+# (LcMode=lfauto, used by the photo enhancer's RAW pipeline). Kept as a
+# best-effort step so a package-name/network issue can never break the core
+# image — RawTherapee falls back to its bundled Lensfun data if this is
+# absent. `lensfun-update-data` then refreshes to the latest lens profiles.
+RUN (apt-get update \
+      && apt-get install -y --no-install-recommends liblensfun-bin liblensfun-data-v1 \
+      && rm -rf /var/lib/apt/lists/* \
+      && (lensfun-update-data || true)) \
+    || echo "[lensfun] optional lens database not installed — using RawTherapee's bundled data"
+
 WORKDIR /app/backend
 
 COPY backend/package*.json backend/.npmrc ./
