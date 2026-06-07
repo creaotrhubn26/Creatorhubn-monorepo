@@ -4719,10 +4719,19 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         });
       }
       try {
+        // Camera RAW / HEIC can't be decoded by Sharp directly — rasterise
+        // first (same path as /analyze) so face detection works on RAW too,
+        // not just JPEG/PNG.
+        const preparedForFaces = await prepareProcessableImage(req.file as Express.Multer.File);
+        if (hasUnavailableSourceConversion(preparedForFaces.raw)) {
+          return res
+            .status(422)
+            .json({ success: false, available: false, error: "raw_conversion_unavailable" });
+        }
         const result = await withTimeout(
           runFaceApiExclusive(async () => {
             const runtime = await loadFaceApiRuntime();
-            const faceInput = await prepareFaceApiInput(req.file as Express.Multer.File);
+            const faceInput = await prepareFaceApiInput(preparedForFaces.file);
             const image = await runtime.canvas.loadImage(faceInput.buffer);
             const options = new runtime.faceApi.TinyFaceDetectorOptions({
               inputSize: PHOTO_ENHANCER_FACE_API_INPUT_SIZE,
