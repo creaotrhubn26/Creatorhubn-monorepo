@@ -22,7 +22,7 @@
  *   ad-hoc/{filename}   (manuelle uploads fra B2-arkiv-fanen)
  */
 
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 
 const B2_REGION = process.env.B2_REGION || "us-west-001";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
@@ -95,6 +95,29 @@ export async function archiveToRoleRoomB2(
       key,
       err: (err as Error).message,
     });
+    return null;
+  }
+}
+
+/**
+ * Hent et objekt fra Role Room B2-bucketen (server-side). Brukes til å servere
+ * publiserte guider via vår egen /g/:id — så lenken er permanent uten at
+ * bucketen må være offentlig. Returnerer null hvis ikke konfigurert/ikke funnet.
+ */
+export async function getFromRoleRoomB2(
+  key: string,
+): Promise<{ body: Buffer; contentType?: string } | null> {
+  const config = getRoleRoomB2Client();
+  if (!config) return null;
+  try {
+    const out = await config.client.send(
+      new GetObjectCommand({ Bucket: config.bucket, Key: key }),
+    );
+    const bytes = await (out.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined)
+      ?.transformToByteArray?.();
+    if (!bytes) return null;
+    return { body: Buffer.from(bytes), contentType: out.ContentType };
+  } catch {
     return null;
   }
 }

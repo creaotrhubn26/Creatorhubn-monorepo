@@ -20,6 +20,7 @@ import { useDemoStudio } from './demoStudioStore';
 import { totalDuration, VOICE_MODELS, exportReadiness } from './demoStudioModel';
 import { buildSrt, buildScriptHtml, renderThumbnail, buildInteractiveGuideHtml } from './demoStudioExports';
 import { addAsset } from './assetLibrary';
+import { publishGuide } from '../../services/publishService';
 import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
 import { translateForVoiceover } from './demoStudioAI';
 
@@ -72,6 +73,8 @@ export function ExportView() {
   const [error, setError] = useState<string | null>(null);
   const [musicPath, setMusicPath] = useState<string | null>(null);
   const [fileMsg, setFileMsg] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const runIdRef = useRef<string | null>(null);
   const resultRef = useRef<string | null>(null); // unngå stale closure i finally
@@ -120,6 +123,23 @@ export function ExportView() {
       setFileMsg(`✓ Interaktiv guide lagret + i biblioteket: ${p}. Selvstendig fil — send den direkte; den åpner i enhver nettleser.`);
       void openPath(p).catch(() => {});
     } catch (e) { setFileMsg('Feil ved interaktiv guide: ' + String(e)); }
+  };
+
+  /** Publiser guiden til en permanent, delbar offentlig lenke (B2-backet). */
+  const publishGuideLink = async () => {
+    if (!project) return;
+    setFileMsg(null); setPublishedUrl(null); setPublishing(true);
+    try {
+      const html = buildInteractiveGuideHtml(project);
+      const r = await publishGuide(html, project.branding?.brandName || project.name);
+      setPublishedUrl(r.url);
+      addAsset({ kind: 'guide', title: `Publisert guide — ${project.branding?.brandName || project.name}`, text: html, url: project.url, note: r.url });
+      setFileMsg(`✓ Publisert som lenke: ${r.url}`);
+    } catch (e) {
+      setFileMsg('Feil ved publisering: ' + (e as Error).message);
+    } finally {
+      setPublishing(false);
+    }
   };
 
   const setBrand = (patch: Record<string, unknown>) => { if (project) setProjectField('branding', { ...(project.branding ?? {}), ...patch }); };
@@ -300,6 +320,7 @@ export function ExportView() {
         <Section label="Leveranser (tekst & bilde)">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
             <button style={{ ...outlineBtn }} onClick={() => void exportGuide()}>Interaktiv guide (HTML)</button>
+            <button style={{ ...outlineBtn }} disabled={publishing} onClick={() => void publishGuideLink()}>{publishing ? 'Publiserer…' : 'Publiser som lenke'}</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportSrt()}>Undertekster (.srt)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportScriptPdf()}>Manus (PDF)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportThumbnail()}>Thumbnail (PNG)</button>
@@ -312,6 +333,14 @@ export function ExportView() {
             .srt fra manus + varigheter · Manus åpnes i print-vindu (lagre som PDF) · Thumbnail i valgt format.
           </div>
           {fileMsg && <div style={{ marginTop: 8, fontSize: 12, color: fileMsg.startsWith('Feil') ? C.red : C.green, wordBreak: 'break-all' }}>{fileMsg}</div>}
+          {publishedUrl && (
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: C.cream, border: `1px solid ${C.line}`, borderRadius: 8, padding: '8px 10px' }}>
+              <a href={publishedUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: C.accent, fontWeight: 600, wordBreak: 'break-all' }}>{publishedUrl}</a>
+              <div style={{ flex: 1 }} />
+              <button style={{ ...outlineBtn, padding: '4px 10px', fontSize: 11.5 }}
+                onClick={() => { void navigator.clipboard?.writeText(publishedUrl).then(() => setFileMsg('✓ Lenke kopiert.')); }}>Kopier lenke</button>
+            </div>
+          )}
         </Section>
 
         {/* Merkevare & white-label — auto-hentet fra siden */}
