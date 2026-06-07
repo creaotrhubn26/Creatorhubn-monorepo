@@ -492,6 +492,79 @@ test.describe('Photo Enhancer — full workflow', () => {
     await lookChip.click();
     expect(await slider.getAttribute('aria-valuenow')).toBe(tweaked);
   });
+
+  test('raw: a RAW upload is rasterised server-side for preview and AI', async ({ page }) => {
+    await mockStatusAndProjects(page);
+
+    let previewFilename: string | null = null;
+    await page.route('**/api/photo-enhancer/preview', (route) => {
+      const body = route.request().postDataBuffer()?.toString('binary') ?? '';
+      const match = body.match(/filename="([^"]+)"/);
+      previewFilename = match ? match[1] : null;
+      // The browser-renderable raster the server would return for the RAW.
+      return route.fulfill({ status: 200, contentType: 'image/jpeg', body: makeTestPng(120, 90) });
+    });
+
+    let suggestFilename: string | null = null;
+    await page.route('**/api/photo-enhancer/suggest-recipe', (route) => {
+      const body = route.request().postDataBuffer()?.toString('binary') ?? '';
+      const match = body.match(/filename="([^"]+)"/);
+      suggestFilename = match ? match[1] : null;
+      return json(route, {
+        recipe: { brightness: 6 },
+        analysis: { subject: 'portrait', confidence: 0.9, rationale: 'Single face', observations: [] },
+      });
+    });
+
+    await gotoEnhancer(page);
+    // A Nikon RAW — the browser can't decode it, so the enhancer must
+    // rasterise it server-side before preview/AI.
+    const fileInput = page.locator('input[type="file"][accept*="image"]').first();
+    await fileInput.setInputFiles({
+      name: 'wedding.nef',
+      mimeType: 'image/x-nikon-nef',
+      buffer: makeTestPng(64, 64),
+    });
+    await expect(page.getByText('wedding.nef', { exact: true })).toBeVisible();
+
+    // The RAW was sent to /preview…
+    await expect.poll(() => previewFilename, { timeout: 10_000 }).not.toBeNull();
+    expect(previewFilename).toMatch(/\.nef$/i);
+
+    // …which unlocks the AI (gated on a decodable raster), and the AI
+    // receives the rasterised JPEG, never the raw .nef.
+    const suggest = page.getByRole('button', { name: /^AI-forslag$/ });
+    await expect(suggest).toBeEnabled({ timeout: 10_000 });
+    await suggest.click();
+    await expect(page.getByText(/AI:\s*portrait/i)).toBeVisible({ timeout: 10_000 });
+    expect(suggestFilename).toMatch(/\.jpg$/i);
+  });
+
+  test('natural-language: a free-text style brief is sent to the AI as an instruction', async ({
+    page,
+  }) => {
+    await mockStatusAndProjects(page);
+    let sentInstruction: string | null = null;
+    await page.route('**/api/photo-enhancer/suggest-recipe', (route) => {
+      const body = route.request().postDataBuffer()?.toString('binary') ?? '';
+      const match = body.match(/name="instruction"\r?\n\r?\n([^\r]+)/);
+      sentInstruction = match ? match[1] : null;
+      return json(route, {
+        recipe: { saturation: -100 },
+        analysis: { subject: 'portrait', confidence: 0.8, rationale: 'Mono look requested', observations: ['Mono'] },
+      });
+    });
+
+    await gotoEnhancer(page);
+    await uploadFixture(page);
+
+    await page.getByPlaceholder(/pastell film-look/i).fill('gi meg en Jose Villa look');
+    await page.getByRole('button', { name: /^Bruk$/ }).click();
+
+    await expect.poll(() => sentInstruction, { timeout: 10_000 }).not.toBeNull();
+    expect(sentInstruction).toContain('Jose Villa');
+    await expect(page.getByText(/AI:\s*portrait/i)).toBeVisible({ timeout: 10_000 });
+  });
 });
 
 test.describe('Photo Enhancer — robustness', () => {

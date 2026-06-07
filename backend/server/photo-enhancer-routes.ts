@@ -6169,6 +6169,52 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     },
   );
 
+  // POST /preview — a browser-renderable raster of any upload, including
+  // every camera RAW format (Nikon NEF, Sony ARW, Fujifilm RAF, Canon
+  // CR2/CR3, Panasonic RW2, Olympus ORF, Pentax, DNG, …) and HEIC. The
+  // browser can't decode RAW, so the UI calls this to get a JPEG it can
+  // display in the preview and feed to the AI / face-detection endpoints.
+  // The original RAW is still sent to /enhance, where it is converted at
+  // full quality server-side — this is only the lightweight preview.
+  router.post("/preview", photoEnhancerUpload.single("image"), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: "image_required" });
+    }
+    try {
+      // Fast path: most RAWs embed a full-size JPEG preview we can pull
+      // with exiftool — far cheaper than a full dcraw/darktable decode.
+      let rasterBuffer: Buffer | null = null;
+      const embedded = await extractEmbeddedPreviewImage(req.file).catch(() => null);
+      if (embedded && embedded.buffer && embedded.buffer.byteLength > 1024) {
+        rasterBuffer = embedded.buffer;
+      } else {
+        // Full RAW/HEIC decode (or passthrough for already-raster uploads).
+        const prepared = await prepareProcessableImage(req.file);
+        if (hasUnavailableSourceConversion(prepared.raw)) {
+          return res
+            .status(422)
+            .json({ success: false, error: "raw_conversion_unavailable" });
+        }
+        rasterBuffer = prepared.file.buffer;
+      }
+
+      const sharpModule = await import("sharp");
+      const sharp = sharpModule.default;
+      const jpeg = await sharp(rasterBuffer, { failOn: "none" })
+        .rotate()
+        .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 82 })
+        .toBuffer();
+
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "no-store");
+      return res.send(jpeg);
+    } catch (error) {
+      console.error("[photo-enhancer] preview failed:", error);
+      return res.status(500).json({ success: false, error: "preview_failed" });
+    }
+  });
+
   // POST /suggest-recipe — Claude Vision-driven first-draft recipe.
   // Takes a JPEG/PNG/WebP upload, asks Claude Opus 4.7 to read the
   // image and propose values for every slider the enhancer exposes
@@ -6215,11 +6261,15 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
             );
           }
         }
+        const styleInstruction =
+          readString((req.body as Record<string, unknown> | undefined)?.instruction) ||
+          undefined;
         const result = await suggestPortraitRecipe({
           imageBase64,
           mime: mime as "image/jpeg" | "image/png" | "image/webp",
           presetHint,
           userPreferenceSummary,
+          styleInstruction,
         });
         if (!result.ok) {
           const status =

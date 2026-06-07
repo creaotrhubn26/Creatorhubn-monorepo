@@ -211,6 +211,33 @@ function isSerializableBody(
   );
 }
 
+/**
+ * Like apiRequest, but returns the raw Response instead of parsing JSON —
+ * for endpoints that stream binary (e.g. the RAW→JPEG preview). Reuses the
+ * same base-URL resolution and auth headers so it works in prod (where the
+ * API lives on a different origin) exactly like apiRequest.
+ */
+export async function apiFetch(url: string, options?: ApiRequestOptions): Promise<Response> {
+  const authHeaders = await getAuthHeader();
+  const fullUrl = buildApiUrl(url);
+  const { body, headers: callerHeaders, ...restOptions } = options ?? {};
+  const isFormData = body instanceof FormData;
+  const requestOptions: RequestInit = {
+    ...restOptions,
+    headers: {
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...authHeaders,
+      ...callerHeaders,
+    },
+  };
+  if (isSerializableBody(body)) {
+    requestOptions.body = JSON.stringify(body);
+  } else if (body !== undefined) {
+    requestOptions.body = body as BodyInit;
+  }
+  return fetch(fullUrl, requestOptions);
+}
+
 export async function apiRequest(url: string, options?: ApiRequestOptions) {
   // Get auth headers from EnhancedMasterIntegrationProvider
   const authHeaders = await getAuthHeader();

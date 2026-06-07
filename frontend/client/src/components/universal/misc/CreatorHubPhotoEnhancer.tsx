@@ -53,7 +53,7 @@ import {
   Redo as RedoIcon,
 } from '@mui/icons-material';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { apiRequest } from '../../../lib/queryClient';
+import { apiRequest, apiFetch } from '../../../lib/queryClient';
 import CompositionGuides, { GuideType } from '../../photo-enhancer/CompositionGuides';
 import { RealtimePreviewCanvas } from '../../photo-enhancer/RealtimePreviewCanvas';
 import { Filmstrip } from '../../photo-enhancer/Filmstrip';
@@ -284,6 +284,16 @@ const PHOTO_UPLOAD_ACCEPT = [
   ...RAW_UPLOAD_EXTENSIONS,
 ].join(',');
 
+// Formats the browser cannot decode itself (every camera RAW + HEIC/HEIF +
+// TIFF). For these we fetch a server-rasterised JPEG to display and to feed
+// the AI / face endpoints; the original file still goes to /enhance.
+const BROWSER_UNDECODABLE_EXTENSIONS = [...RAW_UPLOAD_EXTENSIONS, '.heic', '.heif', '.tif', '.tiff'];
+
+function needsRasterPreview(file: File): boolean {
+  const name = (file.name || '').toLowerCase();
+  return BROWSER_UNDECODABLE_EXTENSIONS.some((ext) => name.endsWith(ext));
+}
+
 const DIRECT_UPLOAD_THRESHOLD_BYTES = 20 * 1024 * 1024;
 
 function normalizeProfession(value: SupportedProfession | undefined): 'photographer' | 'videographer' | 'music_producer' | 'vendor' {
@@ -493,6 +503,12 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const [looks, setLooks] = useState<SavedLook[]>(() => loadLooks());
   const [saveLookDialogOpen, setSaveLookDialogOpen] = useState(false);
   const [lookName, setLookName] = useState('');
+  // For RAW/HEIC uploads: the server-rasterised JPEG used for display + AI
+  // (the original RAW stays in `uploadedImage` for full-quality enhance).
+  const [visionInputFile, setVisionInputFile] = useState<File | null>(null);
+  const [rasterizing, setRasterizing] = useState(false);
+  const [rasterError, setRasterError] = useState<string | null>(null);
+  const [editInstruction, setEditInstruction] = useState('');
   const [showRatingDialog, setShowRatingDialog] = useState(false);
   const [directUploadCache, setDirectUploadCache] = useState<DirectUploadCache | null>(null);
   const [directUploadProgress, setDirectUploadProgress] = useState<DirectUploadProgress | null>(null);
@@ -915,7 +931,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     null,
   );
   const suggestRecipeMutation = useMutation({
-    mutationFn: async (file: File): Promise<{
+    mutationFn: async (input: { file: File; instruction?: string }): Promise<{
       recipe: Partial<EnhancementSettings>;
       analysis: {
         subject: string;
@@ -925,11 +941,17 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
       };
     }> => {
       const formData = new FormData();
-      formData.append('image', file);
+      formData.append('image', input.file);
       // Send the active preset so Claude knows whether we're shooting
       // wedding / studio portrait / product / landscape etc. Claude still
       // classifies the image independently but the hint breaks ties.
       formData.append('preset', activePreset);
+      // Optional free-text style brief ("warm pastel film look", "moody
+      // editorial") — Claude translates it into concrete slider/HSL/LUT
+      // values for this image.
+      if (input.instruction && input.instruction.trim()) {
+        formData.append('instruction', input.instruction.trim());
+      }
       return apiRequest('/api/photo-enhancer/suggest-recipe', {
         method: 'POST',
         body: formData,
@@ -984,8 +1006,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   });
 
   const runSuggestRecipe = async () => {
-    if (!uploadedImage) return;
-    await suggestRecipeMutation.mutateAsync(uploadedImage);
+    if (!visionFile) return;
+    await suggestRecipeMutation.mutateAsync({ file: visionFile });
+  };
+
+  // Natural-language editing: turn a free-text style brief into settings.
+  const runStyleInstruction = async () => {
+    if (!visionFile || !editInstruction.trim()) return;
+    await suggestRecipeMutation.mutateAsync({ file: visionFile, instruction: editInstruction.trim() });
   };
 
   const enhanceMutation = useMutation({
@@ -1071,7 +1099,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
 
   // Shared upload path for both the file picker and drag-and-drop on the
   // preview pane. Resets all per-image state so a new file starts clean.
-  const ingestFiles = (files: File[]) => {
+  const ingestFiles = async (files: File[]) => {
     if (files.length === 0) return;
 
     // Legacy single-image blob-URL ownership — the session hook owns the
@@ -1098,12 +1126,46 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     setSettings(DEFAULT_SETTINGS);
     setAiSuggestion(null);
     setAiSuggestedRecipe(null);
+    setVisionInputFile(null);
+    setRasterError(null);
     session.selectImage(first.id);
 
+    // Browsers can't render camera RAW (Nikon/Sony/Fuji/Canon/…) or HEIC.
+    // Fetch a server-rasterised JPEG to drive the preview AND the AI / face
+    // endpoints; the untouched original still goes to /enhance, where it is
+    // converted at full quality.
+    let visionFile = first.file;
+    if (needsRasterPreview(first.file)) {
+      setRasterizing(true);
+      try {
+        const formData = new FormData();
+        formData.append('image', first.file);
+        const response = await apiFetch('/api/photo-enhancer/preview', { method: 'POST', body: formData });
+        if (response.ok) {
+          const blob = await response.blob();
+          setOriginalImageUrl(URL.createObjectURL(blob));
+          const baseName = first.file.name.replace(/\.[^.]+$/, '') || 'bilde';
+          visionFile = new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+          setVisionInputFile(visionFile);
+        } else {
+          setRasterError(
+            response.status === 422
+              ? 'RAW-konvertering er ikke aktiv på serveren ennå — du kan fortsatt trykke Enhance (serveren konverterer da), eller laste opp en JPEG.'
+              : 'Klarte ikke å lage forhåndsvisning av RAW-filen.',
+          );
+        }
+      } catch {
+        setRasterError('Klarte ikke å lage forhåndsvisning av RAW-filen.');
+      } finally {
+        setRasterizing(false);
+      }
+    }
+
     // Reduce friction: kick off the lightweight analysis (faces, format,
-    // hash) right away unless the photographer has turned it off.
+    // hash) right away unless the photographer has turned it off. For RAW
+    // this uses the rasterised preview so it never hits the 415 guard.
     if (autoAnalyze) {
-      void analyzeMutation.mutateAsync(first.file).catch(() => {
+      void analyzeMutation.mutateAsync(visionFile).catch(() => {
         // Auto-analysis is best-effort; the manual "Analyze" button stays
         // available and surfaces its own error.
       });
@@ -1150,7 +1212,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     const fileList = event.target.files;
     const files = fileList ? Array.from(fileList) : [];
     event.target.value = '';
-    ingestFiles(files);
+    void ingestFiles(files);
   };
 
   const onPreviewDrop = (event: React.DragEvent) => {
@@ -1160,10 +1222,19 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     const images = dropped.filter(
       (file) =>
         file.type.startsWith('image/') ||
-        /\.(jpe?g|png|webp|hei[cf]|tiff?|dng|cr[23]|nef|arw|raf|orf|rw2)$/i.test(file.name),
+        /\.(jpe?g|png|webp|hei[cf]|tiff?|dng|cr[23w]|nef|nrw|arw|sr[f2]|raf|orf|rw2|pef|x3f|3fr|mrw|mef|mos|iiq|raw|rwl)$/i.test(file.name),
     );
-    if (images.length > 0) ingestFiles(images);
+    if (images.length > 0) void ingestFiles(images);
   };
+
+  // The file the AI / face endpoints should read: a browser-decodable
+  // raster. For RAW/HEIC that's the server-rasterised JPEG (null until it
+  // arrives, which gates the AI buttons); otherwise the original upload.
+  const visionFile: File | null = uploadedImage
+    ? needsRasterPreview(uploadedImage)
+      ? visionInputFile
+      : uploadedImage
+    : null;
 
   /**
    * Swap the enhance-pipeline input to a freshly retouched File. Invoked
@@ -1300,8 +1371,8 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   }, [settings, session.active?.id]);
 
   const runAnalysis = async () => {
-    if (!uploadedImage) return;
-    await analyzeMutation.mutateAsync(uploadedImage);
+    if (!visionFile) return;
+    await analyzeMutation.mutateAsync(visionFile);
   };
 
   const runEnhancement = async () => {
@@ -1575,6 +1646,17 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     onChange={(checked) => setAutoAnalyze(checked)}
                   />
                 </Box>
+
+                {rasterizing ? (
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <CircularProgress size={16} />
+                    <Typography variant="caption" color="text.secondary">
+                      Konverterer RAW til forhåndsvisning…
+                    </Typography>
+                  </Stack>
+                ) : null}
+
+                {rasterError ? <Alert severity="warning">{rasterError}</Alert> : null}
 
                 {uploadedImage && selectedIsLargeUpload ? (
                   <Alert severity={selectedUsesDirectUpload ? 'info' : 'warning'}>
@@ -2049,14 +2131,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                       </IconButton>
                     </span>
                   </Tooltip>
-                  <Button variant="outlined" onClick={() => void runAnalysis()} disabled={!uploadedImage || analyzeMutation.isPending}>
+                  <Button variant="outlined" onClick={() => void runAnalysis()} disabled={!visionFile || analyzeMutation.isPending}>
                     Analyze
                   </Button>
                   <Button
-                    variant={uploadedImage && !aiSuggestion ? 'contained' : 'outlined'}
+                    variant={visionFile && !aiSuggestion ? 'contained' : 'outlined'}
                     color="secondary"
                     onClick={() => void runSuggestRecipe()}
-                    disabled={!uploadedImage || suggestRecipeMutation.isPending}
+                    disabled={!visionFile || suggestRecipeMutation.isPending}
                     title="Be Claude Vision foreslå verdier for alle slidere basert på bildet"
                   >
                     {suggestRecipeMutation.isPending ? 'Spør AI…' : 'AI-forslag'}
@@ -2086,6 +2168,42 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   >
                     Auto-finn objekter
                   </Button>
+                </Stack>
+
+                <Stack spacing={0.5}>
+                  <Typography variant="caption" color="text.secondary">
+                    Beskriv ønsket look — AI setter innstillingene
+                  </Typography>
+                  <Stack direction="row" spacing={1}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      placeholder="F.eks. varm, luftig pastell film-look"
+                      value={editInstruction}
+                      onChange={(event) => setEditInstruction(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (
+                          event.key === 'Enter' &&
+                          editInstruction.trim() &&
+                          visionFile &&
+                          !suggestRecipeMutation.isPending
+                        ) {
+                          void runStyleInstruction();
+                        }
+                      }}
+                      disabled={!visionFile || suggestRecipeMutation.isPending}
+                    />
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      onClick={() => void runStyleInstruction()}
+                      disabled={!visionFile || !editInstruction.trim() || suggestRecipeMutation.isPending}
+                      startIcon={<AutoFixHighIcon fontSize="small" />}
+                      sx={{ whiteSpace: 'nowrap' }}
+                    >
+                      Bruk
+                    </Button>
+                  </Stack>
                 </Stack>
 
                 <Box
