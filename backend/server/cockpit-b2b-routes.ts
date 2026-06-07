@@ -729,9 +729,13 @@ export function setupCockpitB2BRoutes(deps: CockpitB2BRoutesDeps): void {
     }
   });
 
-  // CRON-target — kjør alle due nurture-eventer
+  // CRON-target — kjør alle due nurture-eventer (aksepterer x-cron-trigger-token)
   app.post("/api/admin-room/cockpit/nurture/run-due", async (req, res) => {
-    if (!guard(req, res)) return;
+    const tokenHeader = req.headers["x-cron-trigger-token"];
+    const presentedToken = typeof tokenHeader === "string" ? tokenHeader.trim() : "";
+    const expectedToken = (process.env.CRON_TRIGGER_TOKEN ?? "").trim();
+    const isCronAuth = presentedToken && expectedToken && presentedToken === expectedToken;
+    if (!isCronAuth && !guard(req, res)) return;
     try {
       const due = await pool.query(
         `SELECT e.id::text, e.lead_id::text, e.step, e.template_key,

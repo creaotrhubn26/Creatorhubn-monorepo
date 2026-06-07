@@ -34,6 +34,28 @@ export function setupLinkedInPrepRoutes(deps: LinkedInPrepRoutesDeps): void {
     return session;
   };
 
+  // Cron-guard: aksepterer enten admin-session ELLER x-cron-trigger-token-header
+  // som matcher CRON_TRIGGER_TOKEN env-var. Brukes av Render Cron Jobs.
+  const cronGuard = (req: express.Request, res: express.Response): { source: "session" | "cron" } | null => {
+    const tokenHeader = req.headers["x-cron-trigger-token"];
+    const presentedToken = typeof tokenHeader === "string" ? tokenHeader.trim() : "";
+    const expectedToken = (process.env.CRON_TRIGGER_TOKEN ?? "").trim();
+    if (presentedToken && expectedToken && presentedToken === expectedToken) {
+      return { source: "cron" };
+    }
+    if (presentedToken && !expectedToken) {
+      res.status(503).json({ error: "CRON_TRIGGER_TOKEN er ikke konfigurert på serveren" });
+      return null;
+    }
+    if (presentedToken && expectedToken && presentedToken !== expectedToken) {
+      res.status(401).json({ error: "Ugyldig cron-trigger-token" });
+      return null;
+    }
+    // Ingen token presented — falle tilbake til admin-session-guard
+    const session = guard(req, res);
+    return session ? { source: "session" } : null;
+  };
+
   // ── GET /cockpit/linkedin/leadsync/status ────────────────────────
   app.get("/api/admin-room/cockpit/linkedin/leadsync/status", async (req, res) => {
     if (!guard(req, res)) return;
@@ -97,8 +119,9 @@ export function setupLinkedInPrepRoutes(deps: LinkedInPrepRoutesDeps): void {
   });
 
   // ── POST /cockpit/linkedin/leadsync/poll-now ─────────────────────
+  // Aksepterer både admin-session OG cron-trigger-token (for Render Cron)
   app.post("/api/admin-room/cockpit/linkedin/leadsync/poll-now", async (req, res) => {
-    if (!guard(req, res)) return;
+    if (!cronGuard(req, res)) return;
     try {
       const result = await pollLeadFormsDue(pool);
       return res.json({ ok: true, ...result });
@@ -142,9 +165,10 @@ export function setupLinkedInPrepRoutes(deps: LinkedInPrepRoutesDeps): void {
   });
 
   // ── POST /cockpit/linkedin/capi/send-due ─────────────────────────
-  // Cron-target — kjør pending-events
+  // Cron-target — kjør pending-events. Aksepterer både admin-session
+  // og cron-trigger-token (for Render Cron Jobs).
   app.post("/api/admin-room/cockpit/linkedin/capi/send-due", async (req, res) => {
-    if (!guard(req, res)) return;
+    if (!cronGuard(req, res)) return;
     try {
       const result = await sendDueConversionEvents(pool);
       return res.json({ ok: true, ...result });
