@@ -206,10 +206,27 @@ export function ExportView() {
       else if (ev.type === 'result') { if (ev.outputPath) { resultRef.current = ev.outputPath; setResultPath(ev.outputPath); } }
       else if (ev.type === 'error') setError(ev.message ?? 'Ukjent feil');
     });
+    const r = project.render ?? { showCursor: true, showTouchPoints: true, highlightInteractions: true, safeArea: true, autoZoom: false };
+    // Overlay-paritet: send per-scene hotspot/handling + render-flagg, så den
+    // native pipelinen kan BRENNE INN animert cursor/ripple/auto-zoom (samme som
+    // preview-en viser). Krever at mockup-polish-pro.mts implementerer burn-in.
+    const overlays = recorded.map((s) => ({
+      hotspot: s.hotspot ?? null,
+      actionType: s.actionType ?? 'click',
+      device: s.device,
+      cursor: r.showCursor && s.device === 'macbook',
+      touch: r.showTouchPoints && s.device !== 'macbook',
+      highlight: r.highlightInteractions,
+      autoZoom: r.autoZoom,
+      startScrollPct: s.startScrollPct ?? 0,
+    }));
     const config = {
       visual: { device: scenes[0]?.device ?? 'macbook', orientation: scenes[0]?.orientation ?? 'portrait',
         fit: 'cover', background: 'transparent',
-        shadow: true, statusBarCrop: 0.045, fadeSeconds: 0.5, autoZoom: true },
+        shadow: true, statusBarCrop: 0.045, fadeSeconds: 0.5,
+        autoZoom: r.autoZoom, showCursor: r.showCursor, showTouchPoints: r.showTouchPoints,
+        highlightInteractions: r.highlightInteractions, safeArea: r.safeArea },
+      overlays,
       audio: { enabled: toggles.voiceover, noiseGate: true, polish: true, loudnessNormalize: true, loudnessTarget: -14 },
       music: { enabled: toggles.music && !!musicPath, source: musicPath, volume: 0.5, ducking: true, duckDb: -12 },
       export: {
