@@ -765,6 +765,8 @@ import { setupAdminGoogleWalletExtrasRoutes } from "./admin-google-wallet-extras
 import { setupAdminMarketplaceFixRoutes } from "./admin-marketplace-fix-routes";
 import { setupAdminFeatureCustomizationsRoutes } from "./admin-feature-customizations-routes";
 import { setupAdminTesterSkillsRoutes } from "./admin-tester-skills-routes";
+import { setupAdminTestCaseGeneratorRoutes } from "./admin-test-case-generator-routes";
+import { setupAdminAcademyRoutes } from "./admin-academy-routes";
 import { setupOrchestrationRoutes } from "./orchestration-routes";
 import { setupAuthRoutes } from "./auth-routes";
 import { setupFirmwareRoutes } from "./firmware-routes";
@@ -24407,6 +24409,8 @@ setupAdminGoogleWalletExtrasRoutes({ app, pool, requireAdminSession });
 setupAdminMarketplaceFixRoutes({ app, pool, requireAdminSession });
 setupAdminFeatureCustomizationsRoutes({ app, pool, requireAdminSession });
 setupAdminTesterSkillsRoutes({ app, pool, requireAdminSession });
+setupAdminTestCaseGeneratorRoutes({ app, pool, requireAdminSession });
+setupAdminAcademyRoutes({ app, pool, requireAdminSession });
 
 // ── Evendi misc — flyttet til ./evendi-misc-routes.ts
 //   16 endpoints: vendor-categories, products, photo-shots, schedule-events,
