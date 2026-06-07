@@ -37,6 +37,7 @@ import {
   AutoFixHigh as AutoFixHighIcon,
   BookmarkAdd as BookmarkAddIcon,
   CloudDone as CloudDoneIcon,
+  ContentCopy as ContentCopyIcon,
   Download as DownloadIcon,
   ExpandMore as ExpandMoreIcon,
   HelpOutline as HelpIcon,
@@ -543,6 +544,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const [variantsOpen, setVariantsOpen] = useState(false);
   const [variantsLoading, setVariantsLoading] = useState(false);
   const [variants, setVariants] = useState<Array<{ key: string; label: string; url: string; settings: EnhancementSettings }>>([]);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [showRatingDialog, setShowRatingDialog] = useState(false);
   const [directUploadCache, setDirectUploadCache] = useState<DirectUploadCache | null>(null);
   const [directUploadProgress, setDirectUploadProgress] = useState<DirectUploadProgress | null>(null);
@@ -1092,6 +1094,45 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     }
     setVariantsOpen(false);
     commitActiveHistory(`Variant: ${variant.label}`);
+  };
+
+  // Batch — apply the current recipe to every image in the session so a
+  // whole shoot gets the same look in one click.
+  const applyRecipeToAllImages = () => {
+    for (const image of session.state.images) {
+      session.setSettings(image.id, settings);
+      session.commitHistory(image.id, 'Bruk på alle');
+    }
+  };
+
+  // Batch — enhance every image in the session sequentially (each with its
+  // own settings), updating per-image results as they land.
+  const enhanceAllImages = async () => {
+    const images = session.state.images;
+    if (images.length === 0 || batchProgress) return;
+    setBatchProgress({ done: 0, total: images.length });
+    for (let index = 0; index < images.length; index += 1) {
+      const image = images[index];
+      try {
+        const formData = new FormData();
+        formData.append('image', image.file);
+        formData.append('preset', activePreset);
+        formData.append('settings', JSON.stringify({ ...image.settings, perFaceOverrides: [] }));
+        const response = await apiRequest('/api/photo-enhancer/enhance', { method: 'POST', body: formData });
+        const url = toImageUrl(response);
+        if (url) {
+          session.setEnhancedUrl(image.id, url);
+          if (image.id === session.active?.id) {
+            setEnhancedImageUrl(url);
+            setViewMode('side-by-side');
+          }
+        }
+      } catch {
+        // Per-image failure shouldn't abort the whole batch.
+      }
+      setBatchProgress({ done: index + 1, total: images.length });
+    }
+    setBatchProgress(null);
   };
 
   const enhanceMutation = useMutation({
@@ -1838,6 +1879,49 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     </Stack>
                   )}
                 </Stack>
+
+                {session.state.images.length > 1 ? (
+                  <>
+                    <Divider />
+                    <Stack spacing={0.75}>
+                      <Typography variant="subtitle2">Hele serien ({session.state.images.length})</Typography>
+                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ContentCopyIcon fontSize="small" />}
+                          onClick={applyRecipeToAllImages}
+                          disabled={!uploadedImage || Boolean(batchProgress)}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Bruk på alle ({session.state.images.length})
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          color="secondary"
+                          startIcon={<AutoFixHighIcon fontSize="small" />}
+                          onClick={() => void enhanceAllImages()}
+                          disabled={Boolean(batchProgress)}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Enhance alle ({session.state.images.length})
+                        </Button>
+                      </Stack>
+                      {batchProgress ? (
+                        <Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={(batchProgress.done / batchProgress.total) * 100}
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            Forbedrer {batchProgress.done}/{batchProgress.total}…
+                          </Typography>
+                        </Box>
+                      ) : null}
+                    </Stack>
+                  </>
+                ) : null}
 
                 <Divider />
 

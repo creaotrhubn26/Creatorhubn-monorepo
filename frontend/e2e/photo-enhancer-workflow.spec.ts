@@ -591,6 +591,37 @@ test.describe('Photo Enhancer — full workflow', () => {
     await expect(dialog).toBeHidden();
     await expect(page.getByRole('img', { name: 'Enhanced' })).toBeVisible({ timeout: 10_000 });
   });
+
+  test('batch: apply the recipe to all images and enhance the whole series', async ({ page }) => {
+    await mockStatusAndProjects(page);
+    let enhanceCalls = 0;
+    await page.route('**/api/photo-enhancer/enhance', (route) => {
+      enhanceCalls += 1;
+      return json(route, { imageUrl: ENHANCED_DATA_URL });
+    });
+
+    await gotoEnhancer(page);
+    // Keep the call count clean (auto-analyse hits /analyze, not /enhance,
+    // but turning it off avoids any interference).
+    await page.getByTestId('auto-analyze-toggle').getByRole('checkbox').uncheck();
+
+    // Upload a three-image "shoot".
+    const fileInput = page.locator('input[type="file"][accept*="image"]').first();
+    await fileInput.setInputFiles([
+      { name: 'a.png', mimeType: 'image/png', buffer: makeTestPng(64, 64) },
+      { name: 'b.png', mimeType: 'image/png', buffer: makeTestPng(48, 72) },
+      { name: 'c.png', mimeType: 'image/png', buffer: makeTestPng(72, 48) },
+    ]);
+
+    // The batch bar appears for a multi-image session.
+    await expect(page.getByRole('button', { name: /Enhance alle \(3\)/ })).toBeVisible();
+    await page.getByRole('button', { name: /Bruk på alle \(3\)/ }).click();
+
+    // Enhancing the series fires one enhance per image.
+    await page.getByRole('button', { name: /Enhance alle \(3\)/ }).click();
+    await expect.poll(() => enhanceCalls, { timeout: 20_000 }).toBe(3);
+    await expect(page.getByRole('img', { name: 'Enhanced' })).toBeVisible({ timeout: 10_000 });
+  });
 });
 
 test.describe('Photo Enhancer — robustness', () => {
