@@ -5,6 +5,7 @@ import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/st
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CastingPlannerPanel } from './components/CastingPlannerPanel';
 import { CastingLandingPage } from './components/CastingLandingPage';
+import TheRoleRoomLanding from '@/pages/theroleroom-landing';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
 import AgencyPortalView from './components/AgencyPortalView';
@@ -498,7 +499,11 @@ function CastingStandaloneRuntimeContent() {
         ) : isProposalAcceptPath ? (
           <TalentProposalAcceptPage />
         ) : !isAuthenticated ? (
-          <CastingLandingPage onEnter={handleEnter} />
+          // 2026-06-07: theroleroom.com/ for unauth-brukere viser TheRoleRoom-
+          // Landing (operativsystem-positionering per produktdok). Den gamle
+          // CastingLandingPage er beholdt importert som backup; kan
+          // gjeninnsettes hvis CMS-redigerbar landing trengs.
+          <TheRoleRoomLanding onEnter={handleEnter} />
         ) : shouldRenderTalentsApp ? (
           <ToastProvider position="bottom-right">
             <TalentsApp initialPage={talentsAppPage ?? undefined} />
