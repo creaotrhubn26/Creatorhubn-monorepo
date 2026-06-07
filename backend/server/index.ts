@@ -754,6 +754,7 @@ import { setupAdminCustomersRoutes } from "./admin-customers-routes";
 import { setupAdminMonitoringRoutes } from "./admin-monitoring-routes";
 import { setupAdminProtocolRoutes } from "./admin-protocol-routes";
 import { setupAdminIntegrationsExtrasRoutes } from "./admin-integrations-extras-routes";
+import { setupAdminPaymentTestsRoutes } from "./admin-payment-tests-routes";
 import { setupAdminSystemBackupRoutes } from "./admin-system-backup-routes";
 import { setupAdminGdprLegalRoutes } from "./admin-gdpr-legal-routes";
 import { setupAdminReportsRoutes } from "./admin-reports-routes";
@@ -763,11 +764,14 @@ import { setupAdminProvisioningExtrasRoutes } from "./admin-provisioning-extras-
 import { setupAdminAutomationsRoutes } from "./admin-automations-routes";
 import { setupAdminEmailAnalyticsRoutes } from "./admin-email-analytics-routes";
 import { setupAdminGoogleWalletExtrasRoutes } from "./admin-google-wallet-extras-routes";
+import { setupAdminGooglePayConfigRoutes } from "./admin-google-pay-config-routes";
+import { setupAdminGoogleWalletTestsRoutes } from "./admin-google-wallet-tests-routes";
 import { setupAdminMarketplaceFixRoutes } from "./admin-marketplace-fix-routes";
 import { setupAdminFeatureCustomizationsRoutes } from "./admin-feature-customizations-routes";
 import { setupAdminTesterSkillsRoutes } from "./admin-tester-skills-routes";
 import { setupAdminTestCaseGeneratorRoutes } from "./admin-test-case-generator-routes";
 import { setupAdminAcademyRoutes } from "./admin-academy-routes";
+import { setupAdminIntegrationTestsRoutes } from "./admin-integration-tests-routes";
 import { setupOrchestrationRoutes } from "./orchestration-routes";
 import { setupAuthRoutes } from "./auth-routes";
 import { setupFirmwareRoutes } from "./firmware-routes";
@@ -24398,6 +24402,7 @@ setupAdminCustomersRoutes({ app, pool, requireAdminSession });
 setupAdminMonitoringRoutes({ app, pool, requireAdminSession });
 setupAdminProtocolRoutes({ app, pool, requireAdminSession });
 setupAdminIntegrationsExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminPaymentTestsRoutes({ app, pool, requireAdminSession });
 setupAdminSystemBackupRoutes({ app, pool, requireAdminSession });
 setupAdminGdprLegalRoutes({ app, pool, requireAdminSession });
 setupAdminReportsRoutes({ app, pool, requireAdminSession });
@@ -24407,11 +24412,17 @@ setupAdminProvisioningExtrasRoutes({ app, pool, requireAdminSession });
 setupAdminAutomationsRoutes({ app, pool, requireAdminSession });
 setupAdminEmailAnalyticsRoutes({ app, pool, requireAdminSession });
 setupAdminGoogleWalletExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminGooglePayConfigRoutes({ app, pool, requireAdminSession });
+setupAdminGoogleWalletTestsRoutes({ app, pool, requireAdminSession });
 setupAdminMarketplaceFixRoutes({ app, pool, requireAdminSession });
 setupAdminFeatureCustomizationsRoutes({ app, pool, requireAdminSession });
 setupAdminTesterSkillsRoutes({ app, pool, requireAdminSession });
 setupAdminTestCaseGeneratorRoutes({ app, pool, requireAdminSession });
 setupAdminAcademyRoutes({ app, pool, requireAdminSession });
+
+// Task #127a — Integrasjonstest-fanen:
+//   POST /api/admin/run-comprehensive-tests + GET /api/admin/integration-tests/history
+setupAdminIntegrationTestsRoutes({ app, pool, requireAdminSession });
 
 // ── Evendi misc — flyttet til ./evendi-misc-routes.ts
 //   16 endpoints: vendor-categories, products, photo-shots, schedule-events,
