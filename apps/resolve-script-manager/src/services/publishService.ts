@@ -17,6 +17,18 @@ function getBearer(): string | null {
 }
 
 export interface PublishedGuide { id: string; url: string; bytes?: number }
+export interface GuideStats { id: string; views: number; lastSeen?: string | null; analytics: boolean }
+
+/** Hent visningstall for en publisert guide. */
+export async function getGuideStats(id: string): Promise<GuideStats> {
+  const bearer = getBearer();
+  if (!bearer) throw new Error("Ikke innlogget — RR_BEARER_TOKEN mangler");
+  const res = await fetch(`${getBaseUrl()}/api/role-room/published-guides/${encodeURIComponent(id)}/stats`, {
+    headers: { Authorization: `Bearer ${bearer}` },
+  });
+  if (!res.ok) throw new Error(`stats: HTTP ${res.status}`);
+  return (await res.json()) as GuideStats;
+}
 
 /** Publiser guide-HTML → returner offentlig delbar lenke. */
 export async function publishGuide(html: string, name: string): Promise<PublishedGuide> {

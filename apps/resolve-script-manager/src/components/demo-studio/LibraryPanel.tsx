@@ -3,10 +3,12 @@
  * one-pagers, Product Brain-eksport, varianter …). Bla, forhåndsvis, last ned og
  * slett. Lagret lokalt pr. vert, så du slipper å regenerere.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
 import { listAssets, removeAsset, clearAssets, ASSET_KIND_LABELS, type AssetItem, type AssetKind } from './assetLibrary';
 import { svgToPngDataUrl } from './demoStudioExports';
+import { pushCloudAsset, listCloudAssets, removeCloudAsset } from '../../services/cloudAssetsService';
+import { isAiConnected } from '../../services/claudeProxyService';
 
 const C = {
   bg: '#f3efe9', panel: '#ffffff', cream: '#faf7f2', creamActive: '#f3ece2',
@@ -34,10 +36,27 @@ export function LibraryPanel() {
   const [filter, setFilter] = useState<AssetKind | 'all'>('all');
   const [tick, setTick] = useState(0); // tving re-render etter slett
 
+  const [source, setSource] = useState<'local' | 'cloud'>('local');
+  const [cloud, setCloud] = useState<AssetItem[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
   const url = project?.url;
-  const all = listAssets(url ? { url } : undefined);
+  const local = listAssets(url ? { url } : undefined);
+  const all = source === 'cloud' ? cloud : local;
   const items = filter === 'all' ? all : all.filter((a) => a.kind === filter);
   void tick;
+
+  useEffect(() => {
+    if (source !== 'cloud' || !isAiConnected()) return;
+    setBusy('load');
+    listCloudAssets(url ? (() => { try { return new URL(url).host; } catch { return undefined; } })() : undefined)
+      .then(setCloud).catch(() => setCloud([])).finally(() => setBusy(null));
+  }, [source, url, tick]);
+
+  const syncToCloud = async (a: AssetItem) => {
+    if (!isAiConnected()) return;
+    setBusy(a.id);
+    try { await pushCloudAsset(a); } catch { /* */ } finally { setBusy(null); }
+  };
 
   const downloadAsset = async (a: AssetItem) => {
     if (a.svg) {
@@ -62,7 +81,18 @@ export function LibraryPanel() {
             onClick={() => { if (window.confirm('Tøm biblioteket for denne siden?')) { clearAssets(url); setTick((t) => t + 1); } }}>Tøm</button>
         )}
       </div>
-      <p style={{ fontSize: 12.5, color: C.inkSoft, marginTop: 6, marginBottom: 14 }}>Alt du genererer i Marketing mode samles her — bla, last ned på nytt, slett.</p>
+      <p style={{ fontSize: 12.5, color: C.inkSoft, marginTop: 6, marginBottom: 14 }}>Alt du genererer i Marketing mode samles her — bla, last ned på nytt, slett. Synk til sky for å dele på tvers av enheter/team.</p>
+
+      {/* Lokal ↔ Sky */}
+      <div style={{ display: 'inline-flex', gap: 2, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 9, padding: 3, marginBottom: 12 }}>
+        {(['local', 'cloud'] as const).map((s) => (
+          <button key={s} onClick={() => setSource(s)}
+            style={{ ...btn, border: 'none', padding: '5px 12px', background: source === s ? C.accent : 'transparent', color: source === s ? '#fff' : C.ink }}>
+            {s === 'local' ? 'Lokalt' : 'Sky (delt)'}
+          </button>
+        ))}
+        {source === 'cloud' && busy === 'load' && <span style={{ fontSize: 11, color: C.inkFaint, alignSelf: 'center', padding: '0 8px' }}>laster…</span>}
+      </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
         {FILTERS.map((f) => (
@@ -97,7 +127,16 @@ export function LibraryPanel() {
                 <div style={{ flex: 1 }} />
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button style={{ ...btn, flex: 1, padding: '5px 0', textAlign: 'center' }} onClick={() => void downloadAsset(a)}>Last ned</button>
-                  <button style={{ ...btn, padding: '5px 9px', color: '#9a2b2b' }} onClick={() => { removeAsset(a.id); setTick((t) => t + 1); }}>Slett</button>
+                  {source === 'local' ? (
+                    <>
+                      <button title="Synk til sky (del)" style={{ ...btn, padding: '5px 9px', opacity: busy === a.id ? 0.5 : 1 }} disabled={busy === a.id || !isAiConnected()}
+                        onClick={() => void syncToCloud(a)}>{busy === a.id ? '…' : 'Synk'}</button>
+                      <button style={{ ...btn, padding: '5px 9px', color: '#9a2b2b' }} onClick={() => { removeAsset(a.id); setTick((t) => t + 1); }}>Slett</button>
+                    </>
+                  ) : (
+                    <button style={{ ...btn, padding: '5px 9px', color: '#9a2b2b' }}
+                      onClick={() => { void removeCloudAsset(a.id).then(() => setTick((t) => t + 1)).catch(() => {}); }}>Slett</button>
+                  )}
                 </div>
               </div>
             </div>
