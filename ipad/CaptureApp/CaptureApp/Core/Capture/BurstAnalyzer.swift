@@ -90,9 +90,9 @@ enum BurstAnalyzer {
         // edges. Variance of the result correlates strongly with
         // image sharpness (well-known computer-vision proxy).
         let kernel: [CGFloat] = [
-            0, -1,  0,
-           -1,  4, -1,
-            0, -1,  0,
+            0, -1, 0,
+           -1, 4, -1,
+            0, -1, 0
         ]
         let convolution = CIFilter.convolution3X3()
         convolution.inputImage = lum

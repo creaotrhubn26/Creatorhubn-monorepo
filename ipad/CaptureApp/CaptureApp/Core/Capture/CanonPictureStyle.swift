@@ -115,7 +115,7 @@ enum CanonPictureStyle: String, Sendable, Equatable {
             "PictureStyle",
             "PictureControl",
             "PictureMode",
-            "PictureStyleData",
+            "PictureStyleData"
         ]
         for key in candidateKeys {
             if let raw = dict[key] as? String,
@@ -136,16 +136,16 @@ enum CanonPictureStyle: String, Sendable, Equatable {
 
     private static func match(name raw: String) -> CanonPictureStyle? {
         let lowered = raw.lowercased()
-        if lowered.contains("standard")  { return .standard }
-        if lowered.contains("portrait")  { return .portrait }
+        if lowered.contains("standard") { return .standard }
+        if lowered.contains("portrait") { return .portrait }
         if lowered.contains("landscape") { return .landscape }
-        if lowered.contains("neutral")   { return .neutral }
-        if lowered.contains("faithful")  { return .faithful }
+        if lowered.contains("neutral") { return .neutral }
+        if lowered.contains("faithful") { return .faithful }
         if lowered.contains("monochrome") || lowered.contains("b&w") || lowered.contains("bw") {
             return .monochrome
         }
-        if lowered.contains("auto")      { return .auto }
-        if lowered.contains("user")      { return .custom }
+        if lowered.contains("auto") { return .auto }
+        if lowered.contains("user") { return .custom }
         return nil
     }
 

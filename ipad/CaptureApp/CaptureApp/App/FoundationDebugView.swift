@@ -359,7 +359,7 @@ struct FoundationDebugView: View {
         let tables = [
             "session", "asset", "review", "event",
             "project", "shotList", "contract",
-            "clientGallery", "cullSuggestion", "outboxMutation",
+            "clientGallery", "cullSuggestion", "outboxMutation"
         ]
         return try await database.dbWriter.read { db in
             try tables.map { name in

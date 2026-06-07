@@ -181,7 +181,7 @@ final class FakeCanonCamera: @unchecked Sendable {
                 #""av":{"value":"f5.0","ability":["f1.8","f2.8","f4.0","f5.0","f5.6","f8.0","f11","f16"]}"#,
                 #""tv":{"value":"1/125","ability":["1/30","1/60","1/125","1/250","1/500"]}"#,
                 #""iso":{"value":"400","ability":["auto","100","200","400","800","1600","3200"]}"#,
-                #""storage":{"storagelist":[{"name":"card1","path":"/ccapi/ver120/contents/sd","accesscapability":"readwrite","maxsize":256000000000,"spacesize":119000000000,"contentsnumber":\#(initialContentURLs().count)}]}"#,
+                #""storage":{"storagelist":[{"name":"card1","path":"/ccapi/ver120/contents/sd","accesscapability":"readwrite","maxsize":256000000000,"spacesize":119000000000,"contentsnumber":\#(initialContentURLs().count)}]}"#
             ])
         } else if !drained.isEmpty {
             // After a capture, surface the updated file count + a tiny

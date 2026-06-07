@@ -65,8 +65,7 @@ struct CreatorHubOneRootView: View {
         fallback: Fallback,
     ) -> some View {
         if let stored = SignInService.shared.session,
-           let url = URL(string: path, relativeTo: stored.backendBaseURL)
-        {
+           let url = URL(string: path, relativeTo: stored.backendBaseURL) {
             AuthenticatedWebView(
                 url: url,
                 session: stored,
@@ -166,9 +165,12 @@ struct CreatorHubOneRootView: View {
             .tabItem { Label("Meldinger", systemImage: "envelope") }
             .tag(Tab.messages)
 
+            // Debug-fanen følger KUN med i DEBUG-builds — skjules i release.
+            #if DEBUG
             FoundationDebugView()
                 .tabItem { Label("Debug", systemImage: "wrench.and.screwdriver") }
                 .tag(Tab.debug)
+            #endif
         }
     }
 }

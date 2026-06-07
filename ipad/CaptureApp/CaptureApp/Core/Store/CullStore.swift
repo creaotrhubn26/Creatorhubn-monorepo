@@ -56,7 +56,7 @@ struct CullStore: Sendable {
             let sql: String
             var args: [DatabaseValueConvertible?] = [
                 sessionId.uuidString.uppercased(),
-                ownerUserId,
+                ownerUserId
             ]
             if undecidedOnly {
                 sql = """
@@ -98,7 +98,7 @@ struct CullStore: Sendable {
                 """,
                 arguments: [
                     sessionId.uuidString.uppercased(),
-                    ownerUserId,
+                    ownerUserId
                 ],
             ) ?? 0
         }
@@ -118,7 +118,7 @@ struct CullStore: Sendable {
                 """,
                 arguments: [
                     sessionId.uuidString.uppercased(),
-                    ownerUserId,
+                    ownerUserId
                 ],
             ) ?? 0
         }
@@ -147,7 +147,7 @@ struct CullStore: Sendable {
                 """,
                 arguments: [
                     assetId.uuidString.uppercased(),
-                    ownerUserId,
+                    ownerUserId
                 ],
             ) else {
                 return nil

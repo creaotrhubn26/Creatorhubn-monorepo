@@ -191,7 +191,7 @@ actor CCAPIClient {
     func triggerManualShutter(af: Bool = true) async throws {
         let path = "/ccapi/ver100/shooting/control/shutterbutton/manual"
         try await post(path: path, body: ["action": "full_press", "af": af])
-        try await post(path: path, body: ["action": "release",    "af": af])
+        try await post(path: path, body: ["action": "release", "af": af])
     }
 
     private func post(path: String, body: [String: any Sendable]) async throws {

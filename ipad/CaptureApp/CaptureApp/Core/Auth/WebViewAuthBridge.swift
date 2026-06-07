@@ -50,12 +50,11 @@ struct WebViewAuthBridge {
                .path: "/",
                .name: "creatorhub_auth",
                .value: session.bearer,
-               .secure: true,
+               .secure: true
                // No expires set → session cookie; dies when the
                // backing process tears down. Matches the web
                // behaviour of per-browser-session tokens.
-           ])
-        {
+           ]) {
             await config.websiteDataStore.httpCookieStore.setCookie(cookie)
         }
 

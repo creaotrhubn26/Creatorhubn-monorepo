@@ -13,13 +13,13 @@ packages:
 
 settings:
   base:
-    # Midlertidig downgrade fra Swift 6.0 → 5 2026-06-05 for å unblocke CI.
-    # Swift 6.0 håndhever @MainActor-isolation som hard error uavhengig
-    # av STRICT_CONCURRENCY-flagget. Pre-existing GRDB-violations i
-    # SessionStore.swift krever refactor før vi kan re-enable 6.0.
-    # Tracked: project_capture_strict_concurrency_pending.md
-    SWIFT_VERSION: "5"
-    SWIFT_STRICT_CONCURRENCY: minimal
+    # 2026-06-07: RE-ENABLED Swift 6 språkmodus + complete strict concurrency.
+    # Verifisert med CLEAN build (EXIT 0, 0 errors) — den tidligere GRDB/
+    # SessionStore-blokkeren er ryddet i mellomtiden. Kun benigne warnings igjen
+    # (f.eks. «no async operations within await»). Hold på 6/complete så nye
+    # data-race-feil blir hard errors og fanges i CI.
+    SWIFT_VERSION: "6"
+    SWIFT_STRICT_CONCURRENCY: complete
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: "9TAUZCPK95"
     ENABLE_USER_SCRIPT_SANDBOXING: YES

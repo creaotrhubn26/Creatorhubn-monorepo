@@ -176,7 +176,7 @@ actor Outbox {
                     OutboxMutation.Status.failed.rawValue,
                     trimmedError,
                     Date(),
-                    clientMutationId,
+                    clientMutationId
                 ],
             )
         }

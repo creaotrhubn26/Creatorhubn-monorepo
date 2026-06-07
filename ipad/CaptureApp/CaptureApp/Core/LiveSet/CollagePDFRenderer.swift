@@ -35,7 +35,7 @@ enum CollagePDFRenderer {
             for (i, tile) in tiles.enumerated() {
                 group.addTask { (i, await fetchImage(for: tile)) }
             }
-            var collected = Array<UIImage?>(repeating: nil, count: tiles.count)
+            var collected = [UIImage?](repeating: nil, count: tiles.count)
             for await (i, img) in group { collected[i] = img }
             return collected
         }
@@ -87,7 +87,7 @@ enum CollagePDFRenderer {
             string: "CreatorHub One — \(filterLabel)",
             attributes: [
                 .font: UIFont.systemFont(ofSize: 13, weight: .semibold),
-                .foregroundColor: UIColor.label,
+                .foregroundColor: UIColor.label
             ],
         )
         title.draw(at: CGPoint(x: headerRect.minX, y: headerRect.minY))
@@ -97,7 +97,7 @@ enum CollagePDFRenderer {
             string: "\(date) · side \(pageIdx + 1) av \(pageCount)",
             attributes: [
                 .font: UIFont.systemFont(ofSize: 10, weight: .regular),
-                .foregroundColor: UIColor.secondaryLabel,
+                .foregroundColor: UIColor.secondaryLabel
             ],
         )
         let footerSize = footer.size()
@@ -146,7 +146,7 @@ enum CollagePDFRenderer {
                 string: "(thumbnail uavailable)",
                 attributes: [
                     .font: UIFont.systemFont(ofSize: 9),
-                    .foregroundColor: UIColor.lightGray,
+                    .foregroundColor: UIColor.lightGray
                 ],
             )
             let size = label.size()
@@ -167,7 +167,7 @@ enum CollagePDFRenderer {
             string: tile.scene,
             attributes: [
                 .font: UIFont.systemFont(ofSize: 9, weight: .medium),
-                .foregroundColor: UIColor.label,
+                .foregroundColor: UIColor.label
             ],
         )
         caption.draw(in: captionRect.insetBy(dx: 2, dy: 2))

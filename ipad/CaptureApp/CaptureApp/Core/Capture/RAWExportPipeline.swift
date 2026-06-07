@@ -333,7 +333,7 @@ enum RAWExportPipeline {
             let r = recipe.highlightRecovery
             let toneCurve = CIFilter.toneCurve()
             toneCurve.inputImage = current
-            toneCurve.point0 = CGPoint(x: 0,    y: 0)
+            toneCurve.point0 = CGPoint(x: 0, y: 0)
             toneCurve.point1 = CGPoint(x: 0.50, y: 0.50)
             toneCurve.point2 = CGPoint(x: 0.65, y: 0.65)
             toneCurve.point3 = CGPoint(x: 0.85, y: 0.85 - 0.07 * r)

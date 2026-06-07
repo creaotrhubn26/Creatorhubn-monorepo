@@ -314,8 +314,12 @@ actor SessionStore {
                     .order(Column("createdAt").desc)
                     .fetchAll(db)
             }
+            // .async-scheduler velger den IKKE-@MainActor-isolerte start-overloaden,
+            // så den kan kalles fra denne nonisolated AsyncStream-konteksten under
+            // Swift 6 strict concurrency. Callbacks leveres async på main.
             let cancellable = observation.start(
                 in: writer,
+                scheduling: .async(onQueue: .main),
                 onError: { _ in continuation.finish() },
                 onChange: { continuation.yield($0) }
             )
@@ -332,8 +336,12 @@ actor SessionStore {
                     .order(Column("captureTime").asc)
                     .fetchAll(db)
             }
+            // .async-scheduler velger den IKKE-@MainActor-isolerte start-overloaden,
+            // så den kan kalles fra denne nonisolated AsyncStream-konteksten under
+            // Swift 6 strict concurrency. Callbacks leveres async på main.
             let cancellable = observation.start(
                 in: writer,
+                scheduling: .async(onQueue: .main),
                 onError: { _ in continuation.finish() },
                 onChange: { continuation.yield($0) }
             )

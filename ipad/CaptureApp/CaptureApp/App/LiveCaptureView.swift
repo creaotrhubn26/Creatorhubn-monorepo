@@ -624,9 +624,9 @@ private struct DisconnectedOverlay: View {
                     Text("Usual causes:")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
-                    FailureGuideItem(icon: "wifi",             text: "Your Mac or iPad must be on the camera's Access Point.")
-                    FailureGuideItem(icon: "camera",           text: "CCAPI must be enabled: MENU → Wi-Fi → Camera Control API.")
-                    FailureGuideItem(icon: "network",          text: "The URL must match what the camera's screen shows exactly.")
+                    FailureGuideItem(icon: "wifi", text: "Your Mac or iPad must be on the camera's Access Point.")
+                    FailureGuideItem(icon: "camera", text: "CCAPI must be enabled: MENU → Wi-Fi → Camera Control API.")
+                    FailureGuideItem(icon: "network", text: "The URL must match what the camera's screen shows exactly.")
                 }
                 .padding(14)
                 .background(Color.captureFieldBG, in: RoundedRectangle(cornerRadius: 10))
@@ -719,10 +719,10 @@ private struct DiscoveredCamerasSection: View {
     }
 
     private var header: String {
-        if permissionDenied                { return "Local-network permission needed" }
-        if cameras.isEmpty && isSearching  { return "Searching for cameras…" }
-        if cameras.isEmpty                 { return "No cameras on the network yet" }
-        if cameras.count == 1              { return "1 camera found" }
+        if permissionDenied { return "Local-network permission needed" }
+        if cameras.isEmpty && isSearching { return "Searching for cameras…" }
+        if cameras.isEmpty { return "No cameras on the network yet" }
+        if cameras.count == 1 { return "1 camera found" }
         return "\(cameras.count) cameras found"
     }
 }
@@ -776,7 +776,7 @@ private extension Color {
     /// across reconnects + multi-iPad).
     static func peerAvatar(for userId: String) -> Color {
         let palette: [Color] = [
-            .blue, .purple, .indigo, .teal, .green, .orange, .pink, .brown,
+            .blue, .purple, .indigo, .teal, .green, .orange, .pink, .brown
         ]
         var hash: UInt64 = 5381
         for byte in userId.utf8 {
@@ -837,9 +837,9 @@ private struct ConnectingOverlay: View {
             }
 
             VStack(alignment: .leading, spacing: 14) {
-                ConnectStep(title: "Discovered capabilities",  level: stepLevel(.discovered))
-                ConnectStep(title: "Paired securely",           level: stepLevel(.paired))
-                ConnectStep(title: "Ready to shoot",            level: stepLevel(.ready))
+                ConnectStep(title: "Discovered capabilities", level: stepLevel(.discovered))
+                ConnectStep(title: "Paired securely", level: stepLevel(.paired))
+                ConnectStep(title: "Ready to shoot", level: stepLevel(.ready))
             }
             .padding(18)
             .frame(maxWidth: 380, alignment: .leading)
@@ -2380,7 +2380,7 @@ private struct AudioRecorderButton: View {
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
             AVSampleRateKey: 44_100,
             AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue,
+            AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
         ]
         do {
             try AVAudioSession.sharedInstance().setCategory(
@@ -3294,8 +3294,8 @@ struct TunePanel: View {
             subtitle: "Lightroom-style batch — denne recipen kopieres til hver target",
         ) {
             VStack(spacing: 8) {
-                applyButton(.allFlagged,    count: assetCounts.flagged)
-                applyButton(.allFourPlus,   count: assetCounts.fourPlus)
+                applyButton(.allFlagged, count: assetCounts.flagged)
+                applyButton(.allFourPlus, count: assetCounts.fourPlus)
                 applyButton(.entireSession, count: assetCounts.entireSession)
             }
         }
@@ -3438,13 +3438,13 @@ private struct PresetChipRow: View {
     }
 
     private let presets: [Preset] = [
-        Preset(id: "portrait",  label: "Portrett",  symbol: "person.crop.circle",     recipe: .portrait),
-        Preset(id: "food",      label: "Mat",       symbol: "fork.knife",             recipe: .food),
-        Preset(id: "landscape", label: "Landskap",  symbol: "mountain.2",             recipe: .landscape),
-        Preset(id: "vehicle",   label: "Kjøretøy",  symbol: "car",                    recipe: .vehicle),
-        Preset(id: "product",   label: "Produkt",   symbol: "cube.box",               recipe: .product),
-        Preset(id: "aviation",  label: "Fly",       symbol: "airplane",               recipe: .aviation),
-        Preset(id: "neutral",   label: "Nøytral",   symbol: "circle.dashed",          recipe: .neutral),
+        Preset(id: "portrait", label: "Portrett", symbol: "person.crop.circle", recipe: .portrait),
+        Preset(id: "food", label: "Mat", symbol: "fork.knife", recipe: .food),
+        Preset(id: "landscape", label: "Landskap", symbol: "mountain.2", recipe: .landscape),
+        Preset(id: "vehicle", label: "Kjøretøy", symbol: "car", recipe: .vehicle),
+        Preset(id: "product", label: "Produkt", symbol: "cube.box", recipe: .product),
+        Preset(id: "aviation", label: "Fly", symbol: "airplane", recipe: .aviation),
+        Preset(id: "neutral", label: "Nøytral", symbol: "circle.dashed", recipe: .neutral)
     ]
 
     var body: some View {
@@ -3966,10 +3966,10 @@ private struct FilmstripTile: View {
     }
 
     private var overlayColor: Color {
-        if isCompareAnchor           { return .orange }
-        if isFocused                 { return .accentColor }
-        if asset.rejected            { return .red.opacity(0.6) }
-        if asset.flaggedForClient    { return .green.opacity(0.7) }
+        if isCompareAnchor { return .orange }
+        if isFocused { return .accentColor }
+        if asset.rejected { return .red.opacity(0.6) }
+        if asset.flaggedForClient { return .green.opacity(0.7) }
         return .white.opacity(0.08)
     }
 }
@@ -4000,8 +4000,7 @@ private struct TelemetryFooter: View {
     let telemetry: CameraTelemetry
 
     var body: some View {
-        if telemetry.isEmpty { EmptyView() }
-        else {
+        if telemetry.isEmpty { EmptyView() } else {
             HStack(spacing: 20) {
                 if let battery = telemetry.batteryLevel {
                     TelemetryChip(icon: batteryIcon(for: battery), text: batteryLabel(for: battery), color: batteryColor(for: battery))
@@ -4186,13 +4185,13 @@ private struct DetectionReviewSheet: View {
     }
 
     private static let typeLabels: [String: String] = [
-        "flash_strobe":      "Blits / modifier",
-        "light_stand":       "Lys-stativ",
-        "cable":             "Kabel",
-        "boom_arm":          "Boom-arm",
-        "tape_clip":         "Tape / klips",
-        "sensor_dust":       "Sensor-støv",
-        "other_distraction": "Annet",
+        "flash_strobe": "Blits / modifier",
+        "light_stand": "Lys-stativ",
+        "cable": "Kabel",
+        "boom_arm": "Boom-arm",
+        "tape_clip": "Tape / klips",
+        "sensor_dust": "Sensor-støv",
+        "other_distraction": "Annet"
     ]
 
     var body: some View {
@@ -4210,8 +4209,7 @@ private struct DetectionReviewSheet: View {
                         Section {
                             ForEach(detections) { det in
                                 Button {
-                                    if selected.contains(det.id) { selected.remove(det.id) }
-                                    else { selected.insert(det.id) }
+                                    if selected.contains(det.id) { selected.remove(det.id) } else { selected.insert(det.id) }
                                 } label: {
                                     HStack(alignment: .top, spacing: 12) {
                                         Image(systemName: selected.contains(det.id)
@@ -5095,7 +5093,7 @@ final class LiveCaptureModel {
                 if Task.isCancelled { return }
                 try await store.attachEnhancedKey(id: primaryAssetId, key: url.path)
             } catch {
-                print("[LiveCaptureModel] RAW preview retune failed for \(primaryAssetId): \(error)")
+                AppLog.liveCapture.error("[LiveCaptureModel] RAW preview retune failed for \(String(describing: primaryAssetId), privacy: .public): \(error.localizedDescription, privacy: .public)")
                 _ = self
             }
         }
@@ -5144,7 +5142,7 @@ final class LiveCaptureModel {
     /// Optional color-label narrowing applied on top of `filmstripFilter`.
     /// nil = "any color (incl. unlabeled)". Set this from the color filter
     /// chips so a photographer can isolate e.g. all picks tagged green.
-    var filmstripColorFilter: ColorLabel? = nil
+    var filmstripColorFilter: ColorLabel?
 
     enum FilmstripFilter: String, CaseIterable, Equatable {
         case all     = "All"
@@ -5739,7 +5737,7 @@ final class LiveCaptureModel {
             // hint so the photographer knows AI-enhanced versions
             // won't appear, but no toast (deliver-success was the
             // load-bearing UX).
-            print("[LiveCaptureModel] Enhancement kickoff failed: \(error)")
+            AppLog.liveCapture.error("[LiveCaptureModel] Enhancement kickoff failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -6509,7 +6507,7 @@ final class LiveCaptureModel {
             // either already on disk or is from a previous session;
             // skip to avoid re-rendering on every stream tick.
             let oldRawKey = previousRawKeys[asset.id] ?? nil
-            guard let _ = asset.rawKey,
+            guard asset.rawKey != nil,
                   oldRawKey == nil
             else { continue }
 
@@ -6545,7 +6543,7 @@ final class LiveCaptureModel {
                     // remains as a perfectly usable fallback. Logged
                     // below so devs can see render failures during
                     // bring-up without disturbing the photographer.
-                    print("[LiveCaptureModel] RAW preview render failed for \(primaryAssetId): \(error)")
+                    AppLog.liveCapture.error("[LiveCaptureModel] RAW preview render failed for \(String(describing: primaryAssetId), privacy: .public): \(error.localizedDescription, privacy: .public)")
                     _ = self
                 }
             }
@@ -6770,7 +6768,7 @@ final class LiveCaptureModel {
         return CCAPIClient.makeInsecureSession(trustingHostOf: baseURL)
     }
     #else
-    private static func makeSession(for baseURL: URL, retain: (Void) -> Void) -> URLSession {
+    private static func makeSession(for baseURL: URL, retain: () -> Void) -> URLSession {
         CCAPIClient.makeInsecureSession(trustingHostOf: baseURL)
     }
     #endif
@@ -6779,12 +6777,12 @@ final class LiveCaptureModel {
     /// non-nil fields overwrite existing values so last-known state persists
     /// across polls where Canon reports nothing new.
     private func mergeTelemetry(_ diff: CameraTelemetry) {
-        if let v = diff.batteryLevel       { telemetry.batteryLevel = v }
-        if let v = diff.apertureValue      { telemetry.apertureValue = v }
-        if let v = diff.shutterSpeed       { telemetry.shutterSpeed = v }
-        if let v = diff.isoValue           { telemetry.isoValue = v }
-        if let v = diff.lensName           { telemetry.lensName = v }
-        if let v = diff.freeSpaceBytes     { telemetry.freeSpaceBytes = v }
+        if let v = diff.batteryLevel { telemetry.batteryLevel = v }
+        if let v = diff.apertureValue { telemetry.apertureValue = v }
+        if let v = diff.shutterSpeed { telemetry.shutterSpeed = v }
+        if let v = diff.isoValue { telemetry.isoValue = v }
+        if let v = diff.lensName { telemetry.lensName = v }
+        if let v = diff.freeSpaceBytes { telemetry.freeSpaceBytes = v }
         if let v = diff.totalContentsCount { telemetry.totalContentsCount = v }
     }
 }

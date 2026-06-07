@@ -64,7 +64,7 @@ actor DeliveryService {
         /// uploaded instead of `previewPath`. Falls back to `previewPath`
         /// when no RAW source exists or rendering fails — delivery
         /// silently degrades to "preview-quality" rather than failing.
-        var renderRecipe: MagicRecipe? = nil
+        var renderRecipe: MagicRecipe?
         /// Phase 5 — output color space + ICC profile for the rendered
         /// JPEG. Default `.webDelivery` (sRGB) matches the universal
         /// gallery-upload case. Photographer can switch to
@@ -80,14 +80,14 @@ actor DeliveryService {
         /// case: photographer picks the JPG row in the filmstrip but
         /// CCAPI exposed the CR3 sibling as a separate asset row.
         /// `nil` for pure-RAW or pure-JPG shoots.
-        var rawSourceAssetId: UUID? = nil
+        var rawSourceAssetId: UUID?
         /// Optional linkage back to the project's shot list. When both
         /// are set and the upload completes, we POST to
         /// /api/projects/:projectId/shots/:shotId/link-asset so the
         /// web side of the shot list flips to "completed" in real time.
         /// Phase 2B Lag D follow-up.
-        var projectId: String? = nil
-        var shotId: String? = nil
+        var projectId: String?
+        var shotId: String?
     }
 
     struct DeliveryResult: Sendable {
@@ -239,7 +239,7 @@ actor DeliveryService {
             )
             return url.path
         } catch {
-            print("[DeliveryService] RAW render fallback for \(pick.localId): \(error)")
+            AppLog.sync.error("[DeliveryService] RAW render fallback for \(String(describing: pick.localId), privacy: .public): \(error.localizedDescription, privacy: .public)")
             return pick.previewPath
         }
     }
@@ -330,7 +330,7 @@ actor DeliveryService {
                 // linkage is stale. Counter reconciliation is idempotent
                 // so a later retry (or a manual mark-complete from the
                 // web) will catch up.
-                print("[DeliveryService] linkShotToAsset failed: \(error)")
+                AppLog.sync.error("[DeliveryService] linkShotToAsset failed: \(error.localizedDescription, privacy: .public)")
             }
         }
 

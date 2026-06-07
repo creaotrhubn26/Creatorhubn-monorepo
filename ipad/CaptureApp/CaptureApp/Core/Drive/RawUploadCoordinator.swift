@@ -109,8 +109,7 @@ actor RawUploadCoordinator {
         let session: DriveResumableSession
         var resumeFromByte: Int64 = 0
         if let saved = try await persistence.savedSession(for: uploadId),
-           saved.totalBytes == totalBytes
-        {
+           saved.totalBytes == totalBytes {
             session = DriveResumableSession(
                 uploadURL: saved.sessionURL,
                 fileName: saved.fileName,
