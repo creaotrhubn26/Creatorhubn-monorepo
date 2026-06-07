@@ -680,6 +680,7 @@ import { setupResendAdminRoutes } from "./resend-admin-routes";
 import { setupEmailsRoutes } from "./emails-routes";
 import { setupTelemetryRoutes } from "./telemetry-routes";
 import { setupVideoSyncRoutes } from "./video-sync-routes";
+import { setupAdminTrainingMonitoringRoutes } from "./admin-training-monitoring-routes";
 import { setupUserPreferencesRoutes } from "./user-preferences-routes";
 import { setupOnboardingRoutes } from "./onboarding-routes";
 import { setupWorklogRoutes } from "./worklog-routes";
@@ -64619,6 +64620,13 @@ setupVideoSyncRoutes({
   patchVideoSyncJob,
   runVideoSyncJob,
 });
+
+// /api/training-monitoring/* (4) + /api/video-sync/model-versions +
+// /api/video-sync/training-data/stats — driver Admin Room
+// FineTuningMonitoringPanel. Backes av ml_models / ml_model_versions /
+// ml_training_data (migrasjon 247_model_training.sql) — defensiv mot
+// manglende tabeller.
+setupAdminTrainingMonitoringRoutes({ app, pool, requireAdminSession });
 
 // /api/user-preferences/* — 2 endpoints (speed-dial-orden GET/POST).
 // 2 dups slettet i samme commit (alternative compat-store-impl som var
