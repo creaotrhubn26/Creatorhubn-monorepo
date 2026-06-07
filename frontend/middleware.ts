@@ -1,19 +1,19 @@
 /**
  * Vercel Edge Middleware — host-aware SEO rewrites.
  *
- * Vercel's static-filesystem lookup happens BEFORE `rewrites` in
- * vercel.json, so requests for paths like `/` and `/robots.txt` that
- * have concrete files in `client/dist/` short-circuit our rewrites.
- * This middleware runs even earlier, so we can serve Role Room-
- * specific SEO artifacts for theroleroom.com without moving the
- * underlying files.
+ * Vercel's static-filesystem lookup happens BEFORE `rewrites` i
+ * vercel.json, så requests for paths som `/` med konkret fil i
+ * `client/dist/` kortslutter rewriten. Middleware kjører tidligere,
+ * så vi kan styre routing for SEO-artefakter på theroleroom.com.
  *
- * Matched paths are deliberately narrow: we only override for the
- * `/` landing, and rely on vercel.json rewrites for everything else
- * (which works fine because those paths don't collide with files).
+ * 2026-06-07: Root på theroleroom.com lever nå i React SPA
+ * (TheRoleRoomLanding via LandingResponsive.tsx host-detect mot
+ * produkt-dok). Den gamle /theroleroom.html-rewriten er fjernet —
+ * den statiske filen kan fortsatt nås direkte hvis nødvendig, men
+ * default på theroleroom.com/ er React SPA.
  */
 
-import { rewrite, next } from '@vercel/edge';
+import { next } from '@vercel/edge';
 
 export const config = {
   matcher: ['/'],
@@ -22,14 +22,6 @@ export const config = {
 export default function middleware(request: Request) {
   const url = new URL(request.url);
   const host = (request.headers.get('host') || '').toLowerCase();
-  console.log(`[mw] host=${host} path=${url.pathname}`);
-
-  const isRoleRoom = /^(?:www\.)?theroleroom\.com$/.test(host);
-  if (!isRoleRoom) return next();
-
-  if (url.pathname === '/') {
-    console.log('[mw] rewriting theroleroom.com/ -> /theroleroom.html');
-    return rewrite(new URL('/theroleroom.html', url));
-  }
+  console.log(`[mw] host=${host} path=${url.pathname} → pass through to SPA`);
   return next();
 }
