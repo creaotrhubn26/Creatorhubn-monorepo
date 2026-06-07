@@ -85,6 +85,10 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
       utm_source?: string;
       utm_medium?: string;
       utm_campaign?: string;
+      // Klient-sendt attribusjons-kontekst (UTM-term/content, gclid, fbclid,
+      // li_fat_id, referrer, landing_page, screen, locale). Merges med
+      // server-side referer + received_at.
+      request_context?: Record<string, unknown>;
     };
 
     // Validér påkrevde felt
@@ -138,6 +142,9 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
           ip?.slice(0, 45) ?? null,
           req.headers["user-agent"]?.toString().slice(0, 1000) ?? null,
           JSON.stringify({
+            // Klient-attribusjon (UTM-term/content, click-IDs, referrer, landing-page)
+            ...(body.request_context ?? {}),
+            // Server-side felt overstyrer for traceability
             referer: req.headers.referer ?? null,
             received_at: new Date().toISOString(),
           }),
@@ -303,7 +310,7 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
       const r = await pool.query(
         `SELECT id::text, agency_name, contact_name, email, phone, roster_size,
                 segment, message, status, source, utm_source, utm_medium,
-                utm_campaign, assigned_to_user_id, internal_notes,
+                utm_campaign, assigned_to_user_id, internal_notes, request_context,
                 created_at, updated_at, contacted_at, trial_started_at, customer_at
            FROM agency_leads
            ${where}
@@ -318,7 +325,47 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
       );
       const funnel = Object.fromEntries(stats.rows.map((s) => [s.status, s.n]));
 
-      return res.json({ leads: r.rows, funnel });
+      // Attribusjons-aggregering: hvor kommer leads-ene fra?
+      // Aggregert per (utm_source, utm_medium, utm_campaign, source) — gir
+      // Admin Room en LinkedIn/Meta/Google/direct-overview.
+      const sourceBreakdown = await pool.query(
+        `SELECT
+           COALESCE(utm_source, source, 'direct') AS source_key,
+           COALESCE(utm_medium, '') AS medium,
+           COALESCE(utm_campaign, '') AS campaign,
+           COUNT(*)::int AS n,
+           COUNT(*) FILTER (WHERE status IN ('demo_booked','trial','customer'))::int AS qualified,
+           COUNT(*) FILTER (WHERE status = 'customer')::int AS won
+         FROM agency_leads
+         GROUP BY source_key, medium, campaign
+         ORDER BY n DESC
+         LIMIT 50`,
+      );
+
+      // Click-ID-aggregering: hvor mange leads kom fra paid-channels?
+      const clickIdBreakdown = await pool.query(
+        `SELECT
+           CASE
+             WHEN request_context->>'gclid' IS NOT NULL THEN 'google_ads'
+             WHEN request_context->>'fbclid' IS NOT NULL THEN 'meta_ads'
+             WHEN request_context->>'li_fat_id' IS NOT NULL THEN 'linkedin_ads'
+             ELSE 'organic_or_direct'
+           END AS channel,
+           COUNT(*)::int AS n,
+           COUNT(*) FILTER (WHERE status = 'customer')::int AS won
+         FROM agency_leads
+         GROUP BY channel
+         ORDER BY n DESC`,
+      );
+
+      return res.json({
+        leads: r.rows,
+        funnel,
+        attribution: {
+          by_source: sourceBreakdown.rows,
+          by_paid_channel: clickIdBreakdown.rows,
+        },
+      });
     } catch (err) {
       console.error("[agency-leads GET] failed", err);
       return res.status(500).json({ error: "Klarte ikke å hente leads" });

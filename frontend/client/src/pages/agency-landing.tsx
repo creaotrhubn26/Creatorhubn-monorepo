@@ -1196,6 +1196,17 @@ function LeadForm() {
     setBusy(true);
     setErrorMsg(null);
     try {
+      // Capture attribution: UTM-params + referrer + landing-flate.
+      const params = new URLSearchParams(window.location.search);
+      const utmSource = params.get('utm_source') || undefined;
+      const utmMedium = params.get('utm_medium') || undefined;
+      const utmCampaign = params.get('utm_campaign') || undefined;
+      const utmTerm = params.get('utm_term') || undefined;
+      const utmContent = params.get('utm_content') || undefined;
+      const gclid = params.get('gclid') || undefined;       // Google Ads click ID
+      const fbclid = params.get('fbclid') || undefined;     // Meta click ID
+      const liFatId = params.get('li_fat_id') || undefined; // LinkedIn fbq-id
+
       const r = await fetch('/api/public/agency-lead', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1208,6 +1219,22 @@ function LeadForm() {
           message: message.trim() || null,
           source: 'agency_landing',
           segment: 'skuespillerbyrå',
+          utm_source: utmSource,
+          utm_medium: utmMedium,
+          utm_campaign: utmCampaign,
+          // request_context plukkes opp av backend i agency-leads-routes.ts.
+          request_context: {
+            utm_term: utmTerm,
+            utm_content: utmContent,
+            gclid,
+            fbclid,
+            li_fat_id: liFatId,
+            referrer: document.referrer || null,
+            landing_page: '/for-byraer',
+            screen: `${window.screen.width}x${window.screen.height}`,
+            locale: navigator.language,
+            timestamp: new Date().toISOString(),
+          },
         }),
       });
       if (!r.ok) {
@@ -1216,10 +1243,16 @@ function LeadForm() {
         throw new Error(payload.error ?? `HTTP ${r.status}`);
       }
       // Markér som conversion i GA4 → Admin → Events → "Mark as conversion".
+      // Attribusjon-felt videresendt så Admin Room (B2BAcquisitionPanel) kan
+      // krysse mot agency_leads-tabellen og se source-fordeling.
       trackEvent('agency_lead_submitted', {
         roster_size: talents.trim() || 'unknown',
         has_phone: phone.trim().length > 0,
         surface: 'for_byraer',
+        utm_source: utmSource,
+        utm_medium: utmMedium,
+        utm_campaign: utmCampaign,
+        referrer: document.referrer || undefined,
       });
       setStatus('success');
       // Clear felter
