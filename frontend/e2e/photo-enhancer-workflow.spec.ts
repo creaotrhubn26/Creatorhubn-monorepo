@@ -202,9 +202,16 @@ function relevantErrors(errors: string[]): string[] {
       // missing-UI timeout, not as a background resource-load failure.
       !/Failed to load resource/.test(msg) &&
       !/status of \d{3}/.test(msg) &&
-      !/WebSocket error/.test(msg) &&
+      !/WebSocket/.test(msg) &&
+      // Dashboard-shell background noise with no backend: React Query
+      // dev warnings and the dashboard's own caught 500s. None originate
+      // in the photo enhancer; a real enhancer crash still surfaces as a
+      // pageerror and via the white-screen (missing-CTA) check.
+      !/Query data cannot be undefined/.test(msg) &&
+      !/checking mentor status/i.test(msg) &&
+      !/UniversalDashboard/.test(msg) &&
       // Unrelated background polling in the dev shell.
-      !/\/api\/(auth|analytics|integrations|ai\/analytics|onboarding|whats-new)/.test(msg),
+      !/\/api\/(auth|analytics|integrations|ai\/analytics|onboarding|whats-new|user-preferences)/.test(msg),
   );
 }
 
@@ -447,6 +454,43 @@ test.describe('Photo Enhancer — full workflow', () => {
     expect(seenEndpoints).toContain('complete');
     expect(seenEndpoints).toContain('jobs-create');
     expect(jobPolls).toBeGreaterThanOrEqual(1);
+  });
+
+  test('looks: save the current recipe, reset, then re-apply it', async ({ page }) => {
+    await mockStatusAndProjects(page);
+    // Start from a clean Look catalogue so the test is deterministic.
+    await page.addInitScript(() => {
+      try {
+        localStorage.removeItem('creatorhub-photo-enhancer-looks');
+      } catch {
+        /* ignore */
+      }
+    });
+
+    await gotoEnhancer(page);
+    await uploadFixture(page);
+
+    // Nudge the first slider (Lysstyrke) so the recipe is non-default.
+    const slider = page.getByRole('slider').first();
+    await slider.focus();
+    for (let i = 0; i < 5; i++) await slider.press('ArrowRight');
+    const tweaked = await slider.getAttribute('aria-valuenow');
+    expect(tweaked).not.toBe('0');
+
+    // Save it as a named Look.
+    await page.getByRole('button', { name: /Lagre Look/ }).click();
+    await page.getByLabel('Navn på Look').fill('Testlook');
+    await page.getByRole('dialog').getByRole('button', { name: /^Lagre$/ }).click();
+    const lookChip = page.getByRole('button', { name: 'Testlook' });
+    await expect(lookChip).toBeVisible();
+
+    // Reset wipes the tweak…
+    await page.getByRole('button', { name: /Tilbakestill/ }).click();
+    expect(await slider.getAttribute('aria-valuenow')).not.toBe(tweaked);
+
+    // …and applying the Look restores the exact recipe.
+    await lookChip.click();
+    expect(await slider.getAttribute('aria-valuenow')).toBe(tweaked);
   });
 });
 

@@ -27,6 +27,7 @@ import {
   Slider,
   Stack,
   Switch,
+  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -34,6 +35,7 @@ import {
   AddPhotoAlternate as AddPhotoIcon,
   Assessment as AssessmentIcon,
   AutoFixHigh as AutoFixHighIcon,
+  BookmarkAdd as BookmarkAddIcon,
   CloudDone as CloudDoneIcon,
   Download as DownloadIcon,
   ExpandMore as ExpandMoreIcon,
@@ -80,6 +82,7 @@ import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
 import { useDemoMode, useDemoModeData } from '../../../contexts/DemoModeContext';
 import { useEnhancerSession } from '../../../lib/enhancer-session/use-enhancer-session';
 import { serializePerFaceOverrides } from '../../../lib/enhancer-session/session-reducer';
+import { loadLooks, saveLook, deleteLook, type SavedLook } from '../../../lib/enhancer-session/enhancer-looks';
 import type {
   EditModuleKey,
   EnhancementSettings as EnhancementSettingsContract,
@@ -487,6 +490,9 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const [isDragOver, setIsDragOver] = useState(false);
   const [autoAnalyze, setAutoAnalyze] = useState(true);
   const [shortcutsAnchor, setShortcutsAnchor] = useState<HTMLElement | null>(null);
+  const [looks, setLooks] = useState<SavedLook[]>(() => loadLooks());
+  const [saveLookDialogOpen, setSaveLookDialogOpen] = useState(false);
+  const [lookName, setLookName] = useState('');
   const [showRatingDialog, setShowRatingDialog] = useState(false);
   const [directUploadCache, setDirectUploadCache] = useState<DirectUploadCache | null>(null);
   const [directUploadProgress, setDirectUploadProgress] = useState<DirectUploadProgress | null>(null);
@@ -1126,6 +1132,20 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     commitActiveHistory('Tilbakestilt');
   };
 
+  // Apply a saved Look's full recipe to the current image.
+  const applyLook = (look: SavedLook) => {
+    setSettings(look.settings);
+    setAiSuggestion(null);
+    commitActiveHistory(`Look: ${look.name}`);
+  };
+
+  const confirmSaveLook = () => {
+    if (!lookName.trim()) return;
+    setLooks((previous) => saveLook(previous, lookName, settings));
+    setLookName('');
+    setSaveLookDialogOpen(false);
+  };
+
   const onImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = event.target.files;
     const files = fileList ? Array.from(fileList) : [];
@@ -1613,6 +1633,53 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     onClearClipboard={() => session.clearClipboard()}
                   />
                 ) : null}
+
+                <Divider />
+
+                <Stack spacing={0.75}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="subtitle2">Mine Looks</Typography>
+                    <Tooltip title="Lagre nåværende innstillinger som en gjenbrukbar Look">
+                      <span>
+                        <Button
+                          size="small"
+                          color="inherit"
+                          startIcon={<BookmarkAddIcon fontSize="small" />}
+                          onClick={() => {
+                            setLookName('');
+                            setSaveLookDialogOpen(true);
+                          }}
+                          disabled={!uploadedImage}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Lagre Look
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  </Stack>
+                  {looks.length === 0 ? (
+                    <Typography variant="caption" color="text.secondary">
+                      Lagre en signatur-look og bruk den på nye bilder med ett klikk.
+                    </Typography>
+                  ) : (
+                    <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                      {looks.map((look) => (
+                        <Chip
+                          key={look.id}
+                          label={look.name}
+                          size="small"
+                          variant="outlined"
+                          clickable
+                          disabled={!uploadedImage}
+                          onClick={() => applyLook(look)}
+                          onDelete={() => setLooks((previous) => deleteLook(previous, look.id))}
+                        />
+                      ))}
+                    </Stack>
+                  )}
+                </Stack>
+
+                <Divider />
 
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="subtitle2">Justeringer</Typography>
@@ -2525,6 +2592,30 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
           </Card>
         </Grid>
       </Grid>
+
+      <Dialog open={saveLookDialogOpen} onClose={() => setSaveLookDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Lagre Look</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Navn på Look"
+            placeholder="F.eks. Varm bryllup"
+            value={lookName}
+            onChange={(event) => setLookName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && lookName.trim()) confirmSaveLook();
+            }}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSaveLookDialogOpen(false)}>Avbryt</Button>
+          <Button variant="contained" disabled={!lookName.trim()} onClick={confirmSaveLook}>
+            Lagre
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Popover
         open={Boolean(shortcutsAnchor)}
