@@ -32,6 +32,11 @@ import MusicNoteOutlinedIcon from '@mui/icons-material/MusicNoteOutlined';
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
 import { useEffect, useState } from 'react';
 import LoginDialog from '@/components/role-room/components/LoginDialog';
+import {
+  trackPageView,
+  trackModalOpen,
+  trackEvent,
+} from '@/utils/ga4-client-tracking';
 
 const palette = {
   bgRoot: '#0a0118',
@@ -226,9 +231,19 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
     setLoginVariant(variant);
     setLoginPersona(persona);
     setLoginOpen(true);
+    trackModalOpen({
+      modalName: 'login_dialog',
+      trigger: variant === 'admin' ? 'admin_footer' : (persona || 'login_button'),
+      profession: persona || undefined,
+    });
   };
   const closeLogin = () => setLoginOpen(false);
   const handleLoginSuccess = () => {
+    trackEvent('login_success', {
+      login_variant: loginVariant,
+      persona: loginPersona || undefined,
+      surface: 'theroleroom_landing',
+    });
     closeLogin();
     if (onEnter) {
       onEnter();
@@ -236,6 +251,15 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
       window.location.reload();
     }
   };
+
+  // GA4 page-view + landing-view event.
+  useEffect(() => {
+    trackPageView('/', 'The Role Room — Operativsystem for film- og innholdsproduksjon');
+    trackEvent('landing_view', {
+      landing: 'theroleroom_root',
+      surface: 'theroleroom.com',
+    });
+  }, []);
 
   // SEO + JSON-LD SoftwareApplication
   useEffect(() => {
@@ -1163,6 +1187,11 @@ function Footer({ onAdminLogin }: { onAdminLogin: () => void }) {
               { label: 'Blog', href: '/blog' },
               { label: 'FAQ', href: '/faq' },
               { label: 'Pitch', href: '/pitch' },
+              // Statiske SEO-sider — rewriten i vercel.json maper disse til
+              // /theroleroom-{privacy,terms,data-deletion}.html for theroleroom.com.
+              { label: 'Personvern', href: '/privacy' },
+              { label: 'Vilkår', href: '/terms' },
+              { label: 'Data-sletting', href: '/data-deletion' },
               { label: 'Creatorhub AS', href: 'https://creatorhubn.com' },
             ].map((it) => (
               <Box

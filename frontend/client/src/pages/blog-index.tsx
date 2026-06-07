@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useEffect, useState } from 'react';
+import { trackPageView, trackEvent } from '@/utils/ga4-client-tracking';
 
 const palette = {
   bgRoot: '#0a0118',
@@ -82,6 +83,18 @@ export default function BlogIndexPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activePillar, setActivePillar] = useState<string | null>(null);
+
+  // GA4 page-view ved mount.
+  useEffect(() => {
+    trackPageView('/blog', 'Blog — The Role Room');
+    trackEvent('landing_view', { landing: 'blog_index', surface: 'theroleroom.com' });
+  }, []);
+
+  // GA4 tracker pillar-filter-bytte.
+  useEffect(() => {
+    if (!activePillar) return;
+    trackEvent('blog_filter_changed', { pillar: activePillar });
+  }, [activePillar]);
 
   // SEO: title + description + JSON-LD CollectionPage
   useEffect(() => {
@@ -279,11 +292,19 @@ function ArticleCard({ article }: { article: Article }) {
   const pillarLabel = article.pillar
     ? PILLAR_LABELS[article.pillar] ?? article.pillar
     : null;
+  const onClick = () => {
+    trackEvent('blog_article_click', {
+      slug: article.public_slug,
+      pillar: article.pillar ?? 'unknown',
+      surface: 'blog_index',
+    });
+  };
 
   return (
     <Box
       component="a"
       href={`/blog/${article.public_slug}`}
+      onClick={onClick}
       sx={{
         bgcolor: palette.bgCard,
         border: `1px solid ${palette.borderSubtle}`,
