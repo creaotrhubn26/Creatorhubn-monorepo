@@ -1870,7 +1870,7 @@ registerRoleRoomSeatReconciliationRoutes(app, { pool, requireAdminSession });
 registerRoleRoomUpcomingJobsRoutes(app, { pool, activeSessions });
 registerRoleRoomFeedPlanThumbnailRoutes(app, { pool, activeSessions });
 registerRoleRoomBrandAssetsRoutes(app, { pool, activeSessions });
-registerRoleRoomPublishedGuidesRoutes(app, { activeSessions });
+registerRoleRoomPublishedGuidesRoutes(app, { activeSessions, pool });
 registerRoleRoomThumbnailTemplatesRoutes(app, { pool, activeSessions });
 registerRoleRoomLowerThirdsRoutes(app, { pool, activeSessions });
 registerRoleRoomCaptionsRoutes(app, { pool, activeSessions });

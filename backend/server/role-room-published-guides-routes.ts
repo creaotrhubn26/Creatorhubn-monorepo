@@ -14,6 +14,7 @@
  */
 
 import type { Express, Request, Response } from "express";
+import type { Pool } from "pg";
 import express from "express";
 import { randomBytes } from "node:crypto";
 import { archiveToRoleRoomB2, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper.js";
@@ -22,6 +23,8 @@ type SessionData = { userId: string; role?: string; email?: string };
 
 interface Deps {
   activeSessions: Map<string, SessionData>;
+  /** Valgfri Postgres-pool for visnings-analytics. Uten den hoppes analytics over. */
+  pool?: Pool;
 }
 
 const MAX_HTML = 5_000_000; // 5 MB — rikelig for en selvstendig guide
@@ -52,7 +55,24 @@ export function registerRoleRoomPublishedGuidesRoutes(
   app: Express,
   deps: Deps,
 ): void {
-  const { activeSessions } = deps;
+  const { activeSessions, pool } = deps;
+
+  // Analytics-tabell (selvstendig, ingen egen migrasjon nødvendig).
+  let analyticsReady = false;
+  if (pool) {
+    void pool
+      .query(
+        `CREATE TABLE IF NOT EXISTS published_guide_views (
+           guide_id   TEXT PRIMARY KEY,
+           views      BIGINT NOT NULL DEFAULT 0,
+           created_by TEXT,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           last_seen  TIMESTAMPTZ
+         )`,
+      )
+      .then(() => { analyticsReady = true; })
+      .catch((e: Error) => console.warn("[published-guides] kunne ikke lage analytics-tabell:", e.message));
+  }
 
   // POST — publiser en guide (krever innlogging).
   app.post(
@@ -92,7 +112,37 @@ export function registerRoleRoomPublishedGuidesRoutes(
         return;
       }
 
+      if (pool && analyticsReady) {
+        void pool
+          .query(
+            `INSERT INTO published_guide_views (guide_id, created_by)
+             VALUES ($1, $2) ON CONFLICT (guide_id) DO NOTHING`,
+            [id, viewerId],
+          )
+          .catch(() => {});
+      }
       res.json({ id, url: `${publicBase()}/g/${id}`, bytes: result.size });
+    },
+  );
+
+  // GET stats — visningstall for en guide (krever innlogging).
+  app.get(
+    "/api/role-room/published-guides/:id/stats",
+    async (req: Request, res: Response) => {
+      const viewerId = getUserIdFromRequest(req, activeSessions);
+      if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+      const id = String(req.params.id ?? "");
+      if (!ID_RE.test(id)) { res.status(400).json({ error: "ugyldig_id" }); return; }
+      if (!pool || !analyticsReady) { res.json({ id, views: 0, analytics: false }); return; }
+      try {
+        const { rows } = await pool.query<{ views: string; last_seen: string | null }>(
+          `SELECT views, last_seen FROM published_guide_views WHERE guide_id = $1`,
+          [id],
+        );
+        res.json({ id, views: Number(rows[0]?.views ?? 0), lastSeen: rows[0]?.last_seen ?? null, analytics: true });
+      } catch (e) {
+        res.status(500).json({ error: "stats_feil", detail: (e as Error).message });
+      }
     },
   );
 
@@ -107,6 +157,18 @@ export function registerRoleRoomPublishedGuidesRoutes(
     if (!obj) {
       res.status(404).send("Guide ikke funnet (eller utløpt).");
       return;
+    }
+    // Tell visning (fire-and-forget — påvirker aldri serveringen).
+    if (pool && analyticsReady) {
+      void pool
+        .query(
+          `INSERT INTO published_guide_views (guide_id, views, last_seen)
+           VALUES ($1, 1, now())
+           ON CONFLICT (guide_id) DO UPDATE
+             SET views = published_guide_views.views + 1, last_seen = now()`,
+          [id],
+        )
+        .catch(() => {});
     }
     res.setHeader("Content-Type", obj.contentType || "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=300");

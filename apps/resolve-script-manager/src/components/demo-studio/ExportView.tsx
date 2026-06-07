@@ -20,7 +20,7 @@ import { useDemoStudio } from './demoStudioStore';
 import { totalDuration, VOICE_MODELS, exportReadiness } from './demoStudioModel';
 import { buildSrt, buildScriptHtml, renderThumbnail, buildInteractiveGuideHtml } from './demoStudioExports';
 import { addAsset } from './assetLibrary';
-import { publishGuide } from '../../services/publishService';
+import { publishGuide, getGuideStats } from '../../services/publishService';
 import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
 import { translateForVoiceover } from './demoStudioAI';
 
@@ -75,6 +75,8 @@ export function ExportView() {
   const [fileMsg, setFileMsg] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
+  const [publishedId, setPublishedId] = useState<string | null>(null);
+  const [views, setViews] = useState<number | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const runIdRef = useRef<string | null>(null);
   const resultRef = useRef<string | null>(null); // unngå stale closure i finally
@@ -132,7 +134,7 @@ export function ExportView() {
     try {
       const html = buildInteractiveGuideHtml(project);
       const r = await publishGuide(html, project.branding?.brandName || project.name);
-      setPublishedUrl(r.url);
+      setPublishedUrl(r.url); setPublishedId(r.id); setViews(0);
       addAsset({ kind: 'guide', title: `Publisert guide — ${project.branding?.brandName || project.name}`, text: html, url: project.url, note: r.url });
       setFileMsg(`✓ Publisert som lenke: ${r.url}`);
     } catch (e) {
@@ -337,6 +339,9 @@ export function ExportView() {
             <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: C.cream, border: `1px solid ${C.line}`, borderRadius: 8, padding: '8px 10px' }}>
               <a href={publishedUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: C.accent, fontWeight: 600, wordBreak: 'break-all' }}>{publishedUrl}</a>
               <div style={{ flex: 1 }} />
+              <span style={{ fontSize: 11.5, color: C.inkSoft }}>{views ?? '—'} visninger</span>
+              <button style={{ ...outlineBtn, padding: '4px 10px', fontSize: 11.5 }}
+                onClick={() => { if (publishedId) void getGuideStats(publishedId).then((s) => setViews(s.views)).catch(() => {}); }}>Oppdater</button>
               <button style={{ ...outlineBtn, padding: '4px 10px', fontSize: 11.5 }}
                 onClick={() => { void navigator.clipboard?.writeText(publishedUrl).then(() => setFileMsg('✓ Lenke kopiert.')); }}>Kopier lenke</button>
             </div>
