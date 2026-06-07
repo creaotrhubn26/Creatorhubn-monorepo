@@ -486,6 +486,29 @@ function MarkdownBody({ markdown }: { markdown: string }) {
           bgcolor: palette.borderSubtle,
           my: 5,
         },
+        '& figure.body-figure': {
+          margin: '32px 0',
+          padding: 0,
+          borderRadius: 12,
+          overflow: 'hidden',
+          border: `1px solid ${palette.borderSubtle}`,
+          bgcolor: palette.bgCard,
+        },
+        '& figure.body-figure img': {
+          display: 'block',
+          width: '100%',
+          height: 'auto',
+          maxHeight: 540,
+          objectFit: 'cover',
+        },
+        '& figure.body-figure figcaption': {
+          padding: '12px 18px',
+          color: palette.textMuted,
+          fontSize: '0.84rem',
+          fontStyle: 'italic',
+          borderTop: `1px solid ${palette.borderSubtle}`,
+          textAlign: 'center',
+        },
       }}
     >
       {blocks}
@@ -499,7 +522,8 @@ type Block =
   | (BlockBase & { type: 'p'; text: string })
   | (BlockBase & { type: 'blockquote'; text: string })
   | (BlockBase & { type: 'hr' })
-  | (BlockBase & { type: 'ul' | 'ol'; items: string[] });
+  | (BlockBase & { type: 'ul' | 'ol'; items: string[] })
+  | (BlockBase & { type: 'figure'; alt: string; src: string; caption: string });
 
 function parseMarkdown(md: string): React.ReactElement[] {
   const lines = md.split('\n');
@@ -514,6 +538,20 @@ function parseMarkdown(md: string): React.ReactElement[] {
 
     if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
       blocks.push({ id: blockId++, type: 'hr' });
+      i++;
+      continue;
+    }
+
+    // Standalone image: ![alt](url) or ![alt](url "caption")
+    const imgMatch = trimmed.match(/^!\[([^\]]*)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)\s*$/);
+    if (imgMatch) {
+      blocks.push({
+        id: blockId++,
+        type: 'figure',
+        alt: imgMatch[1] ?? '',
+        src: imgMatch[2],
+        caption: imgMatch[3] ?? '',
+      });
       i++;
       continue;
     }
@@ -567,6 +605,7 @@ function parseMarkdown(md: string): React.ReactElement[] {
       if (next.startsWith('- ') || next.startsWith('* ')) break;
       if (/^\d+\.\s+/.test(next)) break;
       if (next === '---' || next === '***') break;
+      if (/^!\[[^\]]*\]\([^)]+\)$/.test(next)) break;
       paragraphLines.push(lines[i]);
       i++;
     }
@@ -582,6 +621,13 @@ function parseMarkdown(md: string): React.ReactElement[] {
       case 'hr': return <hr key={b.id} />;
       case 'ul': return <ul key={b.id}>{b.items.map((it, j) => <li key={j}>{renderInline(it)}</li>)}</ul>;
       case 'ol': return <ol key={b.id}>{b.items.map((it, j) => <li key={j}>{renderInline(it)}</li>)}</ol>;
+      case 'figure':
+        return (
+          <figure key={b.id} className="body-figure">
+            <img src={b.src} alt={b.alt} loading="lazy" />
+            {b.caption ? <figcaption>{b.caption}</figcaption> : null}
+          </figure>
+        );
     }
   });
 }
