@@ -21,13 +21,15 @@ import { ScriptBuilderView } from './ScriptBuilderView';
 import { GuidedRecorderView } from './GuidedRecorderView';
 import { ExportView } from './ExportView';
 import { MarketingPanel } from './MarketingPanel';
+import { LibraryPanel } from './LibraryPanel';
+import { speak, cancelSpeech, getWebVoices, isWebSpeechSupported, type WebVoice } from './webSpeechVoiceover';
 import { FramedDevice, VIEWPORT_W } from './FramedDevice';
 import { SceneInteractionOverlay } from './SceneInteractionOverlay';
 import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
-import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, type CommandResult } from './demoStudioAI';
+import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, suggestVisualBeats, type CommandResult, type VisualBeat } from './demoStudioAI';
 import { executeScript } from '../../api';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
@@ -54,6 +56,7 @@ const NAV_ITEMS = [
   { id: 'create', label: 'Create Demo', ic: '▢' },
   { id: 'flow', label: 'Flow Builder', ic: '⤳' },
   { id: 'marketing', label: 'Marketing', ic: '◆' },
+  { id: 'library', label: 'Bibliotek', ic: '▤' },
   { id: 'script', label: 'Script Builder', ic: '✎' },
   { id: 'recorder', label: 'Guided Recorder', ic: '●' },
   { id: 'preview', label: 'Device Preview', ic: '▭' },
@@ -91,10 +94,43 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     setSceneDevice, setProjectField, setDemoType: applyDemoTypeTemplate, setRenderOption, applyResponsiveFix,
     reorderScenes, startRecorder, nextStep, markCurrentDone, retakeCurrent, goToStep,
     loadExisting,
+    undo, redo, canUndo, canRedo,
+    selectedSceneIds, toggleSceneSelected, clearSceneSelection, removeSelectedScenes,
   } = useDemoStudio();
 
   // Gjenopprett lagret prosjekt ved oppstart (ellers virket alt arbeid borte).
   useEffect(() => { if (!project) loadExisting(); /* eslint-disable-next-line */ }, []);
+
+  // Edit Mode-hurtigtaster: undo/redo globalt; slett/velg-alle/escape kun når
+  // man ikke skriver i et felt. ⌘/Ctrl bærer kommandoene.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+      if (typing) return;
+      if (mod && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        const ids = useDemoStudio.getState().project?.scenes.map((s) => s.id) ?? [];
+        useDemoStudio.setState({ selectedSceneIds: ids });
+        return;
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && useDemoStudio.getState().selectedSceneIds.length) {
+        e.preventDefault();
+        removeSelectedScenes();
+        return;
+      }
+      if (e.key === 'Escape') clearSceneSelection();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo, removeSelectedScenes, clearSceneSelection]);
   // Frigjør skjermdelings-streamen når shell unmountes.
   useEffect(() => () => rec.release(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -207,6 +243,10 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [showValidation, setShowValidation] = useState(false);
   const [showLearned, setShowLearned] = useState(false);
   const [driftTargets, setDriftTargets] = useState<LearnedTarget[]>([]);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [visualBeats, setVisualBeats] = useState<VisualBeat[] | null>(null);
+  const [visualBusy, setVisualBusy] = useState(false);
   const zoomBy = (delta: number) => setPreviewZoom((z) => Math.min(3, Math.max(0.5, Math.round((z + delta) * 100) / 100)));
   const [capturing, setCapturing] = useState(false);
   const [captureCount, setCaptureCount] = useState(0);
@@ -359,6 +399,28 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   /** Aktiv læring (C): hopp til en scene AI er usikker på og start hotspot-plassering. */
   const teachScene = (id: string) => {
     selectScene(id); setStoryMode(false); setNav('flow'); setPlacingHotspot(true);
+  };
+
+  /** Manus-drevne visuelle forslag: les manuset → foreslå uthevinger med preview. */
+  const runVisualBeats = async () => {
+    if (!project || visualBusy) return;
+    if (!aiReady) { setShowSignIn(true); return; }
+    setVisualBusy(true);
+    try {
+      const beats = await suggestVisualBeats({ scenes: project.scenes.map((s) => ({ narration: s.narration, targetLabel: s.targetLabel })) });
+      setVisualBeats(beats);
+      if (!beats.length) setCmdReply('Fant ingenting i manuset som trengte en visuell utheving.');
+    } catch (e) {
+      setCmdReply('Feil: ' + (e as Error).message);
+    } finally {
+      setVisualBusy(false);
+    }
+  };
+  /** Anvend et visuelt forslag: sett overlay-tekst + stil på scenen. */
+  const applyVisualBeat = (b: VisualBeat) => {
+    const sc = project?.scenes[b.index];
+    if (!sc) return;
+    updateScene(sc.id, { overlayText: b.overlay, overlayStyle: b.kind === 'stat' ? 'callout' : 'lower-third' });
   };
 
   // Responsive Check: vurder siden i desktop/tablet/mobil → vis rapport med
@@ -642,6 +704,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               title="La AI vurdere hele demoen mot målet og foreslå forbedringer">
               ★ {critiqueBusy ? 'Vurderer…' : 'Vurder demoen (Critic)'}
             </button>
+            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: visualBusy ? 0.6 : 1 }}
+              disabled={visualBusy} onClick={() => void runVisualBeats()}
+              title="La AI lese manuset og foreslå visuelle uthevinger der noe konkret nevnes — med preview">
+              ✦ {visualBusy ? 'Leser manus…' : 'Foreslå visuelle uthevinger'}
+            </button>
 
             {/* Læring & presisjon (menneske-loop A/C/D) */}
             <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 12, paddingTop: 10 }}>
@@ -696,6 +763,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           <div style={{ flex: 1, minHeight: 0 }}><DevicePreviewView /></div>
         ) : nav === 'marketing' ? (
           <div style={{ flex: 1, minHeight: 0, display: 'flex' }}><MarketingPanel onOpenSignIn={() => setShowSignIn(true)} /></div>
+        ) : nav === 'library' ? (
+          <div style={{ flex: 1, minHeight: 0, display: 'flex' }}><LibraryPanel /></div>
         ) : (
           <>
             {/* ── Blocks panel (demo-typer) ── */}
@@ -786,7 +855,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   width: `${baseWPct * previewZoom}%`, maxWidth: baseMaxW * previewZoom,
                 }}>
                   <FramedDevice variant={previewVariant} url={project.url} width="100%"
-                    overlay={<SceneInteractionOverlay hotspot={selected?.hotspot} render={render} device={previewDevice} />}
+                    overlay={<SceneInteractionOverlay hotspot={selected?.hotspot} render={render} device={previewDevice} actionType={selected?.actionType} animate={!placingHotspot} />}
+                    focusZoom={render.autoZoom && selected?.hotspot && !placingHotspot ? { cx: selected.hotspot.x + selected.hotspot.w / 2, cy: selected.hotspot.y + selected.hotspot.h / 2, scale: 1.5 } : undefined}
                     onScreenClick={placingHotspot ? placeHotspot : undefined} />
                 </div>
                 {/* Jordet kontaktskygge under enheten */}
@@ -800,13 +870,45 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
               {/* Scene-flow-kort */}
               <div style={{ marginTop: 22 }}>
-                <h3 style={{ fontSize: 16, marginBottom: 6 }}>Demo-flow</h3>
-                <div style={{ fontSize: 12.5, color: C.inkSoft, marginBottom: 14 }}>Scenene settes sammen til én produktvideo. Klikk for å redigere. Du styrer opptaket steg for steg.</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <h3 style={{ fontSize: 16, margin: 0 }}>Demo-flow</h3>
+                  <div style={{ flex: 1 }} />
+                  {/* Undo/redo */}
+                  <button onClick={() => undo()} disabled={!canUndo()} title="Angre (⌘Z)"
+                    style={{ ...btn, padding: '5px 9px', fontSize: 12, opacity: canUndo() ? 1 : 0.4 }}>↶ Angre</button>
+                  <button onClick={() => redo()} disabled={!canRedo()} title="Gjør om (⌘⇧Z)"
+                    style={{ ...btn, padding: '5px 9px', fontSize: 12, opacity: canRedo() ? 1 : 0.4 }}>↷ Gjør om</button>
+                </div>
+                {selectedSceneIds.length > 0 ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, background: C.creamActive, border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '6px 10px' }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>{selectedSceneIds.length} scene{selectedSceneIds.length === 1 ? '' : 'r'} valgt</span>
+                    <div style={{ flex: 1 }} />
+                    <button style={{ ...btn, padding: '4px 9px', fontSize: 12, color: '#9a2b2b', borderColor: '#f0b8b8' }} onClick={() => removeSelectedScenes()}>Slett valgte</button>
+                    <button style={{ ...btn, padding: '4px 9px', fontSize: 12 }} onClick={() => clearSceneSelection()}>Avbryt</button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12.5, color: C.inkSoft, marginBottom: 14 }}>Dra for å endre rekkefølge · ⌘-klikk for å velge flere · ⌘Z angrer.</div>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
-                  {scenes.map((s) => (
-                    <div key={s.id} onClick={() => { selectScene(s.id); if (recording) goToStep(s.index); }}
-                      style={{ border: `2px solid ${s.id === selectedSceneId ? C.accent : C.line}`, borderRadius: 10, padding: 10, cursor: 'pointer', background: '#fff' }}>
+                  {scenes.map((s) => {
+                    const multiSel = selectedSceneIds.includes(s.id);
+                    const isPrimary = s.id === selectedSceneId;
+                    const dropBefore = dragOverIndex === s.index && dragIndex != null && dragIndex !== s.index;
+                    return (
+                    <div key={s.id}
+                      data-testid="scene-card"
+                      draggable
+                      onDragStart={(e) => { setDragIndex(s.index); e.dataTransfer.effectAllowed = 'move'; }}
+                      onDragOver={(e) => { e.preventDefault(); if (dragOverIndex !== s.index) setDragOverIndex(s.index); }}
+                      onDrop={(e) => { e.preventDefault(); if (dragIndex != null && dragIndex !== s.index) reorderScenes(dragIndex, s.index); setDragIndex(null); setDragOverIndex(null); }}
+                      onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
+                      onClick={(e) => {
+                        if (e.metaKey || e.ctrlKey || e.shiftKey) { toggleSceneSelected(s.id, true); return; }
+                        clearSceneSelection(); selectScene(s.id); if (recording) goToStep(s.index);
+                      }}
+                      style={{ border: `2px solid ${multiSel ? C.dark : isPrimary ? C.accent : C.line}`, borderRadius: 10, padding: 10, cursor: 'grab', background: multiSel ? C.creamActive : '#fff', opacity: dragIndex === s.index ? 0.4 : 1, boxShadow: dropBefore ? `-3px 0 0 ${C.accent}` : 'none' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
+                        <span style={{ color: C.inkFaint, fontSize: 12, cursor: 'grab' }} title="Dra for å flytte">⠿</span>
                         <span style={{ fontWeight: 700, fontSize: 11 }}>{s.index + 1}</span>
                         <span style={{ fontSize: 10, color: C.inkFaint }}>{DEVICE_LABEL[s.device]}</span>
                         <div style={{ flex: 1 }} />
@@ -820,7 +922,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                       <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</div>
                       <div style={{ fontSize: 11, color: C.inkFaint }}>{fmt(s.duration)} · {SCENE_STATUS_LABELS[s.status]}</div>
                     </div>
-                  ))}
+                    );
+                  })}
                   <div onClick={() => addScene(scenes.length - 1)}
                     style={{ border: `1px dashed ${C.lineStrong}`, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', color: C.inkSoft, fontSize: 22, minHeight: 110 }}>+</div>
                 </div>
@@ -906,6 +1009,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   <div style={fldLabel}>{tab === 'Notes' ? 'Notater' : 'Manus / narration'}</div>
                   <textarea style={{ ...field, height: 70, resize: 'vertical', fontFamily: 'inherit' }} value={selected.narration}
                     placeholder="Hva som skal sies i denne scenen…" onChange={(e) => updateScene(selected.id, { narration: e.target.value })} />
+                  {tab !== 'Notes' && <WebSpeechBar scene={selected} language={project.language} />}
 
                   <div style={row2}>
                     <div><div style={fldLabel}>Enhet</div>
@@ -1013,6 +1117,16 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           onClearAll={() => { clearLearnedTargets(project.url); setDriftTargets([]); }}
         />
       )}
+      {visualBeats && project && (
+        <VisualBeatsModal
+          beats={visualBeats}
+          scenes={project.scenes}
+          brandColor={project.branding?.brandColor}
+          onClose={() => setVisualBeats(null)}
+          onApply={(b) => applyVisualBeat(b)}
+          onGoto={(idx) => { const sc = scenes[idx]; if (sc) { selectScene(sc.id); setStoryMode(false); setNav('flow'); } }}
+        />
+      )}
     </div>
   );
 }
@@ -1069,6 +1183,78 @@ function LearnedTargetsModal({ url, drift, onClose, onForget, onClearAll }: {
           <button style={{ ...btn, marginTop: 14, background: '#fff', color: '#9a2b2b', borderColor: '#f0b8b8' }}
             onClick={() => { onClearAll(); force((n) => n + 1); }}>Glem alt for {host}</button>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Manus-drevne visuelle forslag med PREVIEW av hvordan uthevingen ser ut. */
+function VisualBeatsModal({ beats, scenes, brandColor, onClose, onApply, onGoto }: {
+  beats: VisualBeat[];
+  scenes: DemoScene[];
+  brandColor?: string;
+  onClose: () => void;
+  onApply: (b: VisualBeat) => void;
+  onGoto: (sceneIndex: number) => void;
+}) {
+  const accent = brandColor || C.accent;
+  const [applied, setApplied] = useState<Record<number, boolean>>({});
+  const kindLabel: Record<VisualBeat['kind'], string> = { overlay: 'Tekst-overlay', stat: 'Stat-callout', highlight: 'Highlight', infographic: 'Infographic' };
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.32)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 620, maxWidth: '94vw', maxHeight: '86vh', overflowY: 'auto', background: C.panel, borderRadius: 14, padding: 22, fontFamily: C.font, color: C.ink, boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Visuelle uthevinger fra manuset</h3>
+          <div style={{ flex: 1 }} />
+          <div onClick={onClose} style={{ ...iconBtn, cursor: 'pointer' }}>✕</div>
+        </div>
+        <div style={{ fontSize: 12.5, color: C.inkSoft, marginBottom: 14 }}>AI fant {beats.length} sted{beats.length === 1 ? '' : 'er'} der manuset nevner noe konkret. Slik vil det se ut:</div>
+        {beats.length === 0 ? (
+          <div style={{ fontSize: 13, color: C.inkSoft, padding: '12px 0' }}>Ingenting å fremheve.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {beats.map((b, i) => (
+              <div key={i} style={{ display: 'flex', gap: 14, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12 }}>
+                {/* PREVIEW av uthevingen på en mock-skjerm */}
+                <div style={{ position: 'relative', width: 150, height: 95, flexShrink: 0, background: 'linear-gradient(135deg,#2f2a26,#544b43)', borderRadius: 8, overflow: 'hidden' }}>
+                  {b.kind === 'stat' ? (
+                    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
+                      <div style={{ background: accent, color: '#fff', fontWeight: 800, fontSize: 18, padding: '6px 12px', borderRadius: 8, textAlign: 'center', maxWidth: '88%' }}>{b.overlay}</div>
+                    </div>
+                  ) : b.kind === 'infographic' ? (
+                    <div style={{ position: 'absolute', inset: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
+                      {[0, 1, 2, 3].map((n) => <div key={n} style={{ background: 'rgba(255,255,255,.16)', borderRadius: 4, borderLeft: `3px solid ${accent}` }} />)}
+                    </div>
+                  ) : (
+                    <>
+                      {b.kind === 'highlight' && <div style={{ position: 'absolute', left: '30%', top: '24%', width: '40%', height: '30%', border: `2px solid ${accent}`, borderRadius: 6, boxShadow: `0 0 0 999px rgba(0,0,0,.25)` }} />}
+                      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, background: 'linear-gradient(transparent,rgba(0,0,0,.65))', padding: '14px 8px 7px' }}>
+                        <span style={{ color: '#fff', fontSize: 11, fontWeight: 700, borderLeft: `3px solid ${accent}`, paddingLeft: 6 }}>{b.overlay}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {/* Info + handlinger */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#fff', background: accent, padding: '1px 7px', borderRadius: 6 }}>{kindLabel[b.kind]}</span>
+                    <span style={{ fontSize: 11, color: C.inkFaint }}>Scene {b.index + 1}</span>
+                  </div>
+                  {b.phrase && <div style={{ fontSize: 12, color: C.inkSoft, fontStyle: 'italic', marginBottom: 3 }}>«{b.phrase}»</div>}
+                  {b.why && <div style={{ fontSize: 11.5, color: C.inkFaint, marginBottom: 8 }}>{b.why}</div>}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button style={{ ...btn, padding: '5px 11px', fontSize: 11.5, background: applied[i] ? C.green : '#fff', color: applied[i] ? '#fff' : C.ink, borderColor: applied[i] ? C.green : C.lineStrong }}
+                      onClick={() => { onApply(b); setApplied((a) => ({ ...a, [i]: true })); }}>
+                      {applied[i] ? '✓ Brukt' : 'Bruk'}
+                    </button>
+                    <button style={{ ...btn, padding: '5px 11px', fontSize: 11.5, background: '#fff' }} onClick={() => onGoto(b.index)} disabled={b.index >= scenes.length}>Gå til scene</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <button style={{ ...outlineBtn, width: '100%', marginTop: 14 }} onClick={onClose}>Lukk</button>
       </div>
     </div>
   );
@@ -1353,5 +1539,45 @@ const titleField: React.CSSProperties = { background: 'transparent', border: 0, 
 const sel: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' };
 const row2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 };
 const chip: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#fff', padding: '2px 8px', borderRadius: 10, display: 'inline-block' };
+
+/**
+ * Resolve-fri voiceover-forhåndsvisning (Web Speech). Les opp scenens manus i
+ * nettleseren — velg kjønn — uten DaVinci Resolve. For eksportert lydfil brukes
+ * Resolve-provideren når den er tilgjengelig.
+ */
+function WebSpeechBar({ scene, language }: { scene: DemoScene; language: string }) {
+  const [voices, setVoices] = useState<WebVoice[]>([]);
+  const [gender, setGender] = useState<'female' | 'male'>('female');
+  const [speaking, setSpeaking] = useState(false);
+  useEffect(() => { void getWebVoices().then(setVoices); return () => cancelSpeech(); }, []);
+  if (!isWebSpeechSupported()) return null;
+  const lang = language === 'en' ? 'en' : 'nb';
+  const langVoices = voices.filter((v) => v.lang.toLowerCase().startsWith(lang.slice(0, 2)));
+  const hasNarration = !!scene.narration?.trim();
+  const play = () => {
+    if (!hasNarration) return;
+    setSpeaking(true);
+    speak(scene.narration, { gender, lang, onEnd: () => setSpeaking(false), onError: () => setSpeaking(false) });
+  };
+  const stop = () => { cancelSpeech(); setSpeaking(false); };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+      <button onClick={speaking ? stop : play} disabled={!hasNarration}
+        title="Les opp manus i nettleseren (uten Resolve)"
+        style={{ ...btn, padding: '5px 11px', fontSize: 12, opacity: hasNarration ? 1 : 0.5 }}>
+        {speaking ? '■ Stopp' : '▶ Les opp'}
+      </button>
+      <div style={{ display: 'inline-flex', gap: 2, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 8, padding: 2 }}>
+        {(['female', 'male'] as const).map((g) => (
+          <button key={g} onClick={() => setGender(g)}
+            style={{ ...btn, border: 'none', padding: '4px 9px', fontSize: 11.5, background: gender === g ? C.accent : 'transparent', color: gender === g ? '#fff' : C.ink }}>
+            {g === 'female' ? 'Kvinne' : 'Mann'}
+          </button>
+        ))}
+      </div>
+      <span style={{ fontSize: 10.5, color: C.inkFaint }}>Resolve-fri · {langVoices.length || voices.length} stemmer</span>
+    </div>
+  );
+}
 
 export default DemoStudioShell;

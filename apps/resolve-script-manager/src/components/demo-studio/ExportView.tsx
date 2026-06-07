@@ -17,8 +17,10 @@ import type { UnlistenFn } from '@tauri-apps/api/event';
 import { openPath } from '@tauri-apps/plugin-opener';
 import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { useDemoStudio } from './demoStudioStore';
-import { totalDuration, VOICE_MODELS } from './demoStudioModel';
+import { totalDuration, VOICE_MODELS, exportReadiness } from './demoStudioModel';
 import { buildSrt, buildScriptHtml, renderThumbnail, buildInteractiveGuideHtml } from './demoStudioExports';
+import { addAsset } from './assetLibrary';
+import { publishGuide } from '../../services/publishService';
 import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
 import { translateForVoiceover } from './demoStudioAI';
 
@@ -71,6 +73,8 @@ export function ExportView() {
   const [error, setError] = useState<string | null>(null);
   const [musicPath, setMusicPath] = useState<string | null>(null);
   const [fileMsg, setFileMsg] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const runIdRef = useRef<string | null>(null);
   const resultRef = useRef<string | null>(null); // unngå stale closure i finally
@@ -109,10 +113,33 @@ export function ExportView() {
   const exportGuide = async () => {
     if (!project) return;
     setFileMsg(null);
+    const html = buildInteractiveGuideHtml(project);
     const path = await saveFileDialog({ defaultPath: `${safeName()}-guide.html`, filters: [{ name: 'HTML', extensions: ['html'] }] });
     if (typeof path !== 'string') return;
-    try { const p = await demoWriteText(path, buildInteractiveGuideHtml(project)); setFileMsg(`✓ Interaktiv guide lagret: ${p}`); void openPath(p).catch(() => {}); }
-    catch (e) { setFileMsg('Feil ved interaktiv guide: ' + String(e)); }
+    try {
+      const p = await demoWriteText(path, html);
+      // Lagre i biblioteket + merk at fila er selvstendig/delbar.
+      addAsset({ kind: 'guide', title: `Interaktiv guide — ${project.branding?.brandName || project.name}`, text: html, url: project.url, note: 'Selvstendig HTML — del direkte (åpner i enhver nettleser)' });
+      setFileMsg(`✓ Interaktiv guide lagret + i biblioteket: ${p}. Selvstendig fil — send den direkte; den åpner i enhver nettleser.`);
+      void openPath(p).catch(() => {});
+    } catch (e) { setFileMsg('Feil ved interaktiv guide: ' + String(e)); }
+  };
+
+  /** Publiser guiden til en permanent, delbar offentlig lenke (B2-backet). */
+  const publishGuideLink = async () => {
+    if (!project) return;
+    setFileMsg(null); setPublishedUrl(null); setPublishing(true);
+    try {
+      const html = buildInteractiveGuideHtml(project);
+      const r = await publishGuide(html, project.branding?.brandName || project.name);
+      setPublishedUrl(r.url);
+      addAsset({ kind: 'guide', title: `Publisert guide — ${project.branding?.brandName || project.name}`, text: html, url: project.url, note: r.url });
+      setFileMsg(`✓ Publisert som lenke: ${r.url}`);
+    } catch (e) {
+      setFileMsg('Feil ved publisering: ' + (e as Error).message);
+    } finally {
+      setPublishing(false);
+    }
   };
 
   const setBrand = (patch: Record<string, unknown>) => { if (project) setProjectField('branding', { ...(project.branding ?? {}), ...patch }); };
@@ -162,7 +189,9 @@ export function ExportView() {
 
   const scenes = project.scenes;
   const recorded = scenes.filter((s) => s.recordingPath);
-  const canExport = recorded.length > 0;
+  // Integritets-gate (D): blokkér video-eksport ved alvorlige mangler.
+  const readiness = exportReadiness(scenes);
+  const canExport = recorded.length > 0 && readiness.ready;
 
   const startExport = async () => {
     setError(null); setResultPath(null); resultRef.current = null; runIdRef.current = null;
@@ -211,6 +240,22 @@ export function ExportView() {
         <p style={{ color: C.inkSoft, fontSize: 13, margin: '0 0 24px' }}>
           {scenes.length} scener · {fmtDur(totalDuration(scenes))} · {recorded.length} med opptak
         </p>
+
+        {/* Integritets-gate (D) */}
+        {(readiness.blocking.length > 0 || readiness.warnings.length > 0) && (
+          <div style={{ marginBottom: 22, border: `1px solid ${readiness.ready ? '#f0d9a8' : '#f0b8b8'}`, background: readiness.ready ? '#fff8ec' : '#fdecec', borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: readiness.ready ? '#8a6516' : '#9a2b2b', marginBottom: 6 }}>
+              {readiness.ready ? `Klar til eksport — ${readiness.warnings.length} advarsel${readiness.warnings.length === 1 ? '' : 'er'}` : `Eksport blokkert — ${readiness.blocking.length} må fikses`}
+            </div>
+            {readiness.blocking.map((b, i) => (
+              <div key={`b${i}`} style={{ fontSize: 12, color: '#9a2b2b', marginBottom: 2 }}>✕ {b.index >= 0 ? `Scene ${b.index + 1} (${b.title}): ` : ''}{b.issue}</div>
+            ))}
+            {readiness.warnings.map((w, i) => (
+              <div key={`w${i}`} style={{ fontSize: 12, color: '#8a6516', marginBottom: 2 }}>⚠ {w.index >= 0 ? `Scene ${w.index + 1} (${w.title}): ` : ''}{w.issue}</div>
+            ))}
+            {!readiness.ready && <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 6 }}>Video-eksport er deaktivert til de blokkerende punktene er løst. Tekst/bilde-leveranser kan fortsatt lages.</div>}
+          </div>
+        )}
 
         {/* Format */}
         <Section label="Videoformat">
@@ -275,6 +320,7 @@ export function ExportView() {
         <Section label="Leveranser (tekst & bilde)">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
             <button style={{ ...outlineBtn }} onClick={() => void exportGuide()}>Interaktiv guide (HTML)</button>
+            <button style={{ ...outlineBtn }} disabled={publishing} onClick={() => void publishGuideLink()}>{publishing ? 'Publiserer…' : 'Publiser som lenke'}</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportSrt()}>Undertekster (.srt)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportScriptPdf()}>Manus (PDF)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportThumbnail()}>Thumbnail (PNG)</button>
@@ -287,6 +333,14 @@ export function ExportView() {
             .srt fra manus + varigheter · Manus åpnes i print-vindu (lagre som PDF) · Thumbnail i valgt format.
           </div>
           {fileMsg && <div style={{ marginTop: 8, fontSize: 12, color: fileMsg.startsWith('Feil') ? C.red : C.green, wordBreak: 'break-all' }}>{fileMsg}</div>}
+          {publishedUrl && (
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: C.cream, border: `1px solid ${C.line}`, borderRadius: 8, padding: '8px 10px' }}>
+              <a href={publishedUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: C.accent, fontWeight: 600, wordBreak: 'break-all' }}>{publishedUrl}</a>
+              <div style={{ flex: 1 }} />
+              <button style={{ ...outlineBtn, padding: '4px 10px', fontSize: 11.5 }}
+                onClick={() => { void navigator.clipboard?.writeText(publishedUrl).then(() => setFileMsg('✓ Lenke kopiert.')); }}>Kopier lenke</button>
+            </div>
+          )}
         </Section>
 
         {/* Merkevare & white-label — auto-hentet fra siden */}

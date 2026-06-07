@@ -87,7 +87,9 @@ ingen forklaring rundt.`;
 function imageBlock(dataUrl: string): ClaudeContentBlock | null {
   const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/s);
   if (!m) return null;
-  return { type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } };
+  // Claude vision støtter png/jpeg; capture gir jpeg/png, default jpeg.
+  const media_type: 'image/png' | 'image/jpeg' = m[1] === 'image/png' ? 'image/png' : 'image/jpeg';
+  return { type: 'image', source: { type: 'base64', media_type, data: m[2] } };
 }
 
 const VALID_ACTIONS = Object.keys(ACTION_META) as DemoActionType[];
@@ -1011,8 +1013,13 @@ export async function generateMarketingFlow(params: {
   evidence?: ProductEvidence;
   /** Verifisert dekningssti fra Product Brain — styrer rekkefølge/dekning. */
   coverageHint?: string[];
+  /** Kontekst fra konkurrent-sider — for skarpere differensiering. */
+  competitorContext?: string;
 }): Promise<DemoScene[]> {
-  const { url, brief, devices, elements = [], siteContext = '', evidence, coverageHint = [] } = params;
+  const { url, brief, devices, elements = [], siteContext = '', evidence, coverageHint = [], competitorContext = '' } = params;
+  const competitorBlock = (brief.competitors?.length || competitorContext)
+    ? `\nKONKURRENTER (differensier tydelig — si hvorfor DETTE produktet er bedre, uten å nevne konkurrenten ved navn i manus):\n${(brief.competitors || []).join(', ')}${competitorContext ? `\nUtdrag fra konkurrent-sider:\n${competitorContext.slice(0, 1200)}` : ''}\n`
+    : '';
   const preset = CHANNEL_PRESETS[brief.channel];
   const framework = FRAMEWORKS[brief.framework || preset.framework];
   const funnel = FUNNEL_INTENT[brief.funnelStage];
@@ -1029,7 +1036,7 @@ ${brief.proof?.length ? `Bevis: ${brief.proof.join(' · ')}\n` : ''}${brief.obje
 FUNNEL-STEG: ${FUNNEL_LABELS[brief.funnelStage]} → mål: ${funnel.goal}. CTA-energi: ${funnel.ctaHint}.
 KANAL: ${preset.label} → ${preset.toneHint}. Total lengde ~${preset.maxSeconds}s, hook i de første ${preset.hookSeconds} sek.${preset.captions ? ' Skriv korte caption-vennlige linjer.' : ''}
 RAMMEVERK: ${framework.label}. Følg disse beatene i rekkefølge, én eller flere scener per beat: ${framework.beats.join(' → ')}.
-${coverageHint.length ? `\nVERIFISERT DEKNINGSSTI (Product Brain) — sørg for at demoen dekker disse stegene, i denne rekkefølgen, vevd inn i rammeverkets beats:\n${coverageHint.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n` : ''}${brief.desiredAction ? `ØNSKET HANDLING (siste CTA): ${brief.desiredAction}\n` : ''}${siteContext ? `\nKontekst fra siden:\n${siteContext.slice(0, 1500)}\n` : ''}${evidenceBlock(evidence)}${catalog}${voicePrefBlock(url)}
+${coverageHint.length ? `\nVERIFISERT DEKNINGSSTI (Product Brain) — sørg for at demoen dekker disse stegene, i denne rekkefølgen, vevd inn i rammeverkets beats:\n${coverageHint.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n` : ''}${competitorBlock}${brief.desiredAction ? `ØNSKET HANDLING (siste CTA): ${brief.desiredAction}\n` : ''}${siteContext ? `\nKontekst fra siden:\n${siteContext.slice(0, 1500)}\n` : ''}${evidenceBlock(evidence)}${catalog}${voicePrefBlock(url)}
 SLIK ANVENDES METODEN PÅ PRODUKTET (viktigst):
 - Fest HVER beat til ÉN konkret produktdel fra PRODUKT-BEVIS over. Eksempel for ${framework.label}: ${framework.beats.map((b) => `«${b}»`).join(' → ')} skal hver vise en navngitt funksjon/bevis/seksjon — ikke generisk prat.
 - «Bevis»-beats MÅ bruke et faktisk bevis (tall/testimonial/logo) som står på siden.
@@ -1052,6 +1059,102 @@ Svar med KUN ett JSON-objekt:
   const parsed = extractJson<{ scenes: FlowSceneDraft[] }>(raw);
   if (!parsed?.scenes?.length) throw new Error('Klarte ikke å tolke marketing-flow fra AI');
   return buildScenesFromDrafts(parsed.scenes, { url, devices, elements });
+}
+
+/**
+ * Manus-drevne visuelle forslag: les hver scenes narration og foreslå ÉN visuell
+ * utheving der manuset nevner noe konkret — et tall (stat-callout), en funksjon/
+ * verdi (overlay), eller noe man bør peke på (highlight). «Det du hører i manuset
+ * → vis det.» Brukeren kan anvende forslaget (sette overlay / fremheve / infographic).
+ */
+export type VisualBeatKind = 'overlay' | 'stat' | 'highlight' | 'infographic';
+export interface VisualBeat {
+  index: number;
+  kind: VisualBeatKind;
+  /** Frasen i manuset forslaget gjelder. */
+  phrase: string;
+  /** Kort overlay-tekst (≤ 6 ord) å vise på skjermen. */
+  overlay: string;
+  /** Kort begrunnelse. */
+  why?: string;
+}
+export async function suggestVisualBeats(params: {
+  scenes: Array<{ narration?: string; targetLabel?: string }>;
+}): Promise<VisualBeat[]> {
+  const list = params.scenes
+    .map((s, i) => ({ i, t: (s.narration || '').trim(), tgt: s.targetLabel }))
+    .filter((s) => s.t);
+  if (!list.length) return [];
+  const user = `Les manuset for hver scene. Der manuset NEVNER noe konkret som bør fremheves visuelt, foreslå ÉN visuell utheving per scene (hopp over scener uten noe å fremheve).
+
+Scener:
+${list.map((s) => `${s.i}: "${s.t.slice(0, 160)}"${s.tgt ? ` [element: ${s.tgt}]` : ''}`).join('\n')}
+
+For hver: velg kind:
+- "stat" når manuset nevner et TALL/måleenhet (vis tallet stort)
+- "overlay" når en funksjon/verdi/nøkkelord bør stå som tekst på skjermen
+- "highlight" når noe på skjermen bør pekes på / zoomes mot
+- "infographic" når et helt poeng fortjener en egen grafikk
+Gi phrase (frasen fra manuset), overlay (kort tekst ≤ 6 ord), why (kort).
+
+Svar med KUN ett JSON-objekt: { "beats": [ { "index": 0, "kind": "stat", "phrase": "...", "overlay": "...", "why": "..." } ] }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: MARKETING_SYSTEM, messages: [{ role: 'user', content: user }], maxTokens: 1600,
+  });
+  const p = extractJson<{ beats?: VisualBeat[] }>(raw);
+  const kinds: VisualBeatKind[] = ['overlay', 'stat', 'highlight', 'infographic'];
+  return Array.isArray(p?.beats)
+    ? p!.beats.filter((b) => b && typeof b.index === 'number' && kinds.includes(b.kind as VisualBeatKind) && typeof b.overlay === 'string').slice(0, 30).map((b) => ({
+        index: b.index, kind: b.kind as VisualBeatKind, phrase: typeof b.phrase === 'string' ? b.phrase : '', overlay: b.overlay, why: typeof b.why === 'string' ? b.why : undefined,
+      }))
+    : [];
+}
+
+/** Kontekstuell infographic: Claude designer en branded SVG fra produktets data. */
+export type InfographicKind = 'overview' | 'features' | 'comparison' | 'funnel';
+export const INFOGRAPHIC_LABELS: Record<InfographicKind, string> = {
+  overview: 'Produkt-oversikt', features: 'Funksjons-rutenett', comparison: 'Differensiering', funnel: 'Funnel / verdireise',
+};
+export async function generateInfographic(params: {
+  kind: InfographicKind;
+  /** Kontekst bygget fra Product Brain / bevis-inventar / brief. */
+  context: string;
+  title: string;
+  brandColor?: string;
+  logoUrl?: string;
+  width?: number;
+  height?: number;
+}): Promise<string> {
+  const { kind, context, title, brandColor = '#ef8a5d', logoUrl, width = 1080, height = 1350 } = params;
+  const layoutHint: Record<InfographicKind, string> = {
+    overview: 'Tittel øverst, 3–5 nøkkelpunkter som kort med ikon-aktige former, ett fremhevet bevis-tall stort.',
+    features: 'Rutenett av funksjons-kort (2 kolonner): hver med kort tittel + hva den løser.',
+    comparison: 'To kolonner: «Uten» vs «Med [produkt]» — tydelig kontrast som viser fordelen.',
+    funnel: 'Vertikal funnel/trakt med 3–4 steg fra oppmerksomhet til handling, med korte etiketter.',
+  };
+  const user = `Lag EN selvstendig, høy-kvalitets SVG-infographic (${width}×${height} px) for et produkt.
+
+TITTEL: ${title}
+MERKEFARGE (bruk som aksent): ${brandColor}
+TYPE: ${INFOGRAPHIC_LABELS[kind]} — ${layoutHint[kind]}
+${logoUrl ? `LOGO: legg en <image href="${logoUrl}" .../> diskret øverst.\n` : ''}
+INNHOLD (bruk KUN dette — ikke dikt opp tall):
+${context.slice(0, 2400)}
+
+Krav:
+- Returner KUN ett gyldig <svg ...>…</svg>-element (ingen forklaring, ingen markdown-fence).
+- Selvstendig: bruk system-fonter (font-family="-apple-system, Segoe UI, sans-serif"), ingen eksterne CSS/JS. Bilder kun via <image href> hvis logo er gitt.
+- Moderne, ren, luftig layout. God typografisk hierarki. Bruk merkefargen + nøytrale toner.
+- viewBox="0 0 ${width} ${height}" og width/height satt.
+- Tekst skal være ekte <text>-elementer (ikke bilde), så den er skarp.`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du er en senior informasjonsdesigner som lager rene, branded SVG-infographics. Du svarer ALLTID med kun ett <svg>-element.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 4000,
+  });
+  const m = raw.match(/<svg[\s\S]*<\/svg>/i);
+  if (!m) throw new Error('Klarte ikke å tolke SVG fra AI');
+  return m[0];
 }
 
 /** En målrettet variant-spesifikasjon (per persona / kanal / vinkel). */
