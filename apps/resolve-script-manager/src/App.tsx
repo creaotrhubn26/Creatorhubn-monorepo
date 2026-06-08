@@ -38,6 +38,13 @@ import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
 import { DemoStudioShell } from "./components/demo-studio/DemoStudioShell";
+import { ModuleGate } from "./components/ModuleGate";
+import {
+  getEntitledModules,
+  onEntitlementsChanged,
+  refreshEntitlements,
+  type PostAgentModule,
+} from "./entitlements";
 import { StoryTestHarness } from "./components/story/StoryTestHarness";
 import { DemoTestHarness } from "./components/demo-studio/DemoTestHarness";
 import { AgentEditorView } from "./components/AgentEditorView";
@@ -531,6 +538,13 @@ export default function App() {
     profileImageUrl: string | null;
     professions: string[];
   } | null>(null);
+  // À la carte-moduler brukeren har låst opp (synket fra entitlements-cache
+  // via 'trrpa:entitlements-changed'). Demo Studio m.fl. gates på disse.
+  const [entitledModules, setEntitledModules] = useState<PostAgentModule[]>(getEntitledModules());
+  useEffect(() => {
+    const sync = () => setEntitledModules(getEntitledModules());
+    return onEntitlementsChanged(sync);
+  }, []);
 
   const silentAuthCheck = useCallback(async () => {
     const s = loadSettings();
@@ -538,6 +552,7 @@ export default function App() {
     if (!token) {
       setAuthStatus("none");
       setAuthUserEmail(null);
+      void refreshEntitlements(); // tømmer modul-cache når utlogget
       return;
     }
     try {
@@ -550,6 +565,7 @@ export default function App() {
         if (me?.email) {
           setAuthStatus("ok");
           setAuthUserEmail(me.email);
+          void refreshEntitlements(); // hent hvilke moduler brukeren eier
 
           // Hent Role Room-medlemsprofil (avatar + navn + profesjon) i bakgrunnen.
           // Origin: strip /api/post-agent fra base for å nå sibling-endpoint
@@ -769,7 +785,17 @@ export default function App() {
       {view === "cull" && <CullView activeTemplate={activeTemplate} />}
       {view === "audio" && <AudioView />}
       {view === "color" && <ColorView activeTemplate={activeTemplate} />}
-      {view === "demo" && <DemoStudioShell onClose={() => setView("pipeline")} />}
+      {view === "demo" &&
+        (authStatus === "ok" && entitledModules.includes("demo_studio") ? (
+          <DemoStudioShell onClose={() => setView("pipeline")} />
+        ) : (
+          <ModuleGate
+            module="demo_studio"
+            signedIn={authStatus === "ok"}
+            onClose={() => setView("pipeline")}
+            onSignIn={() => setShowSignIn(true)}
+          />
+        ))}
 
       {advancedMode && view === "pipeline" && (
       <div className="body">
