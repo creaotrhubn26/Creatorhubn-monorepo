@@ -39,7 +39,12 @@ export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
   });
 
   app.get("/api/admin/profession-types", async (req, res) => {
-    if (!requireAdminSession(req, res)) return;
+    // GET er åpen for autentiserte brukere — profesjons-listen brukes av
+    // useDynamicProfessions/useProfessionTabs i vanlig dashboard for å
+    // bestemme profesjons-spesifikke UI-faner. POST/PUT/DELETE-mutasjoner
+    // på /api/admin/profession-types/* (i admin-customers-routes.ts og
+    // andre) forblir bak requireAdminSession.
+    if (!requireUserSession(req, res)) return;
     try {
       const result = await pool.query(
         'SELECT name AS id, display_name AS name, is_active AS enabled, sort_order AS "sortOrder", description, category FROM profession_types WHERE is_active = true ORDER BY sort_order',
