@@ -872,73 +872,180 @@ function generateAiPrompt(args: {
     })
     .join('\n\n');
 
-  return `# Oppgave: Installer Google Ads conversion-tracking på ${clientName}
+  return `# MASTER-OPPGAVE: Installer hele Google-stacken for ${clientName}
+
+Dette er en KOMPLETT oppsett for klientens digitale målings-infrastruktur — ikke kun Google Ads.
+Den dekker fire Google-tools som henger sammen:
+
+  1. **Google Tag Manager (GTM)** — sentral tag-håndtering (anbefalt fundament)
+  2. **Google Analytics 4 (GA4)** — site-analytics + brukeradferd
+  3. **Google Ads** — conversion-tracking + bidding (${actions.length} events)
+  4. **Google Search Console (GSC)** — SEO + indexing-status
+
+Følg sekvensen 1→4. GTM først; så GA4 + Google Ads + GSC inni GTM.
+
+---
 
 ## Om klienten
 - **Nettside:** ${clientUrl}
 - **Bransje:** ${businessType}
 - **Hva de gjør:** ${businessSummary}
-- **Arkitektur:** ${isSpa ? 'Single Page Application (SPA) — bruk JS-events, ikke URL-baserte triggers' : 'Tradisjonell multi-page site'}
-- **Eksisterende tracking:** ${detectedGtag ? `GA4 ${detectedGtag} oppdaget` : detectedGtm ? `GTM ${detectedGtm} oppdaget` : 'Ingen tracking detektert'}
+- **Arkitektur:** ${isSpa ? 'Single Page Application (SPA) — bruk JS-events + History Change-trigger i GTM, ikke URL-baserte page-views' : 'Tradisjonell multi-page site'}
+- **Eksisterende tracking:** ${detectedGtag ? `GA4 ${detectedGtag} oppdaget — IKKE fjern, gjenbruk` : detectedGtm ? `GTM ${detectedGtm} oppdaget — bruk eksisterende container` : 'Ingen tracking detektert — frisk start'}
 
-## Hva du skal installere
+---
 
-Du skal sette opp **${actions.length} Google Ads conversion-events** som fyres på følgende handlinger:
+## STEG 1: Google Tag Manager (GTM)
+
+${detectedGtm ? `**GTM er allerede installert (${detectedGtm}). Hopp til Steg 2.**` : `Sett opp et nytt GTM container — dette blir hub-en for alle andre tags.
+
+Lim dette i \`<head>\` på hver side:
+\`\`\`html
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-XXXXXXX');</script>
+<!-- End Google Tag Manager -->
+\`\`\`
+
+Og dette rett etter \`<body>\`:
+\`\`\`html
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-XXXXXXX"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+\`\`\``}
+
+---
+
+## STEG 2: Google Analytics 4 (GA4)
+
+${detectedGtag ? `Gjenbruk eksisterende ${detectedGtag}. Sørg for at den fyres via GTM med "Google Tag" → Measurement ID = ${detectedGtag}.` : `Sett opp ny GA4-property:
+
+1. Gå til [analytics.google.com](https://analytics.google.com) → Admin → Create Property
+2. Property name: "${clientName}"
+3. Tidsone: Oslo (UTC+1), valuta: NOK
+4. Data Stream: Web → URL ${clientUrl}
+5. Noter Measurement ID (\`G-XXXXXXXXXX\`)
+
+I GTM:
+- Ny tag → Google Tag (gtag) → Measurement ID = \`G-XXXXXXXXXX\`
+- Trigger: All Pages
+- Lagre + Publiser`}
+
+---
+
+## STEG 3: Google Ads conversion-tracking
+
+Du skal opprette **${actions.length} conversion-events** i GTM som fyrer Google Ads-conversions.
+
+### Actions å sette opp
 
 ${actionList}
 
-## Tekniske krav
+### For hver action — i GTM:
+1. Ny tag → Google Ads Conversion Tracking
+2. Conversion ID: \`AW-XXXXXXXXXX\`
+3. Conversion Label: \`<LABEL_*>\` (én per action)
+4. Value: action-verdi i NOK
+5. Currency: NOK
+6. Trigger: matchende type (Form Submit / Page View / Click / Custom Event)
+7. ${isSpa ? '**SPA:** lag dataLayer.push events i koden + bruk Custom Event-triggers' : 'Multi-page: bruk URL-pattern-triggers der trigger_type=page_load'}
 
-1. **Last gtag.js i <head>** (én gang) hvis det ikke allerede er der:
-   \`\`\`html
-   <!-- Google tag (gtag.js) -->
-   <script async src="https://www.googletagmanager.com/gtag/js?id=AW-XXXXXXXXXX"></script>
-   <script>
-     window.dataLayer = window.dataLayer || [];
-     function gtag(){dataLayer.push(arguments);}
-     gtag('js', new Date());
-     gtag('config', 'AW-XXXXXXXXXX');
-   </script>
-   \`\`\`
-   ${detectedGtag ? `(Du har allerede ${detectedGtag} — ikke fjern den, legg AW-config ved siden av med samme gtag.)` : ''}
+---
 
-2. **For hver action, sett opp riktig trigger:**
-   ${isSpa ? '- SPA: bruk JS-eventet du selv velger (etter API-200, etter route-change, etc.)' : '- Multi-page: page-load på URL-mønster ELLER form-submit-handler ELLER click-handler'}
+## STEG 4: Google Search Console (GSC)
 
-3. **Fire conversion med korrekt verdi + currency:**
-   \`\`\`js
-   gtag('event', 'conversion', {
-     'send_to': 'AW-XXXXXXXXXX/<LABEL_HER>',
-     'value': <NOK-verdi>,
-     'currency': 'NOK',
-     'transaction_id': '<unique-id-for-dedup>'  // optional men anbefalt
-   });
-   \`\`\`
+${detectedGtag ? `Du kan verifisere via eksisterende GA4 (${detectedGtag}) — enkleste vei.
 
-4. **${isSpa ? 'For SPA: ikke fyre conversions ved hver route-change — kun ved faktisk konvertering (etter API-OK eller eksplisitt user-action).' : 'For multi-page: bruk thank-you-side-URL som trigger der det passer.'}**
+1. Gå til [search.google.com/search-console](https://search.google.com/search-console)
+2. Add property → URL prefix → ${clientUrl}
+3. Verifiser via "Google Analytics" → bruker ${detectedGtag}
+4. Etter verify: submit sitemap.xml${isSpa ? ' (krever server-rendered sitemap for SPA — sjekk om klienten har en)' : ''}` : `Verifiser klientens domene i GSC:
 
-5. **GDPR-consent:** Sørg for at gtag respekterer Consent Mode v2:
-   \`\`\`js
-   gtag('consent', 'default', {
-     'analytics_storage': 'denied',
-     'ad_storage': 'denied',
-     'ad_user_data': 'denied',
-     'ad_personalization': 'denied'
-   });
-   // Etter samtykke:
-   gtag('consent', 'update', { 'ad_storage': 'granted', 'ad_user_data': 'granted', 'ad_personalization': 'granted' });
-   \`\`\`
+1. Gå til [search.google.com/search-console](https://search.google.com/search-console)
+2. Add property → URL prefix → ${clientUrl}
+3. Velg verifikasjons-metode:
+   - **HTML meta-tag** (enklest hvis du har site-access):
+     \`<meta name="google-site-verification" content="<TOKEN>">\` i \`<head>\`
+   - **DNS TXT-record** (krever DNS-tilgang)
+4. Etter verify: submit \`${clientUrl}/sitemap.xml\`${isSpa ? ' (krever server-rendered sitemap for SPA — sjekk om klienten har en)' : ''}`}
+
+---
+
+## STEG 5: GDPR Consent Mode v2 (PÅKREVD for EU/Norge)
+
+Implementér Google Consent Mode v2 i GTM. Default = denied:
+
+\`\`\`js
+// Før gtag/GTM lastes
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('consent', 'default', {
+  'ad_storage': 'denied',
+  'ad_user_data': 'denied',
+  'ad_personalization': 'denied',
+  'analytics_storage': 'denied',
+  'functionality_storage': 'granted',
+  'security_storage': 'granted',
+  'wait_for_update': 500
+});
+
+// Etter brukers samtykke (consent-banner)
+gtag('consent', 'update', {
+  'ad_storage': 'granted',
+  'ad_user_data': 'granted',
+  'ad_personalization': 'granted',
+  'analytics_storage': 'granted'
+});
+\`\`\`
+
+Bruk en consent-banner (Cookiebot / OneTrust / Termly) som integrerer med Consent Mode v2.
+
+---
+
+## STEG 6: Link alle tools sammen
+
+I **Google Ads**:
+- Tools → Linked accounts → Google Analytics → koble til GA4-propertyen
+- Importér GA4-conversions for cross-bidding
+
+I **GA4**:
+- Admin → Product Links → Google Ads → koble til ads-konto
+- Admin → Product Links → Search Console → koble til GSC-property
+- Aktivér Google Signals (i Data Settings) for cross-device tracking
+
+---
 
 ## Når du er ferdig
 
-- Test hver conversion med Google Tag Assistant
-- Bekreft at events ankommer i Google Ads → Conversions → Diagnostics (24t)
-- Lever en kort rapport: hvilke filer du endret, hvor du satte triggers, og test-resultatene
+Lever en sluttrapport:
+- ✅ GTM container-ID: \`GTM-XXXXXXX\`
+- ✅ GA4 Measurement-ID: \`G-XXXXXXXXXX\`
+- ✅ Google Ads Conversion-ID: \`AW-XXXXXXXXXX\` + ${actions.length} labels
+- ✅ GSC verifisert: ${clientUrl}
+- ✅ Consent Mode v2 implementert
+- 📊 Test-resultater (Tag Assistant + GA4 DebugView + Google Ads Diagnostics)
+
+---
 
 ## VIKTIG: placeholders du må fylle inn
 
-- \`AW-XXXXXXXXXX\` — Google Ads conversion-ID (kunden gir deg denne)
-- \`<LABEL_${actions.map((a) => a.action_name.toUpperCase()).join('>, <LABEL_')}>\` — én label per action (11-20 tegn, fra Google Ads → Conversions → Tag setup)
+- \`GTM-XXXXXXX\` — Google Tag Manager container-ID
+- \`G-XXXXXXXXXX\` — GA4 Measurement-ID
+- \`AW-XXXXXXXXXX\` — Google Ads conversion-ID
+- \`<TOKEN>\` — GSC site-verification-token
+- \`<LABEL_${actions.map((a) => a.action_name.toUpperCase()).join('>, <LABEL_')}>\` — én label per Google Ads-action
+
+${isSpa ? `## SPA-SPESIFIKT (gjelder for ${clientName})
+
+Klientens site er en SPA. Vær spesielt obs på:
+- Ikke bruk URL-baserte page-view-triggers — bruk History Change-trigger i GTM
+- Fyre conversions via dataLayer.push({event: 'conversion_X'}) etter faktisk API-OK
+- GA4 må konfigureres med "Enhanced measurement" + History Change
+- GSC sitemap krever server-rendered XML — prerender hvis nødvendig
+` : ''}
 
 Start arbeidet. Spør hvis noe er uklart.`;
 }
