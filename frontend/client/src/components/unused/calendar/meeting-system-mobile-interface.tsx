@@ -3,7 +3,7 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React from 'react';
 import { getAuthHeader } from '@/lib/google/impersonation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery , useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { Box, Typography } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';

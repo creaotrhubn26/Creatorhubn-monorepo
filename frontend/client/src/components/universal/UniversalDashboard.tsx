@@ -2497,12 +2497,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const { data: allPhotoProjects, isLoading: _loadingPhoto } = useQuery({
     queryKey: ['all-wedding-projects', userId],
     queryFn: async () => {
-      const res = await fetch('/api/wedding-projects', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        return data.success ? data.projects.slice(0, 5) : [];
+      // Bruker apiRequest istedet for fetch slik at session-token vedlegges
+      // som Authorization-header. Backend leser ikke cookies for auth.
+      try {
+        const data = await apiRequest('/api/wedding-projects');
+        return data?.success ? data.projects.slice(0, 5) : [];
+      } catch {
+        return [];
       }
-      return [];
     },
     enabled: !!userId && userId !== 'guest' && (profession === 'photographer' || profession === 'admin'),
   });
