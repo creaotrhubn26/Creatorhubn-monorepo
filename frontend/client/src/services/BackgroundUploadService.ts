@@ -5,6 +5,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { apiRequest } from '@/lib/queryClient';
 
 export interface UploadTask {
   id: string;
@@ -355,9 +356,9 @@ class BackgroundUploadService extends EventEmitter {
           } : undefined,
         },
       ]);
-      fetch('/api/user/kv', {
-        method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ key: 'background_uploads', value: tasksData })
+      apiRequest('/api/user/kv', {
+        method: 'POST',
+        body: JSON.stringify({ key: 'background_uploads', value: tasksData }),
       }).catch(() => {});
       localStorage.setItem('backgroundUploads', JSON.stringify(tasksData));
     } catch (error) {
@@ -386,8 +387,7 @@ class BackgroundUploadService extends EventEmitter {
       }
     };
 
-    fetch('/api/user/kv/background_uploads', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
+    apiRequest('/api/user/kv/background_uploads')
       .then((j) => {
         if (j?.data) {
           const tasksData = j.data;

@@ -4,6 +4,7 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import { apiRequest } from '@/lib/queryClient';
 import React, { useState, useEffect } from 'react';
 import {
   Card as MuiCard,
@@ -148,14 +149,11 @@ export function UniversalUpcomingEventsWidget({
   // Mark preparation task as completed
   const completeTaskMutation = useMutation({
     mutationFn: async ({ eventd, taskId }: { eventId: string; taskId: string }) => {
-      const response = await fetch(`/api/dashboard/complete-preparation-task`, {
+      return await apiRequest('/api/dashboard/complete-preparation-task', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify({ eventd, taskId }),
-    });
-      if (!response.ok) throw new Error('Failed to complete task');
-      return response.json();
-  },
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['/api/dashboard/preparation-tasks', ],

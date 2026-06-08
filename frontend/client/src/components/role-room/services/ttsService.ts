@@ -8,6 +8,8 @@
  * auto-select the best voice for that language.
  */
 
+import { apiFetch } from '@/lib/queryClient';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,7 +140,7 @@ export interface TTSProviderStatus {
 /** Check which TTS/STT providers are available */
 export async function getTTSStatus(): Promise<TTSProviderStatus> {
   try {
-    const res = await fetch('/api/ai/tts/status');
+    const res = await apiFetch('/api/ai/tts/status');
     if (res.ok) return await res.json();
   } catch { /* ignore */ }
   return {
@@ -213,9 +215,8 @@ async function speakWithOpenAI(text: string, options: TTSOptions = {}): Promise<
   let blobUrl = audioCache.get(cacheKey);
 
   if (!blobUrl) {
-    const response = await fetch('/api/ai/tts', {
+    const response = await apiFetch('/api/ai/tts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text: text.trim(),
         voice: options.voice ?? 'nova',
@@ -381,7 +382,7 @@ export async function whisperTranscribe(
     formData.append('timestamp_granularities', 'true');
   }
 
-  const response = await fetch('/api/ai/whisper-transcribe', {
+  const response = await apiFetch('/api/ai/whisper-transcribe', {
     method: 'POST',
     body: formData,
   });
@@ -435,9 +436,8 @@ export async function preloadTTS(
     if (audioCache.has(key)) return; // Already cached
 
     try {
-      const response = await fetch('/api/ai/tts', {
+      const response = await apiFetch('/api/ai/tts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: line.text.trim(),
           voice: opts.voice,

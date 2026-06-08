@@ -1,6 +1,7 @@
 // Advanced upload queue with rate limiting and batch processing
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { ProcessingOptions } from '@shared/photo-enhancement-contracts';
+import { apiFetch } from '@/lib/queryClient';
 
 type BatchProcessingOptions = ProcessingOptions;
 
@@ -190,15 +191,14 @@ export const useUploadQueue = (
         formData.append('userId', userId);
         if (projectId) formData.append('projectId', projectId);
 
-        // Upload with progress tracking
-        const response = await fetch('/api/photo-enhancement/start', {
+        // Upload with progress tracking. apiFetch attaches the correct
+        // Authorization Bearer header — previous code read localStorage with
+        // an empty key ('') and produced no token, causing 401s.
+        const response = await apiFetch('/api/photo-enhancement/start', {
           method: 'POST',
           body: formData,
           signal: controller.signal,
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem(', ')}`,
-        },
-      });
+        });
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);

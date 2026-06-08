@@ -15,7 +15,7 @@ import {
   Save, OpenInNew, CheckCircle, Warning, Edit, Image as ImageIcon,
   Storage, FolderSpecial, Receipt, Email, AccountBalanceWallet, Folder,
 } from '@mui/icons-material';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, apiFetch } from '@/lib/queryClient';
 import MyContributionsPanel from '@/components/photographer/MyContributionsPanel';
 import PushSettingsCard from '@/components/wedding/PushSettingsCard';
 import GoogleWorkspaceSessionBadge from '@/components/universal/GoogleWorkspaceSessionBadge';
@@ -130,10 +130,9 @@ export default function PhotographerSettings() {
     mutationFn: async (file) => {
       const form = new FormData();
       form.append('logo', file);
-      const res = await fetch('/api/branding/upload-logo', {
+      const res = await apiFetch('/api/branding/upload-logo', {
         method: 'POST',
         body: form,
-        credentials: 'include',
       });
       if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
       return res.json();

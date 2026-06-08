@@ -5,7 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { isKnownUnavailableApiEndpoint } from '@/lib/queryClient';
+import { isKnownUnavailableApiEndpoint, apiRequest } from '@/lib/queryClient';
 
 export interface FeatureAvailability {
   available: boolean;
@@ -37,13 +37,7 @@ export const useIntegrationFeatures = (): UseIntegrationFeaturesReturn => {
   // Fetch feature availability from backend
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['/api/integrations/features'],
-    queryFn: async () => {
-      const response = await fetch('/api/integrations/features');
-      if (!response.ok) {
-        throw new Error('Failed to fetch integration features');
-    }
-      return response.json();
-  },
+    queryFn: async () => apiRequest('/api/integrations/features'),
     enabled: featuresEndpointAvailable,
     refetchInterval: featuresEndpointAvailable ? 30000 : false,
     staleTime: 10000, // Consider data stale after 10 seconds

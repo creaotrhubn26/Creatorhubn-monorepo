@@ -163,8 +163,11 @@ export function setupPhotographerEquipmentRoutes(
       });
       res.json({ equipment: items });
     } catch (err) {
-      console.error("[photographer-equipment] list failed:", err);
-      res.status(500).json({ error: "list_failed" });
+      // Schema-drift på user_equipment (manglende nyere kolonner som battery_count,
+      // has_battery_grip, latest_firmware_version etc) skal ikke krasje utstyr-fanen.
+      // Returner tom liste istedet for 500.
+      console.warn("[photographer-equipment] list degraded:", (err as any)?.message || err);
+      res.json({ equipment: [] });
     }
   });
 

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 
 export type ContentType = 'social' | 'email_subject' | 'email_body' | 'announcement' | 'headline' | 'description';
 export type ToneType = 'professional' | 'casual' | 'friendly' | 'enthusiastic' | 'formal' | 'playful';
@@ -71,14 +72,10 @@ export function useAIContentSuggestions(): UseAIContentSuggestionsReturn {
   // Generate content mutation
   const generateMutation = useMutation({
     mutationFn: async (options: AIGenerateOptions) => {
-      const res = await fetch('/api/ai/generate-content', {
+      return await apiRequest('/api/ai/generate-content', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify(options)
-      });
-      
-      if (!res.ok) throw new Error('Failed to generate content');
-      return res.json() as Promise<{ suggestions: AISuggestion[] }>;
+        body: JSON.stringify(options),
+      }) as { suggestions: AISuggestion[] };
     },
     onSuccess: (data) => {
       setGeneratedSuggestions(data.suggestions);
@@ -88,14 +85,10 @@ export function useAIContentSuggestions(): UseAIContentSuggestionsReturn {
   // Improve content mutation
   const improveMutation = useMutation({
     mutationFn: async (options: AIImproveOptions) => {
-      const res = await fetch('/api/ai/improve-content', {
+      return await apiRequest('/api/ai/improve-content', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify(options)
-      });
-      
-      if (!res.ok) throw new Error('Failed to improve content');
-      return res.json() as Promise<{ suggestions: AISuggestion[] }>;
+        body: JSON.stringify(options),
+      }) as { suggestions: AISuggestion[] };
     },
     onSuccess: (data) => {
       setImprovedSuggestions(data.suggestions);
@@ -105,14 +98,10 @@ export function useAIContentSuggestions(): UseAIContentSuggestionsReturn {
   // Analyze content mutation
   const analyzeMutation = useMutation({
     mutationFn: async ({ content, contentType }: { content: string; contentType: ContentType }) => {
-      const res = await fetch('/api/ai/analyze-content', {
+      return await apiRequest('/api/ai/analyze-content', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify({ content, contentType })
-      });
-      
-      if (!res.ok) throw new Error('Failed to analyze content');
-      return res.json() as Promise<AIAnalysisResult>;
+        body: JSON.stringify({ content, contentType }),
+      }) as AIAnalysisResult;
     },
     onSuccess: (data) => {
       setAnalysis(data);

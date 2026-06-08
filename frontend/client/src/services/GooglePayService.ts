@@ -3,6 +3,8 @@
  * Integration with Google Pay API for payment processing
  */
 
+import { apiRequest } from '@/lib/queryClient';
+
 export interface PaymentIntent {
   id: string;
   amount: number;
@@ -413,26 +415,18 @@ export class GooglePayService {
     paymentIntent: PaymentIntent
   ): Promise<PaymentResult> {
     try {
-      const response = await fetch('/api/google-pay/process-payment', {
+      const result = await apiRequest('/api/google-pay/process-payment', {
         method: 'POST',
-        headers: {
-          'Content-Type' : 'application/json',
-        },
         body: JSON.stringify({
           paymentData,
           paymentIntent,
         }),
-      });
+      }) as PaymentResult;
 
-      if (!response.ok) {
-        throw new Error('Payment processing failed');
-      }
-
-      const result = await response.json();
       return {
         success: true,
-        transactionId: result.transactionId,
-        paymentData: result.paymentData,
+        transactionId: (result as any).transactionId,
+        paymentData: (result as any).paymentData,
       };
     } catch (error: any) {
       return {

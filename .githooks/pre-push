@@ -53,3 +53,35 @@ fi
 green "[pre-push] No rollup-incompatible dynamic imports."
 
 green "[pre-push] All checks passed."
+
+# ── Check 3: frontend tsc on changed files ───────────────────────────────
+# Catches identifier redeclarations + type errors before they reach CI.
+# Limited to changed files (since prior commit) so check stays fast.
+# Skip with: FAST_PUSH=1 git push
+if [ "${FAST_PUSH:-0}" != "1" ]; then
+  CHANGED_FRONTEND=$(git diff --name-only --diff-filter=ACMR origin/main...HEAD 2>/dev/null | grep -E "^frontend/client/src/.*\.(ts|tsx)$" | grep -v "/unused/" || true)
+  if [ -n "$CHANGED_FRONTEND" ]; then
+    NUM=$(echo "$CHANGED_FRONTEND" | wc -l | tr -d ' ')
+    yellow "[pre-push] tsc on $NUM changed frontend file(s)…"
+    cd frontend
+    # tsc --noEmit on the whole project but filter errors to changed files.
+    # Faster than per-file because tsc still resolves the whole project.
+    TSC_OUT=$(npx tsc --noEmit --skipLibCheck 2>&1 || true)
+    cd "$ROOT"
+    # Filter tsc output to only errors in our changed files
+    ERRORS=""
+    for f in $CHANGED_FRONTEND; do
+      # tsc paths in output are relative to frontend/, drop the prefix
+      REL=$(echo "$f" | sed 's|^frontend/||')
+      M=$(echo "$TSC_OUT" | grep -E "^$REL\(" || true)
+      if [ -n "$M" ]; then ERRORS="$ERRORS$M"$'\n'; fi
+    done
+    if [ -n "$ERRORS" ]; then
+      red "[pre-push] tsc errors in changed frontend files (build vil feile på CI):"
+      printf '%s' "$ERRORS" | sed 's/^/    /'
+      yellow "Fix lokalt, eller bruk FAST_PUSH=1 git push for å hoppe over."
+      exit 1
+    fi
+    green "[pre-push] tsc clean on changed frontend files."
+  fi
+fi

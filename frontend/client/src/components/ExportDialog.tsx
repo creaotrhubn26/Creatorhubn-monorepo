@@ -35,6 +35,7 @@ import {
   Movie,
 } from '@mui/icons-material';
 import type { BeatClip, Track, StoryArc } from '../services/storyArcDataIntegration';
+import { apiRequest } from '@/lib/queryClient';
 // DaVinci Resolve export functionality
 interface ResolveExportOptions {
   projectName: string;
@@ -111,9 +112,9 @@ const DaVinciResolveExportService = {
       
       localStorage.setItem(`davinci_export_${exportId}`, JSON.stringify(exportData));
       // Mirror to server KV
-      fetch('/api/user/kv', {
-        method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ key: `davinci_export_${exportId}`, value: exportData })
+      apiRequest('/api/user/kv', {
+        method: 'POST',
+        body: JSON.stringify({ key: `davinci_export_${exportId}`, value: exportData }),
       }).catch(() => {});
       
       return {
@@ -397,8 +398,9 @@ const DaVinciResolveExportService = {
       // Server-first
       let raw: any = null;
       try {
-        const r = await fetch(`/api/user/kv/${encodeURIComponent(`davinci_export_${exportId}`)}`, { credentials: 'include' });
-        const j = r.ok ? await r.json().catch(() => null) : null;
+        const j = await apiRequest(
+          `/api/user/kv/${encodeURIComponent(`davinci_export_${exportId}`)}`,
+        ).catch(() => null);
         raw = j && typeof j === 'object' && 'value' in j ? j.value : j;
       } catch {}
       const exportData = raw || localStorage.getItem(`davinci_export_${exportId}`);

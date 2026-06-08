@@ -397,8 +397,13 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
       });
       res.json({ galleries: rows });
     } catch (error) {
-      console.error("[showcase-galleries-mine] feilet", error);
-      res.status(500).json({ error: "kunne_ikke_liste_galleries" });
+      // Manglende photographer_client_galleries-tabell skal ikke krasje
+      // showcase-listen. Returner tom shape istedet for 500.
+      console.warn(
+        "[showcase-galleries-mine] degraded:",
+        (error as any)?.message || error,
+      );
+      res.json({ galleries: [] });
     }
   });
 
@@ -700,8 +705,23 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
         },
       });
     } catch (error) {
-      console.error("[engagement-feed] feilet", error);
-      res.status(500).json({ error: "kunne_ikke_hente_engasjement" });
+      // Schema-drift på noen av de 4 union-tabellene (gallery_download_audit,
+      // client_image_comments, client_image_selections, analytics_events) skal
+      // ikke krasje engagement-feeden. Returner tom shape istedet for 500.
+      console.warn(
+        "[engagement-feed] degraded:",
+        (error as any)?.message || error,
+      );
+      res.json({
+        events: [],
+        summary: {
+          views7d: 0,
+          downloads7d: 0,
+          comments7d: 0,
+          selections7d: 0,
+          activeClients7d: 0,
+        },
+      });
     }
   });
 
@@ -858,8 +878,13 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
         result.rows.map((row: Record<string, unknown>) => mapShowcaseItemRow(row)),
       );
     } catch (error) {
-      console.error("Error loading showcase admin items:", error);
-      res.status(500).json({ error: "Kunne ikke hente showcases" });
+      // Manglende showcase_items eller showcase_analytics-tabell skal ikke
+      // krasje admin-listen. Returner tom liste i stedet for 500.
+      console.warn(
+        "[showcase-admin-items] list degraded:",
+        (error as any)?.message || error,
+      );
+      res.json([]);
     }
   });
 
@@ -978,8 +1003,13 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
 
       res.json({ portfolios });
     } catch (error) {
-      console.error("Error loading showcase portfolios:", error);
-      res.status(500).json({ error: "Kunne ikke hente showcase-portfolios" });
+      // Manglende showcase_collections-tabell skal ikke krasje
+      // portfolio-velgeren. Returner tom liste i stedet for 500.
+      console.warn(
+        "[showcase-portfolios] list degraded:",
+        (error as any)?.message || error,
+      );
+      res.json({ portfolios: [] });
     }
   });
 

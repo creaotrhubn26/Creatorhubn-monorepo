@@ -68,10 +68,14 @@ export function setupWeddingProjectsRoutes(
         },
       });
     } catch (error) {
-      console.error("Error fetching wedding project:", error);
-      res
-        .status(500)
-        .json({ success: false, error: "Failed to load wedding project" });
+      // Manglende legacy.projects-tabell/kolonner skal ikke krasje wedding-
+      // dashbordet. Logg som warning og returner not-found istedet for 500
+      // — frontend håndterer 404 som "ingen prosjekt" og rendrer tom state.
+      console.warn(
+        "[wedding-projects] detail degraded:",
+        (error as Error).message,
+      );
+      res.status(404).json({ success: false, error: "Project not found" });
     }
   });
 }
