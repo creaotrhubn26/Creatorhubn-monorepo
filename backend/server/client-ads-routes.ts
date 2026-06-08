@@ -30,6 +30,11 @@
 import type express from "express";
 import type { Pool } from "pg";
 import { discoverClientSite, type DiscoveryResult, type SuggestedAction } from "./client-ads-discovery-service.js";
+import {
+  buildGoogleAdsOauthStart,
+  handleGoogleAdsOauthCallback,
+  createConversionAction,
+} from "./client-ads-google-oauth.js";
 
 interface SessionLike {
   userId: string;
@@ -300,6 +305,165 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     } catch (err) {
       console.error('[ads-request-approval] failed', err);
       return res.status(500).json({ error: 'Klarte ikke å sende til godkjenning' });
+    }
+  });
+
+  // ── B2: GET /api/admin-room/agent/ads/oauth/google/start ─────────
+  // Returner OAuth-URL som producer redirecter til for å koble Google Ads.
+  app.get("/api/admin-room/agent/ads/oauth/google/start", (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? "creatorhub-backend-rtbl.onrender.com"}`).replace(/\/+$/, "");
+    const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/google/callback`;
+    const configId = typeof req.query.configId === "string" ? req.query.configId : undefined;
+
+    const r = buildGoogleAdsOauthStart({
+      userId: session.userId,
+      configId,
+      redirectUri,
+    });
+    if ("error" in r) return res.status(503).json({ error: r.error });
+    return res.json({ authUrl: r.authUrl });
+  });
+
+  // ── B2: GET /api/admin-room/agent/ads/oauth/google/callback ──────
+  app.get("/api/admin-room/agent/ads/oauth/google/callback", async (req, res) => {
+    const code = typeof req.query.code === "string" ? req.query.code : null;
+    const state = typeof req.query.state === "string" ? req.query.state : null;
+    const errorParam = typeof req.query.error === "string" ? req.query.error : null;
+
+    if (errorParam) {
+      return res.redirect(`/role-room/agent/ads?oauth_error=${encodeURIComponent(errorParam)}`);
+    }
+    if (!code || !state) return res.status(400).send("Missing code/state");
+
+    const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? "creatorhub-backend-rtbl.onrender.com"}`).replace(/\/+$/, "");
+    const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/google/callback`;
+
+    const result = await handleGoogleAdsOauthCallback(pool, { code, state, redirectUri });
+    if (!result.success) {
+      return res.redirect(`/role-room/agent/ads?oauth_error=${encodeURIComponent(result.error ?? "unknown")}`);
+    }
+    const cfgParam = result.configId ? `&config=${encodeURIComponent(result.configId)}` : "";
+    return res.redirect(`/role-room/agent/ads?oauth_success=1${cfgParam}`);
+  });
+
+  // ── B3: POST /api/admin-room/agent/ads/configs/:id/sync-to-google ─
+  // Auto-opprett alle godkjente actions i klientens Google Ads-konto
+  // og oppdater client_ads_actions med AW-ID + label.
+  app.post("/api/admin-room/agent/ads/configs/:id/sync-to-google", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, google_ads_customer_id, approval_status, client_name
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.approval_status !== "approved") {
+        return res.status(412).json({ error: "Konfig må være godkjent av klient før sync" });
+      }
+      if (!cfg.google_ads_customer_id) {
+        return res.status(412).json({
+          error: "Klientens Google Ads customer-ID mangler. Spør klienten om deres 10-sifrede Google Ads-konto-ID.",
+        });
+      }
+
+      const actionsR = await pool.query(
+        `SELECT id::text, action_name, display_name, goal_category, default_value, currency
+           FROM client_ads_actions
+          WHERE config_id = $1::uuid AND is_active = TRUE AND google_ads_label IS NULL
+          ORDER BY created_at ASC`,
+        [req.params.id],
+      );
+
+      const created: Array<{ actionId: string; awLabel: string | null; awId: string | null }> = [];
+      const failed: Array<{ actionId: string; error: string }> = [];
+
+      for (const a of actionsR.rows) {
+        const r = await createConversionAction(pool, {
+          producerUserId: session.userId,
+          clientCustomerId: cfg.google_ads_customer_id,
+          action: {
+            actionName: a.action_name,
+            displayName: a.display_name,
+            goalCategory: a.goal_category,
+            defaultValue: Number(a.default_value ?? 0),
+            currency: a.currency || "NOK",
+          },
+        });
+        if (r.ok) {
+          await pool.query(
+            `UPDATE client_ads_actions
+               SET google_ads_action_id = $1::bigint,
+                   google_ads_label = $2,
+                   google_ads_created_at = now(),
+                   updated_at = now()
+              WHERE id = $3::uuid`,
+            [r.result.conversionActionId, r.result.awConversionLabel, a.id],
+          );
+          created.push({
+            actionId: a.id,
+            awLabel: r.result.awConversionLabel ?? null,
+            awId: r.result.awConversionId ?? null,
+          });
+        } else {
+          failed.push({ actionId: a.id, error: r.error });
+        }
+      }
+
+      // Sett config sin AW-ID hvis vi fikk en (samme for alle actions i kontoen)
+      const firstAwId = created.find((c) => c.awId)?.awId;
+      if (firstAwId) {
+        await pool.query(
+          `UPDATE client_ads_configs
+             SET google_ads_conversion_id = $1,
+                 updated_at = now()
+            WHERE id = $2::uuid`,
+          [firstAwId, req.params.id],
+        );
+      }
+
+      return res.json({
+        success: failed.length === 0,
+        created: created.length,
+        failed: failed.length,
+        details: { created, failed },
+      });
+    } catch (err) {
+      console.error("[sync-to-google] failed", err);
+      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+    }
+  });
+
+  // ── PATCH /api/admin-room/agent/ads/configs/:id — set customer-ID ─
+  // Producer registrerer klientens Google Ads customer-ID (10 sifre).
+  app.patch("/api/admin-room/agent/ads/configs/:id", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { google_ads_customer_id?: string };
+    const customerId = body.google_ads_customer_id?.replace(/\D/g, "").slice(0, 10) || null;
+    if (!customerId || customerId.length !== 10) {
+      return res.status(400).json({ error: "google_ads_customer_id må være 10 sifre" });
+    }
+    try {
+      const upd = await pool.query(
+        `UPDATE client_ads_configs
+           SET google_ads_customer_id = $1,
+               updated_at = now()
+          WHERE id = $2::uuid AND content_producer_user_id = $3
+         RETURNING id::text`,
+        [customerId, req.params.id, session.userId],
+      );
+      if (!upd.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      return res.json({ success: true });
+    } catch (err) {
+      return res.status(500).json({ error: "Patch feilet" });
     }
   });
 

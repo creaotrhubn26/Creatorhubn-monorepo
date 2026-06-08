@@ -148,6 +148,101 @@ export default function AgentAdsPanel({
   const [managementFeePct, setManagementFeePct] = useState<number>(20);
   const [editingFee, setEditingFee] = useState(false);
 
+  // B2 OAuth + B3 sync til Google Ads
+  const [oauthBanner, setOauthBanner] = useState<{ kind: 'success' | 'error'; msg: string } | null>(null);
+  const [customerIdInput, setCustomerIdInput] = useState('');
+  const [savingCustomerId, setSavingCustomerId] = useState(false);
+  const [customerIdSaved, setCustomerIdSaved] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ created: number; failed: number; details?: any } | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  // Parse OAuth-callback-resultat fra URL hvis vi nettopp kom tilbake
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const success = url.searchParams.get('oauth_success');
+    const errParam = url.searchParams.get('oauth_error');
+    if (success) {
+      setOauthBanner({ kind: 'success', msg: 'Google Ads koblet — du kan nå sette klientens customer-ID og synke actions.' });
+      const cfg = url.searchParams.get('config');
+      if (cfg) setSavedConfigId(cfg);
+      // Rydd querystring så banneret ikke vises igjen ved refresh
+      url.searchParams.delete('oauth_success');
+      url.searchParams.delete('config');
+      window.history.replaceState({}, '', url.toString());
+    } else if (errParam) {
+      setOauthBanner({ kind: 'error', msg: `OAuth feilet: ${errParam}` });
+      url.searchParams.delete('oauth_error');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
+  const startGoogleOAuth = async () => {
+    if (!savedConfigId) return;
+    try {
+      const r = await fetch(`/api/admin-room/agent/ads/oauth/google/start?configId=${encodeURIComponent(savedConfigId)}`, {
+        credentials: 'include',
+      });
+      const data = await r.json();
+      if (!r.ok || !data.authUrl) throw new Error(data.error || 'Kunne ikke starte OAuth');
+      window.location.href = data.authUrl;
+    } catch (err) {
+      setOauthBanner({ kind: 'error', msg: err instanceof Error ? err.message : 'OAuth-start feilet' });
+    }
+  };
+
+  const saveCustomerId = async () => {
+    if (!savedConfigId) return;
+    const raw = customerIdInput.replace(/\D/g, '').slice(0, 10);
+    if (raw.length !== 10) {
+      setOauthBanner({ kind: 'error', msg: 'Customer-ID må være 10 sifre (uten bindestreker).' });
+      return;
+    }
+    setSavingCustomerId(true);
+    try {
+      const r = await fetch(`/api/admin-room/agent/ads/configs/${savedConfigId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ google_ads_customer_id: raw }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      setCustomerIdSaved(raw);
+      setOauthBanner({ kind: 'success', msg: `Customer-ID ${raw.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3')} lagret.` });
+    } catch (err) {
+      setOauthBanner({ kind: 'error', msg: err instanceof Error ? err.message : 'Kunne ikke lagre customer-ID' });
+    } finally {
+      setSavingCustomerId(false);
+    }
+  };
+
+  const runSyncToGoogle = async () => {
+    if (!savedConfigId) return;
+    setSyncing(true);
+    setSyncError(null);
+    setSyncResult(null);
+    try {
+      const r = await fetch(`/api/admin-room/agent/ads/configs/${savedConfigId}/sync-to-google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      setSyncResult({
+        created: data.created?.length ?? 0,
+        failed: data.failed?.length ?? 0,
+        details: data,
+      });
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : 'Sync feilet');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const sendForApproval = async () => {
     if (!savedConfigId) return;
     setSendingForApproval(true);
@@ -645,6 +740,138 @@ export default function AgentAdsPanel({
               </CardContent>
             </Card>
           )}
+
+          {/* B2 + B3: Aktiver i klientens Google Ads-konto */}
+          <Card sx={{ bgcolor: palette.bgCard, border: `1px solid ${palette.borderStrong}`, color: palette.textPrimary }}>
+            <CardContent>
+              <Typography sx={{ fontWeight: 800, fontSize: '0.96rem', mb: 0.6 }}>
+                Aktiver i klientens Google Ads-konto
+              </Typography>
+              <Typography sx={{ color: palette.textSecondary, fontSize: '0.84rem', mb: 1.6 }}>
+                Når klient har godkjent: koble MCC-tilgang, sett klientens 10-sifrede
+                customer-ID, og synk alle godkjente actions til Google Ads via
+                <code style={{ color: palette.accent, marginLeft: 4 }}>ConversionActionService</code>.
+              </Typography>
+
+              {oauthBanner ? (
+                <Alert
+                  severity={oauthBanner.kind}
+                  onClose={() => setOauthBanner(null)}
+                  sx={{ mb: 1.4 }}
+                >
+                  {oauthBanner.msg}
+                </Alert>
+              ) : null}
+
+              {/* Steg 1: OAuth */}
+              <Box sx={{ mb: 1.6 }}>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
+                  Steg 1 — Koble Google Ads (MCC)
+                </Typography>
+                <Button
+                  onClick={startGoogleOAuth}
+                  startIcon={<OpenInNewIcon fontSize="small" />}
+                  sx={{
+                    border: `1px solid ${palette.borderStrong}`,
+                    color: palette.accent,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                  }}
+                >
+                  Koble Google Ads
+                </Button>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', mt: 0.6 }}>
+                  Du blir sendt til Google for å gi tilgang. MCC-tilgang lagres på din
+                  bruker — alle dine klient-configs kan bruke samme tilkobling.
+                </Typography>
+              </Box>
+
+              <Divider sx={{ borderColor: palette.borderSubtle, my: 1.4 }} />
+
+              {/* Steg 2: Customer-ID */}
+              <Box sx={{ mb: 1.6 }}>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
+                  Steg 2 — Klientens Google Ads customer-ID (10 sifre)
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <TextField
+                    size="small"
+                    placeholder="123-456-7890"
+                    value={customerIdInput}
+                    onChange={(e) => setCustomerIdInput(e.target.value)}
+                    InputProps={{ sx: { color: palette.textPrimary, fontFamily: 'monospace' } }}
+                    sx={{ minWidth: 220 }}
+                  />
+                  <Button
+                    onClick={saveCustomerId}
+                    disabled={savingCustomerId}
+                    startIcon={savingCustomerId ? <CircularProgress size={14} /> : <SaveOutlinedIcon fontSize="small" />}
+                    sx={{
+                      background: palette.accentGradient,
+                      color: '#fff',
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                    }}
+                  >
+                    Lagre
+                  </Button>
+                  {customerIdSaved ? (
+                    <Chip
+                      label={`Lagret: ${customerIdSaved.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3')}`}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399', fontFamily: 'monospace' }}
+                    />
+                  ) : null}
+                </Stack>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', mt: 0.6 }}>
+                  Spør klienten — finnes øverst til høyre i Google Ads UI. Ti sifre,
+                  med eller uten bindestreker.
+                </Typography>
+              </Box>
+
+              <Divider sx={{ borderColor: palette.borderSubtle, my: 1.4 }} />
+
+              {/* Steg 3: Sync */}
+              <Box>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
+                  Steg 3 — Synk actions til Google Ads
+                </Typography>
+                <Button
+                  onClick={runSyncToGoogle}
+                  disabled={syncing}
+                  startIcon={syncing ? <CircularProgress size={14} /> : <AutoAwesomeIcon fontSize="small" />}
+                  sx={{
+                    background: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)',
+                    color: '#0a0a1a',
+                    textTransform: 'none',
+                    fontWeight: 800,
+                  }}
+                >
+                  {syncing ? 'Synker…' : 'Synk til Google Ads'}
+                </Button>
+                {syncResult ? (
+                  <Alert
+                    severity={syncResult.failed > 0 ? 'warning' : 'success'}
+                    sx={{ mt: 1.2 }}
+                  >
+                    Opprettet {syncResult.created} conversion-actions
+                    {syncResult.failed > 0 ? ` — ${syncResult.failed} feilet (sjekk customer-ID + MCC-tilgang)` : ' i Google Ads. Tag-snippet for installasjon vises i deployment-guide nedenfor.'}
+                  </Alert>
+                ) : null}
+                {syncError ? (
+                  <Alert severity="error" sx={{ mt: 1.2 }} onClose={() => setSyncError(null)}>
+                    {syncError}
+                  </Alert>
+                ) : null}
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', mt: 0.6 }}>
+                  Kjøres bare når klient har godkjent. Backend sjekker
+                  <code style={{ color: palette.accent, margin: '0 4px' }}>approval_status = 'approved'</code>
+                  før actions sendes til Google.
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
 
           <DeploymentGuide
             clientName={clientName || 'Klienten'}
