@@ -99,9 +99,9 @@ export const StorageUsageBanner: React.FC<Props> = ({
         // apiRequest vedlegger session-token automatisk via Authorization-
         // header. Backend leser ikke cookies for auth, så 'credentials:
         // include' hadde ingen effekt + ga 401-spam i konsollen.
-        let data: any;
+        let data: StorageStatusResponse;
         try {
-          data = await apiRequest('/api/storage/status');
+          data = (await apiRequest('/api/storage/status')) as StorageStatusResponse;
         } catch (err: any) {
           const status = typeof err?.status === 'number' ? err.status
             : /401/.test(String(err?.message)) ? 401 : 0;
@@ -112,12 +112,6 @@ export const StorageUsageBanner: React.FC<Props> = ({
           }
           throw err;
         }
-        // For å beholde resten av kode-stien (som forventer res.json()), pakk inn:
-        const res = { ok: true, json: async () => data, status: 200 } as any;
-        if (!res.ok) {
-          throw new Error(`status ${res.status}`);
-        }
-        const data = (await res.json()) as StorageStatusResponse;
         if (!cancelled) {
           setStatus(data);
           setError(null);
