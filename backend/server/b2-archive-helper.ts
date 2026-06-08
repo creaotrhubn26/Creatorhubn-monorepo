@@ -23,8 +23,13 @@
  */
 
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const B2_REGION = process.env.B2_REGION || "us-west-001";
+// NB: the-role-room-prod-bøtta ligger i eu-central-003 (verifisert via B2
+// b2_authorize_account 2026-06-08). Defaulten var feil (us-west-001) → all
+// role-room-B2-lesing/-skriving feilet stille i prod. B2_REGION er nå satt på
+// Render, men defaulten her må også være riktig så koden er korrekt uten env.
+const B2_REGION = process.env.B2_REGION || "eu-central-003";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
 
 function getRoleRoomB2Client(): { client: S3Client; bucket: string } | null {
@@ -118,6 +123,37 @@ export async function getFromRoleRoomB2(
     if (!bytes) return null;
     return { body: Buffer.from(bytes), contentType: out.ContentType };
   } catch {
+    return null;
+  }
+}
+
+/**
+ * Lag en tidsbegrenset (presigned) GET-URL for et objekt i Role Room-bøtta.
+ * Brukes til gated nedlasting av Post Agent-appen: backend sjekker entitlement,
+ * og redirecter så til denne URL-en — bøtta forblir privat, men brukeren får
+ * laste direkte fra B2 (ingen båndbredde gjennom Node).
+ *
+ * `downloadFilename` setter Content-Disposition slik at fila lagres med riktig
+ * navn uansett key-struktur. Returnerer null hvis B2 ikke er konfigurert.
+ */
+export async function presignRoleRoomB2Download(
+  key: string,
+  downloadFilename?: string,
+  expiresInSeconds = 300,
+): Promise<string | null> {
+  const config = getRoleRoomB2Client();
+  if (!config) return null;
+  try {
+    const command = new GetObjectCommand({
+      Bucket: config.bucket,
+      Key: key,
+      ...(downloadFilename
+        ? { ResponseContentDisposition: `attachment; filename="${downloadFilename}"` }
+        : {}),
+    });
+    return await getSignedUrl(config.client, command, { expiresIn: expiresInSeconds });
+  } catch (err) {
+    console.warn("[b2-archive] presign failed", { key, err: (err as Error).message });
     return null;
   }
 }

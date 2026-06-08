@@ -24,6 +24,12 @@
 
 import type { Request, Response } from 'express';
 import type { Pool } from 'pg';
+import {
+  modulesForPriceId,
+  grantModule,
+  revokeModulesForSubscription,
+  isPostAgentModule,
+} from './post-agent-modules.js';
 
 interface PostAgentWebhookDeps {
   pool: Pool;
@@ -133,6 +139,39 @@ export function handlePostAgentStripeWebhook({ pool }: PostAgentWebhookDeps) {
             client_reference_id?: string;
             metadata?: Record<string, string>;
           };
+          // À la carte: én modul kjøpt via /modules/checkout.
+          if (sess.mode === 'subscription' && sess.metadata?.product === 'post_agent_module') {
+            const userId = sess.client_reference_id || sess.metadata?.role_room_user_id || null;
+            const customerId = typeof sess.customer === 'string' ? sess.customer : null;
+            const subscriptionId = typeof sess.subscription === 'string' ? sess.subscription : null;
+            const moduleKey = sess.metadata?.module;
+            if (!userId || !subscriptionId || !isPostAgentModule(moduleKey)) {
+              console.warn('[post-agent-webhook] module-checkout missing fields:', {
+                hasUserId: !!userId, hasSub: !!subscriptionId, module: moduleKey,
+              });
+              break;
+            }
+            if (customerId) {
+              try {
+                await pool.query(
+                  `UPDATE users SET stripe_customer_id = $1 WHERE id = $2 AND (stripe_customer_id IS NULL OR stripe_customer_id = '')`,
+                  [customerId, userId],
+                );
+                await pool.query(
+                  `INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_subscription_id, status, start_date)
+                   VALUES ($1, $2, $3, 'active', NOW())
+                   ON CONFLICT (stripe_subscription_id) DO UPDATE SET status = 'active'`,
+                  [userId, customerId, subscriptionId],
+                );
+              } catch (e) {
+                console.warn('[post-agent-webhook] module-checkout customer/sub mapping failed:', (e as Error).message);
+              }
+            }
+            await grantModule(pool, userId, moduleKey, { subscriptionId, source: 'stripe', notes: `Checkout ${sess.id}` });
+            console.log(`[post-agent-webhook] module granted user=${userId} module=${moduleKey} sub=${subscriptionId}`);
+            break;
+          }
+
           if (sess.mode !== 'subscription' || sess.metadata?.product !== 'post_agent_standalone') {
             // Other checkout flows are handled elsewhere — no-op for us.
             break;
@@ -195,6 +234,27 @@ export function handlePostAgentStripeWebhook({ pool }: PostAgentWebhookDeps) {
             await revokePostAgentEntitlement(pool, userId, `Subscription status=${sub.status}`);
             console.log(`[post-agent-webhook] revoked (sub ${sub.status}) user=${userId} sub=${sub.id}`);
           }
+
+          // À la carte-moduler: utled hvilke moduler abonnementets line-items
+          // gir, og grant/revoke deretter. (Bundle-price → alle moduler.)
+          const subModules = new Set<string>();
+          for (const it of sub.items?.data ?? []) {
+            for (const mod of modulesForPriceId(it?.price?.id)) subModules.add(mod);
+          }
+          if (subModules.size > 0) {
+            const isLive = sub.status === 'active' || sub.status === 'trialing';
+            if (isLive) {
+              for (const mod of subModules) {
+                if (isPostAgentModule(mod)) {
+                  await grantModule(pool, userId, mod, { subscriptionId: sub.id, priceId: undefined, source: 'stripe' });
+                }
+              }
+              console.log(`[post-agent-webhook] modules granted user=${userId} sub=${sub.id} modules=${[...subModules].join(',')}`);
+            } else {
+              await revokeModulesForSubscription(pool, sub.id, `Subscription status=${sub.status}`);
+              console.log(`[post-agent-webhook] modules revoked user=${userId} sub=${sub.id} status=${sub.status}`);
+            }
+          }
           break;
         }
         case 'customer.subscription.deleted': {
@@ -205,6 +265,9 @@ export function handlePostAgentStripeWebhook({ pool }: PostAgentWebhookDeps) {
             await revokePostAgentEntitlement(pool, userId, `Subscription canceled (${sub.id})`);
             console.log(`[post-agent-webhook] revoked (sub canceled) user=${userId} sub=${sub.id}`);
           }
+          // Trekk evt. à la carte-moduler knyttet til abonnementet (uavhengig
+          // av om vi fant userId — matcher på subscription_id).
+          await revokeModulesForSubscription(pool, sub.id, `Subscription canceled (${sub.id})`);
           break;
         }
         case 'invoice.payment_failed': {
