@@ -34,6 +34,7 @@ import CodeIcon from '@mui/icons-material/Code';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import ClientGoogleSuitePanel from './ClientGoogleSuitePanel';
 import ClientLinkedinSuitePanel from './ClientLinkedinSuitePanel';
+import ClientMetaSuitePanel from './ClientMetaSuitePanel';
 import ClientAiPromptsPanel from './ClientAiPromptsPanel';
 import ClientInsightsPanel from './ClientInsightsPanel';
 
@@ -886,6 +887,12 @@ export default function AgentAdsPanel({
 
           {/* R1 — LinkedIn (Insight Tag + Conversion Rules + CAPI gated) */}
           <ClientLinkedinSuitePanel
+            configId={savedConfigId}
+            clientName={clientName || 'Klienten'}
+          />
+
+          {/* R2 — Meta (Pixel + Custom Conversions + CAPI gated på App Review) */}
+          <ClientMetaSuitePanel
             configId={savedConfigId}
             clientName={clientName || 'Klienten'}
           />

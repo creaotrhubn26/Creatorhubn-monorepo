@@ -28,7 +28,11 @@ export type Scenario =
   | "install_linkedin_insight"
   | "linkedin_conversion_events"
   | "install_linkedin_capi"
-  | "social_profile_bios";
+  | "social_profile_bios"
+  | "install_meta_pixel"
+  | "meta_conversion_events"
+  | "install_meta_capi"
+  | "fix_product_schema";
 
 export interface PromptContext {
   clientName: string;
@@ -38,6 +42,8 @@ export interface PromptContext {
   gtmContainerId?: string | null;
   /** LinkedIn Insight Tag partner-ID (numerisk). */
   linkedinPartnerId?: number | string | null;
+  /** Meta Pixel ID. */
+  metaPixelId?: string | null;
   actions?: Array<{
     actionName: string;
     displayName: string;
@@ -48,6 +54,9 @@ export interface PromptContext {
     urlPattern?: string | null;
     /** LinkedIn conversion-ID etter sync — for event-prompter. */
     linkedinConversionId?: number | string | null;
+    /** Meta event-navn etter sync. */
+    metaEventName?: string | null;
+    metaCustomConversionId?: string | null;
   }>;
   businessType?: string;
   businessSummary?: string;
@@ -1307,6 +1316,391 @@ Backend-en (server-side, ikke klient) sender deretter SHA256-hashed payload til 
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Meta — Pixel, conversion-events, CAPI server-side
+// ─────────────────────────────────────────────────────────────────────
+
+function promptInstallMetaPixel(ctx: PromptContext): GeneratedPrompt {
+  if (!ctx.metaPixelId) {
+    return {
+      scenario: "install_meta_pixel",
+      title: "Installer Meta Pixel (Facebook + Instagram)",
+      prompt: "",
+      verifyAfter: "",
+      applicable: false,
+      notApplicableReason: "Meta Pixel er ikke opprettet ennå. Gå til Meta-seksjonen og klikk 'Opprett Pixel' først.",
+    };
+  }
+  return {
+    scenario: "install_meta_pixel",
+    title: "Installer Meta Pixel (Facebook + Instagram)",
+    applicable: true,
+    prompt: `${targetIntro(ctx.targetAgent)}
+
+\`\`\`html
+<!-- Meta Pixel — ${ctx.clientName} -->
+<script>
+  !function(f,b,e,v,n,t,s)
+  {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+  n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];
+  s.parentNode.insertBefore(t,s)}(window, document,'script',
+  'https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', '${ctx.metaPixelId}');
+  fbq('track', 'PageView');
+</script>
+<noscript>
+  <img height="1" width="1" style="display:none"
+       src="https://www.facebook.com/tr?id=${ctx.metaPixelId}&ev=PageView&noscript=1" />
+</noscript>
+\`\`\`
+
+**Meta + Consent Mode (Restricted Data Use):** Meta krever LDU (Limited Data Use) for California-besøkende fra 2023 og bredere GDPR-håndtering for EU. Legg dette FØR \`fbq('init', ...)\`:
+
+\`\`\`javascript
+// Default: ikke send personlig data uten samtykke
+fbq('consent', 'revoke');
+
+// Når bruker aksepterer cookies:
+function acceptMarketingConsent() {
+  fbq('consent', 'grant');
+}
+\`\`\`
+
+**Meta + GTM (anbefalt for klient med GTM):** Bruk Facebook Pixel Custom HTML-tag i GTM med firing-trigger basert på consent. Lett å aktivere/deaktivere uten kode-deploy.
+
+**Meta + SPA (React/Vue/Svelte):** Etter route-endring, kall \`fbq('track', 'PageView')\` på nytt for å logge nye sidevisninger.`,
+    verifyAfter: `${targetVerifyBase(ctx.targetAgent)} Søk etter "${ctx.metaPixelId}" — du skal finne det i scriptet. Installer Meta Pixel Helper (Chrome extension) og besøk siten — du skal se én grønn "PageView"-event per pageload. Gå deretter til Events Manager → ${ctx.metaPixelId} → Test Events for live diagnose.`,
+  };
+}
+
+function promptMetaConversionEvents(ctx: PromptContext): GeneratedPrompt {
+  if (!ctx.metaPixelId) {
+    return {
+      scenario: "meta_conversion_events",
+      title: "Fyr Meta conversion-events",
+      prompt: "",
+      verifyAfter: "",
+      applicable: false,
+      notApplicableReason: "Meta Pixel mangler. Installer pixel først.",
+    };
+  }
+  const syncedActions = (ctx.actions ?? []).filter((a) => a.metaEventName);
+  if (syncedActions.length === 0) {
+    return {
+      scenario: "meta_conversion_events",
+      title: "Fyr Meta conversion-events",
+      prompt: "",
+      verifyAfter: "",
+      applicable: false,
+      notApplicableReason: "Ingen actions har Meta event-navn ennå. Kjør 'Sync til Meta' først.",
+    };
+  }
+
+  const eventBlocks = syncedActions.map((a) => {
+    const eventName = a.metaEventName!;
+    const valueParam = a.defaultValue > 0
+      ? `, { value: ${a.defaultValue}, currency: '${a.currency}' }`
+      : "";
+
+    if (a.triggerType === "form_submit") {
+      return `
+**${a.displayName}** (form-submit) — Meta-event \`${eventName}\`:
+
+\`\`\`javascript
+document.querySelector('form[data-track="${a.actionName}"]')?.addEventListener('submit', function() {
+  if (typeof window.fbq === 'function') {
+    fbq('track', '${eventName}'${valueParam});
+  }
+});
+\`\`\``;
+    }
+    if (a.triggerType === "click") {
+      return `
+**${a.displayName}** (klikk) — Meta-event \`${eventName}\`:
+
+\`\`\`javascript
+document.querySelector('[data-track="${a.actionName}"]')?.addEventListener('click', function() {
+  window.fbq && fbq('track', '${eventName}'${valueParam});
+});
+\`\`\``;
+    }
+    if (a.triggerType === "page_load" && a.urlPattern) {
+      return `
+**${a.displayName}** (på ${a.urlPattern}) — Meta-event \`${eventName}\`:
+
+\`\`\`javascript
+// Plasser på den konkrete siden (f.eks. takk-side)
+window.fbq && fbq('track', '${eventName}'${valueParam});
+\`\`\``;
+    }
+    return `
+**${a.displayName}** (custom) — Meta-event \`${eventName}\`:
+
+\`\`\`javascript
+window.fbq && fbq('track', '${eventName}'${valueParam});
+\`\`\``;
+  });
+
+  return {
+    scenario: "meta_conversion_events",
+    title: "Fyr Meta conversion-events",
+    applicable: true,
+    prompt: `Vi har opprettet ${syncedActions.length} custom conversion${syncedActions.length === 1 ? "" : "s"} i Meta + mappet til standard event-navn. Klient-koden må fyre dem riktig.
+
+**Forutsetning**: \`fbq()\` må være loadet (Pixel-snippet installert).
+
+${eventBlocks.join("\n")}
+
+**Meta standard events vs. custom events**: Meta belønner bruk av deres standard event-navn (Lead, Purchase, AddToCart, etc.) for bedre ad-optimalisering. Vi har auto-mappet \`goal_category\` til riktig standard event. For \`other\`-actions sender vi som CustomEvent — fungerer, men gir svakere AI-optimization.
+
+**Bonus — event-deduplisering (CAPI):** Hvis CAPI brukes parallelt, send samme \`eventID\` fra både pixel og server slik at Meta deduplicates. Eksempel:
+
+\`\`\`javascript
+const eventID = crypto.randomUUID();
+fbq('track', '${syncedActions[0]?.metaEventName ?? "Lead"}', {}, { eventID });
+// Send samme eventID til din backend → CAPI
+\`\`\``,
+    verifyAfter: `Bruk Meta Events Manager → Pixel ${ctx.metaPixelId} → Test Events. Send en test-konvertering og se at eventet dukker opp innen 60 sek. Sjekk så Ads Manager → din kampanje → Performance & clicks for at "Custom Conversions" rapporterer.`,
+  };
+}
+
+function promptInstallMetaCapi(ctx: PromptContext): GeneratedPrompt {
+  return {
+    scenario: "install_meta_capi",
+    title: "Meta Conversions API (server-side) — venter på App Review",
+    applicable: true,
+    prompt: `Meta Conversions API (CAPI) lar deg sende events server-side. **Kritisk** når:
+- iOS 14.5+ ATT-prompts blokkerer pixel (50%+ av iOS-brukere avslår tracking)
+- Brave/Firefox/Safari blokkerer fbevents.js
+- Klient har streng consent (RDU eller GDPR) som hindrer pixel
+- Du vil sende offline-konverteringer fra CRM/POS
+
+**⚠️ Tilgangsstatus:** Vår Meta app (ID 1042181045651851) har **Business Verification ✅** og **Tech Provider ✅ (godkjent 2026-06-03)**. **App Review per scope** (ads_management/ads_read/business_management) er pending — krever Live mode + screencast per scope + test-bruker. Vi kan teste CAPI som app admins/testers nå, men live-bruker venter på godkjenning.
+
+Når godkjent kjører flowen slik:
+
+1. Klient legger inn CAPI access-token via Agent-UI ("Meta CAPI-token") — lagres kryptert i \`meta_capi_access_token\`.
+2. Klient-koden sender rå event-data til DIN backend-route.
+3. Backend POST-er til Meta's Conversions API:
+
+\`\`\`http
+POST /v21.0/${ctx.metaPixelId}/events HTTP/1.1
+Content-Type: application/json
+
+{
+  "data": [{
+    "event_name": "Lead",
+    "event_time": 1726912345,
+    "event_id": "abc-123",
+    "action_source": "website",
+    "event_source_url": "${ctx.websiteUrl}/kontakt-takk",
+    "user_data": {
+      "em": "<sha256 av email>",
+      "ph": "<sha256 av telefon (E.164)>",
+      "fbp": "<_fbp cookie>",
+      "fbc": "<_fbc cookie>",
+      "client_ip_address": "...",
+      "client_user_agent": "..."
+    },
+    "custom_data": {
+      "value": 1000,
+      "currency": "NOK"
+    }
+  }],
+  "access_token": "{META_CAPI_ACCESS_TOKEN}",
+  "test_event_code": "TEST123"
+}
+\`\`\`
+
+**Klient-side koden** (sender rå data til din backend):
+
+\`\`\`javascript
+// I form-submit-handler eller etter konvertering:
+const eventID = crypto.randomUUID();
+
+// 1) Fyr browser-pixel
+fbq('track', 'Lead', { value: 1000, currency: 'NOK' }, { eventID });
+
+// 2) Send samme event til din backend for CAPI-deduplication
+fetch('${ctx.websiteUrl.replace(/[/]+$/, "")}/api/conversions/meta', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    eventID,
+    event: 'Lead',
+    email: form.email.value,
+    phone: form.phone.value,
+    value: 1000,
+    currency: 'NOK',
+    eventSourceUrl: window.location.href,
+    occurredAt: Math.floor(Date.now() / 1000),
+    fbp: document.cookie.match(/_fbp=([^;]+)/)?.[1],
+    fbc: document.cookie.match(/_fbc=([^;]+)/)?.[1],
+  }),
+});
+\`\`\`
+
+**Backend-en** hash-er PII (email, phone) med SHA256, henter user-ip + user-agent, og POST-er til Meta. Vi tilbyr denne ende-til-ende-flowen så snart Meta App Review er godkjent. Foreløpig fungerer det på Daniels test-konto.`,
+    verifyAfter: `Bruk Meta Events Manager → Pixel ${ctx.metaPixelId} → Test Events med en spesifikk \`test_event_code\` for å verifisere uten å forurense produksjons-data. Tracking-koden ditt sjekkes med Event Match Quality-rapporten i Events Manager — målet er score > 8.0/10.`,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Fix av konkrete strukturert-data-feil rapportert i Search Console
+// ─────────────────────────────────────────────────────────────────────
+
+function promptFixProductSchema(ctx: PromptContext): GeneratedPrompt {
+  const cleanUrl = ctx.websiteUrl.replace(/[/]+$/, "");
+  return {
+    scenario: "fix_product_schema",
+    title: "Fiks Product / Offer / Review JSON-LD (Search Console-feil)",
+    applicable: true,
+    prompt: `Search Console rapporterer typisk disse fire feilene på produkt-sider:
+
+- ❌ Manglende felt \`shippingDetails\` (i \`offers\`) — Merchant listings
+- ❌ Manglende felt \`hasMerchantReturnPolicy\` (i \`offers\`) — Merchant listings
+- ❌ Manglende felt \`aggregateRating\` — Tekstutdrag om produkter (Product snippets)
+- ❌ Manglende felt \`review\` — Tekstutdrag om produkter
+
+Selv om de er markert som "ikke-kritiske", får siten IKKE rich results i Google uten dem. Fix-en er én komplett JSON-LD-blokk per produkt-side. Det er ofte automatisk hvis klient bruker Shopify/WooCommerce-plugin — for håndskrevet HTML eller custom-stack må vi inn manuelt.
+
+${ctx.targetAgent === "v0"
+  ? `**For Next.js App Router** — bygg en \`<ProductSchema>\`-komponent i \`components/seo/\` og mount den per produkt-side. Bruk \`script[type="application/ld+json"]\` med dangerouslySetInnerHTML eller next/script.`
+  : "**For statisk HTML, WordPress, eller andre stacks**: lim følgende inn per produkt-side, helst rett før `</head>`."}
+
+\`\`\`html
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "name": "[Produkt-navn]",
+  "image": [
+    "${cleanUrl}/images/produkt-1.jpg",
+    "${cleanUrl}/images/produkt-2.jpg"
+  ],
+  "description": "[Salgsorientert beskrivelse på 50-300 tegn]",
+  "sku": "[Produkt-SKU]",
+  "mpn": "[Manufacturer Part Number — kan være lik SKU]",
+  "brand": {
+    "@type": "Brand",
+    "name": "${ctx.clientName}"
+  },
+
+  "offers": {
+    "@type": "Offer",
+    "url": "${cleanUrl}/produkter/[produkt-slug]",
+    "priceCurrency": "NOK",
+    "price": "[Numerisk pris uten valuta, f.eks. 1499]",
+    "priceValidUntil": "[YYYY-MM-DD — sett 1 år frem hvis ikke kampanje]",
+    "availability": "https://schema.org/InStock",
+    "itemCondition": "https://schema.org/NewCondition",
+
+    "// FIX 1 — Merchant listings (shippingDetails)": "",
+    "shippingDetails": {
+      "@type": "OfferShippingDetails",
+      "shippingRate": {
+        "@type": "MonetaryAmount",
+        "value": "[Frakt-pris, f.eks. 79]",
+        "currency": "NOK"
+      },
+      "shippingDestination": {
+        "@type": "DefinedRegion",
+        "addressCountry": "NO"
+      },
+      "deliveryTime": {
+        "@type": "ShippingDeliveryTime",
+        "handlingTime": {
+          "@type": "QuantitativeValue",
+          "minValue": 0,
+          "maxValue": 1,
+          "unitCode": "DAY"
+        },
+        "transitTime": {
+          "@type": "QuantitativeValue",
+          "minValue": 1,
+          "maxValue": 5,
+          "unitCode": "DAY"
+        }
+      }
+    },
+
+    "// FIX 2 — Merchant listings (hasMerchantReturnPolicy)": "",
+    "hasMerchantReturnPolicy": {
+      "@type": "MerchantReturnPolicy",
+      "applicableCountry": "NO",
+      "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
+      "merchantReturnDays": 30,
+      "returnMethod": "https://schema.org/ReturnByMail",
+      "returnFees": "https://schema.org/FreeReturn"
+    }
+  },
+
+  "// FIX 3 — Product snippets (aggregateRating)": "",
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "[Snitt-rating 1.0-5.0, f.eks. 4.7]",
+    "reviewCount": "[Antall anmeldelser, f.eks. 42]",
+    "bestRating": "5",
+    "worstRating": "1"
+  },
+
+  "// FIX 4 — Product snippets (review)": "",
+  "review": [
+    {
+      "@type": "Review",
+      "author": { "@type": "Person", "name": "[Anmelder-navn]" },
+      "datePublished": "[YYYY-MM-DD]",
+      "reviewRating": {
+        "@type": "Rating",
+        "ratingValue": "5",
+        "bestRating": "5"
+      },
+      "reviewBody": "[Sitat fra ekte kunde-review, 50-200 tegn]"
+    },
+    {
+      "@type": "Review",
+      "author": { "@type": "Person", "name": "[Anmelder 2]" },
+      "datePublished": "[YYYY-MM-DD]",
+      "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" },
+      "reviewBody": "[Sitat fra ekte kunde-review]"
+    }
+  ]
+}
+</script>
+\`\`\`
+
+---
+
+## ⚠️ Viktig — etterlevelse av Google's regler
+
+**aggregateRating + review MÅ være ekte data.** Google straffer falske reviews ekstremt hardt — manuelle penalties som fjerner siten fra Search. Fyll inn KUN reviews du faktisk har fått fra kunder.
+
+**Hvor får man reviews fra?**
+- Trustpilot widget → kan eksportere JSON via deres API
+- Google Business Profile reviews → kan brukes hvis lokale tjenester
+- Trustmary / Yotpo / Reviews.io → automatisk schema-emit
+- Egen-vurderinger fra CRM (etter ekte transaksjoner) — manuelt eller via integrasjon
+
+**Hvis klient ikke har reviews ennå:** la \`aggregateRating\` og \`review\` stå utenom inntil ekte data finnes. Det er bedre å mangle felter enn å risikere manuelle penalties.
+
+## Auto-generere fra plattform (anbefalt)
+
+| Plattform | Hvordan |
+|---|---|
+| Shopify | Bruk **Shopify JSON-LD for SEO**-app (gratis, auto-genererer alle felter) |
+| WooCommerce | Bruk **Rank Math** eller **Yoast WooCommerce SEO** |
+| Custom | Bygg server-side template som fyller fra produkt-DB ved render |
+
+## Per-tjeneste-bedrifter (ikke produkter)
+
+Hvis klient selger TJENESTER, ikke fysiske produkter, bytt \`@type: "Product"\` til \`@type: "Service"\` og dropp \`shippingDetails\` + \`hasMerchantReturnPolicy\` (de er kun for fysiske varer). Behold \`aggregateRating\` + \`review\` med tjeneste-spesifikke fields.`,
+    verifyAfter: `1. Test JSON-LD med Google Rich Results Test: https://search.google.com/test/rich-results — lim inn produkt-URL og bekreft at både "Merchant listings" og "Product snippets" er detected uten errors. 2. I Search Console → Forbedringer → Selgeroppføringer + Tekstutdrag om produkter → klikk "Valider rettelse". Google re-crawler innen 1-7 dager og fjerner feilen hvis fix-en er korrekt.`,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Sosial-bio-pakke: copy-paste-ferdig profilinnhold per plattform
 // LinkedIn / Facebook / Instagram / TikTok / Google Business / YouTube
 // ─────────────────────────────────────────────────────────────────────
@@ -1660,11 +2054,15 @@ export function generateAllPrompts(ctx: PromptContext): GeneratedPrompt[] {
     promptInstallLinkedinInsight(ctx),
     promptLinkedinConversionEvents(ctx),
     promptInstallLinkedinCapi(ctx),
+    promptInstallMetaPixel(ctx),
+    promptMetaConversionEvents(ctx),
+    promptInstallMetaCapi(ctx),
     promptConsentModeV2(ctx),
     promptFixNoindex(ctx),
     promptAddSitemap(ctx),
     promptAddRobotsTxt(ctx),
     promptStructuredData(ctx),
+    promptFixProductSchema(ctx),
     promptSeoBasics(ctx),
     promptConversionEvents(ctx),
     promptGeoOptimization(ctx),

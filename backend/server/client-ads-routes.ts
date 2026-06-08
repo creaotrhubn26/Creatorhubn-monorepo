@@ -61,6 +61,12 @@ import {
   createLinkedinConversion,
 } from "./client-linkedin-suite.js";
 import {
+  listMetaAdAccounts,
+  listMetaPixels,
+  provisionMetaPixel,
+  createMetaCustomConversion,
+} from "./client-meta-suite.js";
+import {
   buildAdsAuthUrl,
   exchangeAdsCodeForToken,
   upsertAdsOauthConnection,
@@ -1115,6 +1121,181 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     }
   });
 
+  // ════════════════════════════════════════════════════════════════════
+  // Meta (Facebook + Instagram) — Wave 2: Pixel + Custom Conversions
+  // Gjenbruker Instagram OAuth-connection (samme scopes: ads_management m.fl.)
+  // OBS: Meta App Review pending per scope — fungerer for app-admins nå.
+  // ════════════════════════════════════════════════════════════════════
+
+  app.get("/api/admin-room/agent/ads/meta/accounts", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const r = await listMetaAdAccounts(pool, session.userId);
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ accounts: r.accounts });
+  });
+
+  app.get("/api/admin-room/agent/ads/meta/pixels", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const adAccountId = typeof req.query.adAccountId === "string" ? req.query.adAccountId : "";
+    if (!adAccountId) return res.status(400).json({ error: "adAccountId påkrevd" });
+    const r = await listMetaPixels(pool, { producerUserId: session.userId, adAccountId });
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ pixels: r.pixels });
+  });
+
+  // POST .../meta/provision-pixel — opprett eller attach pixel for klient
+  app.post("/api/admin-room/agent/ads/configs/:id/meta/provision-pixel", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { adAccountId?: string; existingPixelId?: string; pixelName?: string };
+    if (!body.adAccountId) return res.status(400).json({ error: "adAccountId påkrevd" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_name, meta_pixel_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.meta_pixel_id) {
+        return res.status(409).json({ error: "Pixel finnes alt", metaPixelId: cfg.meta_pixel_id });
+      }
+
+      // Hvis eksisterende pixel valgt: attach uten å lage ny
+      let pixelId: string;
+      let pixelName: string;
+      let baseCode: string | null = null;
+      if (body.existingPixelId) {
+        pixelId = body.existingPixelId;
+        pixelName = body.pixelName ?? `Existing: ${body.existingPixelId}`;
+        baseCode = `<!-- Eksisterende Meta Pixel — ${body.existingPixelId} -->
+<!-- Antar at klient allerede har dette installert. Hvis ikke, bruk install_meta_pixel-prompten. -->`;
+      } else {
+        const r = await provisionMetaPixel(pool, {
+          producerUserId: session.userId,
+          adAccountId: body.adAccountId,
+          pixelName: body.pixelName ?? `RR-Agent: ${cfg.client_name}`,
+        });
+        if (!r.ok) return res.status(503).json({ error: r.error });
+        pixelId = r.pixelId;
+        pixelName = r.pixelName;
+        baseCode = r.baseCode;
+      }
+
+      await pool.query(
+        `UPDATE client_ads_configs
+           SET meta_ad_account_id = $1,
+               meta_pixel_id = $2,
+               meta_pixel_name = $3,
+               meta_setup_completed_at = now(),
+               platforms_selected = ARRAY(SELECT DISTINCT unnest(platforms_selected || ARRAY['meta']::TEXT[])),
+               updated_at = now()
+          WHERE id = $4::uuid`,
+        [body.adAccountId, pixelId, pixelName, req.params.id],
+      );
+
+      return res.json({
+        success: true,
+        pixelId,
+        pixelName,
+        baseCode,
+      });
+    } catch (err) {
+      console.error("[meta-provision] failed", err);
+      return res.status(500).json({ error: "Provision feilet", detail: String(err) });
+    }
+  });
+
+  // POST .../meta/sync-conversions — opprett custom conversions per action
+  app.post("/api/admin-room/agent/ads/configs/:id/meta/sync-conversions", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT meta_pixel_id, meta_ad_account_id, approval_status
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.approval_status !== "approved") {
+        return res.status(412).json({ error: "Konfig må være approved før sync" });
+      }
+      if (!cfg.meta_pixel_id || !cfg.meta_ad_account_id) {
+        return res.status(412).json({ error: "Sett opp Pixel først." });
+      }
+
+      const actionsR = await pool.query(
+        `SELECT id::text, action_name, display_name, goal_category, default_value,
+                currency, trigger_type, url_pattern
+           FROM client_ads_actions
+          WHERE config_id = $1::uuid AND is_active = TRUE AND meta_custom_conversion_id IS NULL
+          ORDER BY created_at ASC`,
+        [req.params.id],
+      );
+
+      const created: Array<{ actionId: string; conversionId: string; eventName: string }> = [];
+      const failed: Array<{ actionId: string; error: string }> = [];
+
+      for (const a of actionsR.rows) {
+        const r = await createMetaCustomConversion(pool, {
+          producerUserId: session.userId,
+          adAccountId: cfg.meta_ad_account_id,
+          pixelId: cfg.meta_pixel_id,
+          action: {
+            actionName: a.action_name,
+            displayName: a.display_name,
+            goalCategory: a.goal_category,
+            defaultValue: Number(a.default_value ?? 0),
+            currency: a.currency || "NOK",
+            triggerType: a.trigger_type,
+            urlPattern: a.url_pattern,
+          },
+        });
+        if (r.ok) {
+          await pool.query(
+            `UPDATE client_ads_actions
+                SET meta_custom_conversion_id = $1,
+                    meta_event_name = $2,
+                    meta_synced_at = now(),
+                    updated_at = now()
+              WHERE id = $3::uuid`,
+            [r.customConversionId, r.eventName, a.id],
+          );
+          created.push({ actionId: a.id, conversionId: r.customConversionId, eventName: r.eventName });
+        } else {
+          failed.push({ actionId: a.id, error: r.error });
+        }
+      }
+
+      return res.json({ success: true, created, failed });
+    } catch (err) {
+      console.error("[meta-sync] failed", err);
+      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+    }
+  });
+
+  // PATCH .../meta/capi-token — lagre CAPI token (kryptert ved annet steg)
+  app.patch("/api/admin-room/agent/ads/configs/:id/meta/capi-token", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { capiToken?: string };
+    if (!body.capiToken) return res.status(400).json({ error: "capiToken påkrevd" });
+    await pool.query(
+      `UPDATE client_ads_configs
+          SET meta_capi_access_token = $1, updated_at = now()
+        WHERE id = $2::uuid AND content_producer_user_id = $3`,
+      [body.capiToken, req.params.id, session.userId],
+    );
+    return res.json({ success: true });
+  });
+
   // PATCH .../linkedin/capi-token — lagre CAPI access token (kryptert)
   // Krever LinkedIn Conversions API-godkjenning (Standard tier) — UI viser
   // "venter på review" til Daniel har den. Endpoint fungerer uansett —
@@ -1174,7 +1355,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       const cfgR = await pool.query(
         `SELECT client_name, client_website_url, business_type, business_summary,
                 ga4_measurement_id, gtm_container_public_id,
-                linkedin_insight_tag_id
+                linkedin_insight_tag_id, meta_pixel_id
            FROM client_ads_configs
           WHERE id = $1::uuid AND content_producer_user_id = $2`,
         [req.params.id, session.userId],
@@ -1185,7 +1366,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       const actionsR = await pool.query(
         `SELECT action_name, display_name, google_ads_label, trigger_type,
                 default_value, currency, url_pattern,
-                linkedin_conversion_id
+                linkedin_conversion_id, meta_custom_conversion_id, meta_event_name
            FROM client_ads_actions
           WHERE config_id = $1::uuid AND is_active = TRUE
           ORDER BY created_at ASC`,
@@ -1208,6 +1389,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
         awConversionId: process.env.GOOGLE_ADS_CONVERSION_ID || null,
         gtmContainerId: cfg.gtm_container_public_id,
         linkedinPartnerId,
+        metaPixelId: cfg.meta_pixel_id ?? null,
         businessType: cfg.business_type,
         businessSummary: cfg.business_summary,
         actions: actionsR.rows.map((a) => ({
@@ -1219,6 +1401,8 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
           currency: a.currency || "NOK",
           urlPattern: a.url_pattern,
           linkedinConversionId: a.linkedin_conversion_id ?? null,
+          metaEventName: a.meta_event_name ?? null,
+          metaCustomConversionId: a.meta_custom_conversion_id ?? null,
         })),
         targetAgent: target,
         liveSite,

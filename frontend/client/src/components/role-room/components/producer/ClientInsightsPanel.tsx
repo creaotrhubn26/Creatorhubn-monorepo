@@ -392,7 +392,13 @@ export default function ClientInsightsPanel({
                         sx={{
                           height: 6, borderRadius: 1,
                           bgcolor: 'rgba(168,85,247,0.08)',
-                          '& .MuiLinearProgress-bar': { bgcolor: p.platform === 'LinkedIn' ? '#0a66c2' : palette.ads },
+                          '& .MuiLinearProgress-bar': {
+                            bgcolor: p.platform === 'LinkedIn'
+                              ? '#0a66c2'
+                              : p.platform === 'Meta'
+                                ? '#1877f2'
+                                : palette.ads,
+                          },
                         }}
                       />
                     </Box>
