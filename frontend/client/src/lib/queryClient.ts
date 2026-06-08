@@ -26,8 +26,8 @@ function clearClientAuthState() {
 
 function buildApiUrl(url: string): string {
   const normalizedUrl = normalizeRequestUrl(url);
-  const apiBaseUrl = import.meta.env.VITE_API_URL?.trim() || '';
-  const isDevelopment = import.meta.env.DEV || window.location.hostname === 'localhost';
+  const apiBaseUrl = import.meta.env?.VITE_API_URL?.trim() || '';
+  const isDevelopment = import.meta.env?.DEV || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
 
   if (normalizedUrl.startsWith('http')) {
     return normalizedUrl;
@@ -153,7 +153,11 @@ export async function getAuthHeader(): Promise<Record<string, string>> {
 }
 
 // Prefer same-origin /api on CreatorHub unless an explicit backend URL is configured.
-const API_BASE_URL = import.meta.env.VITE_API_URL?.trim() || '';
+// NB: `import.meta.env?.` (ikke `.env.`) — denne modulen importeres transitivt
+// av backend (index.ts → memory-card-database → ClientServicePricingService →
+// queryClient), og i Node er `import.meta.env` undefined. Uten `?.` krasjer
+// backend-bootstrap (TypeError: reading 'VITE_API_URL'). Ufarlig i nettleser.
+const API_BASE_URL = import.meta.env?.VITE_API_URL?.trim() || '';
 
 // These admin/analytics feeds are not deployed on the current production backend yet.
 // Guarding them client-side avoids noisy 404 spam and lets the UI render stable placeholders.
@@ -244,7 +248,7 @@ export async function apiRequest(url: string, options?: ApiRequestOptions) {
   const normalizedUrl = normalizeRequestUrl(url);
 
   // In development, use relative URLs (Vite proxy). In production, use full Render backend URL.
-  const isDevelopment = import.meta.env.DEV || window.location.hostname === 'localhost';
+  const isDevelopment = import.meta.env?.DEV || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
   const fullUrl = normalizedUrl.startsWith('http')
     ? normalizedUrl
     : isDevelopment || !API_BASE_URL
