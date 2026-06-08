@@ -30,6 +30,57 @@
 import type express from "express";
 import type { Pool } from "pg";
 import { discoverClientSite, type DiscoveryResult, type SuggestedAction } from "./client-ads-discovery-service.js";
+import {
+  buildGoogleAdsOauthStart,
+  handleGoogleAdsOauthCallback,
+  createConversionAction,
+} from "./client-ads-google-oauth.js";
+import {
+  listGa4Accounts,
+  provisionGa4Property,
+  getGscVerificationToken,
+  verifyGscSite,
+  addGscSite,
+  submitAllSitemaps,
+  fetchSitemapStatus,
+  requestIndexingForUrls,
+  listGtmAccounts,
+  provisionGtmContainer,
+  importActionsToGtm,
+  diagnoseClientSetup,
+} from "./client-google-suite.js";
+import {
+  generateAllPrompts,
+  fetchLiveSiteContext,
+  type TargetAgent,
+} from "./client-ai-prompt-generator.js";
+import { fetchClientInsights } from "./client-insights-service.js";
+import {
+  listLinkedinAdAccounts,
+  provisionLinkedinInsightTag,
+  createLinkedinConversion,
+} from "./client-linkedin-suite.js";
+import {
+  listMetaAdAccounts,
+  listMetaPixels,
+  provisionMetaPixel,
+  createMetaCustomConversion,
+} from "./client-meta-suite.js";
+import {
+  buildTiktokAuthUrl,
+  exchangeTiktokAuthCode,
+  listTiktokAdvertisers,
+  listTiktokPixels,
+  provisionTiktokPixel,
+  mapActionToTiktokEvent,
+} from "./client-tiktok-suite.js";
+import {
+  buildAdsAuthUrl,
+  exchangeAdsCodeForToken,
+  upsertAdsOauthConnection,
+  adsOauthClientCreds,
+} from "./role-room-ads-oauth.js";
+import crypto from "node:crypto";
 
 interface SessionLike {
   userId: string;
@@ -303,6 +354,165 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     }
   });
 
+  // ── B2: GET /api/admin-room/agent/ads/oauth/google/start ─────────
+  // Returner OAuth-URL som producer redirecter til for å koble Google Ads.
+  app.get("/api/admin-room/agent/ads/oauth/google/start", (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? "creatorhub-backend-rtbl.onrender.com"}`).replace(/\/+$/, "");
+    const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/google/callback`;
+    const configId = typeof req.query.configId === "string" ? req.query.configId : undefined;
+
+    const r = buildGoogleAdsOauthStart({
+      userId: session.userId,
+      configId,
+      redirectUri,
+    });
+    if ("error" in r) return res.status(503).json({ error: r.error });
+    return res.json({ authUrl: r.authUrl });
+  });
+
+  // ── B2: GET /api/admin-room/agent/ads/oauth/google/callback ──────
+  app.get("/api/admin-room/agent/ads/oauth/google/callback", async (req, res) => {
+    const code = typeof req.query.code === "string" ? req.query.code : null;
+    const state = typeof req.query.state === "string" ? req.query.state : null;
+    const errorParam = typeof req.query.error === "string" ? req.query.error : null;
+
+    if (errorParam) {
+      return res.redirect(`/role-room/agent/ads?oauth_error=${encodeURIComponent(errorParam)}`);
+    }
+    if (!code || !state) return res.status(400).send("Missing code/state");
+
+    const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? "creatorhub-backend-rtbl.onrender.com"}`).replace(/\/+$/, "");
+    const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/google/callback`;
+
+    const result = await handleGoogleAdsOauthCallback(pool, { code, state, redirectUri });
+    if (!result.success) {
+      return res.redirect(`/role-room/agent/ads?oauth_error=${encodeURIComponent(result.error ?? "unknown")}`);
+    }
+    const cfgParam = result.configId ? `&config=${encodeURIComponent(result.configId)}` : "";
+    return res.redirect(`/role-room/agent/ads?oauth_success=1${cfgParam}`);
+  });
+
+  // ── B3: POST /api/admin-room/agent/ads/configs/:id/sync-to-google ─
+  // Auto-opprett alle godkjente actions i klientens Google Ads-konto
+  // og oppdater client_ads_actions med AW-ID + label.
+  app.post("/api/admin-room/agent/ads/configs/:id/sync-to-google", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, google_ads_customer_id, approval_status, client_name
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.approval_status !== "approved") {
+        return res.status(412).json({ error: "Konfig må være godkjent av klient før sync" });
+      }
+      if (!cfg.google_ads_customer_id) {
+        return res.status(412).json({
+          error: "Klientens Google Ads customer-ID mangler. Spør klienten om deres 10-sifrede Google Ads-konto-ID.",
+        });
+      }
+
+      const actionsR = await pool.query(
+        `SELECT id::text, action_name, display_name, goal_category, default_value, currency
+           FROM client_ads_actions
+          WHERE config_id = $1::uuid AND is_active = TRUE AND google_ads_label IS NULL
+          ORDER BY created_at ASC`,
+        [req.params.id],
+      );
+
+      const created: Array<{ actionId: string; awLabel: string | null; awId: string | null }> = [];
+      const failed: Array<{ actionId: string; error: string }> = [];
+
+      for (const a of actionsR.rows) {
+        const r = await createConversionAction(pool, {
+          producerUserId: session.userId,
+          clientCustomerId: cfg.google_ads_customer_id,
+          action: {
+            actionName: a.action_name,
+            displayName: a.display_name,
+            goalCategory: a.goal_category,
+            defaultValue: Number(a.default_value ?? 0),
+            currency: a.currency || "NOK",
+          },
+        });
+        if (r.ok) {
+          await pool.query(
+            `UPDATE client_ads_actions
+               SET google_ads_action_id = $1::bigint,
+                   google_ads_label = $2,
+                   google_ads_created_at = now(),
+                   updated_at = now()
+              WHERE id = $3::uuid`,
+            [r.result.conversionActionId, r.result.awConversionLabel, a.id],
+          );
+          created.push({
+            actionId: a.id,
+            awLabel: r.result.awConversionLabel ?? null,
+            awId: r.result.awConversionId ?? null,
+          });
+        } else {
+          failed.push({ actionId: a.id, error: r.error });
+        }
+      }
+
+      // Sett config sin AW-ID hvis vi fikk en (samme for alle actions i kontoen)
+      const firstAwId = created.find((c) => c.awId)?.awId;
+      if (firstAwId) {
+        await pool.query(
+          `UPDATE client_ads_configs
+             SET google_ads_conversion_id = $1,
+                 updated_at = now()
+            WHERE id = $2::uuid`,
+          [firstAwId, req.params.id],
+        );
+      }
+
+      return res.json({
+        success: failed.length === 0,
+        created: created.length,
+        failed: failed.length,
+        details: { created, failed },
+      });
+    } catch (err) {
+      console.error("[sync-to-google] failed", err);
+      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+    }
+  });
+
+  // ── PATCH /api/admin-room/agent/ads/configs/:id — set customer-ID ─
+  // Producer registrerer klientens Google Ads customer-ID (10 sifre).
+  app.patch("/api/admin-room/agent/ads/configs/:id", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { google_ads_customer_id?: string };
+    const customerId = body.google_ads_customer_id?.replace(/\D/g, "").slice(0, 10) || null;
+    if (!customerId || customerId.length !== 10) {
+      return res.status(400).json({ error: "google_ads_customer_id må være 10 sifre" });
+    }
+    try {
+      const upd = await pool.query(
+        `UPDATE client_ads_configs
+           SET google_ads_customer_id = $1,
+               updated_at = now()
+          WHERE id = $2::uuid AND content_producer_user_id = $3
+         RETURNING id::text`,
+        [customerId, req.params.id, session.userId],
+      );
+      if (!upd.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      return res.json({ success: true });
+    } catch (err) {
+      return res.status(500).json({ error: "Patch feilet" });
+    }
+  });
+
   // ── GET /api/role-room/ads-approvals/pending — for klient-portal ──
   app.get("/api/role-room/ads-approvals/pending", async (req, res) => {
     const session = getActiveSession(req);
@@ -475,6 +685,1098 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     } catch (err) {
       console.error('[ads-reject] failed', err);
       return res.status(500).json({ error: 'Klarte ikke å avvise' });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // O2 / O3 / O4 — Full Google-suite per klient
+  // (GA4 + Search Console + Tag Manager). Bruker producerens MCC-OAuth
+  // — utvidet scope-set i role-room-ads-oauth.ts dekker alle fire APIer.
+  // ════════════════════════════════════════════════════════════════════
+
+  // ─── GA4 ─────────────────────────────────────────────────────────
+  // GET /api/admin-room/agent/ads/ga4/accounts — list producerens GA4-kontoer
+  app.get("/api/admin-room/agent/ads/ga4/accounts", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const r = await listGa4Accounts(pool, session.userId);
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ accounts: r.accounts });
+  });
+
+  // POST /api/admin-room/agent/ads/configs/:id/ga4/provision
+  // Opprett GA4-property + web-data-stream → returnerer G-XXX
+  app.post("/api/admin-room/agent/ads/configs/:id/ga4/provision", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { accountName?: string; industryCategory?: string };
+    if (!body.accountName) return res.status(400).json({ error: "accountName påkrevd" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_name, client_website_url, ga4_property_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.ga4_property_id) {
+        return res.status(409).json({ error: "GA4-property finnes allerede", ga4_property_id: cfg.ga4_property_id });
+      }
+
+      const r = await provisionGa4Property(pool, {
+        producerUserId: session.userId,
+        accountName: body.accountName,
+        displayName: cfg.client_name,
+        websiteUrl: cfg.client_website_url,
+        industryCategory: body.industryCategory,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+
+      await pool.query(
+        `UPDATE client_ads_configs
+           SET ga4_property_id = $1,
+               ga4_measurement_id = $2,
+               ga4_data_stream_id = $3,
+               ga4_setup_completed_at = now(),
+               updated_at = now()
+          WHERE id = $4::uuid`,
+        [r.propertyId, r.measurementId, r.dataStreamId, req.params.id],
+      );
+
+      return res.json({
+        success: true,
+        propertyId: r.propertyId,
+        measurementId: r.measurementId,
+        dataStreamId: r.dataStreamId,
+      });
+    } catch (err) {
+      console.error("[ga4-provision] failed", err);
+      return res.status(500).json({ error: "GA4-provision feilet", detail: String(err) });
+    }
+  });
+
+  // ─── GSC ─────────────────────────────────────────────────────────
+  // POST /api/admin-room/agent/ads/configs/:id/gsc/verify
+  // 2-stegs: (a) ?step=token henter meta-tag, klient limer inn,
+  //          (b) ?step=verify når Google har sett tagen.
+  app.post("/api/admin-room/agent/ads/configs/:id/gsc/verify", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const step = req.query.step === "verify" ? "verify" : "token";
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_website_url, gsc_property_url
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      const siteUrl = cfg.gsc_property_url || cfg.client_website_url;
+
+      if (step === "token") {
+        const r = await getGscVerificationToken(pool, {
+          producerUserId: session.userId,
+          siteUrl,
+          method: "META",
+        });
+        if (!r.ok) return res.status(503).json({ error: r.error });
+
+        await pool.query(
+          `UPDATE client_ads_configs
+             SET gsc_property_url = $1,
+                 gsc_verification_method = 'meta_tag',
+                 gsc_verification_token = $2,
+                 updated_at = now()
+            WHERE id = $3::uuid`,
+          [siteUrl, r.token, req.params.id],
+        );
+        return res.json({
+          step: "token",
+          token: r.token,
+          method: r.method,
+          metaTag: `<meta name="google-site-verification" content="${r.token.replace(/^.+content="/, "").replace(/" \/>$/, "")}" />`,
+          instructions: "Legg meta-tagen i <head> på klientens nettside, så trykk 'Verifiser nå'.",
+        });
+      }
+
+      // step === "verify"
+      const v = await verifyGscSite(pool, {
+        producerUserId: session.userId,
+        siteUrl,
+        method: "META",
+      });
+      if (!v.ok) return res.status(503).json({ error: v.error });
+
+      // Etter verifisering: legg site til Search Console
+      await addGscSite(pool, { producerUserId: session.userId, siteUrl });
+
+      await pool.query(
+        `UPDATE client_ads_configs
+           SET gsc_verified_at = now(), updated_at = now()
+          WHERE id = $1::uuid`,
+        [req.params.id],
+      );
+      return res.json({ step: "verify", success: true, siteUrl });
+    } catch (err) {
+      console.error("[gsc-verify] failed", err);
+      return res.status(500).json({ error: "GSC-verify feilet", detail: String(err) });
+    }
+  });
+
+  // POST /api/admin-room/agent/ads/configs/:id/gsc/sitemap
+  // Auto-discover + submit ALLE sitemaps (robots.txt → fallback-stier).
+  // Trigger også Indexing API for høyprioriterte URL'er (conversion-sider).
+  app.post("/api/admin-room/agent/ads/configs/:id/gsc/sitemap", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { extraSitemapUrls?: string[]; indexUrls?: string[] };
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_website_url, gsc_property_url, gsc_verified_at
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (!cfg.gsc_verified_at) {
+        return res.status(412).json({ error: "Verifiser siten med Search Console først." });
+      }
+      const siteUrl = cfg.gsc_property_url || cfg.client_website_url;
+
+      // 1) Discover + submit sitemaps
+      const sitemap = await submitAllSitemaps(pool, {
+        producerUserId: session.userId,
+        siteUrl,
+        websiteUrl: cfg.client_website_url,
+        extraSitemapUrls: body.extraSitemapUrls,
+      });
+
+      // 2) Hent action-URL'er (conversion-sider) + request indexing
+      let indexing: any = null;
+      const urls: string[] = [];
+      if (Array.isArray(body.indexUrls) && body.indexUrls.length > 0) {
+        urls.push(...body.indexUrls);
+      } else {
+        const actionUrlsR = await pool.query(
+          `SELECT DISTINCT url_pattern FROM client_ads_actions
+            WHERE config_id = $1::uuid AND is_active = TRUE AND url_pattern IS NOT NULL`,
+          [req.params.id],
+        );
+        // url_pattern kan være regex — vi sender bare hvis det ser ut som absolutt URL
+        for (const row of actionUrlsR.rows) {
+          if (typeof row.url_pattern === "string" && /^https?:\/\//i.test(row.url_pattern)) {
+            urls.push(row.url_pattern);
+          }
+        }
+      }
+      if (urls.length > 0) {
+        indexing = await requestIndexingForUrls(pool, { producerUserId: session.userId, urls });
+      }
+
+      if (sitemap.submitted.length > 0) {
+        await pool.query(
+          `UPDATE client_ads_configs
+             SET gsc_sitemap_submitted_at = now(), updated_at = now()
+            WHERE id = $1::uuid`,
+          [req.params.id],
+        );
+      }
+
+      return res.json({
+        success: sitemap.ok,
+        discovered: sitemap.discovered,
+        discoverySource: sitemap.source,
+        submitted: sitemap.submitted,
+        indexing,
+      });
+    } catch (err) {
+      console.error("[gsc-sitemap] failed", err);
+      return res.status(500).json({ error: "GSC-sitemap-submit feilet", detail: String(err) });
+    }
+  });
+
+  // GET /api/admin-room/agent/ads/configs/:id/setup/diagnose
+  // Helsesjekk for HELE Google-stacken + andre trackere på klient-siten:
+  //   HTML-stack: GA4-tag, Ads-tag, GTM-snippet, Meta/LI/TikTok-pixels,
+  //   Consent Mode v2, JSON-LD, SEO basics, noindex-blokkere
+  //   GSC: robots.txt, sitemap-discovery, verifisering, property, URL-inspection
+  app.get("/api/admin-room/agent/ads/configs/:id/setup/diagnose", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      const cfgR = await pool.query(
+        `SELECT client_website_url, ga4_measurement_id, gtm_container_public_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const expectedAw = process.env.GOOGLE_ADS_CONVERSION_ID || null;
+      const r = await diagnoseClientSetup(pool, {
+        producerUserId: session.userId,
+        websiteUrl: cfgR.rows[0].client_website_url,
+        expectedGa4MeasurementId: cfgR.rows[0].ga4_measurement_id,
+        expectedAwConversionId: expectedAw,
+        expectedGtmContainerId: cfgR.rows[0].gtm_container_public_id,
+      });
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "Diagnose feilet", detail: String(err) });
+    }
+  });
+
+  // Bakover-kompat alias
+  app.get("/api/admin-room/agent/ads/configs/:id/gsc/diagnose", async (req, res) => {
+    req.url = req.url.replace("/gsc/diagnose", "/setup/diagnose");
+    app._router.handle(req, res, () => {});
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // LinkedIn — speil av Google: OAuth → list accounts → Insight Tag →
+  // Conversion Rules → Reporting (i insights). CAPI er gated på
+  // Conversions API-godkjenning (UI viser "venter på review").
+  // ════════════════════════════════════════════════════════════════════
+
+  // OAuth-start: returnerer authUrl
+  app.get("/api/admin-room/agent/ads/oauth/linkedin/start", (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const creds = adsOauthClientCreds("linkedin");
+    if (!creds) return res.status(503).json({ error: "LINKEDIN_CLIENT_ID/SECRET ikke satt på server." });
+
+    const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? "creatorhub-backend-rtbl.onrender.com"}`).replace(/\/+$/, "");
+    const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/linkedin/callback`;
+    const configId = typeof req.query.configId === "string" ? req.query.configId : "";
+    const state = `${session.userId}.${configId}.${crypto.randomBytes(12).toString("hex")}`;
+    const authUrl = buildAdsAuthUrl("linkedin", { clientId: creds.clientId, redirectUri, state });
+    if (!authUrl) return res.status(503).json({ error: "Klarte ikke å bygge LinkedIn-auth-URL" });
+    return res.json({ authUrl });
+  });
+
+  // OAuth-callback
+  app.get("/api/admin-room/agent/ads/oauth/linkedin/callback", async (req, res) => {
+    const code = typeof req.query.code === "string" ? req.query.code : null;
+    const state = typeof req.query.state === "string" ? req.query.state : null;
+    if (!code || !state) return res.status(400).send("Missing code/state");
+
+    const [userId, configId] = state.split(".");
+    if (!userId) return res.status(400).send("Invalid state");
+
+    const creds = adsOauthClientCreds("linkedin");
+    if (!creds) return res.status(503).send("LinkedIn creds mangler");
+    const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? "creatorhub-backend-rtbl.onrender.com"}`).replace(/\/+$/, "");
+    const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/linkedin/callback`;
+
+    try {
+      const tokenResult = await exchangeAdsCodeForToken("linkedin", { ...creds, code, redirectUri });
+      if (!tokenResult.refreshToken || !tokenResult.accessToken) {
+        return res.redirect(`/role-room/agent/ads?oauth_error=linkedin_missing_refresh_token`);
+      }
+      await upsertAdsOauthConnection(pool, {
+        userId,
+        platform: "linkedin",
+        refreshToken: tokenResult.refreshToken,
+        accessToken: tokenResult.accessToken,
+        expiresInSec: tokenResult.expiresInSec,
+        scopes: ["r_ads", "r_ads_reporting", "rw_ads", "r_organization_admin"],
+      });
+      const cfgParam = configId ? `&config=${encodeURIComponent(configId)}` : "";
+      return res.redirect(`/role-room/agent/ads?oauth_success=linkedin${cfgParam}`);
+    } catch (err) {
+      console.error("[linkedin-oauth] callback failed", err);
+      return res.redirect(`/role-room/agent/ads?oauth_error=linkedin_${encodeURIComponent(String(err).slice(0, 80))}`);
+    }
+  });
+
+  // List LinkedIn Ad Accounts
+  app.get("/api/admin-room/agent/ads/linkedin/accounts", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const r = await listLinkedinAdAccounts(pool, session.userId);
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ accounts: r.accounts });
+  });
+
+  // POST .../linkedin/provision-insight-tag — oppretter (eller henter) Insight Tag for klient
+  app.post("/api/admin-room/agent/ads/configs/:id/linkedin/provision-insight-tag", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { adAccountUrn?: string };
+    if (!body.adAccountUrn) return res.status(400).json({ error: "adAccountUrn påkrevd" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_name, client_website_url, linkedin_insight_tag_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.linkedin_insight_tag_id) {
+        return res.status(409).json({ error: "Insight Tag finnes alt", linkedinInsightTagId: cfg.linkedin_insight_tag_id });
+      }
+
+      const r = await provisionLinkedinInsightTag(pool, {
+        producerUserId: session.userId,
+        adAccountUrn: body.adAccountUrn,
+        clientName: cfg.client_name,
+        websiteUrl: cfg.client_website_url,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+
+      // Hent account-name også
+      const accountName = body.adAccountUrn.split(":").pop() ?? null;
+
+      await pool.query(
+        `UPDATE client_ads_configs
+           SET linkedin_account_urn = $1,
+               linkedin_account_name = COALESCE(linkedin_account_name, $2),
+               linkedin_insight_tag_id = $3,
+               linkedin_setup_completed_at = now(),
+               platforms_selected = ARRAY(SELECT DISTINCT unnest(platforms_selected || ARRAY['linkedin']::TEXT[])),
+               updated_at = now()
+          WHERE id = $4::uuid`,
+        [body.adAccountUrn, accountName, r.insightTagId, req.params.id],
+      );
+
+      return res.json({
+        success: true,
+        insightTagId: r.insightTagId,
+        partnerId: r.partnerId,
+        tagSnippet: r.tagSnippet,
+      });
+    } catch (err) {
+      console.error("[linkedin-provision] failed", err);
+      return res.status(500).json({ error: "Provision feilet", detail: String(err) });
+    }
+  });
+
+  // POST .../linkedin/sync-conversions — opprett conversion rules for alle godkjente actions
+  app.post("/api/admin-room/agent/ads/configs/:id/linkedin/sync-conversions", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT linkedin_insight_tag_id, linkedin_account_urn, approval_status, client_name
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.approval_status !== "approved") {
+        return res.status(412).json({ error: "Konfig må være approved før sync" });
+      }
+      if (!cfg.linkedin_insight_tag_id || !cfg.linkedin_account_urn) {
+        return res.status(412).json({ error: "Opprett Insight Tag først." });
+      }
+
+      const actionsR = await pool.query(
+        `SELECT id::text, action_name, display_name, goal_category, default_value,
+                currency, trigger_type, url_pattern
+           FROM client_ads_actions
+          WHERE config_id = $1::uuid AND is_active = TRUE AND linkedin_conversion_id IS NULL
+          ORDER BY created_at ASC`,
+        [req.params.id],
+      );
+
+      const created: Array<{ actionId: string; conversionId: number }> = [];
+      const failed: Array<{ actionId: string; error: string }> = [];
+
+      for (const a of actionsR.rows) {
+        const r = await createLinkedinConversion(pool, {
+          producerUserId: session.userId,
+          insightTagId: cfg.linkedin_insight_tag_id,
+          adAccountUrn: cfg.linkedin_account_urn,
+          action: {
+            actionName: a.action_name,
+            displayName: a.display_name,
+            goalCategory: a.goal_category,
+            defaultValue: Number(a.default_value ?? 0),
+            currency: a.currency || "NOK",
+            triggerType: a.trigger_type,
+            urlPattern: a.url_pattern,
+          },
+        });
+        if (r.ok) {
+          await pool.query(
+            `UPDATE client_ads_actions
+                SET linkedin_conversion_id = $1::bigint,
+                    linkedin_conversion_urn = $2,
+                    linkedin_synced_at = now(),
+                    updated_at = now()
+              WHERE id = $3::uuid`,
+            [r.conversionId, r.conversionUrn, a.id],
+          );
+          created.push({ actionId: a.id, conversionId: r.conversionId });
+        } else {
+          failed.push({ actionId: a.id, error: r.error });
+        }
+      }
+
+      return res.json({ success: true, created, failed });
+    } catch (err) {
+      console.error("[linkedin-sync] failed", err);
+      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // Meta (Facebook + Instagram) — Wave 2: Pixel + Custom Conversions
+  // Gjenbruker Instagram OAuth-connection (samme scopes: ads_management m.fl.)
+  // OBS: Meta App Review pending per scope — fungerer for app-admins nå.
+  // ════════════════════════════════════════════════════════════════════
+
+  app.get("/api/admin-room/agent/ads/meta/accounts", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const r = await listMetaAdAccounts(pool, session.userId);
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ accounts: r.accounts });
+  });
+
+  app.get("/api/admin-room/agent/ads/meta/pixels", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const adAccountId = typeof req.query.adAccountId === "string" ? req.query.adAccountId : "";
+    if (!adAccountId) return res.status(400).json({ error: "adAccountId påkrevd" });
+    const r = await listMetaPixels(pool, { producerUserId: session.userId, adAccountId });
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ pixels: r.pixels });
+  });
+
+  // POST .../meta/provision-pixel — opprett eller attach pixel for klient
+  app.post("/api/admin-room/agent/ads/configs/:id/meta/provision-pixel", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { adAccountId?: string; existingPixelId?: string; pixelName?: string };
+    if (!body.adAccountId) return res.status(400).json({ error: "adAccountId påkrevd" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_name, meta_pixel_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.meta_pixel_id) {
+        return res.status(409).json({ error: "Pixel finnes alt", metaPixelId: cfg.meta_pixel_id });
+      }
+
+      // Hvis eksisterende pixel valgt: attach uten å lage ny
+      let pixelId: string;
+      let pixelName: string;
+      let baseCode: string | null = null;
+      if (body.existingPixelId) {
+        pixelId = body.existingPixelId;
+        pixelName = body.pixelName ?? `Existing: ${body.existingPixelId}`;
+        baseCode = `<!-- Eksisterende Meta Pixel — ${body.existingPixelId} -->
+<!-- Antar at klient allerede har dette installert. Hvis ikke, bruk install_meta_pixel-prompten. -->`;
+      } else {
+        const r = await provisionMetaPixel(pool, {
+          producerUserId: session.userId,
+          adAccountId: body.adAccountId,
+          pixelName: body.pixelName ?? `RR-Agent: ${cfg.client_name}`,
+        });
+        if (!r.ok) return res.status(503).json({ error: r.error });
+        pixelId = r.pixelId;
+        pixelName = r.pixelName;
+        baseCode = r.baseCode;
+      }
+
+      await pool.query(
+        `UPDATE client_ads_configs
+           SET meta_ad_account_id = $1,
+               meta_pixel_id = $2,
+               meta_pixel_name = $3,
+               meta_setup_completed_at = now(),
+               platforms_selected = ARRAY(SELECT DISTINCT unnest(platforms_selected || ARRAY['meta']::TEXT[])),
+               updated_at = now()
+          WHERE id = $4::uuid`,
+        [body.adAccountId, pixelId, pixelName, req.params.id],
+      );
+
+      return res.json({
+        success: true,
+        pixelId,
+        pixelName,
+        baseCode,
+      });
+    } catch (err) {
+      console.error("[meta-provision] failed", err);
+      return res.status(500).json({ error: "Provision feilet", detail: String(err) });
+    }
+  });
+
+  // POST .../meta/sync-conversions — opprett custom conversions per action
+  app.post("/api/admin-room/agent/ads/configs/:id/meta/sync-conversions", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT meta_pixel_id, meta_ad_account_id, approval_status
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.approval_status !== "approved") {
+        return res.status(412).json({ error: "Konfig må være approved før sync" });
+      }
+      if (!cfg.meta_pixel_id || !cfg.meta_ad_account_id) {
+        return res.status(412).json({ error: "Sett opp Pixel først." });
+      }
+
+      const actionsR = await pool.query(
+        `SELECT id::text, action_name, display_name, goal_category, default_value,
+                currency, trigger_type, url_pattern
+           FROM client_ads_actions
+          WHERE config_id = $1::uuid AND is_active = TRUE AND meta_custom_conversion_id IS NULL
+          ORDER BY created_at ASC`,
+        [req.params.id],
+      );
+
+      const created: Array<{ actionId: string; conversionId: string; eventName: string }> = [];
+      const failed: Array<{ actionId: string; error: string }> = [];
+
+      for (const a of actionsR.rows) {
+        const r = await createMetaCustomConversion(pool, {
+          producerUserId: session.userId,
+          adAccountId: cfg.meta_ad_account_id,
+          pixelId: cfg.meta_pixel_id,
+          action: {
+            actionName: a.action_name,
+            displayName: a.display_name,
+            goalCategory: a.goal_category,
+            defaultValue: Number(a.default_value ?? 0),
+            currency: a.currency || "NOK",
+            triggerType: a.trigger_type,
+            urlPattern: a.url_pattern,
+          },
+        });
+        if (r.ok) {
+          await pool.query(
+            `UPDATE client_ads_actions
+                SET meta_custom_conversion_id = $1,
+                    meta_event_name = $2,
+                    meta_synced_at = now(),
+                    updated_at = now()
+              WHERE id = $3::uuid`,
+            [r.customConversionId, r.eventName, a.id],
+          );
+          created.push({ actionId: a.id, conversionId: r.customConversionId, eventName: r.eventName });
+        } else {
+          failed.push({ actionId: a.id, error: r.error });
+        }
+      }
+
+      return res.json({ success: true, created, failed });
+    } catch (err) {
+      console.error("[meta-sync] failed", err);
+      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // TikTok — Wave 3: Pixel + Events + Reporting
+  // Bruker eget OAuth-flow (Business API) — NIKKE same som creator-OAuth.
+  // Tokens lagres i role_room_ads_oauth_connections m/ platform='tiktok'.
+  // ════════════════════════════════════════════════════════════════════
+
+  app.get("/api/admin-room/agent/ads/oauth/tiktok/start", (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? ""}`).replace(/\/+$/, "");
+    const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/tiktok/callback`;
+    const configId = typeof req.query.configId === "string" ? req.query.configId : "";
+    const state = `${session.userId}.${configId}.${crypto.randomBytes(12).toString("hex")}`;
+    const authUrl = buildTiktokAuthUrl({ state, redirectUri });
+    if (!authUrl) return res.status(503).json({ error: "TIKTOK_BUSINESS_APP_ID/SECRET ikke satt." });
+    return res.json({ authUrl });
+  });
+
+  app.get("/api/admin-room/agent/ads/oauth/tiktok/callback", async (req, res) => {
+    const authCode = typeof req.query.auth_code === "string" ? req.query.auth_code : typeof req.query.code === "string" ? req.query.code : null;
+    const state = typeof req.query.state === "string" ? req.query.state : null;
+    if (!authCode || !state) return res.status(400).send("Missing auth_code/state");
+
+    const [userId, configId] = state.split(".");
+    if (!userId) return res.status(400).send("Invalid state");
+
+    try {
+      const tokenResult = await exchangeTiktokAuthCode(authCode);
+      if (!tokenResult) return res.redirect(`/role-room/agent/ads?oauth_error=tiktok_exchange_failed`);
+
+      // Lagre i role_room_ads_oauth_connections (raw — TikTok tokens er long-lived).
+      // NB: vi bruker SAMME tabell som Google/LinkedIn, så pool-spørringen skiller seg
+      // litt fra resten siden TikTok ikke har refresh-token og expiry-felt.
+      await pool.query(
+        `INSERT INTO role_room_ads_oauth_connections
+            (user_id, platform, access_token, refresh_token, token_expires_at,
+             scopes, account_ref, connection_state, last_refreshed_at)
+         VALUES ($1, 'tiktok', $2, '', NULL, $3, $4, 'connected', now())
+         ON CONFLICT (user_id, platform) DO UPDATE
+         SET access_token = EXCLUDED.access_token,
+             scopes = EXCLUDED.scopes,
+             account_ref = EXCLUDED.account_ref,
+             connection_state = 'connected',
+             last_refreshed_at = now()`,
+        [
+          userId,
+          tokenResult.accessToken,
+          JSON.stringify(["advertiser.read", "pixel.read", "pixel.write", "ads.read"]),
+          tokenResult.advertiserIds.join(","),
+        ],
+      );
+
+      const cfgParam = configId ? `&config=${encodeURIComponent(configId)}` : "";
+      return res.redirect(`/role-room/agent/ads?oauth_success=tiktok${cfgParam}`);
+    } catch (err) {
+      console.error("[tiktok-oauth] callback failed", err);
+      return res.redirect(`/role-room/agent/ads?oauth_error=tiktok_${encodeURIComponent(String(err).slice(0, 80))}`);
+    }
+  });
+
+  app.get("/api/admin-room/agent/ads/tiktok/advertisers", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const r = await listTiktokAdvertisers(pool, session.userId);
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ advertisers: r.advertisers });
+  });
+
+  app.get("/api/admin-room/agent/ads/tiktok/pixels", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const advertiserId = typeof req.query.advertiserId === "string" ? req.query.advertiserId : "";
+    if (!advertiserId) return res.status(400).json({ error: "advertiserId påkrevd" });
+    const r = await listTiktokPixels(pool, { producerUserId: session.userId, advertiserId });
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ pixels: r.pixels });
+  });
+
+  app.post("/api/admin-room/agent/ads/configs/:id/tiktok/provision-pixel", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { advertiserId?: string; existingPixelCode?: string; pixelName?: string };
+    if (!body.advertiserId) return res.status(400).json({ error: "advertiserId påkrevd" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_name, tiktok_pixel_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.tiktok_pixel_id) {
+        return res.status(409).json({ error: "Pixel finnes alt", tiktokPixelId: cfg.tiktok_pixel_id });
+      }
+
+      let pixelCode: string;
+      let pixelName: string;
+      let baseCode: string;
+      if (body.existingPixelCode) {
+        pixelCode = body.existingPixelCode;
+        pixelName = body.pixelName ?? `Existing: ${body.existingPixelCode}`;
+        // Ekstraher snippet fra koden — bruker samme template som ny
+        baseCode = `<!-- Eksisterende TikTok Pixel — ${body.existingPixelCode} -->
+<!-- Antar at klient allerede har dette installert. -->`;
+      } else {
+        const r = await provisionTiktokPixel(pool, {
+          producerUserId: session.userId,
+          advertiserId: body.advertiserId,
+          pixelName: body.pixelName ?? `RR-Agent: ${cfg.client_name}`,
+        });
+        if (!r.ok) return res.status(503).json({ error: r.error });
+        pixelCode = r.pixelCode;
+        pixelName = r.pixelName;
+        baseCode = r.baseCode;
+      }
+
+      await pool.query(
+        `UPDATE client_ads_configs
+           SET tiktok_advertiser_id = $1,
+               tiktok_pixel_id = $2,
+               tiktok_pixel_name = $3,
+               tiktok_setup_completed_at = now(),
+               platforms_selected = ARRAY(SELECT DISTINCT unnest(platforms_selected || ARRAY['tiktok']::TEXT[])),
+               updated_at = now()
+          WHERE id = $4::uuid`,
+        [body.advertiserId, pixelCode, pixelName, req.params.id],
+      );
+
+      return res.json({ success: true, pixelCode, pixelName, baseCode });
+    } catch (err) {
+      console.error("[tiktok-provision] failed", err);
+      return res.status(500).json({ error: "Provision feilet", detail: String(err) });
+    }
+  });
+
+  // Sync — TikTok-events er pixel-side, ikke API-opprettet
+  // Vi lagrer event-mapping per action så AI-prompter kan bruke det.
+  app.post("/api/admin-room/agent/ads/configs/:id/tiktok/sync-events", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      const cfgR = await pool.query(
+        `SELECT tiktok_pixel_id, approval_status
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.approval_status !== "approved") {
+        return res.status(412).json({ error: "Konfig må være approved før sync" });
+      }
+      if (!cfg.tiktok_pixel_id) return res.status(412).json({ error: "Sett opp Pixel først." });
+
+      const actionsR = await pool.query(
+        `SELECT id::text, action_name, goal_category
+           FROM client_ads_actions
+          WHERE config_id = $1::uuid AND is_active = TRUE AND tiktok_event_name IS NULL
+          ORDER BY created_at ASC`,
+        [req.params.id],
+      );
+
+      const created: Array<{ actionId: string; eventName: string }> = [];
+      for (const a of actionsR.rows) {
+        const eventName = mapActionToTiktokEvent({
+          goalCategory: a.goal_category,
+          actionName: a.action_name,
+        });
+        await pool.query(
+          `UPDATE client_ads_actions
+              SET tiktok_event_id = $1,
+                  tiktok_event_name = $2,
+                  tiktok_synced_at = now(),
+                  updated_at = now()
+            WHERE id = $3::uuid`,
+          [a.action_name, eventName, a.id],
+        );
+        created.push({ actionId: a.id, eventName });
+      }
+      return res.json({ success: true, created, failed: [] });
+    } catch (err) {
+      console.error("[tiktok-sync] failed", err);
+      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+    }
+  });
+
+  app.patch("/api/admin-room/agent/ads/configs/:id/tiktok/capi-token", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { capiToken?: string };
+    if (!body.capiToken) return res.status(400).json({ error: "capiToken påkrevd" });
+    await pool.query(
+      `UPDATE client_ads_configs
+          SET tiktok_capi_access_token = $1, updated_at = now()
+        WHERE id = $2::uuid AND content_producer_user_id = $3`,
+      [body.capiToken, req.params.id, session.userId],
+    );
+    return res.json({ success: true });
+  });
+
+  // PATCH .../meta/capi-token — lagre CAPI token (kryptert ved annet steg)
+  app.patch("/api/admin-room/agent/ads/configs/:id/meta/capi-token", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { capiToken?: string };
+    if (!body.capiToken) return res.status(400).json({ error: "capiToken påkrevd" });
+    await pool.query(
+      `UPDATE client_ads_configs
+          SET meta_capi_access_token = $1, updated_at = now()
+        WHERE id = $2::uuid AND content_producer_user_id = $3`,
+      [body.capiToken, req.params.id, session.userId],
+    );
+    return res.json({ success: true });
+  });
+
+  // PATCH .../linkedin/capi-token — lagre CAPI access token (kryptert)
+  // Krever LinkedIn Conversions API-godkjenning (Standard tier) — UI viser
+  // "venter på review" til Daniel har den. Endpoint fungerer uansett —
+  // bare token-en kommer ikke til nytte før produktet er godkjent.
+  app.patch("/api/admin-room/agent/ads/configs/:id/linkedin/capi-token", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { capiToken?: string };
+    if (!body.capiToken) return res.status(400).json({ error: "capiToken påkrevd" });
+    // NB: vi lagrer rå-token her. Når kryptering går i produksjon, encrypte
+    // før lagring (samme AES-256-GCM-pattern som refresh_token).
+    await pool.query(
+      `UPDATE client_ads_configs
+          SET linkedin_capi_access_token = $1, updated_at = now()
+        WHERE id = $2::uuid AND content_producer_user_id = $3`,
+      [body.capiToken, req.params.id, session.userId],
+    );
+    return res.json({ success: true });
+  });
+
+  // GET /api/admin-room/agent/ads/configs/:id/insights?range=28d
+  // Aggregert KPI-dashboard: GA4 + Google Ads + GSC + tracked events
+  // + auto-genererte observasjoner. Brukes av ClientInsightsPanel.
+  app.get("/api/admin-room/agent/ads/configs/:id/insights", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const rangeRaw = typeof req.query.range === "string" ? req.query.range : "28d";
+    const rangeDays = Math.max(1, Math.min(365, parseInt(rangeRaw, 10) || 28));
+
+    try {
+      const insights = await fetchClientInsights(pool, {
+        producerUserId: session.userId,
+        configId: req.params.id,
+        rangeDays,
+      });
+      if (!insights) return res.status(404).json({ error: "Config ikke funnet" });
+      return res.json(insights);
+    } catch (err) {
+      console.error("[insights] failed", err);
+      return res.status(500).json({ error: "Insights-henting feilet", detail: String(err) });
+    }
+  });
+
+  // GET /api/admin-room/agent/ads/configs/:id/ai-prompts?target=loveable
+  // Genererer 10 klar-til-paste prompter for klient's AI-kode-agent.
+  // Hver prompt inneholder klient-spesifikke ID-er + tilpasses target-agenten
+  // (Loveable / v0 / Bolt / Cursor / generic).
+  app.get("/api/admin-room/agent/ads/configs/:id/ai-prompts", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const target = (typeof req.query.target === "string" ? req.query.target : "loveable") as TargetAgent;
+    if (!["loveable", "v0", "bolt", "cursor", "generic"].includes(target)) {
+      return res.status(400).json({ error: "Ugyldig target — bruk loveable/v0/bolt/cursor/generic" });
+    }
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT client_name, client_website_url, business_type, business_summary,
+                ga4_measurement_id, gtm_container_public_id,
+                linkedin_insight_tag_id, meta_pixel_id, tiktok_pixel_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+
+      const actionsR = await pool.query(
+        `SELECT action_name, display_name, google_ads_label, trigger_type,
+                default_value, currency, url_pattern,
+                linkedin_conversion_id, meta_custom_conversion_id, meta_event_name,
+                tiktok_event_name
+           FROM client_ads_actions
+          WHERE config_id = $1::uuid AND is_active = TRUE
+          ORDER BY created_at ASC`,
+        [req.params.id],
+      );
+
+      // LinkedIn partner-ID må hentes separat (det er ikke det samme som
+      // insight tag ID — det er en numerisk verdi en grad lavere).
+      // For prompt-bruk er insight_tag_id good enough — det er den klient
+      // bruker i pixel-snippeten. Vi reuse her.
+      const linkedinPartnerId = cfg.linkedin_insight_tag_id ?? null;
+
+      // Hent ekte live-data fra klient-siten (best-effort, lite latens)
+      const liveSite = await fetchLiveSiteContext(cfg.client_website_url).catch(() => undefined);
+
+      const prompts = generateAllPrompts({
+        clientName: cfg.client_name,
+        websiteUrl: cfg.client_website_url,
+        ga4MeasurementId: cfg.ga4_measurement_id,
+        awConversionId: process.env.GOOGLE_ADS_CONVERSION_ID || null,
+        gtmContainerId: cfg.gtm_container_public_id,
+        linkedinPartnerId,
+        metaPixelId: cfg.meta_pixel_id ?? null,
+        tiktokPixelCode: cfg.tiktok_pixel_id ?? null,
+        businessType: cfg.business_type,
+        businessSummary: cfg.business_summary,
+        actions: actionsR.rows.map((a) => ({
+          actionName: a.action_name,
+          displayName: a.display_name,
+          label: a.google_ads_label,
+          triggerType: a.trigger_type,
+          defaultValue: Number(a.default_value ?? 0),
+          currency: a.currency || "NOK",
+          urlPattern: a.url_pattern,
+          linkedinConversionId: a.linkedin_conversion_id ?? null,
+          metaEventName: a.meta_event_name ?? null,
+          metaCustomConversionId: a.meta_custom_conversion_id ?? null,
+          tiktokEventName: a.tiktok_event_name ?? null,
+        })),
+        targetAgent: target,
+        liveSite,
+      });
+
+      return res.json({ target, prompts });
+    } catch (err) {
+      console.error("[ai-prompts] failed", err);
+      return res.status(500).json({ error: "Prompt-generering feilet", detail: String(err) });
+    }
+  });
+
+  // GET /api/admin-room/agent/ads/configs/:id/gsc/status
+  // Hent live sitemap-status (errors/warnings/lastDownloaded per sitemap).
+  app.get("/api/admin-room/agent/ads/configs/:id/gsc/status", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      const cfgR = await pool.query(
+        `SELECT client_website_url, gsc_property_url
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const siteUrl = cfgR.rows[0].gsc_property_url || cfgR.rows[0].client_website_url;
+      const r = await fetchSitemapStatus(pool, { producerUserId: session.userId, siteUrl });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+      return res.json({ siteUrl, sitemaps: r.sitemaps });
+    } catch (err) {
+      return res.status(500).json({ error: "Status-hent feilet", detail: String(err) });
+    }
+  });
+
+  // ─── GTM ─────────────────────────────────────────────────────────
+  // GET /api/admin-room/agent/ads/gtm/accounts
+  app.get("/api/admin-room/agent/ads/gtm/accounts", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const r = await listGtmAccounts(pool, session.userId);
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ accounts: r.accounts });
+  });
+
+  // POST /api/admin-room/agent/ads/configs/:id/gtm/provision
+  app.post("/api/admin-room/agent/ads/configs/:id/gtm/provision", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { accountId?: string };
+    if (!body.accountId) return res.status(400).json({ error: "accountId påkrevd" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_name, client_website_url, gtm_container_public_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.gtm_container_public_id) {
+        return res.status(409).json({ error: "GTM-container finnes allerede", gtm_container_public_id: cfg.gtm_container_public_id });
+      }
+
+      const domain = (() => {
+        try { return new URL(cfg.client_website_url).hostname; } catch { return undefined; }
+      })();
+      const r = await provisionGtmContainer(pool, {
+        producerUserId: session.userId,
+        accountId: body.accountId,
+        containerName: cfg.client_name,
+        domainName: domain,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+
+      await pool.query(
+        `UPDATE client_ads_configs
+           SET gtm_account_id = $1,
+               gtm_container_id = $2,
+               gtm_container_public_id = $3,
+               gtm_setup_completed_at = now(),
+               updated_at = now()
+          WHERE id = $4::uuid`,
+        [r.accountId, r.containerId, r.publicId, req.params.id],
+      );
+
+      return res.json({
+        success: true,
+        accountId: r.accountId,
+        containerId: r.containerId,
+        publicId: r.publicId,
+      });
+    } catch (err) {
+      console.error("[gtm-provision] failed", err);
+      return res.status(500).json({ error: "GTM-provision feilet", detail: String(err) });
+    }
+  });
+
+  // POST /api/admin-room/agent/ads/configs/:id/gtm/import-tags
+  // Importer alle godkjente conversion-actions som GTM-tags + triggers.
+  // Forutsetter at sync-to-google har kjørt (AW-label trengs).
+  app.post("/api/admin-room/agent/ads/configs/:id/gtm/import-tags", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, gtm_account_id, gtm_container_id, gtm_container_public_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (!cfg.gtm_container_id) {
+        return res.status(412).json({ error: "Opprett GTM-container først." });
+      }
+
+      const actionsR = await pool.query(
+        `SELECT action_name, display_name, goal_category, default_value, currency,
+                trigger_type, url_pattern, google_ads_label
+           FROM client_ads_actions
+          WHERE config_id = $1::uuid AND is_active = TRUE AND google_ads_label IS NOT NULL
+          ORDER BY created_at ASC`,
+        [req.params.id],
+      );
+      if (!actionsR.rowCount) {
+        return res.status(412).json({
+          error: "Ingen actions med Google Ads-label. Kjør 'Synk til Google Ads' først.",
+        });
+      }
+
+      const awBaseId = process.env.GOOGLE_ADS_CONVERSION_ID || "AW-18197346774";
+
+      const r = await importActionsToGtm(pool, {
+        producerUserId: session.userId,
+        accountId: cfg.gtm_account_id,
+        containerId: cfg.gtm_container_id,
+        awConversionId: awBaseId,
+        actions: actionsR.rows.map((a) => ({
+          actionName: a.action_name,
+          displayName: a.display_name,
+          label: a.google_ads_label,
+          defaultValue: Number(a.default_value ?? 0),
+          currency: a.currency || "NOK",
+          triggerType: a.trigger_type,
+          urlPattern: a.url_pattern,
+        })),
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+
+      return res.json({
+        success: true,
+        imported: r.imported,
+        failed: r.failed,
+        details: r.details,
+        nextStep: "Lim GTM-snippet i klientens <head>/<body> — publiser deretter container fra GTM-UI.",
+      });
+    } catch (err) {
+      console.error("[gtm-import] failed", err);
+      return res.status(500).json({ error: "GTM-import feilet", detail: String(err) });
     }
   });
 }
