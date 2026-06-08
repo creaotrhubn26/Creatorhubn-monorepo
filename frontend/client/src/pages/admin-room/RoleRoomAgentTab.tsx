@@ -27,6 +27,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import IgDmInbox from '../../components/crm/IgDmInbox';
+import AgentAdsPanel from './AgentAdsPanel';
 
 interface ProfileRecommendations {
   platforms: {
@@ -544,6 +545,13 @@ export default function RoleRoomAgentTab() {
           )}
         </>
       )}
+
+      {/* Ads & conversion-tracking (B0-B6 multi-tenant) — for klient-oppsett */}
+      <Divider sx={{ borderColor: 'rgba(168,85,247,0.18)', my: 1.4 }} />
+      <AgentAdsPanel
+        clientProjectId={undefined}
+        defaultClientName=""
+      />
     </Stack>
   );
 }
