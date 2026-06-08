@@ -1,7 +1,9 @@
 /**
  * Role Room Member Profile — API-client.
- * Bruker session-cookie (auto-sendt) eller eksplisitt bearer-token.
+ * Bruker apiFetch som vedlegger session-bearer-token automatisk.
  */
+
+import { apiFetch } from '@/lib/queryClient';
 
 export type ProfileVisibility = 'public' | 'connections' | 'private';
 
@@ -76,14 +78,9 @@ export interface AdminOnboardingConfigResponse {
 }
 
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  });
+  // apiFetch accepts the same shape as RequestInit (plus optional plain-object
+  // bodies). The cast is purely a TS narrowing aid.
+  const res = await apiFetch(url, init as Parameters<typeof apiFetch>[1]);
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
     throw new Error(`${url}: ${res.status} ${detail || res.statusText}`.trim());
@@ -111,9 +108,8 @@ export const roleRoomMemberProfileService = {
   async uploadProfileImage(file: File): Promise<string> {
     const formData = new FormData();
     formData.append('image', file);
-    const res = await fetch('/api/role-room/profile/me/image', {
+    const res = await apiFetch('/api/role-room/profile/me/image', {
       method: 'POST',
-      credentials: 'include',
       body: formData,
     });
     if (!res.ok) {

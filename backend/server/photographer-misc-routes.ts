@@ -150,8 +150,20 @@ export function setupPhotographerMiscRoutes(
         },
       });
     } catch (err) {
-      console.error('[photographer-settings] overview failed:', err);
-      res.status(500).json({ error: 'overview_failed' });
+      // Schema-drift skal ikke krasje settings-siden. Returner tom-shape
+      // (profile=null, alle counts=0, ingen integrasjoner) i stedet for 500.
+      console.warn('[photographer-settings] overview degraded:', (err as any)?.message || err);
+      res.json({
+        profile: null,
+        google: {
+          workspaceConnected: false,
+          driveConnected: false,
+          gmailConnected: false,
+          calendarConnected: false,
+        },
+        counts: { projects: 0, clients: 0, galleries: 0 },
+        integrations: { poweroffice: { connected: false, status: null } },
+      });
     }
   });
 

@@ -14,6 +14,7 @@ import React, {
   useEffect
 } from 'react';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { apiRequest } from '@/lib/queryClient';
 
 interface ShowcaseSettings {
   // Display Settings
@@ -229,9 +230,9 @@ export const ShowcaseProvider: React.FC<{ children: ReactNode }> = ({ children }
         const newSettings = { ...prev, ...updates };
 
         // Persist to server KV and localStorage (fallback)
-        fetch('/api/user/kv', {
-          method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
-          body: JSON.stringify({ key: 'showcase_settings', value: newSettings })
+        apiRequest('/api/user/kv', {
+          method: 'POST',
+          body: JSON.stringify({ key: 'showcase_settings', value: newSettings }),
         }).catch(() => {});
         localStorage.setItem('showcase-settings', JSON.stringify(newSettings));
 
@@ -255,9 +256,9 @@ export const ShowcaseProvider: React.FC<{ children: ReactNode }> = ({ children }
   // Reset settings to defaults
   const resetSettings = useCallback(() => {
     setSettings(defaultSettings);
-    fetch('/api/user/kv', {
-      method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ key: 'showcase_settings', value: defaultSettings })
+    apiRequest('/api/user/kv', {
+      method: 'POST',
+      body: JSON.stringify({ key: 'showcase_settings', value: defaultSettings }),
     }).catch(() => {});
     localStorage.removeItem('showcase-settings');
 
@@ -358,9 +359,9 @@ export const ShowcaseProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       // Persist favorites server-first
       const arr = Array.from(newFavorites);
-      fetch('/api/user/kv', {
-        method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ key: 'showcase_favorites', value: arr })
+      apiRequest('/api/user/kv', {
+        method: 'POST',
+        body: JSON.stringify({ key: 'showcase_favorites', value: arr }),
       }).catch(() => {});
       localStorage.setItem('showcase-favorites', JSON.stringify(arr));
 
@@ -401,9 +402,8 @@ export const ShowcaseProvider: React.FC<{ children: ReactNode }> = ({ children }
   // Load persisted data on mount
   useEffect(() => {
     // Load settings from server first
-    fetch('/api/user/kv/showcase_settings', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
+    apiRequest('/api/user/kv/showcase_settings')
+      .then((j: { data?: ShowcaseSettings } | null) => {
         if (j?.data) {
           setSettings(j.data);
         } else {
@@ -421,9 +421,8 @@ export const ShowcaseProvider: React.FC<{ children: ReactNode }> = ({ children }
       });
 
     // Load favorites
-    fetch('/api/user/kv/showcase_favorites', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
+    apiRequest('/api/user/kv/showcase_favorites')
+      .then((j: { data?: string[] } | null) => {
         if (j?.data) {
           setFavorites(new Set(j.data));
         } else {

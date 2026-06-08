@@ -101,8 +101,13 @@ export function setupShowcaseCategoriesRoutes(
         })),
       );
     } catch (error) {
-      console.error("Error fetching showcase categories:", error);
-      res.status(500).json({ error: "Kunne ikke hente kategorier" });
+      // Manglende showcase_categories-tabell skal ikke krasje showcase-sida.
+      // Returner tom liste istedet for 500.
+      console.warn(
+        "[showcase-categories] list degraded:",
+        (error as any)?.message || error,
+      );
+      res.json([]);
     }
   });
 
@@ -188,8 +193,13 @@ export function setupShowcaseCategoriesRoutes(
         result.rows.map((row: Record<string, unknown>) => mapShowcaseItemRow(row)),
       );
     } catch (error) {
-      console.error("Error fetching showcase items:", error);
-      res.status(500).json({ error: "Kunne ikke hente showcase-elementer" });
+      // Manglende showcase_items eller showcase_analytics-tabell skal ikke
+      // krasje profesjonal-feed. Returner tom liste i stedet for 500.
+      console.warn(
+        "[showcase-profession] list degraded:",
+        (error as any)?.message || error,
+      );
+      res.json([]);
     }
   });
 

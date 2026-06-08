@@ -19,6 +19,7 @@ import {
   ThemeProvider as MuiThemeProvider,
 } from '@mui/material/styles';
 import { useAuth } from '../hooks/useAuth';
+import { apiRequest } from '@/lib/queryClient';
 
 interface ProfessionTheme {
   primaryColor: string;
@@ -472,9 +473,8 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return true;
     };
 
-    fetch('/api/user/ui-preferences', { credentials: 'include' })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((payload) => {
+    apiRequest('/api/user/ui-preferences')
+      .then((payload: { data?: { theme_config?: unknown } } | null) => {
         const remoteConfig = payload?.data?.theme_config;
         if (applyUpdate(remoteConfig)) {
           return;
@@ -704,10 +704,8 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   );
 
   const saveTheme = useCallback(() => {
-    fetch('/api/user/ui-preferences', {
+    apiRequest('/api/user/ui-preferences', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ themeConfig }),
     }).catch(() => {
       // Ignore network save failure; local persistence remains active.

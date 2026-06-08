@@ -137,8 +137,10 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
       const result = await pool.query(query, params);
       res.json(result.rows.map(mapProjectRow));
     } catch (error) {
-      console.error("Error fetching projects:", error);
-      res.status(500).json({ error: "Kunne ikke hente prosjekter" });
+      // Manglende legacy.projects-tabell (eller schema-drift) skal ikke krasje
+      // dashbord-load. Returner tom liste i stedet for 500.
+      console.warn("[projects] list degraded:", (error as any)?.message || error);
+      res.json([]);
     }
   });
 
@@ -253,8 +255,10 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
       res.json({ entries });
     } catch (error) {
-      console.error("[project-change-log] fetch failed", error);
-      res.status(500).json({ error: "fetch_failed" });
+      // Manglende change-log-tabell skal ikke krasje aktivitets-banner.
+      // Returner tom liste i stedet for 500.
+      console.warn("[project-change-log] degraded:", (error as any)?.message || error);
+      res.json({ entries: [] });
     }
   });
 

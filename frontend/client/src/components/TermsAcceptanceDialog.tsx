@@ -64,14 +64,14 @@ export default function TermsAcceptanceDialog({
   // Fetch terms templates based on project type
   const { data: termsTemplates = [], isLoading, error } = useQuery<TermsTemplate[]>({
     queryKey: ['/api/terms-templates', projectType],
-    queryFn: () => fetch(`/api/terms-templates?category=${projectType}`).then(res => res.json()),
+    queryFn: () => apiRequest(`/api/terms-templates?category=${projectType}`),
     enabled: open
 });
 
   // Fetch GDPR terms
   const { data: gdprTerms } = useQuery<TermsTemplate>({
     queryKey: ['/api/terms-templates','gdpr-tillegg'],
-    queryFn: () => fetch('/api/terms-templates/gdpr-tillegg').then(res => res.json()),
+    queryFn: () => apiRequest('/api/terms-templates/gdpr-tillegg'),
     enabled: open
 });
 

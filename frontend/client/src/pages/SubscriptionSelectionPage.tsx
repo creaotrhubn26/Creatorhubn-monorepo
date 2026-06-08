@@ -144,17 +144,18 @@ export default function SubscriptionSelectionPage() {
       }
 
       // Server-first payment data
-      fetch('/api/user/kv/paymentCompleted', { credentials: 'include' })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((j) => {
-          const v = j && typeof j === 'object' && 'value' in j ? j.value : j;
+      apiRequest('/api/user/kv/paymentCompleted')
+        .then((j: unknown) => {
+          const v = j && typeof j === 'object' && 'value' in (j as Record<string, unknown>)
+            ? (j as Record<string, unknown>).value
+            : j;
           if (v) {
             setPaymentData(v);
             setShowPaymentStatus(true);
             // Clear server copy best-effort
-            fetch('/api/user/kv', {
-              method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
-              body: JSON.stringify({ key: 'paymentCompleted', value: null })
+            apiRequest('/api/user/kv', {
+              method: 'POST',
+              body: JSON.stringify({ key: 'paymentCompleted', value: null }),
             }).catch(() => {});
           } else {
             const storedPayment = localStorage.getItem('paymentCompleted');
@@ -201,10 +202,8 @@ export default function SubscriptionSelectionPage() {
     // Fire-and-forget receipt email request (server will resolve user via session)
     try {
       const amount = typeof plan?.price === 'number' ? plan.price : Number(plan?.price) || 0;
-      fetch('/api/payments/send-receipt', {
+      apiRequest('/api/payments/send-receipt', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           transactionId: transactionId || 'compat',
           requestId,
@@ -219,9 +218,8 @@ export default function SubscriptionSelectionPage() {
     if (fromInvite) {
       setTimeout(() => {
         // Check auto-redirect preference
-        fetch('/api/user/ui-preferences', { credentials: 'include' })
-          .then(r => r.ok ? r.json() : null)
-          .then(data => {
+        apiRequest('/api/user/ui-preferences')
+          .then((data: { autoRedirectToDashboard?: boolean } | null) => {
             const shouldAutoRedirect = data?.autoRedirectToDashboard ?? true; // Default to true for new users
 
             if (shouldAutoRedirect) {

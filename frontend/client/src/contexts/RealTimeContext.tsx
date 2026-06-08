@@ -6,6 +6,7 @@
 import type { ReactNode} from 'react';
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { apiRequest } from '@/lib/queryClient';
 import { useDynamicProfessions } from '../components/universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '../hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '../hooks/useProfessionAdapter';
@@ -456,19 +457,10 @@ export const RealTimeProvider: React.FC<{ children: ReactNode }> = ({ children }
     setError(null);
 
     try {
-      const response = await fetch('/api/collaboration/sessions', {
+      const session = await apiRequest('/api/collaboration/sessions', {
         method: 'POST',
-        headers: {
-          'Content-Type' : 'application/json', 'Authorization': `Bearer ${user?.id}`,
-      },
         body: JSON.stringify(sessionData),
-    });
-
-      if (!response.ok) {
-        throw new Error('Failed to create session');
-    }
-
-      const session = await response.json();
+      }) as CollaborationSession;
       setCurrentSession(session);
       
       // Join the session

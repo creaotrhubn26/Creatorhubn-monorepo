@@ -89,8 +89,10 @@ export function setupPhotographerClientsRoutes(
         })),
       });
     } catch (err) {
-      console.error("[crm] list clients failed:", err);
-      res.status(500).json({ error: "list_clients_failed" });
+      // Schema-drift på joined tables (photographer_client_galleries / print_orders /
+      // contracts) skal ikke krasje CRM-listen. Returner tom-shape i stedet for 500.
+      console.warn("[crm] list clients degraded:", (err as any)?.message || err);
+      res.json({ clients: [] });
     }
   });
 
@@ -209,22 +211,26 @@ export function setupPhotographerClientsRoutes(
       const c = clientRow.rows[0] as Record<string, unknown>;
 
       const [galleries, orders, contracts, messages] = await Promise.all([
-        pool.query(
-          `SELECT id, project_title, access_token, status,
-                  gallery_settings, created_at, completed_at
-             FROM photographer_client_galleries
-            WHERE canonical_client_id = $1 AND photographer_id = $2
-            ORDER BY created_at DESC`,
-          [clientId, photographerId],
-        ),
-        pool.query(
-          `SELECT id, gallery_id, total_amount, currency, payment_status,
-                  fulfillment_status, created_at
-             FROM print_orders
-            WHERE canonical_client_id = $1 AND photographer_id = $2
-            ORDER BY created_at DESC`,
-          [clientId, photographerId],
-        ),
+        pool
+          .query(
+            `SELECT id, project_title, access_token, status,
+                    gallery_settings, created_at, completed_at
+               FROM photographer_client_galleries
+              WHERE canonical_client_id = $1 AND photographer_id = $2
+              ORDER BY created_at DESC`,
+            [clientId, photographerId],
+          )
+          .catch(() => ({ rows: [] as Record<string, unknown>[] })),
+        pool
+          .query(
+            `SELECT id, gallery_id, total_amount, currency, payment_status,
+                    fulfillment_status, created_at
+               FROM print_orders
+              WHERE canonical_client_id = $1 AND photographer_id = $2
+              ORDER BY created_at DESC`,
+            [clientId, photographerId],
+          )
+          .catch(() => ({ rows: [] as Record<string, unknown>[] })),
         pool
           .query(
             `SELECT id, title, status, contract_value, currency,

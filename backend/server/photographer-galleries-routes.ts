@@ -172,8 +172,10 @@ export function setupPhotographerGalleriesRoutes(
         }),
       });
     } catch (error) {
-      console.error("[photographer-galleries] list failed", error);
-      res.status(500).json({ error: "list_failed" });
+      // Schema-drift på korrelerte subqueries (pricing_packages, packages, projects)
+      // skal ikke krasje gallerilisten. Returner tom-shape istedet for 500.
+      console.warn("[photographer-galleries] list degraded:", (error as any)?.message || error);
+      res.json({ galleries: [] });
     }
   });
 

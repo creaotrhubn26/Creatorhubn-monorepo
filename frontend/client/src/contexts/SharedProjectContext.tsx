@@ -25,6 +25,7 @@ import React, {
   useCallback
 } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { apiRequest } from '@/lib/queryClient';
 import type {
   WorkflowState} from '@/services/WorkflowOrchestrator';
 import {
@@ -129,9 +130,8 @@ export function SharedProjectProvider({ children }: SharedProjectProviderProps) 
 
   // Load last project from server (fallback to localStorage)
   useEffect(() => {
-    fetch('/api/user/ui-preferences', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
+    apiRequest('/api/user/ui-preferences')
+      .then((j: { data?: { last_project?: ProjectMetadata | null } } | null) => {
         const lp = j?.data?.last_project;
         if (lp) {
           setCurrentProjectState(lp);
@@ -173,9 +173,8 @@ export function SharedProjectProvider({ children }: SharedProjectProviderProps) 
     setCurrentProjectState(project);
 
     // Save to DB + localStorage
-    fetch('/api/user/ui-preferences', {
-      method: 'POST', headers: { 'Content-Type' : 'application/json' },
-      credentials: 'include',
+    apiRequest('/api/user/ui-preferences', {
+      method: 'POST',
       body: JSON.stringify({ lastProject: project }),
     }).catch(() => {});
     if (project) {
