@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CreatorHub × Backblaze B2</title>
+<style>
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+    background: #0a0f1a;
+    color: #fff;
+    width: 210mm;
+    min-height: 297mm;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    padding: 14mm 12mm;
+    position: relative;
+  }
+  /* Subtle gradient orb */
+  .page::before {
+    content: '';
+    position: absolute;
+    top: -100px;
+    right: -100px;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(255,140,0,0.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .page::after {
+    content: '';
+    position: absolute;
+    bottom: -150px;
+    left: -100px;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(66,133,244,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* ─── Header ─────────────────── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    position: relative;
+    gap: 20px;
+  }
+  .brand-wordmark {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .brand-wordmark img {
+    height: 56px;
+    width: auto;
+    display: block;
+  }
+  .co-brand {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+  .co-brand .x-mark {
+    font-size: 18px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.85);
+    letter-spacing: -0.2px;
+  }
+  .co-brand .x-mark span {
+    color: rgba(255,255,255,0.45);
+    margin: 0 6px;
+    font-weight: 400;
+  }
+  .co-brand .x-mark .b2-accent {
+    color: #ff8c00;
+  }
+  .partnership-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.55);
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+  .partnership-badge::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 8px #4ade80;
+  }
+
+  /* ─── Hero ─────────────────── */
+  .hero {
+    margin-top: 20px;
+    position: relative;
+  }
+  .hero-eyebrow {
+    color: #ff8c00;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .hero-title {
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.5px;
+    max-width: 560px;
+  }
+  .hero-title span {
+    color: #ff8c00;
+  }
+  .hero-subtitle {
+    margin-top: 8px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.7);
+    line-height: 1.55;
+    max-width: 560px;
+  }
+
+  /* ─── KPI row ─────────────────── */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .kpi {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .kpi-label {
+    font-size: 9px;
+    color: rgba(255,255,255,0.55);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .kpi-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .kpi-sub {
+    font-size: 9px;
+    color: rgba(255,255,255,0.5);
+    margin-top: 2px;
+  }
+  .kpi.accent .kpi-value { color: #ff8c00; }
+
+  /* ─── 2-column body ─────────────────── */
+  .body {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 14px;
+    margin-top: 18px;
+  }
+  .col h3 {
+    font-size: 11px;
+    color: #ff8c00;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 8px;
+    font-weight: 700;
+  }
+  .col p, .col li {
+    font-size: 10.5px;
+    line-height: 1.55;
+    color: rgba(255,255,255,0.82);
+  }
+  .col ul {
+    list-style: none;
+  }
+  .col li {
+    padding: 4px 0;
+    padding-left: 16px;
+    position: relative;
+  }
+  .col li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 12px;
+    width: 6px;
+    height: 6px;
+    border-radius: 1px;
+    background: #ff8c00;
+    transform: rotate(45deg);
+  }
+  .col p {
+    margin-bottom: 8px;
+  }
+  .col strong { color: #fff; font-weight: 700; }
+
+  /* ─── Mockup UI ─────────────────── */
+  .mockup {
+    background: rgba(15,23,42,0.94);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 12px;
+    margin-top: 8px;
+  }
+  .mockup-titlebar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 8px;
+  }
+  .mock-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .mock-dot.r { background: #ff5f57; }
+  .mock-dot.y { background: #febc2e; }
+  .mock-dot.g { background: #28c840; }
+  .mockup-content {
+    padding: 4px;
+  }
+  .onboard-card {
+    text-align: center;
+    padding: 10px 6px;
+  }
+  .onboard-card .q {
+    font-size: 11px;
+    color: rgba(255,255,255,0.85);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .choice-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .choice {
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 8px;
+    background: rgba(255,255,255,0.03);
+    position: relative;
+  }
+  .choice.featured {
+    border-color: #ff8c00;
+    background: rgba(255,140,0,0.06);
+  }
+  .choice-icon {
+    font-size: 20px;
+    margin-bottom: 4px;
+  }
+  .choice-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .choice-sub {
+    font-size: 8px;
+    color: rgba(255,255,255,0.55);
+    margin-top: 2px;
+  }
+  .featured-badge {
+    position: absolute;
+    top: -6px;
+    right: 6px;
+    background: #ff8c00;
+    color: #0a0f1a;
+    font-size: 7px;
+    font-weight: 700;
+    padding: 2px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .folder-list {
+    margin-top: 10px;
+    text-align: left;
+    background: rgba(255,255,255,0.04);
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+  .folder-list .title {
+    font-size: 8.5px;
+    color: rgba(255,255,255,0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .folder-list .row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 9px;
+    color: rgba(255,255,255,0.85);
+    padding: 1px 0;
+  }
+  .check {
+    color: #4ade80;
+    font-weight: 900;
+    font-size: 8px;
+  }
+  .folder-icon {
+    color: rgba(255,140,0,0.7);
+    font-size: 9px;
+  }
+
+  /* ─── Ask box ─────────────────── */
+  .ask-box {
+    background: linear-gradient(135deg, rgba(255,140,0,0.10), rgba(255,140,0,0.04));
+    border: 1px solid rgba(255,140,0,0.25);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-top: 12px;
+  }
+  .ask-box .h {
+    font-size: 11px;
+    font-weight: 800;
+    color: #ff8c00;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .ask-box ol {
+    list-style: none;
+    counter-reset: ask;
+  }
+  .ask-box li {
+    counter-increment: ask;
+    padding: 3px 0 3px 24px;
+    position: relative;
+    font-size: 10px;
+    line-height: 1.5;
+    color: rgba(255,255,255,0.85);
+  }
+  .ask-box li::before {
+    content: counter(ask);
+    position: absolute;
+    left: 0;
+    top: 3px;
+    width: 16px;
+    height: 16px;
+    background: #ff8c00;
+    color: #0a0f1a;
+    border-radius: 4px;
+    font-weight: 900;
+    font-size: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ─── Footer ─────────────────── */
+  .footer {
+    margin-top: 18px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 9px;
+    color: rgba(255,255,255,0.55);
+  }
+  .footer .contact {
+    color: #fff;
+  }
+  .footer .contact strong {
+    color: #ff8c00;
+  }
+
+  /* ─── Section labels ─────────────────── */
+  .section-label {
+    font-size: 8.5px;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .timeline {
+    margin-top: 8px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .tl-item {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 6px 6px;
+    text-align: center;
+  }
+  .tl-month {
+    font-size: 8.5px;
+    color: rgba(255,255,255,0.55);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+  }
+  .tl-users {
+    font-size: 13px;
+    font-weight: 800;
+    color: #fff;
+  }
+  .tl-storage {
+    font-size: 8.5px;
+    color: #ff8c00;
+    margin-top: 1px;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="brand-wordmark">
+      <img src="creatorhub-wordmark.png" alt="CreatorHub">
+    </div>
+    <div class="co-brand">
+      <div class="x-mark"><span>×</span><span class="b2-accent">Backblaze B2</span></div>
+      <div class="partnership-badge">PARTNERSHIP DISCUSSION · JUNE 2026</div>
+    </div>
+  </div>
+
+  <div class="hero">
+    <div class="hero-eyebrow">Powered By Backblaze · Norwegian creative market</div>
+    <div class="hero-title">A purpose-built SaaS platform for Nordic creative professionals — <span>with B2 baked in.</span></div>
+    <div class="hero-subtitle">CreatorHub is a SaaS for photographers, videographers, event planners, and music producers in Norway and the Nordics. We've built B2 integration directly into onboarding and our upload pipelines. Now we want to launch with you as our default storage layer.</div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi accent">
+      <div class="kpi-label">Target market</div>
+      <div class="kpi-value">~12,000</div>
+      <div class="kpi-sub">Norwegian creatives</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Launch window</div>
+      <div class="kpi-value">Q3 '26</div>
+      <div class="kpi-sub">Public launch</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Avg storage per user</div>
+      <div class="kpi-value">~80 GB</div>
+      <div class="kpi-sub">Mixed profile</div>
+    </div>
+    <div class="kpi accent">
+      <div class="kpi-label">B2 integration</div>
+      <div class="kpi-value">Live</div>
+      <div class="kpi-sub">In production</div>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <div class="col">
+      <h3>What we've built — production today</h3>
+      <p>The B2 integration is fully implemented and deployed to <strong>creatorhub-backend-rtbl.onrender.com</strong>. We can demo it live on the call.</p>
+      <ul>
+        <li><strong>30-second onboarding</strong> — users connect B2 credentials via guided flow</li>
+        <li><strong>Encrypted storage</strong> — AES-256-GCM with HKDF-derived per-user keys</li>
+        <li><strong>Automatic mirroring</strong> — uploads to galleries, marketing, and masters are mirrored to user's B2 bucket</li>
+        <li><strong>6-hourly background sync</strong> — keeps CreatorHub UI in sync with B2 state</li>
+        <li><strong>Per-user dashboard</strong> — file browser, usage stats, cost projection</li>
+        <li><strong>S3-compatible</strong> — works with B2's existing API, no special SDK needed</li>
+      </ul>
+
+      <h3 style="margin-top: 12px;">Growth model — modelled B2 demand</h3>
+      <div class="timeline">
+        <div class="tl-item">
+          <div class="tl-month">Launch + 3</div>
+          <div class="tl-users">100</div>
+          <div class="tl-storage">~8 TB</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-month">+ 6 mo</div>
+          <div class="tl-users">300</div>
+          <div class="tl-storage">~24 TB</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-month">+ 12 mo</div>
+          <div class="tl-users">800</div>
+          <div class="tl-storage">~64 TB</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-month">+ 24 mo</div>
+          <div class="tl-users">2,500</div>
+          <div class="tl-storage">~200 TB</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h3>Live onboarding flow</h3>
+      <div class="mockup">
+        <div class="mockup-titlebar">
+          <div class="mock-dot r"></div>
+          <div class="mock-dot y"></div>
+          <div class="mock-dot g"></div>
+          <div style="margin-left: 8px; font-size: 8.5px; color: rgba(255,255,255,0.5);">creatorhubn.com/onboarding</div>
+        </div>
+        <div class="mockup-content">
+          <div class="onboard-card">
+            <div class="q">Want a backup of your photos?</div>
+            <div class="choice-row">
+              <div class="choice featured">
+                <div class="featured-badge">Recommended</div>
+                <div class="choice-icon">☁</div>
+                <div class="choice-label">Google Drive</div>
+                <div class="choice-sub">Easy setup</div>
+              </div>
+              <div class="choice">
+                <div class="choice-icon">⬢</div>
+                <div class="choice-label">Backblaze B2</div>
+                <div class="choice-sub">Pro choice</div>
+              </div>
+            </div>
+            <div class="folder-list">
+              <div class="title">After connect — auto-created folders</div>
+              <div class="row"><span class="check">✓</span><span class="folder-icon">▣</span>Galleries / Originals</div>
+              <div class="row"><span class="check">✓</span><span class="folder-icon">▣</span>Galleries / Edits</div>
+              <div class="row"><span class="check">✓</span><span class="folder-icon">▣</span>Marketing / Social</div>
+              <div class="row"><span class="check">✓</span><span class="folder-icon">▣</span>Contracts</div>
+              <div class="row"><span class="check">✓</span><span class="folder-icon">▣</span>Archive</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="ask-box">
+    <div class="h">Pre-revenue ask — terms that match where we are</div>
+    <ol>
+      <li><strong>Pay-as-you-go OEM pricing</strong> for the first 6 months — no upfront commitment while we acquire users.</li>
+      <li><strong>90-day proof-of-concept</strong> with ~25 TB of allocated free storage to bridge the launch period.</li>
+      <li><strong>Phased commitment ramp</strong> — convert to annual commit when we hit a mutually agreed user/MRR threshold.</li>
+      <li><strong>Powered By Backblaze branding</strong> — partner badge on creatorhubn.com, "storage powered by" in our UI from day one. Co-marketing case study at 100+ active users.</li>
+    </ol>
+  </div>
+
+  <div class="footer">
+    <div>
+      <div>CreatorHub AS · Org.nr. 937 518 684</div>
+      <div style="opacity: 0.7;">Available for a 30-min call this week or next · Pacific time mornings preferred</div>
+    </div>
+    <div class="contact">
+      <strong>Daniel Qazi</strong> · CEO<br>
+      daniel@creatorhubn.com · +47 97 95 92 94
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

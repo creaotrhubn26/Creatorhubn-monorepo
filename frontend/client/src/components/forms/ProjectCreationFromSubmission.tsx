@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useTheming } from '../../utils/theming-helper';
-import React from 'react';
-import { Box, Typography } from '@mui/material';
+import { useQueryClient } from "/react-query";
+1import { Box, Typography } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
 // Import dynamic profession system
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';

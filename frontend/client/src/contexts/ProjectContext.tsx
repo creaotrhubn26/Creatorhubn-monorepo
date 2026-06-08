@@ -5,6 +5,7 @@
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { apiRequest } from '@/lib/queryClient';
 
 // Project data interface
 export interface ProjectData {
@@ -926,19 +927,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         formData.append('metadata', JSON.stringify(metadata));
     }
 
-      const response = await fetch(`/api/projects/${projectId}/files`, {
+      // apiRequest treffer backend-host + vedlegger session-token automatisk.
+      // Tidligere sendte vi user.id som Bearer — det er feil token.
+      return await apiRequest(`/api/projects/${projectId}/files`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${user?.id}`,
-      },
         body: formData,
-    });
-
-      if (!response.ok) {
-        throw new Error('Failed to upload project file');
-    }
-
-      return await response.json();
+      });
   } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to upload project file';
       setError(errorMessage);
@@ -948,18 +942,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const getProjectFiles = useCallback(async (projectId: string) => {
     try {
-      const response = await fetch(`/api/projects/${projectId}/files`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${user?.id}`,
-      },
-    });
-
-      if (!response.ok) {
-        throw new Error('Failed to get project files');
-    }
-
-      return await response.json();
+      return await apiRequest(`/api/projects/${projectId}/files`);
   } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to get project files';
       setError(errorMessage);
@@ -969,16 +952,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const deleteProjectFile = useCallback(async (projectId: string, fileId: string) => {
     try {
-      const response = await fetch(`/api/projects/${projectId}/files/${fileId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${user?.id}`,
-      },
-    });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete project file');
-    }
+      await apiRequest(`/api/projects/${projectId}/files/${fileId}`, { method: 'DELETE' });
   } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete project file';
       setError(errorMessage);
@@ -988,17 +962,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const updateProjectFile = useCallback(async (projectId: string, fileId: string, updates: any) => {
     try {
-      const response = await fetch(`/api/projects/${projectId}/files/${fileId}`, {
+      await apiRequest(`/api/projects/${projectId}/files/${fileId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
-      },
         body: JSON.stringify(updates),
-    });
-
-      if (!response.ok) {
-        throw new Error('Failed to update project file');
-    }
+      });
   } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update project file';
       setError(errorMessage);
@@ -1008,18 +975,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const shareProjectFile = useCallback(async (projectId: string, fileId: string, shareData: any) => {
     try {
-      const response = await fetch(`/api/projects/${projectId}/files/${fileId}/share`, {
+      return await apiRequest(`/api/projects/${projectId}/files/${fileId}/share`, {
         method: 'POST',
-        headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
-      },
         body: JSON.stringify(shareData),
-    });
-
-      if (!response.ok) {
-        throw new Error('Failed to share project file');
-    }
-      return await response.json();
+      });
   } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to share project file';
       setError(errorMessage);

@@ -1824,9 +1824,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     try {
       // Try to determine project type from showcase metadata or fetch from API
       // First, try to fetch project from wedding projects API
-      const weddingRes = await fetch(`/api/wedding-projects/${item.projectId}`, { credentials: 'include' });
-      if (weddingRes.ok) {
-        const data = await weddingRes.json();
+      // apiRequest vedlegger session-token automatisk. Wrap i try slik at
+      // 401/404 ikke kaster — vi prøver flere kilder uansett.
+      let data: any = null;
+      try {
+        data = await apiRequest(`/api/wedding-projects/${item.projectId}`);
+      } catch { /* fall-through til andre forsøk */ }
+      if (data) {
         if (data.success && data.project) {
           setSelectedProjectForOverview({
             ...data.project,
