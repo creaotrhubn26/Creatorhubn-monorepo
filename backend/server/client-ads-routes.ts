@@ -49,6 +49,10 @@ import {
   importActionsToGtm,
   diagnoseClientSetup,
 } from "./client-google-suite.js";
+import {
+  generateAllPrompts,
+  type TargetAgent,
+} from "./client-ai-prompt-generator.js";
 
 interface SessionLike {
   userId: string;
@@ -903,6 +907,65 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   app.get("/api/admin-room/agent/ads/configs/:id/gsc/diagnose", async (req, res) => {
     req.url = req.url.replace("/gsc/diagnose", "/setup/diagnose");
     app._router.handle(req, res, () => {});
+  });
+
+  // GET /api/admin-room/agent/ads/configs/:id/ai-prompts?target=loveable
+  // Genererer 10 klar-til-paste prompter for klient's AI-kode-agent.
+  // Hver prompt inneholder klient-spesifikke ID-er + tilpasses target-agenten
+  // (Loveable / v0 / Bolt / Cursor / generic).
+  app.get("/api/admin-room/agent/ads/configs/:id/ai-prompts", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const target = (typeof req.query.target === "string" ? req.query.target : "loveable") as TargetAgent;
+    if (!["loveable", "v0", "bolt", "cursor", "generic"].includes(target)) {
+      return res.status(400).json({ error: "Ugyldig target — bruk loveable/v0/bolt/cursor/generic" });
+    }
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT client_name, client_website_url, business_type, business_summary,
+                ga4_measurement_id, gtm_container_public_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+
+      const actionsR = await pool.query(
+        `SELECT action_name, display_name, google_ads_label, trigger_type,
+                default_value, currency, url_pattern
+           FROM client_ads_actions
+          WHERE config_id = $1::uuid AND is_active = TRUE
+          ORDER BY created_at ASC`,
+        [req.params.id],
+      );
+
+      const prompts = generateAllPrompts({
+        clientName: cfg.client_name,
+        websiteUrl: cfg.client_website_url,
+        ga4MeasurementId: cfg.ga4_measurement_id,
+        awConversionId: process.env.GOOGLE_ADS_CONVERSION_ID || null,
+        gtmContainerId: cfg.gtm_container_public_id,
+        businessType: cfg.business_type,
+        businessSummary: cfg.business_summary,
+        actions: actionsR.rows.map((a) => ({
+          actionName: a.action_name,
+          displayName: a.display_name,
+          label: a.google_ads_label,
+          triggerType: a.trigger_type,
+          defaultValue: Number(a.default_value ?? 0),
+          currency: a.currency || "NOK",
+          urlPattern: a.url_pattern,
+        })),
+        targetAgent: target,
+      });
+
+      return res.json({ target, prompts });
+    } catch (err) {
+      console.error("[ai-prompts] failed", err);
+      return res.status(500).json({ error: "Prompt-generering feilet", detail: String(err) });
+    }
   });
 
   // GET /api/admin-room/agent/ads/configs/:id/gsc/status

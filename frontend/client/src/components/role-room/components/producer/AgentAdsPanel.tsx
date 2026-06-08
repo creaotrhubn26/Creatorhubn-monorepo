@@ -33,6 +33,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CodeIcon from '@mui/icons-material/Code';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import ClientGoogleSuitePanel from './ClientGoogleSuitePanel';
+import ClientAiPromptsPanel from './ClientAiPromptsPanel';
 
 const palette = {
   bgCard: '#150b2e',
@@ -879,6 +880,12 @@ export default function AgentAdsPanel({
             configId={savedConfigId}
             clientName={clientName || 'Klienten'}
             clientWebsiteUrl={discoveryResult.url}
+          />
+
+          {/* AI-prompter for klient's verktøy (Loveable/v0/Bolt/Cursor) */}
+          <ClientAiPromptsPanel
+            configId={savedConfigId}
+            clientName={clientName || 'Klienten'}
           />
 
           <DeploymentGuide
