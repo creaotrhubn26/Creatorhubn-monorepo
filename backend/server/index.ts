@@ -781,6 +781,11 @@ import { setupAdminFeatureCustomizationsRoutes } from "./admin-feature-customiza
 import { setupAdminTesterSkillsRoutes } from "./admin-tester-skills-routes";
 import { setupAdminTestCaseGeneratorRoutes } from "./admin-test-case-generator-routes";
 import { setupAdminAcademyRoutes } from "./admin-academy-routes";
+import { setupAcademyStripeWebhookRoutes } from "./academy-stripe-webhook-routes";
+import { setupAdminAcademyB2Routes } from "./admin-academy-b2-routes";
+import { setupUserB2CredentialsRoutes } from "./user-b2-credentials-routes";
+import { startB2SyncCron } from "./user-b2-sync-worker";
+import { setupUserDriveCredentialsRoutes } from "./user-drive-credentials-routes";
 import { setupAdminMarketingSeoRoutes } from "./admin-marketing-seo-routes";
 import { setupAdminIntegrationTestsRoutes } from "./admin-integration-tests-routes";
 import { setupOrchestrationRoutes } from "./orchestration-routes";
@@ -1256,6 +1261,11 @@ app.post(
   express.raw({ type: "application/json" }),
   handlePostAgentStripeWebhook({ pool }),
 );
+
+// Academy Stripe webhook — same rationale; mounted before express.json() for
+// raw body signature verification. Handles Connect account.updated +
+// transfer.*/payout.* events for instructor payouts.
+setupAcademyStripeWebhookRoutes({ app, pool });
 
 app.post(
   "/api/platform/billing/webhook",
@@ -24472,6 +24482,10 @@ setupAdminFeatureCustomizationsRoutes({ app, pool, requireAdminSession });
 setupAdminTesterSkillsRoutes({ app, pool, requireAdminSession });
 setupAdminTestCaseGeneratorRoutes({ app, pool, requireAdminSession });
 setupAdminAcademyRoutes({ app, pool, requireAdminSession });
+setupAdminAcademyB2Routes({ app, pool, requireAdminSession });
+setupUserB2CredentialsRoutes({ app, pool, requireUserSession });
+startB2SyncCron({ pool });
+setupUserDriveCredentialsRoutes({ app, pool, requireUserSession });
 
 // Task #121a — Marketing SEO-fanen:
 //   /api/seo/keywords, /api/seo/pages, /api/seo/backlinks,
@@ -65293,6 +65307,7 @@ setupPlatformRoutes({
 setupAdminMiscRoutes({
   app,
   requireUserSession,
+  requireAdminSession,
   pool,
   isEvendiSmokeAuthorized,
   runEvendiSmoke,

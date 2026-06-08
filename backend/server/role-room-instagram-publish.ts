@@ -538,7 +538,7 @@ export async function queueAndPublish(
   const hosted: InstagramHostedImage[] = [];
   try {
     for (const dataUrl of dataUrls) {
-      const h = await uploadImageForInstagram({ userId: input.userId, dataUrl });
+      const h = await uploadImageForInstagram({ userId: input.userId, dataUrl, pool });
       if (!h) throw new Error('Image upload failed (R2 ikke konfigurert?)');
       hosted.push(h);
     }

@@ -5,6 +5,7 @@ import crypto from "crypto";
 export interface AdminMiscRoutesDeps {
   app: express.Application;
   requireUserSession: (req: any, res: any) => any;
+  requireAdminSession: (req: any, res: any) => any;
   pool: Pool;
   isEvendiSmokeAuthorized: (req: any) => boolean;
   runEvendiSmoke: (...args: any[]) => Promise<any>;
@@ -18,6 +19,7 @@ export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
   const {
     app,
     requireUserSession,
+    requireAdminSession,
     pool,
     isEvendiSmokeAuthorized,
     runEvendiSmoke,
@@ -28,6 +30,7 @@ export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
   } = deps;
 
   app.get("/api/admin/gdpr-settings", (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     res.json({
       cookieConsentEnabled: false,
       dataRetentionDays: 365,
@@ -36,6 +39,7 @@ export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
   });
 
   app.get("/api/admin/profession-types", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const result = await pool.query(
         'SELECT name AS id, display_name AS name, is_active AS enabled, sort_order AS "sortOrder", description, category FROM profession_types WHERE is_active = true ORDER BY sort_order',

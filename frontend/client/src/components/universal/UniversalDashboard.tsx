@@ -212,6 +212,8 @@ import {
   PhotographerAdminWidgets,
   PhotographerOtherProjectsTimelineWidget,
 } from '../photographer/PhotographerTabWidgets';
+// Mitt B2-arkiv — kompakt status-widget. Klikkbar; ruter til settings#b2.
+import B2UsageWidget from '../dashboard/B2UsageWidget';
 
 // Import Timeline & Showcase components for universal access
 import ProjectTimeline from '../project/ProjectTimeline';
@@ -5072,6 +5074,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 </Suspense>
               </Box>
             )}
+
+            {/* Mitt B2-arkiv — kompakt status (filer / størrelse / Backblaze-kost).
+                Klikkbar; navigerer til /photographer/settings#b2 hvor UserB2Panel
+                rendrer. Vises i overview-tab for alle brukere som har en B2-konto
+                eller får CTA hvis ikke. */}
+            <Box sx={{ mb: { xs: 3, md: 4 } }}>
+              <B2UsageWidget />
+            </Box>
 
             {/* Slice 9X.72 — Customer Inquiry & Email Center — dark theme */}
             <Box sx={{
