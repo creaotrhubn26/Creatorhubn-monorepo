@@ -32,6 +32,8 @@ import roleRoomAgentService, {
 import GrantedAssetsCard from './GrantedAssetsCard';
 import ClientConnectWizard from '../client-workspace/ClientConnectWizard';
 import ClientAdsPerformancePanel from './ClientAdsPerformancePanel';
+import ClientAdsApprovalSection from './ClientAdsApprovalSection';
+import MonthlyManagementFeeBox from './MonthlyManagementFeeBox';
 
 /**
  * Client-facing economy hub (MedInnova-avtalen §5.3): the simplest possible view
@@ -341,6 +343,12 @@ export default function ClientEconomyPanel({
         period={period}
         userRole={userRole}
       />
+
+      {/* ── Ads-anbefalinger ventende på klient-godkjenning (P0) ── */}
+      <ClientAdsApprovalSection clientProjectId={projectId} />
+
+      {/* ── Månedlig mgmt-fee-fordeling + akkumulert spend ── */}
+      <MonthlyManagementFeeBox clientProjectId={projectId} />
 
       {/* ── Lag 2: AI-anbefalinger (myk veiledning, ingen automatisk handling) ── */}
       {recommendations && (recommendations.recommendations.length > 0 || recommendations.overallNote) && (

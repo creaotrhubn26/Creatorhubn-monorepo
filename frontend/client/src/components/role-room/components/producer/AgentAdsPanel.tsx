@@ -136,6 +136,43 @@ export default function AgentAdsPanel({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedConfigId, setSavedConfigId] = useState<string | null>(null);
 
+  // Approval — send til klient
+  const [sendingForApproval, setSendingForApproval] = useState(false);
+  const [approvalMessage, setApprovalMessage] = useState('');
+  const [approvalSent, setApprovalSent] = useState(false);
+  const [approvalDeadline, setApprovalDeadline] = useState<string | null>(null);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
+
+  // Management fee — 20% standard, kan endres per klient.
+  // Forhandlet sats markeres med management_fee_negotiated på backend.
+  const [managementFeePct, setManagementFeePct] = useState<number>(20);
+  const [editingFee, setEditingFee] = useState(false);
+
+  const sendForApproval = async () => {
+    if (!savedConfigId) return;
+    setSendingForApproval(true);
+    setApprovalError(null);
+    try {
+      const r = await fetch(`/api/admin-room/agent/ads/configs/${savedConfigId}/request-approval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          message: approvalMessage.trim() || undefined,
+          management_fee_pct: managementFeePct,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      setApprovalSent(true);
+      setApprovalDeadline(data.deadline ?? null);
+    } catch (err) {
+      setApprovalError(err instanceof Error ? err.message : 'Kunne ikke sende til godkjenning');
+    } finally {
+      setSendingForApproval(false);
+    }
+  };
+
   // Trigger discovery
   const runDiscovery = async () => {
     setDiscovering(true);
@@ -486,16 +523,128 @@ export default function AgentAdsPanel({
                 ✓ Lagret — config og {actions.length} actions
               </Typography>
               <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem', mb: 1.4 }}>
-                Steg 3 av 4 — installer tracking-kode på klientens nettside.
-                B2/B3 (OAuth + auto-opprett actions i Google Ads) er i pipeline.
-                Inntil videre: bruk AW-id <code>{'<AW-ID>'}</code> + labels <code>{'<LABEL>'}</code> som placeholdere —
-                når B2/B3 lander, fylles disse automatisk inn fra Google Ads API.
+                Neste: send anbefalingene til klienten for godkjenning før du går videre til Google Ads-setup.
               </Typography>
               <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
                 Config-ID: <code>{savedConfigId}</code>
               </Typography>
             </CardContent>
           </Card>
+
+          {/* Send til klient for godkjenning */}
+          {!approvalSent ? (
+            <Card sx={{ bgcolor: palette.bgCard, border: `1px solid ${palette.borderStrong}`, color: palette.textPrimary }}>
+              <CardContent>
+                <Typography sx={{ fontWeight: 800, fontSize: '0.96rem', mb: 1.2 }}>
+                  Send til klient for godkjenning
+                </Typography>
+                <Typography sx={{ color: palette.textSecondary, fontSize: '0.86rem', mb: 1.6 }}>
+                  Klienten ser anbefalingene i sin "Client Economy"-fane i Role Room.
+                  De kan godkjenne, avvise eller be om endringer. Hvis ingen respons innen
+                  3 business-dager → auto-godkjent (per MedInnova §5.2).
+                </Typography>
+                <Box sx={{
+                  bgcolor: 'rgba(168,85,247,0.10)',
+                  border: `1px solid ${palette.borderStrong}`,
+                  borderRadius: 1.2,
+                  p: 1.4,
+                  mb: 1.6,
+                }}>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.6 }}>
+                    <Typography sx={{ color: palette.accent, fontWeight: 700, fontSize: '0.82rem' }}>
+                      💰 Din management fee
+                    </Typography>
+                    {!editingFee ? (
+                      <Button
+                        size="small"
+                        startIcon={<EditIcon fontSize="small" />}
+                        onClick={() => setEditingFee(true)}
+                        sx={{ color: palette.accent, textTransform: 'none', minWidth: 0 }}
+                      >
+                        {managementFeePct !== 20 ? `${managementFeePct}% (forhandlet)` : '20% (standard)'}
+                      </Button>
+                    ) : (
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <TextField
+                          type="number"
+                          value={managementFeePct}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v) && v >= 0 && v <= 100) setManagementFeePct(v);
+                          }}
+                          size="small"
+                          inputProps={{ min: 0, max: 100, step: 1, style: { textAlign: 'right', width: 50 } }}
+                          InputProps={{
+                            endAdornment: <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', ml: 0.4 }}>%</Typography>,
+                            sx: { color: palette.textPrimary, fontWeight: 700, fontSize: '0.86rem' },
+                          }}
+                        />
+                        <Button
+                          size="small"
+                          onClick={() => setEditingFee(false)}
+                          sx={{ color: '#34d399', textTransform: 'none', minWidth: 0 }}
+                        >
+                          Lagre
+                        </Button>
+                      </Stack>
+                    )}
+                  </Stack>
+                  <Typography sx={{ color: palette.textSecondary, fontSize: '0.78rem', lineHeight: 1.5 }}>
+                    Google Ads-kontoen står på klienten — spend trekkes direkte fra klientens kort/bank
+                    til Google. Du håndterer aldri ads-pengene; du har kun OAuth-tilgang for setup
+                    + optimalisering. Din faktura = KUN management-fee (20% av spend, standard).
+                    Eks: klient bruker 20 000 kr/mnd → du fakturerer 4 000 kr/mnd. Justér per klient
+                    — klient ser satsen før godkjenning.
+                  </Typography>
+                </Box>
+                <TextField
+                  multiline
+                  rows={3}
+                  fullWidth
+                  size="small"
+                  label="Beskjed til klient (optional)"
+                  placeholder="Hei [klient], her er forslagene mine basert på Claude-analysen…"
+                  value={approvalMessage}
+                  onChange={(e) => setApprovalMessage(e.target.value)}
+                  sx={{ mb: 1.6 }}
+                  InputProps={{ sx: { color: palette.textPrimary } }}
+                  InputLabelProps={{ sx: { color: palette.textMuted } }}
+                />
+                {approvalError ? (
+                  <Alert severity="error" onClose={() => setApprovalError(null)} sx={{ mb: 1.4 }}>
+                    {approvalError}
+                  </Alert>
+                ) : null}
+                <Button
+                  onClick={sendForApproval}
+                  disabled={sendingForApproval}
+                  startIcon={sendingForApproval ? <CircularProgress size={16} /> : <SaveOutlinedIcon />}
+                  sx={{
+                    background: palette.accentGradient,
+                    color: '#fff',
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    px: 3,
+                    '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                  }}
+                >
+                  {sendingForApproval ? 'Sender…' : 'Send til klient'}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card sx={{ bgcolor: 'rgba(96,165,250,0.06)', border: `1px solid rgba(96,165,250,0.24)`, color: palette.textPrimary }}>
+              <CardContent>
+                <Typography sx={{ color: '#60a5fa', fontWeight: 800, fontSize: '0.96rem', mb: 1 }}>
+                  📤 Sendt til klient for godkjenning
+                </Typography>
+                <Typography sx={{ color: palette.textSecondary, fontSize: '0.86rem' }}>
+                  Klient har frist til {approvalDeadline ? new Date(approvalDeadline).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' }) : '3 business-dager'}.
+                  Du får notification i Admin Room når klienten har bestemt seg.
+                </Typography>
+              </CardContent>
+            </Card>
+          )}
 
           <DeploymentGuide
             clientName={clientName || 'Klienten'}
@@ -1331,13 +1480,15 @@ function ActionCard({
       <Stack spacing={1.4}>
         <Stack direction="row" spacing={1.4}>
           <TextField
-            label="Action-navn (snake_case)"
+            label="Action-navn (snake_case) — LÅST"
             value={draft.action_name}
-            onChange={(e) => setDraft({ ...draft, action_name: e.target.value })}
+            disabled
             size="small"
             sx={{ flex: 1 }}
-            InputProps={{ sx: { color: palette.textPrimary, fontFamily: 'monospace' } }}
+            InputProps={{ sx: { color: palette.textMuted, fontFamily: 'monospace', WebkitTextFillColor: palette.textMuted } }}
             InputLabelProps={{ sx: { color: palette.textMuted } }}
+            helperText="Kan ikke endres — knyttet til Google Ads-labelen"
+            FormHelperTextProps={{ sx: { color: palette.textMuted } }}
           />
           <TextField
             label="Display-navn (norsk)"

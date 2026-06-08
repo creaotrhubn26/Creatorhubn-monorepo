@@ -27,7 +27,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import IgDmInbox from '../../components/crm/IgDmInbox';
-import AgentAdsPanel from './AgentAdsPanel';
+import AgentAdsPanel from '../../components/role-room/components/producer/AgentAdsPanel';
 
 interface ProfileRecommendations {
   platforms: {
