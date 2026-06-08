@@ -48,10 +48,19 @@ async function checkReadiness() {
   if (!lens) {
     throw new Error('rawSupport.lensCorrection missing — backend predates the lens-correction probe (redeploy needed).');
   }
-  console.log(`  rawtherapee (lens correction):  ${lens.available ? '✓ available' : '✖ MISSING'}`);
-  console.log(`  system Lensfun database:        ${lens.systemLensfunDatabase ? '✓ installed' : '· bundled-only (RawTherapee fallback)'}`);
+  const converterInstalled = Boolean(lens.converter);
+  const optedIn = Boolean(lens.enabledByConfig);
+  console.log(`  RawTherapee installed:    ${converterInstalled ? '✓ yes' : '✖ no'}`);
+  console.log(`  system Lensfun database:  ${lens.systemLensfunDatabase ? '✓ installed' : '· bundled-only (RawTherapee fallback)'}`);
+  console.log(`  opted in (env):           ${optedIn ? '✓ yes' : '✖ no'}`);
+  console.log(`  lens correction active:   ${lens.available ? '✓ yes' : '✖ no'}`);
+  if (!converterInstalled) {
+    throw new Error('RawTherapee is not installed on the backend image — lens correction cannot run.');
+  }
   if (!lens.available) {
-    throw new Error('Lens correction unavailable — rawtherapee-cli is not installed on the backend image.');
+    throw new Error(
+      'Lens correction is installed but NOT enabled. The full-res RawTherapee+Lensfun pass needs ~1-2 GB RAM and would OOM a small instance, so it is opt-in: set PHOTO_ENHANCER_LENSFUN_ENABLED=true on a backend instance with ~2 GB+ RAM.',
+    );
   }
   return body;
 }
