@@ -67,6 +67,14 @@ import {
   createMetaCustomConversion,
 } from "./client-meta-suite.js";
 import {
+  buildTiktokAuthUrl,
+  exchangeTiktokAuthCode,
+  listTiktokAdvertisers,
+  listTiktokPixels,
+  provisionTiktokPixel,
+  mapActionToTiktokEvent,
+} from "./client-tiktok-suite.js";
+import {
   buildAdsAuthUrl,
   exchangeAdsCodeForToken,
   upsertAdsOauthConnection,
@@ -1281,6 +1289,208 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     }
   });
 
+  // ════════════════════════════════════════════════════════════════════
+  // TikTok — Wave 3: Pixel + Events + Reporting
+  // Bruker eget OAuth-flow (Business API) — NIKKE same som creator-OAuth.
+  // Tokens lagres i role_room_ads_oauth_connections m/ platform='tiktok'.
+  // ════════════════════════════════════════════════════════════════════
+
+  app.get("/api/admin-room/agent/ads/oauth/tiktok/start", (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? ""}`).replace(/\/+$/, "");
+    const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/tiktok/callback`;
+    const configId = typeof req.query.configId === "string" ? req.query.configId : "";
+    const state = `${session.userId}.${configId}.${crypto.randomBytes(12).toString("hex")}`;
+    const authUrl = buildTiktokAuthUrl({ state, redirectUri });
+    if (!authUrl) return res.status(503).json({ error: "TIKTOK_BUSINESS_APP_ID/SECRET ikke satt." });
+    return res.json({ authUrl });
+  });
+
+  app.get("/api/admin-room/agent/ads/oauth/tiktok/callback", async (req, res) => {
+    const authCode = typeof req.query.auth_code === "string" ? req.query.auth_code : typeof req.query.code === "string" ? req.query.code : null;
+    const state = typeof req.query.state === "string" ? req.query.state : null;
+    if (!authCode || !state) return res.status(400).send("Missing auth_code/state");
+
+    const [userId, configId] = state.split(".");
+    if (!userId) return res.status(400).send("Invalid state");
+
+    try {
+      const tokenResult = await exchangeTiktokAuthCode(authCode);
+      if (!tokenResult) return res.redirect(`/role-room/agent/ads?oauth_error=tiktok_exchange_failed`);
+
+      // Lagre i role_room_ads_oauth_connections (raw — TikTok tokens er long-lived).
+      // NB: vi bruker SAMME tabell som Google/LinkedIn, så pool-spørringen skiller seg
+      // litt fra resten siden TikTok ikke har refresh-token og expiry-felt.
+      await pool.query(
+        `INSERT INTO role_room_ads_oauth_connections
+            (user_id, platform, access_token, refresh_token, token_expires_at,
+             scopes, account_ref, connection_state, last_refreshed_at)
+         VALUES ($1, 'tiktok', $2, '', NULL, $3, $4, 'connected', now())
+         ON CONFLICT (user_id, platform) DO UPDATE
+         SET access_token = EXCLUDED.access_token,
+             scopes = EXCLUDED.scopes,
+             account_ref = EXCLUDED.account_ref,
+             connection_state = 'connected',
+             last_refreshed_at = now()`,
+        [
+          userId,
+          tokenResult.accessToken,
+          JSON.stringify(["advertiser.read", "pixel.read", "pixel.write", "ads.read"]),
+          tokenResult.advertiserIds.join(","),
+        ],
+      );
+
+      const cfgParam = configId ? `&config=${encodeURIComponent(configId)}` : "";
+      return res.redirect(`/role-room/agent/ads?oauth_success=tiktok${cfgParam}`);
+    } catch (err) {
+      console.error("[tiktok-oauth] callback failed", err);
+      return res.redirect(`/role-room/agent/ads?oauth_error=tiktok_${encodeURIComponent(String(err).slice(0, 80))}`);
+    }
+  });
+
+  app.get("/api/admin-room/agent/ads/tiktok/advertisers", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const r = await listTiktokAdvertisers(pool, session.userId);
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ advertisers: r.advertisers });
+  });
+
+  app.get("/api/admin-room/agent/ads/tiktok/pixels", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const advertiserId = typeof req.query.advertiserId === "string" ? req.query.advertiserId : "";
+    if (!advertiserId) return res.status(400).json({ error: "advertiserId påkrevd" });
+    const r = await listTiktokPixels(pool, { producerUserId: session.userId, advertiserId });
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ pixels: r.pixels });
+  });
+
+  app.post("/api/admin-room/agent/ads/configs/:id/tiktok/provision-pixel", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { advertiserId?: string; existingPixelCode?: string; pixelName?: string };
+    if (!body.advertiserId) return res.status(400).json({ error: "advertiserId påkrevd" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_name, tiktok_pixel_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.tiktok_pixel_id) {
+        return res.status(409).json({ error: "Pixel finnes alt", tiktokPixelId: cfg.tiktok_pixel_id });
+      }
+
+      let pixelCode: string;
+      let pixelName: string;
+      let baseCode: string;
+      if (body.existingPixelCode) {
+        pixelCode = body.existingPixelCode;
+        pixelName = body.pixelName ?? `Existing: ${body.existingPixelCode}`;
+        // Ekstraher snippet fra koden — bruker samme template som ny
+        baseCode = `<!-- Eksisterende TikTok Pixel — ${body.existingPixelCode} -->
+<!-- Antar at klient allerede har dette installert. -->`;
+      } else {
+        const r = await provisionTiktokPixel(pool, {
+          producerUserId: session.userId,
+          advertiserId: body.advertiserId,
+          pixelName: body.pixelName ?? `RR-Agent: ${cfg.client_name}`,
+        });
+        if (!r.ok) return res.status(503).json({ error: r.error });
+        pixelCode = r.pixelCode;
+        pixelName = r.pixelName;
+        baseCode = r.baseCode;
+      }
+
+      await pool.query(
+        `UPDATE client_ads_configs
+           SET tiktok_advertiser_id = $1,
+               tiktok_pixel_id = $2,
+               tiktok_pixel_name = $3,
+               tiktok_setup_completed_at = now(),
+               platforms_selected = ARRAY(SELECT DISTINCT unnest(platforms_selected || ARRAY['tiktok']::TEXT[])),
+               updated_at = now()
+          WHERE id = $4::uuid`,
+        [body.advertiserId, pixelCode, pixelName, req.params.id],
+      );
+
+      return res.json({ success: true, pixelCode, pixelName, baseCode });
+    } catch (err) {
+      console.error("[tiktok-provision] failed", err);
+      return res.status(500).json({ error: "Provision feilet", detail: String(err) });
+    }
+  });
+
+  // Sync — TikTok-events er pixel-side, ikke API-opprettet
+  // Vi lagrer event-mapping per action så AI-prompter kan bruke det.
+  app.post("/api/admin-room/agent/ads/configs/:id/tiktok/sync-events", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      const cfgR = await pool.query(
+        `SELECT tiktok_pixel_id, approval_status
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.approval_status !== "approved") {
+        return res.status(412).json({ error: "Konfig må være approved før sync" });
+      }
+      if (!cfg.tiktok_pixel_id) return res.status(412).json({ error: "Sett opp Pixel først." });
+
+      const actionsR = await pool.query(
+        `SELECT id::text, action_name, goal_category
+           FROM client_ads_actions
+          WHERE config_id = $1::uuid AND is_active = TRUE AND tiktok_event_name IS NULL
+          ORDER BY created_at ASC`,
+        [req.params.id],
+      );
+
+      const created: Array<{ actionId: string; eventName: string }> = [];
+      for (const a of actionsR.rows) {
+        const eventName = mapActionToTiktokEvent({
+          goalCategory: a.goal_category,
+          actionName: a.action_name,
+        });
+        await pool.query(
+          `UPDATE client_ads_actions
+              SET tiktok_event_id = $1,
+                  tiktok_event_name = $2,
+                  tiktok_synced_at = now(),
+                  updated_at = now()
+            WHERE id = $3::uuid`,
+          [a.action_name, eventName, a.id],
+        );
+        created.push({ actionId: a.id, eventName });
+      }
+      return res.json({ success: true, created, failed: [] });
+    } catch (err) {
+      console.error("[tiktok-sync] failed", err);
+      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+    }
+  });
+
+  app.patch("/api/admin-room/agent/ads/configs/:id/tiktok/capi-token", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { capiToken?: string };
+    if (!body.capiToken) return res.status(400).json({ error: "capiToken påkrevd" });
+    await pool.query(
+      `UPDATE client_ads_configs
+          SET tiktok_capi_access_token = $1, updated_at = now()
+        WHERE id = $2::uuid AND content_producer_user_id = $3`,
+      [body.capiToken, req.params.id, session.userId],
+    );
+    return res.json({ success: true });
+  });
+
   // PATCH .../meta/capi-token — lagre CAPI token (kryptert ved annet steg)
   app.patch("/api/admin-room/agent/ads/configs/:id/meta/capi-token", async (req, res) => {
     const session = getActiveSession(req);
@@ -1355,7 +1565,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       const cfgR = await pool.query(
         `SELECT client_name, client_website_url, business_type, business_summary,
                 ga4_measurement_id, gtm_container_public_id,
-                linkedin_insight_tag_id, meta_pixel_id
+                linkedin_insight_tag_id, meta_pixel_id, tiktok_pixel_id
            FROM client_ads_configs
           WHERE id = $1::uuid AND content_producer_user_id = $2`,
         [req.params.id, session.userId],
@@ -1366,7 +1576,8 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       const actionsR = await pool.query(
         `SELECT action_name, display_name, google_ads_label, trigger_type,
                 default_value, currency, url_pattern,
-                linkedin_conversion_id, meta_custom_conversion_id, meta_event_name
+                linkedin_conversion_id, meta_custom_conversion_id, meta_event_name,
+                tiktok_event_name
            FROM client_ads_actions
           WHERE config_id = $1::uuid AND is_active = TRUE
           ORDER BY created_at ASC`,
@@ -1390,6 +1601,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
         gtmContainerId: cfg.gtm_container_public_id,
         linkedinPartnerId,
         metaPixelId: cfg.meta_pixel_id ?? null,
+        tiktokPixelCode: cfg.tiktok_pixel_id ?? null,
         businessType: cfg.business_type,
         businessSummary: cfg.business_summary,
         actions: actionsR.rows.map((a) => ({
@@ -1403,6 +1615,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
           linkedinConversionId: a.linkedin_conversion_id ?? null,
           metaEventName: a.meta_event_name ?? null,
           metaCustomConversionId: a.meta_custom_conversion_id ?? null,
+          tiktokEventName: a.tiktok_event_name ?? null,
         })),
         targetAgent: target,
         liveSite,

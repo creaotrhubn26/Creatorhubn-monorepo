@@ -397,7 +397,9 @@ export default function ClientInsightsPanel({
                               ? '#0a66c2'
                               : p.platform === 'Meta'
                                 ? '#1877f2'
-                                : palette.ads,
+                                : p.platform === 'TikTok'
+                                  ? '#ff0050'
+                                  : palette.ads,
                           },
                         }}
                       />

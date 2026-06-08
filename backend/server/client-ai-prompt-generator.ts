@@ -32,7 +32,10 @@ export type Scenario =
   | "install_meta_pixel"
   | "meta_conversion_events"
   | "install_meta_capi"
-  | "fix_product_schema";
+  | "fix_product_schema"
+  | "install_tiktok_pixel"
+  | "tiktok_conversion_events"
+  | "install_tiktok_events_api";
 
 export interface PromptContext {
   clientName: string;
@@ -44,6 +47,8 @@ export interface PromptContext {
   linkedinPartnerId?: number | string | null;
   /** Meta Pixel ID. */
   metaPixelId?: string | null;
+  /** TikTok Pixel Code (sdkid). */
+  tiktokPixelCode?: string | null;
   actions?: Array<{
     actionName: string;
     displayName: string;
@@ -57,6 +62,8 @@ export interface PromptContext {
     /** Meta event-navn etter sync. */
     metaEventName?: string | null;
     metaCustomConversionId?: string | null;
+    /** TikTok event-navn etter sync. */
+    tiktokEventName?: string | null;
   }>;
   businessType?: string;
   businessSummary?: string;
@@ -1548,6 +1555,244 @@ fetch('${ctx.websiteUrl.replace(/[/]+$/, "")}/api/conversions/meta', {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// TikTok — Pixel, conversion-events, Events API (server-side)
+// ─────────────────────────────────────────────────────────────────────
+
+function promptInstallTiktokPixel(ctx: PromptContext): GeneratedPrompt {
+  if (!ctx.tiktokPixelCode) {
+    return {
+      scenario: "install_tiktok_pixel",
+      title: "Installer TikTok Pixel",
+      prompt: "",
+      verifyAfter: "",
+      applicable: false,
+      notApplicableReason: "TikTok Pixel er ikke opprettet ennå. Gå til TikTok-seksjonen og klikk 'Opprett Pixel' først.",
+    };
+  }
+  return {
+    scenario: "install_tiktok_pixel",
+    title: "Installer TikTok Pixel",
+    applicable: true,
+    prompt: `${targetIntro(ctx.targetAgent)}
+
+\`\`\`html
+<!-- TikTok Pixel Code Start — ${ctx.clientName} -->
+<script>
+!function (w, d, t) {
+  w.TiktokAnalyticsObject=t;
+  var ttq=w[t]=w[t]||[];
+  ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"];
+  ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};
+  for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);
+  ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};
+  ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js";
+    var o=n&&n.partner;
+    ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=r;
+    ttq._t=ttq._t||{};ttq._t[e]=+new Date;
+    ttq._o=ttq._o||{};ttq._o[e]=n||{};
+    var s=d.createElement("script");
+    s.type="text/javascript";s.async=!0;s.src=r+"?sdkid="+e+"&lib=ttq";
+    var first=d.getElementsByTagName("script")[0];
+    first.parentNode.insertBefore(s,first)
+  };
+  ttq.load('${ctx.tiktokPixelCode}');
+  ttq.page();
+}(window,document,'ttq');
+</script>
+<!-- TikTok Pixel Code End -->
+\`\`\`
+
+**TikTok + Consent Mode:** TikTok støtter "Consent Mode" siden 2024. Aktiver hvis EU-trafikk + cookie-banner:
+
+\`\`\`javascript
+// Kall FØR ttq.page() i pixel-koden:
+ttq.holdConsent();
+
+// Når bruker aksepterer cookies:
+function acceptTikTokConsent() {
+  ttq.grantConsent();
+}
+\`\`\`
+
+**TikTok + SPA:** Kall \`ttq.page()\` på hver route-endring så page-views logges korrekt.`,
+    verifyAfter: `${targetVerifyBase(ctx.targetAgent)} Søk etter "${ctx.tiktokPixelCode}" — du skal finne det i scriptet. Installer "TikTok Pixel Helper" Chrome extension og besøk siten — du skal se én "Pageview"-event. Sjekk så TikTok Events Manager → ${ctx.tiktokPixelCode} → "Test event" for live debug.`,
+  };
+}
+
+function promptTiktokConversionEvents(ctx: PromptContext): GeneratedPrompt {
+  if (!ctx.tiktokPixelCode) {
+    return {
+      scenario: "tiktok_conversion_events",
+      title: "Fyr TikTok conversion-events",
+      prompt: "",
+      verifyAfter: "",
+      applicable: false,
+      notApplicableReason: "TikTok Pixel mangler. Installer pixel først.",
+    };
+  }
+  const syncedActions = (ctx.actions ?? []).filter((a) => a.tiktokEventName);
+  if (syncedActions.length === 0) {
+    return {
+      scenario: "tiktok_conversion_events",
+      title: "Fyr TikTok conversion-events",
+      prompt: "",
+      verifyAfter: "",
+      applicable: false,
+      notApplicableReason: "Ingen actions har TikTok event-navn ennå. Kjør 'Sync til TikTok' først.",
+    };
+  }
+
+  const eventBlocks = syncedActions.map((a) => {
+    const eventName = a.tiktokEventName!;
+    const valueParam = a.defaultValue > 0
+      ? `, { value: ${a.defaultValue}, currency: '${a.currency}' }`
+      : "";
+
+    if (a.triggerType === "form_submit") {
+      return `
+**${a.displayName}** (form-submit) — TikTok-event \`${eventName}\`:
+
+\`\`\`javascript
+document.querySelector('form[data-track="${a.actionName}"]')?.addEventListener('submit', function() {
+  if (typeof window.ttq?.track === 'function') {
+    ttq.track('${eventName}'${valueParam});
+  }
+});
+\`\`\``;
+    }
+    if (a.triggerType === "click") {
+      return `
+**${a.displayName}** (klikk) — TikTok-event \`${eventName}\`:
+
+\`\`\`javascript
+document.querySelector('[data-track="${a.actionName}"]')?.addEventListener('click', function() {
+  window.ttq?.track && ttq.track('${eventName}'${valueParam});
+});
+\`\`\``;
+    }
+    if (a.triggerType === "page_load" && a.urlPattern) {
+      return `
+**${a.displayName}** (på ${a.urlPattern}) — TikTok-event \`${eventName}\`:
+
+\`\`\`javascript
+// Plasser på den konkrete siden (f.eks. takk-side)
+window.ttq?.track && ttq.track('${eventName}'${valueParam});
+\`\`\``;
+    }
+    return `
+**${a.displayName}** (custom) — TikTok-event \`${eventName}\`:
+
+\`\`\`javascript
+window.ttq?.track && ttq.track('${eventName}'${valueParam});
+\`\`\``;
+  });
+
+  return {
+    scenario: "tiktok_conversion_events",
+    title: "Fyr TikTok conversion-events",
+    applicable: true,
+    prompt: `Vi har mappet ${syncedActions.length} action${syncedActions.length === 1 ? "" : "s"} til TikTok standard events. Klient-koden må fyre dem riktig.
+
+**Forutsetning**: \`ttq()\` må være loadet (Pixel-snippet installert).
+
+${eventBlocks.join("\n")}
+
+**TikTok standard events vs custom:** TikTok gjenkjenner disse standard event-navn for best ad-optimization: \`CompletePayment\`, \`AddToCart\`, \`InitiateCheckout\`, \`SubmitForm\`, \`Subscribe\`, \`CompleteRegistration\`, \`Contact\`, \`ViewContent\`, \`ClickButton\`. Vi har auto-mappet basert på goal_category — for \`other\` sendes som CustomEvent.
+
+**Bonus — Enhanced match:** Send hashed user-data sammen med event for bedre matching. TikTok dedupliserer med email + telefon:
+
+\`\`\`javascript
+// FØR du fyrer track-event:
+ttq.identify({
+  email: '<sha256 av email>',
+  phone_number: '<sha256 av telefon E.164>',
+});
+ttq.track('${syncedActions[0]?.tiktokEventName ?? "SubmitForm"}'${syncedActions[0]?.defaultValue ? `, { value: ${syncedActions[0].defaultValue}, currency: '${syncedActions[0].currency}' }` : ''});
+\`\`\``,
+    verifyAfter: `TikTok Events Manager → Pixel ${ctx.tiktokPixelCode} → "Test event". Send en test-konvertering og se at eventet dukker opp innen 60 sek. Etter 24-48t: Ads Manager → kampanjen → "Custom events" rapporterer.`,
+  };
+}
+
+function promptInstallTiktokEventsApi(ctx: PromptContext): GeneratedPrompt {
+  return {
+    scenario: "install_tiktok_events_api",
+    title: "TikTok Events API (server-side) — for ITP-bypass + offline-konv.",
+    applicable: true,
+    prompt: `TikTok Events API lar oss sende conversion-events server-side. **Kritisk** når:
+- iOS 14.5+ ATT blokkerer pixel-fyring
+- Klient har streng consent som hindrer ttq.track
+- Du vil sende offline-konverteringer (CRM, in-store, phone)
+
+Token-flow:
+
+1. Generer en long-lived **access token** fra TikTok Business UI (Tools → Events Manager → din pixel → Settings → Manually set up Events API).
+2. Lagre tokenet via Agent-UI ("TikTok Events API-token") — havner i \`tiktok_capi_access_token\`.
+3. Backend POST-er til Events API:
+
+\`\`\`http
+POST https://business-api.tiktok.com/open_api/v1.3/event/track/ HTTP/1.1
+Access-Token: {TIKTOK_EVENTS_API_TOKEN}
+Content-Type: application/json
+
+{
+  "event_source": "web",
+  "event_source_id": "${ctx.tiktokPixelCode ?? "{PIXEL_CODE}"}",
+  "data": [{
+    "event": "SubmitForm",
+    "event_time": 1726912345,
+    "event_id": "abc-123",
+    "user": {
+      "email": "<sha256>",
+      "phone": "<sha256 E.164>",
+      "ttclid": "<_ttclid url-parameter>",
+      "ttp": "<_ttp cookie>",
+      "ip": "<klient-IP>",
+      "user_agent": "<klient UA>"
+    },
+    "properties": {
+      "value": 1000,
+      "currency": "NOK"
+    },
+    "page": {
+      "url": "${ctx.websiteUrl}/kontakt-takk"
+    }
+  }]
+}
+\`\`\`
+
+**Klient-side koden** (sender rå data til din backend):
+
+\`\`\`javascript
+const eventID = crypto.randomUUID();
+
+// 1) Fyr browser-pixel
+ttq.track('SubmitForm', { value: 1000, currency: 'NOK' });
+
+// 2) Send samme event til backend for Events-API dedup
+fetch('${ctx.websiteUrl.replace(/[/]+$/, "")}/api/conversions/tiktok', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    eventID,
+    event: 'SubmitForm',
+    email: form.email.value,
+    phone: form.phone.value,
+    value: 1000,
+    currency: 'NOK',
+    eventSourceUrl: window.location.href,
+    occurredAt: Math.floor(Date.now() / 1000),
+    ttclid: new URLSearchParams(location.search).get('ttclid'),
+    ttp: document.cookie.match(/_ttp=([^;]+)/)?.[1],
+  }),
+});
+\`\`\`
+
+Backend hash-er email + telefon med SHA256 før den POST-er til TikTok. event_id må være SAMME som ble brukt i browser-pixel-en så TikTok dedupliserer.`,
+    verifyAfter: `TikTok Events Manager → Pixel ${ctx.tiktokPixelCode} → "Test Events" (legg inn test_event_code i payload for kun test-data). Match-score finnes under "Diagnostics" — målet er > 80%.`,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Fix av konkrete strukturert-data-feil rapportert i Search Console
 // ─────────────────────────────────────────────────────────────────────
 
@@ -2057,6 +2302,9 @@ export function generateAllPrompts(ctx: PromptContext): GeneratedPrompt[] {
     promptInstallMetaPixel(ctx),
     promptMetaConversionEvents(ctx),
     promptInstallMetaCapi(ctx),
+    promptInstallTiktokPixel(ctx),
+    promptTiktokConversionEvents(ctx),
+    promptInstallTiktokEventsApi(ctx),
     promptConsentModeV2(ctx),
     promptFixNoindex(ctx),
     promptAddSitemap(ctx),

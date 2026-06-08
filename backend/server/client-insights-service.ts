@@ -29,6 +29,10 @@ import {
   fetchMetaAdsMetrics,
   type MetaAdsMetrics,
 } from "./client-meta-suite.js";
+import {
+  fetchTiktokAdsMetrics,
+  type TiktokAdsMetrics,
+} from "./client-tiktok-suite.js";
 
 const GA4_DATA_BASE = "https://analyticsdata.googleapis.com/v1beta";
 const ADS_API_BASE = "https://googleads.googleapis.com/v18";
@@ -372,8 +376,7 @@ export interface ClientInsights {
   gsc: GscMetrics | null;
   linkedin: LinkedinAdsMetrics | null;
   meta: MetaAdsMetrics | null;
-  /** Plassholder — fylles i Wave 3 (TikTok) */
-  tiktok: null;
+  tiktok: TiktokAdsMetrics | null;
   setupHealth: { totalChecks: number; ok: number; warning: number; error: number; info: number; score: number };
   /** Egne tracked events fra client_ads_events. */
   trackedEvents: { total: number; uniqueActions: number; topActions: Array<{ actionName: string; count: number }> };
@@ -405,7 +408,7 @@ export async function fetchClientInsights(
   const cfgR = await pool.query(
     `SELECT id::text, client_website_url, ga4_property_id, gsc_property_url,
             google_ads_customer_id, linkedin_account_urn,
-            meta_ad_account_id
+            meta_ad_account_id, tiktok_advertiser_id
        FROM client_ads_configs
       WHERE id = $1::uuid AND content_producer_user_id = $2`,
     [opts.configId, opts.producerUserId],
@@ -416,7 +419,7 @@ export async function fetchClientInsights(
   const { start, end } = dateRange(days);
 
   // Kjør alle kall parallelt (de feiler stille hvis tilkobling mangler)
-  const [ga4, ads, gsc, linkedin, meta] = await Promise.all([
+  const [ga4, ads, gsc, linkedin, meta, tiktok] = await Promise.all([
     cfg.ga4_property_id
       ? fetchGa4Metrics(pool, opts.producerUserId, cfg.ga4_property_id, start, end).catch(() => null)
       : Promise.resolve(null),
@@ -438,6 +441,14 @@ export async function fetchClientInsights(
       ? fetchMetaAdsMetrics(pool, {
           producerUserId: opts.producerUserId,
           adAccountId: cfg.meta_ad_account_id,
+          startDate: start,
+          endDate: end,
+        }).catch(() => null)
+      : Promise.resolve(null),
+    cfg.tiktok_advertiser_id
+      ? fetchTiktokAdsMetrics(pool, {
+          producerUserId: opts.producerUserId,
+          advertiserId: cfg.tiktok_advertiser_id,
           startDate: start,
           endDate: end,
         }).catch(() => null)
@@ -484,16 +495,17 @@ export async function fetchClientInsights(
 
   // Topplinje-KPI på tvers av plattformer
   const totalSessions = ga4?.sessions ?? 0;
-  const totalAdsClicks = (ads?.clicks ?? 0) + (linkedin?.clicks ?? 0) + (meta?.clicks ?? 0);
+  const totalAdsClicks = (ads?.clicks ?? 0) + (linkedin?.clicks ?? 0) + (meta?.clicks ?? 0) + (tiktok?.clicks ?? 0);
   const totalOrganicClicks = gsc?.totalClicks ?? 0;
-  const totalConversions = (ads?.conversions ?? 0) + (linkedin?.conversions ?? 0) + (meta?.conversions ?? 0) + (ga4?.conversions ?? 0);
-  const totalSpendNok = (ads?.spendNok ?? 0) + (linkedin?.spend ?? 0) + (meta?.spend ?? 0);
+  const totalConversions = (ads?.conversions ?? 0) + (linkedin?.conversions ?? 0) + (meta?.conversions ?? 0) + (tiktok?.conversions ?? 0) + (ga4?.conversions ?? 0);
+  const totalSpendNok = (ads?.spendNok ?? 0) + (linkedin?.spend ?? 0) + (meta?.spend ?? 0) + (tiktok?.spend ?? 0);
   const allClicks = totalAdsClicks + totalOrganicClicks;
 
   const spendByPlatform: Array<{ platform: string; spend: number; share: number }> = [];
   if (ads?.spendNok) spendByPlatform.push({ platform: "Google Ads", spend: ads.spendNok, share: 0 });
   if (linkedin?.spend) spendByPlatform.push({ platform: "LinkedIn", spend: linkedin.spend, share: 0 });
   if (meta?.spend) spendByPlatform.push({ platform: "Meta", spend: meta.spend, share: 0 });
+  if (tiktok?.spend) spendByPlatform.push({ platform: "TikTok", spend: tiktok.spend, share: 0 });
   for (const p of spendByPlatform) p.share = totalSpendNok > 0 ? p.spend / totalSpendNok : 0;
   spendByPlatform.sort((a, b) => b.spend - a.spend);
 
@@ -559,6 +571,14 @@ export async function fetchClientInsights(
       observations.push(`Meta CPM: ${Math.round(meta.cpm)} kr/1000 visninger. CTR ${(meta.ctr * 100).toFixed(2)}%.`);
     }
   }
+  if (tiktok) {
+    if (tiktok.conversions > 0 && tiktok.costPerConversion > 0) {
+      observations.push(`TikTok CPA: ${Math.round(tiktok.costPerConversion)} kr — ${tiktok.conversions} konv. på ${Math.round(tiktok.spend)} kr.`);
+    }
+    if (tiktok.ctr > 0 && tiktok.cpc > 0) {
+      observations.push(`TikTok CTR ${(tiktok.ctr * 100).toFixed(2)}% · CPC ${tiktok.cpc.toFixed(1)} kr.`);
+    }
+  }
   if (summary.spendByPlatform.length > 1) {
     const top = summary.spendByPlatform[0];
     observations.push(`Spend-fordeling: ${summary.spendByPlatform.map((p) => `${p.platform} ${Math.round(p.share * 100)}%`).join(" · ")} (totalt ${Math.round(summary.totalSpendNok)} kr).`);
@@ -571,7 +591,7 @@ export async function fetchClientInsights(
     gsc,
     linkedin,
     meta,
-    tiktok: null,
+    tiktok,
     setupHealth,
     trackedEvents,
     summary,

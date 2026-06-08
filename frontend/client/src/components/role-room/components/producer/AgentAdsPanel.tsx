@@ -35,6 +35,7 @@ import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import ClientGoogleSuitePanel from './ClientGoogleSuitePanel';
 import ClientLinkedinSuitePanel from './ClientLinkedinSuitePanel';
 import ClientMetaSuitePanel from './ClientMetaSuitePanel';
+import ClientTiktokSuitePanel from './ClientTiktokSuitePanel';
 import ClientAiPromptsPanel from './ClientAiPromptsPanel';
 import ClientInsightsPanel from './ClientInsightsPanel';
 
@@ -893,6 +894,12 @@ export default function AgentAdsPanel({
 
           {/* R2 — Meta (Pixel + Custom Conversions + CAPI gated på App Review) */}
           <ClientMetaSuitePanel
+            configId={savedConfigId}
+            clientName={clientName || 'Klienten'}
+          />
+
+          {/* R3 — TikTok (Pixel + Events + Events API) */}
+          <ClientTiktokSuitePanel
             configId={savedConfigId}
             clientName={clientName || 'Klienten'}
           />

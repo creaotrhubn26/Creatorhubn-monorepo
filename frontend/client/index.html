@@ -379,6 +379,11 @@
       var ROLE_ROOM_GA_MEASUREMENT_ID = 'G-9T7K5TJVFX';
       var CREATORHUB_CLARITY_PROJECT_ID = 'wqg9kj1vxt';
       var ROLE_ROOM_CLARITY_PROJECT_ID = 'wqgcu06tz0';
+      // TikTok Pixel — kommer fra TikTok Business UI etter at Daniel oppretter
+      // pixel via Agent eller manuelt. Pixel Code er typisk 20-tegns alfanum.
+      // Sett til '' for å deaktivere. Per-host som GA/GTM-pattern over.
+      var CREATORHUB_TIKTOK_PIXEL_CODE = '';
+      var ROLE_ROOM_TIKTOK_PIXEL_CODE = '';
       var analyticsConfig = resolveAnalyticsConfig();
       var analyticsBootstrapState = {
         tagManagerLoaded: false,
@@ -388,6 +393,8 @@
         initialPageViewSent: false,
         clarityRequested: false,
         clarityLoaded: false,
+        tiktokRequested: false,
+        tiktokLoaded: false,
       };
 
       function resolveAnalyticsConfig() {
@@ -398,6 +405,7 @@
           measurementId: isRoleRoomHost ? ROLE_ROOM_GA_MEASUREMENT_ID : CREATORHUB_GA_MEASUREMENT_ID,
           tagManagerId: isRoleRoomHost ? ROLE_ROOM_GOOGLE_TAG_MANAGER_ID : CREATORHUB_GOOGLE_TAG_MANAGER_ID,
           clarityProjectId: isRoleRoomHost ? ROLE_ROOM_CLARITY_PROJECT_ID : CREATORHUB_CLARITY_PROJECT_ID,
+          tiktokPixelCode: isRoleRoomHost ? ROLE_ROOM_TIKTOK_PIXEL_CODE : CREATORHUB_TIKTOK_PIXEL_CODE,
         };
       }
 
@@ -538,6 +546,54 @@
         return true;
       }
 
+      function ensureTiktokPixelLoaded(consentSettings) {
+        // TikTok Pixel — fyrer pageview + støtter ttq.track() per host.
+        // Per-host pixel-code: ROLE_ROOM_TIKTOK_PIXEL_CODE for theroleroom.com,
+        // CREATORHUB_TIKTOK_PIXEL_CODE for creatorhubn.com. Begge er '' inntil
+        // Daniel oppretter pixel via Agent (klient_ads_configs + provision-pixel)
+        // eller manuelt via TikTok Business UI. Bytt verdi over.
+        var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        var isOnline = navigator.onLine !== false;
+        if (
+          isLocalhost ||
+          !isOnline ||
+          !hasAnalyticsConsent(consentSettings) ||
+          !analyticsConfig.tiktokPixelCode
+        ) {
+          return false;
+        }
+        if (analyticsBootstrapState.tiktokLoaded || analyticsBootstrapState.tiktokRequested) {
+          return true;
+        }
+        analyticsBootstrapState.tiktokRequested = true;
+        (function (w, d, t) {
+          w.TiktokAnalyticsObject = t;
+          var ttq = w[t] = w[t] || [];
+          ttq.methods = ['page', 'track', 'identify', 'instances', 'debug', 'on', 'off', 'once', 'ready', 'alias', 'group', 'enableCookie', 'disableCookie', 'holdConsent', 'revokeConsent', 'grantConsent'];
+          ttq.setAndDefer = function (t, e) { t[e] = function () { t.push([e].concat(Array.prototype.slice.call(arguments, 0))); }; };
+          for (var i = 0; i < ttq.methods.length; i++) ttq.setAndDefer(ttq, ttq.methods[i]);
+          ttq.instance = function (t) {
+            for (var e = ttq._i[t] || [], n = 0; n < ttq.methods.length; n++) ttq.setAndDefer(e, ttq.methods[n]);
+            return e;
+          };
+          ttq.load = function (e, n) {
+            var r = 'https://analytics.tiktok.com/i18n/pixel/events.js';
+            ttq._i = ttq._i || {}; ttq._i[e] = []; ttq._i[e]._u = r;
+            ttq._t = ttq._t || {}; ttq._t[e] = +new Date();
+            ttq._o = ttq._o || {}; ttq._o[e] = n || {};
+            var s = d.createElement('script'); s.type = 'text/javascript'; s.async = true;
+            s.src = r + '?sdkid=' + e + '&lib=ttq';
+            s.onload = function () { analyticsBootstrapState.tiktokLoaded = true; };
+            s.onerror = function () { analyticsBootstrapState.tiktokRequested = false; };
+            var first = d.getElementsByTagName('script')[0];
+            first.parentNode.insertBefore(s, first);
+          };
+          ttq.load(analyticsConfig.tiktokPixelCode);
+          ttq.page();
+        })(window, document, 'ttq');
+        return true;
+      }
+
       function ensureGoogleAnalyticsLoaded(consentSettings) {
         var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         var isOnline = navigator.onLine !== false;
@@ -589,6 +645,7 @@
             ensureGoogleTagManagerLoaded(consentSettings);
             ensureGoogleAnalyticsLoaded(consentSettings);
             ensureClarityLoaded(consentSettings);
+            ensureTiktokPixelLoaded(consentSettings);
           }
           return true;
         };
@@ -596,6 +653,7 @@
           var resolvedConsent = consentSettings || readStoredConsent();
           ensureGoogleTagManagerLoaded(resolvedConsent);
           ensureClarityLoaded(resolvedConsent);
+          ensureTiktokPixelLoaded(resolvedConsent);
           return ensureGoogleAnalyticsLoaded(resolvedConsent);
         };
 
@@ -605,6 +663,7 @@
           ensureGoogleTagManagerLoaded(storedConsent);
           ensureGoogleAnalyticsLoaded(storedConsent);
           ensureClarityLoaded(storedConsent);
+          ensureTiktokPixelLoaded(storedConsent);
         }
 
         if (isOnline) {
