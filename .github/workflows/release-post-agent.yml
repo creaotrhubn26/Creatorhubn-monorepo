@@ -110,11 +110,12 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         shell: bash
-        # 90 min total = romslig for 3 × 25 min retry-attempts + sleeps.
-        # En enkelt notary-submission tar normalt 5-15 min; bumpet etter
-        # 2026-06-05-incident på release-creatorhub-one-desk der Apple-
-        # siden hang i 45 min og outer-timeout killet før retry startet.
-        timeout-minutes: 160
+        # 350 min = rikelig rom for 3 × 40 min retry-ventene + byggetid selv når
+        # Apples notary-kø henger. En enkelt submission tar normalt 5-15 min, men
+        # under kø-incidenter (2026-06-05, 06-07, 06-08) har den stått «In Progress»
+        # i 90+ min. v0.2.22 traff den gamle 160-grensen og feilet (update_failed)
+        # selv om 3/4 submissions var Accepted. Job-default er 360, så 350 er trygt.
+        timeout-minutes: 350
         run: |
           BUNDLE_DIR="apps/resolve-script-manager/src-tauri/target/${{ matrix.target }}/release/bundle"
           APP_PATH=$(find "$BUNDLE_DIR/macos" -name "*.app" | head -1)
