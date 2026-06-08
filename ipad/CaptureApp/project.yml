@@ -46,6 +46,17 @@ targets:
           UIImageName: CreatorHubOneLogo
           UIImageRespectsSafeAreaInsets: true
         UIRequiredDeviceCapabilities: [arm64]
+        # Kreves av App Store for iPad (multitasking). Alle fire orienteringer.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         NSLocalNetworkUsageDescription: Used to discover and communicate with your Canon camera over the local network during a shoot.
         NSBonjourServices: [_http._tcp]
         NSCameraUsageDescription: Not used. Present only to satisfy App Store review when tethering to external cameras.

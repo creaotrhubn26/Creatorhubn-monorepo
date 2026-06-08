@@ -16,8 +16,12 @@
 <dict>
     <key>method</key>
     <string>app-store</string>
+    <!-- export (ikke upload): build_app lager lokal IPA → fastlane sin
+         upload_to_testflight gjør opplastingen (med processing-wait/changelog).
+         destination=upload her dobler opp + får upload_to_testflight til å feile
+         på «No ipa». -->
     <key>destination</key>
-    <string>upload</string>
+    <string>export</string>
     <key>uploadSymbols</key>
     <true/>
     <key>uploadBitcode</key>
@@ -27,6 +31,6 @@
     <!-- Fill in once App ID is registered on developer.apple.com.
          Leave blank while using automatic signing under a single team. -->
     <key>teamID</key>
-    <string></string>
+    <string>9TAUZCPK95</string>
 </dict>
 </plist>

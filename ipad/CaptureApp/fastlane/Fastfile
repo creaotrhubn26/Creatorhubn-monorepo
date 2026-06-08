@@ -51,6 +51,9 @@ platform :ios do
       clean: true,
       output_directory: "build/",
       output_name: "CreatorHubOne.ipa",
+      # La Xcode kontakte Apple for å auto-generere/registrere provisioning-
+      # profiler (kreves for automatic signing i headless archive).
+      xcargs: "-allowProvisioningUpdates",
     )
 
     upload_to_testflight(
@@ -80,6 +83,7 @@ platform :ios do
       clean: true,
       output_directory: "build/",
       output_name: "CreatorHubOne.ipa",
+      xcargs: "-allowProvisioningUpdates",
     )
 
     upload_to_app_store(

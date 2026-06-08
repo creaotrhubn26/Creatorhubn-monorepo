@@ -5181,11 +5181,16 @@ final class LiveCaptureModel {
         errorMessage = nil
         refreshPhase()
 
+        // makeSession sin retain-closure har ulik signatur i DEBUG ((FakeCanonCamera)
+        // -> Void) vs Release (() -> Void), så kall-stedet må også være betinget —
+        // ellers feiler Release-archive (latent bug før første device-build).
+        #if DEBUG
         let urlSession = Self.makeSession(for: baseURL, retain: { [weak self] fake in
-            #if DEBUG
             self?.demoFake = fake
-            #endif
         })
+        #else
+        let urlSession = Self.makeSession(for: baseURL, retain: {})
+        #endif
         let client = CCAPIClient(baseURL: baseURL, session: urlSession)
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("capture-live", isDirectory: true)
