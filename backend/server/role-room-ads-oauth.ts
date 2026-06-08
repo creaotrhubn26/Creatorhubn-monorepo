@@ -238,7 +238,8 @@ export const ADS_OAUTH_SCOPES: Partial<Record<AdsPlatform, string[]>> = {
     "https://www.googleapis.com/auth/tagmanager.publish",
   ],
   // r_organization_admin powers the "which Company Pages am I admin of" view.
-  linkedin: ["r_ads", "r_ads_reporting", "r_organization_admin"],
+  // rw_ads kreves for å POST-e til /rest/conversions og /rest/insightTags.
+  linkedin: ["r_ads", "r_ads_reporting", "rw_ads", "r_organization_admin"],
 };
 
 export function buildAdsAuthUrl(

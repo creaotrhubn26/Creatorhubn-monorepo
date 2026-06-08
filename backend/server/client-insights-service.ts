@@ -21,6 +21,10 @@ import {
   ensureFreshAdsToken,
   getAdsOauthConnection,
 } from "./role-room-ads-oauth.js";
+import {
+  fetchLinkedinAdsMetrics,
+  type LinkedinAdsMetrics,
+} from "./client-linkedin-suite.js";
 
 const GA4_DATA_BASE = "https://analyticsdata.googleapis.com/v1beta";
 const ADS_API_BASE = "https://googleads.googleapis.com/v18";
@@ -360,21 +364,27 @@ async function fetchGscMetrics(
 export interface ClientInsights {
   range: { start: string; end: string; days: number };
   ga4: Ga4Metrics | null;
-  ads: AdsMetrics | null;
+  ads: AdsMetrics | null;            // Google Ads
   gsc: GscMetrics | null;
+  linkedin: LinkedinAdsMetrics | null;
+  /** Plassholdere — fylles i Wave 2/3 (Meta og TikTok) */
+  meta: null;
+  tiktok: null;
   setupHealth: { totalChecks: number; ok: number; warning: number; error: number; info: number; score: number };
   /** Egne tracked events fra client_ads_events. */
   trackedEvents: { total: number; uniqueActions: number; topActions: Array<{ actionName: string; count: number }> };
-  /** Topplinje-KPI: hva blir Daniel/produsent spurt om? */
+  /** Topplinje-KPI på tvers av plattformer. */
   summary: {
     totalSessions: number;
-    totalAdsClicks: number;
+    totalAdsClicks: number;        // SUM(Google Ads, LinkedIn, Meta, TikTok)
     totalOrganicClicks: number;
-    totalConversions: number;
-    totalSpendNok: number;
+    totalConversions: number;      // SUM på tvers av plattformer
+    totalSpendNok: number;         // SUM på tvers av plattformer
     avgCostPerConversion: number;
-    organicShare: number; // 0-1
-    paidShare: number;    // 0-1
+    organicShare: number;
+    paidShare: number;
+    /** Per-plattform spend-fordeling. */
+    spendByPlatform: Array<{ platform: string; spend: number; share: number }>;
   };
   /** Insight-bullets (auto-genererte observasjoner). */
   observations: string[];
@@ -390,7 +400,7 @@ export async function fetchClientInsights(
 ): Promise<ClientInsights | null> {
   const cfgR = await pool.query(
     `SELECT id::text, client_website_url, ga4_property_id, gsc_property_url,
-            google_ads_customer_id
+            google_ads_customer_id, linkedin_account_urn
        FROM client_ads_configs
       WHERE id = $1::uuid AND content_producer_user_id = $2`,
     [opts.configId, opts.producerUserId],
@@ -401,7 +411,7 @@ export async function fetchClientInsights(
   const { start, end } = dateRange(days);
 
   // Kjør alle kall parallelt (de feiler stille hvis tilkobling mangler)
-  const [ga4, ads, gsc] = await Promise.all([
+  const [ga4, ads, gsc, linkedin] = await Promise.all([
     cfg.ga4_property_id
       ? fetchGa4Metrics(pool, opts.producerUserId, cfg.ga4_property_id, start, end).catch(() => null)
       : Promise.resolve(null),
@@ -410,6 +420,14 @@ export async function fetchClientInsights(
       : Promise.resolve(null),
     cfg.gsc_property_url || cfg.client_website_url
       ? fetchGscMetrics(pool, opts.producerUserId, cfg.gsc_property_url || cfg.client_website_url, start, end).catch(() => null)
+      : Promise.resolve(null),
+    cfg.linkedin_account_urn
+      ? fetchLinkedinAdsMetrics(pool, {
+          producerUserId: opts.producerUserId,
+          adAccountUrn: cfg.linkedin_account_urn,
+          startDate: start,
+          endDate: end,
+        }).catch(() => null)
       : Promise.resolve(null),
   ]);
 
@@ -451,13 +469,20 @@ export async function fetchClientInsights(
     topActions: topActionsR.rows.map((r: any) => ({ actionName: r.action_name, count: r.count })),
   };
 
-  // Topplinje-KPI
+  // Topplinje-KPI på tvers av plattformer
   const totalSessions = ga4?.sessions ?? 0;
-  const totalAdsClicks = ads?.clicks ?? 0;
+  const totalAdsClicks = (ads?.clicks ?? 0) + (linkedin?.clicks ?? 0);
   const totalOrganicClicks = gsc?.totalClicks ?? 0;
-  const totalConversions = (ads?.conversions ?? 0) + (ga4?.conversions ?? 0);
-  const totalSpendNok = ads?.spendNok ?? 0;
+  const totalConversions = (ads?.conversions ?? 0) + (linkedin?.conversions ?? 0) + (ga4?.conversions ?? 0);
+  const totalSpendNok = (ads?.spendNok ?? 0) + (linkedin?.spend ?? 0);
   const allClicks = totalAdsClicks + totalOrganicClicks;
+
+  const spendByPlatform: Array<{ platform: string; spend: number; share: number }> = [];
+  if (ads?.spendNok) spendByPlatform.push({ platform: "Google Ads", spend: ads.spendNok, share: 0 });
+  if (linkedin?.spend) spendByPlatform.push({ platform: "LinkedIn", spend: linkedin.spend, share: 0 });
+  for (const p of spendByPlatform) p.share = totalSpendNok > 0 ? p.spend / totalSpendNok : 0;
+  spendByPlatform.sort((a, b) => b.spend - a.spend);
+
   const summary = {
     totalSessions,
     totalAdsClicks,
@@ -467,6 +492,7 @@ export async function fetchClientInsights(
     avgCostPerConversion: totalConversions > 0 ? totalSpendNok / totalConversions : 0,
     organicShare: allClicks > 0 ? totalOrganicClicks / allClicks : 0,
     paidShare: allClicks > 0 ? totalAdsClicks / allClicks : 0,
+    spendByPlatform,
   };
 
   // Auto-observasjoner — det innholdsprodusent sender til klient
@@ -497,12 +523,33 @@ export async function fetchClientInsights(
   }
   if (summary.organicShare > 0.7) observations.push("Hovedsakelig organisk trafikk — vurder Ads-eksperimenter for raskere vekst.");
   if (summary.paidShare > 0.7 && totalSessions > 0) observations.push("Hovedsakelig betalt trafikk — bygg organisk for å redusere avhengighet av ads.");
+  if (linkedin) {
+    if (linkedin.conversions > 0 && linkedin.costPerConversion > 0) {
+      observations.push(`LinkedIn CPA: ${Math.round(linkedin.costPerConversion)} kr — ${linkedin.conversions} konv. på ${Math.round(linkedin.spend)} kr.`);
+    }
+    if (ads && ads.spendNok > 0 && linkedin.spend > 0) {
+      const cmp = (ads.costPerConversion > 0 && linkedin.costPerConversion > 0)
+        ? linkedin.costPerConversion / ads.costPerConversion
+        : null;
+      if (cmp !== null) {
+        if (cmp < 0.8) observations.push("LinkedIn CPA er lavere enn Google Ads — vurder å flytte mer budsjett dit (B2B-fit).");
+        else if (cmp > 1.5) observations.push("LinkedIn CPA er betydelig høyere enn Google — refiner targeting eller pause LinkedIn.");
+      }
+    }
+  }
+  if (summary.spendByPlatform.length > 1) {
+    const top = summary.spendByPlatform[0];
+    observations.push(`Spend-fordeling: ${summary.spendByPlatform.map((p) => `${p.platform} ${Math.round(p.share * 100)}%`).join(" · ")} (totalt ${Math.round(summary.totalSpendNok)} kr).`);
+  }
 
   return {
     range: { start, end, days },
     ga4,
     ads,
     gsc,
+    linkedin,
+    meta: null,
+    tiktok: null,
     setupHealth,
     trackedEvents,
     summary,

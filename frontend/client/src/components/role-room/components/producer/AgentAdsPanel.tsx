@@ -33,6 +33,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CodeIcon from '@mui/icons-material/Code';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import ClientGoogleSuitePanel from './ClientGoogleSuitePanel';
+import ClientLinkedinSuitePanel from './ClientLinkedinSuitePanel';
 import ClientAiPromptsPanel from './ClientAiPromptsPanel';
 import ClientInsightsPanel from './ClientInsightsPanel';
 
@@ -881,6 +882,12 @@ export default function AgentAdsPanel({
             configId={savedConfigId}
             clientName={clientName || 'Klienten'}
             clientWebsiteUrl={discoveryResult.url}
+          />
+
+          {/* R1 — LinkedIn (Insight Tag + Conversion Rules + CAPI gated) */}
+          <ClientLinkedinSuitePanel
+            configId={savedConfigId}
+            clientName={clientName || 'Klienten'}
           />
 
           {/* Innsikt — full stack (GA4 + Ads + GSC + tracked events) */}

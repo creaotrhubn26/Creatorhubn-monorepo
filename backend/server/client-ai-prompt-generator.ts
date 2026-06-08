@@ -24,7 +24,11 @@ export type Scenario =
   | "structured_data"
   | "seo_basics"
   | "conversion_events"
-  | "geo_optimization";
+  | "geo_optimization"
+  | "install_linkedin_insight"
+  | "linkedin_conversion_events"
+  | "install_linkedin_capi"
+  | "social_profile_bios";
 
 export interface PromptContext {
   clientName: string;
@@ -32,6 +36,8 @@ export interface PromptContext {
   ga4MeasurementId?: string | null;
   awConversionId?: string | null;
   gtmContainerId?: string | null;
+  /** LinkedIn Insight Tag partner-ID (numerisk). */
+  linkedinPartnerId?: number | string | null;
   actions?: Array<{
     actionName: string;
     displayName: string;
@@ -40,6 +46,8 @@ export interface PromptContext {
     defaultValue: number;
     currency: string;
     urlPattern?: string | null;
+    /** LinkedIn conversion-ID etter sync — for event-prompter. */
+    linkedinConversionId?: number | string | null;
   }>;
   businessType?: string;
   businessSummary?: string;
@@ -1091,6 +1099,466 @@ Legg dette i robots.txt FØR \`User-agent: *\`-blokken. (Dette er motsatt av "Bo
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// LinkedIn — Insight Tag, conversion-events og CAPI server-side
+// ─────────────────────────────────────────────────────────────────────
+
+function promptInstallLinkedinInsight(ctx: PromptContext): GeneratedPrompt {
+  if (!ctx.linkedinPartnerId) {
+    return {
+      scenario: "install_linkedin_insight",
+      title: "Installer LinkedIn Insight Tag",
+      prompt: "",
+      verifyAfter: "",
+      applicable: false,
+      notApplicableReason: "LinkedIn Insight Tag er ikke opprettet ennå. Gå til LinkedIn-seksjonen og klikk 'Opprett Insight Tag' først.",
+    };
+  }
+  const partnerId = String(ctx.linkedinPartnerId);
+  return {
+    scenario: "install_linkedin_insight",
+    title: "Installer LinkedIn Insight Tag",
+    applicable: true,
+    prompt: `${targetIntro(ctx.targetAgent)}
+
+\`\`\`html
+<!-- LinkedIn Insight Tag — ${ctx.clientName} -->
+<script type="text/javascript">
+  _linkedin_partner_id = "${partnerId}";
+  window._linkedin_data_partner_ids = window._linkedin_data_partner_ids || [];
+  window._linkedin_data_partner_ids.push(_linkedin_partner_id);
+</script>
+<script type="text/javascript">
+  (function(l) {
+    if (!l) {
+      window.lintrk = function(a, b) { window.lintrk.q.push([a, b]); };
+      window.lintrk.q = [];
+    }
+    var s = document.getElementsByTagName("script")[0];
+    var b = document.createElement("script");
+    b.type = "text/javascript"; b.async = true;
+    b.src = "https://snap.licdn.com/li.lms-analytics/insight.min.js";
+    s.parentNode.insertBefore(b, s);
+  })(window.lintrk);
+</script>
+<noscript>
+  <img height="1" width="1" style="display:none;" alt=""
+       src="https://px.ads.linkedin.com/collect/?pid=${partnerId}&fmt=gif" />
+</noscript>
+\`\`\`
+
+**LinkedIn + Consent Mode v2-integrasjon:** LinkedIn Insight Tag respekterer ikke Google Consent Mode automatisk. Hvis klient bruker en CMP (Cookiebot/OneTrust/CookieYes), wrap initialiseringen i en consent-callback så tagen ikke fyrer før samtykke. Eksempel:
+
+\`\`\`javascript
+function loadLinkedInInsight() {
+  // Lim inn IIFE-blokken fra over her
+}
+
+if (window.Cookiebot?.consent?.marketing) loadLinkedInInsight();
+else window.addEventListener('CookiebotOnAccept', () => {
+  if (window.Cookiebot?.consent?.marketing) loadLinkedInInsight();
+});
+\`\`\`
+
+**LinkedIn + GTM:** Hvis du allerede har GTM installert, kan du legge Insight Tag-koden over inn som en Custom HTML-tag i GTM i stedet — fyrer på alle sider og kan styres med consent-trigger.`,
+    verifyAfter: `${targetVerifyBase(ctx.targetAgent)} Søk etter "${partnerId}" — du skal finne det i scriptet. Bruk LinkedIn Insight Tag Helper (Chrome extension) for å bekrefte at tagen rapporterer korrekt.`,
+  };
+}
+
+function promptLinkedinConversionEvents(ctx: PromptContext): GeneratedPrompt {
+  if (!ctx.linkedinPartnerId) {
+    return {
+      scenario: "linkedin_conversion_events",
+      title: "Fyr LinkedIn conversion-events",
+      prompt: "",
+      verifyAfter: "",
+      applicable: false,
+      notApplicableReason: "LinkedIn Insight Tag mangler. Opprett tagen først.",
+    };
+  }
+  const syncedActions = (ctx.actions ?? []).filter((a) => a.linkedinConversionId);
+  if (syncedActions.length === 0) {
+    return {
+      scenario: "linkedin_conversion_events",
+      title: "Fyr LinkedIn conversion-events",
+      prompt: "",
+      verifyAfter: "",
+      applicable: false,
+      notApplicableReason: "Ingen actions har LinkedIn conversion-ID ennå. Kjør 'Sync til LinkedIn' først.",
+    };
+  }
+
+  const eventBlocks = syncedActions.map((a) => {
+    const cid = a.linkedinConversionId;
+    const safe = a.actionName.replace(/[^a-zA-Z0-9]/g, "_");
+    if (a.triggerType === "form_submit") {
+      return `
+**${a.displayName}** (form-submit) — LinkedIn conversion-ID ${cid}:
+
+\`\`\`javascript
+document.querySelector('form[data-track="${a.actionName}"]')?.addEventListener('submit', function() {
+  if (typeof window.lintrk === 'function') {
+    window.lintrk('track', { conversion_id: ${cid} });
+  }
+});
+\`\`\``;
+    }
+    if (a.triggerType === "click") {
+      return `
+**${a.displayName}** (klikk) — conversion-ID ${cid}:
+
+\`\`\`javascript
+document.querySelector('[data-track="${a.actionName}"]')?.addEventListener('click', function() {
+  window.lintrk && window.lintrk('track', { conversion_id: ${cid} });
+});
+\`\`\``;
+    }
+    if (a.triggerType === "page_load" && a.urlPattern) {
+      return `
+**${a.displayName}** (på ${a.urlPattern}) — conversion-ID ${cid}:
+
+\`\`\`javascript
+// Plasser på den konkrete siden (f.eks. takk-side)
+window.lintrk && window.lintrk('track', { conversion_id: ${cid} });
+\`\`\``;
+    }
+    return `
+**${a.displayName}** (manuell) — conversion-ID ${cid}:
+
+\`\`\`javascript
+window.lintrk && window.lintrk('track', { conversion_id: ${cid} });
+\`\`\``;
+  });
+
+  return {
+    scenario: "linkedin_conversion_events",
+    title: "Fyr LinkedIn conversion-events",
+    applicable: true,
+    prompt: `Vi har opprettet ${syncedActions.length} conversion rule${syncedActions.length === 1 ? "" : "s"} i LinkedIn. Nå må klient-koden fyre dem når brukerne konverterer. Forutsetning: Insight Tag fra forrige prompt må allerede være installert.
+
+${eventBlocks.join("\n")}
+
+**Felles:** LinkedIn-events sendes via \`window.lintrk\`-funksjonen som ble registrert av Insight Tag-bootstrappen. Hvis \`lintrk\` er undefined (script ikke loadet ennå eller blokkert av consent), ignoreres call-en — derfor optional-chain over.`,
+    verifyAfter: `Sjekk LinkedIn Campaign Manager → Account assets → Conversions. Etter første test-konvertering skal "Status: Receiving" stå ved siden av regel-navnet. Det tar opptil 30 min før status oppdateres.`,
+  };
+}
+
+function promptInstallLinkedinCapi(ctx: PromptContext): GeneratedPrompt {
+  return {
+    scenario: "install_linkedin_capi",
+    title: "LinkedIn Conversions API (server-side) — gated bak app review",
+    applicable: true,
+    prompt: `LinkedIn CAPI tillater å sende conversion-events server-side, som er **kritisk** når:
+- iOS Safari ITP / Firefox ETP blokkerer 3rd-party-cookies (50%+ av besøk)
+- Klient har strenge consent-regler hvor pixel ikke fyrer
+- Du vil sende offline-konverteringer (telefonsamtaler, in-store, CRM-deals)
+
+**⚠️ Tilgangsstatus:** Som av 2026-06-08 har vår app **"Conversions API (Standard tier) – Review in progress"** hos LinkedIn. Vi kan ikke sende live events før Standard tier er godkjent. Når godkjent:
+
+1. Hent et access-token via LinkedIn Conversions API-flowen (server-side OAuth).
+2. Lagre tokenet kryptert via Agent-UI ("LinkedIn CAPI-token") — det havner i \`linkedin_capi_access_token\` (encrypted).
+3. Backend POST-er til \`https://api.linkedin.com/rest/conversionEvents\` med:
+
+\`\`\`http
+POST /rest/conversionEvents HTTP/1.1
+Authorization: Bearer {LINKEDIN_CAPI_ACCESS_TOKEN}
+Content-Type: application/json
+X-Restli-Protocol-Version: 2.0.0
+LinkedIn-Version: 202410
+
+{
+  "conversion": "urn:lla:llaPartnerConversion:{conversion-id}",
+  "conversionHappenedAt": 1726912345000,
+  "user": {
+    "userIds": [
+      { "idType": "SHA256_EMAIL", "idValue": "<sha256 av e-post>" },
+      { "idType": "LINKEDIN_FIRST_PARTY_ADS_TRACKING_UUID", "idValue": "<li_fat_id-cookie>" }
+    ]
+  },
+  "conversionValue": {
+    "currencyCode": "NOK",
+    "amount": "1000.00"
+  }
+}
+\`\`\`
+
+**Det denne prompten gjør på klient-side:** Sender raw event-data fra hver konvertering til DIN backend-route (som så videresender til LinkedIn med CAPI-token). Klient-koden er identisk uansett om vi er godkjent — kun vår backend forskjellig.
+
+Eksempel — i klient's form-submit-handler legg:
+
+\`\`\`javascript
+// Når brukeren konverterer, send rå data til ${ctx.websiteUrl.replace(/[/]+$/, "")}/api/conversions/linkedin
+fetch('${ctx.websiteUrl.replace(/[/]+$/, "")}/api/conversions/linkedin', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    event: 'lead_submitted',
+    email: form.email.value,       // hashes på server
+    phone: form.phone.value,
+    value: 1000,
+    currency: 'NOK',
+    occurredAt: Date.now(),
+  }),
+});
+\`\`\`
+
+Backend-en (server-side, ikke klient) sender deretter SHA256-hashed payload til LinkedIn med CAPI-token. Vi tilbyr denne ende-til-ende når LinkedIn Standard tier er godkjent.`,
+    verifyAfter: `Kjør test-event mot LinkedIn Conversions API → /rest/conversionEvents. Sjekk at responsen er HTTP 201 og at conversion dukker opp i Campaign Manager → Conversions → Insights innen 30 min. Når Standard tier ikke er godkjent vil du få HTTP 403 — det er forventet.`,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Sosial-bio-pakke: copy-paste-ferdig profilinnhold per plattform
+// LinkedIn / Facebook / Instagram / TikTok / Google Business / YouTube
+// ─────────────────────────────────────────────────────────────────────
+
+function promptSocialProfileBios(ctx: PromptContext): GeneratedPrompt {
+  const cleanUrl = ctx.websiteUrl.replace(/[/]+$/, "");
+  const business = ctx.businessSummary ?? `${ctx.clientName} — ${ctx.businessType ?? "virksomhet"}`;
+  const isLocal = (ctx.businessType ?? "").toLowerCase().includes("local")
+    || (business.toLowerCase().includes("lokal"))
+    || (business.toLowerCase().includes("klinikk"))
+    || (business.toLowerCase().includes("salong"));
+  const domain = (() => { try { return new URL(cleanUrl).hostname.replace(/^www\./, ""); } catch { return ctx.clientName; } })();
+
+  // Trekk ut korte versjoner basert på business-summary
+  const tagline = `${ctx.clientName} — ${ctx.businessType ?? "ekspertise"} for [målgruppe].`;
+  const shortDesc = business.length > 155 ? business.slice(0, 152) + "…" : business;
+
+  return {
+    scenario: "social_profile_bios",
+    title: "Bio-pakke for sosial-profiler (copy-paste-ferdig)",
+    applicable: true,
+    prompt: `Komplett bio-pakke for ${ctx.clientName}. Hver seksjon under kan kopieres direkte og limes inn i den respektive plattformen. Plassholdere i \`[hakeparenteser]\` må klient fylle inn med konkrete data.
+
+---
+
+## LinkedIn Company Page
+
+**Tagline (3 setninger maks, vises rett under firma-navnet):**
+
+\`\`\`
+${tagline}
+Vi hjelper [målgruppe] med [konkret resultat] gjennom [unik metode/tilnærming].
+Etablert [år] · [by/land].
+\`\`\`
+
+**About-seksjonen (maks 2000 tegn):**
+
+\`\`\`
+${ctx.clientName} er ${business}
+
+🎯 HVA VI GJØR
+${ctx.clientName} hjelper [målgruppe] med å [konkret resultat] gjennom [vår unike metode].
+
+📊 RESULTATER FOR KUNDENE
+• [Konkret tall: f.eks. "350+ bedrifter betjent siden 2020"]
+• [Konkret tall: f.eks. "Gjennomsnittlig ROI 3.2x"]
+• [Konkret tall: f.eks. "98% kundetilfredshet"]
+
+💼 TJENESTER VI TILBYR
+• [Tjeneste 1]
+• [Tjeneste 2]
+• [Tjeneste 3]
+• [Tjeneste 4]
+
+🌍 HVOR VI OPERERER
+[Geografi — Norge, Skandinavia, globalt, eller spesifikke byer]
+
+📞 KOM I KONTAKT
+Nettsted: ${cleanUrl}
+E-post: [info@${domain}]
+Telefon: [+47 ...]
+
+#${ctx.clientName.replace(/\s/g, "")} #${(ctx.businessType ?? "Business").replace(/\s/g, "")}
+\`\`\`
+
+**Specialties (maks 100 tegn per oppføring, 20 oppføringer):**
+
+\`\`\`
+${(ctx.businessType ?? "Business")}, Konsulenttjenester, Strategisk rådgivning, Implementering,
+Opplæring, Support, Konseptutvikling, Prosjektledelse
+\`\`\`
+
+(LinkedIn bruker specialties til auto-categorization i søk. Velg 5-15 spesifikke termer.)
+
+---
+
+## Facebook Page
+
+**Kort beskrivelse (155 tegn — vises på Page-kort):**
+
+\`\`\`
+${shortDesc}
+\`\`\`
+
+**Lang beskrivelse / About (kan være lengre, vis 500-800 tegn for best CTR):**
+
+\`\`\`
+${ctx.clientName} — ${business}
+
+Vi er en [bransje]-virksomhet i [by/land] som spesialiserer oss på [hovedtjeneste].
+
+✓ [Resultat-fokus 1: f.eks. "Levert 350+ prosjekter"]
+✓ [Resultat-fokus 2: f.eks. "5-stjerners gjennomsnitt"]
+✓ [Resultat-fokus 3: f.eks. "Sertifisert i bransje-X"]
+
+Ønsker du å vite mer? Besøk ${cleanUrl} eller send oss en melding.
+
+📍 [Adresse]
+📞 [Telefon]
+🌐 ${cleanUrl}
+\`\`\`
+
+**Mission statement (kort, 1 setning):**
+
+\`\`\`
+Vi hjelper [målgruppe] med [konkret resultat].
+\`\`\`
+
+---
+
+## Instagram Bio (150 tegn — STRENGT)
+
+\`\`\`
+${ctx.clientName}
+[Hva du gjør i 1 setning — under 60 tegn]
+📍 [By]
+👇 [CTA — "Bestill nå" / "Les mer" / "Få tilbud"]
+${cleanUrl}
+\`\`\`
+
+(Instagram tillater kun ÉN lenke i bio. Bruk Linktree/Beacons hvis du vil ha flere. Ikke wast tegn på "Welcome to" eller "Official" — gå rett på verdi.)
+
+**Story Highlight-kategorier (anbefalt for klient):**
+- Om oss
+- Tjenester
+- Kunder
+- FAQ
+- Kontakt
+
+---
+
+## TikTok Bio (80 tegn — STRENGT)
+
+\`\`\`
+${ctx.clientName} | [Hva du gjør i 4-5 ord]
+${cleanUrl}
+\`\`\`
+
+(TikTok bio er BRUTALT kort. Eksempler som funker: "Hudpleie i Oslo · Bestill time", "Norsk regnskap for SMB", "B2B-content som selger". Klippa ut alle fyllord.)
+
+---
+
+## ${isLocal ? "Google Business Profile (anbefalt — du driver lokalt)" : "Google Business Profile (hvis du har fysisk lokasjon)"}
+
+**Business description (750 tegn):**
+
+\`\`\`
+${ctx.clientName} er ${business}
+
+Vi tilbyr [hovedtjenester] for [målgruppe] i [by/region]. Med [år] år erfaring og [konkret-tall]+ fornøyde kunder, er vi [unik posisjonering].
+
+🕐 Åpningstider:
+Mandag-fredag: [tid-tid]
+Lørdag-søndag: [tid eller "stengt"]
+
+📞 [Telefon]
+🌐 ${cleanUrl}
+
+#[bransje] #[by] #[hovedtjeneste]
+\`\`\`
+
+**Categories (velg 1 primær + opptil 9 sekundære fra Google's liste):**
+
+\`\`\`
+Primær: [F.eks. "Hudpleieklinikk" / "Regnskapsbyrå" / "Restaurant"]
+Sekundære: [F.eks. "Spa", "Wellness center", "Beauty salon"]
+\`\`\`
+
+**Services (legg til alle konkrete tjenester):**
+
+\`\`\`
+1. [Tjeneste-navn]: [Pris / "Fra X kr"] — [1 setning beskrivelse]
+2. [Tjeneste-navn]: [Pris] — [Beskrivelse]
+3. [Tjeneste-navn]: [Pris] — [Beskrivelse]
+\`\`\`
+
+**Attributes (huk av relevante):**
+- Wheelchair accessible
+- LGBTQ+ friendly
+- Tilbyr [WiFi / Parkering / Hjemmelevering / etc.]
+- Aksepterer Vipps / kort
+
+---
+
+## YouTube Channel About (5000 tegn — maksimal SEO)
+
+\`\`\`
+Velkommen til ${ctx.clientName} — din kilde til [emne].
+
+På denne kanalen deler vi [type innhold] for [målgruppe]. Hver uke får du:
+
+✓ [Innhold-type 1]
+✓ [Innhold-type 2]
+✓ [Innhold-type 3]
+
+▶ ABONNÉR for å ikke gå glipp av [hovedfordel].
+
+📺 SE OGSÅ:
+[lenke til playlist 1]
+[lenke til playlist 2]
+
+🔗 LENKER:
+Nettsted: ${cleanUrl}
+LinkedIn: [URL]
+Instagram: [URL]
+
+📧 KONTAKT:
+Forretningsforespørsler: [business@${domain}]
+\`\`\`
+
+**Channel keywords (tags — pass på relevans, ikke spam):**
+\`\`\`
+${ctx.clientName}, ${ctx.businessType ?? "business"}, [emne 1], [emne 2], [emne 3], [norsk by]
+\`\`\`
+
+---
+
+## X / Twitter Bio (160 tegn — STRENGT)
+
+\`\`\`
+${ctx.clientName} · ${(ctx.businessType ?? "Business").slice(0, 30)}
+[Hva du gjør i 1 setning]
+📍 [By] · 🌐 ${cleanUrl}
+\`\`\`
+
+---
+
+## 💡 Generelle tips
+
+**Konsistens på tvers av plattformer:**
+- Samme profilbilde (firmalogo) på alle plattformer
+- Samme cover/banner-bilde i 1500x500-format
+- Samme tagline (gjenkjennelig på 2 sekunder)
+- Samme primær-farge i bilder
+
+**Unngå:**
+- Klisjeer som "We are leading" / "Norges beste" — ingen tror på det
+- Tomme om-oss-sider uten konkrete fakta
+- Emoji-spam (1-3 ikoner per seksjon er nok)
+- Buzzword-lister uten substans
+
+**Inkluder ALLTID:**
+- Konkrete tall (kunder, år, prosjekter)
+- Geografi (hvor opererer du)
+- Måling-bar verdi (hva gir du kunden)
+- Klar CTA (hva gjør neste skritt)
+- Kontakt-info (e-post + telefon + URL)`,
+    verifyAfter: `Etter at klient har oppdatert profilene: kjør GA4 → Acquisition → Traffic Acquisition for å se referral-trafikk fra hvert nettsted. Også kjør Google Search Console → URL Inspection på ${cleanUrl} for å sjekke at sameAs-lenkene (LinkedIn/FB/IG/etc) i Organization-schema matcher de oppdaterte profilene.`,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Live-data fra klient-siten (kalles av route før prompts genereres)
 // ─────────────────────────────────────────────────────────────────────
 
@@ -1189,6 +1657,9 @@ export function generateAllPrompts(ctx: PromptContext): GeneratedPrompt[] {
     promptInstallGa4(ctx),
     promptInstallAds(ctx),
     promptInstallGtm(ctx),
+    promptInstallLinkedinInsight(ctx),
+    promptLinkedinConversionEvents(ctx),
+    promptInstallLinkedinCapi(ctx),
     promptConsentModeV2(ctx),
     promptFixNoindex(ctx),
     promptAddSitemap(ctx),
@@ -1197,5 +1668,6 @@ export function generateAllPrompts(ctx: PromptContext): GeneratedPrompt[] {
     promptSeoBasics(ctx),
     promptConversionEvents(ctx),
     promptGeoOptimization(ctx),
+    promptSocialProfileBios(ctx),
   ];
 }

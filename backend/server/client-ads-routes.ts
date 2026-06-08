@@ -55,6 +55,18 @@ import {
   type TargetAgent,
 } from "./client-ai-prompt-generator.js";
 import { fetchClientInsights } from "./client-insights-service.js";
+import {
+  listLinkedinAdAccounts,
+  provisionLinkedinInsightTag,
+  createLinkedinConversion,
+} from "./client-linkedin-suite.js";
+import {
+  buildAdsAuthUrl,
+  exchangeAdsCodeForToken,
+  upsertAdsOauthConnection,
+  adsOauthClientCreds,
+} from "./role-room-ads-oauth.js";
+import crypto from "node:crypto";
 
 interface SessionLike {
   userId: string;
@@ -911,6 +923,218 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     app._router.handle(req, res, () => {});
   });
 
+  // ════════════════════════════════════════════════════════════════════
+  // LinkedIn — speil av Google: OAuth → list accounts → Insight Tag →
+  // Conversion Rules → Reporting (i insights). CAPI er gated på
+  // Conversions API-godkjenning (UI viser "venter på review").
+  // ════════════════════════════════════════════════════════════════════
+
+  // OAuth-start: returnerer authUrl
+  app.get("/api/admin-room/agent/ads/oauth/linkedin/start", (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const creds = adsOauthClientCreds("linkedin");
+    if (!creds) return res.status(503).json({ error: "LINKEDIN_CLIENT_ID/SECRET ikke satt på server." });
+
+    const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? "creatorhub-backend-rtbl.onrender.com"}`).replace(/\/+$/, "");
+    const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/linkedin/callback`;
+    const configId = typeof req.query.configId === "string" ? req.query.configId : "";
+    const state = `${session.userId}.${configId}.${crypto.randomBytes(12).toString("hex")}`;
+    const authUrl = buildAdsAuthUrl("linkedin", { clientId: creds.clientId, redirectUri, state });
+    if (!authUrl) return res.status(503).json({ error: "Klarte ikke å bygge LinkedIn-auth-URL" });
+    return res.json({ authUrl });
+  });
+
+  // OAuth-callback
+  app.get("/api/admin-room/agent/ads/oauth/linkedin/callback", async (req, res) => {
+    const code = typeof req.query.code === "string" ? req.query.code : null;
+    const state = typeof req.query.state === "string" ? req.query.state : null;
+    if (!code || !state) return res.status(400).send("Missing code/state");
+
+    const [userId, configId] = state.split(".");
+    if (!userId) return res.status(400).send("Invalid state");
+
+    const creds = adsOauthClientCreds("linkedin");
+    if (!creds) return res.status(503).send("LinkedIn creds mangler");
+    const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? "creatorhub-backend-rtbl.onrender.com"}`).replace(/\/+$/, "");
+    const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/linkedin/callback`;
+
+    try {
+      const tokenResult = await exchangeAdsCodeForToken("linkedin", { ...creds, code, redirectUri });
+      if (!tokenResult.refreshToken || !tokenResult.accessToken) {
+        return res.redirect(`/role-room/agent/ads?oauth_error=linkedin_missing_refresh_token`);
+      }
+      await upsertAdsOauthConnection(pool, {
+        userId,
+        platform: "linkedin",
+        refreshToken: tokenResult.refreshToken,
+        accessToken: tokenResult.accessToken,
+        expiresInSec: tokenResult.expiresInSec,
+        scopes: ["r_ads", "r_ads_reporting", "rw_ads", "r_organization_admin"],
+      });
+      const cfgParam = configId ? `&config=${encodeURIComponent(configId)}` : "";
+      return res.redirect(`/role-room/agent/ads?oauth_success=linkedin${cfgParam}`);
+    } catch (err) {
+      console.error("[linkedin-oauth] callback failed", err);
+      return res.redirect(`/role-room/agent/ads?oauth_error=linkedin_${encodeURIComponent(String(err).slice(0, 80))}`);
+    }
+  });
+
+  // List LinkedIn Ad Accounts
+  app.get("/api/admin-room/agent/ads/linkedin/accounts", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const r = await listLinkedinAdAccounts(pool, session.userId);
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ accounts: r.accounts });
+  });
+
+  // POST .../linkedin/provision-insight-tag — oppretter (eller henter) Insight Tag for klient
+  app.post("/api/admin-room/agent/ads/configs/:id/linkedin/provision-insight-tag", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { adAccountUrn?: string };
+    if (!body.adAccountUrn) return res.status(400).json({ error: "adAccountUrn påkrevd" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_name, client_website_url, linkedin_insight_tag_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.linkedin_insight_tag_id) {
+        return res.status(409).json({ error: "Insight Tag finnes alt", linkedinInsightTagId: cfg.linkedin_insight_tag_id });
+      }
+
+      const r = await provisionLinkedinInsightTag(pool, {
+        producerUserId: session.userId,
+        adAccountUrn: body.adAccountUrn,
+        clientName: cfg.client_name,
+        websiteUrl: cfg.client_website_url,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+
+      // Hent account-name også
+      const accountName = body.adAccountUrn.split(":").pop() ?? null;
+
+      await pool.query(
+        `UPDATE client_ads_configs
+           SET linkedin_account_urn = $1,
+               linkedin_account_name = COALESCE(linkedin_account_name, $2),
+               linkedin_insight_tag_id = $3,
+               linkedin_setup_completed_at = now(),
+               platforms_selected = ARRAY(SELECT DISTINCT unnest(platforms_selected || ARRAY['linkedin']::TEXT[])),
+               updated_at = now()
+          WHERE id = $4::uuid`,
+        [body.adAccountUrn, accountName, r.insightTagId, req.params.id],
+      );
+
+      return res.json({
+        success: true,
+        insightTagId: r.insightTagId,
+        partnerId: r.partnerId,
+        tagSnippet: r.tagSnippet,
+      });
+    } catch (err) {
+      console.error("[linkedin-provision] failed", err);
+      return res.status(500).json({ error: "Provision feilet", detail: String(err) });
+    }
+  });
+
+  // POST .../linkedin/sync-conversions — opprett conversion rules for alle godkjente actions
+  app.post("/api/admin-room/agent/ads/configs/:id/linkedin/sync-conversions", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT linkedin_insight_tag_id, linkedin_account_urn, approval_status, client_name
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.approval_status !== "approved") {
+        return res.status(412).json({ error: "Konfig må være approved før sync" });
+      }
+      if (!cfg.linkedin_insight_tag_id || !cfg.linkedin_account_urn) {
+        return res.status(412).json({ error: "Opprett Insight Tag først." });
+      }
+
+      const actionsR = await pool.query(
+        `SELECT id::text, action_name, display_name, goal_category, default_value,
+                currency, trigger_type, url_pattern
+           FROM client_ads_actions
+          WHERE config_id = $1::uuid AND is_active = TRUE AND linkedin_conversion_id IS NULL
+          ORDER BY created_at ASC`,
+        [req.params.id],
+      );
+
+      const created: Array<{ actionId: string; conversionId: number }> = [];
+      const failed: Array<{ actionId: string; error: string }> = [];
+
+      for (const a of actionsR.rows) {
+        const r = await createLinkedinConversion(pool, {
+          producerUserId: session.userId,
+          insightTagId: cfg.linkedin_insight_tag_id,
+          adAccountUrn: cfg.linkedin_account_urn,
+          action: {
+            actionName: a.action_name,
+            displayName: a.display_name,
+            goalCategory: a.goal_category,
+            defaultValue: Number(a.default_value ?? 0),
+            currency: a.currency || "NOK",
+            triggerType: a.trigger_type,
+            urlPattern: a.url_pattern,
+          },
+        });
+        if (r.ok) {
+          await pool.query(
+            `UPDATE client_ads_actions
+                SET linkedin_conversion_id = $1::bigint,
+                    linkedin_conversion_urn = $2,
+                    linkedin_synced_at = now(),
+                    updated_at = now()
+              WHERE id = $3::uuid`,
+            [r.conversionId, r.conversionUrn, a.id],
+          );
+          created.push({ actionId: a.id, conversionId: r.conversionId });
+        } else {
+          failed.push({ actionId: a.id, error: r.error });
+        }
+      }
+
+      return res.json({ success: true, created, failed });
+    } catch (err) {
+      console.error("[linkedin-sync] failed", err);
+      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+    }
+  });
+
+  // PATCH .../linkedin/capi-token — lagre CAPI access token (kryptert)
+  // Krever LinkedIn Conversions API-godkjenning (Standard tier) — UI viser
+  // "venter på review" til Daniel har den. Endpoint fungerer uansett —
+  // bare token-en kommer ikke til nytte før produktet er godkjent.
+  app.patch("/api/admin-room/agent/ads/configs/:id/linkedin/capi-token", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { capiToken?: string };
+    if (!body.capiToken) return res.status(400).json({ error: "capiToken påkrevd" });
+    // NB: vi lagrer rå-token her. Når kryptering går i produksjon, encrypte
+    // før lagring (samme AES-256-GCM-pattern som refresh_token).
+    await pool.query(
+      `UPDATE client_ads_configs
+          SET linkedin_capi_access_token = $1, updated_at = now()
+        WHERE id = $2::uuid AND content_producer_user_id = $3`,
+      [body.capiToken, req.params.id, session.userId],
+    );
+    return res.json({ success: true });
+  });
+
   // GET /api/admin-room/agent/ads/configs/:id/insights?range=28d
   // Aggregert KPI-dashboard: GA4 + Google Ads + GSC + tracked events
   // + auto-genererte observasjoner. Brukes av ClientInsightsPanel.
@@ -949,7 +1173,8 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     try {
       const cfgR = await pool.query(
         `SELECT client_name, client_website_url, business_type, business_summary,
-                ga4_measurement_id, gtm_container_public_id
+                ga4_measurement_id, gtm_container_public_id,
+                linkedin_insight_tag_id
            FROM client_ads_configs
           WHERE id = $1::uuid AND content_producer_user_id = $2`,
         [req.params.id, session.userId],
@@ -959,12 +1184,19 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
 
       const actionsR = await pool.query(
         `SELECT action_name, display_name, google_ads_label, trigger_type,
-                default_value, currency, url_pattern
+                default_value, currency, url_pattern,
+                linkedin_conversion_id
            FROM client_ads_actions
           WHERE config_id = $1::uuid AND is_active = TRUE
           ORDER BY created_at ASC`,
         [req.params.id],
       );
+
+      // LinkedIn partner-ID må hentes separat (det er ikke det samme som
+      // insight tag ID — det er en numerisk verdi en grad lavere).
+      // For prompt-bruk er insight_tag_id good enough — det er den klient
+      // bruker i pixel-snippeten. Vi reuse her.
+      const linkedinPartnerId = cfg.linkedin_insight_tag_id ?? null;
 
       // Hent ekte live-data fra klient-siten (best-effort, lite latens)
       const liveSite = await fetchLiveSiteContext(cfg.client_website_url).catch(() => undefined);
@@ -975,6 +1207,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
         ga4MeasurementId: cfg.ga4_measurement_id,
         awConversionId: process.env.GOOGLE_ADS_CONVERSION_ID || null,
         gtmContainerId: cfg.gtm_container_public_id,
+        linkedinPartnerId,
         businessType: cfg.business_type,
         businessSummary: cfg.business_summary,
         actions: actionsR.rows.map((a) => ({
@@ -985,6 +1218,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
           defaultValue: Number(a.default_value ?? 0),
           currency: a.currency || "NOK",
           urlPattern: a.url_pattern,
+          linkedinConversionId: a.linkedin_conversion_id ?? null,
         })),
         targetAgent: target,
         liveSite,

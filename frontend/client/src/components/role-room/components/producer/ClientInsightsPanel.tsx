@@ -45,6 +45,9 @@ interface Insights {
   ga4: any;
   ads: any;
   gsc: any;
+  linkedin: any;
+  meta: any;
+  tiktok: any;
   setupHealth: { totalChecks: number; ok: number; score: number };
   trackedEvents: { total: number; uniqueActions: number; topActions: Array<{ actionName: string; count: number }> };
   summary: {
@@ -56,6 +59,7 @@ interface Insights {
     avgCostPerConversion: number;
     organicShare: number;
     paidShare: number;
+    spendByPlatform: Array<{ platform: string; spend: number; share: number }>;
   };
   observations: string[];
 }
@@ -367,12 +371,45 @@ export default function ClientInsightsPanel({
               </Box>
             ) : null}
 
+            {/* Spend-fordeling per plattform */}
+            {data.summary.spendByPlatform?.length > 1 ? (
+              <Box sx={{ mb: 2 }}>
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.8 }}>
+                  Spend-fordeling per plattform
+                </Typography>
+                <Stack spacing={0.8}>
+                  {data.summary.spendByPlatform.map((p) => (
+                    <Box key={p.platform}>
+                      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.3 }}>
+                        <Typography sx={{ color: palette.textPrimary, fontSize: '0.82rem' }}>{p.platform}</Typography>
+                        <Typography sx={{ color: palette.textSecondary, fontSize: '0.78rem' }}>
+                          {fmtMoney(p.spend)} · {Math.round(p.share * 100)}%
+                        </Typography>
+                      </Stack>
+                      <LinearProgress
+                        variant="determinate"
+                        value={p.share * 100}
+                        sx={{
+                          height: 6, borderRadius: 1,
+                          bgcolor: 'rgba(168,85,247,0.08)',
+                          '& .MuiLinearProgress-bar': { bgcolor: p.platform === 'LinkedIn' ? '#0a66c2' : palette.ads },
+                        }}
+                      />
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            ) : null}
+
             {/* Tilkoblings-status */}
             <Divider sx={{ borderColor: palette.border, my: 1.4 }} />
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <SourceChip label="GA4" connected={!!data.ga4} color={palette.ga4} />
               <SourceChip label="Google Ads" connected={!!data.ads} color={palette.ads} />
               <SourceChip label="Search Console" connected={!!data.gsc} color={palette.gsc} />
+              <SourceChip label="LinkedIn" connected={!!data.linkedin} color="#0a66c2" />
+              <SourceChip label="Meta" connected={!!data.meta} color="#1877f2" />
+              <SourceChip label="TikTok" connected={!!data.tiktok} color="#ff0050" />
               <SourceChip label={`${data.trackedEvents.total} tracked events`} connected={data.trackedEvents.total > 0} color={palette.accent} />
             </Stack>
           </>
