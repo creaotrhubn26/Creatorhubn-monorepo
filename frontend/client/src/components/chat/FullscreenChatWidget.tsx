@@ -1915,7 +1915,7 @@ export default function FullscreenChatWidget({
 	                flex: 1,
 	                overflow: 'auto', 
 	                p:  2,
-	                background: 'linear-gradient(180deg, rgba(255,255,255,0.92), rgba(248,250,252,0.98))',
+	                background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04))',
 	                backgroundImage: `
 	                  radial-gradient(circle at 25% 20%, rgba(255, 140, 0, 0.08) 0%, transparent 52%),
 	                  radial-gradient(circle at 75% 75%, rgba(255, 140, 0, 0.04) 0%, transparent 50%)
@@ -2214,7 +2214,7 @@ export default function FullscreenChatWidget({
                     flex: 1,
                     overflow: 'auto',
                     p: 2,
-                    background: 'linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.98))',
+                    background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04))',
                   }}
                 >
                   <Paper
@@ -2322,7 +2322,7 @@ export default function FullscreenChatWidget({
 	                  p: 2,
 	                  borderTop: 1,
 	                  borderColor: 'divider',
-	                  background: 'linear-gradient(180deg, rgba(255,255,255,0.97), rgba(248,250,252,0.98))',
+	                  background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04))',
 	                  backdropFilter: 'blur(10px)'
 	          }}>
                   {/* Admin Quick Actions - Only visible for admin */}
