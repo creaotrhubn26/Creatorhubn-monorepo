@@ -51,8 +51,10 @@ import {
 } from "./client-google-suite.js";
 import {
   generateAllPrompts,
+  fetchLiveSiteContext,
   type TargetAgent,
 } from "./client-ai-prompt-generator.js";
+import { fetchClientInsights } from "./client-insights-service.js";
 
 interface SessionLike {
   userId: string;
@@ -909,6 +911,29 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     app._router.handle(req, res, () => {});
   });
 
+  // GET /api/admin-room/agent/ads/configs/:id/insights?range=28d
+  // Aggregert KPI-dashboard: GA4 + Google Ads + GSC + tracked events
+  // + auto-genererte observasjoner. Brukes av ClientInsightsPanel.
+  app.get("/api/admin-room/agent/ads/configs/:id/insights", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const rangeRaw = typeof req.query.range === "string" ? req.query.range : "28d";
+    const rangeDays = Math.max(1, Math.min(365, parseInt(rangeRaw, 10) || 28));
+
+    try {
+      const insights = await fetchClientInsights(pool, {
+        producerUserId: session.userId,
+        configId: req.params.id,
+        rangeDays,
+      });
+      if (!insights) return res.status(404).json({ error: "Config ikke funnet" });
+      return res.json(insights);
+    } catch (err) {
+      console.error("[insights] failed", err);
+      return res.status(500).json({ error: "Insights-henting feilet", detail: String(err) });
+    }
+  });
+
   // GET /api/admin-room/agent/ads/configs/:id/ai-prompts?target=loveable
   // Genererer 10 klar-til-paste prompter for klient's AI-kode-agent.
   // Hver prompt inneholder klient-spesifikke ID-er + tilpasses target-agenten
@@ -941,6 +966,9 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
         [req.params.id],
       );
 
+      // Hent ekte live-data fra klient-siten (best-effort, lite latens)
+      const liveSite = await fetchLiveSiteContext(cfg.client_website_url).catch(() => undefined);
+
       const prompts = generateAllPrompts({
         clientName: cfg.client_name,
         websiteUrl: cfg.client_website_url,
@@ -959,6 +987,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
           urlPattern: a.url_pattern,
         })),
         targetAgent: target,
+        liveSite,
       });
 
       return res.json({ target, prompts });

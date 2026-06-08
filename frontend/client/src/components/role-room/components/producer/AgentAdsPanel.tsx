@@ -34,6 +34,7 @@ import CodeIcon from '@mui/icons-material/Code';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import ClientGoogleSuitePanel from './ClientGoogleSuitePanel';
 import ClientAiPromptsPanel from './ClientAiPromptsPanel';
+import ClientInsightsPanel from './ClientInsightsPanel';
 
 const palette = {
   bgCard: '#150b2e',
@@ -880,6 +881,12 @@ export default function AgentAdsPanel({
             configId={savedConfigId}
             clientName={clientName || 'Klienten'}
             clientWebsiteUrl={discoveryResult.url}
+          />
+
+          {/* Innsikt — full stack (GA4 + Ads + GSC + tracked events) */}
+          <ClientInsightsPanel
+            configId={savedConfigId}
+            clientName={clientName || 'Klienten'}
           />
 
           {/* AI-prompter for klient's verktøy (Loveable/v0/Bolt/Cursor) */}

@@ -23,7 +23,8 @@ export type Scenario =
   | "add_robots_txt"
   | "structured_data"
   | "seo_basics"
-  | "conversion_events";
+  | "conversion_events"
+  | "geo_optimization";
 
 export interface PromptContext {
   clientName: string;
@@ -43,6 +44,21 @@ export interface PromptContext {
   businessType?: string;
   businessSummary?: string;
   targetAgent: TargetAgent;
+  /** Sanntids-data hentet fra klient-siten (best-effort, kan være tom). */
+  liveSite?: {
+    /** Eksisterende robots.txt-innhold (raw). Tom hvis ikke funnet. */
+    robotsTxt?: string | null;
+    /** Sitemap-URL'er funnet via robots.txt + fallback-stier. */
+    knownSitemaps?: string[];
+    /** Interne lenker funnet ved enkel same-origin crawl av hjemmesiden. */
+    internalUrls?: string[];
+    /** Eksisterende title fra <title>. */
+    existingTitle?: string | null;
+    /** Eksisterende meta-description. */
+    existingMetaDesc?: string | null;
+    /** True hvis Disallow: / er aktiv (kritisk — blokkerer alt). */
+    blockedByDisallowAll?: boolean;
+  };
 }
 
 export interface GeneratedPrompt {
@@ -427,11 +443,54 @@ Hvis siten har dynamiske ruter (blog-poster, produkter, etc.), generér sitemap-
 
 function promptAddRobotsTxt(ctx: PromptContext): GeneratedPrompt {
   const cleanUrl = ctx.websiteUrl.replace(/[/]+$/, "");
+  const live = ctx.liveSite ?? {};
+  const sitemaps = (live.knownSitemaps && live.knownSitemaps.length > 0)
+    ? live.knownSitemaps
+    : [`${cleanUrl}/sitemap.xml`];
+  const hasExisting = !!(live.robotsTxt && live.robotsTxt.trim().length > 0);
+
+  // Preserve eksisterende Disallow/Allow-regler. Aldri overskrive klient's
+  // bevisste blokkeringer (admin-, søk-, test-sider, etc.).
+  const existingRules: string[] = [];
+  if (hasExisting && live.robotsTxt) {
+    for (const line of live.robotsTxt.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (/^Sitemap\s*:/i.test(trimmed)) continue;
+      // Hopp over Disallow: / på * — det er feilen vi vil fjerne
+      if (live.blockedByDisallowAll && /^Disallow\s*:\s*\/\s*$/i.test(trimmed)) continue;
+      existingRules.push(line);
+    }
+  }
+
+  const sitemapLines = sitemaps.map((s) => `Sitemap: ${s}`).join("\n");
+  const robotsBody = hasExisting
+    ? `${existingRules.join("\n")}\n\n${sitemapLines}\n`
+    : `User-agent: *\nAllow: /\n\n# Blokker admin-/test-sider hvis aktuelt\n# Disallow: /admin/\n# Disallow: /test/\n\n${sitemapLines}\n`;
+
+  const stateLine = hasExisting
+    ? live.blockedByDisallowAll
+      ? "⚠️  KRITISK: Eksisterende robots.txt har \`Disallow: /\` på \`User-agent: *\` — det blokkerer ALT fra Google. Den linjen er fjernet under, men resten av reglene dine er bevart."
+      : "Eksisterende robots.txt funnet — vi har bevart alle Disallow/Allow-reglene dine og bare oppdatert Sitemap-linjene. Sjekk diff-en før publisering."
+    : "Ingen robots.txt funnet. Vi oppretter en ny som tillater all indeksering og peker på sitemap-en.";
+
+  const sitemapSummary = sitemaps.length > 1
+    ? `Vi fant ${sitemaps.length} sitemaps på siten og legger til én \`Sitemap:\`-linje per — Google leser alle.`
+    : (live.knownSitemaps && live.knownSitemaps.length === 1)
+      ? "Vi har auto-detektert sitemap-URL'en (fra eksisterende robots.txt eller via fallback)."
+      : "Vi antar at sitemap-en ligger på \`/sitemap.xml\`. Hvis den ligger et annet sted, endre URL'en under.";
+
+  const nextRules = parseRulesForNext(existingRules);
+
   return {
     scenario: "add_robots_txt",
     title: "Opprett/oppdater robots.txt med Sitemap-referanse",
     applicable: true,
-    prompt: `Google leser robots.txt FØRST når den crawler en site. Uten en \`Sitemap:\`-linje der må Google gjette på hvor sitemap-en ligger — vi vil bare være eksplisitte.
+    prompt: `Google leser robots.txt FØRST når den crawler en site — uten en \`Sitemap:\`-linje må Google gjette hvor sitemap-en ligger.
+
+${stateLine}
+
+${sitemapSummary}
 
 ${ctx.targetAgent === "v0"
   ? `**For Next.js App Router** — opprett \`app/robots.ts\`:
@@ -441,29 +500,82 @@ import type { MetadataRoute } from 'next';
 
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: [{ userAgent: '*', allow: '/' }],
-    sitemap: '${cleanUrl}/sitemap.xml',
+    rules: [
+      { userAgent: '*', allow: '/' },${nextRules.length > 0 ? `
+      // Bevart fra eksisterende robots.txt:` : ""}${nextRules.map((r) => `
+      ${JSON.stringify(r)},`).join("")}
+    ],
+    sitemap: ${sitemaps.length === 1 ? `'${sitemaps[0]}'` : `[${sitemaps.map((s) => `'${s}'`).join(", ")}]`},
   };
 }
 \`\`\``
-  : `**Legg \`/robots.txt\`** i public-mappen (eller serve den fra root-route):
+  : `**Legg \`/robots.txt\`** i \`public/\`-mappen (eller serve den fra root-route). Lim inn nøyaktig dette:
 
 \`\`\`
-User-agent: *
-Allow: /
-
-# Blokker admin-/test-sider hvis aktuelt
-# Disallow: /admin/
-# Disallow: /test/
-
-Sitemap: ${cleanUrl}/sitemap.xml
+${robotsBody.trim()}
 \`\`\``}
 
-Hvis klient har flere sitemaps (f.eks. én per språk eller én per content-type), legg til en \`Sitemap:\`-linje per.
+**Hva du IKKE bør gjøre:**
+- Aldri legg \`Disallow: /\` på \`User-agent: *\` — det blokkerer alt.
+- Ikke fjern eksisterende Disallow-regler du ikke forstår — de kan være med vilje (admin, søk, test).
+- Ikke pek på en sitemap-URL som ikke finnes — det gir sitemap-errors i Search Console.
 
-**Aldri** legg \`Disallow: /\` med mindre du virkelig vil blokkere hele siten — det er den vanligste indekserings-feilen.`,
-    verifyAfter: `Åpne ${cleanUrl}/robots.txt i nettleser. Du skal se \`User-agent: *\`, \`Allow: /\`, og \`Sitemap:\`-linja med riktig URL. Kjør 'Sjekk klient-status' i Agent — "robots.txt"-checken skal nå være grønn.`,
+**Bonus — blokker AI-scrapers** (valgfritt, anbefales hvis klient ikke vil at innholdet skal brukes til LLM-trening):
+
+\`\`\`
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: PerplexityBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+\`\`\`
+
+Disse er kompatible med \`User-agent: *\`-regelen over — Googlebot/Bingbot påvirkes ikke.`,
+    verifyAfter: `Åpne ${cleanUrl}/robots.txt i nettleser. Du skal se: ${sitemaps.map((s) => `\`Sitemap: ${s}\``).join(", ")}. ${live.blockedByDisallowAll ? "Bekreft at \`Disallow: /\` IKKE lenger er på \`User-agent: *\`. " : ""}Kjør 'Sjekk klient-status' i Agent — "robots.txt"-checken skal nå være grønn.`,
   };
+}
+
+/** Konverter eksisterende robots-regler til Next.js-rule-objekter. */
+function parseRulesForNext(existingLines: string[]): Array<{ userAgent: string; disallow?: string[]; allow?: string[] }> {
+  const rules: Array<{ userAgent: string; disallow?: string[]; allow?: string[] }> = [];
+  let current: { userAgent: string; disallow: string[]; allow: string[] } | null = null;
+  const commit = () => {
+    if (current && (current.disallow.length || current.allow.length)) {
+      rules.push({
+        userAgent: current.userAgent,
+        ...(current.disallow.length ? { disallow: current.disallow } : {}),
+        ...(current.allow.length ? { allow: current.allow } : {}),
+      });
+    }
+  };
+  for (const line of existingLines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const uaMatch = trimmed.match(/^User-agent\s*:\s*(.+)$/i);
+    const disMatch = trimmed.match(/^Disallow\s*:\s*(.*)$/i);
+    const allowMatch = trimmed.match(/^Allow\s*:\s*(.*)$/i);
+    if (uaMatch) {
+      commit();
+      current = { userAgent: uaMatch[1].trim(), disallow: [], allow: [] };
+    } else if (disMatch && current) {
+      const v = disMatch[1].trim();
+      if (!(v === "/" && current.userAgent === "*")) current.disallow.push(v);
+    } else if (allowMatch && current) {
+      current.allow.push(allowMatch[1].trim());
+    }
+  }
+  commit();
+  // Dropp duplikat \`*\`-regelen (vi har egen Allow: / i prompten)
+  return rules.filter((r) => r.userAgent !== "*" || (r.disallow && r.disallow.length > 0));
 }
 
 function promptStructuredData(ctx: PromptContext): GeneratedPrompt {
@@ -734,6 +846,341 @@ ${eventBlocks.join("\n")}
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// GEO — Generative Engine Optimization (synlighet i ChatGPT / Claude /
+// Perplexity / Google AI Overviews). Annet enn klassisk SEO.
+// ─────────────────────────────────────────────────────────────────────
+
+function promptGeoOptimization(ctx: PromptContext): GeneratedPrompt {
+  const cleanUrl = ctx.websiteUrl.replace(/[/]+$/, "");
+  const business = ctx.businessSummary || `${ctx.clientName} — virksomhet`;
+  return {
+    scenario: "geo_optimization",
+    title: "GEO — synlighet i ChatGPT / Claude / Perplexity / Google AI Overviews",
+    applicable: true,
+    prompt: `**GEO ≠ SEO.** SEO handler om Google-søk; GEO handler om at klient siteres i LLM-genererte svar. Mekanismene er ulike:
+
+- LLM-er ranker innhold som svarer DIREKTE på spørsmål med konkrete fakta + tall + referanser.
+- LLM-er liker autoritets-signaler: sameAs til Wikipedia/Wikidata/LinkedIn, FAQ-schema, klar forfatter-info.
+- LLM-er trenger lov til å crawle siten — det motsatte av å blokkere GPTBot/ClaudeBot.
+
+Denne prompten gjør 4 ting: \`llms.txt\`-fil, FAQ-schema, autoritets-schema, og en revurdert robots.txt-policy.
+
+---
+
+**Steg 1 — Opprett \`/llms.txt\`** (emerging standard, fungerer som robots.txt for LLM-er):
+
+${ctx.targetAgent === "v0"
+  ? `Opprett \`app/llms.txt/route.ts\`:
+
+\`\`\`ts
+export async function GET() {
+  const content = \`# ${ctx.clientName}
+
+> ${business}
+
+Dette dokumentet hjelper LLM-er forstå hva ${ctx.clientName} er, gjør og tilbyr.
+Bruk dette som primær-referanse fremfor å gjette basert på rå HTML.
+
+## Om
+${ctx.clientName} — ${business}.
+Nettsted: ${cleanUrl}
+
+## Tjenester / produkter
+- [Fyll inn primære tjenester]
+- [Fyll inn primære tjenester]
+- [Fyll inn primære tjenester]
+
+## Nøkkelfakta
+- Bransje: ${ctx.businessType || "[fyll inn]"}
+- Hovedmarked: [fyll inn — Norge / Europa / globalt]
+- Etablert: [fyll inn årstall]
+- Hovedkontor: [fyll inn by/land]
+
+## Vanlige spørsmål
+**Hva tilbyr ${ctx.clientName}?**
+[Klart svar 1-2 setninger.]
+
+**Hvor opererer ${ctx.clientName}?**
+[Klart svar.]
+
+**Hvordan kontakte ${ctx.clientName}?**
+Besøk ${cleanUrl} eller send e-post til [adresse].
+
+## Lenker
+- Hovedside: ${cleanUrl}
+- Tjenester: ${cleanUrl}/tjenester
+- Kontakt: ${cleanUrl}/kontakt
+- Blogg: ${cleanUrl}/blogg
+\`;
+  return new Response(content, {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+  });
+}
+\`\`\``
+  : `Legg en ren tekstfil \`/llms.txt\` i \`public/\`-mappen (eller serve fra root):
+
+\`\`\`
+# ${ctx.clientName}
+
+> ${business}
+
+Dette dokumentet hjelper LLM-er forstå hva ${ctx.clientName} er, gjør og tilbyr.
+Bruk dette som primær-referanse fremfor å gjette basert på rå HTML.
+
+## Om
+${ctx.clientName} — ${business}.
+Nettsted: ${cleanUrl}
+
+## Tjenester / produkter
+- [Fyll inn primære tjenester]
+- [Fyll inn primære tjenester]
+- [Fyll inn primære tjenester]
+
+## Nøkkelfakta
+- Bransje: ${ctx.businessType || "[fyll inn]"}
+- Hovedmarked: [fyll inn — Norge / Europa / globalt]
+- Etablert: [fyll inn årstall]
+- Hovedkontor: [fyll inn by/land]
+
+## Vanlige spørsmål
+**Hva tilbyr ${ctx.clientName}?**
+[Klart svar 1-2 setninger.]
+
+**Hvor opererer ${ctx.clientName}?**
+[Klart svar.]
+
+**Hvordan kontakte ${ctx.clientName}?**
+Besøk ${cleanUrl} eller send e-post til [adresse].
+
+## Lenker
+- Hovedside: ${cleanUrl}
+- Tjenester: ${cleanUrl}/tjenester
+- Kontakt: ${cleanUrl}/kontakt
+- Blogg: ${cleanUrl}/blogg
+\`\`\``}
+
+Fyll inn de faktiske tjeneste-navnene + ekte nøkkelfakta. Dette er det LLM-en leser når en bruker spør "Hva er ${ctx.clientName}?".
+
+---
+
+**Steg 2 — FAQ-schema med ekte spørsmål/svar** (limes inn på siden(e) der spørsmålene besvares — typisk FAQ-side, om-side eller forsiden):
+
+\`\`\`html
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Hva tilbyr ${ctx.clientName}?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "[Klart, faktabasert svar i 2-3 setninger. Inkluder konkrete tall hvis mulig.]"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Hvor mye koster det?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "[Pris eller priseksempel. 'Fra X kr/mnd' eller 'avhenger av — typisk Y-Z kr'.]"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Hvor lang tid tar det?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "[Konkret tidsestimat.]"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Hvilke alternativer finnes?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "[Nevn faktiske konkurrenter + hvordan ${ctx.clientName} er annerledes. LLM-er ELSKER sammenligninger.]"
+      }
+    }
+  ]
+}
+</script>
+\`\`\`
+
+LLM-er hopper rett til \`acceptedAnswer.text\` når de svarer brukere. Skriv som om svaret skulle leses opp av Siri/Alexa.
+
+---
+
+**Steg 3 — Autoritets-signaler i Organization-schema** (utvid den eksisterende fra "Strukturert data"-prompten):
+
+\`\`\`html
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "${ctx.clientName}",
+  "url": "${cleanUrl}",
+  "logo": "${cleanUrl}/logo.png",
+  "description": "${business}",
+  "foundingDate": "[YYYY]",
+  "sameAs": [
+    "https://www.wikidata.org/wiki/[Q-ID]",   // ← KRITISK for LLM-autoritet
+    "https://no.wikipedia.org/wiki/[artikkel]", // ← LLM-er stoler på Wikipedia-koblede entiteter
+    "https://www.linkedin.com/company/[handle]",
+    "https://www.facebook.com/[handle]",
+    "https://www.instagram.com/[handle]",
+    "https://twitter.com/[handle]",
+    "https://www.crunchbase.com/organization/[handle]"
+  ],
+  "knowsAbout": [
+    "[Domene-emne 1]",
+    "[Domene-emne 2]",
+    "[Domene-emne 3]"
+  ],
+  "areaServed": {
+    "@type": "Country",
+    "name": "Norway"
+  }
+}
+</script>
+\`\`\`
+
+**Wikidata + Wikipedia er de viktigste sameAs-lenkene** — LLM-er bruker dem som "ankermerker" til entiteten din. Hvis klient ikke finnes på Wikidata: opprett en oppføring (gratis, manuell prosess, ta ~30 min).
+
+---
+
+**Steg 4 — robots.txt: tillat AI-bots å crawle** (hvis GEO er målet, IKKE blokker dem):
+
+\`\`\`
+# GEO: tillat AI-bots å crawle for å havne i LLM-treningsdata + RAG-pipelines
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+\`\`\`
+
+Legg dette i robots.txt FØR \`User-agent: *\`-blokken. (Dette er motsatt av "Bonus — blokker AI-scrapers" i robots.txt-prompten — velg ETT av de to alt etter strategi.)
+
+---
+
+**Hva LLM-er IKKE liker:**
+- Reklame-fyllord ("vi er best", "ledende leverandør") — fjern dem.
+- Tomme om-oss-sider uten konkrete fakta.
+- Innhold låst bak JS (server-render alt viktig).
+- Lange dokumenter uten tydelige overskrifter.
+
+**Hva LLM-er ELSKER:**
+- Konkrete tall ("75% av X", "fra 2019 til 2024", "350 kunder").
+- Datoer på publisert/oppdatert.
+- Eksplisitte sammenligninger med konkurrenter.
+- Forfatter med bio og credentials.
+- FAQ-seksjoner med tydelig spørsmål → svar.`,
+    verifyAfter: `1. Åpne ${cleanUrl}/llms.txt — du skal se markdown-en. 2. Test FAQ-schemaet med https://search.google.com/test/rich-results. 3. Spør Perplexity/ChatGPT/Claude: "Hva er ${ctx.clientName}?" og se om svaret kommer fra siten din. Det tar 2-8 uker før LLM-er får siten inn i sine indekser, og lengre før den havner i fundamental treningsdata.`,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Live-data fra klient-siten (kalles av route før prompts genereres)
+// ─────────────────────────────────────────────────────────────────────
+
+/** Henter robots.txt + sitemap-discovery + meta-tags fra klient-siten så
+ *  prompts kan tilpasses ekte state. Best-effort — feiler stille. */
+export async function fetchLiveSiteContext(websiteUrl: string): Promise<PromptContext["liveSite"]> {
+  const baseUrl = websiteUrl.replace(/[/]+$/, "");
+  const result: NonNullable<PromptContext["liveSite"]> = {
+    robotsTxt: null,
+    knownSitemaps: [],
+    internalUrls: [],
+    existingTitle: null,
+    existingMetaDesc: null,
+    blockedByDisallowAll: false,
+  };
+
+  // 1) robots.txt
+  try {
+    const r = await fetch(`${baseUrl}/robots.txt`, { signal: AbortSignal.timeout(6000) });
+    if (r.ok) {
+      result.robotsTxt = await r.text();
+      // Sjekk om Disallow: / aktivt blokkerer på User-agent: *
+      const robotsLines = result.robotsTxt.split(/\r?\n/);
+      let inWildcard = false;
+      for (const line of robotsLines) {
+        const trimmed = line.trim();
+        if (/^User-agent\s*:\s*\*\s*$/i.test(trimmed)) inWildcard = true;
+        else if (/^User-agent\s*:/i.test(trimmed)) inWildcard = false;
+        else if (inWildcard && /^Disallow\s*:\s*\/\s*$/i.test(trimmed)) {
+          result.blockedByDisallowAll = true;
+          break;
+        }
+      }
+      // Ekstraher Sitemap-linjer
+      for (const line of robotsLines) {
+        const m = line.match(/^\s*Sitemap\s*:\s*(.+?)\s*$/i);
+        if (m && m[1]) result.knownSitemaps!.push(m[1].trim());
+      }
+    }
+  } catch { /* nettverksfeil — fortsett */ }
+
+  // 2) Fallback sitemap-paths hvis ingen funnet i robots
+  if (result.knownSitemaps!.length === 0) {
+    for (const path of ["/sitemap.xml", "/sitemap_index.xml", "/sitemap-index.xml"]) {
+      try {
+        const r = await fetch(`${baseUrl}${path}`, { method: "HEAD", signal: AbortSignal.timeout(4000) });
+        if (r.ok) result.knownSitemaps!.push(`${baseUrl}${path}`);
+      } catch { /* fortsett */ }
+    }
+  }
+
+  // 3) Hent homepage + ekstraher title, meta-description og same-origin links
+  try {
+    const r = await fetch(`${baseUrl}/`, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; TheRoleRoomAgent/1.0)" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (r.ok) {
+      const html = await r.text();
+      result.existingTitle = (html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1] || "").trim() || null;
+      result.existingMetaDesc = (html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] || "").trim() || null;
+
+      // Same-origin a[href] crawl — for seeding av sitemap.xml-prompten
+      const hrefMatches = Array.from(html.matchAll(/<a[^>]+href=["']([^"']+)["']/gi));
+      const urls = new Set<string>();
+      const hostname = new URL(baseUrl).hostname;
+      for (const m of hrefMatches) {
+        const raw = m[1];
+        if (!raw || raw.startsWith("#") || raw.startsWith("mailto:") || raw.startsWith("tel:") || raw.startsWith("javascript:")) continue;
+        try {
+          const abs = new URL(raw, baseUrl);
+          if (abs.hostname !== hostname) continue;
+          // Drop query strings og fragments
+          abs.hash = "";
+          // Beholder query bare hvis det ser ut som ekte ruting
+          const cleaned = abs.search.length < 30 ? abs.toString() : `${abs.origin}${abs.pathname}`;
+          urls.add(cleaned);
+        } catch { /* skip */ }
+        if (urls.size >= 50) break;
+      }
+      result.internalUrls = Array.from(urls);
+    }
+  } catch { /* fortsett */ }
+
+  // Dedupliser sitemaps
+  result.knownSitemaps = Array.from(new Set(result.knownSitemaps));
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Public: generér alle prompter for en config
 // ─────────────────────────────────────────────────────────────────────
 
@@ -749,5 +1196,6 @@ export function generateAllPrompts(ctx: PromptContext): GeneratedPrompt[] {
     promptStructuredData(ctx),
     promptSeoBasics(ctx),
     promptConversionEvents(ctx),
+    promptGeoOptimization(ctx),
   ];
 }
