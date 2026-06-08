@@ -462,7 +462,8 @@ export function HomeView({
         <button
           className="home-action-card anim-lift anim-press"
           onClick={onOpenDemoStudio}
-          title="Scene-basert produktdemo fra URL — Mac/iPad/iPhone-mockups, manus, teleprompter og guided opptak"
+          disabled={!signedIn}
+          title={signedIn ? "Scene-basert produktdemo fra URL — Mac/iPad/iPhone-mockups, manus, teleprompter og guided opptak. Krever Demo Studio-abonnement." : "Logg inn først"}
         >
           <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #ef8a5d, #a030c0)" }}>
             <DevicesIcon sx={{ fontSize: 28, color: "white" }} />
@@ -473,7 +474,7 @@ export function HomeView({
               Lim inn en URL og lag en styrt produktdemo i Mac/iPad/iPhone-mockups
               — scener, manus, teleprompter og guided opptak
             </div>
-            <div className="home-action-tag">Scene-basert · ny</div>
+            <div className="home-action-tag">Abonnement · 199 kr/mnd</div>
           </div>
           <IconArrowRight />
         </button>

@@ -593,13 +593,15 @@ export function setupPhotographerProjectsRoutes(
       const p = projectQ.rows[0];
 
       const [timeQ, galleryQ] = await Promise.all([
-        pool.query(
-          `SELECT id, task_description, hours_spent, billable_hours, rate, date_worked, created_at
-             FROM project_time_tracking
-            WHERE project_id = $1
-            ORDER BY date_worked DESC, created_at DESC`,
-          [projectId],
-        ),
+        pool
+          .query(
+            `SELECT id, task_description, hours_spent, billable_hours, rate, date_worked, created_at
+               FROM project_time_tracking
+              WHERE project_id = $1
+              ORDER BY date_worked DESC, created_at DESC`,
+            [projectId],
+          )
+          .catch(() => ({ rows: [] as Record<string, unknown>[] })),
         pool.query(
           `SELECT id, project_title, access_token, status, created_at, completed_at
              FROM photographer_client_galleries
@@ -1264,8 +1266,10 @@ export function setupPhotographerProjectsRoutes(
 
       res.json({ milestones, nextStep, totalProgress, completedCount: completed });
     } catch (err) {
-      console.error('[photographer-milestones] list failed:', err);
-      res.status(500).json({ error: 'milestones_failed' });
+      // Manglende project_milestones-tabell skal ikke krasje prosjekt-detalj.
+      // Returner tom liste i stedet for 500.
+      console.warn('[photographer-milestones] list degraded:', (err as any)?.message || err);
+      res.json({ milestones: [], nextStep: null, totalProgress: 0, completedCount: 0 });
     }
   });
 
@@ -1695,8 +1699,10 @@ export function setupPhotographerProjectsRoutes(
         })),
       });
     } catch (err) {
-      console.error('[chat] list failed:', err);
-      res.status(500).json({ error: 'list_failed' });
+      // Manglende client_communications-tabell/kolonner skal ikke krasje
+      // chat-fanen. Returner tom liste istedet for 500.
+      console.warn('[chat] list degraded:', (err as any)?.message || err);
+      res.json({ messages: [] });
     }
   });
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import type {
   PhotographyTip,
   TipContext,
@@ -119,10 +120,8 @@ export const usePhotographyTips = ({
         if (query) params.append('q', query);
         if (category) params.append('category', category);
 
-        const response = await fetch(`/api/photography-tips/search?${params}`);
-        if (!response.ok) throw new Error('Failed to search tips');
-
-        const data = await response.json();
+        const data = await apiRequest(`/api/photography-tips/search?${params}`) as
+          { results?: PhotographyTip[] };
         return data.results || [];
     } catch (error) {
         console.error('Error searching tips: ', error);
@@ -135,18 +134,17 @@ export const usePhotographyTips = ({
   // Track interaction function
   const trackInteraction = useCallback(
     (tipId: string, interactionType: string) => {
-      fetch('/api/photography-tips/interaction', {
+      apiRequest('/api/photography-tips/interaction', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify({
           tipId,
           userId,
           interactionType,
           context: detectedContext,
-      }),
-    }).catch((error) => {
+        }),
+      }).catch((error) => {
         console.error('Error tracking interaction:', error);
-    });
+      });
   },
     [userId, detectedContext],
   );
@@ -157,9 +155,9 @@ export const usePhotographyTips = ({
       const newSettings = { ...displaySettings, ...settings };
       setDisplaySettings(newSettings);
       // Persist server-first, fallback local
-      fetch('/api/user/kv', {
-        method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ key: 'photography_tips_settings', value: newSettings })
+      apiRequest('/api/user/kv', {
+        method: 'POST',
+        body: JSON.stringify({ key: 'photography_tips_settings', value: newSettings }),
       }).catch(() => {});
       localStorage.setItem('photography_tips_settings', JSON.stringify(newSettings));
   },
@@ -168,12 +166,13 @@ export const usePhotographyTips = ({
 
   // Load settings (server-first) on mount
   useEffect(() => {
-    fetch('/api/user/kv/photography_tips_settings', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        const v = j && typeof j === 'object' && 'value' in j ? j.value : j;
+    apiRequest('/api/user/kv/photography_tips_settings')
+      .then((j: unknown) => {
+        const v = j && typeof j === 'object' && 'value' in (j as Record<string, unknown>)
+          ? (j as Record<string, unknown>).value
+          : j;
         if (v) {
-          setDisplaySettings((prev) => ({ ...prev, ...v }));
+          setDisplaySettings((prev) => ({ ...prev, ...(v as Partial<TipDisplaySettings>) }));
         } else {
           const savedSettings = localStorage.getItem('photography_tips_settings');
           if (savedSettings) {

@@ -1,10 +1,12 @@
 /**
  * AI Shot Suggestion Service
- * 
+ *
  * Analyzes a reference image and generates alternative shot suggestions
  * including camera angles, lighting setups, and composition variations.
  * Uses the backend AI endpoint for image analysis.
  */
+
+import { apiFetch } from '@/lib/queryClient';
 
 export interface LightingAdjustment {
   lightId: string;
@@ -191,9 +193,8 @@ class AIShotSuggestionService {
 
     // Try backend AI endpoint first
     try {
-      const response = await fetch('/api/shot-suggestions/generate', {
+      const response = await apiFetch('/api/shot-suggestions/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageUrl,
           context,
@@ -276,9 +277,8 @@ class AIShotSuggestionService {
    */
   async rateSuggestion(suggestionId: string, rating: number): Promise<void> {
     try {
-      await fetch('/api/shot-suggestions/rate', {
+      await apiFetch('/api/shot-suggestions/rate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ suggestionId, rating }),
       });
     } catch (error) {
@@ -291,7 +291,7 @@ class AIShotSuggestionService {
    */
   async isAvailable(): Promise<boolean> {
     try {
-      const response = await fetch('/api/shot-suggestions/health', { method: 'GET' });
+      const response = await apiFetch('/api/shot-suggestions/health', { method: 'GET' });
       return response.ok;
     } catch {
       // Even without backend, template suggestions always work

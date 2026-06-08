@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
+import { apiRequest } from '@/lib/queryClient';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import { PushNotificationSettings } from './shared/PushNotificationSettings';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
@@ -132,11 +133,7 @@ export default function WhatsNewModal({
   // Fetch announcements (skip in preview mode)
   const { data, isLoading } = useQuery({
     queryKey: ['/api/announcements,', userProfession],
-    queryFn: async () => {
-      const response = await fetch(`/api/announcements?profession=${userProfession}`);
-      if (!response.ok) throw new Error('Failed to fetch announcements, ');
-      return response.json();
-    },
+    queryFn: async () => apiRequest(`/api/announcements?profession=${userProfession}`),
     enabled: open && !previewMode,
     staleTime: 300000, // 5 minutes
   });
@@ -147,13 +144,10 @@ export default function WhatsNewModal({
 
   // Mark as read mutation
   const markAsReadMutation = useMutation({
-    mutationFn: async (announcementId: string) => {
-      const response = await fetch(`/api/announcements/${announcementId}/read`, {
-        method: 'POST',
-      });
-      if (!response.ok) throw new Error('Failed to mark as read');
-      return response.json();
-    },
+    mutationFn: async (announcementId: string) => apiRequest(
+      `/api/announcements/${announcementId}/read`,
+      { method: 'POST' },
+    ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/announcements'] });
     },
@@ -161,13 +155,10 @@ export default function WhatsNewModal({
 
   // Dismiss mutation
   const dismissMutation = useMutation({
-    mutationFn: async (announcementId: string) => {
-      const response = await fetch(`/api/announcements/${announcementId}/dismiss`, {
-        method: 'POST',
-      });
-      if (!response.ok) throw new Error('Failed to dismiss');
-      return response.json();
-    },
+    mutationFn: async (announcementId: string) => apiRequest(
+      `/api/announcements/${announcementId}/dismiss`,
+      { method: 'POST' },
+    ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/announcements'] });
     },

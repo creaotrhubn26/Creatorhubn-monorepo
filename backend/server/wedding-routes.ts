@@ -481,8 +481,10 @@ export function setupWeddingRoutes(deps: WeddingRoutesDeps): void {
         }),
       });
     } catch (err) {
-      console.error('[wedding-events] list failed:', err);
-      res.status(500).json({ error: 'list_failed' });
+      // Schema-drift på wedding_event_comments skal ikke krasje wedding-day-tidslinjen.
+      // Returner tom liste istedet for 500.
+      console.warn('[wedding-events] list degraded:', (err as any)?.message || err);
+      res.json({ events: [] });
     }
   });
 

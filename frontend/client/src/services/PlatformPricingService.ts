@@ -4,6 +4,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/queryClient';
 
 // Platform subscription types
 export type PlatformTier = 'free' | 'prototype' | 'basic' | 'professional' | 'premium' | 'enterprise';
@@ -101,7 +102,7 @@ class PlatformPricingService {
     }
 
     try {
-      const response = await fetch('/api/platform/subscription-plans');
+      const response = await apiFetch('/api/platform/subscription-plans');
       if (response.ok) {
         const data = await response.json();
         const plans = Array.isArray(data?.plans)
@@ -364,7 +365,7 @@ class PlatformPricingService {
     }
 
     try {
-      const response = await fetch('/api/platform/features');
+      const response = await apiFetch('/api/platform/features');
       if (response.ok) {
         const data = await response.json();
         const features = data.features || this.getFallbackPlatformFeatures();

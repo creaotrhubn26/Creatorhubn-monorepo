@@ -21,6 +21,8 @@ import { ScriptBuilderView } from './ScriptBuilderView';
 import { GuidedRecorderView } from './GuidedRecorderView';
 import { ExportView } from './ExportView';
 import { MarketingPanel } from './MarketingPanel';
+import { ModuleGate } from '../ModuleGate';
+import { hasModule, onEntitlementsChanged } from '../../entitlements';
 import { LibraryPanel } from './LibraryPanel';
 import { speak, cancelSpeech, getWebVoices, isWebSpeechSupported, type WebVoice } from './webSpeechVoiceover';
 import { FramedDevice, VIEWPORT_W } from './FramedDevice';
@@ -151,6 +153,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [directorMsg, setDirectorMsg] = useState<string | null>(null);
   const [showSignIn, setShowSignIn] = useState(false);
   const [aiReady, setAiReady] = useState(isAiConnected());
+  // Re-render når entitlements endres (kjøp/refresh) så Marketing-gaten åpner.
+  const [, bumpEntitlements] = useState(0);
+  useEffect(() => onEntitlementsChanged(() => bumpEntitlements((n) => n + 1)), []);
   const [respBusy, setRespBusy] = useState(false);
   const [respReport, setRespReport] = useState<ResponsiveReport | null>(null);
   const [critique, setCritique] = useState<DirectorCritique | null>(null);
@@ -762,7 +767,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         ) : nav === 'preview' ? (
           <div style={{ flex: 1, minHeight: 0 }}><DevicePreviewView /></div>
         ) : nav === 'marketing' ? (
-          <div style={{ flex: 1, minHeight: 0, display: 'flex' }}><MarketingPanel onOpenSignIn={() => setShowSignIn(true)} /></div>
+          hasModule('marketing') ? (
+            <div style={{ flex: 1, minHeight: 0, display: 'flex' }}><MarketingPanel onOpenSignIn={() => setShowSignIn(true)} /></div>
+          ) : (
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <ModuleGate module="marketing" signedIn={aiReady} onClose={() => setNav('flow')} onSignIn={() => setShowSignIn(true)} />
+            </div>
+          )
         ) : nav === 'library' ? (
           <div style={{ flex: 1, minHeight: 0, display: 'flex' }}><LibraryPanel /></div>
         ) : (

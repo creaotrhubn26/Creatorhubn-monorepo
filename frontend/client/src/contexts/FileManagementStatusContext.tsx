@@ -5,6 +5,7 @@
 
 import type { ReactNode } from 'react';
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiFetch } from '@/lib/queryClient';
 
 interface FileManagementStatus {
   // System Status
@@ -94,7 +95,7 @@ export function FileManagementStatusProvider({ children }: FileManagementStatusP
 
   const testFileSystem = async () => {
     try {
-      const response = await fetch('/api/file-management/health');
+      const response = await apiFetch('/api/file-management/health');
       if (response.status === 404) {
         updateStatus({
           isConnected: false,
@@ -122,7 +123,7 @@ export function FileManagementStatusProvider({ children }: FileManagementStatusP
     });
 
       // Get stats
-      const statsResponse = await fetch('/api/file-management/stats');
+      const statsResponse = await apiFetch('/api/file-management/stats');
       if (statsResponse.status === 404) {
         updateStatus({
           activeOperations: 0,
@@ -151,7 +152,7 @@ export function FileManagementStatusProvider({ children }: FileManagementStatusP
 
   const testGoogleDrive = async () => {
     try {
-      const response = await fetch('/api/file-management/google-drive/status');
+      const response = await apiFetch('/api/file-management/google-drive/status');
       if (response.status === 404) {
         updateStatus({
           googleDriveStatus: 'disconnected',
@@ -180,7 +181,7 @@ export function FileManagementStatusProvider({ children }: FileManagementStatusP
 
   const testGooglePhotos = async () => {
     try {
-      const response = await fetch('/api/file-management/google-photos/status');
+      const response = await apiFetch('/api/file-management/google-photos/status');
       if (response.status === 404) {
         updateStatus({
           googlePhotosStatus: 'disconnected',

@@ -6,6 +6,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/queryClient';
 
 // Currency types
 export type Currency = 'NOK' | 'SEK' | 'DKK' | 'USD';
@@ -111,7 +112,7 @@ class ClientServicePricingService {
 
     try {
       // Try to get from price administration system
-      const response = await fetch('/api/price-administration/currency-rates');
+      const response = await apiFetch('/api/price-administration/currency-rates');
       if (response.ok) {
         const data = await response.json();
         const rates = data.rates || this.getFallbackCurrencyRates();
@@ -288,7 +289,7 @@ class ClientServicePricingService {
   }
 
     try {
-      const response = await fetch('/api/price-administration/feature-pricing');
+      const response = await apiFetch('/api/price-administration/feature-pricing');
       if (response.ok) {
         const data = await response.json();
         const features = data.features || this.getFallbackFeaturePricing();
@@ -357,7 +358,7 @@ class ClientServicePricingService {
   }
 
     try {
-      const response = await fetch(`/api/showcase/pricing?profession=${profession}`);
+      const response = await apiFetch(`/api/showcase/pricing?profession=${profession}`);
       if (response.ok) {
         const data = await response.json();
         const pricing = data.pricing || this.getFallbackShowcasePricing(profession);
@@ -462,7 +463,7 @@ class ClientServicePricingService {
   }
 
     try {
-      const response = await fetch(`/api/price-administration/default-rates?profession=${profession}`);
+      const response = await apiFetch(`/api/price-administration/default-rates?profession=${profession}`);
       if (response.ok) {
         const data = await response.json();
         const rates = data.rates || this.getFallbackDefaultRates(profession);

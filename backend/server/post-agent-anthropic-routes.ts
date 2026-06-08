@@ -32,6 +32,15 @@ import { aiRateLimit } from './ai-rate-limiter.js';
 import { checkAgentEntitlement } from './role-room-agent-entitlements.js';
 import { sendEmail } from './casting-reminder-sender.js';
 import { presignTakeReadUrl } from './coverage-take-service.js';
+import { presignRoleRoomB2Download } from './b2-archive-helper.js';
+import {
+  POST_AGENT_MODULES,
+  getUserModules,
+  isPostAgentModule,
+  priceIdForModule,
+  getModuleDef,
+  type PostAgentModule,
+} from './post-agent-modules.js';
 import {
   countActiveSeats,
   deletePairingCode,
@@ -213,10 +222,20 @@ export function createPostAgentRouter(
         res.status(503).json({ error: 'pairing_storage_unavailable' });
         return;
       }
+      // Redeem-siden (/link) ligger på SAMME Vercel-deployment for både
+      // theroleroom.com og creatorhubn.com og bruker relativ fetch — så en
+      // pairing-kode kan løses inn på hvilket som helst av domenene. Returnér
+      // begge, så appen kan vise det domenet brukeren faktisk er logget inn på.
+      const primaryVerificationUrl =
+        process.env.POST_AGENT_PAIRING_URL || 'https://theroleroom.com/link';
       res.json({
         code,
         expiresAt: new Date(Date.now() + PAIRING_TTL_MS).toISOString(),
-        verificationUrl: 'https://theroleroom.com/link',
+        verificationUrl: primaryVerificationUrl,
+        verificationUrls: [
+          'https://theroleroom.com/link',
+          'https://creatorhubn.com/link',
+        ],
         pollIntervalMs: 2000,
       });
     },
@@ -1119,6 +1138,131 @@ Tidspunkt: ${new Date().toISOString()}
     } catch (err) {
       console.error('[post-agent] standalone-checkout failed:', err);
       res.status(500).json({ error: 'checkout_create_failed', detail: (err as Error).message });
+    }
+  });
+
+  /* ----------------------------------------------------------------- *
+   *  À la carte-moduler (migrasjon 259 + post-agent-modules.ts)        *
+   *  Marketplace selger Demo Studio / Marketing / Capture / Resolve    *
+   *  som separate abonnementer; appen låses opp per modul runtime.     *
+   * ----------------------------------------------------------------- */
+
+  /** Siste publiserte macOS-build (B2-key: downloads/post-agent/<ver>/...). */
+  const POST_AGENT_LATEST_VERSION = process.env.POST_AGENT_LATEST_VERSION || 'v0.2.21';
+
+  // Offentlig katalog — marketplace henter pris + beskrivelse herfra.
+  router.get('/modules/catalog', (_req: Request, res: Response) => {
+    res.json({
+      version: POST_AGENT_LATEST_VERSION,
+      modules: POST_AGENT_MODULES.map((m) => ({
+        key: m.key,
+        name: m.name,
+        description: m.description,
+        priceNok: m.priceNok,
+        available: !!priceIdForModule(m.key),
+      })),
+    });
+  });
+
+  // Hvilke moduler den innloggede brukeren eier (leses av Tauri-appen ved
+  // oppstart for runtime feature-gating + av marketplace for "Eier"-merking).
+  router.get('/modules/entitlements', userAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    try {
+      const modules = await getUserModules(pool, userId);
+      res.json({
+        modules,
+        canDownload: modules.length > 0,
+        version: POST_AGENT_LATEST_VERSION,
+      });
+    } catch (err) {
+      console.error('[post-agent] modules/entitlements failed:', err);
+      res.status(500).json({ error: 'entitlements_failed', detail: (err as Error).message });
+    }
+  });
+
+  // Start Stripe Checkout for ÉN modul. Webhooken skriver entitlement når
+  // checkout fullføres (metadata.module → post_agent_module_entitlements).
+  router.post('/modules/checkout', userAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const moduleKey = String(req.body?.module ?? '').trim();
+    if (!isPostAgentModule(moduleKey)) {
+      res.status(400).json({ error: 'unknown_module', detail: `module må være en av: ${POST_AGENT_MODULES.map((m) => m.key).join(', ')}` });
+      return;
+    }
+    const priceId = priceIdForModule(moduleKey as PostAgentModule);
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!priceId || !secret) {
+      res.status(503).json({ error: 'stripe_not_configured', detail: `Mangler price-ID for modul ${moduleKey}` });
+      return;
+    }
+    try {
+      const { rows: userRows } = await pool.query(
+        `SELECT email, stripe_customer_id FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      const email = userRows[0]?.email;
+      const existingCustomer = userRows[0]?.stripe_customer_id;
+      const origin =
+        (req.headers.origin as string | undefined) ||
+        (process.env.PUBLIC_APP_URL ?? 'https://creatorhubn.com');
+      const def = getModuleDef(moduleKey as PostAgentModule);
+
+      const { default: Stripe } = await import('stripe');
+      const stripe = new Stripe(secret);
+      const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        line_items: [{ price: priceId, quantity: 1 }],
+        success_url: `${origin}/marketplace/post-agent?module=${moduleKey}&checkout=success`,
+        cancel_url: `${origin}/marketplace/post-agent?module=${moduleKey}`,
+        client_reference_id: userId,
+        ...(existingCustomer ? { customer: existingCustomer } : email ? { customer_email: email } : {}),
+        metadata: {
+          product: 'post_agent_module',
+          module: moduleKey,
+          role_room_user_id: userId,
+        },
+        subscription_data: {
+          metadata: {
+            product: 'post_agent_module',
+            module: moduleKey,
+            role_room_user_id: userId,
+          },
+          description: def ? `Post Agent — ${def.name}` : undefined,
+        },
+      });
+      res.json({ ok: true, url: session.url, id: session.id });
+    } catch (err) {
+      console.error('[post-agent] modules/checkout failed:', err);
+      res.status(500).json({ error: 'checkout_create_failed', detail: (err as Error).message });
+    }
+  });
+
+  // Gated nedlasting: kun brukere med minst én aktiv modul får en presigned
+  // B2-URL (5 min). Bøtta forblir privat. variant = aarch64 | x86_64.
+  router.get('/modules/download/:variant', userAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const variant = req.params.variant === 'x86_64' ? 'x86_64' : 'aarch64';
+    try {
+      const modules = await getUserModules(pool, userId);
+      if (modules.length === 0) {
+        res.status(403).json({ error: 'no_active_module', detail: 'Kjøp minst én Post Agent-modul for å laste ned appen.' });
+        return;
+      }
+      const filename = `post-agent-darwin-${variant}.dmg`;
+      const key = `downloads/post-agent/${POST_AGENT_LATEST_VERSION}/${filename}`;
+      const url = await presignRoleRoomB2Download(key, filename, 300);
+      if (!url) {
+        res.status(503).json({ error: 'download_unavailable', detail: 'B2 ikke konfigurert eller fil mangler.' });
+        return;
+      }
+      // Returnér presigned URL som JSON — klienten må sende Bearer via fetch og
+      // kan ikke følge en 302 med auth-header. Klienten gjør window.location=url.
+      console.log(`[post-agent] download user=${userId} variant=${variant} modules=${modules.join(',')}`);
+      res.json({ ok: true, url, filename, expiresIn: 300 });
+    } catch (err) {
+      console.error('[post-agent] modules/download failed:', err);
+      res.status(500).json({ error: 'download_failed', detail: (err as Error).message });
     }
   });
 

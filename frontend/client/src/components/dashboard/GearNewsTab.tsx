@@ -39,6 +39,7 @@ import {
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useTheming } from '../../utils/theming-helper';
+import { apiRequest } from '@/lib/queryClient';
 
 interface GearNewsTabProps {
   profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
@@ -145,7 +146,7 @@ export function GearNewsTab({ profession, className }: GearNewsTabProps) {
 
   const { data, isLoading } = useQuery<GearNewsApiResponse>({
     queryKey: ['/api/gear-news', profession],
-    queryFn: () => fetch(`/api/gear-news?profession=${profession}`).then((res) => res.json()),
+    queryFn: () => apiRequest(`/api/gear-news?profession=${profession}`),
     refetchInterval: 30 * 60 * 1000,
     staleTime: 10 * 60 * 1000,
   });

@@ -1546,7 +1546,7 @@ export default function FullscreenChatWidget({
           </Box>
 
           {/* Sales Mode Toggle with Google Chat Integration */}
-          <Box sx={{ p: 1, borderBottom: 1, borderColor: 'divider', bgcolor: 'background.default'}}>
+          <Box sx={{ p: 1.75, borderBottom: 1, borderColor: 'divider', bgcolor: 'background.default'}}>
             <Button
               fullWidth
               variant={salesMode ? 'contained' : 'outlined'}
@@ -1591,9 +1591,9 @@ export default function FullscreenChatWidget({
                 />
                 
                 {/* Google Chat API Status */}
-                <Box sx={{ 
-                  mt: 1,
-                  p: 1,
+                <Box sx={{
+                  mt: 1.5,
+                  p: 1.5,
                   borderRadius: 1,
                   bgcolor: communicationStatus.googleChatStatus === 'connected' ? '#e8f5e8' : 'rgba(244,67,54,0.10)',
                   border: `1px solid ${communicationStatus.googleChatStatus === 'connected' ? '#4caf50' : '#f44336'}20`
@@ -1647,8 +1647,8 @@ export default function FullscreenChatWidget({
                 sx={{
 		                  borderBottom: 1,
 		                  borderColor: 'divider',
-		                  py: 1.5,
-		                  px: 1.5,
+		                  py: 2,
+		                  px: 2,
 		                  position: 'relative',
                       animationDelay: `${Math.min(index * 24, 240)}ms`,
 		                  transition: 'all 0.2s ease','&:hover': {
@@ -1705,24 +1705,24 @@ export default function FullscreenChatWidget({
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5}}>
                         {contact.lastMessageTime && (
-                          <Typography 
-                            variant="caption" 
+                          <Typography
+                            variant="caption"
                             color="text.secondary"
-                            sx={{ fontSize: '0.7rem'}}
+                            sx={{ fontSize: '0.78rem'}}
                           >
                             {formatTime(contact.lastMessageTime)}
                           </Typography>
                         )}
                         {contact.unreadCount && contact.unreadCount > 0 && (
-	                          <Chip 
+	                          <Chip
 	                            label={contact.unreadCount}
 	                            size="small"
-	                            sx={{ 
+	                            sx={{
 	                              bgcolor: getProfessionColor(),
 	                              color: 'white',
-	                              fontSize: '0.7rem',
-	                              height:  18,
-	                              minWidth: 18, '& .MuiChip-label': { px: 0.5, }}}
+	                              fontSize: '0.78rem',
+	                              height:  22,
+	                              minWidth: 22, '& .MuiChip-label': { px: 0.5, }}}
 	                          />
                         )}
                       </Box>
@@ -1742,22 +1742,22 @@ export default function FullscreenChatWidget({
                         {contact.lastMessage || 'Ingen meldinger ennå'}
                       </Typography>
                       
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5}}>
-	                        <Chip 
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.75}}>
+	                        <Chip
 	                          label={contact.type === 'client' ? 'Kunde' : contact.type === 'team' ? 'Team' : 'Support'}
 	                          size="small"
 	                          variant="outlined"
-	                          sx={{ 
-	                            fontSize: '0.65rem',
-	                            height:  16,
+	                          sx={{
+	                            fontSize: '0.78rem',
+	                            height:  20,
 	                            borderColor: getProfessionColor(),
-	                            color: getProfessionColor(), '& .MuiChip-label': { px: 0.8, }}}
+	                            color: getProfessionColor(), '& .MuiChip-label': { px: 0.9, }}}
 	                        />
-                        
-                        <Typography 
+
+                        <Typography
                           variant="caption"
                           sx={{
-                            fontSize: '0.65rem',
+                            fontSize: '0.78rem',
                             color: contact.status === 'online' ? '#4CAF50' : 'text.secondary',
                             fontWeight: contact.status === 'online' ? 600 : 400}}
                         >
@@ -1915,7 +1915,7 @@ export default function FullscreenChatWidget({
 	                flex: 1,
 	                overflow: 'auto', 
 	                p:  2,
-	                background: 'linear-gradient(180deg, rgba(255,255,255,0.92), rgba(248,250,252,0.98))',
+	                background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04))',
 	                backgroundImage: `
 	                  radial-gradient(circle at 25% 20%, rgba(255, 140, 0, 0.08) 0%, transparent 52%),
 	                  radial-gradient(circle at 75% 75%, rgba(255, 140, 0, 0.04) 0%, transparent 50%)
@@ -2214,7 +2214,7 @@ export default function FullscreenChatWidget({
                     flex: 1,
                     overflow: 'auto',
                     p: 2,
-                    background: 'linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.98))',
+                    background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04))',
                   }}
                 >
                   <Paper
@@ -2322,7 +2322,7 @@ export default function FullscreenChatWidget({
 	                  p: 2,
 	                  borderTop: 1,
 	                  borderColor: 'divider',
-	                  background: 'linear-gradient(180deg, rgba(255,255,255,0.97), rgba(248,250,252,0.98))',
+	                  background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04))',
 	                  backdropFilter: 'blur(10px)'
 	          }}>
                   {/* Admin Quick Actions - Only visible for admin */}

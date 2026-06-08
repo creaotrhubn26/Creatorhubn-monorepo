@@ -47,6 +47,7 @@ import {
   AutoFixHigh as AutoIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest, apiFetch } from '@/lib/queryClient';
 
 // Google Drive Integration
 declare global {
@@ -94,15 +95,12 @@ export default function FileDetectionDashboardWidget({
   React.useEffect(() => {
     const checkGoogleDriveConnection = async () => {
       try {
-        const response = await fetch('/api/google/drive/status');
-        if (response.ok) {
-          const data = await response.json();
-          setGoogleDriveConnected(data.connected);
-      }
-    } catch (error) {
+        const data = await apiRequest('/api/google/drive/status') as { connected?: boolean };
+        setGoogleDriveConnected(!!data.connected);
+      } catch (error) {
         console.error('Google Drive status check failed: ', error);
-    }
-  };
+      }
+    };
 
     checkGoogleDriveConnection();
 }, []);
@@ -110,13 +108,9 @@ export default function FileDetectionDashboardWidget({
   // Hent nylige opplastinger med Google Drive integrasjon
   const { data: recentUploads = [], isLoading } = useQuery({
     queryKey: ['/api/recent-uploads', userId],
-    queryFn: async () => {
-      const response = await fetch(
-        `/api/recent-uploads?userId=${userId}&limit=${maxItems}&source=googledrive`,
-      );
-      if (!response.ok) throw new Error('Kunne ikke hente data');
-      return response.json();
-  },
+    queryFn: async () => apiRequest(
+      `/api/recent-uploads?userId=${userId}&limit=${maxItems}&source=googledrive`,
+    ),
     refetchInterval: 1000,
     enabled: googleDriveConnected,
 });
@@ -124,14 +118,11 @@ export default function FileDetectionDashboardWidget({
   // Google Drive folder sync mutation
   const syncGoogleDriveMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch('/api/google/drive/sync-folders', {
+      return await apiRequest('/api/google/drive/sync-folders', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify({ userI, d,}),
-    });
-      if (!response.ok) throw new Error('Google Drive sync failed');
-      return response.json();
-  },
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/recent-uploads', ],});
   },
@@ -140,14 +131,11 @@ export default function FileDetectionDashboardWidget({
   // Flytt fil mutation
   const relocateFileMutation = useMutation({
     mutationFn: async ({ filed, targetFolder }: { fileId: number; targetFolder: string }) => {
-      const response = await fetch('/api/relocate-file', {
+      return await apiRequest('/api/relocate-file', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify({ filed, targetFolder, userId }),
-    });
-      if (!response.ok) throw new Error('Kunne ikke flytte fil');
-      return response.json();
-  },
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/recent-uploads', ],});
   },

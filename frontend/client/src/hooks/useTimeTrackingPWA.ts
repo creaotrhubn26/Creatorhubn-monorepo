@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { apiRequest } from '@/lib/queryClient';
 
 export interface PWASnackbarState {
   open: boolean;
@@ -151,9 +152,8 @@ export function useTimeTrackingPWA() {
         });
 
         // Send subscription to server
-        await fetch('/api/time-tracking/push-subscription', {
+        await apiRequest('/api/time-tracking/push-subscription', {
           method: 'POST',
-          headers: { 'Content-Type' : 'application/json' },
           body: JSON.stringify(subscription),
         });
       } catch (error) {

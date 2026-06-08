@@ -29,7 +29,7 @@ import {
   Delete as DeleteIcon,
 } from '@mui/icons-material';
 import debounce from 'lodash/debounce';
-import { apiRequest } from '../lib/queryClient';
+import { apiRequest, apiFetch } from '../lib/queryClient';
 // Import dynamic profession system
 import { useDynamicProfessions } from './universal/hooks/useDynamicProfessions';
 import { useAuth } from '../hooks/useAuth';
@@ -125,10 +125,10 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
       formData.append('logo', file);
       formData.append('userId', userId);
 
-      const response = await fetch('/api/branding/upload-logo', {
+      const response = await apiFetch('/api/branding/upload-logo', {
         method: 'POST',
-        body: formData
-  });
+        body: formData,
+      });
 
       if (!response.ok) {
         const error = await response.json();

@@ -276,8 +276,10 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
       }
       res.json({ profile: rowToProfile(rows[0]) });
     } catch (err) {
-      console.error("[rr-profile] GET /me failed:", err);
-      res.status(500).json({ error: "intern_feil" });
+      // Column-drift på role_room_member_profiles skal ikke krasje role-room.
+      // Returner tom profile-shape istedet for 500 — bruker ser bare default-state.
+      console.warn("[rr-profile] GET /me degraded:", (err as any)?.message || err);
+      res.json({ profile: null });
     }
   });
 
@@ -415,8 +417,10 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
         requiresOnboarding: row.onboarding_completed !== true,
       });
     } catch (err) {
-      console.error("[rr-profile] GET onboarding failed:", err);
-      res.status(500).json({ error: "intern_feil" });
+      // Manglende onboarding_*-kolonner skal ikke krasje role-room. Returner
+      // requiresOnboarding=true så bruker går gjennom wizarden uten 500.
+      console.warn("[rr-profile] GET onboarding degraded:", (err as any)?.message || err);
+      res.json({ completed: false, progress: {}, requiresOnboarding: true });
     }
   });
 
@@ -571,8 +575,10 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
 
       res.json({ members, limit, offset, hasMore: members.length === limit });
     } catch (err) {
-      console.error("[rr-profile] GET /members failed:", err);
-      res.status(500).json({ error: "intern_feil" });
+      // Schema-drift på casting_projects / casting_user_roles / member-profiles
+      // skal ikke krasje medlems-katalogen. Returner tom liste i stedet for 500.
+      console.warn("[rr-profile] GET /members degraded:", (err as any)?.message || err);
+      res.json({ members: [], limit: 0, offset: 0, hasMore: false });
     }
   });
 

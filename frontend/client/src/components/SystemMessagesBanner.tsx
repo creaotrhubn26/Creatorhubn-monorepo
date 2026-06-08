@@ -50,11 +50,7 @@ const SystemMessagesBanner: React.FC<SystemMessagesBannerProps> = ({ userProfess
 
   const { data: messagesData, isLoading } = useQuery({
     queryKey: ['/api/admin/system-messages/active', userProfession],
-    queryFn: async () => {
-      const response = await fetch(`/api/admin/system-messages/active?audience=${userProfession}`);
-      if (!response.ok) throw new Error('Failed to fetch system messages');
-      return response.json();
-  },
+    queryFn: async () => apiRequest(`/api/admin/system-messages/active?audience=${userProfession}`),
     refetchInterval: 60000 // Refetch every minute
 });
 

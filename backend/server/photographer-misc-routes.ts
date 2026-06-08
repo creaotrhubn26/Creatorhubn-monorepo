@@ -150,8 +150,20 @@ export function setupPhotographerMiscRoutes(
         },
       });
     } catch (err) {
-      console.error('[photographer-settings] overview failed:', err);
-      res.status(500).json({ error: 'overview_failed' });
+      // Schema-drift skal ikke krasje settings-siden. Returner tom-shape
+      // (profile=null, alle counts=0, ingen integrasjoner) i stedet for 500.
+      console.warn('[photographer-settings] overview degraded:', (err as any)?.message || err);
+      res.json({
+        profile: null,
+        google: {
+          workspaceConnected: false,
+          driveConnected: false,
+          gmailConnected: false,
+          calendarConnected: false,
+        },
+        counts: { projects: 0, clients: 0, galleries: 0 },
+        integrations: { poweroffice: { connected: false, status: null } },
+      });
     }
   });
 
@@ -379,8 +391,25 @@ export function setupPhotographerMiscRoutes(
     if (!session) return;
     const photographerId = session.userId;
 
+    // Defensiv: hvis project_time_tracking-tabellen ikke finnes eller
+    // projects-skjemaet har drift, returner tom data istedet for 500.
+    // Brukerens dashboard krasjer aldri på "ingen logger ennå".
+    const empty = {
+      totals: { weekHours: 0, monthHours: 0, totalHours: 0, avgPerDay: 0 },
+      perProject: [],
+      dailyLast14: [],
+    };
+
     try {
       await ensurePhotographerProjectsSchemaShared(pool);
+
+      // Bekreft at project_time_tracking finnes — ellers tom respons
+      const tableCheck = await pool.query(
+        `SELECT to_regclass('public.project_time_tracking') AS exists`,
+      );
+      if (!tableCheck.rows[0]?.exists) {
+        return res.json(empty);
+      }
 
       // Aggregert per prosjekt — denne uka + denne måneden + total
       const r = await pool.query(
@@ -458,8 +487,10 @@ export function setupPhotographerMiscRoutes(
         })),
       });
     } catch (err) {
-      console.error('[worklog-summary] failed:', err);
-      res.status(500).json({ error: 'summary_failed' });
+      // Logg, men returner 200 m/ tom-data — UI skal aldri vise 500-feil
+      // for "ingen arbeidslogg ennå". Schema-drift håndteres gracefully.
+      console.warn('[worklog-summary] degraded (returning empty):', (err as any)?.message || err);
+      res.json(empty);
     }
   });
 

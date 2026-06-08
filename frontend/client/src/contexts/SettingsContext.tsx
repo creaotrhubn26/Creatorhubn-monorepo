@@ -6,6 +6,7 @@
 import type { ReactNode } from 'react';
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { apiRequest } from '@/lib/queryClient';
 
 const SETTINGS_NAMESPACE = 'creatorhub_user_settings';
 
@@ -523,22 +524,14 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     setError(null);
 
     try {
-      const response = await fetch('/api/settings', {
+      await apiRequest('/api/settings', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.id}`,
-        },
         body: JSON.stringify({
           userId: user.id,
           namespace: SETTINGS_NAMESPACE,
           data: settings,
         }),
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to save settings');
-      }
 
       setIsDirty(false);
       setLastSaved(new Date());
@@ -564,14 +557,9 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         namespace: SETTINGS_NAMESPACE,
       });
 
-      const response = await fetch(`/api/settings?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${user.id}`,
-        },
-      });
-
-      if (response.ok) {
-        const payload = await response.json() as { data?: Partial<UserSettings> | null };
+      try {
+        const payload = await apiRequest(`/api/settings?${params.toString()}`) as
+          { data?: Partial<UserSettings> | null };
         if (payload?.data && typeof payload.data === 'object') {
           setSettingsState({
             ...defaultSettings,
@@ -582,7 +570,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         }
         setIsDirty(false);
         setLastSaved(new Date());
-      } else {
+      } catch {
         // Use default settings if no saved settings found
         setSettingsState(defaultSettings);
       }

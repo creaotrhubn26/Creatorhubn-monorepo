@@ -2573,7 +2573,11 @@ async function resolveRuntimeSupport() {
       // Lensfun database (lensfun-update-data from liblensfun-bin) just
       // widens lens coverage beyond RawTherapee's bundled data.
       lensCorrection: {
-        available: Boolean(rawtherapee),
+        // Only "available" when the heavy RawTherapee+Lensfun pass is
+        // opted in (PHOTO_ENHANCER_LENSFUN_ENABLED=true) AND rawtherapee is
+        // installed — otherwise enabling it in the UI is a safe no-op.
+        available: Boolean(rawtherapee) && process.env.PHOTO_ENHANCER_LENSFUN_ENABLED === "true",
+        enabledByConfig: process.env.PHOTO_ENHANCER_LENSFUN_ENABLED === "true",
         converter: rawtherapee ? "rawtherapee" : null,
         systemLensfunDatabase: Boolean(lensfunUpdate),
       },
@@ -2774,8 +2778,15 @@ async function convertRawWithExternalTool(
   // When the photographer enabled lens correction, write a Lensfun PP3 so we
   // can prefer a RawTherapee pass that applies optical correction. dcraw /
   // ImageMagick can't do Lensfun, so this only fires when correction is on.
+  // Full-resolution RawTherapee + Lensfun needs ~1-2 GB RAM. On a small
+  // instance that OOM-kills the process and 502s the whole request, so the
+  // heavy pass is gated behind an explicit opt-in env (default off) — only
+  // turn it on where the box can afford it (≥ ~2 GB). Without it, enhance
+  // proceeds through the normal converters (no correction) instead of
+  // crashing.
+  const lensfunRuntimeEnabled = process.env.PHOTO_ENHANCER_LENSFUN_ENABLED === "true";
   const lens = options?.lensCorrection;
-  const lensfunEnabled = Boolean(lens?.enabled);
+  const lensfunEnabled = Boolean(lens?.enabled) && lensfunRuntimeEnabled;
   if (lensfunEnabled && lens) {
     await fs.writeFile(lensfunPp3Path, buildRawTherapeeLensfunPp3(lens));
   }

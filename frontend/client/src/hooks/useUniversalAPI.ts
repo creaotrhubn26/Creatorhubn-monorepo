@@ -5,6 +5,7 @@
 
 import { useState, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/queryClient';
 
 interface APIResponse<T = any> {
   success: boolean;
@@ -120,14 +121,11 @@ export function useUniversalAPI(options: UseUniversalAPIOptions = {}) {
       setError(null);
 
       try {
-        const response = await fetch(`/api/proxy/${service}${endpoint}`, {
+        const response = await apiRequest(`/api/proxy/${service}${endpoint}`, {
           method,
-          headers: {
-            'Content-Type' : 'application/json',
-            ...headers,
-        },
+          headers,
           body: body ? JSON.stringify(body) : undefined,
-      }).then(res => res.json());
+        });
 
         if (showSuccessToast) {
           toast({
@@ -173,7 +171,7 @@ export function useUniversalAPI(options: UseUniversalAPIOptions = {}) {
    */
   const checkService = useCallback(async (service: string | APIService): Promise<boolean> => {
     try {
-      const response = await fetch(`/api/proxy/check/${service}`).then(res => res.json());
+      const response = await apiRequest(`/api/proxy/check/${service}`) as { isConfigured?: boolean };
       return response.isConfigured || false;
   } catch {
       return false;
@@ -185,7 +183,7 @@ export function useUniversalAPI(options: UseUniversalAPIOptions = {}) {
    */
   const getConfiguredServices = useCallback(async (): Promise<string[]> => {
     try {
-      const response = await fetch('/api/proxy/configured').then(res => res.json());
+      const response = await apiRequest('/api/proxy/configured') as { configured?: string[] };
       return response.configured || [];
   } catch {
       return [];
@@ -197,7 +195,7 @@ export function useUniversalAPI(options: UseUniversalAPIOptions = {}) {
    */
   const getSupportedServices = useCallback(async (): Promise<string[]> => {
     try {
-      const response = await fetch('/api/proxy/supported').then(res => res.json());
+      const response = await apiRequest('/api/proxy/supported') as { supported?: string[] };
       return response.supported || [];
   } catch {
       return [];
