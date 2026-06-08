@@ -485,6 +485,7 @@ import { setupRoleRoomAgencyProposalsRoutes } from "./role-room-agency-proposals
 import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes";
 import { setupTalentSelftapesRoutes } from "./talent-selftapes-routes";
 import { setupAgencyLeadsRoutes } from "./agency-leads-routes";
+import { setupClientAdsRoutes } from "./client-ads-routes";
 import { setupCockpitB2BRoutes } from "./cockpit-b2b-routes";
 import { setupLinkedInOAuthRoutes } from "./linkedin-oauth-routes";
 import { setupLinkedInPrepRoutes } from "./linkedin-prep-routes";
@@ -24088,6 +24089,14 @@ setupAgencyLeadsRoutes({
   pool,
   getActiveSession: getActiveSessionFromRequest,
   isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Multi-tenant Google Ads conversion-tracking for The Role Room Agent
+// (B0/B1 live; B2/B3/B4 i pipeline). Innholdsprodusenter setter opp
+// conversion-tracking for klienter via Agent.
+setupClientAdsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
 });
 // Marketing Cockpit B2B-stack (9 features: LinkedIn, funnel, scoring, PR, webinars, referrals, competitor, nurture, case-studies)
 setupCockpitB2BRoutes({
