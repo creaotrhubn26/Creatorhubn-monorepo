@@ -224,9 +224,19 @@ export async function refreshLinkedInAccessToken(
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const LINKEDIN_AUTH_URL = "https://www.linkedin.com/oauth/v2/authorization";
 
-/** Ads-only scopes — deliberately narrow, separate from login/workspace consent. */
+/** Ads-only scopes — deliberately narrow, separate from login/workspace consent.
+ *  Google: utvidet 2026-06-08 til full Google-suite (Ads + GA4 + GSC + GTM)
+ *  så samme MCC-tilkobling dekker O2/O3/O4. Eksisterende connections med kun
+ *  `adwords` må re-koble for å få GA4/GSC/GTM-rettigheter. */
 export const ADS_OAUTH_SCOPES: Partial<Record<AdsPlatform, string[]>> = {
-  google: ["https://www.googleapis.com/auth/adwords"],
+  google: [
+    "https://www.googleapis.com/auth/adwords",
+    "https://www.googleapis.com/auth/analytics.edit",
+    "https://www.googleapis.com/auth/webmasters",
+    "https://www.googleapis.com/auth/siteverification",
+    "https://www.googleapis.com/auth/tagmanager.edit.containers",
+    "https://www.googleapis.com/auth/tagmanager.publish",
+  ],
   // r_organization_admin powers the "which Company Pages am I admin of" view.
   linkedin: ["r_ads", "r_ads_reporting", "r_organization_admin"],
 };

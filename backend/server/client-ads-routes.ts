@@ -35,6 +35,20 @@ import {
   handleGoogleAdsOauthCallback,
   createConversionAction,
 } from "./client-ads-google-oauth.js";
+import {
+  listGa4Accounts,
+  provisionGa4Property,
+  getGscVerificationToken,
+  verifyGscSite,
+  addGscSite,
+  submitAllSitemaps,
+  fetchSitemapStatus,
+  requestIndexingForUrls,
+  listGtmAccounts,
+  provisionGtmContainer,
+  importActionsToGtm,
+  diagnoseClientSetup,
+} from "./client-google-suite.js";
 
 interface SessionLike {
   userId: string;
@@ -639,6 +653,407 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     } catch (err) {
       console.error('[ads-reject] failed', err);
       return res.status(500).json({ error: 'Klarte ikke å avvise' });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // O2 / O3 / O4 — Full Google-suite per klient
+  // (GA4 + Search Console + Tag Manager). Bruker producerens MCC-OAuth
+  // — utvidet scope-set i role-room-ads-oauth.ts dekker alle fire APIer.
+  // ════════════════════════════════════════════════════════════════════
+
+  // ─── GA4 ─────────────────────────────────────────────────────────
+  // GET /api/admin-room/agent/ads/ga4/accounts — list producerens GA4-kontoer
+  app.get("/api/admin-room/agent/ads/ga4/accounts", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const r = await listGa4Accounts(pool, session.userId);
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ accounts: r.accounts });
+  });
+
+  // POST /api/admin-room/agent/ads/configs/:id/ga4/provision
+  // Opprett GA4-property + web-data-stream → returnerer G-XXX
+  app.post("/api/admin-room/agent/ads/configs/:id/ga4/provision", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { accountName?: string; industryCategory?: string };
+    if (!body.accountName) return res.status(400).json({ error: "accountName påkrevd" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_name, client_website_url, ga4_property_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.ga4_property_id) {
+        return res.status(409).json({ error: "GA4-property finnes allerede", ga4_property_id: cfg.ga4_property_id });
+      }
+
+      const r = await provisionGa4Property(pool, {
+        producerUserId: session.userId,
+        accountName: body.accountName,
+        displayName: cfg.client_name,
+        websiteUrl: cfg.client_website_url,
+        industryCategory: body.industryCategory,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+
+      await pool.query(
+        `UPDATE client_ads_configs
+           SET ga4_property_id = $1,
+               ga4_measurement_id = $2,
+               ga4_data_stream_id = $3,
+               ga4_setup_completed_at = now(),
+               updated_at = now()
+          WHERE id = $4::uuid`,
+        [r.propertyId, r.measurementId, r.dataStreamId, req.params.id],
+      );
+
+      return res.json({
+        success: true,
+        propertyId: r.propertyId,
+        measurementId: r.measurementId,
+        dataStreamId: r.dataStreamId,
+      });
+    } catch (err) {
+      console.error("[ga4-provision] failed", err);
+      return res.status(500).json({ error: "GA4-provision feilet", detail: String(err) });
+    }
+  });
+
+  // ─── GSC ─────────────────────────────────────────────────────────
+  // POST /api/admin-room/agent/ads/configs/:id/gsc/verify
+  // 2-stegs: (a) ?step=token henter meta-tag, klient limer inn,
+  //          (b) ?step=verify når Google har sett tagen.
+  app.post("/api/admin-room/agent/ads/configs/:id/gsc/verify", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const step = req.query.step === "verify" ? "verify" : "token";
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_website_url, gsc_property_url
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      const siteUrl = cfg.gsc_property_url || cfg.client_website_url;
+
+      if (step === "token") {
+        const r = await getGscVerificationToken(pool, {
+          producerUserId: session.userId,
+          siteUrl,
+          method: "META",
+        });
+        if (!r.ok) return res.status(503).json({ error: r.error });
+
+        await pool.query(
+          `UPDATE client_ads_configs
+             SET gsc_property_url = $1,
+                 gsc_verification_method = 'meta_tag',
+                 gsc_verification_token = $2,
+                 updated_at = now()
+            WHERE id = $3::uuid`,
+          [siteUrl, r.token, req.params.id],
+        );
+        return res.json({
+          step: "token",
+          token: r.token,
+          method: r.method,
+          metaTag: `<meta name="google-site-verification" content="${r.token.replace(/^.+content="/, "").replace(/" \/>$/, "")}" />`,
+          instructions: "Legg meta-tagen i <head> på klientens nettside, så trykk 'Verifiser nå'.",
+        });
+      }
+
+      // step === "verify"
+      const v = await verifyGscSite(pool, {
+        producerUserId: session.userId,
+        siteUrl,
+        method: "META",
+      });
+      if (!v.ok) return res.status(503).json({ error: v.error });
+
+      // Etter verifisering: legg site til Search Console
+      await addGscSite(pool, { producerUserId: session.userId, siteUrl });
+
+      await pool.query(
+        `UPDATE client_ads_configs
+           SET gsc_verified_at = now(), updated_at = now()
+          WHERE id = $1::uuid`,
+        [req.params.id],
+      );
+      return res.json({ step: "verify", success: true, siteUrl });
+    } catch (err) {
+      console.error("[gsc-verify] failed", err);
+      return res.status(500).json({ error: "GSC-verify feilet", detail: String(err) });
+    }
+  });
+
+  // POST /api/admin-room/agent/ads/configs/:id/gsc/sitemap
+  // Auto-discover + submit ALLE sitemaps (robots.txt → fallback-stier).
+  // Trigger også Indexing API for høyprioriterte URL'er (conversion-sider).
+  app.post("/api/admin-room/agent/ads/configs/:id/gsc/sitemap", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { extraSitemapUrls?: string[]; indexUrls?: string[] };
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_website_url, gsc_property_url, gsc_verified_at
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (!cfg.gsc_verified_at) {
+        return res.status(412).json({ error: "Verifiser siten med Search Console først." });
+      }
+      const siteUrl = cfg.gsc_property_url || cfg.client_website_url;
+
+      // 1) Discover + submit sitemaps
+      const sitemap = await submitAllSitemaps(pool, {
+        producerUserId: session.userId,
+        siteUrl,
+        websiteUrl: cfg.client_website_url,
+        extraSitemapUrls: body.extraSitemapUrls,
+      });
+
+      // 2) Hent action-URL'er (conversion-sider) + request indexing
+      let indexing: any = null;
+      const urls: string[] = [];
+      if (Array.isArray(body.indexUrls) && body.indexUrls.length > 0) {
+        urls.push(...body.indexUrls);
+      } else {
+        const actionUrlsR = await pool.query(
+          `SELECT DISTINCT url_pattern FROM client_ads_actions
+            WHERE config_id = $1::uuid AND is_active = TRUE AND url_pattern IS NOT NULL`,
+          [req.params.id],
+        );
+        // url_pattern kan være regex — vi sender bare hvis det ser ut som absolutt URL
+        for (const row of actionUrlsR.rows) {
+          if (typeof row.url_pattern === "string" && /^https?:\/\//i.test(row.url_pattern)) {
+            urls.push(row.url_pattern);
+          }
+        }
+      }
+      if (urls.length > 0) {
+        indexing = await requestIndexingForUrls(pool, { producerUserId: session.userId, urls });
+      }
+
+      if (sitemap.submitted.length > 0) {
+        await pool.query(
+          `UPDATE client_ads_configs
+             SET gsc_sitemap_submitted_at = now(), updated_at = now()
+            WHERE id = $1::uuid`,
+          [req.params.id],
+        );
+      }
+
+      return res.json({
+        success: sitemap.ok,
+        discovered: sitemap.discovered,
+        discoverySource: sitemap.source,
+        submitted: sitemap.submitted,
+        indexing,
+      });
+    } catch (err) {
+      console.error("[gsc-sitemap] failed", err);
+      return res.status(500).json({ error: "GSC-sitemap-submit feilet", detail: String(err) });
+    }
+  });
+
+  // GET /api/admin-room/agent/ads/configs/:id/setup/diagnose
+  // Helsesjekk for HELE Google-stacken + andre trackere på klient-siten:
+  //   HTML-stack: GA4-tag, Ads-tag, GTM-snippet, Meta/LI/TikTok-pixels,
+  //   Consent Mode v2, JSON-LD, SEO basics, noindex-blokkere
+  //   GSC: robots.txt, sitemap-discovery, verifisering, property, URL-inspection
+  app.get("/api/admin-room/agent/ads/configs/:id/setup/diagnose", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      const cfgR = await pool.query(
+        `SELECT client_website_url, ga4_measurement_id, gtm_container_public_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const expectedAw = process.env.GOOGLE_ADS_CONVERSION_ID || null;
+      const r = await diagnoseClientSetup(pool, {
+        producerUserId: session.userId,
+        websiteUrl: cfgR.rows[0].client_website_url,
+        expectedGa4MeasurementId: cfgR.rows[0].ga4_measurement_id,
+        expectedAwConversionId: expectedAw,
+        expectedGtmContainerId: cfgR.rows[0].gtm_container_public_id,
+      });
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "Diagnose feilet", detail: String(err) });
+    }
+  });
+
+  // Bakover-kompat alias
+  app.get("/api/admin-room/agent/ads/configs/:id/gsc/diagnose", async (req, res) => {
+    req.url = req.url.replace("/gsc/diagnose", "/setup/diagnose");
+    app._router.handle(req, res, () => {});
+  });
+
+  // GET /api/admin-room/agent/ads/configs/:id/gsc/status
+  // Hent live sitemap-status (errors/warnings/lastDownloaded per sitemap).
+  app.get("/api/admin-room/agent/ads/configs/:id/gsc/status", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      const cfgR = await pool.query(
+        `SELECT client_website_url, gsc_property_url
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const siteUrl = cfgR.rows[0].gsc_property_url || cfgR.rows[0].client_website_url;
+      const r = await fetchSitemapStatus(pool, { producerUserId: session.userId, siteUrl });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+      return res.json({ siteUrl, sitemaps: r.sitemaps });
+    } catch (err) {
+      return res.status(500).json({ error: "Status-hent feilet", detail: String(err) });
+    }
+  });
+
+  // ─── GTM ─────────────────────────────────────────────────────────
+  // GET /api/admin-room/agent/ads/gtm/accounts
+  app.get("/api/admin-room/agent/ads/gtm/accounts", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const r = await listGtmAccounts(pool, session.userId);
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ accounts: r.accounts });
+  });
+
+  // POST /api/admin-room/agent/ads/configs/:id/gtm/provision
+  app.post("/api/admin-room/agent/ads/configs/:id/gtm/provision", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { accountId?: string };
+    if (!body.accountId) return res.status(400).json({ error: "accountId påkrevd" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, client_name, client_website_url, gtm_container_public_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (cfg.gtm_container_public_id) {
+        return res.status(409).json({ error: "GTM-container finnes allerede", gtm_container_public_id: cfg.gtm_container_public_id });
+      }
+
+      const domain = (() => {
+        try { return new URL(cfg.client_website_url).hostname; } catch { return undefined; }
+      })();
+      const r = await provisionGtmContainer(pool, {
+        producerUserId: session.userId,
+        accountId: body.accountId,
+        containerName: cfg.client_name,
+        domainName: domain,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+
+      await pool.query(
+        `UPDATE client_ads_configs
+           SET gtm_account_id = $1,
+               gtm_container_id = $2,
+               gtm_container_public_id = $3,
+               gtm_setup_completed_at = now(),
+               updated_at = now()
+          WHERE id = $4::uuid`,
+        [r.accountId, r.containerId, r.publicId, req.params.id],
+      );
+
+      return res.json({
+        success: true,
+        accountId: r.accountId,
+        containerId: r.containerId,
+        publicId: r.publicId,
+      });
+    } catch (err) {
+      console.error("[gtm-provision] failed", err);
+      return res.status(500).json({ error: "GTM-provision feilet", detail: String(err) });
+    }
+  });
+
+  // POST /api/admin-room/agent/ads/configs/:id/gtm/import-tags
+  // Importer alle godkjente conversion-actions som GTM-tags + triggers.
+  // Forutsetter at sync-to-google har kjørt (AW-label trengs).
+  app.post("/api/admin-room/agent/ads/configs/:id/gtm/import-tags", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    try {
+      const cfgR = await pool.query(
+        `SELECT id::text, gtm_account_id, gtm_container_id, gtm_container_public_id
+           FROM client_ads_configs
+          WHERE id = $1::uuid AND content_producer_user_id = $2`,
+        [req.params.id, session.userId],
+      );
+      if (!cfgR.rowCount) return res.status(404).json({ error: "Ikke funnet" });
+      const cfg = cfgR.rows[0];
+      if (!cfg.gtm_container_id) {
+        return res.status(412).json({ error: "Opprett GTM-container først." });
+      }
+
+      const actionsR = await pool.query(
+        `SELECT action_name, display_name, goal_category, default_value, currency,
+                trigger_type, url_pattern, google_ads_label
+           FROM client_ads_actions
+          WHERE config_id = $1::uuid AND is_active = TRUE AND google_ads_label IS NOT NULL
+          ORDER BY created_at ASC`,
+        [req.params.id],
+      );
+      if (!actionsR.rowCount) {
+        return res.status(412).json({
+          error: "Ingen actions med Google Ads-label. Kjør 'Synk til Google Ads' først.",
+        });
+      }
+
+      const awBaseId = process.env.GOOGLE_ADS_CONVERSION_ID || "AW-18197346774";
+
+      const r = await importActionsToGtm(pool, {
+        producerUserId: session.userId,
+        accountId: cfg.gtm_account_id,
+        containerId: cfg.gtm_container_id,
+        awConversionId: awBaseId,
+        actions: actionsR.rows.map((a) => ({
+          actionName: a.action_name,
+          displayName: a.display_name,
+          label: a.google_ads_label,
+          defaultValue: Number(a.default_value ?? 0),
+          currency: a.currency || "NOK",
+          triggerType: a.trigger_type,
+          urlPattern: a.url_pattern,
+        })),
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+
+      return res.json({
+        success: true,
+        imported: r.imported,
+        failed: r.failed,
+        details: r.details,
+        nextStep: "Lim GTM-snippet i klientens <head>/<body> — publiser deretter container fra GTM-UI.",
+      });
+    } catch (err) {
+      console.error("[gtm-import] failed", err);
+      return res.status(500).json({ error: "GTM-import feilet", detail: String(err) });
     }
   });
 }

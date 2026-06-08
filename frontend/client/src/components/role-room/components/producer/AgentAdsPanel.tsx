@@ -32,6 +32,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CodeIcon from '@mui/icons-material/Code';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
+import ClientGoogleSuitePanel from './ClientGoogleSuitePanel';
 
 const palette = {
   bgCard: '#150b2e',
@@ -872,6 +873,13 @@ export default function AgentAdsPanel({
               </Box>
             </CardContent>
           </Card>
+
+          {/* O2/O3/O4 — Full Google-suite (GA4 + GSC + GTM) per klient */}
+          <ClientGoogleSuitePanel
+            configId={savedConfigId}
+            clientName={clientName || 'Klienten'}
+            clientWebsiteUrl={discoveryResult.url}
+          />
 
           <DeploymentGuide
             clientName={clientName || 'Klienten'}
