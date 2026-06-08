@@ -5425,7 +5425,11 @@ export default function UniversalChatWidget({
   const tabContentHeight = isCompactViewport
     ? 'calc(100% - 188px)'
     : Math.max(360, widgetSize.height - (isWorkspacePanel ? (isNarrowWorkspace ? 188 : 176) : (isNarrowWorkspace ? 236 : 200)));
-  const panelWidth = isCompactViewport ? 'min(390px, calc(100vw - 24px))' : widgetSize.width;
+  // UX-density: cap workspace-panel width slik at full inbox ikke dekker hele dashbordet.
+  // Default kompakt-widget (400×550) påvirkes ikke; kun isWorkspacePanel-modus klempes.
+  const panelWidth = isCompactViewport
+    ? 'min(390px, calc(100vw - 24px))'
+    : (isWorkspacePanel ? Math.min(widgetSize.width, 1240) : widgetSize.width);
   const panelHeight = isCompactViewport ? 'min(calc(100vh - 24px), 860px)' : widgetSize.height;
   const isMobileConversationTab = isCompactViewport && (activeTab === TAB_CREATORHUB || activeTab === TAB_GOOGLE_CHAT || activeTab === TAB_EMAIL || activeTab === TAB_EVENDI);
   const isMobileDetailView = isMobileConversationTab && mobileConversationMode === 'detail';
@@ -7209,7 +7213,7 @@ export default function UniversalChatWidget({
             </IconButton>
           </Box>
 
-          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.1, bgcolor: 'rgba(20,16,11,0.6)' }}>
+          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.75, bgcolor: 'rgba(20,16,11,0.6)' }}>
             {internalActionPanelContent}
           </Box>
         </Paper>
@@ -7233,13 +7237,13 @@ export default function UniversalChatWidget({
         boxShadow: workspaceCardShadow,
       }}
     >
-      <Box sx={{ px: 1.5, py: 1.45, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
+      <Box sx={{ px: 1.85, py: 1.85, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Box>
             <Typography variant="overline" sx={{ display: 'block', fontWeight: 800, color: '#ea580c', letterSpacing: '0.1em', lineHeight: 1 }}>
               Inbox
             </Typography>
-            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.35 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.45 }}>
               Kanaler og mapper
             </Typography>
           </Box>
@@ -7249,7 +7253,7 @@ export default function UniversalChatWidget({
         </Box>
       </Box>
 
-      <Box sx={{ px: 1, py: 1.05, display: 'grid', gap: 0.45 }}>
+      <Box sx={{ px: 1.5, py: 1.5, display: 'grid', gap: 0.65 }}>
         {internalInboxSections.map((section) => {
           const selected = internalInboxSection === section.id;
 
@@ -7261,9 +7265,9 @@ export default function UniversalChatWidget({
                 display: 'grid',
                 gridTemplateColumns: '18px minmax(0, 1fr) auto',
                 alignItems: 'center',
-                gap: 1,
-                px: 1.05,
-                py: 0.92,
+                gap: 1.25,
+                px: 1.35,
+                py: 1.15,
                 borderRadius: 2.8,
                 cursor: 'pointer',
                 color: selected ? '#ea580c' : '#374151',
@@ -7291,11 +7295,11 @@ export default function UniversalChatWidget({
 
       <Divider sx={{ borderColor: chatWidgetDesign.border }} />
 
-      <Box sx={{ px: 1.4, py: 1.1, minHeight: 0, overflow: 'auto' }}>
-        <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: '#6b7280', mb: 1 }}>
+      <Box sx={{ px: 1.75, py: 1.6, minHeight: 0, overflow: 'auto' }}>
+        <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: '#6b7280', mb: 1.25 }}>
           Ditt team
         </Typography>
-        <Box sx={{ display: 'grid', gap: 0.75 }}>
+        <Box sx={{ display: 'grid', gap: 1.1 }}>
           {teamRoster.length > 0 ? teamRoster.map((chat) => (
             <Box
               key={`roster-${chat.id}`}
@@ -7303,7 +7307,7 @@ export default function UniversalChatWidget({
                 display: 'grid',
                 gridTemplateColumns: '32px minmax(0, 1fr)',
                 alignItems: 'center',
-                gap: 0.8,
+                gap: 1.1,
               }}
             >
               <Badge
@@ -7337,7 +7341,7 @@ export default function UniversalChatWidget({
         </Box>
       </Box>
 
-      <Box sx={{ mt: 'auto', px: 1.4, py: 1.2, borderTop: `1px solid ${chatWidgetDesign.border}` }}>
+      <Box sx={{ mt: 'auto', px: 1.75, py: 1.6, borderTop: `1px solid ${chatWidgetDesign.border}` }}>
         <Button
           fullWidth
           variant="outlined"
@@ -7373,13 +7377,13 @@ export default function UniversalChatWidget({
         boxShadow: workspaceCardShadow,
       }}
     >
-      <Box sx={{ px: 1.5, py: 1.35, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
+      <Box sx={{ px: 1.85, py: 1.75, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Box>
             <Typography variant="overline" sx={{ display: 'block', fontWeight: 800, color: '#64748b', letterSpacing: '0.08em', lineHeight: 1 }}>
               Samtaler
             </Typography>
-            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.35 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.45 }}>
               {internalInboxSections.find((section) => section.id === internalInboxSection)?.label || 'Alle'}
             </Typography>
           </Box>
@@ -7397,7 +7401,7 @@ export default function UniversalChatWidget({
           onChange={(event) => setInternalChatFilter(event.target.value)}
           placeholder="Søk i samtaler"
           sx={{
-            mt: 1,
+            mt: 1.4,
             '& .MuiOutlinedInput-root': {
               borderRadius: 2.5,
               bgcolor: 'rgba(255,255,255,0.04)',
@@ -7413,7 +7417,7 @@ export default function UniversalChatWidget({
         />
       </Box>
 
-      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 0.9, display: 'grid', gap: 0.75 }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.5, display: 'grid', gap: 1.1 }}>
         {filteredChatPreviews.length > 0 ? filteredChatPreviews.map((chat) => {
           const isSelected = selectedChat === chat.id;
 
@@ -7423,7 +7427,7 @@ export default function UniversalChatWidget({
               onClick={() => setSelectedChat(chat.id)}
               sx={{
                 cursor: 'pointer',
-                p: 1.15,
+                p: 1.6,
                 borderRadius: 3.2,
                 border: `1px solid ${isSelected ? getColorWithAlpha('#f97316', 0.34) : getColorWithAlpha(chatWidgetDesign.border, 0.72)}`,
                 background: isSelected
@@ -7437,7 +7441,7 @@ export default function UniversalChatWidget({
                 },
               }}
             >
-              <Box sx={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', alignItems: 'start', gap: 0.9 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', alignItems: 'start', gap: 1.25 }}>
                 <Badge
                   overlap="circular"
                   anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
@@ -7474,12 +7478,12 @@ export default function UniversalChatWidget({
                       size="small"
                       label={chat.unreadCount}
                       sx={{
-                        height: 20,
-                        minWidth: 24,
+                        height: 22,
+                        minWidth: 26,
                         bgcolor: '#f97316',
                         color: 'white',
                         fontWeight: 800,
-                        fontSize: '0.66rem',
+                        fontSize: '0.78rem',
                       }}
                     />
                   ) : (
@@ -7521,8 +7525,8 @@ export default function UniversalChatWidget({
     >
       {selectedChatPreview ? (
         <>
-          <Box sx={{ px: 1.7, py: 1.35, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: '44px minmax(0, 1fr) auto', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ px: 2, py: 1.75, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '44px minmax(0, 1fr) auto', gap: 1.4, alignItems: 'center' }}>
               <Badge
                 overlap="circular"
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
@@ -8082,12 +8086,12 @@ export default function UniversalChatWidget({
                   size="small"
                   label={chat.unreadCount}
                   sx={{
-                    height: 20,
-                    minWidth: 24,
+                    height: 22,
+                    minWidth: 26,
                     bgcolor: '#f97316',
                     color: 'white',
                     fontWeight: 800,
-                    fontSize: '0.66rem',
+                    fontSize: '0.78rem',
                   }}
                 />
               ) : (
@@ -8366,7 +8370,7 @@ export default function UniversalChatWidget({
               <Close sx={{ fontSize: 16 }} />
             </IconButton>
           </Box>
-          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.1, bgcolor: 'rgba(20,16,11,0.6)' }}>
+          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.75, bgcolor: 'rgba(20,16,11,0.6)' }}>
             {emailActionPanelContent}
           </Box>
         </Paper>
@@ -8390,13 +8394,13 @@ export default function UniversalChatWidget({
         boxShadow: workspaceCardShadow,
       }}
     >
-      <Box sx={{ px: 1.5, py: 1.45, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
+      <Box sx={{ px: 1.85, py: 1.85, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Box>
             <Typography variant="overline" sx={{ display: 'block', fontWeight: 800, color: '#2563eb', letterSpacing: '0.1em', lineHeight: 1 }}>
               Inbox
             </Typography>
-            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.35 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.45 }}>
               E-postmapper
             </Typography>
           </Box>
@@ -8406,7 +8410,7 @@ export default function UniversalChatWidget({
         </Box>
       </Box>
 
-      <Box sx={{ px: 1, py: 1.05, display: 'grid', gap: 0.45 }}>
+      <Box sx={{ px: 1.5, py: 1.5, display: 'grid', gap: 0.65 }}>
         {emailInboxSections.map((section) => {
           const selected = emailInboxSection === section.id;
           return (
@@ -8417,9 +8421,9 @@ export default function UniversalChatWidget({
                 display: 'grid',
                 gridTemplateColumns: '18px minmax(0, 1fr) auto',
                 alignItems: 'center',
-                gap: 1,
-                px: 1.05,
-                py: 0.92,
+                gap: 1.25,
+                px: 1.35,
+                py: 1.15,
                 borderRadius: 2.8,
                 cursor: 'pointer',
                 color: selected ? '#2563eb' : '#374151',
@@ -8451,12 +8455,12 @@ export default function UniversalChatWidget({
 
       <Divider sx={{ borderColor: chatWidgetDesign.border }} />
 
-      <Box sx={{ px: 1.4, py: 1.1, minHeight: 0, overflow: 'auto' }}>
-        <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: '#6b7280', mb: 1 }}>
+      <Box sx={{ px: 1.75, py: 1.6, minHeight: 0, overflow: 'auto' }}>
+        <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: '#6b7280', mb: 1.25 }}>
           Status
         </Typography>
-        <Box sx={{ display: 'grid', gap: 0.75 }}>
-          <Box sx={{ p: 0.95, borderRadius: 2.3, bgcolor: 'rgba(255,255,255,0.04)', border: `1px solid ${workspaceCardBorder}` }}>
+        <Box sx={{ display: 'grid', gap: 1.1 }}>
+          <Box sx={{ p: 1.5, borderRadius: 2.3, bgcolor: 'rgba(255,255,255,0.04)', border: `1px solid ${workspaceCardBorder}` }}>
             <Typography variant="body2" sx={{ fontWeight: 700, color: '#111827' }}>
               {isGmailConnected ? 'Gmail aktiv' : gmailNeedsReconnect ? 'Krever reconnect' : 'Ikke koblet'}
             </Typography>
@@ -8469,7 +8473,7 @@ export default function UniversalChatWidget({
         </Box>
       </Box>
 
-      <Box sx={{ mt: 'auto', px: 1.4, py: 1.2, borderTop: `1px solid ${chatWidgetDesign.border}` }}>
+      <Box sx={{ mt: 'auto', px: 1.75, py: 1.6, borderTop: `1px solid ${chatWidgetDesign.border}` }}>
         <Button
           fullWidth
           variant="outlined"
@@ -8506,13 +8510,13 @@ export default function UniversalChatWidget({
         boxShadow: workspaceCardShadow,
       }}
     >
-      <Box sx={{ px: 1.5, py: 1.35, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
+      <Box sx={{ px: 1.85, py: 1.75, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Box>
             <Typography variant="overline" sx={{ display: 'block', fontWeight: 800, color: '#64748b', letterSpacing: '0.08em', lineHeight: 1 }}>
               Tråder
             </Typography>
-            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.35 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.45 }}>
               {activeEmailInboxSection.label}
             </Typography>
           </Box>
@@ -8526,7 +8530,7 @@ export default function UniversalChatWidget({
           onChange={(event) => setEmailThreadFilter(event.target.value)}
           placeholder="Søk i e-post"
           sx={{
-            mt: 1,
+            mt: 1.4,
             '& .MuiOutlinedInput-root': {
               borderRadius: 2.5,
               bgcolor: 'rgba(255,255,255,0.04)',
@@ -8542,7 +8546,7 @@ export default function UniversalChatWidget({
         />
       </Box>
 
-      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 0.9, display: 'grid', gap: 0.75 }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.5, display: 'grid', gap: 1.1 }}>
         {!isGmailConnected ? (
           <Box sx={{ p: 2.2, textAlign: 'center' }}>
             <Typography variant="body2" sx={{ fontWeight: 700, color: '#111827' }}>
@@ -8562,7 +8566,7 @@ export default function UniversalChatWidget({
               onClick={() => setSelectedEmailThread(thread.id)}
               sx={{
                 cursor: 'pointer',
-                p: 1.15,
+                p: 1.6,
                 borderRadius: 3.2,
                 border: `1px solid ${isSelected ? getColorWithAlpha('#2563eb', 0.34) : getColorWithAlpha(chatWidgetDesign.border, 0.72)}`,
                 background: isSelected
@@ -8576,7 +8580,7 @@ export default function UniversalChatWidget({
                 },
               }}
             >
-              <Box sx={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', alignItems: 'start', gap: 0.9 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', alignItems: 'start', gap: 1.25 }}>
                 <Avatar sx={{ width: 38, height: 38, fontSize: '0.9rem', bgcolor: needsReply ? 'rgba(249,115,22,0.12)' : 'rgba(37,99,235,0.12)', color: needsReply ? '#c2410c' : '#1d4ed8', fontWeight: 800 }}>
                   {(thread.counterpartName || thread.counterpartEmail || 'E').charAt(0).toUpperCase()}
                 </Avatar>
@@ -8596,7 +8600,7 @@ export default function UniversalChatWidget({
                     {formatTime(thread.timestamp)}
                   </Typography>
                   {thread.unreadCount > 0 ? (
-                    <Chip size="small" label={thread.unreadCount} sx={{ height: 20, minWidth: 24, bgcolor: '#2563eb', color: 'white', fontWeight: 800, fontSize: '0.66rem' }} />
+                    <Chip size="small" label={thread.unreadCount} sx={{ height: 22, minWidth: 26, bgcolor: '#2563eb', color: 'white', fontWeight: 800, fontSize: '0.78rem' }} />
                   ) : (
                     <CheckCircle sx={{ fontSize: 14, color: '#10b981' }} />
                   )}
@@ -8655,8 +8659,8 @@ export default function UniversalChatWidget({
         </Box>
       ) : (
         <>
-          <Box sx={{ px: 1.7, py: 1.35, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: '44px minmax(0, 1fr) auto', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ px: 2, py: 1.75, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '44px minmax(0, 1fr) auto', gap: 1.4, alignItems: 'center' }}>
               <Avatar sx={{ width: 42, height: 42, bgcolor: getColorWithAlpha(selectedEmailReplyTone, 0.12), color: selectedEmailReplyTone, fontWeight: 800 }}>
                 {(selectedEmailCounterpartLabel || 'E').charAt(0).toUpperCase()}
               </Avatar>
@@ -9240,12 +9244,12 @@ export default function UniversalChatWidget({
                   size="small"
                   label={conversation.vendor_unread_count}
                   sx={{
-                    height: 20,
-                    minWidth: 24,
+                    height: 22,
+                    minWidth: 26,
                     bgcolor: '#E91E63',
                     color: 'white',
                     fontWeight: 800,
-                    fontSize: '0.66rem',
+                    fontSize: '0.78rem',
                   }}
                 />
               ) : (
@@ -10976,8 +10980,8 @@ export default function UniversalChatWidget({
                 // Internal Chat Tab
                 <Box sx={{ height: '100%', minHeight: 0 }}>
                   {isNarrowWorkspace ? (
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 1.1, minHeight: 0, height: '100%' }}>
-                      <Box sx={{ display: 'grid', gap: 1.1, minHeight: 0 }}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2, minHeight: 0, height: '100%' }}>
+                      <Box sx={{ display: 'grid', gap: 1.75, minHeight: 0 }}>
                         {internalConversationList}
                         {internalInboxNavigation}
                       </Box>
@@ -10992,7 +10996,7 @@ export default function UniversalChatWidget({
                           : shouldShowInternalCrmRailPanel
                             ? '72px minmax(280px, 320px) minmax(300px, 360px) minmax(0, 1fr)'
                             : '72px minmax(210px, 240px) minmax(300px, 360px) minmax(0, 1fr)',
-                        gap: 1.2,
+                        gap: 2.25,
                         minHeight: 0,
                         height: '100%',
                       }}
@@ -11204,7 +11208,7 @@ export default function UniversalChatWidget({
                     sx={{
                       display: 'grid',
                       gridTemplateColumns: isNarrowWorkspace ? '1fr' : 'minmax(250px, 300px) minmax(0, 1fr)',
-                      gap: 1.25,
+                      gap: 2.25,
                       minHeight: 0,
                       flex: 1,
                     }}
@@ -11825,8 +11829,8 @@ export default function UniversalChatWidget({
               ) : activeTab === TAB_EMAIL ? (
                 <Box sx={{ height: '100%', minHeight: 0 }}>
                   {isNarrowWorkspace ? (
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 1.1, minHeight: 0, height: '100%' }}>
-                      <Box sx={{ display: 'grid', gap: 1.1, minHeight: 0 }}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2, minHeight: 0, height: '100%' }}>
+                      <Box sx={{ display: 'grid', gap: 1.75, minHeight: 0 }}>
                         {emailInboxNavigation}
                         {emailConversationList}
                       </Box>
@@ -11841,7 +11845,7 @@ export default function UniversalChatWidget({
                           : shouldShowEmailCrmRailPanel
                             ? '72px minmax(280px, 320px) minmax(300px, 360px) minmax(0, 1fr)'
                             : '72px minmax(210px, 240px) minmax(300px, 360px) minmax(0, 1fr)',
-                        gap: 1.2,
+                        gap: 2.25,
                         minHeight: 0,
                         height: '100%',
                       }}
