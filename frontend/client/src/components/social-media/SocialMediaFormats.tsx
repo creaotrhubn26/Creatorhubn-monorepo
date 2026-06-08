@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useTheming } from '../../utils/theming-helper';
-import { useQueryClient } from "/react-query";
-1import {
+import { useQueryClient } from "@tanstack/react-query";
+import {
   Box,
   Typography,
   Grid,

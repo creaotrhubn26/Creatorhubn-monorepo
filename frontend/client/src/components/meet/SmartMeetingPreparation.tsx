@@ -9,8 +9,8 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import { useQueryClient } from "/react-query";
-1import {
+import { useQueryClient } from "@tanstack/react-query";
+import {
   Box,
   Card as MuiCard,
   CardContent,
