@@ -1029,6 +1029,7 @@ async function runPhotoEnhancerQueuedJob(job: PhotoEnhancerQueuedJob) {
       checksum,
       rawConverter: readString(enhancementResult.prepared.raw.converter),
       lensCorrectionApplied: Boolean(enhancementResult.prepared.raw.lensCorrectionApplied),
+      conversionErrors: enhancementResult.prepared.raw.attemptErrors ?? null,
     };
     addPhotoEnhancerJobEvent(job, "completed", "Enhancement completed.", {
       modelUsed: enhancementResult.modelUsed,
@@ -2901,6 +2902,15 @@ async function convertRawWithExternalTool(
           if (!metadata.width || !metadata.height) {
             throw new Error("converted image has no dimensions");
           }
+          // Surface (and log) the failures of any converter attempts that were
+          // tried and fell through before this one succeeded — otherwise a
+          // failing rawtherapee-lensfun pass is invisible because dcraw then
+          // succeeds and swallows it.
+          if (errors.length) {
+            console.warn(
+              `[photo-enhancer] raw-convert: "${attempt.id}" succeeded after earlier failures → ${errors.join(" | ")}`,
+            );
+          }
           return {
             file: {
               ...file,
@@ -2922,6 +2932,7 @@ async function convertRawWithExternalTool(
               format: metadata.format ?? null,
               resolutionMode: attempt.resolutionMode,
               lensCorrectionApplied: attempt.id === "rawtherapee-lensfun",
+              attemptErrors: errors.length ? [...errors] : undefined,
             },
           };
         } catch (validationError) {
@@ -6725,6 +6736,7 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
           processingMs,
           rawConverter: readString(enhancementResult.prepared.raw.converter),
           lensCorrectionApplied: Boolean(enhancementResult.prepared.raw.lensCorrectionApplied),
+          conversionErrors: enhancementResult.prepared.raw.attemptErrors ?? null,
         });
         trackPhotoEnhancerEvent({
           route: "enhance",
