@@ -40,6 +40,10 @@ import ClientTiktokLeadsPanel from './ClientTiktokLeadsPanel';
 import ClientTiktokAudiencesPanel from './ClientTiktokAudiencesPanel';
 import ClientTiktokAttributionPanel from './ClientTiktokAttributionPanel';
 import ClientTiktokCrmEventsPanel from './ClientTiktokCrmEventsPanel';
+import ClientTiktokCreativesPanel from './ClientTiktokCreativesPanel';
+import ClientTiktokCreatorsPanel from './ClientTiktokCreatorsPanel';
+import ClientTiktokPluginsPanel from './ClientTiktokPluginsPanel';
+import ClientTiktokLinkedAccountsPanel from './ClientTiktokLinkedAccountsPanel';
 import ClientAiPromptsPanel from './ClientAiPromptsPanel';
 import ClientInsightsPanel from './ClientInsightsPanel';
 
@@ -925,6 +929,26 @@ export default function AgentAdsPanel({
 
           {/* R3d — TikTok CRM Event Sync */}
           <ClientTiktokCrmEventsPanel
+            configId={savedConfigId}
+          />
+
+          {/* R3e — TikTok Creative Library */}
+          <ClientTiktokCreativesPanel
+            configId={savedConfigId}
+          />
+
+          {/* R3f — TikTok Creator Marketplace */}
+          <ClientTiktokCreatorsPanel
+            configId={savedConfigId}
+          />
+
+          {/* R3g — TikTok Business Plugins (webstore-connect) */}
+          <ClientTiktokPluginsPanel
+            configId={savedConfigId}
+          />
+
+          {/* R3h — TikTok Linked Accounts (Business Center) */}
+          <ClientTiktokLinkedAccountsPanel
             configId={savedConfigId}
           />
 

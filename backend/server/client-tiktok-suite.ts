@@ -911,3 +911,347 @@ export async function syncCrmEventToTiktok(
     return { ok: false, error: String(err) };
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Creative Management — opplastede ad-assets
+// ─────────────────────────────────────────────────────────────────────
+
+export interface TiktokCreativeAsset {
+  materialId: string;
+  assetType: 'video' | 'image' | 'smart_video';
+  fileName: string | null;
+  previewUrl: string | null;
+  durationSec: number | null;
+  width: number | null;
+  height: number | null;
+  uploadedAt: string;
+}
+
+export async function listTiktokCreatives(
+  pool: Pool,
+  opts: { producerUserId: string; advertiserId: string; assetType?: 'video' | 'image' | 'smart_video' },
+): Promise<{ ok: true; assets: TiktokCreativeAsset[] } | { ok: false; error: string }> {
+  const access = await tiktokToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  // Hent video-listen
+  const videoR = await fetch(
+    `${TIKTOK_BUSINESS_BASE}/file/video/ad/search/?advertiser_id=${encodeURIComponent(opts.advertiserId)}&page_size=50`,
+    { headers: ttHeaders(access) },
+  );
+  const videoBody = videoR.ok ? await videoR.json() as any : { data: { list: [] } };
+  const videos: TiktokCreativeAsset[] = (videoBody.data?.list ?? []).map((v: any) => ({
+    materialId: v.video_id ?? v.material_id,
+    assetType: 'video' as const,
+    fileName: v.file_name ?? v.video_cover_url ?? null,
+    previewUrl: v.preview_url ?? v.video_cover_url ?? null,
+    durationSec: v.duration ? Number(v.duration) : null,
+    width: v.width ? Number(v.width) : null,
+    height: v.height ? Number(v.height) : null,
+    uploadedAt: v.create_time ?? new Date().toISOString(),
+  }));
+
+  let images: TiktokCreativeAsset[] = [];
+  if (!opts.assetType || opts.assetType === 'image') {
+    const imageR = await fetch(
+      `${TIKTOK_BUSINESS_BASE}/file/image/ad/search/?advertiser_id=${encodeURIComponent(opts.advertiserId)}&page_size=50`,
+      { headers: ttHeaders(access) },
+    );
+    const imageBody = imageR.ok ? await imageR.json() as any : { data: { list: [] } };
+    images = (imageBody.data?.list ?? []).map((i: any) => ({
+      materialId: i.image_id ?? i.material_id,
+      assetType: 'image' as const,
+      fileName: i.file_name ?? null,
+      previewUrl: i.preview_url ?? i.image_url ?? null,
+      durationSec: null,
+      width: i.width ? Number(i.width) : null,
+      height: i.height ? Number(i.height) : null,
+      uploadedAt: i.create_time ?? new Date().toISOString(),
+    }));
+  }
+
+  let assets = [...videos, ...images];
+  if (opts.assetType) assets = assets.filter((a) => a.assetType === opts.assetType);
+  return { ok: true, assets };
+}
+
+/** Generate Smart Video — TikTok AI-generated variants fra source-video. */
+export async function createTiktokSmartVideo(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    advertiserId: string;
+    sourceMaterialId: string;
+    productInfo?: { name?: string; price?: string };
+    configId?: string | null;
+  },
+): Promise<{ ok: true; taskId: string } | { ok: false; error: string }> {
+  const access = await tiktokToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  const r = await fetch(`${TIKTOK_BUSINESS_BASE}/creative/smart_video/create/`, {
+    method: "POST",
+    headers: ttHeaders(access),
+    body: JSON.stringify({
+      advertiser_id: opts.advertiserId,
+      material_id: opts.sourceMaterialId,
+      product_info: opts.productInfo,
+    }),
+  });
+  if (!r.ok) return { ok: false, error: `smart_video HTTP ${r.status}` };
+  const body = await r.json() as { data?: { task_id?: string }; code?: number; message?: string };
+  if (body.code !== 0 || !body.data?.task_id) {
+    return { ok: false, error: body.message ?? "smart_video failed" };
+  }
+
+  await pool.query(
+    `INSERT INTO tiktok_creative_assets (
+       config_id, producer_user_id, advertiser_id, tiktok_material_id,
+       asset_type, source_material_id, smart_video_task_id,
+       smart_video_status, upload_status
+     ) VALUES ($1::uuid, $2::uuid, $3, $4, 'smart_video', $5, $6, 'IN_PROGRESS', 'uploading')
+     ON CONFLICT (advertiser_id, tiktok_material_id) DO NOTHING`,
+    [
+      opts.configId ?? null,
+      opts.producerUserId,
+      opts.advertiserId,
+      body.data.task_id,
+      opts.sourceMaterialId,
+      body.data.task_id,
+    ],
+  ).catch(() => {});
+
+  return { ok: true, taskId: body.data.task_id };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// TikTok Creator Marketplace — discovery
+// ─────────────────────────────────────────────────────────────────────
+
+export interface TiktokCreator {
+  handle: string;
+  displayName: string;
+  followerCount: number;
+  engagementRate: number;
+  location: string;
+  niche: string;
+  avatarUrl: string | null;
+  marketplaceId: string | null;
+}
+
+export async function discoverTiktokCreators(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    advertiserId: string;
+    country?: string;
+    niche?: string;
+    minFollowers?: number;
+    maxFollowers?: number;
+    forceRefresh?: boolean;
+  },
+): Promise<{ ok: true; creators: TiktokCreator[]; isCached: boolean } | { ok: false; error: string }> {
+  // Cache-sjekk
+  if (!opts.forceRefresh) {
+    const cached = await pool.query(
+      `SELECT creators FROM tiktok_creator_discoveries
+        WHERE producer_user_id = $1::uuid
+          AND advertiser_id = $2
+          AND COALESCE(country, '') = COALESCE($3, '')
+          AND COALESCE(niche, '') = COALESCE($4, '')
+          AND COALESCE(min_followers, 0) = COALESCE($5, 0)
+          AND expires_at > NOW()
+        ORDER BY fetched_at DESC
+        LIMIT 1`,
+      [opts.producerUserId, opts.advertiserId, opts.country ?? null, opts.niche ?? null, opts.minFollowers ?? null],
+    ).catch(() => ({ rows: [] }));
+    if (cached.rows.length > 0) {
+      return { ok: true, creators: cached.rows[0].creators ?? [], isCached: true };
+    }
+  }
+
+  const access = await tiktokToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  const params = new URLSearchParams({ advertiser_id: opts.advertiserId, page_size: "50" });
+  if (opts.country) params.append("country", opts.country);
+  if (opts.niche) params.append("industry_label", opts.niche);
+  if (opts.minFollowers) params.append("follower_min", String(opts.minFollowers));
+  if (opts.maxFollowers) params.append("follower_max", String(opts.maxFollowers));
+
+  const r = await fetch(`${TIKTOK_BUSINESS_BASE}/tcm/creator/authorized/?${params.toString()}`, {
+    headers: ttHeaders(access),
+  });
+  if (!r.ok) return { ok: false, error: `creator/authorized HTTP ${r.status}` };
+  const body = await r.json() as { data?: { creator_list?: any[] }; code?: number; message?: string };
+  if (body.code !== 0) return { ok: false, error: body.message ?? "creator/authorized failed" };
+
+  const creators: TiktokCreator[] = (body.data?.creator_list ?? []).map((c: any) => ({
+    handle: c.unique_id ?? c.handle ?? "",
+    displayName: c.nickname ?? c.display_name ?? "",
+    followerCount: Number(c.follower_count ?? 0),
+    engagementRate: Number(c.engagement_rate ?? 0),
+    location: c.country ?? c.region ?? "",
+    niche: c.industry ?? "",
+    avatarUrl: c.avatar_url ?? null,
+    marketplaceId: c.creator_id ?? c.tcm_id ?? null,
+  }));
+
+  // Cache
+  await pool.query(
+    `INSERT INTO tiktok_creator_discoveries (
+       producer_user_id, advertiser_id, country, niche,
+       min_followers, max_followers, creators
+     ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::jsonb)`,
+    [
+      opts.producerUserId,
+      opts.advertiserId,
+      opts.country ?? null,
+      opts.niche ?? null,
+      opts.minFollowers ?? null,
+      opts.maxFollowers ?? null,
+      JSON.stringify(creators),
+    ],
+  ).catch(() => {});
+
+  return { ok: true, creators, isCached: false };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// TikTok Business Plugin
+// ─────────────────────────────────────────────────────────────────────
+
+export async function listTiktokBusinessPlugins(
+  pool: Pool,
+  opts: { producerUserId: string; advertiserId: string },
+): Promise<{ ok: true; plugins: any[] } | { ok: false; error: string }> {
+  const access = await tiktokToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  const r = await fetch(
+    `${TIKTOK_BUSINESS_BASE}/business_plugin/list/?advertiser_id=${encodeURIComponent(opts.advertiserId)}`,
+    { headers: ttHeaders(access) },
+  );
+  if (!r.ok) return { ok: false, error: `plugin/list HTTP ${r.status}` };
+  const body = await r.json() as { data?: { list?: any[] }; code?: number; message?: string };
+  if (body.code !== 0) return { ok: false, error: body.message ?? "plugin/list failed" };
+  return { ok: true, plugins: body.data?.list ?? [] };
+}
+
+export async function installTiktokBusinessPlugin(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    advertiserId: string;
+    pluginType: string;
+    pluginName: string;
+    domain: string;
+    configId?: string | null;
+  },
+): Promise<{ ok: true; pluginId: string } | { ok: false; error: string }> {
+  const access = await tiktokToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  const r = await fetch(`${TIKTOK_BUSINESS_BASE}/business_plugin/install/`, {
+    method: "POST",
+    headers: ttHeaders(access),
+    body: JSON.stringify({
+      advertiser_id: opts.advertiserId,
+      plugin_type: opts.pluginType.toUpperCase(),
+      plugin_name: opts.pluginName,
+      domain: opts.domain,
+    }),
+  });
+  if (!r.ok) return { ok: false, error: `plugin/install HTTP ${r.status}` };
+  const body = await r.json() as { data?: { plugin_id?: string }; code?: number; message?: string };
+  if (body.code !== 0 || !body.data?.plugin_id) {
+    return { ok: false, error: body.message ?? "plugin/install failed" };
+  }
+
+  await pool.query(
+    `INSERT INTO tiktok_business_plugins (
+       config_id, producer_user_id, advertiser_id, plugin_type,
+       plugin_name, domain, tiktok_plugin_id, install_status, installed_at
+     ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, 'connected', NOW())
+     ON CONFLICT (advertiser_id, tiktok_plugin_id) DO UPDATE
+       SET install_status = 'connected', installed_at = NOW(), updated_at = NOW()`,
+    [
+      opts.configId ?? null,
+      opts.producerUserId,
+      opts.advertiserId,
+      opts.pluginType.toLowerCase(),
+      opts.pluginName,
+      opts.domain,
+      body.data.plugin_id,
+    ],
+  ).catch(() => {});
+
+  return { ok: true, pluginId: body.data.plugin_id };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// TikTok Accounts — linked accounts per Business Center
+// ─────────────────────────────────────────────────────────────────────
+
+export async function listTiktokLinkedAccounts(
+  pool: Pool,
+  opts: { producerUserId: string; advertiserId: string; configId?: string | null },
+): Promise<{ ok: true; accounts: any[] } | { ok: false; error: string }> {
+  const access = await tiktokToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  const r = await fetch(
+    `${TIKTOK_BUSINESS_BASE}/tiktok_account/list/?advertiser_id=${encodeURIComponent(opts.advertiserId)}`,
+    { headers: ttHeaders(access) },
+  );
+  if (!r.ok) return { ok: false, error: `account/list HTTP ${r.status}` };
+  const body = await r.json() as { data?: { list?: any[] }; code?: number; message?: string };
+  if (body.code !== 0) return { ok: false, error: body.message ?? "account/list failed" };
+
+  const accounts = (body.data?.list ?? []).map((a: any) => ({
+    tiktokAccountId: a.tiktok_account_id ?? a.account_id,
+    handle: a.handle ?? a.unique_id ?? null,
+    displayName: a.display_name ?? a.nickname ?? null,
+    accountRole: a.account_role ?? 'BRAND',
+    permissions: a.permissions ?? [],
+    accountStatus: (a.status ?? 'active').toLowerCase(),
+    followerCount: a.follower_count ? Number(a.follower_count) : null,
+    avatarUrl: a.avatar_url ?? null,
+  }));
+
+  // Cache i tabellen
+  for (const acct of accounts) {
+    await pool.query(
+      `INSERT INTO tiktok_linked_accounts (
+         config_id, producer_user_id, advertiser_id, tiktok_account_id,
+         handle, display_name, account_role, permissions, account_status,
+         follower_count, avatar_url, last_synced_at
+       ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+       ON CONFLICT (advertiser_id, tiktok_account_id) DO UPDATE
+         SET handle = EXCLUDED.handle,
+             display_name = EXCLUDED.display_name,
+             account_role = EXCLUDED.account_role,
+             permissions = EXCLUDED.permissions,
+             account_status = EXCLUDED.account_status,
+             follower_count = EXCLUDED.follower_count,
+             avatar_url = EXCLUDED.avatar_url,
+             last_synced_at = NOW(),
+             updated_at = NOW()`,
+      [
+        opts.configId ?? null,
+        opts.producerUserId,
+        opts.advertiserId,
+        acct.tiktokAccountId,
+        acct.handle,
+        acct.displayName,
+        acct.accountRole,
+        acct.permissions,
+        acct.accountStatus,
+        acct.followerCount,
+        acct.avatarUrl,
+      ],
+    ).catch(() => {});
+  }
+
+  return { ok: true, accounts };
+}
