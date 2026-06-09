@@ -73,6 +73,10 @@ import {
   listTiktokPixels,
   provisionTiktokPixel,
   mapActionToTiktokEvent,
+  listTiktokLeadForms,
+  syncTiktokLeads,
+  listTiktokAudiences,
+  createTiktokAudience,
 } from "./client-tiktok-suite.js";
 import {
   buildAdsAuthUrl,
@@ -1777,6 +1781,110 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     } catch (err) {
       console.error("[gtm-import] failed", err);
       return res.status(500).json({ error: "GTM-import feilet", detail: String(err) });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // TikTok Lead Management — /page/list/, /page/lead/list/
+  // ════════════════════════════════════════════════════════════════════
+
+  app.get("/api/admin-room/agent/ads/tiktok/lead-forms", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const advertiserId = typeof req.query.advertiserId === "string" ? req.query.advertiserId : "";
+    if (!advertiserId) return res.status(400).json({ error: "advertiserId påkrevd" });
+    const r = await listTiktokLeadForms(pool, { producerUserId: session.userId, advertiserId });
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ forms: r.forms });
+  });
+
+  app.post("/api/admin-room/agent/ads/configs/:id/tiktok/sync-leads", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { advertiserId?: string; formId?: string; sinceMs?: number };
+    if (!body.advertiserId || !body.formId) {
+      return res.status(400).json({ error: "advertiserId + formId påkrevd" });
+    }
+    try {
+      const r = await syncTiktokLeads(pool, {
+        producerUserId: session.userId,
+        advertiserId: body.advertiserId,
+        formId: body.formId,
+        configId: req.params.id !== "self" ? req.params.id : null,
+        sinceMs: body.sinceMs,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+      return res.json(r);
+    } catch (err) {
+      console.error("[tiktok-sync-leads] failed", err);
+      return res.status(500).json({ error: "Lead-sync feilet", detail: String(err) });
+    }
+  });
+
+  // GET leads for a config (or own marketing-cockpit if id='self')
+  app.get("/api/admin-room/agent/ads/configs/:id/tiktok/leads", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const isSelf = req.params.id === "self";
+    try {
+      const r = await pool.query(
+        `SELECT id::text, advertiser_id, form_id, form_name, tiktok_lead_id,
+                email, phone, full_name, custom_fields,
+                lead_created_at, synced_at, pushed_to_crm, status
+           FROM tiktok_lead_records
+          WHERE producer_user_id = $1::uuid
+            AND ($2::boolean OR config_id = $3::uuid)
+            AND ($2::boolean = FALSE OR config_id IS NULL)
+          ORDER BY lead_created_at DESC NULLS LAST
+          LIMIT 200`,
+        [session.userId, isSelf, isSelf ? null : req.params.id],
+      );
+      return res.json({ leads: r.rows });
+    } catch (err) {
+      return res.status(500).json({ error: "Kunne ikke hente leads", detail: String(err) });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // TikTok Audience Management — /dmp/custom_audience/*
+  // ════════════════════════════════════════════════════════════════════
+
+  app.get("/api/admin-room/agent/ads/tiktok/audiences", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const advertiserId = typeof req.query.advertiserId === "string" ? req.query.advertiserId : "";
+    if (!advertiserId) return res.status(400).json({ error: "advertiserId påkrevd" });
+    const r = await listTiktokAudiences(pool, { producerUserId: session.userId, advertiserId });
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ audiences: r.audiences });
+  });
+
+  app.post("/api/admin-room/agent/ads/configs/:id/tiktok/create-audience", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as {
+      advertiserId?: string;
+      name?: string;
+      sourceDescription?: string;
+      identifiers?: Array<{ email?: string; phone?: string }>;
+    };
+    if (!body.advertiserId || !body.name || !Array.isArray(body.identifiers) || body.identifiers.length === 0) {
+      return res.status(400).json({ error: "advertiserId + name + identifiers[] påkrevd" });
+    }
+    try {
+      const r = await createTiktokAudience(pool, {
+        producerUserId: session.userId,
+        advertiserId: body.advertiserId,
+        name: body.name,
+        sourceDescription: body.sourceDescription,
+        identifiers: body.identifiers,
+        configId: req.params.id !== "self" ? req.params.id : null,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+      return res.json(r);
+    } catch (err) {
+      console.error("[tiktok-create-audience] failed", err);
+      return res.status(500).json({ error: "Audience-opprettelse feilet", detail: String(err) });
     }
   });
 }

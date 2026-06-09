@@ -36,6 +36,8 @@ import ClientGoogleSuitePanel from './ClientGoogleSuitePanel';
 import ClientLinkedinSuitePanel from './ClientLinkedinSuitePanel';
 import ClientMetaSuitePanel from './ClientMetaSuitePanel';
 import ClientTiktokSuitePanel from './ClientTiktokSuitePanel';
+import ClientTiktokLeadsPanel from './ClientTiktokLeadsPanel';
+import ClientTiktokAudiencesPanel from './ClientTiktokAudiencesPanel';
 import ClientAiPromptsPanel from './ClientAiPromptsPanel';
 import ClientInsightsPanel from './ClientInsightsPanel';
 
@@ -902,6 +904,16 @@ export default function AgentAdsPanel({
           <ClientTiktokSuitePanel
             configId={savedConfigId}
             clientName={clientName || 'Klienten'}
+          />
+
+          {/* R3a — TikTok Lead Ads → klient-CRM */}
+          <ClientTiktokLeadsPanel
+            configId={savedConfigId}
+          />
+
+          {/* R3b — TikTok Custom Audiences */}
+          <ClientTiktokAudiencesPanel
+            configId={savedConfigId}
           />
 
           {/* Innsikt — full stack (GA4 + Ads + GSC + tracked events) */}

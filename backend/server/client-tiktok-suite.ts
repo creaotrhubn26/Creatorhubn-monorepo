@@ -366,3 +366,287 @@ export async function fetchTiktokAdsMetrics(
     dailyTrend,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Lead Management — TikTok Lead Ads
+// Henter leads fra /page/list/ + /page/lead/list/ og lagrer i
+// tiktok_lead_records-tabellen (migrate 261).
+// ─────────────────────────────────────────────────────────────────────
+
+export interface TiktokLeadForm {
+  formId: string;
+  formName: string;
+  createdAt?: string;
+  leadCount?: number;
+}
+
+export async function listTiktokLeadForms(
+  pool: Pool,
+  opts: { producerUserId: string; advertiserId: string },
+): Promise<{ ok: true; forms: TiktokLeadForm[] } | { ok: false; error: string }> {
+  const access = await tiktokToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  const r = await fetch(
+    `${TIKTOK_BUSINESS_BASE}/page/list/?advertiser_id=${encodeURIComponent(opts.advertiserId)}`,
+    { headers: ttHeaders(access) },
+  );
+  if (!r.ok) return { ok: false, error: `listPages HTTP ${r.status}` };
+  const body = await r.json() as {
+    data?: { list?: Array<{ page_id: string; page_name: string; create_time?: string; lead_count?: number }> };
+    code?: number;
+    message?: string;
+  };
+  if (body.code !== 0) return { ok: false, error: body.message ?? "listPages failed" };
+  return {
+    ok: true,
+    forms: (body.data?.list ?? []).map((p) => ({
+      formId: p.page_id,
+      formName: p.page_name,
+      createdAt: p.create_time,
+      leadCount: p.lead_count,
+    })),
+  };
+}
+
+/** Hent leads fra TikTok + lagre i tiktok_lead_records. Returnerer
+ *  antall nye + oppdaterte. Bruker last_synced_at fra sync-jobben
+ *  som baseline for inkrementell sync. */
+export async function syncTiktokLeads(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    advertiserId: string;
+    formId: string;
+    configId?: string | null;          // NULL = Marketing Cockpit (egen)
+    sinceMs?: number;                  // For paginering
+  },
+): Promise<
+  | { ok: true; fetched: number; inserted: number; updated: number }
+  | { ok: false; error: string }
+> {
+  const access = await tiktokToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  const sinceMs = opts.sinceMs ?? (Date.now() - 7 * 24 * 60 * 60 * 1000); // siste 7 dager default
+  const url = `${TIKTOK_BUSINESS_BASE}/page/lead/list/?advertiser_id=${encodeURIComponent(opts.advertiserId)}&page_id=${encodeURIComponent(opts.formId)}&filtering=${encodeURIComponent(JSON.stringify({ start_time: Math.floor(sinceMs / 1000) }))}`;
+
+  const r = await fetch(url, { headers: ttHeaders(access) });
+  if (!r.ok) return { ok: false, error: `lead/list HTTP ${r.status}` };
+  const body = await r.json() as {
+    data?: {
+      list?: Array<{
+        lead_id: string;
+        create_time: string;
+        fields?: Array<{ field_name: string; field_value: string }>;
+      }>;
+    };
+    code?: number;
+    message?: string;
+  };
+  if (body.code !== 0) return { ok: false, error: body.message ?? "lead/list failed" };
+
+  const leads = body.data?.list ?? [];
+  let inserted = 0;
+  let updated = 0;
+
+  for (const lead of leads) {
+    const fields = new Map<string, string>();
+    for (const f of (lead.fields ?? [])) {
+      fields.set(f.field_name.toLowerCase(), f.field_value);
+    }
+    const email = fields.get("email") ?? null;
+    const phone = fields.get("phone") ?? fields.get("phone_number") ?? null;
+    const fullName = fields.get("full_name") ?? fields.get("name") ?? null;
+    // De resterende feltene → custom_fields-JSONB
+    const custom: Record<string, string> = {};
+    for (const [k, v] of fields) {
+      if (!["email", "phone", "phone_number", "full_name", "name"].includes(k)) {
+        custom[k] = v;
+      }
+    }
+
+    const res = await pool.query(
+      `INSERT INTO tiktok_lead_records (
+         config_id, producer_user_id, advertiser_id, form_id, tiktok_lead_id,
+         email, phone, full_name, custom_fields, lead_created_at, synced_at
+       )
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, now())
+       ON CONFLICT (tiktok_lead_id) DO UPDATE
+         SET email = COALESCE(EXCLUDED.email, tiktok_lead_records.email),
+             phone = COALESCE(EXCLUDED.phone, tiktok_lead_records.phone),
+             full_name = COALESCE(EXCLUDED.full_name, tiktok_lead_records.full_name),
+             custom_fields = EXCLUDED.custom_fields,
+             synced_at = now(),
+             updated_at = now()
+       RETURNING (xmax = 0) AS inserted`,
+      [
+        opts.configId ?? null,
+        opts.producerUserId,
+        opts.advertiserId,
+        opts.formId,
+        lead.lead_id,
+        email,
+        phone,
+        fullName,
+        JSON.stringify(custom),
+        new Date(parseInt(lead.create_time, 10) * 1000),
+      ],
+    );
+    if (res.rows[0]?.inserted) inserted++;
+    else updated++;
+  }
+
+  // Oppdater sync-jobb
+  await pool.query(
+    `INSERT INTO tiktok_lead_sync_jobs (config_id, producer_user_id, advertiser_id, form_id, last_synced_at, last_lead_created_at)
+     VALUES ($1::uuid, $2::uuid, $3, $4, now(), now())
+     ON CONFLICT (advertiser_id, form_id) DO UPDATE
+       SET last_synced_at = now(), last_error = NULL, updated_at = now()`,
+    [opts.configId ?? null, opts.producerUserId, opts.advertiserId, opts.formId],
+  ).catch(() => {});
+
+  return { ok: true, fetched: leads.length, inserted, updated };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Audience Management — Custom Audiences
+// ─────────────────────────────────────────────────────────────────────
+
+export interface TiktokAudience {
+  audienceId: string;
+  name: string;
+  type: string;
+  size?: number;
+  matchRate?: number;
+  status: string;
+}
+
+export async function listTiktokAudiences(
+  pool: Pool,
+  opts: { producerUserId: string; advertiserId: string },
+): Promise<{ ok: true; audiences: TiktokAudience[] } | { ok: false; error: string }> {
+  const access = await tiktokToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  const r = await fetch(
+    `${TIKTOK_BUSINESS_BASE}/dmp/custom_audience/list/?advertiser_id=${encodeURIComponent(opts.advertiserId)}`,
+    { headers: ttHeaders(access) },
+  );
+  if (!r.ok) return { ok: false, error: `audience/list HTTP ${r.status}` };
+  const body = await r.json() as {
+    data?: { list?: Array<{ audience_id: string; name: string; calculate_type: string; cover_num?: number; calculate_rate?: number; audience_status: string }> };
+    code?: number;
+    message?: string;
+  };
+  if (body.code !== 0) return { ok: false, error: body.message ?? "audience/list failed" };
+  return {
+    ok: true,
+    audiences: (body.data?.list ?? []).map((a) => ({
+      audienceId: a.audience_id,
+      name: a.name,
+      type: a.calculate_type,
+      size: a.cover_num,
+      matchRate: a.calculate_rate ? Number(a.calculate_rate) : undefined,
+      status: a.audience_status,
+    })),
+  };
+}
+
+import crypto from "node:crypto";
+
+/** Hashe e-post-/telefon-liste SHA256 (lowercase, trimmed) — TikTok kraver det. */
+function hashIdentifier(value: string): string {
+  return crypto.createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
+}
+
+/** Opprett custom audience. Tar liste med rå e-post/telefon — hashes klient-side
+ *  før send til TikTok. */
+export async function createTiktokAudience(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    advertiserId: string;
+    name: string;
+    sourceDescription?: string;
+    identifiers: Array<{ email?: string; phone?: string }>;
+    configId?: string | null;
+  },
+): Promise<
+  | { ok: true; audienceId: string; uploadCount: number }
+  | { ok: false; error: string }
+> {
+  const access = await tiktokToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  // 1) Bygg fil-payload — TikTok forventer hashed identifiers
+  const rows: string[] = ["email,phone"];
+  for (const id of opts.identifiers) {
+    const hashedEmail = id.email ? hashIdentifier(id.email) : "";
+    const hashedPhone = id.phone ? hashIdentifier(id.phone) : "";
+    if (hashedEmail || hashedPhone) {
+      rows.push(`${hashedEmail},${hashedPhone}`);
+    }
+  }
+  const csvContent = rows.join("\n");
+  const fileName = `${opts.name.replace(/[^a-zA-Z0-9_-]/g, "_")}_${Date.now()}.csv`;
+
+  // 2) Upload file
+  const fileUploadUrl = `${TIKTOK_BUSINESS_BASE}/dmp/custom_audience/file/upload/`;
+  const formData = new FormData();
+  formData.append("advertiser_id", opts.advertiserId);
+  formData.append("file_signature", crypto.createHash("md5").update(csvContent).digest("hex"));
+  formData.append("file", new Blob([csvContent], { type: "text/csv" }), fileName);
+
+  const uploadR = await fetch(fileUploadUrl, {
+    method: "POST",
+    headers: { "Access-Token": access },
+    body: formData,
+  });
+  if (!uploadR.ok) return { ok: false, error: `file/upload HTTP ${uploadR.status}` };
+  const uploadBody = await uploadR.json() as { data?: { file_id?: string }; code?: number; message?: string };
+  if (uploadBody.code !== 0 || !uploadBody.data?.file_id) {
+    return { ok: false, error: uploadBody.message ?? "file/upload failed" };
+  }
+
+  // 3) Create audience
+  const createR = await fetch(`${TIKTOK_BUSINESS_BASE}/dmp/custom_audience/create/`, {
+    method: "POST",
+    headers: ttHeaders(access),
+    body: JSON.stringify({
+      advertiser_id: opts.advertiserId,
+      custom_audience_name: opts.name,
+      file_paths: [uploadBody.data.file_id],
+      calculate_type: "CUSTOMER_FILE",
+    }),
+  });
+  if (!createR.ok) return { ok: false, error: `audience/create HTTP ${createR.status}` };
+  const createBody = await createR.json() as { data?: { audience_id?: string }; code?: number; message?: string };
+  if (createBody.code !== 0 || !createBody.data?.audience_id) {
+    return { ok: false, error: createBody.message ?? "audience/create failed" };
+  }
+
+  // 4) Lagre i vår tabell
+  await pool.query(
+    `INSERT INTO tiktok_custom_audiences (
+       config_id, producer_user_id, advertiser_id, tiktok_audience_id,
+       audience_name, audience_type, source_description, upload_count, status
+     ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'CUSTOMER_FILE', $6, $7, 'processing')
+     ON CONFLICT (tiktok_audience_id) DO NOTHING`,
+    [
+      opts.configId ?? null,
+      opts.producerUserId,
+      opts.advertiserId,
+      createBody.data.audience_id,
+      opts.name,
+      opts.sourceDescription ?? null,
+      opts.identifiers.length,
+    ],
+  ).catch(() => {});
+
+  return {
+    ok: true,
+    audienceId: createBody.data.audience_id,
+    uploadCount: opts.identifiers.length,
+  };
+}
