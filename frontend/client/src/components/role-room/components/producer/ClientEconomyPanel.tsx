@@ -34,6 +34,7 @@ import ClientConnectWizard from '../client-workspace/ClientConnectWizard';
 import ClientAdsPerformancePanel from './ClientAdsPerformancePanel';
 import ClientAdsApprovalSection from './ClientAdsApprovalSection';
 import MonthlyManagementFeeBox from './MonthlyManagementFeeBox';
+import ClientEconomyTiktokSection from './ClientEconomyTiktokSection';
 
 /**
  * Client-facing economy hub (MedInnova-avtalen §5.3): the simplest possible view
@@ -349,6 +350,9 @@ export default function ClientEconomyPanel({
 
       {/* ── Månedlig mgmt-fee-fordeling + akkumulert spend ── */}
       <MonthlyManagementFeeBox clientProjectId={projectId} />
+
+      {/* ── TikTok-oversikt (spend + attribution + leads + linked accounts) ── */}
+      <ClientEconomyTiktokSection clientProjectId={projectId} />
 
       {/* ── Lag 2: AI-anbefalinger (myk veiledning, ingen automatisk handling) ── */}
       {recommendations && (recommendations.recommendations.length > 0 || recommendations.overallNote) && (

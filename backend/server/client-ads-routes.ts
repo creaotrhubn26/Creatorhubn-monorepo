@@ -2014,6 +2014,33 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   });
 
   // ════════════════════════════════════════════════════════════════════
+  // Klient-portal: hent klient-config-er for et prosjekt
+  // (klient ser sin egen TikTok-oversikt i Client Economy)
+  // ════════════════════════════════════════════════════════════════════
+
+  app.get("/api/role-room/ads-configs/by-project", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const projectId = typeof req.query.clientProjectId === "string" ? req.query.clientProjectId : "";
+    if (!projectId) return res.status(400).json({ error: "clientProjectId påkrevd" });
+    try {
+      const r = await pool.query(
+        `SELECT id::text, tiktok_pixel_id, tiktok_advertiser_id,
+                meta_pixel_id, meta_ad_account_id,
+                google_ads_customer_id, ga4_property_id,
+                linkedin_insight_tag_id
+           FROM client_ads_configs
+          WHERE client_project_id = $1::uuid
+          ORDER BY created_at DESC`,
+        [projectId],
+      );
+      return res.json({ configs: r.rows });
+    } catch (err) {
+      return res.status(500).json({ error: "Kunne ikke hente klient-configs", detail: String(err) });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
   // TikTok Creative Management
   // ════════════════════════════════════════════════════════════════════
 
