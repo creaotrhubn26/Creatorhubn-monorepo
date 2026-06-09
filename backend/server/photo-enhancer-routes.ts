@@ -2828,7 +2828,10 @@ async function convertRawWithExternalTool(
     {
       id: "rawtherapee",
       binaries: ["rawtherapee-cli"],
-      args: ["-o", outputPath, "-c", inputPath],
+      // -n (PNG output) + -Y (overwrite) are required, else rawtherapee-cli
+      // writes a differently-named/format file and our outputPath stays
+      // empty ("no output"). -c must remain last.
+      args: ["-o", outputPath, "-n", "-Y", "-c", inputPath],
       outputPath,
       outputMimeType: "image/png",
       resolutionMode: "converter-default",
@@ -2850,7 +2853,10 @@ async function convertRawWithExternalTool(
     attempts.unshift({
       id: "rawtherapee-lensfun",
       binaries: ["rawtherapee-cli"],
-      args: ["-o", outputPath, "-p", lensfunPp3Path, "-c", inputPath],
+      // -n (PNG) + -Y (overwrite); -c last. Without -n, rawtherapee-cli
+      // produced no file at outputPath ("no output") and lens correction
+      // silently fell back to dcraw.
+      args: ["-o", outputPath, "-p", lensfunPp3Path, "-n", "-Y", "-c", inputPath],
       outputPath,
       outputMimeType: "image/png",
       resolutionMode: "converter-default",
