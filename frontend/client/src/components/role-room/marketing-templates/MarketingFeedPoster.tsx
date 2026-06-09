@@ -1,11 +1,10 @@
 /**
- * WeeklyBriefPoster — Role Room-branded 4:5 marketing-poster for nyhetsbrev-
- * promo (LinkedIn / Instagram feed). Pure visuell komponent som tar fullt
- * strukturert WeeklyBriefFields og rendrer det.
+ * MarketingFeedPoster — Role Room-branded 4:5 marketing-poster for
+ * sosial-media-distribusjon (LinkedIn / Instagram feed). Pure visuell
+ * komponent; rendrer det templates-/editor-laget mater inn.
  *
- * Designspråket speiler hero-bildet brukeren ga som referanse: editorial
- * serif headline med lilla gradient på ett ord, 4 content-cards med ikon,
- * abonnement-CTA med QR-kode, og sosial-media-footer.
+ * Generisk nok til å brukes for ulike templates (Weekly Brief, event-
+ * annonse, product-launch). Theme + variant velges separat.
  */
 
 import React, { forwardRef, useEffect, useState } from 'react';
@@ -26,11 +25,11 @@ import {
   ArrowForward as ArrowIcon,
 } from '@mui/icons-material';
 import QRCode from 'qrcode';
+import { getTheme, type MarketingPosterTheme } from './themes';
 
-const RR_PURPLE = '#a78bfa';
-const RR_PURPLE_DARK = '#7c3aed';
+const BRAND_LOGO_URL = '/TheRoleRoom_App_Logo.png';
 
-export type WeeklyBriefCardIcon =
+export type PosterCardIcon =
   | 'chart'
   | 'film'
   | 'shield'
@@ -40,50 +39,40 @@ export type WeeklyBriefCardIcon =
   | 'star'
   | 'team';
 
-export interface WeeklyBriefCard {
-  icon: WeeklyBriefCardIcon;
+export interface PosterCard {
+  icon: PosterCardIcon;
   title: string;
   description: string;
+  /** Valgfri bakgrunns-bilde-URL (vises bak ikon/tekst med mørk overlay). */
+  bgImageUrl?: string;
 }
 
 export type SocialIcon = 'linkedin' | 'instagram' | 'youtube' | 'email';
 
-export interface WeeklyBriefFields {
-  /** Stor headline-tittel (4-6 ord). En del kan markeres som accent via accentText */
+export interface MarketingPosterFields {
   headline: string;
-  /** Ord/uttrykk i headline som skal ha lilla gradient (eks. "Norwegian"). Tom = ingen accent. */
   accentText?: string;
-  /** Underlinje (1-2 setninger). Substrings i highlights får farge-accent. */
   subheading?: string;
-  /** Ord i subheading som skal markeres med lilla (case-sensitive). */
   subheadingHighlights?: string[];
-  /** 1-4 cards. Brikker som ikke får plass kuttes. */
-  cards: WeeklyBriefCard[];
-  /** Tittel på abonnement-blokken nederst */
+  cards: PosterCard[];
   ctaTitle?: string;
-  /** Accent-ord i CTA-tittelen (eks. "ukentlig innsikt") */
   ctaTitleAccent?: string;
-  /** CTA-undertekst */
   ctaSubtitle?: string;
-  /** URL som QR-koden skal lede til */
   qrUrl?: string;
-  /** Footer venstre — typisk domene */
   footerLeft?: string;
-  /** Footer midt — typisk tagline */
   footerCenter?: string;
-  /** Footer-sosialer (icon-array) */
   socialIcons?: SocialIcon[];
 }
 
-export type WeeklyBriefVariant = 'standard' | 'minimal' | 'editorial';
+export type PosterVariant = 'standard' | 'minimal' | 'editorial';
 
-export interface WeeklyBriefVariantDef {
-  id: WeeklyBriefVariant;
+export interface PosterVariantDef {
+  id: PosterVariant;
   label: string;
   description: string;
 }
 
-export const WEEKLY_BRIEF_VARIANTS: WeeklyBriefVariantDef[] = [
+export const POSTER_VARIANTS: PosterVariantDef[] = [
   {
     id: 'standard',
     label: 'Standard',
@@ -101,12 +90,12 @@ export const WEEKLY_BRIEF_VARIANTS: WeeklyBriefVariantDef[] = [
   },
 ];
 
-export const CARD_ICON_OPTIONS: WeeklyBriefCardIcon[] = [
+export const CARD_ICON_OPTIONS: PosterCardIcon[] = [
   'chart', 'film', 'shield', 'person', 'calendar', 'trending', 'star', 'team',
 ];
 
-function CardIcon({ kind }: { kind: WeeklyBriefCardIcon }): JSX.Element {
-  const sx = { color: RR_PURPLE, fontSize: '5.4cqw' };
+function CardIconRender({ kind, color }: { kind: PosterCardIcon; color: string }): JSX.Element {
+  const sx = { color, fontSize: '5.4cqw' };
   switch (kind) {
     case 'chart': return <ChartIcon sx={sx} />;
     case 'film': return <MovieIcon sx={sx} />;
@@ -119,8 +108,8 @@ function CardIcon({ kind }: { kind: WeeklyBriefCardIcon }): JSX.Element {
   }
 }
 
-function SocialIconRender({ kind }: { kind: SocialIcon }): JSX.Element {
-  const sx = { color: RR_PURPLE, fontSize: '3.6cqw' };
+function SocialIconRender({ kind, color }: { kind: SocialIcon; color: string }): JSX.Element {
+  const sx = { color, fontSize: '3.6cqw' };
   switch (kind) {
     case 'linkedin': return <LinkedInIcon sx={sx} />;
     case 'instagram': return <InstagramIcon sx={sx} />;
@@ -129,14 +118,12 @@ function SocialIconRender({ kind }: { kind: SocialIcon }): JSX.Element {
   }
 }
 
-/**
- * Splitter headline rundt accent-uttrykket og rendrer accent-delen som
- * lilla gradient. Beholder case-sensitivity og whitespace.
- */
 function HeadlineWithAccent({
   text,
   accent,
-}: { text: string; accent?: string }): JSX.Element {
+  accentColor,
+  accentColorDark,
+}: { text: string; accent?: string; accentColor: string; accentColorDark: string }): JSX.Element {
   if (!accent || !text.includes(accent)) {
     return <>{text}</>;
   }
@@ -149,10 +136,12 @@ function HeadlineWithAccent({
       <Box
         component="span"
         sx={{
-          background: `linear-gradient(180deg, ${RR_PURPLE}, ${RR_PURPLE_DARK})`,
+          background: `linear-gradient(180deg, ${accentColor}, ${accentColorDark})`,
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
         }}
+        // a11y fallback — WebkitBackgroundClip skjuler teksten i visse SR-er
+        aria-label={accent}
       >
         {accent}
       </Box>
@@ -161,71 +150,109 @@ function HeadlineWithAccent({
   );
 }
 
-/**
- * Markerer flere substrings med lilla farge (ikke gradient — den brukes
- * bare for headline). Splitter på første match, så rekurserer.
- */
 function HighlightedText({
   text,
   highlights,
-}: { text: string; highlights?: string[] }): JSX.Element {
+  color,
+}: { text: string; highlights?: string[]; color: string }): JSX.Element {
   if (!highlights || highlights.length === 0) return <>{text}</>;
   const sorted = [...highlights].filter(Boolean).sort((a, b) => b.length - a.length);
   if (sorted.length === 0) return <>{text}</>;
   const accent = sorted[0];
   const idx = text.indexOf(accent);
-  if (idx < 0) return <HighlightedText text={text} highlights={sorted.slice(1)} />;
+  if (idx < 0) return <HighlightedText text={text} highlights={sorted.slice(1)} color={color} />;
   const before = text.slice(0, idx);
   const after = text.slice(idx + accent.length);
   return (
     <>
-      <HighlightedText text={before} highlights={sorted} />
-      <Box component="span" sx={{ color: RR_PURPLE, fontWeight: 700 }}>
+      <HighlightedText text={before} highlights={sorted} color={color} />
+      <Box component="span" sx={{ color, fontWeight: 700 }}>
         {accent}
       </Box>
-      <HighlightedText text={after} highlights={sorted} />
+      <HighlightedText text={after} highlights={sorted} color={color} />
     </>
   );
 }
 
 /**
- * Genererer en QR-PNG som data-URL via `qrcode`. Falbacker til en placeholder
- * hvis URL'en er tom eller QR-gen feiler.
+ * Synchron QR-cache + async generator. Holder en in-memory cache så samme
+ * URL kun genereres én gang og er klar ved eksport-tidspunktet.
+ *
+ * Returnerer { dataUrl, ready }-tuple. `ready` blir true når URL er
+ * generert eller når URL er tom. Editor venter på `ready === true` før
+ * html2canvas-snapshot.
  */
-function useQrCodeDataUrl(url: string | undefined): string | null {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
+const qrCache = new Map<string, string>();
+const qrPromises = new Map<string, Promise<string | null>>();
+
+export function preloadQrCode(url: string): Promise<string | null> {
+  const key = url.trim();
+  if (!key) return Promise.resolve(null);
+  if (qrCache.has(key)) return Promise.resolve(qrCache.get(key) ?? null);
+  if (qrPromises.has(key)) return qrPromises.get(key)!;
+  const p = QRCode.toDataURL(key, {
+    errorCorrectionLevel: 'M',
+    margin: 1,
+    width: 280,
+    color: { dark: '#ffffff', light: '#00000000' },
+  })
+    .then((d) => {
+      qrCache.set(key, d);
+      qrPromises.delete(key);
+      return d;
+    })
+    .catch(() => {
+      qrPromises.delete(key);
+      return null;
+    });
+  qrPromises.set(key, p);
+  return p;
+}
+
+function useQrCodeDataUrl(url: string | undefined): { dataUrl: string | null; ready: boolean } {
+  const key = (url ?? '').trim();
+  const cached = key ? qrCache.get(key) ?? null : null;
+  const [dataUrl, setDataUrl] = useState<string | null>(cached);
+  const [ready, setReady] = useState<boolean>(!key || cached !== null);
   useEffect(() => {
-    let cancelled = false;
-    if (!url || url.trim().length === 0) {
+    if (!key) {
       setDataUrl(null);
+      setReady(true);
       return;
     }
-    QRCode.toDataURL(url.trim(), {
-      errorCorrectionLevel: 'M',
-      margin: 1,
-      width: 280,
-      color: { dark: '#ffffff', light: '#00000000' },
-    })
-      .then((d) => { if (!cancelled) setDataUrl(d); })
-      .catch(() => { if (!cancelled) setDataUrl(null); });
-    return () => { cancelled = true; };
-  }, [url]);
-  return dataUrl;
+    const cachedNow = qrCache.get(key);
+    if (cachedNow) {
+      setDataUrl(cachedNow);
+      setReady(true);
+      return;
+    }
+    setReady(false);
+    let cancelled = false;
+    void preloadQrCode(key).then((d) => {
+      if (cancelled) return;
+      setDataUrl(d);
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+  return { dataUrl, ready };
 }
 
-const POSTER_BG =
-  'radial-gradient(circle at 15% 10%, rgba(167,139,250,0.30), transparent 40%),' +
-  ' radial-gradient(circle at 95% 105%, rgba(124,58,237,0.22), transparent 50%),' +
-  ' linear-gradient(180deg, #0a0a14 0%, #0e0820 50%, #1a0f2e 100%)';
-
-export interface WeeklyBriefPosterProps {
-  fields: WeeklyBriefFields;
+export interface MarketingFeedPosterProps {
+  fields: MarketingPosterFields;
   width?: number | string;
-  variant?: WeeklyBriefVariant;
+  variant?: PosterVariant;
+  theme?: MarketingPosterTheme;
 }
 
-export const WeeklyBriefPoster = forwardRef<HTMLDivElement, WeeklyBriefPosterProps>(
-  function WeeklyBriefPoster({ fields, width = '100%', variant = 'standard' }, ref) {
+export const MarketingFeedPoster = forwardRef<HTMLDivElement, MarketingFeedPosterProps>(
+  function MarketingFeedPoster(
+    { fields, width = '100%', variant = 'standard', theme = 'purple' },
+    ref,
+  ) {
+    const t = getTheme(theme);
     const {
       headline,
       accentText,
@@ -241,7 +268,7 @@ export const WeeklyBriefPoster = forwardRef<HTMLDivElement, WeeklyBriefPosterPro
       socialIcons = ['linkedin', 'instagram', 'youtube'],
     } = fields;
 
-    const qrDataUrl = useQrCodeDataUrl(qrUrl);
+    const { dataUrl: qrDataUrl } = useQrCodeDataUrl(qrUrl);
 
     const cardsToShow = variant === 'editorial' ? cards.slice(0, 2) : cards.slice(0, 4);
     const showCards = variant !== 'minimal' && cardsToShow.length > 0;
@@ -250,27 +277,27 @@ export const WeeklyBriefPoster = forwardRef<HTMLDivElement, WeeklyBriefPosterPro
     return (
       <Box
         ref={ref}
+        data-testid="marketing-poster-root"
+        data-theme={theme}
         sx={{
           width,
           aspectRatio: '4 / 5',
           containerType: 'inline-size',
-          background: POSTER_BG,
+          background: t.background,
           color: '#fff',
           borderRadius: 2,
           overflow: 'hidden',
           position: 'relative',
           fontFamily: '"Inter", "SF Pro Display", system-ui, sans-serif',
-          boxShadow: '0 20px 60px rgba(124,58,237,0.25)',
-          border: '1px solid rgba(167,139,250,0.20)',
+          boxShadow: t.shadow,
+          border: `1px solid rgba(${t.glowRgb}, 0.20)`,
         }}
       >
-        {/* Subtilt scanline-glow over toppen */}
         <Box
           sx={{
             position: 'absolute',
             inset: 0,
-            background:
-              'radial-gradient(ellipse at 75% 5%, rgba(167,139,250,0.18), transparent 35%)',
+            background: `radial-gradient(ellipse at 75% 5%, rgba(${t.glowRgb},0.18), transparent 35%)`,
             pointerEvents: 'none',
           }}
         />
@@ -285,34 +312,31 @@ export const WeeklyBriefPoster = forwardRef<HTMLDivElement, WeeklyBriefPosterPro
             justifyContent: 'space-between',
           }}
         >
-          {/* ── Logo + tagline ─────────────────────────────────── */}
+          {/* Brand-stripe — ekte Role Room-logo + tagline */}
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <Box
+              component="img"
+              src={BRAND_LOGO_URL}
+              alt="The Role Room"
+              crossOrigin="anonymous"
               sx={{
-                width: '11cqw',
-                height: '11cqw',
-                borderRadius: '2.2cqw',
-                background:
-                  'linear-gradient(135deg, rgba(167,139,250,0.50), rgba(124,58,237,0.75))',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                border: '1px solid rgba(167,139,250,0.55)',
+                width: '12cqw',
+                height: '12cqw',
+                objectFit: 'contain',
+                filter: `drop-shadow(0 0 10px rgba(${t.glowRgb},0.45))`,
+                flexShrink: 0,
               }}
-            >
-              <Typography sx={{ fontWeight: 800, fontSize: '6cqw', color: '#fff' }}>R</Typography>
-            </Box>
+            />
             <Stack spacing={0}>
               <Typography sx={{ fontWeight: 800, fontSize: '3.4cqw', letterSpacing: '0.25cqw', color: '#fff' }}>
                 THE ROLE ROOM
               </Typography>
-              <Typography sx={{ fontSize: '1.9cqw', color: RR_PURPLE, fontWeight: 600 }}>
+              <Typography sx={{ fontSize: '1.9cqw', color: t.accent, fontWeight: 600 }}>
                 Casting. Roles. Together.
               </Typography>
             </Stack>
           </Stack>
 
-          {/* ── Editorial headline ──────────────────────────────── */}
           <Box>
             <Typography
               sx={{
@@ -322,19 +346,23 @@ export const WeeklyBriefPoster = forwardRef<HTMLDivElement, WeeklyBriefPosterPro
                 lineHeight: 0.96,
                 color: '#fff',
                 letterSpacing: '-0.04em',
+                whiteSpace: 'pre-line',
               }}
             >
-              <HeadlineWithAccent text={headline} accent={accentText} />
+              <HeadlineWithAccent
+                text={headline}
+                accent={accentText}
+                accentColor={t.accent}
+                accentColorDark={t.accentDark}
+              />
             </Typography>
-            {/* Decorative divider with sparkle */}
             <Stack direction="row" alignItems="center" spacing={1.2} sx={{ mt: '1.5cqw', width: '70%' }}>
-              <Box sx={{ flex: 1, height: 1.5, background: `linear-gradient(90deg, ${RR_PURPLE}, transparent)` }} />
-              <Box sx={{ color: RR_PURPLE, fontSize: '2.6cqw' }}>✦</Box>
-              <Box sx={{ flex: 1, height: 1.5, background: 'linear-gradient(90deg, transparent, rgba(167,139,250,0.4))' }} />
+              <Box sx={{ flex: 1, height: 1.5, background: `linear-gradient(90deg, ${t.accent}, transparent)` }} />
+              <Box sx={{ color: t.accent, fontSize: '2.6cqw' }}>✦</Box>
+              <Box sx={{ flex: 1, height: 1.5, background: `linear-gradient(90deg, transparent, rgba(${t.glowRgb},0.4))` }} />
             </Stack>
           </Box>
 
-          {/* ── Subheading ──────────────────────────────────────── */}
           {subheading && (
             <Typography
               sx={{
@@ -344,11 +372,10 @@ export const WeeklyBriefPoster = forwardRef<HTMLDivElement, WeeklyBriefPosterPro
                 maxWidth: '85%',
               }}
             >
-              <HighlightedText text={subheading} highlights={subheadingHighlights} />
+              <HighlightedText text={subheading} highlights={subheadingHighlights} color={t.accent} />
             </Typography>
           )}
 
-          {/* ── Cards grid ──────────────────────────────────────── */}
           {showCards && (
             <Box
               sx={{
@@ -358,19 +385,18 @@ export const WeeklyBriefPoster = forwardRef<HTMLDivElement, WeeklyBriefPosterPro
               }}
             >
               {cardsToShow.map((card, i) => (
-                <BriefCard key={i} card={card} />
+                <BriefCard key={i} card={card} accent={t.accent} glowRgb={t.glowRgb} />
               ))}
             </Box>
           )}
 
-          {/* ── Subscription CTA + QR ───────────────────────────── */}
           <Box
             sx={{
               p: '3cqw',
               borderRadius: '2.4cqw',
-              border: '1px solid rgba(167,139,250,0.25)',
+              border: `1px solid rgba(${t.glowRgb},0.25)`,
               background:
-                'linear-gradient(180deg, rgba(167,139,250,0.10), rgba(124,58,237,0.04))',
+                `linear-gradient(180deg, rgba(${t.glowRgb},0.10), rgba(${t.glowRgb},0.04))`,
               display: 'flex',
               alignItems: 'center',
               gap: '3cqw',
@@ -381,19 +407,23 @@ export const WeeklyBriefPoster = forwardRef<HTMLDivElement, WeeklyBriefPosterPro
                 width: '10cqw',
                 height: '10cqw',
                 borderRadius: '50%',
-                background: 'rgba(167,139,250,0.18)',
-                border: '1px solid rgba(167,139,250,0.35)',
+                background: `rgba(${t.glowRgb},0.18)`,
+                border: `1px solid rgba(${t.glowRgb},0.35)`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
               }}
             >
-              <EmailIcon sx={{ color: RR_PURPLE, fontSize: '5cqw' }} />
+              <EmailIcon sx={{ color: t.accent, fontSize: '5cqw' }} />
             </Box>
             <Stack spacing="0.6cqw" sx={{ flex: 1, minWidth: 0 }}>
               <Typography sx={{ fontWeight: 800, fontSize: '3cqw', color: '#fff', lineHeight: 1.2 }}>
-                <HighlightedText text={ctaTitle} highlights={ctaTitleAccent ? [ctaTitleAccent] : undefined} />
+                <HighlightedText
+                  text={ctaTitle}
+                  highlights={ctaTitleAccent ? [ctaTitleAccent] : undefined}
+                  color={t.accent}
+                />
               </Typography>
               <Typography sx={{ fontSize: '2cqw', color: 'rgba(255,255,255,0.6)', lineHeight: 1.4 }}>
                 {ctaSubtitle}
@@ -409,8 +439,8 @@ export const WeeklyBriefPoster = forwardRef<HTMLDivElement, WeeklyBriefPosterPro
                   height: '15cqw',
                   flexShrink: 0,
                   borderRadius: '1.4cqw',
-                  border: '1px solid rgba(167,139,250,0.35)',
-                  background: 'rgba(124,58,237,0.18)',
+                  border: `1px solid rgba(${t.glowRgb},0.35)`,
+                  background: `rgba(${t.glowRgb},0.18)`,
                   p: '0.5cqw',
                 }}
               />
@@ -421,7 +451,7 @@ export const WeeklyBriefPoster = forwardRef<HTMLDivElement, WeeklyBriefPosterPro
                   height: '15cqw',
                   flexShrink: 0,
                   borderRadius: '1.4cqw',
-                  border: '1px dashed rgba(167,139,250,0.4)',
+                  border: `1px dashed rgba(${t.glowRgb},0.4)`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -436,9 +466,8 @@ export const WeeklyBriefPoster = forwardRef<HTMLDivElement, WeeklyBriefPosterPro
             )}
           </Box>
 
-          {/* ── Footer ─────────────────────────────────────────── */}
           <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Typography sx={{ color: RR_PURPLE, fontSize: '2.2cqw', fontWeight: 600 }}>
+            <Typography sx={{ color: t.accent, fontSize: '2.2cqw', fontWeight: 600 }}>
               {footerLeft}
             </Typography>
             <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '2cqw' }}>
@@ -452,14 +481,14 @@ export const WeeklyBriefPoster = forwardRef<HTMLDivElement, WeeklyBriefPosterPro
                     width: '5cqw',
                     height: '5cqw',
                     borderRadius: '50%',
-                    background: 'rgba(167,139,250,0.12)',
-                    border: '1px solid rgba(167,139,250,0.30)',
+                    background: `rgba(${t.glowRgb},0.12)`,
+                    border: `1px solid rgba(${t.glowRgb},0.30)`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <SocialIconRender kind={s} />
+                  <SocialIconRender kind={s} color={t.accent} />
                 </Box>
               ))}
             </Stack>
@@ -470,15 +499,22 @@ export const WeeklyBriefPoster = forwardRef<HTMLDivElement, WeeklyBriefPosterPro
   },
 );
 
-function BriefCard({ card }: { card: WeeklyBriefCard }): JSX.Element {
+function BriefCard({
+  card,
+  accent,
+  glowRgb,
+}: { card: PosterCard; accent: string; glowRgb: string }): JSX.Element {
   return (
     <Box
       sx={{
         p: '2.4cqw',
         borderRadius: '2.4cqw',
-        border: '1px solid rgba(167,139,250,0.22)',
-        background:
-          'linear-gradient(180deg, rgba(167,139,250,0.10), rgba(167,139,250,0.02))',
+        border: `1px solid rgba(${glowRgb},0.22)`,
+        background: card.bgImageUrl
+          ? `linear-gradient(180deg, rgba(10,10,20,0.55), rgba(10,10,20,0.85)), url(${card.bgImageUrl})`
+          : `linear-gradient(180deg, rgba(${glowRgb},0.10), rgba(${glowRgb},0.02))`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
         display: 'flex',
         flexDirection: 'column',
         gap: '1.4cqw',
@@ -492,15 +528,15 @@ function BriefCard({ card }: { card: WeeklyBriefCard }): JSX.Element {
           width: '9cqw',
           height: '9cqw',
           borderRadius: '50%',
-          background: 'rgba(167,139,250,0.20)',
-          border: '1px solid rgba(167,139,250,0.40)',
+          background: `rgba(${glowRgb},0.20)`,
+          border: `1px solid rgba(${glowRgb},0.40)`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
         }}
       >
-        <CardIcon kind={card.icon} />
+        <CardIconRender kind={card.icon} color={accent} />
       </Box>
       <Typography
         sx={{
@@ -523,9 +559,20 @@ function BriefCard({ card }: { card: WeeklyBriefCard }): JSX.Element {
       >
         {card.description}
       </Typography>
-      <ArrowIcon sx={{ color: RR_PURPLE, fontSize: '3cqw', alignSelf: 'flex-start' }} />
+      <ArrowIcon sx={{ color: accent, fontSize: '3cqw', alignSelf: 'flex-start' }} />
     </Box>
   );
 }
 
-export default WeeklyBriefPoster;
+// ── Backwards-compat re-eksporter ────────────────────────────────────
+// Beholdt så eksisterende WeeklyBriefEditor + spec fortsatt kompilerer
+// uten endring. Slettes når alle call-sites er migrert til de nye navnene.
+export type WeeklyBriefCardIcon = PosterCardIcon;
+export type WeeklyBriefCard = PosterCard;
+export type WeeklyBriefFields = MarketingPosterFields;
+export type WeeklyBriefVariant = PosterVariant;
+export type WeeklyBriefVariantDef = PosterVariantDef;
+export const WEEKLY_BRIEF_VARIANTS = POSTER_VARIANTS;
+export const WeeklyBriefPoster = MarketingFeedPoster;
+
+export default MarketingFeedPoster;
