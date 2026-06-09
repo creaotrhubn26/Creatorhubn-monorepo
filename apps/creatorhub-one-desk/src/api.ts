@@ -168,6 +168,19 @@ export async function rescanMounts(): Promise<DetectedMount[]> {
   return invoke<DetectedMount[]>("rescan_mounts");
 }
 
+// ── Auto-eject + manuell eject ───────────────────────────────────────
+export async function ejectVolume(mountPath: string): Promise<void> {
+  return invoke<void>("eject_volume", { mountPath });
+}
+
+export async function getAutoEjectPref(): Promise<boolean> {
+  return invoke<boolean>("get_auto_eject_pref");
+}
+
+export async function setAutoEjectPref(autoEject: boolean): Promise<void> {
+  return invoke<void>("set_auto_eject_pref", { autoEject });
+}
+
 /// Manuell iPad-input når Bonjour er blokkert (bedrifts-VLAN, WiFi-
 /// isolasjon). Tar IP + port + visningsnavn fra iPad-appens "Vis
 /// pairing-info"-skjerm.
@@ -185,15 +198,11 @@ export async function addManualIpad(args: {
   });
 }
 
-/// Oppdater Mac-tray-tooltip dynamisk. Brukes av CopyProgressView for
-/// å vise "Backup: 87/240 filer" i status-baren.
+/// Oppdater Mac-tray-tooltip dynamisk.
 export async function setTrayStatus(tooltip: string): Promise<void> {
   return invoke<void>("set_tray_status", { tooltip });
 }
 
-/// Pre-flight kapasitets-sjekk: sjekk om dest-paths har nok ledig
-/// plass for bytesNeeded (samme tall for hver dest). Brukes av
-/// BackupDialog FØR start.
 export interface DestCapacity {
   path: string;
   total_bytes: number | null;
@@ -213,13 +222,10 @@ export async function checkDestinationsCapacity(
   });
 }
 
-/// macOS-native notification via osascript. Brukes av CopyProgressView
-/// for å vise "Backup ferdig"-notification i Notification Center.
 export async function macosNotification(title: string, body: string): Promise<void> {
   return invoke<void>("macos_notification", { title, body });
 }
 
-// ── Brukerpreferanser ─────────────────────────────────────────────
 export interface Prefs {
   auto_eject: boolean;
   default_dest_ids: string[];
@@ -233,7 +239,6 @@ export async function saveDefaultDestIds(destIds: string[]): Promise<void> {
   return invoke<void>("save_default_dest_ids", { destIds });
 }
 
-/// Status-event emit'es hvert 5. sekund fra Bonjour-browseren.
 export interface BonjourStatusEvent {
   discovered_count: number;
   elapsed_secs: number;
@@ -376,6 +381,7 @@ export interface CopyFileCompletedEvent {
 
 export interface CopySessionCompletedEvent {
   session_id: string;
+  mount_path: string;
   succeeded: number;
   failed: number;
   cancelled: boolean;

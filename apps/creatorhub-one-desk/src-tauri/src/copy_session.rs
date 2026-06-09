@@ -250,6 +250,7 @@ struct DestDisabledEvent {
 #[derive(Serialize, Clone)]
 struct SessionCompletedEvent {
     session_id: String,
+    mount_path: String,
     succeeded: usize,
     failed: usize,
     cancelled: bool,
@@ -1094,6 +1095,7 @@ async fn run_session(
         "copy-session-completed",
         SessionCompletedEvent {
             session_id,
+            mount_path: spec.mount_path.clone(),
             succeeded,
             failed,
             cancelled,

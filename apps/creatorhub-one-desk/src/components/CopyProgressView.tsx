@@ -24,6 +24,8 @@ import {
   CopyFileStartedEvent,
   CopySessionCompletedEvent,
   CopySessionStartedEvent,
+  ejectVolume,
+  getAutoEjectPref,
   listCopySessions,
   macosNotification,
   SessionStatus,
@@ -186,36 +188,46 @@ export default function CopyProgressView() {
 
     listen<CopySessionCompletedEvent>("copy-session-completed", (e) => {
       void listCopySessions().then(setSessions);
-      // Frigjør throughput-samples for ferdig sesjon — ingen grunn til
-      // å holde dem i minne, og hvis Fredrik starter ny session med
-      // samme ID (resume-flow) blir det forvirrende.
+      // Frigjør throughput-samples for ferdig sesjon.
       setThroughput((prev) => {
         const next = { ...prev };
         delete next[e.payload.session_id];
         return next;
       });
 
-      // macOS Notification Center: vis ferdig-melding så Fredrik vet
-      // når backup er klar uten å åpne hovedvinduet.
-      const { succeeded, failed, cancelled } = e.payload;
+      const { succeeded, failed, cancelled, mount_path } = e.payload;
+
+      // macOS Notification Center.
       if (!cancelled && succeeded > 0) {
-        const title = failed > 0
-          ? "Backup ferdig med advarsler"
-          : "Backup ferdig";
+        const title = failed > 0 ? "Backup ferdig med advarsler" : "Backup ferdig";
         const body = failed > 0
           ? `${succeeded} filer kopiert, ${failed} feilet`
           : `${succeeded} filer kopiert`;
-        void macosNotification(title, body).catch(() => {
-          // osascript ikke tilgjengelig (web preview/non-Mac) — ikke kritisk
-        });
+        void macosNotification(title, body).catch(() => {});
       }
+
+      // Auto-eject: kun ved 100% success (alle filer kopiert,
+      // ingen feilet, ikke avbrutt). Mislykkede/avbrutte sesjoner
+      // beholder kortet montert så Fredrik kan inspisere.
+      if (cancelled || failed > 0 || succeeded === 0 || !mount_path) return;
+      void getAutoEjectPref()
+        .then((enabled) => {
+          if (!enabled) return;
+          return ejectVolume(mount_path).then(
+            () => {
+              console.log(`[auto-eject] ${mount_path} ejected`);
+            },
+            (err) => {
+              console.warn(`[auto-eject] feilet for ${mount_path}: ${err}`);
+            },
+          );
+        })
+        .catch((err) => console.warn("auto-eject pref read failed:", err));
     }).then((un) => unlisteners.push(un));
 
     listen<CopyDestDisabledEvent>("copy-dest-disabled", (e) => {
       setDisabledDests((prev) => {
         const existing = prev[e.payload.session_id] ?? [];
-        // Idempotent — backend emit'er bare én gang per (session, dest)
-        // men dobbelt-sikring her i tilfelle reconnect/replay.
         if (existing.some((d) => d.dest_id === e.payload.dest_id)) return prev;
         return {
           ...prev,
@@ -230,7 +242,6 @@ export default function CopyProgressView() {
           ],
         };
       });
-      // Også vis i recentErrors så det er synlig fra log-strømmen
       setRecentErrors((prev) =>
         [
           `[${e.payload.dest_label}] DEAKTIVERT for resten av sesjonen: ${e.payload.reason_message}`,

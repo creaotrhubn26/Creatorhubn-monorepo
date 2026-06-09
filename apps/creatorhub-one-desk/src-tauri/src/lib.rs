@@ -275,16 +275,44 @@ fn rescan_mounts(state: tauri::State<MountWatcherState>) -> Vec<DetectedMount> {
     mount_watcher::rescan(&state)
 }
 
-/// macOS-native notification via osascript. Lar oss vise "Backup
-/// ferdig — 5430 filer kopiert" i Notification Center når en
-/// session-completed-event fyrer (kalt fra frontend så vi har
-/// kontekst om hvilken sesjon som ble ferdig).
-///
-/// Bruker AppleScript i stedet for et eget Tauri-plugin for å unngå
-/// både npm + Cargo dep + capability-konfig.
-///
-/// Validerer streng-input for å hindre AppleScript-injection:
-/// double-quotes og backslashes escapes før innfletting.
+/// Eject et volum trygt via macOS' `diskutil eject`. Brukes etter
+/// vellykket backup når Fredrik har enabled "auto-eject"-preferansen.
+/// Validerer at path peker til /Volumes/* så vi ikke kan trigge eject
+/// på vilkårlig disk via UI-injection.
+#[tauri::command]
+async fn eject_volume(mount_path: String) -> Result<(), String> {
+    use std::path::Path;
+    let path = Path::new(&mount_path);
+    if !path.starts_with("/Volumes/") {
+        return Err(format!(
+            "Tryggetssjekk: kun /Volumes/* tillates, fikk {}",
+            mount_path
+        ));
+    }
+    let segments: Vec<&std::ffi::OsStr> = path.iter().collect();
+    if segments.len() != 3 {
+        return Err(format!("Forventet /Volumes/<navn>, fikk {}", mount_path));
+    }
+    let output = tokio::process::Command::new("/usr/sbin/diskutil")
+        .args(["eject", &mount_path])
+        .output()
+        .await
+        .map_err(|e| format!("Kjøre diskutil: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "diskutil eject feilet (exit {}): {}{}",
+            output.status.code().unwrap_or(-1),
+            stderr,
+            stdout
+        ));
+    }
+    Ok(())
+}
+
+/// macOS-native notification via osascript. Validerer streng-input for
+/// å hindre AppleScript-injection: double-quotes og backslashes escapes.
 #[tauri::command]
 async fn macos_notification(title: String, body: String) -> Result<(), String> {
     let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
@@ -310,12 +338,22 @@ async fn macos_notification(title: String, body: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Pre-flight kapasitets-sjekk: gitt en liste av destinasjons-paths og
-/// hvor mange bytes vi skal skrive til HVER av dem, returner status per
-/// dest. Brukes av BackupDialog FØR start_copy_session for å gi Fredrik
-/// proaktiv advarsel ("Disk B har bare 12 GB, du trenger 50 GB").
-///
-/// Hver bytes_needed-element matcher dest_paths-indeksen.
+/// Returnerer auto_eject-preferansen fra ~/.creatorhub-one-desk/prefs.json.
+/// Hvis fila eller feltet ikke fins, returnerer false (opt-in).
+#[tauri::command]
+fn get_auto_eject_pref() -> Result<bool, String> {
+    prefs::load().map(|p| p.auto_eject)
+}
+
+#[tauri::command]
+fn set_auto_eject_pref(auto_eject: bool) -> Result<(), String> {
+    let mut p = prefs::load().unwrap_or_default();
+    p.auto_eject = auto_eject;
+    prefs::save(&p)
+}
+
+/// Pre-flight kapasitets-sjekk: gitt dest-paths + bytes som skal skrives,
+/// returner status per dest. Brukes av BackupDialog FØR start_copy_session.
 #[derive(serde::Serialize)]
 struct DestCapacity {
     path: String,
@@ -323,9 +361,6 @@ struct DestCapacity {
     free_bytes: Option<u64>,
     needed_bytes: u64,
     sufficient: bool,
-    /// Anbefalt margin: 95% av free_bytes som "trygt brukbart" pga
-    /// FS-overhead + sektor-rounding. Hvis needed > 0.95 * free, viser
-    /// vi advarsel selv om teknisk plass finnes.
     safe_margin: bool,
 }
 
@@ -344,8 +379,7 @@ fn check_destinations_capacity(
             };
             let sufficient = match free {
                 Some(f) => f >= bytes_needed,
-                None => true, // Kan ikke stat'es — anta OK, la copy-engine
-                              // fange det hvis det faktisk feiler
+                None => true,
             };
             let safe_margin = match free {
                 Some(f) => (bytes_needed as f64) <= (f as f64) * 0.95,
@@ -363,7 +397,6 @@ fn check_destinations_capacity(
         .collect()
 }
 
-// ── Brukerpreferanser (prefs.json) ──────────────────────────────────
 #[tauri::command]
 fn get_prefs() -> Result<prefs::Prefs, String> {
     prefs::load()
@@ -756,6 +789,9 @@ pub fn run() {
             get_prefs,
             save_default_dest_ids,
             rescan_mounts,
+            eject_volume,
+            get_auto_eject_pref,
+            set_auto_eject_pref,
             check_destinations_capacity,
             macos_notification,
             start_copy_session,
