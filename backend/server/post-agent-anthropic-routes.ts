@@ -109,6 +109,11 @@ function requireUser(pool: Pool, activeSessions?: Map<string, SessionData>) {
     const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
     const session = await resolveUser(pool, activeSessions, bearer);
     if (!session?.userId || !bearer) {
+      const persisted = bearer ? await loadPersistedAuthSession<SessionData>(pool, bearer) : null;
+      console.warn(
+        `[pa-auth] 401 path=${req.path} hasBearer=${!!bearer} tokenPrefix=${bearer?.slice(0, 8) ?? '-'} ` +
+          `inMemory=${!!activeSessions?.get(bearer ?? '')} persisted=${!!persisted} sessionUserId=${session?.userId ?? '-'} sessionsSize=${activeSessions?.size ?? 0}`,
+      );
       res.status(401).json({ error: 'unauthorized' });
       return;
     }
@@ -307,6 +312,13 @@ export function createPostAgentRouter(
       activeSessions?.set(newToken, postAgentSession);
       await persistAuthSession(pool, newToken, postAgentSession);
       await registerDevice(pool, newToken, userId, deviceLabel);
+      // Diagnostikk: bekreft at token-et faktisk ble persistert + at userId er
+      // gyldig (kan slås opp i /me etterpå).
+      const persistedBack = await loadPersistedAuthSession<SessionData>(pool, newToken);
+      console.log(
+        `[pa-redeem] minted tokenPrefix=${newToken.slice(0, 8)} userId=${userId} ` +
+          `persistedBack=${!!persistedBack} sessionsSize=${activeSessions?.size ?? 0}`,
+      );
 
       const claimed = await markPairingPaired(pool, code, newToken, userId);
       if (!claimed) {
@@ -434,6 +446,7 @@ export function createPostAgentRouter(
    */
   router.get('/me', postAgentAuth, async (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;
+    console.log(`[pa-me] lookup userId=${userId} tokenPrefix=${(req as AuthedRequest).bearerToken?.slice(0, 8)}`);
     // Robust mot databaser der profession/company_name-kolonnene ikke har
     // blitt migrert ennå (migrasjon 0001 + 212). Hvis full-select feiler
     // med "column ... does not exist", fall tilbake til minimum-set og
@@ -469,6 +482,7 @@ export function createPostAgentRouter(
       }
     }
     if (!u) {
+      console.warn(`[pa-me] user_not_found userId=${userId} — token resolverte men ingen users-rad med den id`);
       res.status(404).json({ error: 'user_not_found' });
       return;
     }
