@@ -4,7 +4,9 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    plan: free
+    # Standard (2 GB) — full-res RAW enhance + RawTherapee/Lensfun lens
+    # correction OOM-kill the 512 MB free/starter instance. Do not downgrade.
+    plan: standard
     branch: main
     autoDeploy: true
     healthCheckPath: /api/health
@@ -258,6 +260,16 @@ services:
         sync: false
       - key: PHOTO_ENHANCER_GFPGAN_URL
         value: https://creatorhub-gfpgan-runner.onrender.com/enhance
+      # Lens correction (RawTherapee + Lensfun, applied during RAW→raster).
+      # Needs the 2 GB `standard` plan above; the raised child-memory cap
+      # lets RawTherapee process full-res RAW (Dockerfile default is 256,
+      # overridden here at runtime). OMP_NUM_THREADS keeps its footprint sane.
+      - key: PHOTO_ENHANCER_LENSFUN_ENABLED
+        value: "true"
+      - key: PHOTO_ENHANCER_RAW_CHILD_MAX_MEMORY_MB
+        value: "1500"
+      - key: OMP_NUM_THREADS
+        value: "1"
       # ── Audition reminders (Twilio + Gmail fallback) ──────────────
       # Branded SMS for The Role Room and CreatorHub. Each brand has
       # its own Messaging Service SID with an alphanumeric sender ID
