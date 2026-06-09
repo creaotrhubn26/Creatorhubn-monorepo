@@ -87,6 +87,12 @@ import {
   listTiktokLinkedAccounts,
 } from "./client-tiktok-suite.js";
 import {
+  checkScopePermission,
+  acceptScopePermissions,
+  revokeScopePermissions,
+  getScopePermissionsState,
+} from "./client-scope-permissions-service.js";
+import {
   buildAdsAuthUrl,
   exchangeAdsCodeForToken,
   upsertAdsOauthConnection,
@@ -1879,6 +1885,10 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     if (!body.advertiserId || !body.name || !Array.isArray(body.identifiers) || body.identifiers.length === 0) {
       return res.status(400).json({ error: "advertiserId + name + identifiers[] påkrevd" });
     }
+    if (req.params.id !== "self") {
+      const perm = await checkScopePermission(pool, req.params.id, "audience_upload");
+      if (!perm.ok) return res.status(412).json({ error: perm.reason, scopeStatus: perm.status });
+    }
     try {
       const r = await createTiktokAudience(pool, {
         producerUserId: session.userId,
@@ -1952,6 +1962,10 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     };
     if (!body.advertiserId || !body.eventName) {
       return res.status(400).json({ error: "advertiserId + eventName påkrevd" });
+    }
+    if (req.params.id !== "self") {
+      const perm = await checkScopePermission(pool, req.params.id, "crm_event_sync");
+      if (!perm.ok) return res.status(412).json({ error: perm.reason, scopeStatus: perm.status });
     }
     try {
       const r = await syncCrmEventToTiktok(pool, {
@@ -2138,6 +2152,10 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     if (!body.advertiserId || !body.pluginType || !body.pluginName || !body.domain) {
       return res.status(400).json({ error: "advertiserId + pluginType + pluginName + domain påkrevd" });
     }
+    if (req.params.id !== "self") {
+      const perm = await checkScopePermission(pool, req.params.id, "plugin_install");
+      if (!perm.ok) return res.status(412).json({ error: perm.reason, scopeStatus: perm.status });
+    }
     try {
       const r = await installTiktokBusinessPlugin(pool, {
         producerUserId: session.userId,
@@ -2157,6 +2175,72 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   // ════════════════════════════════════════════════════════════════════
   // TikTok Accounts — linked accounts per Business Center
   // ════════════════════════════════════════════════════════════════════
+
+  // ════════════════════════════════════════════════════════════════════
+  // Klient: scope-permissions + ToS-aksept
+  // ════════════════════════════════════════════════════════════════════
+
+  app.get("/api/role-room/ads-configs/:id/permissions", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      const state = await getScopePermissionsState(pool, req.params.id);
+      return res.json(state);
+    } catch (err) {
+      return res.status(500).json({ error: "Kunne ikke hente tillatelser", detail: String(err) });
+    }
+  });
+
+  app.post("/api/role-room/ads-configs/:id/permissions/accept", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as {
+      permissions?: Record<string, "approved" | "rejected" | "pending">;
+      termsVersion?: string;
+      acceptedByName?: string;
+      acceptedByEmail?: string;
+    };
+    if (!body.permissions) return res.status(400).json({ error: "permissions påkrevd" });
+
+    const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+      || req.socket?.remoteAddress
+      || null;
+    const ua = req.headers["user-agent"] as string | undefined;
+
+    try {
+      const r = await acceptScopePermissions(pool, {
+        configId: req.params.id,
+        acceptedByUserId: session.userId,
+        acceptedByName: body.acceptedByName ?? session.email ?? undefined,
+        acceptedByEmail: body.acceptedByEmail ?? session.email ?? undefined,
+        permissions: body.permissions,
+        termsVersion: body.termsVersion,
+        ipAddress: ip ?? undefined,
+        userAgent: ua,
+      });
+      if (!r.ok) return res.status(400).json({ error: r.error });
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "Kunne ikke lagre tillatelser", detail: String(err) });
+    }
+  });
+
+  app.post("/api/role-room/ads-configs/:id/permissions/revoke", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { reason?: string };
+    try {
+      const r = await revokeScopePermissions(pool, {
+        configId: req.params.id,
+        revokedByUserId: session.userId,
+        revokeReason: body.reason,
+      });
+      if (!r.ok) return res.status(400).json({ error: r.error });
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "Kunne ikke trekke tilbake", detail: String(err) });
+    }
+  });
 
   app.get("/api/admin-room/agent/ads/configs/:id/tiktok/linked-accounts", async (req, res) => {
     const session = getActiveSession(req);

@@ -24,6 +24,7 @@ import ClientTiktokAttributionPanel from './ClientTiktokAttributionPanel';
 import ClientTiktokLeadsPanel from './ClientTiktokLeadsPanel';
 import ClientTiktokLinkedAccountsPanel from './ClientTiktokLinkedAccountsPanel';
 import ClientTiktokSpendPanel from './ClientTiktokSpendPanel';
+import ClientTiktokPermissionsPanel from './ClientTiktokPermissionsPanel';
 
 interface Props {
   /** Prosjektet klienten ser sin Economy-tab for. */
@@ -105,6 +106,9 @@ export default function ClientEconomyTiktokSection({ clientProjectId }: Props) {
       </Stack>
 
       <Stack spacing={2}>
+        {/* 0. Permissions + vilkår — ØVERST (forutsetning for alt annet) */}
+        <ClientTiktokPermissionsPanel configId={config.id} />
+
         {/* 1. Spend — "Hva har vi brukt?" */}
         <ClientTiktokSpendPanel configId={config.id} advertiserId={config.tiktok_advertiser_id} />
 

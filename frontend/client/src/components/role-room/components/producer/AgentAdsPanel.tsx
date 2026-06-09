@@ -44,6 +44,7 @@ import ClientTiktokCreativesPanel from './ClientTiktokCreativesPanel';
 import ClientTiktokCreatorsPanel from './ClientTiktokCreatorsPanel';
 import ClientTiktokPluginsPanel from './ClientTiktokPluginsPanel';
 import ClientTiktokLinkedAccountsPanel from './ClientTiktokLinkedAccountsPanel';
+import TiktokScopePermissionGate from './TiktokScopePermissionGate';
 import ClientAiPromptsPanel from './ClientAiPromptsPanel';
 import ClientInsightsPanel from './ClientInsightsPanel';
 
@@ -917,35 +918,35 @@ export default function AgentAdsPanel({
             configId={savedConfigId}
           />
 
-          {/* R3b — TikTok Custom Audiences */}
-          <ClientTiktokAudiencesPanel
-            configId={savedConfigId}
-          />
+          {/* R3b — TikTok Custom Audiences (krever klient-godkjenning) */}
+          <TiktokScopePermissionGate configId={savedConfigId} action="audience_upload">
+            <ClientTiktokAudiencesPanel configId={savedConfigId} />
+          </TiktokScopePermissionGate>
 
           {/* R3c — TikTok Attribution (Measurement) */}
           <ClientTiktokAttributionPanel
             configId={savedConfigId}
           />
 
-          {/* R3d — TikTok CRM Event Sync */}
-          <ClientTiktokCrmEventsPanel
-            configId={savedConfigId}
-          />
+          {/* R3d — TikTok CRM Event Sync (krever klient-godkjenning) */}
+          <TiktokScopePermissionGate configId={savedConfigId} action="crm_event_sync">
+            <ClientTiktokCrmEventsPanel configId={savedConfigId} />
+          </TiktokScopePermissionGate>
 
           {/* R3e — TikTok Creative Library */}
           <ClientTiktokCreativesPanel
             configId={savedConfigId}
           />
 
-          {/* R3f — TikTok Creator Marketplace */}
-          <ClientTiktokCreatorsPanel
-            configId={savedConfigId}
-          />
+          {/* R3f — TikTok Creator Marketplace (krever klient-godkjenning) */}
+          <TiktokScopePermissionGate configId={savedConfigId} action="creator_invitation">
+            <ClientTiktokCreatorsPanel configId={savedConfigId} />
+          </TiktokScopePermissionGate>
 
-          {/* R3g — TikTok Business Plugins (webstore-connect) */}
-          <ClientTiktokPluginsPanel
-            configId={savedConfigId}
-          />
+          {/* R3g — TikTok Business Plugins (krever klient-godkjenning) */}
+          <TiktokScopePermissionGate configId={savedConfigId} action="plugin_install">
+            <ClientTiktokPluginsPanel configId={savedConfigId} />
+          </TiktokScopePermissionGate>
 
           {/* R3h — TikTok Linked Accounts (Business Center) */}
           <ClientTiktokLinkedAccountsPanel
