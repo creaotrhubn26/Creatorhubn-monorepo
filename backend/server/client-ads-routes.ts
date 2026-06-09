@@ -77,6 +77,8 @@ import {
   syncTiktokLeads,
   listTiktokAudiences,
   createTiktokAudience,
+  fetchTiktokAttribution,
+  syncCrmEventToTiktok,
 } from "./client-tiktok-suite.js";
 import {
   buildAdsAuthUrl,
@@ -1885,6 +1887,123 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     } catch (err) {
       console.error("[tiktok-create-audience] failed", err);
       return res.status(500).json({ error: "Audience-opprettelse feilet", detail: String(err) });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // TikTok Measurement — attribution-rapport
+  // ════════════════════════════════════════════════════════════════════
+
+  app.get("/api/admin-room/agent/ads/configs/:id/tiktok/attribution", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const advertiserId = typeof req.query.advertiserId === "string" ? req.query.advertiserId : "";
+    if (!advertiserId) return res.status(400).json({ error: "advertiserId påkrevd" });
+    const days = Math.max(1, Math.min(90, parseInt((req.query.days as string) || "28", 10)));
+    const force = req.query.force === "1";
+    const isSelf = req.params.id === "self";
+
+    const end = new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - days + 1);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+    try {
+      const r = await fetchTiktokAttribution(pool, {
+        producerUserId: session.userId,
+        advertiserId,
+        startDate: fmt(start),
+        endDate: fmt(end),
+        configId: isSelf ? null : req.params.id,
+        forceRefresh: force,
+      });
+      if (!r) return res.status(503).json({ error: "Klarte ikke å hente attribution" });
+      return res.json({ ...r, days, startDate: fmt(start), endDate: fmt(end) });
+    } catch (err) {
+      console.error("[tiktok-attribution] failed", err);
+      return res.status(500).json({ error: "Attribution-henting feilet", detail: String(err) });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // TikTok CRM Event Management — server-side conversion-sync
+  // ════════════════════════════════════════════════════════════════════
+
+  app.post("/api/admin-room/agent/ads/configs/:id/tiktok/sync-crm-event", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as {
+      advertiserId?: string;
+      eventName?: string;
+      eventTimeMs?: number;
+      eventSource?: string;
+      externalUserId?: string;
+      rawEmail?: string;
+      rawPhone?: string;
+      eventValue?: number;
+      eventCurrency?: string;
+      customProperties?: Record<string, unknown>;
+    };
+    if (!body.advertiserId || !body.eventName) {
+      return res.status(400).json({ error: "advertiserId + eventName påkrevd" });
+    }
+    try {
+      const r = await syncCrmEventToTiktok(pool, {
+        producerUserId: session.userId,
+        advertiserId: body.advertiserId,
+        eventName: body.eventName,
+        eventTime: body.eventTimeMs ? new Date(body.eventTimeMs) : undefined,
+        eventSource: body.eventSource,
+        externalUserId: body.externalUserId,
+        rawEmail: body.rawEmail,
+        rawPhone: body.rawPhone,
+        eventValue: body.eventValue,
+        eventCurrency: body.eventCurrency,
+        customProperties: body.customProperties,
+        configId: req.params.id !== "self" ? req.params.id : null,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+      return res.json(r);
+    } catch (err) {
+      console.error("[tiktok-crm-event] failed", err);
+      return res.status(500).json({ error: "CRM-event-sync feilet", detail: String(err) });
+    }
+  });
+
+  app.get("/api/admin-room/agent/ads/configs/:id/tiktok/crm-events", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const isSelf = req.params.id === "self";
+    try {
+      const r = await pool.query(
+        `SELECT id::text, event_name, event_time, event_source, event_value,
+                event_currency, delivery_status, delivered_at, attempt_count,
+                last_error, created_at
+           FROM tiktok_crm_event_log
+          WHERE producer_user_id = $1::uuid
+            AND ($2::boolean OR config_id = $3::uuid)
+            AND ($2::boolean = FALSE OR config_id IS NULL)
+          ORDER BY event_time DESC NULLS LAST
+          LIMIT 100`,
+        [session.userId, isSelf, isSelf ? null : req.params.id],
+      );
+
+      // Aggregert sammendrag (siste 7 dager)
+      const summary = await pool.query(
+        `SELECT delivery_status, COUNT(*)::int AS n
+           FROM tiktok_crm_event_log
+          WHERE producer_user_id = $1::uuid
+            AND ($2::boolean OR config_id = $3::uuid)
+            AND ($2::boolean = FALSE OR config_id IS NULL)
+            AND event_time > NOW() - INTERVAL '7 days'
+          GROUP BY delivery_status`,
+        [session.userId, isSelf, isSelf ? null : req.params.id],
+      );
+      const counts: Record<string, number> = {};
+      for (const row of summary.rows) counts[row.delivery_status] = row.n;
+      return res.json({ events: r.rows, summary: counts });
+    } catch (err) {
+      return res.status(500).json({ error: "Kunne ikke hente events", detail: String(err) });
     }
   });
 }

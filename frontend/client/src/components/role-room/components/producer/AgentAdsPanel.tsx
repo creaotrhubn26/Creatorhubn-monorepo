@@ -38,6 +38,8 @@ import ClientMetaSuitePanel from './ClientMetaSuitePanel';
 import ClientTiktokSuitePanel from './ClientTiktokSuitePanel';
 import ClientTiktokLeadsPanel from './ClientTiktokLeadsPanel';
 import ClientTiktokAudiencesPanel from './ClientTiktokAudiencesPanel';
+import ClientTiktokAttributionPanel from './ClientTiktokAttributionPanel';
+import ClientTiktokCrmEventsPanel from './ClientTiktokCrmEventsPanel';
 import ClientAiPromptsPanel from './ClientAiPromptsPanel';
 import ClientInsightsPanel from './ClientInsightsPanel';
 
@@ -913,6 +915,16 @@ export default function AgentAdsPanel({
 
           {/* R3b — TikTok Custom Audiences */}
           <ClientTiktokAudiencesPanel
+            configId={savedConfigId}
+          />
+
+          {/* R3c — TikTok Attribution (Measurement) */}
+          <ClientTiktokAttributionPanel
+            configId={savedConfigId}
+          />
+
+          {/* R3d — TikTok CRM Event Sync */}
+          <ClientTiktokCrmEventsPanel
             configId={savedConfigId}
           />
 

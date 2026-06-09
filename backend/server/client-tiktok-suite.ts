@@ -650,3 +650,264 @@ export async function createTiktokAudience(
     uploadCount: opts.identifiers.length,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Measurement — Attribution & conversion reporting
+// ─────────────────────────────────────────────────────────────────────
+
+export interface TiktokAttributionSnapshot {
+  clickConversions: number;
+  viewThroughConversions: number;
+  totalAttributedRevenue: number;
+  totalAdSpend: number;
+  roas: number | null;
+  eventBreakdown: Record<string, { clicks: number; views: number; revenue: number }>;
+  fetchedAt: string;
+  isCached: boolean;
+}
+
+/** Hent attribution-data fra TikTok. Cacher i tiktok_attribution_snapshots
+ *  6 timer slik at vi unngår rate-limits. */
+export async function fetchTiktokAttribution(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    advertiserId: string;
+    startDate: string;
+    endDate: string;
+    configId?: string | null;
+    forceRefresh?: boolean;
+  },
+): Promise<TiktokAttributionSnapshot | null> {
+  // 1) Sjekk cache
+  if (!opts.forceRefresh) {
+    const cached = await pool.query(
+      `SELECT click_conversions, view_through_conversions, total_attributed_revenue,
+              total_ad_spend, roas, event_breakdown, fetched_at
+         FROM tiktok_attribution_snapshots
+        WHERE advertiser_id = $1
+          AND date_range_start = $2::date
+          AND date_range_end = $3::date
+          AND expires_at > NOW()
+          ${opts.configId ? "AND config_id = $4::uuid" : "AND config_id IS NULL"}
+        ORDER BY fetched_at DESC
+        LIMIT 1`,
+      opts.configId
+        ? [opts.advertiserId, opts.startDate, opts.endDate, opts.configId]
+        : [opts.advertiserId, opts.startDate, opts.endDate],
+    ).catch(() => ({ rows: [] }));
+    if (cached.rows.length > 0) {
+      const c = cached.rows[0];
+      return {
+        clickConversions: Number(c.click_conversions ?? 0),
+        viewThroughConversions: Number(c.view_through_conversions ?? 0),
+        totalAttributedRevenue: parseFloat(c.total_attributed_revenue ?? "0"),
+        totalAdSpend: parseFloat(c.total_ad_spend ?? "0"),
+        roas: c.roas != null ? parseFloat(c.roas) : null,
+        eventBreakdown: c.event_breakdown ?? {},
+        fetchedAt: c.fetched_at,
+        isCached: true,
+      };
+    }
+  }
+
+  // 2) Fetch fra TikTok
+  const access = await tiktokToken(pool, opts.producerUserId);
+  if (!access) return null;
+
+  const reqBody = {
+    advertiser_id: opts.advertiserId,
+    report_type: "BASIC",
+    data_level: "AUCTION_ADVERTISER",
+    dimensions: ["advertiser_id"],
+    metrics: [
+      "spend",
+      "conversion",
+      "view_through_conversion",
+      "click_through_conversion",
+      "conversion_value",
+    ],
+    start_date: opts.startDate,
+    end_date: opts.endDate,
+  };
+
+  const r = await fetch(`${TIKTOK_BUSINESS_BASE}/report/integrated/get/`, {
+    method: "POST",
+    headers: ttHeaders(access),
+    body: JSON.stringify(reqBody),
+  });
+  if (!r.ok) return null;
+  const body = await r.json() as { data?: { list?: Array<{ metrics?: any }> }; code?: number; message?: string };
+  if (body.code !== 0) return null;
+
+  const m = body.data?.list?.[0]?.metrics ?? {};
+  const clickConv = Number(m.click_through_conversion ?? m.conversion ?? 0);
+  const viewConv = Number(m.view_through_conversion ?? 0);
+  const revenue = parseFloat(String(m.conversion_value ?? "0"));
+  const spend = parseFloat(String(m.spend ?? "0"));
+  const roas = spend > 0 ? revenue / spend : null;
+
+  const snapshot: TiktokAttributionSnapshot = {
+    clickConversions: clickConv,
+    viewThroughConversions: viewConv,
+    totalAttributedRevenue: revenue,
+    totalAdSpend: spend,
+    roas,
+    eventBreakdown: {},
+    fetchedAt: new Date().toISOString(),
+    isCached: false,
+  };
+
+  // 3) Lagre i cache
+  await pool.query(
+    `INSERT INTO tiktok_attribution_snapshots (
+       config_id, producer_user_id, advertiser_id,
+       date_range_start, date_range_end,
+       click_conversions, view_through_conversions,
+       total_attributed_revenue, total_ad_spend, roas,
+       event_breakdown, raw_response
+     ) VALUES ($1::uuid, $2::uuid, $3, $4::date, $5::date,
+               $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb)`,
+    [
+      opts.configId ?? null,
+      opts.producerUserId,
+      opts.advertiserId,
+      opts.startDate,
+      opts.endDate,
+      clickConv,
+      viewConv,
+      revenue,
+      spend,
+      roas,
+      JSON.stringify({}),
+      JSON.stringify(body),
+    ],
+  ).catch((e) => console.warn("[tiktok-attribution] cache insert failed", e.message));
+
+  return snapshot;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// CRM Event Management — server-side conversion-sync
+// ─────────────────────────────────────────────────────────────────────
+
+const TIKTOK_CRM_EVENT_MAP: Record<string, string> = {
+  TRIAL_START: "REGISTRATION",
+  PAID_SIGNUP: "COMPLETE_PAYMENT",
+  LEAD_QUALIFIED: "GENERATE_LEAD",
+  CUSTOMER_CONVERTED: "PURCHASE",
+  CHURN: "CANCEL_SUBSCRIPTION",
+};
+
+/** Send et CRM-event (offline-conversion) til TikTok for ad-optimalisering. */
+export async function syncCrmEventToTiktok(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    advertiserId: string;
+    eventName: string;
+    eventTime?: Date;
+    eventSource?: string;
+    externalUserId?: string;       // Hashed email/phone (vi hasher hvis råverdi)
+    rawEmail?: string;              // Hvis gitt, vi hasher før send
+    rawPhone?: string;
+    eventValue?: number;
+    eventCurrency?: string;
+    customProperties?: Record<string, unknown>;
+    configId?: string | null;
+  },
+): Promise<{ ok: true; logId: string; tiktokEventName: string } | { ok: false; error: string }> {
+  const access = await tiktokToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  // Hash råverdier hvis gitt
+  const externalUserId = opts.externalUserId
+    ?? (opts.rawEmail ? hashIdentifier(opts.rawEmail) : undefined)
+    ?? (opts.rawPhone ? hashIdentifier(opts.rawPhone) : undefined);
+
+  if (!externalUserId) {
+    return { ok: false, error: "external_user_id eller rawEmail/rawPhone påkrevd" };
+  }
+
+  const tiktokEventName = TIKTOK_CRM_EVENT_MAP[opts.eventName] ?? opts.eventName;
+  const eventTime = opts.eventTime ?? new Date();
+
+  // 1) Log som pending
+  const logR = await pool.query(
+    `INSERT INTO tiktok_crm_event_log (
+       config_id, producer_user_id, advertiser_id, event_name, event_time,
+       event_source, external_user_id, event_value, event_currency,
+       custom_properties, delivery_status, attempt_count
+     ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, 'pending', 0)
+     RETURNING id::text`,
+    [
+      opts.configId ?? null,
+      opts.producerUserId,
+      opts.advertiserId,
+      opts.eventName,
+      eventTime,
+      opts.eventSource ?? "manual",
+      externalUserId,
+      opts.eventValue ?? null,
+      opts.eventCurrency ?? "NOK",
+      JSON.stringify(opts.customProperties ?? {}),
+    ],
+  );
+  const logId = logR.rows[0].id as string;
+
+  // 2) POST til TikTok
+  const payload = {
+    advertiser_id: opts.advertiserId,
+    events: [{
+      event: tiktokEventName,
+      event_time: Math.floor(eventTime.getTime() / 1000),
+      event_id: logId,
+      user: { external_id: [externalUserId] },
+      properties: {
+        ...(opts.eventValue != null ? { value: opts.eventValue, currency: opts.eventCurrency ?? "NOK" } : {}),
+        ...opts.customProperties,
+      },
+    }],
+  };
+
+  try {
+    const r = await fetch(`${TIKTOK_BUSINESS_BASE}/crm/event/sync/`, {
+      method: "POST",
+      headers: ttHeaders(access),
+      body: JSON.stringify(payload),
+    });
+    const respBody = await r.json().catch(() => ({})) as { code?: number; message?: string };
+
+    if (r.ok && respBody.code === 0) {
+      await pool.query(
+        `UPDATE tiktok_crm_event_log
+            SET delivery_status = 'delivered', delivered_at = NOW(),
+                tiktok_response = $1::jsonb, attempt_count = attempt_count + 1,
+                updated_at = NOW()
+          WHERE id = $2::uuid`,
+        [JSON.stringify(respBody), logId],
+      );
+      return { ok: true, logId, tiktokEventName };
+    }
+
+    // Feil — marker retrying
+    await pool.query(
+      `UPDATE tiktok_crm_event_log
+          SET delivery_status = 'failed', last_error = $1,
+              tiktok_response = $2::jsonb, attempt_count = attempt_count + 1,
+              updated_at = NOW()
+        WHERE id = $3::uuid`,
+      [String(respBody.message ?? `HTTP ${r.status}`).slice(0, 500), JSON.stringify(respBody), logId],
+    );
+    return { ok: false, error: respBody.message ?? `HTTP ${r.status}` };
+  } catch (err) {
+    await pool.query(
+      `UPDATE tiktok_crm_event_log
+          SET delivery_status = 'failed', last_error = $1,
+              attempt_count = attempt_count + 1, updated_at = NOW()
+        WHERE id = $2::uuid`,
+      [String(err).slice(0, 500), logId],
+    );
+    return { ok: false, error: String(err) };
+  }
+}
