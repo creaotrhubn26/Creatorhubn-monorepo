@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import {
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   LinearProgress,
   List,
   ListItem,
@@ -16,6 +21,7 @@ import {
 import Stop from "@mui/icons-material/Stop";
 import CheckCircle from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import {
   cancelCopySession,
   CopyDestDisabledEvent,
@@ -44,11 +50,14 @@ interface FileState {
   totalDests: number;
 }
 
-/// Per-session bytes/sec-spor for å beregne ETA. Vi sampler totalt
-/// (succeeded + skipped) bytes hver gang vi får et FileCompleted-event,
-/// og deriverer hastighet over et glidende vindu (siste 30s eller siste
-/// 20 samples — det som er kortest). Dette gir et stabilt estimat selv
-/// når enkeltfiler varierer dramatisk i størrelse.
+interface MountDisappearedEvent {
+  session_id: string;
+  mount_path: string;
+  files_skipped: number;
+  succeeded: number;
+  failed: number;
+}
+
 interface ThroughputSample {
   ts_ms: number;
   bytes_done: number;
@@ -79,11 +88,8 @@ export default function CopyProgressView() {
   const [sessions, setSessions] = useState<SessionStatus[]>([]);
   const [currentFiles, setCurrentFiles] = useState<Record<string, FileState>>({});
   const [recentErrors, setRecentErrors] = useState<string[]>([]);
-  // Bytes-progress-samples per session for ETA-beregning.
+  const [mountDisappeared, setMountDisappeared] = useState<MountDisappearedEvent | null>(null);
   const [throughput, setThroughput] = useState<Record<string, ThroughputSample[]>>({});
-  // Per-session liste over destinasjoner som ble deaktivert pga
-  // vedvarende feil. Nullstilles ikke automatisk — Fredrik kan se hva
-  // som skjedde selv etter sesjonen er ferdig.
   const [disabledDests, setDisabledDests] = useState<Record<string, DisabledDestInfo[]>>({});
 
   useEffect(() => {
@@ -248,6 +254,11 @@ export default function CopyProgressView() {
           ...prev,
         ].slice(0, 10),
       );
+    }).then((un) => unlisteners.push(un));
+
+    listen<MountDisappearedEvent>("copy-session-mount-disappeared", (e) => {
+      setMountDisappeared(e.payload);
+      void listCopySessions().then(setSessions);
     }).then((un) => unlisteners.push(un));
 
     return () => {
@@ -473,11 +484,14 @@ export default function CopyProgressView() {
                     <CheckCircle color="success" fontSize="small" />
                   ) : s.state === "cancelled" ? (
                     <Chip size="small" label="avbrutt" />
+                  ) : s.state === "mount_disappeared" ? (
+                    <WarningAmberIcon color="warning" fontSize="small" />
                   ) : (
                     <ErrorIcon color="error" fontSize="small" />
                   )}
                   <Typography variant="caption">
                     {s.volume_label}: {s.succeeded} ✓ / {s.failed} ✗ av {s.file_count}
+                    {s.state === "mount_disappeared" && " — kort fjernet"}
                   </Typography>
                 </Stack>
               ))}
@@ -525,6 +539,38 @@ export default function CopyProgressView() {
           </Box>
         )}
       </CardContent>
+
+      {/* Mount-disappeared modal — vises som blocking dialog så Fredrik
+          ikke får inntrykk av at backup gikk gjennom. Klar action: sett
+          inn kortet igjen + rerun, eller bekreft som "vil ikke fortsette". */}
+      <Dialog
+        open={!!mountDisappeared}
+        onClose={() => setMountDisappeared(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <WarningAmberIcon color="warning" />
+          Kortet ble fjernet før backup var ferdig
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <strong>{mountDisappeared?.files_skipped ?? 0}</strong> filer rakk
+            ikke å bli kopiert. <strong>{mountDisappeared?.succeeded ?? 0}</strong>{" "}
+            ble fullført, <strong>{mountDisappeared?.failed ?? 0}</strong> feilet.
+          </Alert>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Mount-sti: <code>{mountDisappeared?.mount_path}</code>
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Sett inn kortet på nytt og start backup igjen for den samme volumen —
+            allerede kopierte filer hoppes over automatisk.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMountDisappeared(null)}>OK, jeg har sett det</Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }
