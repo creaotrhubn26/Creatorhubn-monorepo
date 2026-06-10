@@ -280,7 +280,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         const idx = els.length ? await healTarget({ targetLabel: sc.targetLabel, actionType: sc.actionType, elements: els }).catch(() => null) : null;
         if (idx != null && els[idx]) {
           const el = els[idx];
-          updateScene(sc.id, { targetSelector: el.selector, targetLocators: el.locators, targetLabel: el.label, hotspot: el.hotspot });
+          updateScene(sc.id, { targetSelector: el.selector, targetLocators: el.locators, targetLabel: el.label, hotspot: el.hotspot, startScrollPct: el.scrollPct != null ? Math.round(el.scrollPct * 100) : undefined });
           const r2 = await autoExecute(st.project.url, el.selector, sc.actionType ?? 'click');
           if (r2?.ok && r2.found) {
             updateScene(sc.id, { detectedSelector: el.selector, status: 'done' });
@@ -513,6 +513,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           const el = typeof p.targetIndex === 'number' ? elements[p.targetIndex] : undefined;
           if (el) {
             patch.targetSelector = el.selector; patch.targetLabel = el.label; patch.hotspot = el.hotspot;
+            patch.targetLocators = el.locators;
+            if (el.scrollPct != null) patch.startScrollPct = Math.round(el.scrollPct * 100);
             if (!patch.actionType && validActions.includes(el.actionType as DemoActionType)) patch.actionType = el.actionType as DemoActionType;
           } else if (p.targetLabel) {
             patch.targetLabel = p.targetLabel;

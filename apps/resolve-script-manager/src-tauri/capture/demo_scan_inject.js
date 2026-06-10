@@ -107,45 +107,128 @@
     return { brandName: brandName || '', logoUrl: logoUrl || '', brandColor: palette[0] || '', palette: palette.slice(0, 6) };
   }
 
-  function scan() {
+  // Bredt utvalg av interaktive/innholds-elementer (inkl. klikkbare div-er,
+  // tabbable, kort, CTA-er som SPA-er ofte bygger uten <button>/role).
+  var SEL = 'a,button,input,textarea,select,' +
+    '[role="button"],[role="link"],[role="tab"],[role="menuitem"],[role="checkbox"],[role="switch"],' +
+    '[onclick],[tabindex]:not([tabindex="-1"]),' +
+    '[class*="btn" i],[class*="button" i],[class*="cta" i],[class*="card" i],' +
+    'h1,h2,h3';
+
+  function isVisible(el, r) {
+    if (r.width < 8 || r.height < 6) return false;
+    try {
+      var cs = getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity || '1') < 0.05) return false;
+      if (cs.pointerEvents === 'none' && el.nodeName.toLowerCase() !== 'h1' && el.nodeName.toLowerCase() !== 'h2' && el.nodeName.toLowerCase() !== 'h3') return false;
+    } catch (e) { /* */ }
     var iw = window.innerWidth || 1, ih = window.innerHeight || 1;
-    var nodes = deepQueryAll('a,button,input,textarea,select,[role="button"],[role="link"],[onclick],h1,h2');
-    var out = [], seen = {};
+    // Må snitte gjeldende viewport (vi scanner per scroll-steg).
+    if (r.bottom < 0 || r.top > ih || r.right < 0 || r.left > iw) return false;
+    return true;
+  }
+
+  // Er elementet faktisk det øverste på sitt senter? (filtrerer vekk skjulte /
+  // overlappede elementer som ellers ga «random» hotspots).
+  function isTopmost(el, r) {
+    try {
+      var cx = Math.min((window.innerWidth || 1) - 1, Math.max(0, r.left + r.width / 2));
+      var cy = Math.min((window.innerHeight || 1) - 1, Math.max(0, r.top + r.height / 2));
+      var hit = document.elementFromPoint(cx, cy);
+      if (!hit) return true;
+      return hit === el || el.contains(hit) || hit.contains(el);
+    } catch (e) { return true; }
+  }
+
+  function importance(el, tag, lab) {
+    var sc = 0;
+    var role = (el.getAttribute && el.getAttribute('role')) || '';
+    if (tag === 'button' || role === 'button') sc += 5;
+    else if (tag === 'a' || role === 'link') sc += 4;
+    else if (tag === 'input' || tag === 'textarea' || tag === 'select') sc += 3;
+    else if (/^h[1-3]$/.test(tag)) sc += 1;
+    var cls = '';
+    try { cls = (el.className && el.className.toString) ? el.className.toString() : ''; } catch (e) { /* */ }
+    if (/cta|primary|submit|start|kom.?i.?gang|get.?started|sign.?up|log.?in|kontakt/i.test(cls + ' ' + lab)) sc += 4;
+    if (el.getAttribute && (el.getAttribute('data-testid') || el.getAttribute('data-test') || el.getAttribute('data-cy'))) sc += 2;
+    return sc;
+  }
+
+  function collect(out, seen) {
+    var iw = window.innerWidth || 1, ih = window.innerHeight || 1;
+    var maxScroll = Math.max(1, (document.documentElement.scrollHeight || ih) - ih);
+    var scrollPct = Math.max(0, Math.min(1, (window.scrollY || window.pageYOffset || 0) / maxScroll));
+    var nodes = deepQueryAll(SEL);
     for (var i = 0; i < nodes.length; i++) {
       var el = nodes[i];
       var r = el.getBoundingClientRect();
-      if (r.width < 6 || r.height < 6) continue;
+      if (!isVisible(el, r)) continue;
       var lab = labelFor(el);
       if (!lab) continue;
       var s = cssPath(el);
       var key = s + '|' + lab;
       if (seen[key]) continue;
+      if (!isTopmost(el, r)) continue;
       seen[key] = 1;
+      var tag = el.nodeName.toLowerCase();
       out.push({
         selector: s,
         locators: buildLocators(el),
         label: lab,
-        tag: el.nodeName.toLowerCase(),
+        tag: tag,
         actionType: actionFor(el),
-        belowFold: r.top > ih,
-        hotspot: {
+        importance: importance(el, tag, lab),
+        scrollPct: scrollPct,            // hvor på siden (0–1) elementet sees best
+        hotspot: {                       // viewport-relativ AT scrollPct → render scroller dit
           x: Math.max(0, Math.min(1, r.left / iw)),
           y: Math.max(0, Math.min(1, r.top / ih)),
           w: Math.max(0, Math.min(1, r.width / iw)),
           h: Math.max(0, Math.min(1, r.height / ih))
         }
       });
-      if (out.length >= 60) break;
     }
-    // JS-rendret synlig tekst (rikere kontekst enn anonym reqwest).
+  }
+
+  // Scroll gjennom HELE siden i viewport-steg, scan på hvert steg → fanger
+  // alt under fold-en + lazy-rendret innhold, hver med korrekt scrollPct.
+  function finish(out) {
+    out.sort(function (a, b) { return (a.scrollPct - b.scrollPct) || (b.importance - a.importance); });
+    if (out.length > 150) out = out.slice(0, 150);
     var pageText = '';
     try { pageText = (document.body.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 1600); } catch (e) { /* */ }
     var branding = {};
     try { branding = extractBranding(); } catch (e) { /* */ }
-    invoke('demo_scan_result', { url: location.href, title: document.title || '', elements: out, pageText: pageText, branding: branding });
+    invoke('demo_scan_result', {
+      url: location.href, title: document.title || '', elements: out,
+      pageText: pageText, branding: branding,
+      viewport: { w: window.innerWidth || 0, h: window.innerHeight || 0 },
+      docHeight: (document.documentElement.scrollHeight || 0)
+    });
   }
 
-  function go() { setTimeout(scan, 1200); } // gi SPA-en tid til å rendre
+  function scrollThrough() {
+    var out = [], seen = {};
+    var ih = window.innerHeight || 1;
+    var maxScroll = Math.max(0, (document.documentElement.scrollHeight || ih) - ih);
+    var step = Math.round(ih * 0.85), y = 0, guard = 0;
+    function next() {
+      window.scrollTo(0, y);
+      setTimeout(function () {
+        collect(out, seen);
+        guard++;
+        if (y >= maxScroll || guard > 40 || out.length >= 150) {
+          window.scrollTo(0, 0);
+          setTimeout(function () { finish(out); }, 150);
+          return;
+        }
+        y = Math.min(maxScroll, y + step);
+        next();
+      }, 230); // la lazy-innhold rendre på hvert steg
+    }
+    next();
+  }
+
+  function go() { setTimeout(scrollThrough, 1200); } // gi SPA-en tid til første render
   if (document.readyState === 'complete') go();
   else window.addEventListener('load', go);
 })();
