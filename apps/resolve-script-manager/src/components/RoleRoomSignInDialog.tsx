@@ -177,7 +177,7 @@ export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
     <div className="modal-backdrop" onClick={stage === "paired" ? onClose : undefined}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 480 }}>
         <h2>
-          <IconSparkle /> Logg inn på The Role Room
+          <IconSparkle /> Logg inn på Creatorhub
         </h2>
 
         {stage === "starting" && (
@@ -190,7 +190,7 @@ export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
         {stage === "awaiting" && pairing && (
           <>
             <div className="desc">
-              Skriver inn koden under på <strong>theroleroom.com/link</strong>. Vi har allerede åpnet siden for deg.
+              Skriver inn koden under på <strong>{(() => { try { const u = new URL(pairing.verificationUrl); return u.host + u.pathname; } catch { return pairing.verificationUrl; } })()}</strong> (logg inn med din Creatorhub- eller Role Room-konto). Vi har allerede åpnet siden for deg.
             </div>
             <div style={{
               background: "var(--bg-3)",
@@ -224,7 +224,7 @@ export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
               <button
                 onClick={() => pairing && openUrl(`${pairing.verificationUrl}?code=${encodeURIComponent(pairing.code)}`)}
               >
-                Åpne theroleroom.com/link igjen
+                Åpne innloggings-siden igjen
               </button>
             </div>
           </>

@@ -498,8 +498,12 @@ const Lab = ({ children }: { children: React.ReactNode }) => <span style={{ font
 const btn: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, background: '#fff', borderRadius: 9, padding: '8px 13px', fontSize: 12.5, fontWeight: 600, color: C.ink, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' };
 const hdrBack: React.CSSProperties = { width: 34, height: 34, borderRadius: 9, border: `1px solid ${C.lineStrong}`, display: 'grid', placeItems: 'center', cursor: 'pointer', color: C.inkSoft };
 const chip: React.CSSProperties = { fontSize: 11.5, border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '4px 9px', color: C.inkSoft, whiteSpace: 'nowrap' };
-const ta: React.CSSProperties = { width: '100%', minHeight: 80, border: `1px solid ${C.lineStrong}`, borderRadius: 9, padding: '10px 12px', fontSize: 13, lineHeight: 1.5, color: C.ink, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' };
-const inp: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 9, padding: '9px 12px', fontSize: 13, color: C.ink, fontFamily: 'inherit', boxSizing: 'border-box' };
+// NB: background + colorScheme:'light' er PÅKREVD. App.css setter
+// `color-scheme: dark` globalt (for den mørke hoved-appen), som ellers gir
+// textareas/inputs mørk system-bakgrunn → mørk C.ink-tekst blir usynlig
+// (svart-på-svart) i det lyse Demo Studio-workspace.
+const ta: React.CSSProperties = { width: '100%', minHeight: 80, border: `1px solid ${C.lineStrong}`, borderRadius: 9, padding: '10px 12px', fontSize: 13, lineHeight: 1.5, color: C.ink, background: '#fff', colorScheme: 'light', fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' };
+const inp: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 9, padding: '9px 12px', fontSize: 13, color: C.ink, background: '#fff', colorScheme: 'light', fontFamily: 'inherit', boxSizing: 'border-box' };
 const miniSel: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '6px 8px', fontSize: 12, color: C.ink, background: '#fff', fontFamily: 'inherit' };
 const metaRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 10 };
 
