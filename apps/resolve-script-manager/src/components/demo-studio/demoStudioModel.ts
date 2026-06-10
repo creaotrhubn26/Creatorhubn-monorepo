@@ -1031,6 +1031,11 @@ export interface ScannedElement {
   locators?: TargetLocator[];
   /** CTA-klassifisering fra CTA-banken (om elementet er en CTA). */
   ctaType?: CtaType;
+  /** Hvor på siden (0–1) elementet sees best — hotspot er viewport-relativ DER.
+   *  Render/Guided Recorder scroller til scrollPct før hotspot tegnes. */
+  scrollPct?: number;
+  /** Viktighets-rang fra scan (button/CTA > heading > input) — AI prioriterer. */
+  importance?: number;
 }
 
 /** Resultat av et DOM-skann av en side. */
