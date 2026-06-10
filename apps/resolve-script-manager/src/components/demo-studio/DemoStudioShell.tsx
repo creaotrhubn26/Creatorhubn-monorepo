@@ -42,7 +42,7 @@ import {
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
   sceneActionMatch, expectedActionText, validateScene, learnCtas, CTA_LABELS,
   recordLearnedTarget, learnedTargetCount, listLearnedTargetsForHost, removeLearnedTarget,
-  clearLearnedTargets, detectLearnedDrift, type LearnedTarget,
+  clearLearnedTargets, detectLearnedDrift, pickShot, type LearnedTarget,
   type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
@@ -219,6 +219,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   // Auto-merkevare: bruk farger/logo/navn hentet fra siden (overskriver ikke
   // manuelt satt branding).
   const applyScannedBranding = (scan: DomScanResult | null) => {
+    // Lagre scan-screenshots (Fase 1b) for presis preview-render.
+    if (scan?.shots && scan.shots.length) setProjectField('scanShots', scan.shots);
     const bd = scan?.branding;
     if (!bd) return;
     const cur = useDemoStudio.getState().project?.branding;
@@ -868,6 +870,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   width: `${baseWPct * previewZoom}%`, maxWidth: baseMaxW * previewZoom,
                 }}>
                   <FramedDevice variant={previewVariant} url={project.url} width="100%"
+                    screenshot={pickShot(project.scanShots, (selected?.startScrollPct ?? 0) / 100) ?? undefined}
                     overlay={<SceneInteractionOverlay hotspot={selected?.hotspot} render={render} device={previewDevice} actionType={selected?.actionType} animate={!placingHotspot} />}
                     focusZoom={render.autoZoom && selected?.hotspot && !placingHotspot ? { cx: selected.hotspot.x + selected.hotspot.w / 2, cy: selected.hotspot.y + selected.hotspot.h / 2, scale: 1.5 } : undefined}
                     onScreenClick={placingHotspot ? placeHotspot : undefined} />
@@ -1459,6 +1462,7 @@ function DevicePreviewView() {
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 24px', overflow: 'auto' }}>
         <div style={{ width: variant === 'macbook' ? '72%' : variant === 'ipad_landscape' ? '58%' : variant === 'ipad' ? '40%' : '24%', maxWidth: variant === 'macbook' ? 820 : variant === 'ipad_landscape' ? 720 : variant === 'ipad' ? 460 : 300, flexShrink: 0 }}>
           <FramedDevice variant={variant} url={project.url} width="100%"
+            screenshot={pickShot(project.scanShots, (scene.startScrollPct ?? 0) / 100) ?? undefined}
             overlay={<SceneInteractionOverlay hotspot={scene.hotspot} render={render} device={device} />} />
         </div>
       </div>

@@ -276,6 +276,9 @@ export interface DemoProject {
   voiceModel?: string;
   /** Merkevare/white-label for output (interaktiv guide + video). */
   branding?: DemoBranding;
+  /** Fase 1b: viewport-screenshots fra scan, per scroll-bånd. Brukes til presis
+   *  preview-render (riktig del av siden + hotspot oppå, perfekt align). */
+  scanShots?: Array<{ scrollPct: number; dataUrl: string }>;
   /** Global progresjons-modus (kan overstyres per scene). Default 'manual'. */
   continueMode?: 'manual' | 'assisted' | 'auto';
   /**
@@ -1047,6 +1050,25 @@ export interface DomScanResult {
   pageText?: string;
   /** Auto-uthentet merkevare fra siden (navn/logo/farger). */
   branding?: DemoBranding & { palette?: string[] };
+  /** Fase 1b: viewport-screenshots per scroll-bånd (presis preview-render). */
+  shots?: Array<{ scrollPct: number; dataUrl: string }>;
+  viewport?: { w: number; h: number };
+  docHeight?: number;
+}
+
+/** Velg screenshot-båndet nærmest en scenes scrollPct (0–1) for preview-render. */
+export function pickShot(
+  shots: Array<{ scrollPct: number; dataUrl: string }> | undefined,
+  scrollPct: number | undefined,
+): string | null {
+  if (!shots || !shots.length) return null;
+  const target = Math.max(0, Math.min(1, (scrollPct ?? 0)));
+  let best = shots[0], bestD = Infinity;
+  for (const s of shots) {
+    const d = Math.abs(s.scrollPct - target);
+    if (d < bestD) { bestD = d; best = s; }
+  }
+  return best.dataUrl;
 }
 
 /** Ett innsamlet klikk-steg fra «klikk-gjennom»-capture (Fase 2). */

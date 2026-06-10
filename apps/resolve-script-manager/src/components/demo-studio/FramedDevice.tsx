@@ -20,9 +20,12 @@ export const VIEWPORT_W: Record<FrameVariant, number> = {
   iphone: 390, ipad: 834, ipad_landscape: 1194, macbook: 1440,
 };
 
-export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, onScreenClick, focusZoom }: {
+export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, onScreenClick, focusZoom, screenshot }: {
   variant: FrameVariant; url: string; width: string | number;
   shadow?: string; iframeRef?: React.Ref<HTMLIFrameElement>;
+  /** Fase 1b: vis et scan-screenshot i stedet for live-iframe (presis + funker
+   *  på sider iframe ikke kan vise). Når satt brukes ikke url/iframe. */
+  screenshot?: string;
   /** Innhold rendret OVER skjermen (hotspot/cursor/touch-overlay). */
   overlay?: React.ReactNode;
   /** Klikk på skjermflaten → koordinater i viewport-prosent (0–1). Når satt,
@@ -67,12 +70,20 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
           transformOrigin: focusZoom ? `${focusZoom.cx * 100}% ${focusZoom.cy * 100}%` : '50% 50%',
           transition: 'transform 700ms cubic-bezier(.2,.7,.3,1)',
         }}>
-        <iframe ref={iframeRef} title={variant} src={url} scrolling="no"
-          style={{
-            width: vw, height: vh, border: 0, display: 'block',
-            transform: `scale(${scale || 0.001})`, transformOrigin: '0 0',
-            opacity: scale > 0 ? 1 : 0,
-          }} />
+        {screenshot ? (
+          // Fase 1b: vis ekte scan-screenshot (riktig scroll-bånd) i stedet for
+          // live-iframe. Bilde + hotspot kommer fra samme scan → perfekt align,
+          // og funker for sider iframe ikke kan vise (auth/lagrings-tunge SPA-er).
+          <img src={screenshot} alt="" draggable={false}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} />
+        ) : (
+          <iframe ref={iframeRef} title={variant} src={url} scrolling="no"
+            style={{
+              width: vw, height: vh, border: 0, display: 'block',
+              transform: `scale(${scale || 0.001})`, transformOrigin: '0 0',
+              opacity: scale > 0 ? 1 : 0,
+            }} />
+        )}
         {/* Overlay (hotspot/cursor/touch) over skjermen */}
         {overlay}
         </div>

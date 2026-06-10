@@ -63,6 +63,9 @@ pub async fn demo_scan_dom(app: AppHandle, url: String) -> Result<(), String> {
     WebviewWindowBuilder::new(&app, SCAN_LABEL, WebviewUrl::External(parsed))
         .title("Analyserer side…")
         .inner_size(1200.0, 820.0)
+        // html2canvas FØR scan-scriptet → scannen kan ta viewport-screenshots
+        // ved hvert scroll-bånd (brukes til presis preview-render, Fase 1b).
+        .initialization_script(H2C_JS)
         .initialization_script(SCAN_JS)
         .build()
         .map_err(|e| format!("kunne ikke åpne analyse-vindu: {e}"))?;
