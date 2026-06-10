@@ -18,50 +18,95 @@ import {
 function jsStr(s: string): string { return JSON.stringify(String(s ?? '')); }
 
 /**
- * Bygg en kjørbar Playwright-locator fra scenens multi-strategi-locators.
- * Prioritet: testid > role/aria > id > text > css > selector > label.
- * Returnerer null for scener uten target (f.eks. wait).
+ * Bygg et JS-array-literal av multi-strategi-locator-tupler for én scene, i
+ * prioritert rekkefølge. Brukes av det selv-helbredende `act()` i skriptet.
+ * Format: [['testid','x'], ['role','button','Start'], ['text','Start'], ['css','…']]
  */
-function playwrightLocator(scene: DemoScene): string | null {
+function sceneLocatorTuples(scene: DemoScene): string {
   const locs: TargetLocator[] = scene.targetLocators ?? [];
+  const out: string[] = [];
   const find = (s: string) => locs.find((l) => l.strategy === s);
   const testid = find('testid');
   if (testid) {
     const m = testid.value.match(/data-test(?:id)?="([^"]+)"/) || testid.value.match(/data-cy="([^"]+)"/);
-    if (m) return `page.getByTestId(${jsStr(m[1])})`;
+    if (m) out.push(`['testid', ${jsStr(m[1])}]`);
   }
   const aria = find('aria');
   if (aria) {
     const [role, name] = aria.value.split('|');
-    if (role && name) return `page.getByRole(${jsStr(role)}, { name: ${jsStr(name)} })`;
+    if (role && name) out.push(`['role', ${jsStr(role)}, ${jsStr(name)}]`);
   }
   const id = find('id');
-  if (id && id.value) return `page.locator(${jsStr(id.value)})`;
+  if (id && id.value) out.push(`['css', ${jsStr(id.value)}]`);
   const text = find('text');
   if (text) {
     const t = text.value.split('|').slice(1).join('|');
-    if (t) return `page.getByText(${jsStr(t)}, { exact: false }).first()`;
+    if (t) out.push(`['text', ${jsStr(t)}]`);
   }
   const css = find('css');
-  if (css && css.value) return `page.locator(${jsStr(css.value)}).first()`;
-  if (scene.targetSelector) return `page.locator(${jsStr(scene.targetSelector)}).first()`;
-  if (scene.targetLabel) return `page.getByText(${jsStr(scene.targetLabel)}, { exact: false }).first()`;
-  return null;
+  if (css && css.value) out.push(`['css', ${jsStr(css.value)}]`);
+  else if (scene.targetSelector) out.push(`['css', ${jsStr(scene.targetSelector)}]`);
+  if (scene.targetLabel) out.push(`['text', ${jsStr(scene.targetLabel)}]`);
+  return '[' + out.join(', ') + ']';
 }
 
+// Selv-helbredende runtime som legges inn øverst i hvert generert skript.
+const SELF_HEAL_RUNTIME: string[] = [
+  '// ── Selv-helbredende locator. Prøver hver lagrede strategi i rekkefølge;',
+  '// ── ved bom faller den tilbake til ren tekst/role-match og logger hva som',
+  '// ── må fikses. Slik tåler skriptet at siden endrer seg (redesign, A/B-test,',
+  '// ── lokalisering) og «tilpasser seg» hver side i stedet for å knekke.',
+  'async function locate(page, strategies) {',
+  '  for (const s of strategies) {',
+  '    try {',
+  '      let loc;',
+  "      if (s[0] === 'testid') loc = page.getByTestId(s[1]);",
+  "      else if (s[0] === 'role') loc = page.getByRole(s[1], { name: s[2], exact: false });",
+  "      else if (s[0] === 'text') loc = page.getByText(s[1], { exact: false });",
+  '      else loc = page.locator(s[1]);',
+  '      loc = loc.first();',
+  '      if ((await loc.count()) && (await loc.isVisible().catch(() => false))) return loc;',
+  '    } catch {}',
+  '  }',
+  '  return null;',
+  '}',
+  'async function act(page, strategies, kind, label) {',
+  '  let loc = await locate(page, strategies);',
+  '  if (!loc && label) {',
+  "    console.warn('[heal] fant ikke «' + label + '» via lagrede locators — prøver tekst/role-fallback');",
+  "    loc = await locate(page, [['text', label], ['role', 'button', label], ['role', 'link', label]]);",
+  '  }',
+  '  if (!loc) {',
+  "    console.error('[hopp] ingen treff for «' + (label || kind) + '» — siden kan ha endret seg; oppdater scenen i Demo Studio');",
+  '    return false;',
+  '  }',
+  '  await loc.scrollIntoViewIfNeeded().catch(() => {});',
+  '  try {',
+  "    if (kind === 'show') { /* highlight/zoom/scroll — kun bringe i view */ }",
+  "    else if (kind === 'type') { await loc.click(); await loc.fill('Eksempel'); }",
+  "    else if (kind === 'hover') { await loc.hover(); }",
+  '    else { await loc.click(); }',
+  "  } catch (e) { console.error('[feil] «' + label + '»: ' + (e && e.message)); return false; }",
+  '  return true;',
+  '}',
+];
+
 /**
- * Fase 3 — generer et kjørbart Playwright-skript (.mjs) av demoen: ekte
- * navigasjon + handlinger på ekte selectors + per-scene screenshot + video.
- * Deterministisk og redigerbart (codegen-stil, drevet av demo-flyten).
+ * Fase 3 + selv-helbredelse — generer et kjørbart, ADAPTIVT Playwright-skript
+ * (.mjs) av demoen: ekte navigasjon + per-scene handling via multi-strategi-
+ * locators som helbreder seg selv når siden endrer seg + per-scene screenshot
+ * + video. Deterministisk og redigerbart.
  *
  * Kjør:  npm i -D playwright && npx playwright install chromium && node demo.mjs
  */
 export function buildPlaywrightScript(project: DemoProject): string {
   const name = (project.name || 'demo').replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'demo';
   const L: string[] = [];
-  L.push('// Auto-generert av Post Agent — Demo Studio → Playwright.');
+  L.push('// Auto-generert av Post Agent — Demo Studio → Playwright (selv-helbredende).');
   L.push(`// Kjør:  npm i -D playwright && npx playwright install chromium && node ${name}.mjs`);
   L.push("import { chromium } from 'playwright';");
+  L.push('');
+  SELF_HEAL_RUNTIME.forEach((l) => L.push(l));
   L.push('');
   L.push('const browser = await chromium.launch({ headless: false, slowMo: 350 });');
   L.push("const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, recordVideo: { dir: 'demo-video', size: { width: 1280, height: 800 } } });");
@@ -73,29 +118,26 @@ export function buildPlaywrightScript(project: DemoProject): string {
     const n = i + 1;
     const at = s.actionType ?? 'click';
     const oneLine = (x: string) => (x || '').replace(/\s+/g, ' ').trim();
+    const tuples = sceneLocatorTuples(s);
+    const hasTarget = tuples !== '[]';
+    const label = oneLine(s.targetLabel || '');
     L.push(`// ── Scene ${n}: ${oneLine(s.title).slice(0, 60)} — ${ACTION_META[at].label}`);
     if (s.narration) L.push(`// VO: ${oneLine(s.narration).slice(0, 120)}`);
     if (s.startScrollPct) L.push(`await page.evaluate(() => window.scrollTo(0, (document.body.scrollHeight - innerHeight) * ${(s.startScrollPct / 100).toFixed(2)}));`);
-    const loc = playwrightLocator(s);
     if (at === 'wait') {
       L.push(`await page.waitForTimeout(${Math.max(1, s.pauseSec ?? 2) * 1000});`);
-    } else if (at === 'type' && loc) {
-      L.push(`await ${loc}.click();`);
-      L.push(`await ${loc}.fill(${jsStr('Eksempel')});`);
-    } else if (at === 'hover' && loc) {
-      L.push(`await ${loc}.hover();`);
-    } else if (at === 'scroll') {
-      L.push(loc ? `await ${loc}.scrollIntoViewIfNeeded();` : 'await page.mouse.wheel(0, 600);');
-    } else if ((at === 'highlight' || at === 'zoom') && loc) {
-      L.push(`await ${loc}.scrollIntoViewIfNeeded(); // ${ACTION_META[at].label} (fremhev i etterproduksjon)`);
     } else if (at === 'open_url') {
       L.push('// open_url — legg til page.goto(...) hvis scenen bytter side');
     } else if (at === 'switch_device') {
       L.push('// switch_device — kjør en egen context med mobil-viewport for denne delen');
-    } else if (loc) {
-      L.push(`await ${loc}.click();`);
+    } else if (at === 'scroll' && !hasTarget) {
+      L.push('await page.mouse.wheel(0, 600);');
+    } else if (hasTarget) {
+      const kind = at === 'type' ? 'type' : at === 'hover' ? 'hover'
+        : (at === 'highlight' || at === 'zoom' || at === 'scroll') ? 'show' : 'click';
+      L.push(`await act(page, ${tuples}, ${jsStr(kind)}, ${jsStr(label)});`);
     } else {
-      L.push(`// (ingen target funnet for scene ${n} — sett selector manuelt)`);
+      L.push(`// (ingen target for scene ${n} — sett selector i Demo Studio)`);
     }
     if (s.validationRule) L.push(`// forventet: ${oneLine(s.validationRule).slice(0, 100)}`);
     L.push(`await page.screenshot({ path: 'scene-${String(n).padStart(2, '0')}.png' });`);
