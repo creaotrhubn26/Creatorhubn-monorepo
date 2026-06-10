@@ -28,6 +28,7 @@ import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import CompetitorsPanel from './CompetitorsPanel';
 import B2BAcquisitionPanel from './B2BAcquisitionPanel';
+import MarketingCockpitTiktokSection from '../../components/admin-room/marketing-cockpit/MarketingCockpitTiktokSection';
 import CompetitorReportPanel from './CompetitorReportPanel';
 import PostDraftsPanel from './PostDraftsPanel';
 import SocialConnectionsPanel from './SocialConnectionsPanel';
@@ -605,6 +606,9 @@ export default function MarketingCockpitTab() {
           </Divider>
 
           <CampaignActionsPanel onAction={() => void load()} />
+
+          {/* TikTok — The Role Rooms egen markedsføring */}
+          <MarketingCockpitTiktokSection />
 
           <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
             <Chip label="B2B-AKKVISISJON" size="small"
