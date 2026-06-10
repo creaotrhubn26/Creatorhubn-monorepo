@@ -92,7 +92,7 @@ Skrivestil:
       const userPrompt = [
         `Skriv søknadstekst for: ${app_.scheme_label}`,
         `Prosjekt: ${app_.project_name}`,
-        `Søker: ${app_.applicant_company ?? "CreatorHub Norge AS"}`,
+        `Søker: ${app_.applicant_company ?? "Creatorhub AS"}`,
         `Beløp: ${app_.amount_requested ? `${app_.amount_requested} ${app_.currency}` : "ikke satt"}`,
         "",
         `Format-krav: ${schemeGuide}`,

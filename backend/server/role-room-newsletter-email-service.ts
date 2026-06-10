@@ -78,7 +78,7 @@ function wrapBrandedHtml(opts: { previewText: string; bodyHtml: string; unsubscr
   <div class="footer">
     ${footerNote ? `<p>${footerNote}</p>` : ""}
     <p>Du mottar denne fordi du meldte deg på via theroleroom.com.${unsubscribeUrl ? ` <a href="${unsubscribeUrl}">Meld deg av</a>.` : ""}</p>
-    <p>The Role Room · Et produkt fra CreatorHub Norge AS · Oslo, Norge</p>
+    <p>The Role Room · Et produkt fra Creatorhub AS · Oslo, Norge</p>
   </div>
 </div>
 </body>

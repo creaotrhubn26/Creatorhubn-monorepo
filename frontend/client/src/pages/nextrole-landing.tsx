@@ -1029,7 +1029,7 @@ const NextRoleLanding: React.FC = () => {
                 Vilkår
               </Typography>
               <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                © 2026 CreatorHub Norge AS
+                © 2026 Creatorhub AS
               </Typography>
             </Stack>
           </Stack>
