@@ -453,6 +453,11 @@ export function createPostAgentRouter(
     // token-et er gyldig (App.tsx silentAuthCheck krever me.email).
     const sessionForEmail = await resolveUser(pool, activeSessions, (req as AuthedRequest).bearerToken);
     const sessionEmail = typeof sessionForEmail?.email === 'string' ? sessionForEmail.email : null;
+    console.log(
+      `[pa-me] CALLED userId=${userId} tokenPrefix=${(req as AuthedRequest).bearerToken?.slice(0, 8)} ` +
+        `sessionResolved=${!!sessionForEmail} sessionEmail=${sessionEmail ?? 'NULL'} ` +
+        `sessionKeys=${sessionForEmail ? Object.keys(sessionForEmail).join('|') : '-'}`,
+    );
     // Robust mot databaser der profession/company_name-kolonnene ikke har
     // blitt migrert ennå (migrasjon 0001 + 212). Hvis full-select feiler
     // med "column ... does not exist", fall tilbake til minimum-set og
