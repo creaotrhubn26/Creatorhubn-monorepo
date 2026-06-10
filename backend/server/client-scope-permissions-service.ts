@@ -14,14 +14,32 @@
 import type { Pool } from "pg";
 
 export type ScopePermissionAction =
-  | "audience_upload"
-  | "crm_event_sync"
-  | "plugin_install"
-  | "creator_invitation";
+  // TikTok (Phase 1 — opprinnelige)
+  | "audience_upload"        // bakover-kompat: tiktok_audience_upload
+  | "crm_event_sync"         // bakover-kompat: tiktok_crm_event_sync
+  | "plugin_install"         // bakover-kompat: tiktok_plugin_install
+  | "creator_invitation"     // bakover-kompat: tiktok_creator_invitation
+  // TikTok (eksplisitt-prefixed alias)
+  | "tiktok_audience_upload"
+  | "tiktok_crm_event_sync"
+  | "tiktok_plugin_install"
+  | "tiktok_creator_invitation"
+  // Meta
+  | "meta_audience_upload"
+  | "meta_capi_sync"
+  | "meta_lead_sync"
+  // LinkedIn
+  | "linkedin_audience_upload"
+  | "linkedin_capi_sync"
+  | "linkedin_lead_sync"
+  // Google Ads
+  | "google_customer_match"
+  | "google_offline_conversions"
+  | "google_enhanced_conversions";
 
 export type ScopePermissionStatus = "pending" | "approved" | "rejected";
 
-export const CURRENT_TERMS_VERSION = "2026-06-10-v1";
+export const CURRENT_TERMS_VERSION = "2026-06-10-v2";
 
 export const TERMS_TEXT_NO = `
 VILKÅR FOR AT INNHOLDSPRODUSENTEN HANDLER PÅ VEGNE AV DIN BEDRIFT
@@ -29,56 +47,69 @@ VILKÅR FOR AT INNHOLDSPRODUSENTEN HANDLER PÅ VEGNE AV DIN BEDRIFT
 
 Når du som klient godtar disse vilkårene, gir du The Role Room
 (creatorhub-backend-rtbl.onrender.com) — på vegne av din valgte
-innholdsprodusent — fullmakt til å:
+innholdsprodusent — fullmakt til å handle på dine annonsekontoer
+på TikTok, Meta (Facebook + Instagram), LinkedIn og Google Ads.
 
-1. KOBLE OG DRIFTE TIKTOK-KONTOEN DIN
-   Producer bruker sin egen OAuth-tilkobling til ditt TikTok Business
-   Center. Du forblir eier av annonsekontoen og kan trekke tilgang
-   når som helst.
+1. KOBLE OG DRIFTE ANNONSEKONTOENE DINE
+   Producer bruker sin egen OAuth-tilkobling til ditt Business
+   Center på hver plattform. Du forblir eier av kontoene og kan
+   trekke tilgang når som helst.
 
-2. SENDE DATA TIL TIKTOK (kun handlinger DU har godkjent)
-   For hver handling under er det en egen "av/på"-bryter du må slå på
-   eksplisitt:
+2. SENDE DATA TIL PLATTFORMENE (kun handlinger DU har godkjent)
+   For hver handling under er det en egen "av/på"-bryter du må
+   slå på eksplisitt. Bryterne er gruppert per plattform.
 
-   a) MÅLGRUPPE-OPPLASTING — E-postlister og telefonnumre du gir
-      tilgang til, blir SHA256-kryptert FØR det sendes til TikTok.
-      TikTok bruker hashene til å finne dine eksisterende kunder
-      blant sine brukere. Rå-data lagres aldri hos oss.
+   A) MÅLGRUPPE-OPPLASTING
+      Gjelder: TikTok Custom Audience, Meta Custom Audience,
+      LinkedIn Matched Audience, Google Customer Match.
+      E-postlister og telefonnumre du gir tilgang til, blir
+      SHA256-kryptert FØR de sendes til plattformen. Plattformen
+      bruker hashene til å finne dine eksisterende kunder blant
+      sine brukere. Rå-data lagres aldri hos oss.
 
-   b) KONVERTERINGS-SYNC — Når noen registrerer seg, betaler eller
-      avbryter hos dere, sender vi en hendelse til TikTok så
-      annonsealgoritmen lærer hvilke annonser som faktisk gir
-      salg — ikke bare klikk. Vi sender kun event-navn + verdi
-      + hashet e-post.
+   B) KONVERTERINGS-SYNC (CAPI / Server-side events)
+      Gjelder: TikTok CRM Events, Meta CAPI, LinkedIn Conversions
+      API, Google Enhanced/Offline Conversions.
+      Når noen registrerer seg, betaler eller avbryter hos dere,
+      sender vi en hendelse til plattformen så annonsealgoritmen
+      lærer hvilke annonser som faktisk gir salg — ikke bare
+      klikk. Vi sender kun event-navn + verdi + hashet e-post.
 
-   c) NETTSIDE/BUTIKK-KOBLING — Producer kan binde domenet ditt
-      (f.eks. holycrust.no) til TikTok Business som plugin. Dette
-      gjør at TikTok-annonser kan sende folk rett til kassen.
+   C) LEAD-SYNC
+      Gjelder: TikTok Lead Ads, Meta Lead Ads, LinkedIn Lead
+      Gen Forms. Vi henter leads fra plattformens egne lead-
+      former direkte inn i deres CRM. Rådata ligger i plattformen.
 
-   d) CREATOR-INVITASJONER — Producer kan invitere innholdsskapere
-      på TikTok Marketplace til samarbeid med din merkevare. Hver
-      avtale går ALLTID gjennom deg for endelig godkjenning av
-      pris og innhold.
+   D) NETTSIDE/BUTIKK-KOBLING (kun TikTok)
+      Producer kan binde domenet ditt (f.eks. holycrust.no) til
+      TikTok Business som plugin. Dette gjør at TikTok-annonser
+      kan sende folk rett til kassen.
+
+   E) CREATOR-INVITASJONER (kun TikTok Creator Marketplace)
+      Producer kan invitere innholdsskapere til samarbeid med
+      din merkevare. Hver avtale går ALLTID gjennom deg for
+      endelig godkjenning av pris og innhold.
 
 3. MÅLE OG RAPPORTERE
    Vi henter ad-spend, konverteringer, lead-skjema-svar og
-   rapporterings-data fra TikTok og viser det i dette dashboardet.
-   Vi videreselger ikke data til tredjeparter.
+   rapporterings-data fra plattformene og viser det i dette
+   dashboardet. Vi videreselger ikke data til tredjeparter.
 
 4. KOSTNADER OG BETALING
-   Annonsekostnaden trekkes direkte fra ditt TikTok-kort/-konto
-   til TikTok. Vi tar 20 % management-fee av annonsekostnaden,
-   fakturert månedlig.
+   Annonsekostnaden trekkes direkte fra ditt kort/-konto til
+   plattformen. Vi tar 20 % management-fee av annonsekostnaden
+   per plattform, fakturert månedlig.
 
 5. TILBAKEKALLING
    Du kan når som helst trekke tilbake denne fullmakten ved å
    klikke "Avslutt samarbeid" i dashboardet. Da stopper alle
-   automatiske handlinger umiddelbart.
+   automatiske handlinger umiddelbart på alle plattformer.
 
 6. PERSONVERN
-   Vi er behandlingsansvarlig for kundedata du gir tilgang til,
-   i den grad vi behandler det på vegne av din virksomhet (GDPR
+   Vi er databehandler for kundedata du gir tilgang til (GDPR
    Art. 28). Vi har egen databehandleravtale du kan be om.
+   Vilkår-versjonen lagres som permanent revisjonslogg med
+   tidspunkt, IP og brukernavn på den som godkjente.
 
 Ved å bekrefte under, signerer du elektronisk at du har lest
 og forstått disse vilkårene. Versjon ${CURRENT_TERMS_VERSION}
@@ -86,11 +117,30 @@ lagres som permanent revisjonslogg.
 `.trim();
 
 const VALID_ACTIONS = new Set<ScopePermissionAction>([
-  "audience_upload",
-  "crm_event_sync",
-  "plugin_install",
-  "creator_invitation",
+  // TikTok (legacy keys + prefixed)
+  "audience_upload", "crm_event_sync", "plugin_install", "creator_invitation",
+  "tiktok_audience_upload", "tiktok_crm_event_sync", "tiktok_plugin_install", "tiktok_creator_invitation",
+  // Meta
+  "meta_audience_upload", "meta_capi_sync", "meta_lead_sync",
+  // LinkedIn
+  "linkedin_audience_upload", "linkedin_capi_sync", "linkedin_lead_sync",
+  // Google
+  "google_customer_match", "google_offline_conversions", "google_enhanced_conversions",
 ]);
+
+/** Bakover-kompat: gamle nøkler (uten plattform-prefiks) er aliases for tiktok_*. */
+const ACTION_ALIASES: Record<string, ScopePermissionAction> = {
+  audience_upload: "tiktok_audience_upload",
+  crm_event_sync: "tiktok_crm_event_sync",
+  plugin_install: "tiktok_plugin_install",
+  creator_invitation: "tiktok_creator_invitation",
+};
+
+function normalizeAction(action: string): ScopePermissionAction | null {
+  if (ACTION_ALIASES[action]) return ACTION_ALIASES[action];
+  if (VALID_ACTIONS.has(action as ScopePermissionAction)) return action as ScopePermissionAction;
+  return null;
+}
 
 /** Sjekker om klient har godkjent en spesifikk handling for denne config-en.
  *  Returnerer { ok: true } hvis approved, ellers { ok: false, status, reason }. */
@@ -102,7 +152,8 @@ export async function checkScopePermission(
   | { ok: true }
   | { ok: false; status: ScopePermissionStatus | "missing"; reason: string }
 > {
-  if (!VALID_ACTIONS.has(action)) {
+  const normalized = normalizeAction(action);
+  if (!normalized) {
     return { ok: false, status: "missing", reason: `Ukjent handling: ${action}` };
   }
   const r = await pool.query(
@@ -120,7 +171,8 @@ export async function checkScopePermission(
     };
   }
   const perms = (row.scope_permissions ?? {}) as Record<string, ScopePermissionStatus>;
-  const status = perms[action];
+  // Sjekk både normalisert nøkkel OG original (bakover-kompat med gamle DB-rader)
+  const status = perms[normalized] ?? perms[action];
   if (status === "approved") return { ok: true };
   if (status === "rejected") {
     return { ok: false, status: "rejected", reason: `Klient har avvist denne handlingen: ${action}` };
@@ -146,11 +198,12 @@ export async function acceptScopePermissions(
     userAgent?: string;
   },
 ): Promise<{ ok: true; acceptanceId: string } | { ok: false; error: string }> {
-  // Valider permissions
+  // Valider + normaliser permissions (alias-kompat)
   const cleanPerms: Record<string, ScopePermissionStatus> = {};
   for (const [k, v] of Object.entries(opts.permissions)) {
-    if (!VALID_ACTIONS.has(k as ScopePermissionAction)) continue;
-    if (v === "approved" || v === "rejected" || v === "pending") cleanPerms[k] = v;
+    const normalized = normalizeAction(k);
+    if (!normalized) continue;
+    if (v === "approved" || v === "rejected" || v === "pending") cleanPerms[normalized] = v;
   }
 
   // Hent client_project_id for audit-trail
