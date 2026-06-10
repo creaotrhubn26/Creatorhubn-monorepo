@@ -46,6 +46,7 @@ import ClientTiktokPluginsPanel from './ClientTiktokPluginsPanel';
 import ClientTiktokLinkedAccountsPanel from './ClientTiktokLinkedAccountsPanel';
 import TiktokScopePermissionGate from './TiktokScopePermissionGate';
 import ClientAdsAudiencesPanel from './ClientAdsAudiencesPanel';
+import ClientAdsCrmEventsPanel from './ClientAdsCrmEventsPanel';
 import ClientAiPromptsPanel from './ClientAiPromptsPanel';
 import ClientInsightsPanel from './ClientInsightsPanel';
 
@@ -901,6 +902,11 @@ export default function AgentAdsPanel({
             <ClientAdsAudiencesPanel configId={savedConfigId} platform="google" />
           </TiktokScopePermissionGate>
 
+          {/* Google Offline / Enhanced Conversions (gated) */}
+          <TiktokScopePermissionGate configId={savedConfigId} action="google_offline_conversions">
+            <ClientAdsCrmEventsPanel configId={savedConfigId} platform="google" />
+          </TiktokScopePermissionGate>
+
           {/* R1 — LinkedIn (Insight Tag + Conversion Rules + CAPI gated) */}
           <ClientLinkedinSuitePanel
             configId={savedConfigId}
@@ -912,6 +918,11 @@ export default function AgentAdsPanel({
             <ClientAdsAudiencesPanel configId={savedConfigId} platform="linkedin" />
           </TiktokScopePermissionGate>
 
+          {/* LinkedIn Conversions API events (gated) */}
+          <TiktokScopePermissionGate configId={savedConfigId} action="linkedin_capi_sync">
+            <ClientAdsCrmEventsPanel configId={savedConfigId} platform="linkedin" />
+          </TiktokScopePermissionGate>
+
           {/* R2 — Meta (Pixel + Custom Conversions + CAPI gated på App Review) */}
           <ClientMetaSuitePanel
             configId={savedConfigId}
@@ -921,6 +932,11 @@ export default function AgentAdsPanel({
           {/* Meta Custom Audiences (gated) */}
           <TiktokScopePermissionGate configId={savedConfigId} action="meta_audience_upload">
             <ClientAdsAudiencesPanel configId={savedConfigId} platform="meta" />
+          </TiktokScopePermissionGate>
+
+          {/* Meta CAPI events (gated) */}
+          <TiktokScopePermissionGate configId={savedConfigId} action="meta_capi_sync">
+            <ClientAdsCrmEventsPanel configId={savedConfigId} platform="meta" />
           </TiktokScopePermissionGate>
 
           {/* R3 — TikTok (Pixel + Events + Events API) */}

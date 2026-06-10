@@ -458,3 +458,161 @@ export async function createLinkedinMatchedAudience(
 
   return { ok: true, segmentUrn, uploadCount: users.length };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// LinkedIn Conversions API per klient — server-side conversion events
+//   https://learn.microsoft.com/en-us/linkedin/marketing/conversions-api
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Send konvertering til LinkedIn Conversions API på vegne av klient.
+ * `conversionUrn` må være formen "urn:lla:llaPartnerConversion:NNN" —
+ * dette er ID-en til Conversion Rule (createLinkedinConversion).
+ */
+export async function sendLinkedinCapiEvent(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    configId?: string | null;
+    conversionUrn: string;
+    eventName: string;                  // for logging (LinkedIn knytter conv via URN)
+    eventTime?: Date;
+    eventSourceUrl?: string;
+    email?: string;
+    phone?: string;
+    firstName?: string;
+    lastName?: string;
+    value?: number;
+    currency?: string;
+    customProperties?: Record<string, unknown>;
+  },
+): Promise<{ ok: true; logId: string } | { ok: false; error: string; logId?: string }> {
+  const access = await token(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  const eventTime = opts.eventTime ?? new Date();
+  const eventTimeMs = eventTime.getTime();
+
+  const externalUserHash = opts.email ? liHash(opts.email) : null;
+  const logRow = await pool.query(
+    `INSERT INTO linkedin_capi_event_log (
+       config_id, producer_user_id, conversion_urn, event_name, event_time,
+       event_source, external_user_id, event_value, event_currency,
+       custom_properties, delivery_status, attempt_count
+     ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, 'pending', 1)
+     RETURNING id`,
+    [
+      opts.configId ?? null,
+      opts.producerUserId,
+      opts.conversionUrn,
+      opts.eventName,
+      eventTime.toISOString(),
+      opts.eventSourceUrl ?? null,
+      externalUserHash,
+      opts.value ?? null,
+      opts.currency ?? "NOK",
+      JSON.stringify(opts.customProperties ?? {}),
+    ],
+  );
+  const logId = logRow.rows[0].id as string;
+
+  const userIds: Array<{ idType: string; idValue: string }> = [];
+  if (opts.email) userIds.push({ idType: "SHA256_EMAIL", idValue: liHash(opts.email) });
+  // LinkedIn aksepterer også LINKEDIN_FIRST_PARTY_ADS_TRACKING_UUID
+
+  if (userIds.length === 0) {
+    await pool.query(
+      `UPDATE linkedin_capi_event_log SET delivery_status='failed', last_error=$1, updated_at=NOW() WHERE id=$2::uuid`,
+      ["Mangler bruker-identifikatorer (email)", logId],
+    );
+    return { ok: false, error: "Mangler bruker-identifikatorer", logId };
+  }
+
+  const userInfo: Record<string, string> = {};
+  if (opts.firstName) userInfo.firstName = opts.firstName;
+  if (opts.lastName) userInfo.lastName = opts.lastName;
+
+  const payload: Record<string, unknown> = {
+    conversion: opts.conversionUrn,
+    conversionHappenedAt: eventTimeMs,
+    user: { userIds, ...(Object.keys(userInfo).length > 0 ? { userInfo } : {}) },
+  };
+  if (opts.value !== undefined) {
+    payload.conversionValue = {
+      currencyCode: opts.currency ?? "NOK",
+      amount: String(opts.value),
+    };
+  }
+  if (opts.eventSourceUrl) {
+    (payload as Record<string, unknown>).eventSourceUrl = opts.eventSourceUrl;
+  }
+
+  const r = await fetch(`${LINKEDIN_REST_BASE}/conversionEvents`, {
+    method: "POST",
+    headers: liHeaders(access),
+    body: JSON.stringify(payload),
+  });
+  const respText = await r.text();
+  const respBody: unknown = respText ? (() => { try { return JSON.parse(respText); } catch { return { raw: respText }; } })() : {};
+
+  if (!r.ok) {
+    const errMsg = `LinkedIn CAPI HTTP ${r.status} — ${respText.slice(0, 300)}`;
+    await pool.query(
+      `UPDATE linkedin_capi_event_log
+         SET delivery_status='failed', last_error=$1, linkedin_response=$2::jsonb, updated_at=NOW()
+       WHERE id=$3::uuid`,
+      [errMsg, JSON.stringify(respBody), logId],
+    );
+    return { ok: false, error: errMsg, logId };
+  }
+
+  await pool.query(
+    `UPDATE linkedin_capi_event_log
+       SET delivery_status='delivered', delivered_at=NOW(), linkedin_response=$1::jsonb, updated_at=NOW()
+     WHERE id=$2::uuid`,
+    [JSON.stringify(respBody), logId],
+  );
+  return { ok: true, logId };
+}
+
+export async function listLinkedinCapiEvents(
+  pool: Pool,
+  opts: { configId?: string | null; producerUserId: string; limit?: number },
+): Promise<Array<{
+  id: string;
+  conversionUrn: string;
+  eventName: string;
+  eventTime: string;
+  externalUserId: string | null;
+  eventValue: number | null;
+  eventCurrency: string;
+  deliveryStatus: string;
+  deliveredAt: string | null;
+  attemptCount: number;
+  lastError: string | null;
+}>> {
+  const r = await pool.query(
+    `SELECT id, conversion_urn, event_name, event_time, external_user_id,
+            event_value, event_currency, delivery_status, delivered_at,
+            attempt_count, last_error
+     FROM linkedin_capi_event_log
+     WHERE producer_user_id = $1::uuid
+       AND ($2::uuid IS NULL OR config_id = $2::uuid)
+     ORDER BY event_time DESC
+     LIMIT $3`,
+    [opts.producerUserId, opts.configId ?? null, opts.limit ?? 50],
+  );
+  return r.rows.map((row) => ({
+    id: row.id,
+    conversionUrn: row.conversion_urn,
+    eventName: row.event_name,
+    eventTime: row.event_time,
+    externalUserId: row.external_user_id,
+    eventValue: row.event_value ? Number(row.event_value) : null,
+    eventCurrency: row.event_currency,
+    deliveryStatus: row.delivery_status,
+    deliveredAt: row.delivered_at,
+    attemptCount: row.attempt_count,
+    lastError: row.last_error,
+  }));
+}
