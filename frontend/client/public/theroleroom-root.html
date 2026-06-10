@@ -188,29 +188,60 @@
       {
         "@context": "https://schema.org",
         "@type": "Organization",
-        "@id": "https://creatorhubn.com/#organization",
-        "name": "CreatorHub Norge",
-        "url": "https://creatorhubn.com",
-        "logo": "https://creatorhubn.com/creatorhub-wordmark-light.png",
-        "email": "hello@creatorhubn.com"
+        "@id": "https://theroleroom.com/#organization",
+        "name": "The Role Room",
+        "legalName": "Creatorhub AS",
+        "alternateName": ["theroleroom", "Role Room"],
+        "taxID": "937518684",
+        "vatID": "NO937518684MVA",
+        "url": "https://theroleroom.com",
+        "logo": "https://theroleroom.com/TheRoleRoom_App_Logo.png",
+        "email": "support@theroleroom.com",
+        "foundingDate": "2024",
+        "foundingLocation": {
+          "@type": "Place",
+          "address": {
+            "@type": "PostalAddress",
+            "addressCountry": "NO",
+            "addressRegion": "Oslo"
+          }
+        },
+        "areaServed": [
+          { "@type": "Country", "name": "Norway" },
+          { "@type": "Country", "name": "Sweden" },
+          { "@type": "Country", "name": "Denmark" },
+          { "@type": "Country", "name": "Finland" }
+        ],
+        "contactPoint": [{
+          "@type": "ContactPoint",
+          "contactType": "customer support",
+          "email": "support@theroleroom.com",
+          "availableLanguage": ["Norwegian", "English"],
+          "areaServed": ["NO", "SE", "DK", "FI"]
+        }],
+        "parentOrganization": {
+          "@type": "Organization",
+          "name": "Creatorhub AS",
+          "url": "https://creatorhubn.com"
+        }
       }
     </script>
     <script type="application/ld+json" data-seo-ld="website">
       {
         "@context": "https://schema.org",
         "@type": "WebSite",
-        "@id": "https://creatorhubn.com/#website",
-        "name": "CreatorHub Norge",
-        "url": "https://creatorhubn.com",
+        "@id": "https://theroleroom.com/#website",
+        "name": "The Role Room",
+        "url": "https://theroleroom.com",
         "inLanguage": "nb-NO",
         "publisher": {
-          "@id": "https://creatorhubn.com/#organization"
+          "@id": "https://theroleroom.com/#organization"
         },
         "potentialAction": {
           "@type": "SearchAction",
           "target": {
             "@type": "EntryPoint",
-            "urlTemplate": "https://creatorhubn.com/?q={search_term_string}"
+            "urlTemplate": "https://theroleroom.com/?q={search_term_string}"
           },
           "query-input": "required name=search_term_string"
         }
@@ -220,15 +251,15 @@
       {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
-        "@id": "https://creatorhubn.com/#software",
-        "name": "CreatorHub Norge",
-        "description": "CreatorHub samler prosjektstyring, abonnementsflyt, kundeopplevelse, Academy og community i én plattform for skapere og kreative team.",
-        "url": "https://creatorhubn.com",
-        "image": "https://creatorhubn.com/landing_backdrop_with_logo.png",
+        "@id": "https://theroleroom.com/#software",
+        "name": "The Role Room",
+        "description": "Produksjonsflate for casting, talentportal, team og koordinering av opptaksdager. Samler roller, kandidater, auditions og produksjonsplan i ett arbeidsrom — for film, TV og innholdsproduksjon i Norden.",
+        "url": "https://theroleroom.com",
+        "image": "https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp",
         "applicationCategory": "BusinessApplication",
-        "applicationSubCategory": "CreatorProductionPlatform",
+        "applicationSubCategory": "CastingSoftware",
         "operatingSystem": "Web, iOS, Android",
-        "inLanguage": "nb-NO",
+        "inLanguage": ["nb-NO", "en-US"],
         "offers": {
           "@type": "Offer",
           "price": "0",
@@ -236,15 +267,16 @@
           "availability": "https://schema.org/InStock"
         },
         "publisher": {
-          "@id": "https://creatorhubn.com/#organization"
+          "@id": "https://theroleroom.com/#organization"
         },
         "featureList": [
-          "Prosjektrom og team-koordinering for skapere",
-          "Klientportal, tilbud og fakturering",
-          "Abonnementsflyt og betalingsadministrasjon",
-          "CreatorHub Academy — kurs og opplæring",
-          "Showcase og leveransegallerier for kunder",
-          "Photo Enhancer og AI-verktøy for produksjonsteam"
+          "Casting og kandidatadministrasjon",
+          "Audition-planlegging og selvbetjent innspilling",
+          "Talentportal for skuespillere og crew",
+          "Prosjektrom for produksjonsteam",
+          "Shotlist og storyboard-koordinering",
+          "Norsk språk og nordisk dataøkonomi (GDPR)",
+          "Integrert AI-agent for casting-arbeidsflyt"
         ]
       }
     </script>
@@ -266,62 +298,7 @@
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",
         "itemListElement": [
-          { "@type": "ListItem", "position": 1, "name": "Hjem", "item": "https://creatorhubn.com/" }
-        ]
-      }
-    </script>
-    <script type="application/ld+json" data-seo-ld="howto">
-      {
-        "@context": "https://schema.org",
-        "@type": "HowTo",
-        "@id": "https://creatorhubn.com/#howto-onboarding",
-        "name": "Slik kommer du i gang med CreatorHub",
-        "description": "Fem steg for å sette opp CreatorHub-arbeidsrommet ditt — fra konto-opprettelse til første prosjekt med team og klient.",
-        "inLanguage": "nb-NO",
-        "totalTime": "PT10M",
-        "supply": [
-          { "@type": "HowToSupply", "name": "E-postadresse" },
-          { "@type": "HowToSupply", "name": "Beskrivelse av virksomheten/teamet" }
-        ],
-        "tool": [
-          { "@type": "HowToTool", "name": "CreatorHub-konto (gratis å opprette)" }
-        ],
-        "step": [
-          {
-            "@type": "HowToStep",
-            "position": 1,
-            "name": "Opprett konto",
-            "text": "Registrer deg på creatorhubn.com og bekreft e-postadressen.",
-            "url": "https://creatorhubn.com/#step-1-konto"
-          },
-          {
-            "@type": "HowToStep",
-            "position": 2,
-            "name": "Velg abonnement",
-            "text": "Velg plan som matcher behovet ditt — Creator, Team eller Business.",
-            "url": "https://creatorhubn.com/pricing"
-          },
-          {
-            "@type": "HowToStep",
-            "position": 3,
-            "name": "Opprett første prosjekt",
-            "text": "Sett opp prosjektrom med tittel, klient og tidslinje. Velg mal eller start tomt.",
-            "url": "https://creatorhubn.com/#step-3-prosjekt"
-          },
-          {
-            "@type": "HowToStep",
-            "position": 4,
-            "name": "Inviter team og klient",
-            "text": "Inviter team-medlemmer og klient via lenke eller e-post. Sett rolletilganger per person.",
-            "url": "https://creatorhubn.com/#step-4-team"
-          },
-          {
-            "@type": "HowToStep",
-            "position": 5,
-            "name": "Lever via klientportal",
-            "text": "Last opp leveranser og del med klient gjennom showcase eller leveransegalleri.",
-            "url": "https://creatorhubn.com/#step-5-lever"
-          }
+          { "@type": "ListItem", "position": 1, "name": "Hjem", "item": "https://theroleroom.com/" }
         ]
       }
     </script>
