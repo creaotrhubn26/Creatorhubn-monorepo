@@ -561,10 +561,15 @@ export default function App() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        const me = await res.json() as { email?: string; name?: string };
-        if (me?.email) {
+        // Et 200-svar fra /me betyr at token-et er gyldig → brukeren ER
+        // innlogget. Tidligere krevde vi `me.email`, men enkelte kontoer
+        // (OAuth/migrert) mangler email i users-raden → 200-uten-email ble
+        // feilaktig tolket som «Token utløpt». Nå: 200 = innlogget, email er
+        // bare til visning.
+        const me = await res.json().catch(() => ({})) as { email?: string; name?: string };
+        {
           setAuthStatus("ok");
-          setAuthUserEmail(me.email);
+          setAuthUserEmail(me?.email ?? null);
           void refreshEntitlements(); // hent hvilke moduler brukeren eier
 
           // Hent Role Room-medlemsprofil (avatar + navn + profesjon) i bakgrunnen.
@@ -590,10 +595,6 @@ export default function App() {
           } catch {
             // Profil-fetch er best-effort — status er allerede satt ok
           }
-        } else {
-          setAuthStatus("expired");
-          setAuthUserEmail(null);
-          setAuthMemberProfile(null);
         }
       } else if (res.status === 401 || res.status === 403) {
         setAuthStatus("expired");
