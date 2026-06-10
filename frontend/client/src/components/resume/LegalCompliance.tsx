@@ -168,7 +168,7 @@ export const PrivacyPolicyDialog: React.FC<{
             2. Databehandler
           </Typography>
           <Typography variant="body2" paragraph>
-            <strong>Navn:</strong> CreatorHub Norge AS<br />
+            <strong>Navn:</strong> Creatorhub AS<br />
             <strong>Epostadresse:</strong> privacy@creatorhubnorge.no<br />
             <strong>Adresse:</strong> [Selskapsadresse]
           </Typography>

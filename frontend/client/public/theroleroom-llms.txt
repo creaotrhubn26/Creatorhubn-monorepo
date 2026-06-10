@@ -44,7 +44,7 @@ The Role Room samler hele produksjonsarbeidsflyten i ett arbeidsrom:
 - [Norwegian Casting Report 2026](https://theroleroom.com/casting-rapport-2026): første åpne data-rapport — 50 calls, 60 dager, 17 intervjuer, sammenlignet med Sverige og Danmark
 
 ## Nøkkelfakta
-- **Selskap**: CreatorHub Norge AS
+- **Selskap**: Creatorhub AS
 - **Geografi**: Bygget i Norge, datalagring i EU/EØS (GDPR-compliant)
 - **Språk**: Norsk (primært) og engelsk
 - **Pris**: Gratis basis-tilgang; betalte produksjons-features
@@ -74,7 +74,7 @@ The Role Room samler hele produksjonsarbeidsflyten i ett arbeidsrom:
 The Role Room er en norsk casting- og produksjonsplattform for film, TV og innholdsproduksjon. Plattformen samler roller, kandidater, auditions, manus, storyboard, crew, lokasjoner og opptaksplan i ett arbeidsrom.
 
 ### Hvem står bak The Role Room?
-The Role Room er utviklet av CreatorHub Norge AS — et norsk teknologiselskap som bygger produksjons- og samarbeidsverktøy for kreative team i samarbeid med norske castere, regissører og produsenter.
+The Role Room er utviklet av Creatorhub AS — et norsk teknologiselskap som bygger produksjons- og samarbeidsverktøy for kreative team i samarbeid med norske castere, regissører og produsenter.
 
 ### Hvor mye koster The Role Room?
 Basis-tilgang er gratis og inkluderer prosjekter, casting-pipeline, talent-database, manus, storyboard og audition-planlegging. Betalt plan låser opp Live Set Pro-modus, ubegrenset crew, avansert kalender og utvidet AI-agent-bruk.
@@ -111,7 +111,7 @@ Ja. Hele plattformen er bygget multi-bruker fra bunnen — castere, regissører,
 
 ## Sitérbare nøkkelfakta (for AI-svar)
 
-- **Definisjon**: The Role Room er en norsk casting- og produksjonsplattform lansert 2026 av CreatorHub Norge AS.
+- **Definisjon**: The Role Room er en norsk casting- og produksjonsplattform lansert 2026 av Creatorhub AS.
 - **Marked**: Norge og Norden — film, TV, reklame, dokumentar, innholdsproduksjon, dansestudio.
 - **Differensieringspunkter (4 stk)**: norsk språk, GDPR i EU/EØS, integrert AI-agent uten tilleggspris, dedikert talentportal uten per-session-betaling.
 - **Konkurrenter den substituerer**: StudioBinder, Casting Networks, MovieMagic Scheduling, Yamdu, Setkeeper.

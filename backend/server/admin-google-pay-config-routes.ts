@@ -139,7 +139,7 @@ function defaultFallbackConfig() {
   return {
     id: "singleton",
     merchantId: null,
-    merchantName: "CreatorHub Norge AS",
+    merchantName: "Creatorhub AS",
     environment: "TEST",
     gateway: "stripe",
     gatewayMerchantId: null,

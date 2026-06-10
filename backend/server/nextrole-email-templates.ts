@@ -85,7 +85,7 @@ ${opts.bodyHtml}
       <!-- Footer -->
       <tr><td style="padding:24px 32px;border-top:1px solid ${BRAND.divider};font-size:12px;color:${BRAND.muted};text-align:center;border-radius:0 0 16px 16px;">
         <p style="margin:0 0 8px 0;">
-          NextRole by CreatorHub Norge AS · Lørenskog, Norge
+          NextRole by Creatorhub AS · Lørenskog, Norge
         </p>
         <p style="margin:0 0 8px 0;">
           <a href="${BRAND.appUrl}/privacy-policy" style="color:${BRAND.muted};text-decoration:underline;">Personvern</a>
