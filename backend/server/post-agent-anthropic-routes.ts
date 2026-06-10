@@ -446,7 +446,13 @@ export function createPostAgentRouter(
    */
   router.get('/me', postAgentAuth, async (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;
-    console.log(`[pa-me] lookup userId=${userId} tokenPrefix=${(req as AuthedRequest).bearerToken?.slice(0, 8)}`);
+    // Sesjons-email som fallback: enkelte users-rader (f.eks. OAuth-/migrerte
+    // kontoer) har tom `email`-kolonne selv om innloggings-sesjonen alltid har
+    // en gyldig email (validert i auth-session-store). Uten denne fallbacken
+    // returnerer /me email=null → appen tolker det som «Token utløpt» selv om
+    // token-et er gyldig (App.tsx silentAuthCheck krever me.email).
+    const sessionForEmail = await resolveUser(pool, activeSessions, (req as AuthedRequest).bearerToken);
+    const sessionEmail = typeof sessionForEmail?.email === 'string' ? sessionForEmail.email : null;
     // Robust mot databaser der profession/company_name-kolonnene ikke har
     // blitt migrert ennå (migrasjon 0001 + 212). Hvis full-select feiler
     // med "column ... does not exist", fall tilbake til minimum-set og
@@ -482,15 +488,33 @@ export function createPostAgentRouter(
       }
     }
     if (!u) {
+      // Token er gyldig (resolverte), men ingen users-rad. Hvis sesjonen har
+      // email, regn brukeren som pålogget med et minimum-svar i stedet for å
+      // tvinge appen til «Token utløpt».
+      if (sessionEmail) {
+        res.json({
+          id: userId,
+          email: sessionEmail,
+          name: sessionEmail.split('@')[0],
+          role: 'user',
+          isAdministrator: false,
+          schemaDegraded: true,
+        });
+        return;
+      }
       console.warn(`[pa-me] user_not_found userId=${userId} — token resolverte men ingen users-rad med den id`);
       res.status(404).json({ error: 'user_not_found' });
       return;
     }
+    const email = ((u.email as string | null | undefined) || sessionEmail) ?? null;
+    if (!u.email && sessionEmail) {
+      console.warn(`[pa-me] users.email tom for userId=${userId} — falt tilbake til sesjons-email`);
+    }
     const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
     res.json({
       id: u.id,
-      email: u.email,
-      name: fullName || (u.email as string | undefined)?.split('@')[0] || 'Bruker',
+      email,
+      name: fullName || email?.split('@')[0] || 'Bruker',
       firstName: u.first_name,
       lastName: u.last_name,
       role: u.role || 'user',
