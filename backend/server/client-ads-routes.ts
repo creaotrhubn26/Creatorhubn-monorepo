@@ -2177,6 +2177,23 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   // ════════════════════════════════════════════════════════════════════
 
   // ════════════════════════════════════════════════════════════════════
+  // Marketing Cockpit: TheRoleRoom's egen TikTok-config
+  // (eksponeres til frontend så Marketing Cockpit slipper å hardkode IDer)
+  // ════════════════════════════════════════════════════════════════════
+
+  app.get("/api/admin-room/marketing-cockpit/tiktok-self-config", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    return res.json({
+      configId: "self",
+      tiktokAdvertiserId: process.env.ROLE_ROOM_TIKTOK_ADVERTISER_ID || "7649045350950535189",
+      tiktokPixelCode: process.env.ROLE_ROOM_TIKTOK_PIXEL_CODE || null,
+      brandHandle: "@user3955828441699",
+      brandName: "The Role Room",
+    });
+  });
+
+  // ════════════════════════════════════════════════════════════════════
   // Klient: scope-permissions + ToS-aksept
   // ════════════════════════════════════════════════════════════════════
 
