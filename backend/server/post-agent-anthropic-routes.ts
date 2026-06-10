@@ -458,13 +458,34 @@ export function createPostAgentRouter(
         `sessionResolved=${!!sessionForEmail} sessionEmail=${sessionEmail ?? 'NULL'} ` +
         `sessionKeys=${sessionForEmail ? Object.keys(sessionForEmail).join('|') : '-'}`,
     );
-    // Robust mot databaser der profession/company_name-kolonnene ikke har
-    // blitt migrert ennå (migrasjon 0001 + 212). Hvis full-select feiler
-    // med "column ... does not exist", fall tilbake til minimum-set og
-    // returner profession/companyName som null — UI viser fortsatt
-    // brukeren som pålogget istedenfor "Token utløpt".
+    // Skuddsikker fallback: feiler users-oppslaget på NOEN måte (manglende
+    // kolonne, ingen rad, DB-feil) men token-et resolverte til en sesjon med
+    // email → regn brukeren som pålogget og bygg svaret fra sesjonen. Gyldig
+    // token skal ALDRI gi «Token utløpt».
+    const s = (sessionForEmail ?? {}) as Record<string, unknown>;
+    const sessionFallback = (reason: string): boolean => {
+      if (!sessionEmail) return false;
+      console.warn(`[pa-me] DB-lookup feilet (${reason}) — sesjons-svar for ${sessionEmail}`);
+      res.json({
+        id: userId,
+        email: sessionEmail,
+        name:
+          (typeof s.displayName === 'string' && s.displayName) ||
+          (typeof s.name === 'string' && s.name) ||
+          sessionEmail.split('@')[0],
+        role: typeof s.role === 'string' ? s.role : 'user',
+        profileImageUrl: typeof s.picture === 'string' ? s.picture : undefined,
+        isAdministrator: false,
+        schemaDegraded: true,
+      });
+      return true;
+    };
+
+    // Robust mot databaser der enkelte kolonner ikke er migrert. NB: minCols
+    // dropper is_administrator (kan mangle i prod → ville fått min-select til å
+    // kaste også); admin-status er uansett ikke nødvendig for innlogging.
     const fullCols = 'id, email, first_name, last_name, role, profile_image_url, profession, company_name, is_administrator';
-    const minCols  = 'id, email, first_name, last_name, role, profile_image_url, is_administrator';
+    const minCols  = 'id, email, first_name, last_name, role, profile_image_url';
     let u: Record<string, unknown> | undefined;
     let degraded = false;
     try {
@@ -484,29 +505,19 @@ export function createPostAgentRouter(
           );
           u = rows[0];
         } catch (err2) {
+          if (sessionFallback('min-select: ' + (err2 as Error).message)) return;
           res.status(500).json({ error: 'profile_lookup_failed', detail: (err2 as Error).message });
           return;
         }
       } else {
+        if (sessionFallback('select: ' + msg)) return;
         res.status(500).json({ error: 'profile_lookup_failed', detail: msg });
         return;
       }
     }
     if (!u) {
-      // Token er gyldig (resolverte), men ingen users-rad. Hvis sesjonen har
-      // email, regn brukeren som pålogget med et minimum-svar i stedet for å
-      // tvinge appen til «Token utløpt».
-      if (sessionEmail) {
-        res.json({
-          id: userId,
-          email: sessionEmail,
-          name: sessionEmail.split('@')[0],
-          role: 'user',
-          isAdministrator: false,
-          schemaDegraded: true,
-        });
-        return;
-      }
+      // Token gyldig men ingen users-rad → sesjons-svar (eller 404).
+      if (sessionFallback('no-row')) return;
       console.warn(`[pa-me] user_not_found userId=${userId} — token resolverte men ingen users-rad med den id`);
       res.status(404).json({ error: 'user_not_found' });
       return;
