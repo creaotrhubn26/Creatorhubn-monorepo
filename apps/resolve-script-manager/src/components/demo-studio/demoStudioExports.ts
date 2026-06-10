@@ -50,14 +50,39 @@ function sceneLocatorTuples(scene: DemoScene): string {
   return '[' + out.join(', ') + ']';
 }
 
-// Selv-helbredende runtime som legges inn øverst i hvert generert skript.
+// Selv-helbredende + LÆRENDE runtime som legges inn øverst i hvert skript.
 const SELF_HEAL_RUNTIME: string[] = [
-  '// ── Selv-helbredende locator. Prøver hver lagrede strategi i rekkefølge;',
-  '// ── ved bom faller den tilbake til ren tekst/role-match og logger hva som',
-  '// ── må fikses. Slik tåler skriptet at siden endrer seg (redesign, A/B-test,',
-  '// ── lokalisering) og «tilpasser seg» hver side i stedet for å knekke.',
+  '// ── Selv-helbredende + lærende locator. Prøver lagrede strategier i',
+  '// ── rekkefølge; ved bom helbreder den via tekst/role OG lærer hvilken',
+  '// ── strategi som traff (learned.json) → brukes først neste kjøring. Slik',
+  '// ── blir skriptet bedre for hver gang siden besøkes, og tåler redesign.',
+  "const LEARNED_FILE = 'learned.json';",
+  'let LEARNED = {};',
+  "try { if (existsSync(LEARNED_FILE)) LEARNED = JSON.parse(readFileSync(LEARNED_FILE, 'utf8')); } catch {}",
+  'function saveLearned() { try { writeFileSync(LEARNED_FILE, JSON.stringify(LEARNED, null, 2)); } catch {} }',
+  '',
+  '// Fjern cookie/consent-bannere så opptaket viser faktisk innhold.',
+  'async function dismissOverlays(page) {',
+  "  const labels = ['Godta alle','Godta','Aksepter alle','Aksepter','Akseptér alle','Akseptér','Tillat alle','Tillat','Jeg forstår','Forstått','Greit','OK','Accept all','Accept','Allow all','I agree','Agree','Got it'];",
+  '  for (const t of labels) {',
+  '    try {',
+  "      const b = page.getByRole('button', { name: t, exact: false }).first();",
+  '      if ((await b.count()) && (await b.isVisible().catch(() => false))) { await b.click({ timeout: 1500 }).catch(() => {}); await page.waitForTimeout(400); return true; }',
+  '    } catch {}',
+  '  }',
+  "  for (const sel of ['#onetrust-accept-btn-handler', 'button[aria-label*=\"accept\" i]', '[id*=\"cookie\" i] button', '[class*=\"consent\" i] button', '[class*=\"cookie\" i] button']) {",
+  '    try {',
+  '      const b = page.locator(sel).first();',
+  '      if ((await b.count()) && (await b.isVisible().catch(() => false))) { await b.click({ timeout: 1500 }).catch(() => {}); await page.waitForTimeout(400); return true; }',
+  '    } catch {}',
+  '  }',
+  '  return false;',
+  '}',
+  '',
+  '// Returnerer { loc, strategy } for første treffende strategi (eller null).',
   'async function locate(page, strategies) {',
   '  for (const s of strategies) {',
+  '    if (!s) continue;',
   '    try {',
   '      let loc;',
   "      if (s[0] === 'testid') loc = page.getByTestId(s[1]);",
@@ -65,27 +90,37 @@ const SELF_HEAL_RUNTIME: string[] = [
   "      else if (s[0] === 'text') loc = page.getByText(s[1], { exact: false });",
   '      else loc = page.locator(s[1]);',
   '      loc = loc.first();',
-  '      if ((await loc.count()) && (await loc.isVisible().catch(() => false))) return loc;',
+  '      if ((await loc.count()) && (await loc.isVisible().catch(() => false))) return { loc, strategy: s };',
   '    } catch {}',
   '  }',
   '  return null;',
   '}',
   'async function act(page, strategies, kind, label) {',
-  '  let loc = await locate(page, strategies);',
-  '  if (!loc && label) {',
-  "    console.warn('[heal] fant ikke «' + label + '» via lagrede locators — prøver tekst/role-fallback');",
-  "    loc = await locate(page, [['text', label], ['role', 'button', label], ['role', 'link', label]]);",
+  '  const key = label || JSON.stringify(strategies[0] || null);',
+  '  // Lært strategi fra tidligere kjøringer prøves FØRST.',
+  '  const ordered = (LEARNED[key] ? [LEARNED[key]] : []).concat(strategies);',
+  '  let hit = await locate(page, ordered);',
+  '  let viaFallback = false;',
+  '  if (!hit && label) {',
+  "    console.warn('[heal] fant ikke «' + label + '» — prøver tekst/role-fallback');",
+  "    hit = await locate(page, [['text', label], ['role', 'button', label], ['role', 'link', label]]);",
+  '    viaFallback = !!hit;',
   '  }',
-  '  if (!loc) {',
-  "    console.error('[hopp] ingen treff for «' + (label || kind) + '» — siden kan ha endret seg; oppdater scenen i Demo Studio');",
+  '  if (!hit) {',
+  "    console.error('[hopp] ingen treff for «' + (label || kind) + '» — oppdater scenen i Demo Studio');",
   '    return false;',
   '  }',
-  '  await loc.scrollIntoViewIfNeeded().catch(() => {});',
+  '  // LÆR: lagre den fungerende strategien for denne siden.',
+  '  if (key && hit.strategy && JSON.stringify(LEARNED[key]) !== JSON.stringify(hit.strategy)) {',
+  '    LEARNED[key] = hit.strategy; saveLearned();',
+  "    if (viaFallback) console.log('[lært] «' + label + '» → ' + JSON.stringify(hit.strategy));",
+  '  }',
+  '  await hit.loc.scrollIntoViewIfNeeded().catch(() => {});',
   '  try {',
-  "    if (kind === 'show') { /* highlight/zoom/scroll — kun bringe i view */ }",
-  "    else if (kind === 'type') { await loc.click(); await loc.fill('Eksempel'); }",
-  "    else if (kind === 'hover') { await loc.hover(); }",
-  '    else { await loc.click(); }',
+  "    if (kind === 'show') {}",
+  "    else if (kind === 'type') { await hit.loc.click(); await hit.loc.fill('Eksempel'); }",
+  "    else if (kind === 'hover') { await hit.loc.hover(); }",
+  '    else { await hit.loc.click(); }',
   "  } catch (e) { console.error('[feil] «' + label + '»: ' + (e && e.message)); return false; }",
   '  return true;',
   '}',
@@ -105,6 +140,7 @@ export function buildPlaywrightScript(project: DemoProject): string {
   L.push('// Auto-generert av Post Agent — Demo Studio → Playwright (selv-helbredende).');
   L.push(`// Kjør:  npm i -D playwright && npx playwright install chromium && node ${name}.mjs`);
   L.push("import { chromium } from 'playwright';");
+  L.push("import { readFileSync, writeFileSync, existsSync } from 'node:fs';");
   L.push('');
   SELF_HEAL_RUNTIME.forEach((l) => L.push(l));
   L.push('');
@@ -113,6 +149,7 @@ export function buildPlaywrightScript(project: DemoProject): string {
   L.push('const page = await context.newPage();');
   L.push(`await page.goto(${jsStr(project.url)}, { waitUntil: 'domcontentloaded' });`);
   L.push('await page.waitForTimeout(1500);');
+  L.push('await dismissOverlays(page); // fjern cookie/consent-banner før opptak');
   L.push('');
   project.scenes.forEach((s, i) => {
     const n = i + 1;
