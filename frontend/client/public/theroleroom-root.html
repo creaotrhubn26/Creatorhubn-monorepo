@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="nb">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <link rel="icon" type="image/png" href="/creatorhub-icon.png" />
+    <link rel="shortcut icon" type="image/png" href="/creatorhub-icon.png" />
+    <link rel="apple-touch-icon" href="/creatorhub-icon.png" />
+    <!-- Slice 9X.29 — PWA installerbar med offline-støtte -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="The Role Room" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      theroleroom-root.html — server-rendered HTML served at theroleroom.com/
+      via vercel.json host-aware rewrite. Loads the same /src/main.tsx React
+      entry as index.html, so the SPA experience is identical, but the raw
+      HTML inspected by TikTok/Meta/LinkedIn review crawlers shows The Role
+      Room branding from the start (instead of CreatorHub Norge).
+
+      Company: Creatorhub Norge AS, Org. nr. 937 518 684, Oslo, Norge.
+      Contact: support@theroleroom.com
+    -->
+    <title>The Role Room — Casting & produksjonsplattform | Creatorhub Norge AS</title>
+    <meta
+      name="description"
+      content="The Role Room er produksjonsflaten for film, TV og innholdsproduksjon i Norden. Casting, talentportal, crew og produksjonsplan i ett rom. Drevet av Creatorhub Norge AS (org. nr. 937 518 684)."
+    />
+    <meta name="robots" content="index,follow" />
+    <meta name="googlebot" content="index,follow" />
+    <meta name="theme-color" content="#0d0a1f" />
+    <link rel="canonical" href="https://theroleroom.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="The Role Room" />
+    <meta property="og:title" content="The Role Room | Casting, crew og produksjonsplanlegging" />
+    <meta
+      property="og:description"
+      content="The Role Room er produksjonsflaten i Creatorhub Norge AS for casting, team, talentportal og koordinering av opptaksdager."
+    />
+    <meta property="og:url" content="https://theroleroom.com/" />
+    <meta property="og:image" content="https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp" />
+    <meta property="og:locale" content="nb_NO" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="The Role Room | Casting, crew og produksjonsplanlegging" />
+    <meta
+      name="twitter:description"
+      content="The Role Room er produksjonsflaten i Creatorhub Norge AS for casting, team, talentportal og koordinering av opptaksdager."
+    />
+    <meta name="twitter:image" content="https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp" />
+    <meta name="google-site-verification" content="4EH878wtJ-QoYJgc0EZbysxeX2ucoYhfSdLHSJ2C_zg" />
+    <meta name="tiktok-developers-site-verification" content="q87vGxhQah3w3SKohAfLMKRZvWtzPkTB" />
+    <script>
+      // Host-aware SEO overrides: when this document is served on
+      // theroleroom.com (Vercel filesystem precedence defeats our
+      // host-based rewrite rules, so the single index.html is shared
+      // across both domains), rewrite the title, canonical, and
+      // Open Graph tags in-place before the React app mounts. Google's
+      // crawler executes JS and will index the updated tags; social
+      // sharing crawlers that do not execute JS fall back to the
+      // generic CreatorHub tags, which is acceptable since theroleroom
+      // landings are served separately via /theroleroom.html on direct
+      // navigation. This script runs synchronously in the <head> so
+      // the final tags are in the DOM before any scrapers look.
+      (function () {
+        var host = (location.hostname || '').toLowerCase();
+        if (!/^(www\.)?theroleroom\.com$/.test(host)) return;
+        var title = 'The Role Room | Casting, crew og produksjonsplanlegging';
+        var description = 'The Role Room er produksjonsflaten i CreatorHub for casting, team, talentportal og koordinering av opptaksdager.';
+        var origin = 'https://theroleroom.com';
+        var image = origin + '/role-room-assets/landing_backdrop_with_logo.webp';
+        document.title = title;
+        function setAttr(selector, attr, value) {
+          var el = document.querySelector(selector);
+          if (el) el.setAttribute(attr, value);
+        }
+        setAttr('meta[name="description"]', 'content', description);
+        setAttr('link[rel="canonical"]', 'href', origin + '/');
+        setAttr('meta[property="og:site_name"]', 'content', 'The Role Room');
+        setAttr('meta[property="og:title"]', 'content', title);
+        setAttr('meta[property="og:description"]', 'content', description);
+        setAttr('meta[property="og:url"]', 'content', origin + '/');
+        setAttr('meta[property="og:image"]', 'content', image);
+        setAttr('meta[name="twitter:title"]', 'content', title);
+        setAttr('meta[name="twitter:description"]', 'content', description);
+        setAttr('meta[name="twitter:image"]', 'content', image);
+      })();
+    </script>
+    <script>
+      // Path-aware SEO override for NextRole-rutene. Når brukeren lander
+      // direkte på /nextrole, /resume-builder eller /cv/:slug rewrite vi
+      // title, canonical og Open Graph før React mounter — slik at både
+      // sosiale crawlers og Google ser produkt-spesifikke tags. React-
+      // siden vedlikeholder også disse via useEffect for SPA-navigasjon.
+      (function () {
+        var path = (location.pathname || '/').toLowerCase();
+        var isNextRole = /^\/(nextrole|resume-builder|cv)\b/.test(path);
+        if (!isNextRole) return;
+        var origin = location.origin || 'https://creatorhubn.com';
+        var title = 'NextRole — Bygg CV som faktisk gir jobbintervju';
+        var description = 'NextRole er den smarte CV-byggeren fra CreatorHub. AI-tilpasset CV og søknadsbrev mot konkret stillingsannonse, ATS-optimalisert, 15+ design og 14 dagers gratis test.';
+        var image = origin + '/nextrole-og.png';
+        document.title = title;
+        function setAttr(selector, attr, value) {
+          var el = document.querySelector(selector);
+          if (el) el.setAttribute(attr, value);
+        }
+        setAttr('meta[name="description"]', 'content', description);
+        setAttr('link[rel="canonical"]', 'href', origin + '/nextrole');
+        setAttr('meta[property="og:site_name"]', 'content', 'NextRole by CreatorHub');
+        setAttr('meta[property="og:title"]', 'content', title);
+        setAttr('meta[property="og:description"]', 'content', description);
+        setAttr('meta[property="og:url"]', 'content', origin + '/nextrole');
+        setAttr('meta[property="og:image"]', 'content', image);
+        setAttr('meta[name="twitter:title"]', 'content', title);
+        setAttr('meta[name="twitter:description"]', 'content', description);
+        setAttr('meta[name="twitter:image"]', 'content', image);
+
+        // Legg til NextRole SoftwareApplication schema som ekstra LD-JSON.
+        var nrSchema = {
+          '@context': 'https://schema.org',
+          '@type': 'SoftwareApplication',
+          '@id': origin + '/nextrole#software',
+          name: 'NextRole by CreatorHub',
+          description: description,
+          url: origin + '/nextrole',
+          image: image,
+          applicationCategory: 'BusinessApplication',
+          applicationSubCategory: 'JobApplicationAssistant',
+          operatingSystem: 'Web',
+          inLanguage: 'nb-NO',
+          offers: [
+            {
+              '@type': 'Offer',
+              name: 'NextRole Standard',
+              price: '49',
+              priceCurrency: 'NOK',
+              availability: 'https://schema.org/InStock',
+              priceSpecification: {
+                '@type': 'UnitPriceSpecification',
+                price: '49',
+                priceCurrency: 'NOK',
+                unitText: 'MONTH',
+                billingDuration: 'P1M',
+              },
+            },
+            {
+              '@type': 'Offer',
+              name: 'NextRole Pro',
+              price: '99',
+              priceCurrency: 'NOK',
+              availability: 'https://schema.org/InStock',
+              priceSpecification: {
+                '@type': 'UnitPriceSpecification',
+                price: '99',
+                priceCurrency: 'NOK',
+                unitText: 'MONTH',
+                billingDuration: 'P1M',
+              },
+            },
+          ],
+          featureList: [
+            'AI-tilpasset CV mot konkret stillingsannonse',
+            'AI-søknadsbrev med tone-mapping og bedriftsspesifikk kontekst',
+            'AI Mock Interview — chat-basert intervjutrening',
+            '15+ ATS-optimaliserte CV-design',
+            'Import fra LinkedIn-dataeksport, PDF/DOCX og GitHub',
+            'Eksport til PDF, DOCX og delbar offentlig CV-side',
+            '14 dagers gratis prøveperiode',
+          ],
+          publisher: {
+            '@type': 'Organization',
+            '@id': origin + '/#organization',
+            name: 'CreatorHub Norge',
+          },
+        };
+        var nrScript = document.createElement('script');
+        nrScript.type = 'application/ld+json';
+        nrScript.setAttribute('data-seo-ld', 'nextrole-software');
+        nrScript.text = JSON.stringify(nrSchema);
+        document.head.appendChild(nrScript);
+      })();
+    </script>
+    <script type="application/ld+json" data-seo-ld="organization">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "@id": "https://creatorhubn.com/#organization",
+        "name": "CreatorHub Norge",
+        "url": "https://creatorhubn.com",
+        "logo": "https://creatorhubn.com/creatorhub-wordmark-light.png",
+        "email": "hello@creatorhubn.com"
+      }
+    </script>
+    <script type="application/ld+json" data-seo-ld="website">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "@id": "https://creatorhubn.com/#website",
+        "name": "CreatorHub Norge",
+        "url": "https://creatorhubn.com",
+        "inLanguage": "nb-NO",
+        "publisher": {
+          "@id": "https://creatorhubn.com/#organization"
+        },
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": {
+            "@type": "EntryPoint",
+            "urlTemplate": "https://creatorhubn.com/?q={search_term_string}"
+          },
+          "query-input": "required name=search_term_string"
+        }
+      }
+    </script>
+    <script type="application/ld+json" data-seo-ld="software">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "@id": "https://creatorhubn.com/#software",
+        "name": "CreatorHub Norge",
+        "description": "CreatorHub samler prosjektstyring, abonnementsflyt, kundeopplevelse, Academy og community i én plattform for skapere og kreative team.",
+        "url": "https://creatorhubn.com",
+        "image": "https://creatorhubn.com/landing_backdrop_with_logo.png",
+        "applicationCategory": "BusinessApplication",
+        "applicationSubCategory": "CreatorProductionPlatform",
+        "operatingSystem": "Web, iOS, Android",
+        "inLanguage": "nb-NO",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "NOK",
+          "availability": "https://schema.org/InStock"
+        },
+        "publisher": {
+          "@id": "https://creatorhubn.com/#organization"
+        },
+        "featureList": [
+          "Prosjektrom og team-koordinering for skapere",
+          "Klientportal, tilbud og fakturering",
+          "Abonnementsflyt og betalingsadministrasjon",
+          "CreatorHub Academy — kurs og opplæring",
+          "Showcase og leveransegallerier for kunder",
+          "Photo Enhancer og AI-verktøy for produksjonsteam"
+        ]
+      }
+    </script>
+    <!--
+      AggregateRating-placeholder — flipp på når ≥10 verifiserte reviews finnes.
+      Limes inn som ekstra felt i SoftwareApplication-schemaet (rett før "featureList").
+      Google krever ekte, verifiserbare reviews. Ikke ship fake data.
+
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.8",
+        "ratingCount": "42",
+        "bestRating": "5",
+        "worstRating": "1"
+      },
+    -->
+    <script type="application/ld+json" data-seo-ld="breadcrumb">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Hjem", "item": "https://creatorhubn.com/" }
+        ]
+      }
+    </script>
+    <script type="application/ld+json" data-seo-ld="howto">
+      {
+        "@context": "https://schema.org",
+        "@type": "HowTo",
+        "@id": "https://creatorhubn.com/#howto-onboarding",
+        "name": "Slik kommer du i gang med CreatorHub",
+        "description": "Fem steg for å sette opp CreatorHub-arbeidsrommet ditt — fra konto-opprettelse til første prosjekt med team og klient.",
+        "inLanguage": "nb-NO",
+        "totalTime": "PT10M",
+        "supply": [
+          { "@type": "HowToSupply", "name": "E-postadresse" },
+          { "@type": "HowToSupply", "name": "Beskrivelse av virksomheten/teamet" }
+        ],
+        "tool": [
+          { "@type": "HowToTool", "name": "CreatorHub-konto (gratis å opprette)" }
+        ],
+        "step": [
+          {
+            "@type": "HowToStep",
+            "position": 1,
+            "name": "Opprett konto",
+            "text": "Registrer deg på creatorhubn.com og bekreft e-postadressen.",
+            "url": "https://creatorhubn.com/#step-1-konto"
+          },
+          {
+            "@type": "HowToStep",
+            "position": 2,
+            "name": "Velg abonnement",
+            "text": "Velg plan som matcher behovet ditt — Creator, Team eller Business.",
+            "url": "https://creatorhubn.com/pricing"
+          },
+          {
+            "@type": "HowToStep",
+            "position": 3,
+            "name": "Opprett første prosjekt",
+            "text": "Sett opp prosjektrom med tittel, klient og tidslinje. Velg mal eller start tomt.",
+            "url": "https://creatorhubn.com/#step-3-prosjekt"
+          },
+          {
+            "@type": "HowToStep",
+            "position": 4,
+            "name": "Inviter team og klient",
+            "text": "Inviter team-medlemmer og klient via lenke eller e-post. Sett rolletilganger per person.",
+            "url": "https://creatorhubn.com/#step-4-team"
+          },
+          {
+            "@type": "HowToStep",
+            "position": 5,
+            "name": "Lever via klientportal",
+            "text": "Last opp leveranser og del med klient gjennom showcase eller leveransegalleri.",
+            "url": "https://creatorhubn.com/#step-5-lever"
+          }
+        ]
+      }
+    </script>
+
+    <script>
+      (function setInitialBrandFavicon() {
+        var pathname = window.location.pathname || '/';
+        var isAcademyRoute = /^\/academy(?:$|[/-])/.test(pathname);
+        // NextRole-rutene viser NextRole-mark; ellers academy- eller CreatorHub-favicon.
+        var isNextRoleRoute = /^\/(nextrole|resume-builder|cv)\b/.test(pathname);
+        var faviconHref = isNextRoleRoute
+          ? '/NextRole_Iconapp.png'
+          : isAcademyRoute
+          ? '/academy-favicon.svg'
+          : '/creatorhub-icon.png';
+        var faviconType = faviconHref.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
+        var rels = ['icon', 'shortcut icon', 'apple-touch-icon'];
+
+        rels.forEach(function (rel) {
+          var link = document.head.querySelector('link[rel="' + rel + '"]');
+          if (!link) {
+            link = document.createElement('link');
+            link.setAttribute('rel', rel);
+            document.head.appendChild(link);
+          }
+          if (rel !== 'apple-touch-icon') {
+            link.setAttribute('type', faviconType);
+          } else {
+            link.removeAttribute('type');
+          }
+          link.setAttribute('href', faviconHref);
+        });
+      })();
+    </script>
+
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = window.gtag || function () {
+        window.dataLayer.push(arguments);
+      };
+
+      var ROLE_ROOM_ANALYTICS_HOSTS = ['theroleroom.com', 'www.theroleroom.com'];
+      function resolveStaticAnalyticsValue(rawValue, fallback) {
+        if (typeof rawValue !== 'string') {
+          return fallback;
+        }
+
+        var trimmedValue = rawValue.trim();
+        var looksLikeUnresolvedVitePlaceholder =
+          trimmedValue.length > 7 &&
+          trimmedValue.charAt(0) === '%' &&
+          trimmedValue.charAt(trimmedValue.length - 1) === '%' &&
+          trimmedValue.indexOf('VITE_') === 1;
+
+        if (!trimmedValue || looksLikeUnresolvedVitePlaceholder) {
+          return fallback;
+        }
+
+        return trimmedValue;
+      }
+
+      var GOOGLE_TAG_MANAGER_ID = 'GTM-MFWW7X83';
+      var CREATORHUB_GOOGLE_TAG_MANAGER_ID = 'GTM-MFWW7X83';
+      var ROLE_ROOM_GOOGLE_TAG_MANAGER_ID = 'GTM-TNWTVHSP';
+      var CREATORHUB_GA_MEASUREMENT_ID = 'G-6E5MJT8REW';
+      var ROLE_ROOM_GA_MEASUREMENT_ID = 'G-9T7K5TJVFX';
+      var CREATORHUB_CLARITY_PROJECT_ID = 'wqg9kj1vxt';
+      var ROLE_ROOM_CLARITY_PROJECT_ID = 'wqgcu06tz0';
+      // TikTok Pixel — kommer fra TikTok Business UI etter at Daniel oppretter
+      // pixel via Agent eller manuelt. Pixel Code er typisk 20-tegns alfanum.
+      // Sett til '' for å deaktivere. Per-host som GA/GTM-pattern over.
+      var CREATORHUB_TIKTOK_PIXEL_CODE = '';
+      var ROLE_ROOM_TIKTOK_PIXEL_CODE = '';
+      var analyticsConfig = resolveAnalyticsConfig();
+      var analyticsBootstrapState = {
+        tagManagerLoaded: false,
+        tagManagerRequested: false,
+        scriptLoaded: false,
+        scriptRequested: false,
+        initialPageViewSent: false,
+        clarityRequested: false,
+        clarityLoaded: false,
+        tiktokRequested: false,
+        tiktokLoaded: false,
+      };
+
+      function resolveAnalyticsConfig() {
+        var hostname = (window.location.hostname || '').trim().toLowerCase();
+        var isRoleRoomHost = ROLE_ROOM_ANALYTICS_HOSTS.indexOf(hostname) >= 0;
+        return {
+          site: isRoleRoomHost ? 'role-room' : 'creatorhub',
+          measurementId: isRoleRoomHost ? ROLE_ROOM_GA_MEASUREMENT_ID : CREATORHUB_GA_MEASUREMENT_ID,
+          tagManagerId: isRoleRoomHost ? ROLE_ROOM_GOOGLE_TAG_MANAGER_ID : CREATORHUB_GOOGLE_TAG_MANAGER_ID,
+          clarityProjectId: isRoleRoomHost ? ROLE_ROOM_CLARITY_PROJECT_ID : CREATORHUB_CLARITY_PROJECT_ID,
+          tiktokPixelCode: isRoleRoomHost ? ROLE_ROOM_TIKTOK_PIXEL_CODE : CREATORHUB_TIKTOK_PIXEL_CODE,
+        };
+      }
+
+      function readStoredConsent() {
+        try {
+          var rawConsent = window.localStorage.getItem('gdpr-consent');
+          if (!rawConsent) {
+            return null;
+          }
+
+          var parsedConsent = JSON.parse(rawConsent);
+          return parsedConsent && typeof parsedConsent === 'object' ? parsedConsent : null;
+        } catch (_error) {
+          return null;
+        }
+      }
+
+      function buildConsentPayload(consentSettings) {
+        var analyticsGranted = !!(consentSettings && consentSettings.analytics);
+        var marketingGranted = !!(consentSettings && consentSettings.marketing);
+        var preferencesGranted = !!(consentSettings && consentSettings.preferences);
+
+        return {
+          analytics_storage: analyticsGranted ? 'granted' : 'denied',
+          ad_storage: marketingGranted ? 'granted' : 'denied',
+          ad_user_data: marketingGranted ? 'granted' : 'denied',
+          ad_personalization: marketingGranted ? 'granted' : 'denied',
+          functionality_storage: preferencesGranted ? 'granted' : 'denied',
+          personalization_storage: preferencesGranted ? 'granted' : 'denied',
+          security_storage: 'granted',
+          wait_for_update: 500,
+        };
+      }
+
+      function hasAnalyticsConsent(consentSettings) {
+        return !!(consentSettings && consentSettings.analytics);
+      }
+
+      function applyAnalyticsConsent(consentSettings) {
+        window.gtag('consent', 'update', buildConsentPayload(consentSettings));
+      }
+
+      function loadExternalScript(src, options) {
+        var script = document.createElement('script');
+        script.src = src;
+        script.async = options && Object.prototype.hasOwnProperty.call(options, 'async') ? options.async : true;
+        script.defer = options && Object.prototype.hasOwnProperty.call(options, 'defer') ? options.defer : false;
+        if (options && typeof options.dataAttribute === 'string' && options.dataAttribute.length > 0) {
+          script.setAttribute(options.dataAttribute, 'true');
+        }
+        if (options && typeof options.onload === 'function') script.onload = options.onload;
+        if (options && typeof options.onerror === 'function') script.onerror = options.onerror;
+        document.head.appendChild(script);
+      }
+
+      function initGooglePicker() {
+        if (window.gapi && typeof window.gapi.load === 'function') {
+          window.gapi.load('picker', function () {});
+        }
+      }
+
+      function sendInitialPageView() {
+        if (analyticsBootstrapState.initialPageViewSent) {
+          return;
+        }
+
+        analyticsBootstrapState.initialPageViewSent = true;
+        window.gtag('event', 'page_view', {
+          page_path: window.location.pathname,
+          page_title: document.title,
+          page_location: window.location.href,
+        });
+      }
+
+      function ensureGoogleTagManagerLoaded(consentSettings) {
+        var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        var isOnline = navigator.onLine !== false;
+
+        if (
+          isLocalhost ||
+          !isOnline ||
+          !hasAnalyticsConsent(consentSettings) ||
+          !analyticsConfig.tagManagerId
+        ) {
+          return false;
+        }
+
+        if (analyticsBootstrapState.tagManagerLoaded || analyticsBootstrapState.tagManagerRequested) {
+          return true;
+        }
+
+        analyticsBootstrapState.tagManagerRequested = true;
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          'gtm.start': new Date().getTime(),
+          event: 'gtm.js',
+        });
+
+        loadExternalScript('https://www.googletagmanager.com/gtm.js?id=' + analyticsConfig.tagManagerId, {
+          dataAttribute: 'data-creatorhub-gtm-bootstrap',
+          onload: function () {
+            analyticsBootstrapState.tagManagerLoaded = true;
+          },
+          onerror: function () {
+            analyticsBootstrapState.tagManagerRequested = false;
+          },
+        });
+
+        return true;
+      }
+
+      function ensureClarityLoaded(consentSettings) {
+        // Microsoft Clarity — session-replay og heatmaps. Respekterer
+        // samme analytics-consent-gate som GA4. Localhost skippes for
+        // å hindre dev-noise i Clarity-dashboardet.
+        var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        var isOnline = navigator.onLine !== false;
+
+        if (
+          isLocalhost ||
+          !isOnline ||
+          !hasAnalyticsConsent(consentSettings) ||
+          !analyticsConfig.clarityProjectId
+        ) {
+          return false;
+        }
+        if (analyticsBootstrapState.clarityLoaded || analyticsBootstrapState.clarityRequested) {
+          return true;
+        }
+        analyticsBootstrapState.clarityRequested = true;
+        (function (c, l, a, r, i) {
+          c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
+          var t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;
+          t.onload = function () { analyticsBootstrapState.clarityLoaded = true; };
+          t.onerror = function () { analyticsBootstrapState.clarityRequested = false; };
+          var y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+        })(window, document, 'clarity', 'script', analyticsConfig.clarityProjectId);
+        return true;
+      }
+
+      function ensureTiktokPixelLoaded(consentSettings) {
+        // TikTok Pixel — fyrer pageview + støtter ttq.track() per host.
+        // Per-host pixel-code: ROLE_ROOM_TIKTOK_PIXEL_CODE for theroleroom.com,
+        // CREATORHUB_TIKTOK_PIXEL_CODE for creatorhubn.com. Begge er '' inntil
+        // Daniel oppretter pixel via Agent (klient_ads_configs + provision-pixel)
+        // eller manuelt via TikTok Business UI. Bytt verdi over.
+        var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        var isOnline = navigator.onLine !== false;
+        if (
+          isLocalhost ||
+          !isOnline ||
+          !hasAnalyticsConsent(consentSettings) ||
+          !analyticsConfig.tiktokPixelCode
+        ) {
+          return false;
+        }
+        if (analyticsBootstrapState.tiktokLoaded || analyticsBootstrapState.tiktokRequested) {
+          return true;
+        }
+        analyticsBootstrapState.tiktokRequested = true;
+        (function (w, d, t) {
+          w.TiktokAnalyticsObject = t;
+          var ttq = w[t] = w[t] || [];
+          ttq.methods = ['page', 'track', 'identify', 'instances', 'debug', 'on', 'off', 'once', 'ready', 'alias', 'group', 'enableCookie', 'disableCookie', 'holdConsent', 'revokeConsent', 'grantConsent'];
+          ttq.setAndDefer = function (t, e) { t[e] = function () { t.push([e].concat(Array.prototype.slice.call(arguments, 0))); }; };
+          for (var i = 0; i < ttq.methods.length; i++) ttq.setAndDefer(ttq, ttq.methods[i]);
+          ttq.instance = function (t) {
+            for (var e = ttq._i[t] || [], n = 0; n < ttq.methods.length; n++) ttq.setAndDefer(e, ttq.methods[n]);
+            return e;
+          };
+          ttq.load = function (e, n) {
+            var r = 'https://analytics.tiktok.com/i18n/pixel/events.js';
+            ttq._i = ttq._i || {}; ttq._i[e] = []; ttq._i[e]._u = r;
+            ttq._t = ttq._t || {}; ttq._t[e] = +new Date();
+            ttq._o = ttq._o || {}; ttq._o[e] = n || {};
+            var s = d.createElement('script'); s.type = 'text/javascript'; s.async = true;
+            s.src = r + '?sdkid=' + e + '&lib=ttq';
+            s.onload = function () { analyticsBootstrapState.tiktokLoaded = true; };
+            s.onerror = function () { analyticsBootstrapState.tiktokRequested = false; };
+            var first = d.getElementsByTagName('script')[0];
+            first.parentNode.insertBefore(s, first);
+          };
+          ttq.load(analyticsConfig.tiktokPixelCode);
+          ttq.page();
+        })(window, document, 'ttq');
+        return true;
+      }
+
+      function ensureGoogleAnalyticsLoaded(consentSettings) {
+        var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        var isOnline = navigator.onLine !== false;
+
+        if (isLocalhost || !isOnline || !hasAnalyticsConsent(consentSettings)) {
+          return false;
+        }
+
+        if (analyticsBootstrapState.scriptLoaded) {
+          applyAnalyticsConsent(consentSettings);
+          ensureGoogleTagManagerLoaded(consentSettings);
+          return true;
+        }
+
+        if (analyticsBootstrapState.scriptRequested) {
+          return true;
+        }
+
+        analyticsBootstrapState.scriptRequested = true;
+        loadExternalScript('https://www.googletagmanager.com/gtag/js?id=' + analyticsConfig.measurementId, {
+          dataAttribute: 'data-creatorhub-ga-bootstrap',
+          onload: function () {
+            analyticsBootstrapState.scriptLoaded = true;
+            window.gtag('js', new Date());
+            window.gtag('config', analyticsConfig.measurementId, {
+              send_page_view: false,
+            });
+            applyAnalyticsConsent(consentSettings);
+            ensureGoogleTagManagerLoaded(consentSettings);
+            sendInitialPageView();
+          },
+          onerror: function () {
+            analyticsBootstrapState.scriptRequested = false;
+          },
+        });
+
+        return true;
+      }
+
+      (function initThirdPartyServices() {
+        var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        var isOnline = navigator.onLine !== false;
+        var storedConsent = readStoredConsent();
+
+        window.__creatorhubAnalyticsConfig = analyticsConfig;
+        window.__creatorhubApplyConsent = function (consentSettings) {
+          applyAnalyticsConsent(consentSettings);
+          if (hasAnalyticsConsent(consentSettings)) {
+            ensureGoogleTagManagerLoaded(consentSettings);
+            ensureGoogleAnalyticsLoaded(consentSettings);
+            ensureClarityLoaded(consentSettings);
+            ensureTiktokPixelLoaded(consentSettings);
+          }
+          return true;
+        };
+        window.__creatorhubLoadAnalytics = function (consentSettings) {
+          var resolvedConsent = consentSettings || readStoredConsent();
+          ensureGoogleTagManagerLoaded(resolvedConsent);
+          ensureClarityLoaded(resolvedConsent);
+          ensureTiktokPixelLoaded(resolvedConsent);
+          return ensureGoogleAnalyticsLoaded(resolvedConsent);
+        };
+
+        window.gtag('consent', 'default', buildConsentPayload(storedConsent));
+
+        if (!isLocalhost && isOnline && hasAnalyticsConsent(storedConsent)) {
+          ensureGoogleTagManagerLoaded(storedConsent);
+          ensureGoogleAnalyticsLoaded(storedConsent);
+          ensureClarityLoaded(storedConsent);
+          ensureTiktokPixelLoaded(storedConsent);
+        }
+
+        if (isOnline) {
+          loadExternalScript('https://apis.google.com/js/api.js', {
+            onload: initGooglePicker,
+          });
+        }
+      })();
+    </script>
+
+    <!-- Google Fonts - Optimized: Only Roboto with essential weights -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root">
+      <!--
+        Server-rendered fallback content — visible during React-bundle
+        load (and to crawlers that don't execute JS, like TikTok review
+        verification). Removed once React mounts. Contains canonical
+        company info, contact email, and Privacy/Terms links so that
+        a "View Source" inspection by Meta/TikTok/LinkedIn reviewers
+        shows the canonical company information immediately.
+      -->
+      <noscript>
+        <style>.tr-srf{display:block!important}</style>
+      </noscript>
+      <div class="tr-srf" id="tr-server-rendered" style="background:#0d0a1f;color:#cbd5f5;min-height:100vh;font-family:Roboto,system-ui,sans-serif;padding:48px 24px;line-height:1.6;">
+        <div style="max-width:1100px;margin:0 auto;">
+          <header style="text-align:center;margin-bottom:48px;">
+            <h1 style="font-size:38px;color:#f5f3ff;margin:0 0 12px;font-weight:800;">The Role Room</h1>
+            <p style="font-size:18px;color:#c4b5fd;margin:0;">
+              Casting, talentportal, crew og produksjonsplan i ett rom for film, TV og innholdsproduksjon i Norden.
+            </p>
+            <p style="font-size:14px;color:#94a3b8;margin:12px 0 0;">
+              Drevet av <strong>Creatorhub Norge AS</strong> — org. nr. <strong>937&nbsp;518&nbsp;684</strong> · Oslo, Norge
+            </p>
+          </header>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:32px;background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.18);border-radius:16px;padding:32px;">
+            <div>
+              <h2 style="font-size:14px;font-weight:700;color:#f5f3ff;margin:0 0 12px;text-transform:uppercase;letter-spacing:0.05em;">Selskap</h2>
+              <p style="margin:0 0 6px;">Creatorhub Norge AS</p>
+              <p style="margin:0 0 6px;">Org. nr. 937 518 684</p>
+              <p style="margin:0 0 6px;">Oslo, Norge</p>
+              <p style="margin:0;">
+                <a href="mailto:support@theroleroom.com" style="color:#c084fc;text-decoration:none;">
+                  support@theroleroom.com
+                </a>
+              </p>
+            </div>
+            <div>
+              <h2 style="font-size:14px;font-weight:700;color:#f5f3ff;margin:0 0 12px;text-transform:uppercase;letter-spacing:0.05em;">Juridisk</h2>
+              <p style="margin:0 0 6px;">
+                <a href="/privacy" style="color:#c084fc;text-decoration:none;">Personvernerklæring (GDPR)</a>
+              </p>
+              <p style="margin:0 0 6px;">
+                <a href="/terms" style="color:#c084fc;text-decoration:none;">Tjenestevilkår</a>
+              </p>
+              <p style="margin:0 0 6px;">
+                <a href="/data-deletion" style="color:#c084fc;text-decoration:none;">Datasletting</a>
+              </p>
+              <p style="margin:0;">
+                <a href="https://theroleroom.com" style="color:#c084fc;text-decoration:none;">theroleroom.com</a>
+              </p>
+            </div>
+            <div>
+              <h2 style="font-size:14px;font-weight:700;color:#f5f3ff;margin:0 0 12px;text-transform:uppercase;letter-spacing:0.05em;">Plattformer</h2>
+              <p style="margin:0 0 6px;color:#94a3b8;">Server-side OAuth-integrasjoner på vegne av kunde:</p>
+              <p style="margin:0 0 6px;">Meta · LinkedIn · Google Ads · TikTok</p>
+              <p style="margin:0;color:#94a3b8;font-size:13px;">Bruk styres av kundens skriftlige samtykke per scope (GDPR Art. 7.1).</p>
+            </div>
+          </div>
+
+          <footer style="text-align:center;margin-top:48px;padding-top:24px;border-top:1px solid rgba(168,85,247,0.18);color:#94a3b8;font-size:13px;">
+            © 2026 Creatorhub Norge AS · Org. nr. 937 518 684 ·
+            <a href="mailto:support@theroleroom.com" style="color:#c084fc;text-decoration:none;">support@theroleroom.com</a> ·
+            <a href="/privacy" style="color:#c084fc;text-decoration:none;">Personvern</a> ·
+            <a href="/terms" style="color:#c084fc;text-decoration:none;">Vilkår</a>
+          </footer>
+
+          <p style="text-align:center;margin-top:24px;color:#64748b;font-size:12px;">Laster …</p>
+        </div>
+      </div>
+    </div>
+    <script>
+      // Catch module loading errors
+      window.addEventListener('error', function(e) {
+        console.error('[MODULE ERROR]', e.message, e.filename, e.lineno);
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        console.error('[UNHANDLED REJECTION]', e.reason?.message || e.reason);
+      });
+
+      // Stale-chunk self-heal. Når en ny deploy roterer chunk-hashene mens
+      // en fane allerede er åpen, feiler lazy-import-ene: filen finnes ikke
+      // lenger, SPA-fallbacken svarer index.html (text/html), og nettleseren
+      // avviser modulen → error boundary krasjer. Vi laster siden på nytt én
+      // gang for å hente fersk index.html med gyldige hasher. sessionStorage-
+      // guarden hindrer reload-loop hvis chunken er ekte ødelagt (ikke bare
+      // utdatert).
+      window.addEventListener('vite:preloadError', function (e) {
+        var KEY = 'chunk-reload-at';
+        var last = Number(sessionStorage.getItem(KEY) || '0');
+        if (Date.now() - last > 15000) {
+          if (e && typeof e.preventDefault === 'function') e.preventDefault();
+          sessionStorage.setItem(KEY, String(Date.now()));
+          window.location.reload();
+        }
+      });
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
