@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { mockupRenderVideo, onScriptEvent, cancelScript, demoWriteText, demoWriteBinary, demoPrintHtml, executeScript } from '../../api';
+import { mockupRenderVideo, onScriptEvent, cancelScript, demoWriteText, demoWriteBinary, demoPrintHtml, executeScript, playwrightStatus, setupPlaywright, runPlaywrightDemo } from '../../api';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { openPath } from '@tauri-apps/plugin-opener';
 import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog';
@@ -125,6 +125,29 @@ export function ExportView() {
       setFileMsg(`✓ Playwright-skript lagret + i biblioteket: ${p}. Kjør: npm i -D playwright && npx playwright install chromium && node «${safeName()}.mjs»`);
       void openPath(p).catch(() => {});
     } catch (e) { setFileMsg('Feil ved Playwright-eksport: ' + String(e)); }
+  };
+
+  /** Fase 4: kjør demoen i Chromium via Playwright + ta opp deterministisk video. */
+  const recordWithPlaywright = async () => {
+    if (!project) return;
+    setFileMsg('Sjekker Playwright…');
+    try {
+      const st = await playwrightStatus();
+      if (!st.nodeOk) { setFileMsg('Node.js ikke funnet — installer Node (f.eks. «brew install node») og prøv igjen.'); return; }
+      if (!st.playwrightInstalled) {
+        setFileMsg('Installerer Playwright + Chromium (engangs, ~1–3 min, se loggen under)…');
+        const setup = await setupPlaywright();
+        if (!setup.succeeded) { setFileMsg('Playwright-oppsett feilet (krever node/npm + nett). Se loggen.'); return; }
+      }
+      setFileMsg('Kjører demoen i Chromium + tar opp video…');
+      const sum = await runPlaywrightDemo(buildPlaywrightScript(project));
+      if (sum.succeeded) {
+        setFileMsg(`✓ Video tatt opp i ${st.runtimeDir}/demo-video/ + screenshots i runtime-mappa.`);
+        void openPath(`${st.runtimeDir}/demo-video`).catch(() => {});
+      } else {
+        setFileMsg('Opptak feilet — se loggen under (sjekk at selectorene fortsatt treffer; skriptet logger [heal]/[hopp]).');
+      }
+    } catch (e) { setFileMsg('Feil ved Playwright-opptak: ' + String(e)); }
   };
 
   const exportGuide = async () => {
@@ -358,6 +381,7 @@ export function ExportView() {
             <button style={{ ...outlineBtn }} onClick={() => void exportSrt()}>Undertekster (.srt)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportScriptPdf()}>Manus (PDF)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportPlaywright()}>Playwright-skript (.mjs)</button>
+            <button style={{ ...outlineBtn }} onClick={() => void recordWithPlaywright()}>Spill inn video (Playwright)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportThumbnail()}>Thumbnail (PNG)</button>
             <select style={{ ...brandInp }} value={project.voiceModel ?? 'Female 1'} onChange={(e) => setProjectField('voiceModel', e.target.value)} title="Resolve AI-stemme">
               {VOICE_MODELS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}

@@ -49,6 +49,23 @@ export async function runHealthCheck(): Promise<RunSummary> {
   return invoke<RunSummary>("run_health_check");
 }
 
+// ── Fase 4: Playwright-opptak (kjør generert .mjs lokalt + ta opp video) ──
+export interface PlaywrightStatus {
+  nodePath: string;
+  nodeOk: boolean;
+  playwrightInstalled: boolean;
+  runtimeDir: string;
+}
+export async function playwrightStatus(): Promise<PlaywrightStatus> {
+  return invoke<PlaywrightStatus>("playwright_status");
+}
+export async function setupPlaywright(): Promise<RunSummary> {
+  return invoke<RunSummary>("setup_playwright");
+}
+export async function runPlaywrightDemo(scriptCode: string): Promise<RunSummary> {
+  return invoke<RunSummary>("run_playwright_demo", { scriptCode });
+}
+
 export async function executeScript(
   scriptId: string,
   params: Record<string, unknown> = {},

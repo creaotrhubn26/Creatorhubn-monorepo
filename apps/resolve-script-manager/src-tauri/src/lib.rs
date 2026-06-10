@@ -14,6 +14,7 @@ mod demo_recording;
 mod media_probe;
 mod mockup_render;
 mod photoshop_bridge;
+mod playwright_render;
 mod psd_indexer;
 mod python;
 mod role_room_api;
@@ -912,6 +913,9 @@ pub fn run() {
             role_room_api::role_room_download_clip,
             media_probe::probe_media_files,
             mockup_render::mockup_render_video,
+            playwright_render::playwright_status,
+            playwright_render::setup_playwright,
+            playwright_render::run_playwright_demo,
             demo_recording::save_demo_recording,
             demo_recording::check_url_embeddable,
             demo_capture::start_demo_capture,
