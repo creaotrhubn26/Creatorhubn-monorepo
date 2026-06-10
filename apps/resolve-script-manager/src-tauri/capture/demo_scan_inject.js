@@ -189,9 +189,52 @@
     }
   }
 
-  // Scroll gjennom HELE siden i viewport-steg, scan på hvert steg → fanger
-  // alt under fold-en + lazy-rendret innhold, hver med korrekt scrollPct.
-  function finish(out) {
+  // ── Fase 1b: viewport-screenshot via html2canvas (injisert FØR dette scriptet)
+  // ── slik at preview-rammen kan vise EKTE side-piksler ved riktig scroll,
+  // ── med hotspots oppå (bilde + hotspot fra samme scan = perfekt align).
+  function shootViewport() {
+    return new Promise(function (resolve) {
+      if (!window.html2canvas) { resolve(null); return; }
+      try {
+        window.html2canvas(document.documentElement, {
+          x: window.scrollX || 0, y: window.scrollY || 0,
+          width: window.innerWidth, height: window.innerHeight,
+          useCORS: true, logging: false, scale: 1, backgroundColor: '#ffffff'
+        }).then(function (canvas) {
+          var maxW = 900, c = canvas;
+          if (canvas.width > maxW) {
+            c = document.createElement('canvas');
+            c.width = maxW; c.height = Math.round(canvas.height * maxW / canvas.width);
+            var ctx = c.getContext('2d'); if (ctx) ctx.drawImage(canvas, 0, 0, c.width, c.height);
+          }
+          resolve(c.toDataURL('image/jpeg', 0.7));
+        }).catch(function () { resolve(null); });
+      } catch (e) { resolve(null); }
+    });
+  }
+
+  function captureShots(done) {
+    var shots = [];
+    var ih = window.innerHeight || 1;
+    var maxScroll = Math.max(0, (document.documentElement.scrollHeight || ih) - ih);
+    var bands = Math.max(1, Math.min(6, Math.ceil((maxScroll + ih) / ih)));
+    var i = 0;
+    function nextShot() {
+      if (i >= bands) { window.scrollTo(0, 0); done(shots); return; }
+      var y = bands === 1 ? 0 : Math.round((maxScroll * i) / (bands - 1));
+      var scrollPct = maxScroll > 0 ? Math.max(0, Math.min(1, y / maxScroll)) : 0;
+      window.scrollTo(0, y);
+      setTimeout(function () {
+        shootViewport().then(function (dataUrl) {
+          if (dataUrl) shots.push({ scrollPct: scrollPct, dataUrl: dataUrl });
+          i++; nextShot();
+        });
+      }, 260);
+    }
+    nextShot();
+  }
+
+  function finish(out, shots) {
     out.sort(function (a, b) { return (a.scrollPct - b.scrollPct) || (b.importance - a.importance); });
     if (out.length > 150) out = out.slice(0, 150);
     var pageText = '';
@@ -202,10 +245,13 @@
       url: location.href, title: document.title || '', elements: out,
       pageText: pageText, branding: branding,
       viewport: { w: window.innerWidth || 0, h: window.innerHeight || 0 },
-      docHeight: (document.documentElement.scrollHeight || 0)
+      docHeight: (document.documentElement.scrollHeight || 0),
+      shots: shots || []
     });
   }
 
+  // Scroll gjennom HELE siden i viewport-steg (samle elementer), deretter fang
+  // screenshots ved jevnt fordelte bånd, så send alt.
   function scrollThrough() {
     var out = [], seen = {};
     var ih = window.innerHeight || 1;
@@ -218,7 +264,7 @@
         guard++;
         if (y >= maxScroll || guard > 40 || out.length >= 150) {
           window.scrollTo(0, 0);
-          setTimeout(function () { finish(out); }, 150);
+          setTimeout(function () { captureShots(function (shots) { finish(out, shots); }); }, 150);
           return;
         }
         y = Math.min(maxScroll, y + step);
