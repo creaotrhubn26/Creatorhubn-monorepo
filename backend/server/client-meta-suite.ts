@@ -437,3 +437,170 @@ export async function createMetaCustomAudience(
 
   return { ok: true, audienceId: created.id, uploadCount: data.length };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Meta CAPI per klient — server-side conversion events
+//   https://developers.facebook.com/docs/marketing-api/conversions-api
+// ─────────────────────────────────────────────────────────────────────
+
+const META_STANDARD_EVENTS = new Set([
+  "Lead", "Purchase", "CompleteRegistration", "AddToCart", "InitiateCheckout",
+  "AddPaymentInfo", "Subscribe", "StartTrial", "Contact", "FindLocation",
+  "PageView", "ViewContent", "Search",
+]);
+
+/**
+ * Send et server-side konvertering-event til Meta CAPI på vegne av klient.
+ * Bruker producerens Meta-token + klientens pixel-id (lagret i client_ads_configs).
+ * Logger leveransen i meta_capi_event_log (delivered/failed/retry).
+ */
+export async function sendMetaCapiEvent(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    configId?: string | null;
+    pixelId: string;
+    eventName: string;                  // 'Lead', 'Purchase', etc
+    eventTime?: Date;                   // default now
+    eventSourceUrl?: string;            // landingsside som triggerte konvert
+    email?: string;
+    phone?: string;
+    externalId?: string;                // klientens egen bruker-id (vil hashes)
+    value?: number;
+    currency?: string;
+    customProperties?: Record<string, unknown>;
+    testEventCode?: string;             // for Meta CAPI Test Events
+  },
+): Promise<{ ok: true; eventsReceived: number; logId: string } | { ok: false; error: string; logId?: string }> {
+  const access = await metaToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  if (!META_STANDARD_EVENTS.has(opts.eventName) && !opts.eventName.startsWith("Custom_")) {
+    return { ok: false, error: `Ukjent event-name '${opts.eventName}'. Bruk Meta-standard eller 'Custom_*'.` };
+  }
+
+  const eventTime = opts.eventTime ?? new Date();
+  const eventTimeUnix = Math.floor(eventTime.getTime() / 1000);
+
+  // Pre-log som pending
+  const externalUserHash = opts.email ? hashIdentifier(opts.email) : opts.externalId ? hashIdentifier(opts.externalId) : null;
+  const logRow = await pool.query(
+    `INSERT INTO meta_capi_event_log (
+       config_id, producer_user_id, pixel_id, event_name, event_time,
+       event_source, external_user_id, event_value, event_currency,
+       custom_properties, delivery_status, attempt_count
+     ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, 'pending', 1)
+     RETURNING id`,
+    [
+      opts.configId ?? null,
+      opts.producerUserId,
+      opts.pixelId,
+      opts.eventName,
+      eventTime.toISOString(),
+      opts.eventSourceUrl ?? null,
+      externalUserHash,
+      opts.value ?? null,
+      opts.currency ?? "NOK",
+      JSON.stringify(opts.customProperties ?? {}),
+    ],
+  );
+  const logId = logRow.rows[0].id as string;
+
+  const userData: Record<string, unknown> = {};
+  if (opts.email) userData.em = [hashIdentifier(opts.email)];
+  if (opts.phone) userData.ph = [hashIdentifier(opts.phone.replace(/[^\d]/g, ""))];
+  if (opts.externalId) userData.external_id = [hashIdentifier(opts.externalId)];
+
+  if (Object.keys(userData).length === 0) {
+    await pool.query(
+      `UPDATE meta_capi_event_log SET delivery_status='failed', last_error=$1, updated_at=NOW() WHERE id=$2::uuid`,
+      ["Mangler bruker-identifikatorer (email/phone/externalId)", logId],
+    );
+    return { ok: false, error: "Mangler bruker-identifikatorer", logId };
+  }
+
+  const customData: Record<string, unknown> = { ...(opts.customProperties ?? {}) };
+  if (opts.value !== undefined) customData.value = opts.value;
+  if (opts.currency || opts.value !== undefined) customData.currency = opts.currency ?? "NOK";
+
+  const eventPayload = {
+    data: [{
+      event_name: opts.eventName,
+      event_time: eventTimeUnix,
+      action_source: "website",
+      event_source_url: opts.eventSourceUrl,
+      user_data: userData,
+      custom_data: customData,
+    }],
+    test_event_code: opts.testEventCode,
+  };
+
+  const r = await fetch(`${META_GRAPH_BASE}/${opts.pixelId}/events?access_token=${encodeURIComponent(access)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(eventPayload),
+  });
+  const respBody = await r.json().catch(() => ({}));
+
+  if (!r.ok) {
+    const errMsg = `Meta CAPI HTTP ${r.status} — ${JSON.stringify(respBody).slice(0, 300)}`;
+    await pool.query(
+      `UPDATE meta_capi_event_log
+         SET delivery_status='failed', last_error=$1, meta_response=$2::jsonb, updated_at=NOW()
+       WHERE id=$3::uuid`,
+      [errMsg, JSON.stringify(respBody), logId],
+    );
+    return { ok: false, error: errMsg, logId };
+  }
+
+  const eventsReceived = (respBody as { events_received?: number }).events_received ?? 1;
+  await pool.query(
+    `UPDATE meta_capi_event_log
+       SET delivery_status='delivered', delivered_at=NOW(), meta_response=$1::jsonb, updated_at=NOW()
+     WHERE id=$2::uuid`,
+    [JSON.stringify(respBody), logId],
+  );
+  return { ok: true, eventsReceived, logId };
+}
+
+export async function listMetaCapiEvents(
+  pool: Pool,
+  opts: { configId?: string | null; producerUserId: string; limit?: number },
+): Promise<Array<{
+  id: string;
+  pixelId: string;
+  eventName: string;
+  eventTime: string;
+  externalUserId: string | null;
+  eventValue: number | null;
+  eventCurrency: string;
+  deliveryStatus: string;
+  deliveredAt: string | null;
+  attemptCount: number;
+  lastError: string | null;
+}>> {
+  const r = await pool.query(
+    `SELECT id, pixel_id, event_name, event_time, external_user_id,
+            event_value, event_currency, delivery_status, delivered_at,
+            attempt_count, last_error
+     FROM meta_capi_event_log
+     WHERE producer_user_id = $1::uuid
+       AND ($2::uuid IS NULL OR config_id = $2::uuid)
+     ORDER BY event_time DESC
+     LIMIT $3`,
+    [opts.producerUserId, opts.configId ?? null, opts.limit ?? 50],
+  );
+  return r.rows.map((row) => ({
+    id: row.id,
+    pixelId: row.pixel_id,
+    eventName: row.event_name,
+    eventTime: row.event_time,
+    externalUserId: row.external_user_id,
+    eventValue: row.event_value ? Number(row.event_value) : null,
+    eventCurrency: row.event_currency,
+    deliveryStatus: row.delivery_status,
+    deliveredAt: row.delivered_at,
+    attemptCount: row.attempt_count,
+    lastError: row.last_error,
+  }));
+}

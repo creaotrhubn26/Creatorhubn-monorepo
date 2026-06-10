@@ -67,11 +67,19 @@ import {
   createMetaCustomConversion,
   listMetaCustomAudiences,
   createMetaCustomAudience,
+  sendMetaCapiEvent,
+  listMetaCapiEvents,
 } from "./client-meta-suite.js";
-import { createLinkedinMatchedAudience } from "./client-linkedin-suite.js";
+import {
+  createLinkedinMatchedAudience,
+  sendLinkedinCapiEvent,
+  listLinkedinCapiEvents,
+} from "./client-linkedin-suite.js";
 import {
   createGoogleCustomerMatchAudience,
   listGoogleCustomerMatchAudiences,
+  sendGoogleOfflineConversion,
+  listGoogleOfflineConversions,
 } from "./client-google-customer-match.js";
 import {
   buildTiktokAuthUrl,
@@ -2391,6 +2399,183 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "Google Customer Match feilet", detail: String(err) });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // CAPI — server-side conversion events per klient
+  //   Meta CAPI | LinkedIn Conversions API | Google Offline Conversions
+  // ════════════════════════════════════════════════════════════════════
+
+  // Meta CAPI
+  app.get("/api/admin-room/agent/ads/configs/:id/meta/capi-events", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const events = await listMetaCapiEvents(pool, {
+      producerUserId: session.userId,
+      configId: req.params.id !== "self" ? req.params.id : null,
+      limit: 50,
+    });
+    return res.json({ events });
+  });
+
+  app.post("/api/admin-room/agent/ads/configs/:id/meta/send-capi-event", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as {
+      pixelId?: string;
+      eventName?: string;
+      eventSourceUrl?: string;
+      email?: string;
+      phone?: string;
+      externalId?: string;
+      value?: number;
+      currency?: string;
+      testEventCode?: string;
+      customProperties?: Record<string, unknown>;
+    };
+    if (!body.pixelId || !body.eventName) {
+      return res.status(400).json({ error: "pixelId + eventName påkrevd" });
+    }
+    if (req.params.id !== "self") {
+      const perm = await checkScopePermission(pool, req.params.id, "meta_capi_sync");
+      if (!perm.ok) return res.status(412).json({ error: perm.reason, scopeStatus: perm.status });
+    }
+    try {
+      const r = await sendMetaCapiEvent(pool, {
+        producerUserId: session.userId,
+        configId: req.params.id !== "self" ? req.params.id : null,
+        pixelId: body.pixelId,
+        eventName: body.eventName,
+        eventSourceUrl: body.eventSourceUrl,
+        email: body.email,
+        phone: body.phone,
+        externalId: body.externalId,
+        value: body.value,
+        currency: body.currency,
+        testEventCode: body.testEventCode,
+        customProperties: body.customProperties,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error, logId: r.logId });
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "Meta CAPI feilet", detail: String(err) });
+    }
+  });
+
+  // LinkedIn Conversions API
+  app.get("/api/admin-room/agent/ads/configs/:id/linkedin/capi-events", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const events = await listLinkedinCapiEvents(pool, {
+      producerUserId: session.userId,
+      configId: req.params.id !== "self" ? req.params.id : null,
+      limit: 50,
+    });
+    return res.json({ events });
+  });
+
+  app.post("/api/admin-room/agent/ads/configs/:id/linkedin/send-capi-event", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as {
+      conversionUrn?: string;
+      eventName?: string;
+      eventSourceUrl?: string;
+      email?: string;
+      phone?: string;
+      firstName?: string;
+      lastName?: string;
+      value?: number;
+      currency?: string;
+      customProperties?: Record<string, unknown>;
+    };
+    if (!body.conversionUrn || !body.eventName) {
+      return res.status(400).json({ error: "conversionUrn + eventName påkrevd" });
+    }
+    if (req.params.id !== "self") {
+      const perm = await checkScopePermission(pool, req.params.id, "linkedin_capi_sync");
+      if (!perm.ok) return res.status(412).json({ error: perm.reason, scopeStatus: perm.status });
+    }
+    try {
+      const r = await sendLinkedinCapiEvent(pool, {
+        producerUserId: session.userId,
+        configId: req.params.id !== "self" ? req.params.id : null,
+        conversionUrn: body.conversionUrn,
+        eventName: body.eventName,
+        eventSourceUrl: body.eventSourceUrl,
+        email: body.email,
+        phone: body.phone,
+        firstName: body.firstName,
+        lastName: body.lastName,
+        value: body.value,
+        currency: body.currency,
+        customProperties: body.customProperties,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error, logId: r.logId });
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "LinkedIn CAPI feilet", detail: String(err) });
+    }
+  });
+
+  // Google Offline Conversions
+  app.get("/api/admin-room/agent/ads/configs/:id/google/capi-events", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const events = await listGoogleOfflineConversions(pool, {
+      producerUserId: session.userId,
+      configId: req.params.id !== "self" ? req.params.id : null,
+      limit: 50,
+    });
+    return res.json({ events });
+  });
+
+  app.post("/api/admin-room/agent/ads/configs/:id/google/send-capi-event", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as {
+      customerId?: string;
+      conversionActionResource?: string;
+      eventName?: string;
+      eventSourceUrl?: string;
+      gclid?: string;
+      email?: string;
+      phone?: string;
+      value?: number;
+      currency?: string;
+      enhancedConversions?: boolean;
+      customProperties?: Record<string, unknown>;
+    };
+    if (!body.customerId || !body.conversionActionResource || !body.eventName) {
+      return res.status(400).json({ error: "customerId + conversionActionResource + eventName påkrevd" });
+    }
+    if (req.params.id !== "self") {
+      // Enhanced Conversions har egen scope-key — bruk den hvis enabled, ellers offline_conversions
+      const scopeAction = body.enhancedConversions ? "google_enhanced_conversions" : "google_offline_conversions";
+      const perm = await checkScopePermission(pool, req.params.id, scopeAction);
+      if (!perm.ok) return res.status(412).json({ error: perm.reason, scopeStatus: perm.status });
+    }
+    try {
+      const r = await sendGoogleOfflineConversion(pool, {
+        producerUserId: session.userId,
+        configId: req.params.id !== "self" ? req.params.id : null,
+        customerId: body.customerId,
+        conversionActionResource: body.conversionActionResource,
+        eventName: body.eventName,
+        eventSourceUrl: body.eventSourceUrl,
+        gclid: body.gclid,
+        email: body.email,
+        phone: body.phone,
+        value: body.value,
+        currency: body.currency,
+        enhancedConversions: body.enhancedConversions,
+        customProperties: body.customProperties,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error, logId: r.logId });
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "Google offline-konvertering feilet", detail: String(err) });
     }
   });
 
