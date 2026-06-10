@@ -322,3 +322,118 @@ export async function fetchMetaAdsMetrics(
     dailyTrend,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Meta Custom Audiences — speil av TikTok-pattern
+// SHA256-hasher email + phone før POST til Graph API.
+// ─────────────────────────────────────────────────────────────────────
+
+import crypto from "node:crypto";
+
+export interface MetaCustomAudience {
+  audienceId: string;
+  name: string;
+  size?: number;
+  status: string;
+}
+
+function hashIdentifier(value: string): string {
+  return crypto.createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
+}
+
+export async function listMetaCustomAudiences(
+  pool: Pool,
+  opts: { producerUserId: string; adAccountId: string },
+): Promise<{ ok: true; audiences: MetaCustomAudience[] } | { ok: false; error: string }> {
+  const access = await metaToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  const url = `${META_GRAPH_BASE}/${opts.adAccountId}/customaudiences?fields=id,name,approximate_count,operation_status&limit=50&access_token=${encodeURIComponent(access)}`;
+  const r = await fetch(url);
+  if (!r.ok) return { ok: false, error: `customaudiences HTTP ${r.status}` };
+  const body = await r.json() as { data?: Array<{ id: string; name: string; approximate_count?: number; operation_status?: { code: number; description: string } }> };
+  return {
+    ok: true,
+    audiences: (body.data ?? []).map((a) => ({
+      audienceId: a.id,
+      name: a.name,
+      size: a.approximate_count,
+      status: a.operation_status?.description ?? 'unknown',
+    })),
+  };
+}
+
+export async function createMetaCustomAudience(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    adAccountId: string;             // act_XXXXXXXXX
+    name: string;
+    sourceDescription?: string;
+    identifiers: Array<{ email?: string; phone?: string }>;
+    configId?: string | null;
+  },
+): Promise<{ ok: true; audienceId: string; uploadCount: number } | { ok: false; error: string }> {
+  const access = await metaToken(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  // 1) Opprett audience
+  const createUrl = `${META_GRAPH_BASE}/${opts.adAccountId}/customaudiences?access_token=${encodeURIComponent(access)}`;
+  const createR = await fetch(createUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: opts.name,
+      description: opts.sourceDescription ?? `RR Agent — ${opts.name}`,
+      subtype: "CUSTOM",
+      customer_file_source: "USER_PROVIDED_ONLY",
+    }),
+  });
+  if (!createR.ok) {
+    const t = await createR.text();
+    return { ok: false, error: `customaudiences/create HTTP ${createR.status} — ${t.slice(0, 200)}` };
+  }
+  const created = await createR.json() as { id?: string };
+  if (!created.id) return { ok: false, error: "Meta returnerte ingen audience-id" };
+
+  // 2) Last opp brukere (hashed)
+  const schema = ["EMAIL", "PHONE"];
+  const data: string[][] = [];
+  for (const id of opts.identifiers) {
+    const e = id.email ? hashIdentifier(id.email) : "";
+    const p = id.phone ? hashIdentifier(id.phone) : "";
+    if (e || p) data.push([e, p]);
+  }
+  if (data.length === 0) return { ok: false, error: "Ingen gyldige identifiers" };
+
+  const uploadUrl = `${META_GRAPH_BASE}/${created.id}/users?access_token=${encodeURIComponent(access)}`;
+  const uploadR = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payload: { schema, data } }),
+  });
+  if (!uploadR.ok) {
+    const t = await uploadR.text();
+    return { ok: false, error: `users/upload HTTP ${uploadR.status} — ${t.slice(0, 200)}` };
+  }
+
+  // 3) Cache i DB
+  await pool.query(
+    `INSERT INTO meta_custom_audiences (
+       config_id, producer_user_id, ad_account_id, meta_audience_id,
+       audience_name, source_description, upload_count, status
+     ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, 'processing')
+     ON CONFLICT (meta_audience_id) DO NOTHING`,
+    [
+      opts.configId ?? null,
+      opts.producerUserId,
+      opts.adAccountId,
+      created.id,
+      opts.name,
+      opts.sourceDescription ?? null,
+      opts.identifiers.length,
+    ],
+  ).catch(() => {});
+
+  return { ok: true, audienceId: created.id, uploadCount: data.length };
+}

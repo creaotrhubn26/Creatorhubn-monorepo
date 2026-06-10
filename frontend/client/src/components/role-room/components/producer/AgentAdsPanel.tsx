@@ -45,6 +45,7 @@ import ClientTiktokCreatorsPanel from './ClientTiktokCreatorsPanel';
 import ClientTiktokPluginsPanel from './ClientTiktokPluginsPanel';
 import ClientTiktokLinkedAccountsPanel from './ClientTiktokLinkedAccountsPanel';
 import TiktokScopePermissionGate from './TiktokScopePermissionGate';
+import ClientAdsAudiencesPanel from './ClientAdsAudiencesPanel';
 import ClientAiPromptsPanel from './ClientAiPromptsPanel';
 import ClientInsightsPanel from './ClientInsightsPanel';
 
@@ -895,17 +896,32 @@ export default function AgentAdsPanel({
             clientWebsiteUrl={discoveryResult.url}
           />
 
+          {/* Google Customer Match audiences (gated bak klient-godkjenning) */}
+          <TiktokScopePermissionGate configId={savedConfigId} action="google_customer_match">
+            <ClientAdsAudiencesPanel configId={savedConfigId} platform="google" />
+          </TiktokScopePermissionGate>
+
           {/* R1 — LinkedIn (Insight Tag + Conversion Rules + CAPI gated) */}
           <ClientLinkedinSuitePanel
             configId={savedConfigId}
             clientName={clientName || 'Klienten'}
           />
 
+          {/* LinkedIn Matched Audiences (gated) */}
+          <TiktokScopePermissionGate configId={savedConfigId} action="linkedin_audience_upload">
+            <ClientAdsAudiencesPanel configId={savedConfigId} platform="linkedin" />
+          </TiktokScopePermissionGate>
+
           {/* R2 — Meta (Pixel + Custom Conversions + CAPI gated på App Review) */}
           <ClientMetaSuitePanel
             configId={savedConfigId}
             clientName={clientName || 'Klienten'}
           />
+
+          {/* Meta Custom Audiences (gated) */}
+          <TiktokScopePermissionGate configId={savedConfigId} action="meta_audience_upload">
+            <ClientAdsAudiencesPanel configId={savedConfigId} platform="meta" />
+          </TiktokScopePermissionGate>
 
           {/* R3 — TikTok (Pixel + Events + Events API) */}
           <ClientTiktokSuitePanel

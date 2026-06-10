@@ -372,3 +372,89 @@ export async function fetchLinkedinAdsMetrics(
     dailyTrend,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// LinkedIn Matched Audiences — DMP-segmenter med email/phone-match
+// ─────────────────────────────────────────────────────────────────────
+
+import crypto from "node:crypto";
+
+function liHash(value: string): string {
+  return crypto.createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
+}
+
+export async function createLinkedinMatchedAudience(
+  pool: Pool,
+  opts: {
+    producerUserId: string;
+    adAccountUrn: string;             // urn:li:sponsoredAccount:1234567890
+    name: string;
+    sourceDescription?: string;
+    identifiers: Array<{ email?: string; phone?: string }>;
+    configId?: string | null;
+  },
+): Promise<{ ok: true; segmentUrn: string; uploadCount: number } | { ok: false; error: string }> {
+  const access = await token(pool, opts.producerUserId);
+  if (!access) return { ok: false, error: "not_connected" };
+
+  // 1) Opprett DMP segment
+  const segR = await fetch(`${LINKEDIN_REST_BASE}/dmpSegments`, {
+    method: "POST",
+    headers: liHeaders(access),
+    body: JSON.stringify({
+      name: opts.name,
+      sourcePlatform: "API",
+      sourceSegmentId: `rr_agent_${Date.now()}`,
+      type: "USER",
+      destinations: [{ destination: "LINKEDIN" }],
+      account: opts.adAccountUrn,
+    }),
+  });
+  if (!segR.ok) {
+    const t = await segR.text();
+    return { ok: false, error: `dmpSegments HTTP ${segR.status} — ${t.slice(0, 200)}` };
+  }
+  const segId = segR.headers.get("x-linkedin-id") || (await segR.json().catch(() => ({})) as { id?: string }).id;
+  if (!segId) return { ok: false, error: "Manglende segment-id i respons" };
+  const segmentUrn = `urn:li:dmpSegment:${segId}`;
+
+  // 2) Last opp brukere (hashed)
+  const users: Array<{ email?: string; phone?: string; action: string }> = [];
+  for (const id of opts.identifiers) {
+    const entry: { email?: string; phone?: string; action: string } = { action: "ADD" };
+    if (id.email) entry.email = liHash(id.email);
+    if (id.phone) entry.phone = liHash(id.phone);
+    if (entry.email || entry.phone) users.push(entry);
+  }
+  if (users.length === 0) return { ok: false, error: "Ingen gyldige identifiers" };
+
+  // LinkedIn batch-upload (max 5000 per call)
+  for (let i = 0; i < users.length; i += 5000) {
+    const batch = users.slice(i, i + 5000);
+    await fetch(`${LINKEDIN_REST_BASE}/dmpSegments/${encodeURIComponent(segmentUrn)}/users`, {
+      method: "POST",
+      headers: liHeaders(access),
+      body: JSON.stringify({ elements: batch }),
+    }).catch(() => null);
+  }
+
+  // 3) Cache
+  await pool.query(
+    `INSERT INTO linkedin_matched_audiences (
+       config_id, producer_user_id, ad_account_urn, linkedin_segment_urn,
+       audience_name, source_description, upload_count, status
+     ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, 'processing')
+     ON CONFLICT (linkedin_segment_urn) DO NOTHING`,
+    [
+      opts.configId ?? null,
+      opts.producerUserId,
+      opts.adAccountUrn,
+      segmentUrn,
+      opts.name,
+      opts.sourceDescription ?? null,
+      users.length,
+    ],
+  ).catch(() => {});
+
+  return { ok: true, segmentUrn, uploadCount: users.length };
+}
