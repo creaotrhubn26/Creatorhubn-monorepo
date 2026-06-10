@@ -22,10 +22,27 @@ interface State {
 }
 
 const ACTION_LABEL: Record<string, string> = {
-  audience_upload: 'Bygge målgrupper fra e-postlister',
+  // TikTok
+  audience_upload: 'Bygge målgrupper fra e-postlister (TikTok)',
   crm_event_sync: 'Sende konverteringer til TikTok',
   plugin_install: 'Binde nettside/butikk til TikTok',
-  creator_invitation: 'Invitere creators',
+  creator_invitation: 'Invitere creators (TikTok)',
+  tiktok_audience_upload: 'Bygge målgrupper fra e-postlister (TikTok)',
+  tiktok_crm_event_sync: 'Sende konverteringer til TikTok',
+  tiktok_plugin_install: 'Binde nettside/butikk til TikTok',
+  tiktok_creator_invitation: 'Invitere creators (TikTok)',
+  // Meta
+  meta_audience_upload: 'Bygge Custom Audiences (Meta)',
+  meta_capi_sync: 'Sende konverteringer til Meta (CAPI)',
+  meta_lead_sync: 'Hente leads fra Meta Lead Ads',
+  // LinkedIn
+  linkedin_audience_upload: 'Bygge Matched Audiences (LinkedIn)',
+  linkedin_capi_sync: 'Sende konverteringer til LinkedIn (CAPI)',
+  linkedin_lead_sync: 'Hente leads fra LinkedIn Lead Gen Forms',
+  // Google
+  google_customer_match: 'Bygge Customer Match-målgrupper (Google)',
+  google_offline_conversions: 'Sende offline-konverteringer til Google',
+  google_enhanced_conversions: 'Enhanced Conversions (Google)',
 };
 
 export default function TiktokScopePermissionGate({
@@ -34,7 +51,7 @@ export default function TiktokScopePermissionGate({
   children,
 }: {
   configId: string;
-  action: 'audience_upload' | 'crm_event_sync' | 'plugin_install' | 'creator_invitation';
+  action: string;
   children: React.ReactNode;
 }) {
   const [state, setState] = useState<State | null>(null);

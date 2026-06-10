@@ -65,7 +65,14 @@ import {
   listMetaPixels,
   provisionMetaPixel,
   createMetaCustomConversion,
+  listMetaCustomAudiences,
+  createMetaCustomAudience,
 } from "./client-meta-suite.js";
+import { createLinkedinMatchedAudience } from "./client-linkedin-suite.js";
+import {
+  createGoogleCustomerMatchAudience,
+  listGoogleCustomerMatchAudiences,
+} from "./client-google-customer-match.js";
 import {
   buildTiktokAuthUrl,
   exchangeTiktokAuthCode,
@@ -2256,6 +2263,134 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "Kunne ikke trekke tilbake", detail: String(err) });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // Meta Custom Audiences (per klient)
+  // ════════════════════════════════════════════════════════════════════
+
+  app.get("/api/admin-room/agent/ads/meta/audiences", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const adAccountId = typeof req.query.adAccountId === "string" ? req.query.adAccountId : "";
+    if (!adAccountId) return res.status(400).json({ error: "adAccountId påkrevd" });
+    const r = await listMetaCustomAudiences(pool, { producerUserId: session.userId, adAccountId });
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ audiences: r.audiences });
+  });
+
+  app.post("/api/admin-room/agent/ads/configs/:id/meta/create-audience", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as {
+      adAccountId?: string;
+      name?: string;
+      sourceDescription?: string;
+      identifiers?: Array<{ email?: string; phone?: string }>;
+    };
+    if (!body.adAccountId || !body.name || !Array.isArray(body.identifiers) || body.identifiers.length === 0) {
+      return res.status(400).json({ error: "adAccountId + name + identifiers[] påkrevd" });
+    }
+    if (req.params.id !== "self") {
+      const perm = await checkScopePermission(pool, req.params.id, "meta_audience_upload");
+      if (!perm.ok) return res.status(412).json({ error: perm.reason, scopeStatus: perm.status });
+    }
+    try {
+      const r = await createMetaCustomAudience(pool, {
+        producerUserId: session.userId,
+        adAccountId: body.adAccountId,
+        name: body.name,
+        sourceDescription: body.sourceDescription,
+        identifiers: body.identifiers,
+        configId: req.params.id !== "self" ? req.params.id : null,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "Meta-audience-opprettelse feilet", detail: String(err) });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // LinkedIn Matched Audiences (per klient)
+  // ════════════════════════════════════════════════════════════════════
+
+  app.post("/api/admin-room/agent/ads/configs/:id/linkedin/create-audience", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as {
+      adAccountUrn?: string;
+      name?: string;
+      sourceDescription?: string;
+      identifiers?: Array<{ email?: string; phone?: string }>;
+    };
+    if (!body.adAccountUrn || !body.name || !Array.isArray(body.identifiers) || body.identifiers.length === 0) {
+      return res.status(400).json({ error: "adAccountUrn + name + identifiers[] påkrevd" });
+    }
+    if (req.params.id !== "self") {
+      const perm = await checkScopePermission(pool, req.params.id, "linkedin_audience_upload");
+      if (!perm.ok) return res.status(412).json({ error: perm.reason, scopeStatus: perm.status });
+    }
+    try {
+      const r = await createLinkedinMatchedAudience(pool, {
+        producerUserId: session.userId,
+        adAccountUrn: body.adAccountUrn,
+        name: body.name,
+        sourceDescription: body.sourceDescription,
+        identifiers: body.identifiers,
+        configId: req.params.id !== "self" ? req.params.id : null,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "LinkedIn-audience-opprettelse feilet", detail: String(err) });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // Google Customer Match (per klient)
+  // ════════════════════════════════════════════════════════════════════
+
+  app.get("/api/admin-room/agent/ads/google/audiences", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const customerId = typeof req.query.customerId === "string" ? req.query.customerId : "";
+    if (!customerId) return res.status(400).json({ error: "customerId påkrevd" });
+    const r = await listGoogleCustomerMatchAudiences(pool, { producerUserId: session.userId, customerId });
+    if (!r.ok) return res.status(503).json({ error: r.error });
+    return res.json({ audiences: r.audiences });
+  });
+
+  app.post("/api/admin-room/agent/ads/configs/:id/google/create-audience", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as {
+      customerId?: string;
+      name?: string;
+      sourceDescription?: string;
+      identifiers?: Array<{ email?: string; phone?: string }>;
+    };
+    if (!body.customerId || !body.name || !Array.isArray(body.identifiers) || body.identifiers.length === 0) {
+      return res.status(400).json({ error: "customerId + name + identifiers[] påkrevd" });
+    }
+    if (req.params.id !== "self") {
+      const perm = await checkScopePermission(pool, req.params.id, "google_customer_match");
+      if (!perm.ok) return res.status(412).json({ error: perm.reason, scopeStatus: perm.status });
+    }
+    try {
+      const r = await createGoogleCustomerMatchAudience(pool, {
+        producerUserId: session.userId,
+        customerId: body.customerId,
+        name: body.name,
+        sourceDescription: body.sourceDescription,
+        identifiers: body.identifiers,
+        configId: req.params.id !== "self" ? req.params.id : null,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.error });
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "Google Customer Match feilet", detail: String(err) });
     }
   });
 
