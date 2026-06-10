@@ -11,7 +11,102 @@ import {
   ACTION_META, DEMO_TYPE_LABELS, DEVICE_LABELS, totalDuration,
   BRAIN_KIND_LABELS, VERIFICATION_META, FRAMEWORKS, MARKETING_OBJECTIVES,
   type DemoProject, type DemoScene, type ProductBrain, type BrainNodeKind,
+  type TargetLocator,
 } from './demoStudioModel';
+
+/** JSON-trygt streng-literal i generert JS. */
+function jsStr(s: string): string { return JSON.stringify(String(s ?? '')); }
+
+/**
+ * Bygg en kjørbar Playwright-locator fra scenens multi-strategi-locators.
+ * Prioritet: testid > role/aria > id > text > css > selector > label.
+ * Returnerer null for scener uten target (f.eks. wait).
+ */
+function playwrightLocator(scene: DemoScene): string | null {
+  const locs: TargetLocator[] = scene.targetLocators ?? [];
+  const find = (s: string) => locs.find((l) => l.strategy === s);
+  const testid = find('testid');
+  if (testid) {
+    const m = testid.value.match(/data-test(?:id)?="([^"]+)"/) || testid.value.match(/data-cy="([^"]+)"/);
+    if (m) return `page.getByTestId(${jsStr(m[1])})`;
+  }
+  const aria = find('aria');
+  if (aria) {
+    const [role, name] = aria.value.split('|');
+    if (role && name) return `page.getByRole(${jsStr(role)}, { name: ${jsStr(name)} })`;
+  }
+  const id = find('id');
+  if (id && id.value) return `page.locator(${jsStr(id.value)})`;
+  const text = find('text');
+  if (text) {
+    const t = text.value.split('|').slice(1).join('|');
+    if (t) return `page.getByText(${jsStr(t)}, { exact: false }).first()`;
+  }
+  const css = find('css');
+  if (css && css.value) return `page.locator(${jsStr(css.value)}).first()`;
+  if (scene.targetSelector) return `page.locator(${jsStr(scene.targetSelector)}).first()`;
+  if (scene.targetLabel) return `page.getByText(${jsStr(scene.targetLabel)}, { exact: false }).first()`;
+  return null;
+}
+
+/**
+ * Fase 3 — generer et kjørbart Playwright-skript (.mjs) av demoen: ekte
+ * navigasjon + handlinger på ekte selectors + per-scene screenshot + video.
+ * Deterministisk og redigerbart (codegen-stil, drevet av demo-flyten).
+ *
+ * Kjør:  npm i -D playwright && npx playwright install chromium && node demo.mjs
+ */
+export function buildPlaywrightScript(project: DemoProject): string {
+  const name = (project.name || 'demo').replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'demo';
+  const L: string[] = [];
+  L.push('// Auto-generert av Post Agent — Demo Studio → Playwright.');
+  L.push(`// Kjør:  npm i -D playwright && npx playwright install chromium && node ${name}.mjs`);
+  L.push("import { chromium } from 'playwright';");
+  L.push('');
+  L.push('const browser = await chromium.launch({ headless: false, slowMo: 350 });');
+  L.push("const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, recordVideo: { dir: 'demo-video', size: { width: 1280, height: 800 } } });");
+  L.push('const page = await context.newPage();');
+  L.push(`await page.goto(${jsStr(project.url)}, { waitUntil: 'domcontentloaded' });`);
+  L.push('await page.waitForTimeout(1500);');
+  L.push('');
+  project.scenes.forEach((s, i) => {
+    const n = i + 1;
+    const at = s.actionType ?? 'click';
+    const oneLine = (x: string) => (x || '').replace(/\s+/g, ' ').trim();
+    L.push(`// ── Scene ${n}: ${oneLine(s.title).slice(0, 60)} — ${ACTION_META[at].label}`);
+    if (s.narration) L.push(`// VO: ${oneLine(s.narration).slice(0, 120)}`);
+    if (s.startScrollPct) L.push(`await page.evaluate(() => window.scrollTo(0, (document.body.scrollHeight - innerHeight) * ${(s.startScrollPct / 100).toFixed(2)}));`);
+    const loc = playwrightLocator(s);
+    if (at === 'wait') {
+      L.push(`await page.waitForTimeout(${Math.max(1, s.pauseSec ?? 2) * 1000});`);
+    } else if (at === 'type' && loc) {
+      L.push(`await ${loc}.click();`);
+      L.push(`await ${loc}.fill(${jsStr('Eksempel')});`);
+    } else if (at === 'hover' && loc) {
+      L.push(`await ${loc}.hover();`);
+    } else if (at === 'scroll') {
+      L.push(loc ? `await ${loc}.scrollIntoViewIfNeeded();` : 'await page.mouse.wheel(0, 600);');
+    } else if ((at === 'highlight' || at === 'zoom') && loc) {
+      L.push(`await ${loc}.scrollIntoViewIfNeeded(); // ${ACTION_META[at].label} (fremhev i etterproduksjon)`);
+    } else if (at === 'open_url') {
+      L.push('// open_url — legg til page.goto(...) hvis scenen bytter side');
+    } else if (at === 'switch_device') {
+      L.push('// switch_device — kjør en egen context med mobil-viewport for denne delen');
+    } else if (loc) {
+      L.push(`await ${loc}.click();`);
+    } else {
+      L.push(`// (ingen target funnet for scene ${n} — sett selector manuelt)`);
+    }
+    if (s.validationRule) L.push(`// forventet: ${oneLine(s.validationRule).slice(0, 100)}`);
+    L.push(`await page.screenshot({ path: 'scene-${String(n).padStart(2, '0')}.png' });`);
+    L.push(`await page.waitForTimeout(${Math.max(0.5, s.pauseSec ?? 1) * 1000});`);
+    L.push('');
+  });
+  L.push('await context.close(); // video skrives til demo-video/');
+  L.push('await browser.close();');
+  L.push('');
+  return L.join('\n');
+}
 
 /** SRT-timecode: «HH:MM:SS,mmm». */
 function srtTime(totalSec: number): string {

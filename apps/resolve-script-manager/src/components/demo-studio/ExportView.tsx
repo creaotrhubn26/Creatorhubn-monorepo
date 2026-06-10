@@ -18,7 +18,7 @@ import { openPath } from '@tauri-apps/plugin-opener';
 import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { useDemoStudio } from './demoStudioStore';
 import { totalDuration, VOICE_MODELS, exportReadiness } from './demoStudioModel';
-import { buildSrt, buildScriptHtml, renderThumbnail, buildInteractiveGuideHtml } from './demoStudioExports';
+import { buildSrt, buildScriptHtml, renderThumbnail, buildInteractiveGuideHtml, buildPlaywrightScript } from './demoStudioExports';
 import { addAsset } from './assetLibrary';
 import { publishGuide, getGuideStats } from '../../services/publishService';
 import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
@@ -110,6 +110,21 @@ export function ExportView() {
     setFileMsg(null);
     try { await demoPrintHtml(buildScriptHtml(project)); setFileMsg('Manus åpnet i eget vindu — velg «Lagre som PDF» i utskriftsdialogen.'); }
     catch (e) { setFileMsg('Feil ved manus-PDF: ' + String(e)); }
+  };
+
+  /** Fase 3: eksporter demoen som et kjørbart Playwright-skript (.mjs). */
+  const exportPlaywright = async () => {
+    if (!project) return;
+    setFileMsg(null);
+    const code = buildPlaywrightScript(project);
+    const path = await saveFileDialog({ defaultPath: `${safeName()}.mjs`, filters: [{ name: 'JavaScript-modul', extensions: ['mjs'] }] });
+    if (typeof path !== 'string') return;
+    try {
+      const p = await demoWriteText(path, code);
+      addAsset({ kind: 'guide', title: `Playwright-skript — ${project.branding?.brandName || project.name}`, text: code, url: project.url, note: 'Kjørbart .mjs — npx playwright install chromium && node <fil>.mjs (deterministisk opptak + screenshots)' });
+      setFileMsg(`✓ Playwright-skript lagret + i biblioteket: ${p}. Kjør: npm i -D playwright && npx playwright install chromium && node «${safeName()}.mjs»`);
+      void openPath(p).catch(() => {});
+    } catch (e) { setFileMsg('Feil ved Playwright-eksport: ' + String(e)); }
   };
 
   const exportGuide = async () => {
@@ -342,6 +357,7 @@ export function ExportView() {
             <button style={{ ...outlineBtn }} disabled={publishing} onClick={() => void publishGuideLink()}>{publishing ? 'Publiserer…' : 'Publiser som lenke'}</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportSrt()}>Undertekster (.srt)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportScriptPdf()}>Manus (PDF)</button>
+            <button style={{ ...outlineBtn }} onClick={() => void exportPlaywright()}>Playwright-skript (.mjs)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportThumbnail()}>Thumbnail (PNG)</button>
             <select style={{ ...brandInp }} value={project.voiceModel ?? 'Female 1'} onChange={(e) => setProjectField('voiceModel', e.target.value)} title="Resolve AI-stemme">
               {VOICE_MODELS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
