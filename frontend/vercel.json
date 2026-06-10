@@ -340,6 +340,16 @@
       "destination": "/theroleroom.html"
     },
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom-root.html"
+    },
+    {
       "source": "/data-deletion",
       "has": [
         {
