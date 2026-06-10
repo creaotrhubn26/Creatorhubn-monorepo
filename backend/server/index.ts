@@ -457,6 +457,8 @@ import { setupShowcaseCategoriesRoutes } from "./showcase-categories-routes";
 import { setupShowcaseCommentsRoutes } from "./showcase-comments-routes";
 import { setupShowcaseAnalyticsRoutes } from "./showcase-analytics-routes";
 import { setupShowcasePricingRoutes } from "./showcase-pricing-routes";
+import { setupPhotographerStripeConnectRoutes } from "./photographer-stripe-connect-routes";
+import { setupPhotographerReviewsRoutes } from "./photographer-reviews-routes";
 import { setupShowcaseSmartAlbumsRoutes } from "./showcase-smart-albums-routes";
 import { setupShowcaseBatchOperationsRoutes } from "./showcase-batch-operations-routes";
 import { setupShowcaseGooglePhotosRoutes } from "./showcase-google-photos-routes";
@@ -70138,6 +70140,22 @@ setupShowcaseAnalyticsRoutes({ app, pool, requireUserSession });
 // ── Showcase pricing — flyttet til ./showcase-pricing-routes.ts
 //   GET /pricing + GET /pricing/:profession.
 setupShowcasePricingRoutes({ app, resolveShowcasePricing });
+
+// ── Fotograf Stripe Connect — kobling administreres i Universal Dashboard
+//   settings-panel + onboarding. Bildekjøp betales til fotografens egen konto.
+setupPhotographerStripeConnectRoutes({
+  app,
+  pool,
+  requireUserSession,
+  getStripe: getCreatorHubStripeClient,
+  getReturnBaseUrl: () =>
+    process.env.PUBLIC_APP_URL ||
+    process.env.CREATORHUB_PUBLIC_URL ||
+    "https://creatorhubn.com",
+});
+
+// ── Klient-omtaler — kundene anmelder fotografen; eier modererer. ───────────
+setupPhotographerReviewsRoutes({ app, pool, requireUserSession });
 
 
 

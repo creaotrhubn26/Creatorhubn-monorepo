@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import StripeConnectCard from './universal/StripeConnectCard';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -1063,6 +1064,13 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
         return (
           <Fade in>
             <Box>
+              {/* Stripe-kobling — det første man kan gjøre i onboardingen, så
+                  utbetalinger er klare før man begynner. Konto-nivå, uavhengig
+                  av profesjonsvalget under. */}
+              <Box sx={{ mb: 4 }}>
+                <StripeConnectCard compact />
+              </Box>
+
               <Typography variant="h5" gutterBottom sx={{ textAlign: 'center', mb: 4, color: theming.colors.primary }}>
                 Hvilken type kreativ profesjonell er du?
               </Typography>

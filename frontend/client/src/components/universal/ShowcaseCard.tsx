@@ -3,9 +3,6 @@ import type { ShowcaseItem } from '@/types/showcase';
 import {
   Box,
   Typography,
-  Card as MuiCard,
-  CardMedia,
-  CardContent,
   Chip,
   IconButton,
   Tooltip,
@@ -44,6 +41,15 @@ import {
   ViewModule,
   Sync,
 } from '@mui/icons-material';
+import {
+  CINE,
+  CINE_FONT,
+  CINE_MOTION,
+  withAlpha,
+  scrimGradient,
+  scrimGradientTop,
+  metaLabelSx,
+} from './showcaseCinematic';
 
 export const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 B';
@@ -65,6 +71,12 @@ export interface ShowcaseCardProps {
   showComments: boolean;
   setShowComments: (show: boolean) => void;
   setSelectedItem: (item: ShowcaseItem) => void;
+  /**
+   * Opens the cinematic detail view (QuickPreview). When provided it becomes the
+   * default "view" action for a card; falls back to the legacy setSelectedItem
+   * dialog when omitted so existing call-sites keep working.
+   */
+  onOpenPreview?: (item: ShowcaseItem) => void;
   handleDownload: (item: ShowcaseItem) => void;
   showcaseSettings: any;
   analytics: any;
@@ -100,6 +112,7 @@ const ShowcaseCard = React.memo(({
   showComments,
   setShowComments,
   setSelectedItem,
+  onOpenPreview,
   handleDownload,
   showcaseSettings,
   analytics,
@@ -143,20 +156,11 @@ const ShowcaseCard = React.memo(({
 };
 
   const handleEditItem = () => {
-    console.log('Edit item: ', item);
-    
     addNotification({
       message: `Redigerer ${item.title || item.fileType}...`,
       type: 'info'
     });
-    
-    if (item.fileType === 'photo') {
-      setSelectedItem(item);
-} else if (item.fileType === 'video') {
-      setSelectedItem(item);
-} else {
-      setSelectedItem(item);
-}
+    setSelectedItem(item);
     handleClose();
 };
 
@@ -194,426 +198,379 @@ const ShowcaseCard = React.memo(({
     return () => document.removeEventListener('keydown', handleKeyDown);
 }, [showcaseSettings.keyboardShortcuts, item, handleDownload, setSelectedItem, handleClientSelection, toggleFavorite]);
 
+  // ── Derived state ───────────────────────────────────────────────────────
+  const accent = accentColor || CINE.accent;
+  const isSelected = clientSelections.includes(item.id);
+  const isFav = favorites.has(item.id);
+  const reduced = showcaseSettings.animationSpeed === 'disabled';
+
+  const aspectRatio =
+    showcaseSettings.imageAspectRatio === 'square' ? '1 / 1' :
+    showcaseSettings.imageAspectRatio === '16:9' ? '16 / 9' :
+    showcaseSettings.imageAspectRatio === '4:3' ? '4 / 3' :
+    showcaseSettings.imageAspectRatio === '3:2' ? '3 / 2' :
+    showcaseSettings.imageAspectRatio === 'original' ? 'auto' :
+    '4 / 5'; // cinematic poster default
+
+  const imageSrc = (() => {
+    const baseUrl = item.thumbnailUrl || 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e';
+    const quality = showcaseSettings.imageQuality === 'low' ? 'w=400&q=60' :
+                   showcaseSettings.imageQuality === 'medium' ? 'w=640&q=78' :
+                   showcaseSettings.imageQuality === 'high' ? 'w=1080&q=90' :
+                   'w=800&q=82';
+    return `${baseUrl}?${quality}&fit=crop`;
+  })();
+
+  const MediaTypeIcon =
+    profession === 'videographer' || profession === 'music_producer' ? PlayArrow :
+    profession === 'photographer' ? Fullscreen :
+    Description;
+
+  // Default "view" action — cinematic QuickPreview when wired, legacy dialog otherwise.
+  const openDetail = onOpenPreview ?? setSelectedItem;
+
+  const handleMediaClick = () => {
+    if (showcaseSettings.viewTracking && analytics?.trackEvent && showcaseSettings.analyticsTracking) {
+      analytics.trackEvent('item_viewed', {
+        itemId: item.id,
+        profession,
+        fileType: item.fileType,
+        userId: effectiveUserId,
+        timestamp: new Date().toISOString(),
+        action: 'click'
+      });
+    }
+    if (showcaseSettings.soundEffects) {
+      const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT');
+      audio.volume = 0.1;
+      audio.play().catch(() => {});
+    }
+    if (showcaseSettings.clickAction === 'download') {
+      handleDownload(item);
+    } else if (showcaseSettings.clickAction === 'select') {
+      handleClientSelection(item.id);
+    } else {
+      openDetail(item);
+    }
+  };
+
+  const metaLine = [
+    showcaseSettings.showViewCount !== false && item.stats?.views ? `${item.stats.views} visninger` : null,
+    showcaseSettings.showProfessionBadge ? (getProfessionDisplayName(profession) || 'Leverandør') : null,
+    showcaseSettings.showUploadDate && item.createdAt ? new Date(item.createdAt).toLocaleDateString('no-NO') : null,
+  ].filter(Boolean).join('  ·  ');
+
+  // Small overlay action button — appears on the scrim, reveals on hover.
+  const OverlayAction = ({
+    title, onClick, active, activeColor, children, disabled,
+  }: {
+    title: string;
+    onClick: (e: React.MouseEvent) => void;
+    active?: boolean;
+    activeColor?: string;
+    children: React.ReactNode;
+    disabled?: boolean;
+  }) => (
+    <Tooltip title={title} disableInteractive>
+      <span>
+        <IconButton
+          size="small"
+          disabled={disabled}
+          onClick={(e) => { e.stopPropagation(); onClick(e); }}
+          sx={{
+            color: active ? (activeColor || accent) : 'rgba(255,255,255,0.82)',
+            bgcolor: 'rgba(7,7,7,0.55)',
+            backdropFilter: 'blur(6px)',
+            border: `1px solid ${active ? withAlpha(activeColor || accent, 0.6) : 'rgba(255,255,255,0.12)'}`,
+            width: 32,
+            height: 32,
+            '&:hover': {
+              color: activeColor || accent,
+              bgcolor: 'rgba(7,7,7,0.85)',
+              borderColor: withAlpha(activeColor || accent, 0.7),
+            },
+            '&.Mui-disabled': { color: 'rgba(255,255,255,0.22)' },
+          }}
+        >
+          {children}
+        </IconButton>
+      </span>
+    </Tooltip>
+  );
+
   return (
-  <Box sx={{ 
-    width: '100%'
-}} key={item.id}>
-    <MuiCard 
+  <Box sx={{ width: '100%' }} key={item.id}>
+    <Box
+      tabIndex={0}
+      role="button"
+      aria-label={`${getProfessionDisplayName(profession) || 'Innhold'}: ${item.title}`}
       onContextMenu={handleContextMenu}
+      onClick={handleMediaClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(item); }
+      }}
       onDoubleClick={() => {
-        if (showcaseSettings.doubleClickAction === 'fullscreen') {
-          setSelectedItem(item);
-        } else if (showcaseSettings.doubleClickAction === 'download') {
-          handleDownload(item);
-        } else if (showcaseSettings.doubleClickAction === 'select') {
-          handleClientSelection(item.id);
-        }
+        if (showcaseSettings.doubleClickAction === 'download') handleDownload(item);
+        else if (showcaseSettings.doubleClickAction === 'select') handleClientSelection(item.id);
+        else openDetail(item);
       }}
-      sx={{ 
-        bgcolor: showcaseSettings.cardBackground === 'dark' ? 'rgba(6, 31, 46, 0.8)' :
-                showcaseSettings.cardBackground === 'light' ? 'rgba(255, 255, 255, 0.9)' :
-                showcaseSettings.cardBackground === 'transparent' ? 'transparent' :
-                'rgba(26, 31, 46, 0.8)',
-        background: showcaseSettings.cardBackground === 'dark' ? 
-                   'linear-gradient(145deg, rgba(26, 31, 46, 0.9), rgba(31, 36, 50, 0.7))' :
-                   showcaseSettings.cardBackground === 'light' ?
-                   'linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(2, 4, 5, 245, 245, 0.7))' :
-                   'linear-gradient(145deg, rgba(26, 31, 46, 0.9), rgba(31, 36, 50, 0.7))',
-        border: '1px solid rgba(255, 107, 53, 0.1)',
-        borderRadius: showcaseSettings.cardBorderRadius === 'none' ? 0 :
-                     showcaseSettings.cardBorderRadius === 'small' ? 1 :
-                     showcaseSettings.cardBorderRadius === 'medium' ? 3 :
-                     showcaseSettings.cardBorderRadius === 'large' ? 6 : 3,
-        overflow: 'hidden',
-        cursor: 'pointer',
-        backdropFilter: 'blur(20px)',
-        boxShadow: showcaseSettings.cardShadow === 'none' ? 'none' :
-                  showcaseSettings.cardShadow === 'subtle' ? '0 1px 3px rgba(0,0,0,0.12)' :
-                  showcaseSettings.cardShadow === 'medium' ? '0 4px 20px rgba(0,0,0,0.3), 0 1px 4px rgba(255, 107, 53, 0.1)' :
-                  showcaseSettings.cardShadow === 'strong' ? '0 8px 30px rgba(0,0,0,0.5), 0 2px 8px rgba(255, 107, 53, 0.2)' :
-                  '0 4px 20px rgba(0,0,0,0.3), 0 1px 4px rgba(255, 107, 53, 0.1)',
+      sx={{
         position: 'relative',
-        transition: showcaseSettings.animationSpeed === 'disabled' ? 'none' :
-                   showcaseSettings.animationSpeed === 'slow' ? 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)' :
-                   showcaseSettings.animationSpeed === 'fast' ? 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)' :
-                   'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        minHeight: showcaseSettings.cardSize === 'small' ? 200 :
-                  showcaseSettings.cardSize === 'medium' ? 300 :
-                  showcaseSettings.cardSize === 'large' ? 400 :
-                  showcaseSettings.cardSize === 'extra-large' ? 500 : 300, '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'linear-gradient(135deg, rgba(255, 107, 53, 0.03), transparent, rgba(255, 140, 0, 0.03))',
+        width: '100%',
+        aspectRatio,
+        minHeight: aspectRatio === 'auto' ? 240 : undefined,
+        overflow: 'hidden',
+        borderRadius: '14px',
+        bgcolor: CINE.surfaceSolid,
+        border: `1px solid ${isSelected ? withAlpha(accent, 0.55) : CINE.border}`,
+        cursor: 'pointer',
+        boxShadow: isSelected
+          ? `0 0 0 1px ${withAlpha(accent, 0.5)}, 0 16px 40px rgba(0,0,0,0.5)`
+          : '0 1px 2px rgba(0,0,0,0.4)',
+        transition: reduced ? 'none' : `transform ${CINE_MOTION.base} ${CINE_MOTION.ease}, box-shadow ${CINE_MOTION.base} ${CINE_MOTION.ease}, border-color ${CINE_MOTION.base} ${CINE_MOTION.ease}`,
+        '& .cine-img': {
+          transition: reduced ? 'none' : `transform ${CINE_MOTION.slow} ${CINE_MOTION.ease}`,
+        },
+        '& .cine-reveal': {
           opacity: 0,
-          transition: 'opacity 0.3s ease',
-          pointerEvents: 'none',
-          zIndex: 1,
-        }, '&:hover': {
-          transform: showcaseSettings.hoverEffects === 'none' ? 'none' :
-                    showcaseSettings.hoverEffects === 'glow' ? 'translateY(-4px)' :
-                    showcaseSettings.hoverEffects === 'scale' ? 'translateY(-8px) scale(1.02)' :
-                    showcaseSettings.hoverEffects === 'fade' ? 'translateY(-4px)' :
-                    'translateY(-8px) scale(1.02)',
-          borderColor: 'rgba(25, 107, 53, 0.3)',
-          boxShadow: showcaseSettings.hoverEffects === 'none' ? 'inherit' :
-                    showcaseSettings.hoverEffects === 'glow' ? '0 0 20px rgba(25, 107, 53, 0.4)' :
-                    showcaseSettings.hoverEffects === 'scale' ? '0 20px 40px rgba(0,0,0,0.4), 0 8px 16px rgba(25, 107, 53, 0.2)' :
-                    showcaseSettings.hoverEffects === 'fade' ? '0 4px 20px rgba(0,0,0,0.2)' :
-                    '0 20px 40px rgba(0,0,0,0.4), 0 8px 16px rgba(25, 107, 53, 0.2)',
-          opacity: showcaseSettings.hoverEffects === 'fade' ? 0.8 : 1, '&::before': {
-            opacity: showcaseSettings.hoverEffects === 'none' ? 0 : 1,
-          },
-        }, '&:active': {
-          transform: 'translateY(-4px) scale(1.01)',
-        }}}>
-      <Box sx={{ position: 'relative' }}>
-        <CardMedia
-          component="img"
-          height="auto"
-          image={(() => {
-            const baseUrl = item.thumbnailUrl || 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e';
-            const quality = showcaseSettings.imageQuality === 'low' ? 'w=120&h=120&q=60' :
-                           showcaseSettings.imageQuality === 'medium' ? 'w=240&h=240&q=80' :
-                           showcaseSettings.imageQuality === 'high' ? 'w=480&h=480&q=90' :
-                           'w=120&h=120&q=100';
-            return `${baseUrl}?${quality}&fit=crop`;
-          })()}
-          alt={`${getProfessionDisplayName(profession) || 'Innhold'}: ${item.title} - Klikk for å se fullskjerm`}
-          loading={showcaseSettings.lazyLoading ? "lazy" : "eager"}
-          sx={{ 
-            objectFit: 'cover',
-            transition: 'opacity 0.3s ease',
-            aspectRatio: showcaseSettings.imageAspectRatio === 'square' ? '1/1' :
-                        showcaseSettings.imageAspectRatio === '16:9' ? '16/9' :
-                        showcaseSettings.imageAspectRatio === '4:3' ? '4/3' :
-                        showcaseSettings.imageAspectRatio === '3:2' ? '3/2' :
-                        showcaseSettings.imageAspectRatio === 'original' ? 'auto' : '16/9',
-            width: '100%',
-            height: 'auto'
-          }}
-          onClick={() => {
-            if (showcaseSettings.viewTracking && analytics?.trackEvent && showcaseSettings.analyticsTracking) {
-              analytics.trackEvent('item_viewed', {
-                itemId: item.id,
-                profession,
-                fileType: item.fileType,
-                userId: effectiveUserId,
-                timestamp: new Date().toISOString(),
-                action: 'click'
-              });
-            }
-
-            if (showcaseSettings.soundEffects) {
-              const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT');
-              audio.volume = 0.1;
-              audio.play().catch(() => {});
-            }
-
-            if (showcaseSettings.clickAction === 'fullscreen') {
-              setSelectedItem(item);
-            } else if (showcaseSettings.clickAction === 'download') {
-              handleDownload(item);
-            } else if (showcaseSettings.clickAction === 'select') {
-              handleClientSelection(item.id);
-            }
+          transform: 'translateY(8px)',
+          transition: reduced ? 'none' : `opacity ${CINE_MOTION.base} ${CINE_MOTION.ease}, transform ${CINE_MOTION.base} ${CINE_MOTION.ease}`,
+        },
+        '& .cine-title': {
+          transition: reduced ? 'none' : `transform ${CINE_MOTION.base} ${CINE_MOTION.ease}`,
+        },
+        '&:hover, &:focus-visible': reduced ? {
+          borderColor: withAlpha(accent, 0.5),
+          outline: 'none',
+        } : {
+          transform: 'translateY(-6px)',
+          borderColor: withAlpha(accent, 0.5),
+          boxShadow: `0 24px 50px rgba(0,0,0,0.6), 0 0 0 1px ${withAlpha(accent, 0.28)}, 0 0 44px ${withAlpha(accent, 0.18)}`,
+          outline: 'none',
+          '& .cine-img': { transform: `scale(${CINE_MOTION.hoverZoom})` },
+          '& .cine-reveal': { opacity: 1, transform: 'translateY(0)' },
+          '& .cine-title': { transform: 'translateY(-2px)' },
+        },
+        // Touch devices: keep actions/title visible (no hover).
+        '@media (hover: none)': {
+          '& .cine-reveal': { opacity: 1, transform: 'none' },
+        },
       }}
-          onError={(e) => {
-            const target = e.target as HTMLImageElement;
-            target.src = profession === 'photographer' 
-              ? 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=120&h=120&fit=crop'
-              : profession === 'videographer'
-              ? 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=120&h=120&fit=crop'
-              : profession === 'music_producer'
-              ? 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=120&h=120&fit=crop'
-              : 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=120&h=120&fit=crop';
-          }}
-        />
-        
-        <Box sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          bgcolor: 'rgba(0,0,0,0.7)',
-          borderRadius: '50%',
-          width: 32,
-          height: 32,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}>
-          {profession === 'photographer' ? (
-            <Fullscreen sx={{ color: '#fff', fontSize: 18 }} />
-          ) : profession === 'videographer' ? (
-            <PlayArrow sx={{ color: '#fff', fontSize: 18 }} />
-          ) : profession === 'music_producer' ? (
-            <PlayArrow sx={{ color: '#fff', fontSize: 18 }} />
-          ) : (
-            <Description sx={{ color: '#fff', fontSize: 18 }} />
-          )}
-        </Box>
+    >
+      {/* Media */}
+      <Box
+        component="img"
+        className="cine-img"
+        src={imageSrc}
+        alt={`${getProfessionDisplayName(profession) || 'Innhold'}: ${item.title}`}
+        loading={showcaseSettings.lazyLoading === false ? 'eager' : 'lazy'}
+        onError={(e: any) => {
+          const target = e.target as HTMLImageElement;
+          target.src = profession === 'videographer'
+            ? 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=800&q=82&fit=crop'
+            : profession === 'music_producer'
+            ? 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=800&q=82&fit=crop'
+            : 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=800&q=82&fit=crop';
+        }}
+        sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+      />
 
-        {showcaseSettings.watermark !== 'none' && projectState !== 'delivered' && (
-          <Box sx={{
-            position: 'absolute',
-            [showcaseSettings.watermarkPosition.includes('top') ? 'top' : 'bottom']: 8,
-            [showcaseSettings.watermarkPosition.includes('left') ? 'left' : 'right']: 8,
-            ...(showcaseSettings.watermarkPosition === 'center' && {
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)'
-            }),
-            bgcolor: `rgba(0,0,0,${(showcaseSettings.watermarkOpacity || 70) / 100})`,
-            color: '#fff',
-            px: 1,
-            py: 0.5,
-            borderRadius: 1,
-            fontSize: showcaseSettings.watermarkSize === 'small' ? '0.7rem' : 
-                     showcaseSettings.watermarkSize === 'medium' ? '0.9rem' : '1.1rem',
-            fontWeight: 500,
-            backdropFilter: 'blur(4px)',
-            zIndex: 2,
-            transition: 'all 0.3s ease-in-out'
-          }}>
-            {showcaseSettings.watermark === 'text' ? (
-              <span>{showcaseSettings.watermarkText || 'CreatorHub'}</span>
-            ) : showcaseSettings.watermark === 'logo' ? (
-              <Business sx={{ fontSize: 'inherit', verticalAlign: 'middle' }} />
-            ) : showcaseSettings.watermark === 'both' ? (
-              <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-                <Business sx={{ fontSize: 'inherit' }} />
-                {showcaseSettings.watermarkText || 'CreatorHub'}
-              </Box>
-            ) : null}
-          </Box>
-        )}
+      {/* Bottom scrim for legibility */}
+      <Box sx={{ position: 'absolute', inset: 0, background: scrimGradient, pointerEvents: 'none' }} />
+      {/* Subtle top scrim for top chrome */}
+      <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: '38%', background: scrimGradientTop, pointerEvents: 'none' }} />
 
-        {profession === 'videographer' && (
-          <Chip
-            label="2: 34"
-            size="small"
-            sx={{
-              position: 'absolute',
-              bottom: 8,
-              right: 8,
-              bgcolor: 'rgba(0,0,0,0.8)',
-              color: '#fff',
-              fontSize: '0.7rem',
-              height: 20 }}
-          />
-        )}
-
-        {profession === 'music_producer' && showcaseSettings.audioWatermarkEnabled && (
-          <Chip
-            icon={<Security sx={{ fontSize: '0.8rem' }} />}
-            label="Lyd-vannmerke"
-            size="small"
-            sx={{
-              position: 'absolute',
-              top: 8,
-              right:  8,
-              bgcolor: 'rgba(6, 175, 80, 0.9)',
-              color: '#fff',
-              fontSize: '0.7rem',
-              fontWeight: 500,
-              height: 20, '& .MuiChip-icon': {
-                color: '#fff',
-              }}}
-          />
-        )}
+      {/* Centered play/expand affordance (reveals on hover) */}
+      <Box
+        className="cine-reveal"
+        sx={{
+          position: 'absolute', top: '46%', left: '50%', transform: 'translate(-50%, -50%)',
+          width: 52, height: 52, borderRadius: '50%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          bgcolor: 'rgba(6,8,13,0.55)', backdropFilter: 'blur(8px)',
+          border: `1px solid ${withAlpha(accent, 0.5)}`,
+          color: '#fff', pointerEvents: 'none',
+        }}
+      >
+        <MediaTypeIcon sx={{ fontSize: 26 }} />
       </Box>
 
-      <CardContent sx={{ p: 2, bgcolor: '#1a1f2e' }}>
-        <Typography variant="subtitle2" sx={{ 
-          fontWeight: 600, 
-          color: '#fff',
-          mb: 0.5,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap'
+      {/* Top-left: selection ring */}
+      {showcaseSettings.showSelectionButton !== false && (clientMode || isSelected || adminMode) && (
+        <Box className={isSelected ? undefined : 'cine-reveal'} sx={{ position: 'absolute', top: 10, left: 10 }}>
+          <Tooltip title={isSelected ? 'Fjern fra valg' : 'Legg til valg'} disableInteractive>
+            <IconButton
+              size="small"
+              onClick={(e) => { e.stopPropagation(); handleClientSelection(item.id); }}
+              sx={{
+                width: 30, height: 30,
+                color: isSelected ? '#fff' : 'rgba(255,255,255,0.9)',
+                bgcolor: isSelected ? accent : 'rgba(7,7,7,0.5)',
+                backdropFilter: 'blur(6px)',
+                border: `1px solid ${isSelected ? accent : 'rgba(255,255,255,0.18)'}`,
+                '&:hover': { bgcolor: isSelected ? accent : 'rgba(7,7,7,0.8)' },
+              }}
+            >
+              {isSelected ? <CheckCircle sx={{ fontSize: 18 }} /> : <RadioButtonUnchecked sx={{ fontSize: 18 }} />}
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )}
+
+      {/* Top-right: favorite */}
+      {showcaseSettings.showFavoriteButton !== false && (
+        <Box className={isFav ? undefined : 'cine-reveal'} sx={{ position: 'absolute', top: 10, right: 10 }}>
+          <Tooltip title={isFav ? 'Fjern favoritt' : 'Favoritt'} disableInteractive>
+            <IconButton
+              size="small"
+              onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}
+              sx={{
+                width: 30, height: 30,
+                color: isFav ? CINE.danger : 'rgba(255,255,255,0.9)',
+                bgcolor: 'rgba(7,7,7,0.5)', backdropFilter: 'blur(6px)',
+                border: '1px solid rgba(255,255,255,0.16)',
+                '&:hover': { color: CINE.danger, bgcolor: 'rgba(7,7,7,0.8)' },
+              }}
+            >
+              {isFav ? <Favorite sx={{ fontSize: 17 }} /> : <FavoriteBorder sx={{ fontSize: 17 }} />}
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )}
+
+      {/* Video duration / audio watermark chips */}
+      {profession === 'videographer' && (
+        <Chip
+          label="2:34"
+          size="small"
+          sx={{
+            position: 'absolute', bottom: 64, right: 12,
+            bgcolor: 'rgba(6,8,13,0.78)', color: '#fff',
+            fontFamily: CINE_FONT, fontWeight: 600, fontSize: '0.68rem', height: 22,
+            border: '1px solid rgba(255,255,255,0.14)',
+          }}
+        />
+      )}
+      {profession === 'music_producer' && showcaseSettings.audioWatermarkEnabled && (
+        <Chip
+          icon={<Security sx={{ fontSize: '0.8rem' }} />}
+          label="Lyd-vannmerke"
+          size="small"
+          sx={{
+            position: 'absolute', top: 10, left: showcaseSettings.showSelectionButton !== false ? 48 : 10,
+            bgcolor: withAlpha(CINE.success, 0.92), color: '#070707',
+            fontWeight: 600, fontSize: '0.66rem', height: 22,
+            '& .MuiChip-icon': { color: '#070707' },
+          }}
+        />
+      )}
+
+      {/* Watermark (preserved) */}
+      {showcaseSettings.watermark && showcaseSettings.watermark !== 'none' && projectState !== 'delivered' && (
+        <Box sx={{
+          position: 'absolute',
+          [showcaseSettings.watermarkPosition?.includes('top') ? 'top' : 'bottom']: 8,
+          [showcaseSettings.watermarkPosition?.includes('left') ? 'left' : 'right']: 8,
+          ...(showcaseSettings.watermarkPosition === 'center' && {
+            top: '50%', left: '50%', transform: 'translate(-50%, -50%)'
+          }),
+          bgcolor: `rgba(0,0,0,${(showcaseSettings.watermarkOpacity || 70) / 100})`,
+          color: '#fff', px: 1, py: 0.5, borderRadius: 1,
+          fontSize: showcaseSettings.watermarkSize === 'small' ? '0.7rem' :
+                   showcaseSettings.watermarkSize === 'medium' ? '0.9rem' : '1.1rem',
+          fontWeight: 500, backdropFilter: 'blur(4px)', zIndex: 2, pointerEvents: 'none',
         }}>
+          {showcaseSettings.watermark === 'text' ? (
+            <span>{showcaseSettings.watermarkText || 'CreatorHub'}</span>
+          ) : showcaseSettings.watermark === 'logo' ? (
+            <Business sx={{ fontSize: 'inherit', verticalAlign: 'middle' }} />
+          ) : showcaseSettings.watermark === 'both' ? (
+            <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+              <Business sx={{ fontSize: 'inherit' }} />
+              {showcaseSettings.watermarkText || 'CreatorHub'}
+            </Box>
+          ) : null}
+        </Box>
+      )}
+
+      {/* Bottom content: title + meta + reveal action bar */}
+      <Box sx={{ position: 'absolute', left: 0, right: 0, bottom: 0, p: 1.75, zIndex: 2 }}>
+        <Typography
+          className="cine-title"
+          sx={{
+            fontFamily: CINE_FONT, fontWeight: 700, color: '#fff',
+            fontSize: '0.98rem', lineHeight: 1.25,
+            textShadow: '0 1px 12px rgba(0,0,0,0.6)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}
+        >
           {item.title}
         </Typography>
-        
-        <Typography variant="caption" sx={{ 
-          color: 'rgba(255,255,255,0.7)',
-          display: 'block',
-          mb: 1 }}>
-          {item.stats?.views} visninger • {new Date().toLocaleDateString('no-NO')}
-        </Typography>
 
-        {adminMode && item.projectId && (
-          <Box sx={{ mb: 1 }}>
-            <Tooltip title="View Project Timeline">
-              <Chip 
-                icon={<TimelineIcon />} 
-                label="Project" 
-                size="small" 
-                color="primary"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenProject?.(item);
-                }}
-                sx={{ cursor: 'pointer' }}
-              />
-            </Tooltip>
-          </Box>
+        {metaLine && (
+          <Typography sx={{ ...metaLabelSx, color: 'rgba(255,255,255,0.78)', mt: 0.5 }}>
+            {metaLine}
+          </Typography>
         )}
 
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box sx={{ display: 'flex', gap: 0.5 }}>
-            {showcaseSettings.showSelectionButton && (
-              <IconButton
-                size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
-                      showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleClientSelection(item.id);
-                }}
-                sx={{
-                  color: clientSelections.includes(item.id) ? accentColor : 'rgba(255,255,255,0.5)',
-                  bgcolor: clientSelections.includes(item.id) ? 'rgba(255, 107, 53, 0.2)' : 'transparent',
-                  variant: showcaseSettings.buttonStyle === 'filled' ? 'contained' :
-                          showcaseSettings.buttonStyle === 'outlined' ? 'outlined' :
-                          showcaseSettings.buttonStyle === 'text' ? 'text' : 'text','&:hover': { 
-                    color: accentColor,
-                    bgcolor: showcaseSettings.buttonStyle === 'filled' ? accentColor :
-                            showcaseSettings.buttonStyle === 'outlined' ? 'rgba(255, 107, 53, 0.1)' :
-                            'rgba(255, 107, 53, 0.1)'
-                  }
-                }}
-              >
-                {clientSelections.includes(item.id) ? 
-                  <CheckCircle sx={{ fontSize: 16 }} /> : 
-                  <RadioButtonUnchecked sx={{ fontSize: 16 }} />
-                }
-              </IconButton>
-            )}
-
-            {showcaseSettings.showFavoriteButton && (
-              <IconButton 
-                size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
-                      showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleFavorite(item.id);
-                }}
-                sx={{ 
-                  color: favorites.has(item.id) ? '#ff4444' : 'rgba(255,255,255,0.5)','&:hover': { color: '#ff4444' }
-                }}
-              >
-                {favorites.has(item.id) ? <Favorite sx={{ fontSize: 16 }} /> : <FavoriteBorder sx={{ fontSize: 16 }} />}
-              </IconButton>
-            )}
-            
-            {showcaseSettings.showCommentButton && (
-              <IconButton 
-                size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
-                      showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
-                disabled={projectState === 'delivered'}
-                sx={{ 
-                  color: projectState === 'delivered' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.5)','&:hover': { color: projectState === 'delivered' ? 'rgba(255,255,255,0.2)' : '#fff' }
-                }}
-                onClick={() => setShowComments(!showComments)}
-              >
-                <Comment sx={{ fontSize: 16 }} />
-              </IconButton>
-            )}
-            
-            {showcaseSettings.showDownloadButton && (
-              <IconButton 
-                size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
-                      showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
-                disabled={projectState === 'in_review'}
-                sx={{ 
-                  color: projectState === 'in_review' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.5)','&:hover': { color: projectState === 'in_review' ? 'rgba(255,255,255,0.2)' : accentColor }
+        {adminMode && item.projectId && (
+          <Chip
+            icon={<TimelineIcon sx={{ fontSize: 14 }} />}
+            label="Prosjekt"
+            size="small"
+            onClick={(e) => { e.stopPropagation(); onOpenProject?.(item); }}
+            sx={{
+              mt: 0.75, height: 22, fontSize: '0.66rem', fontWeight: 600,
+              bgcolor: withAlpha(accent, 0.18), color: accent,
+              border: `1px solid ${withAlpha(accent, 0.4)}`,
+              '& .MuiChip-icon': { color: accent },
             }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDownload(item);
-            }}
-              >
-                <Download sx={{ fontSize: 16 }} />
-              </IconButton>
-            )}
+          />
+        )}
 
-            {showcaseSettings.showFullscreenButton && (
-              <IconButton 
-                size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
-                      showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
-                sx={{ 
-                  color: 'rgba(255,255,255,0.5)','&:hover': { color: '#9C27B0' }
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedItem(item);
-            }}
-              >
-                <Fullscreen sx={{ fontSize: 16 }} />
-              </IconButton>
-            )}
-
-            {adminMode && item.projectId && (
-              <Tooltip title="View Project Timeline">
-                <IconButton 
-                  size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
-                        showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
-                  sx={{ 
-                    color: 'rgba(255,255,255,0.5)','&:hover': { color: accentColor }
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenProject?.(item);
-                  }}
-                >
-                  <TimelineIcon sx={{ fontSize: 16 }} />
-                </IconButton>
-              </Tooltip>
-            )}
-
-            {adminMode && item.projectId && clientSession && (
-              <Tooltip title="Update Project State">
-                <IconButton 
-                  size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
-                        showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
-                  sx={{ 
-                    color: projectState === 'delivered' ? '#4caf50' : '#ff9800','&:hover': { color: projectState === 'delivered' ? '#388e3c' : '#f57c00' }
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedItemForStateUpdate(item);
-                    setNewProjectState(projectState || 'in_review');
-                    setProjectStateUpdateOpen(true);
-                  }}
-                >
-                  <CheckCircle sx={{ fontSize: 16 }} />
-                </IconButton>
-              </Tooltip>
-            )}
-          </Box>
-          
-          {showcaseSettings.showStatusText && (
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-              {[
-                clientSelections.includes(item.id) ? 'Valgt' : 'Ikke valgt',
-                favorites.has(item.id) ? 'Favoritt' : 'Ikke favoritt',
-                ...(showcaseSettings.showViewCount && item.stats?.views ? [`${item.stats.views} visninger`] : []),
-                ...(showcaseSettings.showLikeCount && item.stats?.likes ? [`${item.stats.likes} likes`] : []),
-                ...(showcaseSettings.showUploadDate && item.createdAt ? [new Date(item.createdAt).toLocaleDateString('no-NO')] : []),
-                ...(showcaseSettings.showFileSize && item.fileUrl ? [formatFileSize(item.fileSize || item.size || 0)] : []),
-                ...(showcaseSettings.showProfessionBadge ? [getProfessionDisplayName(profession) || 'Leverandør'] : []),
-                ...(showcaseSettings.showAITags && item.aiTags ? item.aiTags.slice(0, 2) : [])
-              ].join(' • ')}
-            </Typography>
+        {/* Action bar — reveals on hover, always shown on touch */}
+        <Box className="cine-reveal" sx={{ display: 'flex', gap: 0.75, mt: 1.25, flexWrap: 'wrap' }}>
+          {showcaseSettings.showCommentButton !== false && (
+            <OverlayAction
+              title="Kommentarer"
+              disabled={projectState === 'delivered'}
+              onClick={() => { setSelectedItem(item); setShowComments(!showComments); }}
+            >
+              <Comment sx={{ fontSize: 16 }} />
+            </OverlayAction>
+          )}
+          {showcaseSettings.showDownloadButton !== false && (
+            <OverlayAction
+              title="Last ned"
+              disabled={projectState === 'in_review'}
+              onClick={() => handleDownload(item)}
+            >
+              <Download sx={{ fontSize: 16 }} />
+            </OverlayAction>
+          )}
+          {showcaseSettings.showFullscreenButton !== false && (
+            <OverlayAction title="Åpne fullskjerm" onClick={() => setSelectedItem(item)}>
+              <Fullscreen sx={{ fontSize: 16 }} />
+            </OverlayAction>
+          )}
+          {adminMode && item.projectId && clientSession && (
+            <OverlayAction
+              title="Oppdater prosjektstatus"
+              active
+              activeColor={projectState === 'delivered' ? CINE.success : CINE.warning}
+              onClick={() => {
+                setSelectedItemForStateUpdate(item);
+                setNewProjectState(projectState || 'in_review');
+                setProjectStateUpdateOpen(true);
+              }}
+            >
+              <CheckCircle sx={{ fontSize: 16 }} />
+            </OverlayAction>
           )}
         </Box>
-      </CardContent>
-    </MuiCard>
-    
+      </Box>
+    </Box>
+
     {showcaseSettings.enableContextMenu && (
       <Menu
         open={contextMenu !== null}
@@ -636,7 +593,7 @@ const ShowcaseCard = React.memo(({
             <ListItemText>Last ned</ListItemText>
           </MenuItem>
         )}
-        
+
         {showcaseSettings.showEditButton && (
           <MenuItem onClick={handleEditItem}>
             <ListItemIcon>
@@ -645,7 +602,7 @@ const ShowcaseCard = React.memo(({
             <ListItemText>Rediger</ListItemText>
           </MenuItem>
         )}
-        
+
         <MenuItem onClick={() => {
           setSelectedItem(item);
           handleClose();
@@ -655,7 +612,7 @@ const ShowcaseCard = React.memo(({
           </ListItemIcon>
           <ListItemText>Se fullskjerm</ListItemText>
         </MenuItem>
-        
+
         {showcaseSettings.showSelectionButton && (
           <MenuItem onClick={() => {
             handleClientSelection(item.id);
@@ -669,7 +626,7 @@ const ShowcaseCard = React.memo(({
             </ListItemText>
           </MenuItem>
         )}
-        
+
         {showcaseSettings.showFavoriteButton && (
           <MenuItem onClick={() => {
             toggleFavorite(item.id);
@@ -683,7 +640,7 @@ const ShowcaseCard = React.memo(({
             </ListItemText>
           </MenuItem>
         )}
-        
+
         {showcaseSettings.showCommentButton && (
           <MenuItem onClick={() => {
             setShowComments(!showComments);
@@ -695,9 +652,9 @@ const ShowcaseCard = React.memo(({
             <ListItemText>Kommentarer</ListItemText>
           </MenuItem>
         )}
-        
+
         <Divider sx={{ my: 1 }} />
-        
+
         {profession === 'photographer' && (
           <>
             <MenuItem onClick={() => {
@@ -712,7 +669,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Enhance Photo (AI)</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Åpner vannmerke-dialog...',
@@ -725,7 +682,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Apply Watermark</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Sender til Lightroom...',
@@ -738,7 +695,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Send to Lightroom</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Sett pris for dette bildet',
@@ -753,7 +710,7 @@ const ShowcaseCard = React.memo(({
             </MenuItem>
           </>
         )}
-        
+
         {profession === 'videographer' && (
           <>
             <MenuItem onClick={() => {
@@ -768,7 +725,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Add to Sequence</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Genererer proxy-fil...',
@@ -781,7 +738,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Generate Proxy</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Eksporterer for sosiale medier...',
@@ -794,7 +751,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Export for Social Media</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Legg til tidskode-kommentar',
@@ -809,7 +766,7 @@ const ShowcaseCard = React.memo(({
             </MenuItem>
           </>
         )}
-        
+
         {profession === 'music_producer' && (
           <>
             <MenuItem onClick={() => {
@@ -825,7 +782,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Opprett Split Sheet</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Ekstraherer stems...',
@@ -838,7 +795,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Extract Stems</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Setter lyd-vannmerke...',
@@ -851,7 +808,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Apply Audio Watermark</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Analyserer audio med AI...',
@@ -863,7 +820,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Analyze Audio (AI)</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Legger til i sample pack...',
@@ -875,7 +832,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Add to Sample Pack</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               setShowProToolsDialog?.(true);
               handleClose();
@@ -887,7 +844,7 @@ const ShowcaseCard = React.memo(({
             </MenuItem>
           </>
         )}
-        
+
         {profession === 'vendor' && (
           <>
             <MenuItem onClick={() => {
@@ -902,7 +859,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Add to Product Bundle</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Redigerer prising...',
@@ -915,7 +872,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Edit Pricing</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Legger til varianter...',
@@ -928,7 +885,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>Add Variants</ListItemText>
             </MenuItem>
-            
+
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Oppdaterer lagerstatus...',
@@ -943,7 +900,7 @@ const ShowcaseCard = React.memo(({
             </MenuItem>
           </>
         )}
-        
+
         {features.checkFeatureAccess('publish-to-academy')?.hasAccess && (
           <>
             <Divider sx={{ my: 1 }} />
@@ -964,7 +921,7 @@ const ShowcaseCard = React.memo(({
             </MenuItem>
           </>
         )}
-        
+
         <MenuItem onClick={() => {
           setSelectedItemForCommunityShare(item);
           setShowShareToCommunityDialog(true);
