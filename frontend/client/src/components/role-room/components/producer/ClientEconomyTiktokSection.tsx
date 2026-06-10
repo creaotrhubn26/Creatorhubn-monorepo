@@ -24,7 +24,7 @@ import ClientTiktokAttributionPanel from './ClientTiktokAttributionPanel';
 import ClientTiktokLeadsPanel from './ClientTiktokLeadsPanel';
 import ClientTiktokLinkedAccountsPanel from './ClientTiktokLinkedAccountsPanel';
 import ClientTiktokSpendPanel from './ClientTiktokSpendPanel';
-import ClientTiktokPermissionsPanel from './ClientTiktokPermissionsPanel';
+import ClientAdsPermissionsPanel from './ClientAdsPermissionsPanel';
 
 interface Props {
   /** Prosjektet klienten ser sin Economy-tab for. */
@@ -35,6 +35,10 @@ interface ConfigStub {
   id: string;
   tiktok_pixel_id: string | null;
   tiktok_advertiser_id: string | null;
+  meta_pixel_id: string | null;
+  meta_ad_account_id: string | null;
+  linkedin_insight_tag_id: string | null;
+  google_ads_customer_id: string | null;
 }
 
 const palette = {
@@ -107,7 +111,15 @@ export default function ClientEconomyTiktokSection({ clientProjectId }: Props) {
 
       <Stack spacing={2}>
         {/* 0. Permissions + vilkår — ØVERST (forutsetning for alt annet) */}
-        <ClientTiktokPermissionsPanel configId={config.id} />
+        <ClientAdsPermissionsPanel
+          configId={config.id}
+          platforms={{
+            tiktok: !!config.tiktok_advertiser_id,
+            meta: !!config.meta_ad_account_id,
+            linkedin: !!config.linkedin_insight_tag_id,
+            google: !!config.google_ads_customer_id,
+          }}
+        />
 
         {/* 1. Spend — "Hva har vi brukt?" */}
         <ClientTiktokSpendPanel configId={config.id} advertiserId={config.tiktok_advertiser_id} />
