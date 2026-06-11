@@ -73,6 +73,24 @@ export interface UserFile {
   metadata: Record<string, unknown>;
   uploadedAt: string;
   b2Key: string;
+  // L4 — kontekst-kobling
+  projectId: string | null;
+  sceneId: string | null;
+  attachedToEntityType: string | null;
+  attachedToEntityId: string | null;
+  attachmentNote: string | null;
+}
+
+export interface UploadContext {
+  /** Prosjekt-ID (FK til casting_projects) — filen kan filtreres per prosjekt */
+  projectId?: string;
+  /** Scene-ID (valgfri) */
+  sceneId?: string;
+  /** Polymorfisk binding: 'storyboard' | 'role' | 'role_research' | 'deck_slide' | 'self_tape_thumbnail' | 'casting_call_poster' */
+  attachedToEntityType?: string;
+  attachedToEntityId?: string;
+  /** Menneskelig beskrivelse: "Referansebilde for scene 4" */
+  attachmentNote?: string;
 }
 
 /**
@@ -145,6 +163,9 @@ export async function getUserStorageStats(pool: Pool, userId: string): Promise<U
  * Upload en fil for brukeren. Sjekker quota før noe blir sendt til B2 —
  * hvis filen ville sprenge taket, returneres `'quota_exceeded'` UTEN at
  * data nådde nettverket. Returnerer file-row hvis ok.
+ *
+ * Med `context` knytter vi filen til prosjekt/scene/entity så panelet
+ * kan filtrere og vise "denne storyboarden bruker 3 referansebilder".
  */
 export async function uploadUserFile(
   pool: Pool,
@@ -155,6 +176,7 @@ export async function uploadUserFile(
     contentType: string;
     sourceModule?: string;          // 'selftape' | 'deck' | 'casting-poster' | ...
     metadata?: Record<string, unknown>;
+    context?: UploadContext;        // L4 — kontekst-kobling
   },
 ): Promise<
   | { ok: true; file: UserFile }
@@ -194,10 +216,12 @@ export async function uploadUserFile(
     return { ok: false, reason: 'upload_failed', detail: (err as Error).message };
   }
 
-  // Registrer i DB (atomisk: oppretter fil + bumper consumption)
+  // Registrer i DB (atomisk: oppretter fil + bumper consumption + kobler kontekst)
+  const ctx = opts.context ?? {};
   const r = await pool.query<{ role_room_register_user_upload: string }>(
     `SELECT role_room_register_user_upload(
-       $1::uuid, $2, $3, $4::bigint, $5, $6, $7::jsonb
+       $1::uuid, $2, $3, $4::bigint, $5, $6, $7::jsonb,
+       $8::varchar, $9::varchar, $10::text, $11::text, $12::text
      )`,
     [
       opts.userId,
@@ -207,6 +231,11 @@ export async function uploadUserFile(
       opts.contentType,
       opts.sourceModule ?? null,
       JSON.stringify(opts.metadata ?? {}),
+      ctx.projectId ?? null,
+      ctx.sceneId ?? null,
+      ctx.attachedToEntityType ?? null,
+      ctx.attachedToEntityId ?? null,
+      ctx.attachmentNote ?? null,
     ],
   );
   const newFileId = r.rows[0].role_room_register_user_upload;
@@ -222,6 +251,11 @@ export async function uploadUserFile(
       metadata: opts.metadata ?? {},
       uploadedAt: new Date().toISOString(),
       b2Key,
+      projectId: ctx.projectId ?? null,
+      sceneId: ctx.sceneId ?? null,
+      attachedToEntityType: ctx.attachedToEntityType ?? null,
+      attachedToEntityId: ctx.attachedToEntityId ?? null,
+      attachmentNote: ctx.attachmentNote ?? null,
     },
   };
 }
@@ -229,7 +263,14 @@ export async function uploadUserFile(
 /** Liste over (ikke-slettede) filer, nyeste først. */
 export async function listUserFiles(
   pool: Pool,
-  opts: { userId: string; limit?: number; sourceModule?: string },
+  opts: {
+    userId: string;
+    limit?: number;
+    sourceModule?: string;
+    projectId?: string;
+    entityType?: string;
+    entityId?: string;
+  },
 ): Promise<UserFile[]> {
   const r = await pool.query<{
     id: string;
@@ -240,16 +281,33 @@ export async function listUserFiles(
     metadata: Record<string, unknown>;
     uploaded_at: Date;
     b2_key: string;
+    project_id: string | null;
+    scene_id: string | null;
+    attached_to_entity_type: string | null;
+    attached_to_entity_id: string | null;
+    attachment_note: string | null;
   }>(
     `SELECT id, display_name, size_bytes, content_type, source_module,
-            metadata, uploaded_at, b2_key
+            metadata, uploaded_at, b2_key,
+            project_id, scene_id, attached_to_entity_type,
+            attached_to_entity_id, attachment_note
      FROM role_room_user_files
      WHERE user_id = $1::uuid
        AND deleted_at IS NULL
        AND ($2::text IS NULL OR source_module = $2)
+       AND ($3::varchar IS NULL OR project_id = $3)
+       AND ($4::text IS NULL OR attached_to_entity_type = $4)
+       AND ($5::text IS NULL OR attached_to_entity_id = $5)
      ORDER BY uploaded_at DESC
-     LIMIT $3`,
-    [opts.userId, opts.sourceModule ?? null, opts.limit ?? 50],
+     LIMIT $6`,
+    [
+      opts.userId,
+      opts.sourceModule ?? null,
+      opts.projectId ?? null,
+      opts.entityType ?? null,
+      opts.entityId ?? null,
+      opts.limit ?? 50,
+    ],
   );
   return r.rows.map((row) => ({
     id: row.id,
@@ -260,7 +318,63 @@ export async function listUserFiles(
     metadata: row.metadata,
     uploadedAt: row.uploaded_at.toISOString(),
     b2Key: row.b2_key,
+    projectId: row.project_id,
+    sceneId: row.scene_id,
+    attachedToEntityType: row.attached_to_entity_type,
+    attachedToEntityId: row.attached_to_entity_id,
+    attachmentNote: row.attachment_note,
   }));
+}
+
+/**
+ * Hent et sammendrag per prosjekt for bruker: hvor mange filer + bytes
+ * per prosjekt. Brukes til "Per prosjekt"-tab i storage-panelet.
+ */
+export async function getUserFilesPerProject(
+  pool: Pool,
+  userId: string,
+): Promise<Array<{ projectId: string | null; projectName: string | null; fileCount: number; totalBytes: number }>> {
+  const r = await pool.query<{
+    project_id: string | null;
+    project_name: string | null;
+    file_count: number;
+    total_bytes: string;
+  }>(
+    `SELECT
+       f.project_id,
+       p.name AS project_name,
+       COUNT(*)::int AS file_count,
+       COALESCE(SUM(f.size_bytes), 0)::text AS total_bytes
+     FROM role_room_user_files f
+     LEFT JOIN casting_projects p ON p.id = f.project_id
+     WHERE f.user_id = $1::uuid AND f.deleted_at IS NULL
+     GROUP BY f.project_id, p.name
+     ORDER BY total_bytes::numeric DESC NULLS LAST`,
+    [userId],
+  );
+  return r.rows.map((row) => ({
+    projectId: row.project_id,
+    projectName: row.project_name,
+    fileCount: row.file_count,
+    totalBytes: Number(row.total_bytes),
+  }));
+}
+
+/**
+ * Hent alle filer som er knyttet til en spesifikk entitet (f.eks. en
+ * storyboard, en role, en research-tab). Brukes av disse modulene for
+ * å vise "vedlegg" inline.
+ */
+export async function listFilesForEntity(
+  pool: Pool,
+  opts: { userId: string; entityType: string; entityId: string },
+): Promise<UserFile[]> {
+  return listUserFiles(pool, {
+    userId: opts.userId,
+    entityType: opts.entityType,
+    entityId: opts.entityId,
+    limit: 200,
+  });
 }
 
 /**

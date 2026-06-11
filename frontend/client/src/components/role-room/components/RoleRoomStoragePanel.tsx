@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle,
-  IconButton, LinearProgress, Stack, TextField, Tooltip, Typography,
+  IconButton, LinearProgress, Stack, Tab, Tabs, TextField, Tooltip, Typography,
 } from '@mui/material';
 import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined';
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
@@ -58,6 +58,18 @@ interface FileRow {
   contentType: string | null;
   sourceModule: string | null;
   uploadedAt: string;
+  projectId: string | null;
+  sceneId: string | null;
+  attachedToEntityType: string | null;
+  attachedToEntityId: string | null;
+  attachmentNote: string | null;
+}
+
+interface PerProjectRow {
+  projectId: string | null;
+  projectName: string | null;
+  fileCount: number;
+  totalBytes: number;
 }
 
 interface ByoStatus {
@@ -113,6 +125,10 @@ export default function RoleRoomStoragePanel() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
+  // L4 — per-prosjekt-tab
+  const [viewMode, setViewMode] = useState<'all' | 'per-project'>('all');
+  const [perProject, setPerProject] = useState<PerProjectRow[]>([]);
+
   // BYO B2 state
   const [byo, setByo] = useState<ByoStatus | null>(null);
   const [byoDialogOpen, setByoDialogOpen] = useState(false);
@@ -124,10 +140,11 @@ export default function RoleRoomStoragePanel() {
   const refresh = async () => {
     setError(null);
     try {
-      const [statsRes, filesRes, byoRes] = await Promise.all([
+      const [statsRes, filesRes, byoRes, perProjectRes] = await Promise.all([
         fetch('/api/role-room/storage/stats', { headers: authHeaders() }),
         fetch('/api/role-room/storage/files?limit=50', { headers: authHeaders() }),
         fetch('/api/role-room/storage/byo/status', { headers: authHeaders() }),
+        fetch('/api/role-room/storage/per-project', { headers: authHeaders() }),
       ]);
       if (statsRes.ok) {
         const s = await statsRes.json();
@@ -142,6 +159,10 @@ export default function RoleRoomStoragePanel() {
       if (byoRes.ok) {
         const b = await byoRes.json();
         setByo(b);
+      }
+      if (perProjectRes.ok) {
+        const p = await perProjectRes.json();
+        setPerProject(p.projects ?? []);
       }
     } catch (e) {
       setError(String(e));
@@ -401,52 +422,125 @@ export default function RoleRoomStoragePanel() {
           )}
         </Box>
 
-        {/* Fil-liste */}
-        {files.length === 0 ? (
-          <Alert severity="info" sx={{ fontSize: '0.86rem' }}>
-            Ingen filer ennå. Last opp en self-tape, deck eller poster for å komme i gang.
-          </Alert>
-        ) : (
-          <Stack spacing={0.8}>
-            <Typography sx={{
-              fontSize: '0.74rem', fontWeight: 700, color: palette.textMuted,
-              textTransform: 'uppercase', letterSpacing: '0.05em', mb: 0.4,
-            }}>
-              Siste filer
-            </Typography>
-            {files.map((f) => (
-              <Box key={f.id} sx={{
-                p: 1.4, borderRadius: 1.2,
-                bgcolor: palette.bgSubtle,
-                border: `1px solid ${palette.border}`,
-                display: 'flex', alignItems: 'center', gap: 1.4,
-              }}>
-                <InsertDriveFileOutlinedIcon sx={{ color: palette.textMuted, fontSize: 22 }} />
-                <Stack sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography sx={{
-                    fontSize: '0.88rem', fontWeight: 600, color: palette.textPrimary,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {f.displayName}
-                  </Typography>
-                  <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted }}>
-                    {formatBytes(f.sizeBytes)} · {formatRelative(f.uploadedAt)}
-                    {f.sourceModule && ` · ${f.sourceModule}`}
-                  </Typography>
-                </Stack>
-                <Tooltip title="Last ned">
-                  <IconButton size="small" onClick={() => handleDownload(f.id)} sx={{ color: palette.textSecondary }}>
-                    <DownloadOutlinedIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Slett">
-                  <IconButton size="small" onClick={() => handleDelete(f.id)} sx={{ color: palette.danger }}>
-                    <DeleteOutlineOutlinedIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            ))}
-          </Stack>
+        {/* Tab: Alle filer | Per prosjekt */}
+        <Tabs
+          value={viewMode}
+          onChange={(_, v) => setViewMode(v as 'all' | 'per-project')}
+          sx={{
+            mb: 1.4, minHeight: 34,
+            '& .MuiTab-root': {
+              color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700,
+              textTransform: 'none', minHeight: 34, p: '6px 12px',
+            },
+            '& .Mui-selected': { color: `${palette.accent} !important` },
+            '& .MuiTabs-indicator': { bgcolor: palette.accent },
+          }}
+        >
+          <Tab label={`Alle filer (${files.length})`} value="all" />
+          <Tab label={`Per prosjekt (${perProject.length})`} value="per-project" />
+        </Tabs>
+
+        {/* Fil-liste — Alle filer */}
+        {viewMode === 'all' && (
+          files.length === 0 ? (
+            <Alert severity="info" sx={{ fontSize: '0.86rem' }}>
+              Ingen filer ennå. Last opp en self-tape, deck eller poster for å komme i gang.
+            </Alert>
+          ) : (
+            <Stack spacing={0.8}>
+              {files.map((f) => (
+                <Box key={f.id} sx={{
+                  p: 1.4, borderRadius: 1.2,
+                  bgcolor: palette.bgSubtle,
+                  border: `1px solid ${palette.border}`,
+                  display: 'flex', alignItems: 'center', gap: 1.4,
+                }}>
+                  <InsertDriveFileOutlinedIcon sx={{ color: palette.textMuted, fontSize: 22 }} />
+                  <Stack sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{
+                      fontSize: '0.88rem', fontWeight: 600, color: palette.textPrimary,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {f.displayName}
+                    </Typography>
+                    <Stack direction="row" spacing={0.6} alignItems="center" sx={{ flexWrap: 'wrap' }}>
+                      <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted }}>
+                        {formatBytes(f.sizeBytes)} · {formatRelative(f.uploadedAt)}
+                      </Typography>
+                      {f.attachedToEntityType && (
+                        <Chip
+                          label={`${f.attachedToEntityType}${f.attachmentNote ? ` · ${f.attachmentNote.slice(0, 30)}` : ''}`}
+                          size="small"
+                          sx={{
+                            bgcolor: 'rgba(168,85,247,0.18)', color: palette.accent,
+                            fontSize: '0.66rem', height: 18, fontWeight: 600,
+                          }}
+                        />
+                      )}
+                      {!f.attachedToEntityType && f.sourceModule && (
+                        <Chip
+                          label={f.sourceModule}
+                          size="small"
+                          sx={{
+                            bgcolor: 'rgba(139,126,196,0.18)', color: palette.textMuted,
+                            fontSize: '0.66rem', height: 18, fontWeight: 600,
+                          }}
+                        />
+                      )}
+                    </Stack>
+                  </Stack>
+                  <Tooltip title="Last ned">
+                    <IconButton size="small" onClick={() => handleDownload(f.id)} sx={{ color: palette.textSecondary }}>
+                      <DownloadOutlinedIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Slett">
+                    <IconButton size="small" onClick={() => handleDelete(f.id)} sx={{ color: palette.danger }}>
+                      <DeleteOutlineOutlinedIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              ))}
+            </Stack>
+          )
+        )}
+
+        {/* Per prosjekt */}
+        {viewMode === 'per-project' && (
+          perProject.length === 0 ? (
+            <Alert severity="info" sx={{ fontSize: '0.86rem' }}>
+              Ingen filer er knyttet til prosjekter ennå. Når du laster opp fra en storyboard-,
+              role- eller research-view, blir filen automatisk koblet til riktig prosjekt.
+            </Alert>
+          ) : (
+            <Stack spacing={0.8}>
+              {perProject.map((p) => (
+                <Box key={p.projectId ?? 'none'} sx={{
+                  p: 1.4, borderRadius: 1.2,
+                  bgcolor: palette.bgSubtle,
+                  border: `1px solid ${palette.border}`,
+                  display: 'flex', alignItems: 'center', gap: 1.4,
+                }}>
+                  <Stack sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontSize: '0.92rem', fontWeight: 700, color: palette.textPrimary }}>
+                      {p.projectName ?? (p.projectId ? '(slettet prosjekt)' : 'Ikke knyttet til prosjekt')}
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.74rem', color: palette.textMuted }}>
+                      {p.fileCount} {p.fileCount === 1 ? 'fil' : 'filer'} · {formatBytes(p.totalBytes)}
+                    </Typography>
+                  </Stack>
+                  <Chip
+                    label={formatBytes(p.totalBytes)}
+                    size="small"
+                    sx={{
+                      bgcolor: 'rgba(168,85,247,0.18)', color: palette.accent,
+                      fontWeight: 700, fontSize: '0.72rem',
+                    }}
+                  />
+                </Box>
+              ))}
+            </Stack>
+          )
         )}
 
         {isFull && stats?.tier === 'free' && (
