@@ -8,6 +8,7 @@ import { StoryboardIntegrationView } from './StoryboardIntegrationView';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import storyboardEmptyPng from './icons/Keep/roleroom_storyboard.png';
 import { useToast } from './ToastStack';
+import EntityAttachmentsPanel from './EntityAttachmentsPanel';
 
 interface StoryboardTabViewProps {
   /** Aktivt produksjonsprosjekt — null hvis ingen er valgt. */
@@ -147,6 +148,18 @@ export const StoryboardTabView: React.FC<StoryboardTabViewProps> = ({
 
   return (
     <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      {selectedScene?.id && (
+        <Box sx={{ mb: 1.4 }}>
+          <EntityAttachmentsPanel
+            entityType="scene"
+            entityId={selectedScene.id}
+            projectId={currentProject.id}
+            sceneId={selectedScene.id}
+            entityLabel="Scene"
+            acceptedFileTypes="image/*,application/pdf"
+          />
+        </Box>
+      )}
       <StoryboardIntegrationView
         scene={selectedScene}
         onUpdate={handleSceneUpdate}
