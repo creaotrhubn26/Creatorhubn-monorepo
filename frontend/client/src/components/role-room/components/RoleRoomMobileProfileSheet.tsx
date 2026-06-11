@@ -31,14 +31,17 @@ import {
   Group as GroupIcon,
   Logout as LogoutIcon,
   Person as PersonIcon,
+  StorageOutlined as StorageOutlinedIcon,
   SwapHoriz as ModeIcon,
 } from '@mui/icons-material';
+import { Dialog, DialogContent, DialogTitle, IconButton as MuiIconButton } from '@mui/material';
 
 import type { RoleRoomViewportMode } from '../hooks/useRoleRoomViewportMode';
 import ProfessionModeSwitcher from './ProfessionModeSwitcher';
 import { getActiveProfessionMode } from '../config/professionMode';
 import RoleRoomOnboardingDialog from './RoleRoomOnboardingDialog';
 import RoleRoomMemberDirectoryDialog from './RoleRoomMemberDirectoryDialog';
+import RoleRoomStoragePanel from './RoleRoomStoragePanel';
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
 import type { RoleRoomMemberProfile } from '../services/roleRoomMemberProfileService';
 
@@ -90,6 +93,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
   const [modeSwitcherOpen, setModeSwitcherOpen] = React.useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [directoryOpen, setDirectoryOpen] = useState(false);
+  const [storageOpen, setStorageOpen] = useState(false);
   const [memberProfile, setMemberProfile] = useState<RoleRoomMemberProfile | null>(null);
   const activeProfessionMode = getActiveProfessionMode();
 
@@ -241,6 +245,24 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
         </>
       ) : null}
 
+      <Divider />
+      <Button
+        fullWidth
+        variant="outlined"
+        startIcon={<StorageOutlinedIcon />}
+        onClick={() => setStorageOpen(true)}
+        sx={{
+          minHeight: 'var(--rr-touch-target-min, 44px)',
+          justifyContent: 'flex-start',
+          borderColor: 'rgba(168,85,247,0.35)',
+          color: '#a855f7',
+          textTransform: 'none',
+          fontWeight: 600,
+        }}
+      >
+        Lagring (1 GB gratis · BYO støttet)
+      </Button>
+
       {onLogout ? (
         <>
           <Divider />
@@ -301,6 +323,26 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
     />
   );
 
+  const storageDialog = (
+    <Dialog
+      open={storageOpen}
+      onClose={() => setStorageOpen(false)}
+      maxWidth="md"
+      fullWidth
+      PaperProps={{ sx: { bgcolor: '#0a0118', color: '#f5f3ff' } }}
+    >
+      <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        Lagring
+        <MuiIconButton onClick={() => setStorageOpen(false)} sx={{ color: '#c4b5fd' }}>
+          <CloseIcon />
+        </MuiIconButton>
+      </DialogTitle>
+      <DialogContent>
+        <RoleRoomStoragePanel />
+      </DialogContent>
+    </Dialog>
+  );
+
   if (usePopover) {
     return (
       <>
@@ -325,6 +367,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
         {modeSwitcherDialog}
         {editDialog}
         {directoryDialog}
+        {storageDialog}
       </>
     );
   }
@@ -373,6 +416,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
       </Dialog>
       {modeSwitcherDialog}
       {editDialog}
+      {directoryDialog}
+      {storageDialog}
     </>
   );
 };
