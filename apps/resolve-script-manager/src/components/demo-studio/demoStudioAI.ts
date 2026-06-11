@@ -688,7 +688,7 @@ export async function generateDemoFlow(params: {
 }): Promise<DemoScene[]> {
   const { url, demoType, devices, meta, targetSeconds = 75, siteContext = '', elements = [], goal = '', task = '' } = params;
   const catalog = elements.length
-    ? `\nElement-katalog (ekte interaktive elementer på siden, med FAKTISK posisjon) — velg targetIndex per scene (prioriter CTA-er), og referer den ekte posisjonen i required action:\n${elements.map((e, i) => `${i}: "${e.label}" [${e.tag}${e.ctaType ? `, CTA:${e.ctaType}` : ''}${describePosition(e.hotspot) ? `, ${describePosition(e.hotspot)}` : ''}${e.belowFold ? ', under fold' : ''}]`).join('\n')}\n`
+    ? `\nElement-katalog (ekte interaktive elementer på siden, med FAKTISK posisjon + viktighets-rang fra scan). Velg targetIndex per scene — PRIORITER høy viktighet + CTA-er, hopp over nav/footer-støy med mindre prosessen krever det. Referer den ekte posisjonen i required action:\n${elements.map((e, i) => `${i}: "${e.label}" [${e.tag}${e.ctaType ? `, CTA:${e.ctaType}` : ''}${typeof e.importance === 'number' ? `, viktighet:${e.importance}` : ''}${describePosition(e.hotspot) ? `, ${describePosition(e.hotspot)}` : ''}${e.belowFold ? ', under fold' : ''}]`).join('\n')}\n`
     : '';
   const user = `Lag en komplett produktdemo-flow.
 
@@ -700,9 +700,17 @@ ${goal ? `KONVERTERINGSMÅL (optimaliser hele flowen + CTA mot dette): ${goal}\n
 ${siteContext ? `\nKontekst fra nettsiden:\n${siteContext}\n` : ''}${catalog}
 ${task
   ? `OPPGAVE/PROSESS veiledningen skal vise STEG-FOR-STEG: «${task}». Lag én scene per faktiske steg i denne prosessen, i riktig rekkefølge, bundet til de riktige elementene (f.eks. innlogging: klikk «Logg inn» → fyll e-post → fyll passord → klikk «Send»). Ikke lag en generisk markedsdemo — følg prosessen.\n`
-  : 'Foreslå 5-7 scener som forteller en sammenhengende historie (intro → kjernefunksjon → bevis/verdi → CTA → outro).'}
+  : `Foreslå 5-7 scener med en STERK dramaturgisk bue, ikke en featureliste:
+  1) HOOK (0-5s): navngi smerten/«før»-tilstanden publikum kjenner seg igjen i — IKKE «velkommen til X».
+  2) Løfte/aha: vis ÉN ting som umiddelbart viser at dette løser smerten.
+  3) Kjernefunksjon i bruk: den mest verdifulle handlingen (høyest viktighet i katalogen), vist konkret.
+  4) Bevis/verdi: tall, resultat, tillit, eller «etter»-tilstanden.
+  5) CTA: tydelig neste steg mot målet.
+  Bygg mot en topp; ikke flat oppramsing.`}
 Velg device per scene fra de tilgjengelige (bruk mobil for mobil-flyt hvis relevant).
 For hver scene: angi handlingstypen (actionType: click/hover/type/scroll/highlight/open_url/switch_device/zoom/wait).
+Narration: skriv som et menneske, FORDEL-først («Du slipper å…», «På sekunder får du…») — ikke «klikk her»/«denne knappen». Konkret, ikke generisk markedssjargong; bruk ekte verdiløfter fra nettside-konteksten over.
+Pacing: varier scene-lengder (kort hook, lengre kjernefunksjon); summen ≈ ønsket varighet. Velg KUN scener som driver historien fremover.
 ${elements.length
   ? 'Velg targetIndex fra element-katalogen over for elementet handlingen gjelder (da blir hotspot presis). Hvis ingen passer, utelat targetIndex og gi targetLabel + omtrentlig hotspot i stedet.'
   : 'Angi hvilket konkret element handlingen gjelder (targetLabel) + et OMTRENTLIG hotspot (x,y,w,h i 0–1) der elementet trolig er — brukeren finjusterer selv.'}
@@ -718,7 +726,7 @@ Svar med KUN ett JSON-objekt:
 }`;
 
   const raw = await claudeProxyService.send({
-    systemPrompt: SYSTEM + ' Du designer hele demo-flowen — dramaturgi, rekkefølge og device-valg.',
+    systemPrompt: SYSTEM + ' Du er en prisbelønt produktdemo-regissør. Du designer hele flowen med ekte dramaturgi: en hook som treffer smerten, ett klart aha-øyeblikk, bevis, og en CTA som konverterer mot målet. Du velger de VIKTIGSTE ekte elementene (ikke nav/footer-støy) og skriver fordel-først narration. Bygg mot en topp.',
     messages: [{ role: 'user', content: user }],
     maxTokens: 2000,
   });
