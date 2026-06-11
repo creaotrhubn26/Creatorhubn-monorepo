@@ -700,6 +700,17 @@ ${goal ? `KONVERTERINGSMÅL (optimaliser hele flowen + CTA mot dette): ${goal}\n
 ${siteContext ? `\nKontekst fra nettsiden:\n${siteContext}\n` : ''}${catalog}
 ${task
   ? `OPPGAVE/PROSESS veiledningen skal vise STEG-FOR-STEG: «${task}». Lag én scene per faktiske steg i denne prosessen, i riktig rekkefølge, bundet til de riktige elementene (f.eks. innlogging: klikk «Logg inn» → fyll e-post → fyll passord → klikk «Send»). Ikke lag en generisk markedsdemo — følg prosessen.\n`
+  : demoType === 'investor_demo'
+  ? `Dette er en INVESTOR-pitch — 100% fokusert på investor, IKKE en produkt-/markedsdemo. Bygg 6-8 scener i klassisk pitch-rekkefølge:
+  1) PROBLEM & MARKED: smerten + markedsstørrelse (TAM/SAM) — hvorfor dette er stort.
+  2) LØSNING / unik innsikt: hva dere gjør annerledes (kategori-definerende vinkel).
+  3) PRODUKTET VIRKER: vis den ekte kjernefunksjonen kort (bevis at det ER bygget, ikke en featuretur).
+  4) TRACTION: tall som beviser fart — vekst, kunder, omsetning, retensjon (bruk ekte tall fra konteksten; ikke dikt opp — be om dem hvis de mangler).
+  5) FORRETNINGSMODELL: hvordan dere tjener penger + unit economics.
+  6) WHY NOW / MOAT: timing + forsvarsverk (hvorfor vinner DERE).
+  7) TEAM: hvorfor akkurat dette teamet.
+  8) THE ASK: hva dere reiser + hva pengene brukes til + milepælene de låser opp.
+  Narration skal være selvsikker, tall-drevet og investor-orientert (ROI, marked, skala) — IKKE «klikk her». Hold produkt-klikk til ÉN kort scene; resten er forretning.`
   : `Foreslå 5-7 scener med en STERK dramaturgisk bue, ikke en featureliste:
   1) HOOK (0-5s): navngi smerten/«før»-tilstanden publikum kjenner seg igjen i — IKKE «velkommen til X».
   2) Løfte/aha: vis ÉN ting som umiddelbart viser at dette løser smerten.
@@ -725,8 +736,11 @@ Svar med KUN ett JSON-objekt:
   ]
 }`;
 
+  const directorPersona = demoType === 'investor_demo'
+    ? ' Du er en pitch-coach for stiftere som reiser kapital. Du tenker som en investor: marked, traction, unit economics, moat, team, ask. Du bruker ekte tall (dikter aldri opp), holder produkt-demoen kort, og bygger en pitch som får et ja til neste møte.'
+    : ' Du er en prisbelønt produktdemo-regissør. Du designer hele flowen med ekte dramaturgi: en hook som treffer smerten, ett klart aha-øyeblikk, bevis, og en CTA som konverterer mot målet. Du velger de VIKTIGSTE ekte elementene (ikke nav/footer-støy) og skriver fordel-først narration. Bygg mot en topp.';
   const raw = await claudeProxyService.send({
-    systemPrompt: SYSTEM + ' Du er en prisbelønt produktdemo-regissør. Du designer hele flowen med ekte dramaturgi: en hook som treffer smerten, ett klart aha-øyeblikk, bevis, og en CTA som konverterer mot målet. Du velger de VIKTIGSTE ekte elementene (ikke nav/footer-støy) og skriver fordel-først narration. Bygg mot en topp.',
+    systemPrompt: SYSTEM + directorPersona,
     messages: [{ role: 'user', content: user }],
     maxTokens: 2000,
   });
