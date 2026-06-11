@@ -51,6 +51,7 @@ import { registerRoleRoomUpcomingJobsRoutes } from "./role-room-upcoming-jobs-ro
 import { registerRoleRoomFeedPlanThumbnailRoutes } from "./role-room-feed-plan-thumbnail-routes.js";
 import { registerRoleRoomBrandAssetsRoutes } from "./role-room-brand-assets-routes.js";
 import { registerRoleRoomUserStorageRoutes } from "./role-room-user-storage-routes.js";
+import { registerRoleRoomByoStorageRoutes } from "./role-room-byo-storage-routes.js";
 import { registerRoleRoomPublishedGuidesRoutes } from "./role-room-published-guides-routes.js";
 import { registerRoleRoomDemoAssetsRoutes } from "./role-room-demo-assets-routes.js";
 import { registerRoleRoomThumbnailTemplatesRoutes } from "./role-room-thumbnail-templates-routes.js";
@@ -1918,6 +1919,7 @@ registerRoleRoomUpcomingJobsRoutes(app, { pool, activeSessions });
 registerRoleRoomFeedPlanThumbnailRoutes(app, { pool, activeSessions });
 registerRoleRoomBrandAssetsRoutes(app, { pool, activeSessions });
 registerRoleRoomUserStorageRoutes(app, { pool, activeSessions });
+registerRoleRoomByoStorageRoutes(app, { pool, activeSessions });
 registerRoleRoomPublishedGuidesRoutes(app, { activeSessions, pool });
 registerRoleRoomDemoAssetsRoutes(app, { pool, activeSessions });
 registerRoleRoomThumbnailTemplatesRoutes(app, { pool, activeSessions });

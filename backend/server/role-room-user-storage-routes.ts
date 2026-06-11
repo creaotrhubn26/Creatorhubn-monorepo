@@ -49,6 +49,13 @@ function getUserIdFromRequest(
     const session = activeSessions.get(token);
     if (session?.userId) return session.userId;
   }
+  // Fallback: ?token= for browser-redirect-flows (window.location.href
+  // til /download kan ikke sette Authorization-header)
+  const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+  if (queryToken) {
+    const session = activeSessions.get(queryToken);
+    if (session?.userId) return session.userId;
+  }
   return null;
 }
 
