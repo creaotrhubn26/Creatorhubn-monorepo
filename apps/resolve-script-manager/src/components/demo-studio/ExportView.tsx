@@ -63,6 +63,8 @@ export function ExportView() {
   const [format, setFormat] = useState<typeof FORMATS[number]['id']>('16:9');
   const [resolution, setResolution] = useState<typeof RESOLUTIONS[number]>('1080p');
   const [fps, setFps] = useState<typeof FPS[number]>(30);
+  // Fase 4: wrap Playwright-opptaket i device-ramme (MacBook/iPad/iPhone)?
+  const [withFrame, setWithFrame] = useState(true);
   const [toggles, setToggles] = useState<Record<string, boolean>>(
     Object.fromEntries(TOGGLES.map((t) => [t.key, t.def])),
   );
@@ -140,12 +142,45 @@ export function ExportView() {
         if (!setup.succeeded) { setFileMsg('Playwright-oppsett feilet (krever node/npm + nett). Se loggen.'); return; }
       }
       setFileMsg('Kjører demoen i Chromium + tar opp video…');
+      // Fang video-stien fra Rust ('video'-eventet) under kjøringen.
+      let videoPath: string | null = null;
+      const un = await onScriptEvent((ev) => {
+        const e = ev as { type?: string; path?: string };
+        if (e?.type === 'video' && typeof e.path === 'string') videoPath = e.path;
+      });
       const sum = await runPlaywrightDemo(buildPlaywrightScript(project));
-      if (sum.succeeded) {
-        setFileMsg(`✓ Video tatt opp i ${st.runtimeDir}/demo-video/ + screenshots i runtime-mappa.`);
-        void openPath(`${st.runtimeDir}/demo-video`).catch(() => {});
-      } else {
+      un?.();
+      if (!sum.succeeded) {
         setFileMsg('Opptak feilet — se loggen under (sjekk at selectorene fortsatt treffer; skriptet logger [heal]/[hopp]).');
+        return;
+      }
+      if (withFrame && videoPath) {
+        // Wrap råopptaket i prosjektets device-ramme via mockup-pipelinen.
+        setFileMsg('Legger opptaket i device-ramme…');
+        const dev = scenes[0]?.device ?? 'macbook';
+        const config = {
+          visual: { device: dev, orientation: scenes[0]?.orientation ?? 'portrait',
+            fit: 'cover', background: 'transparent', shadow: true, statusBarCrop: 0.045, fadeSeconds: 0.5,
+            autoZoom: false, showCursor: false, showTouchPoints: false, highlightInteractions: false, safeArea: true },
+          overlays: [],
+          audio: { enabled: false },
+          music: { enabled: false },
+          export: { format: format === '9:16' ? 'prores4444' : 'mp4',
+            pixelRatio: resolution === '4K' ? 7 : resolution === '1440p' ? 6 : 5,
+            frameRate: fps, aspect: ASPECT[format], targetHeight: TARGET_H[resolution] },
+        };
+        const outName = `${project.name.replace(/[^\w-]+/g, '_')}-demo-mockup.${format === '9:16' ? 'mov' : 'mp4'}`;
+        try {
+          const m = await mockupRenderVideo(config as Record<string, unknown>, [videoPath], outName, null);
+          setFileMsg(m.succeeded
+            ? `✓ Video med ${dev}-ramme rendret: ${outName}`
+            : 'Ramme-render fullførte ikke — råopptaket ligger i ' + st.runtimeDir + '/demo-video/.');
+        } catch (e2) {
+          setFileMsg('Råopptak OK, men ramme-render feilet: ' + String(e2) + ' (rå .webm i ' + st.runtimeDir + '/demo-video/)');
+        }
+      } else {
+        setFileMsg(`✓ Råopptak (uten ramme) i ${st.runtimeDir}/demo-video/`);
+        void openPath(`${st.runtimeDir}/demo-video`).catch(() => {});
       }
     } catch (e) { setFileMsg('Feil ved Playwright-opptak: ' + String(e)); }
   };
@@ -382,6 +417,9 @@ export function ExportView() {
             <button style={{ ...outlineBtn }} onClick={() => void exportScriptPdf()}>Manus (PDF)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportPlaywright()}>Playwright-skript (.mjs)</button>
             <button style={{ ...outlineBtn }} onClick={() => void recordWithPlaywright()}>Spill inn video (Playwright)</button>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.inkSoft, cursor: 'pointer' }} title="Legg opptaket inni en MacBook/iPad/iPhone-ramme (bruker prosjektets enhet)">
+              <input type="checkbox" checked={withFrame} onChange={(e) => setWithFrame(e.target.checked)} /> Ta med device-ramme
+            </label>
             <button style={{ ...outlineBtn }} onClick={() => void exportThumbnail()}>Thumbnail (PNG)</button>
             <select style={{ ...brandInp }} value={project.voiceModel ?? 'Female 1'} onChange={(e) => setProjectField('voiceModel', e.target.value)} title="Resolve AI-stemme">
               {VOICE_MODELS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
