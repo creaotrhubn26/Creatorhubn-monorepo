@@ -8152,6 +8152,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             { icon: <Collections sx={{ fontSize: 20 }} />, label: 'Categories', filterVal: null },
             { icon: <FavoriteBorder sx={{ fontSize: 20 }} />, label: 'Favorites', filterVal: 'favorites' },
             { icon: <PhotoLibrary sx={{ fontSize: 20 }} />, label: profession === 'photographer' ? 'Your photos' : profession === 'videographer' ? 'Your videos' : 'Your tracks', filterVal: 'mine' },
+            // Media-type-filtre (flyttet hit fra admin-tools — filteret støtter
+            // item.fileType direkte). Vises på tvers av profesjoner.
+            { icon: <CameraAlt sx={{ fontSize: 20 }} />, label: 'Foto', filterVal: 'photo' },
+            { icon: <VideoLibrary sx={{ fontSize: 20 }} />, label: 'Video', filterVal: 'video' },
+            { icon: <MusicNote sx={{ fontSize: 20 }} />, label: 'Lyd', filterVal: 'audio' },
           ].map((navItem) => {
             const isActive = filter === navItem.filterVal || (filter === 'all' && navItem.filterVal === 'all');
             return (
