@@ -244,3 +244,55 @@ pub async fn run_playwright_demo(app: AppHandle, script_code: String) -> Result<
         succeeded, events: vec![], started_at, finished_at: chrono::Utc::now().to_rfc3339(), dry_run: false,
     })
 }
+
+// #2: Playwright-screenshots (ekte Chromium/Chrome) for preview — bedre enn
+// html2canvas. Fanger viewport-bilder ved scroll-bånd + fjerner cookie-banner.
+const SHOTS_MJS: &str = r#"import { chromium } from 'playwright';
+import { writeFileSync } from 'node:fs';
+const url = process.argv[2];
+let browser; try { browser = await chromium.launch({ headless: true, channel: 'chrome' }); } catch { browser = await chromium.launch({ headless: true }); }
+const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
+await page.waitForTimeout(2000);
+for (const t of ['Godta alle','Godta','Aksepter alle','Aksepter','Tillat alle','Jeg forstår','Greit','OK','Accept all','Accept','Allow all','I agree','Got it']) {
+  try { const b = page.getByRole('button', { name: t, exact: false }).first(); if ((await b.count()) && (await b.isVisible().catch(() => false))) { await b.click({ timeout: 1500 }).catch(() => {}); await page.waitForTimeout(400); break; } } catch {}
+}
+const ih = 800, max = await page.evaluate(() => Math.max(0, document.body.scrollHeight - innerHeight));
+const bands = Math.max(1, Math.min(6, Math.ceil((max + ih) / ih)));
+const shots = [];
+for (let i = 0; i < bands; i++) {
+  const y = bands === 1 ? 0 : Math.round(max * i / (bands - 1));
+  const pct = max > 0 ? y / max : 0;
+  await page.evaluate(yy => window.scrollTo(0, yy), y);
+  await page.waitForTimeout(500);
+  const buf = await page.screenshot({ type: 'jpeg', quality: 72 });
+  shots.push({ scrollPct: pct, dataUrl: 'data:image/jpeg;base64,' + buf.toString('base64') });
+}
+writeFileSync('shots.json', JSON.stringify({ shots }));
+await browser.close();
+"#;
+
+/// Fang preview-screenshots av en URL via Playwright (system-Chrome/Chromium).
+/// Returnerer { shots: [{ scrollPct, dataUrl }] } — settes som project.scanShots
+/// for skarp, ekte-rendret preview (i stedet for html2canvas).
+#[tauri::command]
+pub async fn playwright_capture_shots(app: AppHandle, url: String) -> Result<Value, String> {
+    let dir = runtime_dir(&app);
+    if !dir.join("node_modules/playwright").exists() {
+        return Err("Playwright ikke installert. Kjør «Sett opp Playwright» først.".into());
+    }
+    let script = dir.join("shots.mjs");
+    std::fs::write(&script, SHOTS_MJS).map_err(|e| format!("Kunne ikke skrive shots.mjs: {e}"))?;
+    let out_file = dir.join("shots.json");
+    let _ = std::fs::remove_file(&out_file);
+    let node = find_bin("node");
+    let run_id = Uuid::new_v4().to_string();
+    let mut cmd = Command::new(&node);
+    cmd.arg(&script).arg(&url).current_dir(&dir);
+    let code = stream_child(&app, cmd, &run_id, "playwright_capture_shots").await?;
+    if code != 0 {
+        return Err(format!("shots-skript feilet (exit {code})"));
+    }
+    let txt = std::fs::read_to_string(&out_file).map_err(|e| format!("Kunne ikke lese shots.json: {e}"))?;
+    serde_json::from_str::<Value>(&txt).map_err(|e| format!("Kunne ikke parse shots.json: {e}"))
+}

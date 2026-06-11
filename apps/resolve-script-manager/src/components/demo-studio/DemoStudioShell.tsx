@@ -32,7 +32,7 @@ import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, suggestVisualBeats, type CommandResult, type VisualBeat } from './demoStudioAI';
-import { executeScript } from '../../api';
+import { executeScript, playwrightStatus, playwrightCaptureShots } from '../../api';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
@@ -230,9 +230,23 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
   // Auto-merkevare: bruk farger/logo/navn hentet fra siden (overskriver ikke
   // manuelt satt branding).
+  // #2: oppgrader preview-screenshots til skarpe Playwright-bilder (ekte
+  // Chrome/Chromium) når tilgjengelig — bedre enn html2canvas. Fire-and-forget.
+  const upgradeShotsWithPlaywright = (url: string) => {
+    void (async () => {
+      try {
+        const st = await playwrightStatus();
+        if (!st.playwrightInstalled) return;
+        const r = await playwrightCaptureShots(url);
+        if (r?.shots?.length) setProjectField('scanShots', r.shots);
+      } catch { /* best-effort */ }
+    })();
+  };
+
   const applyScannedBranding = (scan: DomScanResult | null) => {
     // Lagre scan-screenshots (Fase 1b) for presis preview-render.
     if (scan?.shots && scan.shots.length) setProjectField('scanShots', scan.shots);
+    if (scan?.url) upgradeShotsWithPlaywright(scan.url);
     const bd = scan?.branding;
     if (!bd) return;
     const cur = useDemoStudio.getState().project?.branding;

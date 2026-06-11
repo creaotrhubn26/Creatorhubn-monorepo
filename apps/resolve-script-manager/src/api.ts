@@ -66,6 +66,10 @@ export async function setupPlaywright(): Promise<RunSummary> {
 export async function runPlaywrightDemo(scriptCode: string): Promise<RunSummary> {
   return invoke<RunSummary>("run_playwright_demo", { scriptCode });
 }
+/** #2: skarpe preview-screenshots via Playwright (ekte Chrome/Chromium). */
+export async function playwrightCaptureShots(url: string): Promise<{ shots: Array<{ scrollPct: number; dataUrl: string }> }> {
+  return invoke<{ shots: Array<{ scrollPct: number; dataUrl: string }> }>("playwright_capture_shots", { url });
+}
 
 export async function executeScript(
   scriptId: string,
