@@ -11,6 +11,7 @@
  */
 
 import React from 'react';
+import { apiRequest } from '@/lib/queryClient';
 import { Box, Button, Chip, CircularProgress, Stack, Typography } from '@mui/material';
 import {
   AccountBalance,
@@ -57,13 +58,12 @@ export default function StripeConnectCard({ compact = false, onStatusLoaded }: P
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/photographer/stripe/status', { credentials: 'include' });
-      if (!res.ok) throw new Error(`status ${res.status}`);
-      const data: StripeStatus = await res.json();
+      const data = (await apiRequest('/api/photographer/stripe/status')) as StripeStatus;
       setStatus(data);
       onStatusLoaded?.(data);
     } catch (e) {
-      setError('Kunne ikke hente Stripe-status.');
+      // Kan ikke hente status (f.eks. ikke innlogget) → vis «koble til»-CTA.
+      setStatus({ connected: false });
     } finally {
       setLoading(false);
     }
@@ -77,20 +77,19 @@ export default function StripeConnectCard({ compact = false, onStatusLoaded }: P
     setConnecting(true);
     setError(null);
     try {
-      const res = await fetch('/api/photographer/stripe/connect', {
+      const data = (await apiRequest('/api/photographer/stripe/connect', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ country: 'NO' }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.onboardingUrl) {
-        throw new Error(data?.message || data?.error || `connect ${res.status}`);
-      }
+        body: { country: 'NO' },
+      })) as { onboardingUrl?: string };
+      if (!data?.onboardingUrl) throw new Error('Mangler onboarding-lenke.');
       // Redirect til Stripe-onboarding; brukeren kommer tilbake til /dashboard.
       window.location.href = data.onboardingUrl;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kunne ikke starte Stripe-kobling.');
+    } catch (e: any) {
+      setError(
+        e?.status === 401
+          ? 'Du må være innlogget for å koble til Stripe.'
+          : (e?.message || 'Kunne ikke starte Stripe-kobling.'),
+      );
       setConnecting(false);
     }
   }, []);

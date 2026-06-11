@@ -14,6 +14,7 @@
  */
 
 import React from 'react';
+import { apiRequest } from '@/lib/queryClient';
 import ReviewModerationPanel from './ReviewModerationPanel';
 import {
   Box, Container, Typography, Grid, Card, CardContent, Stack, Avatar,
@@ -154,9 +155,7 @@ function ShowcaseConversionFooter(props: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/user/kv/${FOOTER_KV_KEY}`, { credentials: 'include' });
-        if (!res.ok) return;
-        const json = await res.json();
+        const json = await apiRequest(`/api/user/kv/${FOOTER_KV_KEY}`);
         const value = json?.value ?? json?.data ?? null;
         if (cancelled || !value) return;
         if (Array.isArray(value.faqs)) setCustomFaqs(value.faqs);
@@ -216,13 +215,11 @@ function ShowcaseConversionFooter(props: Props) {
       const cleanFaqs = draftFaqs.filter((f) => (f.question || '').trim() || (f.answer || '').trim());
       const cleanPrompts = draftPrompts.map((p) => (p || '').trim()).filter(Boolean);
       const cleanGoogle = draftGoogleUrl.trim();
-      const res = await fetch(`/api/user/kv/${FOOTER_KV_KEY}`, {
+      await apiRequest(`/api/user/kv/${FOOTER_KV_KEY}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ value: { faqs: cleanFaqs, reviewPrompts: cleanPrompts, googleReviewUrl: cleanGoogle } }),
+        body: { value: { faqs: cleanFaqs, reviewPrompts: cleanPrompts, googleReviewUrl: cleanGoogle } },
       });
-      if (res.ok) { setCustomFaqs(cleanFaqs); setCustomPrompts(cleanPrompts); setCustomGoogleUrl(cleanGoogle); setEditorOpen(false); }
+      setCustomFaqs(cleanFaqs); setCustomPrompts(cleanPrompts); setCustomGoogleUrl(cleanGoogle); setEditorOpen(false);
     } catch {
       /* la dialogen stå åpen ved feil */
     } finally {

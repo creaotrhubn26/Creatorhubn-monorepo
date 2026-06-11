@@ -10,6 +10,7 @@
  */
 
 import React from 'react';
+import { apiRequest } from '@/lib/queryClient';
 import {
   Box, Typography, Stack, Button, Chip, Rating, TextField, CircularProgress, Collapse,
 } from '@mui/material';
@@ -58,16 +59,11 @@ export default function ReviewModerationPanel({ onChanged }: Props) {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/photographer/reviews', { credentials: 'include' });
-      if (res.status === 401 || res.status === 403) {
-        setUnauthorized(true);
-        return;
-      }
-      if (res.ok) {
-        const json = await res.json();
-        if (Array.isArray(json?.reviews)) setReviews(json.reviews);
-      }
-    } catch { /* ignore */ } finally { setLoading(false); }
+      const json = await apiRequest('/api/photographer/reviews');
+      if (Array.isArray(json?.reviews)) setReviews(json.reviews);
+    } catch (e: any) {
+      if (e?.status === 401 || e?.status === 403) setUnauthorized(true);
+    } finally { setLoading(false); }
   }, []);
 
   React.useEffect(() => { void load(); }, [load]);
@@ -75,13 +71,9 @@ export default function ReviewModerationPanel({ onChanged }: Props) {
   const patch = React.useCallback(async (id: string, body: Record<string, unknown>) => {
     setBusyId(id);
     try {
-      const res = await fetch(`/api/photographer/reviews/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(body),
-      });
-      if (res.ok) { await load(); onChanged?.(); }
+      await apiRequest(`/api/photographer/reviews/${id}`, { method: 'PATCH', body });
+      await load();
+      onChanged?.();
     } catch { /* ignore */ } finally { setBusyId(null); }
   }, [load, onChanged]);
 
