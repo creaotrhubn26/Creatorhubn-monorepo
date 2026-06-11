@@ -77,6 +77,7 @@ import PostSessionInsightsCard from '@/components/PostSessionInsightsCard';
 import ExtraImagePricingDialog from '@/components/ExtraImagePricingDialog';
 import ImageSelectionWarning from '@/components/ImageSelectionWarning';
 import ContractPreviewModal from '@/components/ContractPreviewModal';
+import ClientReviewForm from '@/components/showcase/ClientReviewForm';
 import TermsAcceptanceDialog from '@/components/TermsAcceptanceDialog';
 import PrintStoreSection from '@/components/client-gallery/PrintStoreSection';
 import GallerySelectionSubmitDialog from '@/components/gallery/GallerySelectionSubmitDialog';
@@ -797,6 +798,11 @@ export default function ClientGallery({}: ClientGalleryProps) {
     );
 }
 
+  const showReviewPrompt =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('review') === '1' &&
+    !!accessToken;
+
   return (
     <Box
       sx={{
@@ -806,6 +812,17 @@ export default function ClientGallery({}: ClientGalleryProps) {
         display: 'flex',
     }}
     >
+      {/* Omtale-landing (#4) — åpnes via «be om omtale»-e-postlenken. */}
+      {showReviewPrompt && (
+        <Box sx={{
+          position: 'fixed', inset: 0, zIndex: 1400, overflowY: 'auto',
+          bgcolor: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center', p: 2, pt: { xs: 6, md: 10 },
+        }}>
+          <ClientReviewForm accessToken={accessToken as string} />
+        </Box>
+      )}
+
       {/* Left Sidebar — pro-foto-portal */}
       <Box
         sx={(() => {

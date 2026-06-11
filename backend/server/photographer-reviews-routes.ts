@@ -15,6 +15,8 @@
  */
 
 import type express from "express";
+import { sendTransactionalEmail } from "./transactional-email-service";
+import { composeEmail } from "./email-design-system";
 
 type AnyPool = {
   query: (text: string, params?: unknown[]) => Promise<{ rows: any[]; rowCount: number }>;
@@ -75,12 +77,29 @@ export function setupPhotographerReviewsRoutes(deps: PhotographerReviewsDeps): v
 
   // ── Offentlig: send inn omtale (havner som 'pending' for moderering) ────────
   app.post("/api/showcase/reviews", async (req, res) => {
-    const photographerId = clip(req.body?.photographerId, 200);
+    let photographerId = clip(req.body?.photographerId, 200);
     const author = clip(req.body?.author, 120);
     const text = clip(req.body?.text ?? req.body?.review_text, 2000);
     const role = clip(req.body?.role, 160) || null;
-    const clientEmail = clip(req.body?.clientEmail, 200) || null;
+    let clientEmail = clip(req.body?.clientEmail, 200) || null;
     const accessToken = clip(req.body?.accessToken, 200);
+    // Verifisert kunde: gyldig galleri-token. Token er autoritativ for
+    // photographerId + e-post (og setter verified=true).
+    let verified = false;
+    if (accessToken) {
+      try {
+        const g = await pool.query(
+          `SELECT photographer_id, client_email FROM photographer_client_galleries
+            WHERE access_token = $1 LIMIT 1`,
+          [accessToken],
+        );
+        if (g.rowCount > 0) {
+          verified = true;
+          photographerId = g.rows[0].photographer_id || photographerId;
+          clientEmail = clientEmail || g.rows[0].client_email || null;
+        }
+      } catch { /* tabell mangler / token ugyldig → ikke verifisert */ }
+    }
 
     // Per-aspekt stjerner: { "Kommunikasjon": 5, ... }. Når aspekter finnes
     // settes total-rating til snittet; ellers brukes innsendt `rating`.
@@ -111,19 +130,6 @@ export function setupPhotographerReviewsRoutes(deps: PhotographerReviewsDeps): v
     }
 
     try {
-      // Verifisert kunde: gyldig galleri-token for denne fotografen.
-      let verified = false;
-      if (accessToken) {
-        try {
-          const g = await pool.query(
-            `SELECT 1 FROM photographer_client_galleries
-              WHERE access_token = $1 AND photographer_id = $2 LIMIT 1`,
-            [accessToken, photographerId],
-          );
-          verified = g.rowCount > 0;
-        } catch { /* tabell mangler / token ugyldig → ikke verifisert */ }
-      }
-
       const result = await pool.query(
         `INSERT INTO photographer_reviews
            (photographer_id, author, role, review_text, rating, aspect_ratings, verified, status, client_email)
@@ -233,6 +239,64 @@ export function setupPhotographerReviewsRoutes(deps: PhotographerReviewsDeps): v
       if (isMissingTable(err)) return res.status(503).json({ error: "migration_pending" });
       console.error("[photographer-reviews] moderate failed:", err);
       return res.status(500).json({ error: "moderate_failed" });
+    }
+  });
+
+  // ── Eier: be kunden om en omtale (#4) — sender e-post m/ verifisert lenke ────
+  app.post("/api/photographer/galleries/:galleryId/request-review", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const galleryId = clip(req.params.galleryId, 64);
+    try {
+      const g = await pool.query(
+        `SELECT id, project_title, client_name, client_email, access_token
+           FROM photographer_client_galleries
+          WHERE id = $1::uuid AND photographer_id = $2
+          LIMIT 1`,
+        [galleryId, session.userId],
+      );
+      const gallery = g.rows[0];
+      if (!gallery) return res.status(404).json({ error: "gallery_not_found" });
+      if (!gallery.client_email) return res.status(400).json({ error: "client_email_missing" });
+
+      const base = (
+        process.env.PUBLIC_APP_URL ||
+        process.env.CREATORHUB_PUBLIC_URL ||
+        "https://app.creatorhubn.com"
+      ).replace(/\/$/, "");
+      const reviewUrl = `${base}/client/gallery/${gallery.access_token}?review=1`;
+      const clientFirst = (gallery.client_name || "").split(" ")[0] || "";
+      const project = gallery.project_title || "prosjektet ditt";
+
+      const { html, text } = composeEmail({
+        category: "general",
+        subject: "Hvordan var opplevelsen?",
+        preheader: "Del en kort omtale — det tar ett minutt.",
+        headline: clientFirst ? `Takk for samarbeidet, ${clientFirst}!` : "Takk for samarbeidet!",
+        subhead: `Vi håper du er fornøyd med ${project}.`,
+        body: "Vil du dele en kort omtale? Tilbakemeldingen din betyr mye og hjelper andre å finne meg. Det tar under ett minutt.",
+        cta: { label: "Legg igjen en omtale", href: reviewUrl, variant: "primary" },
+        footer: { reason: "Du mottar denne e-posten fordi du var kunde i et nylig prosjekt." },
+      });
+
+      const result = await sendTransactionalEmail({
+        to: gallery.client_email,
+        subject: "Hvordan var opplevelsen?",
+        html,
+        text,
+        kind: "review_request",
+        sentByUserId: session.userId,
+        pool,
+      });
+
+      if (!result.sent) {
+        return res.status(502).json({ error: "email_send_failed", reason: result.reason });
+      }
+      return res.json({ ok: true, to: gallery.client_email });
+    } catch (err) {
+      if (isMissingTable(err)) return res.status(409).json({ error: "gallery_table_missing" });
+      console.error("[photographer-reviews] request-review failed:", err);
+      return res.status(500).json({ error: "request_review_failed" });
     }
   });
 }
