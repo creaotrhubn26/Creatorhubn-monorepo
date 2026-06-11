@@ -19,11 +19,17 @@ import multer from "multer";
 import {
   ensureUserBucket,
   getUserFileDownloadUrl,
+  getUserFilesPerProject,
   getUserStorageStats,
+  listFilesForEntity,
   listUserFiles,
   softDeleteUserFile,
   uploadUserFile,
 } from "./role-room-user-storage-service.js";
+import {
+  migrateAllStoryboardImagesForUser,
+  moveStoryboardImageToB2,
+} from "./role-room-storage-integrations.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -83,7 +89,7 @@ export function registerRoleRoomUserStorageRoutes(
 
   // ──────────────────────────────────────────────────────────────────
   // GET /api/role-room/storage/files
-  //   ?limit=20&sourceModule=selftape
+  //   ?limit=20&sourceModule=selftape&projectId=X&entityType=Y&entityId=Z
   // ──────────────────────────────────────────────────────────────────
   app.get("/api/role-room/storage/files", async (req: Request, res: Response) => {
     const viewerId = getUserIdFromRequest(req, activeSessions);
@@ -91,15 +97,64 @@ export function registerRoleRoomUserStorageRoutes(
 
     const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
     const sourceModule = typeof req.query.sourceModule === 'string' && req.query.sourceModule
-      ? req.query.sourceModule
-      : undefined;
+      ? req.query.sourceModule : undefined;
+    const projectId = typeof req.query.projectId === 'string' && req.query.projectId
+      ? req.query.projectId : undefined;
+    const entityType = typeof req.query.entityType === 'string' && req.query.entityType
+      ? req.query.entityType : undefined;
+    const entityId = typeof req.query.entityId === 'string' && req.query.entityId
+      ? req.query.entityId : undefined;
 
     try {
-      const files = await listUserFiles(pool, { userId: viewerId, limit, sourceModule });
+      const files = await listUserFiles(pool, {
+        userId: viewerId, limit, sourceModule, projectId, entityType, entityId,
+      });
       res.json({ files });
     } catch (err) {
       console.error("[storage/files]", err);
       res.status(500).json({ error: "list_failed", detail: String(err) });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // GET /api/role-room/storage/per-project
+  // Sammendrag — { projectId, projectName, fileCount, totalBytes }[]
+  // ──────────────────────────────────────────────────────────────────
+  app.get("/api/role-room/storage/per-project", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+
+    try {
+      const projects = await getUserFilesPerProject(pool, viewerId);
+      res.json({ projects });
+    } catch (err) {
+      console.error("[storage/per-project]", err);
+      res.status(500).json({ error: "per_project_failed", detail: String(err) });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // GET /api/role-room/storage/entity-files
+  //   ?entityType=storyboard&entityId=<uuid>
+  // Brukes av storyboard-/role-/research-views for å vise vedlegg inline.
+  // ──────────────────────────────────────────────────────────────────
+  app.get("/api/role-room/storage/entity-files", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+
+    const entityType = typeof req.query.entityType === 'string' ? req.query.entityType : '';
+    const entityId = typeof req.query.entityId === 'string' ? req.query.entityId : '';
+    if (!entityType || !entityId) {
+      res.status(400).json({ error: "mangler_entity_type_id" });
+      return;
+    }
+
+    try {
+      const files = await listFilesForEntity(pool, { userId: viewerId, entityType, entityId });
+      res.json({ files });
+    } catch (err) {
+      console.error("[storage/entity-files]", err);
+      res.status(500).json({ error: "entity_files_failed", detail: String(err) });
     }
   });
 
@@ -120,14 +175,28 @@ export function registerRoleRoomUserStorageRoutes(
       return;
     }
 
-    const body = (req.body ?? {}) as { sourceModule?: string; metadata?: string };
+    const body = (req.body ?? {}) as {
+      sourceModule?: string;
+      metadata?: string;
+      projectId?: string;
+      sceneId?: string;
+      attachedToEntityType?: string;
+      attachedToEntityId?: string;
+      attachmentNote?: string;
+    };
     const sourceModule = typeof body.sourceModule === 'string' && body.sourceModule
-      ? body.sourceModule.slice(0, 64)
-      : undefined;
+      ? body.sourceModule.slice(0, 64) : undefined;
     let metadata: Record<string, unknown> = {};
     if (typeof body.metadata === 'string' && body.metadata) {
       try { metadata = JSON.parse(body.metadata); } catch { metadata = {}; }
     }
+    const context = {
+      projectId: typeof body.projectId === 'string' && body.projectId ? body.projectId.slice(0, 255) : undefined,
+      sceneId: typeof body.sceneId === 'string' && body.sceneId ? body.sceneId.slice(0, 255) : undefined,
+      attachedToEntityType: typeof body.attachedToEntityType === 'string' && body.attachedToEntityType ? body.attachedToEntityType.slice(0, 64) : undefined,
+      attachedToEntityId: typeof body.attachedToEntityId === 'string' && body.attachedToEntityId ? body.attachedToEntityId.slice(0, 255) : undefined,
+      attachmentNote: typeof body.attachmentNote === 'string' && body.attachmentNote ? body.attachmentNote.slice(0, 500) : undefined,
+    };
 
     try {
       const result = await uploadUserFile(pool, {
@@ -137,6 +206,7 @@ export function registerRoleRoomUserStorageRoutes(
         contentType: file.mimetype || 'application/octet-stream',
         sourceModule,
         metadata,
+        context,
       });
 
       if (!result.ok) {
@@ -183,6 +253,48 @@ export function registerRoleRoomUserStorageRoutes(
     } catch (err) {
       console.error("[storage/download]", err);
       res.status(500).json({ error: "download_failed", detail: String(err) });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // POST /api/role-room/storage/storyboards/:id/move-to-b2
+  // Migrer én storyboard-skisse fra PG image_data → B2 m/ kontekst.
+  // ──────────────────────────────────────────────────────────────────
+  app.post("/api/role-room/storage/storyboards/:id/move-to-b2", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+
+    const storyboardId = String(req.params.id ?? "").trim();
+    if (!storyboardId) { res.status(400).json({ error: "mangler_id" }); return; }
+
+    try {
+      const r = await moveStoryboardImageToB2(pool, { userId: viewerId, storyboardId });
+      if (!r.ok) {
+        res.status(r.reason === 'not_found' ? 404 : 400).json(r);
+        return;
+      }
+      res.json(r);
+    } catch (err) {
+      console.error("[storage/storyboards/move-to-b2]", err);
+      res.status(500).json({ error: "move_failed", detail: String(err) });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // POST /api/role-room/storage/storyboards/migrate-all
+  // Batch — migrer ALLE storyboards for innlogget bruker.
+  // ──────────────────────────────────────────────────────────────────
+  app.post("/api/role-room/storage/storyboards/migrate-all", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+
+    const limit = Math.min(500, Math.max(1, Number(req.body?.limit) || 200));
+    try {
+      const summary = await migrateAllStoryboardImagesForUser(pool, viewerId, { limit });
+      res.json(summary);
+    } catch (err) {
+      console.error("[storage/storyboards/migrate-all]", err);
+      res.status(500).json({ error: "migrate_all_failed", detail: String(err) });
     }
   });
 
