@@ -37,6 +37,7 @@ import {
   BlockOutlined as RevokeIcon,
   OpenInNew as OpenInNewIcon,
   Close as CloseIcon,
+  RateReviewOutlined as ReviewIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -120,6 +121,17 @@ export default function MySharedGalleriesPanel({ open, onClose }: MySharedGaller
     },
     onError: (err: any) => {
       setToast(`Kunne ikke regenerere lenke: ${err?.message ?? 'ukjent feil'}`);
+    },
+  });
+
+  const requestReviewMutation = useMutation({
+    mutationFn: async (galleryId: string) =>
+      apiRequest(`/api/photographer/galleries/${galleryId}/request-review`, { method: 'POST' }) as Promise<any>,
+    onSuccess: (result: any) => {
+      setToast(`Omtale-forespørsel sendt til ${result?.to ?? 'kunden'}.`);
+    },
+    onError: (err: any) => {
+      setToast(`Kunne ikke sende omtale-forespørsel: ${err?.message ?? 'ukjent feil'}`);
     },
   });
 
@@ -224,6 +236,19 @@ export default function MySharedGalleriesPanel({ open, onClose }: MySharedGaller
                           disabled={isRevoked}
                         >
                           Forhåndsvis
+                        </Button>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title={!g.clientEmail ? 'Mangler klient-e-post' : 'Send kunden en e-post med lenke for å legge igjen en omtale'}>
+                      <span>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ReviewIcon />}
+                          onClick={() => requestReviewMutation.mutate(g.id)}
+                          disabled={isRevoked || !g.clientEmail || requestReviewMutation.isPending}
+                        >
+                          Be om omtale
                         </Button>
                       </span>
                     </Tooltip>
