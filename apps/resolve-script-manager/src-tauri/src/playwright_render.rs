@@ -53,6 +53,18 @@ fn runtime_dir(app: &AppHandle) -> PathBuf {
     dir
 }
 
+/// Er system-Chrome installert? Da slipper vi å laste ned Chromium (~150 MB) —
+/// det genererte skriptet bruker channel:'chrome'.
+fn system_chrome_present() -> bool {
+    [
+        "/Applications/Google Chrome.app",
+        "/Applications/Chromium.app",
+        "/Applications/Google Chrome Canary.app",
+    ]
+    .iter()
+    .any(|p| PathBuf::from(p).exists())
+}
+
 /// Status: er node tilgjengelig + er Playwright installert i runtime-mappa?
 #[tauri::command]
 pub fn playwright_status(app: AppHandle) -> Value {
@@ -65,6 +77,7 @@ pub fn playwright_status(app: AppHandle) -> Value {
         "nodePath": node,
         "nodeOk": node_ok,
         "playwrightInstalled": installed,
+        "chromeAvailable": system_chrome_present(),
         "runtimeDir": dir.to_string_lossy(),
     })
 }
@@ -151,11 +164,18 @@ pub async fn setup_playwright(app: AppHandle) -> Result<RunSummary, String> {
         return Err(format!("npm install playwright feilet (exit {code1}). Er node/npm installert?"));
     }
 
-    let _ = app.emit("script-event", json!({ "type": "log", "message": "Laster ned Chromium…", "runId": run_id }));
-    let npx = find_bin("npx");
-    let mut browsers = Command::new(&npx);
-    browsers.arg("playwright").arg("install").arg("chromium").current_dir(&dir);
-    let code2 = stream_child(&app, browsers, &run_id, "setup_playwright").await?;
+    // Har brukeren Chrome? Da bruker skriptet channel:'chrome' → vi slipper
+    // den store Chromium-nedlastingen helt.
+    let mut code2 = 0;
+    if system_chrome_present() {
+        let _ = app.emit("script-event", json!({ "type": "log", "message": "System-Chrome funnet — hopper over Chromium-nedlasting.", "runId": run_id }));
+    } else {
+        let _ = app.emit("script-event", json!({ "type": "log", "message": "Laster ned Chromium… (~150 MB)", "runId": run_id }));
+        let npx = find_bin("npx");
+        let mut browsers = Command::new(&npx);
+        browsers.arg("playwright").arg("install").arg("chromium").current_dir(&dir);
+        code2 = stream_child(&app, browsers, &run_id, "setup_playwright").await?;
+    }
 
     let succeeded = code2 == 0;
     let _ = app.emit("script-event", json!({ "type": "finished", "runId": run_id, "succeeded": succeeded }));
