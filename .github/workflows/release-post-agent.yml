@@ -275,3 +275,41 @@ jobs:
           generate_release_notes: true
           files: dist/*
           fail_on_unmatched_files: true
+
+      # #10: hold marketplace-nedlastingen aktuell automatisk. Laster release-
+      # assets til B2 + bumper POST_AGENT_LATEST_VERSION på Render. Best-effort
+      # (continue-on-error) + henter B2-creds via Render-API'et med RENDER_API_KEY,
+      # så ingen ekstra B2-secrets trengs. Hopper over hvis nøkkelen ikke er satt.
+      - name: Auto-bump marketplace download (B2 + Render)
+        continue-on-error: true
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          SID: srv-d76ob60ule4c73dv2p60
+        shell: bash
+        run: |
+          set -e
+          pip install --quiet boto3
+          curl -s -H "Authorization: Bearer $RENDER_API_KEY" "https://api.render.com/v1/services/$SID/env-vars?limit=100" > /tmp/env.json
+          TAGV="${TAG#post-agent-}"
+          TAGV="$TAGV" python3 - <<'PY'
+          import os, json, glob, boto3
+          from botocore.config import Config
+          envs = {e["envVar"]["key"]: (e["envVar"]["value"] or "").strip() for e in json.load(open("/tmp/env.json"))}
+          region = envs.get("B2_REGION") or "eu-central-003"
+          s3 = boto3.client("s3", region_name=region, endpoint_url=f"https://s3.{region}.backblazeb2.com",
+            aws_access_key_id=envs["B2_ROLE_ROOM_APPLICATION_KEY_ID"], aws_secret_access_key=envs["B2_ROLE_ROOM_APPLICATION_KEY"],
+            config=Config(s3={"addressing_style":"path"}))
+          bucket = envs["B2_ROLE_ROOM_BUCKET_NAME"]; tagv = os.environ["TAGV"]
+          ct = {".dmg":"application/x-apple-diskimage",".gz":"application/gzip",".sig":"text/plain",".json":"application/json"}
+          for f in sorted(glob.glob("dist/*")):
+              if not os.path.isfile(f): continue
+              n = os.path.basename(f)
+              with open(f,"rb") as fh:
+                  s3.put_object(Bucket=bucket, Key=f"downloads/post-agent/{tagv}/{n}", Body=fh.read(),
+                                ContentType=ct.get(os.path.splitext(n)[1],"application/octet-stream"))
+              print("uploaded", n)
+          PY
+          curl -s -X PUT -H "Authorization: Bearer $RENDER_API_KEY" -H "Content-Type: application/json" \
+            -d "{\"value\":\"$TAGV\"}" "https://api.render.com/v1/services/$SID/env-vars/POST_AGENT_LATEST_VERSION" >/dev/null
+          echo "✓ B2-opplastet + POST_AGENT_LATEST_VERSION=$TAGV"
