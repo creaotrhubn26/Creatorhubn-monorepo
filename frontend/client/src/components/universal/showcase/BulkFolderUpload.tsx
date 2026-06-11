@@ -234,10 +234,17 @@ const BulkFolderUpload: React.FC<BulkFolderUploadProps> = ({
       return files;
     };
 
-    // Process each dropped item
+    // VIKTIG: webkitGetAsEntry() må kalles SYNKRONT for alle items før noe
+    // await — DataTransferItemList tømmes etter event-loopen, så uten dette
+    // forsvinner alle mapper unntatt den første ved fler-mappe-drop.
+    const entries: (FileSystemEntry | null)[] = [];
     for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const entry = item.webkitGetAsEntry?.();
+      entries.push(items[i].webkitGetAsEntry?.() ?? null);
+    }
+
+    // Process each dropped item
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
 
       if (entry?.isDirectory) {
         const dirEntry = entry as FileSystemDirectoryEntry;
@@ -357,14 +364,19 @@ const BulkFolderUpload: React.FC<BulkFolderUploadProps> = ({
 
     const newFolders: FolderUploadItem[] = [];
     let index = 0;
+    // Bruk SAMME profesjons-whitelist + størrelsesgrense som drag-drop-stien,
+    // slik at browse og drop oppfører seg likt.
+    const supported = (enhancedProfessionConfig as any)?.settings?.supportedFileTypes as string[] | undefined;
+    const maxMB = (enhancedProfessionConfig as any)?.settings?.maxFileSize as number | undefined;
+    const rejected: string[] = [];
 
     for (const [folderName, folderFiles] of folderMap) {
-      const validFiles = folderFiles.filter(f =>
-        f.type.startsWith('image/') ||
-        f.type.startsWith('video/') ||
-        f.type.startsWith('audio/') ||
-        /\.(raw|arw|cr2|cr3|nef|orf|rw2|dng|raf|pef|srw|x3f)$/i.test(f.name)
-      );
+      const validFiles: File[] = [];
+      for (const f of folderFiles) {
+        const reason = rejectionReason(f, supported, maxMB);
+        if (reason) rejected.push(reason);
+        else validFiles.push(f);
+      }
 
       if (validFiles.length > 0) {
         let preview: string | undefined;
@@ -388,12 +400,24 @@ const BulkFolderUpload: React.FC<BulkFolderUploadProps> = ({
 
     if (newFolders.length > 0) {
       setFolders(prev => [...prev, ...newFolders]);
-      setError(null);
+      setError(
+        rejected.length > 0
+          ? `La til ${newFolders.length} mappe(r). Hoppet over ${rejected.length} fil(er) som ikke matcher tillatte typer.`
+          : null,
+      );
+    } else {
+      // Ikke stille feil lenger — fortell brukeren hvorfor ingenting dukket opp.
+      const list = (supported && supported.length > 0) ? supported.join(', ') : 'bilder, video, lyd og RAW';
+      const sample = rejected.slice(0, 3).join('; ');
+      setError(
+        `Ingen gyldige mediefiler i den valgte mappen. Tillatt: ${list}.` +
+        (sample ? ` Avvist f.eks. — ${sample}` : ''),
+      );
     }
 
     // Reset input
     e.target.value = '';
-  }, []);
+  }, [enhancedProfessionConfig]);
 
   // Remove folder from list
   const handleRemoveFolder = useCallback((folderId: string) => {

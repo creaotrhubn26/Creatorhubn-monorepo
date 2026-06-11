@@ -53,11 +53,16 @@ export default function ReviewModerationPanel({ onChanged }: Props) {
   const [open, setOpen] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [replyDraft, setReplyDraft] = React.useState<Record<string, string>>({});
+  const [unauthorized, setUnauthorized] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/photographer/reviews', { credentials: 'include' });
+      if (res.status === 401 || res.status === 403) {
+        setUnauthorized(true);
+        return;
+      }
       if (res.ok) {
         const json = await res.json();
         if (Array.isArray(json?.reviews)) setReviews(json.reviews);
@@ -79,6 +84,9 @@ export default function ReviewModerationPanel({ onChanged }: Props) {
       if (res.ok) { await load(); onChanged?.(); }
     } catch { /* ignore */ } finally { setBusyId(null); }
   }, [load, onChanged]);
+
+  // Ikke vis modereringspanelet til noen backend ikke gjenkjenner som eier.
+  if (unauthorized) return null;
 
   const pendingCount = reviews.filter((r) => r.status === 'pending').length;
 
