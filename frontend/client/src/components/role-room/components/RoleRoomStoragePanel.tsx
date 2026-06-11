@@ -13,7 +13,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
-  IconButton, LinearProgress, Stack, Tooltip, Typography,
+  Dialog, DialogActions, DialogContent, DialogTitle,
+  IconButton, LinearProgress, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
 import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined';
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
@@ -21,6 +22,10 @@ import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined
 import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
+import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined';
+import LinkOffOutlinedIcon from '@mui/icons-material/LinkOffOutlined';
+import SwapHorizOutlinedIcon from '@mui/icons-material/SwapHorizOutlined';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
 const palette = {
   bg: '#150b2e',
@@ -53,6 +58,23 @@ interface FileRow {
   contentType: string | null;
   sourceModule: string | null;
   uploadedAt: string;
+}
+
+interface ByoStatus {
+  connected: boolean;
+  bucketName: string | null;
+  region: string | null;
+  migration: null | {
+    id: string;
+    direction: 'to_byo' | 'from_byo';
+    status: 'queued' | 'running' | 'completed' | 'failed' | 'partial' | 'cancelled';
+    totalFiles: number;
+    totalBytes: number;
+    filesCompleted: number;
+    filesFailed: number;
+    bytesCompleted: number;
+    statusMessage: string | null;
+  };
 }
 
 function formatBytes(bytes: number): string {
@@ -91,12 +113,21 @@ export default function RoleRoomStoragePanel() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
+  // BYO B2 state
+  const [byo, setByo] = useState<ByoStatus | null>(null);
+  const [byoDialogOpen, setByoDialogOpen] = useState(false);
+  const [byoForm, setByoForm] = useState({ keyId: '', applicationKey: '', bucketName: '', region: 'us-west-001' });
+  const [byoSaving, setByoSaving] = useState(false);
+  const [byoError, setByoError] = useState<string | null>(null);
+  const [migrating, setMigrating] = useState(false);
+
   const refresh = async () => {
     setError(null);
     try {
-      const [statsRes, filesRes] = await Promise.all([
+      const [statsRes, filesRes, byoRes] = await Promise.all([
         fetch('/api/role-room/storage/stats', { headers: authHeaders() }),
         fetch('/api/role-room/storage/files?limit=50', { headers: authHeaders() }),
+        fetch('/api/role-room/storage/byo/status', { headers: authHeaders() }),
       ]);
       if (statsRes.ok) {
         const s = await statsRes.json();
@@ -108,6 +139,10 @@ export default function RoleRoomStoragePanel() {
         const f = await filesRes.json();
         setFiles(f.files ?? []);
       }
+      if (byoRes.ok) {
+        const b = await byoRes.json();
+        setByo(b);
+      }
     } catch (e) {
       setError(String(e));
     } finally {
@@ -116,6 +151,61 @@ export default function RoleRoomStoragePanel() {
   };
 
   useEffect(() => { refresh(); }, []);
+
+  // Poll BYO migration progress when running
+  useEffect(() => {
+    if (byo?.migration?.status === 'running' || byo?.migration?.status === 'queued') {
+      const id = setInterval(() => { refresh(); }, 2000);
+      return () => clearInterval(id);
+    }
+  }, [byo?.migration?.status]);
+
+  const handleByoConnect = async () => {
+    setByoSaving(true);
+    setByoError(null);
+    try {
+      const r = await fetch('/api/role-room/storage/byo/connect', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(byoForm),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setByoError(body.error ?? `HTTP ${r.status}`);
+      } else {
+        setByoDialogOpen(false);
+        await refresh();
+      }
+    } finally {
+      setByoSaving(false);
+    }
+  };
+
+  const handleByoDisconnect = async () => {
+    if (!confirm('Koble fra din egen B2? Filene blir igjen på din egen B2 — du kan koble til igjen senere.')) return;
+    await fetch('/api/role-room/storage/byo', { method: 'DELETE', headers: authHeaders() });
+    await refresh();
+  };
+
+  const handleByoMigrate = async () => {
+    if (!confirm('Starte migrasjon av alle filer fra admin-B2 til din egen B2?')) return;
+    setMigrating(true);
+    try {
+      const r = await fetch('/api/role-room/storage/byo/migrate', {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        setError(body.error ?? `Migrasjon kunne ikke startes (HTTP ${r.status})`);
+      } else {
+        await refresh();
+      }
+    } finally {
+      setMigrating(false);
+    }
+  };
 
   const handleFiles = async (selected: FileList | File[] | null) => {
     if (!selected || selected.length === 0) return;
@@ -366,7 +456,189 @@ export default function RoleRoomStoragePanel() {
             konto. Betalt 10 GB-tier kommer snart.
           </Alert>
         )}
+
+        {/* ──────────────────────────────────────────────────────────── */}
+        {/* BYO B2 — "Bring Your Own Backblaze"                          */}
+        {/* ──────────────────────────────────────────────────────────── */}
+        <Box sx={{
+          mt: 3, p: 2.4, borderRadius: 1.6,
+          bgcolor: palette.bgSubtle,
+          border: `1px solid ${palette.border}`,
+        }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.2 }}>
+            <Stack direction="row" alignItems="center" spacing={1.2}>
+              <LinkOutlinedIcon sx={{ color: palette.accent, fontSize: 22 }} />
+              <Typography sx={{ fontWeight: 800, fontSize: '0.96rem', color: palette.textPrimary }}>
+                Din egen Backblaze B2
+              </Typography>
+              {byo?.connected && (
+                <Chip
+                  icon={<CheckCircleOutlineIcon sx={{ color: `${palette.success} !important`, fontSize: 14 }} />}
+                  label="TILKOBLET"
+                  size="small"
+                  sx={{
+                    bgcolor: `${palette.success}33`, color: palette.success,
+                    fontWeight: 700, fontSize: '0.68rem',
+                  }}
+                />
+              )}
+            </Stack>
+            {byo?.connected ? (
+              <Button
+                size="small" variant="text"
+                onClick={handleByoDisconnect}
+                startIcon={<LinkOffOutlinedIcon sx={{ fontSize: 16 }} />}
+                sx={{ color: palette.textSecondary, fontSize: '0.78rem' }}
+              >
+                Koble fra
+              </Button>
+            ) : (
+              <Button
+                size="small" variant="contained"
+                onClick={() => { setByoError(null); setByoDialogOpen(true); }}
+                startIcon={<LinkOutlinedIcon sx={{ fontSize: 16 }} />}
+                sx={{ bgcolor: palette.accentBright, fontWeight: 700, fontSize: '0.78rem',
+                  '&:hover': { bgcolor: palette.accent } }}
+              >
+                Koble til
+              </Button>
+            )}
+          </Stack>
+
+          <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary, mb: byo?.connected ? 1.4 : 0 }}>
+            {byo?.connected
+              ? `Bucket: ${byo.bucketName} · ${byo.region}. Alle nye filer går til din egen B2 — du betaler Backblaze direkte.`
+              : 'Koble din egen Backblaze B2-konto for ubegrenset plass. Vi krypterer key-ID + key med din personlige nøkkel og lagrer aldri klartekst. Du betaler Backblaze direkte (≈ $6/TB/måned).'
+            }
+          </Typography>
+
+          {byo?.connected && !byo.migration && (
+            <Button
+              size="small" variant="outlined"
+              onClick={handleByoMigrate}
+              disabled={migrating || stats?.fileCount === 0}
+              startIcon={<SwapHorizOutlinedIcon sx={{ fontSize: 16 }} />}
+              sx={{
+                color: palette.accent, borderColor: palette.borderStrong,
+                fontWeight: 700, fontSize: '0.78rem',
+                '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(168,85,247,0.06)' },
+              }}
+            >
+              {stats?.fileCount === 0
+                ? 'Ingen filer å migrere'
+                : `Migrer ${stats?.fileCount ?? 0} filer (${formatBytes(stats?.usedBytes ?? 0)}) til din B2`
+              }
+            </Button>
+          )}
+
+          {byo?.migration && (
+            <Box sx={{ mt: 1.4 }}>
+              <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.6 }}>
+                <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, color: palette.textPrimary }}>
+                  Migrasjon: {byo.migration.filesCompleted} / {byo.migration.totalFiles} filer
+                </Typography>
+                <Chip
+                  label={byo.migration.status.toUpperCase()}
+                  size="small"
+                  sx={{
+                    bgcolor: byo.migration.status === 'completed' ? `${palette.success}33`
+                      : byo.migration.status === 'failed' ? `${palette.danger}33`
+                      : byo.migration.status === 'partial' ? `${palette.warning}33`
+                      : `${palette.accent}33`,
+                    color: byo.migration.status === 'completed' ? palette.success
+                      : byo.migration.status === 'failed' ? palette.danger
+                      : byo.migration.status === 'partial' ? palette.warning
+                      : palette.accent,
+                    fontWeight: 700, fontSize: '0.68rem',
+                  }}
+                />
+              </Stack>
+              <LinearProgress
+                variant="determinate"
+                value={byo.migration.totalBytes > 0
+                  ? Math.min(100, Math.round((byo.migration.bytesCompleted / byo.migration.totalBytes) * 100))
+                  : (byo.migration.status === 'completed' ? 100 : 0)
+                }
+                sx={{
+                  height: 6, borderRadius: 3,
+                  bgcolor: 'rgba(168,85,247,0.10)',
+                  '& .MuiLinearProgress-bar': { bgcolor: palette.accent, borderRadius: 3 },
+                }}
+              />
+              {byo.migration.statusMessage && (
+                <Typography sx={{ fontSize: '0.74rem', color: palette.textMuted, mt: 0.6 }}>
+                  {byo.migration.statusMessage}
+                </Typography>
+              )}
+              {byo.migration.filesFailed > 0 && (
+                <Typography sx={{ fontSize: '0.74rem', color: palette.danger, mt: 0.4 }}>
+                  {byo.migration.filesFailed} filer feilet — se /admin for detaljer
+                </Typography>
+              )}
+            </Box>
+          )}
+        </Box>
       </CardContent>
+
+      {/* BYO connect-dialog */}
+      <Dialog open={byoDialogOpen} onClose={() => setByoDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Koble til din egen Backblaze B2</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="info" sx={{ fontSize: '0.82rem' }}>
+              Opprett en application-key i Backblaze med tilgang KUN til den spesifikke bucket-en
+              du vil bruke. Vi krypterer nøklene med din personlige nøkkel og dekrypterer kun
+              ved opplastinger/nedlastinger.
+            </Alert>
+            <TextField
+              label="Bucket-navn"
+              value={byoForm.bucketName}
+              onChange={(e) => setByoForm({ ...byoForm, bucketName: e.target.value })}
+              size="small" fullWidth required
+            />
+            <TextField
+              label="Application Key ID"
+              value={byoForm.keyId}
+              onChange={(e) => setByoForm({ ...byoForm, keyId: e.target.value })}
+              size="small" fullWidth required
+            />
+            <TextField
+              label="Application Key (hemmelig)"
+              type="password"
+              value={byoForm.applicationKey}
+              onChange={(e) => setByoForm({ ...byoForm, applicationKey: e.target.value })}
+              size="small" fullWidth required
+            />
+            <TextField
+              label="Region"
+              value={byoForm.region}
+              onChange={(e) => setByoForm({ ...byoForm, region: e.target.value })}
+              size="small" fullWidth
+              helperText="F.eks. us-west-001 (Sacramento), eu-central-003 (Amsterdam)"
+            />
+            {byoError && (
+              <Alert severity="error" sx={{ fontSize: '0.82rem' }}>
+                Validering feilet: {byoError}
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setByoDialogOpen(false)} sx={{ color: palette.textSecondary }}>
+            Avbryt
+          </Button>
+          <Button
+            onClick={handleByoConnect}
+            variant="contained"
+            disabled={byoSaving || !byoForm.bucketName || !byoForm.keyId || !byoForm.applicationKey}
+            startIcon={byoSaving ? <CircularProgress size={14} /> : <CheckCircleOutlineIcon sx={{ fontSize: 16 }} />}
+            sx={{ bgcolor: palette.accentBright, fontWeight: 700,
+              '&:hover': { bgcolor: palette.accent } }}
+          >
+            Test + lagre
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }
