@@ -916,6 +916,7 @@ pub fn run() {
             playwright_render::playwright_status,
             playwright_render::setup_playwright,
             playwright_render::run_playwright_demo,
+            playwright_render::playwright_capture_shots,
             demo_recording::save_demo_recording,
             demo_recording::check_url_embeddable,
             demo_capture::start_demo_capture,
