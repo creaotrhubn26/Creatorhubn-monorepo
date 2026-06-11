@@ -752,6 +752,62 @@ export function recordLearnedTarget(
     updatedAt: new Date().toISOString(),
   };
   saveLearnedTargets(m);
+  // #1 delt lærings-lager: push til backend (fire-and-forget) så læringen
+  // komponerer på tvers av demoer/brukere.
+  pushLearnedToBackend(url, lab, m[key]);
+}
+
+// ── Delt lærings-lager (backend-sync) ──
+function pwSettings(): { base: string; token: string | null } {
+  try {
+    const s = JSON.parse(localStorage.getItem('trrpa.settings') || '{}');
+    return {
+      base: (s.RR_POST_AGENT_BASE_URL || 'https://creatorhubn.com/api/post-agent').replace(/\/$/, ''),
+      token: (s.RR_BEARER_TOKEN || '').trim() || null,
+    };
+  } catch { return { base: 'https://creatorhubn.com/api/post-agent', token: null }; }
+}
+function pushLearnedToBackend(url: string, label: string, t: LearnedTarget): void {
+  const { base, token } = pwSettings();
+  if (!token) return;
+  void fetch(`${base}/learned-targets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      host: hostOf(url), label,
+      selector: t.selector, hotspot: t.hotspot, actionType: t.actionType,
+      correctLabel: t.correctLabel, rejectSelectors: t.rejectSelectors,
+    }),
+  }).catch(() => { /* fire-and-forget */ });
+}
+/** Hent delte lærte targets for en host fra backend + flett inn lokalt. Kalles
+ *  når en demo åpnes, så healing/AI bruker kollektiv kunnskap. */
+export async function syncLearnedTargetsFromBackend(url: string): Promise<number> {
+  const { base } = pwSettings();
+  try {
+    const res = await fetch(`${base}/learned-targets?host=${encodeURIComponent(hostOf(url))}`);
+    if (!res.ok) return 0;
+    const data = (await res.json()) as { targets?: Array<Partial<LearnedTarget>> };
+    const m = loadLearnedTargets();
+    let merged = 0;
+    for (const t of data.targets ?? []) {
+      const lab = (t.label || '').trim();
+      if (!lab) continue;
+      const key = learnedKey(url, lab);
+      const prev = m[key];
+      // Backend som kilde, men ikke overskriv nyere lokal læring.
+      if (!prev || ((t.updatedAt || '') > (prev.updatedAt || ''))) {
+        m[key] = {
+          label: lab, selector: t.selector, hotspot: t.hotspot, actionType: t.actionType,
+          correctLabel: t.correctLabel, rejectSelectors: t.rejectSelectors,
+          source: 'capture', count: t.count ?? 1, updatedAt: t.updatedAt || new Date().toISOString(),
+        };
+        merged++;
+      }
+    }
+    if (merged) saveLearnedTargets(m);
+    return merged;
+  } catch { return 0; }
 }
 /** Hent en lært korreksjon for et element på en side (eller null). */
 export function getLearnedTarget(url: string, label: string): LearnedTarget | null {
