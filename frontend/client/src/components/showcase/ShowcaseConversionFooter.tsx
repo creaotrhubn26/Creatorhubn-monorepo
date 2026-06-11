@@ -146,6 +146,7 @@ function ShowcaseConversionFooter(props: Props) {
   // FAQ + omtale-veiledning: eier-redigert (KV). Omtaler: klient-innsendte (API).
   const [customFaqs, setCustomFaqs] = React.useState<FAQItem[] | null>(null);
   const [customPrompts, setCustomPrompts] = React.useState<string[] | null>(null);
+  const [customGoogleUrl, setCustomGoogleUrl] = React.useState<string>('');
   const [reviews, setReviews] = React.useState<Testimonial[]>([]);
   const [reviewSummary, setReviewSummary] = React.useState<{ count: number; average: number }>({ count: 0, average: 0 });
 
@@ -160,6 +161,7 @@ function ShowcaseConversionFooter(props: Props) {
         if (cancelled || !value) return;
         if (Array.isArray(value.faqs)) setCustomFaqs(value.faqs);
         if (Array.isArray(value.reviewPrompts)) setCustomPrompts(value.reviewPrompts);
+        if (typeof value.googleReviewUrl === 'string') setCustomGoogleUrl(value.googleReviewUrl);
       } catch {
         /* behold defaults */
       }
@@ -198,38 +200,42 @@ function ShowcaseConversionFooter(props: Props) {
   const [editorOpen, setEditorOpen] = React.useState(false);
   const [draftFaqs, setDraftFaqs] = React.useState<FAQItem[]>([]);
   const [draftPrompts, setDraftPrompts] = React.useState<string[]>([]);
+  const [draftGoogleUrl, setDraftGoogleUrl] = React.useState('');
   const [saving, setSaving] = React.useState(false);
 
   const openEditor = React.useCallback(() => {
     setDraftFaqs(resolvedFaqs.map((f) => ({ ...f })));
     setDraftPrompts([...resolvedPrompts]);
+    setDraftGoogleUrl(customGoogleUrl);
     setEditorOpen(true);
-  }, [resolvedFaqs, resolvedPrompts]);
+  }, [resolvedFaqs, resolvedPrompts, customGoogleUrl]);
 
   const saveContent = React.useCallback(async () => {
     setSaving(true);
     try {
       const cleanFaqs = draftFaqs.filter((f) => (f.question || '').trim() || (f.answer || '').trim());
       const cleanPrompts = draftPrompts.map((p) => (p || '').trim()).filter(Boolean);
+      const cleanGoogle = draftGoogleUrl.trim();
       const res = await fetch(`/api/user/kv/${FOOTER_KV_KEY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ value: { faqs: cleanFaqs, reviewPrompts: cleanPrompts } }),
+        body: JSON.stringify({ value: { faqs: cleanFaqs, reviewPrompts: cleanPrompts, googleReviewUrl: cleanGoogle } }),
       });
-      if (res.ok) { setCustomFaqs(cleanFaqs); setCustomPrompts(cleanPrompts); setEditorOpen(false); }
+      if (res.ok) { setCustomFaqs(cleanFaqs); setCustomPrompts(cleanPrompts); setCustomGoogleUrl(cleanGoogle); setEditorOpen(false); }
     } catch {
       /* la dialogen stå åpen ved feil */
     } finally {
       setSaving(false);
     }
-  }, [draftFaqs, draftPrompts]);
+  }, [draftFaqs, draftPrompts, draftGoogleUrl]);
 
   // ── Omtale-innsending (klient) ──────────────────────────────────────────────
   const [reviewForm, setReviewForm] = React.useState({ author: '', role: '', text: '', rating: 5, website: '' });
   const [aspectRatings, setAspectRatings] = React.useState<Record<string, number>>({});
   const [submitting, setSubmitting] = React.useState(false);
   const [submitted, setSubmitted] = React.useState(false);
+  const [positiveSubmit, setPositiveSubmit] = React.useState(false);
 
   const submitReview = React.useCallback(async () => {
     if (!photographerId || !reviewForm.author.trim() || !reviewForm.text.trim()) return;
@@ -251,6 +257,11 @@ function ShowcaseConversionFooter(props: Props) {
         }),
       });
       if (res.ok) {
+        const aspectVals = Object.values(aspectRatings);
+        const effRating = resolvedPrompts.length && aspectVals.length
+          ? aspectVals.reduce((a, b) => a + b, 0) / aspectVals.length
+          : reviewForm.rating;
+        setPositiveSubmit(effRating >= 4);
         setSubmitted(true);
         setReviewForm({ author: '', role: '', text: '', rating: 5, website: '' });
         setAspectRatings({});
@@ -432,9 +443,22 @@ function ShowcaseConversionFooter(props: Props) {
             {clientView && (
               <Box sx={{ maxWidth: 560, mx: 'auto', mt: 5, p: 3, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 }}>
                 {submitted ? (
-                  <Typography align="center" sx={{ color: '#5fb88a' }}>
-                    Takk! Omtalen din er sendt og vises etter godkjenning.
-                  </Typography>
+                  <Stack spacing={2} alignItems="center">
+                    <Typography align="center" sx={{ color: '#5fb88a' }}>
+                      Takk! Omtalen din er sendt og vises etter godkjenning.
+                    </Typography>
+                    {positiveSubmit && customGoogleUrl && (
+                      <>
+                        <Typography align="center" sx={{ color: 'rgba(245,242,234,0.7)', fontSize: '0.85rem' }}>
+                          Vil du dele den på Google også? Det hjelper enormt.
+                        </Typography>
+                        <Button variant="outlined" href={customGoogleUrl} target="_blank" rel="noopener"
+                          sx={{ color: '#F5F2EA', borderColor: 'rgba(255,255,255,0.32)', textTransform: 'none', borderRadius: '999px', px: 3, '&:hover': { borderColor: '#ffba6c', color: '#ffba6c' } }}>
+                          Del på Google
+                        </Button>
+                      </>
+                    )}
+                  </Stack>
                 ) : (
                   <>
                     <Typography sx={{ fontWeight: 700, color: '#F5F2EA', mb: 2 }}>Legg igjen en omtale</Typography>
@@ -649,6 +673,17 @@ function ShowcaseConversionFooter(props: Props) {
             onClick={() => setDraftPrompts((prev) => [...prev, ''])}>
             Legg til punkt
           </Button>
+
+          <Divider sx={{ my: 3, borderColor: 'rgba(255,255,255,0.08)' }} />
+
+          <Typography sx={{ fontWeight: 700, mb: 0.5, color: '#F5F2EA' }}>Google-anmeldelser</Typography>
+          <Typography sx={{ color: 'rgba(245,242,234,0.5)', fontSize: '0.78rem', mb: 1.5 }}>
+            Lim inn din Google «skriv anmeldelse»-lenke (writereview?placeid=… eller g.page/…/review).
+            Fornøyde kunder (4–5★) blir tilbudt å dele på Google. Krever ingen API-oppkobling.
+          </Typography>
+          <TextField fullWidth size="small" label="Google-anmeldelseslenke" value={draftGoogleUrl} sx={editorFieldSx}
+            placeholder="https://g.page/r/…/review"
+            onChange={(e) => setDraftGoogleUrl(e.target.value)} />
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
           <Button onClick={() => setEditorOpen(false)} disabled={saving} sx={{ color: 'rgba(245,242,234,0.7)', textTransform: 'none' }}>Avbryt</Button>

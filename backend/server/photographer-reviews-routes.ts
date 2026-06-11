@@ -268,13 +268,29 @@ export function setupPhotographerReviewsRoutes(deps: PhotographerReviewsDeps): v
       const clientFirst = (gallery.client_name || "").split(" ")[0] || "";
       const project = gallery.project_title || "prosjektet ditt";
 
+      // Google-anmeldelseslenke fra fotografens KV (showcase-conversion-footer) —
+      // ingen Google-API, bare en utgående lenke for fornøyde kunder.
+      let googleUrl = "";
+      try {
+        const kv = await pool.query(
+          `SELECT store_value FROM legacy_compat_store WHERE store_key = $1 LIMIT 1`,
+          [`compat:user-kv:${session.userId}::showcase-conversion-footer`],
+        );
+        const v: any = kv.rows[0]?.store_value;
+        if (v?.value && typeof v.value.googleReviewUrl === "string") googleUrl = v.value.googleReviewUrl.trim();
+      } catch { /* ignore — Google-lenke er valgfri */ }
+
+      const body =
+        "Vil du dele en kort omtale? Tilbakemeldingen din betyr mye og hjelper andre å finne meg. Det tar under ett minutt." +
+        (googleUrl ? `\n\nVil du heller dele på Google? ${googleUrl}` : "");
+
       const { html, text } = composeEmail({
         category: "general",
         subject: "Hvordan var opplevelsen?",
         preheader: "Del en kort omtale — det tar ett minutt.",
         headline: clientFirst ? `Takk for samarbeidet, ${clientFirst}!` : "Takk for samarbeidet!",
         subhead: `Vi håper du er fornøyd med ${project}.`,
-        body: "Vil du dele en kort omtale? Tilbakemeldingen din betyr mye og hjelper andre å finne meg. Det tar under ett minutt.",
+        body,
         cta: { label: "Legg igjen en omtale", href: reviewUrl, variant: "primary" },
         footer: { reason: "Du mottar denne e-posten fordi du var kunde i et nylig prosjekt." },
       });
