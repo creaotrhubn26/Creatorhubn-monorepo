@@ -209,6 +209,34 @@ export default function RoleRoomStoragePanel() {
     await refresh();
   };
 
+  const [storyboardMigrating, setStoryboardMigrating] = useState(false);
+  const [storyboardMigrateResult, setStoryboardMigrateResult] = useState<string | null>(null);
+
+  const handleStoryboardMigrate = async () => {
+    if (!confirm('Migrer alle dine storyboard-skisser fra Postgres-databasen til Backblaze B2? Dette frigjør plass i DB-en og knytter hver skisse til riktig prosjekt + scene.')) return;
+    setStoryboardMigrating(true);
+    setStoryboardMigrateResult(null);
+    try {
+      const r = await fetch('/api/role-room/storage/storyboards/migrate-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ limit: 500 }),
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        setStoryboardMigrateResult(`Feil: ${body.error ?? r.status}`);
+      } else {
+        const body = await r.json();
+        setStoryboardMigrateResult(
+          `${body.succeeded} skisser flyttet til B2, ${body.alreadyMoved} allerede flyttet, ${body.failed} feilet.`,
+        );
+        await refresh();
+      }
+    } finally {
+      setStoryboardMigrating(false);
+    }
+  };
+
   const handleByoMigrate = async () => {
     if (!confirm('Starte migrasjon av alle filer fra admin-B2 til din egen B2?')) return;
     setMigrating(true);
@@ -550,6 +578,50 @@ export default function RoleRoomStoragePanel() {
             konto. Betalt 10 GB-tier kommer snart.
           </Alert>
         )}
+
+        {/* ──────────────────────────────────────────────────────────── */}
+        {/* Storyboard-migrate: flytt PG-image_data til B2 m/ kontekst  */}
+        {/* ──────────────────────────────────────────────────────────── */}
+        <Box sx={{
+          mt: 2, p: 2, borderRadius: 1.6,
+          bgcolor: palette.bgSubtle,
+          border: `1px solid ${palette.border}`,
+        }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.8 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <InsertDriveFileOutlinedIcon sx={{ color: palette.accent, fontSize: 20 }} />
+              <Typography sx={{ fontWeight: 700, fontSize: '0.92rem', color: palette.textPrimary }}>
+                Storyboard-skisser
+              </Typography>
+            </Stack>
+            <Button
+              size="small" variant="outlined"
+              onClick={handleStoryboardMigrate}
+              disabled={storyboardMigrating}
+              startIcon={storyboardMigrating ? <CircularProgress size={14} /> : <SwapHorizOutlinedIcon sx={{ fontSize: 16 }} />}
+              sx={{
+                color: palette.accent, borderColor: palette.borderStrong,
+                fontWeight: 700, fontSize: '0.74rem',
+                '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(168,85,247,0.06)' },
+              }}
+            >
+              Flytt til B2
+            </Button>
+          </Stack>
+          <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
+            Dine storyboard-skisser ligger i dag som data-URL i Postgres-databasen. Klikk
+            for å flytte alle til B2 — hver fil blir koblet til riktig prosjekt + scene
+            automatisk og frigjør DB-plass.
+          </Typography>
+          {storyboardMigrateResult && (
+            <Alert
+              severity={storyboardMigrateResult.startsWith('Feil') ? 'error' : 'success'}
+              sx={{ mt: 1.2, fontSize: '0.78rem' }}
+            >
+              {storyboardMigrateResult}
+            </Alert>
+          )}
+        </Box>
 
         {/* ──────────────────────────────────────────────────────────── */}
         {/* BYO B2 — "Bring Your Own Backblaze"                          */}
