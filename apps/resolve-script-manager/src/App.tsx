@@ -783,9 +783,23 @@ export default function App() {
         />
       )}
 
-      {view === "cull" && <CullView activeTemplate={activeTemplate} />}
-      {view === "audio" && <AudioView />}
-      {view === "color" && <ColorView activeTemplate={activeTemplate} />}
+      {/* #6 à la carte-gating: culling = Capture-modul, audio/color (Fairlight/
+          grading) = Resolve-modul. Admin/eier bypasser (entitlements gir alle). */}
+      {view === "cull" && (
+        authStatus === "ok" && entitledModules.includes("capture")
+          ? <CullView activeTemplate={activeTemplate} />
+          : <ModuleGate module="capture" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
+      {view === "audio" && (
+        authStatus === "ok" && entitledModules.includes("resolve")
+          ? <AudioView />
+          : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
+      {view === "color" && (
+        authStatus === "ok" && entitledModules.includes("resolve")
+          ? <ColorView activeTemplate={activeTemplate} />
+          : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
       {view === "demo" &&
         (authStatus === "ok" && entitledModules.includes("demo_studio") ? (
           <DemoStudioShell onClose={() => setView("pipeline")} />

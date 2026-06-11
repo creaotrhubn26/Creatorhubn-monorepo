@@ -41,7 +41,7 @@ import {
   ACTION_MATCH_LABELS, ACTION_MATCH_COLORS, CRITIQUE_SEVERITY_COLORS,
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
   sceneActionMatch, expectedActionText, validateScene, learnCtas, CTA_LABELS,
-  recordLearnedTarget, learnedTargetCount, listLearnedTargetsForHost, removeLearnedTarget,
+  recordLearnedTarget, learnedTargetCount, listLearnedTargetsForHost, removeLearnedTarget, syncLearnedTargetsFromBackend,
   clearLearnedTargets, detectLearnedDrift, pickShot, type LearnedTarget,
   type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult,
 } from './demoStudioModel';
@@ -102,6 +102,18 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
   // Gjenopprett lagret prosjekt ved oppstart (ellers virket alt arbeid borte).
   useEffect(() => { if (!project) loadExisting(); /* eslint-disable-next-line */ }, []);
+
+  // #1 delt lærings-lager: flett inn kollektiv kunnskap for denne hosten når
+  // demoen åpnes/URL endres, så healing + AI bruker det andre har lært.
+  const syncedHostRef = useRef('');
+  useEffect(() => {
+    const u = project?.url;
+    if (!u) return;
+    let host = ''; try { host = new URL(u).host; } catch { return; }
+    if (!host || host === syncedHostRef.current) return;
+    syncedHostRef.current = host;
+    void syncLearnedTargetsFromBackend(u);
+  }, [project?.url]);
 
   // Edit Mode-hurtigtaster: undo/redo globalt; slett/velg-alle/escape kun når
   // man ikke skriver i et felt. ⌘/Ctrl bærer kommandoene.
