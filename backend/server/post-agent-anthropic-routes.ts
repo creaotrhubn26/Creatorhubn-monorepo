@@ -109,11 +109,6 @@ function requireUser(pool: Pool, activeSessions?: Map<string, SessionData>) {
     const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
     const session = await resolveUser(pool, activeSessions, bearer);
     if (!session?.userId || !bearer) {
-      const persisted = bearer ? await loadPersistedAuthSession<SessionData>(pool, bearer) : null;
-      console.warn(
-        `[pa-auth] 401 path=${req.path} hasBearer=${!!bearer} tokenPrefix=${bearer?.slice(0, 8) ?? '-'} ` +
-          `inMemory=${!!activeSessions?.get(bearer ?? '')} persisted=${!!persisted} sessionUserId=${session?.userId ?? '-'} sessionsSize=${activeSessions?.size ?? 0}`,
-      );
       res.status(401).json({ error: 'unauthorized' });
       return;
     }
@@ -312,13 +307,6 @@ export function createPostAgentRouter(
       activeSessions?.set(newToken, postAgentSession);
       await persistAuthSession(pool, newToken, postAgentSession);
       await registerDevice(pool, newToken, userId, deviceLabel);
-      // Diagnostikk: bekreft at token-et faktisk ble persistert + at userId er
-      // gyldig (kan slås opp i /me etterpå).
-      const persistedBack = await loadPersistedAuthSession<SessionData>(pool, newToken);
-      console.log(
-        `[pa-redeem] minted tokenPrefix=${newToken.slice(0, 8)} userId=${userId} ` +
-          `persistedBack=${!!persistedBack} sessionsSize=${activeSessions?.size ?? 0}`,
-      );
 
       const claimed = await markPairingPaired(pool, code, newToken, userId);
       if (!claimed) {
@@ -453,11 +441,6 @@ export function createPostAgentRouter(
     // token-et er gyldig (App.tsx silentAuthCheck krever me.email).
     const sessionForEmail = await resolveUser(pool, activeSessions, (req as AuthedRequest).bearerToken);
     const sessionEmail = typeof sessionForEmail?.email === 'string' ? sessionForEmail.email : null;
-    console.log(
-      `[pa-me] CALLED userId=${userId} tokenPrefix=${(req as AuthedRequest).bearerToken?.slice(0, 8)} ` +
-        `sessionResolved=${!!sessionForEmail} sessionEmail=${sessionEmail ?? 'NULL'} ` +
-        `sessionKeys=${sessionForEmail ? Object.keys(sessionForEmail).join('|') : '-'}`,
-    );
     // Skuddsikker fallback: feiler users-oppslaget på NOEN måte (manglende
     // kolonne, ingen rad, DB-feil) men token-et resolverte til en sesjon med
     // email → regn brukeren som pålogget og bygg svaret fra sesjonen. Gyldig
