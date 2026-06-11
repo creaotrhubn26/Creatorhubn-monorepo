@@ -137,6 +137,28 @@ export async function ensurePostAgentTables(pool: Pool): Promise<boolean> {
         CREATE INDEX IF NOT EXISTS post_agent_module_entitlements_sub_idx
         ON post_agent_module_entitlements (stripe_subscription_id)
       `);
+      // Delt lærings-lager (Demo Studio): hvor interaktive elementer er per
+      // host, keyed på host (IKKE bruker) → læringen komponerer på tvers av
+      // demoer og brukere. Speiler den lokale LearnedTarget-strukturen.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS post_agent_learned_targets (
+          id BIGSERIAL PRIMARY KEY,
+          host TEXT NOT NULL,
+          label TEXT NOT NULL,
+          selector TEXT,
+          hotspot JSONB,
+          action_type TEXT,
+          correct_label TEXT,
+          reject_selectors JSONB,
+          count INTEGER NOT NULL DEFAULT 1,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          UNIQUE (host, label)
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS post_agent_learned_targets_host_idx
+        ON post_agent_learned_targets (host)
+      `);
       return true;
     } catch (error) {
       console.warn('[post-agent] storage init failed:', error);
