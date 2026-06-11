@@ -1218,6 +1218,68 @@ Tidspunkt: ${new Date().toISOString()}
     }
   });
 
+  // ── Delt lærings-lager (Demo Studio) — hvor interaktive elementer er per
+  // host. GET er åpent (delt kunnskap som komponerer på tvers av brukere);
+  // POST krever auth mot spam. ───────────────────────────────────────────────
+  router.get('/learned-targets', async (req: Request, res: Response) => {
+    const host = String(req.query.host ?? '').trim().toLowerCase();
+    if (!host) { res.status(400).json({ error: 'missing_host' }); return; }
+    try {
+      const { rows } = await pool.query(
+        `SELECT label, selector, hotspot, action_type, correct_label, reject_selectors, count, updated_at
+         FROM post_agent_learned_targets WHERE host = $1 ORDER BY count DESC LIMIT 500`,
+        [host],
+      );
+      res.json({
+        host,
+        targets: (rows as Array<Record<string, unknown>>).map((r) => ({
+          label: r.label,
+          selector: r.selector ?? undefined,
+          hotspot: r.hotspot ?? undefined,
+          actionType: r.action_type ?? undefined,
+          correctLabel: r.correct_label ?? undefined,
+          rejectSelectors: r.reject_selectors ?? undefined,
+          count: r.count,
+          updatedAt: r.updated_at instanceof Date ? r.updated_at.toISOString() : String(r.updated_at),
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ error: 'learned_fetch_failed', detail: (err as Error).message });
+    }
+  });
+
+  router.post('/learned-targets', userAuth, async (req: Request, res: Response) => {
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const host = String(b.host ?? '').trim().toLowerCase();
+    const label = String(b.label ?? '').trim();
+    if (!host || !label) { res.status(400).json({ error: 'missing_host_or_label' }); return; }
+    try {
+      await pool.query(
+        `INSERT INTO post_agent_learned_targets (host, label, selector, hotspot, action_type, correct_label, reject_selectors, count, updated_at)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7::jsonb, 1, now())
+         ON CONFLICT (host, label) DO UPDATE SET
+           selector = COALESCE(EXCLUDED.selector, post_agent_learned_targets.selector),
+           hotspot = COALESCE(EXCLUDED.hotspot, post_agent_learned_targets.hotspot),
+           action_type = COALESCE(EXCLUDED.action_type, post_agent_learned_targets.action_type),
+           correct_label = COALESCE(EXCLUDED.correct_label, post_agent_learned_targets.correct_label),
+           reject_selectors = COALESCE(EXCLUDED.reject_selectors, post_agent_learned_targets.reject_selectors),
+           count = post_agent_learned_targets.count + 1,
+           updated_at = now()`,
+        [
+          host, label,
+          b.selector ?? null,
+          b.hotspot ? JSON.stringify(b.hotspot) : null,
+          b.actionType ?? null,
+          b.correctLabel ?? null,
+          b.rejectSelectors ? JSON.stringify(b.rejectSelectors) : null,
+        ],
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: 'learned_save_failed', detail: (err as Error).message });
+    }
+  });
+
   // Start Stripe Checkout for ÉN modul. Webhooken skriver entitlement når
   // checkout fullføres (metadata.module → post_agent_module_entitlements).
   router.post('/modules/checkout', userAuth, async (req: Request, res: Response) => {
