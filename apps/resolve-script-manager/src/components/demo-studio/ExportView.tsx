@@ -137,7 +137,9 @@ export function ExportView() {
       const st = await playwrightStatus();
       if (!st.nodeOk) { setFileMsg('Node.js ikke funnet — installer Node (f.eks. «brew install node») og prøv igjen.'); return; }
       if (!st.playwrightInstalled) {
-        setFileMsg('Installerer Playwright + Chromium (engangs, ~1–3 min, se loggen under)…');
+        setFileMsg(st.chromeAvailable
+          ? 'Installerer Playwright (engangs, raskt — bruker din Chrome, ingen Chromium-nedlasting)…'
+          : 'Installerer Playwright + Chromium (engangs, ~1–3 min, se loggen under)…');
         const setup = await setupPlaywright();
         if (!setup.succeeded) { setFileMsg('Playwright-oppsett feilet (krever node/npm + nett). Se loggen.'); return; }
       }

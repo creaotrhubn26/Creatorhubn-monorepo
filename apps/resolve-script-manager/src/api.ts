@@ -54,6 +54,7 @@ export interface PlaywrightStatus {
   nodePath: string;
   nodeOk: boolean;
   playwrightInstalled: boolean;
+  chromeAvailable?: boolean;
   runtimeDir: string;
 }
 export async function playwrightStatus(): Promise<PlaywrightStatus> {

@@ -144,7 +144,11 @@ export function buildPlaywrightScript(project: DemoProject): string {
   L.push('');
   SELF_HEAL_RUNTIME.forEach((l) => L.push(l));
   L.push('');
-  L.push('const browser = await chromium.launch({ headless: false, slowMo: 350 });');
+  // Bruk system-Chrome hvis tilgjengelig (ingen Chromium-nedlasting); fall
+  // tilbake til Playwrights bundlede Chromium.
+  L.push('let browser;');
+  L.push("try { browser = await chromium.launch({ headless: false, slowMo: 350, channel: 'chrome' }); }");
+  L.push('catch { browser = await chromium.launch({ headless: false, slowMo: 350 }); }');
   L.push("const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, recordVideo: { dir: 'demo-video', size: { width: 1280, height: 800 } } });");
   L.push('const page = await context.newPage();');
   L.push(`await page.goto(${jsStr(project.url)}, { waitUntil: 'domcontentloaded' });`);
