@@ -57,7 +57,8 @@ export function setupVideoRoutes(deps: VideoRoutesDeps): void {
   });
 
   app.post("/api/video/timecoded-comments", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const videoId = readString(payload.videoId);
@@ -73,8 +74,12 @@ export function setupVideoRoutes(deps: VideoRoutesDeps): void {
         videoId,
         timecode: readNumber(payload.timecode) ?? 0,
         comment: readString(payload.comment) || "",
+        // Mix/master-aspekt — gjør tidskode-kommentarer strukturerte og
+        // filtrerbare. Lagres så taggingen overlever reload (e2e).
+        category: readString(payload.category) || "balance",
         version: readString(payload.version) || "v1",
-        userId: readString(payload.userId) || "system",
+        userId: session.userId,
+        author: readString(payload.author) || session.name || session.email || "Bruker",
         createdAt: new Date().toISOString(),
       };
       const next = [...existing, comment];
