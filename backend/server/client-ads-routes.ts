@@ -88,6 +88,10 @@ import {
   type TrackingMethod,
 } from "./client-ads-deployment-service.js";
 import {
+  buildDiagnosticsSummary,
+  recordTrackEvent,
+} from "./client-ads-diagnostics-service.js";
+import {
   buildTiktokAuthUrl,
   exchangeTiktokAuthCode,
   listTiktokAdvertisers,
@@ -2658,6 +2662,66 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "validate_failed", detail: String(err) });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════
+  // N2-B6 — Monitoring + Diagnostics
+  // ══════════════════════════════════════════════════════════════════
+
+  // GET /api/role-room/ads-configs/:id/diagnostics — full summary
+  app.get("/api/role-room/ads-configs/:id/diagnostics", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    try {
+      const summary = await buildDiagnosticsSummary(pool, req.params.id);
+      if (!summary) return res.status(404).json({ error: "config_not_found" });
+      return res.json(summary);
+    } catch (err) {
+      return res.status(500).json({ error: "diagnostics_failed", detail: String(err) });
+    }
+  });
+
+  // POST /api/role-room/ads/track — proxy-receiver (token-gated, no session)
+  // Dette er endpointet klientens backend POST-er til når proxy-method brukes.
+  app.post("/api/role-room/ads/track", async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const proxyToken = String(req.headers['x-proxy-token'] ?? body.proxy_token ?? '');
+    const configId = String(body.config_id ?? '');
+    const actionName = String(body.action ?? body.action_name ?? '');
+
+    if (!proxyToken || !configId || !actionName) {
+      return res.status(400).json({ error: "mangler_token_eller_action" });
+    }
+
+    try {
+      const r = await recordTrackEvent(pool, {
+        configId,
+        proxyToken,
+        actionName,
+        value: typeof body.value === 'number' ? body.value : undefined,
+        currency: typeof body.currency === 'string' ? body.currency : undefined,
+        userIdentifier: typeof body.user_identifier === 'string' ? body.user_identifier
+          : typeof body.user_email_hashed === 'string' ? body.user_email_hashed
+          : undefined,
+        transactionId: typeof body.order_id === 'string' ? body.order_id
+          : typeof body.transaction_id === 'string' ? body.transaction_id
+          : undefined,
+        pageUrl: typeof body.page_url === 'string' ? body.page_url : undefined,
+        referrer: typeof req.headers.referer === 'string' ? req.headers.referer : undefined,
+        userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined,
+        ipAddress: req.ip,
+      });
+      if (!r.ok) {
+        const status = r.reason === 'invalid_proxy_token' ? 401
+          : r.reason === 'config_not_found' ? 404
+          : 400;
+        return res.status(status).json({ error: r.reason });
+      }
+      return res.json({ ok: true, eventId: r.eventId, deduplicated: r.deduplicated });
+    } catch (err) {
+      return res.status(500).json({ error: "track_failed", detail: String(err) });
     }
   });
 }
