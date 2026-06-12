@@ -44,6 +44,9 @@ interface Props {
   accentColor?: string;
   /** Skjul innsendingsfeltet (f.eks. ren visning for klient uten skrive-rett). */
   readOnly?: boolean;
+  /** Kompakt: behold waveform + markører + transport + skrivefelt, men skjul
+   *  intern filter-rad + kommentarliste (når en ekstern tråd eier kommentarene). */
+  compact?: boolean;
 }
 
 const fmt = (s: number): string => {
@@ -59,6 +62,7 @@ export default function AudioReviewPlayer({
   onAddComment,
   accentColor = '#FF6B35',
   readOnly = false,
+  compact = false,
 }: Props) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const wsRef = React.useRef<WaveSurfer | null>(null);
@@ -209,7 +213,7 @@ export default function AudioReviewPlayer({
       )}
 
       {/* Aspekt-filter med telling — se hvor tyngden av feedback ligger */}
-      {sorted.length > 0 && (
+      {!compact && sorted.length > 0 && (
         <Stack direction="row" spacing={0.5} sx={{ mt: 2, flexWrap: 'wrap', gap: 0.5 }}>
           <Chip label={`Alle (${sorted.length})`} size="small" onClick={() => setFilterCat(null)}
             sx={{ height: 22, fontSize: '0.7rem', cursor: 'pointer', bgcolor: filterCat === null ? '#F5F2EA' : 'rgba(255,255,255,0.06)', color: filterCat === null ? '#0B0B0C' : 'rgba(245,242,234,0.7)', fontWeight: 700 }} />
@@ -223,7 +227,7 @@ export default function AudioReviewPlayer({
       )}
 
       {/* Kommentar-liste (klikk for å hoppe) — fargekodet per aspekt */}
-      {visible.length > 0 && (
+      {!compact && visible.length > 0 && (
         <Stack spacing={0.5} sx={{ mt: 1.5 }}>
           {visible.map((c) => (
             <Stack key={c.id} direction="row" spacing={1} alignItems="flex-start"
