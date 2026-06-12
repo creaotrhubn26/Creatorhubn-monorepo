@@ -20,7 +20,7 @@ export const VIEWPORT_W: Record<FrameVariant, number> = {
   iphone: 390, ipad: 834, ipad_landscape: 1194, macbook: 1440,
 };
 
-export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, onScreenClick, onScreenDraw, focusZoom, screenshot }: {
+export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, onScreenClick, onScreenDraw, editRect, onEditRect, focusZoom, screenshot }: {
   variant: FrameVariant; url: string; width: string | number;
   shadow?: string; iframeRef?: React.Ref<HTMLIFrameElement>;
   /** Fase 1b: vis et scan-screenshot i stedet for live-iframe (presis + funker
@@ -34,6 +34,10 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
   /** Tegn hotspot ved å dra et rektangel → bounds i viewport-prosent (0–1).
    *  Et kort drag (≈klikk) faller tilbake til onScreenClick. */
   onScreenDraw?: (rect: { x: number; y: number; w: number; h: number }) => void;
+  /** Eksisterende hotspot som kan justeres direkte (flytt + endre størrelse). */
+  editRect?: { x: number; y: number; w: number; h: number };
+  /** Kalt med ny bounds når brukeren har flyttet/skalert editRect. */
+  onEditRect?: (rect: { x: number; y: number; w: number; h: number }) => void;
   /** Push-in mot et punkt (auto-zoom): senter cx,cy i 0–1, skala ≥ 1. Zoomer
    *  iframe + overlay sammen, så hotspot holder seg justert. Myk overgang. */
   focusZoom?: { cx: number; cy: number; scale: number };
@@ -44,6 +48,9 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
   const [scale, setScale] = useState(0);
   // Tegne-hotspot: rubber-band-rektangel mens man drar (viewport-prosent 0–1).
   const [draw, setDraw] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  // Redigere eksisterende hotspot: aktiv flytt/skaler-interaksjon + live preview.
+  const [edit, setEdit] = useState<{ mode: 'move' | 'resize'; handle: string; cx: number; cy: number; orig: { x: number; y: number; w: number; h: number } } | null>(null);
+  const [editPreview, setEditPreview] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
   const vw = VIEWPORT_W[variant];
   // Skjerm-rektangelets piksel-forhold (b/h) = sw/sh; logisk høyde gir samme forhold.
@@ -93,23 +100,48 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
         {overlay}
         </div>
         {/* Klikk/tegne-fanger for hotspot (kun når onScreenClick/onScreenDraw er satt).
-            Dra = tegn rektangel (eksakt markering); kort drag/klikk = standard-boks. */}
-        {(onScreenClick || onScreenDraw) && (
+            Tom flate: dra = tegn nytt rektangel, kort drag/klikk = standard-boks.
+            editRect satt: dra boksen for å flytte, dra håndtak for å endre størrelse. */}
+        {(onScreenClick || onScreenDraw) && (() => {
+          const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+          const live = editPreview ?? editRect ?? null;
+          const computeEdit = (e: React.MouseEvent, container: HTMLElement) => {
+            if (!edit) return null;
+            const r = container.getBoundingClientRect();
+            const dx = (e.clientX - edit.cx) / r.width, dy = (e.clientY - edit.cy) / r.height;
+            let { x, y, w, h } = edit.orig;
+            if (edit.mode === 'move') { x = clamp(x + dx, 0, 1 - w); y = clamp(y + dy, 0, 1 - h); }
+            else {
+              if (edit.handle.includes('e')) w = clamp(w + dx, 0.02, 1 - x);
+              if (edit.handle.includes('s')) h = clamp(h + dy, 0.02, 1 - y);
+              if (edit.handle.includes('w')) { const nx = clamp(x + dx, 0, x + w - 0.02); w = w + (x - nx); x = nx; }
+              if (edit.handle.includes('n')) { const ny = clamp(y + dy, 0, y + h - 0.02); h = h + (y - ny); y = ny; }
+            }
+            return { x, y, w, h };
+          };
+          const startEdit = (e: React.MouseEvent, mode: 'move' | 'resize', handle: string) => {
+            if (!editRect) return;
+            e.stopPropagation();
+            setEdit({ mode, handle, cx: e.clientX, cy: e.clientY, orig: editRect });
+          };
+          return (
           <div
             onMouseDown={(e) => {
               const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-              const y = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+              const x = clamp((e.clientX - r.left) / r.width, 0, 1);
+              const y = clamp((e.clientY - r.top) / r.height, 0, 1);
               setDraw({ x0: x, y0: y, x1: x, y1: y });
             }}
             onMouseMove={(e) => {
+              if (edit) { const nr = computeEdit(e, e.currentTarget as HTMLElement); if (nr) setEditPreview(nr); return; }
               if (!draw) return;
               const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-              const y = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+              const x = clamp((e.clientX - r.left) / r.width, 0, 1);
+              const y = clamp((e.clientY - r.top) / r.height, 0, 1);
               setDraw((d) => (d ? { ...d, x1: x, y1: y } : d));
             }}
-            onMouseUp={() => {
+            onMouseUp={(e) => {
+              if (edit) { const nr = computeEdit(e, e.currentTarget as HTMLElement); setEdit(null); setEditPreview(null); if (nr && onEditRect) onEditRect(nr); return; }
               if (!draw) return;
               const w = Math.abs(draw.x1 - draw.x0), h = Math.abs(draw.y1 - draw.y0);
               const cx = (draw.x0 + draw.x1) / 2, cy = (draw.y0 + draw.y1) / 2;
@@ -121,10 +153,10 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
                 onScreenClick(cx, cy);
               }
             }}
-            onMouseLeave={() => setDraw(null)}
+            onMouseLeave={() => { setDraw(null); if (edit) { setEdit(null); setEditPreview(null); } }}
             style={{ position: 'absolute', inset: 0, cursor: 'crosshair', zIndex: 3 }}
           >
-            {draw && (() => {
+            {draw && !edit && (() => {
               const w = Math.abs(draw.x1 - draw.x0), h = Math.abs(draw.y1 - draw.y0);
               return (
                 <div style={{
@@ -135,8 +167,23 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
                 }} />
               );
             })()}
+            {/* Redigerbar hotspot: flytt-flate + 8 størrelses-håndtak */}
+            {editRect && live && (
+              <div style={{ position: 'absolute', left: `${live.x * 100}%`, top: `${live.y * 100}%`, width: `${live.w * 100}%`, height: `${live.h * 100}%`,
+                border: '2px solid #c4622d', background: 'rgba(196,98,45,0.16)', borderRadius: 6, cursor: 'move', boxSizing: 'border-box' }}
+                onMouseDown={(e) => startEdit(e, 'move', '')}>
+                {(['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const).map((hd) => {
+                  const left = hd.includes('w') ? '0%' : hd.includes('e') ? '100%' : '50%';
+                  const top = hd.includes('n') ? '0%' : hd.includes('s') ? '100%' : '50%';
+                  const cur = hd === 'n' || hd === 's' ? 'ns-resize' : hd === 'e' || hd === 'w' ? 'ew-resize' : (hd === 'nw' || hd === 'se') ? 'nwse-resize' : 'nesw-resize';
+                  return <div key={hd} onMouseDown={(e) => startEdit(e, 'resize', hd)}
+                    style={{ position: 'absolute', left, top, width: 11, height: 11, marginLeft: -6, marginTop: -6, borderRadius: 3, background: '#fff', border: '2px solid #c4622d', cursor: cur }} />;
+                })}
+              </div>
+            )}
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

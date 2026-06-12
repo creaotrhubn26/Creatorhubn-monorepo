@@ -954,7 +954,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     overlay={<SceneInteractionOverlay hotspot={selected?.hotspot} render={render} device={previewDevice} actionType={selected?.actionType} animate={!placingHotspot} />}
                     focusZoom={render.autoZoom && selected?.hotspot && !placingHotspot ? { cx: selected.hotspot.x + selected.hotspot.w / 2, cy: selected.hotspot.y + selected.hotspot.h / 2, scale: 1.5 } : undefined}
                     onScreenClick={placingHotspot ? placeHotspot : undefined}
-                    onScreenDraw={placingHotspot ? drawHotspot : undefined} />
+                    onScreenDraw={placingHotspot ? drawHotspot : undefined}
+                    editRect={placingHotspot ? selected?.hotspot : undefined}
+                    onEditRect={(rect) => { if (selected) { updateScene(selected.id, { hotspot: rect }); learnHotspot(rect); } }} />
                 </div>
                 {/* Jordet kontaktskygge under enheten */}
                 <div style={{
@@ -1138,7 +1140,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     )}
                   </div>
                   {placingHotspot
-                    ? <div style={{ fontSize: 11, color: C.accent, marginTop: 5 }}>Dra et rektangel rundt elementet for eksakt markering — eller bare klikk for en standard-boks.</div>
+                    ? <div style={{ fontSize: 11, color: C.accent, marginTop: 5 }}>{selected.hotspot ? 'Dra boksen for å flytte, eller dra et hjørne/kant for å endre størrelse. Tegn et nytt rektangel på tom flate for å erstatte.' : 'Dra et rektangel rundt elementet for eksakt markering — eller bare klikk for en standard-boks.'}</div>
                     : selected.hotspot
                     ? <div style={{ fontSize: 11, color: C.green, marginTop: 5 }}>✓ Element markert — fremheves i opptak</div>
                     : <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 5 }}>Tegn rundt elementet på preview-en så Guided Recorder kan fremheve det presist.</div>}
