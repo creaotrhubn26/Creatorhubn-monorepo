@@ -31,7 +31,7 @@ import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
-import { generateDemoFlow, completeDemoFlow, fetchSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, suggestVisualBeats, type CommandResult, type VisualBeat } from './demoStudioAI';
+import { generateDemoFlow, completeDemoFlow, fetchSiteContext, analyzeSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, suggestVisualBeats, type CommandResult, type VisualBeat, type SiteUnderstanding } from './demoStudioAI';
 import { executeScript, playwrightStatus, playwrightCaptureShots } from '../../api';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
@@ -163,6 +163,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [urlInput, setUrlInput] = useState('');
   const [directorBusy, setDirectorBusy] = useState(false);
   const [directorMsg, setDirectorMsg] = useState<string | null>(null);
+  // «Forstå siden først»: Claudes forståelse av produkt + målgruppe, vist som
+  // en brief før noe lages — grunnlag for diskusjon/justering.
+  const [understanding, setUnderstanding] = useState<SiteUnderstanding | null>(null);
+  const pickAudience = (a: string) => {
+    const m = project?.scriptMeta ?? { tone: 'professional' as const, audience: '', language: 'Norsk', length: 'medium' as const };
+    setProjectField('scriptMeta', { ...m, audience: a });
+  };
   const [showSignIn, setShowSignIn] = useState(false);
   const [aiReady, setAiReady] = useState(isAiConnected());
   // Re-render når entitlements endres (kjøp/refresh) så Marketing-gaten åpner.
@@ -420,13 +427,29 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     const w = 0.22, h = 0.09; // knapp-aktig standardstørrelse
     const hotspot = { x: Math.max(0, Math.min(1 - w, xPct - w / 2)), y: Math.max(0, Math.min(1 - h, yPct - h / 2)), w, h };
     updateScene(selected.id, { hotspot });
-    // Lær opp AI-en: manuell plassering huskes per side+label og overstyrer
-    // AI-ens gjetting neste gang man genererer en flow på samme nettside.
-    if (project?.url && selected.targetLabel) {
+    learnHotspot(hotspot);
+    setPlacingHotspot(false);
+  };
+
+  /** Tegn scenens hotspot ved å dra et rektangel på preview-en (eksakt markering). */
+  const drawHotspot = (rect: { x: number; y: number; w: number; h: number }) => {
+    if (!selected) return;
+    const hotspot = {
+      x: Math.max(0, Math.min(1, rect.x)), y: Math.max(0, Math.min(1, rect.y)),
+      w: Math.max(0.02, Math.min(1 - rect.x, rect.w)), h: Math.max(0.02, Math.min(1 - rect.y, rect.h)),
+    };
+    updateScene(selected.id, { hotspot });
+    learnHotspot(hotspot);
+    setPlacingHotspot(false);
+  };
+
+  /** Lær opp AI-en: manuell hotspot huskes per side+label og overstyrer AI-ens
+   *  gjetting neste gang man genererer en flow på samme nettside. */
+  const learnHotspot = (hotspot: { x: number; y: number; w: number; h: number }) => {
+    if (project?.url && selected?.targetLabel) {
       recordLearnedTarget(project.url, selected.targetLabel, { hotspot, selector: selected.targetSelector });
       setCmdReply(`✓ Lærte hvor «${selected.targetLabel}» er — AI husker dette for ${(() => { try { return new URL(project.url).host; } catch { return 'denne siden'; } })()} neste gang.`);
     }
-    setPlacingHotspot(false);
   };
 
   /** Aktiv læring (C): hopp til en scene AI er usikker på og start hotspot-plassering. */
@@ -496,10 +519,20 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       // Foretrekk JS-rendret pageText fra skannet (rikere enn anonym reqwest).
       const siteContext = scan?.pageText || await fetchSiteContext(project.url);
       applyScannedBranding(scan);
-      setDirectorMsg(elements.length ? `Fant ${elements.length} elementer — AI Director designer flowen…` : 'AI Director designer flowen…');
-      const meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
+      // FORSTÅ FØRST: hva er produktet + hvem er målgruppen? Presenter det som
+      // en kort brief før vi lager noe — grunnet i URL-en, ikke gjetning.
+      setDirectorMsg('Forstår siden…');
+      const u = await analyzeSiteContext({ url: project.url, pageText: siteContext, brandName: scan?.branding?.brandName, elements }).catch(() => null);
+      let meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
+      if (u) {
+        setUnderstanding(u);
+        // Adopter målgruppe/mål fra forståelsen hvis brukeren ikke har satt dem.
+        if ((!meta.audience || meta.audience === 'General') && u.audience) { meta = { ...meta, audience: u.audience }; setProjectField('scriptMeta', meta); }
+        if (!project.goal && u.suggestedGoal) setProjectField('goal', u.suggestedGoal);
+        setDirectorMsg(`Forsto: ${u.summary} · Målgruppe: ${u.audience}. Lager demo (juster vinkel/målgruppe i feltet over, så kjør på nytt)…`);
+      }
       const scenes = await generateDemoFlow({
-        url: project.url, demoType: project.demoType, devices: project.devices, meta, siteContext, elements, goal: project.goal, task: project.task,
+        url: project.url, demoType: project.demoType, devices: project.devices, meta, siteContext, elements, goal: project.goal || u?.suggestedGoal, task: project.task,
       });
       replaceScenes(scenes);
       setDirectorMsg(`✓ ${scenes.length} scener generert`);
@@ -672,6 +705,27 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 {aiReady ? 'AI klar' : 'Ikke koblet'}
               </span>
             </h4>
+            {/* «Forstå siden først»: Claudes brief + målgruppe-valg før generering. */}
+            {understanding && (
+              <div style={{ background: '#fff', border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 4 }}>Forstår jeg dette riktig?</div>
+                <div style={{ fontSize: 12, color: C.ink, lineHeight: 1.45, marginBottom: 6 }}>{understanding.summary}</div>
+                <div style={{ fontSize: 10.5, color: C.inkSoft, marginBottom: 4 }}>Hvem er målgruppen?</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 6 }}>
+                  {Array.from(new Set([understanding.audience, ...understanding.audienceOptions])).filter(Boolean).map((a) => {
+                    const active = (project?.scriptMeta?.audience || '') === a;
+                    return (
+                      <button key={a} onClick={() => pickAudience(a)}
+                        style={{ fontSize: 11, padding: '3px 9px', borderRadius: 7, cursor: 'pointer', border: `1px solid ${active ? C.accent : C.line}`, background: active ? C.accent : '#fff', color: active ? '#fff' : C.inkSoft, fontWeight: active ? 600 : 500 }}>{a}</button>
+                    );
+                  })}
+                </div>
+                {understanding.valueProps?.length ? (
+                  <div style={{ fontSize: 10.5, color: C.inkFaint, lineHeight: 1.4 }}>Verdiløfter: {understanding.valueProps.slice(0, 3).join(' · ')}</div>
+                ) : null}
+                <div style={{ fontSize: 10.5, color: C.inkFaint, marginTop: 5 }}>Juster vinkel/målgruppe i kommando-feltet (f.eks. «gjør den mer investor-rettet»), så «Generér hele demoen».</div>
+              </div>
+            )}
             {/* ── AI-kommando (Conversational Director) ── */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
               <input style={{ ...field, flex: 1 }} value={cmdInput} placeholder="Si til AI: «lag en voiceover»…"
@@ -899,7 +953,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     screenshot={pickShot(project.scanShots, (selected?.startScrollPct ?? 0) / 100) ?? undefined}
                     overlay={<SceneInteractionOverlay hotspot={selected?.hotspot} render={render} device={previewDevice} actionType={selected?.actionType} animate={!placingHotspot} />}
                     focusZoom={render.autoZoom && selected?.hotspot && !placingHotspot ? { cx: selected.hotspot.x + selected.hotspot.w / 2, cy: selected.hotspot.y + selected.hotspot.h / 2, scale: 1.5 } : undefined}
-                    onScreenClick={placingHotspot ? placeHotspot : undefined} />
+                    onScreenClick={placingHotspot ? placeHotspot : undefined}
+                    onScreenDraw={placingHotspot ? drawHotspot : undefined} />
                 </div>
                 {/* Jordet kontaktskygge under enheten */}
                 <div style={{
@@ -1075,16 +1130,18 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
                     <button style={{ ...outlineBtn, flex: 1, background: placingHotspot ? C.accent : '#fff', color: placingHotspot ? '#fff' : C.ink, borderColor: placingHotspot ? C.accent : C.lineStrong }}
                       onClick={() => setPlacingHotspot((v) => !v)}>
-                      ◎ {placingHotspot ? 'Klikk på elementet…' : selected.hotspot ? 'Flytt hotspot' : 'Sett hotspot på preview'}
+                      ◎ {placingHotspot ? 'Tegn rundt elementet…' : selected.hotspot ? 'Tegn hotspot på nytt' : 'Tegn hotspot på preview'}
                     </button>
                     {selected.hotspot && (
                       <button style={{ ...outlineBtn, padding: '0 10px' }} title="Fjern hotspot"
                         onClick={() => updateScene(selected.id, { hotspot: undefined })}>✕</button>
                     )}
                   </div>
-                  {selected.hotspot
+                  {placingHotspot
+                    ? <div style={{ fontSize: 11, color: C.accent, marginTop: 5 }}>Dra et rektangel rundt elementet for eksakt markering — eller bare klikk for en standard-boks.</div>
+                    : selected.hotspot
                     ? <div style={{ fontSize: 11, color: C.green, marginTop: 5 }}>✓ Element markert — fremheves i opptak</div>
-                    : <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 5 }}>Marker elementet på preview-en så Guided Recorder kan fremheve det.</div>}
+                    : <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 5 }}>Tegn rundt elementet på preview-en så Guided Recorder kan fremheve det presist.</div>}
                   {selected.ctaType && (
                     <span style={{ display: 'inline-block', marginTop: 6, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: '#fdf0e7', color: '#b5651d' }}>CTA: {CTA_LABELS[selected.ctaType]}</span>
                   )}
