@@ -148,6 +148,14 @@ export default function App() {
   } | null>(null);
   const [agentEditorConfig, setAgentEditorConfig] = useState<AgentConfig | null>(null);
   const [agentSourcePath, setAgentSourcePath] = useState<string>("");
+  // Ekte app-versjon fra Tauri (ikke hardkodet) — vises i footer + innstillinger.
+  const [appVersion, setAppVersion] = useState<string>("");
+  useEffect(() => {
+    void import("@tauri-apps/api/app")
+      .then(({ getVersion }) => getVersion())
+      .then((v) => setAppVersion(v))
+      .catch(() => { /* web/dev — ingen Tauri */ });
+  }, []);
 
   const openAgent = useCallback(async (config: AgentConfig) => {
     try {
@@ -893,7 +901,7 @@ export default function App() {
           >
             {showMediaPool ? <IconChevronRight /> : <IconChevronLeft />}
           </button>
-          <span className="footer-version">v0.1.0</span>
+          <span className="footer-version">{appVersion ? `v${appVersion}` : ""}</span>
         </span>
       </footer>
 

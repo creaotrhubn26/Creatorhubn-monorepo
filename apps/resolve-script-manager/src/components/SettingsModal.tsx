@@ -152,6 +152,13 @@ export function SettingsModal({ onClose }: Props) {
   const [adminMode, setAdminMode] = useState(false);
   const [adminClicks, setAdminClicks] = useState<number[]>([]);
   const [showSignIn, setShowSignIn] = useState(false);
+  const [appVersion, setAppVersion] = useState<string>("");
+  useEffect(() => {
+    void import("@tauri-apps/api/app")
+      .then(({ getVersion }) => getVersion())
+      .then((v) => setAppVersion(v))
+      .catch(() => { /* web/dev — ingen Tauri */ });
+  }, []);
 
   useEffect(() => {
     void updateAppSettings(settingsToEnvVars(settings));
@@ -470,7 +477,7 @@ export function SettingsModal({ onClose }: Props) {
           onClick={handleAdminClick}
           title={adminMode ? "Admin section unlocked" : ""}
         >
-          The Role Room Post Agent · v0.1.0
+          The Role Room Post Agent{appVersion ? ` · v${appVersion}` : ""}
         </div>
       </div>
     </div>
