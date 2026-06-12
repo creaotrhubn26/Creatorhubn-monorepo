@@ -459,6 +459,7 @@ import { setupShowcaseAnalyticsRoutes } from "./showcase-analytics-routes";
 import { setupShowcasePricingRoutes } from "./showcase-pricing-routes";
 import { setupPhotographerStripeConnectRoutes } from "./photographer-stripe-connect-routes";
 import { setupPhotographerReviewsRoutes } from "./photographer-reviews-routes";
+import { setupAudioShowcaseRoutes } from "./audio-showcase-routes";
 import { setupShowcaseSmartAlbumsRoutes } from "./showcase-smart-albums-routes";
 import { setupShowcaseBatchOperationsRoutes } from "./showcase-batch-operations-routes";
 import { setupShowcaseGooglePhotosRoutes } from "./showcase-google-photos-routes";
@@ -70156,6 +70157,9 @@ setupPhotographerStripeConnectRoutes({
 
 // ── Klient-omtaler — kundene anmelder fotografen; eier modererer. ───────────
 setupPhotographerReviewsRoutes({ app, pool, requireUserSession });
+
+// ── Audio Showcase — profesjonelt mix/master-review-rom (spec MVP). ─────────
+setupAudioShowcaseRoutes({ app, pool, requireUserSession });
 
 
 
