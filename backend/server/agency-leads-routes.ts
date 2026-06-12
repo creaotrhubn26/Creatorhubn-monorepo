@@ -402,6 +402,212 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
     }
   });
 
+  // ── PATCH /api/admin-room/agency-leads/:id — oppdater status/noter ──
+  app.patch("/api/admin-room/agency-leads/:id", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    if (isAdminEmail && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "Admin Room kreves" });
+    }
+
+    const id = String(req.params.id ?? "").trim();
+    if (!id) return res.status(400).json({ error: "mangler_id" });
+
+    const body = (req.body ?? {}) as {
+      status?: string;
+      internal_notes?: string;
+      assigned_to_user_id?: string | null;
+    };
+
+    const updates: string[] = [];
+    const params: unknown[] = [];
+
+    if (body.status && ALLOWED_STATUSES.has(body.status)) {
+      params.push(body.status);
+      updates.push(`status = $${params.length}`);
+      // Auto-fyll tidsstempler ved status-overgang
+      if (body.status === 'contacted') updates.push(`contacted_at = COALESCE(contacted_at, NOW())`);
+      if (body.status === 'trial') updates.push(`trial_started_at = COALESCE(trial_started_at, NOW())`);
+      if (body.status === 'customer') updates.push(`customer_at = COALESCE(customer_at, NOW())`);
+    }
+    if (typeof body.internal_notes === 'string') {
+      params.push(body.internal_notes);
+      updates.push(`internal_notes = $${params.length}`);
+    }
+    if (body.assigned_to_user_id !== undefined) {
+      params.push(body.assigned_to_user_id ?? null);
+      updates.push(`assigned_to_user_id = $${params.length}`);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "ingen_endringer" });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    params.push(id);
+
+    try {
+      const r = await pool.query(
+        `UPDATE agency_leads SET ${updates.join(', ')}
+         WHERE id = $${params.length}::uuid
+         RETURNING id::text, agency_name, status, contacted_at, trial_started_at,
+                   customer_at, internal_notes, assigned_to_user_id, updated_at`,
+        params,
+      );
+      if (r.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
+      return res.json({ ok: true, lead: r.rows[0] });
+    } catch (err) {
+      console.error("[agency-leads PATCH] failed", err);
+      return res.status(500).json({ error: "Oppdatering feilet", detail: String(err) });
+    }
+  });
+
+  // ── GET /api/admin-room/agency-acquisition/dashboard ──────────────
+  // Dashboard-aggregering for byrå-akkvisisjons-fanen.
+  // Returnerer funnel + konverteringsrater + tid-i-steg + pipeline-verdi.
+  app.get("/api/admin-room/agency-acquisition/dashboard", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    if (isAdminEmail && !isAdminEmail(session.email)) {
+      return res.status(403).json({ error: "Admin Room kreves" });
+    }
+
+    // ARPU-estimat for pipeline-verdi — kan overstyres via query
+    const arpuMonthlyNok = Math.max(0, Number(req.query.arpuMonthlyNok) || 4900);
+
+    try {
+      // Funnel-counts per status
+      const funnelRes = await pool.query<{ status: string; n: number }>(
+        `SELECT status, COUNT(*)::int AS n FROM agency_leads GROUP BY status`,
+      );
+      const funnel: Record<string, number> = {};
+      for (const r of funnelRes.rows) funnel[r.status] = r.n;
+
+      const totalLeads = Object.values(funnel).reduce((a, b) => a + b, 0);
+      const newCount = funnel.new ?? 0;
+      const contactedCount = funnel.contacted ?? 0;
+      const demoCount = funnel.demo_booked ?? 0;
+      const trialCount = funnel.trial ?? 0;
+      const customerCount = funnel.customer ?? 0;
+      const disqualifiedCount = funnel.disqualified ?? 0;
+
+      // Akkumulerte tellinger for konverteringsrater (alt etter steget)
+      const reachedContacted = contactedCount + demoCount + trialCount + customerCount;
+      const reachedDemo = demoCount + trialCount + customerCount;
+      const reachedTrial = trialCount + customerCount;
+      const reachedCustomer = customerCount;
+
+      const conversionRates = {
+        new_to_contacted: totalLeads > 0
+          ? Math.round((reachedContacted / Math.max(1, totalLeads - disqualifiedCount)) * 100)
+          : 0,
+        contacted_to_demo: reachedContacted > 0
+          ? Math.round((reachedDemo / reachedContacted) * 100)
+          : 0,
+        demo_to_trial: reachedDemo > 0
+          ? Math.round((reachedTrial / reachedDemo) * 100)
+          : 0,
+        trial_to_customer: reachedTrial > 0
+          ? Math.round((reachedCustomer / reachedTrial) * 100)
+          : 0,
+        overall: totalLeads > 0
+          ? Math.round((reachedCustomer / Math.max(1, totalLeads - disqualifiedCount)) * 100)
+          : 0,
+      };
+
+      // Avg-time per stage (i dager)
+      const timeRes = await pool.query<{
+        avg_to_contacted: number | null;
+        avg_to_trial: number | null;
+        avg_to_customer: number | null;
+      }>(
+        `SELECT
+           AVG(EXTRACT(EPOCH FROM (contacted_at - created_at)) / 86400)::int AS avg_to_contacted,
+           AVG(EXTRACT(EPOCH FROM (trial_started_at - contacted_at)) / 86400)
+             FILTER (WHERE trial_started_at IS NOT NULL AND contacted_at IS NOT NULL)::int AS avg_to_trial,
+           AVG(EXTRACT(EPOCH FROM (customer_at - trial_started_at)) / 86400)
+             FILTER (WHERE customer_at IS NOT NULL AND trial_started_at IS NOT NULL)::int AS avg_to_customer
+         FROM agency_leads
+         WHERE contacted_at IS NOT NULL`,
+      );
+      const avgDays = {
+        new_to_contacted: timeRes.rows[0]?.avg_to_contacted ?? null,
+        contacted_to_trial: timeRes.rows[0]?.avg_to_trial ?? null,
+        trial_to_customer: timeRes.rows[0]?.avg_to_customer ?? null,
+      };
+
+      // Velocity — leads per uke siste 8 uker
+      const velocityRes = await pool.query<{ week: string; n: number; customers: number }>(
+        `SELECT
+           DATE_TRUNC('week', created_at)::date::text AS week,
+           COUNT(*)::int AS n,
+           COUNT(*) FILTER (WHERE status = 'customer')::int AS customers
+         FROM agency_leads
+         WHERE created_at >= NOW() - INTERVAL '8 weeks'
+         GROUP BY week
+         ORDER BY week DESC
+         LIMIT 8`,
+      );
+
+      // Pipeline-verdi — estimat
+      const pipelineValueNok = {
+        annual_trial: trialCount * arpuMonthlyNok * 12,
+        annual_customer: customerCount * arpuMonthlyNok * 12,
+        weighted_pipeline:
+          (demoCount * 0.25 + trialCount * 0.5 + customerCount * 1.0) * arpuMonthlyNok * 12,
+      };
+
+      // Top sources
+      const sourceRes = await pool.query<{
+        source_key: string; n: number; customers: number;
+      }>(
+        `SELECT
+           COALESCE(NULLIF(utm_source, ''), source, 'direct') AS source_key,
+           COUNT(*)::int AS n,
+           COUNT(*) FILTER (WHERE status = 'customer')::int AS customers
+         FROM agency_leads
+         GROUP BY source_key
+         ORDER BY n DESC
+         LIMIT 10`,
+      );
+
+      // Hot leads — siste 5 i 'new' eller 'contacted' med <5 dager siden created
+      const hotRes = await pool.query(
+        `SELECT id::text, agency_name, contact_name, email, status, segment,
+                roster_size, created_at, EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400 AS days_old
+         FROM agency_leads
+         WHERE status IN ('new', 'contacted')
+           AND created_at >= NOW() - INTERVAL '14 days'
+         ORDER BY created_at DESC
+         LIMIT 8`,
+      );
+
+      return res.json({
+        funnel,
+        funnelTotals: {
+          total: totalLeads,
+          new: newCount,
+          contacted: contactedCount,
+          demo: demoCount,
+          trial: trialCount,
+          customer: customerCount,
+          disqualified: disqualifiedCount,
+        },
+        conversionRates,
+        avgDaysInStage: avgDays,
+        velocityByWeek: velocityRes.rows,
+        pipelineValueNok,
+        arpuMonthlyNok,
+        topSources: sourceRes.rows,
+        hotLeads: hotRes.rows,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("[agency-acquisition/dashboard] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente dashboard", detail: String(err) });
+    }
+  });
+
   // ── POST /api/admin-room/marketing/generate-image — FAL.ai hero-image
   // Brukes fra Admin Room "Brand Studio" for å lage hero-bilder til
   // landingssider og blog-headers.
