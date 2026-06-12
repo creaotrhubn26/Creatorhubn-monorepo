@@ -82,6 +82,12 @@ import {
   listGoogleOfflineConversions,
 } from "./client-google-customer-match.js";
 import {
+  buildDeploymentPayload,
+  markDeploymentApplied,
+  validateDeployment,
+  type TrackingMethod,
+} from "./client-ads-deployment-service.js";
+import {
   buildTiktokAuthUrl,
   exchangeTiktokAuthCode,
   listTiktokAdvertisers,
@@ -2591,5 +2597,67 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     });
     if (!r.ok) return res.status(503).json({ error: r.error });
     return res.json({ accounts: r.accounts });
+  });
+
+  // ══════════════════════════════════════════════════════════════════
+  // N2-B5 — Tracking-deployment per metode
+  // ══════════════════════════════════════════════════════════════════
+
+  // GET /api/role-room/ads-configs/:id/deployment-payload?method=gtag_snippets
+  // Returnerer snippets / API-payload / proxy-config for valgt metode
+  app.get("/api/role-room/ads-configs/:id/deployment-payload", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    const method = String(req.query.method ?? "gtag_snippets") as TrackingMethod;
+    if (!['pending', 'proxy', 'gtag_snippets', 'gtm_api', 'wordpress_plugin', 'manual'].includes(method)) {
+      return res.status(400).json({ error: "ugyldig_method" });
+    }
+
+    try {
+      const payload = await buildDeploymentPayload(pool, {
+        configId: req.params.id,
+        method,
+        googleAdsConversionId: typeof req.query.conversionId === 'string'
+          ? req.query.conversionId : undefined,
+      });
+      if ("error" in payload) return res.status(404).json(payload);
+      return res.json(payload);
+    } catch (err) {
+      return res.status(500).json({ error: "deployment_payload_failed", detail: String(err) });
+    }
+  });
+
+  // POST /api/role-room/ads-configs/:id/mark-deployed
+  // Marker at klienten har applied deploymenten — setter tracking_deployed_at + method
+  app.post("/api/role-room/ads-configs/:id/mark-deployed", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    const method = String((req.body ?? {}).method ?? "") as TrackingMethod;
+    if (!method || !['proxy', 'gtag_snippets', 'gtm_api', 'wordpress_plugin', 'manual'].includes(method)) {
+      return res.status(400).json({ error: "mangler_eller_ugyldig_method" });
+    }
+
+    try {
+      const r = await markDeploymentApplied(pool, { configId: req.params.id, method });
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "mark_deployed_failed", detail: String(err) });
+    }
+  });
+
+  // POST /api/role-room/ads-configs/:id/validate-deployment
+  // Henter klientens nettside og leter etter gtag + action-labels
+  app.post("/api/role-room/ads-configs/:id/validate-deployment", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    try {
+      const r = await validateDeployment(pool, req.params.id);
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "validate_failed", detail: String(err) });
+    }
   });
 }
