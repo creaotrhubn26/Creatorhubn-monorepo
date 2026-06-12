@@ -1281,7 +1281,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   {placingHotspot
                     ? <div style={{ fontSize: 11, color: C.accent, marginTop: 5 }}>{selected.hotspot ? 'Dra boksen for å flytte, eller dra et hjørne/kant for å endre størrelse. Tegn et nytt rektangel på tom flate for å erstatte.' : 'Dra et rektangel rundt elementet for eksakt markering — eller bare klikk for en standard-boks.'}</div>
                     : selected.hotspot
-                    ? <div style={{ fontSize: 11, color: C.green, marginTop: 5 }}>✓ Element markert — fremheves i opptak</div>
+                    ? <div style={{ marginTop: 6 }}><span style={{ fontSize: 10.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20, background: '#e6f3ec', color: C.green, display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: C.green }} />Element markert — fremheves i opptak</span></div>
                     : <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 5 }}>Tegn rundt elementet på preview-en så Guided Recorder kan fremheve det presist.</div>}
                   {selected.ctaType && (
                     <span style={{ display: 'inline-block', marginTop: 6, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: '#fdf0e7', color: '#b5651d' }}>CTA: {CTA_LABELS[selected.ctaType]}</span>
