@@ -34,7 +34,7 @@ import {
   StorageOutlined as StorageOutlinedIcon,
   SwapHoriz as ModeIcon,
 } from '@mui/icons-material';
-import { Dialog, DialogContent, DialogTitle, IconButton as MuiIconButton } from '@mui/material';
+import { IconButton as MuiIconButton } from '@mui/material';
 
 import type { RoleRoomViewportMode } from '../hooks/useRoleRoomViewportMode';
 import ProfessionModeSwitcher from './ProfessionModeSwitcher';
