@@ -13,6 +13,10 @@ on:
       - main
     paths:
       - 'backend/migrations/**.sql'
+  workflow_dispatch:
+    # Manuell trigger fra `gh workflow run` eller GitHub-UI.
+    # Brukes når du må re-kjøre migrate uten å pushe (f.eks. hvis en
+    # tidligere auto-run feilet stille — se [[auto-migrate-fire-and-forget]]).
 
 permissions:
   contents: read
