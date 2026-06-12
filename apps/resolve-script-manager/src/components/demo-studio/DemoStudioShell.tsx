@@ -736,7 +736,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* ── Left nav ── */}
-        <div style={{ width: 208, background: C.panel, borderRight: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', padding: '12px 10px', flexShrink: 0, overflowY: 'auto', minHeight: 0 }}>
+        <div style={{ width: 256, background: C.panel, borderRight: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', padding: '12px 11px', flexShrink: 0, overflowY: 'auto', minHeight: 0 }}>
           {NAV_ITEMS.map((it) => (
             <div key={it.id} onClick={() => { setNav(it.id); setStoryMode(false); }}
               style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 11px', borderRadius: 9, fontSize: 13, cursor: 'pointer', marginBottom: 2,
@@ -751,10 +751,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             <span style={{ width: 18, opacity: 0.85 }}>✦</span> Story
           </div>
           <div style={{ flex: 1 }} />
-          <div style={{ background: C.cream, border: `1px solid ${C.line}`, borderRadius: 12, padding: 14, marginBottom: 12 }}>
-            <h4 style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              ✦ AI Director
-              <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 6, background: aiReady ? '#e6f3ec' : '#fdeee0', color: aiReady ? C.green : '#b5651d' }}>
+          <div style={{ background: C.cream, border: `1px solid ${C.line}`, borderRadius: 14, padding: '15px 14px 16px', marginBottom: 12, boxShadow: '0 1px 3px rgba(31,27,23,0.05)' }}>
+            <h4 style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
+              <span style={{ color: C.accent }}>✦</span> AI Director
+              <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: aiReady ? '#e6f3ec' : '#fdeee0', color: aiReady ? C.green : '#b5651d', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: aiReady ? C.green : '#b5651d' }} />
                 {aiReady ? 'AI klar' : 'Ikke koblet'}
               </span>
             </h4>
@@ -762,7 +763,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             {(() => {
               const hasGenerated = generated || scenes.some((s) => !!s.narration?.trim());
               const stage: 'describe' | 'discuss' | 'refine' = !understanding && !hasGenerated ? 'describe' : hasGenerated ? 'refine' : 'discuss';
-              const stageLabel = stage === 'describe' ? 'Steg 1 av 3 · Beskriv' : stage === 'discuss' ? 'Steg 2 av 3 · Diskutér' : 'Steg 3 av 3 · Forfin';
+              const stepNum = stage === 'describe' ? 1 : stage === 'discuss' ? 2 : 3;
+              const stageName = stage === 'describe' ? 'Beskriv' : stage === 'discuss' ? 'Diskutér' : 'Forfin';
               const audienceChips = understanding ? Array.from(new Set([understanding.audience, ...understanding.audienceOptions])).filter(Boolean) : [];
               const cmdRow = (placeholder: string) => (
                 <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
@@ -788,7 +790,14 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               const directorLine = directorMsg ? <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div> : null;
               return (
                 <>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: C.inkFaint, marginBottom: 10 }}>{stageLabel}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+                      {[1, 2, 3].map((n) => (
+                        <div key={n} style={{ flex: 1, height: 4, borderRadius: 3, background: n <= stepNum ? C.accent : C.line, transition: 'background .2s' }} />
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: C.inkSoft, whiteSpace: 'nowrap' }}>{stepNum}/3 · {stageName}</div>
+                  </div>
 
                   {/* ── STEG 1 · Beskriv ── */}
                   {stage === 'describe' && (
@@ -803,7 +812,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                         <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginBottom: 8 }}
                           onClick={() => setShowSignIn(true)}>Koble til AI (Role Room)</button>
                       )}
-                      <button style={{ ...btn, width: '100%', justifyContent: 'center', background: C.accent, color: '#fff', borderColor: C.accent, fontWeight: 600, opacity: directorBusy ? 0.6 : 1 }}
+                      <button style={{ ...btn, width: '100%', justifyContent: 'center', background: C.accent, color: '#fff', borderColor: C.accent, fontWeight: 600, padding: '10px 13px', boxShadow: '0 1px 3px rgba(239,138,93,0.35)', opacity: directorBusy ? 0.6 : 1 }}
                         disabled={directorBusy} onClick={() => void understandSite()}>
                         {directorBusy ? 'Forstår siden…' : '① Forstå siden →'}
                       </button>
@@ -852,7 +861,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button style={{ ...btn, justifyContent: 'center', background: '#fff', borderColor: C.lineStrong, padding: '0 13px' }}
                           onClick={() => { setUnderstanding(null); setGenerated(false); }} title="Endre beskrivelse / forstå på nytt">←</button>
-                        <button style={{ ...btn, flex: 1, justifyContent: 'center', background: C.accent, color: '#fff', borderColor: C.accent, fontWeight: 600, opacity: directorBusy ? 0.6 : 1 }}
+                        <button style={{ ...btn, flex: 1, justifyContent: 'center', background: C.accent, color: '#fff', borderColor: C.accent, fontWeight: 600, padding: '10px 13px', boxShadow: '0 1px 3px rgba(239,138,93,0.35)', opacity: directorBusy ? 0.6 : 1 }}
                           disabled={directorBusy} onClick={() => void generateDemo()}>
                           {directorBusy ? 'Lager demo…' : '② Generér demoen'}
                         </button>
