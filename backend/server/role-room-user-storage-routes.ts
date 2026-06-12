@@ -16,6 +16,9 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import multer from "multer";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   ensureUserBucket,
   getUserFileDownloadUrl,
@@ -254,6 +257,80 @@ export function registerRoleRoomUserStorageRoutes(
     } catch (err) {
       console.error("[storage/download]", err);
       res.status(500).json({ error: "download_failed", detail: String(err) });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // POST /api/role-room/storage/admin/run-storage-migrations
+  // Token-gated (samme cleanup-token). Kjører migrasjon 267/268/269
+  // inline via Pool — bypasser migrate.sh hvis det feiler stille.
+  // Idempotent: bruker _migrations_applied for å skippe allerede-applied.
+  // ──────────────────────────────────────────────────────────────────
+  app.post("/api/role-room/storage/admin/run-storage-migrations", async (req: Request, res: Response) => {
+    const cronToken = req.headers['x-cron-trigger-token'] as string | undefined;
+    const expectedToken = process.env.ROLE_ROOM_STORAGE_CLEANUP_TOKEN
+      || process.env.CRON_TRIGGER_TOKEN;
+    const tokenValid = expectedToken && cronToken && cronToken === expectedToken;
+    if (!tokenValid) {
+      res.status(401).json({ error: "krever_cron_token" });
+      return;
+    }
+
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const migrationsDir = path.resolve(__dirname, "..", "migrations");
+    const targetFiles = [
+      "267_role_room_per_user_storage.sql",
+      "268_role_room_byo_migration_jobs.sql",
+      "269_role_room_user_files_context.sql",
+    ];
+
+    const results: Array<{ file: string; status: string; error?: string }> = [];
+
+    try {
+      // Sørg for at _migrations_applied finnes
+      await pool.query(`CREATE TABLE IF NOT EXISTS _migrations_applied (
+        id SERIAL PRIMARY KEY,
+        filename VARCHAR(255) UNIQUE NOT NULL,
+        applied_at TIMESTAMP DEFAULT NOW()
+      )`);
+
+      for (const filename of targetFiles) {
+        try {
+          // Skip hvis allerede applied
+          const check = await pool.query(
+            `SELECT 1 FROM _migrations_applied WHERE filename = $1`,
+            [filename],
+          );
+          if (check.rowCount && check.rowCount > 0) {
+            results.push({ file: filename, status: "already_applied" });
+            continue;
+          }
+
+          // Les og kjør SQL
+          const sqlPath = path.join(migrationsDir, filename);
+          const sql = await fs.readFile(sqlPath, "utf-8");
+          await pool.query(sql);
+
+          // Marker som applied
+          await pool.query(
+            `INSERT INTO _migrations_applied (filename) VALUES ($1)
+             ON CONFLICT (filename) DO NOTHING`,
+            [filename],
+          );
+          results.push({ file: filename, status: "applied" });
+        } catch (err) {
+          results.push({
+            file: filename,
+            status: "failed",
+            error: (err as Error).message?.slice(0, 500),
+          });
+        }
+      }
+
+      res.json({ ok: true, results });
+    } catch (err) {
+      res.status(500).json({ error: "migration_failed", detail: String(err), results });
     }
   });
 
