@@ -549,7 +549,7 @@ function fmtDur(sec: number) {
 const card: React.CSSProperties = { border: `2px solid ${C.line}`, borderRadius: 10, padding: '12px 10px', cursor: 'pointer', textAlign: 'center' };
 const pill: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, background: '#fff' };
 const pillActive: React.CSSProperties = { borderColor: C.accent, background: C.cream, fontWeight: 600 };
-const primaryBtn: React.CSSProperties = { background: 'linear-gradient(135deg, #ef8a5d, #d96a3a)', border: 0, color: '#fff', fontSize: 14, fontWeight: 600, padding: '12px 22px', borderRadius: 9, cursor: 'pointer' };
+const primaryBtn: React.CSSProperties = { background: 'linear-gradient(135deg, #ef8a5d, #d96a3a)', border: 0, color: '#fff', fontSize: 14, fontWeight: 600, padding: '12px 22px', borderRadius: 9, cursor: 'pointer', boxShadow: '0 2px 6px rgba(217,106,58,0.32)' };
 const outlineBtn: React.CSSProperties = { background: '#fff', border: `1px solid ${C.lineStrong}`, color: C.ink, fontSize: 13, padding: '8px 14px', borderRadius: 8, cursor: 'pointer' };
 const brandInp: React.CSSProperties = { border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12.5, color: C.ink, background: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' };
 
