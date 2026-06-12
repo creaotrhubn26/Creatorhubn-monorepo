@@ -478,7 +478,7 @@ export async function translateForVoiceover(texts: string[], targetLang = 'engel
 export type CommandAction = 'generate' | 'complete' | 'voiceover' | 'responsive' | 'critic' | 'none';
 export interface CommandResult {
   action: CommandAction;
-  params: { voiceModel?: string; goal?: string; task?: string };
+  params: { voiceModel?: string; goal?: string; task?: string; demoType?: DemoType; audience?: string };
   clarify: { question: string; options: string[] } | null;
   reply: string;
 }
@@ -496,7 +496,8 @@ export async function interpretCommand(params: {
     `Tolk instruksen til ÉN handling. Mangler nødvendig info, still ETT oppklarings-spørsmål med valg i stedet for å gjette.\n` +
     `Actions: generate (generér hele demoen), complete (fyll hull i manus/target), voiceover (lag voiceover i Resolve — STØTTES KUN PÅ ENGELSK; krever VoiceModel «Female 1» eller «Male 1»), responsive (responsive check), critic (vurder demoen), none.\n` +
     `For voiceover UTEN spesifisert kjønn: returner clarify {question:"Vil du ha kvinne- eller mannsstemme? (voiceover støttes kun på engelsk)", options:["Female 1","Male 1"]}.\n` +
-    `Svar med KUN ett JSON-objekt: { "action":"...", "params":{"voiceModel":"Female 1","goal":"...","task":"..."}, "clarify":{"question":"...","options":["...","..."]}|null, "reply":"kort bekreftelse på hva som gjøres" }`;
+    `VINKEL/MÅLGRUPPE: handler instruksen om å endre vinkel eller hvem demoen er for (f.eks. «gjør den mer investor-rettet», «rett den mot leger», «mer salgs-fokusert»), sett params.demoType og/eller params.audience og bruk action "generate" (regenererer med ny vinkel). demoType ∈ [product_demo, tutorial, onboarding, sales_video, investor_demo, social_clip, support_guide, feature_walkthrough]. «investor» → investor_demo, «salg» → sales_video, «opplæring» → tutorial. audience er fri tekst (f.eks. "Investorer", "Leger / helsepersonell").\n` +
+    `Svar med KUN ett JSON-objekt: { "action":"...", "params":{"voiceModel":"Female 1","goal":"...","task":"...","demoType":"investor_demo","audience":"Investorer"}, "clarify":{"question":"...","options":["...","..."]}|null, "reply":"kort bekreftelse på hva som gjøres" }`;
   const raw = await claudeProxyService.send({
     systemPrompt: 'Du er en kommando-tolk for Product Demo Studio. Still oppklaring når info mangler — ikke gjett. Svar ALLTID med kun ett JSON-objekt.',
     messages: [{ role: 'user', content: user }],
@@ -505,9 +506,12 @@ export async function interpretCommand(params: {
   const p = extractJson<Partial<CommandResult>>(raw);
   if (!p) return { action: 'none', params: {}, clarify: null, reply: 'Forsto ikke kommandoen.' };
   const valid: CommandAction[] = ['generate', 'complete', 'voiceover', 'responsive', 'critic', 'none'];
+  const validTypes: DemoType[] = ['product_demo', 'tutorial', 'onboarding', 'sales_video', 'investor_demo', 'social_clip', 'support_guide', 'feature_walkthrough'];
+  const rawParams = p.params ?? {};
+  const outParams = { ...rawParams, demoType: rawParams.demoType && validTypes.includes(rawParams.demoType) ? rawParams.demoType : undefined };
   return {
     action: valid.includes(p.action as CommandAction) ? (p.action as CommandAction) : 'none',
-    params: p.params ?? {},
+    params: outParams,
     clarify: p.clarify && p.clarify.question ? { question: p.clarify.question, options: Array.isArray(p.clarify.options) ? p.clarify.options.slice(0, 4) : [] } : null,
     reply: p.reply ?? '',
   };
