@@ -26,6 +26,7 @@ env:
 jobs:
   build-mac:
     name: Build (macOS ${{ matrix.target }})
+    # (checkout under bruker fetch-depth: 0 for git-historikk til "hva er nytt"-notater)
     runs-on: macos-14  # Apple Silicon runner
     strategy:
       fail-fast: false
@@ -37,6 +38,8 @@ jobs:
             arch_label: darwin-x86_64
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full historikk + tags → ekte "hva er nytt"-notater i updater-manifestet
 
       - name: Resolve version
         id: ver
@@ -223,19 +226,26 @@ jobs:
         run: |
           SIG_CONTENT=$(cat "${{ steps.artifacts.outputs.sig }}")
           PUB_URL="https://github.com/${{ github.repository }}/releases/download/post-agent-v${{ steps.ver.outputs.version }}/post-agent-${{ matrix.arch_label }}.app.tar.gz"
-          cat > "staging/post-agent-${{ matrix.arch_label }}.json" <<EOF
-          {
-            "version": "${{ steps.ver.outputs.version }}",
-            "notes": "See release notes on GitHub",
-            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "platforms": {
-              "${{ matrix.arch_label == 'darwin-aarch64' && 'darwin-aarch64' || 'darwin-x86_64' }}": {
-                "signature": "$SIG_CONTENT",
-                "url": "$PUB_URL"
-              }
-            }
-          }
-          EOF
+          # "Hva er nytt" = commit-emnene siden forrige post-agent-tag (uten støy-commits).
+          # Updater-dialogen i appen viser dette feltet (update.body), så det MÅ være ekte.
+          PREV_TAG=$(git tag -l 'post-agent-v*' --sort=-v:refname | grep -v "v${{ steps.ver.outputs.version }}\$" | head -1 || true)
+          if [ -n "$PREV_TAG" ]; then RANGE="$PREV_TAG..HEAD"; else RANGE="HEAD~12..HEAD"; fi
+          NOTES=$(git log --no-merges --pretty=format:'%s' "$RANGE" 2>/dev/null \
+            | grep -vE '^chore\(post-agent\): bump|^chore: trigger|^Merge ' \
+            | sed -E 's/^(feat|fix|chore|refactor|docs|style|perf|test)(\([^)]*\))?: //' \
+            | sed 's/^/• /' | head -15 || true)
+          [ -z "$NOTES" ] && NOTES="Forbedringer og feilrettinger."
+          export PA_VER="${{ steps.ver.outputs.version }}" PA_ARCH="${{ matrix.arch_label }}" \
+                 PA_SIG="$SIG_CONTENT" PA_URL="$PUB_URL" PA_NOTES="$NOTES"
+          python3 -c '
+          import json, os, datetime
+          print(json.dumps({
+            "version": os.environ["PA_VER"],
+            "notes": os.environ["PA_NOTES"],
+            "pub_date": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "platforms": { os.environ["PA_ARCH"]: { "signature": os.environ["PA_SIG"], "url": os.environ["PA_URL"] } },
+          }, indent=2))
+          ' > "staging/post-agent-${{ matrix.arch_label }}.json"
           cat "staging/post-agent-${{ matrix.arch_label }}.json"
 
       - uses: actions/upload-artifact@v4

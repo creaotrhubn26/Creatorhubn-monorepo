@@ -90,9 +90,10 @@ export function UpdaterDialog({ version, notes, onDownload, onDismiss }: Props) 
               Post Agent <strong>v{version}</strong> er klar.
             </div>
             {notes && (
+              <>
+              <div style={{ marginTop: 14, marginBottom: 6, fontSize: 12, fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase", color: "var(--text-3)" }}>Hva er nytt</div>
               <div
                 style={{
-                  marginTop: 12,
                   padding: 12,
                   background: "var(--bg-3)",
                   borderRadius: 8,
@@ -107,6 +108,7 @@ export function UpdaterDialog({ version, notes, onDownload, onDismiss }: Props) 
               >
                 {notes}
               </div>
+              </>
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 20, justifyContent: "flex-end" }}>
               <button type="button" className="btn-ghost" onClick={onDismiss}>
