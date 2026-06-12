@@ -56,6 +56,8 @@ import { useDynamicProfessions } from '@/components/universal/hooks/useDynamicPr
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { CINE, CINE_FONT, CINE_FONT_DISPLAY, withAlpha, metaLabelSx, scrimGradientTop } from '../showcaseCinematic';
+import AudioReviewPlayer from './AudioReviewPlayer';
+import { apiRequest } from '@/lib/queryClient';
 
 interface ShowcaseItem {
   id: string;
@@ -133,6 +135,33 @@ export const QuickPreview: React.FC<QuickPreviewProps> = ({
   const [imageZoom, setImageZoom] = useState(1);
   const [newComment, setNewComment] = useState('');
   const currentItem = items[currentIndex];
+
+  // Tidskodede mix/master-kommentarer for lyd (musikkprodusent-review).
+  // Item-id-baserte, generiske endepunkter — virker for lyd som for video.
+  const [tcComments, setTcComments] = useState<any[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    setTcComments([]);
+    if (!currentItem?.id || currentItem.fileType !== 'audio') return;
+    (async () => {
+      try {
+        const data = await apiRequest(`/api/video/timecoded-comments/${currentItem.id}`);
+        if (!cancelled && Array.isArray(data)) setTcComments(data);
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [currentItem?.id, currentItem?.fileType]);
+
+  const handleAddTimecoded = async (timecode: number, comment: string, category: string) => {
+    if (!currentItem?.id || !comment.trim()) return;
+    try {
+      const created = await apiRequest('/api/video/timecoded-comments', {
+        method: 'POST',
+        body: { videoId: currentItem.id, timecode, comment, category, version: 'v1' },
+      });
+      setTcComments((prev) => [...prev, created || { id: `tmp-${timecode}-${Date.now()}`, timecode, comment, category }]);
+    } catch { /* ignore */ }
+  };
   const imageRef = useRef<HTMLImageElement>(null);
   const reduced = prefersReducedMotion();
 
@@ -283,18 +312,29 @@ export const QuickPreview: React.FC<QuickPreviewProps> = ({
               {currentItem.fileType === 'video' ? (
                 <video src={currentItem.fileUrl} controls autoPlay style={{ maxWidth: '100%', maxHeight: '82vh', borderRadius: 8 }} />
               ) : currentItem.fileType === 'audio' ? (
-                <Box sx={{ width: 'min(680px, 80vw)', p: 4, ...{
+                <Box sx={{ width: 'min(820px, 88vw)', p: { xs: 2, md: 3 },
                   bgcolor: CINE.surfaceElevated, borderRadius: '18px',
                   border: `1px solid ${withAlpha(accent, 0.4)}`,
                   boxShadow: `0 30px 80px rgba(0,0,0,0.6)`,
-                } }}>
-                  <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', justifyContent: 'center', mb: 3 }}>
+                }}>
+                  <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
                     <MusicNoteIcon sx={{ color: accent }} />
-                    <Typography sx={{ fontFamily: CINE_FONT_DISPLAY, color: CINE.textPrimary, fontWeight: 700, textAlign: 'center' }} variant="h5">
-                      {currentItem.title}
-                    </Typography>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontFamily: CINE_FONT_DISPLAY, color: CINE.textPrimary, fontWeight: 700, lineHeight: 1.2 }} variant="h6">
+                        {currentItem.title}
+                      </Typography>
+                      <Typography sx={{ color: CINE.textSecondary, fontSize: '0.8rem' }}>
+                        Mix/master-review — kommenter på tidspunkt, tagget med aspekt
+                      </Typography>
+                    </Box>
                   </Stack>
-                  <audio src={currentItem.fileUrl} controls autoPlay style={{ width: '100%' }} />
+                  <AudioReviewPlayer
+                    src={currentItem.fileUrl}
+                    comments={tcComments}
+                    onAddComment={handleAddTimecoded}
+                    accentColor={accent}
+                    readOnly={clientMode && !onAddComment}
+                  />
                 </Box>
               ) : (currentItem.fileType === 'photo' || currentItem.fileType === 'design') ? (
                 <img
