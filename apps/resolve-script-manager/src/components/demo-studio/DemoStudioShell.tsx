@@ -167,6 +167,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   // en brief før noe lages — grunnlag for diskusjon/justering.
   const [understanding, setUnderstanding] = useState<SiteUnderstanding | null>(null);
   const [showTools, setShowTools] = useState(false); // sammenleggbare sekundære verktøy
+  const [showAdvanced, setShowAdvanced] = useState(false); // sammenleggbart «Avansert» i Beskriv-steget
+  const [generated, setGenerated] = useState(false); // har vi generert en demo i denne sesjonen?
   const pickAudience = (a: string) => {
     const m = project?.scriptMeta ?? { tone: 'professional' as const, audience: '', language: 'Norsk', length: 'medium' as const };
     setProjectField('scriptMeta', { ...m, audience: a });
@@ -584,6 +586,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         url: project.url, demoType, devices: project.devices, meta, siteContext, elements, goal: project.goal || u?.suggestedGoal, task: project.task,
       });
       replaceScenes(scenes);
+      setGenerated(true);
       setDirectorMsg(`✓ ${scenes.length} scener generert`);
       setNav('script'); // samarbeid: åpne resultatet i Script Builder
     } catch (e) {
@@ -755,122 +758,177 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 {aiReady ? 'AI klar' : 'Ikke koblet'}
               </span>
             </h4>
-            {/* «Forstå siden først»: Claudes brief + målgruppe-valg før generering. */}
-            {understanding && (
-              <div style={{ background: '#fff', border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, marginBottom: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 4 }}>Forstår jeg dette riktig?</div>
-                <div style={{ fontSize: 12, color: C.ink, lineHeight: 1.45, marginBottom: 6 }}>{understanding.summary}</div>
-                <div style={{ fontSize: 10.5, color: C.inkSoft, marginBottom: 4 }}>Hvem er målgruppen?</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 6 }}>
-                  {Array.from(new Set([understanding.audience, ...understanding.audienceOptions])).filter(Boolean).map((a) => {
-                    const active = (project?.scriptMeta?.audience || '') === a;
-                    return (
-                      <button key={a} onClick={() => pickAudience(a)}
-                        style={{ fontSize: 11, padding: '3px 9px', borderRadius: 7, cursor: 'pointer', border: `1px solid ${active ? C.accent : C.line}`, background: active ? C.accent : '#fff', color: active ? '#fff' : C.inkSoft, fontWeight: active ? 600 : 500 }}>{a}</button>
-                    );
-                  })}
+            {/* Stegvis flyt: Beskriv → Diskutér → Forfin (progressive disclosure) */}
+            {(() => {
+              const hasGenerated = generated || scenes.some((s) => !!s.narration?.trim());
+              const stage: 'describe' | 'discuss' | 'refine' = !understanding && !hasGenerated ? 'describe' : hasGenerated ? 'refine' : 'discuss';
+              const stageLabel = stage === 'describe' ? 'Steg 1 av 3 · Beskriv' : stage === 'discuss' ? 'Steg 2 av 3 · Diskutér' : 'Steg 3 av 3 · Forfin';
+              const audienceChips = understanding ? Array.from(new Set([understanding.audience, ...understanding.audienceOptions])).filter(Boolean) : [];
+              const cmdRow = (placeholder: string) => (
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                  <input style={{ ...field, flex: 1 }} value={cmdInput} placeholder={placeholder}
+                    onChange={(e) => setCmdInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && cmdInput.trim()) { const v = cmdInput; setCmdInput(''); void runCommand(v); } }} />
+                  <button style={{ ...btn, opacity: cmdBusy ? 0.6 : 1 }} disabled={cmdBusy}
+                    onClick={() => { const v = cmdInput; setCmdInput(''); void runCommand(v); }}>{cmdBusy ? '…' : '➤'}</button>
                 </div>
-                {understanding.valueProps?.length ? (
-                  <div style={{ fontSize: 10.5, color: C.inkFaint, lineHeight: 1.4 }}>Verdiløfter: {understanding.valueProps.slice(0, 3).join(' · ')}</div>
-                ) : null}
-                <div style={{ fontSize: 10.5, color: C.inkFaint, marginTop: 5 }}>Juster vinkel/målgruppe over eller i kommando-feltet (f.eks. «gjør den mer investor-rettet») — trykk så «Generér demoen».</div>
-              </div>
-            )}
-            {/* ── AI-kommando (Conversational Director) ── */}
-            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-              <input style={{ ...field, flex: 1 }} value={cmdInput} placeholder="Si til AI: «lag en voiceover»…"
-                onChange={(e) => setCmdInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && cmdInput.trim()) { const v = cmdInput; setCmdInput(''); void runCommand(v); } }} />
-              <button style={{ ...btn, opacity: cmdBusy ? 0.6 : 1 }} disabled={cmdBusy}
-                onClick={() => { const v = cmdInput; setCmdInput(''); void runCommand(v); }}>{cmdBusy ? '…' : '➤'}</button>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
-              {['Lag en voiceover', 'Responsive check', 'Lag veiledning for innlogging'].map((q) => (
-                <span key={q} onClick={() => { if (!cmdBusy) void runCommand(q); }}
-                  style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 7, border: `1px solid ${C.line}`, background: '#fff', color: C.inkSoft, cursor: cmdBusy ? 'default' : 'pointer' }}>{q}</span>
-              ))}
-              {customCmds.map((q) => (
-                <span key={q} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, padding: '3px 6px 3px 8px', borderRadius: 7, border: `1px solid ${C.accent}`, background: '#fdf0e7', color: '#b5651d' }}>
-                  <span onClick={() => { if (!cmdBusy) void runCommand(q); }} style={{ cursor: cmdBusy ? 'default' : 'pointer' }}>{q}</span>
-                  <span onClick={() => saveCustomCmds(customCmds.filter((x) => x !== q))} title="Fjern" style={{ cursor: 'pointer', opacity: 0.7 }}>✕</span>
-                </span>
-              ))}
-              <span onClick={addCustomCmd} title="Lag egen quick-kommando"
-                style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 7, border: `1px dashed ${C.lineStrong}`, background: '#fff', color: C.inkSoft, cursor: 'pointer' }}>+ Egen</span>
-            </div>
-            {cmdClarify && (
-              <div style={{ border: `1px solid ${C.accent}`, borderRadius: 9, padding: 10, marginBottom: 8, background: '#fdf0e7' }}>
-                <div style={{ fontSize: 12, marginBottom: 7 }}>{cmdClarify.question}</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {cmdClarify.options.map((o) => (
-                    <button key={o} style={{ ...btn, padding: '5px 10px', fontSize: 12 }}
-                      onClick={() => { const ins = pendingInstruction.current; setCmdClarify(null); void runCommand(ins, o); }}>{o}</button>
-                  ))}
+              );
+              const clarifyBox = cmdClarify ? (
+                <div style={{ border: `1px solid ${C.accent}`, borderRadius: 9, padding: 10, marginBottom: 8, background: '#fdf0e7' }}>
+                  <div style={{ fontSize: 12, marginBottom: 7 }}>{cmdClarify.question}</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {cmdClarify.options.map((o) => (
+                      <button key={o} style={{ ...btn, padding: '5px 10px', fontSize: 12 }}
+                        onClick={() => { const ins = pendingInstruction.current; setCmdClarify(null); void runCommand(ins, o); }}>{o}</button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-            {cmdReply && <div style={{ fontSize: 11.5, color: cmdReply.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginBottom: 8 }}>{cmdReply}</div>}
+              ) : null;
+              const replyLine = cmdReply ? <div style={{ fontSize: 11.5, color: cmdReply.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginBottom: 8 }}>{cmdReply}</div> : null;
+              const directorLine = directorMsg ? <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div> : null;
+              return (
+                <>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: C.inkFaint, marginBottom: 10 }}>{stageLabel}</div>
 
-            <p style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.45, marginBottom: 8 }}>Forstå siden først, juster vinkel/mål, og generér så scene-flowen.</p>
-            <input style={{ ...field, marginBottom: 8 }} value={project.task ?? ''} placeholder="Hva skal veiledningen vise? f.eks. «hele innloggings-prosessen»"
-              onChange={(e) => setProjectField('task', e.target.value)} />
-            <input style={{ ...field, marginBottom: 8 }} value={project.goal ?? ''} placeholder="Mål? f.eks. «få flere til å booke demo»"
-              onChange={(e) => setProjectField('goal', e.target.value)} />
-            <input style={{ ...field, marginBottom: 8 }} value={project.scriptMeta?.audience ?? ''} placeholder="Målgruppe / persona"
-              onChange={(e) => setProjectField('scriptMeta', { ...(project.scriptMeta ?? { tone: 'professional', audience: '', language: 'Norsk', length: 'medium' }), audience: e.target.value })} />
-            {!aiReady && (
-              <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginBottom: 8 }}
-                onClick={() => setShowSignIn(true)}>Koble til AI (Role Room)</button>
-            )}
-            {/* Primær flyt: STEG 1 forstå → STEG 2 generér */}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button style={{ ...btn, flex: 1, justifyContent: 'center', background: understanding ? '#fff' : C.accent, color: understanding ? C.ink : '#fff', borderColor: understanding ? C.lineStrong : C.accent, opacity: directorBusy ? 0.6 : 1 }}
-                disabled={directorBusy} onClick={() => void understandSite()}
-                title="STEG 1: AI leser siden og foreslår produkt-vinkel + målgruppe — lager ingenting ennå">
-                {directorBusy && !understanding ? 'Forstår…' : '① Forstå siden'}
-              </button>
-              <button style={{ ...btn, flex: 1, justifyContent: 'center', background: understanding ? C.accent : '#fff', color: understanding ? '#fff' : C.ink, borderColor: understanding ? C.accent : C.lineStrong, opacity: directorBusy ? 0.6 : 1 }}
-                disabled={directorBusy} onClick={() => void generateDemo()}
-                title="STEG 2: generér hele scene-flowen med valgt vinkel/målgruppe">
-                {directorBusy && understanding ? 'Lager…' : '② Generér demoen'}
-              </button>
-            </div>
-            {directorMsg && <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div>}
+                  {/* ── STEG 1 · Beskriv ── */}
+                  {stage === 'describe' && (
+                    <>
+                      <div style={fldLabel}>Hva skal demoen vise?</div>
+                      <input style={{ ...field, marginBottom: 10 }} value={project.task ?? ''} placeholder="f.eks. «hele innloggings-prosessen»"
+                        onChange={(e) => setProjectField('task', e.target.value)} />
+                      <div style={fldLabel}>Mål</div>
+                      <input style={{ ...field, marginBottom: 12 }} value={project.goal ?? ''} placeholder="f.eks. «få flere til å booke demo»"
+                        onChange={(e) => setProjectField('goal', e.target.value)} />
+                      {!aiReady && (
+                        <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginBottom: 8 }}
+                          onClick={() => setShowSignIn(true)}>Koble til AI (Role Room)</button>
+                      )}
+                      <button style={{ ...btn, width: '100%', justifyContent: 'center', background: C.accent, color: '#fff', borderColor: C.accent, fontWeight: 600, opacity: directorBusy ? 0.6 : 1 }}
+                        disabled={directorBusy} onClick={() => void understandSite()}>
+                        {directorBusy ? 'Forstår siden…' : '① Forstå siden →'}
+                      </button>
+                      <div style={{ fontSize: 10.5, color: C.inkFaint, marginTop: 7, lineHeight: 1.4 }}>AI leser siden og foreslår produkt-vinkel + målgruppe — lager ingenting ennå.</div>
+                      {directorLine}
+                      <div style={{ marginTop: 12 }}>
+                        <div onClick={() => setShowAdvanced((v) => !v)} style={{ fontSize: 10.5, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <span style={{ transition: 'transform .15s', transform: showAdvanced ? 'rotate(90deg)' : 'none' }}>▸</span> Avansert
+                        </div>
+                        {showAdvanced && (
+                          <div style={{ marginTop: 8 }}>
+                            <input style={{ ...field, marginBottom: 8 }} value={project.scriptMeta?.audience ?? ''} placeholder="Målgruppe / persona (valgfritt)"
+                              onChange={(e) => setProjectField('scriptMeta', { ...(project.scriptMeta ?? { tone: 'professional', audience: '', language: 'Norsk', length: 'medium' }), audience: e.target.value })} />
+                            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', opacity: directorBusy ? 0.6 : 1 }}
+                              disabled={directorBusy} onClick={() => void generateDemo()}
+                              title="Hopp over diskusjonen og generér rett fra det du har skrevet">Generér direkte (uten å forstå først)</button>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
 
-            {/* Sekundære verktøy — sammenleggbart, så de ikke roter til primær-flyten */}
-            <div style={{ marginTop: 12 }}>
-              <div onClick={() => setShowTools((v) => !v)}
-                style={{ fontSize: 10.5, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span style={{ transition: 'transform .15s', transform: showTools ? 'rotate(90deg)' : 'none' }}>▸</span> Verktøy
-              </div>
-              {showTools && (
-                <div style={{ marginTop: 8 }}>
-                  <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', opacity: directorBusy ? 0.6 : 1 }}
-                    disabled={directorBusy} onClick={() => void completeDemo()}
-                    title="Fyll kun manglende felt (manus, target, overlay, varighet) uten å overskrive det du har skrevet">
-                    ✦ Fullfør demoen (fyll hull)
-                  </button>
-                  <button style={{ ...btn, width: '100%', justifyContent: 'center', background: capturing ? C.accent : '#fff', color: capturing ? '#fff' : C.ink, borderColor: capturing ? C.accent : C.lineStrong, marginTop: 8 }}
-                    disabled={capturing} onClick={() => void startCapture()}
-                    title="Åpne siden i et capture-vindu og klikk deg gjennom — hvert klikk blir et steg med hotspot">
-                    {capturing ? `Tar opp klikk… (${captureCount})` : '☞ Klikk-capture fra side'}
-                  </button>
-                  {capturing && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>Klikk deg gjennom i capture-vinduet. Trykk «Fullfør» der når du er ferdig.</div>}
-                  <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: critiqueBusy ? 0.6 : 1 }}
-                    disabled={critiqueBusy} onClick={() => void runCritic()}
-                    title="La AI vurdere hele demoen mot målet og foreslå forbedringer">
-                    ★ {critiqueBusy ? 'Vurderer…' : 'Vurder demoen (Critic)'}
-                  </button>
-                  <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: visualBusy ? 0.6 : 1 }}
-                    disabled={visualBusy} onClick={() => void runVisualBeats()}
-                    title="La AI lese manuset og foreslå visuelle uthevinger der noe konkret nevnes — med preview">
-                    ✦ {visualBusy ? 'Leser manus…' : 'Foreslå visuelle uthevinger'}
-                  </button>
-                </div>
-              )}
-            </div>
+                  {/* ── STEG 2 · Diskutér ── */}
+                  {stage === 'discuss' && understanding && (
+                    <>
+                      <div style={{ background: '#fff', border: `1px solid ${C.line}`, borderRadius: 10, padding: 11, marginBottom: 10 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 4 }}>Forstår jeg dette riktig?</div>
+                        <div style={{ fontSize: 12, color: C.ink, lineHeight: 1.45, marginBottom: 8 }}>{understanding.summary}</div>
+                        <div style={{ fontSize: 10.5, color: C.inkSoft, marginBottom: 4 }}>Hvem er målgruppen?</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: understanding.valueProps?.length ? 8 : 0 }}>
+                          {audienceChips.map((a) => {
+                            const active = (project?.scriptMeta?.audience || '') === a;
+                            return (
+                              <button key={a} onClick={() => pickAudience(a)}
+                                style={{ fontSize: 11, padding: '3px 9px', borderRadius: 7, cursor: 'pointer', border: `1px solid ${active ? C.accent : C.line}`, background: active ? C.accent : '#fff', color: active ? '#fff' : C.inkSoft, fontWeight: active ? 600 : 500 }}>{a}</button>
+                            );
+                          })}
+                        </div>
+                        {understanding.valueProps?.length ? (
+                          <div style={{ fontSize: 10.5, color: C.inkFaint, lineHeight: 1.4 }}>Verdiløfter: {understanding.valueProps.slice(0, 3).join(' · ')}</div>
+                        ) : null}
+                      </div>
+                      {cmdRow('Juster: «gjør den mer investor-rettet»…')}
+                      {clarifyBox}
+                      {replyLine}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button style={{ ...btn, justifyContent: 'center', background: '#fff', borderColor: C.lineStrong, padding: '0 13px' }}
+                          onClick={() => { setUnderstanding(null); setGenerated(false); }} title="Endre beskrivelse / forstå på nytt">←</button>
+                        <button style={{ ...btn, flex: 1, justifyContent: 'center', background: C.accent, color: '#fff', borderColor: C.accent, fontWeight: 600, opacity: directorBusy ? 0.6 : 1 }}
+                          disabled={directorBusy} onClick={() => void generateDemo()}>
+                          {directorBusy ? 'Lager demo…' : '② Generér demoen'}
+                        </button>
+                      </div>
+                      {directorLine}
+                    </>
+                  )}
 
-            {/* Læring & presisjon (menneske-loop A/C/D) */}
+                  {/* ── STEG 3 · Forfin ── */}
+                  {stage === 'refine' && (
+                    <>
+                      {understanding && (
+                        <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={understanding.summary}>{project.scriptMeta?.audience || understanding.audience} · {understanding.summary}</span>
+                          <span onClick={() => { setUnderstanding(null); setGenerated(false); }} style={{ cursor: 'pointer', color: C.accent, fontSize: 10.5, whiteSpace: 'nowrap' }}>endre</span>
+                        </div>
+                      )}
+                      {cmdRow('Si til AI: «lag en voiceover»…')}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
+                        {['Lag en voiceover', 'Responsive check', 'Lag veiledning for innlogging'].map((q) => (
+                          <span key={q} onClick={() => { if (!cmdBusy) void runCommand(q); }}
+                            style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 7, border: `1px solid ${C.line}`, background: '#fff', color: C.inkSoft, cursor: cmdBusy ? 'default' : 'pointer' }}>{q}</span>
+                        ))}
+                        {customCmds.map((q) => (
+                          <span key={q} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, padding: '3px 6px 3px 8px', borderRadius: 7, border: `1px solid ${C.accent}`, background: '#fdf0e7', color: '#b5651d' }}>
+                            <span onClick={() => { if (!cmdBusy) void runCommand(q); }} style={{ cursor: cmdBusy ? 'default' : 'pointer' }}>{q}</span>
+                            <span onClick={() => saveCustomCmds(customCmds.filter((x) => x !== q))} title="Fjern" style={{ cursor: 'pointer', opacity: 0.7 }}>✕</span>
+                          </span>
+                        ))}
+                        <span onClick={addCustomCmd} title="Lag egen quick-kommando"
+                          style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 7, border: `1px dashed ${C.lineStrong}`, background: '#fff', color: C.inkSoft, cursor: 'pointer' }}>+ Egen</span>
+                      </div>
+                      {clarifyBox}
+                      {replyLine}
+                      <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', opacity: directorBusy ? 0.6 : 1 }}
+                        disabled={directorBusy} onClick={() => void generateDemo()}>{directorBusy ? 'Lager…' : '↻ Generér på nytt'}</button>
+                      {directorLine}
+                      <div style={{ marginTop: 12 }}>
+                        <div onClick={() => setShowTools((v) => !v)}
+                          style={{ fontSize: 10.5, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <span style={{ transition: 'transform .15s', transform: showTools ? 'rotate(90deg)' : 'none' }}>▸</span> Verktøy
+                        </div>
+                        {showTools && (
+                          <div style={{ marginTop: 8 }}>
+                            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', opacity: directorBusy ? 0.6 : 1 }}
+                              disabled={directorBusy} onClick={() => void completeDemo()}
+                              title="Fyll kun manglende felt (manus, target, overlay, varighet) uten å overskrive det du har skrevet">
+                              ✦ Fullfør demoen (fyll hull)
+                            </button>
+                            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: capturing ? C.accent : '#fff', color: capturing ? '#fff' : C.ink, borderColor: capturing ? C.accent : C.lineStrong, marginTop: 8 }}
+                              disabled={capturing} onClick={() => void startCapture()}
+                              title="Åpne siden i et capture-vindu og klikk deg gjennom — hvert klikk blir et steg med hotspot">
+                              {capturing ? `Tar opp klikk… (${captureCount})` : '☞ Klikk-capture fra side'}
+                            </button>
+                            {capturing && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>Klikk deg gjennom i capture-vinduet. Trykk «Fullfør» der når du er ferdig.</div>}
+                            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: critiqueBusy ? 0.6 : 1 }}
+                              disabled={critiqueBusy} onClick={() => void runCritic()}
+                              title="La AI vurdere hele demoen mot målet og foreslå forbedringer">
+                              ★ {critiqueBusy ? 'Vurderer…' : 'Vurder demoen (Critic)'}
+                            </button>
+                            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: visualBusy ? 0.6 : 1 }}
+                              disabled={visualBusy} onClick={() => void runVisualBeats()}
+                              title="La AI lese manuset og foreslå visuelle uthevinger der noe konkret nevnes — med preview">
+                              ✦ {visualBusy ? 'Leser manus…' : 'Foreslå visuelle uthevinger'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
+              );
+            })()}
+
+            {/* Læring & presisjon (menneske-loop A/C/D) — kun i Forfin-steget */}
+            {(generated || scenes.some((s) => !!s.narration?.trim())) && (
             <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 12, paddingTop: 10 }}>
               <div style={{ fontSize: 10.5, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Læring & presisjon</div>
               {(() => {
@@ -896,6 +954,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 ◈ Det AI har lært ({learnedTargetCount()})
               </button>
             </div>
+            )}
           </div>
         </div>
 
