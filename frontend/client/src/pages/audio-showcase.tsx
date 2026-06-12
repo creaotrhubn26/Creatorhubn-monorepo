@@ -13,7 +13,7 @@ import WaveSurfer from 'wavesurfer.js';
 import {
   Box, Stack, Typography, Button, IconButton, Chip, TextField, Avatar, Divider,
   CircularProgress, Tooltip, Menu, MenuItem, Slider, InputBase, Dialog, DialogTitle,
-  DialogContent, DialogActions,
+  DialogContent, DialogActions, Tabs, Tab,
 } from '@mui/material';
 import {
   Search, NotificationsNone, HelpOutline, KeyboardArrowDown, MoreHoriz, FileDownloadOutlined,
@@ -21,9 +21,10 @@ import {
   Add, ChatBubbleOutline, CheckCircle, CheckCircleOutline, CloudUpload, ThumbUpAltOutlined,
   ThumbUpAlt, AccessTime, Send, WorkspacePremium, GridViewOutlined, GraphicEq, LayersOutlined,
   Inventory2Outlined, SubjectOutlined, StickyNote2Outlined, TimelineOutlined, Speed, VpnKey,
-  CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord,
+  CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
@@ -86,6 +87,8 @@ export default function AudioShowcasePage() {
   const [moreEl, setMoreEl] = React.useState<null | HTMLElement>(null);
   const [easeverseTrack, setEaseverseTrack] = React.useState<any>(null);
   const [lyricsOpen, setLyricsOpen] = React.useState(false);
+  const [composerSection, setComposerSection] = React.useState<string | null>(null);
+  const [sectionMenuEl, setSectionMenuEl] = React.useState<null | HTMLElement>(null);
 
   /* ── Datahenting ── */
   const loadProject = React.useCallback(async () => {
@@ -145,12 +148,18 @@ export default function AudioShowcasePage() {
   const seekFrac = (f: number) => { const ws = wsRef.current; if (ws && dur) ws.setTime(Math.max(0, Math.min(1, f)) * dur); };
 
   /* ── Mutasjoner (alle wired) ── */
-  const addComment = async (body: string, opts: { parentId?: string } = {}) => {
+  const addComment = async (body: string, opts: { parentId?: string; sectionRef?: string | null } = {}) => {
     if (!currentVid || !body.trim()) return;
     const me = members.find((m) => m.is_owner);
-    const c = await apiRequest('/api/audio-comments', { method: 'POST', body: { versionId: currentVid, timecodeSeconds: Math.floor(cur), body, author: me?.name, authorRole: me?.role, parentCommentId: opts.parentId } });
+    const c = await apiRequest('/api/audio-comments', { method: 'POST', body: { versionId: currentVid, timecodeSeconds: Math.floor(cur), body, author: me?.name, authorRole: me?.role, parentCommentId: opts.parentId, sectionRef: opts.sectionRef ?? composerSection } });
     setDetail((p) => ({ ...p, comments: [...p.comments, c] }));
+    setComposerSection(null);
   };
+  // Tekst-seksjoner fra koblet track → kan refereres i kommentarer.
+  const lyricSectionLabels = React.useMemo(() => {
+    const secs = parseSongSections(easeverseTrack?.lyrics || '');
+    return Array.from(new Set(secs.map((s) => s.nbLabel)));
+  }, [easeverseTrack]);
   const setCommentStatus = async (id: string, status: string) => {
     const c = await apiRequest(`/api/audio-comments/${id}`, { method: 'PATCH', body: { status } });
     setDetail((p) => ({ ...p, comments: p.comments.map((x) => (x.id === id ? c : x)) }));
@@ -420,6 +429,7 @@ export default function AudioShowcasePage() {
                       <Stack direction="row" alignItems="center" spacing={0.75} sx={{ flexWrap: 'wrap' }}>
                         <Typography sx={{ fontSize: '0.82rem', fontWeight: 700 }}>{c.author}{c.author_role ? ` (${c.author_role})` : ''}</Typography>
                         <Typography sx={{ fontSize: '0.7rem', color: FAINT }}>{relTime(c.created_at)}</Typography>
+                        {c.section_ref && <Chip label={`↳ ${c.section_ref}`} size="small" sx={{ height: 18, fontSize: '0.64rem', fontWeight: 700, bgcolor: 'rgba(255,107,53,0.16)', color: ACCENT }} />}
                         <Box sx={{ flex: 1 }} /><IconButton size="small" sx={{ color: FAINT, p: 0.25 }}><MoreHoriz sx={{ fontSize: 16 }} /></IconButton>
                       </Stack>
                       <Typography sx={{ fontSize: '0.86rem', color: 'rgba(245,242,234,0.9)', mt: 0.4 }}>{c.body}</Typography>
@@ -442,6 +452,18 @@ export default function AudioShowcasePage() {
           </Box>
           {replyTo && <Box sx={{ px: 2.5, py: 0.75, bgcolor: 'rgba(255,107,53,0.08)', borderTop: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 1 }}><Typography sx={{ fontSize: '0.74rem', color: MUTED, flex: 1 }}>Svarer {replyTo.author}</Typography><Typography onClick={() => setReplyTo(null)} sx={{ fontSize: '0.74rem', color: ACCENT, cursor: 'pointer' }}>Avbryt</Typography></Box>}
           <Box sx={{ p: 2, borderTop: `1px solid ${BORDER}` }}>
+            {lyricSectionLabels.length > 0 && (
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                <Chip size="small" icon={<SubjectOutlined sx={{ fontSize: '14px !important' }} />} label={composerSection ? `Refererer: ${composerSection}` : 'Knytt til tekst-seksjon'}
+                  onClick={(e) => setSectionMenuEl(e.currentTarget)} onDelete={composerSection ? () => setComposerSection(null) : undefined}
+                  sx={{ height: 24, fontSize: '0.7rem', cursor: 'pointer', color: composerSection ? ACCENT : MUTED, bgcolor: composerSection ? 'rgba(255,107,53,0.14)' : 'rgba(255,255,255,0.05)', '& .MuiChip-icon': { color: composerSection ? ACCENT : MUTED } }} />
+                <Menu anchorEl={sectionMenuEl} open={Boolean(sectionMenuEl)} onClose={() => setSectionMenuEl(null)}>
+                  {lyricSectionLabels.map((lbl) => (
+                    <MenuItem key={lbl} onClick={() => { setComposerSection(lbl); setSectionMenuEl(null); }} sx={{ fontSize: '0.82rem' }}>{lbl}</MenuItem>
+                  ))}
+                </Menu>
+              </Stack>
+            )}
             <Stack direction="row" alignItems="center" spacing={1}>
               <Avatar sx={{ width: 30, height: 30, fontSize: '0.76rem', bgcolor: ACCENT, color: '#150d05', fontWeight: 700 }}>{initial(owner?.name)}</Avatar>
               <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '999px', px: 1.5 }}>
@@ -472,12 +494,9 @@ export default function AudioShowcasePage() {
       <LyricsDialog
         open={lyricsOpen}
         onClose={() => setLyricsOpen(false)}
+        projectId={projectId}
         track={easeverseTrack}
-        onSave={async (lyrics) => {
-          const r = await apiRequest(`/api/audio-showcases/${projectId}/lyrics`, { method: 'PUT', body: { lyrics } });
-          setEaseverseTrack((t: any) => (t ? { ...t, lyrics: r.lyrics } : t));
-          setLyricsOpen(false);
-        }}
+        onLyricsChange={(lyrics) => setEaseverseTrack((t: any) => (t ? { ...t, lyrics } : t))}
       />
     </Box>
   );
@@ -505,27 +524,176 @@ const TaskDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (title: 
   );
 };
 
-const LyricsDialog: React.FC<{ open: boolean; onClose: () => void; track: any; onSave: (lyrics: string) => Promise<void> }> = ({ open, onClose, track, onSave }) => {
+type SyncConn = { easeverseConfigured: boolean; reachable: boolean; latencyMs?: number | null };
+
+const LyricsDialog: React.FC<{ open: boolean; onClose: () => void; projectId: string; track: any; onLyricsChange: (lyrics: string) => void }> = ({ open, onClose, projectId, track, onLyricsChange }) => {
   const [val, setVal] = React.useState('');
-  const [busy, setBusy] = React.useState(false);
-  React.useEffect(() => { if (open) setVal(track?.lyrics || ''); }, [open, track]);
+  const [conn, setConn] = React.useState<SyncConn>({ easeverseConfigured: false, reachable: false });
+  const [saving, setSaving] = React.useState(false);
+  const [savedAt, setSavedAt] = React.useState<string | null>(null);
+  const [pulse, setPulse] = React.useState(false);
+  const dirtyRef = React.useRef(false);
+  const saveTimer = React.useRef<any>(null);
+  const esRef = React.useRef<EventSource | null>(null);
+
+  // Initial last + synk-status.
+  React.useEffect(() => {
+    if (!open || !track) return;
+    setVal(track.lyrics || ''); dirtyRef.current = false;
+    apiRequest(`/api/audio-showcases/${projectId}/lyrics-sync`).then((d: any) => {
+      if (d?.connection) setConn(d.connection);
+      if (d?.lyrics != null && !dirtyRef.current) setVal(d.lyrics);
+    }).catch(() => { /* ignore */ });
+  }, [open, track, projectId]);
+
+  // Live SSE-strøm (auto-reconnect via EventSource).
+  React.useEffect(() => {
+    if (!open || !track) return;
+    const token = localStorage.getItem('sessionToken') || localStorage.getItem('auth_token') || '';
+    const es = new EventSource(`/api/audio-showcases/${projectId}/lyrics-stream?token=${encodeURIComponent(token)}`);
+    esRef.current = es;
+    const onUpdate = (e: MessageEvent) => {
+      try {
+        const d = JSON.parse(e.data);
+        setConn((c) => ({ ...c, easeverseConfigured: true, reachable: true }));
+        if (!dirtyRef.current && typeof d.lyrics === 'string') { setVal(d.lyrics); onLyricsChange(d.lyrics); setPulse(true); setTimeout(() => setPulse(false), 1400); }
+      } catch { /* ignore */ }
+    };
+    es.addEventListener('snapshot', (e) => { try { const d = JSON.parse((e as MessageEvent).data); if (!dirtyRef.current && typeof d.lyrics === 'string') setVal(d.lyrics); } catch { /* */ } });
+    es.addEventListener('update', onUpdate as any);
+    es.addEventListener('status', (e) => { try { setConn(JSON.parse((e as MessageEvent).data)); } catch { /* */ } });
+    es.onerror = () => setConn((c) => ({ ...c, reachable: false }));
+    return () => { es.close(); esRef.current = null; };
+  }, [open, track, projectId, onLyricsChange]);
+
+  const scheduleSave = (next: string) => {
+    dirtyRef.current = true; setVal(next);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      setSaving(true);
+      try {
+        const r = await apiRequest(`/api/audio-showcases/${projectId}/lyrics`, { method: 'PUT', body: { lyrics: next } });
+        dirtyRef.current = false; setSavedAt(new Date().toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' }));
+        if (r?.connection) setConn(r.connection); onLyricsChange(r?.lyrics ?? next);
+      } catch { /* beholdt lokalt */ } finally { setSaving(false); }
+    }, 800);
+  };
+
+  const syncNow = async () => {
+    try {
+      const r = await apiRequest(`/api/audio-showcases/${projectId}/lyrics-sync`, { method: 'POST', body: {} });
+      if (r?.connection) setConn(r.connection);
+      if (r?.applied === 'pulled' && typeof r.lyrics === 'string') { setVal(r.lyrics); onLyricsChange(r.lyrics); setPulse(true); setTimeout(() => setPulse(false), 1400); }
+    } catch { /* ignore */ }
+  };
+
+  const status = !conn.easeverseConfigured
+    ? { label: 'Lokal · EaseVerse ikke koblet', color: '#e0a955', dot: '#e0a955' }
+    : conn.reachable
+      ? { label: `Live · synket med EaseVerse${conn.latencyMs != null ? ` (${conn.latencyMs}ms)` : ''}`, color: '#5fb88a', dot: '#5fb88a' }
+      : { label: 'Kobler til EaseVerse…', color: '#e0606a', dot: '#e0606a' };
+
+  const [tab, setTab] = React.useState<'write' | 'structure'>('write');
+  const taRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const anchors = React.useMemo(() => buildSectionAnchors(val), [val]);
+  const sections = React.useMemo(() => parseSongSections(val), [val]);
+
+  const insertSection = (type: SectionType) => {
+    const ta = taRef.current;
+    const token = sectionInsertToken(type);
+    const pos = ta ? ta.selectionStart : val.length;
+    const before = val.slice(0, pos), after = val.slice(pos);
+    const needNlBefore = before && !before.endsWith('\n\n') ? (before.endsWith('\n') ? '\n' : '\n\n') : '';
+    const block = `${needNlBefore}${token}\n`;
+    const next = before + block + after;
+    scheduleSave(next);
+    const caret = (before + block).length;
+    setTimeout(() => { if (taRef.current) { taRef.current.focus(); taRef.current.setSelectionRange(caret, caret); } }, 0);
+  };
+  const jumpToAnchor = (cursor: number, lineEndCursor: number) => {
+    const ta = taRef.current; if (!ta) return;
+    ta.focus(); ta.setSelectionRange(cursor, lineEndCursor);
+    // scroll header til topp
+    const before = val.slice(0, cursor); const line = before.split('\n').length - 1;
+    ta.scrollTop = Math.max(0, line * 22 - 20);
+  };
+
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
-      <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <SubjectOutlined sx={{ color: ACCENT }} /> Tekster {track?.title ? `· ${track.title}` : ''}
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
+      <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1, pb: 0.5 }}>
+        <SubjectOutlined sx={{ color: ACCENT }} /> Tekst-studio {track?.title ? `· ${track.title}` : ''}
+        <Box sx={{ flex: 1 }} />
+        {track && (
+          <Stack direction="row" alignItems="center" spacing={0.75} sx={{ px: 1, py: 0.4, borderRadius: '999px', bgcolor: 'rgba(255,255,255,0.05)', border: `1px solid ${status.color}44` }}>
+            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: status.dot, boxShadow: conn.reachable ? `0 0 6px ${status.dot}` : 'none' }} />
+            <Typography sx={{ fontSize: '0.72rem', color: status.color, fontWeight: 600 }}>{status.label}</Typography>
+          </Stack>
+        )}
       </DialogTitle>
-      <DialogContent>
-        {track ? (
-          <TextField value={val} onChange={(e) => setVal(e.target.value)} multiline minRows={10} fullWidth placeholder="Skriv teksten…"
-            sx={{ mt: 0.5, '& .MuiInputBase-input': { color: TEXT, fontFamily: 'inherit', lineHeight: 1.6 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' } }} />
+      <DialogContent sx={{ minHeight: 420 }}>
+        {!track ? (
+          <Typography sx={{ color: MUTED, py: 2 }}>Dette review-rommet er ikke koblet til en SongFlow-låt ennå. Send en låt til review fra SongFlow for å skrive tekst her.</Typography>
         ) : (
-          <Typography sx={{ color: MUTED, py: 2 }}>Dette review-rommet er ikke koblet til en SongFlow-låt ennå. Send en låt til review fra SongFlow for å redigere tekst her.</Typography>
+          <>
+            <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 1.5, minHeight: 36, '& .MuiTab-root': { minHeight: 36, textTransform: 'none', color: MUTED, fontWeight: 600 }, '& .Mui-selected': { color: `${ACCENT} !important` }, '& .MuiTabs-indicator': { bgcolor: ACCENT } }}>
+              <Tab value="write" label="Skriv" />
+              <Tab value="structure" label={`Struktur${sections.length ? ` · ${sections.length}` : ''}`} />
+            </Tabs>
+
+            {tab === 'write' && (
+              <>
+                {/* Seksjons-verktøylinje — sett inn struktur (som EaseVerse) */}
+                <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+                  {INSERT_SECTION_OPTIONS.map((o) => (
+                    <Chip key={o.type} label={`+ ${NB_LABELS[o.type]}`} size="small" onClick={() => insertSection(o.type)}
+                      sx={{ height: 26, fontSize: '0.74rem', cursor: 'pointer', fontWeight: 600, color: SECTION_TYPE_COLORS[o.type], bgcolor: `${SECTION_TYPE_COLORS[o.type]}1f`, '&:hover': { bgcolor: `${SECTION_TYPE_COLORS[o.type]}33` } }} />
+                  ))}
+                </Stack>
+                <Box sx={{ display: 'grid', gridTemplateColumns: anchors.length ? '180px 1fr' : '1fr', gap: 1.5 }}>
+                  {anchors.length > 0 && (
+                    <Box sx={{ border: `1px solid ${BORDER}`, borderRadius: '10px', p: 1, maxHeight: 320, overflowY: 'auto' }}>
+                      <Typography sx={{ fontSize: '0.66rem', letterSpacing: 1, color: FAINT, textTransform: 'uppercase', px: 0.5, mb: 0.5 }}>Struktur</Typography>
+                      {anchors.map((a) => (
+                        <Stack key={a.id} direction="row" alignItems="center" spacing={1} onClick={() => jumpToAnchor(a.cursor, a.cursor + a.label.length + 2)}
+                          sx={{ px: 0.75, py: 0.5, borderRadius: '7px', cursor: 'pointer', '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' } }}>
+                          <Box sx={{ width: 8, height: 8, borderRadius: '2px', bgcolor: SECTION_TYPE_COLORS[a.type], flexShrink: 0 }} />
+                          <Typography sx={{ fontSize: '0.8rem', color: TEXT }}>{a.nbLabel}</Typography>
+                        </Stack>
+                      ))}
+                    </Box>
+                  )}
+                  <TextField inputRef={taRef} value={val} onChange={(e) => scheduleSave(e.target.value)} multiline minRows={13} maxRows={16} fullWidth
+                    placeholder="Skriv teksten… bruk knappene over for [Vers], [Refreng], [Bro]…"
+                    sx={{ transition: 'box-shadow .3s', boxShadow: pulse ? `0 0 0 2px ${ACCENT}` : 'none', borderRadius: '8px',
+                      '& .MuiInputBase-input': { color: TEXT, fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: '0.86rem', lineHeight: 1.55 },
+                      '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' } }} />
+                </Box>
+              </>
+            )}
+
+            {tab === 'structure' && (
+              <Stack spacing={1.25} sx={{ maxHeight: 360, overflowY: 'auto', pr: 0.5 }}>
+                {sections.length === 0 && <Typography sx={{ color: MUTED, py: 2 }}>Ingen seksjoner ennå. Gå til «Skriv» og sett inn [Vers]/[Refreng] for å bygge strukturen.</Typography>}
+                {sections.map((s) => (
+                  <Box key={s.id} sx={{ borderLeft: `3px solid ${SECTION_TYPE_COLORS[s.type]}`, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: '8px', p: 1.5 }}>
+                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: SECTION_TYPE_COLORS[s.type], textTransform: 'uppercase', letterSpacing: 0.5, mb: 0.5 }}>{s.nbLabel}</Typography>
+                    {s.lines.map((ln, i) => <Typography key={i} sx={{ fontSize: '0.86rem', color: 'rgba(245,242,234,0.9)', lineHeight: 1.5 }}>{ln}</Typography>)}
+                  </Box>
+                ))}
+              </Stack>
+            )}
+
+            <Typography sx={{ mt: 1, fontSize: '0.72rem', color: MUTED }}>
+              {saving ? 'Lagrer + synker til EaseVerse…' : pulse ? 'Oppdatert fra EaseVerse nå' : savedAt ? `Lagret ${savedAt} · auto-synk` : 'Auto-lagrer mens du skriver · seksjoner deles med EaseVerse'}
+            </Typography>
+          </>
         )}
       </DialogContent>
       {track && (
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none' }}>Lukk</Button>
-          <Button disabled={busy} onClick={async () => { setBusy(true); try { await onSave(val); } finally { setBusy(false); } }} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>{busy ? 'Lagrer…' : 'Lagre tekst'}</Button>
+          <Button onClick={syncNow} startIcon={<Sync />} sx={{ color: MUTED, textTransform: 'none' }}>Synk nå</Button>
+          <Box sx={{ flex: 1 }} />
+          <Button onClick={onClose} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Ferdig</Button>
         </DialogActions>
       )}
     </Dialog>

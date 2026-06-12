@@ -26,8 +26,68 @@ const isMissingTable = (e: unknown) =>
 const str = (v: unknown, max = 2000) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const num = (v: unknown): number | null => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 
+// ── Ekstern EaseVerse-bro (stabil toveis tekst-synk) ───────────────────────
+const EV_URL = (process.env.EASEVERSE_API_URL || "").trim().replace(/\/+$/, "");
+const EV_KEY = (process.env.EASEVERSE_API_KEY || "").trim();
+
+type EvResult = { configured: boolean; reachable: boolean; status?: number; item?: any; latencyMs?: number; error?: string };
+
+async function evFetch(path: string, init: RequestInit, timeoutMs = 6000): Promise<EvResult> {
+  if (!EV_URL) return { configured: false, reachable: false };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const startedAt = Date.now();
+  try {
+    const headers: Record<string, string> = { ...(init.headers as Record<string, string> || {}) };
+    if (EV_KEY) headers["x-api-key"] = EV_KEY;
+    const r = await fetch(`${EV_URL}${path}`, { ...init, headers, signal: ctrl.signal });
+    const latencyMs = Date.now() - startedAt;
+    const json = await r.json().catch(() => null);
+    return { configured: true, reachable: true, status: r.status, item: json?.item ?? null, latencyMs };
+  } catch (e: any) {
+    return { configured: true, reachable: false, error: String(e?.message || e), latencyMs: Date.now() - startedAt };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Hent tekst fra EaseVerse med 1 retry på nettverks-/5xx-feil (ikke 4xx).
+async function evGetLyrics(externalTrackId: string): Promise<EvResult> {
+  let last: EvResult = { configured: Boolean(EV_URL), reachable: false };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await evFetch(`/api/v1/collab/lyrics/${encodeURIComponent(externalTrackId)}`, { method: "GET" });
+    if (!res.configured) return res;
+    last = res;
+    if (res.reachable && res.status && (res.status < 500 || res.status === 404)) return res; // 2xx/4xx er endelig
+  }
+  return last;
+}
+
+async function evPushLyrics(payload: Record<string, unknown>): Promise<EvResult> {
+  return evFetch(`/api/v1/collab/lyrics`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload),
+  });
+}
+
 export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   const { app, pool, requireUserSession } = deps;
+
+  // Hent koblet track + lokal tekst-tilstand for et review-rom.
+  async function loadLinkedTrack(reviewId: string, userId: string): Promise<any | null> {
+    const p = await pool.query(
+      `SELECT easeverse_track_id, external_track_id FROM audio_review_projects
+        WHERE id = $1::uuid AND owner_user_id = $2 LIMIT 1`, [reviewId, userId]);
+    if (p.rowCount === 0) return { notFound: true };
+    const trackId = p.rows[0].easeverse_track_id;
+    const externalTrackId = p.rows[0].external_track_id || trackId;
+    if (!trackId) return null;
+    const t = await pool.query(
+      `SELECT id, title, artist, bpm, collaborators, lyrics,
+              COALESCE(lyrics_updated_at, updated_at) AS lyrics_updated_at
+         FROM easeverse_tracks WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [trackId, userId]);
+    if (t.rowCount === 0) return null;
+    return { ...t.rows[0], externalTrackId };
+  }
 
   // Sjekk at en versjon tilhører innlogget eier (for moderering/godkjenning).
   async function ownsVersion(versionId: string, userId: string): Promise<boolean> {
@@ -165,11 +225,11 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     try {
       const r = await pool.query(
         `INSERT INTO audio_review_comments
-           (version_id, parent_comment_id, user_id, author, author_role, timecode_seconds, body, category, is_decision)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+           (version_id, parent_comment_id, user_id, author, author_role, timecode_seconds, body, category, is_decision, section_ref)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
         [versionId, str(req.body?.parentCommentId, 64) || null, s.userId, str(req.body?.author, 200) || s.name || s.email || "Bruker",
          str(req.body?.authorRole, 80) || null, num(req.body?.timecodeSeconds) ?? num(req.body?.timecode) ?? 0, body,
-         str(req.body?.category, 40) || "general", Boolean(req.body?.isDecision)],
+         str(req.body?.category, 40) || "general", Boolean(req.body?.isDecision), str(req.body?.sectionRef, 120) || null],
       );
       return res.status(201).json(r.rows[0]);
     } catch (e) {
@@ -483,26 +543,149 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     }
   });
 
-  // ── Rediger tekst på koblet track fra studioet (Tekster-fanen) ─────────────
+  // ── Rediger tekst fra studioet → lokal + push til EaseVerse (toveis) ───────
   app.put("/api/audio-showcases/:id/lyrics", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     const id = str(req.params.id, 64);
     const lyrics = typeof req.body?.lyrics === "string" ? req.body.lyrics : null;
     if (lyrics === null) return res.status(400).json({ error: "lyrics_required" });
     try {
-      const p = await pool.query(
-        `SELECT easeverse_track_id FROM audio_review_projects WHERE id = $1::uuid AND owner_user_id = $2 LIMIT 1`, [id, s.userId]);
-      if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
-      const trackId = p.rows[0].easeverse_track_id;
-      if (!trackId) return res.status(409).json({ error: "no_linked_track" });
+      const track = await loadLinkedTrack(id, s.userId);
+      if (track?.notFound) return res.status(404).json({ error: "not_found" });
+      if (!track) return res.status(409).json({ error: "no_linked_track" });
       const r = await pool.query(
-        `UPDATE easeverse_tracks SET lyrics = $2, updated_at = NOW() WHERE id = $1::uuid AND user_id = $3 RETURNING id, lyrics`,
-        [trackId, lyrics.slice(0, 20000), s.userId]);
+        `UPDATE easeverse_tracks SET lyrics = $2, lyrics_updated_at = NOW(), updated_at = NOW()
+           WHERE id = $1::uuid AND user_id = $3 RETURNING lyrics, lyrics_updated_at`,
+        [track.id, lyrics.slice(0, 20000), s.userId]);
       if (r.rowCount === 0) return res.status(404).json({ error: "track_not_found" });
-      return res.json({ ok: true, lyrics: r.rows[0].lyrics });
+      const updatedAt = new Date(r.rows[0].lyrics_updated_at).toISOString();
+      // Push til EaseVerse (toveis). Blokkerer ikke svaret på ekstern feil.
+      const collaborators = Array.isArray(track.collaborators) ? track.collaborators
+        : (() => { try { return JSON.parse(track.collaborators || "[]"); } catch { return []; } })();
+      const push = await evPushLyrics({
+        externalTrackId: track.externalTrackId, title: track.title || "Uten tittel",
+        artist: track.artist || undefined, bpm: track.bpm || undefined,
+        lyrics: lyrics.slice(0, 20000), collaborators, source: "creatorhub", updatedAt,
+      });
+      return res.json({
+        ok: true, lyrics: r.rows[0].lyrics, updatedAt,
+        connection: { easeverseConfigured: push.configured, reachable: push.reachable, latencyMs: push.latencyMs ?? null },
+      });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       return res.status(500).json({ error: "update_lyrics_failed" });
     }
+  });
+
+  // ── Synk-status: lokal tekst + EaseVerse-tilkobling + om ekstern er nyere ──
+  app.get("/api/audio-showcases/:id/lyrics-sync", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    try {
+      const track = await loadLinkedTrack(id, s.userId);
+      if (track?.notFound) return res.status(404).json({ error: "not_found" });
+      if (!track) return res.json({ linked: false, connection: { easeverseConfigured: Boolean(EV_URL), reachable: false } });
+      const localUpdatedAt = track.lyrics_updated_at ? new Date(track.lyrics_updated_at).toISOString() : null;
+      const remote = await evGetLyrics(track.externalTrackId);
+      const remoteUpdatedAt = remote.item?.updatedAt || null;
+      const remoteNewer = Boolean(remoteUpdatedAt && (!localUpdatedAt || Date.parse(remoteUpdatedAt) > Date.parse(localUpdatedAt)));
+      return res.json({
+        linked: true, lyrics: track.lyrics || "", updatedAt: localUpdatedAt, title: track.title,
+        connection: { easeverseConfigured: remote.configured, reachable: remote.reachable, latencyMs: remote.latencyMs ?? null, lastCheckedAt: new Date().toISOString() },
+        remote: { present: Boolean(remote.item), updatedAt: remoteUpdatedAt, newer: remoteNewer },
+      });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      return res.status(500).json({ error: "lyrics_sync_status_failed" });
+    }
+  });
+
+  // ── Reconcile nå (last-write-wins): pull hvis ekstern nyere, ellers push ───
+  app.post("/api/audio-showcases/:id/lyrics-sync", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    try {
+      const track = await loadLinkedTrack(id, s.userId);
+      if (track?.notFound) return res.status(404).json({ error: "not_found" });
+      if (!track) return res.status(409).json({ error: "no_linked_track" });
+      const localUpdatedAt = track.lyrics_updated_at ? new Date(track.lyrics_updated_at).toISOString() : null;
+      const remote = await evGetLyrics(track.externalTrackId);
+      const remoteUpdatedAt = remote.item?.updatedAt || null;
+      const collaborators = Array.isArray(track.collaborators) ? track.collaborators
+        : (() => { try { return JSON.parse(track.collaborators || "[]"); } catch { return []; } })();
+
+      if (remote.configured && !remote.reachable) {
+        return res.json({ applied: "offline", lyrics: track.lyrics || "", updatedAt: localUpdatedAt,
+          connection: { easeverseConfigured: true, reachable: false, latencyMs: remote.latencyMs ?? null } });
+      }
+      // Ekstern nyere → pull inn lokalt.
+      if (remoteUpdatedAt && (!localUpdatedAt || Date.parse(remoteUpdatedAt) > Date.parse(localUpdatedAt))) {
+        const r = await pool.query(
+          `UPDATE easeverse_tracks SET lyrics = $2, lyrics_updated_at = $3::timestamptz, updated_at = NOW()
+             WHERE id = $1::uuid AND user_id = $4 RETURNING lyrics, lyrics_updated_at`,
+          [track.id, String(remote.item.lyrics || "").slice(0, 20000), remoteUpdatedAt, s.userId]);
+        return res.json({ applied: "pulled", lyrics: r.rows[0].lyrics, updatedAt: new Date(r.rows[0].lyrics_updated_at).toISOString(),
+          connection: { easeverseConfigured: true, reachable: true, latencyMs: remote.latencyMs ?? null } });
+      }
+      // Lokal nyere / ekstern mangler → push ut.
+      const push = await evPushLyrics({
+        externalTrackId: track.externalTrackId, title: track.title || "Uten tittel", artist: track.artist || undefined,
+        bpm: track.bpm || undefined, lyrics: String(track.lyrics || ""), collaborators, source: "creatorhub",
+        updatedAt: localUpdatedAt || new Date().toISOString(),
+      });
+      return res.json({ applied: push.reachable ? "pushed" : "offline", lyrics: track.lyrics || "", updatedAt: localUpdatedAt,
+        connection: { easeverseConfigured: push.configured, reachable: push.reachable, latencyMs: push.latencyMs ?? null } });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      return res.status(500).json({ error: "lyrics_sync_failed" });
+    }
+  });
+
+  // ── Live tekst-strøm (SSE) — auto-reconnect, heartbeat, graceful offline ───
+  app.get("/api/audio-showcases/:id/lyrics-stream", async (req, res) => {
+    // EventSource kan ikke sette headere → token via query.
+    const qToken = typeof req.query.token === "string" ? req.query.token : "";
+    const authedReq = qToken ? { ...req, headers: { ...req.headers, authorization: `Bearer ${qToken}` } } : req;
+    const s = requireUserSession(authedReq as any, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    const track = await loadLinkedTrack(id, s.userId).catch(() => null);
+    if (!track || track.notFound) { res.status(404).json({ error: "not_found" }); return; }
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive", "X-Accel-Buffering": "no",
+    });
+    const send = (event: string, data: unknown) => { try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* socket lukket */ } };
+
+    let lastUpdatedAt = track.lyrics_updated_at ? new Date(track.lyrics_updated_at).toISOString() : null;
+    send("snapshot", { lyrics: track.lyrics || "", updatedAt: lastUpdatedAt, title: track.title });
+
+    let closed = false;
+    const poll = async () => {
+      if (closed) return;
+      try {
+        const t = await loadLinkedTrack(id, s.userId);
+        if (!t || t.notFound) return;
+        const remote = await evGetLyrics(t.externalTrackId);
+        if (!remote.configured) { send("status", { easeverseConfigured: false, reachable: false }); return; }
+        if (!remote.reachable) { send("status", { easeverseConfigured: true, reachable: false }); return; }
+        const remoteUpdatedAt = remote.item?.updatedAt || null;
+        const localUpdatedAt = t.lyrics_updated_at ? new Date(t.lyrics_updated_at).toISOString() : null;
+        // Ekstern nyere → pull inn lokalt + push til klient.
+        if (remoteUpdatedAt && (!localUpdatedAt || Date.parse(remoteUpdatedAt) > Date.parse(localUpdatedAt))) {
+          await pool.query(
+            `UPDATE easeverse_tracks SET lyrics = $2, lyrics_updated_at = $3::timestamptz, updated_at = NOW() WHERE id = $1::uuid AND user_id = $4`,
+            [t.id, String(remote.item.lyrics || "").slice(0, 20000), remoteUpdatedAt, s.userId]).catch(() => {});
+          lastUpdatedAt = remoteUpdatedAt;
+          send("update", { lyrics: String(remote.item.lyrics || ""), updatedAt: remoteUpdatedAt, source: "easeverse", reachable: true });
+        } else {
+          send("status", { easeverseConfigured: true, reachable: true });
+        }
+      } catch { send("status", { easeverseConfigured: Boolean(EV_URL), reachable: false }); }
+    };
+    const pollTimer = setInterval(() => { void poll(); }, 4000);
+    const beat = setInterval(() => send("ping", { t: Date.now() }), 15000);
+    void poll();
+    req.on("close", () => { closed = true; clearInterval(pollTimer); clearInterval(beat); try { res.end(); } catch { /* */ } });
   });
 }
