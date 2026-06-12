@@ -285,7 +285,8 @@ export function registerRoleRoomUserStorageRoutes(
       "269_role_room_user_files_context.sql",
     ];
 
-    const results: Array<{ file: string; status: string; error?: string }> = [];
+    const force = req.query.force === 'true';
+    const results: Array<{ file: string; status: string; error?: string; tableExists?: boolean }> = [];
 
     try {
       // Sørg for at _migrations_applied finnes
@@ -297,14 +298,40 @@ export function registerRoleRoomUserStorageRoutes(
 
       for (const filename of targetFiles) {
         try {
-          // Skip hvis allerede applied
+          // Sjekk om "produktet" av migrasjonen faktisk eksisterer i DB
+          // (vi sjekker den primære tabellen som hver migrasjon oppretter)
+          const tableName = filename.includes("267") ? "role_room_user_buckets"
+            : filename.includes("268") ? "role_room_byo_migration_jobs"
+            : filename.includes("269") ? "role_room_user_files" // utvidet kolonner — sjekk eksistens
+            : null;
+
+          let tableExists = false;
+          if (tableName) {
+            const t = await pool.query(
+              `SELECT to_regclass($1) IS NOT NULL AS exists`,
+              [tableName],
+            );
+            tableExists = t.rows[0]?.exists === true;
+          }
+
+          // Skip hvis allerede applied OG tabellen eksisterer (eller force er av)
           const check = await pool.query(
             `SELECT 1 FROM _migrations_applied WHERE filename = $1`,
             [filename],
           );
-          if (check.rowCount && check.rowCount > 0) {
-            results.push({ file: filename, status: "already_applied" });
+          const alreadyMarked = !!(check.rowCount && check.rowCount > 0);
+
+          if (alreadyMarked && tableExists && !force) {
+            results.push({ file: filename, status: "already_applied", tableExists });
             continue;
+          }
+
+          if (alreadyMarked && !tableExists) {
+            // Stale tracking-row — fjern så vi kan re-kjøre
+            await pool.query(
+              `DELETE FROM _migrations_applied WHERE filename = $1`,
+              [filename],
+            );
           }
 
           // Les og kjør SQL
@@ -312,13 +339,32 @@ export function registerRoleRoomUserStorageRoutes(
           const sql = await fs.readFile(sqlPath, "utf-8");
           await pool.query(sql);
 
+          // Verifiser at tabellen faktisk eksisterer ETTER SQL-kjøring
+          let postExists = false;
+          if (tableName) {
+            const t = await pool.query(
+              `SELECT to_regclass($1) IS NOT NULL AS exists`,
+              [tableName],
+            );
+            postExists = t.rows[0]?.exists === true;
+          }
+
+          if (!postExists) {
+            results.push({
+              file: filename,
+              status: "sql_ran_but_table_missing",
+              error: `Tabell '${tableName}' eksisterer ikke etter SQL-kjøring. Mulig krasj inni TRANSACTION.`,
+            });
+            continue;
+          }
+
           // Marker som applied
           await pool.query(
             `INSERT INTO _migrations_applied (filename) VALUES ($1)
              ON CONFLICT (filename) DO NOTHING`,
             [filename],
           );
-          results.push({ file: filename, status: "applied" });
+          results.push({ file: filename, status: "applied", tableExists: true });
         } catch (err) {
           results.push({
             file: filename,
