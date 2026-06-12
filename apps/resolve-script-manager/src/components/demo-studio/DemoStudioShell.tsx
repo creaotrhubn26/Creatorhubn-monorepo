@@ -166,6 +166,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   // «Forstå siden først»: Claudes forståelse av produkt + målgruppe, vist som
   // en brief før noe lages — grunnlag for diskusjon/justering.
   const [understanding, setUnderstanding] = useState<SiteUnderstanding | null>(null);
+  const [showTools, setShowTools] = useState(false); // sammenleggbare sekundære verktøy
   const pickAudience = (a: string) => {
     const m = project?.scriptMeta ?? { tone: 'professional' as const, audience: '', language: 'Norsk', length: 'medium' as const };
     setProjectField('scriptMeta', { ...m, audience: a });
@@ -211,8 +212,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     if (r.params.task) setProjectField('task', r.params.task);
     if (r.params.goal) setProjectField('goal', r.params.goal);
     if (r.params.voiceModel) setProjectField('voiceModel', r.params.voiceModel);
+    // Vinkel/målgruppe fra kommando → oppdater UI + send som override (stale-closure-trygt).
+    if (r.params.demoType) setProjectField('demoType', r.params.demoType);
+    if (r.params.audience) setProjectField('scriptMeta', { ...(project?.scriptMeta ?? { tone: 'professional' as const, audience: '', language: 'Norsk', length: 'medium' as const }), audience: r.params.audience });
     switch (r.action) {
-      case 'generate': await runDirector(); break;
+      case 'generate': await generateDemo({ demoType: r.params.demoType, audience: r.params.audience }); break;
       case 'complete': await completeDemo(); break;
       case 'responsive': await runResponsiveCheck_(); break;
       case 'critic': await runCritic(); break;
@@ -499,40 +503,85 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   // AI Director (§5.1): hent nettside-kontekst → generér hel scene-flow →
   // erstatt scener → hopp til Script Builder så Director + Script Builder
   // jobber på samme scene-objekter.
-  const runDirector = async () => {
+  // Cache av siste skann (elementer + sidetekst) per URL, så «Forstå siden» og
+  // «Generér demoen» kan dele resultatet uten å skanne to ganger.
+  const directorCtx = useRef<{ url: string; elements: any[]; siteContext: string; brandName?: string } | null>(null);
+
+  /** Skann ekte interaktive elementer + les sidetekst (med OCR-fallback). Cacher per URL. */
+  const scanAndContext = async (): Promise<{ elements: any[]; siteContext: string; brandName?: string }> => {
+    if (directorCtx.current && directorCtx.current.url === project!.url) {
+      return { elements: directorCtx.current.elements, siteContext: directorCtx.current.siteContext, brandName: directorCtx.current.brandName };
+    }
+    const scan = await scanDom(project!.url).catch(() => null);
+    let elements = scan?.elements ?? [];
+    // OCR-/vision-fallback: ingen DOM-elementer → la Claude finne elementer fra et skjermbilde.
+    if (elements.length === 0 && isCaptureAvailable()) {
+      setDirectorMsg('Ingen DOM-elementer — bruker vision (OCR)…');
+      const shot = await captureScreenshot(project!.url).catch(() => null);
+      if (shot) elements = await ocrDetectElements({ screenshot: shot }).catch(() => []);
+    }
+    learnCtas(elements); // auto-utvid CTA-banken fra det vi fant
+    if (elements.length) setDriftTargets(detectLearnedDrift(project!.url, elements)); // drift-deteksjon (D)
+    const siteContext = scan?.pageText || await fetchSiteContext(project!.url);
+    applyScannedBranding(scan);
+    const brandName = scan?.branding?.brandName;
+    directorCtx.current = { url: project!.url, elements, siteContext, brandName };
+    return { elements, siteContext, brandName };
+  };
+
+  /** Kjerne: analyser siden + adopter målgruppe/mål/vinkel. Ingen busy-guard
+   *  (kalles fra både understandSite og generateDemo). Returnerer forståelsen. */
+  const analyzeAndAdopt = async (elements: any[], siteContext: string, brandName?: string) => {
+    const u = await analyzeSiteContext({ url: project!.url, pageText: siteContext, brandName, elements }).catch(() => null);
+    if (u) {
+      setUnderstanding(u);
+      // Adopter målgruppe/mål/vinkel fra forståelsen hvis brukeren ikke har satt dem.
+      const meta = project!.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project!.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
+      if ((!meta.audience || meta.audience === 'General') && u.audience) setProjectField('scriptMeta', { ...meta, audience: u.audience });
+      if (!project!.goal && u.suggestedGoal) setProjectField('goal', u.suggestedGoal);
+      if (u.suggestedType && project!.demoType === 'product_demo' && u.suggestedType !== 'product_demo') setProjectField('demoType', u.suggestedType);
+    }
+    return u;
+  };
+
+  /** STEG 1 — FORSTÅ FØRST: hva er produktet + hvem er målgruppen? Viser en brief,
+   *  lager INGENTING. Diskuter/juster vinkel, og kjør så «Generér demoen». */
+  const understandSite = async () => {
     if (!project || directorBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
-    setDirectorBusy(true); setDirectorMsg('Analyserer siden…');
+    setDirectorBusy(true); setDirectorMsg('Forstår siden…');
     try {
-      // Skann de ekte interaktive elementene (presis element-binding) + les kontekst.
-      const scan = await scanDom(project.url).catch(() => null);
-      let elements = scan?.elements ?? [];
-      // OCR-/vision-fallback: ingen DOM-elementer → la Claude finne elementer fra et skjermbilde.
-      if (elements.length === 0 && isCaptureAvailable()) {
-        setDirectorMsg('Ingen DOM-elementer — bruker vision (OCR)…');
-        const shot = await captureScreenshot(project.url).catch(() => null);
-        if (shot) elements = await ocrDetectElements({ screenshot: shot }).catch(() => []);
-      }
-      learnCtas(elements); // auto-utvid CTA-banken fra det vi fant
-      // Drift-deteksjon (D): har siden endret seg slik at lærte targets er utdaterte?
-      if (elements.length) setDriftTargets(detectLearnedDrift(project.url, elements));
-      // Foretrekk JS-rendret pageText fra skannet (rikere enn anonym reqwest).
-      const siteContext = scan?.pageText || await fetchSiteContext(project.url);
-      applyScannedBranding(scan);
-      // FORSTÅ FØRST: hva er produktet + hvem er målgruppen? Presenter det som
-      // en kort brief før vi lager noe — grunnet i URL-en, ikke gjetning.
-      setDirectorMsg('Forstår siden…');
-      const u = await analyzeSiteContext({ url: project.url, pageText: siteContext, brandName: scan?.branding?.brandName, elements }).catch(() => null);
-      let meta = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
-      if (u) {
-        setUnderstanding(u);
-        // Adopter målgruppe/mål fra forståelsen hvis brukeren ikke har satt dem.
-        if ((!meta.audience || meta.audience === 'General') && u.audience) { meta = { ...meta, audience: u.audience }; setProjectField('scriptMeta', meta); }
-        if (!project.goal && u.suggestedGoal) setProjectField('goal', u.suggestedGoal);
-        setDirectorMsg(`Forsto: ${u.summary} · Målgruppe: ${u.audience}. Lager demo (juster vinkel/målgruppe i feltet over, så kjør på nytt)…`);
-      }
+      const { elements, siteContext, brandName } = await scanAndContext();
+      const u = await analyzeAndAdopt(elements, siteContext, brandName);
+      setDirectorMsg(u
+        ? 'Forstått. Juster målgruppe/vinkel under hvis du vil, og trykk «Generér demoen».'
+        : 'Kunne ikke forstå siden automatisk — du kan generere likevel.');
+    } catch (e) {
+      setDirectorMsg('Feil: ' + (e as Error).message);
+    } finally {
+      setDirectorBusy(false);
+    }
+  };
+
+  /** STEG 2 — GENERÉR: lag scenene med (eventuelt justert) målgruppe/vinkel/mål.
+   *  Forstår automatisk først hvis det ikke er gjort, så ett klikk holder også. */
+  const generateDemo = async (override?: { demoType?: DemoType; audience?: string }) => {
+    if (!project || directorBusy) return;
+    if (!aiReady) { setShowSignIn(true); return; }
+    setDirectorBusy(true);
+    try {
+      const { elements, siteContext, brandName } = await scanAndContext();
+      // Bruk returverdien (ikke React-state, som er stale i denne closuren).
+      let u = understanding;
+      if (!u) { setDirectorMsg('Forstår siden…'); u = await analyzeAndAdopt(elements, siteContext, brandName); }
+      const meta0 = project.scriptMeta ?? { tone: 'professional' as const, audience: 'General', language: project.language === 'en' ? 'English' : 'Norsk', length: 'medium' as const };
+      // Effektive verdier: override (fra kommando) vinner, så brukerens valg, så forståelsen.
+      const audience = override?.audience || (meta0.audience && meta0.audience !== 'General' ? meta0.audience : (u?.audience || meta0.audience));
+      const meta = { ...meta0, audience };
+      const demoType = override?.demoType || (project.demoType !== 'product_demo' ? project.demoType : (u?.suggestedType || project.demoType));
+      setDirectorMsg('Lager demo…');
       const scenes = await generateDemoFlow({
-        url: project.url, demoType: project.demoType, devices: project.devices, meta, siteContext, elements, goal: project.goal || u?.suggestedGoal, task: project.task,
+        url: project.url, demoType, devices: project.devices, meta, siteContext, elements, goal: project.goal || u?.suggestedGoal, task: project.task,
       });
       replaceScenes(scenes);
       setDirectorMsg(`✓ ${scenes.length} scener generert`);
@@ -543,6 +592,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       setDirectorBusy(false);
     }
   };
+
   const [demoType, setDemoType] = useState<DemoType>('product_demo');
 
   // «AI fullfør demoen»: fyll KUN tomme felt på eksisterende scener.
@@ -723,7 +773,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 {understanding.valueProps?.length ? (
                   <div style={{ fontSize: 10.5, color: C.inkFaint, lineHeight: 1.4 }}>Verdiløfter: {understanding.valueProps.slice(0, 3).join(' · ')}</div>
                 ) : null}
-                <div style={{ fontSize: 10.5, color: C.inkFaint, marginTop: 5 }}>Juster vinkel/målgruppe i kommando-feltet (f.eks. «gjør den mer investor-rettet»), så «Generér hele demoen».</div>
+                <div style={{ fontSize: 10.5, color: C.inkFaint, marginTop: 5 }}>Juster vinkel/målgruppe over eller i kommando-feltet (f.eks. «gjør den mer investor-rettet») — trykk så «Generér demoen».</div>
               </div>
             )}
             {/* ── AI-kommando (Conversational Director) ── */}
@@ -735,7 +785,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 onClick={() => { const v = cmdInput; setCmdInput(''); void runCommand(v); }}>{cmdBusy ? '…' : '➤'}</button>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
-              {['Generér demoen', 'Fyll hull i manus', 'Lag en voiceover', 'Responsive check', 'Vurder demoen', 'Lag veiledning for innlogging'].map((q) => (
+              {['Lag en voiceover', 'Responsive check', 'Lag veiledning for innlogging'].map((q) => (
                 <span key={q} onClick={() => { if (!cmdBusy) void runCommand(q); }}
                   style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 7, border: `1px solid ${C.line}`, background: '#fff', color: C.inkSoft, cursor: cmdBusy ? 'default' : 'pointer' }}>{q}</span>
               ))}
@@ -761,7 +811,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             )}
             {cmdReply && <div style={{ fontSize: 11.5, color: cmdReply.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginBottom: 8 }}>{cmdReply}</div>}
 
-            <p style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.45, marginBottom: 8 }}>La AI lese nettsiden og foreslå en hel scene-flow med manus.</p>
+            <p style={{ fontSize: 11.5, color: C.inkSoft, lineHeight: 1.45, marginBottom: 8 }}>Forstå siden først, juster vinkel/mål, og generér så scene-flowen.</p>
             <input style={{ ...field, marginBottom: 8 }} value={project.task ?? ''} placeholder="Hva skal veiledningen vise? f.eks. «hele innloggings-prosessen»"
               onChange={(e) => setProjectField('task', e.target.value)} />
             <input style={{ ...field, marginBottom: 8 }} value={project.goal ?? ''} placeholder="Mål? f.eks. «få flere til å booke demo»"
@@ -772,32 +822,53 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginBottom: 8 }}
                 onClick={() => setShowSignIn(true)}>Koble til AI (Role Room)</button>
             )}
-            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', opacity: directorBusy ? 0.6 : 1 }}
-              disabled={directorBusy} onClick={() => void runDirector()}>
-              {directorBusy ? 'Jobber…' : 'Generér hele demoen'}
-            </button>
-            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: directorBusy ? 0.6 : 1 }}
-              disabled={directorBusy} onClick={() => void completeDemo()}
-              title="Fyll kun manglende felt (manus, target, overlay, varighet) uten å overskrive det du har skrevet">
-              ✦ Fullfør demoen (fyll hull)
-            </button>
+            {/* Primær flyt: STEG 1 forstå → STEG 2 generér */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button style={{ ...btn, flex: 1, justifyContent: 'center', background: understanding ? '#fff' : C.accent, color: understanding ? C.ink : '#fff', borderColor: understanding ? C.lineStrong : C.accent, opacity: directorBusy ? 0.6 : 1 }}
+                disabled={directorBusy} onClick={() => void understandSite()}
+                title="STEG 1: AI leser siden og foreslår produkt-vinkel + målgruppe — lager ingenting ennå">
+                {directorBusy && !understanding ? 'Forstår…' : '① Forstå siden'}
+              </button>
+              <button style={{ ...btn, flex: 1, justifyContent: 'center', background: understanding ? C.accent : '#fff', color: understanding ? '#fff' : C.ink, borderColor: understanding ? C.accent : C.lineStrong, opacity: directorBusy ? 0.6 : 1 }}
+                disabled={directorBusy} onClick={() => void generateDemo()}
+                title="STEG 2: generér hele scene-flowen med valgt vinkel/målgruppe">
+                {directorBusy && understanding ? 'Lager…' : '② Generér demoen'}
+              </button>
+            </div>
             {directorMsg && <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div>}
-            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: capturing ? C.accent : '#fff', color: capturing ? '#fff' : C.ink, borderColor: capturing ? C.accent : C.lineStrong, marginTop: 8 }}
-              disabled={capturing} onClick={() => void startCapture()}
-              title="Åpne siden i et capture-vindu og klikk deg gjennom — hvert klikk blir et steg med hotspot">
-              {capturing ? `Tar opp klikk… (${captureCount})` : '☞ Klikk-capture fra side'}
-            </button>
-            {capturing && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>Klikk deg gjennom i capture-vinduet. Trykk «Fullfør» der når du er ferdig.</div>}
-            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: critiqueBusy ? 0.6 : 1 }}
-              disabled={critiqueBusy} onClick={() => void runCritic()}
-              title="La AI vurdere hele demoen mot målet og foreslå forbedringer">
-              ★ {critiqueBusy ? 'Vurderer…' : 'Vurder demoen (Critic)'}
-            </button>
-            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: visualBusy ? 0.6 : 1 }}
-              disabled={visualBusy} onClick={() => void runVisualBeats()}
-              title="La AI lese manuset og foreslå visuelle uthevinger der noe konkret nevnes — med preview">
-              ✦ {visualBusy ? 'Leser manus…' : 'Foreslå visuelle uthevinger'}
-            </button>
+
+            {/* Sekundære verktøy — sammenleggbart, så de ikke roter til primær-flyten */}
+            <div style={{ marginTop: 12 }}>
+              <div onClick={() => setShowTools((v) => !v)}
+                style={{ fontSize: 10.5, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ transition: 'transform .15s', transform: showTools ? 'rotate(90deg)' : 'none' }}>▸</span> Verktøy
+              </div>
+              {showTools && (
+                <div style={{ marginTop: 8 }}>
+                  <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', opacity: directorBusy ? 0.6 : 1 }}
+                    disabled={directorBusy} onClick={() => void completeDemo()}
+                    title="Fyll kun manglende felt (manus, target, overlay, varighet) uten å overskrive det du har skrevet">
+                    ✦ Fullfør demoen (fyll hull)
+                  </button>
+                  <button style={{ ...btn, width: '100%', justifyContent: 'center', background: capturing ? C.accent : '#fff', color: capturing ? '#fff' : C.ink, borderColor: capturing ? C.accent : C.lineStrong, marginTop: 8 }}
+                    disabled={capturing} onClick={() => void startCapture()}
+                    title="Åpne siden i et capture-vindu og klikk deg gjennom — hvert klikk blir et steg med hotspot">
+                    {capturing ? `Tar opp klikk… (${captureCount})` : '☞ Klikk-capture fra side'}
+                  </button>
+                  {capturing && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>Klikk deg gjennom i capture-vinduet. Trykk «Fullfør» der når du er ferdig.</div>}
+                  <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: critiqueBusy ? 0.6 : 1 }}
+                    disabled={critiqueBusy} onClick={() => void runCritic()}
+                    title="La AI vurdere hele demoen mot målet og foreslå forbedringer">
+                    ★ {critiqueBusy ? 'Vurderer…' : 'Vurder demoen (Critic)'}
+                  </button>
+                  <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: visualBusy ? 0.6 : 1 }}
+                    disabled={visualBusy} onClick={() => void runVisualBeats()}
+                    title="La AI lese manuset og foreslå visuelle uthevinger der noe konkret nevnes — med preview">
+                    ✦ {visualBusy ? 'Leser manus…' : 'Foreslå visuelle uthevinger'}
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Læring & presisjon (menneske-loop A/C/D) */}
             <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 12, paddingTop: 10 }}>
