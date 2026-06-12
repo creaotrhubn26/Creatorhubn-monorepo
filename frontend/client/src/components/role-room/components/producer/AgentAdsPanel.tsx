@@ -48,6 +48,7 @@ import TiktokScopePermissionGate from './TiktokScopePermissionGate';
 import ClientAdsAudiencesPanel from './ClientAdsAudiencesPanel';
 import ClientAdsCrmEventsPanel from './ClientAdsCrmEventsPanel';
 import ClientAdsDeploymentPanel from './ClientAdsDeploymentPanel';
+import ClientAdsDiagnosticsPanel from './ClientAdsDiagnosticsPanel';
 import ClientAiPromptsPanel from './ClientAiPromptsPanel';
 import ClientInsightsPanel from './ClientInsightsPanel';
 
@@ -900,6 +901,9 @@ export default function AgentAdsPanel({
 
           {/* N2-B5 — Tracking-deployment per metode (5 valg) */}
           <ClientAdsDeploymentPanel configId={savedConfigId} />
+
+          {/* N2-B6 — Monitoring + Diagnostics (live event-tracking) */}
+          <ClientAdsDiagnosticsPanel configId={savedConfigId} />
 
           {/* Google Customer Match audiences (gated bak klient-godkjenning) */}
           <TiktokScopePermissionGate configId={savedConfigId} action="google_customer_match">
