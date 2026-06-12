@@ -10,11 +10,13 @@
 //! enhet og tas opp via AVFoundation (kablet). Den kan IKKE kjøre i
 //! simulatoren — simulatoren er kun for apper du selv bygger i Xcode.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Child, Command};
+use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
 
 const FFMPEG_FALLBACK: &[&str] = &[
     "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/opt/local/bin/ffmpeg", "/usr/bin/ffmpeg",
@@ -322,4 +324,58 @@ pub async fn record_iphone_mirroring(
         return Err("iPhone Mirroring-opptak feilet (kjører appen, og er skjermopptak-tilgang gitt?)".into());
     }
     Ok(out_path.to_string_lossy().to_string())
+}
+
+// ── Native skjermopptak (interaktiv start/stopp) ─────────────────────────────
+// getDisplayMedia finnes ikke i WKWebView, så Guided Recorder kan ikke ta opp
+// via nettleseren. Her bruker vi Apples egen `screencapture -v` (ingen ffmpeg-
+// avhengighet) som filmer skjermen til den får SIGINT. Vi holder child-prosessen
+// i managed state mellom start og stopp.
+struct ScreenRecSession {
+    child: Child,
+    path: PathBuf,
+}
+
+#[derive(Default)]
+pub struct ScreenRecState(pub(crate) Mutex<HashMap<String, ScreenRecSession>>);
+
+/// Start native skjermopptak for en scene. Returnerer en session-id som må
+/// sendes til `stop_screen_record`. Filmer hele skjermen til opptaket stoppes.
+#[tauri::command]
+pub async fn start_screen_record(
+    app: AppHandle,
+    state: State<'_, ScreenRecState>,
+    project_id: String,
+    scene_id: String,
+) -> Result<String, String> {
+    let dir = recordings_dir(&app, &project_id)?;
+    let safe_scene: String = scene_id.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+    let out_path = dir.join(format!("{}.mov", safe_scene));
+    // -v: video, -C: ta med musepeker. screencapture stopper + finaliserer ved SIGINT.
+    let child = Command::new("/usr/sbin/screencapture")
+        .args(["-v", "-C", &out_path.to_string_lossy()])
+        .spawn()
+        .map_err(|e| format!("kunne ikke starte screencapture: {}", e))?;
+    let session_id = safe_scene;
+    state.0.lock().unwrap().insert(session_id.clone(), ScreenRecSession { child, path: out_path });
+    Ok(session_id)
+}
+
+/// Stopp et native skjermopptak (SIGINT → finaliser fil) og returner sti.
+#[tauri::command]
+pub async fn stop_screen_record(
+    state: State<'_, ScreenRecState>,
+    session_id: String,
+) -> Result<String, String> {
+    let mut session = state.0.lock().unwrap().remove(&session_id)
+        .ok_or("ingen aktiv opptaks-sesjon")?;
+    // Control-C-ekvivalent → screencapture skriver ut filen og avslutter.
+    let pid = session.child.id();
+    let _ = Command::new("/bin/kill").args(["-INT", &pid.to_string()]).status();
+    let _ = session.child.wait();
+    let path = session.path.to_string_lossy().to_string();
+    if !session.path.exists() {
+        return Err("opptaksfil ble ikke skrevet — mangler appen skjermopptak-tillatelse? (Systeminnstillinger → Personvern → Skjermopptak)".into());
+    }
+    Ok(path)
 }
