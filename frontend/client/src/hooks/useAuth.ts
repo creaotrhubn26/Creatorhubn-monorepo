@@ -167,6 +167,21 @@ function canUseDevAdminFallback(email: string, password: string): boolean {
   );
 }
 
+// Dev-only: auto-seed local-admin-sesjonen slik at autentiserte API-kall
+// (eier-paneler: Stripe, omtale-moderering, KV) virker i nettleseren uten
+// manuell innlogging. STRENGT gated til dev + localhost, og kun når ingen
+// token finnes fra før — påvirker aldri prod eller en ekte innlogging.
+if (
+  isDev &&
+  typeof window !== 'undefined' &&
+  window.location.hostname === 'localhost' &&
+  !localStorage.getItem(AUTH_TOKEN_KEY)
+) {
+  try {
+    storeAuth('dev-admin-local-session', createDevAdminUser(DEV_ADMIN_DEMO_EMAIL));
+  } catch { /* ignore */ }
+}
+
 export function useAuth() {
   const [authState, setAuthState] = useState<AuthState>(() => {
     if (globalAuthCache.state) {

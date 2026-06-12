@@ -298,6 +298,7 @@ const VideographerVideoSuite = React.lazy(() => import('../videographer/Videogra
 const PhotographerPhotoSuite = React.lazy(() => import('../photographer/PhotographerPhotoSuite'));
 const VideoShowcaseEnhanced = React.lazy(() => import('./VideoShowcaseEnhanced'));
 import ShowcaseCard, { formatFileSize } from './ShowcaseCard';
+import { CINE, withAlpha, glassPanelSx, posterCardSx } from './showcaseCinematic';
 
 
 // Helper functions for timecode conversion
@@ -4401,10 +4402,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         pricePerImage = pricingData.projectPricing.per_image;
       } else if (pricingData.pricing?.perImage) {
         pricePerImage = pricingData.pricing.perImage;
-      } else {
-        // Use default fallback pricing
-        pricePerImage = 50; // Default NOK 50 per image
       }
+      // else: keep the 150 NOK default declared above (matches modal display fallback)
     } catch (error) {
       console.warn('Could not fetch per-image pricing, using fallback:', error);
     }
@@ -4523,7 +4522,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         body: JSON.stringify({
           showcaseId: items[0]?.id, // Use first showcase item ID as reference
           selectedImages: Array.from(selectedImages),
-          clientEmail: 'kunde@example.com', // This should come from authenticated user
+          clientEmail: clientEmail || user?.email || effectiveUserId,
           pricingOption: 'per_image'
   })
   });
@@ -5593,6 +5592,75 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const currentFeaturedItem = featuredItem
     || items.find((item: ShowcaseItem) => Boolean(item.isFeatured ?? item.featured))
     || items[0];
+
+  // ── Cinematic detail view (QuickPreview) — comments wiring ───────────────
+  // The fullscreen detail experience keeps the comment thread always visible
+  // in its sidebar. We key a dedicated query off the item currently shown in
+  // QuickPreview (independent of the legacy showComments flow above).
+  const quickPreviewItem = filteredItems[quickPreviewIndex];
+  const {
+    data: quickPreviewComments = [],
+    isLoading: quickPreviewCommentsLoading,
+    refetch: refetchQuickPreviewComments,
+  } = useQuery<any[]>({
+    queryKey: [`/api/showcase/qp/${quickPreviewItem?.id}/comments`],
+    queryFn: async () => {
+      if (!quickPreviewItem?.id) return [];
+      const response = await fetch(`/api/showcase/${quickPreviewItem.id}/comments`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!quickPreviewItem?.id && quickPreviewOpen,
+  });
+
+  const handleQuickPreviewAddComment = useCallback(async (itemId: string, text: string) => {
+    if (!text.trim()) return;
+    try {
+      const response = await fetch(`/api/showcase/${itemId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          showcaseItemId: itemId,
+          userId: effectiveUserId,
+          userName: (user as any)?.name || user?.email || 'Du',
+          userEmail: user?.email || '',
+          comment: text,
+          commentType: 'general',
+          isPrivate: false,
+        }),
+      });
+      if (response.ok) await refetchQuickPreviewComments();
+    } catch (error) {
+      console.error('Failed to add comment:', error);
+    }
+  }, [effectiveUserId, user, refetchQuickPreviewComments]);
+
+  const handleQuickPreviewLikeComment = useCallback(async (commentId: string) => {
+    try {
+      const response = await fetch(`/api/showcase/comments/${commentId}/like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: effectiveUserId }),
+      });
+      if (response.ok) await refetchQuickPreviewComments();
+    } catch (error) {
+      console.error('Failed to like comment:', error);
+    }
+  }, [effectiveUserId, refetchQuickPreviewComments]);
+
+  // Opens the cinematic detail view (QuickPreview) on a given item — the default
+  // "view" action for cards, masonry and list rows. Falls back to the legacy
+  // selectedItem dialog only if the item is not in the current filtered set.
+  const openQuickPreview = useCallback((item: ShowcaseItem) => {
+    // Keep selectedItem in sync so comment/audio/analysis context that keys off it
+    // stays coherent (no legacy modal is gated on it — see audit), then open the
+    // cinematic detail view.
+    setSelectedItem(item);
+    const idx = filteredItems.findIndex((i: ShowcaseItem) => i.id === item.id);
+    if (idx === -1) return;
+    setQuickPreviewIndex(idx);
+    setQuickPreviewOpen(true);
+  }, [filteredItems]);
 
   const toggleFavorite = (itemId: string) => {
     setFavorites(prev => {
@@ -8084,6 +8152,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             { icon: <Collections sx={{ fontSize: 20 }} />, label: 'Categories', filterVal: null },
             { icon: <FavoriteBorder sx={{ fontSize: 20 }} />, label: 'Favorites', filterVal: 'favorites' },
             { icon: <PhotoLibrary sx={{ fontSize: 20 }} />, label: profession === 'photographer' ? 'Your photos' : profession === 'videographer' ? 'Your videos' : 'Your tracks', filterVal: 'mine' },
+            // Media-type-filtre (flyttet hit fra admin-tools — filteret støtter
+            // item.fileType direkte). Vises på tvers av profesjoner.
+            { icon: <CameraAlt sx={{ fontSize: 20 }} />, label: 'Foto', filterVal: 'photo' },
+            { icon: <VideoLibrary sx={{ fontSize: 20 }} />, label: 'Video', filterVal: 'video' },
+            { icon: <MusicNote sx={{ fontSize: 20 }} />, label: 'Lyd', filterVal: 'audio' },
           ].map((navItem) => {
             const isActive = filter === navItem.filterVal || (filter === 'all' && navItem.filterVal === 'all');
             return (
@@ -9605,15 +9678,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               height: { xs: 'auto', md: 420 },
             }}>
               {/* Large Featured Photo */}
-              <Box sx={{ 
+              <Box sx={{
                 position: 'relative',
                 borderRadius: '12px',
                 overflow: 'hidden',
                 cursor: 'pointer',
-                bgcolor: '#1a1f2e',
+                bgcolor: CINE.surfaceElevated,
                 '&:hover .hero-overlay-actions': { opacity: 1 },
               }}
-                onClick={() => handleItemSelectWithBroadcast(currentFeaturedItem as any)}
+                onClick={() => { handleItemSelectWithBroadcast(currentFeaturedItem as any); openQuickPreview(currentFeaturedItem as any); }}
               >
                 {/* Slice 9X.81 — width/height + loading=lazy + aspect-ratio på parent
                     eliminerer CLS når bildet laster. fetchpriority='high' for LCP. */}
@@ -9676,12 +9749,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 borderRadius: '12px',
                 overflow: 'hidden',
                 cursor: 'pointer',
-                bgcolor: '#1a1f2e',
+                bgcolor: CINE.surfaceElevated,
                 display: { xs: 'none', md: 'block' },
               }}
                 onClick={() => {
                   const secondItem = filteredItems[1] || currentFeaturedItem;
                   handleItemSelectWithBroadcast(secondItem as any);
+                  openQuickPreview(secondItem as any);
                 }}
               >
                 <img
@@ -9992,14 +10066,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               </Box>
 
               {/* Main content card */}
-              <Paper elevation={0} sx={{ 
-                textAlign: 'center', 
+              <Paper elevation={0} sx={{
+                ...glassPanelSx(accentColor),
+                textAlign: 'center',
                 maxWidth: 560,
                 width: '100%',
-                background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.02) 100%)',
-                backdropFilter: 'blur(20px)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: 4,
                 p: { xs: 3, sm: 4, md: 5 },
                 position: 'relative',
                 zIndex: 1,
@@ -10115,9 +10186,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 </Box>
               </Paper>
             </Box>
-          ) : showcasesError ? (
-            <Box sx={{ 
-              textAlign: 'center', 
+          ) : (showcasesError && items.length === 0) ? (
+            <Box sx={{
+              textAlign: 'center',
               py: 8,
               color: 'rgba(255,255,255,0.7)'
         }}>
@@ -10152,10 +10223,20 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               }}>
                 {Array.from({ length: 12 }).map((_, idx) => (
                   <Zoom key={idx} in={isLoadingSkeleton} style={{ transitionDelay: `${idx * 50}ms` }}>
-                    <Box>
-                      <Skeleton variant="rectangular" height={200} sx={{ borderRadius: 2, mb: 1 }} />
-                      <Skeleton variant="text" width="80%" />
-                      <Skeleton variant="text" width="60%" />
+                    {/* Cinematic poster-shaped placeholder — mirrors ShowcaseCard's
+                        surface (posterCardSx) so loading reads as the real grid, not
+                        a light-theme flash. */}
+                    <Box sx={{ ...posterCardSx(accentColor, true), cursor: 'default', minHeight: 220 }}>
+                      <Skeleton
+                        variant="rectangular"
+                        height={220}
+                        animation="wave"
+                        sx={{ bgcolor: withAlpha(CINE.textPrimary, 0.05), borderRadius: 0 }}
+                      />
+                      <Box sx={{ position: 'absolute', left: 0, right: 0, bottom: 0, p: 1.5, background: 'linear-gradient(180deg, rgba(4,6,11,0) 0%, rgba(4,6,11,0.6) 100%)' }}>
+                        <Skeleton variant="text" width="70%" animation="wave" sx={{ bgcolor: withAlpha(CINE.textPrimary, 0.08) }} />
+                        <Skeleton variant="text" width="45%" animation="wave" sx={{ bgcolor: withAlpha(CINE.textPrimary, 0.05) }} />
+                      </Box>
                     </Box>
                   </Zoom>
                 ))}
@@ -10164,7 +10245,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           ) : viewMode === 'masonry' ? (
             <ImageList variant="masonry" cols={showcaseSettings.gridColumns} gap={8}>
               {filteredItems.slice(1, (showcaseSettings.maxItemsPerPage as number) === 999 ? filteredItems.length : (showcaseSettings.maxItemsPerPage as number)).map((item: ShowcaseItem) => (
-                <ImageListItem key={item.id} sx={{ cursor: 'pointer' }} onClick={() => setSelectedItem(item)}>
+                <ImageListItem key={item.id} sx={{ cursor: 'pointer' }} onClick={() => openQuickPreview(item)}>
                   {/* Slice 9X.81 — Spotify/SoundCloud/YouTube/Vimeo detekteres
                       automatisk fra fileUrl; render iframe-embed istedenfor
                       img/video når matchet. */}
@@ -10212,7 +10293,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           ) : (
             <Box sx={{
               display: 'grid',
-              gridTemplateColumns: { xs: 'repeat(1, 1fr)', sm: 'repeat(2, 1fr)', md: `repeat(${showcaseSettings.gridColumns}, 1fr)` },
+              // List view = single column (distinct from the multi-column grid) so
+              // the grid/list toggle visibly changes layout. Constrained width keeps
+              // the single-column cards from blowing up on wide screens.
+              gridTemplateColumns: viewMode === 'list'
+                ? '1fr'
+                : { xs: 'repeat(1, 1fr)', sm: 'repeat(2, 1fr)', md: `repeat(${showcaseSettings.gridColumns}, 1fr)` },
+              ...(viewMode === 'list' ? { maxWidth: 760, mx: 'auto' } : {}),
               gap: 2,
             }}>
               {filteredItems.slice(1, (showcaseSettings.maxItemsPerPage as number) === 999 ? filteredItems.length : (showcaseSettings.maxItemsPerPage as number)).map((item: ShowcaseItem) => (
@@ -10231,6 +10318,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   showComments={showComments}
                   setShowComments={setShowComments}
                   setSelectedItem={setSelectedItem}
+                  onOpenPreview={openQuickPreview}
                   handleDownload={handleDownload}
                   showcaseSettings={showcaseSettings}
                   analytics={analytics}
@@ -10263,12 +10351,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           zIndex: 12,
           display: 'flex',
           gap: 2,
-          bgcolor: 'rgba(6, 31, 46, 0.95)',
-          backdropFilter: 'blur(20px)',
+          bgcolor: CINE.surfaceElevated,
+          backdropFilter: 'blur(22px)',
                 borderRadius: 3,
           p: 2,
-          border: '1px solid rgba(255, 107, 53, 0.3)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+          border: `1px solid ${withAlpha(CINE.accent, 0.3)}`,
+          boxShadow: '0 24px 60px rgba(0,0,0,0.55)'
         }}>
           <Typography variant="body1" sx={{ 
             color: '#fff', 
@@ -13639,6 +13727,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         onFavorite={toggleFavorite}
         onEdit={(item) => setSelectedItem(item)}
         favorites={favorites}
+        clientMode={clientMode}
+        clientSelections={clientSelections}
+        onSelect={handleClientSelection}
+        comments={quickPreviewComments}
+        commentsLoading={quickPreviewCommentsLoading}
+        onAddComment={handleQuickPreviewAddComment}
+        onLikeComment={handleQuickPreviewLikeComment}
       />
       
       {/* Activity Feed */}

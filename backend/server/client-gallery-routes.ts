@@ -1438,6 +1438,38 @@ export function setupClientGalleryRoutes(
       const effectiveEmail = clientEmail || gallery.clientEmail;
       if (!effectiveEmail) return res.status(400).json({ error: "client_email_required" });
 
+      // Bildekjøp skal betales til FOTOGRAFENS egen Stripe Connect-konto, ikke
+      // CreatorHubs plattform. Krev at fotografen er tilkoblet + KYC-godkjent —
+      // ellers stoppes kjøpet (pengene skal aldri lande på plattform-kontoen).
+      let photographerStripeAccountId: string;
+      try {
+        const acctRes = await pool.query(
+          `SELECT stripe_account_id, payouts_enabled
+             FROM photographer_stripe_accounts
+            WHERE photographer_id = $1`,
+          [gallery.photographerId],
+        );
+        const acct = acctRes.rows[0];
+        if (!acct || !acct.stripe_account_id) {
+          return res.status(409).json({
+            error: "photographer_not_connected",
+            message: "Fotografen har ikke koblet til Stripe ennå.",
+          });
+        }
+        if (!acct.payouts_enabled) {
+          return res.status(409).json({
+            error: "photographer_payouts_disabled",
+            message: "Fotografens Stripe-konto er ikke ferdig verifisert.",
+          });
+        }
+        photographerStripeAccountId = acct.stripe_account_id as string;
+      } catch (lookupErr) {
+        if ((lookupErr as { code?: string })?.code === "42P01") {
+          return res.status(409).json({ error: "photographer_not_connected" });
+        }
+        throw lookupErr;
+      }
+
       const pricing = calculateGalleryPricing(access.settings, selectedImageIds.length);
       if (pricing.totalAmount <= 0) {
         return res.status(400).json({ error: "no_payment_needed", pricing });
@@ -1451,11 +1483,18 @@ export function setupClientGalleryRoutes(
       // Stripe wants amount in the smallest currency unit. NOK + most
       // EUR are 100 cents/øre per unit.
       const amount = Math.round(pricing.totalAmount * 100);
+      // Plattform-kutt (application fee) — konfigurerbart, default 0 % (fotografen
+      // får alt). Sett PHOTO_PURCHASE_PLATFORM_FEE_PERCENT for å aktivere et kutt.
+      const feePercent = Number(process.env.PHOTO_PURCHASE_PLATFORM_FEE_PERCENT || "0");
+      const platformFeeAmount = feePercent > 0 ? Math.round(amount * (feePercent / 100)) : 0;
 
       const intent = await stripe.paymentIntents.create({
         amount,
         currency: pricing.currency.toLowerCase(),
         receipt_email: effectiveEmail,
+        // Destination charge → pengene går til fotografens Connect-konto.
+        transfer_data: { destination: photographerStripeAccountId },
+        ...(platformFeeAmount > 0 ? { application_fee_amount: platformFeeAmount } : {}),
         // Metadata feeds the webhook handler — without galleryId it
         // can't associate the success event with the right row.
         metadata: {
@@ -1526,6 +1565,38 @@ export function setupClientGalleryRoutes(
       const effectiveEmail = clientEmail || gallery.clientEmail;
       if (!effectiveEmail) return res.status(400).json({ error: "client_email_required" });
 
+      // Bildekjøp skal betales til FOTOGRAFENS egen Stripe Connect-konto, ikke
+      // CreatorHubs plattform. Krev at fotografen er tilkoblet + KYC-godkjent —
+      // ellers stoppes kjøpet (pengene skal aldri lande på plattform-kontoen).
+      let photographerStripeAccountId: string;
+      try {
+        const acctRes = await pool.query(
+          `SELECT stripe_account_id, payouts_enabled
+             FROM photographer_stripe_accounts
+            WHERE photographer_id = $1`,
+          [gallery.photographerId],
+        );
+        const acct = acctRes.rows[0];
+        if (!acct || !acct.stripe_account_id) {
+          return res.status(409).json({
+            error: "photographer_not_connected",
+            message: "Fotografen har ikke koblet til Stripe ennå.",
+          });
+        }
+        if (!acct.payouts_enabled) {
+          return res.status(409).json({
+            error: "photographer_payouts_disabled",
+            message: "Fotografens Stripe-konto er ikke ferdig verifisert.",
+          });
+        }
+        photographerStripeAccountId = acct.stripe_account_id as string;
+      } catch (lookupErr) {
+        if ((lookupErr as { code?: string })?.code === "42P01") {
+          return res.status(409).json({ error: "photographer_not_connected" });
+        }
+        throw lookupErr;
+      }
+
       const pricing = calculateGalleryPricing(access.settings, selectedImageIds.length);
       if (pricing.totalAmount <= 0) {
         return res.status(400).json({ error: "no_payment_needed", pricing });
@@ -1535,6 +1606,10 @@ export function setupClientGalleryRoutes(
       if (!stripe) return res.status(503).json({ error: "stripe_not_configured" });
 
       const amount = Math.round(pricing.totalAmount * 100);
+      // Plattform-kutt (application fee) — konfigurerbart, default 0 % (fotografen
+      // får alt). Sett PHOTO_PURCHASE_PLATFORM_FEE_PERCENT for å aktivere et kutt.
+      const feePercent = Number(process.env.PHOTO_PURCHASE_PLATFORM_FEE_PERCENT || "0");
+      const platformFeeAmount = feePercent > 0 ? Math.round(amount * (feePercent / 100)) : 0;
       const publicHost = (process.env.CREATORHUB_PUBLIC_URL ?? 'https://app.creatorhubn.com').replace(/\/$/, '');
       const successUrl = `${publicHost}/client/gallery/${accessToken}?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
       const cancelUrl = `${publicHost}/client/gallery/${accessToken}?checkout=cancelled`;
@@ -1565,6 +1640,9 @@ export function setupClientGalleryRoutes(
           accessToken: accessToken.slice(0, 32),
         },
         payment_intent_data: {
+          // Destination charge → pengene går til fotografens Connect-konto.
+          transfer_data: { destination: photographerStripeAccountId },
+          ...(platformFeeAmount > 0 ? { application_fee_amount: platformFeeAmount } : {}),
           // Mirror metadata på PaymentIntent slik at den eksisterende
           // payment_intent.succeeded-webhook (Slice 10.2) finner
           // galleryId og kan stempe ned download_token.

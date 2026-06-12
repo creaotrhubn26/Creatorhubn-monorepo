@@ -21,6 +21,7 @@ import {
   Tab,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
@@ -33,6 +34,7 @@ import {
   Mic,
   Pause,
   PlayArrow,
+  RateReview,
   Stop,
   Sync,
   VolumeUp,
@@ -413,6 +415,19 @@ export default function SongFlowPlatform(): JSX.Element {
 
   const hasRecordingTracks = tracks.some((track) => track.status === 'recording');
 
+  // Send en låt til Audio Showcase mix/master-review (Fase 1-integrasjon).
+  const handleSendToReview = async (trackId: string) => {
+    try {
+      const r = await apiRequest(`/api/easeverse-tracks/${trackId}/send-to-review`, { method: 'POST', body: {} });
+      if (r?.reviewProjectId) {
+        setStatusAlert({ severity: 'success', message: r.created ? 'Review-rom opprettet — åpner studio…' : 'Åpner eksisterende review…' });
+        setLocation(`/audio-review/${r.reviewProjectId}`);
+      }
+    } catch {
+      setStatusAlert({ severity: 'error', message: 'Kunne ikke sende til review.' });
+    }
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, gap: 2, flexWrap: 'wrap' }}>
@@ -528,6 +543,11 @@ export default function SongFlowPlatform(): JSX.Element {
                           <IconButton>
                             <Equalizer />
                           </IconButton>
+                          <Tooltip title="Send til mix/master-review">
+                            <IconButton color="primary" onClick={() => handleSendToReview(track.id)}>
+                              <RateReview />
+                            </IconButton>
+                          </Tooltip>
                         </Box>
                       </Grid>
                     </Grid>
