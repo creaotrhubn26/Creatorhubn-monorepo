@@ -108,7 +108,7 @@ export async function ensureUserBucket(pool: Pool, userId: string): Promise<User
     created_at: Date;
   }>(
     `INSERT INTO role_room_user_buckets (user_id, bucket_prefix, tier, quota_bytes)
-     VALUES ($1::uuid, $2, 'free', $3::bigint)
+     VALUES ($1, $2, 'free', $3::bigint)
      ON CONFLICT (user_id) DO UPDATE SET updated_at = NOW()
      RETURNING user_id, bucket_prefix, tier, quota_bytes, created_at`,
     [userId, prefix, DEFAULT_FREE_QUOTA_BYTES],
@@ -117,7 +117,7 @@ export async function ensureUserBucket(pool: Pool, userId: string): Promise<User
   // Sørg for at consumption-raden også finnes
   await pool.query(
     `INSERT INTO role_room_user_storage_consumption (user_id, used_bytes, file_count)
-     VALUES ($1::uuid, 0, 0)
+     VALUES ($1, 0, 0)
      ON CONFLICT (user_id) DO NOTHING`,
     [userId],
   );
@@ -140,7 +140,7 @@ export async function getUserStorageStats(pool: Pool, userId: string): Promise<U
   }>(
     `SELECT used_bytes, file_count, last_calculated_at
      FROM role_room_user_storage_consumption
-     WHERE user_id = $1::uuid`,
+     WHERE user_id = $1`,
     [userId],
   );
   const row = r.rows[0] ?? { used_bytes: "0", file_count: 0, last_calculated_at: new Date() };
@@ -220,7 +220,7 @@ export async function uploadUserFile(
   const ctx = opts.context ?? {};
   const r = await pool.query<{ role_room_register_user_upload: string }>(
     `SELECT role_room_register_user_upload(
-       $1::uuid, $2, $3, $4::bigint, $5, $6, $7::jsonb,
+       $1, $2, $3, $4::bigint, $5, $6, $7::jsonb,
        $8::varchar, $9::varchar, $10::text, $11::text, $12::text
      )`,
     [
@@ -292,7 +292,7 @@ export async function listUserFiles(
             project_id, scene_id, attached_to_entity_type,
             attached_to_entity_id, attachment_note
      FROM role_room_user_files
-     WHERE user_id = $1::uuid
+     WHERE user_id = $1
        AND deleted_at IS NULL
        AND ($2::text IS NULL OR source_module = $2)
        AND ($3::varchar IS NULL OR project_id = $3)
@@ -347,7 +347,7 @@ export async function getUserFilesPerProject(
        COALESCE(SUM(f.size_bytes), 0)::text AS total_bytes
      FROM role_room_user_files f
      LEFT JOIN casting_projects p ON p.id = f.project_id
-     WHERE f.user_id = $1::uuid AND f.deleted_at IS NULL
+     WHERE f.user_id = $1 AND f.deleted_at IS NULL
      GROUP BY f.project_id, p.name
      ORDER BY total_bytes::numeric DESC NULLS LAST`,
     [userId],
@@ -391,7 +391,7 @@ export async function softDeleteUserFile(
   opts: { userId: string; fileId: string },
 ): Promise<{ ok: boolean; freedBytes: number }> {
   const r = await pool.query<{ role_room_mark_user_file_deleted: string }>(
-    `SELECT role_room_mark_user_file_deleted($1::uuid, $2::uuid)`,
+    `SELECT role_room_mark_user_file_deleted($1, $2::uuid)`,
     [opts.userId, opts.fileId],
   );
   const freed = Number(r.rows[0]?.role_room_mark_user_file_deleted ?? 0);
@@ -406,7 +406,7 @@ export async function hardDeleteUserFile(
   // Hent b2-key først
   const lookup = await pool.query<{ b2_key: string; size_bytes: string }>(
     `SELECT b2_key, size_bytes FROM role_room_user_files
-     WHERE id = $1::uuid AND user_id = $2::uuid AND deleted_at IS NULL`,
+     WHERE id = $1::uuid AND user_id = $2 AND deleted_at IS NULL`,
     [opts.fileId, opts.userId],
   );
   const row = lookup.rows[0];
@@ -428,7 +428,7 @@ export async function hardDeleteUserFile(
   }
 
   await pool.query(
-    `DELETE FROM role_room_user_files WHERE id = $1::uuid AND user_id = $2::uuid`,
+    `DELETE FROM role_room_user_files WHERE id = $1::uuid AND user_id = $2`,
     [opts.fileId, opts.userId],
   );
   await pool.query(
@@ -436,7 +436,7 @@ export async function hardDeleteUserFile(
        SET used_bytes = GREATEST(0, used_bytes - $1::bigint),
            file_count = GREATEST(0, file_count - 1),
            last_calculated_at = NOW()
-     WHERE user_id = $2::uuid`,
+     WHERE user_id = $2`,
     [row.size_bytes, opts.userId],
   );
   return { ok: true, freedBytes: Number(row.size_bytes), b2Deleted };
@@ -449,7 +449,7 @@ export async function getUserFileDownloadUrl(
 ): Promise<{ ok: true; url: string; displayName: string } | { ok: false; reason: string }> {
   const r = await pool.query<{ b2_key: string; display_name: string }>(
     `SELECT b2_key, display_name FROM role_room_user_files
-     WHERE id = $1::uuid AND user_id = $2::uuid AND deleted_at IS NULL`,
+     WHERE id = $1::uuid AND user_id = $2 AND deleted_at IS NULL`,
     [opts.fileId, opts.userId],
   );
   const row = r.rows[0];

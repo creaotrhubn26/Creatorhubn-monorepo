@@ -20,7 +20,7 @@ BEGIN;
 -- Én rad per bruker — opprettes lazy ved første upload eller eksplisitt
 -- via /storage/init-route.
 CREATE TABLE IF NOT EXISTS role_room_user_buckets (
-  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  user_id VARCHAR(255) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   -- Logisk bucket-path i the-role-room-prod (alltid 'users/{user_id}/')
   bucket_prefix TEXT NOT NULL,
   -- Tier-navn — 'free' (1 GB), 'paid' (10 GB), 'byo' (BYO B2 koblet)
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS role_room_user_buckets (
 
 -- Running consumption-ledger per bruker
 CREATE TABLE IF NOT EXISTS role_room_user_storage_consumption (
-  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  user_id VARCHAR(255) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   used_bytes BIGINT NOT NULL DEFAULT 0,
   file_count INTEGER NOT NULL DEFAULT 0,
   last_calculated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS role_room_user_storage_consumption (
 -- Per-fil tracking — gir oss UI-listen + sletting + signed URLs
 CREATE TABLE IF NOT EXISTS role_room_user_files (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   -- Object-key i B2 (inkluderer bucket_prefix); UNIQUE for å hindre duplikater
   b2_key TEXT NOT NULL UNIQUE,
   -- Brukerens display-navn — kan være ulik den faktiske b2_key
@@ -76,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_role_room_user_files_source
 -- Helper-funksjon: registrer en upload + bump consumption atomisk
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION role_room_register_user_upload(
-  p_user_id UUID,
+  p_user_id VARCHAR,
   p_b2_key TEXT,
   p_display_name TEXT,
   p_size_bytes BIGINT,
@@ -113,7 +113,7 @@ $$;
 -- (Faktisk B2-delete skjer i background-worker som leser deleted_at-rader)
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION role_room_mark_user_file_deleted(
-  p_user_id UUID,
+  p_user_id VARCHAR,
   p_file_id UUID
 ) RETURNS BIGINT
 LANGUAGE plpgsql AS $$
