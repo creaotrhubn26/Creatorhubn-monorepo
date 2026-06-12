@@ -1,36 +1,67 @@
 /**
  * audio-showcase.tsx — Feedback Studio (Audio Showcase)
  * ───────────────────────────────────────────────────────────────────────────
- * Profesjonelt mix/master-review-rom for musikkprodusent (jf. spec + mockup #2).
- * Design-paritet: header + waveform-spiller + versjoner + tidskodet kommentar-
- * tråd m/ resolve + godkjennings-bar + leveranse-status. ALT wired til de ekte
- * /api/audio-* -endepunktene — ingen stubs.
- *
- * Route: /audio-review/:projectId  (uten id → opprett-skjema)
+ * Profesjonelt mix/master-review-rom for musikkprodusenter. Bygget for eksakt
+ * paritet med produktmockup #2 — topbar + venstre prosjekt-sidebar + senter
+ * (waveform m/ seksjonsbar + transport + versjoner + tasks) + høyre kommentar-
+ * rail + bunn-action-bar. ALT wired til ekte /api/audio-* — ingen stubs.
  */
 
 import React from 'react';
 import { useParams } from 'wouter';
+import WaveSurfer from 'wavesurfer.js';
 import {
   Box, Stack, Typography, Button, IconButton, Chip, TextField, Avatar, Divider,
-  CircularProgress, MenuItem, Select, Tooltip,
+  CircularProgress, Tooltip, Menu, MenuItem, Slider, InputBase, Dialog, DialogTitle,
+  DialogContent, DialogActions,
 } from '@mui/material';
 import {
-  Share, MoreVert, Download, Notifications, Send, CheckCircle, Schedule, Send as SendPlane,
-  ContentCopy, Add, MusicNote, Star, RadioButtonUnchecked, DoneAll,
+  Search, NotificationsNone, HelpOutline, KeyboardArrowDown, MoreHoriz, FileDownloadOutlined,
+  MusicNote, PlayArrow, Pause, SkipPrevious, SkipNext, VolumeUp, Loop as LoopIcon, CompareArrows,
+  Add, ChatBubbleOutline, CheckCircle, CheckCircleOutline, CloudUpload, ThumbUpAltOutlined,
+  ThumbUpAlt, AccessTime, Send, WorkspacePremium, GridViewOutlined, GraphicEq, LayersOutlined,
+  Inventory2Outlined, SubjectOutlined, StickyNote2Outlined, TimelineOutlined, Speed, VpnKey,
+  CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
-import AudioReviewPlayer, { MIX_CATEGORIES } from '@/components/universal/showcase/AudioReviewPlayer';
 
-const BG = '#0B0B0C', PANEL = 'rgba(255,255,255,0.03)', BORDER = 'rgba(255,255,255,0.08)';
-const TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.58)', ACCENT = '#FF6B35';
-const fmt = (s: number) => `${Math.floor((s || 0) / 60)}:${Math.floor((s || 0) % 60).toString().padStart(2, '0')}`;
+/* ── Tema ──────────────────────────────────────────────────────────────── */
+const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
+const TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', FAINT = 'rgba(245,242,234,0.38)', ACCENT = '#FF6B35';
+const SECTION_COLORS = ['#d6457f', '#3fa7d6', '#e0606a', '#FF6B35', '#9b59b6', '#e0a955', '#d4c04a', '#5fb88a'];
 
-const Panel: React.FC<{ children: React.ReactNode; sx?: any }> = ({ children, sx }) => (
-  <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5, ...sx }}>{children}</Box>
-);
+const fmt = (s: number) => { if (!Number.isFinite(s) || s < 0) s = 0; return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`; };
+const initial = (n?: string) => (n || '?').trim().charAt(0).toUpperCase();
+const relTime = (iso?: string) => {
+  if (!iso) return '';
+  const t = Date.parse(iso); if (Number.isNaN(t)) return '';
+  const days = Math.floor((Date.now() - t) / 86400000);
+  if (days <= 0) return 'I dag'; if (days === 1) return 'I går'; if (days < 7) return `${days} dager siden`;
+  return new Date(t).toLocaleDateString('no-NO', { day: 'numeric', month: 'short' });
+};
 
 type CommentFilter = 'all' | 'unresolved' | 'resolved' | 'decision';
+
+/* ── Sidebar-byggesteiner ──────────────────────────────────────────────── */
+const MetaRow: React.FC<{ icon: React.ReactNode; label: string; value: React.ReactNode }> = ({ icon, label, value }) => (
+  <Stack direction="row" alignItems="center" spacing={1.25} sx={{ py: 0.4 }}>
+    <Box sx={{ color: FAINT, display: 'flex', '& svg': { fontSize: 16 } }}>{icon}</Box>
+    <Typography sx={{ color: MUTED, fontSize: '0.8rem', flex: 1 }}>{label}</Typography>
+    <Typography sx={{ color: TEXT, fontSize: '0.8rem', fontWeight: 600 }}>{value}</Typography>
+  </Stack>
+);
+const NavItem: React.FC<{ icon: React.ReactNode; label: string; active?: boolean; onClick?: () => void }> = ({ icon, label, active, onClick }) => (
+  <Stack direction="row" alignItems="center" spacing={1.5} onClick={onClick}
+    sx={{
+      px: 1.5, py: 1, borderRadius: '10px', cursor: 'pointer', position: 'relative',
+      bgcolor: active ? 'rgba(255,107,53,0.12)' : 'transparent', color: active ? ACCENT : MUTED,
+      '&:hover': { bgcolor: active ? 'rgba(255,107,53,0.16)' : 'rgba(255,255,255,0.04)', color: active ? ACCENT : TEXT },
+      '& svg': { fontSize: 19 },
+      ...(active ? { '&::before': { content: '""', position: 'absolute', left: 0, top: 8, bottom: 8, width: 3, borderRadius: 3, bgcolor: ACCENT } } : {}),
+    }}>
+    {icon}<Typography sx={{ fontSize: '0.86rem', fontWeight: active ? 700 : 500 }}>{label}</Typography>
+  </Stack>
+);
 
 export default function AudioShowcasePage() {
   const params = useParams() as { projectId?: string };
@@ -38,261 +69,473 @@ export default function AudioShowcasePage() {
 
   const [project, setProject] = React.useState<any>(null);
   const [versions, setVersions] = React.useState<any[]>([]);
-  const [currentVid, setCurrentVid] = React.useState<string>('');
+  const [members, setMembers] = React.useState<any[]>([]);
+  const [tasks, setTasks] = React.useState<any[]>([]);
+  const [currentVid, setCurrentVid] = React.useState('');
   const [detail, setDetail] = React.useState<{ comments: any[]; sections: any[]; approvals: any[] }>({ comments: [], sections: [], approvals: [] });
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [filter, setFilter] = React.useState<CommentFilter>('all');
   const [draft, setDraft] = React.useState('');
-  const [copied, setCopied] = React.useState(false);
-  // Opprett-skjema (når ingen projectId)
+  const [replyTo, setReplyTo] = React.useState<any>(null);
   const [newTitle, setNewTitle] = React.useState('');
   const [newBand, setNewBand] = React.useState('');
+  // dialoger
+  const [inviteOpen, setInviteOpen] = React.useState(false);
+  const [taskOpen, setTaskOpen] = React.useState(false);
+  const [moreEl, setMoreEl] = React.useState<null | HTMLElement>(null);
+  const [easeverseTrack, setEaseverseTrack] = React.useState<any>(null);
+  const [lyricsOpen, setLyricsOpen] = React.useState(false);
 
+  /* ── Datahenting ── */
   const loadProject = React.useCallback(async () => {
     if (!projectId) { setLoading(false); return; }
-    setLoading(true);
     try {
-      const data = await apiRequest(`/api/audio-showcases/${projectId}`);
-      setProject(data.project);
-      setVersions(data.versions || []);
-      const cur = (data.versions || []).find((v: any) => v.status !== 'superseded') || (data.versions || [])[data.versions.length - 1];
-      setCurrentVid(cur?.id || '');
+      const d = await apiRequest(`/api/audio-showcases/${projectId}`);
+      setProject(d.project); setVersions(d.versions || []); setMembers(d.members || []); setTasks(d.tasks || []); setEaseverseTrack(d.easeverseTrack || null);
+      const cur = (d.versions || []).find((v: any) => v.status !== 'superseded') || (d.versions || [])[(d.versions || []).length - 1];
+      setCurrentVid((prev) => prev || cur?.id || '');
     } catch { /* not found */ } finally { setLoading(false); }
   }, [projectId]);
-
   const loadVersion = React.useCallback(async (vid: string) => {
-    if (!vid) { setDetail({ comments: [], sections: [], approvals: [] }); return; }
-    try {
-      const d = await apiRequest(`/api/audio-versions/${vid}`);
-      setDetail({ comments: d.comments || [], sections: d.sections || [], approvals: d.approvals || [] });
-    } catch { /* ignore */ }
+    if (!vid) return;
+    try { const d = await apiRequest(`/api/audio-versions/${vid}`); setDetail({ comments: d.comments || [], sections: d.sections || [], approvals: d.approvals || [] }); }
+    catch { /* ignore */ }
   }, []);
-
   React.useEffect(() => { void loadProject(); }, [loadProject]);
   React.useEffect(() => { void loadVersion(currentVid); }, [currentVid, loadVersion]);
 
   const currentVersion = versions.find((v) => v.id === currentVid);
+  const prevVersion = React.useMemo(() => {
+    if (!currentVersion) return null;
+    return [...versions].filter((v) => v.version_number < currentVersion.version_number).sort((a, b) => b.version_number - a.version_number)[0] || null;
+  }, [versions, currentVersion]);
 
-  const addComment = async (timecode: number, body: string, category: string) => {
+  /* ── Wavesurfer ── */
+  const waveRef = React.useRef<HTMLDivElement | null>(null);
+  const wsRef = React.useRef<WaveSurfer | null>(null);
+  const [ready, setReady] = React.useState(false);
+  const [playing, setPlaying] = React.useState(false);
+  const [cur, setCur] = React.useState(0);
+  const [dur, setDur] = React.useState(0);
+  const [vol, setVol] = React.useState(0.8);
+  const [loopOn, setLoopOn] = React.useState(false);
+  const [abActive, setAbActive] = React.useState(false);
+  const loopRef = React.useRef(loopOn); loopRef.current = loopOn;
+  const effectiveSrc = (abActive && prevVersion ? prevVersion.file_url : currentVersion?.file_url) || '';
+  const fracRef = React.useRef(0);
+
+  React.useEffect(() => {
+    if (!waveRef.current || !effectiveSrc) return;
+    let cancelled = false;
+    setReady(false);
+    const ws = WaveSurfer.create({
+      container: waveRef.current, url: effectiveSrc, height: 96,
+      waveColor: 'rgba(245,242,234,0.22)', progressColor: ACCENT, cursorColor: 'rgba(245,242,234,0.85)',
+      cursorWidth: 2, barWidth: 2, barGap: 1, barRadius: 3, normalize: true,
+    });
+    wsRef.current = ws;
+    ws.on('ready', () => { if (cancelled) return; setReady(true); setDur(ws.getDuration()); ws.setVolume(vol); if (fracRef.current > 0) ws.setTime(fracRef.current * ws.getDuration()); });
+    ws.on('timeupdate', (t: number) => { if (!cancelled) { setCur(t); if (ws.getDuration()) fracRef.current = t / ws.getDuration(); } });
+    ws.on('play', () => !cancelled && setPlaying(true));
+    ws.on('pause', () => !cancelled && setPlaying(false));
+    ws.on('finish', () => { if (cancelled) return; if (loopRef.current) { ws.setTime(0); void ws.play(); } else setPlaying(false); });
+    return () => { cancelled = true; try { ws.destroy(); } catch { /* ignore */ } wsRef.current = null; };
+  }, [effectiveSrc]); // eslint-disable-line react-hooks/exhaustive-deps
+  const seekFrac = (f: number) => { const ws = wsRef.current; if (ws && dur) ws.setTime(Math.max(0, Math.min(1, f)) * dur); };
+
+  /* ── Mutasjoner (alle wired) ── */
+  const addComment = async (body: string, opts: { parentId?: string } = {}) => {
     if (!currentVid || !body.trim()) return;
-    try {
-      const c = await apiRequest('/api/audio-comments', { method: 'POST', body: { versionId: currentVid, timecodeSeconds: timecode, body, category } });
-      setDetail((p) => ({ ...p, comments: [...p.comments, c] }));
-    } catch { /* ignore */ }
+    const me = members.find((m) => m.is_owner);
+    const c = await apiRequest('/api/audio-comments', { method: 'POST', body: { versionId: currentVid, timecodeSeconds: Math.floor(cur), body, author: me?.name, authorRole: me?.role, parentCommentId: opts.parentId } });
+    setDetail((p) => ({ ...p, comments: [...p.comments, c] }));
   };
-
   const setCommentStatus = async (id: string, status: string) => {
-    try {
-      const c = await apiRequest(`/api/audio-comments/${id}`, { method: 'PATCH', body: { status } });
-      setDetail((p) => ({ ...p, comments: p.comments.map((x) => (x.id === id ? c : x)) }));
-    } catch { /* ignore */ }
+    const c = await apiRequest(`/api/audio-comments/${id}`, { method: 'PATCH', body: { status } });
+    setDetail((p) => ({ ...p, comments: p.comments.map((x) => (x.id === id ? c : x)) }));
   };
-
+  const likeComment = async (id: string) => {
+    const c = await apiRequest(`/api/audio-comments/${id}/like`, { method: 'POST', body: {} });
+    setDetail((p) => ({ ...p, comments: p.comments.map((x) => (x.id === id ? c : x)) }));
+  };
   const approve = async (approvalType: string) => {
-    if (!currentVid) return;
-    setBusy(true);
-    try {
-      await apiRequest(`/api/audio-versions/${currentVid}/approve`, { method: 'POST', body: { approvalType } });
-      await loadProject(); await loadVersion(currentVid);
-    } catch { /* ignore */ } finally { setBusy(false); }
+    if (!currentVid) return; setBusy(true);
+    try { await apiRequest(`/api/audio-versions/${currentVid}/approve`, { method: 'POST', body: { approvalType } }); await loadProject(); await loadVersion(currentVid); }
+    finally { setBusy(false); }
   };
-
   const uploadVersion = async () => {
-    const url = window.prompt('Lim inn URL til lydfilen (WAV/MP3) for ny versjon:');
-    if (!url) return;
-    setBusy(true);
-    try {
-      const v = await apiRequest('/api/audio-versions', { method: 'POST', body: { projectId, fileUrl: url.trim() } });
-      await loadProject(); setCurrentVid(v.id);
-    } catch { /* ignore */ } finally { setBusy(false); }
+    const url = window.prompt('URL til lydfil (WAV/MP3) for ny versjon:'); if (!url) return; setBusy(true);
+    try { const v = await apiRequest('/api/audio-versions', { method: 'POST', body: { projectId, fileUrl: url.trim() } }); await loadProject(); setCurrentVid(v.id); }
+    finally { setBusy(false); }
   };
-
+  const toggleTask = async (t: any) => {
+    const next = t.status === 'done' ? 'todo' : 'done';
+    const updated = await apiRequest(`/api/audio-tasks/${t.id}`, { method: 'PATCH', body: { status: next } });
+    setTasks((p) => p.map((x) => (x.id === t.id ? updated : x)));
+  };
   const createProject = async () => {
-    if (!newTitle.trim()) return;
-    setBusy(true);
-    try {
-      const p = await apiRequest('/api/audio-showcases', { method: 'POST', body: { title: newTitle.trim(), bandName: newBand.trim() || null } });
-      window.location.href = `/audio-review/${p.id}`;
-    } catch { /* ignore */ } finally { setBusy(false); }
+    if (!newTitle.trim()) return; setBusy(true);
+    try { const p = await apiRequest('/api/audio-showcases', { method: 'POST', body: { title: newTitle.trim(), bandName: newBand.trim() || null } }); window.location.href = `/audio-review/${p.id}`; }
+    finally { setBusy(false); }
   };
 
-  const copyLink = () => { void navigator.clipboard.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 1500); };
-
-  // ── Opprett-skjema ──────────────────────────────────────────────────────
+  /* ── Opprett-skjema ── */
   if (!projectId) {
     return (
       <Box sx={{ bgcolor: BG, minHeight: '100vh', color: TEXT, display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
-        <Panel sx={{ maxWidth: 460, width: '100%' }}>
-          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
-            <MusicNote sx={{ color: ACCENT }} />
-            <Typography sx={{ fontWeight: 800, fontSize: '1.2rem' }}>Nytt mix/master-review</Typography>
-          </Stack>
+        <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 3, maxWidth: 460, width: '100%' }}>
+          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}><MusicNote sx={{ color: ACCENT }} /><Typography sx={{ fontWeight: 800, fontSize: '1.2rem' }}>Nytt mix/master-review</Typography></Stack>
           <Stack spacing={1.5}>
             <TextField label="Tittel" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} size="small" sx={fieldSx} />
             <TextField label="Band / artist (valgfritt)" value={newBand} onChange={(e) => setNewBand(e.target.value)} size="small" sx={fieldSx} />
-            <Button onClick={createProject} disabled={busy || !newTitle.trim()} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>
-              {busy ? 'Oppretter…' : 'Opprett review-rom'}
-            </Button>
+            <Button onClick={createProject} disabled={busy || !newTitle.trim()} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>{busy ? 'Oppretter…' : 'Opprett review-rom'}</Button>
           </Stack>
-        </Panel>
+        </Box>
       </Box>
     );
   }
+  if (loading) return <Box sx={{ bgcolor: BG, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
+  if (!project) return <Box sx={{ bgcolor: BG, minHeight: '100vh', color: MUTED, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Fant ikke review-rommet.</Box>;
 
-  if (loading) {
-    return <Box sx={{ bgcolor: BG, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
-  }
-  if (!project) {
-    return <Box sx={{ bgcolor: BG, minHeight: '100vh', color: TEXT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Typography sx={{ color: MUTED }}>Fant ikke review-rommet.</Typography></Box>;
-  }
-
-  const metaLine = [project.genre, project.bpm ? `${project.bpm} BPM` : null, project.musical_key].filter(Boolean).join(' · ');
-  const visibleComments = detail.comments.filter((c) =>
-    filter === 'all' ? true : filter === 'decision' ? c.is_decision : c.status === filter);
-  const statusChipColor = project.status === 'approved' || project.status === 'final_delivered' ? '#5fb88a' : project.status === 'changes_requested' ? '#e0a955' : ACCENT;
+  const owner = members.find((m) => m.is_owner);
+  const metaLine = [project.band_name && `Band: ${project.band_name}`, owner && `Produsent: ${owner.name}`, project.deadline && `Frist: ${new Date(project.deadline).toLocaleDateString('no-NO', { weekday: 'long' })}`].filter(Boolean);
+  const counts = {
+    all: detail.comments.length,
+    unresolved: detail.comments.filter((c) => c.status === 'unresolved').length,
+    resolved: detail.comments.filter((c) => c.status === 'resolved').length,
+    decision: detail.comments.filter((c) => c.is_decision).length,
+  };
+  const visibleComments = detail.comments.filter((c) => filter === 'all' ? true : filter === 'decision' ? c.is_decision : c.status === filter);
+  // Tasks gruppert etter assignee/kategori (slik mockupens panel viser «Vokal 3 tasks»).
+  const taskGroups = Object.entries(tasks.reduce((m: Record<string, any[]>, t) => { const k = t.assignee || 'Generelt'; (m[k] = m[k] || []).push(t); return m; }, {}));
+  const specsLine = currentVersion ? [currentVersion.sample_rate && `${(currentVersion.sample_rate / 1000).toFixed(0)} kHz`, currentVersion.bit_depth && `${currentVersion.bit_depth} bit`, currentVersion.channels === 2 ? 'Stereo' : currentVersion.channels === 1 ? 'Mono' : null].filter(Boolean).join('  ·  ') : '';
 
   return (
-    <Box sx={{ bgcolor: BG, minHeight: '100vh', color: TEXT, p: { xs: 1.5, md: 3 } }}>
-      {/* Header */}
-      <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }}>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Typography sx={{ fontWeight: 800, fontSize: '1.5rem', lineHeight: 1.1 }}>{project.title}</Typography>
-            <Star sx={{ color: MUTED, fontSize: 20 }} />
-            <Chip label={(project.status || 'draft').replace('_', ' ')} size="small" sx={{ bgcolor: `${statusChipColor}28`, color: statusChipColor, fontWeight: 700, textTransform: 'capitalize' }} />
+    <Box sx={{ bgcolor: BG, height: '100vh', color: TEXT, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* ═══ TOPBAR ═══ */}
+      <Stack direction="row" alignItems="center" sx={{ px: 2.5, height: 60, borderBottom: `1px solid ${BORDER}`, flexShrink: 0, gap: 2 }}>
+        <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 260 }}>
+          <Box sx={{ width: 30, height: 30, borderRadius: '8px', bgcolor: ACCENT, display: 'flex', alignItems: 'center', justifyContent: 'center', clipPath: 'polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)' }}><GraphicEq sx={{ fontSize: 18, color: '#150d05' }} /></Box>
+          <Typography sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.95rem' }}>CREATORHUB</Typography>
+          <Divider orientation="vertical" flexItem sx={{ borderColor: BORDER, mx: 0.5 }} />
+          <Typography sx={{ color: MUTED, fontSize: '0.9rem' }}>Universal Showcase</Typography>
+        </Stack>
+        <Box sx={{ flex: 1, textAlign: 'center' }}>
+          <Stack direction="row" alignItems="center" justifyContent="center" spacing={1}>
+            <Typography sx={{ fontWeight: 800, fontSize: '1.05rem' }}>{project.title}</Typography>
+            <Chip label={(project.status || 'draft').replace('_', ' ')} size="small" icon={<FiberManualRecord sx={{ fontSize: '8px !important', color: `${ACCENT} !important` }} />}
+              sx={{ height: 22, fontSize: '0.72rem', fontWeight: 700, textTransform: 'capitalize', color: ACCENT, bgcolor: 'transparent', border: `1px solid ${ACCENT}66` }} />
           </Stack>
-          <Typography sx={{ color: MUTED, fontSize: '0.85rem' }}>{[project.band_name, metaLine].filter(Boolean).join('  ·  ')}</Typography>
+          <Stack direction="row" justifyContent="center" alignItems="center" spacing={1} sx={{ mt: 0.2 }}>
+            {metaLine.map((m, i) => (<React.Fragment key={i}>{i > 0 && <FiberManualRecord sx={{ fontSize: 5, color: ACCENT }} />}<Typography sx={{ color: MUTED, fontSize: '0.78rem' }}>{m}</Typography></React.Fragment>))}
+          </Stack>
         </Box>
-        <IconButton sx={{ color: MUTED }}><Notifications /></IconButton>
-        <Tooltip title={copied ? 'Kopiert!' : 'Kopier review-lenke'}>
-          <Button startIcon={copied ? <DoneAll /> : <Share />} onClick={copyLink} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px', '&:hover': { bgcolor: '#ff855a' } }}>Del</Button>
-        </Tooltip>
-        <IconButton sx={{ color: MUTED }}><MoreVert /></IconButton>
+        <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 260, justifyContent: 'flex-end' }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '999px', px: 1.5, py: 0.6 }}>
+            <Search sx={{ fontSize: 17, color: FAINT }} /><InputBase placeholder="Søk i prosjektet" sx={{ color: TEXT, fontSize: '0.8rem', width: 130 }} />
+            <Box sx={{ px: 0.6, py: 0.1, borderRadius: '5px', bgcolor: 'rgba(255,255,255,0.06)', color: FAINT, fontSize: '0.66rem' }}>⌘K</Box>
+          </Stack>
+          <IconButton size="small" sx={{ color: MUTED }}><NotificationsNone fontSize="small" /></IconButton>
+          <IconButton size="small" sx={{ color: MUTED }}><HelpOutline fontSize="small" /></IconButton>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ pl: 0.5 }}>
+            <Avatar sx={{ width: 30, height: 30, bgcolor: ACCENT, color: '#150d05', fontSize: '0.8rem', fontWeight: 700 }}>{initial(owner?.name)}</Avatar>
+            <Box sx={{ textAlign: 'left' }}><Typography sx={{ fontSize: '0.8rem', fontWeight: 700, lineHeight: 1 }}>{owner?.name || 'Eier'}</Typography><Typography sx={{ fontSize: '0.68rem', color: MUTED }}>{owner?.role || 'Produsent'}</Typography></Box>
+            <KeyboardArrowDown sx={{ fontSize: 18, color: MUTED }} />
+          </Stack>
+        </Stack>
       </Stack>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.7fr 1fr' }, gap: 2.5, alignItems: 'start' }}>
-        {/* ── Senter ── */}
-        <Stack spacing={2.5}>
-          <Panel>
-            <Stack direction="row" alignItems="center" sx={{ mb: 2 }}>
-              <Select value={currentVid} onChange={(e) => setCurrentVid(e.target.value)} size="small" variant="standard" disableUnderline
-                sx={{ color: TEXT, fontWeight: 700, '& .MuiSvgIcon-root': { color: MUTED } }}>
-                {versions.map((v) => <MenuItem key={v.id} value={v.id}>{v.version_label}{v.status === 'superseded' ? ' (forrige)' : v.status === 'approved' ? ' ✓' : ''}</MenuItem>)}
-              </Select>
-              <Box sx={{ flex: 1 }} />
-              {currentVersion?.file_url && <Button startIcon={<Download />} size="small" href={currentVersion.file_url} target="_blank" sx={{ color: TEXT, textTransform: 'none' }}>Last ned</Button>}
-            </Stack>
-            {currentVersion ? (
-              <AudioReviewPlayer
-                src={currentVersion.file_url}
-                comments={detail.comments.map((c) => ({ id: c.id, timecode: Number(c.timecode_seconds), comment: c.body, author: c.author, category: c.category }))}
-                onAddComment={addComment}
-                accentColor={ACCENT}
-              />
-            ) : <Typography sx={{ color: MUTED }}>Ingen versjon ennå. Last opp en bounce for å starte.</Typography>}
-          </Panel>
+      {/* ═══ BODY (3 kolonner) ═══ */}
+      <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
+        {/* ─── VENSTRE SIDEBAR ─── */}
+        <Box sx={{ width: 260, flexShrink: 0, borderRight: `1px solid ${BORDER}`, bgcolor: PANEL2, overflowY: 'auto', p: 2 }}>
+          <Box sx={{ borderRadius: '12px', overflow: 'hidden', position: 'relative', height: 130, mb: 1.5, bgcolor: '#1a1410', backgroundImage: project.cover_url ? `url(${project.cover_url})` : 'linear-gradient(135deg,#3a2418,#71361a)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+            <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,0.1),rgba(0,0,0,0.6))' }} />
+            <Box sx={{ position: 'absolute', bottom: 10, left: 12, right: 12 }}>
+              <Typography sx={{ fontSize: '0.62rem', letterSpacing: 2, color: 'rgba(255,255,255,0.7)' }}>{(project.band_name || '').toUpperCase()}</Typography>
+              <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', lineHeight: 1.05 }}>{project.title}</Typography>
+            </Box>
+          </Box>
+          <Stack direction="row" alignItems="center" sx={{ mb: 1 }}><Typography sx={{ fontWeight: 700, flex: 1 }}>{project.title}</Typography><IconButton size="small" onClick={(e) => setMoreEl(e.currentTarget)} sx={{ color: MUTED }}><MoreHoriz fontSize="small" /></IconButton></Stack>
 
-          {/* Versjoner */}
-          {versions.length > 0 && (
-            <Panel>
-              <Typography sx={{ fontWeight: 700, mb: 1.5 }}>Versjoner</Typography>
-              <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', gap: 1.5 }}>
-                {versions.map((v) => (
-                  <Box key={v.id} onClick={() => setCurrentVid(v.id)} sx={{ flex: '1 1 170px', p: 1.5, borderRadius: '12px', cursor: 'pointer', border: `1px solid ${v.id === currentVid ? ACCENT : BORDER}`, bgcolor: v.id === currentVid ? 'rgba(255,107,53,0.08)' : 'transparent' }}>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between">
-                      <Typography sx={{ fontWeight: 600, fontSize: '0.9rem' }}>{v.version_label}</Typography>
-                      {v.status === 'approved' && <CheckCircle sx={{ fontSize: 16, color: '#5fb88a' }} />}
-                    </Stack>
-                    <Typography sx={{ color: MUTED, fontSize: '0.72rem', textTransform: 'capitalize' }}>{(v.status || '').replace('_', ' ')}</Typography>
-                  </Box>
-                ))}
+          <Box sx={{ mb: 1 }}>
+            <MetaRow icon={<Speed />} label="BPM" value={project.bpm ?? '—'} />
+            <MetaRow icon={<VpnKey />} label="Toneart" value={project.musical_key ?? '—'} />
+            <MetaRow icon={<CategoryOutlined />} label="Type" value="Mix Review" />
+            <Divider sx={{ borderColor: BORDER, my: 0.75 }} />
+            <MetaRow icon={<StyleOutlined />} label="Sjanger" value={project.genre ?? '—'} />
+            <MetaRow icon={<Schedule />} label="Lengde" value={dur ? fmt(dur) : '—'} />
+            <MetaRow icon={<CalendarTodayOutlined />} label="Opprettet" value={project.created_at ? new Date(project.created_at).toLocaleDateString('no-NO', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
+          </Box>
+          <Divider sx={{ borderColor: BORDER, my: 1 }} />
+          <Stack spacing={0.25} sx={{ mb: 1 }}>
+            <NavItem icon={<GridViewOutlined />} label="Oversikt" />
+            <NavItem icon={<GraphicEq />} label="Audio Showcase" active />
+            <NavItem icon={<LayersOutlined />} label="Versjoner" />
+            <NavItem icon={<Inventory2Outlined />} label="Leveranser" />
+            <NavItem icon={<SubjectOutlined />} label="Tekster" active={lyricsOpen} onClick={() => setLyricsOpen(true)} />
+            <NavItem icon={<StickyNote2Outlined />} label="Notater" />
+            <NavItem icon={<TimelineOutlined />} label="Aktivitet" />
+          </Stack>
+          <Divider sx={{ borderColor: BORDER, my: 1 }} />
+          <Stack direction="row" alignItems="center" sx={{ mb: 1 }}>
+            <Typography sx={{ fontSize: '0.72rem', letterSpacing: 1, color: FAINT, flex: 1, textTransform: 'uppercase' }}>Prosjektmedlemmer</Typography>
+            <Button size="small" startIcon={<Add sx={{ fontSize: '16px !important' }} />} onClick={() => setInviteOpen(true)} sx={{ color: ACCENT, textTransform: 'none', fontSize: '0.75rem', minWidth: 0 }}>Inviter</Button>
+          </Stack>
+          <Stack spacing={1}>
+            {members.map((m) => (
+              <Stack key={m.id} direction="row" alignItems="center" spacing={1.25}>
+                <Avatar sx={{ width: 28, height: 28, fontSize: '0.72rem', bgcolor: m.avatar_color || ACCENT, color: '#150d05', fontWeight: 700 }}>{initial(m.name)}</Avatar>
+                <Box sx={{ flex: 1, minWidth: 0 }}><Stack direction="row" alignItems="center" spacing={0.5}><Typography sx={{ fontSize: '0.82rem', fontWeight: 600 }}>{m.name}</Typography>{m.is_owner && <WorkspacePremium sx={{ fontSize: 14, color: ACCENT }} />}</Stack><Typography sx={{ fontSize: '0.7rem', color: MUTED }}>{m.role}</Typography></Box>
               </Stack>
-            </Panel>
-          )}
+            ))}
+            {members.length === 0 && <Typography sx={{ fontSize: '0.78rem', color: FAINT }}>Ingen medlemmer ennå.</Typography>}
+          </Stack>
+        </Box>
 
-          {/* Leveranse-status — utledet fra ekte prosjekt-status + godkjenninger */}
-          <Panel>
-            <Typography sx={{ fontWeight: 700, mb: 1.5 }}>Leveranse-status</Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-              {[
-                { icon: <SendPlane />, label: 'Bounce sendt', done: versions.length > 0 },
-                { icon: <Schedule />, label: 'Venter på feedback', active: project.status === 'under_review' },
-                { icon: <CheckCircle />, label: 'Godkjent', done: project.status === 'approved' || project.status === 'final_delivered' },
-              ].map((s, i) => (
-                <Box key={i} sx={{ flex: 1, p: 1.5, borderRadius: '12px', border: `1px solid ${s.active ? ACCENT : BORDER}`, bgcolor: s.done ? 'rgba(95,184,138,0.08)' : s.active ? 'rgba(255,107,53,0.06)' : 'transparent', display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <Box sx={{ color: s.done ? '#5fb88a' : s.active ? ACCENT : MUTED, display: 'flex' }}>{s.icon}</Box>
-                  <Typography sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{s.label}</Typography>
+        {/* ─── SENTER ─── */}
+        <Box sx={{ flex: 1, overflowY: 'auto', p: 2.5, minWidth: 0 }}>
+          {/* Track-header + waveform */}
+          <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5, mb: 2.5 }}>
+            <Stack direction="row" alignItems="flex-start" sx={{ mb: 1.5 }}>
+              <Box sx={{ width: 40, height: 40, borderRadius: '10px', bgcolor: 'rgba(255,107,53,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', mr: 1.5 }}><MusicNote sx={{ color: ACCENT }} /></Box>
+              <Box sx={{ flex: 1 }}>
+                <Stack direction="row" alignItems="center" spacing={0.5}><Typography sx={{ fontWeight: 700 }}>{currentVersion ? `${project.title} – ${currentVersion.version_label}` : project.title}{currentVersion?.file_name ? '' : '.wav'}</Typography><KeyboardArrowDown sx={{ fontSize: 18, color: MUTED }} /></Stack>
+                <Typography sx={{ color: MUTED, fontSize: '0.76rem' }}>{specsLine || '—'}{abActive && prevVersion ? `   ·   A/B: ${prevVersion.version_label}` : ''}</Typography>
+              </Box>
+              {currentVersion?.file_url && <Button startIcon={<FileDownloadOutlined />} size="small" href={currentVersion.file_url} target="_blank" variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Last ned</Button>}
+              <IconButton size="small" sx={{ color: MUTED }}><MoreHoriz fontSize="small" /></IconButton>
+            </Stack>
+
+            {/* Waveform + playhead-boble */}
+            <Box sx={{ position: 'relative' }}>
+              <Box ref={waveRef} sx={{ cursor: 'pointer' }} />
+              {!ready && <Typography sx={{ position: 'absolute', top: 38, left: 0, right: 0, textAlign: 'center', color: FAINT, fontSize: '0.8rem' }}>Laster waveform…</Typography>}
+              {ready && dur > 0 && (
+                <Box sx={{ position: 'absolute', top: -8, transform: 'translateX(-50%)', left: `${(cur / dur) * 100}%`, bgcolor: ACCENT, color: '#150d05', fontSize: '0.68rem', fontWeight: 700, px: 0.7, py: 0.1, borderRadius: '5px', fontVariantNumeric: 'tabular-nums', pointerEvents: 'none' }}>{fmt(cur)}</Box>
+              )}
+            </Box>
+
+            {/* Tidslinjal */}
+            <Box sx={{ position: 'relative', height: 16, mt: 0.5 }}>
+              {dur > 0 && Array.from({ length: 9 }).map((_, i) => { const t = (dur / 8) * i; return (<Typography key={i} sx={{ position: 'absolute', left: `${(i / 8) * 100}%`, transform: i === 0 ? 'none' : i === 8 ? 'translateX(-100%)' : 'translateX(-50%)', fontSize: '0.66rem', color: FAINT, fontVariantNumeric: 'tabular-nums' }}>{fmt(t)}</Typography>); })}
+            </Box>
+
+            {/* Seksjonsbar */}
+            {detail.sections.length > 0 && dur > 0 && (
+              <Box sx={{ position: 'relative', height: 42, mt: 0.5 }}>
+                <Box sx={{ position: 'relative', height: 8, borderRadius: 4, overflow: 'hidden', display: 'flex' }}>
+                  {detail.sections.map((sec, i) => { const w = ((sec.end_time_seconds - sec.start_time_seconds) / dur) * 100; const color = sec.color || SECTION_COLORS[i % SECTION_COLORS.length]; return (<Tooltip key={sec.id} title={`${sec.name} · ${fmt(sec.start_time_seconds)}–${fmt(sec.end_time_seconds)}`}><Box onClick={() => seekFrac(sec.start_time_seconds / dur)} sx={{ width: `${w}%`, bgcolor: color, cursor: 'pointer', borderRight: '1px solid #0A0A0B', '&:hover': { filter: 'brightness(1.2)' } }} /></Tooltip>); })}
                 </Box>
-              ))}
-            </Stack>
-          </Panel>
+                <Box sx={{ position: 'relative', mt: 0.5 }}>
+                  {detail.sections.map((sec, i) => { const left = (sec.start_time_seconds / dur) * 100; const color = sec.color || SECTION_COLORS[i % SECTION_COLORS.length]; return (<Box key={sec.id} sx={{ position: 'absolute', left: `${left}%`, maxWidth: '14%' }}><Typography sx={{ fontSize: '0.66rem', fontWeight: 700, color, whiteSpace: 'nowrap' }}>{sec.name}</Typography><Typography sx={{ fontSize: '0.6rem', color: FAINT, whiteSpace: 'nowrap' }}>{fmt(sec.start_time_seconds)}–{fmt(sec.end_time_seconds)}</Typography></Box>); })}
+                </Box>
+              </Box>
+            )}
 
-          {/* Godkjennings-bar */}
-          <Panel sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Typography sx={{ fontWeight: 700, flex: 1 }}>Samarbeid. Forfin. Lever.</Typography>
-            <Button onClick={() => approve('changes_requested')} disabled={busy || !currentVid} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '999px' }}>Be om endringer</Button>
-            <Button onClick={() => approve('mix_approved')} disabled={busy || !currentVid} variant="contained" startIcon={<CheckCircle />} sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px', '&:hover': { bgcolor: '#ff855a' } }}>Godkjenn mix</Button>
-            <Button onClick={uploadVersion} disabled={busy} variant="outlined" startIcon={<Add />} sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '999px' }}>Last opp ny versjon</Button>
-          </Panel>
-        </Stack>
-
-        {/* ── Kommentarer ── */}
-        <Panel sx={{ p: 0, display: 'flex', flexDirection: 'column', maxHeight: { lg: 'calc(100vh - 130px)' } }}>
-          <Box sx={{ p: 2.5, pb: 1.5, borderBottom: `1px solid ${BORDER}` }}>
-            <Stack direction="row" alignItems="center" sx={{ mb: 1 }}>
-              <Typography sx={{ fontWeight: 700, flex: 1 }}>Kommentarer</Typography>
-            </Stack>
-            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-              {([['all', 'Alle'], ['unresolved', 'Uløst'], ['resolved', 'Løst'], ['decision', 'Beslutninger']] as [CommentFilter, string][]).map(([k, lbl]) => (
-                <Chip key={k} label={lbl} size="small" onClick={() => setFilter(k)}
-                  sx={{ height: 24, fontSize: '0.72rem', cursor: 'pointer', bgcolor: filter === k ? ACCENT : 'rgba(255,255,255,0.06)', color: filter === k ? '#150d05' : MUTED, fontWeight: filter === k ? 700 : 500 }} />
-              ))}
+            {/* Transport */}
+            <Stack direction="row" alignItems="center" spacing={2} sx={{ mt: 2.5 }}>
+              <Typography sx={{ fontVariantNumeric: 'tabular-nums', fontSize: '0.9rem', fontWeight: 600, minWidth: 96 }}>{fmt(cur)} <span style={{ color: FAINT }}>/ {fmt(dur)}</span></Typography>
+              <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5 }}>
+                <IconButton onClick={() => setLoopOn((v) => !v)} sx={{ color: loopOn ? ACCENT : MUTED }}><LoopIcon /></IconButton>
+                <IconButton onClick={() => seekFrac(Math.max(0, (cur - 10) / (dur || 1)))} sx={{ color: TEXT }}><SkipPrevious /></IconButton>
+                <IconButton onClick={() => wsRef.current?.playPause()} disabled={!ready} sx={{ bgcolor: 'transparent', color: ACCENT, border: `2px solid ${ACCENT}`, width: 52, height: 52, '&:hover': { bgcolor: 'rgba(255,107,53,0.12)' }, '&.Mui-disabled': { borderColor: BORDER, color: FAINT } }}>{playing ? <Pause sx={{ fontSize: 28 }} /> : <PlayArrow sx={{ fontSize: 28 }} />}</IconButton>
+                <IconButton onClick={() => seekFrac(Math.min(1, (cur + 10) / (dur || 1)))} sx={{ color: TEXT }}><SkipNext /></IconButton>
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ width: 110 }}>
+                  <VolumeUp sx={{ fontSize: 18, color: MUTED }} />
+                  <Slider size="small" value={vol} min={0} max={1} step={0.01} onChange={(_, v) => { setVol(v as number); wsRef.current?.setVolume(v as number); }} sx={{ color: ACCENT, '& .MuiSlider-thumb': { width: 11, height: 11 } }} />
+                </Stack>
+              </Box>
+              <Button onClick={() => setLoopOn((v) => !v)} startIcon={<LoopIcon sx={{ fontSize: '18px !important' }} />} variant="outlined" size="small" sx={{ color: loopOn ? ACCENT : TEXT, borderColor: loopOn ? ACCENT : BORDER, textTransform: 'none', borderRadius: '8px' }}>Loop</Button>
+              <Tooltip title={prevVersion ? `Sammenlign med ${prevVersion.version_label}` : 'Ingen tidligere versjon'}>
+                <span><Button onClick={() => setAbActive((v) => !v)} disabled={!prevVersion} startIcon={<CompareArrows sx={{ fontSize: '18px !important' }} />} variant="outlined" size="small" sx={{ color: abActive ? ACCENT : TEXT, borderColor: abActive ? ACCENT : BORDER, textTransform: 'none', borderRadius: '8px', lineHeight: 1.1 }}>A / B<br />Compare</Button></span>
+              </Tooltip>
             </Stack>
           </Box>
-          <Stack sx={{ overflowY: 'auto', flex: 1 }}>
-            {visibleComments.length === 0 && <Typography sx={{ p: 2.5, color: MUTED, fontSize: '0.85rem' }}>Ingen kommentarer i dette filteret.</Typography>}
+
+          {/* Versjoner + Tasks */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.7fr 1fr' }, gap: 2.5 }}>
+            {/* Versjoner */}
+            <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5 }}>
+              <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}><Typography sx={{ fontWeight: 700, flex: 1 }}>Versjoner</Typography><Typography sx={{ color: ACCENT, fontSize: '0.78rem', cursor: 'pointer' }}>Se alle</Typography></Stack>
+              <Stack direction="row" spacing={1.5} sx={{ overflowX: 'auto', pb: 1, '&::-webkit-scrollbar': { height: 6 }, '&::-webkit-scrollbar-thumb': { bgcolor: BORDER, borderRadius: 3 } }}>
+                {versions.map((v) => {
+                  const active = v.id === currentVid;
+                  const statusLabel = v.status === 'approved' ? 'Godkjent' : v.status === 'superseded' ? 'Erstattet' : 'Til vurdering';
+                  const statusColor = v.status === 'approved' ? '#5fb88a' : v.status === 'superseded' ? FAINT : '#e0a955';
+                  const cCount = detail.comments.length && active ? detail.comments.length : (v.comment_count ?? null);
+                  return (
+                    <Box key={v.id} onClick={() => { setAbActive(false); setCurrentVid(v.id); }} sx={{ flexShrink: 0, width: 180, p: 1.5, borderRadius: '12px', cursor: 'pointer', border: `1.5px solid ${active ? ACCENT : BORDER}`, bgcolor: active ? 'rgba(255,107,53,0.06)' : 'transparent' }}>
+                      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.75 }}><Typography sx={{ fontWeight: 700, fontSize: '0.88rem' }}>{v.version_label}</Typography>{active && <Chip label="Aktiv" size="small" sx={{ height: 17, fontSize: '0.62rem', bgcolor: ACCENT, color: '#150d05', fontWeight: 700 }} />}{v.status === 'approved' && <CheckCircle sx={{ fontSize: 15, color: '#5fb88a' }} />}</Stack>
+                      <Typography sx={{ fontSize: '0.68rem', color: MUTED, mb: 1 }}>{v.created_at ? new Date(v.created_at).toLocaleDateString('no-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</Typography>
+                      <Box sx={{ height: 30, borderRadius: '6px', mb: 1, background: active ? 'repeating-linear-gradient(90deg,#FF6B35 0 2px,transparent 2px 4px)' : 'repeating-linear-gradient(90deg,rgba(245,242,234,0.25) 0 2px,transparent 2px 4px)', opacity: 0.8 }} />
+                      <Stack direction="row" alignItems="center" justifyContent="space-between"><Stack direction="row" alignItems="center" spacing={0.5}><ChatBubbleOutline sx={{ fontSize: 13, color: MUTED }} /><Typography sx={{ fontSize: '0.7rem', color: MUTED }}>{cCount ?? 0}</Typography></Stack><Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: statusColor }}>{statusLabel}</Typography></Stack>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </Box>
+
+            {/* Tasks (erstatter AI-panel — spec: oppgaver, ikke AI) */}
+            <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5, display: 'flex', flexDirection: 'column' }}>
+              <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}><Typography sx={{ fontWeight: 700, flex: 1 }}>Oppgaver</Typography><Typography sx={{ fontSize: '0.66rem', color: MUTED }}>{tasks.filter((t) => t.status !== 'done').length} åpne</Typography></Stack>
+              <Stack spacing={1} sx={{ flex: 1 }}>
+                {taskGroups.map(([group, list]) => { const open = list.filter((t: any) => t.status !== 'done').length; const allDone = open === 0; return (
+                  <Stack key={group} direction="row" alignItems="center" spacing={1.25} sx={{ py: 0.5 }}>
+                    <Box sx={{ width: 26, height: 26, borderRadius: '7px', bgcolor: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><GraphicEq sx={{ fontSize: 15, color: ACCENT }} /></Box>
+                    <Box sx={{ flex: 1, minWidth: 0 }}><Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }}>{group}</Typography><Typography sx={{ fontSize: '0.7rem', color: MUTED }}>{list.length} oppgaver</Typography></Box>
+                    {allDone ? <CheckCircle sx={{ fontSize: 18, color: '#5fb88a' }} /> : <Box sx={{ minWidth: 20, height: 20, px: 0.6, borderRadius: '999px', bgcolor: 'rgba(255,107,53,0.18)', color: ACCENT, fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{open}</Box>}
+                  </Stack>
+                ); })}
+                {taskGroups.length === 0 && <Typography sx={{ fontSize: '0.78rem', color: FAINT, py: 1 }}>Ingen oppgaver ennå. Gjør feedback om til konkrete oppgaver.</Typography>}
+              </Stack>
+              <Button onClick={() => setTaskOpen(true)} startIcon={<Add />} fullWidth sx={{ mt: 1.5, color: ACCENT, bgcolor: 'rgba(255,107,53,0.1)', textTransform: 'none', borderRadius: '10px', fontWeight: 700, '&:hover': { bgcolor: 'rgba(255,107,53,0.18)' } }}>Ny oppgave</Button>
+            </Box>
+          </Box>
+        </Box>
+
+        {/* ─── HØYRE: KOMMENTARER ─── */}
+        <Box sx={{ width: 372, flexShrink: 0, borderLeft: `1px solid ${BORDER}`, bgcolor: PANEL2, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <Stack direction="row" spacing={2} sx={{ px: 2.5, pt: 2, borderBottom: `1px solid ${BORDER}` }}>
+            {([['all', 'Alle'], ['unresolved', 'Uløst'], ['resolved', 'Løst'], ['decision', 'Beslutninger']] as [CommentFilter, string][]).map(([k, lbl]) => (
+              <Box key={k} onClick={() => setFilter(k)} sx={{ pb: 1.25, cursor: 'pointer', borderBottom: `2px solid ${filter === k ? ACCENT : 'transparent'}`, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <Typography sx={{ fontSize: '0.84rem', fontWeight: filter === k ? 700 : 500, color: filter === k ? TEXT : MUTED }}>{lbl}</Typography>
+                {counts[k] > 0 && <Box sx={{ minWidth: 18, height: 18, px: 0.5, borderRadius: '999px', bgcolor: filter === k ? ACCENT : 'rgba(255,255,255,0.08)', color: filter === k ? '#150d05' : MUTED, fontSize: '0.66rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{counts[k]}</Box>}
+              </Box>
+            ))}
+          </Stack>
+          <Box sx={{ flex: 1, overflowY: 'auto' }}>
+            {visibleComments.length === 0 && <Typography sx={{ p: 2.5, color: FAINT, fontSize: '0.84rem' }}>Ingen kommentarer i dette filteret.</Typography>}
             {visibleComments.map((c) => {
-              const cat = MIX_CATEGORIES.find((x) => x.key === c.category);
+              const mem = members.find((m) => m.name === c.author);
+              const color = mem?.avatar_color || ACCENT;
+              const resolved = c.status === 'resolved';
               return (
-                <Box key={c.id} sx={{ p: 2.5, py: 2, borderBottom: `1px solid ${BORDER}` }}>
-                  <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                    <Avatar sx={{ width: 30, height: 30, fontSize: '0.78rem', bgcolor: 'rgba(255,107,53,0.18)', color: ACCENT }}>{(c.author || '?').charAt(0).toUpperCase()}</Avatar>
+                <Box key={c.id} sx={{ px: 2.5, py: 2, borderBottom: `1px solid ${BORDER}` }}>
+                  <Stack direction="row" spacing={1.5}>
+                    <Box sx={{ pt: 0.25 }}><Typography sx={{ fontSize: '0.68rem', color: ACCENT, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmt(Number(c.timecode_seconds))}</Typography></Box>
+                    <Avatar sx={{ width: 30, height: 30, fontSize: '0.76rem', bgcolor: color, color: '#150d05', fontWeight: 700 }}>{initial(c.author)}</Avatar>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
-                        <Typography sx={{ fontWeight: 700, fontSize: '0.84rem' }}>{c.author || 'Bruker'}</Typography>
-                        <Chip label={fmt(Number(c.timecode_seconds))} size="small" sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(255,107,53,0.16)', color: ACCENT, fontWeight: 700 }} />
-                        {cat && <Typography sx={{ color: cat.color, fontSize: '0.7rem', fontWeight: 700 }}>{cat.label}</Typography>}
+                      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ flexWrap: 'wrap' }}>
+                        <Typography sx={{ fontSize: '0.82rem', fontWeight: 700 }}>{c.author}{c.author_role ? ` (${c.author_role})` : ''}</Typography>
+                        <Typography sx={{ fontSize: '0.7rem', color: FAINT }}>{relTime(c.created_at)}</Typography>
+                        <Box sx={{ flex: 1 }} /><IconButton size="small" sx={{ color: FAINT, p: 0.25 }}><MoreHoriz sx={{ fontSize: 16 }} /></IconButton>
                       </Stack>
-                      <Typography sx={{ color: 'rgba(245,242,234,0.88)', fontSize: '0.88rem', mt: 0.5 }}>{c.body}</Typography>
-                      <Stack direction="row" spacing={1} sx={{ mt: 0.5 }} alignItems="center">
-                        {c.status === 'resolved'
-                          ? <Chip icon={<CheckCircle />} label="Løst" size="small" sx={{ height: 20, fontSize: '0.68rem', bgcolor: 'rgba(95,184,138,0.16)', color: '#5fb88a', '& .MuiChip-icon': { color: '#5fb88a' } }} />
-                          : <Button size="small" startIcon={<RadioButtonUnchecked />} onClick={() => setCommentStatus(c.id, 'resolved')} sx={{ color: MUTED, textTransform: 'none', fontSize: '0.72rem', minWidth: 0 }}>Marker løst</Button>}
+                      <Typography sx={{ fontSize: '0.86rem', color: 'rgba(245,242,234,0.9)', mt: 0.4 }}>{c.body}</Typography>
+                      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: 0.75 }}>
+                        <Typography onClick={() => { setReplyTo(c); }} sx={{ fontSize: '0.74rem', color: MUTED, cursor: 'pointer', '&:hover': { color: TEXT } }}>Svar</Typography>
+                        <Stack direction="row" alignItems="center" spacing={0.4} onClick={() => void likeComment(c.id)} sx={{ cursor: 'pointer', color: c.like_count > 0 ? ACCENT : FAINT, '&:hover': { color: ACCENT } }}>
+                          {c.like_count > 0 ? <ThumbUpAlt sx={{ fontSize: 14 }} /> : <ThumbUpAltOutlined sx={{ fontSize: 14 }} />}{c.like_count > 0 && <Typography sx={{ fontSize: '0.72rem', fontWeight: 700 }}>{c.like_count}</Typography>}
+                        </Stack>
+                        <Box sx={{ flex: 1 }} />
+                        <Chip onClick={() => void setCommentStatus(c.id, resolved ? 'unresolved' : 'resolved')} size="small"
+                          icon={resolved ? <CheckCircle sx={{ fontSize: '13px !important' }} /> : <KeyboardArrowDown sx={{ fontSize: '13px !important' }} />}
+                          label={resolved ? 'Løst' : 'Uløst'}
+                          sx={{ height: 22, fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer', color: resolved ? '#5fb88a' : '#e0a955', bgcolor: resolved ? 'rgba(95,184,138,0.14)' : 'rgba(224,169,85,0.14)', border: `1px solid ${resolved ? 'rgba(95,184,138,0.4)' : 'rgba(224,169,85,0.4)'}`, '& .MuiChip-icon': { color: resolved ? '#5fb88a' : '#e0a955' } }} />
                       </Stack>
                     </Box>
                   </Stack>
                 </Box>
               );
             })}
-          </Stack>
+          </Box>
+          {replyTo && <Box sx={{ px: 2.5, py: 0.75, bgcolor: 'rgba(255,107,53,0.08)', borderTop: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 1 }}><Typography sx={{ fontSize: '0.74rem', color: MUTED, flex: 1 }}>Svarer {replyTo.author}</Typography><Typography onClick={() => setReplyTo(null)} sx={{ fontSize: '0.74rem', color: ACCENT, cursor: 'pointer' }}>Avbryt</Typography></Box>}
           <Box sx={{ p: 2, borderTop: `1px solid ${BORDER}` }}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <TextField fullWidth size="small" placeholder="Skriv en kommentar…" value={draft} onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && draft.trim()) { void addComment(0, draft.trim(), 'general'); setDraft(''); } }}
-                sx={{ '& .MuiInputBase-input': { color: TEXT }, '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER } }} />
-              <IconButton onClick={() => { if (draft.trim()) { void addComment(0, draft.trim(), 'general'); setDraft(''); } }} sx={{ color: ACCENT }}><Send /></IconButton>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Avatar sx={{ width: 30, height: 30, fontSize: '0.76rem', bgcolor: ACCENT, color: '#150d05', fontWeight: 700 }}>{initial(owner?.name)}</Avatar>
+              <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '999px', px: 1.5 }}>
+                <InputBase fullWidth placeholder="Legg til en tidskodet kommentar…" value={draft} onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && draft.trim()) { void addComment(draft.trim(), { parentId: replyTo?.id }); setDraft(''); setReplyTo(null); } }}
+                  sx={{ color: TEXT, fontSize: '0.82rem', py: 0.75 }} />
+                <Tooltip title={`Tidsstemple ved ${fmt(cur)}`}><AccessTime sx={{ fontSize: 17, color: FAINT }} /></Tooltip>
+              </Box>
+              <IconButton onClick={() => { if (draft.trim()) { void addComment(draft.trim(), { parentId: replyTo?.id }); setDraft(''); setReplyTo(null); } }} sx={{ bgcolor: ACCENT, color: '#150d05', '&:hover': { bgcolor: '#ff855a' } }}><Send sx={{ fontSize: 18 }} /></IconButton>
             </Stack>
           </Box>
-        </Panel>
+        </Box>
       </Box>
+
+      {/* ═══ BUNN-ACTION-BAR ═══ */}
+      <Stack direction="row" alignItems="center" spacing={2} sx={{ px: 3, py: 1.5, borderTop: `1px solid ${BORDER}`, bgcolor: PANEL2, flexShrink: 0 }}>
+        <Box sx={{ width: 38, height: 38, borderRadius: '10px', bgcolor: 'rgba(255,107,53,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Box sx={{ width: 14, height: 14, bgcolor: ACCENT, transform: 'rotate(45deg)', borderRadius: '3px' }} /></Box>
+        <Box sx={{ flex: 1 }}><Typography sx={{ fontWeight: 700 }}>Samarbeid. Forfin. Lever.</Typography><Typography sx={{ fontSize: '0.78rem', color: MUTED }}>All feedback, versjoner og beslutninger på ett sted.</Typography></Box>
+        <Button onClick={() => approve('changes_requested')} disabled={busy || !currentVid} startIcon={<ChatBubbleOutline />} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '10px', px: 2.5, py: 1 }}>Be om endringer</Button>
+        <Button onClick={() => approve('mix_approved')} disabled={busy || !currentVid} startIcon={<CheckCircleOutline />} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '10px', px: 3, py: 1, '&:hover': { bgcolor: '#ff855a' } }}>Godkjenn mix</Button>
+        <Button onClick={uploadVersion} disabled={busy} startIcon={<CloudUpload />} endIcon={<KeyboardArrowDown />} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '10px', px: 2.5, py: 1 }}>Last opp ny versjon</Button>
+      </Stack>
+
+      {/* Dialoger */}
+      <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={async (name, role) => { const m = await apiRequest(`/api/audio-showcases/${projectId}/members`, { method: 'POST', body: { name, role } }); setMembers((p) => [...p, m]); setInviteOpen(false); }} />
+      <TaskDialog open={taskOpen} onClose={() => setTaskOpen(false)} onAdd={async (title, category) => { const t = await apiRequest('/api/audio-tasks', { method: 'POST', body: { projectId, title, assignee: category, versionId: currentVid } }); setTasks((p) => [...p, t]); setTaskOpen(false); }} />
+      <Menu anchorEl={moreEl} open={Boolean(moreEl)} onClose={() => setMoreEl(null)}><MenuItem onClick={() => setMoreEl(null)} sx={{ fontSize: '0.85rem' }}>Kopier review-lenke</MenuItem></Menu>
+      <LyricsDialog
+        open={lyricsOpen}
+        onClose={() => setLyricsOpen(false)}
+        track={easeverseTrack}
+        onSave={async (lyrics) => {
+          const r = await apiRequest(`/api/audio-showcases/${projectId}/lyrics`, { method: 'PUT', body: { lyrics } });
+          setEaseverseTrack((t: any) => (t ? { ...t, lyrics: r.lyrics } : t));
+          setLyricsOpen(false);
+        }}
+      />
     </Box>
   );
 }
+
+/* ── Dialoger ──────────────────────────────────────────────────────────── */
+const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name: string, role: string) => Promise<void> }> = ({ open, onClose, onAdd }) => {
+  const [name, setName] = React.useState(''); const [role, setRole] = React.useState(''); const [busy, setBusy] = React.useState(false);
+  return (
+    <Dialog open={open} onClose={onClose} PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px', minWidth: 360 } }}>
+      <DialogTitle sx={{ fontWeight: 800 }}>Inviter medlem</DialogTitle>
+      <DialogContent><Stack spacing={1.5} sx={{ mt: 0.5 }}><TextField autoFocus label="Navn" value={name} onChange={(e) => setName(e.target.value)} size="small" sx={fieldSx} /><TextField label="Rolle (f.eks. Vokalist)" value={role} onChange={(e) => setRole(e.target.value)} size="small" sx={fieldSx} /></Stack></DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}><Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none' }}>Avbryt</Button><Button disabled={!name.trim() || busy} onClick={async () => { setBusy(true); try { await onAdd(name.trim(), role.trim()); setName(''); setRole(''); } finally { setBusy(false); } }} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Legg til</Button></DialogActions>
+    </Dialog>
+  );
+};
+const TaskDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (title: string, category: string) => Promise<void> }> = ({ open, onClose, onAdd }) => {
+  const [title, setTitle] = React.useState(''); const [cat, setCat] = React.useState('Vokal'); const [busy, setBusy] = React.useState(false);
+  return (
+    <Dialog open={open} onClose={onClose} PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px', minWidth: 380 } }}>
+      <DialogTitle sx={{ fontWeight: 800 }}>Ny oppgave</DialogTitle>
+      <DialogContent><Stack spacing={1.5} sx={{ mt: 0.5 }}><TextField autoFocus label="Hva må gjøres?" value={title} onChange={(e) => setTitle(e.target.value)} size="small" sx={fieldSx} /><TextField label="Kategori (f.eks. Vokal, Bass)" value={cat} onChange={(e) => setCat(e.target.value)} size="small" sx={fieldSx} /></Stack></DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}><Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none' }}>Avbryt</Button><Button disabled={!title.trim() || busy} onClick={async () => { setBusy(true); try { await onAdd(title.trim(), cat.trim() || 'Generelt'); setTitle(''); } finally { setBusy(false); } }} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Opprett</Button></DialogActions>
+    </Dialog>
+  );
+};
+
+const LyricsDialog: React.FC<{ open: boolean; onClose: () => void; track: any; onSave: (lyrics: string) => Promise<void> }> = ({ open, onClose, track, onSave }) => {
+  const [val, setVal] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { if (open) setVal(track?.lyrics || ''); }, [open, track]);
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
+      <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <SubjectOutlined sx={{ color: ACCENT }} /> Tekster {track?.title ? `· ${track.title}` : ''}
+      </DialogTitle>
+      <DialogContent>
+        {track ? (
+          <TextField value={val} onChange={(e) => setVal(e.target.value)} multiline minRows={10} fullWidth placeholder="Skriv teksten…"
+            sx={{ mt: 0.5, '& .MuiInputBase-input': { color: TEXT, fontFamily: 'inherit', lineHeight: 1.6 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' } }} />
+        ) : (
+          <Typography sx={{ color: MUTED, py: 2 }}>Dette review-rommet er ikke koblet til en SongFlow-låt ennå. Send en låt til review fra SongFlow for å redigere tekst her.</Typography>
+        )}
+      </DialogContent>
+      {track && (
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none' }}>Lukk</Button>
+          <Button disabled={busy} onClick={async () => { setBusy(true); try { await onSave(val); } finally { setBusy(false); } }} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>{busy ? 'Lagrer…' : 'Lagre tekst'}</Button>
+        </DialogActions>
+      )}
+    </Dialog>
+  );
+};
 
 const fieldSx = {
   '& .MuiInputBase-input': { color: TEXT },
   '& .MuiInputLabel-root': { color: MUTED },
   '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER },
   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+  '& .Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: ACCENT },
 };
