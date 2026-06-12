@@ -669,6 +669,50 @@ export interface FlowSceneDraft {
   targetIndex?: number;
 }
 
+/** «Forstå siden FØRST» — hva produktet er + hvem målgruppen er, før noe lages. */
+export interface SiteUnderstanding {
+  summary: string;
+  category: string;
+  audience: string;            // primær målgruppe (beste gjetning)
+  audienceOptions: string[];   // 2-4 sannsynlige målgrupper å velge mellom
+  valueProps: string[];
+  suggestedType: DemoType;
+  suggestedGoal: string;
+}
+
+/**
+ * Les nettsiden (scan-tekst + branding + elementer) og FORSTÅ konteksten før
+ * en demo lages: hva produktet er, hvem målgruppen er, verdiløfter, og hvilken
+ * demo-type/mål som passer. Dette kjøres FØR generering, så alt blir grunnet i
+ * faktisk kontekst i stedet for gjetting.
+ */
+export async function analyzeSiteContext(params: {
+  url: string;
+  pageText?: string;
+  brandName?: string;
+  elements?: ScannedElement[];
+}): Promise<SiteUnderstanding | null> {
+  const { url, pageText = '', brandName = '', elements = [] } = params;
+  const user = `Forstå denne produktsiden FØR vi lager en demo. Ikke dikt opp — bygg KUN på det som faktisk står.
+URL: ${url}
+${brandName ? `Merke: ${brandName}\n` : ''}${pageText ? `Synlig sidetekst:\n${pageText.slice(0, 1800)}\n` : ''}${elements.length ? `Nøkkel-elementer: ${elements.slice(0, 15).map((e) => e.label).filter(Boolean).join(', ')}\n` : ''}
+Svar med KUN ett JSON-objekt:
+{ "summary": "1-2 setninger: hva ER dette produktet/tjenesten",
+  "category": "kort kategori (f.eks. «KI-anamnese for helsevesenet»)",
+  "audience": "den mest sannsynlige PRIMÆRE målgruppen (f.eks. «Leger / fastleger»)",
+  "audienceOptions": ["2-4 DISTINKTE sannsynlige målgrupper å velge mellom (f.eks. Leger, Pasienter, Klinikk-ledelse, Investorer)"],
+  "valueProps": ["3-5 konkrete verdiløfter fra siden"],
+  "suggestedType": "product_demo|sales_video|investor_demo|onboarding|tutorial|feature_walkthrough",
+  "suggestedGoal": "ett konkret konverteringsmål som passer målgruppen" }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du forstår produktsider og målgrupper presist FØR en demo lages. Du bygger kun på faktisk innhold, aldri gjetning. Svar ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 700,
+  });
+  const p = extractJson<SiteUnderstanding>(raw);
+  return p?.summary ? p : null;
+}
+
 /**
  * AI Director (§5.1): analyser nettsiden + demo-mål og foreslå en HEL
  * scene-flow med manus per scene. Resultatet mates inn i samme store og blir

@@ -20,7 +20,7 @@ export const VIEWPORT_W: Record<FrameVariant, number> = {
   iphone: 390, ipad: 834, ipad_landscape: 1194, macbook: 1440,
 };
 
-export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, onScreenClick, focusZoom, screenshot }: {
+export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, onScreenClick, onScreenDraw, focusZoom, screenshot }: {
   variant: FrameVariant; url: string; width: string | number;
   shadow?: string; iframeRef?: React.Ref<HTMLIFrameElement>;
   /** Fase 1b: vis et scan-screenshot i stedet for live-iframe (presis + funker
@@ -31,6 +31,9 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
   /** Klikk på skjermflaten → koordinater i viewport-prosent (0–1). Når satt,
    *  fanges klikk (for å plassere hotspot) i stedet for å gå til iframe-en. */
   onScreenClick?: (xPct: number, yPct: number) => void;
+  /** Tegn hotspot ved å dra et rektangel → bounds i viewport-prosent (0–1).
+   *  Et kort drag (≈klikk) faller tilbake til onScreenClick. */
+  onScreenDraw?: (rect: { x: number; y: number; w: number; h: number }) => void;
   /** Push-in mot et punkt (auto-zoom): senter cx,cy i 0–1, skala ≥ 1. Zoomer
    *  iframe + overlay sammen, så hotspot holder seg justert. Myk overgang. */
   focusZoom?: { cx: number; cy: number; scale: number };
@@ -39,6 +42,8 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
   const s = f.screen;
   const screenRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
+  // Tegne-hotspot: rubber-band-rektangel mens man drar (viewport-prosent 0–1).
+  const [draw, setDraw] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
 
   const vw = VIEWPORT_W[variant];
   // Skjerm-rektangelets piksel-forhold (b/h) = sw/sh; logisk høyde gir samme forhold.
@@ -87,17 +92,50 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
         {/* Overlay (hotspot/cursor/touch) over skjermen */}
         {overlay}
         </div>
-        {/* Klikk-fanger for hotspot-plassering (kun når onScreenClick er satt) */}
-        {onScreenClick && (
+        {/* Klikk/tegne-fanger for hotspot (kun når onScreenClick/onScreenDraw er satt).
+            Dra = tegn rektangel (eksakt markering); kort drag/klikk = standard-boks. */}
+        {(onScreenClick || onScreenDraw) && (
           <div
-            onClick={(e) => {
+            onMouseDown={(e) => {
               const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
               const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
               const y = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
-              onScreenClick(x, y);
+              setDraw({ x0: x, y0: y, x1: x, y1: y });
             }}
+            onMouseMove={(e) => {
+              if (!draw) return;
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+              const y = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+              setDraw((d) => (d ? { ...d, x1: x, y1: y } : d));
+            }}
+            onMouseUp={() => {
+              if (!draw) return;
+              const w = Math.abs(draw.x1 - draw.x0), h = Math.abs(draw.y1 - draw.y0);
+              const cx = (draw.x0 + draw.x1) / 2, cy = (draw.y0 + draw.y1) / 2;
+              setDraw(null);
+              // Ekte drag (begge sider ≥ ~1.5%) → tegnet rektangel; ellers klikk-fallback.
+              if (onScreenDraw && w > 0.015 && h > 0.015) {
+                onScreenDraw({ x: Math.min(draw.x0, draw.x1), y: Math.min(draw.y0, draw.y1), w, h });
+              } else if (onScreenClick) {
+                onScreenClick(cx, cy);
+              }
+            }}
+            onMouseLeave={() => setDraw(null)}
             style={{ position: 'absolute', inset: 0, cursor: 'crosshair', zIndex: 3 }}
-          />
+          >
+            {draw && (() => {
+              const w = Math.abs(draw.x1 - draw.x0), h = Math.abs(draw.y1 - draw.y0);
+              return (
+                <div style={{
+                  position: 'absolute', pointerEvents: 'none',
+                  left: `${Math.min(draw.x0, draw.x1) * 100}%`, top: `${Math.min(draw.y0, draw.y1) * 100}%`,
+                  width: `${w * 100}%`, height: `${h * 100}%`,
+                  border: '2px solid #c4622d', background: 'rgba(196,98,45,0.16)', borderRadius: 6,
+                }} />
+              );
+            })()}
+          </div>
         )}
       </div>
     </div>
