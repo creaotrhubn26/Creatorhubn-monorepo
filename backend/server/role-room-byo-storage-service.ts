@@ -157,8 +157,7 @@ export async function connectByoB2(
        user_id, bucket_name, key_id_encrypted, key_id_iv,
        app_key_encrypted, app_key_iv, endpoint_url, region,
        is_active, is_verified, last_verified_at
-     ) VALUES (
-       $1::uuid, $2, $3, $4, $5, $6, $7, $8, TRUE, TRUE, NOW()
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, TRUE, NOW()
      )
      ON CONFLICT (user_id) DO UPDATE SET
        bucket_name = EXCLUDED.bucket_name,
@@ -187,7 +186,7 @@ export async function connectByoB2(
   await pool.query(
     `UPDATE role_room_user_buckets
        SET tier = 'byo', quota_bytes = NULL, updated_at = NOW()
-     WHERE user_id = $1::uuid`,
+     WHERE user_id = $1`,
     [opts.userId],
   );
 
@@ -206,13 +205,13 @@ export async function disconnectByoB2(
 ): Promise<void> {
   await pool.query(
     `UPDATE user_b2_credentials SET is_active = FALSE, updated_at = NOW()
-     WHERE user_id = $1::uuid`,
+     WHERE user_id = $1`,
     [opts.userId],
   );
   await pool.query(
     `UPDATE role_room_user_buckets
        SET tier = 'free', quota_bytes = 1073741824, updated_at = NOW()
-     WHERE user_id = $1::uuid`,
+     WHERE user_id = $1`,
     [opts.userId],
   );
 }
@@ -236,7 +235,7 @@ export async function getByoCreds(
   }>(
     `SELECT bucket_name, key_id_encrypted, app_key_encrypted, endpoint_url, region
      FROM user_b2_credentials
-     WHERE user_id = $1::uuid AND is_active = TRUE`,
+     WHERE user_id = $1 AND is_active = TRUE`,
     [userId],
   );
   const row = r.rows[0];
@@ -284,7 +283,7 @@ export async function getActiveMigration(
             files_completed, files_failed, bytes_completed, errors,
             started_at, completed_at, status_message, created_at
      FROM role_room_byo_migration_jobs
-     WHERE user_id = $1::uuid
+     WHERE user_id = $1
      ORDER BY created_at DESC
      LIMIT 1`,
     [userId],
@@ -325,7 +324,7 @@ export async function startMigrationToByo(
   const summary = await pool.query<{ files: number; bytes: string | null }>(
     `SELECT COUNT(*)::int AS files, COALESCE(SUM(size_bytes), 0)::text AS bytes
      FROM role_room_user_files
-     WHERE user_id = $1::uuid AND deleted_at IS NULL`,
+     WHERE user_id = $1 AND deleted_at IS NULL`,
     [userId],
   );
   const totalFiles = summary.rows[0].files;
@@ -335,7 +334,7 @@ export async function startMigrationToByo(
   const j = await pool.query<{ id: string }>(
     `INSERT INTO role_room_byo_migration_jobs (
        user_id, direction, status, total_files, total_bytes, started_at, status_message
-     ) VALUES ($1::uuid, 'to_byo', 'running', $2, $3::bigint, NOW(), 'Starter migrasjon …')
+     ) VALUES ($1, 'to_byo', 'running', $2, $3::bigint, NOW(), 'Starter migrasjon …')
      ON CONFLICT (user_id) WHERE status IN ('queued','running') DO NOTHING
      RETURNING id`,
     [userId, totalFiles, totalBytes],
@@ -383,7 +382,7 @@ async function runMigrationWorker(
   }>(
     `SELECT id, b2_key, size_bytes, content_type
      FROM role_room_user_files
-     WHERE user_id = $1::uuid AND deleted_at IS NULL
+     WHERE user_id = $1 AND deleted_at IS NULL
      ORDER BY uploaded_at ASC`,
     [userId],
   );

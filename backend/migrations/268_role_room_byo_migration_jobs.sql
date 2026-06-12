@@ -16,7 +16,7 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS role_room_byo_migration_jobs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   -- Retning: 'to_byo' = admin-B2 → user-B2, 'from_byo' = user-B2 → admin-B2
   direction TEXT NOT NULL CHECK (direction IN ('to_byo', 'from_byo')),
   status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN (

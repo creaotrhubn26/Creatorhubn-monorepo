@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_role_room_user_files_entity
 -- (overwrite — tar samme parametre som før + nye)
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION role_room_register_user_upload(
-  p_user_id UUID,
+  p_user_id VARCHAR,
   p_b2_key TEXT,
   p_display_name TEXT,
   p_size_bytes BIGINT,
