@@ -28,6 +28,7 @@ import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import CompetitorsPanel from './CompetitorsPanel';
 import B2BAcquisitionPanel from './B2BAcquisitionPanel';
+import AgencyAcquisitionDashboard from './AgencyAcquisitionDashboard';
 import MarketingCockpitTiktokSection from '../../components/admin-room/marketing-cockpit/MarketingCockpitTiktokSection';
 import CompetitorReportPanel from './CompetitorReportPanel';
 import PostDraftsPanel from './PostDraftsPanel';
@@ -615,6 +616,7 @@ export default function MarketingCockpitTab() {
               sx={{ background: 'rgba(217,70,239,0.18)', color: '#e879f9', fontSize: '0.7rem', fontWeight: 700 }} />
           </Divider>
 
+          <AgencyAcquisitionDashboard />
           <B2BAcquisitionPanel />
 
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }} />
