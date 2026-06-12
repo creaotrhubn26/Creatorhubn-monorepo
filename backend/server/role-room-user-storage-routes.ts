@@ -30,6 +30,7 @@ import {
   migrateAllStoryboardImagesForUser,
   moveStoryboardImageToB2,
 } from "./role-room-storage-integrations.js";
+import { cleanupSoftDeletedFiles } from "./role-room-storage-cleanup-worker.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -253,6 +254,43 @@ export function registerRoleRoomUserStorageRoutes(
     } catch (err) {
       console.error("[storage/download]", err);
       res.status(500).json({ error: "download_failed", detail: String(err) });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // POST /api/role-room/storage/admin/cleanup-soft-deleted
+  // Dual-auth: admin-sesjon ELLER x-cron-trigger-token header.
+  // Rydder opptil 100 soft-deleted filer fra B2 per kall.
+  // ──────────────────────────────────────────────────────────────────
+  app.post("/api/role-room/storage/admin/cleanup-soft-deleted", async (req: Request, res: Response) => {
+    const cronToken = req.headers['x-cron-trigger-token'] as string | undefined;
+    const expectedToken = process.env.ROLE_ROOM_STORAGE_CLEANUP_TOKEN
+      || process.env.CRON_TRIGGER_TOKEN;
+
+    const tokenValid = expectedToken && cronToken && cronToken === expectedToken;
+    if (!tokenValid) {
+      const viewerId = getUserIdFromRequest(req, activeSessions);
+      if (!viewerId) {
+        res.status(401).json({ error: "krever_innlogging_eller_cron_token" });
+        return;
+      }
+      // Sjekk at brukeren har admin-role
+      const session = activeSessions.get(req.headers.authorization?.slice(7).trim() ?? '');
+      if (session?.role !== 'admin') {
+        res.status(403).json({ error: "krever_admin" });
+        return;
+      }
+    }
+
+    const dryRun = req.query.dryRun === 'true';
+    const batchSize = Math.min(500, Math.max(1, Number(req.query.batchSize) || 100));
+
+    try {
+      const result = await cleanupSoftDeletedFiles(pool, { batchSize, dryRun });
+      res.json(result);
+    } catch (err) {
+      console.error("[storage/cleanup]", err);
+      res.status(500).json({ error: "cleanup_failed", detail: String(err) });
     }
   });
 

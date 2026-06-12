@@ -52,6 +52,7 @@ import { registerRoleRoomFeedPlanThumbnailRoutes } from "./role-room-feed-plan-t
 import { registerRoleRoomBrandAssetsRoutes } from "./role-room-brand-assets-routes.js";
 import { registerRoleRoomUserStorageRoutes } from "./role-room-user-storage-routes.js";
 import { registerRoleRoomByoStorageRoutes } from "./role-room-byo-storage-routes.js";
+import { startInProcessCleanupLoop as startRoleRoomStorageCleanupLoop } from "./role-room-storage-cleanup-worker.js";
 import { registerRoleRoomPublishedGuidesRoutes } from "./role-room-published-guides-routes.js";
 import { registerRoleRoomDemoAssetsRoutes } from "./role-room-demo-assets-routes.js";
 import { registerRoleRoomThumbnailTemplatesRoutes } from "./role-room-thumbnail-templates-routes.js";
@@ -1920,6 +1921,8 @@ registerRoleRoomFeedPlanThumbnailRoutes(app, { pool, activeSessions });
 registerRoleRoomBrandAssetsRoutes(app, { pool, activeSessions });
 registerRoleRoomUserStorageRoutes(app, { pool, activeSessions });
 registerRoleRoomByoStorageRoutes(app, { pool, activeSessions });
+// Start in-process cleanup-loop hvis ROLE_ROOM_STORAGE_CLEANUP_INTERVAL_MS er satt
+startRoleRoomStorageCleanupLoop(pool);
 registerRoleRoomPublishedGuidesRoutes(app, { activeSessions, pool });
 registerRoleRoomDemoAssetsRoutes(app, { pool, activeSessions });
 registerRoleRoomThumbnailTemplatesRoutes(app, { pool, activeSessions });
