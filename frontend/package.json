@@ -20,6 +20,8 @@
     "format": "prettier --write .",
     "test:unit": "vitest run --config vitest.config.ts client/src/components/story-arc-studio",
     "test:unit:watch": "vitest --config vitest.config.ts client/src/components/story-arc-studio",
+    "marketing:screenshots": "node scripts/marketing-screenshots.playwright.mjs",
+    "marketing:screenshots:local": "node scripts/marketing-screenshots.playwright.mjs --base http://localhost:5173",
     "test:e2e": "playwright test",
     "test:e2e:story-arc-regression": "playwright test e2e/story-arc-regression.spec.ts --project=chromium",
     "test:e2e:visual-editor-regression": "playwright test e2e/visual-editor-regression.spec.ts --project=chromium",
