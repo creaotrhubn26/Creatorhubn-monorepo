@@ -122,6 +122,18 @@ export async function saveDemoRecording(
   return invoke<string>("save_demo_recording", { projectId, sceneId, dataBase64 });
 }
 
+/** Start native skjermopptak for en scene (Tauri/screencapture). Returnerer en
+ *  session-id som sendes til stopScreenRecord. Brukes når getDisplayMedia
+ *  mangler i webview-en. */
+export async function startScreenRecord(projectId: string, sceneId: string): Promise<string> {
+  return invoke<string>("start_screen_record", { projectId, sceneId });
+}
+
+/** Stopp et native skjermopptak → returnerer absolutt sti til opptaksfilen. */
+export async function stopScreenRecord(sessionId: string): Promise<string> {
+  return invoke<string>("stop_screen_record", { sessionId });
+}
+
 /** Skriv ren tekst (f.eks. .srt) til en bruker-valgt sti. Returnerer stien. */
 export async function demoWriteText(path: string, contents: string): Promise<string> {
   return invoke<string>("demo_write_text", { path, contents });

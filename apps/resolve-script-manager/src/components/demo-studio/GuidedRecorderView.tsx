@@ -15,7 +15,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
-import { useSceneRecorder } from './useSceneRecorder';
+import { useSceneRecorder, REC_UNAVAILABLE } from './useSceneRecorder';
 import { listCaptureSources, recordAvfoundation, recordSimulator, recordIphoneMirroring, checkUrlEmbeddable, type CaptureSource } from '../../api';
 import { DeviceConnectGuide } from './DeviceConnectGuide';
 import { type FrameVariant } from './deviceFrames';
@@ -463,7 +463,17 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                   </div>
                 </div>
               )}
-              {rec.error && <div style={{ fontSize: 11.5, color: C.red, marginBottom: 10 }}>{rec.error}</div>}
+              {rec.error === REC_UNAVAILABLE ? (
+                <div style={{ fontSize: 11.5, color: C.inkSoft, marginBottom: 10, padding: 10, border: `1px solid ${C.line}`, borderRadius: 8, background: C.cream }}>
+                  Skjermopptak er ikke tilgjengelig i app-vinduet (eller mangler skjermopptak-tillatelse).
+                  Bruk <strong>Playwright-opptak</strong> i stedet — det filmer den ekte nettsiden automatisk.
+                  <button style={{ ...outlineBtn, width: '100%', marginTop: 8 }} onClick={() => onNav?.('export')}>
+                    Åpne Export → Spill inn video (Playwright)
+                  </button>
+                </div>
+              ) : rec.error ? (
+                <div style={{ fontSize: 11.5, color: C.red, marginBottom: 10 }}>{rec.error}</div>
+              ) : null}
               {cur?.recordingPath && <div style={{ fontSize: 11.5, color: C.green, marginBottom: 10 }}>✓ Opptak lagret</div>}
             </div>
 

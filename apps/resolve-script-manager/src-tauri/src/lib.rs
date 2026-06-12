@@ -821,6 +821,7 @@ pub fn run() {
         .manage(RunningScriptsState::default())
         .manage(AppSettings::default())
         .manage(FolderWatcherState::default())
+        .manage(capture_sources::ScreenRecState::default())
         .manage(Arc::new(PhotoshopBridgeState::default()))
         .setup(|app| {
             // (#186/#187) Build + attach native menubar
@@ -939,6 +940,8 @@ pub fn run() {
             capture_sources::record_simulator,
             capture_sources::record_iphone_mirroring,
             capture_sources::open_iphone_mirroring,
+            capture_sources::start_screen_record,
+            capture_sources::stop_screen_record,
             photoshop_bridge::photoshop_send_command,
             photoshop_bridge::photoshop_status,
             psd_indexer::psd_index_directory,

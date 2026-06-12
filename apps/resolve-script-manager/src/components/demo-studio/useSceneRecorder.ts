@@ -15,9 +15,13 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { saveDemoRecording } from '../../api';
+import { saveDemoRecording, startScreenRecord, stopScreenRecord } from '../../api';
+import { isCaptureAvailable } from '../../services/demoCaptureService';
 
 export type RecState = 'idle' | 'recording' | 'saving';
+
+/** Spesiell error-verdi: skjermopptak finnes ikke i miljøet → UI tilbyr Playwright. */
+export const REC_UNAVAILABLE = 'REC_UNAVAILABLE';
 
 export interface SceneRecorder {
   state: RecState;
@@ -59,9 +63,16 @@ export function useSceneRecorder(): SceneRecorder {
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const curRef = useRef<{ projectId: string; sceneId: string } | null>(null);
+  // Native opptak (Tauri/screencapture) når getDisplayMedia mangler i webview-en.
+  const nativeRef = useRef<{ sessionId: string } | null>(null);
 
   /** Stopp streamen helt + nullstill alt. */
   const release = useCallback(() => {
+    // Avslutt et pågående native opptak (fire-and-forget) så screencapture ikke henger.
+    if (nativeRef.current) {
+      void stopScreenRecord(nativeRef.current.sessionId).catch(() => { /* */ });
+      nativeRef.current = null;
+    }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     recorderRef.current = null;
@@ -114,6 +125,24 @@ export function useSceneRecorder(): SceneRecorder {
 
   const start = useCallback(async (projectId: string, sceneId: string): Promise<boolean> => {
     setError(null);
+    // Native vei: getDisplayMedia finnes ikke i WKWebView, så i Tauri tar vi opp
+    // skjermen via Rust (screencapture). Browser-veien under brukes i web/dev.
+    const noBrowserCapture = typeof navigator === 'undefined' || !navigator.mediaDevices?.getDisplayMedia;
+    if (noBrowserCapture && isCaptureAvailable()) {
+      try {
+        const sessionId = await startScreenRecord(projectId, sceneId);
+        nativeRef.current = { sessionId };
+        curRef.current = { projectId, sceneId };
+        setSessionActive(true);
+        setState('recording');
+        return true;
+      } catch (e) {
+        // Native feilet (f.eks. manglende skjermopptak-tillatelse) → tilby Playwright.
+        setError(REC_UNAVAILABLE);
+        return false;
+      }
+    }
+    if (noBrowserCapture) { setError(REC_UNAVAILABLE); return false; }
     // Forkast et evt. pågående opptak (f.eks. Retake) uten å frigjøre streamen.
     if (recorderRef.current && recorderRef.current.state === 'recording') {
       try { recorderRef.current.onstop = null; recorderRef.current.stop(); } catch { /* */ }
@@ -139,6 +168,21 @@ export function useSceneRecorder(): SceneRecorder {
   }, [ensureStream, release]);
 
   const stopAndSave = useCallback(async (projectId: string, sceneId: string): Promise<string | null> => {
+    // Native opptak: stopp screencapture i Rust (filen er allerede på disk).
+    if (nativeRef.current) {
+      setState('saving');
+      try {
+        const path = await stopScreenRecord(nativeRef.current.sessionId);
+        return path;
+      } catch (e) {
+        setError((e as Error).message || 'Kunne ikke lagre opptak');
+        return null;
+      } finally {
+        nativeRef.current = null;
+        setSessionActive(false);
+        setState('idle');
+      }
+    }
     const rec = recorderRef.current;
     if (!rec || rec.state === 'inactive') { setState(streamRef.current ? 'idle' : 'idle'); return null; }
     setState('saving');
