@@ -101,6 +101,17 @@ pub async fn synthesize_tts(
     Ok(TtsResult { path: m4a.to_string_lossy().to_string(), duration_sec })
 }
 
+/// Åpne en fil/sti med systemets standard-app (`/usr/bin/open`). Mer pålitelig
+/// enn opener-pluginen for vilkårlige stier (f.eks. ~/Movies/Post Agent/).
+#[tauri::command]
+pub async fn system_open(path: String) -> Result<(), String> {
+    let st = Command::new("/usr/bin/open").arg(&path).status().map_err(|e| format!("open spawn: {e}"))?;
+    if !st.success() {
+        return Err("kunne ikke åpne fila".into());
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NarrationSegment {
