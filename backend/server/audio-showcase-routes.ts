@@ -72,6 +72,33 @@ async function evPushLyrics(payload: Record<string, unknown>): Promise<EvResult>
   });
 }
 
+// Hent DAW-markører (Pro Tools-seksjoner) fra EaseVerse for en track.
+async function evGetProtools(externalTrackId: string): Promise<EvResult> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await evFetch(`/api/v1/collab/protools/${encodeURIComponent(externalTrackId)}`, { method: "GET" });
+    if (!res.configured) return res;
+    if (res.reachable && res.status && (res.status < 500 || res.status === 404)) return res;
+  }
+  return { configured: Boolean(process.env.EASEVERSE_API_URL), reachable: false };
+}
+
+// Enkel in-memory rate-limiter (sliding window) for offentlige token-endepunkter.
+const rateBuckets = new Map<string, number[]>();
+function rateLimited(key: string, max = 30, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const arr = (rateBuckets.get(key) || []).filter((t) => now - t < windowMs);
+  arr.push(now);
+  rateBuckets.set(key, arr);
+  return arr.length > max;
+}
+const clientIp = (req: any): string => (req.headers?.["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || req.socket?.remoteAddress || "?");
+
+// Seksjons-farge per markør-type (matcher frontend SECTION_COLORS-spekteret).
+const PT_SECTION_COLOR: Record<string, string> = {
+  intro: "#d6457f", verse: "#3fa7d6", "pre-chorus": "#8aa0b6", chorus: "#FF6B35",
+  bridge: "#e0a955", "final-chorus": "#e0606a", outro: "#5fb88a",
+};
+
 export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   const { app, pool, requireUserSession } = deps;
 
@@ -409,8 +436,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       const token = isOwner ? null : makeInviteToken();
       const r = await pool.query(
         `INSERT INTO audio_review_members
-           (project_id, user_id, name, role, avatar_color, is_owner, order_index, email, instrument, invite_token, invite_status, invited_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, CASE WHEN $10::text IS NULL THEN NULL ELSE NOW() END) RETURNING *`,
+           (project_id, user_id, name, role, avatar_color, is_owner, order_index, email, instrument, invite_token, invite_status, invited_at, invite_expires_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, CASE WHEN $10::text IS NULL THEN NULL ELSE NOW() END, CASE WHEN $10::text IS NULL THEN NULL ELSE NOW() + INTERVAL '90 days' END) RETURNING *`,
         [id, str(req.body?.userId, 200) || null, name, str(req.body?.role, 80) || null,
          str(req.body?.avatarColor, 40) || PALETTE[n % PALETTE.length], isOwner, n,
          str(req.body?.email, 200) || null, str(req.body?.instrument, 120) || null, token, isOwner ? "owner" : "pending"]);
@@ -476,7 +503,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
                 COALESCE(p.external_track_id, p.easeverse_track_id) AS external_track_id,
                 (SELECT name FROM audio_review_members WHERE project_id = m.project_id AND is_owner = TRUE LIMIT 1) AS inviter_name
            FROM audio_review_members m JOIN audio_review_projects p ON p.id = m.project_id
-          WHERE m.invite_token = $1 LIMIT 1`, [token]);
+          WHERE m.invite_token = $1 AND (m.invite_expires_at IS NULL OR m.invite_expires_at > NOW()) LIMIT 1`, [token]);
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       return res.json(r.rows[0]);
     } catch (e) {
@@ -488,6 +515,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-review-invite/:token", async (req, res) => {
     const token = str(req.params.token, 80);
     if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    if (rateLimited(`inv:${clientIp(req)}`)) return res.status(429).json({ error: "rate_limited" });
     const name = str(req.body?.name, 200);
     if (!name) return res.status(400).json({ error: "name_required" });
     try {
@@ -495,7 +523,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         `UPDATE audio_review_members SET name = $2, role = COALESCE($3, role), instrument = $4, email = $5, phone = $6, bio = $7,
            avatar_url = COALESCE($8, avatar_url), easeverse_access = COALESCE($9, easeverse_access), links = COALESCE($10::jsonb, links),
            invite_status = 'active', profile_completed_at = NOW()
-          WHERE invite_token = $1 RETURNING id, name, role, instrument, invite_status, easeverse_access`,
+          WHERE invite_token = $1 AND (invite_expires_at IS NULL OR invite_expires_at > NOW()) RETURNING id, name, role, instrument, invite_status, easeverse_access`,
         [token, name, str(req.body?.role, 80) || null, str(req.body?.instrument, 120) || null,
          str(req.body?.email, 200) || null, str(req.body?.phone, 60) || null, str(req.body?.bio, 2000) || null,
          str(req.body?.avatarUrl, 3000000) || null, typeof req.body?.easeverseAccess === "boolean" ? req.body.easeverseAccess : null,
@@ -609,8 +637,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       for (const m of names) {
         const token = m.owner ? null : makeInviteToken();
         await pool.query(
-          `INSERT INTO audio_review_members (project_id, name, role, avatar_color, is_owner, order_index, invite_token, invite_status, invited_at)
-           SELECT $1::uuid,$2,$3,$4,$5,$6,$7,$8, CASE WHEN $7::text IS NULL THEN NULL ELSE NOW() END
+          `INSERT INTO audio_review_members (project_id, name, role, avatar_color, is_owner, order_index, invite_token, invite_status, invited_at, invite_expires_at)
+           SELECT $1::uuid,$2,$3,$4,$5,$6,$7,$8, CASE WHEN $7::text IS NULL THEN NULL ELSE NOW() END, CASE WHEN $7::text IS NULL THEN NULL ELSE NOW() + INTERVAL '90 days' END
             WHERE NOT EXISTS (SELECT 1 FROM audio_review_members WHERE project_id = $1::uuid AND name = $2)`,
           [reviewId, m.name, m.role, PALETTE[i % PALETTE.length], m.owner, i, token, m.owner ? "owner" : "pending"]); i++;
       }
@@ -854,13 +882,53 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     }
   });
 
+  // ── DAW-markører fra EaseVerse → seksjoner på en versjon (Fase 2) ─────────
+  app.post("/api/audio-versions/:id/pull-sections", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const versionId = str(req.params.id, 64);
+    try {
+      const own = await pool.query(
+        `SELECT v.id, v.duration, p.external_track_id, p.easeverse_track_id
+           FROM audio_review_versions v JOIN audio_review_projects p ON p.id = v.project_id
+          WHERE v.id = $1::uuid AND p.owner_user_id = $2 LIMIT 1`, [versionId, s.userId]);
+      if (own.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const extId = own.rows[0].external_track_id || own.rows[0].easeverse_track_id;
+      if (!extId) return res.status(409).json({ error: "no_linked_track" });
+      const remote = await evGetProtools(extId);
+      if (!remote.configured) return res.status(503).json({ error: "easeverse_not_configured" });
+      if (!remote.reachable) return res.status(502).json({ error: "easeverse_unreachable" });
+      const markers: any[] = Array.isArray(remote.item?.markers) ? remote.item.markers : [];
+      if (!markers.length) return res.json({ applied: "no_markers", sections: [] });
+      const sorted = [...markers].filter((m) => Number.isFinite(Number(m?.positionMs))).sort((a, b) => a.positionMs - b.positionMs);
+      const dur = Number(own.rows[0].duration) || (sorted.length ? sorted[sorted.length - 1].positionMs / 1000 + 30 : 0);
+      await pool.query(`DELETE FROM audio_review_sections WHERE version_id = $1::uuid`, [versionId]);
+      let i = 0;
+      for (const m of sorted) {
+        const startSec = Number(m.positionMs) / 1000;
+        const endSec = i < sorted.length - 1 ? Number(sorted[i + 1].positionMs) / 1000 : dur;
+        const type = String(m.sectionType || "").toLowerCase();
+        await pool.query(
+          `INSERT INTO audio_review_sections (version_id, name, start_time_seconds, end_time_seconds, color, order_index)
+           VALUES ($1::uuid,$2,$3,$4,$5,$6)`,
+          [versionId, str(m.label, 80) || `Del ${i + 1}`, startSec, endSec, PT_SECTION_COLOR[type] || null, i]); i++;
+      }
+      const out = await pool.query(`SELECT * FROM audio_review_sections WHERE version_id = $1::uuid ORDER BY order_index ASC`, [versionId]);
+      return res.json({ applied: "pulled", count: out.rowCount, sections: out.rows });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      console.error("[audio-showcase] pull-sections failed:", e);
+      return res.status(500).json({ error: "pull_sections_failed" });
+    }
+  });
+
   // ── Member-tilgang via invite-token: se review + kommenter (ikke eier) ─────
   // Token = tilgang. Bidragsyteren kan se versjoner/waveform/tekst + kommentere,
   // men ikke godkjenne/laste opp/invitere.
   async function resolveSharedMember(token: string): Promise<any | null> {
     const r = await pool.query(
       `SELECT m.id AS member_id, m.name, m.role, m.project_id, p.* FROM audio_review_members m
-         JOIN audio_review_projects p ON p.id = m.project_id WHERE m.invite_token = $1 LIMIT 1`, [token]);
+         JOIN audio_review_projects p ON p.id = m.project_id
+        WHERE m.invite_token = $1 AND (m.invite_expires_at IS NULL OR m.invite_expires_at > NOW()) LIMIT 1`, [token]);
     return r.rows[0] || null;
   }
 
@@ -910,6 +978,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-review-shared/:token/comments", async (req, res) => {
     const token = str(req.params.token, 80);
     if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    if (rateLimited(`shc:${clientIp(req)}`)) return res.status(429).json({ error: "rate_limited" });
     const versionId = str(req.body?.versionId, 64);
     const body = str(req.body?.body, 4000);
     if (!versionId || !body) return res.status(400).json({ error: "versionId_and_body_required" });

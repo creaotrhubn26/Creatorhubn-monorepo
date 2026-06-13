@@ -104,6 +104,10 @@ export default function AudioShowcasePage() {
     catch { setSplitToast('Kunne ikke generere splittark'); }
     setTimeout(() => setSplitToast(null), 3500);
   };
+  const pullSections = async () => {
+    if (!currentVid) return;
+    try { const r = await apiRequest(`/api/audio-versions/${currentVid}/pull-sections`, { method: 'POST', body: {} }); if (r?.applied === 'pulled') await loadVersion(currentVid); } catch { /* */ }
+  };
   const saveMemberProfile = async (id: string, patch: Record<string, string>) => {
     const updated = await apiRequest(`/api/audio-members/${id}`, { method: 'PATCH', body: patch });
     setMembers((p) => p.map((x) => (x.id === id ? updated : x)));
@@ -358,6 +362,7 @@ export default function AudioShowcasePage() {
                 <Stack direction="row" alignItems="center" spacing={0.5}><Typography sx={{ fontWeight: 700 }}>{currentVersion ? `${project.title} – ${currentVersion.version_label}` : project.title}{currentVersion?.file_name ? '' : '.wav'}</Typography><KeyboardArrowDown sx={{ fontSize: 18, color: MUTED }} /></Stack>
                 <Typography sx={{ color: MUTED, fontSize: '0.76rem' }}>{specsLine || '—'}{abActive && prevVersion ? `   ·   A/B: ${prevVersion.version_label}` : ''}</Typography>
               </Box>
+              {easeverseTrack && <Button startIcon={<GraphicEq />} size="small" onClick={pullSections} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Hent seksjoner</Button>}
               {currentVersion?.file_url && <Button startIcon={<FileDownloadOutlined />} size="small" href={currentVersion.file_url} target="_blank" variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Last ned</Button>}
               <IconButton size="small" sx={{ color: MUTED }}><MoreHoriz fontSize="small" /></IconButton>
             </Stack>
