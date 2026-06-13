@@ -853,4 +853,96 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       return res.status(500).json({ error: "split_sheet_failed" });
     }
   });
+
+  // ── Member-tilgang via invite-token: se review + kommenter (ikke eier) ─────
+  // Token = tilgang. Bidragsyteren kan se versjoner/waveform/tekst + kommentere,
+  // men ikke godkjenne/laste opp/invitere.
+  async function resolveSharedMember(token: string): Promise<any | null> {
+    const r = await pool.query(
+      `SELECT m.id AS member_id, m.name, m.role, m.project_id, p.* FROM audio_review_members m
+         JOIN audio_review_projects p ON p.id = m.project_id WHERE m.invite_token = $1 LIMIT 1`, [token]);
+    return r.rows[0] || null;
+  }
+
+  app.get("/api/audio-review-shared/:token", async (req, res) => {
+    const token = str(req.params.token, 80);
+    if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    try {
+      const ctx = await resolveSharedMember(token);
+      if (!ctx) return res.status(404).json({ error: "not_found" });
+      const [v, members, tasks] = await Promise.all([
+        pool.query(`SELECT * FROM audio_review_versions WHERE project_id = $1::uuid ORDER BY version_number ASC`, [ctx.project_id]),
+        pool.query(`SELECT id, name, role, instrument, avatar_color, avatar_url, is_owner, invite_status FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC`, [ctx.project_id]),
+        pool.query(`SELECT * FROM audio_review_tasks WHERE project_id = $1::uuid ORDER BY order_index ASC`, [ctx.project_id]).catch(() => ({ rows: [] })),
+      ]);
+      let easeverseTrack: any = null;
+      if (ctx.easeverse_track_id) {
+        const t = await pool.query(`SELECT id, title, status, lyrics FROM easeverse_tracks WHERE id = $1::uuid LIMIT 1`, [ctx.easeverse_track_id]).catch(() => ({ rows: [] as any[] }));
+        easeverseTrack = t.rows[0] || null;
+      }
+      const project = { id: ctx.id, title: ctx.title, band_name: ctx.band_name, artist_name: ctx.artist_name, genre: ctx.genre, bpm: ctx.bpm, musical_key: ctx.musical_key, status: ctx.status, cover_url: ctx.cover_url, created_at: ctx.created_at, easeverse_track_id: ctx.easeverse_track_id };
+      return res.json({ project, versions: v.rows, members: members.rows, tasks: tasks.rows, easeverseTrack, viewer: { memberId: ctx.member_id, name: ctx.name, role: ctx.role }, readonly: true });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(404).json({ error: "not_found" });
+      return res.status(500).json({ error: "shared_get_failed" });
+    }
+  });
+
+  app.get("/api/audio-review-shared/:token/version/:vid", async (req, res) => {
+    const token = str(req.params.token, 80); const vid = str(req.params.vid, 64);
+    if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    try {
+      const ctx = await resolveSharedMember(token);
+      if (!ctx) return res.status(404).json({ error: "not_found" });
+      const v = await pool.query(`SELECT * FROM audio_review_versions WHERE id = $1::uuid AND project_id = $2::uuid LIMIT 1`, [vid, ctx.project_id]);
+      if (v.rowCount === 0) return res.status(404).json({ error: "version_not_found" });
+      const [comments, sections] = await Promise.all([
+        pool.query(`SELECT * FROM audio_review_comments WHERE version_id = $1::uuid ORDER BY timecode_seconds ASC, created_at ASC`, [vid]),
+        pool.query(`SELECT * FROM audio_review_sections WHERE version_id = $1::uuid ORDER BY order_index ASC`, [vid]),
+      ]);
+      return res.json({ version: v.rows[0], comments: comments.rows, sections: sections.rows });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(404).json({ error: "not_found" });
+      return res.status(500).json({ error: "shared_version_failed" });
+    }
+  });
+
+  app.post("/api/audio-review-shared/:token/comments", async (req, res) => {
+    const token = str(req.params.token, 80);
+    if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    const versionId = str(req.body?.versionId, 64);
+    const body = str(req.body?.body, 4000);
+    if (!versionId || !body) return res.status(400).json({ error: "versionId_and_body_required" });
+    try {
+      const ctx = await resolveSharedMember(token);
+      if (!ctx) return res.status(404).json({ error: "not_found" });
+      const owns = await pool.query(`SELECT 1 FROM audio_review_versions WHERE id=$1::uuid AND project_id=$2::uuid LIMIT 1`, [versionId, ctx.project_id]);
+      if (owns.rowCount === 0) return res.status(404).json({ error: "version_not_found" });
+      const r = await pool.query(
+        `INSERT INTO audio_review_comments (version_id, user_id, author, author_role, timecode_seconds, body, category, section_ref)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [versionId, `member:${ctx.member_id}`, ctx.name, ctx.role, num(req.body?.timecodeSeconds) ?? 0, body,
+         str(req.body?.category, 40) || "general", str(req.body?.sectionRef, 120) || null]);
+      return res.status(201).json(r.rows[0]);
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      return res.status(500).json({ error: "shared_comment_failed" });
+    }
+  });
+
+  app.post("/api/audio-review-shared/:token/comments/:id/like", async (req, res) => {
+    const token = str(req.params.token, 80); const id = str(req.params.id, 64);
+    if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    try {
+      const ctx = await resolveSharedMember(token);
+      if (!ctx) return res.status(404).json({ error: "not_found" });
+      const r = await pool.query(
+        `UPDATE audio_review_comments SET like_count = like_count + 1, updated_at = NOW()
+          WHERE id = $1::uuid AND version_id IN (SELECT id FROM audio_review_versions WHERE project_id = $2::uuid) RETURNING *`, [id, ctx.project_id]);
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      return res.json(r.rows[0]);
+    } catch (e) {
+      return res.status(500).json({ error: "shared_like_failed" });
+    }
+  });
 }
