@@ -168,6 +168,103 @@ export function setupAdminLeadMapPricingRoutes(deps: Deps): void {
     }
   });
 
+  // ── Entitlement-admin ───────────────────────────────────────────────
+
+  // GET /entitlements — alle entitlements (med config-info + producer-email)
+  app.get("/api/admin/lead-map/entitlements", async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const r = await pool.query(
+        `SELECT
+           e.id::text, e.config_id::text, e.producer_user_id, e.tier, e.status,
+           e.source, e.trial_ends_at, e.expires_at, e.granted_at, e.revoked_at,
+           e.leads_per_month_limit, e.ai_pitches_per_month_limit,
+           e.stripe_subscription_id, e.notes,
+           u.email AS producer_email,
+           u.first_name AS producer_first_name,
+           u.last_name AS producer_last_name,
+           c.client_name AS config_client_name
+         FROM lead_map_module_entitlements e
+         LEFT JOIN users u ON u.id = e.producer_user_id
+         LEFT JOIN client_ads_configs c ON c.id = e.config_id
+         ORDER BY e.granted_at DESC
+         LIMIT 500`,
+      );
+      return res.json({ entitlements: r.rows });
+    } catch (err) {
+      return res.status(500).json({ error: "entitlements_failed", detail: String(err) });
+    }
+  });
+
+  // POST /entitlements/grant — admin gir gratis entitlement
+  // Body: { configId, producerUserId, tier, notes? }
+  app.post("/api/admin/lead-map/entitlements/grant", async (req, res) => {
+    const session = requireAdmin(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as {
+      configId?: string; producerUserId?: string;
+      tier?: string; notes?: string;
+    };
+    if (!body.configId || !body.producerUserId) {
+      return res.status(400).json({ error: "mangler_config_eller_producer" });
+    }
+    if (!body.tier || !['discover', 'pro', 'agency'].includes(body.tier)) {
+      return res.status(400).json({ error: "ugyldig_tier" });
+    }
+    const limits = {
+      discover: { leads: 50,   ai: 0 },
+      pro:      { leads: 250,  ai: 50 },
+      agency:   { leads: null, ai: null },
+    }[body.tier as 'discover'|'pro'|'agency'];
+    try {
+      // Revoker eksisterende aktiv først
+      await pool.query(
+        `UPDATE lead_map_module_entitlements
+           SET revoked_at = NOW(), updated_at = NOW()
+         WHERE config_id = $1::uuid AND revoked_at IS NULL`,
+        [body.configId],
+      );
+      const r = await pool.query<{ id: string }>(
+        `INSERT INTO lead_map_module_entitlements (
+           config_id, producer_user_id, tier, status, source,
+           leads_per_month_limit, ai_pitches_per_month_limit, notes
+         ) VALUES ($1::uuid, $2, $3, 'active', 'admin_grant', $4, $5, $6)
+         RETURNING id::text`,
+        [
+          body.configId, body.producerUserId, body.tier,
+          limits.leads, limits.ai,
+          (body.notes ?? `Admin-grant av ${session.email}`).slice(0, 500),
+        ],
+      );
+      return res.json({ ok: true, entitlementId: r.rows[0].id });
+    } catch (err) {
+      return res.status(500).json({ error: "grant_failed", detail: String(err) });
+    }
+  });
+
+  // POST /entitlements/:id/revoke
+  app.post("/api/admin/lead-map/entitlements/:id/revoke", async (req, res) => {
+    const session = requireAdmin(req, res);
+    if (!session) return;
+    const body = (req.body ?? {}) as { notes?: string };
+    try {
+      const r = await pool.query(
+        `UPDATE lead_map_module_entitlements
+           SET status = 'revoked', revoked_at = NOW(), updated_at = NOW(),
+               notes = COALESCE(notes, '') || E'\\n[REVOKED] ' || $2
+         WHERE id = $1::uuid AND revoked_at IS NULL`,
+        [
+          req.params.id,
+          (body.notes ?? `Admin-revoke av ${session.email} ${new Date().toISOString()}`).slice(0, 500),
+        ],
+      );
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found_or_already_revoked" });
+      return res.json({ ok: true });
+    } catch (err) {
+      return res.status(500).json({ error: "revoke_failed", detail: String(err) });
+    }
+  });
+
   // POST /pricing/update — endre pris for én tier
   // Body: { tier: 'discover'|'pro'|'agency', priceNok: number, autoUpdateEnv?: boolean }
   app.post("/api/admin/lead-map/pricing/update", async (req, res) => {
