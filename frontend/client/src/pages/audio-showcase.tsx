@@ -22,9 +22,11 @@ import {
   ThumbUpAlt, AccessTime, Send, WorkspacePremium, GridViewOutlined, GraphicEq, LayersOutlined,
   Inventory2Outlined, SubjectOutlined, StickyNote2Outlined, TimelineOutlined, Speed, VpnKey,
   CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
+  PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
+import ImageDrop from '@/components/universal/showcase/ImageDrop';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
@@ -89,6 +91,23 @@ export default function AudioShowcasePage() {
   const [lyricsOpen, setLyricsOpen] = React.useState(false);
   const [composerSection, setComposerSection] = React.useState<string | null>(null);
   const [sectionMenuEl, setSectionMenuEl] = React.useState<null | HTMLElement>(null);
+  const [memberDialog, setMemberDialog] = React.useState<any>(null);
+  const [splitToast, setSplitToast] = React.useState<string | null>(null);
+
+  const saveCover = async (dataUrl: string) => {
+    try { const p = await apiRequest(`/api/audio-showcases/${projectId}`, { method: 'PATCH', body: { coverUrl: dataUrl } }); setProject(p); } catch { /* */ }
+  };
+  const generateSplitSheet = async () => {
+    setSplitToast('Genererer splittark…');
+    try { const r = await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`, { method: 'POST', body: {} }); setSplitToast(r.created ? `Splittark opprettet (${r.contributors} parter)` : 'Åpner eksisterende splittark'); if (r.url) window.open(r.url, '_blank'); }
+    catch { setSplitToast('Kunne ikke generere splittark'); }
+    setTimeout(() => setSplitToast(null), 3500);
+  };
+  const saveMemberProfile = async (id: string, patch: Record<string, string>) => {
+    const updated = await apiRequest(`/api/audio-members/${id}`, { method: 'PATCH', body: patch });
+    setMembers((p) => p.map((x) => (x.id === id ? updated : x)));
+    setMemberDialog(updated);
+  };
 
   /* ── Datahenting ── */
   const loadProject = React.useCallback(async () => {
@@ -259,9 +278,9 @@ export default function AudioShowcasePage() {
       <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
         {/* ─── VENSTRE SIDEBAR ─── */}
         <Box sx={{ width: 260, flexShrink: 0, borderRight: `1px solid ${BORDER}`, bgcolor: PANEL2, overflowY: 'auto', p: 2 }}>
-          <Box sx={{ borderRadius: '12px', overflow: 'hidden', position: 'relative', height: 130, mb: 1.5, bgcolor: '#1a1410', backgroundImage: project.cover_url ? `url(${project.cover_url})` : 'linear-gradient(135deg,#3a2418,#71361a)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-            <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,0.1),rgba(0,0,0,0.6))' }} />
-            <Box sx={{ position: 'absolute', bottom: 10, left: 12, right: 12 }}>
+          <Box sx={{ position: 'relative', mb: 1.5 }}>
+            <ImageDrop variant="cover" value={project.cover_url} onChange={saveCover} />
+            <Box sx={{ position: 'absolute', bottom: 10, left: 12, right: 12, pointerEvents: 'none' }}>
               <Typography sx={{ fontSize: '0.62rem', letterSpacing: 2, color: 'rgba(255,255,255,0.7)' }}>{(project.band_name || '').toUpperCase()}</Typography>
               <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', lineHeight: 1.05 }}>{project.title}</Typography>
             </Box>
@@ -292,15 +311,22 @@ export default function AudioShowcasePage() {
             <Typography sx={{ fontSize: '0.72rem', letterSpacing: 1, color: FAINT, flex: 1, textTransform: 'uppercase' }}>Prosjektmedlemmer</Typography>
             <Button size="small" startIcon={<Add sx={{ fontSize: '16px !important' }} />} onClick={() => setInviteOpen(true)} sx={{ color: ACCENT, textTransform: 'none', fontSize: '0.75rem', minWidth: 0 }}>Inviter</Button>
           </Stack>
-          <Stack spacing={1}>
+          <Stack spacing={0.5}>
             {members.map((m) => (
-              <Stack key={m.id} direction="row" alignItems="center" spacing={1.25}>
-                <Avatar sx={{ width: 28, height: 28, fontSize: '0.72rem', bgcolor: m.avatar_color || ACCENT, color: '#150d05', fontWeight: 700 }}>{initial(m.name)}</Avatar>
-                <Box sx={{ flex: 1, minWidth: 0 }}><Stack direction="row" alignItems="center" spacing={0.5}><Typography sx={{ fontSize: '0.82rem', fontWeight: 600 }}>{m.name}</Typography>{m.is_owner && <WorkspacePremium sx={{ fontSize: 14, color: ACCENT }} />}</Stack><Typography sx={{ fontSize: '0.7rem', color: MUTED }}>{m.role}</Typography></Box>
+              <Stack key={m.id} direction="row" alignItems="center" spacing={1.25} onClick={() => setMemberDialog(m)}
+                sx={{ px: 0.75, py: 0.5, mx: -0.75, borderRadius: '8px', cursor: 'pointer', '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' } }}>
+                <Avatar src={m.avatar_url || undefined} sx={{ width: 28, height: 28, fontSize: '0.72rem', bgcolor: m.avatar_color || ACCENT, color: '#150d05', fontWeight: 700 }}>{!m.avatar_url && initial(m.name)}</Avatar>
+                <Box sx={{ flex: 1, minWidth: 0 }}><Stack direction="row" alignItems="center" spacing={0.5}><Typography sx={{ fontSize: '0.82rem', fontWeight: 600 }} noWrap>{m.name}</Typography>{m.is_owner && <WorkspacePremium sx={{ fontSize: 14, color: ACCENT }} />}</Stack><Typography sx={{ fontSize: '0.7rem', color: MUTED }} noWrap>{[m.role, m.instrument].filter(Boolean).join(' · ') || 'Bidragsyter'}</Typography></Box>
+                {m.invite_status === 'pending' && <Chip label="Venter" size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(224,169,85,0.16)', color: '#e0a955' }} />}
               </Stack>
             ))}
             {members.length === 0 && <Typography sx={{ fontSize: '0.78rem', color: FAINT }}>Ingen medlemmer ennå.</Typography>}
           </Stack>
+          {members.length > 0 && (
+            <Button onClick={generateSplitSheet} fullWidth startIcon={<ReceiptLongOutlined sx={{ fontSize: '17px !important' }} />}
+              sx={{ mt: 1.5, color: ACCENT, bgcolor: 'rgba(255,107,53,0.1)', textTransform: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '0.78rem', '&:hover': { bgcolor: 'rgba(255,107,53,0.18)' } }}>Generer splittark</Button>
+          )}
+          {splitToast && <Typography sx={{ mt: 0.75, fontSize: '0.7rem', color: MUTED, textAlign: 'center' }}>{splitToast}</Typography>}
         </Box>
 
         {/* ─── SENTER ─── */}
@@ -488,7 +514,9 @@ export default function AudioShowcasePage() {
       </Stack>
 
       {/* Dialoger */}
-      <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={async (name, role) => { const m = await apiRequest(`/api/audio-showcases/${projectId}/members`, { method: 'POST', body: { name, role } }); setMembers((p) => [...p, m]); setInviteOpen(false); }} />
+      <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={async (name, role) => { const m = await apiRequest(`/api/audio-showcases/${projectId}/members`, { method: 'POST', body: { name, role } }); setMembers((p) => [...p, m]); return m; }} />
+      <MemberProfileDialog member={memberDialog} onClose={() => setMemberDialog(null)} onSave={saveMemberProfile}
+        onDelete={async (id) => { await apiRequest(`/api/audio-members/${id}`, { method: 'DELETE' }); setMembers((p) => p.filter((x) => x.id !== id)); setMemberDialog(null); }} />
       <TaskDialog open={taskOpen} onClose={() => setTaskOpen(false)} onAdd={async (title, category) => { const t = await apiRequest('/api/audio-tasks', { method: 'POST', body: { projectId, title, assignee: category, versionId: currentVid } }); setTasks((p) => [...p, t]); setTaskOpen(false); }} />
       <Menu anchorEl={moreEl} open={Boolean(moreEl)} onClose={() => setMoreEl(null)}><MenuItem onClick={() => setMoreEl(null)} sx={{ fontSize: '0.85rem' }}>Kopier review-lenke</MenuItem></Menu>
       <LyricsDialog
@@ -503,13 +531,72 @@ export default function AudioShowcasePage() {
 }
 
 /* ── Dialoger ──────────────────────────────────────────────────────────── */
-const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name: string, role: string) => Promise<void> }> = ({ open, onClose, onAdd }) => {
+const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name: string, role: string) => Promise<any> }> = ({ open, onClose, onAdd }) => {
   const [name, setName] = React.useState(''); const [role, setRole] = React.useState(''); const [busy, setBusy] = React.useState(false);
+  const [created, setCreated] = React.useState<any>(null); const [copied, setCopied] = React.useState(false);
+  const close = () => { setCreated(null); setName(''); setRole(''); setCopied(false); onClose(); };
+  const link = created?.inviteUrl ? `${window.location.origin}${created.inviteUrl}` : '';
   return (
-    <Dialog open={open} onClose={onClose} PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px', minWidth: 360 } }}>
-      <DialogTitle sx={{ fontWeight: 800 }}>Inviter medlem</DialogTitle>
-      <DialogContent><Stack spacing={1.5} sx={{ mt: 0.5 }}><TextField autoFocus label="Navn" value={name} onChange={(e) => setName(e.target.value)} size="small" sx={fieldSx} /><TextField label="Rolle (f.eks. Vokalist)" value={role} onChange={(e) => setRole(e.target.value)} size="small" sx={fieldSx} /></Stack></DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}><Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none' }}>Avbryt</Button><Button disabled={!name.trim() || busy} onClick={async () => { setBusy(true); try { await onAdd(name.trim(), role.trim()); setName(''); setRole(''); } finally { setBusy(false); } }} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Legg til</Button></DialogActions>
+    <Dialog open={open} onClose={close} PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px', minWidth: 380 } }}>
+      <DialogTitle sx={{ fontWeight: 800 }}>{created ? 'Inviter bidragsyter' : 'Inviter bidragsyter'}</DialogTitle>
+      <DialogContent>
+        {created ? (
+          <Stack spacing={1.5} sx={{ mt: 0.5 }}>
+            <Typography sx={{ fontSize: '0.88rem' }}>Del denne lenken med <strong>{created.name}</strong> — de fyller ut profilen sin selv (navn, rolle, instrument, profilbilde).</Typography>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ bgcolor: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`, borderRadius: '10px', p: 1 }}>
+              <Typography sx={{ flex: 1, fontSize: '0.74rem', color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</Typography>
+              <Button size="small" startIcon={copied ? <DoneAll /> : <ContentCopy />} onClick={() => { void navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); }} sx={{ color: ACCENT, textTransform: 'none' }}>{copied ? 'Kopiert' : 'Kopier'}</Button>
+            </Stack>
+            <Typography sx={{ fontSize: '0.7rem', color: FAINT }}>Profilen knyttes til review-rommet og splittark (royalty).</Typography>
+          </Stack>
+        ) : (
+          <Stack spacing={1.5} sx={{ mt: 0.5 }}><TextField autoFocus label="Navn" value={name} onChange={(e) => setName(e.target.value)} size="small" sx={fieldSx} /><TextField label="Rolle (f.eks. Vokalist)" value={role} onChange={(e) => setRole(e.target.value)} size="small" sx={fieldSx} /></Stack>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        {created ? (
+          <><Button onClick={() => setCreated(null)} sx={{ color: MUTED, textTransform: 'none' }}>Inviter en til</Button><Button onClick={close} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Ferdig</Button></>
+        ) : (
+          <><Button onClick={close} sx={{ color: MUTED, textTransform: 'none' }}>Avbryt</Button><Button disabled={!name.trim() || busy} onClick={async () => { setBusy(true); try { const m = await onAdd(name.trim(), role.trim()); setCreated(m); setName(''); setRole(''); } finally { setBusy(false); } }} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Lag invitasjonslenke</Button></>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+const MemberProfileDialog: React.FC<{ member: any; onClose: () => void; onSave: (id: string, patch: Record<string, string>) => Promise<void>; onDelete: (id: string) => Promise<void> }> = ({ member, onClose, onSave, onDelete }) => {
+  const [f, setF] = React.useState<any>({});
+  const [busy, setBusy] = React.useState(false); const [copied, setCopied] = React.useState(false);
+  React.useEffect(() => { if (member) setF({ name: member.name || '', role: member.role || '', instrument: member.instrument || '', email: member.email || '', phone: member.phone || '', bio: member.bio || '', avatarUrl: member.avatar_url || '' }); }, [member]);
+  if (!member) return null;
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setF((p: any) => ({ ...p, [k]: e.target.value }));
+  const link = member.invite_token ? `${window.location.origin}/audio-review/invite/${member.invite_token}` : '';
+  return (
+    <Dialog open={Boolean(member)} onClose={onClose} fullWidth maxWidth="xs" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
+      <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>Profil {member.is_owner && <WorkspacePremium sx={{ fontSize: 16, color: ACCENT }} />}
+        {member.invite_status === 'pending' && <Chip label="Venter på utfylling" size="small" sx={{ height: 20, fontSize: '0.64rem', bgcolor: 'rgba(224,169,85,0.16)', color: '#e0a955' }} />}</DialogTitle>
+      <DialogContent>
+        <Stack alignItems="center" sx={{ mb: 1.5 }}>
+          <ImageDrop variant="circle" size={88} value={f.avatarUrl} onChange={(url) => { setF((p: any) => ({ ...p, avatarUrl: url })); void onSave(member.id, { avatarUrl: url }); }} label="Profilbilde — slipp / velg" />
+        </Stack>
+        <Stack spacing={1.5}>
+          <TextField label="Navn" value={f.name} onChange={set('name')} size="small" sx={fieldSx} />
+          <Stack direction="row" spacing={1.5}><TextField label="Rolle" value={f.role} onChange={set('role')} size="small" fullWidth sx={fieldSx} /><TextField label="Instrument" value={f.instrument} onChange={set('instrument')} size="small" fullWidth sx={fieldSx} /></Stack>
+          <TextField label="E-post" value={f.email} onChange={set('email')} size="small" sx={fieldSx} />
+          <TextField label="Om" value={f.bio} onChange={set('bio')} size="small" multiline minRows={2} sx={fieldSx} />
+          {link && (
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ bgcolor: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`, borderRadius: '10px', p: 1 }}>
+              <Typography sx={{ flex: 1, fontSize: '0.72rem', color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</Typography>
+              <Button size="small" startIcon={copied ? <DoneAll /> : <ContentCopy />} onClick={() => { void navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); }} sx={{ color: ACCENT, textTransform: 'none' }}>{copied ? 'Kopiert' : 'Lenke'}</Button>
+            </Stack>
+          )}
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        {!member.is_owner && <Button onClick={() => void onDelete(member.id)} sx={{ color: '#e0606a', textTransform: 'none', mr: 'auto' }}>Fjern</Button>}
+        <Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none' }}>Lukk</Button>
+        <Button disabled={busy} onClick={async () => { setBusy(true); try { await onSave(member.id, f); onClose(); } finally { setBusy(false); } }} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Lagre</Button>
+      </DialogActions>
     </Dialog>
   );
 };
