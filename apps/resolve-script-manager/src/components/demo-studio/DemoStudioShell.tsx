@@ -32,8 +32,9 @@ import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, completeDemoFlow, fetchSiteContext, analyzeSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, suggestVisualBeats, type CommandResult, type VisualBeat, type SiteUnderstanding } from './demoStudioAI';
-import { executeScript, playwrightStatus, playwrightCaptureShots } from '../../api';
+import { executeScript, playwrightStatus, playwrightCaptureShots, extractPdfText } from '../../api';
 import { openPath } from '@tauri-apps/plugin-opener';
+import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { runAutonomousDemo } from './autonomousDemo';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
@@ -176,6 +177,27 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [demoVidMsg, setDemoVidMsg] = useState<string | null>(null);
   const [demoVidPct, setDemoVidPct] = useState(0);
   const [demoVidResult, setDemoVidResult] = useState<string | null>(null);
+  // Product Brain: les en produkt-PDF (one-pager) inn i AI-konteksten.
+  const [docBusy, setDocBusy] = useState(false);
+  const pickProductDoc = async () => {
+    if (!project) return;
+    try {
+      const sel = await openFileDialog({ multiple: false, filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+      const path = Array.isArray(sel) ? sel[0] : sel;
+      if (!path) return;
+      setDocBusy(true);
+      const text = await extractPdfText(path as string);
+      const name = (path as string).split('/').pop() || 'one-pager.pdf';
+      setProjectField('productDoc', text);
+      setProjectField('productDocName', name);
+      directorCtx.current = null; // ny kontekst → tving ny skann/forståelse
+      setUnderstanding(null);
+    } catch (e) {
+      window.alert('Kunne ikke lese PDF: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setDocBusy(false);
+    }
+  };
   const runAutoDemo = async () => {
     if (!project || demoVidBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
@@ -570,7 +592,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     }
     learnCtas(elements); // auto-utvid CTA-banken fra det vi fant
     if (elements.length) setDriftTargets(detectLearnedDrift(project!.url, elements)); // drift-deteksjon (D)
-    const siteContext = scan?.pageText || await fetchSiteContext(project!.url);
+    const pageText = scan?.pageText || await fetchSiteContext(project!.url);
+    // Product Brain: prependér produkt-PDF-en (one-pager) til konteksten, så
+    // AI-en forstår produktet dypere enn nettsiden alene.
+    const doc = project!.productDoc?.trim();
+    const siteContext = doc ? `PRODUKT-DOKUMENT (one-pager — autoritativ kilde):\n${doc}\n\n--- NETTSIDE ---\n${pageText}` : pageText;
     applyScannedBranding(scan);
     const brandName = scan?.branding?.brandName;
     directorCtx.current = { url: project!.url, elements, siteContext, brandName };
@@ -865,6 +891,24 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   {/* ── STEG 1 · Beskriv ── */}
                   {stage === 'describe' && (
                     <>
+                      {/* Product Brain (steg 0): gi AI-en produktets one-pager (PDF) */}
+                      <div style={{ background: '#fff', border: `1px solid ${C.line}`, borderRadius: 10, padding: 11, marginBottom: 14 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>🧠 Product Brain</div>
+                        {project.productDoc ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ flex: 1, fontSize: 11.5, color: C.green, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={project.productDocName}>✓ Lest: {project.productDocName} ({Math.round((project.productDoc.length) / 1000)}k tegn)</span>
+                            <button style={{ ...outlineBtn, padding: '4px 9px', fontSize: 11.5 }} disabled={docBusy} onClick={() => void pickProductDoc()}>Bytt</button>
+                            <button style={{ ...outlineBtn, padding: '4px 9px', fontSize: 11.5 }} title="Fjern" onClick={() => { setProjectField('productDoc', undefined); setProjectField('productDocName', undefined); directorCtx.current = null; setUnderstanding(null); }}>✕</button>
+                          </div>
+                        ) : (
+                          <>
+                            <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff' }} disabled={docBusy} onClick={() => void pickProductDoc()}>
+                              {docBusy ? 'Leser PDF…' : '📄 Legg til one-pager (PDF)'}
+                            </button>
+                            <div style={{ fontSize: 10.5, color: C.inkFaint, marginTop: 6, lineHeight: 1.4 }}>Last opp produktets one-pager/datablad — AI-en leser den og forstår produktet dypere enn nettsiden alene.</div>
+                          </>
+                        )}
+                      </div>
                       <div style={fldLabel}>Hva skal demoen vise?</div>
                       <input style={{ ...field, marginBottom: 10 }} value={project.task ?? ''} placeholder="f.eks. «hele innloggings-prosessen»"
                         onChange={(e) => setProjectField('task', e.target.value)} />

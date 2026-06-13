@@ -144,6 +144,11 @@ export async function muxDemoVideo(projectId: string, videoPath: string, segment
   return invoke<string>("mux_demo_video", { projectId, videoPath, segments });
 }
 
+/** Product Brain: les en produkt-PDF (one-pager) → ren tekst (on-device). */
+export async function extractPdfText(path: string): Promise<string> {
+  return invoke<string>("extract_pdf_text", { path });
+}
+
 /** Skriv ren tekst (f.eks. .srt) til en bruker-valgt sti. Returnerer stien. */
 export async function demoWriteText(path: string, contents: string): Promise<string> {
   return invoke<string>("demo_write_text", { path, contents });

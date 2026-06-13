@@ -16,6 +16,7 @@ mod media_probe;
 mod mockup_render;
 mod photoshop_bridge;
 mod playwright_render;
+mod product_brain;
 mod psd_indexer;
 mod python;
 mod role_room_api;
@@ -945,6 +946,7 @@ pub fn run() {
             capture_sources::stop_screen_record,
             autonomous_demo::synthesize_tts,
             autonomous_demo::mux_demo_video,
+            product_brain::extract_pdf_text,
             photoshop_bridge::photoshop_send_command,
             photoshop_bridge::photoshop_status,
             psd_indexer::psd_index_directory,
