@@ -8,7 +8,7 @@
  *
  * Ingen menneskelig opptak. Krever Playwright satt opp + ffmpeg + macOS `say`.
  */
-import { synthesizeTts, runPlaywrightDemo, onScriptEvent, muxDemoVideo, playwrightStatus, setupPlaywright, playwrightCaptureShots } from '../../api';
+import { synthesizeTts, runPlaywrightDemo, onScriptEvent, muxDemoVideo, playwrightStatus, setupPlaywright, playwrightCaptureShots, type DemoFinalizeOpts } from '../../api';
 import { buildAutonomousScript } from './demoStudioExports';
 import type { DemoProject } from './demoStudioModel';
 
@@ -23,9 +23,11 @@ export async function runAutonomousDemo(
     onScene?: (index: number, total: number) => void;
     /** Kalt med scan-screenshots (miniatyrer) når siden er skannet. */
     onShots?: (shots: Array<{ scrollPct: number; dataUrl: string }>) => void;
+    /** Branding: ramme + intro/outro (PNG-er rendret i frontend). */
+    finalize?: DemoFinalizeOpts;
   } = {},
 ): Promise<string> {
-  const { voice, onProgress = () => {}, onScene, onShots } = opts;
+  const { voice, onProgress = () => {}, onScene, onShots, finalize } = opts;
   const scenes = project.scenes;
   if (!scenes.length) throw new Error('Ingen scener — generér demoen først.');
 
@@ -97,7 +99,7 @@ export async function runAutonomousDemo(
       if (a && mk != null) segments.push({ audioPath: a.path, offsetMs: Math.max(0, mk - (t0 as number)) });
     });
   }
-  const out = await muxDemoVideo(project.id, videoPath, segments, project.name || 'demo');
+  const out = await muxDemoVideo(project.id, videoPath, segments, project.name || 'demo', finalize);
   onProgress('Ferdig!', 100);
   return out;
 }
