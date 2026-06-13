@@ -4364,7 +4364,7 @@ export default function AdminRoom() {
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetch('/api/auth/me', { credentials: 'include' });
+        const r = await fetch('/api/auth/user', { credentials: 'include' });
         if (!cancelled && r.ok) {
           const body = await r.json().catch(() => ({}));
           const email = typeof body?.user?.email === 'string'
