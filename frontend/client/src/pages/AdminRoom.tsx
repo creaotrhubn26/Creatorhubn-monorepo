@@ -4353,13 +4353,53 @@ function PrototypeTestersTab() {
 
 export default function AdminRoom() {
   const [tab, setTab] = useState<AdminRoomTab>('dashboard');
-  const userEmail = useMemo(() => getCurrentUserEmail(), []);
+  const localEmail = useMemo(() => getCurrentUserEmail(), []);
+  // Backup: sjekk server-side hvis localStorage ikke har email. Google-OAuth-
+  // redirect kan miste localStorage avhengig av flyten; backend vet hvem som
+  // er innlogget via session-cookie.
+  const [serverEmail, setServerEmail] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  useEffect(() => {
+    if (localEmail) { setAuthChecked(true); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/auth/me', { credentials: 'include' });
+        if (!cancelled && r.ok) {
+          const body = await r.json().catch(() => ({}));
+          const email = typeof body?.user?.email === 'string'
+            ? body.user.email.toLowerCase()
+            : typeof body?.email === 'string'
+              ? body.email.toLowerCase()
+              : null;
+          setServerEmail(email);
+        }
+      } catch { /* ignore */ }
+      finally { if (!cancelled) setAuthChecked(true); }
+    })();
+    return () => { cancelled = true; };
+  }, [localEmail]);
 
-  if (userEmail !== ADMIN_ROOM_OWNER_EMAIL) {
+  const effectiveEmail = localEmail || serverEmail || '';
+
+  if (!authChecked) {
+    return (
+      <Container maxWidth="sm" sx={{ py: 8, textAlign: 'center' }}>
+        <CircularProgress size={24} />
+      </Container>
+    );
+  }
+
+  if (effectiveEmail !== ADMIN_ROOM_OWNER_EMAIL) {
     return (
       <Container maxWidth="sm" sx={{ py: 8 }}>
-        <Alert severity="error">
+        <Alert severity="error" sx={{ mb: 2 }}>
           Admin Room er kun tilgjengelig for produkteier ({ADMIN_ROOM_OWNER_EMAIL}).
+        </Alert>
+        <Alert severity="info">
+          Innlogget som: <code>{effectiveEmail || '(ingen session funnet)'}</code>
+          {' · '}
+          <a href="/login">Logg inn på nytt</a> hvis du forventet å se denne siden.
         </Alert>
       </Container>
     );
