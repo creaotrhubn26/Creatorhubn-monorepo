@@ -141,10 +141,16 @@ const CINEMATIC_RUNTIME: string[] = [
   '    window.__paMove = (x, y) => { const e = document.getElementById("__pa_cur"); if (e) { e.style.left = x + "px"; e.style.top = y + "px"; } };',
   '    window.__paRipple = (x, y) => { const r = document.createElement("div"); r.style.cssText = `position:fixed;left:${x}px;top:${y}px;z-index:2147483646;width:12px;height:12px;margin:-6px 0 0 -6px;border:3px solid #ef8a5d;border-radius:50%;pointer-events:none;opacity:.95;transition:all .55s ease-out`; document.documentElement.appendChild(r); requestAnimationFrame(() => { r.style.width = "64px"; r.style.height = "64px"; r.style.margin = "-32px 0 0 -32px"; r.style.opacity = "0"; }); setTimeout(() => r.remove(), 650); };',
   '    window.__paGlow = (x, y, w, h) => { const g = document.createElement("div"); g.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:2147483645;border:3px solid #ef8a5d;border-radius:8px;box-shadow:0 0 0 4px rgba(239,138,93,.22);pointer-events:none;transition:opacity .4s`; document.documentElement.appendChild(g); setTimeout(() => { g.style.opacity = "0"; setTimeout(() => g.remove(), 400); }, 1500); };',
+  '    // Push-in: skaler body med origin i elementets senter (det punktet står stille',
+  '    // i viewporten, så peker + element holder seg justert under zoomen).',
+  '    window.__paZoom = (vx, vy, sc) => { const b = document.body; if (!b) return; const ox = vx + (window.scrollX || 0), oy = vy + (window.scrollY || 0); b.style.transition = "transform 1s cubic-bezier(.4,0,.2,1)"; b.style.transformOrigin = ox + "px " + oy + "px"; b.style.transform = "scale(" + sc + ")"; };',
+  '    window.__paZoomReset = () => { const b = document.body; if (!b) return; b.style.transition = "transform .5s ease"; b.style.transform = "none"; };',
   '  }).catch(() => {});',
   '}',
   'async function cinematicAct(page, strategies, kind, label) {',
   '  await injectCursor(page);',
+  '  await page.evaluate(() => window.__paZoomReset && window.__paZoomReset()).catch(() => {});',
+  '  await page.waitForTimeout(250);',
   "  const key = label || JSON.stringify(strategies[0] || null);",
   '  const ordered = (LEARNED[key] ? [LEARNED[key]] : []).concat(strategies);',
   '  let hit = await locate(page, ordered);',
@@ -166,6 +172,9 @@ const CINEMATIC_RUNTIME: string[] = [
   '    await page.evaluate(([x, y, w, h]) => window.__paGlow && window.__paGlow(Math.round(x), Math.round(y), Math.round(w), Math.round(h)), [box.x, box.y, box.width, box.height]).catch(() => {});',
   "    if (kind !== 'show' && kind !== 'hover') { await page.evaluate(([x, y]) => window.__paRipple && window.__paRipple(x, y), [cx, cy]).catch(() => {}); }",
   '    await page.waitForTimeout(320);',
+  '    // Push-in mot elementet (subtilt) — gjør videoen levende.',
+  '    await page.evaluate(([x, y]) => window.__paZoom && window.__paZoom(x, y, 1.16), [cx, cy]).catch(() => {});',
+  '    await page.waitForTimeout(450);',
   '  }',
   '  try {',
   "    if (kind === 'show') {}",
@@ -283,6 +292,7 @@ export function buildAutonomousScript(project: DemoProject, dwellsMs: number[]):
     // MARK FØR handlingen, så narrasjonen dekker peker-reisen + handlingen.
     L.push(`console.log('MARK ${i} ' + Date.now());`);
     L.push('await injectCursor(page); // re-injiser (navigasjon kan ha fjernet pekeren)');
+    L.push('await page.evaluate(() => window.__paZoomReset && window.__paZoomReset()).catch(() => {}); // nullstill push-in fra forrige scene');
     if (s.startScrollPct) L.push(`await page.evaluate(() => window.scrollTo({ top: (document.body.scrollHeight - innerHeight) * ${(s.startScrollPct / 100).toFixed(2)}, behavior: 'smooth' })).catch(() => {});`);
     if (at === 'wait') {
       L.push('await page.waitForTimeout(600);');
