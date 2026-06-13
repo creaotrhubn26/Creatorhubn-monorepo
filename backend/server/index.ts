@@ -460,6 +460,7 @@ import { setupShowcasePricingRoutes } from "./showcase-pricing-routes";
 import { setupPhotographerStripeConnectRoutes } from "./photographer-stripe-connect-routes";
 import { setupPhotographerReviewsRoutes } from "./photographer-reviews-routes";
 import { setupAudioShowcaseRoutes } from "./audio-showcase-routes";
+import { sendTransactionalEmail as sendAudioReviewEmail } from "./transactional-email-service";
 import { setupShowcaseSmartAlbumsRoutes } from "./showcase-smart-albums-routes";
 import { setupShowcaseBatchOperationsRoutes } from "./showcase-batch-operations-routes";
 import { setupShowcaseGooglePhotosRoutes } from "./showcase-google-photos-routes";
@@ -70173,7 +70174,19 @@ setupPhotographerStripeConnectRoutes({
 setupPhotographerReviewsRoutes({ app, pool, requireUserSession });
 
 // ── Audio Showcase — profesjonelt mix/master-review-rom (spec MVP). ─────────
-setupAudioShowcaseRoutes({ app, pool, requireUserSession });
+setupAudioShowcaseRoutes({
+  app, pool, requireUserSession,
+  sendInviteEmail: async (to, { inviterName, projectTitle, inviteUrl }) => {
+    const subject = `${inviterName} inviterer deg til å samarbeide på «${projectTitle}»`;
+    const html = `<div style="font-family:system-ui,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+      <h2 style="margin:0 0 8px">${inviterName} inviterer deg</h2>
+      <p style="margin:0 0 16px;color:#555">til å samarbeide på låten <strong>«${projectTitle}»</strong>. Fyll ut profilen din (rolle, bidrag, profilbilde) og se mix/master-review.</p>
+      <a href="${inviteUrl}" style="display:inline-block;background:#FF6B35;color:#150d05;font-weight:700;text-decoration:none;padding:12px 22px;border-radius:999px">Åpne invitasjonen</a>
+      <p style="margin:16px 0 0;color:#888;font-size:12px">Eller lim inn lenken: ${inviteUrl}</p></div>`;
+    const text = `${inviterName} inviterer deg til å samarbeide på «${projectTitle}». Åpne invitasjonen: ${inviteUrl}`;
+    await sendAudioReviewEmail({ to, subject, html, text, kind: "audio_review_invite" });
+  },
+});
 
 
 

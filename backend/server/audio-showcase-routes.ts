@@ -22,6 +22,9 @@ export interface AudioShowcaseDeps {
   app: express.Application;
   pool: AnyPool;
   requireUserSession: (req: any, res: any) => { userId: string; email?: string | null; name?: string | null } | null;
+  // Valgfri: send invitasjons-e-post (injiseres fra index.ts m/ Resend). Ruten
+  // virker uansett — e-post hoppes over hvis ikke konfigurert.
+  sendInviteEmail?: (to: string, data: { inviterName: string; projectTitle: string; inviteUrl: string }) => Promise<void>;
 }
 
 const isMissingTable = (e: unknown) =>
@@ -100,7 +103,20 @@ const PT_SECTION_COLOR: Record<string, string> = {
 };
 
 export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
-  const { app, pool, requireUserSession } = deps;
+  const { app, pool, requireUserSession, sendInviteEmail } = deps;
+  const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
+
+  // Send invitasjons-e-post (fire-and-forget) hvis dep + e-post finnes.
+  async function emailInvite(memberId: string, projectId: string, ownerName: string): Promise<boolean> {
+    if (!sendInviteEmail) return false;
+    const r = await pool.query(
+      `SELECT m.email, m.invite_token, p.title FROM audio_review_members m JOIN audio_review_projects p ON p.id = m.project_id
+        WHERE m.id = $1::uuid LIMIT 1`, [memberId]).catch(() => ({ rows: [] as any[] }));
+    const row = r.rows[0];
+    if (!row?.email || !row?.invite_token) return false;
+    try { await sendInviteEmail(row.email, { inviterName: ownerName || "Produsenten", projectTitle: row.title || "et prosjekt", inviteUrl: `${APP_URL}/audio-review/invite/${row.invite_token}` }); return true; }
+    catch { return false; }
+  }
 
   // Hent koblet track + lokal tekst-tilstand for et review-rom.
   async function loadLinkedTrack(reviewId: string, userId: string): Promise<any | null> {
@@ -441,10 +457,31 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         [id, str(req.body?.userId, 200) || null, name, str(req.body?.role, 80) || null,
          str(req.body?.avatarColor, 40) || PALETTE[n % PALETTE.length], isOwner, n,
          str(req.body?.email, 200) || null, str(req.body?.instrument, 120) || null, token, isOwner ? "owner" : "pending"]);
-      return res.status(201).json({ ...r.rows[0], inviteToken: token, inviteUrl: token ? `/audio-review/invite/${token}` : null });
+      const created = r.rows[0];
+      let emailed = false;
+      if (token && created.email) emailed = await emailInvite(created.id, id, s.name || "").catch(() => false);
+      return res.status(201).json({ ...created, inviteToken: token, inviteUrl: token ? `/audio-review/invite/${token}` : null, emailed });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       return res.status(500).json({ error: "add_member_failed" });
+    }
+  });
+
+  // Send (eller send på nytt) invitasjons-e-post til et medlem.
+  app.post("/api/audio-members/:id/resend-invite", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    try {
+      const m = await pool.query(
+        `SELECT m.project_id, m.email FROM audio_review_members m
+          WHERE m.id=$1::uuid AND m.project_id IN (SELECT id FROM audio_review_projects WHERE owner_user_id=$2) LIMIT 1`, [id, s.userId]);
+      if (m.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!m.rows[0].email) return res.status(409).json({ error: "no_email", message: "Medlemmet mangler e-postadresse." });
+      if (!sendInviteEmail) return res.status(503).json({ error: "email_not_configured" });
+      const ok = await emailInvite(id, m.rows[0].project_id, s.name || "");
+      return res.json({ ok, emailed: ok });
+    } catch (e) {
+      return res.status(500).json({ error: "resend_failed" });
     }
   });
 

@@ -546,7 +546,7 @@ export default function AudioShowcasePage() {
       </Stack>
 
       {/* Dialoger */}
-      <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={async (name, role) => { const m = await apiRequest(`/api/audio-showcases/${projectId}/members`, { method: 'POST', body: { name, role } }); setMembers((p) => [...p, m]); return m; }} />
+      <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={async (name, role, email) => { const m = await apiRequest(`/api/audio-showcases/${projectId}/members`, { method: 'POST', body: { name, role, email } }); setMembers((p) => [...p, m]); return m; }} />
       <MemberProfileDialog member={memberDialog} externalTrackId={easeverseTrack?.id} onClose={() => setMemberDialog(null)} onSave={saveMemberProfile}
         onDelete={async (id) => { await apiRequest(`/api/audio-members/${id}`, { method: 'DELETE' }); setMembers((p) => p.filter((x) => x.id !== id)); setMemberDialog(null); }} />
       <SplitSheetDialog open={splitOpen} projectId={projectId} ownerName={owner?.name} onClose={() => setSplitOpen(false)} />
@@ -564,10 +564,10 @@ export default function AudioShowcasePage() {
 }
 
 /* ── Dialoger ──────────────────────────────────────────────────────────── */
-const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name: string, role: string) => Promise<any> }> = ({ open, onClose, onAdd }) => {
-  const [name, setName] = React.useState(''); const [role, setRole] = React.useState(''); const [busy, setBusy] = React.useState(false);
+const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name: string, role: string, email: string) => Promise<any> }> = ({ open, onClose, onAdd }) => {
+  const [name, setName] = React.useState(''); const [role, setRole] = React.useState(''); const [email, setEmail] = React.useState(''); const [busy, setBusy] = React.useState(false);
   const [created, setCreated] = React.useState<any>(null); const [copied, setCopied] = React.useState(false);
-  const close = () => { setCreated(null); setName(''); setRole(''); setCopied(false); onClose(); };
+  const close = () => { setCreated(null); setName(''); setRole(''); setEmail(''); setCopied(false); onClose(); };
   const link = created?.inviteUrl ? `${window.location.origin}${created.inviteUrl}` : '';
   return (
     <Dialog open={open} onClose={close} PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px', minWidth: 380 } }}>
@@ -575,7 +575,8 @@ const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name:
       <DialogContent>
         {created ? (
           <Stack spacing={1.5} sx={{ mt: 0.5 }}>
-            <Typography sx={{ fontSize: '0.88rem' }}>Del denne lenken med <strong>{created.name}</strong> — de fyller ut profilen sin selv (navn, rolle, instrument, profilbilde).</Typography>
+            <Typography sx={{ fontSize: '0.88rem' }}>Del denne lenken med <strong>{created.name}</strong> — de fyller ut profilen sin selv (navn, rolle, bidrag, profilbilde).</Typography>
+            {created.emailed && <Stack direction="row" spacing={0.75} alignItems="center"><CheckCircle sx={{ fontSize: 16, color: '#5fb88a' }} /><Typography sx={{ fontSize: '0.78rem', color: '#5fb88a' }}>Invitasjon sendt på e-post.</Typography></Stack>}
             <Stack direction="row" spacing={1} alignItems="center" sx={{ bgcolor: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`, borderRadius: '10px', p: 1 }}>
               <Typography sx={{ flex: 1, fontSize: '0.74rem', color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</Typography>
               <Button size="small" startIcon={copied ? <DoneAll /> : <ContentCopy />} onClick={() => { void navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); }} sx={{ color: ACCENT, textTransform: 'none' }}>{copied ? 'Kopiert' : 'Kopier'}</Button>
@@ -583,14 +584,14 @@ const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name:
             <Typography sx={{ fontSize: '0.7rem', color: FAINT }}>Profilen knyttes til review-rommet og splittark (royalty).</Typography>
           </Stack>
         ) : (
-          <Stack spacing={1.5} sx={{ mt: 0.5 }}><TextField autoFocus label="Navn" value={name} onChange={(e) => setName(e.target.value)} size="small" sx={fieldSx} /><TextField label="Rolle (f.eks. Vokalist)" value={role} onChange={(e) => setRole(e.target.value)} size="small" sx={fieldSx} /></Stack>
+          <Stack spacing={1.5} sx={{ mt: 0.5 }}><TextField autoFocus label="Navn" value={name} onChange={(e) => setName(e.target.value)} size="small" sx={fieldSx} /><TextField label="Rolle (f.eks. Vokalist)" value={role} onChange={(e) => setRole(e.target.value)} size="small" sx={fieldSx} /><TextField label="E-post (valgfritt — sender invitasjon)" value={email} onChange={(e) => setEmail(e.target.value)} size="small" sx={fieldSx} /></Stack>
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         {created ? (
           <><Button onClick={() => setCreated(null)} sx={{ color: MUTED, textTransform: 'none' }}>Inviter en til</Button><Button onClick={close} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Ferdig</Button></>
         ) : (
-          <><Button onClick={close} sx={{ color: MUTED, textTransform: 'none' }}>Avbryt</Button><Button disabled={!name.trim() || busy} onClick={async () => { setBusy(true); try { const m = await onAdd(name.trim(), role.trim()); setCreated(m); setName(''); setRole(''); } finally { setBusy(false); } }} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Lag invitasjonslenke</Button></>
+          <><Button onClick={close} sx={{ color: MUTED, textTransform: 'none' }}>Avbryt</Button><Button disabled={!name.trim() || busy} onClick={async () => { setBusy(true); try { const m = await onAdd(name.trim(), role.trim(), email.trim()); setCreated(m); setName(''); setRole(''); setEmail(''); } finally { setBusy(false); } }} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>{email.trim() ? 'Inviter på e-post' : 'Lag invitasjonslenke'}</Button></>
         )}
       </DialogActions>
     </Dialog>
