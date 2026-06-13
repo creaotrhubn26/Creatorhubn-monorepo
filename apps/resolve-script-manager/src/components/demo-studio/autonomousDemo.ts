@@ -8,7 +8,7 @@
  *
  * Ingen menneskelig opptak. Krever Playwright satt opp + ffmpeg + macOS `say`.
  */
-import { synthesizeTts, runPlaywrightDemo, onScriptEvent, muxDemoVideo } from '../../api';
+import { synthesizeTts, runPlaywrightDemo, onScriptEvent, muxDemoVideo, playwrightStatus, setupPlaywright } from '../../api';
 import { buildAutonomousScript } from './demoStudioExports';
 import type { DemoProject } from './demoStudioModel';
 
@@ -21,6 +21,22 @@ export async function runAutonomousDemo(
   const { voice, onProgress = () => {} } = opts;
   const scenes = project.scenes;
   if (!scenes.length) throw new Error('Ingen scener — generér demoen først.');
+
+  // 0) Sørg for at Playwright-runtime finnes — sett opp automatisk hvis ikke
+  //    (engangs; hopper over Chromium-nedlasting hvis system-Chrome finnes).
+  onProgress('Sjekker Playwright…', 2);
+  const status = await playwrightStatus().catch(() => null);
+  if (status && !status.nodeOk) {
+    throw new Error('Node.js mangler i PATH. Installer Node (f.eks. via Homebrew: brew install node) og prøv igjen.');
+  }
+  if (!status || !status.playwrightInstalled) {
+    onProgress('Setter opp Playwright (engangs — kan ta et par minutter)…', 3);
+    await setupPlaywright();
+    const after = await playwrightStatus().catch(() => null);
+    if (!after?.playwrightInstalled) {
+      throw new Error('Klarte ikke å sette opp Playwright automatisk. Åpne Export → «Sett opp Playwright» og prøv igjen.');
+    }
+  }
 
   // 1) Voiceover per scene
   onProgress('Lager voiceover…', 5);

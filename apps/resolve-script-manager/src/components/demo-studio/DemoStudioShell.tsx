@@ -187,7 +187,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       setDemoVidMsg('✓ Ferdig demo klar');
       void openPath(out).catch(() => {});
     } catch (e) {
-      setDemoVidMsg('Feil: ' + (e as Error).message);
+      setDemoVidMsg('Feil: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
       setDemoVidBusy(false);
     }
@@ -210,7 +210,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       const out = await runAutonomousDemo(proj, { voice, onProgress: (m, p) => { setDemoVidMsg(m); setDemoVidPct(p); } });
       setDemoVidResult(out); setDemoVidMsg('✓ Ferdig demo klar'); void openPath(out).catch(() => {});
     } catch (e) {
-      setDemoVidMsg('Feil: ' + (e as Error).message);
+      setDemoVidMsg('Feil: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
       setDemoVidBusy(false);
     }
