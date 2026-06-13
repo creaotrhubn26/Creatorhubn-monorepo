@@ -8,7 +8,7 @@
  *
  * Ingen menneskelig opptak. Krever Playwright satt opp + ffmpeg + macOS `say`.
  */
-import { synthesizeTts, runPlaywrightDemo, onScriptEvent, muxDemoVideo, playwrightStatus, setupPlaywright } from '../../api';
+import { synthesizeTts, runPlaywrightDemo, onScriptEvent, muxDemoVideo, playwrightStatus, setupPlaywright, playwrightCaptureShots } from '../../api';
 import { buildAutonomousScript } from './demoStudioExports';
 import type { DemoProject } from './demoStudioModel';
 
@@ -16,9 +16,16 @@ export interface AutonomousProgress { (msg: string, pct: number): void }
 
 export async function runAutonomousDemo(
   project: DemoProject,
-  opts: { voice?: string; onProgress?: AutonomousProgress } = {},
+  opts: {
+    voice?: string;
+    onProgress?: AutonomousProgress;
+    /** Kalt når Playwright begynner å ta opp en ny scene (visuell fremdrift). */
+    onScene?: (index: number, total: number) => void;
+    /** Kalt med scan-screenshots (miniatyrer) når siden er skannet. */
+    onShots?: (shots: Array<{ scrollPct: number; dataUrl: string }>) => void;
+  } = {},
 ): Promise<string> {
-  const { voice, onProgress = () => {} } = opts;
+  const { voice, onProgress = () => {}, onScene, onShots } = opts;
   const scenes = project.scenes;
   if (!scenes.length) throw new Error('Ingen scener — generér demoen først.');
 
@@ -36,6 +43,13 @@ export async function runAutonomousDemo(
     if (!after?.playwrightInstalled) {
       throw new Error('Klarte ikke å sette opp Playwright automatisk. Åpne Export → «Sett opp Playwright» og prøv igjen.');
     }
+  }
+
+  // 0b) Skann nettsiden FØRST → miniatyrer (visuell kontekst + element-binding).
+  if (onShots && !(project.scanShots && project.scanShots.length)) {
+    onProgress('Skanner nettsiden…', 4);
+    const r = await playwrightCaptureShots(project.url).catch(() => null);
+    if (r?.shots?.length) onShots(r.shots);
   }
 
   // 1) Voiceover per scene
@@ -61,7 +75,7 @@ export async function runAutonomousDemo(
     if (ev?.type === 'log' && typeof ev.message === 'string') {
       const m = ev.message.trim();
       if (m.startsWith('MARK_T0 ')) t0 = Number(m.slice(8));
-      else if (m.startsWith('MARK ')) { const parts = m.split(/\s+/); marks[parts[1]] = Number(parts[2]); }
+      else if (m.startsWith('MARK ')) { const parts = m.split(/\s+/); const idx = Number(parts[1]); marks[parts[1]] = Number(parts[2]); onScene?.(idx, scenes.length); }
     }
     if (ev?.type === 'video' && ev.path) videoPath = ev.path;
     if (ev?.type === 'finished' && ev.videoPath) videoPath = ev.videoPath;
@@ -83,7 +97,7 @@ export async function runAutonomousDemo(
       if (a && mk != null) segments.push({ audioPath: a.path, offsetMs: Math.max(0, mk - (t0 as number)) });
     });
   }
-  const out = await muxDemoVideo(project.id, videoPath, segments);
+  const out = await muxDemoVideo(project.id, videoPath, segments, project.name || 'demo');
   onProgress('Ferdig!', 100);
   return out;
 }

@@ -177,6 +177,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [demoVidMsg, setDemoVidMsg] = useState<string | null>(null);
   const [demoVidPct, setDemoVidPct] = useState(0);
   const [demoVidResult, setDemoVidResult] = useState<string | null>(null);
+  const [demoVidScene, setDemoVidScene] = useState<{ index: number; total: number } | null>(null);
   // Product Brain: les en produkt-PDF (one-pager) inn i AI-konteksten.
   const [docBusy, setDocBusy] = useState(false);
   const pickProductDoc = async () => {
@@ -201,16 +202,22 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const runAutoDemo = async () => {
     if (!project || demoVidBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
-    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidPct(0); setDemoVidMsg('Starter…');
+    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Starter…');
     try {
       const voice = project.language === 'en' ? undefined : 'Nora'; // norsk on-device-stemme
-      const out = await runAutonomousDemo(project, { voice, onProgress: (m, p) => { setDemoVidMsg(m); setDemoVidPct(p); } });
+      const out = await runAutonomousDemo(project, {
+        voice,
+        onProgress: (m, p) => { setDemoVidMsg(m); setDemoVidPct(p); },
+        onScene: (index, total) => setDemoVidScene({ index, total }),
+        onShots: (shots) => setProjectField('scanShots', shots),
+      });
       setDemoVidResult(out);
       setDemoVidMsg('✓ Ferdig demo klar');
       void openPath(out).catch(() => {});
     } catch (e) {
       setDemoVidMsg('Feil: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
+      setDemoVidScene(null);
       setDemoVidBusy(false);
     }
   };
@@ -218,7 +225,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const runOneClickDemo = async () => {
     if (!project || demoVidBusy || directorBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
-    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidPct(0); setDemoVidMsg('Forstår + genererer scener…');
+    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Forstår + genererer scener…');
     try {
       // 1) Generér scener hvis vi ikke har dem (generateDemo forstår automatisk først).
       let proj = useDemoStudio.getState().project!;
@@ -229,11 +236,17 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       }
       // 2) Autonom render av de (nye) scenene.
       const voice = proj.language === 'en' ? undefined : 'Nora';
-      const out = await runAutonomousDemo(proj, { voice, onProgress: (m, p) => { setDemoVidMsg(m); setDemoVidPct(p); } });
+      const out = await runAutonomousDemo(proj, {
+        voice,
+        onProgress: (m, p) => { setDemoVidMsg(m); setDemoVidPct(p); },
+        onScene: (index, total) => setDemoVidScene({ index, total }),
+        onShots: (shots) => setProjectField('scanShots', shots),
+      });
       setDemoVidResult(out); setDemoVidMsg('✓ Ferdig demo klar'); void openPath(out).catch(() => {});
     } catch (e) {
       setDemoVidMsg('Feil: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
+      setDemoVidScene(null);
       setDemoVidBusy(false);
     }
   };
@@ -861,12 +874,24 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               const replyLine = cmdReply ? <div style={{ fontSize: 11.5, color: cmdReply.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginBottom: 8 }}>{cmdReply}</div> : null;
               const directorLine = directorMsg ? <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div> : null;
               // Delt progress/resultat for autonom ferdig demo (brukt i Beskriv + Forfin).
+              const demoVidShot = demoVidScene ? pickShot(project.scanShots, (scenes[demoVidScene.index]?.startScrollPct ?? 0) / 100) : null;
               const demoVidBlock = (
                 <>
                   {demoVidBusy && (
                     <div style={{ marginTop: 8 }}>
                       <div style={{ height: 5, background: C.line, borderRadius: 3, overflow: 'hidden' }}>
                         <div style={{ height: '100%', width: `${demoVidPct}%`, background: C.accent, transition: 'width .3s' }} />
+                      </div>
+                    </div>
+                  )}
+                  {demoVidBusy && demoVidScene && (
+                    <div style={{ marginTop: 8, border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden', background: '#000' }}>
+                      {demoVidShot
+                        ? <img src={demoVidShot} alt="" style={{ width: '100%', display: 'block', maxHeight: 110, objectFit: 'cover', objectPosition: 'top' }} />
+                        : <div style={{ height: 70, display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11 }}>tar opp…</div>}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 9px', background: C.cream, fontSize: 10.5, color: C.inkSoft }}>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#d9342b' }} />
+                        Tar opp scene {demoVidScene.index + 1}/{demoVidScene.total}{scenes[demoVidScene.index]?.title ? ` · ${scenes[demoVidScene.index].title.slice(0, 32)}` : ''}
                       </div>
                     </div>
                   )}
