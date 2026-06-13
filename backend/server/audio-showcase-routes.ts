@@ -85,6 +85,19 @@ async function evGetProtools(externalTrackId: string): Promise<EvResult> {
   return { configured: Boolean(process.env.EASEVERSE_API_URL), reachable: false };
 }
 
+// Hent keeper-takes (vokalopptak) fra EaseVerse for en track (liste-respons).
+async function evGetTakes(externalTrackId: string): Promise<{ configured: boolean; reachable: boolean; items: any[] }> {
+  if (!EV_URL) return { configured: false, reachable: false, items: [] };
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const headers: Record<string, string> = {}; if (EV_KEY) headers["x-api-key"] = EV_KEY;
+    const r = await fetch(`${EV_URL}/api/v1/collab/takes/${encodeURIComponent(externalTrackId)}`, { headers, signal: ctrl.signal });
+    const j = await r.json().catch(() => null);
+    return { configured: true, reachable: r.ok, items: Array.isArray(j?.items) ? j.items : [] };
+  } catch { return { configured: true, reachable: false, items: [] }; }
+  finally { clearTimeout(timer); }
+}
+
 // Enkel in-memory rate-limiter (sliding window) for offentlige token-endepunkter.
 const rateBuckets = new Map<string, number[]>();
 function rateLimited(key: string, max = 30, windowMs = 60_000): boolean {
@@ -1072,6 +1085,45 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       console.error("[audio-showcase] pull-sections failed:", e);
       return res.status(500).json({ error: "pull_sections_failed" });
+    }
+  });
+
+  // ── EaseVerse keeper-takes → review-versjoner (Fase 2 / gap #9) ───────────
+  app.post("/api/audio-showcases/:id/pull-takes", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    try {
+      const p = await pool.query(
+        `SELECT external_track_id, easeverse_track_id FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [id, s.userId]);
+      if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const extId = p.rows[0].external_track_id || p.rows[0].easeverse_track_id;
+      if (!extId) return res.status(409).json({ error: "no_linked_track" });
+      const remote = await evGetTakes(extId);
+      if (!remote.configured) return res.status(503).json({ error: "easeverse_not_configured" });
+      if (!remote.reachable) return res.status(502).json({ error: "easeverse_unreachable" });
+      const takes = remote.items.filter((t) => t?.url);
+      if (!takes.length) return res.json({ applied: "no_takes", created: 0 });
+      // Hvilke take-URL-er finnes allerede som versjoner? (idempotent)
+      const existing = await pool.query(`SELECT file_url FROM audio_review_versions WHERE project_id=$1::uuid`, [id]);
+      const have = new Set(existing.rows.map((r) => r.file_url));
+      let created = 0;
+      for (const t of takes) {
+        if (have.has(t.url)) continue;
+        // §14 supersede: tidligere under_review → superseded
+        await pool.query(`UPDATE audio_review_versions SET status='superseded' WHERE project_id=$1::uuid AND status='under_review'`, [id]);
+        const vn = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM audio_review_versions WHERE project_id=$1::uuid`, [id]);
+        await pool.query(
+          `INSERT INTO audio_review_versions (project_id, version_label, version_number, file_name, file_url, uploaded_by)
+           VALUES ($1::uuid,$2,$3,$4,$5,$6)`,
+          [id, `Vokal-take ${vn.rows[0].n}`, vn.rows[0].n, str(t.filename, 300) || "take.wav", t.url, "EaseVerse"]);
+        created++;
+      }
+      if (created > 0) await pool.query(`UPDATE audio_review_projects SET status='under_review', updated_at=NOW() WHERE id=$1::uuid`, [id]);
+      return res.json({ applied: created > 0 ? "pulled" : "up_to_date", created, totalTakes: takes.length });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      console.error("[audio-showcase] pull-takes failed:", e);
+      return res.status(500).json({ error: "pull_takes_failed" });
     }
   });
 
