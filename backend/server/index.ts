@@ -493,6 +493,7 @@ import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes
 import { setupTalentSelftapesRoutes } from "./talent-selftapes-routes";
 import { setupAgencyLeadsRoutes } from "./agency-leads-routes";
 import { setupCustomerSuccessRoutes } from "./customer-success-routes.js";
+import { setupAdminLeadMapPricingRoutes } from "./admin-lead-map-pricing-routes.js";
 import { setupLeadMapRoutes } from "./lead-map-routes.js";
 import {
   upsertRenewalFromStripeSubscription as upsertCsRenewalFromStripe,
@@ -24153,6 +24154,13 @@ setupAgencyLeadsRoutes({
 });
 // Customer Success Manager — health/renewal/interactions (Wave M2)
 setupCustomerSuccessRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Lead Map module pricing-admin
+setupAdminLeadMapPricingRoutes({
   app,
   pool,
   activeSessions,
