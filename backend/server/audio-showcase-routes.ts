@@ -10,7 +10,7 @@
  */
 
 import type express from "express";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 
 const makeInviteToken = () => "inv_" + randomUUID().replace(/-/g, "");
 
@@ -960,8 +960,11 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const cur = await pool.query(`SELECT id, name, percentage, custom_fields FROM split_sheet_contributors WHERE id=$1::uuid AND split_sheet_id=$2::uuid LIMIT 1`, [contributorId, ssId]);
     if (cur.rowCount === 0) return null;
     const c = cur.rows[0];
-    const snapshot = { masterPct: Number(c.percentage), compositionPct: c.custom_fields?.compositionPct ?? null, feeAmount: c.custom_fields?.feeAmount ?? null, feeCurrency: c.custom_fields?.feeCurrency ?? null, feeType: c.custom_fields?.feeType ?? null, contributions: c.custom_fields?.contributions ?? [] };
-    const sig = { name: signerName, consent: true, at: new Date().toISOString(), ip, userAgent: (ua || "").slice(0, 300), snapshot };
+    const snapshot = { contributorId: c.id, name: c.name, masterPct: Number(c.percentage), compositionPct: c.custom_fields?.compositionPct ?? null, feeAmount: c.custom_fields?.feeAmount ?? null, feeCurrency: c.custom_fields?.feeCurrency ?? null, feeType: c.custom_fields?.feeType ?? null, contributions: c.custom_fields?.contributions ?? [] };
+    const at = new Date().toISOString();
+    // Integritets-hash (tamper-evidens): SHA-256 av nøyaktig signerte vilkår + signatar + tid.
+    const signatureHash = createHash("sha256").update(JSON.stringify({ snapshot, signerName, at })).digest("hex");
+    const sig = { name: signerName, consent: true, at, ip, userAgent: (ua || "").slice(0, 300), method: "simple_electronic_signature", signatureHash, snapshot };
     const r = await pool.query(`UPDATE split_sheet_contributors SET signed_at=NOW(), signature_data=$3::jsonb, updated_at=NOW() WHERE id=$1::uuid AND split_sheet_id=$2::uuid RETURNING id, name, signed_at`, [contributorId, ssId, JSON.stringify(sig)]);
     // Sett status når alle har signert.
     const counts = await pool.query(`SELECT COUNT(*)::int total, COUNT(signed_at)::int signed FROM split_sheet_contributors WHERE split_sheet_id=$1`, [ssId]);
@@ -1259,5 +1262,139 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       return res.status(500).json({ error: "shared_sign_failed" });
     }
+  });
+
+  // ══ PUBLISERING (release-pakke) ═══════════════════════════════════════════
+  // Opprett/hent en utgivelse fra et godkjent review-rom (idempotent).
+  app.post("/api/audio-showcases/:id/release", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    try {
+      const p = await pool.query(`SELECT * FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [id, s.userId]);
+      if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const proj = p.rows[0];
+      const existing = await pool.query(`SELECT * FROM audio_releases WHERE review_project_id=$1::uuid AND owner_user_id=$2 ORDER BY created_at DESC LIMIT 1`, [id, s.userId]);
+      if (existing.rowCount > 0) return res.json({ release: existing.rows[0], created: false });
+      // Velg master: godkjent versjon, ellers nyeste ikke-superseded.
+      const v = await pool.query(
+        `SELECT id, file_url FROM audio_review_versions WHERE project_id=$1::uuid
+          ORDER BY (status='approved') DESC, (status<>'superseded') DESC, version_number DESC LIMIT 1`, [id]);
+      const master = v.rows[0] || {};
+      const r = await pool.query(
+        `INSERT INTO audio_releases (owner_user_id, review_project_id, easeverse_track_id, title, primary_artist, primary_genre, cover_url, master_version_id, master_url, copyright_year, p_line, c_line)
+         VALUES ($1,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        [s.userId, id, proj.external_track_id || proj.easeverse_track_id || null, proj.title || "Uten tittel",
+         proj.band_name || proj.artist_name || null, proj.genre || null, proj.cover_url || null,
+         master.id || null, master.file_url || null, new Date().getFullYear(),
+         proj.band_name ? `${new Date().getFullYear()} ${proj.band_name}` : null, proj.band_name ? `${new Date().getFullYear()} ${proj.band_name}` : null]);
+      return res.status(201).json({ release: r.rows[0], created: true });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      console.error("[audio-showcase] release create failed:", e);
+      return res.status(500).json({ error: "release_create_failed" });
+    }
+  });
+
+  app.get("/api/releases/:id", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const r = await pool.query(`SELECT * FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      return res.json(r.rows[0]);
+    } catch (e) { if (isMissingTable(e)) return res.status(404).json({ error: "not_found" }); return res.status(500).json({ error: "release_get_failed" }); }
+  });
+
+  app.patch("/api/releases/:id", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    const strMap: Array<[string, string, number]> = [
+      ["title", "title", 240], ["primaryArtist", "primary_artist", 200], ["releaseType", "release_type", 20],
+      ["primaryGenre", "primary_genre", 80], ["secondaryGenre", "secondary_genre", 80], ["language", "language", 16],
+      ["releaseDate", "release_date", 40], ["isrc", "isrc", 20], ["upc", "upc", 20], ["label", "label", 200],
+      ["pLine", "p_line", 300], ["cLine", "c_line", 300], ["coverUrl", "cover_url", 3_000_000], ["status", "status", 20],
+    ];
+    const sets: string[] = ["updated_at=NOW()"]; const params: unknown[] = [id, s.userId];
+    for (const [body, col, max] of strMap) {
+      if (typeof req.body?.[body] === "string") { params.push(str(req.body[body], max) || null); sets.push(`${col}=$${params.length}`); }
+    }
+    if (typeof req.body?.explicit === "boolean") { params.push(req.body.explicit); sets.push(`explicit=$${params.length}`); }
+    if (Number.isFinite(Number(req.body?.copyrightYear))) { params.push(Math.round(Number(req.body.copyrightYear))); sets.push(`copyright_year=$${params.length}`); }
+    if (Array.isArray(req.body?.featuredArtists)) { params.push(JSON.stringify(req.body.featuredArtists.filter((x: unknown) => typeof x === "string").slice(0, 20))); sets.push(`featured_artists=$${params.length}::jsonb`); }
+    if (sets.length === 1) return res.status(400).json({ error: "nothing_to_update" });
+    try {
+      const r = await pool.query(`UPDATE audio_releases SET ${sets.join(", ")} WHERE id=$1::uuid AND owner_user_id=$2 RETURNING *`, params);
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      return res.json(r.rows[0]);
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "release_update_failed" }); }
+  });
+
+  // Hent splitt-status for en release (for validering + pakke).
+  async function releaseSplit(reviewId: string, userId: string): Promise<{ contributors: any[]; masterBalanced: boolean }> {
+    const ss = await pool.query(`SELECT id FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [userId, reviewId]).catch(() => ({ rows: [] as any[] }));
+    if (!ss.rows.length) return { contributors: [], masterBalanced: false };
+    const c = await pool.query(`SELECT name, email, role, percentage, signed_at, custom_fields FROM split_sheet_contributors WHERE split_sheet_id=$1 ORDER BY order_index ASC`, [ss.rows[0].id]);
+    const total = c.rows.reduce((a, x) => a + Number(x.percentage || 0), 0);
+    return { contributors: c.rows, masterBalanced: Math.abs(total - 100) < 0.01 };
+  }
+
+  app.get("/api/releases/:id/validate", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const r = await pool.query(`SELECT * FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const rel = r.rows[0];
+      const split = rel.review_project_id ? await releaseSplit(rel.review_project_id, s.userId) : { contributors: [], masterBalanced: false };
+      const isrcOk = !!rel.isrc && /^[A-Za-z]{2}[A-Za-z0-9]{3}\d{7}$/.test(String(rel.isrc).replace(/-/g, ""));
+      const checks = [
+        { key: "master", ok: !!rel.master_url, label: "Master-lydfil valgt" },
+        { key: "cover", ok: !!rel.cover_url, label: "Cover-bilde (anbefalt 3000×3000)" },
+        { key: "title", ok: !!rel.title, label: "Tittel" },
+        { key: "artist", ok: !!rel.primary_artist, label: "Hovedartist" },
+        { key: "genre", ok: !!rel.primary_genre, label: "Sjanger" },
+        { key: "date", ok: !!rel.release_date, label: "Utgivelsesdato" },
+        { key: "isrc", ok: isrcOk, label: "ISRC (gyldig format, f.eks. NOABC2500001)" },
+        { key: "upc", ok: !!rel.upc, label: "UPC/strekkode" },
+        { key: "rights", ok: !!rel.p_line && !!rel.c_line, label: "℗/© rettighetslinjer" },
+        { key: "splits", ok: split.masterBalanced, label: "Splitt = 100% (master)" },
+        { key: "credits", ok: split.contributors.length > 0, label: "Credits (bidragsytere)" },
+      ];
+      return res.json({ valid: checks.every((c) => c.ok), checks, contributors: split.contributors.length });
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "validate_failed" }); }
+  });
+
+  // Release-pakke: komplett manifest (metadata + credits/splitt + asset-URL-er)
+  // som produsenten laster opp i sin egen distributørkonto.
+  app.get("/api/releases/:id/package", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const r = await pool.query(`SELECT * FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const rel = r.rows[0];
+      const split = rel.review_project_id ? await releaseSplit(rel.review_project_id, s.userId) : { contributors: [] };
+      const origin = `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}`;
+      const manifest = {
+        release: {
+          title: rel.title, primaryArtist: rel.primary_artist, featuredArtists: rel.featured_artists,
+          type: rel.release_type, primaryGenre: rel.primary_genre, secondaryGenre: rel.secondary_genre,
+          language: rel.language, explicit: rel.explicit, releaseDate: rel.release_date,
+          isrc: rel.isrc, upc: rel.upc, label: rel.label, copyrightYear: rel.copyright_year,
+          pLine: rel.p_line, cLine: rel.c_line,
+        },
+        assets: {
+          master: rel.master_url ? (rel.master_url.startsWith("http") ? rel.master_url : `${origin}${rel.master_url}`) : null,
+          cover: rel.cover_url ? (rel.cover_url.startsWith("http") ? rel.cover_url : `${origin}${rel.cover_url}`) : null,
+        },
+        credits: split.contributors.map((c: any) => ({
+          name: c.name, role: c.role, contributions: c.custom_fields?.contributions || [],
+          masterShare: Number(c.percentage), compositionShare: c.custom_fields?.compositionPct ?? null,
+          fee: c.custom_fields?.feeAmount ? `${c.custom_fields.feeAmount} ${c.custom_fields.feeCurrency || "NOK"}` : null,
+          signed: !!c.signed_at, signedAt: c.signed_at || null,
+        })),
+        generatedAt: new Date().toISOString(),
+      };
+      await pool.query(`UPDATE audio_releases SET status='exported', exported_at=NOW(), updated_at=NOW() WHERE id=$1::uuid`, [rel.id]).catch(() => {});
+      res.setHeader("Content-Disposition", `attachment; filename="release-${(rel.title || "release").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.json"`);
+      return res.json(manifest);
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "package_failed" }); }
   });
 }

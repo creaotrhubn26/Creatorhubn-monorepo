@@ -22,7 +22,7 @@ import {
   ThumbUpAlt, AccessTime, Send, WorkspacePremium, GridViewOutlined, GraphicEq, LayersOutlined,
   Inventory2Outlined, SubjectOutlined, StickyNote2Outlined, TimelineOutlined, Speed, VpnKey,
   CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
-  PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll,
+  PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined,
 } from '@mui/icons-material';
 import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
@@ -94,6 +94,7 @@ export default function AudioShowcasePage() {
   const [sectionMenuEl, setSectionMenuEl] = React.useState<null | HTMLElement>(null);
   const [memberDialog, setMemberDialog] = React.useState<any>(null);
   const [splitOpen, setSplitOpen] = React.useState(false);
+  const [publishOpen, setPublishOpen] = React.useState(false);
   const [splitToast, setSplitToast] = React.useState<string | null>(null);
 
   const saveCover = async (dataUrl: string) => {
@@ -360,6 +361,8 @@ export default function AudioShowcasePage() {
             <Button onClick={() => setSplitOpen(true)} fullWidth startIcon={<ReceiptLongOutlined sx={{ fontSize: '17px !important' }} />}
               sx={{ mt: 1.5, color: ACCENT, bgcolor: 'rgba(255,107,53,0.1)', textTransform: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '0.78rem', '&:hover': { bgcolor: 'rgba(255,107,53,0.18)' } }}>Splittark (royalty)</Button>
           )}
+          <Button onClick={() => setPublishOpen(true)} fullWidth startIcon={<RocketLaunchOutlined sx={{ fontSize: '17px !important' }} />}
+            sx={{ mt: 1, color: '#150d05', bgcolor: ACCENT, textTransform: 'none', borderRadius: '10px', fontWeight: 800, fontSize: '0.78rem', '&:hover': { bgcolor: '#ff855a' } }}>Publiser utgivelse</Button>
         </Box>
 
         {/* ─── SENTER ─── */}
@@ -554,6 +557,7 @@ export default function AudioShowcasePage() {
       <MemberProfileDialog member={memberDialog} externalTrackId={easeverseTrack?.id} onClose={() => setMemberDialog(null)} onSave={saveMemberProfile}
         onDelete={async (id) => { await apiRequest(`/api/audio-members/${id}`, { method: 'DELETE' }); setMembers((p) => p.filter((x) => x.id !== id)); setMemberDialog(null); }} />
       <SplitSheetDialog open={splitOpen} projectId={projectId} ownerName={owner?.name} onClose={() => setSplitOpen(false)} />
+      <PublishDialog open={publishOpen} projectId={projectId} onClose={() => setPublishOpen(false)} />
       <TaskDialog open={taskOpen} onClose={() => setTaskOpen(false)} onAdd={async (title, category) => { const t = await apiRequest('/api/audio-tasks', { method: 'POST', body: { projectId, title, assignee: category, versionId: currentVid } }); setTasks((p) => [...p, t]); setTaskOpen(false); }} />
       <Menu anchorEl={moreEl} open={Boolean(moreEl)} onClose={() => setMoreEl(null)}><MenuItem onClick={() => setMoreEl(null)} sx={{ fontSize: '0.85rem' }}>Kopier review-lenke</MenuItem></Menu>
       <LyricsDialog
@@ -930,6 +934,124 @@ const SplitSheetDialog: React.FC<{ open: boolean; projectId: string; ownerName?:
               <Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none' }}>Lukk</Button>
               <Button onClick={save} disabled={busy || locked || masterTotal > 100.01} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Lagre vilkår</Button></>
           )}
+        </DialogActions>
+      )}
+    </Dialog>
+  );
+};
+
+/* ── Publiseringsdialog (release-pakke) ────────────────────────────────────
+ * Bygger en utgivelse fra det godkjente review-rommet: metadata + ISRC/UPC +
+ * cover/master + splitt/credits → validerer → eksporterer en «release-pakke»
+ * (JSON-manifest) som produsenten laster opp i sin egen distributørkonto. */
+const RELEASE_TYPES: [string, string][] = [['single', 'Singel'], ['ep', 'EP'], ['album', 'Album']];
+const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () => void }> = ({ open, projectId, onClose }) => {
+  const [loading, setLoading] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
+  const [rel, setRel] = React.useState<any>(null);
+  const [checks, setChecks] = React.useState<{ key: string; ok: boolean; label: string }[]>([]);
+  const [valid, setValid] = React.useState(false);
+
+  const refresh = React.useCallback(async (id: string) => {
+    try { const v = await apiRequest(`/api/releases/${id}/validate`); setChecks(v.checks || []); setValid(!!v.valid); } catch { /* */ }
+  }, []);
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const d = await apiRequest(`/api/audio-showcases/${projectId}/release`, { method: 'POST', body: {} });
+      setRel(d.release); await refresh(d.release.id);
+    } catch { setRel(null); } finally { setLoading(false); }
+  }, [projectId, refresh]);
+  React.useEffect(() => { if (open) void load(); }, [open, load]);
+
+  const set = (k: string, v: any) => setRel((r: any) => ({ ...r, [k]: v }));
+  const save = async () => {
+    if (!rel) return; setBusy(true);
+    try {
+      const u = await apiRequest(`/api/releases/${rel.id}`, { method: 'PATCH', body: {
+        title: rel.title, primaryArtist: rel.primary_artist, releaseType: rel.release_type,
+        primaryGenre: rel.primary_genre, secondaryGenre: rel.secondary_genre, language: rel.language,
+        explicit: !!rel.explicit, releaseDate: (rel.release_date || '').slice(0, 10), isrc: rel.isrc, upc: rel.upc,
+        label: rel.label, copyrightYear: Number(rel.copyright_year) || undefined, pLine: rel.p_line, cLine: rel.c_line,
+      } });
+      setRel(u); await refresh(u.id);
+    } catch { /* */ } finally { setBusy(false); }
+  };
+  const exportPackage = async () => {
+    if (!rel) return; setBusy(true);
+    try {
+      await save();
+      const headers = await getAuthHeader();
+      const res = await fetch(`/api/releases/${rel.id}/package`, { headers });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob); const a = document.createElement('a');
+      a.href = url; a.download = `release-${(rel.title || 'release').replace(/[^a-z0-9]/gi, '-').toLowerCase()}.json`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      await refresh(rel.id);
+    } catch { /* */ } finally { setBusy(false); }
+  };
+
+  const field = (label: string, key: string, opts: { w?: number | string; ph?: string } = {}) => (
+    <TextField label={label} value={rel?.[key] ?? ''} placeholder={opts.ph} onChange={(e) => set(key, e.target.value)} size="small" sx={{ width: opts.w, ...fieldSx }} fullWidth={!opts.w} />
+  );
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
+      <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}><RocketLaunchOutlined sx={{ color: ACCENT }} /> Publiser utgivelse
+        {rel && <Chip label={valid ? 'Klar' : 'Mangler info'} size="small" sx={{ height: 20, fontSize: '0.64rem', bgcolor: valid ? 'rgba(95,184,138,0.16)' : 'rgba(224,169,85,0.16)', color: valid ? '#5fb88a' : '#e0a955' }} />}
+        {rel?.status === 'exported' && <Chip label="Eksportert" size="small" sx={{ height: 20, fontSize: '0.64rem', bgcolor: 'rgba(255,255,255,0.08)', color: MUTED }} />}</DialogTitle>
+      <DialogContent>
+        {loading || !rel ? <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} sx={{ color: ACCENT }} /></Box> : (
+          <Stack direction="row" spacing={2} sx={{ py: 0.5 }}>
+            {/* Venstre: metadata-skjema */}
+            <Stack spacing={1.25} sx={{ flex: 1, minWidth: 0 }}>
+              {field('Tittel', 'title')}
+              <Stack direction="row" spacing={1}>
+                {field('Hovedartist', 'primary_artist')}
+                <TextField select SelectProps={{ native: true }} label="Type" value={rel.release_type || 'single'} onChange={(e) => set('release_type', e.target.value)} size="small" sx={{ width: 120, ...fieldSx }}>
+                  {RELEASE_TYPES.map(([v, l]) => <option key={v} value={v} style={{ background: PANEL }}>{l}</option>)}
+                </TextField>
+              </Stack>
+              <Stack direction="row" spacing={1}>{field('Sjanger', 'primary_genre')}{field('Undersjanger', 'secondary_genre')}</Stack>
+              <Stack direction="row" spacing={1}>
+                <TextField type="date" label="Utgivelsesdato" InputLabelProps={{ shrink: true }} value={(rel.release_date || '').slice(0, 10)} onChange={(e) => set('release_date', e.target.value)} size="small" sx={{ flex: 1, ...fieldSx }} />
+                {field('Språk', 'language', { w: 90, ph: 'no' })}
+              </Stack>
+              <Stack direction="row" spacing={1}>{field('ISRC', 'isrc', { ph: 'NOABC2500001' })}{field('UPC/EAN', 'upc', { ph: 'strekkode' })}</Stack>
+              {field('Plateselskap / label', 'label')}
+              <Stack direction="row" spacing={1} alignItems="center">
+                {field('© Komposisjon (C-line)', 'c_line')}
+                <FormControlLabel control={<Switch checked={!!rel.explicit} onChange={(e) => set('explicit', e.target.checked)} sx={{ '& .Mui-checked': { color: ACCENT } }} />} label={<Typography sx={{ fontSize: '0.74rem', whiteSpace: 'nowrap' }}>Explicit</Typography>} />
+              </Stack>
+              {field('℗ Master (P-line)', 'p_line')}
+            </Stack>
+            {/* Høyre: cover + sjekkliste */}
+            <Stack spacing={1.25} sx={{ width: 230 }}>
+              <Box sx={{ aspectRatio: '1', borderRadius: '12px', overflow: 'hidden', border: `1px solid ${BORDER}`, bgcolor: PANEL2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {rel.cover_url ? <Box component="img" src={rel.cover_url} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <MusicNote sx={{ fontSize: 40, color: FAINT }} />}
+              </Box>
+              <Box sx={{ bgcolor: 'rgba(255,255,255,0.03)', borderRadius: '10px', p: 1.25 }}>
+                <Typography sx={{ fontSize: '0.68rem', color: FAINT, mb: 0.5, fontWeight: 700, letterSpacing: 0.5 }}>SJEKKLISTE FØR LEVERING</Typography>
+                <Stack spacing={0.4}>
+                  {checks.map((c) => (
+                    <Stack key={c.key} direction="row" alignItems="center" spacing={0.75}>
+                      {c.ok ? <CheckCircle sx={{ fontSize: 15, color: '#5fb88a' }} /> : <FiberManualRecord sx={{ fontSize: 9, color: '#e0a955', mx: '3px' }} />}
+                      <Typography sx={{ fontSize: '0.72rem', color: c.ok ? TEXT : MUTED }}>{c.label}</Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Box>
+              <Typography sx={{ fontSize: '0.66rem', color: FAINT, lineHeight: 1.4 }}>Pakken inneholder metadata, credits/splitt og asset-lenker (master + cover). Last den opp i din egen distributør (DistroKid, CD Baby, Amuse e.l.).</Typography>
+            </Stack>
+          </Stack>
+        )}
+      </DialogContent>
+      {rel && (
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none', mr: 'auto' }}>Lukk</Button>
+          <Button onClick={save} disabled={busy} sx={{ color: TEXT, textTransform: 'none' }}>Lagre</Button>
+          <Button onClick={exportPackage} disabled={busy || !valid} startIcon={busy ? <CircularProgress size={15} sx={{ color: '#150d05' }} /> : <FileDownloadDoneOutlined />} variant="contained"
+            sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px', '&.Mui-disabled': { bgcolor: 'rgba(255,107,53,0.3)', color: 'rgba(21,13,5,0.5)' } }}>Eksporter release-pakke</Button>
         </DialogActions>
       )}
     </Dialog>
