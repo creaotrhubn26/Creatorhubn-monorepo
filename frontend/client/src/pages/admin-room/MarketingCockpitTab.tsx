@@ -30,6 +30,7 @@ import CompetitorsPanel from './CompetitorsPanel';
 import B2BAcquisitionPanel from './B2BAcquisitionPanel';
 import AgencyAcquisitionDashboard from './AgencyAcquisitionDashboard';
 import CustomerSuccessDashboard from './CustomerSuccessDashboard';
+import LeadMapPanel from './LeadMapPanel';
 import MarketingCockpitTiktokSection from '../../components/admin-room/marketing-cockpit/MarketingCockpitTiktokSection';
 import CompetitorReportPanel from './CompetitorReportPanel';
 import PostDraftsPanel from './PostDraftsPanel';
@@ -626,6 +627,13 @@ export default function MarketingCockpitTab() {
           </Divider>
 
           <CustomerSuccessDashboard />
+
+          <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+            <Chip label="LEAD MAP" size="small"
+              sx={{ background: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontSize: '0.7rem', fontWeight: 700 }} />
+          </Divider>
+
+          <LeadMapPanel />
 
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }} />
           <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.4)', textAlign: 'center' }}>
