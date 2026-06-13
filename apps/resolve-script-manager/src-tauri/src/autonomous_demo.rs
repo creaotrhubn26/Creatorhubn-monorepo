@@ -119,8 +119,49 @@ pub struct NarrationSegment {
     pub offset_ms: u32,
 }
 
-/// Mux: legg hver narration på sin tids-offset over Playwright-videoen
-/// (.webm → .mp4 m/ H.264). Returnerer sti til ferdig mp4.
+/// Branding/innramming for ferdig video. PNG-feltene er base64 (evt. dataURL) —
+/// frontend rendrer dem i canvas (drawtext finnes ikke i alle ffmpeg-bygg).
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FinalizeOpts {
+    pub frame_png: Option<String>,
+    pub frame_x: Option<u32>,
+    pub frame_y: Option<u32>,
+    pub frame_w: Option<u32>,
+    pub frame_h: Option<u32>,
+    pub intro_png: Option<String>,
+    pub outro_png: Option<String>,
+    pub intro_sec: Option<f64>,
+    pub outro_sec: Option<f64>,
+}
+
+fn run_ff(ffmpeg: &PathBuf, args: &[String], what: &str) -> Result<(), String> {
+    let st = Command::new(ffmpeg).args(args).status().map_err(|e| format!("ffmpeg {what} spawn: {e}"))?;
+    if !st.success() { return Err(format!("ffmpeg {what} feilet")); }
+    Ok(())
+}
+
+fn write_b64_png(b64: &str, path: &PathBuf) -> Result<(), String> {
+    use base64::Engine;
+    let data = b64.rsplit(',').next().unwrap_or(b64); // strip evt. dataURL-prefiks
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.trim()).map_err(|e| format!("base64: {e}"))?;
+    std::fs::write(path, bytes).map_err(|e| format!("skriv png: {e}"))?;
+    Ok(())
+}
+
+/// Lag et video-segment fra et stillbilde (PNG) + stillhet, i `sec` sekunder.
+fn png_to_segment(ffmpeg: &PathBuf, png: &PathBuf, sec: f64, out: &PathBuf) -> Result<(), String> {
+    run_ff(ffmpeg, &[
+        "-y".into(), "-loop".into(), "1".into(), "-t".into(), format!("{:.2}", sec.max(0.5)), "-i".into(), png.to_string_lossy().to_string(),
+        "-f".into(), "lavfi".into(), "-t".into(), format!("{:.2}", sec.max(0.5)), "-i".into(), "anullsrc=r=44100:cl=stereo".into(),
+        "-c:v".into(), "libx264".into(), "-preset".into(), "veryfast".into(), "-pix_fmt".into(), "yuv420p".into(),
+        "-r".into(), "25".into(), "-vf".into(), "scale=1280:800".into(),
+        "-c:a".into(), "aac".into(), "-shortest".into(), out.to_string_lossy().to_string(),
+    ], "intro/outro")
+}
+
+/// Mux: narration over videoen + valgfri device-ramme + intro/outro → ferdig
+/// mp4 i ~/Movies/Post Agent/. Returnerer sti.
 #[tauri::command]
 pub async fn mux_demo_video(
     app: AppHandle,
@@ -128,59 +169,93 @@ pub async fn mux_demo_video(
     video_path: String,
     segments: Vec<NarrationSegment>,
     out_name: Option<String>,
+    finalize: Option<FinalizeOpts>,
 ) -> Result<String, String> {
     let ffmpeg = find_ffmpeg().ok_or("ffmpeg ikke funnet")?;
     if !PathBuf::from(&video_path).exists() {
         return Err("video-fil mangler (Playwright-opptak feilet?)".into());
     }
-    let _ = &app; // beholdt for signatur-kompat
-    // Lagre i ~/Movies/Post Agent/ — synlig og spillbar (Application Support er
-    // for dypt/beskyttet for enkelte spillere). Movies krever ikke TCC-samtykke.
+    let fin = finalize.unwrap_or_default();
+    let work = work_dir(&app, &project_id, "demo-renders")?;
     let home = std::env::var("HOME").map_err(|_| "fant ikke hjemmemappe".to_string())?;
-    let dir = PathBuf::from(home).join("Movies").join("Post Agent");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("kunne ikke lage ~/Movies/Post Agent: {e}"))?;
+    let out_dir = PathBuf::from(home).join("Movies").join("Post Agent");
+    std::fs::create_dir_all(&out_dir).map_err(|e| format!("kunne ikke lage ~/Movies/Post Agent: {e}"))?;
     let base: String = out_name.unwrap_or_else(|| "autonom-demo".into())
         .chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' }).collect();
     let base = if base.trim().is_empty() { format!("demo-{}", project_id) } else { base.trim().to_string() };
-    let out = dir.join(format!("{}.mp4", base));
+    let final_out = out_dir.join(format!("{}.mp4", base));
 
+    // ── Steg 1: narration over videoen → work/main.mp4 ──
+    let main = work.join("main.mp4");
     let mut args: Vec<String> = vec!["-y".into(), "-i".into(), video_path.clone()];
-    for seg in &segments {
-        args.push("-i".into());
-        args.push(seg.audio_path.clone());
-    }
+    for seg in &segments { args.push("-i".into()); args.push(seg.audio_path.clone()); }
     if segments.is_empty() {
-        // Ingen narration → bare transkod webm→mp4.
-        args.extend([
-            "-c:v".into(), "libx264".into(), "-preset".into(), "veryfast".into(),
-            "-pix_fmt".into(), "yuv420p".into(), "-movflags".into(), "+faststart".into(),
-            out.to_string_lossy().to_string(),
-        ]);
+        args.extend(["-c:v".into(), "libx264".into(), "-preset".into(), "veryfast".into(), "-pix_fmt".into(), "yuv420p".into(), main.to_string_lossy().to_string()]);
     } else {
-        // Forsink hver narration til sin scene-offset, mix sammen (sekvensielle,
-        // så normalize=0 holder fullt volum), legg over videoen.
         let mut filter = String::new();
-        for (i, seg) in segments.iter().enumerate() {
-            let idx = i + 1; // lyd-inputs starter på 1 (0 = video)
-            filter.push_str(&format!("[{idx}:a]adelay={d}|{d}[a{i}];", idx = idx, d = seg.offset_ms, i = i));
-        }
-        for i in 0..segments.len() {
-            filter.push_str(&format!("[a{}]", i));
-        }
+        for (i, seg) in segments.iter().enumerate() { filter.push_str(&format!("[{idx}:a]adelay={d}|{d}[a{i}];", idx = i + 1, d = seg.offset_ms, i = i)); }
+        for i in 0..segments.len() { filter.push_str(&format!("[a{}]", i)); }
         filter.push_str(&format!("amix=inputs={}:dropout_transition=0:normalize=0[mix]", segments.len()));
-        args.extend([
-            "-filter_complex".into(), filter,
-            "-map".into(), "0:v".into(), "-map".into(), "[mix]".into(),
-            "-c:v".into(), "libx264".into(), "-preset".into(), "veryfast".into(),
-            "-pix_fmt".into(), "yuv420p".into(),
-            "-c:a".into(), "aac".into(), "-b:a".into(), "192k".into(),
-            "-movflags".into(), "+faststart".into(),
-            out.to_string_lossy().to_string(),
-        ]);
+        args.extend(["-filter_complex".into(), filter, "-map".into(), "0:v".into(), "-map".into(), "[mix]".into(),
+            "-c:v".into(), "libx264".into(), "-preset".into(), "veryfast".into(), "-pix_fmt".into(), "yuv420p".into(),
+            "-c:a".into(), "aac".into(), "-b:a".into(), "192k".into(), main.to_string_lossy().to_string()]);
     }
-    let st = Command::new(&ffmpeg).args(&args).status().map_err(|e| format!("ffmpeg mux spawn: {e}"))?;
-    if !st.success() {
-        return Err("ffmpeg mux feilet".into());
+    run_ff(&ffmpeg, &args, "mux")?;
+    let mut current = main.clone();
+
+    // ── Steg 2: device-ramme (video skalert inn på frame-PNG) → work/framed.mp4 ──
+    if let Some(b64) = fin.frame_png.as_ref() {
+        let frame_png = work.join("frame.png");
+        write_b64_png(b64, &frame_png)?;
+        let (fx, fy, fw, fh) = (fin.frame_x.unwrap_or(80), fin.frame_y.unwrap_or(70), fin.frame_w.unwrap_or(1120), fin.frame_h.unwrap_or(700));
+        let framed = work.join("framed.mp4");
+        run_ff(&ffmpeg, &[
+            "-y".into(), "-i".into(), current.to_string_lossy().to_string(), "-i".into(), frame_png.to_string_lossy().to_string(),
+            "-filter_complex".into(), format!("[1:v]null[bg];[0:v]scale={fw}:{fh}[v];[bg][v]overlay={fx}:{fy}[out]"),
+            "-map".into(), "[out]".into(), "-map".into(), "0:a?".into(),
+            "-c:v".into(), "libx264".into(), "-preset".into(), "veryfast".into(), "-pix_fmt".into(), "yuv420p".into(),
+            "-c:a".into(), "aac".into(), framed.to_string_lossy().to_string(),
+        ], "ramme")?;
+        current = framed;
     }
-    Ok(out.to_string_lossy().to_string())
+
+    // ── Steg 3: intro/outro → concat → work/final.mp4 ──
+    let has_intro = fin.intro_png.is_some();
+    let has_outro = fin.outro_png.is_some();
+    if has_intro || has_outro {
+        let mut list: Vec<PathBuf> = vec![];
+        if let Some(b64) = fin.intro_png.as_ref() {
+            let p = work.join("intro.png"); write_b64_png(b64, &p)?;
+            let seg = work.join("intro.mp4"); png_to_segment(&ffmpeg, &p, fin.intro_sec.unwrap_or(2.6), &seg)?;
+            list.push(seg);
+        }
+        list.push(current.clone());
+        if let Some(b64) = fin.outro_png.as_ref() {
+            let p = work.join("outro.png"); write_b64_png(b64, &p)?;
+            let seg = work.join("outro.mp4"); png_to_segment(&ffmpeg, &p, fin.outro_sec.unwrap_or(2.6), &seg)?;
+            list.push(seg);
+        }
+        let list_file = work.join("concat.txt");
+        let body: String = list.iter().map(|p| format!("file '{}'\n", p.to_string_lossy())).collect();
+        std::fs::write(&list_file, body).map_err(|e| format!("skriv concat-liste: {e}"))?;
+        let joined = work.join("final.mp4");
+        run_ff(&ffmpeg, &[
+            "-y".into(), "-f".into(), "concat".into(), "-safe".into(), "0".into(), "-i".into(), list_file.to_string_lossy().to_string(),
+            "-c:v".into(), "libx264".into(), "-preset".into(), "veryfast".into(), "-pix_fmt".into(), "yuv420p".into(),
+            "-c:a".into(), "aac".into(), "-b:a".into(), "192k".into(), joined.to_string_lossy().to_string(),
+        ], "concat")?;
+        current = joined;
+    }
+
+    // ── Steg 4: skriv ferdig (faststart) til ~/Movies/Post Agent/ ──
+    run_ff(&ffmpeg, &[
+        "-y".into(), "-i".into(), current.to_string_lossy().to_string(),
+        "-c".into(), "copy".into(), "-movflags".into(), "+faststart".into(), final_out.to_string_lossy().to_string(),
+    ], "faststart").or_else(|_| {
+        // copy kan feile hvis container-mismatch → re-encode som fallback
+        run_ff(&ffmpeg, &["-y".into(), "-i".into(), current.to_string_lossy().to_string(),
+            "-c:v".into(), "libx264".into(), "-pix_fmt".into(), "yuv420p".into(), "-c:a".into(), "aac".into(),
+            "-movflags".into(), "+faststart".into(), final_out.to_string_lossy().to_string()], "faststart-reencode")
+    })?;
+    Ok(final_out.to_string_lossy().to_string())
 }

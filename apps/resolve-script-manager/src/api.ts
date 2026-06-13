@@ -139,9 +139,13 @@ export async function stopScreenRecord(sessionId: string): Promise<string> {
 export async function synthesizeTts(projectId: string, sceneId: string, text: string, voice?: string): Promise<{ path: string; durationSec: number }> {
   return invoke<{ path: string; durationSec: number }>("synthesize_tts", { projectId, sceneId, text, voice });
 }
-/** Legg per-scene narration på sine tids-offset over Playwright-videoen → ferdig mp4 (~/Movies/Post Agent/). */
-export async function muxDemoVideo(projectId: string, videoPath: string, segments: Array<{ audioPath: string; offsetMs: number }>, outName?: string): Promise<string> {
-  return invoke<string>("mux_demo_video", { projectId, videoPath, segments, outName });
+export interface DemoFinalizeOpts {
+  framePng?: string; frameX?: number; frameY?: number; frameW?: number; frameH?: number;
+  introPng?: string; outroPng?: string; introSec?: number; outroSec?: number;
+}
+/** Legg per-scene narration over videoen + valgfri ramme/intro/outro → ferdig mp4 (~/Movies/Post Agent/). */
+export async function muxDemoVideo(projectId: string, videoPath: string, segments: Array<{ audioPath: string; offsetMs: number }>, outName?: string, finalize?: DemoFinalizeOpts): Promise<string> {
+  return invoke<string>("mux_demo_video", { projectId, videoPath, segments, outName, finalize });
 }
 
 /** Product Brain: les en produkt-PDF (one-pager) → ren tekst (on-device). */

@@ -35,6 +35,8 @@ import { generateDemoFlow, completeDemoFlow, fetchSiteContext, analyzeSiteContex
 import { executeScript, playwrightStatus, playwrightCaptureShots, extractPdfText, systemOpen } from '../../api';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { runAutonomousDemo } from './autonomousDemo';
+import { renderIntroCard, renderOutroCard, renderBrowserFrame } from './demoBranding';
+import type { DemoFinalizeOpts } from '../../api';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
@@ -177,6 +179,21 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [demoVidPct, setDemoVidPct] = useState(0);
   const [demoVidResult, setDemoVidResult] = useState<string | null>(null);
   const [demoVidScene, setDemoVidScene] = useState<{ index: number; total: number } | null>(null);
+  const [brandedOutput, setBrandedOutput] = useState(true); // intro/outro + ramme på autonom video
+  /** Bygg branding (ramme + intro/outro PNG-er) fra prosjekt + forståelse. */
+  const buildFinalize = (): DemoFinalizeOpts | undefined => {
+    if (!brandedOutput || !project) return undefined;
+    const brandName = project.branding?.brandName || (() => { try { return new URL(project.url).host.replace(/^www\./, '').split('.')[0]; } catch { return project.name || 'Demo'; } })();
+    const color = project.branding?.brandColor;
+    const tagline = understanding?.summary;
+    const frame = renderBrowserFrame({ url: project.url });
+    return {
+      framePng: frame.png, frameX: frame.rect.x, frameY: frame.rect.y, frameW: frame.rect.w, frameH: frame.rect.h,
+      introPng: renderIntroCard({ brandName, tagline, color }),
+      outroPng: renderOutroCard({ brandName, url: project.url, color }),
+      introSec: 2.6, outroSec: 2.6,
+    };
+  };
   // Product Brain: les en produkt-PDF (one-pager) inn i AI-konteksten.
   const [docBusy, setDocBusy] = useState(false);
   const pickProductDoc = async () => {
@@ -209,6 +226,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         onProgress: (m, p) => { setDemoVidMsg(m); setDemoVidPct(p); },
         onScene: (index, total) => setDemoVidScene({ index, total }),
         onShots: (shots) => setProjectField('scanShots', shots),
+        finalize: buildFinalize(),
       });
       setDemoVidResult(out);
       setDemoVidMsg('✓ Ferdig demo klar');
@@ -240,6 +258,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         onProgress: (m, p) => { setDemoVidMsg(m); setDemoVidPct(p); },
         onScene: (index, total) => setDemoVidScene({ index, total }),
         onShots: (shots) => setProjectField('scanShots', shots),
+        finalize: buildFinalize(),
       });
       setDemoVidResult(out); setDemoVidMsg('✓ Ferdig demo klar'); void systemOpen(out).catch(() => {});
     } catch (e) {
@@ -876,6 +895,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               const demoVidShot = demoVidScene ? pickShot(project.scanShots, (scenes[demoVidScene.index]?.startScrollPct ?? 0) / 100) : null;
               const demoVidBlock = (
                 <>
+                  {!demoVidBusy && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, marginTop: 8, cursor: 'pointer' }}
+                      title="Legg på branded intro/outro + nettleser-ramme rundt videoen">
+                      <input type="checkbox" checked={brandedOutput} onChange={(e) => setBrandedOutput(e.target.checked)} />
+                      Med intro + nettleser-ramme
+                    </label>
+                  )}
                   {demoVidBusy && (
                     <div style={{ marginTop: 8 }}>
                       <div style={{ height: 5, background: C.line, borderRadius: 3, overflow: 'hidden' }}>
