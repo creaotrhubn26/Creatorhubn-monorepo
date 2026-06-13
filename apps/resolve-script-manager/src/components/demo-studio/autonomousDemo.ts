@@ -8,7 +8,8 @@
  *
  * Ingen menneskelig opptak. Krever Playwright satt opp + ffmpeg + macOS `say`.
  */
-import { synthesizeTts, runPlaywrightDemo, onScriptEvent, muxDemoVideo, playwrightStatus, setupPlaywright, playwrightCaptureShots, type DemoFinalizeOpts } from '../../api';
+import { synthesizeTts, ttsFromAudio, runPlaywrightDemo, onScriptEvent, muxDemoVideo, playwrightStatus, setupPlaywright, playwrightCaptureShots, type DemoFinalizeOpts } from '../../api';
+import { ttsProxy } from '../../services/claudeProxyService';
 import { buildAutonomousScript } from './demoStudioExports';
 import type { DemoProject } from './demoStudioModel';
 
@@ -64,7 +65,17 @@ export async function runAutonomousDemo(
     const text = (scenes[i].narration || '').trim();
     if (!text) { audio.push(null); continue; }
     onProgress(`Voiceover ${i + 1}/${scenes.length}…`, 5 + Math.round((i / scenes.length) * 35));
-    audio.push(await synthesizeTts(project.id, scenes[i].id, text, voice, elevenKey, elevenVoiceId).catch(() => null));
+    // Stemme-prioritet: lokal ElevenLabs-nøkkel → sentral proxy (ElevenLabs på
+    // server) → on-device «Nora». Faller alltid trygt nedover ved feil.
+    let a: { path: string; durationSec: number } | null = null;
+    if (elevenKey) {
+      a = await synthesizeTts(project.id, scenes[i].id, text, voice, elevenKey, elevenVoiceId).catch(() => null);
+    } else {
+      const mp3 = await ttsProxy(text, elevenVoiceId).catch(() => null);
+      if (mp3) a = await ttsFromAudio(project.id, scenes[i].id, mp3).catch(() => null);
+    }
+    if (!a) a = await synthesizeTts(project.id, scenes[i].id, text, voice).catch(() => null);
+    audio.push(a);
   }
   // Dvel-tid per scene = narration-lengde (+ litt pust), min 1,5 s
   const dwellsMs = scenes.map((s, i) =>

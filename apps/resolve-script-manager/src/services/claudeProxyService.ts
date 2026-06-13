@@ -72,6 +72,32 @@ export function isAiConnected(): boolean {
   return !!getBearer();
 }
 
+/**
+ * Tekst-til-tale via backend-proxyen (ElevenLabs-nøkkelen ligger på serveren).
+ * Returnerer base64 mp3 (uten dataURL-prefiks), eller null hvis ikke innlogget /
+ * proxy utilgjengelig (caller faller da tilbake til on-device «Nora»).
+ */
+export async function ttsProxy(text: string, voiceId?: string): Promise<string | null> {
+  const bearer = getBearer();
+  if (!bearer || !text.trim()) return null;
+  try {
+    const res = await fetch(`${getBaseUrl()}/tts`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ text, ...(voiceId ? { voiceId } : {}) }),
+    });
+    if (!res.ok) return null;
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (!buf.length) return null;
+    let bin = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < buf.length; i += chunk) bin += String.fromCharCode(...buf.subarray(i, i + chunk));
+    return btoa(bin);
+  } catch {
+    return null;
+  }
+}
+
 export const claudeProxyService = {
   async send(opts: {
     systemPrompt: string;

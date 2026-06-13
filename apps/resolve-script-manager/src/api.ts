@@ -139,6 +139,10 @@ export async function stopScreenRecord(sessionId: string): Promise<string> {
 export async function synthesizeTts(projectId: string, sceneId: string, text: string, voice?: string, elevenKey?: string, elevenVoiceId?: string): Promise<{ path: string; durationSec: number }> {
   return invoke<{ path: string; durationSec: number }>("synthesize_tts", { projectId, sceneId, text, voice, elevenKey, elevenVoiceId });
 }
+/** Konverter ferdig TTS-lyd (base64 mp3 fra proxyen) → m4a + varighet. */
+export async function ttsFromAudio(projectId: string, sceneId: string, audioB64: string): Promise<{ path: string; durationSec: number }> {
+  return invoke<{ path: string; durationSec: number }>("tts_from_audio", { projectId, sceneId, audioB64 });
+}
 export interface DemoFinalizeOpts {
   framePng?: string; frameX?: number; frameY?: number; frameW?: number; frameH?: number;
   introPng?: string; outroPng?: string; introSec?: number; outroSec?: number;
