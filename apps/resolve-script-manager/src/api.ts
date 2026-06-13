@@ -149,6 +149,11 @@ export async function extractPdfText(path: string): Promise<string> {
   return invoke<string>("extract_pdf_text", { path });
 }
 
+/** Åpne en fil med systemets standard-app (pålitelig for vilkårlige stier). */
+export async function systemOpen(path: string): Promise<void> {
+  return invoke<void>("system_open", { path });
+}
+
 /** Skriv ren tekst (f.eks. .srt) til en bruker-valgt sti. Returnerer stien. */
 export async function demoWriteText(path: string, contents: string): Promise<string> {
   return invoke<string>("demo_write_text", { path, contents });

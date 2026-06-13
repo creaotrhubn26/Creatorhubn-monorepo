@@ -946,6 +946,7 @@ pub fn run() {
             capture_sources::stop_screen_record,
             autonomous_demo::synthesize_tts,
             autonomous_demo::mux_demo_video,
+            autonomous_demo::system_open,
             product_brain::extract_pdf_text,
             photoshop_bridge::photoshop_send_command,
             photoshop_bridge::photoshop_status,

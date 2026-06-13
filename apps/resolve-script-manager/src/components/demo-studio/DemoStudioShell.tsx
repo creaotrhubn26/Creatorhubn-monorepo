@@ -32,8 +32,7 @@ import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, completeDemoFlow, fetchSiteContext, analyzeSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, suggestVisualBeats, type CommandResult, type VisualBeat, type SiteUnderstanding } from './demoStudioAI';
-import { executeScript, playwrightStatus, playwrightCaptureShots, extractPdfText } from '../../api';
-import { openPath } from '@tauri-apps/plugin-opener';
+import { executeScript, playwrightStatus, playwrightCaptureShots, extractPdfText, systemOpen } from '../../api';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { runAutonomousDemo } from './autonomousDemo';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
@@ -213,7 +212,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       });
       setDemoVidResult(out);
       setDemoVidMsg('✓ Ferdig demo klar');
-      void openPath(out).catch(() => {});
+      void systemOpen(out).catch(() => {});
     } catch (e) {
       setDemoVidMsg('Feil: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -242,7 +241,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         onScene: (index, total) => setDemoVidScene({ index, total }),
         onShots: (shots) => setProjectField('scanShots', shots),
       });
-      setDemoVidResult(out); setDemoVidMsg('✓ Ferdig demo klar'); void openPath(out).catch(() => {});
+      setDemoVidResult(out); setDemoVidMsg('✓ Ferdig demo klar'); void systemOpen(out).catch(() => {});
     } catch (e) {
       setDemoVidMsg('Feil: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -898,7 +897,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   {demoVidMsg && <div style={{ fontSize: 11, color: demoVidMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 6 }}>{demoVidMsg}</div>}
                   {demoVidResult && !demoVidBusy && (
                     <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8 }}
-                      onClick={() => void openPath(demoVidResult).catch(() => {})}>▶ Åpne ferdig video</button>
+                      onClick={() => void systemOpen(demoVidResult).catch(() => {})}>▶ Åpne ferdig video</button>
                   )}
                 </>
               );
