@@ -192,6 +192,29 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       setDemoVidBusy(false);
     }
   };
+  /** Ett klikk fra URL: forstå → generér scener → autonom render → ferdig video. */
+  const runOneClickDemo = async () => {
+    if (!project || demoVidBusy || directorBusy) return;
+    if (!aiReady) { setShowSignIn(true); return; }
+    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidPct(0); setDemoVidMsg('Forstår + genererer scener…');
+    try {
+      // 1) Generér scener hvis vi ikke har dem (generateDemo forstår automatisk først).
+      let proj = useDemoStudio.getState().project!;
+      const hasScenes = proj.scenes.some((s) => !!s.narration?.trim());
+      if (!hasScenes) {
+        await generateDemo();
+        proj = useDemoStudio.getState().project!; // fersk, etter replaceScenes
+      }
+      // 2) Autonom render av de (nye) scenene.
+      const voice = proj.language === 'en' ? undefined : 'Nora';
+      const out = await runAutonomousDemo(proj, { voice, onProgress: (m, p) => { setDemoVidMsg(m); setDemoVidPct(p); } });
+      setDemoVidResult(out); setDemoVidMsg('✓ Ferdig demo klar'); void openPath(out).catch(() => {});
+    } catch (e) {
+      setDemoVidMsg('Feil: ' + (e as Error).message);
+    } finally {
+      setDemoVidBusy(false);
+    }
+  };
   const pickAudience = (a: string) => {
     const m = project?.scriptMeta ?? { tone: 'professional' as const, audience: '', language: 'Norsk', length: 'medium' as const };
     setProjectField('scriptMeta', { ...m, audience: a });
@@ -811,6 +834,23 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
               ) : null;
               const replyLine = cmdReply ? <div style={{ fontSize: 11.5, color: cmdReply.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginBottom: 8 }}>{cmdReply}</div> : null;
               const directorLine = directorMsg ? <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div> : null;
+              // Delt progress/resultat for autonom ferdig demo (brukt i Beskriv + Forfin).
+              const demoVidBlock = (
+                <>
+                  {demoVidBusy && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ height: 5, background: C.line, borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${demoVidPct}%`, background: C.accent, transition: 'width .3s' }} />
+                      </div>
+                    </div>
+                  )}
+                  {demoVidMsg && <div style={{ fontSize: 11, color: demoVidMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 6 }}>{demoVidMsg}</div>}
+                  {demoVidResult && !demoVidBusy && (
+                    <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8 }}
+                      onClick={() => void openPath(demoVidResult).catch(() => {})}>▶ Åpne ferdig video</button>
+                  )}
+                </>
+              );
               return (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
@@ -841,6 +881,16 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                       </button>
                       <div style={{ fontSize: 10.5, color: C.inkFaint, marginTop: 7, lineHeight: 1.4 }}>AI leser siden og foreslår produkt-vinkel + målgruppe — lager ingenting ennå.</div>
                       {directorLine}
+                      {/* Ett-klikk: hele veien fra URL til ferdig narrert video */}
+                      <div style={{ borderTop: `1px dashed ${C.line}`, margin: '12px 0 0', paddingTop: 12 }}>
+                        <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', borderColor: C.accent, color: C.accent, fontWeight: 600, opacity: demoVidBusy || directorBusy ? 0.6 : 1 }}
+                          disabled={demoVidBusy || directorBusy} onClick={() => void runOneClickDemo()}
+                          title="Forstå → generér scener → kjør nettsiden + narrér → ferdig video, alt i ett">
+                          {demoVidBusy ? 'Lager ferdig demo…' : '✨ Lag ferdig demo fra URL'}
+                        </button>
+                        <div style={{ fontSize: 10, color: C.inkFaint, marginTop: 5, lineHeight: 1.4 }}>Helautonomt: AI forstår, skriver manus, kjører nettsiden, narrerer og leverer en ferdig video — uten at du tar opp noe.</div>
+                        {demoVidBlock}
+                      </div>
                       <div style={{ marginTop: 12 }}>
                         <div onClick={() => setShowAdvanced((v) => !v)} style={{ fontSize: 10.5, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
                           <span style={{ transition: 'transform .15s', transform: showAdvanced ? 'rotate(90deg)' : 'none' }}>▸</span> Avansert
@@ -925,18 +975,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                         title="AI kjører nettsiden, narrerer med voiceover og leverer en ferdig video — uten at du tar opp noe">
                         {demoVidBusy ? 'Lager ferdig demo…' : '✨ Generér ferdig demo (autonom)'}
                       </button>
-                      {demoVidBusy && (
-                        <div style={{ marginTop: 8 }}>
-                          <div style={{ height: 5, background: C.line, borderRadius: 3, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${demoVidPct}%`, background: C.accent, transition: 'width .3s' }} />
-                          </div>
-                        </div>
-                      )}
-                      {demoVidMsg && <div style={{ fontSize: 11, color: demoVidMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 6 }}>{demoVidMsg}</div>}
-                      {demoVidResult && !demoVidBusy && (
-                        <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8 }}
-                          onClick={() => void openPath(demoVidResult).catch(() => {})}>▶ Åpne ferdig video</button>
-                      )}
+                      {demoVidBlock}
                       <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: directorBusy ? 0.6 : 1 }}
                         disabled={directorBusy} onClick={() => void generateDemo()}>{directorBusy ? 'Lager…' : '↻ Generér scener på nytt'}</button>
                       {directorLine}
