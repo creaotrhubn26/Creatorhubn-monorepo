@@ -1,6 +1,6 @@
 [package]
 name = "resolve-script-manager"
-version = "0.2.44"
+version = "0.2.45"
 description = "The Role Room Post Agent — DaVinci Resolve pipeline automation"
 authors = ["The Role Room"]
 edition = "2024"
