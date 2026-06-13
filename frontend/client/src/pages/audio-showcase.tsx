@@ -132,6 +132,13 @@ export default function AudioShowcasePage() {
   }, []);
   React.useEffect(() => { void loadProject(); }, [loadProject]);
   React.useEffect(() => { void loadVersion(currentVid); }, [currentVid, loadVersion]);
+  // Sanntid: poll gjeldende versjon hvert 5. sek så nye kommentarer/seksjoner fra
+  // andre anmeldere dukker opp live (uten å forstyrre lokal skriving/avspilling).
+  React.useEffect(() => {
+    if (!currentVid) return;
+    const t = setInterval(() => { void loadVersion(currentVid); }, 5000);
+    return () => clearInterval(t);
+  }, [currentVid, loadVersion]);
 
   const currentVersion = versions.find((v) => v.id === currentVid);
   const prevVersion = React.useMemo(() => {

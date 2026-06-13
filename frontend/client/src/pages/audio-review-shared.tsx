@@ -49,7 +49,10 @@ export default function AudioReviewSharedPage() {
 
   React.useEffect(() => {
     if (!token || !currentVid) return;
-    apiRequest(`/api/audio-review-shared/${token}/version/${currentVid}`).then((d: any) => setDetail({ comments: d.comments || [], sections: d.sections || [] })).catch(() => {});
+    const fetchDetail = () => apiRequest(`/api/audio-review-shared/${token}/version/${currentVid}`).then((d: any) => setDetail({ comments: d.comments || [], sections: d.sections || [] })).catch(() => {});
+    void fetchDetail();
+    const t = setInterval(() => { void fetchDetail(); }, 5000); // sanntid: live kommentarer
+    return () => clearInterval(t);
   }, [token, currentVid]);
 
   const addComment = async (timecode: number, body: string, category: string) => {
