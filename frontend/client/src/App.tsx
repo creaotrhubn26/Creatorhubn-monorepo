@@ -230,6 +230,7 @@ const DemoAnimaticPage = React.lazy(() => import('@/components/role-room/demo/De
 const PostAgentLinkPage = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
 const MockupVideoStudioPage = React.lazy(() => import('@/components/role-room/post-agent/mockup-video/MockupVideoStudio'));
 const AudioShowcasePage = React.lazy(() => import('@/pages/audio-showcase'));
+const AudioReviewInvitePage = React.lazy(() => import('@/pages/audio-review-invite'));
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
@@ -759,6 +760,7 @@ function App() {
                   <Route path="/photo-showcase" component={PhotoShowcaseRouteWrapper as React.ComponentType<any>} />
                   <Route path="/video-showcase" component={VideoShowcaseRouteWrapper as React.ComponentType<any>} />
                   <Route path="/showcase/music_producer" component={MusicShowcaseRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/audio-review/invite/:token" component={AudioReviewInvitePage as React.ComponentType<any>} />
                   <Route path="/audio-review/:projectId" component={AudioShowcasePage as React.ComponentType<any>} />
                   <Route path="/audio-review" component={AudioShowcasePage as React.ComponentType<any>} />
                   <Route
