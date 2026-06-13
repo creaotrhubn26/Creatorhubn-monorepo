@@ -22,6 +22,7 @@ import {
   TIER_PRICING_NOK,
   type LeadMapTier,
 } from "./lead-map-entitlements-service.js";
+import { autoPopulateLeadMap } from "./lead-map-discovery-populate.js";
 import Stripe from "stripe";
 import {
   generateLeadPitch,
@@ -629,6 +630,49 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "trial_failed", detail: String(err) });
+    }
+  });
+
+  // POST /agent/configs/:configId/lead-map/auto-populate — Site Discovery → import lookalike-leads
+  app.post("/api/role-room/agent/configs/:configId/lead-map/auto-populate", async (req, res) => {
+    const session = getUser(req, activeSessions);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    if (!await verifyConfigAccess(req.params.configId, session.userId)) {
+      return res.status(403).json({ error: "ingen_tilgang_til_config" });
+    }
+    const e = await requireEntitlement(req, res, req.params.configId);
+    if (!e) return;
+
+    const body = (req.body ?? {}) as {
+      clientWebsiteUrl?: string;
+      city?: string;
+      maxQueries?: number;
+      maxImportsPerQuery?: number;
+    };
+
+    // Hent URL fra config hvis ikke i body
+    let websiteUrl = body.clientWebsiteUrl;
+    if (!websiteUrl) {
+      const c = await pool.query<{ client_website_url: string | null }>(
+        `SELECT client_website_url FROM client_ads_configs WHERE id = $1::uuid`,
+        [req.params.configId],
+      );
+      websiteUrl = c.rows[0]?.client_website_url ?? undefined;
+    }
+    if (!websiteUrl) return res.status(400).json({ error: "mangler_client_website_url" });
+
+    try {
+      const result = await autoPopulateLeadMap(pool, {
+        configId: req.params.configId,
+        producerUserId: session.userId,
+        clientWebsiteUrl: websiteUrl,
+        city: body.city,
+        maxQueries: body.maxQueries,
+        maxImportsPerQuery: body.maxImportsPerQuery,
+      });
+      return res.json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "auto_populate_failed", detail: String(err) });
     }
   });
 
