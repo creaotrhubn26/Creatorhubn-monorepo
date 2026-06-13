@@ -134,6 +134,34 @@ pub async fn synthesize_tts(
     Ok(TtsResult { path: m4a.to_string_lossy().to_string(), duration_sec: probe_duration(&ffprobe, &m4a) })
 }
 
+/// Konverter ferdig narration-lyd (mp3/bytes fra TTS-proxy, base64) → m4a +
+/// varighet. Brukes når frontend henter stemmen via backend-proxyen.
+#[tauri::command]
+pub async fn tts_from_audio(
+    app: AppHandle,
+    project_id: String,
+    scene_id: String,
+    audio_b64: String,
+) -> Result<TtsResult, String> {
+    use base64::Engine;
+    let ffmpeg = find_ffmpeg().ok_or("ffmpeg ikke funnet")?;
+    let ffprobe = find_ffprobe();
+    let dir = work_dir(&app, &project_id, "demo-tts")?;
+    let safe_scene: String = scene_id.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+    let src = dir.join(format!("{}.src", safe_scene));
+    let m4a = dir.join(format!("{}.m4a", safe_scene));
+    let data = audio_b64.rsplit(',').next().unwrap_or(&audio_b64);
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.trim()).map_err(|e| format!("base64: {e}"))?;
+    if bytes.is_empty() { return Err("tom lyd".into()); }
+    std::fs::write(&src, &bytes).map_err(|e| format!("skriv lyd: {e}"))?;
+    let ok = Command::new(&ffmpeg)
+        .args(["-y", "-i", &src.to_string_lossy(), "-c:a", "aac", "-b:a", "160k", &m4a.to_string_lossy()])
+        .status().map(|s| s.success()).unwrap_or(false);
+    let _ = std::fs::remove_file(&src);
+    if !ok { return Err("ffmpeg konvertering feilet".into()); }
+    Ok(TtsResult { path: m4a.to_string_lossy().to_string(), duration_sec: probe_duration(&ffprobe, &m4a) })
+}
+
 /// Åpne en fil/sti med systemets standard-app (`/usr/bin/open`). Mer pålitelig
 /// enn opener-pluginen for vilkårlige stier (f.eks. ~/Movies/Post Agent/).
 #[tauri::command]

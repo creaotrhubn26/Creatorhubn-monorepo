@@ -745,6 +745,47 @@ Tidspunkt: ${new Date().toISOString()}
     }
   });
 
+  // ---- Tekst-til-tale (ElevenLabs) ----
+  //
+  // POST /tts — proxer mot ElevenLabs så API-nøkkelen blir på SERVEREN (aldri i
+  // den distribuerte appen). Brukes av Post Agent Demo Studio til autonom demo-
+  // voiceover. Returnerer audio/mpeg (mp3).
+  router.post(
+    '/tts',
+    postAgentAuth,
+    aiRateLimit({ windowMs: 60_000, max: 90, label: 'post-agent-tts' }),
+    async (req: Request, res: Response): Promise<void> => {
+      const key = process.env.ELEVENLABS_API_KEY?.trim();
+      if (!key) {
+        res.status(503).json({ error: 'tts_not_configured', detail: 'ELEVENLABS_API_KEY ikke satt på serveren.' });
+        return;
+      }
+      const text = String(req.body?.text ?? '').trim();
+      if (!text) { res.status(400).json({ error: 'missing_text' }); return; }
+      if (text.length > 1500) { res.status(400).json({ error: 'text_too_long' }); return; }
+      const voiceId = (String(req.body?.voiceId ?? '').trim()) || '21m00Tcm4TlvDq8ikWAM';
+      const modelId = (String(req.body?.modelId ?? '').trim()) || 'eleven_multilingual_v2';
+      try {
+        const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
+          method: 'POST',
+          headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+          body: JSON.stringify({ text, model_id: modelId }),
+        });
+        if (!r.ok) {
+          const txt = await r.text();
+          res.status(r.status).json({ error: 'tts_provider_failed', status: r.status, detail: txt.slice(0, 400) });
+          return;
+        }
+        const buf = Buffer.from(await r.arrayBuffer());
+        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('Content-Length', String(buf.length));
+        res.send(buf);
+      } catch (err) {
+        res.status(500).json({ error: 'tts_provider_error', detail: (err as Error).message });
+      }
+    },
+  );
+
   // ---- Creator Profile ----
   //
   // Per-bruker preferanser + learnings som Creative Editor auto-anvender
