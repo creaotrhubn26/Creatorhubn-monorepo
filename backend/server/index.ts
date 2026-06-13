@@ -45617,6 +45617,20 @@ app.post("/api/upload/audio", audioUpload.single("file"), async (req, res) => {
   }
 });
 
+// Generisk bilde-opplasting (profilbilde/cover for Audio Showcase) — lagrer +
+// serverer same-origin. Erstatter data-URL-inlining (mindre payload/rad-bloat).
+app.post("/api/upload/image", showcaseMediaUpload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: "Missing image file" });
+    if (!String(req.file.mimetype || "").startsWith("image/")) return res.status(400).json({ success: false, error: "Not an image" });
+    const stored = await storeAudioFile(req.file.buffer, req.file.originalname || "image", req.file.mimetype);
+    res.json({ success: true, url: stored.url });
+  } catch (error) {
+    console.error("Image upload error:", error);
+    res.status(500).json({ success: false, error: "Failed to upload image" });
+  }
+});
+
 
 // /api/audio-enhancement/* + /api/audio-restoration/restore (5 endpoints
 // — process, download, auto-enhance, ducking-presets, restore) →
