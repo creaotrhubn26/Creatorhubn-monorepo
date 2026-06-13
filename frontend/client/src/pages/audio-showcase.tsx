@@ -27,7 +27,7 @@ import {
 import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
-import ComboField, { ROLE_OPTIONS, INSTRUMENT_OPTIONS } from '@/components/universal/showcase/ComboField';
+import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBUTION_OPTIONS } from '@/components/universal/showcase/ComboField';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
@@ -593,7 +593,7 @@ const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name:
 const MemberProfileDialog: React.FC<{ member: any; externalTrackId?: string; onClose: () => void; onSave: (id: string, patch: Record<string, any>) => Promise<void>; onDelete: (id: string) => Promise<void> }> = ({ member, externalTrackId, onClose, onSave, onDelete }) => {
   const [f, setF] = React.useState<any>({ links: {} });
   const [busy, setBusy] = React.useState(false); const [copied, setCopied] = React.useState(false); const [boothCopied, setBoothCopied] = React.useState(false);
-  React.useEffect(() => { if (member) setF({ name: member.name || '', role: member.role || '', instrument: member.instrument || '', email: member.email || '', phone: member.phone || '', bio: member.bio || '', avatarUrl: member.avatar_url || '', easeverseAccess: Boolean(member.easeverse_access), links: (member.links && !Array.isArray(member.links)) ? member.links : {} }); }, [member]);
+  React.useEffect(() => { if (member) setF({ name: member.name || '', role: member.role || '', instrument: member.instrument || '', email: member.email || '', phone: member.phone || '', bio: member.bio || '', avatarUrl: member.avatar_url || '', easeverseAccess: Boolean(member.easeverse_access), links: (member.links && !Array.isArray(member.links)) ? member.links : {}, contributions: Array.isArray(member.contributions) ? member.contributions : [] }); }, [member]);
   if (!member) return null;
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setF((p: any) => ({ ...p, [k]: e.target.value }));
   const setLink = (k: string, v: string) => setF((p: any) => ({ ...p, links: { ...p.links, [k]: v } }));
@@ -611,6 +611,7 @@ const MemberProfileDialog: React.FC<{ member: any; externalTrackId?: string; onC
         <Stack spacing={1.5}>
           <TextField label="Navn" value={f.name} onChange={set('name')} size="small" sx={fieldSx} />
           <Stack direction="row" spacing={1.5}><ComboField label="Rolle" options={ROLE_OPTIONS} value={f.role || ''} onChange={(v) => setF((p: any) => ({ ...p, role: v }))} /><ComboField label="Instrument" options={INSTRUMENT_OPTIONS} value={f.instrument || ''} onChange={(v) => setF((p: any) => ({ ...p, instrument: v }))} /></Stack>
+          <MultiComboField label="Bidrag (hvem gjør hva)" options={CONTRIBUTION_OPTIONS} value={f.contributions || []} onChange={(v) => setF((p: any) => ({ ...p, contributions: v }))} />
           {isVocalist && (
             <Box sx={{ border: `1px solid rgba(255,107,53,0.4)`, borderRadius: '10px', p: 1.25, bgcolor: 'rgba(255,107,53,0.07)' }}>
               <FormControlLabel sx={{ m: 0 }}

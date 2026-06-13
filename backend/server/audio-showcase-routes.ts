@@ -477,6 +477,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     }
     if (typeof req.body?.easeverseAccess === "boolean") { params.push(req.body.easeverseAccess); sets.push(`easeverse_access = $${params.length}`); }
     if (req.body?.links && typeof req.body.links === "object") { params.push(JSON.stringify(req.body.links).slice(0, 4000)); sets.push(`links = $${params.length}::jsonb`); }
+    if (Array.isArray(req.body?.contributions)) { params.push(JSON.stringify(req.body.contributions.filter((x: unknown) => typeof x === "string").slice(0, 30))); sets.push(`contributions = $${params.length}::jsonb`); }
     if (!sets.length) return res.status(400).json({ error: "nothing_to_update" });
     sets.push("invite_status = CASE WHEN invite_status = 'pending' THEN 'active' ELSE invite_status END");
     sets.push("profile_completed_at = COALESCE(profile_completed_at, NOW())");
@@ -499,7 +500,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     try {
       const r = await pool.query(
         `SELECT m.id, m.name, m.role, m.instrument, m.email, m.phone, m.bio, m.avatar_color, m.avatar_url, m.invite_status,
-                m.easeverse_access, m.links, m.profile_completed_at, p.title AS project_title, p.band_name,
+                m.easeverse_access, m.links, m.contributions, m.profile_completed_at, p.title AS project_title, p.band_name,
                 COALESCE(p.external_track_id, p.easeverse_track_id) AS external_track_id,
                 (SELECT name FROM audio_review_members WHERE project_id = m.project_id AND is_owner = TRUE LIMIT 1) AS inviter_name
            FROM audio_review_members m JOIN audio_review_projects p ON p.id = m.project_id
@@ -522,12 +523,13 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       const r = await pool.query(
         `UPDATE audio_review_members SET name = $2, role = COALESCE($3, role), instrument = $4, email = $5, phone = $6, bio = $7,
            avatar_url = COALESCE($8, avatar_url), easeverse_access = COALESCE($9, easeverse_access), links = COALESCE($10::jsonb, links),
-           invite_status = 'active', profile_completed_at = NOW()
+           contributions = COALESCE($11::jsonb, contributions), invite_status = 'active', profile_completed_at = NOW()
           WHERE invite_token = $1 AND (invite_expires_at IS NULL OR invite_expires_at > NOW()) RETURNING id, name, role, instrument, invite_status, easeverse_access`,
         [token, name, str(req.body?.role, 80) || null, str(req.body?.instrument, 120) || null,
          str(req.body?.email, 200) || null, str(req.body?.phone, 60) || null, str(req.body?.bio, 2000) || null,
          str(req.body?.avatarUrl, 3000000) || null, typeof req.body?.easeverseAccess === "boolean" ? req.body.easeverseAccess : null,
-         req.body?.links && typeof req.body.links === "object" ? JSON.stringify(req.body.links).slice(0, 4000) : null]);
+         req.body?.links && typeof req.body.links === "object" ? JSON.stringify(req.body.links).slice(0, 4000) : null,
+         Array.isArray(req.body?.contributions) ? JSON.stringify(req.body.contributions.filter((x: unknown) => typeof x === "string").slice(0, 30)) : null]);
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       return res.json({ ok: true, member: r.rows[0] });
     } catch (e) {
@@ -832,8 +834,10 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         `SELECT id, status, total_percentage FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
       if (ss.rowCount === 0) return res.json({ exists: false });
       const c = await pool.query(
-        `SELECT id, name, email, role, percentage FROM split_sheet_contributors WHERE split_sheet_id=$1 ORDER BY order_index ASC`, [ss.rows[0].id]);
-      return res.json({ exists: true, splitSheetId: ss.rows[0].id, status: ss.rows[0].status, totalPercentage: Number(ss.rows[0].total_percentage), contributors: c.rows, url: `/crm?splitSheet=${ss.rows[0].id}` });
+        `SELECT id, name, email, role, percentage, signed_at, custom_fields FROM split_sheet_contributors WHERE split_sheet_id=$1 ORDER BY order_index ASC`, [ss.rows[0].id]);
+      const signedCount = c.rows.filter((r) => r.signed_at).length;
+      return res.json({ exists: true, splitSheetId: ss.rows[0].id, status: ss.rows[0].status, totalPercentage: Number(ss.rows[0].total_percentage),
+        contributors: c.rows, signedCount, allSigned: signedCount === c.rowCount && c.rowCount > 0, url: `/crm?splitSheet=${ss.rows[0].id}` });
     } catch (e) {
       if (isMissingTable(e)) return res.json({ exists: false });
       return res.status(500).json({ error: "split_sheet_read_failed" });
@@ -867,6 +871,28 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     }
   });
 
+  // Signér/godkjenn en part på splittarket (signatur).
+  app.post("/api/audio-showcases/:id/split-sheet/sign", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    const contributorId = str(req.body?.contributorId, 64);
+    const signature = str(req.body?.signature, 200);
+    if (!contributorId || !signature) return res.status(400).json({ error: "contributorId_and_signature_required" });
+    try {
+      const ss = await pool.query(`SELECT id FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
+      if (ss.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const r = await pool.query(
+        `UPDATE split_sheet_contributors SET signed_at = NOW(), signature_data = $3::jsonb, updated_at = NOW()
+          WHERE id = $1::uuid AND split_sheet_id = $2::uuid RETURNING id, name, signed_at`,
+        [contributorId, ss.rows[0].id, JSON.stringify({ name: signature, signedVia: "studio", at: new Date().toISOString() })]);
+      if (r.rowCount === 0) return res.status(404).json({ error: "contributor_not_found" });
+      return res.json({ ok: true, signed: r.rows[0] });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      return res.status(500).json({ error: "sign_failed" });
+    }
+  });
+
   app.post("/api/audio-showcases/:id/split-sheet", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     const id = str(req.params.id, 64);
@@ -876,7 +902,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const project = p.rows[0];
       const m = await pool.query(
-        `SELECT name, email, role FROM audio_review_members WHERE project_id=$1::uuid ORDER BY is_owner DESC, order_index ASC`, [id]);
+        `SELECT name, email, role, contributions FROM audio_review_members WHERE project_id=$1::uuid ORDER BY is_owner DESC, order_index ASC`, [id]);
       const members = m.rows;
       if (members.length === 0) return res.status(409).json({ error: "no_members" });
 
@@ -916,7 +942,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         await pool.query(
           `INSERT INTO split_sheet_contributors (id, split_sheet_id, name, email, role, percentage, order_index, user_id, custom_fields)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
-          [randomUUID(), ssId, mem.name, mem.email || null, mapRole(mem.role), pcts[i], i, null, JSON.stringify({ memberRole: mem.role || null })]); i++;
+          [randomUUID(), ssId, mem.name, mem.email || null, mapRole(mem.role), pcts[i], i, null,
+           JSON.stringify({ memberRole: mem.role || null, contributions: Array.isArray(mem.contributions) ? mem.contributions : [] })]); i++;
       }
       return res.status(201).json({ splitSheetId: ssId, created: true, contributors: members.length, url: `/crm?splitSheet=${ssId}` });
     } catch (e) {
@@ -984,7 +1011,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       if (!ctx) return res.status(404).json({ error: "not_found" });
       const [v, members, tasks] = await Promise.all([
         pool.query(`SELECT * FROM audio_review_versions WHERE project_id = $1::uuid ORDER BY version_number ASC`, [ctx.project_id]),
-        pool.query(`SELECT id, name, role, instrument, avatar_color, avatar_url, is_owner, invite_status FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC`, [ctx.project_id]),
+        pool.query(`SELECT id, name, role, instrument, avatar_color, avatar_url, is_owner, invite_status, contributions FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC`, [ctx.project_id]),
         pool.query(`SELECT * FROM audio_review_tasks WHERE project_id = $1::uuid ORDER BY order_index ASC`, [ctx.project_id]).catch(() => ({ rows: [] })),
       ]);
       let easeverseTrack: any = null;
