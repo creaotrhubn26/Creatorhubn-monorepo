@@ -763,7 +763,7 @@ Tidspunkt: ${new Date().toISOString()}
       const text = String(req.body?.text ?? '').trim();
       if (!text) { res.status(400).json({ error: 'missing_text' }); return; }
       if (text.length > 1500) { res.status(400).json({ error: 'text_too_long' }); return; }
-      const voiceId = (String(req.body?.voiceId ?? '').trim()) || '21m00Tcm4TlvDq8ikWAM';
+      const voiceId = (String(req.body?.voiceId ?? '').trim()) || 'EXAVITQu4vr4xnSDxMaL';
       const modelId = (String(req.body?.modelId ?? '').trim()) || 'eleven_multilingual_v2';
       try {
         const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
