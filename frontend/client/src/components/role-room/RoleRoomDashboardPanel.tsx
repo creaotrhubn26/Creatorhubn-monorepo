@@ -593,12 +593,21 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
 
   // Item 042/366: restore last workspace once, after projects load. Ignore demo
   // projects and only restore if the stored id still exists in the project list.
+  //
+  // 2026-06-13 fix: bare auto-restore hvis URL allerede har ?project=…
+  // ELLER ?surface=project_room (dyplenking inn i et prosjekt). Hvis URL er
+  // ren rot, vis dashboard — ellers blir brukere fast i forrige prosjekt
+  // uten vei tilbake.
   useEffect(() => {
     if (restoreAttemptedRef.current) return;
     if (!projects || projects.length === 0) return;
     restoreAttemptedRef.current = true;
 
     if (selectedProjectId) return;
+    const sp = new URLSearchParams(window.location.search);
+    const wantsProject = !!sp.get('project') || sp.get('surface') === 'project_room';
+    if (!wantsProject) return;
+
     const last = readLastWorkspace();
     if (!last) return;
     const stillExists = projects.some((p) => p.id === last.projectId);
