@@ -16,12 +16,15 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import {
+  generateLeadPitch,
   getLeadById,
   getLeadMapMetrics,
+  importPlaceAsLead,
   listLeadsInBounds,
   listRecentActivities,
   listVisits,
   logVisit,
+  searchPlaces,
   setLeadGeo,
   updateLeadStatus,
   type LeadStatus,
@@ -232,6 +235,73 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.json(metrics);
     } catch (err) {
       return res.status(500).json({ error: "metrics_failed", detail: String(err) });
+    }
+  });
+
+  // POST /leads/:id/generate-pitch — Claude AI pitch
+  app.post("/api/admin-room/lead-map/leads/:id/generate-pitch", async (req: Request, res: Response) => {
+    const session = getUser(req, activeSessions);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const body = (req.body ?? {}) as { serviceFocus?: string };
+    try {
+      const r = await generateLeadPitch(pool, {
+        ownerUserId: session.userId, leadId: req.params.id,
+        serviceFocus: body.serviceFocus,
+      });
+      if (!r) return res.status(503).json({ error: "ai_unavailable_or_lead_not_found" });
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "pitch_failed", detail: String(err) });
+    }
+  });
+
+  // POST /places/search — Google Places search
+  app.post("/api/admin-room/lead-map/places/search", async (req: Request, res: Response) => {
+    const session = getUser(req, activeSessions);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    const body = (req.body ?? {}) as {
+      query?: string; latitude?: number; longitude?: number;
+      radiusMeters?: number; type?: string;
+    };
+    if (!body.query) return res.status(400).json({ error: "mangler_query" });
+
+    try {
+      const r = await searchPlaces(pool, {
+        ownerUserId: session.userId,
+        query: body.query,
+        latitude: body.latitude, longitude: body.longitude,
+        radiusMeters: body.radiusMeters ?? 5000,
+        type: body.type,
+      });
+      if (!r.ok) return res.status(503).json({ error: r.reason });
+      return res.json({ results: r.results });
+    } catch (err) {
+      return res.status(500).json({ error: "places_failed", detail: String(err) });
+    }
+  });
+
+  // POST /places/import — importer ett Places-resultat som lead
+  app.post("/api/admin-room/lead-map/places/import", async (req: Request, res: Response) => {
+    const session = getUser(req, activeSessions);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    const body = (req.body ?? {}) as {
+      place?: Parameters<typeof importPlaceAsLead>[1]['place'];
+      leadCategory?: string;
+    };
+    if (!body.place?.placeId) return res.status(400).json({ error: "mangler_place" });
+
+    try {
+      const r = await importPlaceAsLead(pool, {
+        ownerUserId: session.userId,
+        place: body.place,
+        leadCategory: body.leadCategory,
+      });
+      if (!r.ok) return res.status(r.reason === 'already_imported' ? 409 : 500).json(r);
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "import_failed", detail: String(err) });
     }
   });
 }
