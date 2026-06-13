@@ -636,3 +636,121 @@ export async function updateRenewalStatus(
   );
   return { ok: true };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Stripe-webhook-integrasjon
+// ─────────────────────────────────────────────────────────────────────
+
+interface StripeSubscriptionLike {
+  id: string;
+  customer?: string | { id?: string };
+  status?: string;
+  current_period_end?: number;
+  cancel_at_period_end?: boolean;
+  items?: {
+    data?: Array<{
+      price?: {
+        id?: string;
+        nickname?: string | null;
+        unit_amount?: number | null;
+        recurring?: { interval?: string };
+        product?: string | { name?: string };
+      };
+    }>;
+  };
+}
+
+async function findUserIdFromStripeCustomer(
+  pool: Pool, stripeCustomerId: string,
+): Promise<string | null> {
+  if (!stripeCustomerId) return null;
+  const j = await pool.query<{ id: string }>(
+    `SELECT id FROM users
+     WHERE subscription->>'stripeCustomerId' = $1
+        OR subscription->>'customerId' = $1
+     LIMIT 1`,
+    [stripeCustomerId],
+  );
+  if (j.rowCount && j.rowCount > 0) return j.rows[0].id;
+  try {
+    const b = await pool.query<{ user_id: string }>(
+      `SELECT user_id FROM stripe_customers WHERE stripe_customer_id = $1 LIMIT 1`,
+      [stripeCustomerId],
+    );
+    if (b.rowCount && b.rowCount > 0) return b.rows[0].user_id;
+  } catch {
+    // tabell finnes ikke — ignorer
+  }
+  return null;
+}
+
+/** Upsert renewal-rad fra Stripe-subscription. Trygt fra webhook (no-throw). */
+export async function upsertRenewalFromStripeSubscription(
+  pool: Pool, subscription: StripeSubscriptionLike,
+): Promise<{ ok: boolean; userId: string | null; renewalId: string | null; reason?: string }> {
+  try {
+    const customerId = typeof subscription.customer === 'string'
+      ? subscription.customer
+      : subscription.customer?.id ?? '';
+    if (!customerId) return { ok: false, userId: null, renewalId: null, reason: 'no_customer_id' };
+
+    const userId = await findUserIdFromStripeCustomer(pool, customerId);
+    if (!userId) return { ok: false, userId: null, renewalId: null, reason: 'user_not_found' };
+    if (!subscription.current_period_end) {
+      return { ok: false, userId, renewalId: null, reason: 'no_period_end' };
+    }
+
+    const renewalAt = new Date(subscription.current_period_end * 1000);
+    const item = subscription.items?.data?.[0];
+    const price = item?.price;
+    const planName = price?.nickname
+      || (typeof price?.product === 'object' ? price.product?.name : null)
+      || price?.id
+      || null;
+    const arpuNok = price?.unit_amount ? price.unit_amount / 100 : null;
+
+    let renewalStatus = 'pending';
+    if (subscription.status === 'canceled') renewalStatus = 'churned';
+    else if (subscription.cancel_at_period_end) renewalStatus = 'at_risk';
+    else if (subscription.status === 'past_due' || subscription.status === 'unpaid') renewalStatus = 'at_risk';
+
+    const r = await pool.query<{ id: string }>(
+      `INSERT INTO customer_renewal_pipeline (
+         user_id, stripe_subscription_id, current_plan_name, current_arpu_nok,
+         renewal_at, renewal_status
+       ) VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (user_id, renewal_at) DO UPDATE SET
+         stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+         current_plan_name = EXCLUDED.current_plan_name,
+         current_arpu_nok = EXCLUDED.current_arpu_nok,
+         renewal_status = CASE
+           WHEN customer_renewal_pipeline.renewal_status IN ('engaged','committed','won','lost')
+             THEN customer_renewal_pipeline.renewal_status
+           ELSE EXCLUDED.renewal_status
+         END,
+         updated_at = NOW()
+       RETURNING id::text`,
+      [userId, subscription.id, planName, arpuNok, renewalAt, renewalStatus],
+    );
+    return { ok: true, userId, renewalId: r.rows[0]?.id ?? null };
+  } catch (err) {
+    console.warn('[customer-success] upsertRenewalFromStripe feilet', { err: (err as Error).message });
+    return { ok: false, userId: null, renewalId: null, reason: 'exception' };
+  }
+}
+
+export async function markRenewalChurnedForStripeSubscription(
+  pool: Pool, subscriptionId: string,
+): Promise<void> {
+  try {
+    await pool.query(
+      `UPDATE customer_renewal_pipeline
+         SET renewal_status = 'churned', updated_at = NOW()
+       WHERE stripe_subscription_id = $1
+         AND renewal_status NOT IN ('won', 'lost', 'churned')`,
+      [subscriptionId],
+    );
+  } catch (err) {
+    console.warn('[customer-success] markRenewalChurned feilet', { err: (err as Error).message });
+  }
+}
