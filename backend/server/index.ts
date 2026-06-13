@@ -45600,32 +45600,83 @@ app.get("/api/notifications/active", (req, res) => {
 
 // /api/maintenance/* — ekstraktert til ./maintenance-routes.ts via setupMaintenanceRoutes.
 
+// ── Durabel media-lagring (B2) for Audio Showcase ──────────────────────────
+// Laster opp til Backblaze B2 (S3-kompat) → varig. Serveres via proxy-stream
+// (/api/showcase-media/:key) så URL-en aldri utløper + same-origin (waveform,
+// ingen CORS). Faller tilbake til lokal disk-store hvis B2 ikke er konfigurert.
+let _showcaseB2Cache: { client: any; bucket: string } | null | undefined;
+async function getShowcaseB2(): Promise<{ client: any; bucket: string } | null> {
+  if (_showcaseB2Cache !== undefined) return _showcaseB2Cache;
+  const keyId = process.env.B2_APPLICATION_KEY_ID;
+  const appKey = process.env.B2_APPLICATION_KEY;
+  const bucket = process.env.B2_BUCKET_NAME;
+  const region = process.env.B2_REGION;
+  if (!keyId || !appKey || !bucket || !region) { _showcaseB2Cache = null; return null; }
+  try {
+    const { S3Client } = await import("@aws-sdk/client-s3");
+    const endpoint = process.env.B2_ENDPOINT || `https://s3.${region}.backblazeb2.com`;
+    _showcaseB2Cache = { client: new S3Client({ region, endpoint, credentials: { accessKeyId: keyId, secretAccessKey: appKey } }), bucket };
+  } catch { _showcaseB2Cache = null; }
+  return _showcaseB2Cache;
+}
+async function uploadShowcaseMediaToB2(buffer: Buffer, mime: string, name: string): Promise<string | null> {
+  const b2 = await getShowcaseB2();
+  if (!b2) return null;
+  try {
+    const { PutObjectCommand } = await import("@aws-sdk/client-s3");
+    const ext = fileExtensionFromName(name, mime);
+    const key = `audioshowcase-${crypto.randomUUID()}${ext}`;
+    await b2.client.send(new PutObjectCommand({ Bucket: b2.bucket, Key: key, Body: buffer, ContentType: mime }));
+    return `/api/showcase-media/${key}`;
+  } catch (e) {
+    console.error("B2 showcase upload failed, faller tilbake til lokal:", e);
+    return null;
+  }
+}
+
+// Proxy-stream fra B2 (varig URL + same-origin).
+app.get("/api/showcase-media/:key", async (req, res) => {
+  const b2 = await getShowcaseB2();
+  if (!b2) return res.status(404).json({ error: "not_found" });
+  const key = String(req.params.key || "").replace(/[^a-zA-Z0-9._-]/g, "");
+  if (!key.startsWith("audioshowcase-")) return res.status(400).json({ error: "bad_key" });
+  try {
+    const { GetObjectCommand } = await import("@aws-sdk/client-s3");
+    const obj: any = await b2.client.send(new GetObjectCommand({ Bucket: b2.bucket, Key: key }));
+    res.setHeader("Content-Type", obj.ContentType || "application/octet-stream");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    if (obj.ContentLength) res.setHeader("Content-Length", String(obj.ContentLength));
+    if (obj.Body && typeof obj.Body.pipe === "function") obj.Body.pipe(res);
+    else { const buf = Buffer.from(await obj.Body.transformToByteArray()); res.end(buf); }
+  } catch (e) {
+    res.status(404).json({ error: "not_found" });
+  }
+});
+
 app.post("/api/upload/audio", audioUpload.single("file"), async (req, res) => {
   try {
     if (!req.file)
       return res
         .status(400)
         .json({ success: false, error: "Missing audio file" });
-    const stored = await storeAudioFile(
-      req.file.buffer,
-      req.file.originalname,
-      req.file.mimetype,
-    );
-    res.json({ success: true, url: stored.url });
+    const durable = await uploadShowcaseMediaToB2(req.file.buffer, req.file.mimetype, req.file.originalname);
+    const url = durable || (await storeAudioFile(req.file.buffer, req.file.originalname, req.file.mimetype)).url;
+    res.json({ success: true, url, durable: Boolean(durable) });
   } catch (error) {
     console.error("Audio upload error:", error);
     res.status(500).json({ success: false, error: "Failed to upload audio" });
   }
 });
 
-// Generisk bilde-opplasting (profilbilde/cover for Audio Showcase) — lagrer +
-// serverer same-origin. Erstatter data-URL-inlining (mindre payload/rad-bloat).
+// Generisk bilde-opplasting (profilbilde/cover for Audio Showcase) — B2 (varig)
+// m/ fallback til lokal disk. Erstatter data-URL-inlining.
 app.post("/api/upload/image", showcaseMediaUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, error: "Missing image file" });
     if (!String(req.file.mimetype || "").startsWith("image/")) return res.status(400).json({ success: false, error: "Not an image" });
-    const stored = await storeAudioFile(req.file.buffer, req.file.originalname || "image", req.file.mimetype);
-    res.json({ success: true, url: stored.url });
+    const durable = await uploadShowcaseMediaToB2(req.file.buffer, req.file.mimetype, req.file.originalname || "image");
+    const url = durable || (await storeAudioFile(req.file.buffer, req.file.originalname || "image", req.file.mimetype)).url;
+    res.json({ success: true, url, durable: Boolean(durable) });
   } catch (error) {
     console.error("Image upload error:", error);
     res.status(500).json({ success: false, error: "Failed to upload image" });
