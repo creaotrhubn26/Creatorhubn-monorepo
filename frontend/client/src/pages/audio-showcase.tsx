@@ -24,10 +24,10 @@ import {
   CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
   PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll,
 } from '@mui/icons-material';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
-import ComboField, { ROLE_OPTIONS, INSTRUMENT_OPTIONS } from '@/components/universal/showcase/ComboField';
+import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBUTION_OPTIONS } from '@/components/universal/showcase/ComboField';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
@@ -93,6 +93,7 @@ export default function AudioShowcasePage() {
   const [composerSection, setComposerSection] = React.useState<string | null>(null);
   const [sectionMenuEl, setSectionMenuEl] = React.useState<null | HTMLElement>(null);
   const [memberDialog, setMemberDialog] = React.useState<any>(null);
+  const [splitOpen, setSplitOpen] = React.useState(false);
   const [splitToast, setSplitToast] = React.useState<string | null>(null);
 
   const saveCover = async (dataUrl: string) => {
@@ -103,6 +104,13 @@ export default function AudioShowcasePage() {
     try { const r = await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`, { method: 'POST', body: {} }); setSplitToast(r.created ? `Splittark opprettet (${r.contributors} parter)` : 'Åpner eksisterende splittark'); if (r.url) window.open(r.url, '_blank'); }
     catch { setSplitToast('Kunne ikke generere splittark'); }
     setTimeout(() => setSplitToast(null), 3500);
+  };
+  const pullSections = async () => {
+    if (!currentVid) return;
+    try { const r = await apiRequest(`/api/audio-versions/${currentVid}/pull-sections`, { method: 'POST', body: {} }); if (r?.applied === 'pulled') await loadVersion(currentVid); } catch { /* */ }
+  };
+  const pullTakes = async () => {
+    try { const r = await apiRequest(`/api/audio-showcases/${projectId}/pull-takes`, { method: 'POST', body: {} }); if (r?.created > 0) await loadProject(); } catch { /* */ }
   };
   const saveMemberProfile = async (id: string, patch: Record<string, string>) => {
     const updated = await apiRequest(`/api/audio-members/${id}`, { method: 'PATCH', body: patch });
@@ -127,6 +135,13 @@ export default function AudioShowcasePage() {
   }, []);
   React.useEffect(() => { void loadProject(); }, [loadProject]);
   React.useEffect(() => { void loadVersion(currentVid); }, [currentVid, loadVersion]);
+  // Sanntid: poll gjeldende versjon hvert 5. sek så nye kommentarer/seksjoner fra
+  // andre anmeldere dukker opp live (uten å forstyrre lokal skriving/avspilling).
+  React.useEffect(() => {
+    if (!currentVid) return;
+    const t = setInterval(() => { void loadVersion(currentVid); }, 5000);
+    return () => clearInterval(t);
+  }, [currentVid, loadVersion]);
 
   const currentVersion = versions.find((v) => v.id === currentVid);
   const prevVersion = React.useMemo(() => {
@@ -193,10 +208,28 @@ export default function AudioShowcasePage() {
     try { await apiRequest(`/api/audio-versions/${currentVid}/approve`, { method: 'POST', body: { approvalType } }); await loadProject(); await loadVersion(currentVid); }
     finally { setBusy(false); }
   };
-  const uploadVersion = async () => {
-    const url = window.prompt('URL til lydfil (WAV/MP3) for ny versjon:'); if (!url) return; setBusy(true);
-    try { const v = await apiRequest('/api/audio-versions', { method: 'POST', body: { projectId, fileUrl: url.trim() } }); await loadProject(); setCurrentVid(v.id); }
-    finally { setBusy(false); }
+  const versionFileRef = React.useRef<HTMLInputElement | null>(null);
+  const [uploadPct, setUploadPct] = React.useState<number | null>(null);
+  const uploadVersion = () => versionFileRef.current?.click();
+  const uploadVersionFile = async (file?: File | null) => {
+    if (!file) return;
+    setBusy(true); setUploadPct(0);
+    try {
+      // Ekte fil-opplasting → backend lagrer + serverer same-origin (waveform-vennlig).
+      const fd = new FormData(); fd.append('file', file);
+      const headers = await getAuthHeader(); delete (headers as any)['Content-Type'];
+      const url: string = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload/audio');
+        Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v as string));
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploadPct(Math.round((e.loaded / e.total) * 100)); };
+        xhr.onload = () => { try { const j = JSON.parse(xhr.responseText); j?.url ? resolve(j.url) : reject(new Error('no url')); } catch { reject(new Error('bad response')); } };
+        xhr.onerror = () => reject(new Error('upload failed'));
+        xhr.send(fd);
+      });
+      const v = await apiRequest('/api/audio-versions', { method: 'POST', body: { projectId, fileUrl: url, fileName: file.name } });
+      await loadProject(); setCurrentVid(v.id);
+    } catch { /* ignore */ } finally { setBusy(false); setUploadPct(null); }
   };
   const toggleTask = async (t: any) => {
     const next = t.status === 'done' ? 'todo' : 'done';
@@ -324,10 +357,9 @@ export default function AudioShowcasePage() {
             {members.length === 0 && <Typography sx={{ fontSize: '0.78rem', color: FAINT }}>Ingen medlemmer ennå.</Typography>}
           </Stack>
           {members.length > 0 && (
-            <Button onClick={generateSplitSheet} fullWidth startIcon={<ReceiptLongOutlined sx={{ fontSize: '17px !important' }} />}
-              sx={{ mt: 1.5, color: ACCENT, bgcolor: 'rgba(255,107,53,0.1)', textTransform: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '0.78rem', '&:hover': { bgcolor: 'rgba(255,107,53,0.18)' } }}>Generer splittark</Button>
+            <Button onClick={() => setSplitOpen(true)} fullWidth startIcon={<ReceiptLongOutlined sx={{ fontSize: '17px !important' }} />}
+              sx={{ mt: 1.5, color: ACCENT, bgcolor: 'rgba(255,107,53,0.1)', textTransform: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '0.78rem', '&:hover': { bgcolor: 'rgba(255,107,53,0.18)' } }}>Splittark (royalty)</Button>
           )}
-          {splitToast && <Typography sx={{ mt: 0.75, fontSize: '0.7rem', color: MUTED, textAlign: 'center' }}>{splitToast}</Typography>}
         </Box>
 
         {/* ─── SENTER ─── */}
@@ -340,6 +372,8 @@ export default function AudioShowcasePage() {
                 <Stack direction="row" alignItems="center" spacing={0.5}><Typography sx={{ fontWeight: 700 }}>{currentVersion ? `${project.title} – ${currentVersion.version_label}` : project.title}{currentVersion?.file_name ? '' : '.wav'}</Typography><KeyboardArrowDown sx={{ fontSize: 18, color: MUTED }} /></Stack>
                 <Typography sx={{ color: MUTED, fontSize: '0.76rem' }}>{specsLine || '—'}{abActive && prevVersion ? `   ·   A/B: ${prevVersion.version_label}` : ''}</Typography>
               </Box>
+              {easeverseTrack && <Button startIcon={<CloudUpload />} size="small" onClick={pullTakes} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Hent takes</Button>}
+              {easeverseTrack && <Button startIcon={<GraphicEq />} size="small" onClick={pullSections} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Hent seksjoner</Button>}
               {currentVersion?.file_url && <Button startIcon={<FileDownloadOutlined />} size="small" href={currentVersion.file_url} target="_blank" variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Last ned</Button>}
               <IconButton size="small" sx={{ color: MUTED }}><MoreHoriz fontSize="small" /></IconButton>
             </Stack>
@@ -511,13 +545,15 @@ export default function AudioShowcasePage() {
         <Box sx={{ flex: 1 }}><Typography sx={{ fontWeight: 700 }}>Samarbeid. Forfin. Lever.</Typography><Typography sx={{ fontSize: '0.78rem', color: MUTED }}>All feedback, versjoner og beslutninger på ett sted.</Typography></Box>
         <Button onClick={() => approve('changes_requested')} disabled={busy || !currentVid} startIcon={<ChatBubbleOutline />} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '10px', px: 2.5, py: 1 }}>Be om endringer</Button>
         <Button onClick={() => approve('mix_approved')} disabled={busy || !currentVid} startIcon={<CheckCircleOutline />} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '10px', px: 3, py: 1, '&:hover': { bgcolor: '#ff855a' } }}>Godkjenn mix</Button>
-        <Button onClick={uploadVersion} disabled={busy} startIcon={<CloudUpload />} endIcon={<KeyboardArrowDown />} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '10px', px: 2.5, py: 1 }}>Last opp ny versjon</Button>
+        <input ref={versionFileRef} type="file" accept="audio/*,.wav,.mp3,.aif,.aiff,.m4a,.flac" hidden onChange={(e) => { void uploadVersionFile(e.target.files?.[0]); e.target.value = ''; }} />
+        <Button onClick={uploadVersion} disabled={busy} startIcon={uploadPct !== null ? <CircularProgress size={16} sx={{ color: ACCENT }} /> : <CloudUpload />} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '10px', px: 2.5, py: 1 }}>{uploadPct !== null ? `Laster opp… ${uploadPct}%` : 'Last opp ny versjon'}</Button>
       </Stack>
 
       {/* Dialoger */}
-      <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={async (name, role) => { const m = await apiRequest(`/api/audio-showcases/${projectId}/members`, { method: 'POST', body: { name, role } }); setMembers((p) => [...p, m]); return m; }} />
+      <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={async (name, role, email) => { const m = await apiRequest(`/api/audio-showcases/${projectId}/members`, { method: 'POST', body: { name, role, email } }); setMembers((p) => [...p, m]); return m; }} />
       <MemberProfileDialog member={memberDialog} externalTrackId={easeverseTrack?.id} onClose={() => setMemberDialog(null)} onSave={saveMemberProfile}
         onDelete={async (id) => { await apiRequest(`/api/audio-members/${id}`, { method: 'DELETE' }); setMembers((p) => p.filter((x) => x.id !== id)); setMemberDialog(null); }} />
+      <SplitSheetDialog open={splitOpen} projectId={projectId} ownerName={owner?.name} onClose={() => setSplitOpen(false)} />
       <TaskDialog open={taskOpen} onClose={() => setTaskOpen(false)} onAdd={async (title, category) => { const t = await apiRequest('/api/audio-tasks', { method: 'POST', body: { projectId, title, assignee: category, versionId: currentVid } }); setTasks((p) => [...p, t]); setTaskOpen(false); }} />
       <Menu anchorEl={moreEl} open={Boolean(moreEl)} onClose={() => setMoreEl(null)}><MenuItem onClick={() => setMoreEl(null)} sx={{ fontSize: '0.85rem' }}>Kopier review-lenke</MenuItem></Menu>
       <LyricsDialog
@@ -532,10 +568,10 @@ export default function AudioShowcasePage() {
 }
 
 /* ── Dialoger ──────────────────────────────────────────────────────────── */
-const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name: string, role: string) => Promise<any> }> = ({ open, onClose, onAdd }) => {
-  const [name, setName] = React.useState(''); const [role, setRole] = React.useState(''); const [busy, setBusy] = React.useState(false);
+const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name: string, role: string, email: string) => Promise<any> }> = ({ open, onClose, onAdd }) => {
+  const [name, setName] = React.useState(''); const [role, setRole] = React.useState(''); const [email, setEmail] = React.useState(''); const [busy, setBusy] = React.useState(false);
   const [created, setCreated] = React.useState<any>(null); const [copied, setCopied] = React.useState(false);
-  const close = () => { setCreated(null); setName(''); setRole(''); setCopied(false); onClose(); };
+  const close = () => { setCreated(null); setName(''); setRole(''); setEmail(''); setCopied(false); onClose(); };
   const link = created?.inviteUrl ? `${window.location.origin}${created.inviteUrl}` : '';
   return (
     <Dialog open={open} onClose={close} PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px', minWidth: 380 } }}>
@@ -543,7 +579,8 @@ const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name:
       <DialogContent>
         {created ? (
           <Stack spacing={1.5} sx={{ mt: 0.5 }}>
-            <Typography sx={{ fontSize: '0.88rem' }}>Del denne lenken med <strong>{created.name}</strong> — de fyller ut profilen sin selv (navn, rolle, instrument, profilbilde).</Typography>
+            <Typography sx={{ fontSize: '0.88rem' }}>Del denne lenken med <strong>{created.name}</strong> — de fyller ut profilen sin selv (navn, rolle, bidrag, profilbilde).</Typography>
+            {created.emailed && <Stack direction="row" spacing={0.75} alignItems="center"><CheckCircle sx={{ fontSize: 16, color: '#5fb88a' }} /><Typography sx={{ fontSize: '0.78rem', color: '#5fb88a' }}>Invitasjon sendt på e-post.</Typography></Stack>}
             <Stack direction="row" spacing={1} alignItems="center" sx={{ bgcolor: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`, borderRadius: '10px', p: 1 }}>
               <Typography sx={{ flex: 1, fontSize: '0.74rem', color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</Typography>
               <Button size="small" startIcon={copied ? <DoneAll /> : <ContentCopy />} onClick={() => { void navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); }} sx={{ color: ACCENT, textTransform: 'none' }}>{copied ? 'Kopiert' : 'Kopier'}</Button>
@@ -551,14 +588,14 @@ const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name:
             <Typography sx={{ fontSize: '0.7rem', color: FAINT }}>Profilen knyttes til review-rommet og splittark (royalty).</Typography>
           </Stack>
         ) : (
-          <Stack spacing={1.5} sx={{ mt: 0.5 }}><TextField autoFocus label="Navn" value={name} onChange={(e) => setName(e.target.value)} size="small" sx={fieldSx} /><TextField label="Rolle (f.eks. Vokalist)" value={role} onChange={(e) => setRole(e.target.value)} size="small" sx={fieldSx} /></Stack>
+          <Stack spacing={1.5} sx={{ mt: 0.5 }}><TextField autoFocus label="Navn" value={name} onChange={(e) => setName(e.target.value)} size="small" sx={fieldSx} /><TextField label="Rolle (f.eks. Vokalist)" value={role} onChange={(e) => setRole(e.target.value)} size="small" sx={fieldSx} /><TextField label="E-post (valgfritt — sender invitasjon)" value={email} onChange={(e) => setEmail(e.target.value)} size="small" sx={fieldSx} /></Stack>
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         {created ? (
           <><Button onClick={() => setCreated(null)} sx={{ color: MUTED, textTransform: 'none' }}>Inviter en til</Button><Button onClick={close} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Ferdig</Button></>
         ) : (
-          <><Button onClick={close} sx={{ color: MUTED, textTransform: 'none' }}>Avbryt</Button><Button disabled={!name.trim() || busy} onClick={async () => { setBusy(true); try { const m = await onAdd(name.trim(), role.trim()); setCreated(m); setName(''); setRole(''); } finally { setBusy(false); } }} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Lag invitasjonslenke</Button></>
+          <><Button onClick={close} sx={{ color: MUTED, textTransform: 'none' }}>Avbryt</Button><Button disabled={!name.trim() || busy} onClick={async () => { setBusy(true); try { const m = await onAdd(name.trim(), role.trim(), email.trim()); setCreated(m); setName(''); setRole(''); setEmail(''); } finally { setBusy(false); } }} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>{email.trim() ? 'Inviter på e-post' : 'Lag invitasjonslenke'}</Button></>
         )}
       </DialogActions>
     </Dialog>
@@ -568,7 +605,7 @@ const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name:
 const MemberProfileDialog: React.FC<{ member: any; externalTrackId?: string; onClose: () => void; onSave: (id: string, patch: Record<string, any>) => Promise<void>; onDelete: (id: string) => Promise<void> }> = ({ member, externalTrackId, onClose, onSave, onDelete }) => {
   const [f, setF] = React.useState<any>({ links: {} });
   const [busy, setBusy] = React.useState(false); const [copied, setCopied] = React.useState(false); const [boothCopied, setBoothCopied] = React.useState(false);
-  React.useEffect(() => { if (member) setF({ name: member.name || '', role: member.role || '', instrument: member.instrument || '', email: member.email || '', phone: member.phone || '', bio: member.bio || '', avatarUrl: member.avatar_url || '', easeverseAccess: Boolean(member.easeverse_access), links: (member.links && !Array.isArray(member.links)) ? member.links : {} }); }, [member]);
+  React.useEffect(() => { if (member) setF({ name: member.name || '', role: member.role || '', instrument: member.instrument || '', email: member.email || '', phone: member.phone || '', bio: member.bio || '', avatarUrl: member.avatar_url || '', easeverseAccess: Boolean(member.easeverse_access), links: (member.links && !Array.isArray(member.links)) ? member.links : {}, contributions: Array.isArray(member.contributions) ? member.contributions : [] }); }, [member]);
   if (!member) return null;
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setF((p: any) => ({ ...p, [k]: e.target.value }));
   const setLink = (k: string, v: string) => setF((p: any) => ({ ...p, links: { ...p.links, [k]: v } }));
@@ -586,6 +623,7 @@ const MemberProfileDialog: React.FC<{ member: any; externalTrackId?: string; onC
         <Stack spacing={1.5}>
           <TextField label="Navn" value={f.name} onChange={set('name')} size="small" sx={fieldSx} />
           <Stack direction="row" spacing={1.5}><ComboField label="Rolle" options={ROLE_OPTIONS} value={f.role || ''} onChange={(v) => setF((p: any) => ({ ...p, role: v }))} /><ComboField label="Instrument" options={INSTRUMENT_OPTIONS} value={f.instrument || ''} onChange={(v) => setF((p: any) => ({ ...p, instrument: v }))} /></Stack>
+          <MultiComboField label="Bidrag (hvem gjør hva)" options={CONTRIBUTION_OPTIONS} value={f.contributions || []} onChange={(v) => setF((p: any) => ({ ...p, contributions: v }))} />
           {isVocalist && (
             <Box sx={{ border: `1px solid rgba(255,107,53,0.4)`, borderRadius: '10px', p: 1.25, bgcolor: 'rgba(255,107,53,0.07)' }}>
               <FormControlLabel sx={{ m: 0 }}
@@ -801,6 +839,97 @@ const LyricsDialog: React.FC<{ open: boolean; onClose: () => void; projectId: st
           <Button onClick={syncNow} startIcon={<Sync />} sx={{ color: MUTED, textTransform: 'none' }}>Synk nå</Button>
           <Box sx={{ flex: 1 }} />
           <Button onClick={onClose} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Ferdig</Button>
+        </DialogActions>
+      )}
+    </Dialog>
+  );
+};
+
+const FEE_TYPES = [['royalty', 'Kun royalty'], ['session', 'Session-honorar'], ['buyout', 'Buyout'], ['hourly', 'Timepris']];
+const SplitSheetDialog: React.FC<{ open: boolean; projectId: string; ownerName?: string; onClose: () => void }> = ({ open, projectId, ownerName, onClose }) => {
+  const [loading, setLoading] = React.useState(true);
+  const [sheet, setSheet] = React.useState<any>(null);
+  const [rows, setRows] = React.useState<any[]>([]);
+  const [busy, setBusy] = React.useState(false);
+  const [signFor, setSignFor] = React.useState<any>(null); const [sigName, setSigName] = React.useState(''); const [consent, setConsent] = React.useState(false);
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const d = await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`); setSheet(d);
+      setRows((d?.contributors || []).map((c: any) => ({ id: c.id, name: c.name, role: c.role, signed_at: c.signed_at,
+        contributions: c.custom_fields?.contributions || [], master: Number(c.percentage) || 0, comp: Number(c.custom_fields?.compositionPct) || 0,
+        feeAmount: c.custom_fields?.feeAmount || '', feeCurrency: c.custom_fields?.feeCurrency || 'NOK', feeType: c.custom_fields?.feeType || 'royalty' })));
+    } catch { setSheet(null); } finally { setLoading(false); }
+  }, [projectId]);
+  React.useEffect(() => { if (open) { void load(); setSignFor(null); setSigName(''); setConsent(false); } }, [open, load]);
+  const masterTotal = Math.round(rows.reduce((a, r) => a + (Number(r.master) || 0), 0) * 100) / 100;
+  const compTotal = Math.round(rows.reduce((a, r) => a + (Number(r.comp) || 0), 0) * 100) / 100;
+  const locked = (sheet?.signedCount || 0) > 0;
+  const upd = (i: number, k: string, v: any) => setRows(rows.map((x, j) => j === i ? { ...x, [k]: v } : x));
+  const generate = async () => { setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`, { method: 'POST', body: {} }); await load(); } finally { setBusy(false); } };
+  const save = async () => { setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`, { method: 'PATCH', body: { contributors: rows.map((r) => ({ id: r.id, masterPct: Number(r.master) || 0, compositionPct: Number(r.comp) || 0, feeAmount: Number(r.feeAmount) || 0, feeCurrency: r.feeCurrency, feeType: r.feeType })) } }); await load(); } catch { /* */ } finally { setBusy(false); } };
+  const unlock = async () => { setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet/unlock`, { method: 'POST', body: {} }); await load(); } finally { setBusy(false); } };
+  const splitEven = () => { const ev = Math.floor((10000 / rows.length)) / 100; setRows(rows.map((r, i) => ({ ...r, master: i === 0 ? Math.round((100 - ev * (rows.length - 1)) * 100) / 100 : ev, comp: i === 0 ? Math.round((100 - ev * (rows.length - 1)) * 100) / 100 : ev }))); };
+  const doSign = async () => { if (!signFor || !sigName.trim() || !consent) return; setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet/sign`, { method: 'POST', body: { contributorId: signFor.id, signature: sigName.trim(), consent: true } }); setSignFor(null); setSigName(''); setConsent(false); await load(); } catch { /* */ } finally { setBusy(false); } };
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
+      <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}><ReceiptLongOutlined sx={{ color: ACCENT }} /> Avtale · royalty & honorar
+        {sheet?.exists && <Chip label={`${sheet.signedCount}/${rows.length} signert`} size="small" sx={{ height: 20, fontSize: '0.64rem', bgcolor: locked ? 'rgba(95,184,138,0.16)' : 'rgba(255,255,255,0.08)', color: locked ? '#5fb88a' : MUTED }} />}</DialogTitle>
+      <DialogContent>
+        {loading ? <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} sx={{ color: ACCENT }} /></Box>
+          : !sheet?.exists ? (
+            <Stack spacing={1.5} sx={{ py: 1, textAlign: 'center' }}><Typography sx={{ color: MUTED }}>Ingen avtale ennå. Generer fra bidragsyterne (lik fordeling som start).</Typography>
+              <Button onClick={generate} disabled={busy} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>{busy ? 'Genererer…' : 'Generer avtale'}</Button></Stack>
+          ) : signFor ? (
+            <Stack spacing={1.5} sx={{ py: 1 }}>
+              <Typography sx={{ fontWeight: 700 }}>Signér som {signFor.name}</Typography>
+              <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '10px', p: 1.5, fontSize: '0.82rem' }}>
+                <Typography sx={{ fontSize: '0.82rem' }}>Master {signFor.master}% · Komposisjon {signFor.comp}%{Number(signFor.feeAmount) > 0 ? ` · ${signFor.feeAmount} ${signFor.feeCurrency} (${FEE_TYPES.find(f => f[0] === signFor.feeType)?.[1]})` : ''}</Typography>
+                {signFor.contributions?.length > 0 && <Typography sx={{ fontSize: '0.74rem', color: MUTED, mt: 0.5 }}>Bidrag: {signFor.contributions.join(', ')}</Typography>}
+              </Box>
+              <FormControlLabel control={<Switch checked={consent} onChange={(e) => setConsent(e.target.checked)} sx={{ '& .Mui-checked': { color: ACCENT } }} />} label={<Typography sx={{ fontSize: '0.8rem' }}>Jeg bekrefter at fordelingen er korrekt og at jeg godkjenner avtalen som bindende.</Typography>} />
+              <TextField label="Skriv navnet ditt som signatur" value={sigName} onChange={(e) => setSigName(e.target.value)} size="small" sx={fieldSx} />
+            </Stack>
+          ) : (
+            <Stack spacing={0.75}>
+              {locked && <Stack direction="row" alignItems="center" spacing={1} sx={{ bgcolor: 'rgba(95,184,138,0.1)', border: '1px solid rgba(95,184,138,0.4)', borderRadius: '10px', p: 1 }}><CheckCircle sx={{ fontSize: 17, color: '#5fb88a' }} /><Typography sx={{ fontSize: '0.78rem', flex: 1 }}>Signert av {sheet.signedCount} — låst for endring.</Typography><Button size="small" onClick={unlock} disabled={busy} sx={{ color: '#e0a955', textTransform: 'none' }}>Lås opp</Button></Stack>}
+              <Stack direction="row" sx={{ px: 0.5, pb: 0.5 }}><Box sx={{ flex: 1 }} /><Typography sx={{ width: 70, fontSize: '0.66rem', color: FAINT, textAlign: 'center' }}>Master</Typography><Typography sx={{ width: 70, fontSize: '0.66rem', color: FAINT, textAlign: 'center' }}>Komp.</Typography><Typography sx={{ width: 130, fontSize: '0.66rem', color: FAINT, textAlign: 'center' }}>Honorar</Typography><Box sx={{ width: 76 }} /></Stack>
+              {rows.map((r, i) => (
+                <Stack key={r.id} direction="row" alignItems="center" spacing={1}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Stack direction="row" alignItems="center" spacing={0.5}><Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }} noWrap>{r.name}</Typography>{r.signed_at && <CheckCircle sx={{ fontSize: 14, color: '#5fb88a' }} />}</Stack>
+                    <Typography sx={{ fontSize: '0.68rem', color: MUTED }} noWrap>{(r.contributions || []).join(' · ') || r.role}</Typography>
+                  </Box>
+                  <TextField type="number" size="small" disabled={locked} value={r.master} onChange={(e) => upd(i, 'master', e.target.value)} sx={{ width: 70, ...fieldSx }} />
+                  <TextField type="number" size="small" disabled={locked} value={r.comp} onChange={(e) => upd(i, 'comp', e.target.value)} sx={{ width: 70, ...fieldSx }} />
+                  <TextField type="number" size="small" disabled={locked} value={r.feeAmount} placeholder="0" onChange={(e) => upd(i, 'feeAmount', e.target.value)} sx={{ width: 130, ...fieldSx }}
+                    InputProps={{ endAdornment: <Typography sx={{ color: MUTED, fontSize: '0.7rem' }}>{r.feeCurrency}</Typography> }} />
+                  {!r.signed_at && (r.name === ownerName)
+                    ? <Button size="small" onClick={() => { setSignFor(r); setSigName(r.name); }} sx={{ width: 76, color: ACCENT, textTransform: 'none', fontSize: '0.72rem' }}>Signér</Button>
+                    : <Box sx={{ width: 76, textAlign: 'center' }}>{r.signed_at ? <Typography sx={{ fontSize: '0.66rem', color: '#5fb88a' }}>signert</Typography> : <Typography sx={{ fontSize: '0.62rem', color: FAINT }}>via lenke</Typography>}</Box>}
+                </Stack>
+              ))}
+              <Stack direction="row" alignItems="center" sx={{ mt: 1, pt: 1, borderTop: `1px solid ${BORDER}` }}>
+                {!locked && <Button size="small" onClick={splitEven} sx={{ color: MUTED, textTransform: 'none' }}>Fordel likt</Button>}
+                <Box sx={{ flex: 1 }} />
+                <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: Math.abs(masterTotal - 100) < 0.01 ? '#5fb88a' : '#e0606a', mr: 2 }}>Master {masterTotal}%</Typography>
+                <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: Math.abs(compTotal - 100) < 0.01 ? '#5fb88a' : '#e0606a' }}>Komp. {compTotal}%</Typography>
+              </Stack>
+              <Typography sx={{ fontSize: '0.68rem', color: FAINT }}>Hver part signerer selv via sin egen lenke. Royalty = løpende andel; honorar = engangs. Komposisjon (TONO) og master (Gramo) kan ha ulik fordeling.</Typography>
+            </Stack>
+          )}
+      </DialogContent>
+      {sheet?.exists && (
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          {signFor ? (
+            <><Button onClick={() => setSignFor(null)} sx={{ color: MUTED, textTransform: 'none' }}>Avbryt</Button>
+              <Button onClick={doSign} disabled={busy || !sigName.trim() || !consent} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Signér bindende</Button></>
+          ) : (
+            <><Button href={sheet.url} target="_blank" sx={{ color: MUTED, textTransform: 'none', mr: 'auto' }}>Åpne i CRM</Button>
+              <Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none' }}>Lukk</Button>
+              <Button onClick={save} disabled={busy || locked || masterTotal > 100.01} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Lagre vilkår</Button></>
+          )}
         </DialogActions>
       )}
     </Dialog>

@@ -12,7 +12,7 @@ import {
 import { MusicNote, CheckCircle, ContentCopy, DoneAll, GraphicEq } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
-import ComboField, { ROLE_OPTIONS, INSTRUMENT_OPTIONS } from '@/components/universal/showcase/ComboField';
+import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBUTION_OPTIONS } from '@/components/universal/showcase/ComboField';
 
 const BG = '#0A0A0B', PANEL = '#131316', BORDER = 'rgba(255,255,255,0.08)';
 const TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', ACCENT = '#FF6B35';
@@ -30,7 +30,7 @@ export default function AudioReviewInvitePage() {
   const [invite, setInvite] = React.useState<any>(null);
   const [done, setDone] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const [form, setForm] = React.useState<any>({ name: '', role: '', instrument: '', email: '', phone: '', bio: '', avatarUrl: '', easeverseAccess: false, links: {} as Record<string, string> });
+  const [form, setForm] = React.useState<any>({ name: '', role: '', instrument: '', email: '', phone: '', bio: '', avatarUrl: '', easeverseAccess: false, links: {} as Record<string, string>, contributions: [] as string[] });
   const setLink = (k: string, v: string) => setForm((f: any) => ({ ...f, links: { ...f.links, [k]: v } }));
   const [copied, setCopied] = React.useState(false);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -42,7 +42,7 @@ export default function AudioReviewInvitePage() {
     if (!token) { setLoading(false); return; }
     apiRequest(`/api/audio-review-invite/${token}`).then((d: any) => {
       setInvite(d);
-      setForm((f: any) => ({ ...f, name: d.name || '', role: d.role || '', instrument: d.instrument || '', email: d.email || '', phone: d.phone || '', bio: d.bio || '', avatarUrl: d.avatar_url || '', easeverseAccess: Boolean(d.easeverse_access), links: (d.links && !Array.isArray(d.links)) ? d.links : {} }));
+      setForm((f: any) => ({ ...f, name: d.name || '', role: d.role || '', instrument: d.instrument || '', email: d.email || '', phone: d.phone || '', bio: d.bio || '', avatarUrl: d.avatar_url || '', easeverseAccess: Boolean(d.easeverse_access), links: (d.links && !Array.isArray(d.links)) ? d.links : {}, contributions: Array.isArray(d.contributions) ? d.contributions : [] }));
       if (d.invite_status === 'active' || d.profile_completed_at) setDone(true);
     }).catch(() => setInvite(null)).finally(() => setLoading(false));
   }, [token]);
@@ -86,6 +86,7 @@ export default function AudioReviewInvitePage() {
                 <ComboField label="Rolle" options={ROLE_OPTIONS} value={form.role} onChange={(v) => setV('role', v)} />
                 <ComboField label="Instrument" options={INSTRUMENT_OPTIONS} value={form.instrument} onChange={(v) => setV('instrument', v)} />
               </Stack>
+              <MultiComboField label="Bidrag (hva gjorde du?)" options={CONTRIBUTION_OPTIONS} value={form.contributions} onChange={(v) => setV('contributions', v)} />
               {isVocalist && (
                 <Box sx={{ border: `1px solid rgba(255,107,53,0.4)`, borderRadius: '12px', p: 1.5, bgcolor: 'rgba(255,107,53,0.07)' }}>
                   <FormControlLabel

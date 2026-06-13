@@ -22,6 +22,9 @@ export interface AudioShowcaseDeps {
   app: express.Application;
   pool: AnyPool;
   requireUserSession: (req: any, res: any) => { userId: string; email?: string | null; name?: string | null } | null;
+  // Valgfri: send invitasjons-e-post (injiseres fra index.ts m/ Resend). Ruten
+  // virker uansett — e-post hoppes over hvis ikke konfigurert.
+  sendInviteEmail?: (to: string, data: { inviterName: string; projectTitle: string; inviteUrl: string }) => Promise<void>;
 }
 
 const isMissingTable = (e: unknown) =>
@@ -72,8 +75,61 @@ async function evPushLyrics(payload: Record<string, unknown>): Promise<EvResult>
   });
 }
 
+// Hent DAW-markører (Pro Tools-seksjoner) fra EaseVerse for en track.
+async function evGetProtools(externalTrackId: string): Promise<EvResult> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await evFetch(`/api/v1/collab/protools/${encodeURIComponent(externalTrackId)}`, { method: "GET" });
+    if (!res.configured) return res;
+    if (res.reachable && res.status && (res.status < 500 || res.status === 404)) return res;
+  }
+  return { configured: Boolean(process.env.EASEVERSE_API_URL), reachable: false };
+}
+
+// Hent keeper-takes (vokalopptak) fra EaseVerse for en track (liste-respons).
+async function evGetTakes(externalTrackId: string): Promise<{ configured: boolean; reachable: boolean; items: any[] }> {
+  if (!EV_URL) return { configured: false, reachable: false, items: [] };
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const headers: Record<string, string> = {}; if (EV_KEY) headers["x-api-key"] = EV_KEY;
+    const r = await fetch(`${EV_URL}/api/v1/collab/takes/${encodeURIComponent(externalTrackId)}`, { headers, signal: ctrl.signal });
+    const j = await r.json().catch(() => null);
+    return { configured: true, reachable: r.ok, items: Array.isArray(j?.items) ? j.items : [] };
+  } catch { return { configured: true, reachable: false, items: [] }; }
+  finally { clearTimeout(timer); }
+}
+
+// Enkel in-memory rate-limiter (sliding window) for offentlige token-endepunkter.
+const rateBuckets = new Map<string, number[]>();
+function rateLimited(key: string, max = 30, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const arr = (rateBuckets.get(key) || []).filter((t) => now - t < windowMs);
+  arr.push(now);
+  rateBuckets.set(key, arr);
+  return arr.length > max;
+}
+const clientIp = (req: any): string => (req.headers?.["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || req.socket?.remoteAddress || "?");
+
+// Seksjons-farge per markør-type (matcher frontend SECTION_COLORS-spekteret).
+const PT_SECTION_COLOR: Record<string, string> = {
+  intro: "#d6457f", verse: "#3fa7d6", "pre-chorus": "#8aa0b6", chorus: "#FF6B35",
+  bridge: "#e0a955", "final-chorus": "#e0606a", outro: "#5fb88a",
+};
+
 export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
-  const { app, pool, requireUserSession } = deps;
+  const { app, pool, requireUserSession, sendInviteEmail } = deps;
+  const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
+
+  // Send invitasjons-e-post (fire-and-forget) hvis dep + e-post finnes.
+  async function emailInvite(memberId: string, projectId: string, ownerName: string): Promise<boolean> {
+    if (!sendInviteEmail) return false;
+    const r = await pool.query(
+      `SELECT m.email, m.invite_token, p.title FROM audio_review_members m JOIN audio_review_projects p ON p.id = m.project_id
+        WHERE m.id = $1::uuid LIMIT 1`, [memberId]).catch(() => ({ rows: [] as any[] }));
+    const row = r.rows[0];
+    if (!row?.email || !row?.invite_token) return false;
+    try { await sendInviteEmail(row.email, { inviterName: ownerName || "Produsenten", projectTitle: row.title || "et prosjekt", inviteUrl: `${APP_URL}/audio-review/invite/${row.invite_token}` }); return true; }
+    catch { return false; }
+  }
 
   // Hent koblet track + lokal tekst-tilstand for et review-rom.
   async function loadLinkedTrack(reviewId: string, userId: string): Promise<any | null> {
@@ -409,15 +465,36 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       const token = isOwner ? null : makeInviteToken();
       const r = await pool.query(
         `INSERT INTO audio_review_members
-           (project_id, user_id, name, role, avatar_color, is_owner, order_index, email, instrument, invite_token, invite_status, invited_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, CASE WHEN $10::text IS NULL THEN NULL ELSE NOW() END) RETURNING *`,
+           (project_id, user_id, name, role, avatar_color, is_owner, order_index, email, instrument, invite_token, invite_status, invited_at, invite_expires_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, CASE WHEN $10::text IS NULL THEN NULL ELSE NOW() END, CASE WHEN $10::text IS NULL THEN NULL ELSE NOW() + INTERVAL '90 days' END) RETURNING *`,
         [id, str(req.body?.userId, 200) || null, name, str(req.body?.role, 80) || null,
          str(req.body?.avatarColor, 40) || PALETTE[n % PALETTE.length], isOwner, n,
          str(req.body?.email, 200) || null, str(req.body?.instrument, 120) || null, token, isOwner ? "owner" : "pending"]);
-      return res.status(201).json({ ...r.rows[0], inviteToken: token, inviteUrl: token ? `/audio-review/invite/${token}` : null });
+      const created = r.rows[0];
+      let emailed = false;
+      if (token && created.email) emailed = await emailInvite(created.id, id, s.name || "").catch(() => false);
+      return res.status(201).json({ ...created, inviteToken: token, inviteUrl: token ? `/audio-review/invite/${token}` : null, emailed });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       return res.status(500).json({ error: "add_member_failed" });
+    }
+  });
+
+  // Send (eller send på nytt) invitasjons-e-post til et medlem.
+  app.post("/api/audio-members/:id/resend-invite", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    try {
+      const m = await pool.query(
+        `SELECT m.project_id, m.email FROM audio_review_members m
+          WHERE m.id=$1::uuid AND m.project_id IN (SELECT id FROM audio_review_projects WHERE owner_user_id=$2) LIMIT 1`, [id, s.userId]);
+      if (m.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!m.rows[0].email) return res.status(409).json({ error: "no_email", message: "Medlemmet mangler e-postadresse." });
+      if (!sendInviteEmail) return res.status(503).json({ error: "email_not_configured" });
+      const ok = await emailInvite(id, m.rows[0].project_id, s.name || "");
+      return res.json({ ok, emailed: ok });
+    } catch (e) {
+      return res.status(500).json({ error: "resend_failed" });
     }
   });
 
@@ -450,6 +527,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     }
     if (typeof req.body?.easeverseAccess === "boolean") { params.push(req.body.easeverseAccess); sets.push(`easeverse_access = $${params.length}`); }
     if (req.body?.links && typeof req.body.links === "object") { params.push(JSON.stringify(req.body.links).slice(0, 4000)); sets.push(`links = $${params.length}::jsonb`); }
+    if (Array.isArray(req.body?.contributions)) { params.push(JSON.stringify(req.body.contributions.filter((x: unknown) => typeof x === "string").slice(0, 30))); sets.push(`contributions = $${params.length}::jsonb`); }
     if (!sets.length) return res.status(400).json({ error: "nothing_to_update" });
     sets.push("invite_status = CASE WHEN invite_status = 'pending' THEN 'active' ELSE invite_status END");
     sets.push("profile_completed_at = COALESCE(profile_completed_at, NOW())");
@@ -472,11 +550,11 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     try {
       const r = await pool.query(
         `SELECT m.id, m.name, m.role, m.instrument, m.email, m.phone, m.bio, m.avatar_color, m.avatar_url, m.invite_status,
-                m.easeverse_access, m.links, m.profile_completed_at, p.title AS project_title, p.band_name,
+                m.easeverse_access, m.links, m.contributions, m.profile_completed_at, p.title AS project_title, p.band_name,
                 COALESCE(p.external_track_id, p.easeverse_track_id) AS external_track_id,
                 (SELECT name FROM audio_review_members WHERE project_id = m.project_id AND is_owner = TRUE LIMIT 1) AS inviter_name
            FROM audio_review_members m JOIN audio_review_projects p ON p.id = m.project_id
-          WHERE m.invite_token = $1 LIMIT 1`, [token]);
+          WHERE m.invite_token = $1 AND (m.invite_expires_at IS NULL OR m.invite_expires_at > NOW()) LIMIT 1`, [token]);
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       return res.json(r.rows[0]);
     } catch (e) {
@@ -488,18 +566,20 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-review-invite/:token", async (req, res) => {
     const token = str(req.params.token, 80);
     if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    if (rateLimited(`inv:${clientIp(req)}`)) return res.status(429).json({ error: "rate_limited" });
     const name = str(req.body?.name, 200);
     if (!name) return res.status(400).json({ error: "name_required" });
     try {
       const r = await pool.query(
         `UPDATE audio_review_members SET name = $2, role = COALESCE($3, role), instrument = $4, email = $5, phone = $6, bio = $7,
            avatar_url = COALESCE($8, avatar_url), easeverse_access = COALESCE($9, easeverse_access), links = COALESCE($10::jsonb, links),
-           invite_status = 'active', profile_completed_at = NOW()
-          WHERE invite_token = $1 RETURNING id, name, role, instrument, invite_status, easeverse_access`,
+           contributions = COALESCE($11::jsonb, contributions), invite_status = 'active', profile_completed_at = NOW()
+          WHERE invite_token = $1 AND (invite_expires_at IS NULL OR invite_expires_at > NOW()) RETURNING id, name, role, instrument, invite_status, easeverse_access`,
         [token, name, str(req.body?.role, 80) || null, str(req.body?.instrument, 120) || null,
          str(req.body?.email, 200) || null, str(req.body?.phone, 60) || null, str(req.body?.bio, 2000) || null,
          str(req.body?.avatarUrl, 3000000) || null, typeof req.body?.easeverseAccess === "boolean" ? req.body.easeverseAccess : null,
-         req.body?.links && typeof req.body.links === "object" ? JSON.stringify(req.body.links).slice(0, 4000) : null]);
+         req.body?.links && typeof req.body.links === "object" ? JSON.stringify(req.body.links).slice(0, 4000) : null,
+         Array.isArray(req.body?.contributions) ? JSON.stringify(req.body.contributions.filter((x: unknown) => typeof x === "string").slice(0, 30)) : null]);
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       return res.json({ ok: true, member: r.rows[0] });
     } catch (e) {
@@ -609,8 +689,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       for (const m of names) {
         const token = m.owner ? null : makeInviteToken();
         await pool.query(
-          `INSERT INTO audio_review_members (project_id, name, role, avatar_color, is_owner, order_index, invite_token, invite_status, invited_at)
-           SELECT $1::uuid,$2,$3,$4,$5,$6,$7,$8, CASE WHEN $7::text IS NULL THEN NULL ELSE NOW() END
+          `INSERT INTO audio_review_members (project_id, name, role, avatar_color, is_owner, order_index, invite_token, invite_status, invited_at, invite_expires_at)
+           SELECT $1::uuid,$2,$3,$4,$5,$6,$7,$8, CASE WHEN $7::text IS NULL THEN NULL ELSE NOW() END, CASE WHEN $7::text IS NULL THEN NULL ELSE NOW() + INTERVAL '90 days' END
             WHERE NOT EXISTS (SELECT 1 FROM audio_review_members WHERE project_id = $1::uuid AND name = $2)`,
           [reviewId, m.name, m.role, PALETTE[i % PALETTE.length], m.owner, i, token, m.owner ? "owner" : "pending"]); i++;
       }
@@ -795,6 +875,120 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   });
 
   // ── Profil → Split Sheet: generer royalty-splitt fra review-medlemmene ─────
+  // Les koblet splittark + parter (for redigering i studioet).
+  app.get("/api/audio-showcases/:id/split-sheet", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    try {
+      const ss = await pool.query(
+        `SELECT id, status, total_percentage FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
+      if (ss.rowCount === 0) return res.json({ exists: false });
+      const c = await pool.query(
+        `SELECT id, name, email, role, percentage, signed_at, custom_fields FROM split_sheet_contributors WHERE split_sheet_id=$1 ORDER BY order_index ASC`, [ss.rows[0].id]);
+      const signedCount = c.rows.filter((r) => r.signed_at).length;
+      return res.json({ exists: true, splitSheetId: ss.rows[0].id, status: ss.rows[0].status, totalPercentage: Number(ss.rows[0].total_percentage),
+        contributors: c.rows, signedCount, allSigned: signedCount === c.rowCount && c.rowCount > 0, url: `/crm?splitSheet=${ss.rows[0].id}` });
+    } catch (e) {
+      if (isMissingTable(e)) return res.json({ exists: false });
+      return res.status(500).json({ error: "split_sheet_read_failed" });
+    }
+  });
+
+  // Oppdater avtale-vilkår (master/komposisjon-royalty + sats) på koblet splittark.
+  // Master-% = split_sheet_contributors.percentage (trigger 0–100); komposisjon
+  // + honorar lagres i custom_fields. Låst hvis noen har signert.
+  app.patch("/api/audio-showcases/:id/split-sheet", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    const splits: any[] = Array.isArray(req.body?.contributors) ? req.body.contributors : [];
+    if (!splits.length) return res.status(400).json({ error: "contributors_required" });
+    try {
+      const ss = await pool.query(
+        `SELECT id FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
+      if (ss.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const ssId = ss.rows[0].id;
+      // Lås: kan ikke endre vilkår etter at noen har signert (juridisk integritet).
+      const signed = await pool.query(`SELECT COUNT(*)::int AS n FROM split_sheet_contributors WHERE split_sheet_id=$1 AND signed_at IS NOT NULL`, [ssId]);
+      if (signed.rows[0].n > 0) return res.status(409).json({ error: "locked_signed", message: "Avtalen er signert av minst én part og er låst. Lås opp for å endre (krever ny signering)." });
+
+      const clean = splits.map((c) => ({
+        id: str(c.id, 64),
+        master: Math.max(0, Math.min(100, Number(c.masterPct ?? c.percentage) || 0)),
+        comp: Math.max(0, Math.min(100, Number(c.compositionPct) || 0)),
+        feeAmount: Number(c.feeAmount) > 0 ? Number(c.feeAmount) : null,
+        feeCurrency: str(c.feeCurrency, 8) || "NOK",
+        feeType: ["royalty", "session", "buyout", "hourly"].includes(c.feeType) ? c.feeType : "royalty",
+      }));
+      const masterTotal = Math.round(clean.reduce((a, c) => a + c.master, 0) * 100) / 100;
+      const compTotal = Math.round(clean.reduce((a, c) => a + c.comp, 0) * 100) / 100;
+      if (masterTotal > 100.01) return res.status(400).json({ error: "master_exceeds_100", total: masterTotal });
+      await pool.query(`UPDATE split_sheet_contributors SET percentage=0 WHERE split_sheet_id=$1::uuid`, [ssId]);
+      for (const c of clean) {
+        await pool.query(
+          `UPDATE split_sheet_contributors
+             SET percentage=$2, updated_at=NOW(),
+                 custom_fields = COALESCE(custom_fields,'{}'::jsonb) || $4::jsonb
+           WHERE id=$1::uuid AND split_sheet_id=$3::uuid`,
+          [c.id, c.master, ssId, JSON.stringify({ compositionPct: c.comp, feeAmount: c.feeAmount, feeCurrency: c.feeCurrency, feeType: c.feeType })]);
+      }
+      return res.json({ ok: true, masterTotal, compTotal, masterBalanced: Math.abs(masterTotal - 100) < 0.01, compBalanced: Math.abs(compTotal - 100) < 0.01 });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      console.error("[audio-showcase] split-sheet patch failed:", e);
+      return res.status(500).json({ error: "split_sheet_update_failed" });
+    }
+  });
+
+  // Lås opp (fjern alle signaturer) for å kunne endre vilkår på nytt.
+  app.post("/api/audio-showcases/:id/split-sheet/unlock", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    try {
+      const ss = await pool.query(`SELECT id FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
+      if (ss.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      await pool.query(`UPDATE split_sheet_contributors SET signed_at=NULL, signature_data=NULL, updated_at=NOW() WHERE split_sheet_id=$1`, [ss.rows[0].id]);
+      await pool.query(`UPDATE split_sheets SET status='draft', updated_at=NOW() WHERE id=$1`, [ss.rows[0].id]);
+      return res.json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: "unlock_failed" });
+    }
+  });
+
+  // Juridisk signering av en part: samtykke + revisjonslogg (IP/tid) + snapshot
+  // av nøyaktig hva som ble signert. Setter status når alle har signert.
+  async function signContributor(ssId: string, contributorId: string, signerName: string, ip: string, ua: string): Promise<any | null> {
+    const cur = await pool.query(`SELECT id, name, percentage, custom_fields FROM split_sheet_contributors WHERE id=$1::uuid AND split_sheet_id=$2::uuid LIMIT 1`, [contributorId, ssId]);
+    if (cur.rowCount === 0) return null;
+    const c = cur.rows[0];
+    const snapshot = { masterPct: Number(c.percentage), compositionPct: c.custom_fields?.compositionPct ?? null, feeAmount: c.custom_fields?.feeAmount ?? null, feeCurrency: c.custom_fields?.feeCurrency ?? null, feeType: c.custom_fields?.feeType ?? null, contributions: c.custom_fields?.contributions ?? [] };
+    const sig = { name: signerName, consent: true, at: new Date().toISOString(), ip, userAgent: (ua || "").slice(0, 300), snapshot };
+    const r = await pool.query(`UPDATE split_sheet_contributors SET signed_at=NOW(), signature_data=$3::jsonb, updated_at=NOW() WHERE id=$1::uuid AND split_sheet_id=$2::uuid RETURNING id, name, signed_at`, [contributorId, ssId, JSON.stringify(sig)]);
+    // Sett status når alle har signert.
+    const counts = await pool.query(`SELECT COUNT(*)::int total, COUNT(signed_at)::int signed FROM split_sheet_contributors WHERE split_sheet_id=$1`, [ssId]);
+    const { total, signed } = counts.rows[0];
+    await pool.query(`UPDATE split_sheets SET status=$2, updated_at=NOW() WHERE id=$1`, [ssId, signed >= total ? "completed" : "pending_signatures"]);
+    return { ...r.rows[0], allSigned: signed >= total };
+  }
+
+  app.post("/api/audio-showcases/:id/split-sheet/sign", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    const contributorId = str(req.body?.contributorId, 64);
+    const signature = str(req.body?.signature, 200);
+    if (!contributorId || !signature) return res.status(400).json({ error: "contributorId_and_signature_required" });
+    if (req.body?.consent !== true) return res.status(400).json({ error: "consent_required" });
+    try {
+      const ss = await pool.query(`SELECT id FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
+      if (ss.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const out = await signContributor(ss.rows[0].id, contributorId, signature, clientIp(req), String(req.headers["user-agent"] || ""));
+      if (!out) return res.status(404).json({ error: "contributor_not_found" });
+      return res.json({ ok: true, signed: out });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      return res.status(500).json({ error: "sign_failed" });
+    }
+  });
+
   app.post("/api/audio-showcases/:id/split-sheet", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     const id = str(req.params.id, 64);
@@ -804,7 +998,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const project = p.rows[0];
       const m = await pool.query(
-        `SELECT name, email, role FROM audio_review_members WHERE project_id=$1::uuid ORDER BY is_owner DESC, order_index ASC`, [id]);
+        `SELECT name, email, role, contributions FROM audio_review_members WHERE project_id=$1::uuid ORDER BY is_owner DESC, order_index ASC`, [id]);
       const members = m.rows;
       if (members.length === 0) return res.status(409).json({ error: "no_members" });
 
@@ -844,13 +1038,226 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         await pool.query(
           `INSERT INTO split_sheet_contributors (id, split_sheet_id, name, email, role, percentage, order_index, user_id, custom_fields)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
-          [randomUUID(), ssId, mem.name, mem.email || null, mapRole(mem.role), pcts[i], i, null, JSON.stringify({ memberRole: mem.role || null })]); i++;
+          [randomUUID(), ssId, mem.name, mem.email || null, mapRole(mem.role), pcts[i], i, null,
+           JSON.stringify({ memberRole: mem.role || null, contributions: Array.isArray(mem.contributions) ? mem.contributions : [] })]); i++;
       }
       return res.status(201).json({ splitSheetId: ssId, created: true, contributors: members.length, url: `/crm?splitSheet=${ssId}` });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       console.error("[audio-showcase] split-sheet gen failed:", e);
       return res.status(500).json({ error: "split_sheet_failed" });
+    }
+  });
+
+  // ── DAW-markører fra EaseVerse → seksjoner på en versjon (Fase 2) ─────────
+  app.post("/api/audio-versions/:id/pull-sections", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const versionId = str(req.params.id, 64);
+    try {
+      const own = await pool.query(
+        `SELECT v.id, v.duration, p.external_track_id, p.easeverse_track_id
+           FROM audio_review_versions v JOIN audio_review_projects p ON p.id = v.project_id
+          WHERE v.id = $1::uuid AND p.owner_user_id = $2 LIMIT 1`, [versionId, s.userId]);
+      if (own.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const extId = own.rows[0].external_track_id || own.rows[0].easeverse_track_id;
+      if (!extId) return res.status(409).json({ error: "no_linked_track" });
+      const remote = await evGetProtools(extId);
+      if (!remote.configured) return res.status(503).json({ error: "easeverse_not_configured" });
+      if (!remote.reachable) return res.status(502).json({ error: "easeverse_unreachable" });
+      const markers: any[] = Array.isArray(remote.item?.markers) ? remote.item.markers : [];
+      if (!markers.length) return res.json({ applied: "no_markers", sections: [] });
+      const sorted = [...markers].filter((m) => Number.isFinite(Number(m?.positionMs))).sort((a, b) => a.positionMs - b.positionMs);
+      const dur = Number(own.rows[0].duration) || (sorted.length ? sorted[sorted.length - 1].positionMs / 1000 + 30 : 0);
+      await pool.query(`DELETE FROM audio_review_sections WHERE version_id = $1::uuid`, [versionId]);
+      let i = 0;
+      for (const m of sorted) {
+        const startSec = Number(m.positionMs) / 1000;
+        const endSec = i < sorted.length - 1 ? Number(sorted[i + 1].positionMs) / 1000 : dur;
+        const type = String(m.sectionType || "").toLowerCase();
+        await pool.query(
+          `INSERT INTO audio_review_sections (version_id, name, start_time_seconds, end_time_seconds, color, order_index)
+           VALUES ($1::uuid,$2,$3,$4,$5,$6)`,
+          [versionId, str(m.label, 80) || `Del ${i + 1}`, startSec, endSec, PT_SECTION_COLOR[type] || null, i]); i++;
+      }
+      const out = await pool.query(`SELECT * FROM audio_review_sections WHERE version_id = $1::uuid ORDER BY order_index ASC`, [versionId]);
+      return res.json({ applied: "pulled", count: out.rowCount, sections: out.rows });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      console.error("[audio-showcase] pull-sections failed:", e);
+      return res.status(500).json({ error: "pull_sections_failed" });
+    }
+  });
+
+  // ── EaseVerse keeper-takes → review-versjoner (Fase 2 / gap #9) ───────────
+  app.post("/api/audio-showcases/:id/pull-takes", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    try {
+      const p = await pool.query(
+        `SELECT external_track_id, easeverse_track_id FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [id, s.userId]);
+      if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const extId = p.rows[0].external_track_id || p.rows[0].easeverse_track_id;
+      if (!extId) return res.status(409).json({ error: "no_linked_track" });
+      const remote = await evGetTakes(extId);
+      if (!remote.configured) return res.status(503).json({ error: "easeverse_not_configured" });
+      if (!remote.reachable) return res.status(502).json({ error: "easeverse_unreachable" });
+      const takes = remote.items.filter((t) => t?.url);
+      if (!takes.length) return res.json({ applied: "no_takes", created: 0 });
+      // Hvilke take-URL-er finnes allerede som versjoner? (idempotent)
+      const existing = await pool.query(`SELECT file_url FROM audio_review_versions WHERE project_id=$1::uuid`, [id]);
+      const have = new Set(existing.rows.map((r) => r.file_url));
+      let created = 0;
+      for (const t of takes) {
+        if (have.has(t.url)) continue;
+        // §14 supersede: tidligere under_review → superseded
+        await pool.query(`UPDATE audio_review_versions SET status='superseded' WHERE project_id=$1::uuid AND status='under_review'`, [id]);
+        const vn = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM audio_review_versions WHERE project_id=$1::uuid`, [id]);
+        await pool.query(
+          `INSERT INTO audio_review_versions (project_id, version_label, version_number, file_name, file_url, uploaded_by)
+           VALUES ($1::uuid,$2,$3,$4,$5,$6)`,
+          [id, `Vokal-take ${vn.rows[0].n}`, vn.rows[0].n, str(t.filename, 300) || "take.wav", t.url, "EaseVerse"]);
+        created++;
+      }
+      if (created > 0) await pool.query(`UPDATE audio_review_projects SET status='under_review', updated_at=NOW() WHERE id=$1::uuid`, [id]);
+      return res.json({ applied: created > 0 ? "pulled" : "up_to_date", created, totalTakes: takes.length });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      console.error("[audio-showcase] pull-takes failed:", e);
+      return res.status(500).json({ error: "pull_takes_failed" });
+    }
+  });
+
+  // ── Member-tilgang via invite-token: se review + kommenter (ikke eier) ─────
+  // Token = tilgang. Bidragsyteren kan se versjoner/waveform/tekst + kommentere,
+  // men ikke godkjenne/laste opp/invitere.
+  async function resolveSharedMember(token: string): Promise<any | null> {
+    const r = await pool.query(
+      `SELECT m.id AS member_id, m.name, m.role, m.project_id, p.* FROM audio_review_members m
+         JOIN audio_review_projects p ON p.id = m.project_id
+        WHERE m.invite_token = $1 AND (m.invite_expires_at IS NULL OR m.invite_expires_at > NOW()) LIMIT 1`, [token]);
+    return r.rows[0] || null;
+  }
+
+  app.get("/api/audio-review-shared/:token", async (req, res) => {
+    const token = str(req.params.token, 80);
+    if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    try {
+      const ctx = await resolveSharedMember(token);
+      if (!ctx) return res.status(404).json({ error: "not_found" });
+      const [v, members, tasks] = await Promise.all([
+        pool.query(`SELECT * FROM audio_review_versions WHERE project_id = $1::uuid ORDER BY version_number ASC`, [ctx.project_id]),
+        pool.query(`SELECT id, name, role, instrument, avatar_color, avatar_url, is_owner, invite_status, contributions FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC`, [ctx.project_id]),
+        pool.query(`SELECT * FROM audio_review_tasks WHERE project_id = $1::uuid ORDER BY order_index ASC`, [ctx.project_id]).catch(() => ({ rows: [] })),
+      ]);
+      let easeverseTrack: any = null;
+      if (ctx.easeverse_track_id) {
+        const t = await pool.query(`SELECT id, title, status, lyrics FROM easeverse_tracks WHERE id = $1::uuid LIMIT 1`, [ctx.easeverse_track_id]).catch(() => ({ rows: [] as any[] }));
+        easeverseTrack = t.rows[0] || null;
+      }
+      const project = { id: ctx.id, title: ctx.title, band_name: ctx.band_name, artist_name: ctx.artist_name, genre: ctx.genre, bpm: ctx.bpm, musical_key: ctx.musical_key, status: ctx.status, cover_url: ctx.cover_url, created_at: ctx.created_at, easeverse_track_id: ctx.easeverse_track_id };
+      return res.json({ project, versions: v.rows, members: members.rows, tasks: tasks.rows, easeverseTrack, viewer: { memberId: ctx.member_id, name: ctx.name, role: ctx.role }, readonly: true });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(404).json({ error: "not_found" });
+      return res.status(500).json({ error: "shared_get_failed" });
+    }
+  });
+
+  app.get("/api/audio-review-shared/:token/version/:vid", async (req, res) => {
+    const token = str(req.params.token, 80); const vid = str(req.params.vid, 64);
+    if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    try {
+      const ctx = await resolveSharedMember(token);
+      if (!ctx) return res.status(404).json({ error: "not_found" });
+      const v = await pool.query(`SELECT * FROM audio_review_versions WHERE id = $1::uuid AND project_id = $2::uuid LIMIT 1`, [vid, ctx.project_id]);
+      if (v.rowCount === 0) return res.status(404).json({ error: "version_not_found" });
+      const [comments, sections] = await Promise.all([
+        pool.query(`SELECT * FROM audio_review_comments WHERE version_id = $1::uuid ORDER BY timecode_seconds ASC, created_at ASC`, [vid]),
+        pool.query(`SELECT * FROM audio_review_sections WHERE version_id = $1::uuid ORDER BY order_index ASC`, [vid]),
+      ]);
+      return res.json({ version: v.rows[0], comments: comments.rows, sections: sections.rows });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(404).json({ error: "not_found" });
+      return res.status(500).json({ error: "shared_version_failed" });
+    }
+  });
+
+  app.post("/api/audio-review-shared/:token/comments", async (req, res) => {
+    const token = str(req.params.token, 80);
+    if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    if (rateLimited(`shc:${clientIp(req)}`)) return res.status(429).json({ error: "rate_limited" });
+    const versionId = str(req.body?.versionId, 64);
+    const body = str(req.body?.body, 4000);
+    if (!versionId || !body) return res.status(400).json({ error: "versionId_and_body_required" });
+    try {
+      const ctx = await resolveSharedMember(token);
+      if (!ctx) return res.status(404).json({ error: "not_found" });
+      const owns = await pool.query(`SELECT 1 FROM audio_review_versions WHERE id=$1::uuid AND project_id=$2::uuid LIMIT 1`, [versionId, ctx.project_id]);
+      if (owns.rowCount === 0) return res.status(404).json({ error: "version_not_found" });
+      const r = await pool.query(
+        `INSERT INTO audio_review_comments (version_id, user_id, author, author_role, timecode_seconds, body, category, section_ref)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [versionId, `member:${ctx.member_id}`, ctx.name, ctx.role, num(req.body?.timecodeSeconds) ?? 0, body,
+         str(req.body?.category, 40) || "general", str(req.body?.sectionRef, 120) || null]);
+      return res.status(201).json(r.rows[0]);
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      return res.status(500).json({ error: "shared_comment_failed" });
+    }
+  });
+
+  app.post("/api/audio-review-shared/:token/comments/:id/like", async (req, res) => {
+    const token = str(req.params.token, 80); const id = str(req.params.id, 64);
+    if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    try {
+      const ctx = await resolveSharedMember(token);
+      if (!ctx) return res.status(404).json({ error: "not_found" });
+      const r = await pool.query(
+        `UPDATE audio_review_comments SET like_count = like_count + 1, updated_at = NOW()
+          WHERE id = $1::uuid AND version_id IN (SELECT id FROM audio_review_versions WHERE project_id = $2::uuid) RETURNING *`, [id, ctx.project_id]);
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      return res.json(r.rows[0]);
+    } catch (e) {
+      return res.status(500).json({ error: "shared_like_failed" });
+    }
+  });
+
+  // Member: se din egen avtale-andel (vilkår) + signér den selv (juridisk).
+  app.get("/api/audio-review-shared/:token/agreement", async (req, res) => {
+    const token = str(req.params.token, 80);
+    if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    try {
+      const ctx = await resolveSharedMember(token);
+      if (!ctx) return res.status(404).json({ error: "not_found" });
+      const ss = await pool.query(`SELECT id, status FROM split_sheets WHERE metadata->>'sourceReviewId'=$1 LIMIT 1`, [ctx.project_id]);
+      if (ss.rowCount === 0) return res.json({ exists: false });
+      const all = await pool.query(`SELECT id, name, role, percentage, signed_at, custom_fields FROM split_sheet_contributors WHERE split_sheet_id=$1 ORDER BY order_index ASC`, [ss.rows[0].id]);
+      const mine = all.rows.find((r) => r.name === ctx.name) || null;
+      return res.json({ exists: true, status: ss.rows[0].status, contributors: all.rows, mine, viewer: { name: ctx.name } });
+    } catch (e) {
+      if (isMissingTable(e)) return res.json({ exists: false });
+      return res.status(500).json({ error: "agreement_read_failed" });
+    }
+  });
+
+  app.post("/api/audio-review-shared/:token/sign", async (req, res) => {
+    const token = str(req.params.token, 80);
+    if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    if (rateLimited(`sign:${clientIp(req)}`)) return res.status(429).json({ error: "rate_limited" });
+    const signature = str(req.body?.signature, 200);
+    if (!signature) return res.status(400).json({ error: "signature_required" });
+    if (req.body?.consent !== true) return res.status(400).json({ error: "consent_required" });
+    try {
+      const ctx = await resolveSharedMember(token);
+      if (!ctx) return res.status(404).json({ error: "not_found" });
+      const ss = await pool.query(`SELECT id FROM split_sheets WHERE metadata->>'sourceReviewId'=$1 LIMIT 1`, [ctx.project_id]);
+      if (ss.rowCount === 0) return res.status(409).json({ error: "no_split_sheet" });
+      const c = await pool.query(`SELECT id FROM split_sheet_contributors WHERE split_sheet_id=$1 AND name=$2 LIMIT 1`, [ss.rows[0].id, ctx.name]);
+      if (c.rowCount === 0) return res.status(404).json({ error: "not_a_party" });
+      const out = await signContributor(ss.rows[0].id, c.rows[0].id, signature, clientIp(req), String(req.headers["user-agent"] || ""));
+      return res.json({ ok: true, signed: out });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      return res.status(500).json({ error: "shared_sign_failed" });
     }
   });
 }

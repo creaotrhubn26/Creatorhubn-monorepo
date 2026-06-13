@@ -7,6 +7,7 @@
 import React from 'react';
 import { Box, Typography, CircularProgress } from '@mui/material';
 import { PhotoCamera } from '@mui/icons-material';
+import { getAuthHeader } from '@/lib/queryClient';
 
 const ACCENT = '#FF6B35', BORDER = 'rgba(255,255,255,0.14)', MUTED = 'rgba(245,242,234,0.55)';
 
@@ -53,8 +54,17 @@ export default function ImageDrop({ value, onChange, variant = 'circle', maxDim,
   const handleFile = async (file?: File | null) => {
     if (!file || !file.type.startsWith('image/')) return;
     setBusy(true);
-    try { const url = await fileToResizedDataUrl(file, dim); await onChange(url); }
-    finally { setBusy(false); }
+    try {
+      // Resize klient-side → last opp → lagret URL (ikke inline data-URL).
+      const dataUrl = await fileToResizedDataUrl(file, dim);
+      const blob = await (await fetch(dataUrl)).blob();
+      const fd = new FormData(); fd.append('file', blob, 'image.jpg');
+      const headers = await getAuthHeader(); delete (headers as any)['Content-Type'];
+      const res = await fetch('/api/upload/image', { method: 'POST', headers, body: fd });
+      const json = await res.json();
+      if (json?.url) await onChange(json.url);
+      else await onChange(dataUrl); // fallback: behold lokalt hvis opplasting feiler
+    } finally { setBusy(false); }
   };
 
   const common = {
