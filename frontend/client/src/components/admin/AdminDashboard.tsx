@@ -111,6 +111,9 @@ import AdminCommunicationPanel from './AdminCommunicationPanel';
 import FeatureManagement from './feature-management';
 import FeatureCustomizationPanel from './FeatureCustomizationPanel';
 import UserManagementPanel from './UserManagementPanel';
+import LeadMapEntitlementsAdminPanel from './LeadMapEntitlementsAdminPanel';
+import CustomerSuccessSnapshotCard from './CustomerSuccessSnapshotCard';
+import LeadMapMarketplaceCard from './LeadMapMarketplaceCard';
 import InviteManagementDashboard from './InviteManagementDashboard';
 import AdminNotificationManager from './AdminNotificationManager';
 import AdminConfigStatusCard from './AdminConfigStatusCard';
@@ -1684,6 +1687,7 @@ export default function AdminDashboard({
 
   const renderOverviewPanel = () => (
     <Box sx={{ display: 'grid', gap: 3 }}>
+      <CustomerSuccessSnapshotCard />
       <Grid container spacing={{ xs: 2, sm: 3 }}>
         <Grid item xs={12} xl={7}>
           <Card
@@ -3257,7 +3261,14 @@ export default function AdminDashboard({
       case 'overblikk':
         return renderOverviewPanel();
       case 'brukere-roller':
-        return <UserManagementPanel {...sharedPanelProps} />;
+        return (
+          <>
+            <UserManagementPanel {...sharedPanelProps} />
+            <Box sx={{ px: { xs: 1.5, sm: 2.5 }, pb: 4, pt: 3 }}>
+              <LeadMapEntitlementsAdminPanel />
+            </Box>
+          </>
+        );
       case 'invite-requests':
         return (
           <>
@@ -3321,7 +3332,17 @@ export default function AdminDashboard({
       case 'secrets-rotation':
         return <SecretsRotationPanel />;
       case 'marketplace-apps':
-        return <MarketplaceAppConfigManager />;
+        return (
+          <>
+            <Box sx={{ px: { xs: 1.5, sm: 2.5 }, pt: 2, pb: 1 }}>
+              <LeadMapMarketplaceCard
+                onJumpToEntitlements={() => activateTab(tabIndexFor('brukere-roller'))}
+                onJumpToPricing={() => openPriceManagementSection('lead-map')}
+              />
+            </Box>
+            <MarketplaceAppConfigManager />
+          </>
+        );
       case 'analytics-hub':
         return <AdminAnalyticsHub />;
       case 'ai-cost':
