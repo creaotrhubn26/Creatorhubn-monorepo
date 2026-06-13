@@ -43,6 +43,8 @@ interface CustomerHealth {
     stripeStatus: string | null;
     daysToRenewal: number | null;
   };
+  aiSummary?: string | null;
+  aiNextAction?: string | null;
 }
 
 interface DashboardSummary {
@@ -344,6 +346,12 @@ export default function CustomerSuccessDashboard() {
                 </Box>
               );
             })}
+            {/* AI-suggestion vises ekspandert hvis tilgjengelig */}
+            {data.customers.some((c) => c.aiNextAction) && (
+              <Typography sx={{ fontSize: '0.74rem', color: palette.textMuted, mt: 1, fontStyle: 'italic' }}>
+                💡 Klikk en kunde for å se Claude-genererte next-action-forslag
+              </Typography>
+            )}
           </Stack>
         )}
       </CardContent>
@@ -363,7 +371,7 @@ export default function CustomerSuccessDashboard() {
         <DialogContent>
           {interactionsFor && (
             <Box sx={{ mb: 2 }}>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1.4 }}>
                 {(['loginScore','featureScore','billingScore','engagementScore'] as const).map((k) => {
                   const label = k.replace('Score', '').replace(/^./, (s) => s.toUpperCase());
                   return (
@@ -376,6 +384,27 @@ export default function CustomerSuccessDashboard() {
                   );
                 })}
               </Stack>
+              {(interactionsFor.aiSummary || interactionsFor.aiNextAction) && (
+                <Box sx={{
+                  p: 1.4, borderRadius: 1.4,
+                  bgcolor: 'rgba(192,132,252,0.06)',
+                  border: `1px dashed ${palette.borderStrong}`,
+                }}>
+                  <Typography sx={{ fontSize: '0.7rem', color: palette.accent, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', mb: 0.6 }}>
+                    💡 Claude-analyse
+                  </Typography>
+                  {interactionsFor.aiSummary && (
+                    <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary, mb: 0.8 }}>
+                      {interactionsFor.aiSummary}
+                    </Typography>
+                  )}
+                  {interactionsFor.aiNextAction && (
+                    <Typography sx={{ fontSize: '0.82rem', color: palette.textPrimary, fontWeight: 600 }}>
+                      → {interactionsFor.aiNextAction}
+                    </Typography>
+                  )}
+                </Box>
+              )}
             </Box>
           )}
           {interactions.length === 0 ? (

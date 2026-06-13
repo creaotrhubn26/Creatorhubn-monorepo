@@ -19,6 +19,17 @@
  */
 
 import type { Pool } from "pg";
+import Anthropic from "@anthropic-ai/sdk";
+
+const CLAUDE_MODEL = "claude-opus-4-7";
+let cachedAnthropic: Anthropic | null = null;
+function getAnthropic(): Anthropic | null {
+  if (cachedAnthropic) return cachedAnthropic;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+  cachedAnthropic = new Anthropic({ apiKey });
+  return cachedAnthropic;
+}
 
 export interface CustomerHealth {
   userId: string;
@@ -245,25 +256,140 @@ export async function captureHealthSnapshot(
   return { id: r.rows[0].id, overallScore: h.overallScore, tier: h.tier };
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Claude AI-summary + next-action
+// ─────────────────────────────────────────────────────────────────────
+
+interface AiSuggestion {
+  summary: string;
+  nextAction: string;
+}
+
+/**
+ * Spør Claude om kort sammendrag (2-3 setninger) + neste konkrete handling
+ * basert på kundens helse + siste interaksjoner. Returnerer null hvis
+ * ANTHROPIC_API_KEY ikke er satt eller modellen feiler — vi blokkerer
+ * aldri snapshot-flowen pga AI-feil.
+ */
+export async function generateAiSuggestionForCustomer(
+  pool: Pool, userId: string,
+): Promise<AiSuggestion | null> {
+  const client = getAnthropic();
+  if (!client) return null;
+
+  // Hent helse + siste 5 interaksjoner
+  const h = await computeHealthForUser(pool, userId);
+  const interactions = await listInteractions(pool, userId, 5);
+  const user = await pool.query<{
+    email: string; first_name: string | null; last_name: string | null;
+    business_name: string | null;
+  }>(
+    `SELECT email, first_name, last_name, business_name FROM users WHERE id = $1`,
+    [userId],
+  );
+  const u = user.rows[0];
+  if (!u) return null;
+
+  const displayName = u.business_name || u.first_name || u.email;
+  const recentSummary = interactions.length === 0
+    ? 'Ingen interaksjoner logget.'
+    : interactions.map((i) =>
+        `[${i.occurredAt.slice(0, 10)}] ${i.interactionType}${i.subject ? ': ' + i.subject : ''}${i.sentiment ? ` (${i.sentiment})` : ''}${i.churnRiskLevel ? ` [churn-risk: ${i.churnRiskLevel}]` : ''}`,
+      ).join('\n');
+
+  const prompt = `Du er Customer Success Manager for The Role Room (B2B SaaS, casting-/produksjonsplattform).
+Skriv NORSK. Vær konkret, ikke generisk.
+
+KUNDE: ${displayName} (${u.email})
+
+HELSE-SCORE: ${h.overallScore}/100 (${h.tier})
+  - Login: ${h.subscores.login}/25 (${h.signals.daysSinceLogin === null ? 'aldri innlogget' : h.signals.daysSinceLogin + ' dager siden sist'})
+  - Feature: ${h.subscores.feature}/25 (${h.signals.featuresUsed30d} ulike features siste 30d)
+  - Billing: ${h.subscores.billing}/25 (Stripe-status: ${h.signals.stripeStatus ?? 'ingen'})
+  - Engagement: ${h.subscores.engagement}/25 (${h.signals.activeProjects30d} aktive prosjekter siste 30d)
+  ${h.signals.daysToRenewal !== null ? `Renewal om ${h.signals.daysToRenewal} dager.` : ''}
+
+SISTE INTERAKSJONER:
+${recentSummary}
+
+Returner KUN JSON i denne formen (ikke kommentar, ingen markdown):
+{
+  "summary": "2-3 setninger som oppsummerer kundens nåværende situasjon",
+  "next_action": "Én konkret handling med navn på person/team og forslag til hva som skal sies/gjøres innen 7 dager"
+}`;
+
+  try {
+    const response = await client.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 600,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const block = response.content[0];
+    const text = block?.type === 'text' ? block.text : '';
+    // Parse JSON
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]) as { summary?: string; next_action?: string };
+    if (!parsed.summary || !parsed.next_action) return null;
+    return { summary: parsed.summary.slice(0, 600), nextAction: parsed.next_action.slice(0, 400) };
+  } catch (err) {
+    console.warn('[customer-success] Claude AI feilet', { userId, err: (err as Error).message });
+    return null;
+  }
+}
+
+/**
+ * Beregner og lagrer health-snapshot + AI-suggestion atomisk.
+ * Brukes fra cron — hvis AI feiler, lagres snapshotet uansett.
+ */
+export async function captureHealthSnapshotWithAi(
+  pool: Pool, userId: string,
+): Promise<{ id: string; overallScore: number; tier: string; aiGenerated: boolean }> {
+  const ai = await generateAiSuggestionForCustomer(pool, userId);
+  const h = await computeHealthForUser(pool, userId);
+  const r = await pool.query<{ id: string }>(
+    `INSERT INTO customer_health_snapshots (
+       user_id, overall_score, health_tier,
+       login_score, feature_score, billing_score, engagement_score,
+       days_since_login, active_projects_30d, features_used_30d,
+       stripe_status, days_to_renewal,
+       ai_summary, ai_next_action
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+     RETURNING id`,
+    [
+      userId, h.overallScore, h.tier,
+      h.subscores.login, h.subscores.feature, h.subscores.billing, h.subscores.engagement,
+      h.signals.daysSinceLogin, h.signals.activeProjects30d, h.signals.featuresUsed30d,
+      h.signals.stripeStatus, h.signals.daysToRenewal,
+      ai?.summary ?? null, ai?.nextAction ?? null,
+    ],
+  );
+  return { id: r.rows[0].id, overallScore: h.overallScore, tier: h.tier, aiGenerated: !!ai };
+}
+
 /** Bulk-snapshot for alle aktive kunder. Brukes fra cron-endpoint. */
 export async function captureSnapshotsForAllActiveCustomers(
-  pool: Pool,
-): Promise<{ scanned: number; succeeded: number; failed: number; errors: Array<{ userId: string; error: string }> }> {
+  pool: Pool, opts: { withAi?: boolean } = {},
+): Promise<{ scanned: number; succeeded: number; aiGenerated: number; failed: number; errors: Array<{ userId: string; error: string }> }> {
+  const withAi = opts.withAi ?? true;
   const r = await pool.query<{ id: string }>(
     `SELECT id FROM users WHERE is_active = TRUE LIMIT 5000`,
   );
-  let succeeded = 0, failed = 0;
+  let succeeded = 0, failed = 0, aiGenerated = 0;
   const errors: Array<{ userId: string; error: string }> = [];
   for (const row of r.rows) {
     try {
-      await captureHealthSnapshot(pool, row.id);
+      const r2 = withAi
+        ? await captureHealthSnapshotWithAi(pool, row.id)
+        : { ...(await captureHealthSnapshot(pool, row.id)), aiGenerated: false };
       succeeded += 1;
+      if (r2.aiGenerated) aiGenerated += 1;
     } catch (err) {
       failed += 1;
       errors.push({ userId: row.id, error: (err as Error).message?.slice(0, 200) });
     }
   }
-  return { scanned: r.rows.length, succeeded, failed, errors: errors.slice(0, 20) };
+  return { scanned: r.rows.length, succeeded, aiGenerated, failed, errors: errors.slice(0, 20) };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -294,9 +420,26 @@ export async function buildDashboardSummary(pool: Pool): Promise<DashboardSummar
      LIMIT 200`,
   );
 
+  // Hent siste AI-suggestion fra snapshot-tabellen for alle brukerne i én query
+  const aiRes = await pool.query<{
+    user_id: string; ai_summary: string | null; ai_next_action: string | null;
+  }>(
+    `SELECT DISTINCT ON (user_id) user_id, ai_summary, ai_next_action
+     FROM customer_health_snapshots
+     WHERE user_id = ANY($1::varchar[])
+       AND (ai_summary IS NOT NULL OR ai_next_action IS NOT NULL)
+     ORDER BY user_id, computed_at DESC`,
+    [customersRes.rows.map((c) => c.id)],
+  );
+  const aiMap = new Map<string, { summary: string | null; nextAction: string | null }>();
+  for (const r of aiRes.rows) {
+    aiMap.set(r.user_id, { summary: r.ai_summary, nextAction: r.ai_next_action });
+  }
+
   const customers: CustomerHealth[] = [];
   for (const c of customersRes.rows) {
     const h = await computeHealthForUser(pool, c.id);
+    const ai = aiMap.get(c.id);
     customers.push({
       userId: c.id,
       email: c.email,
@@ -310,8 +453,8 @@ export async function buildDashboardSummary(pool: Pool): Promise<DashboardSummar
       billingScore: h.subscores.billing,
       engagementScore: h.subscores.engagement,
       signals: h.signals,
-      aiSummary: null,
-      aiNextAction: null,
+      aiSummary: ai?.summary ?? null,
+      aiNextAction: ai?.nextAction ?? null,
     });
   }
 
