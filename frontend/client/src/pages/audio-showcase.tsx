@@ -24,7 +24,7 @@ import {
   CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
   PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll,
 } from '@mui/icons-material';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
 import ComboField, { ROLE_OPTIONS, INSTRUMENT_OPTIONS } from '@/components/universal/showcase/ComboField';
@@ -193,10 +193,28 @@ export default function AudioShowcasePage() {
     try { await apiRequest(`/api/audio-versions/${currentVid}/approve`, { method: 'POST', body: { approvalType } }); await loadProject(); await loadVersion(currentVid); }
     finally { setBusy(false); }
   };
-  const uploadVersion = async () => {
-    const url = window.prompt('URL til lydfil (WAV/MP3) for ny versjon:'); if (!url) return; setBusy(true);
-    try { const v = await apiRequest('/api/audio-versions', { method: 'POST', body: { projectId, fileUrl: url.trim() } }); await loadProject(); setCurrentVid(v.id); }
-    finally { setBusy(false); }
+  const versionFileRef = React.useRef<HTMLInputElement | null>(null);
+  const [uploadPct, setUploadPct] = React.useState<number | null>(null);
+  const uploadVersion = () => versionFileRef.current?.click();
+  const uploadVersionFile = async (file?: File | null) => {
+    if (!file) return;
+    setBusy(true); setUploadPct(0);
+    try {
+      // Ekte fil-opplasting → backend lagrer + serverer same-origin (waveform-vennlig).
+      const fd = new FormData(); fd.append('file', file);
+      const headers = await getAuthHeader(); delete (headers as any)['Content-Type'];
+      const url: string = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload/audio');
+        Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v as string));
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploadPct(Math.round((e.loaded / e.total) * 100)); };
+        xhr.onload = () => { try { const j = JSON.parse(xhr.responseText); j?.url ? resolve(j.url) : reject(new Error('no url')); } catch { reject(new Error('bad response')); } };
+        xhr.onerror = () => reject(new Error('upload failed'));
+        xhr.send(fd);
+      });
+      const v = await apiRequest('/api/audio-versions', { method: 'POST', body: { projectId, fileUrl: url, fileName: file.name } });
+      await loadProject(); setCurrentVid(v.id);
+    } catch { /* ignore */ } finally { setBusy(false); setUploadPct(null); }
   };
   const toggleTask = async (t: any) => {
     const next = t.status === 'done' ? 'todo' : 'done';
@@ -511,7 +529,8 @@ export default function AudioShowcasePage() {
         <Box sx={{ flex: 1 }}><Typography sx={{ fontWeight: 700 }}>Samarbeid. Forfin. Lever.</Typography><Typography sx={{ fontSize: '0.78rem', color: MUTED }}>All feedback, versjoner og beslutninger på ett sted.</Typography></Box>
         <Button onClick={() => approve('changes_requested')} disabled={busy || !currentVid} startIcon={<ChatBubbleOutline />} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '10px', px: 2.5, py: 1 }}>Be om endringer</Button>
         <Button onClick={() => approve('mix_approved')} disabled={busy || !currentVid} startIcon={<CheckCircleOutline />} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '10px', px: 3, py: 1, '&:hover': { bgcolor: '#ff855a' } }}>Godkjenn mix</Button>
-        <Button onClick={uploadVersion} disabled={busy} startIcon={<CloudUpload />} endIcon={<KeyboardArrowDown />} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '10px', px: 2.5, py: 1 }}>Last opp ny versjon</Button>
+        <input ref={versionFileRef} type="file" accept="audio/*,.wav,.mp3,.aif,.aiff,.m4a,.flac" hidden onChange={(e) => { void uploadVersionFile(e.target.files?.[0]); e.target.value = ''; }} />
+        <Button onClick={uploadVersion} disabled={busy} startIcon={uploadPct !== null ? <CircularProgress size={16} sx={{ color: ACCENT }} /> : <CloudUpload />} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '10px', px: 2.5, py: 1 }}>{uploadPct !== null ? `Laster opp… ${uploadPct}%` : 'Last opp ny versjon'}</Button>
       </Stack>
 
       {/* Dialoger */}
