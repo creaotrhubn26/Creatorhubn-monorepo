@@ -272,6 +272,10 @@ export interface DemoProject {
   goal?: string;
   /** Spesifikk oppgave/prosess veiledningen skal vise. F.eks. «hele innloggings-prosessen». */
   task?: string;
+  /** Product Brain: ekstrahert tekst fra en produkt-PDF (one-pager) som AI
+   *  Director leser for å forstå produktet dypere enn nettsiden alene. */
+  productDoc?: string;
+  productDocName?: string;
   /** Valgt Resolve AI-stemme for voiceover (VoiceModel). Default «Female 1». */
   voiceModel?: string;
   /** Merkevare/white-label for output (interaktiv guide + video). */

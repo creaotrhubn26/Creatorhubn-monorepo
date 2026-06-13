@@ -38,6 +38,7 @@ fn work_dir(app: &AppHandle, project_id: &str, sub: &str) -> Result<PathBuf, Str
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TtsResult {
     pub path: String,
     pub duration_sec: f64,
@@ -101,6 +102,7 @@ pub async fn synthesize_tts(
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NarrationSegment {
     pub audio_path: String,
     pub offset_ms: u32,
