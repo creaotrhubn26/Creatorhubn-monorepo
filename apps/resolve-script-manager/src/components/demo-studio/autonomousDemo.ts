@@ -25,9 +25,12 @@ export async function runAutonomousDemo(
     onShots?: (shots: Array<{ scrollPct: number; dataUrl: string }>) => void;
     /** Branding: ramme + intro/outro (PNG-er rendret i frontend). */
     finalize?: DemoFinalizeOpts;
+    /** ElevenLabs (valgfritt): bedre stemme. Faller tilbake til say uten/ved feil. */
+    elevenKey?: string;
+    elevenVoiceId?: string;
   } = {},
 ): Promise<string> {
-  const { voice, onProgress = () => {}, onScene, onShots, finalize } = opts;
+  const { voice, onProgress = () => {}, onScene, onShots, finalize, elevenKey, elevenVoiceId } = opts;
   const scenes = project.scenes;
   if (!scenes.length) throw new Error('Ingen scener — generér demoen først.');
 
@@ -61,7 +64,7 @@ export async function runAutonomousDemo(
     const text = (scenes[i].narration || '').trim();
     if (!text) { audio.push(null); continue; }
     onProgress(`Voiceover ${i + 1}/${scenes.length}…`, 5 + Math.round((i / scenes.length) * 35));
-    audio.push(await synthesizeTts(project.id, scenes[i].id, text, voice).catch(() => null));
+    audio.push(await synthesizeTts(project.id, scenes[i].id, text, voice, elevenKey, elevenVoiceId).catch(() => null));
   }
   // Dvel-tid per scene = narration-lengde (+ litt pust), min 1,5 s
   const dwellsMs = scenes.map((s, i) =>

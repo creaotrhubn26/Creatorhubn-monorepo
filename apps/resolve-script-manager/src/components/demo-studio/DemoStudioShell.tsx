@@ -180,6 +180,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [demoVidResult, setDemoVidResult] = useState<string | null>(null);
   const [demoVidScene, setDemoVidScene] = useState<{ index: number; total: number } | null>(null);
   const [brandedOutput, setBrandedOutput] = useState(true); // intro/outro + ramme på autonom video
+  const [elevenKey, setElevenKeyState] = useState<string>(() => { try { return localStorage.getItem('trrpa.eleven_key') || ''; } catch { return ''; } });
+  const setElevenKey = (v: string) => { setElevenKeyState(v); try { localStorage.setItem('trrpa.eleven_key', v); } catch { /* */ } };
   /** Bygg branding (ramme + intro/outro PNG-er) fra prosjekt + forståelse. */
   const buildFinalize = (): DemoFinalizeOpts | undefined => {
     if (!brandedOutput || !project) return undefined;
@@ -227,6 +229,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         onScene: (index, total) => setDemoVidScene({ index, total }),
         onShots: (shots) => setProjectField('scanShots', shots),
         finalize: buildFinalize(),
+        elevenKey: elevenKey.trim() || undefined,
       });
       setDemoVidResult(out);
       setDemoVidMsg('✓ Ferdig demo klar');
@@ -259,6 +262,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         onScene: (index, total) => setDemoVidScene({ index, total }),
         onShots: (shots) => setProjectField('scanShots', shots),
         finalize: buildFinalize(),
+        elevenKey: elevenKey.trim() || undefined,
       });
       setDemoVidResult(out); setDemoVidMsg('✓ Ferdig demo klar'); void systemOpen(out).catch(() => {});
     } catch (e) {
@@ -993,6 +997,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                           <div style={{ marginTop: 8 }}>
                             <input style={{ ...field, marginBottom: 8 }} value={project.scriptMeta?.audience ?? ''} placeholder="Målgruppe / persona (valgfritt)"
                               onChange={(e) => setProjectField('scriptMeta', { ...(project.scriptMeta ?? { tone: 'professional', audience: '', language: 'Norsk', length: 'medium' }), audience: e.target.value })} />
+                            <input style={{ ...field, marginBottom: 4 }} type="password" value={elevenKey} placeholder="ElevenLabs API-nøkkel (valgfritt — bedre stemme)"
+                              onChange={(e) => setElevenKey(e.target.value)} />
+                            <div style={{ fontSize: 10, color: C.inkFaint, marginBottom: 8, lineHeight: 1.4 }}>Med nøkkel brukes ElevenLabs-stemme i den autonome videoen. Uten → norsk «Nora» (on-device).</div>
                             <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', opacity: directorBusy ? 0.6 : 1 }}
                               disabled={directorBusy} onClick={() => void generateDemo()}
                               title="Hopp over diskusjonen og generér rett fra det du har skrevet">Generér direkte (uten å forstå først)</button>
