@@ -1,0 +1,40 @@
+name: Customer Success daily snapshot
+
+on:
+  schedule:
+    # Hver natt kl 03:23 UTC (05:23 norsk sommertid, 04:23 vinter)
+    # 03:23 sprer last fra andre cron-jobber som typisk er :00/:15/:30/:45
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call snapshot-all endpoint
+        env:
+          CUSTOMER_SUCCESS_SNAPSHOT_TOKEN: ${{ secrets.CUSTOMER_SUCCESS_SNAPSHOT_TOKEN }}
+          BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL || 'https://creatorhub-backend-rtbl.onrender.com' }}
+        run: |
+          if [ -z "$CUSTOMER_SUCCESS_SNAPSHOT_TOKEN" ]; then
+            echo "::error::CUSTOMER_SUCCESS_SNAPSHOT_TOKEN secret er ikke satt"
+            exit 1
+          fi
+
+          URL="$BACKEND_BASE_URL/api/admin-room/customer-success/snapshot-all"
+          echo "Calling: $URL"
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$URL" \
+            -H "x-cron-trigger-token: $CUSTOMER_SUCCESS_SNAPSHOT_TOKEN" \
+            -H "Content-Type: application/json")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+
+          echo "HTTP $HTTP_CODE"
+          echo "$BODY" | jq . || echo "$BODY"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Snapshot feilet med HTTP $HTTP_CODE"
+            exit 1
+          fi
