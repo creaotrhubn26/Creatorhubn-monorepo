@@ -135,9 +135,9 @@ export async function stopScreenRecord(sessionId: string): Promise<string> {
 }
 
 // ── Autonom demo (URL → ferdig narrert video) ──
-/** Syntetiser narration for én scene (macOS say) → m4a + varighet. */
-export async function synthesizeTts(projectId: string, sceneId: string, text: string, voice?: string): Promise<{ path: string; durationSec: number }> {
-  return invoke<{ path: string; durationSec: number }>("synthesize_tts", { projectId, sceneId, text, voice });
+/** Syntetiser narration for én scene. ElevenLabs hvis nøkkel, ellers macOS say. */
+export async function synthesizeTts(projectId: string, sceneId: string, text: string, voice?: string, elevenKey?: string, elevenVoiceId?: string): Promise<{ path: string; durationSec: number }> {
+  return invoke<{ path: string; durationSec: number }>("synthesize_tts", { projectId, sceneId, text, voice, elevenKey, elevenVoiceId });
 }
 export interface DemoFinalizeOpts {
   framePng?: string; frameX?: number; frameY?: number; frameW?: number; frameH?: number;

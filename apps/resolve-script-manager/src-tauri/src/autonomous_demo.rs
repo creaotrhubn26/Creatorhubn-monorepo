@@ -44,7 +44,17 @@ pub struct TtsResult {
     pub duration_sec: f64,
 }
 
-/// Syntetiser narration for én scene med macOS `say` → .m4a + varighet.
+fn probe_duration(ffprobe: &Option<PathBuf>, m4a: &PathBuf) -> f64 {
+    if let Some(fp) = ffprobe {
+        if let Ok(o) = Command::new(fp).args(["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", &m4a.to_string_lossy()]).output() {
+            return String::from_utf8_lossy(&o.stdout).trim().parse().unwrap_or(0.0);
+        }
+    }
+    0.0
+}
+
+/// Syntetiser narration for én scene. ElevenLabs hvis nøkkel er satt (bedre,
+/// selger-kvalitet stemme), ellers macOS `say` (on-device, nøkkelfritt).
 #[tauri::command]
 pub async fn synthesize_tts(
     app: AppHandle,
@@ -52,8 +62,11 @@ pub async fn synthesize_tts(
     scene_id: String,
     text: String,
     voice: Option<String>,
+    eleven_key: Option<String>,
+    eleven_voice_id: Option<String>,
 ) -> Result<TtsResult, String> {
     let ffmpeg = find_ffmpeg().ok_or("ffmpeg ikke funnet (brew install ffmpeg)")?;
+    let ffprobe = find_ffprobe();
     let clean = text.trim();
     if clean.is_empty() {
         return Err("tom narration".into());
@@ -62,6 +75,35 @@ pub async fn synthesize_tts(
     let safe_scene: String = scene_id.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
     let aiff = dir.join(format!("{}.aiff", safe_scene));
     let m4a = dir.join(format!("{}.m4a", safe_scene));
+
+    // ── ElevenLabs (hvis API-nøkkel) — faller stille tilbake til say ved feil ──
+    if let Some(key) = eleven_key.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+        let vid = eleven_voice_id.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "21m00Tcm4TlvDq8ikWAM".into());
+        let mp3 = dir.join(format!("{}.mp3", safe_scene));
+        let client = reqwest::Client::new();
+        let res = client
+            .post(format!("https://api.elevenlabs.io/v1/text-to-speech/{vid}"))
+            .header("xi-api-key", key)
+            .json(&serde_json::json!({ "text": clean, "model_id": "eleven_multilingual_v2" }))
+            .send().await;
+        if let Ok(r) = res {
+            if r.status().is_success() {
+                if let Ok(bytes) = r.bytes().await {
+                    if std::fs::write(&mp3, &bytes).is_ok() {
+                        let ok = Command::new(&ffmpeg)
+                            .args(["-y", "-i", &mp3.to_string_lossy(), "-c:a", "aac", "-b:a", "160k", &m4a.to_string_lossy()])
+                            .status().map(|s| s.success()).unwrap_or(false);
+                        let _ = std::fs::remove_file(&mp3);
+                        if ok {
+                            return Ok(TtsResult { path: m4a.to_string_lossy().to_string(), duration_sec: probe_duration(&ffprobe, &m4a) });
+                        }
+                    }
+                }
+            }
+        }
+        // ElevenLabs feilet → fortsett til say-fallback under (ikke avbryt demoen).
+    }
 
     let run_say = |with_voice: bool| -> std::io::Result<std::process::ExitStatus> {
         let mut say = Command::new("/usr/bin/say");
@@ -89,16 +131,7 @@ pub async fn synthesize_tts(
     if !st2.success() {
         return Err("ffmpeg aiff→m4a feilet".into());
     }
-    let mut duration_sec = 0.0;
-    if let Some(fp) = find_ffprobe() {
-        if let Ok(o) = Command::new(&fp)
-            .args(["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", &m4a.to_string_lossy()])
-            .output()
-        {
-            duration_sec = String::from_utf8_lossy(&o.stdout).trim().parse().unwrap_or(0.0);
-        }
-    }
-    Ok(TtsResult { path: m4a.to_string_lossy().to_string(), duration_sec })
+    Ok(TtsResult { path: m4a.to_string_lossy().to_string(), duration_sec: probe_duration(&ffprobe, &m4a) })
 }
 
 /// Åpne en fil/sti med systemets standard-app (`/usr/bin/open`). Mer pålitelig
