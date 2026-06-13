@@ -498,6 +498,11 @@ import {
   upsertRenewalFromStripeSubscription as upsertCsRenewalFromStripe,
   markRenewalChurnedForStripeSubscription as markCsRenewalChurned,
 } from "./customer-success-service.js";
+import {
+  expireEntitlementForSubscription as expireLeadMapEntitlement,
+  tierFromPriceId as leadMapTierFromPriceId,
+  upsertEntitlementFromStripeSubscription as upsertLeadMapEntitlement,
+} from "./lead-map-entitlements-service.js";
 import { setupClientAdsRoutes } from "./client-ads-routes";
 import { setupCockpitB2BRoutes } from "./cockpit-b2b-routes";
 import { setupLinkedInOAuthRoutes } from "./linkedin-oauth-routes";
@@ -1247,6 +1252,8 @@ app.post(
           await handleRoleRoomSubscriptionDeleted(pool, subscription);
           // Wave M2: marker renewal-rad som churned
           void markCsRenewalChurned(pool, subscription.id);
+          // Wave LM-Agent Fase 2: expire Lead Map-entitlement
+          void expireLeadMapEntitlement(pool, subscription.id);
           break;
         }
         case "customer.subscription.updated": {
@@ -1439,6 +1446,28 @@ app.post(
           });
           // Wave M2: opprett renewal-rad i CSM-pipeline
           void upsertCsRenewalFromStripe(pool, subscription as unknown as Parameters<typeof upsertCsRenewalFromStripe>[1]);
+          // Wave LM-Agent Fase 2: hvis subscription er Lead Map-modul, upsert entitlement
+          {
+            const meta = subscription.metadata || {};
+            const priceId = subscription.items?.data?.[0]?.price?.id;
+            const tier = meta.module === 'lead_map' && typeof meta.tier === 'string'
+              ? leadMapTierFromPriceId(priceId || '') || (['discover','pro','agency'].includes(meta.tier) ? meta.tier as 'discover'|'pro'|'agency' : null)
+              : null;
+            if (tier && meta.config_id && meta.producer_user_id) {
+              const subLoose = subscription as unknown as { current_period_end?: number };
+              const periodEnd = subLoose.current_period_end;
+              void upsertLeadMapEntitlement(pool, {
+                configId: String(meta.config_id),
+                producerUserId: String(meta.producer_user_id),
+                tier,
+                stripeSubscriptionId: subscription.id,
+                stripePriceId: priceId || null,
+                stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : null,
+                cancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
+                currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : null,
+              });
+            }
+          }
           break;
         }
         // Slice 10.2 — gallery checkout completion. We only act when

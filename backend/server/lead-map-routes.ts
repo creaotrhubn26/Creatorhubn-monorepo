@@ -16,6 +16,14 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import {
+  consumeQuota,
+  getEntitlement,
+  startTrial,
+  TIER_PRICING_NOK,
+  type LeadMapTier,
+} from "./lead-map-entitlements-service.js";
+import Stripe from "stripe";
+import {
   generateLeadPitch,
   getLeadById,
   getLeadMapMetrics,
@@ -57,8 +65,35 @@ const VALID_VISIT_TYPES: ReadonlySet<VisitType> = new Set([
   'physical', 'phone', 'email', 'online_meeting', 'research',
 ]);
 
+let stripeClient: Stripe | null = null;
+function getStripe(): Stripe | null {
+  if (stripeClient) return stripeClient;
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) return null;
+  stripeClient = new Stripe(key, { apiVersion: '2025-01-27.acacia' as Stripe.StripeConfig['apiVersion'] });
+  return stripeClient;
+}
+
 export function setupLeadMapRoutes(deps: Deps): void {
   const { app, pool, activeSessions } = deps;
+
+  // Helper: krev aktiv entitlement (returnerer 402 hvis ikke)
+  async function requireEntitlement(req: Request, res: Response, configId: string) {
+    const e = await getEntitlement(pool, configId);
+    if (!e) {
+      res.status(402).json({
+        error: "lead_map_module_not_active",
+        upgradeUrl: `/api/role-room/agent/configs/${configId}/lead-map/checkout?tier=pro`,
+        tiers: {
+          discover: { priceNok: TIER_PRICING_NOK.discover },
+          pro: { priceNok: TIER_PRICING_NOK.pro },
+          agency: { priceNok: TIER_PRICING_NOK.agency },
+        },
+      });
+      return null;
+    }
+    return e;
+  }
 
   // GET /leads — innenfor bounds + valgfrie filtre
   app.get("/api/admin-room/lead-map/leads", async (req: Request, res: Response) => {
@@ -547,6 +582,104 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "pitch_failed", detail: String(err) });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // ENTITLEMENT / BILLING
+  // ════════════════════════════════════════════════════════════════════
+
+  // GET /agent/configs/:configId/lead-map/entitlement
+  app.get("/api/role-room/agent/configs/:configId/lead-map/entitlement", async (req, res) => {
+    const session = getUser(req, activeSessions);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    if (!await verifyConfigAccess(req.params.configId, session.userId)) {
+      return res.status(403).json({ error: "ingen_tilgang_til_config" });
+    }
+    try {
+      const e = await getEntitlement(pool, req.params.configId);
+      if (!e) {
+        return res.json({
+          active: false,
+          tiers: {
+            discover: { priceNok: TIER_PRICING_NOK.discover, limits: { leadsPerMonth: 50, aiPitchesPerMonth: 0 } },
+            pro: { priceNok: TIER_PRICING_NOK.pro, limits: { leadsPerMonth: 250, aiPitchesPerMonth: 50 } },
+            agency: { priceNok: TIER_PRICING_NOK.agency, limits: { leadsPerMonth: null, aiPitchesPerMonth: null } },
+          },
+        });
+      }
+      return res.json({ active: true, entitlement: e });
+    } catch (err) {
+      return res.status(500).json({ error: "entitlement_failed", detail: String(err) });
+    }
+  });
+
+  // POST /agent/configs/:configId/lead-map/trial — start 14-dagers pro-trial
+  app.post("/api/role-room/agent/configs/:configId/lead-map/trial", async (req, res) => {
+    const session = getUser(req, activeSessions);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    if (!await verifyConfigAccess(req.params.configId, session.userId)) {
+      return res.status(403).json({ error: "ingen_tilgang_til_config" });
+    }
+    try {
+      const r = await startTrial(pool, {
+        configId: req.params.configId, producerUserId: session.userId,
+      });
+      if (!r.ok) return res.status(409).json(r);
+      return res.json(r);
+    } catch (err) {
+      return res.status(500).json({ error: "trial_failed", detail: String(err) });
+    }
+  });
+
+  // POST /agent/configs/:configId/lead-map/checkout — opprett Stripe Checkout-session
+  app.post("/api/role-room/agent/configs/:configId/lead-map/checkout", async (req, res) => {
+    const session = getUser(req, activeSessions);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    if (!await verifyConfigAccess(req.params.configId, session.userId)) {
+      return res.status(403).json({ error: "ingen_tilgang_til_config" });
+    }
+
+    const tier = String(req.query.tier ?? req.body?.tier ?? '') as LeadMapTier;
+    const priceId = tier === 'discover' ? process.env.STRIPE_PRICE_LEAD_MAP_DISCOVER
+      : tier === 'pro' ? process.env.STRIPE_PRICE_LEAD_MAP_PRO
+      : tier === 'agency' ? process.env.STRIPE_PRICE_LEAD_MAP_AGENCY
+      : null;
+    if (!priceId) return res.status(400).json({ error: "ugyldig_tier_eller_pris_mangler" });
+
+    const stripe = getStripe();
+    if (!stripe) return res.status(503).json({ error: "stripe_not_configured" });
+
+    const successUrl = (req.body?.successUrl as string)
+      || `${process.env.ROLE_ROOM_PUBLIC_URL || 'https://theroleroom.com'}/agent/lead-map/success`;
+    const cancelUrl = (req.body?.cancelUrl as string)
+      || `${process.env.ROLE_ROOM_PUBLIC_URL || 'https://theroleroom.com'}/agent/lead-map`;
+
+    try {
+      const checkoutSession = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        payment_method_types: ['card'],
+        line_items: [{ price: priceId, quantity: 1 }],
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        metadata: {
+          module: 'lead_map',
+          config_id: req.params.configId,
+          producer_user_id: session.userId,
+          tier,
+        },
+        subscription_data: {
+          metadata: {
+            module: 'lead_map',
+            config_id: req.params.configId,
+            producer_user_id: session.userId,
+            tier,
+          },
+        },
+      });
+      return res.json({ checkoutUrl: checkoutSession.url, sessionId: checkoutSession.id });
+    } catch (err) {
+      return res.status(500).json({ error: "checkout_failed", detail: String(err) });
     }
   });
 }
