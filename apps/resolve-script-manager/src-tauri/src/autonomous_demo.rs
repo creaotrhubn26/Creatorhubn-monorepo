@@ -116,13 +116,22 @@ pub async fn mux_demo_video(
     project_id: String,
     video_path: String,
     segments: Vec<NarrationSegment>,
+    out_name: Option<String>,
 ) -> Result<String, String> {
     let ffmpeg = find_ffmpeg().ok_or("ffmpeg ikke funnet")?;
     if !PathBuf::from(&video_path).exists() {
         return Err("video-fil mangler (Playwright-opptak feilet?)".into());
     }
-    let dir = work_dir(&app, &project_id, "demo-renders")?;
-    let out = dir.join("autonom-demo.mp4");
+    let _ = &app; // beholdt for signatur-kompat
+    // Lagre i ~/Movies/Post Agent/ — synlig og spillbar (Application Support er
+    // for dypt/beskyttet for enkelte spillere). Movies krever ikke TCC-samtykke.
+    let home = std::env::var("HOME").map_err(|_| "fant ikke hjemmemappe".to_string())?;
+    let dir = PathBuf::from(home).join("Movies").join("Post Agent");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("kunne ikke lage ~/Movies/Post Agent: {e}"))?;
+    let base: String = out_name.unwrap_or_else(|| "autonom-demo".into())
+        .chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' }).collect();
+    let base = if base.trim().is_empty() { format!("demo-{}", project_id) } else { base.trim().to_string() };
+    let out = dir.join(format!("{}.mp4", base));
 
     let mut args: Vec<String> = vec!["-y".into(), "-i".into(), video_path.clone()];
     for seg in &segments {

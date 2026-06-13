@@ -126,6 +126,57 @@ const SELF_HEAL_RUNTIME: string[] = [
   '}',
 ];
 
+// ── Cinematisk lag for autonom video: synlig peker som reiser til elementer,
+// ── klikk-ripple, glow-uthevning + myk scroll når target mangler (så opptaket
+// ── aldri fryser). Playwright tegner ingen ekte cursor — vi injiserer en.
+const CINEMATIC_RUNTIME: string[] = [
+  'async function injectCursor(page) {',
+  '  await page.evaluate(() => {',
+  "    if (document.getElementById('__pa_cur')) return;",
+  "    const c = document.createElement('div');",
+  "    c.id = '__pa_cur';",
+  "    c.style.cssText = 'position:fixed;left:50%;top:45%;z-index:2147483647;width:26px;height:26px;pointer-events:none;transition:left .7s cubic-bezier(.45,0,.2,1),top .7s cubic-bezier(.45,0,.2,1);will-change:left,top';",
+  '    c.innerHTML = \'<svg width="26" height="26" viewBox="0 0 24 24" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.45))"><path d="M5 2l15 8-6.5 1.7L10 20z" fill="#fff" stroke="#1d1b19" stroke-width="1.3" stroke-linejoin="round"/></svg>\';',
+  '    document.documentElement.appendChild(c);',
+  '    window.__paMove = (x, y) => { const e = document.getElementById("__pa_cur"); if (e) { e.style.left = x + "px"; e.style.top = y + "px"; } };',
+  '    window.__paRipple = (x, y) => { const r = document.createElement("div"); r.style.cssText = `position:fixed;left:${x}px;top:${y}px;z-index:2147483646;width:12px;height:12px;margin:-6px 0 0 -6px;border:3px solid #ef8a5d;border-radius:50%;pointer-events:none;opacity:.95;transition:all .55s ease-out`; document.documentElement.appendChild(r); requestAnimationFrame(() => { r.style.width = "64px"; r.style.height = "64px"; r.style.margin = "-32px 0 0 -32px"; r.style.opacity = "0"; }); setTimeout(() => r.remove(), 650); };',
+  '    window.__paGlow = (x, y, w, h) => { const g = document.createElement("div"); g.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:2147483645;border:3px solid #ef8a5d;border-radius:8px;box-shadow:0 0 0 4px rgba(239,138,93,.22);pointer-events:none;transition:opacity .4s`; document.documentElement.appendChild(g); setTimeout(() => { g.style.opacity = "0"; setTimeout(() => g.remove(), 400); }, 1500); };',
+  '  }).catch(() => {});',
+  '}',
+  'async function cinematicAct(page, strategies, kind, label) {',
+  '  await injectCursor(page);',
+  "  const key = label || JSON.stringify(strategies[0] || null);",
+  '  const ordered = (LEARNED[key] ? [LEARNED[key]] : []).concat(strategies);',
+  '  let hit = await locate(page, ordered);',
+  '  if (!hit && label) hit = await locate(page, [["text", label], ["role", "button", label], ["role", "link", label]]);',
+  '  if (!hit) {',
+  "    console.warn('[hopp] ingen target for «' + (label || kind) + '» — myk scroll så videoen lever');",
+  '    await page.evaluate(() => window.scrollBy({ top: Math.min(420, innerHeight * 0.55), behavior: "smooth" })).catch(() => {});',
+  '    await page.waitForTimeout(900);',
+  '    return false;',
+  '  }',
+  '  if (key && hit.strategy && JSON.stringify(LEARNED[key]) !== JSON.stringify(hit.strategy)) { LEARNED[key] = hit.strategy; saveLearned(); }',
+  '  await hit.loc.scrollIntoViewIfNeeded().catch(() => {});',
+  '  await page.waitForTimeout(550);',
+  '  const box = await hit.loc.boundingBox().catch(() => null);',
+  '  if (box) {',
+  '    const cx = Math.round(box.x + box.width / 2), cy = Math.round(box.y + box.height / 2);',
+  '    await page.evaluate(([x, y]) => window.__paMove && window.__paMove(x, y), [cx, cy]).catch(() => {});',
+  '    await page.waitForTimeout(780);',
+  '    await page.evaluate(([x, y, w, h]) => window.__paGlow && window.__paGlow(Math.round(x), Math.round(y), Math.round(w), Math.round(h)), [box.x, box.y, box.width, box.height]).catch(() => {});',
+  "    if (kind !== 'show' && kind !== 'hover') { await page.evaluate(([x, y]) => window.__paRipple && window.__paRipple(x, y), [cx, cy]).catch(() => {}); }",
+  '    await page.waitForTimeout(320);',
+  '  }',
+  '  try {',
+  "    if (kind === 'show') {}",
+  "    else if (kind === 'type') { await hit.loc.click({ timeout: 3000 }).catch(() => {}); await hit.loc.fill('Eksempel').catch(() => {}); }",
+  "    else if (kind === 'hover') { await hit.loc.hover({ timeout: 3000 }).catch(() => {}); }",
+  '    else { await hit.loc.click({ timeout: 3000 }).catch(() => {}); }',
+  '  } catch {}',
+  '  return true;',
+  '}',
+];
+
 /**
  * Fase 3 + selv-helbredelse — generer et kjørbart, ADAPTIVT Playwright-skript
  * (.mjs) av demoen: ekte navigasjon + per-scene handling via multi-strategi-
@@ -205,16 +256,18 @@ export function buildAutonomousScript(project: DemoProject, dwellsMs: number[]):
   L.push("import { readFileSync, writeFileSync, existsSync } from 'node:fs';");
   L.push('');
   SELF_HEAL_RUNTIME.forEach((l) => L.push(l));
+  CINEMATIC_RUNTIME.forEach((l) => L.push(l));
   L.push('');
   L.push('let browser;');
-  L.push("try { browser = await chromium.launch({ headless: false, slowMo: 120, channel: 'chrome' }); }");
-  L.push('catch { browser = await chromium.launch({ headless: false, slowMo: 120 }); }');
+  L.push("try { browser = await chromium.launch({ headless: false, slowMo: 90, channel: 'chrome' }); }");
+  L.push('catch { browser = await chromium.launch({ headless: false, slowMo: 90 }); }');
   L.push("const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, recordVideo: { dir: 'demo-video', size: { width: 1280, height: 800 } } });");
   L.push('const page = await context.newPage();');
   L.push("console.log('MARK_T0 ' + Date.now()); // video-t0 ≈ context-opprettelse");
   L.push(`await page.goto(${jsStr(project.url)}, { waitUntil: 'domcontentloaded' });`);
   L.push('await page.waitForTimeout(1800);');
   L.push('await dismissOverlays(page); // fjern cookie/consent før opptak');
+  L.push('await injectCursor(page); // synlig peker i opptaket');
   L.push('await page.waitForTimeout(400);');
   L.push('');
   project.scenes.forEach((s, i) => {
@@ -225,19 +278,22 @@ export function buildAutonomousScript(project: DemoProject, dwellsMs: number[]):
     const hasTarget = tuples !== '[]';
     const label = oneLine(s.targetLabel || '');
     const dwell = Math.max(1500, Math.round(dwellsMs[i] || 3000));
+    const kind = at === 'type' ? 'type' : at === 'hover' ? 'hover' : at === 'click' ? 'click' : 'show';
     L.push(`// ── Scene ${n}: ${oneLine(s.title).slice(0, 60)}`);
-    if (s.startScrollPct) L.push(`await page.evaluate(() => window.scrollTo({ top: (document.body.scrollHeight - innerHeight) * ${(s.startScrollPct / 100).toFixed(2)}, behavior: 'smooth' }));`);
-    L.push('await page.waitForTimeout(500);');
-    if (at === 'wait') {
-      // bare dvel
-    } else if (hasTarget) {
-      const kind = at === 'type' ? 'type' : at === 'hover' ? 'hover' : at === 'click' ? 'click' : 'show';
-      L.push(`await act(page, ${tuples}, ${jsStr(kind)}, ${jsStr(label)}).catch(() => {});`);
-    } else if (at === 'scroll') {
-      L.push('await page.mouse.wheel(0, 500);');
-    }
-    // MARK = start på dvel (her spilles narration i muxingen)
+    // MARK FØR handlingen, så narrasjonen dekker peker-reisen + handlingen.
     L.push(`console.log('MARK ${i} ' + Date.now());`);
+    L.push('await injectCursor(page); // re-injiser (navigasjon kan ha fjernet pekeren)');
+    if (s.startScrollPct) L.push(`await page.evaluate(() => window.scrollTo({ top: (document.body.scrollHeight - innerHeight) * ${(s.startScrollPct / 100).toFixed(2)}, behavior: 'smooth' })).catch(() => {});`);
+    if (at === 'wait') {
+      L.push('await page.waitForTimeout(600);');
+    } else if (hasTarget) {
+      // Cinematisk: peker reiser til elementet + glow/ripple + handling.
+      L.push(`await cinematicAct(page, ${tuples}, ${jsStr(kind)}, ${jsStr(label)});`);
+    } else {
+      // Ingen target → vis bevegelse uansett så videoen lever.
+      L.push('await page.evaluate(() => window.scrollBy({ top: Math.min(420, innerHeight * 0.55), behavior: "smooth" })).catch(() => {});');
+      L.push('await page.waitForTimeout(900);');
+    }
     L.push(`await page.waitForTimeout(${dwell});`);
     L.push('');
   });
