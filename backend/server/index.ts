@@ -492,6 +492,7 @@ import { setupRoleRoomAgencyProposalsRoutes } from "./role-room-agency-proposals
 import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes";
 import { setupTalentSelftapesRoutes } from "./talent-selftapes-routes";
 import { setupAgencyLeadsRoutes } from "./agency-leads-routes";
+import { setupCustomerSuccessRoutes } from "./customer-success-routes.js";
 import { setupClientAdsRoutes } from "./client-ads-routes";
 import { setupCockpitB2BRoutes } from "./cockpit-b2b-routes";
 import { setupLinkedInOAuthRoutes } from "./linkedin-oauth-routes";
@@ -24108,6 +24109,13 @@ setupAgencyLeadsRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Customer Success Manager — health/renewal/interactions (Wave M2)
+setupCustomerSuccessRoutes({
+  app,
+  pool,
+  activeSessions,
   isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
 });
 // Multi-tenant Google Ads conversion-tracking for The Role Room Agent
