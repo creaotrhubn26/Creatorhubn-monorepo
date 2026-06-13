@@ -439,7 +439,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   // Produsent fyller ut / redigerer en bidragsyters profil (auth, kun eier).
   const PROFILE_FIELDS: Array<[string, string, number]> = [
     ["name", "name", 200], ["role", "role", 80], ["instrument", "instrument", 120],
-    ["email", "email", 200], ["phone", "phone", 60], ["bio", "bio", 2000], ["avatarColor", "avatar_color", 40], ["avatarUrl", "avatar_url", 1000],
+    ["email", "email", 200], ["phone", "phone", 60], ["bio", "bio", 2000], ["avatarColor", "avatar_color", 40], ["avatarUrl", "avatar_url", 3_000_000],
   ];
   app.patch("/api/audio-members/:id", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
@@ -448,6 +448,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     for (const [body, col, max] of PROFILE_FIELDS) {
       if (typeof req.body?.[body] === "string") { params.push(str(req.body[body], max)); sets.push(`${col} = $${params.length}`); }
     }
+    if (typeof req.body?.easeverseAccess === "boolean") { params.push(req.body.easeverseAccess); sets.push(`easeverse_access = $${params.length}`); }
+    if (req.body?.links && typeof req.body.links === "object") { params.push(JSON.stringify(req.body.links).slice(0, 4000)); sets.push(`links = $${params.length}::jsonb`); }
     if (!sets.length) return res.status(400).json({ error: "nothing_to_update" });
     sets.push("invite_status = CASE WHEN invite_status = 'pending' THEN 'active' ELSE invite_status END");
     sets.push("profile_completed_at = COALESCE(profile_completed_at, NOW())");
@@ -469,8 +471,9 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
     try {
       const r = await pool.query(
-        `SELECT m.id, m.name, m.role, m.instrument, m.email, m.phone, m.bio, m.avatar_color, m.invite_status,
-                m.profile_completed_at, p.title AS project_title, p.band_name,
+        `SELECT m.id, m.name, m.role, m.instrument, m.email, m.phone, m.bio, m.avatar_color, m.avatar_url, m.invite_status,
+                m.easeverse_access, m.links, m.profile_completed_at, p.title AS project_title, p.band_name,
+                COALESCE(p.external_track_id, p.easeverse_track_id) AS external_track_id,
                 (SELECT name FROM audio_review_members WHERE project_id = m.project_id AND is_owner = TRUE LIMIT 1) AS inviter_name
            FROM audio_review_members m JOIN audio_review_projects p ON p.id = m.project_id
           WHERE m.invite_token = $1 LIMIT 1`, [token]);
@@ -490,11 +493,13 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     try {
       const r = await pool.query(
         `UPDATE audio_review_members SET name = $2, role = COALESCE($3, role), instrument = $4, email = $5, phone = $6, bio = $7,
-           avatar_url = COALESCE($8, avatar_url), invite_status = 'active', profile_completed_at = NOW()
-          WHERE invite_token = $1 RETURNING id, name, role, instrument, invite_status`,
+           avatar_url = COALESCE($8, avatar_url), easeverse_access = COALESCE($9, easeverse_access), links = COALESCE($10::jsonb, links),
+           invite_status = 'active', profile_completed_at = NOW()
+          WHERE invite_token = $1 RETURNING id, name, role, instrument, invite_status, easeverse_access`,
         [token, name, str(req.body?.role, 80) || null, str(req.body?.instrument, 120) || null,
          str(req.body?.email, 200) || null, str(req.body?.phone, 60) || null, str(req.body?.bio, 2000) || null,
-         str(req.body?.avatarUrl, 1000) || null]);
+         str(req.body?.avatarUrl, 3000000) || null, typeof req.body?.easeverseAccess === "boolean" ? req.body.easeverseAccess : null,
+         req.body?.links && typeof req.body.links === "object" ? JSON.stringify(req.body.links).slice(0, 4000) : null]);
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       return res.json({ ok: true, member: r.rows[0] });
     } catch (e) {
@@ -769,7 +774,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const s = requireUserSession(req, res); if (!s) return;
     const id = str(req.params.id, 64);
     const map: Array<[string, string, number]> = [
-      ["coverUrl", "cover_url", 1000], ["title", "title", 200], ["bandName", "band_name", 200],
+      ["coverUrl", "cover_url", 3_000_000], ["title", "title", 200], ["bandName", "band_name", 200],
       ["artistName", "artist_name", 200], ["genre", "genre", 120], ["musicalKey", "musical_key", 40],
     ];
     const sets: string[] = ["updated_at = NOW()"]; const params: unknown[] = [id, s.userId];

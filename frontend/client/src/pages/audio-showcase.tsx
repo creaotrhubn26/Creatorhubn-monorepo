@@ -13,7 +13,7 @@ import WaveSurfer from 'wavesurfer.js';
 import {
   Box, Stack, Typography, Button, IconButton, Chip, TextField, Avatar, Divider,
   CircularProgress, Tooltip, Menu, MenuItem, Slider, InputBase, Dialog, DialogTitle,
-  DialogContent, DialogActions, Tabs, Tab,
+  DialogContent, DialogActions, Tabs, Tab, Switch, FormControlLabel,
 } from '@mui/material';
 import {
   Search, NotificationsNone, HelpOutline, KeyboardArrowDown, MoreHoriz, FileDownloadOutlined,
@@ -27,6 +27,7 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
+import ComboField, { ROLE_OPTIONS, INSTRUMENT_OPTIONS } from '@/components/universal/showcase/ComboField';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
@@ -515,7 +516,7 @@ export default function AudioShowcasePage() {
 
       {/* Dialoger */}
       <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={async (name, role) => { const m = await apiRequest(`/api/audio-showcases/${projectId}/members`, { method: 'POST', body: { name, role } }); setMembers((p) => [...p, m]); return m; }} />
-      <MemberProfileDialog member={memberDialog} onClose={() => setMemberDialog(null)} onSave={saveMemberProfile}
+      <MemberProfileDialog member={memberDialog} externalTrackId={easeverseTrack?.id} onClose={() => setMemberDialog(null)} onSave={saveMemberProfile}
         onDelete={async (id) => { await apiRequest(`/api/audio-members/${id}`, { method: 'DELETE' }); setMembers((p) => p.filter((x) => x.id !== id)); setMemberDialog(null); }} />
       <TaskDialog open={taskOpen} onClose={() => setTaskOpen(false)} onAdd={async (title, category) => { const t = await apiRequest('/api/audio-tasks', { method: 'POST', body: { projectId, title, assignee: category, versionId: currentVid } }); setTasks((p) => [...p, t]); setTaskOpen(false); }} />
       <Menu anchorEl={moreEl} open={Boolean(moreEl)} onClose={() => setMoreEl(null)}><MenuItem onClick={() => setMoreEl(null)} sx={{ fontSize: '0.85rem' }}>Kopier review-lenke</MenuItem></Menu>
@@ -564,13 +565,16 @@ const InviteDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (name:
   );
 };
 
-const MemberProfileDialog: React.FC<{ member: any; onClose: () => void; onSave: (id: string, patch: Record<string, string>) => Promise<void>; onDelete: (id: string) => Promise<void> }> = ({ member, onClose, onSave, onDelete }) => {
-  const [f, setF] = React.useState<any>({});
-  const [busy, setBusy] = React.useState(false); const [copied, setCopied] = React.useState(false);
-  React.useEffect(() => { if (member) setF({ name: member.name || '', role: member.role || '', instrument: member.instrument || '', email: member.email || '', phone: member.phone || '', bio: member.bio || '', avatarUrl: member.avatar_url || '' }); }, [member]);
+const MemberProfileDialog: React.FC<{ member: any; externalTrackId?: string; onClose: () => void; onSave: (id: string, patch: Record<string, any>) => Promise<void>; onDelete: (id: string) => Promise<void> }> = ({ member, externalTrackId, onClose, onSave, onDelete }) => {
+  const [f, setF] = React.useState<any>({ links: {} });
+  const [busy, setBusy] = React.useState(false); const [copied, setCopied] = React.useState(false); const [boothCopied, setBoothCopied] = React.useState(false);
+  React.useEffect(() => { if (member) setF({ name: member.name || '', role: member.role || '', instrument: member.instrument || '', email: member.email || '', phone: member.phone || '', bio: member.bio || '', avatarUrl: member.avatar_url || '', easeverseAccess: Boolean(member.easeverse_access), links: (member.links && !Array.isArray(member.links)) ? member.links : {} }); }, [member]);
   if (!member) return null;
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setF((p: any) => ({ ...p, [k]: e.target.value }));
+  const setLink = (k: string, v: string) => setF((p: any) => ({ ...p, links: { ...p.links, [k]: v } }));
   const link = member.invite_token ? `${window.location.origin}/audio-review/invite/${member.invite_token}` : '';
+  const isVocalist = /vokal/i.test(f.role || '');
+  const boothUrl = externalTrackId ? `https://easeverse.vercel.app/booth/${externalTrackId}` : '';
   return (
     <Dialog open={Boolean(member)} onClose={onClose} fullWidth maxWidth="xs" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
       <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>Profil {member.is_owner && <WorkspacePremium sx={{ fontSize: 16, color: ACCENT }} />}
@@ -581,9 +585,25 @@ const MemberProfileDialog: React.FC<{ member: any; onClose: () => void; onSave: 
         </Stack>
         <Stack spacing={1.5}>
           <TextField label="Navn" value={f.name} onChange={set('name')} size="small" sx={fieldSx} />
-          <Stack direction="row" spacing={1.5}><TextField label="Rolle" value={f.role} onChange={set('role')} size="small" fullWidth sx={fieldSx} /><TextField label="Instrument" value={f.instrument} onChange={set('instrument')} size="small" fullWidth sx={fieldSx} /></Stack>
+          <Stack direction="row" spacing={1.5}><ComboField label="Rolle" options={ROLE_OPTIONS} value={f.role || ''} onChange={(v) => setF((p: any) => ({ ...p, role: v }))} /><ComboField label="Instrument" options={INSTRUMENT_OPTIONS} value={f.instrument || ''} onChange={(v) => setF((p: any) => ({ ...p, instrument: v }))} /></Stack>
+          {isVocalist && (
+            <Box sx={{ border: `1px solid rgba(255,107,53,0.4)`, borderRadius: '10px', p: 1.25, bgcolor: 'rgba(255,107,53,0.07)' }}>
+              <FormControlLabel sx={{ m: 0 }}
+                control={<Switch checked={Boolean(f.easeverseAccess)} onChange={(e) => { setF((p: any) => ({ ...p, easeverseAccess: e.target.checked })); void onSave(member.id, { easeverseAccess: e.target.checked }); }} sx={{ '& .Mui-checked': { color: ACCENT }, '& .Mui-checked + .MuiSwitch-track': { bgcolor: `${ACCENT} !important` } }} />}
+                label={<Stack direction="row" spacing={0.75} alignItems="center"><GraphicEq sx={{ fontSize: 16, color: ACCENT }} /><Typography sx={{ fontSize: '0.82rem' }}>Tilgang til EaseVerse (vokalopptak)</Typography></Stack>} />
+              {f.easeverseAccess && boothUrl && (
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5, bgcolor: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`, borderRadius: '8px', p: 0.6 }}>
+                  <Typography sx={{ flex: 1, fontSize: '0.68rem', color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{boothUrl}</Typography>
+                  <Button size="small" startIcon={boothCopied ? <DoneAll /> : <ContentCopy />} onClick={() => { void navigator.clipboard.writeText(boothUrl); setBoothCopied(true); setTimeout(() => setBoothCopied(false), 1500); }} sx={{ color: ACCENT, textTransform: 'none', minWidth: 0 }}>{boothCopied ? 'Kopiert' : 'Booth'}</Button>
+                </Stack>
+              )}
+            </Box>
+          )}
           <TextField label="E-post" value={f.email} onChange={set('email')} size="small" sx={fieldSx} />
           <TextField label="Om" value={f.bio} onChange={set('bio')} size="small" multiline minRows={2} sx={fieldSx} />
+          <Typography sx={{ fontSize: '0.66rem', letterSpacing: 1, color: FAINT, textTransform: 'uppercase' }}>Sosiale kontoer</Typography>
+          <Stack direction="row" spacing={1.5}><TextField label="Instagram" value={f.links?.instagram || ''} onChange={(e) => setLink('instagram', e.target.value)} size="small" fullWidth sx={fieldSx} /><TextField label="TikTok" value={f.links?.tiktok || ''} onChange={(e) => setLink('tiktok', e.target.value)} size="small" fullWidth sx={fieldSx} /></Stack>
+          <Stack direction="row" spacing={1.5}><TextField label="Spotify" value={f.links?.spotify || ''} onChange={(e) => setLink('spotify', e.target.value)} size="small" fullWidth sx={fieldSx} /><TextField label="YouTube" value={f.links?.youtube || ''} onChange={(e) => setLink('youtube', e.target.value)} size="small" fullWidth sx={fieldSx} /></Stack>
           {link && (
             <Stack direction="row" spacing={1} alignItems="center" sx={{ bgcolor: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`, borderRadius: '10px', p: 1 }}>
               <Typography sx={{ flex: 1, fontSize: '0.72rem', color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</Typography>

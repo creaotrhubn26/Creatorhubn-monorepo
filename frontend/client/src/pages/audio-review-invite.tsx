@@ -7,11 +7,12 @@
 import React from 'react';
 import { useParams } from 'wouter';
 import {
-  Box, Stack, Typography, Button, TextField, Avatar, CircularProgress, Chip,
+  Box, Stack, Typography, Button, TextField, CircularProgress, Switch, FormControlLabel,
 } from '@mui/material';
-import { MusicNote, CheckCircle } from '@mui/icons-material';
+import { MusicNote, CheckCircle, ContentCopy, DoneAll, GraphicEq } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
+import ComboField, { ROLE_OPTIONS, INSTRUMENT_OPTIONS } from '@/components/universal/showcase/ComboField';
 
 const BG = '#0A0A0B', PANEL = '#131316', BORDER = 'rgba(255,255,255,0.08)';
 const TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', ACCENT = '#FF6B35';
@@ -29,14 +30,19 @@ export default function AudioReviewInvitePage() {
   const [invite, setInvite] = React.useState<any>(null);
   const [done, setDone] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const [form, setForm] = React.useState({ name: '', role: '', instrument: '', email: '', phone: '', bio: '', avatarUrl: '' });
+  const [form, setForm] = React.useState<any>({ name: '', role: '', instrument: '', email: '', phone: '', bio: '', avatarUrl: '', easeverseAccess: false, links: {} as Record<string, string> });
+  const setLink = (k: string, v: string) => setForm((f: any) => ({ ...f, links: { ...f.links, [k]: v } }));
+  const [copied, setCopied] = React.useState(false);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const setV = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+  const isVocalist = /vokal/i.test(form.role);
+  const boothUrl = invite?.external_track_id ? `https://easeverse.vercel.app/booth/${invite.external_track_id}` : '';
 
   React.useEffect(() => {
     if (!token) { setLoading(false); return; }
     apiRequest(`/api/audio-review-invite/${token}`).then((d: any) => {
       setInvite(d);
-      setForm((f) => ({ ...f, name: d.name || '', role: d.role || '', instrument: d.instrument || '', email: d.email || '', phone: d.phone || '', bio: d.bio || '', avatarUrl: d.avatar_url || '' }));
+      setForm((f: any) => ({ ...f, name: d.name || '', role: d.role || '', instrument: d.instrument || '', email: d.email || '', phone: d.phone || '', bio: d.bio || '', avatarUrl: d.avatar_url || '', easeverseAccess: Boolean(d.easeverse_access), links: (d.links && !Array.isArray(d.links)) ? d.links : {} }));
       if (d.invite_status === 'active' || d.profile_completed_at) setDone(true);
     }).catch(() => setInvite(null)).finally(() => setLoading(false));
   }, [token]);
@@ -77,14 +83,37 @@ export default function AudioReviewInvitePage() {
             <Stack spacing={1.5}>
               <TextField label="Navn" value={form.name} onChange={set('name')} size="small" required sx={fieldSx} />
               <Stack direction="row" spacing={1.5}>
-                <TextField label="Rolle (f.eks. Vokalist)" value={form.role} onChange={set('role')} size="small" fullWidth sx={fieldSx} />
-                <TextField label="Instrument" value={form.instrument} onChange={set('instrument')} size="small" fullWidth sx={fieldSx} />
+                <ComboField label="Rolle" options={ROLE_OPTIONS} value={form.role} onChange={(v) => setV('role', v)} />
+                <ComboField label="Instrument" options={INSTRUMENT_OPTIONS} value={form.instrument} onChange={(v) => setV('instrument', v)} />
               </Stack>
+              {isVocalist && (
+                <Box sx={{ border: `1px solid rgba(255,107,53,0.4)`, borderRadius: '12px', p: 1.5, bgcolor: 'rgba(255,107,53,0.07)' }}>
+                  <FormControlLabel
+                    control={<Switch checked={form.easeverseAccess} onChange={(e) => setV('easeverseAccess', e.target.checked)} sx={{ '& .Mui-checked': { color: ACCENT }, '& .Mui-checked + .MuiSwitch-track': { bgcolor: `${ACCENT} !important` } }} />}
+                    label={<Stack direction="row" spacing={0.75} alignItems="center"><GraphicEq sx={{ fontSize: 17, color: ACCENT }} /><Typography sx={{ fontSize: '0.85rem', color: TEXT }}>Gi tilgang til EaseVerse (vokalopptak)</Typography></Stack>} />
+                  {form.easeverseAccess && boothUrl && (
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5, bgcolor: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`, borderRadius: '8px', p: 0.75 }}>
+                      <Typography sx={{ flex: 1, fontSize: '0.7rem', color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{boothUrl}</Typography>
+                      <Button size="small" startIcon={copied ? <DoneAll /> : <ContentCopy />} onClick={() => { void navigator.clipboard.writeText(boothUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); }} sx={{ color: ACCENT, textTransform: 'none', minWidth: 0 }}>{copied ? 'Kopiert' : 'Booth'}</Button>
+                    </Stack>
+                  )}
+                  <Typography sx={{ fontSize: '0.68rem', color: MUTED, mt: 0.5 }}>Du kan ta opp vokalen i EaseVerse — takene kommer rett inn som versjoner.</Typography>
+                </Box>
+              )}
               <Stack direction="row" spacing={1.5}>
                 <TextField label="E-post" value={form.email} onChange={set('email')} size="small" fullWidth sx={fieldSx} />
                 <TextField label="Telefon (valgfritt)" value={form.phone} onChange={set('phone')} size="small" fullWidth sx={fieldSx} />
               </Stack>
               <TextField label="Kort om deg (valgfritt)" value={form.bio} onChange={set('bio')} size="small" multiline minRows={2} sx={fieldSx} />
+              <Typography sx={{ fontSize: '0.7rem', letterSpacing: 1, color: MUTED, textTransform: 'uppercase', mt: 0.5 }}>Sosiale kontoer</Typography>
+              <Stack direction="row" spacing={1.5}>
+                <TextField label="Instagram" value={form.links.instagram || ''} onChange={(e) => setLink('instagram', e.target.value)} size="small" fullWidth sx={fieldSx} placeholder="@bruker" />
+                <TextField label="TikTok" value={form.links.tiktok || ''} onChange={(e) => setLink('tiktok', e.target.value)} size="small" fullWidth sx={fieldSx} placeholder="@bruker" />
+              </Stack>
+              <Stack direction="row" spacing={1.5}>
+                <TextField label="Spotify" value={form.links.spotify || ''} onChange={(e) => setLink('spotify', e.target.value)} size="small" fullWidth sx={fieldSx} placeholder="artist-lenke" />
+                <TextField label="YouTube" value={form.links.youtube || ''} onChange={(e) => setLink('youtube', e.target.value)} size="small" fullWidth sx={fieldSx} placeholder="kanal-lenke" />
+              </Stack>
               <Button onClick={submit} disabled={busy || !form.name.trim()} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px', py: 1 }}>{busy ? 'Lagrer…' : 'Lagre profil'}</Button>
               <Typography sx={{ fontSize: '0.7rem', color: MUTED, textAlign: 'center' }}>Profilen knyttes også til splittark (royalty) for låten.</Typography>
             </Stack>
