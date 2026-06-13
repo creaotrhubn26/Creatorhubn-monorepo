@@ -542,7 +542,7 @@ export default function AudioShowcasePage() {
       <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={async (name, role) => { const m = await apiRequest(`/api/audio-showcases/${projectId}/members`, { method: 'POST', body: { name, role } }); setMembers((p) => [...p, m]); return m; }} />
       <MemberProfileDialog member={memberDialog} externalTrackId={easeverseTrack?.id} onClose={() => setMemberDialog(null)} onSave={saveMemberProfile}
         onDelete={async (id) => { await apiRequest(`/api/audio-members/${id}`, { method: 'DELETE' }); setMembers((p) => p.filter((x) => x.id !== id)); setMemberDialog(null); }} />
-      <SplitSheetDialog open={splitOpen} projectId={projectId} onClose={() => setSplitOpen(false)} />
+      <SplitSheetDialog open={splitOpen} projectId={projectId} ownerName={owner?.name} onClose={() => setSplitOpen(false)} />
       <TaskDialog open={taskOpen} onClose={() => setTaskOpen(false)} onAdd={async (title, category) => { const t = await apiRequest('/api/audio-tasks', { method: 'POST', body: { projectId, title, assignee: category, versionId: currentVid } }); setTasks((p) => [...p, t]); setTaskOpen(false); }} />
       <Menu anchorEl={moreEl} open={Boolean(moreEl)} onClose={() => setMoreEl(null)}><MenuItem onClick={() => setMoreEl(null)} sx={{ fontSize: '0.85rem' }}>Kopier review-lenke</MenuItem></Menu>
       <LyricsDialog
@@ -833,53 +833,91 @@ const LyricsDialog: React.FC<{ open: boolean; onClose: () => void; projectId: st
   );
 };
 
-const SplitSheetDialog: React.FC<{ open: boolean; projectId: string; onClose: () => void }> = ({ open, projectId, onClose }) => {
+const FEE_TYPES = [['royalty', 'Kun royalty'], ['session', 'Session-honorar'], ['buyout', 'Buyout'], ['hourly', 'Timepris']];
+const SplitSheetDialog: React.FC<{ open: boolean; projectId: string; ownerName?: string; onClose: () => void }> = ({ open, projectId, ownerName, onClose }) => {
   const [loading, setLoading] = React.useState(true);
   const [sheet, setSheet] = React.useState<any>(null);
   const [rows, setRows] = React.useState<any[]>([]);
   const [busy, setBusy] = React.useState(false);
+  const [signFor, setSignFor] = React.useState<any>(null); const [sigName, setSigName] = React.useState(''); const [consent, setConsent] = React.useState(false);
   const load = React.useCallback(async () => {
     setLoading(true);
-    try { const d = await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`); setSheet(d); setRows(d?.contributors || []); }
-    catch { setSheet(null); } finally { setLoading(false); }
+    try {
+      const d = await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`); setSheet(d);
+      setRows((d?.contributors || []).map((c: any) => ({ id: c.id, name: c.name, role: c.role, signed_at: c.signed_at,
+        contributions: c.custom_fields?.contributions || [], master: Number(c.percentage) || 0, comp: Number(c.custom_fields?.compositionPct) || 0,
+        feeAmount: c.custom_fields?.feeAmount || '', feeCurrency: c.custom_fields?.feeCurrency || 'NOK', feeType: c.custom_fields?.feeType || 'royalty' })));
+    } catch { setSheet(null); } finally { setLoading(false); }
   }, [projectId]);
-  React.useEffect(() => { if (open) void load(); }, [open, load]);
-  const total = rows.reduce((a, r) => a + (Number(r.percentage) || 0), 0);
-  const balanced = Math.abs(total - 100) < 0.01;
+  React.useEffect(() => { if (open) { void load(); setSignFor(null); setSigName(''); setConsent(false); } }, [open, load]);
+  const masterTotal = Math.round(rows.reduce((a, r) => a + (Number(r.master) || 0), 0) * 100) / 100;
+  const compTotal = Math.round(rows.reduce((a, r) => a + (Number(r.comp) || 0), 0) * 100) / 100;
+  const locked = (sheet?.signedCount || 0) > 0;
+  const upd = (i: number, k: string, v: any) => setRows(rows.map((x, j) => j === i ? { ...x, [k]: v } : x));
   const generate = async () => { setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`, { method: 'POST', body: {} }); await load(); } finally { setBusy(false); } };
-  const save = async () => { setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`, { method: 'PATCH', body: { contributors: rows.map((r) => ({ id: r.id, percentage: Number(r.percentage) || 0 })) } }); await load(); } finally { setBusy(false); } };
-  const splitEven = () => { const ev = Math.floor((10000 / rows.length)) / 100; setRows(rows.map((r, i) => ({ ...r, percentage: i === 0 ? Math.round((100 - ev * (rows.length - 1)) * 100) / 100 : ev }))); };
+  const save = async () => { setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`, { method: 'PATCH', body: { contributors: rows.map((r) => ({ id: r.id, masterPct: Number(r.master) || 0, compositionPct: Number(r.comp) || 0, feeAmount: Number(r.feeAmount) || 0, feeCurrency: r.feeCurrency, feeType: r.feeType })) } }); await load(); } catch { /* */ } finally { setBusy(false); } };
+  const unlock = async () => { setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet/unlock`, { method: 'POST', body: {} }); await load(); } finally { setBusy(false); } };
+  const splitEven = () => { const ev = Math.floor((10000 / rows.length)) / 100; setRows(rows.map((r, i) => ({ ...r, master: i === 0 ? Math.round((100 - ev * (rows.length - 1)) * 100) / 100 : ev, comp: i === 0 ? Math.round((100 - ev * (rows.length - 1)) * 100) / 100 : ev }))); };
+  const doSign = async () => { if (!signFor || !sigName.trim() || !consent) return; setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet/sign`, { method: 'POST', body: { contributorId: signFor.id, signature: sigName.trim(), consent: true } }); setSignFor(null); setSigName(''); setConsent(false); await load(); } catch { /* */ } finally { setBusy(false); } };
+
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
-      <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}><ReceiptLongOutlined sx={{ color: ACCENT }} /> Splittark · royalty
-        {sheet?.exists && <Chip label={sheet.status} size="small" sx={{ height: 20, fontSize: '0.64rem', textTransform: 'capitalize', bgcolor: 'rgba(255,255,255,0.08)', color: MUTED }} />}</DialogTitle>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
+      <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}><ReceiptLongOutlined sx={{ color: ACCENT }} /> Avtale · royalty & honorar
+        {sheet?.exists && <Chip label={`${sheet.signedCount}/${rows.length} signert`} size="small" sx={{ height: 20, fontSize: '0.64rem', bgcolor: locked ? 'rgba(95,184,138,0.16)' : 'rgba(255,255,255,0.08)', color: locked ? '#5fb88a' : MUTED }} />}</DialogTitle>
       <DialogContent>
         {loading ? <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} sx={{ color: ACCENT }} /></Box>
           : !sheet?.exists ? (
-            <Stack spacing={1.5} sx={{ py: 1, textAlign: 'center' }}><Typography sx={{ color: MUTED }}>Ingen splittark ennå. Generer ett fra bidragsyterne (lik fordeling som start).</Typography>
-              <Button onClick={generate} disabled={busy} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>{busy ? 'Genererer…' : 'Generer splittark'}</Button></Stack>
+            <Stack spacing={1.5} sx={{ py: 1, textAlign: 'center' }}><Typography sx={{ color: MUTED }}>Ingen avtale ennå. Generer fra bidragsyterne (lik fordeling som start).</Typography>
+              <Button onClick={generate} disabled={busy} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>{busy ? 'Genererer…' : 'Generer avtale'}</Button></Stack>
+          ) : signFor ? (
+            <Stack spacing={1.5} sx={{ py: 1 }}>
+              <Typography sx={{ fontWeight: 700 }}>Signér som {signFor.name}</Typography>
+              <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '10px', p: 1.5, fontSize: '0.82rem' }}>
+                <Typography sx={{ fontSize: '0.82rem' }}>Master {signFor.master}% · Komposisjon {signFor.comp}%{Number(signFor.feeAmount) > 0 ? ` · ${signFor.feeAmount} ${signFor.feeCurrency} (${FEE_TYPES.find(f => f[0] === signFor.feeType)?.[1]})` : ''}</Typography>
+                {signFor.contributions?.length > 0 && <Typography sx={{ fontSize: '0.74rem', color: MUTED, mt: 0.5 }}>Bidrag: {signFor.contributions.join(', ')}</Typography>}
+              </Box>
+              <FormControlLabel control={<Switch checked={consent} onChange={(e) => setConsent(e.target.checked)} sx={{ '& .Mui-checked': { color: ACCENT } }} />} label={<Typography sx={{ fontSize: '0.8rem' }}>Jeg bekrefter at fordelingen er korrekt og at jeg godkjenner avtalen som bindende.</Typography>} />
+              <TextField label="Skriv navnet ditt som signatur" value={sigName} onChange={(e) => setSigName(e.target.value)} size="small" sx={fieldSx} />
+            </Stack>
           ) : (
-            <Stack spacing={1}>
+            <Stack spacing={0.75}>
+              {locked && <Stack direction="row" alignItems="center" spacing={1} sx={{ bgcolor: 'rgba(95,184,138,0.1)', border: '1px solid rgba(95,184,138,0.4)', borderRadius: '10px', p: 1 }}><CheckCircle sx={{ fontSize: 17, color: '#5fb88a' }} /><Typography sx={{ fontSize: '0.78rem', flex: 1 }}>Signert av {sheet.signedCount} — låst for endring.</Typography><Button size="small" onClick={unlock} disabled={busy} sx={{ color: '#e0a955', textTransform: 'none' }}>Lås opp</Button></Stack>}
+              <Stack direction="row" sx={{ px: 0.5, pb: 0.5 }}><Box sx={{ flex: 1 }} /><Typography sx={{ width: 70, fontSize: '0.66rem', color: FAINT, textAlign: 'center' }}>Master</Typography><Typography sx={{ width: 70, fontSize: '0.66rem', color: FAINT, textAlign: 'center' }}>Komp.</Typography><Typography sx={{ width: 130, fontSize: '0.66rem', color: FAINT, textAlign: 'center' }}>Honorar</Typography><Box sx={{ width: 76 }} /></Stack>
               {rows.map((r, i) => (
-                <Stack key={r.id} direction="row" alignItems="center" spacing={1.5}>
-                  <Box sx={{ flex: 1, minWidth: 0 }}><Typography sx={{ fontSize: '0.86rem', fontWeight: 600 }} noWrap>{r.name}</Typography><Typography sx={{ fontSize: '0.7rem', color: MUTED }}>{r.role}{r.email ? ` · ${r.email}` : ''}</Typography></Box>
-                  <TextField type="number" size="small" value={r.percentage} onChange={(e) => setRows(rows.map((x, j) => j === i ? { ...x, percentage: e.target.value } : x))}
-                    sx={{ width: 90, ...fieldSx }} InputProps={{ endAdornment: <Typography sx={{ color: MUTED, fontSize: '0.8rem' }}>%</Typography> }} />
+                <Stack key={r.id} direction="row" alignItems="center" spacing={1}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Stack direction="row" alignItems="center" spacing={0.5}><Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }} noWrap>{r.name}</Typography>{r.signed_at && <CheckCircle sx={{ fontSize: 14, color: '#5fb88a' }} />}</Stack>
+                    <Typography sx={{ fontSize: '0.68rem', color: MUTED }} noWrap>{(r.contributions || []).join(' · ') || r.role}</Typography>
+                  </Box>
+                  <TextField type="number" size="small" disabled={locked} value={r.master} onChange={(e) => upd(i, 'master', e.target.value)} sx={{ width: 70, ...fieldSx }} />
+                  <TextField type="number" size="small" disabled={locked} value={r.comp} onChange={(e) => upd(i, 'comp', e.target.value)} sx={{ width: 70, ...fieldSx }} />
+                  <TextField type="number" size="small" disabled={locked} value={r.feeAmount} placeholder="0" onChange={(e) => upd(i, 'feeAmount', e.target.value)} sx={{ width: 130, ...fieldSx }}
+                    InputProps={{ endAdornment: <Typography sx={{ color: MUTED, fontSize: '0.7rem' }}>{r.feeCurrency}</Typography> }} />
+                  {!r.signed_at && (r.name === ownerName)
+                    ? <Button size="small" onClick={() => { setSignFor(r); setSigName(r.name); }} sx={{ width: 76, color: ACCENT, textTransform: 'none', fontSize: '0.72rem' }}>Signér</Button>
+                    : <Box sx={{ width: 76, textAlign: 'center' }}>{r.signed_at ? <Typography sx={{ fontSize: '0.66rem', color: '#5fb88a' }}>signert</Typography> : <Typography sx={{ fontSize: '0.62rem', color: FAINT }}>via lenke</Typography>}</Box>}
                 </Stack>
               ))}
               <Stack direction="row" alignItems="center" sx={{ mt: 1, pt: 1, borderTop: `1px solid ${BORDER}` }}>
-                <Button size="small" onClick={splitEven} sx={{ color: MUTED, textTransform: 'none' }}>Fordel likt</Button>
+                {!locked && <Button size="small" onClick={splitEven} sx={{ color: MUTED, textTransform: 'none' }}>Fordel likt</Button>}
                 <Box sx={{ flex: 1 }} />
-                <Typography sx={{ fontWeight: 800, color: balanced ? '#5fb88a' : '#e0606a' }}>{Math.round(total * 100) / 100}%{!balanced && ' (må bli 100)'}</Typography>
+                <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: Math.abs(masterTotal - 100) < 0.01 ? '#5fb88a' : '#e0606a', mr: 2 }}>Master {masterTotal}%</Typography>
+                <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: Math.abs(compTotal - 100) < 0.01 ? '#5fb88a' : '#e0606a' }}>Komp. {compTotal}%</Typography>
               </Stack>
+              <Typography sx={{ fontSize: '0.68rem', color: FAINT }}>Hver part signerer selv via sin egen lenke. Royalty = løpende andel; honorar = engangs. Komposisjon (TONO) og master (Gramo) kan ha ulik fordeling.</Typography>
             </Stack>
           )}
       </DialogContent>
       {sheet?.exists && (
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button href={sheet.url} target="_blank" sx={{ color: MUTED, textTransform: 'none', mr: 'auto' }}>Åpne i CRM (signering)</Button>
-          <Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none' }}>Lukk</Button>
-          <Button onClick={save} disabled={busy || !balanced} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Lagre fordeling</Button>
+          {signFor ? (
+            <><Button onClick={() => setSignFor(null)} sx={{ color: MUTED, textTransform: 'none' }}>Avbryt</Button>
+              <Button onClick={doSign} disabled={busy || !sigName.trim() || !consent} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Signér bindende</Button></>
+          ) : (
+            <><Button href={sheet.url} target="_blank" sx={{ color: MUTED, textTransform: 'none', mr: 'auto' }}>Åpne i CRM</Button>
+              <Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none' }}>Lukk</Button>
+              <Button onClick={save} disabled={busy || locked || masterTotal > 100.01} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Lagre vilkår</Button></>
+          )}
         </DialogActions>
       )}
     </Dialog>

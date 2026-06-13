@@ -8,8 +8,9 @@ import React from 'react';
 import { useParams } from 'wouter';
 import {
   Box, Stack, Typography, Chip, CircularProgress, Button, IconButton, Dialog, DialogTitle, DialogContent, Avatar,
+  Switch, FormControlLabel, TextField,
 } from '@mui/material';
-import { MusicNote, CheckCircle, SubjectOutlined, FiberManualRecord } from '@mui/icons-material';
+import { MusicNote, CheckCircle, SubjectOutlined, FiberManualRecord, ReceiptLongOutlined } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import AudioReviewPlayer from '@/components/universal/showcase/AudioReviewPlayer';
 import { parseSongSections, SECTION_COLORS } from '@/lib/lyric-sections';
@@ -25,6 +26,17 @@ export default function AudioReviewSharedPage() {
   const [currentVid, setCurrentVid] = React.useState('');
   const [detail, setDetail] = React.useState<{ comments: any[]; sections: any[] }>({ comments: [], sections: [] });
   const [lyricsOpen, setLyricsOpen] = React.useState(false);
+  const [agreement, setAgreement] = React.useState<any>(null);
+  const [sigName, setSigName] = React.useState(''); const [consent, setConsent] = React.useState(false); const [signing, setSigning] = React.useState(false);
+  const loadAgreement = React.useCallback(() => {
+    apiRequest(`/api/audio-review-shared/${token}/agreement`).then((d: any) => { setAgreement(d); if (d?.viewer?.name) setSigName(d.viewer.name); }).catch(() => setAgreement(null));
+  }, [token]);
+  React.useEffect(() => { if (token) loadAgreement(); }, [token, loadAgreement]);
+  const sign = async () => {
+    if (!sigName.trim() || !consent) return; setSigning(true);
+    try { await apiRequest(`/api/audio-review-shared/${token}/sign`, { method: 'POST', body: { signature: sigName.trim(), consent: true } }); setConsent(false); loadAgreement(); }
+    catch { /* */ } finally { setSigning(false); }
+  };
 
   React.useEffect(() => {
     if (!token) { setLoading(false); return; }
@@ -96,7 +108,33 @@ export default function AudioReviewSharedPage() {
             />
           ) : <Typography sx={{ color: MUTED }}>Ingen versjon å spille ennå.</Typography>}
         </Box>
-        <Typography sx={{ fontSize: '0.72rem', color: FAINT, textAlign: 'center' }}>Du ser som bidragsyter — du kan lytte og kommentere. Produsenten godkjenner og leverer.</Typography>
+        {agreement?.exists && agreement?.mine && (
+          <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5, mb: 2 }}>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+              <ReceiptLongOutlined sx={{ color: ACCENT }} /><Typography sx={{ fontWeight: 700, flex: 1 }}>Din avtale (royalty & honorar)</Typography>
+              {agreement.mine.signed_at && <Chip icon={<CheckCircle sx={{ fontSize: '14px !important' }} />} label="Signert" size="small" sx={{ bgcolor: 'rgba(95,184,138,0.16)', color: '#5fb88a', '& .MuiChip-icon': { color: '#5fb88a' } }} />}
+            </Stack>
+            <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '10px', p: 1.5, mb: 1.5 }}>
+              <Typography sx={{ fontSize: '0.9rem', fontWeight: 600 }}>Master {agreement.mine.percentage}% · Komposisjon {agreement.mine.custom_fields?.compositionPct ?? 0}%</Typography>
+              {Number(agreement.mine.custom_fields?.feeAmount) > 0 && <Typography sx={{ fontSize: '0.82rem', color: TEXT }}>Honorar: {agreement.mine.custom_fields.feeAmount} {agreement.mine.custom_fields.feeCurrency}</Typography>}
+              {(agreement.mine.custom_fields?.contributions || []).length > 0 && <Typography sx={{ fontSize: '0.74rem', color: MUTED, mt: 0.5 }}>Bidrag: {agreement.mine.custom_fields.contributions.join(', ')}</Typography>}
+            </Box>
+            {agreement.mine.signed_at ? (
+              <Typography sx={{ fontSize: '0.76rem', color: '#5fb88a' }}>Du signerte {new Date(agreement.mine.signed_at).toLocaleDateString('no-NO')}. Avtalen er bindende.</Typography>
+            ) : (
+              <Stack spacing={1.25}>
+                <FormControlLabel control={<Switch checked={consent} onChange={(e) => setConsent(e.target.checked)} sx={{ '& .Mui-checked': { color: ACCENT }, '& .Mui-checked + .MuiSwitch-track': { bgcolor: `${ACCENT} !important` } }} />}
+                  label={<Typography sx={{ fontSize: '0.8rem' }}>Jeg bekrefter at fordelingen er korrekt og godkjenner avtalen som bindende.</Typography>} />
+                <Stack direction="row" spacing={1}>
+                  <TextField fullWidth size="small" label="Skriv navnet ditt som signatur" value={sigName} onChange={(e) => setSigName(e.target.value)}
+                    sx={{ '& .MuiInputBase-input': { color: TEXT }, '& .MuiInputLabel-root': { color: MUTED }, '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER } }} />
+                  <Button onClick={sign} disabled={signing || !sigName.trim() || !consent} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px', whiteSpace: 'nowrap' }}>Signér</Button>
+                </Stack>
+              </Stack>
+            )}
+          </Box>
+        )}
+        <Typography sx={{ fontSize: '0.72rem', color: FAINT, textAlign: 'center' }}>Du ser som bidragsyter — du kan lytte, kommentere og signere din andel. Produsenten godkjenner og leverer.</Typography>
       </Box>
 
       {/* Tekst (read-only) */}

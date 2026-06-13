@@ -844,49 +844,95 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     }
   });
 
-  // Oppdater prosent-fordeling på koblet splittark.
+  // Oppdater avtale-vilkår (master/komposisjon-royalty + sats) på koblet splittark.
+  // Master-% = split_sheet_contributors.percentage (trigger 0–100); komposisjon
+  // + honorar lagres i custom_fields. Låst hvis noen har signert.
   app.patch("/api/audio-showcases/:id/split-sheet", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     const id = str(req.params.id, 64);
-    const splits: Array<{ id: string; percentage: number }> = Array.isArray(req.body?.contributors) ? req.body.contributors : [];
+    const splits: any[] = Array.isArray(req.body?.contributors) ? req.body.contributors : [];
     if (!splits.length) return res.status(400).json({ error: "contributors_required" });
     try {
       const ss = await pool.query(
         `SELECT id FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
       if (ss.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const ssId = ss.rows[0].id;
-      const clean = splits.map((c) => ({ id: str(c.id, 64), pct: Math.max(0, Math.min(100, Number(c.percentage) || 0)) }));
-      const total = Math.round(clean.reduce((a, c) => a + c.pct, 0) * 100) / 100;
-      if (total > 100.01) return res.status(400).json({ error: "exceeds_100", total });
-      // Trigger summerer total inn i split_sheets (CHECK 0–100). Nullstill først
-      // så summen aldri overstiger 100 underveis; trigger setter total_percentage.
+      // Lås: kan ikke endre vilkår etter at noen har signert (juridisk integritet).
+      const signed = await pool.query(`SELECT COUNT(*)::int AS n FROM split_sheet_contributors WHERE split_sheet_id=$1 AND signed_at IS NOT NULL`, [ssId]);
+      if (signed.rows[0].n > 0) return res.status(409).json({ error: "locked_signed", message: "Avtalen er signert av minst én part og er låst. Lås opp for å endre (krever ny signering)." });
+
+      const clean = splits.map((c) => ({
+        id: str(c.id, 64),
+        master: Math.max(0, Math.min(100, Number(c.masterPct ?? c.percentage) || 0)),
+        comp: Math.max(0, Math.min(100, Number(c.compositionPct) || 0)),
+        feeAmount: Number(c.feeAmount) > 0 ? Number(c.feeAmount) : null,
+        feeCurrency: str(c.feeCurrency, 8) || "NOK",
+        feeType: ["royalty", "session", "buyout", "hourly"].includes(c.feeType) ? c.feeType : "royalty",
+      }));
+      const masterTotal = Math.round(clean.reduce((a, c) => a + c.master, 0) * 100) / 100;
+      const compTotal = Math.round(clean.reduce((a, c) => a + c.comp, 0) * 100) / 100;
+      if (masterTotal > 100.01) return res.status(400).json({ error: "master_exceeds_100", total: masterTotal });
       await pool.query(`UPDATE split_sheet_contributors SET percentage=0 WHERE split_sheet_id=$1::uuid`, [ssId]);
       for (const c of clean) {
-        await pool.query(`UPDATE split_sheet_contributors SET percentage=$2, updated_at=NOW() WHERE id=$1::uuid AND split_sheet_id=$3::uuid`, [c.id, c.pct, ssId]);
+        await pool.query(
+          `UPDATE split_sheet_contributors
+             SET percentage=$2, updated_at=NOW(),
+                 custom_fields = COALESCE(custom_fields,'{}'::jsonb) || $4::jsonb
+           WHERE id=$1::uuid AND split_sheet_id=$3::uuid`,
+          [c.id, c.master, ssId, JSON.stringify({ compositionPct: c.comp, feeAmount: c.feeAmount, feeCurrency: c.feeCurrency, feeType: c.feeType })]);
       }
-      return res.json({ ok: true, totalPercentage: total, balanced: Math.abs(total - 100) < 0.01 });
+      return res.json({ ok: true, masterTotal, compTotal, masterBalanced: Math.abs(masterTotal - 100) < 0.01, compBalanced: Math.abs(compTotal - 100) < 0.01 });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      console.error("[audio-showcase] split-sheet patch failed:", e);
       return res.status(500).json({ error: "split_sheet_update_failed" });
     }
   });
 
-  // Signér/godkjenn en part på splittarket (signatur).
+  // Lås opp (fjern alle signaturer) for å kunne endre vilkår på nytt.
+  app.post("/api/audio-showcases/:id/split-sheet/unlock", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    try {
+      const ss = await pool.query(`SELECT id FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
+      if (ss.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      await pool.query(`UPDATE split_sheet_contributors SET signed_at=NULL, signature_data=NULL, updated_at=NOW() WHERE split_sheet_id=$1`, [ss.rows[0].id]);
+      await pool.query(`UPDATE split_sheets SET status='draft', updated_at=NOW() WHERE id=$1`, [ss.rows[0].id]);
+      return res.json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: "unlock_failed" });
+    }
+  });
+
+  // Juridisk signering av en part: samtykke + revisjonslogg (IP/tid) + snapshot
+  // av nøyaktig hva som ble signert. Setter status når alle har signert.
+  async function signContributor(ssId: string, contributorId: string, signerName: string, ip: string, ua: string): Promise<any | null> {
+    const cur = await pool.query(`SELECT id, name, percentage, custom_fields FROM split_sheet_contributors WHERE id=$1::uuid AND split_sheet_id=$2::uuid LIMIT 1`, [contributorId, ssId]);
+    if (cur.rowCount === 0) return null;
+    const c = cur.rows[0];
+    const snapshot = { masterPct: Number(c.percentage), compositionPct: c.custom_fields?.compositionPct ?? null, feeAmount: c.custom_fields?.feeAmount ?? null, feeCurrency: c.custom_fields?.feeCurrency ?? null, feeType: c.custom_fields?.feeType ?? null, contributions: c.custom_fields?.contributions ?? [] };
+    const sig = { name: signerName, consent: true, at: new Date().toISOString(), ip, userAgent: (ua || "").slice(0, 300), snapshot };
+    const r = await pool.query(`UPDATE split_sheet_contributors SET signed_at=NOW(), signature_data=$3::jsonb, updated_at=NOW() WHERE id=$1::uuid AND split_sheet_id=$2::uuid RETURNING id, name, signed_at`, [contributorId, ssId, JSON.stringify(sig)]);
+    // Sett status når alle har signert.
+    const counts = await pool.query(`SELECT COUNT(*)::int total, COUNT(signed_at)::int signed FROM split_sheet_contributors WHERE split_sheet_id=$1`, [ssId]);
+    const { total, signed } = counts.rows[0];
+    await pool.query(`UPDATE split_sheets SET status=$2, updated_at=NOW() WHERE id=$1`, [ssId, signed >= total ? "completed" : "pending_signatures"]);
+    return { ...r.rows[0], allSigned: signed >= total };
+  }
+
   app.post("/api/audio-showcases/:id/split-sheet/sign", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     const id = str(req.params.id, 64);
     const contributorId = str(req.body?.contributorId, 64);
     const signature = str(req.body?.signature, 200);
     if (!contributorId || !signature) return res.status(400).json({ error: "contributorId_and_signature_required" });
+    if (req.body?.consent !== true) return res.status(400).json({ error: "consent_required" });
     try {
       const ss = await pool.query(`SELECT id FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
       if (ss.rowCount === 0) return res.status(404).json({ error: "not_found" });
-      const r = await pool.query(
-        `UPDATE split_sheet_contributors SET signed_at = NOW(), signature_data = $3::jsonb, updated_at = NOW()
-          WHERE id = $1::uuid AND split_sheet_id = $2::uuid RETURNING id, name, signed_at`,
-        [contributorId, ss.rows[0].id, JSON.stringify({ name: signature, signedVia: "studio", at: new Date().toISOString() })]);
-      if (r.rowCount === 0) return res.status(404).json({ error: "contributor_not_found" });
-      return res.json({ ok: true, signed: r.rows[0] });
+      const out = await signContributor(ss.rows[0].id, contributorId, signature, clientIp(req), String(req.headers["user-agent"] || ""));
+      if (!out) return res.status(404).json({ error: "contributor_not_found" });
+      return res.json({ ok: true, signed: out });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       return res.status(500).json({ error: "sign_failed" });
@@ -1083,6 +1129,46 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       return res.json(r.rows[0]);
     } catch (e) {
       return res.status(500).json({ error: "shared_like_failed" });
+    }
+  });
+
+  // Member: se din egen avtale-andel (vilkår) + signér den selv (juridisk).
+  app.get("/api/audio-review-shared/:token/agreement", async (req, res) => {
+    const token = str(req.params.token, 80);
+    if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    try {
+      const ctx = await resolveSharedMember(token);
+      if (!ctx) return res.status(404).json({ error: "not_found" });
+      const ss = await pool.query(`SELECT id, status FROM split_sheets WHERE metadata->>'sourceReviewId'=$1 LIMIT 1`, [ctx.project_id]);
+      if (ss.rowCount === 0) return res.json({ exists: false });
+      const all = await pool.query(`SELECT id, name, role, percentage, signed_at, custom_fields FROM split_sheet_contributors WHERE split_sheet_id=$1 ORDER BY order_index ASC`, [ss.rows[0].id]);
+      const mine = all.rows.find((r) => r.name === ctx.name) || null;
+      return res.json({ exists: true, status: ss.rows[0].status, contributors: all.rows, mine, viewer: { name: ctx.name } });
+    } catch (e) {
+      if (isMissingTable(e)) return res.json({ exists: false });
+      return res.status(500).json({ error: "agreement_read_failed" });
+    }
+  });
+
+  app.post("/api/audio-review-shared/:token/sign", async (req, res) => {
+    const token = str(req.params.token, 80);
+    if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    if (rateLimited(`sign:${clientIp(req)}`)) return res.status(429).json({ error: "rate_limited" });
+    const signature = str(req.body?.signature, 200);
+    if (!signature) return res.status(400).json({ error: "signature_required" });
+    if (req.body?.consent !== true) return res.status(400).json({ error: "consent_required" });
+    try {
+      const ctx = await resolveSharedMember(token);
+      if (!ctx) return res.status(404).json({ error: "not_found" });
+      const ss = await pool.query(`SELECT id FROM split_sheets WHERE metadata->>'sourceReviewId'=$1 LIMIT 1`, [ctx.project_id]);
+      if (ss.rowCount === 0) return res.status(409).json({ error: "no_split_sheet" });
+      const c = await pool.query(`SELECT id FROM split_sheet_contributors WHERE split_sheet_id=$1 AND name=$2 LIMIT 1`, [ss.rows[0].id, ctx.name]);
+      if (c.rowCount === 0) return res.status(404).json({ error: "not_a_party" });
+      const out = await signContributor(ss.rows[0].id, c.rows[0].id, signature, clientIp(req), String(req.headers["user-agent"] || ""));
+      return res.json({ ok: true, signed: out });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      return res.status(500).json({ error: "shared_sign_failed" });
     }
   });
 }
