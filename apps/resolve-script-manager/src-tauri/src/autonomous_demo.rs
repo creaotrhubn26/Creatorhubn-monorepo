@@ -79,7 +79,7 @@ pub async fn synthesize_tts(
     // ── ElevenLabs (hvis API-nøkkel) — faller stille tilbake til say ved feil ──
     if let Some(key) = eleven_key.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
         let vid = eleven_voice_id.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "21m00Tcm4TlvDq8ikWAM".into());
+            .unwrap_or_else(|| "EXAVITQu4vr4xnSDxMaL".into());
         let mp3 = dir.join(format!("{}.mp3", safe_scene));
         let client = reqwest::Client::new();
         let res = client
