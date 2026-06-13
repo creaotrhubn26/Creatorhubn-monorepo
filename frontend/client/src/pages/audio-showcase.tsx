@@ -93,6 +93,7 @@ export default function AudioShowcasePage() {
   const [composerSection, setComposerSection] = React.useState<string | null>(null);
   const [sectionMenuEl, setSectionMenuEl] = React.useState<null | HTMLElement>(null);
   const [memberDialog, setMemberDialog] = React.useState<any>(null);
+  const [splitOpen, setSplitOpen] = React.useState(false);
   const [splitToast, setSplitToast] = React.useState<string | null>(null);
 
   const saveCover = async (dataUrl: string) => {
@@ -346,10 +347,9 @@ export default function AudioShowcasePage() {
             {members.length === 0 && <Typography sx={{ fontSize: '0.78rem', color: FAINT }}>Ingen medlemmer ennå.</Typography>}
           </Stack>
           {members.length > 0 && (
-            <Button onClick={generateSplitSheet} fullWidth startIcon={<ReceiptLongOutlined sx={{ fontSize: '17px !important' }} />}
-              sx={{ mt: 1.5, color: ACCENT, bgcolor: 'rgba(255,107,53,0.1)', textTransform: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '0.78rem', '&:hover': { bgcolor: 'rgba(255,107,53,0.18)' } }}>Generer splittark</Button>
+            <Button onClick={() => setSplitOpen(true)} fullWidth startIcon={<ReceiptLongOutlined sx={{ fontSize: '17px !important' }} />}
+              sx={{ mt: 1.5, color: ACCENT, bgcolor: 'rgba(255,107,53,0.1)', textTransform: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '0.78rem', '&:hover': { bgcolor: 'rgba(255,107,53,0.18)' } }}>Splittark (royalty)</Button>
           )}
-          {splitToast && <Typography sx={{ mt: 0.75, fontSize: '0.7rem', color: MUTED, textAlign: 'center' }}>{splitToast}</Typography>}
         </Box>
 
         {/* ─── SENTER ─── */}
@@ -542,6 +542,7 @@ export default function AudioShowcasePage() {
       <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={async (name, role) => { const m = await apiRequest(`/api/audio-showcases/${projectId}/members`, { method: 'POST', body: { name, role } }); setMembers((p) => [...p, m]); return m; }} />
       <MemberProfileDialog member={memberDialog} externalTrackId={easeverseTrack?.id} onClose={() => setMemberDialog(null)} onSave={saveMemberProfile}
         onDelete={async (id) => { await apiRequest(`/api/audio-members/${id}`, { method: 'DELETE' }); setMembers((p) => p.filter((x) => x.id !== id)); setMemberDialog(null); }} />
+      <SplitSheetDialog open={splitOpen} projectId={projectId} onClose={() => setSplitOpen(false)} />
       <TaskDialog open={taskOpen} onClose={() => setTaskOpen(false)} onAdd={async (title, category) => { const t = await apiRequest('/api/audio-tasks', { method: 'POST', body: { projectId, title, assignee: category, versionId: currentVid } }); setTasks((p) => [...p, t]); setTaskOpen(false); }} />
       <Menu anchorEl={moreEl} open={Boolean(moreEl)} onClose={() => setMoreEl(null)}><MenuItem onClick={() => setMoreEl(null)} sx={{ fontSize: '0.85rem' }}>Kopier review-lenke</MenuItem></Menu>
       <LyricsDialog
@@ -825,6 +826,59 @@ const LyricsDialog: React.FC<{ open: boolean; onClose: () => void; projectId: st
           <Button onClick={syncNow} startIcon={<Sync />} sx={{ color: MUTED, textTransform: 'none' }}>Synk nå</Button>
           <Box sx={{ flex: 1 }} />
           <Button onClick={onClose} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Ferdig</Button>
+        </DialogActions>
+      )}
+    </Dialog>
+  );
+};
+
+const SplitSheetDialog: React.FC<{ open: boolean; projectId: string; onClose: () => void }> = ({ open, projectId, onClose }) => {
+  const [loading, setLoading] = React.useState(true);
+  const [sheet, setSheet] = React.useState<any>(null);
+  const [rows, setRows] = React.useState<any[]>([]);
+  const [busy, setBusy] = React.useState(false);
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try { const d = await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`); setSheet(d); setRows(d?.contributors || []); }
+    catch { setSheet(null); } finally { setLoading(false); }
+  }, [projectId]);
+  React.useEffect(() => { if (open) void load(); }, [open, load]);
+  const total = rows.reduce((a, r) => a + (Number(r.percentage) || 0), 0);
+  const balanced = Math.abs(total - 100) < 0.01;
+  const generate = async () => { setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`, { method: 'POST', body: {} }); await load(); } finally { setBusy(false); } };
+  const save = async () => { setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`, { method: 'PATCH', body: { contributors: rows.map((r) => ({ id: r.id, percentage: Number(r.percentage) || 0 })) } }); await load(); } finally { setBusy(false); } };
+  const splitEven = () => { const ev = Math.floor((10000 / rows.length)) / 100; setRows(rows.map((r, i) => ({ ...r, percentage: i === 0 ? Math.round((100 - ev * (rows.length - 1)) * 100) / 100 : ev }))); };
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
+      <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}><ReceiptLongOutlined sx={{ color: ACCENT }} /> Splittark · royalty
+        {sheet?.exists && <Chip label={sheet.status} size="small" sx={{ height: 20, fontSize: '0.64rem', textTransform: 'capitalize', bgcolor: 'rgba(255,255,255,0.08)', color: MUTED }} />}</DialogTitle>
+      <DialogContent>
+        {loading ? <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} sx={{ color: ACCENT }} /></Box>
+          : !sheet?.exists ? (
+            <Stack spacing={1.5} sx={{ py: 1, textAlign: 'center' }}><Typography sx={{ color: MUTED }}>Ingen splittark ennå. Generer ett fra bidragsyterne (lik fordeling som start).</Typography>
+              <Button onClick={generate} disabled={busy} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>{busy ? 'Genererer…' : 'Generer splittark'}</Button></Stack>
+          ) : (
+            <Stack spacing={1}>
+              {rows.map((r, i) => (
+                <Stack key={r.id} direction="row" alignItems="center" spacing={1.5}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}><Typography sx={{ fontSize: '0.86rem', fontWeight: 600 }} noWrap>{r.name}</Typography><Typography sx={{ fontSize: '0.7rem', color: MUTED }}>{r.role}{r.email ? ` · ${r.email}` : ''}</Typography></Box>
+                  <TextField type="number" size="small" value={r.percentage} onChange={(e) => setRows(rows.map((x, j) => j === i ? { ...x, percentage: e.target.value } : x))}
+                    sx={{ width: 90, ...fieldSx }} InputProps={{ endAdornment: <Typography sx={{ color: MUTED, fontSize: '0.8rem' }}>%</Typography> }} />
+                </Stack>
+              ))}
+              <Stack direction="row" alignItems="center" sx={{ mt: 1, pt: 1, borderTop: `1px solid ${BORDER}` }}>
+                <Button size="small" onClick={splitEven} sx={{ color: MUTED, textTransform: 'none' }}>Fordel likt</Button>
+                <Box sx={{ flex: 1 }} />
+                <Typography sx={{ fontWeight: 800, color: balanced ? '#5fb88a' : '#e0606a' }}>{Math.round(total * 100) / 100}%{!balanced && ' (må bli 100)'}</Typography>
+              </Stack>
+            </Stack>
+          )}
+      </DialogContent>
+      {sheet?.exists && (
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button href={sheet.url} target="_blank" sx={{ color: MUTED, textTransform: 'none', mr: 'auto' }}>Åpne i CRM (signering)</Button>
+          <Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none' }}>Lukk</Button>
+          <Button onClick={save} disabled={busy || !balanced} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Lagre fordeling</Button>
         </DialogActions>
       )}
     </Dialog>

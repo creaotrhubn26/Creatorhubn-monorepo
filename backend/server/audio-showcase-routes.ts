@@ -823,6 +823,50 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   });
 
   // ── Profil → Split Sheet: generer royalty-splitt fra review-medlemmene ─────
+  // Les koblet splittark + parter (for redigering i studioet).
+  app.get("/api/audio-showcases/:id/split-sheet", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    try {
+      const ss = await pool.query(
+        `SELECT id, status, total_percentage FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
+      if (ss.rowCount === 0) return res.json({ exists: false });
+      const c = await pool.query(
+        `SELECT id, name, email, role, percentage FROM split_sheet_contributors WHERE split_sheet_id=$1 ORDER BY order_index ASC`, [ss.rows[0].id]);
+      return res.json({ exists: true, splitSheetId: ss.rows[0].id, status: ss.rows[0].status, totalPercentage: Number(ss.rows[0].total_percentage), contributors: c.rows, url: `/crm?splitSheet=${ss.rows[0].id}` });
+    } catch (e) {
+      if (isMissingTable(e)) return res.json({ exists: false });
+      return res.status(500).json({ error: "split_sheet_read_failed" });
+    }
+  });
+
+  // Oppdater prosent-fordeling på koblet splittark.
+  app.patch("/api/audio-showcases/:id/split-sheet", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    const splits: Array<{ id: string; percentage: number }> = Array.isArray(req.body?.contributors) ? req.body.contributors : [];
+    if (!splits.length) return res.status(400).json({ error: "contributors_required" });
+    try {
+      const ss = await pool.query(
+        `SELECT id FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
+      if (ss.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const ssId = ss.rows[0].id;
+      const clean = splits.map((c) => ({ id: str(c.id, 64), pct: Math.max(0, Math.min(100, Number(c.percentage) || 0)) }));
+      const total = Math.round(clean.reduce((a, c) => a + c.pct, 0) * 100) / 100;
+      if (total > 100.01) return res.status(400).json({ error: "exceeds_100", total });
+      // Trigger summerer total inn i split_sheets (CHECK 0–100). Nullstill først
+      // så summen aldri overstiger 100 underveis; trigger setter total_percentage.
+      await pool.query(`UPDATE split_sheet_contributors SET percentage=0 WHERE split_sheet_id=$1::uuid`, [ssId]);
+      for (const c of clean) {
+        await pool.query(`UPDATE split_sheet_contributors SET percentage=$2, updated_at=NOW() WHERE id=$1::uuid AND split_sheet_id=$3::uuid`, [c.id, c.pct, ssId]);
+      }
+      return res.json({ ok: true, totalPercentage: total, balanced: Math.abs(total - 100) < 0.01 });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      return res.status(500).json({ error: "split_sheet_update_failed" });
+    }
+  });
+
   app.post("/api/audio-showcases/:id/split-sheet", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     const id = str(req.params.id, 64);
