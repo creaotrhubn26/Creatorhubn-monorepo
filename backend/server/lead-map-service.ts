@@ -22,6 +22,29 @@ function getAnthropic(): Anthropic | null {
   return cachedAnthropic;
 }
 
+
+// ─────────────────────────────────────────────────────────────────────
+// Tenant-scope helper
+// ─────────────────────────────────────────────────────────────────────
+//
+// Wave LM-Agent multi-tenant: hver query filtreres på enten
+// (owner_user_id, agent_config_id IS NULL) for Daniels personlige bruk
+// ELLER (agent_config_id = $X) for klient-Agent-flow.
+
+interface TenantScope {
+  ownerUserId: string;
+  agentConfigId?: string | null;
+}
+
+function buildTenantConditions(scope: TenantScope, params: unknown[]): string[] {
+  if (scope.agentConfigId) {
+    params.push(scope.agentConfigId);
+    return [`agent_config_id = $${params.length}::uuid`];
+  }
+  params.push(scope.ownerUserId);
+  return [`owner_user_id = $${params.length}`, `agent_config_id IS NULL`];
+}
+
 export type LeadStatus =
   | 'unvisited' | 'visited' | 'return' | 'not_present' | 'declined'
   | 'interested' | 'meeting_booked' | 'proposal_sent' | 'won' | 'lost'
@@ -129,14 +152,19 @@ function rowToLead(row: any): MapLead {
 export async function listLeadsInBounds(
   pool: Pool, opts: {
     ownerUserId: string;
+    agentConfigId?: string | null;
     bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number };
     statusFilter?: LeadStatus[];
     categoryFilter?: string[];
     limit?: number;
   },
 ): Promise<MapLead[]> {
-  const conditions: string[] = ['owner_user_id = $1', 'latitude IS NOT NULL', 'longitude IS NOT NULL'];
-  const params: unknown[] = [opts.ownerUserId];
+  const params: unknown[] = [];
+  const tenantConds = buildTenantConditions(
+    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId },
+    params,
+  );
+  const conditions: string[] = [...tenantConds, 'latitude IS NOT NULL', 'longitude IS NOT NULL'];
 
   if (opts.bounds) {
     params.push(opts.bounds.minLat); conditions.push(`latitude >= $${params.length}::numeric`);
@@ -169,8 +197,10 @@ export async function listLeadsInBounds(
 }
 
 export async function getLeadById(
-  pool: Pool, ownerUserId: string, leadId: string,
+  pool: Pool, scope: TenantScope, leadId: string,
 ): Promise<MapLead | null> {
+  const params: unknown[] = [leadId];
+  const tenantConds = buildTenantConditions(scope, params);
   const r = await pool.query(
     `SELECT id, name, company, lead_category, lead_status, address, postal_code,
             city, country, latitude, longitude, phone, email, website_url,
@@ -179,8 +209,8 @@ export async function getLeadById(
             last_visit_at, next_follow_up_at, next_action, tags, notes,
             created_at, updated_at
      FROM crm_customers
-     WHERE id = $1::uuid AND owner_user_id = $2`,
-    [leadId, ownerUserId],
+     WHERE id = $1::uuid AND ${tenantConds.join(' AND ')}`,
+    params,
   );
   return r.rowCount && r.rowCount > 0 ? rowToLead(r.rows[0]) : null;
 }
@@ -189,22 +219,27 @@ export async function getLeadById(
  * Oppdater lead-status. Logger automatisk i crm_lead_activities.
  */
 export async function updateLeadStatus(
-  pool: Pool, opts: { ownerUserId: string; leadId: string; status: LeadStatus; notes?: string },
+  pool: Pool, opts: { ownerUserId: string; agentConfigId?: string | null; leadId: string; status: LeadStatus; notes?: string },
 ): Promise<{ ok: boolean; previous?: string }> {
+  const scope: TenantScope = { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId };
+  const checkParams: unknown[] = [opts.leadId];
+  const checkConds = buildTenantConditions(scope, checkParams);
   const current = await pool.query<{ lead_status: string }>(
     `SELECT lead_status FROM crm_customers
-     WHERE id = $1::uuid AND owner_user_id = $2`,
-    [opts.leadId, opts.ownerUserId],
+     WHERE id = $1::uuid AND ${checkConds.join(' AND ')}`,
+    checkParams,
   );
   if (current.rowCount === 0) return { ok: false };
 
   const previous = current.rows[0].lead_status;
 
+  const upParams: unknown[] = [opts.status, opts.leadId];
+  const upConds = buildTenantConditions(scope, upParams);
   await pool.query(
     `UPDATE crm_customers
        SET lead_status = $1, updated_at = NOW()
-     WHERE id = $2::uuid AND owner_user_id = $3`,
-    [opts.status, opts.leadId, opts.ownerUserId],
+     WHERE id = $2::uuid AND ${upConds.join(' AND ')}`,
+    upParams,
   );
 
   await pool.query(
@@ -223,6 +258,7 @@ export async function updateLeadStatus(
 export async function logVisit(
   pool: Pool, opts: {
     ownerUserId: string;
+    agentConfigId?: string | null;
     leadId: string;
     visitType: VisitType;
     contactPerson?: string;
@@ -236,11 +272,16 @@ export async function logVisit(
     visitLongitude?: number;
   },
 ): Promise<{ ok: boolean; visitId?: string }> {
-  // Verifiser eierskap
+  // Verifiser eierskap (tenant-aware)
+  const verifyParams: unknown[] = [opts.leadId];
+  const verifyConds = buildTenantConditions(
+    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId },
+    verifyParams,
+  );
   const c = await pool.query<{ lead_status: string }>(
     `SELECT lead_status FROM crm_customers
-     WHERE id = $1::uuid AND owner_user_id = $2`,
-    [opts.leadId, opts.ownerUserId],
+     WHERE id = $1::uuid AND ${verifyConds.join(' AND ')}`,
+    verifyParams,
   );
   if (c.rowCount === 0) return { ok: false };
   const previousStatus = c.rows[0].lead_status;
@@ -264,7 +305,17 @@ export async function logVisit(
     ],
   );
 
-  // Oppdater crm_customers med last_visit_at + next_action + next_follow_up_at
+  // Oppdater crm_customers (tenant-aware)
+  const upParams: unknown[] = [
+    opts.nextAction ?? null,
+    opts.nextFollowUpAt ?? null,
+    opts.newStatus ?? null,
+    opts.leadId,
+  ];
+  const upConds = buildTenantConditions(
+    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId },
+    upParams,
+  );
   await pool.query(
     `UPDATE crm_customers
        SET last_visit_at = NOW(),
@@ -272,13 +323,8 @@ export async function logVisit(
            next_follow_up_at = COALESCE($2::timestamptz, next_follow_up_at),
            lead_status = COALESCE($3, lead_status),
            updated_at = NOW()
-     WHERE id = $4::uuid AND owner_user_id = $5`,
-    [
-      opts.nextAction ?? null,
-      opts.nextFollowUpAt ?? null,
-      opts.newStatus ?? null,
-      opts.leadId, opts.ownerUserId,
-    ],
+     WHERE id = $4::uuid AND ${upConds.join(' AND ')}`,
+    upParams,
   );
 
   // Audit
@@ -297,8 +343,11 @@ export async function logVisit(
 }
 
 export async function listVisits(
-  pool: Pool, ownerUserId: string, leadId: string, limit = 30,
+  pool: Pool, scope: TenantScope, leadId: string, limit = 30,
 ): Promise<VisitRow[]> {
+  const params: unknown[] = [leadId];
+  const tenantConds = buildTenantConditions(scope, params).map((c) => c.replace(/(\w+_id|agent_config_id)/, 'c.$1'));
+  params.push(limit);
   const r = await pool.query(
     `SELECT v.id::text, v.customer_id::text, v.user_id, v.visit_type,
             v.visit_datetime, v.previous_status, v.new_status,
@@ -306,9 +355,9 @@ export async function listVisits(
             v.notes, v.next_action, v.next_follow_up_at
      FROM crm_visits v
      JOIN crm_customers c ON c.id = v.customer_id
-     WHERE v.customer_id = $1::uuid AND c.owner_user_id = $2
-     ORDER BY v.visit_datetime DESC LIMIT $3`,
-    [leadId, ownerUserId, limit],
+     WHERE v.customer_id = $1::uuid AND ${tenantConds.join(' AND ')}
+     ORDER BY v.visit_datetime DESC LIMIT $${params.length}`,
+    params,
   );
   return r.rows.map((row) => ({
     id: row.id,
@@ -328,8 +377,11 @@ export async function listVisits(
 }
 
 export async function listRecentActivities(
-  pool: Pool, ownerUserId: string, limit = 30,
+  pool: Pool, scope: TenantScope, limit = 30,
 ): Promise<ActivityRow[]> {
+  const params: unknown[] = [];
+  const tenantConds = buildTenantConditions(scope, params).map((c) => c.replace(/(\w+_id|agent_config_id)/, 'c.$1'));
+  params.push(limit);
   const r = await pool.query(
     `SELECT a.id::text, a.customer_id::text, c.name AS customer_name,
             a.user_id, u.first_name AS user_first, u.last_name AS user_last,
@@ -338,9 +390,9 @@ export async function listRecentActivities(
      FROM crm_lead_activities a
      JOIN crm_customers c ON c.id = a.customer_id
      LEFT JOIN users u ON u.id = a.user_id
-     WHERE c.owner_user_id = $1
-     ORDER BY a.created_at DESC LIMIT $2`,
-    [ownerUserId, limit],
+     WHERE ${tenantConds.join(' AND ')}
+     ORDER BY a.created_at DESC LIMIT $${params.length}`,
+    params,
   );
   return r.rows.map((row) => ({
     id: row.id,
@@ -358,7 +410,7 @@ export async function listRecentActivities(
 }
 
 export async function getLeadMapMetrics(
-  pool: Pool, ownerUserId: string,
+  pool: Pool, scope: TenantScope,
 ): Promise<{
   totalLeads: number;
   followUpsDue: number;
@@ -366,21 +418,25 @@ export async function getLeadMapMetrics(
   conversionRate: number;
   statusCounts: Record<LeadStatus, number>;
 }> {
+  const statsParams: unknown[] = [];
+  const statsConds = buildTenantConditions(scope, statsParams);
   const stats = await pool.query<{ lead_status: LeadStatus; n: number }>(
     `SELECT lead_status, COUNT(*)::int AS n FROM crm_customers
-     WHERE owner_user_id = $1 GROUP BY lead_status`,
-    [ownerUserId],
+     WHERE ${statsConds.join(' AND ')} GROUP BY lead_status`,
+    statsParams,
   );
   const statusCounts: Record<string, number> = {};
   for (const r of stats.rows) statusCounts[r.lead_status] = r.n;
 
+  const fParams: unknown[] = [];
+  const fConds = buildTenantConditions(scope, fParams);
   const followups = await pool.query<{ n: number }>(
     `SELECT COUNT(*)::int AS n FROM crm_customers
-     WHERE owner_user_id = $1
+     WHERE ${fConds.join(' AND ')}
        AND next_follow_up_at IS NOT NULL
        AND next_follow_up_at <= NOW() + INTERVAL '7 days'
        AND lead_status NOT IN ('won', 'lost', 'do_not_contact')`,
-    [ownerUserId],
+    fParams,
   );
 
   const meetings = (statusCounts.meeting_booked ?? 0);
@@ -401,7 +457,7 @@ export async function getLeadMapMetrics(
 
 export async function setLeadGeo(
   pool: Pool, opts: {
-    ownerUserId: string; leadId: string;
+    ownerUserId: string; agentConfigId?: string | null; leadId: string;
     latitude: number; longitude: number;
     address?: string; postalCode?: string; city?: string; country?: string;
   },
@@ -414,12 +470,18 @@ export async function setLeadGeo(
            city = COALESCE($5, city),
            country = COALESCE($6, country),
            updated_at = NOW()
-     WHERE id = $7::uuid AND owner_user_id = $8`,
+     WHERE id = $7::uuid AND ${(() => {
+       const _p: unknown[] = []; return buildTenantConditions({ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId}, _p).join(' AND ').replace(/\$(\d+)/g, (_, n) => `$${7 + Number(n)}`);
+     })()}`,
     [
       opts.latitude, opts.longitude,
       opts.address ?? null, opts.postalCode ?? null,
       opts.city ?? null, opts.country ?? null,
-      opts.leadId, opts.ownerUserId,
+      opts.leadId, ...((): unknown[] => {
+        const _p: unknown[] = [];
+        buildTenantConditions({ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId}, _p);
+        return _p;
+      })(),
     ],
   );
   return { ok: (r.rowCount ?? 0) > 0 };
@@ -443,9 +505,9 @@ export interface PitchSuggestion {
  * Persisteres i activity-log + crm_customers.ai_opportunity_score.
  */
 export async function generateLeadPitch(
-  pool: Pool, opts: { ownerUserId: string; leadId: string; serviceFocus?: string },
+  pool: Pool, opts: { ownerUserId: string; agentConfigId?: string | null; leadId: string; serviceFocus?: string },
 ): Promise<PitchSuggestion | null> {
-  const lead = await getLeadById(pool, opts.ownerUserId, opts.leadId);
+  const lead = await getLeadById(pool, { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId }, opts.leadId);
   if (!lead) return null;
 
   const client = getAnthropic();
@@ -498,10 +560,15 @@ Returner KUN JSON (ingen markdown, ingen kommentarer):
     const score = Math.min(100, Math.max(0, Math.round(parsed.opportunity_score ?? 50)));
 
     // Persister score + audit
+    const upParams: unknown[] = [score, opts.leadId];
+    const upConds = buildTenantConditions(
+      { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId },
+      upParams,
+    );
     await pool.query(
       `UPDATE crm_customers SET ai_opportunity_score = $1, updated_at = NOW()
-       WHERE id = $2::uuid AND owner_user_id = $3`,
-      [score, opts.leadId, opts.ownerUserId],
+       WHERE id = $2::uuid AND ${upConds.join(' AND ')}`,
+      upParams,
     );
     await pool.query(
       `INSERT INTO crm_lead_activities (
@@ -537,6 +604,7 @@ Returner KUN JSON (ingen markdown, ingen kommentarer):
 
 interface PlacesSearchOpts {
   ownerUserId: string;
+  agentConfigId?: string | null;
   query: string;                   // f.eks. "skuespiller-byrå Oslo"
   latitude?: number;
   longitude?: number;
@@ -611,10 +679,16 @@ export async function searchPlaces(
     // Sjekk hvilke som allerede er importert
     let importedSet = new Set<string>();
     if (placeIds.length > 0) {
+      const dupParams: unknown[] = [];
+      const dupConds = buildTenantConditions(
+        { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId },
+        dupParams,
+      );
+      dupParams.push(placeIds);
       const existing = await pool.query<{ google_place_id: string }>(
         `SELECT google_place_id FROM crm_customers
-         WHERE owner_user_id = $1 AND google_place_id = ANY($2::text[])`,
-        [opts.ownerUserId, placeIds],
+         WHERE ${dupConds.join(' AND ')} AND google_place_id = ANY($${dupParams.length}::text[])`,
+        dupParams,
       );
       importedSet = new Set(existing.rows.map((row) => row.google_place_id));
     }
@@ -642,15 +716,22 @@ export async function searchPlaces(
 export async function importPlaceAsLead(
   pool: Pool, opts: {
     ownerUserId: string;
+    agentConfigId?: string | null;
     place: PlaceResult;
     leadCategory?: string;
   },
 ): Promise<{ ok: true; leadId: string } | { ok: false; reason: string }> {
-  // Sjekk om allerede importert
+  // Sjekk om allerede importert (tenant-aware)
+  const dupParams: unknown[] = [];
+  const dupConds = buildTenantConditions(
+    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId },
+    dupParams,
+  );
+  dupParams.push(opts.place.placeId);
   const dup = await pool.query<{ id: string }>(
     `SELECT id FROM crm_customers
-     WHERE owner_user_id = $1 AND google_place_id = $2 LIMIT 1`,
-    [opts.ownerUserId, opts.place.placeId],
+     WHERE ${dupConds.join(' AND ')} AND google_place_id = $${dupParams.length} LIMIT 1`,
+    dupParams,
   );
   if (dup.rowCount && dup.rowCount > 0) {
     return { ok: false, reason: 'already_imported' };
@@ -658,19 +739,19 @@ export async function importPlaceAsLead(
 
   const r = await pool.query<{ id: string }>(
     `INSERT INTO crm_customers (
-       id, name, phone, email, company, status, source, owner_user_id,
+       id, name, phone, email, company, status, source, owner_user_id, agent_config_id,
        latitude, longitude, address, google_place_id, google_rating,
        website_url, lead_category, lead_status, lead_source,
        created_at, updated_at
      ) VALUES (
-       gen_random_uuid(), $1, $2, NULL, $3, 'lead', 'google_places', $4,
-       $5::numeric, $6::numeric, $7, $8, $9::numeric, $10, $11, 'unvisited',
+       gen_random_uuid(), $1, $2, NULL, $3, 'lead', 'google_places', $4, $5::uuid,
+       $6::numeric, $7::numeric, $8, $9, $10::numeric, $11, $12, 'unvisited',
        'google_places', NOW(), NOW()
      )
      RETURNING id::text`,
     [
       opts.place.name, opts.place.phone, opts.place.name,
-      opts.ownerUserId,
+      opts.ownerUserId, opts.agentConfigId ?? null,
       opts.place.latitude, opts.place.longitude, opts.place.address,
       opts.place.placeId, opts.place.rating,
       opts.place.websiteUrl,
