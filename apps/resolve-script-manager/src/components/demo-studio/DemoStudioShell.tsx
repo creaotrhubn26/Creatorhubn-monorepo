@@ -40,7 +40,7 @@ import type { DemoFinalizeOpts } from '../../api';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
-  DEMO_TYPE_LABELS, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
+  DEMO_TYPE_LABELS, DEMO_TYPE_FRIENDLY, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
   RENDER_OPTION_LABELS, RESPONSIVE_STATUS_LABELS, RESPONSIVE_STATUS_COLORS, ACTION_META,
   ACTION_MATCH_LABELS, ACTION_MATCH_COLORS, CRITIQUE_SEVERITY_COLORS,
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
@@ -1827,17 +1827,24 @@ function CreateDemoView({ onCreated }: { onCreated?: () => void }) {
             <div style={{ fontSize: 12.5, color: C.inkSoft, marginTop: 4 }}>{project.url} · {DEMO_TYPE_LABELS[project.demoType]} · {project.scenes.length} scener · {fmt(totalDuration(project.scenes))}</div>
           </div>
         )}
-        <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>{project ? 'Start ny demo' : 'Hva vil du vise frem?'}</h2>
-        <p style={{ color: C.inkSoft, fontSize: 13.5, margin: '0 0 14px' }}>Lim inn en URL og bygg en scene-basert produktdemo.{project ? ' En ny demo erstatter den gjeldende.' : ''}</p>
-        <input style={{ ...field, fontSize: 15, padding: '13px 15px' }} placeholder="https://example.com" value={urlInput}
-          onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && valid) start(); }} />
-        <select style={{ ...field, padding: '11px 12px', marginTop: 12 }} value={demoType} onChange={(e) => setDemoType(e.target.value as DemoType)}>
-          {(Object.keys(DEMO_TYPE_LABELS) as DemoType[]).map((t) => <option key={t} value={t}>{DEMO_TYPE_LABELS[t]}</option>)}
+        <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>{project ? 'Start en ny video' : 'Hva vil du lage?'}</h2>
+        <p style={{ color: C.inkSoft, fontSize: 13.5, margin: '0 0 18px' }}>Lim inn nettadressen din, så lager jeg en video av den for deg.{project ? ' En ny video erstatter den du har nå.' : ''}</p>
+
+        <div style={{ fontSize: 12, fontWeight: 600, color: C.inkSoft, marginBottom: 7 }}>1. Hva slags video?</div>
+        <select style={{ ...field, padding: '11px 12px' }} value={demoType} onChange={(e) => setDemoType(e.target.value as DemoType)}>
+          {(Object.keys(DEMO_TYPE_FRIENDLY) as DemoType[]).map((t) => <option key={t} value={t}>{DEMO_TYPE_FRIENDLY[t].label}</option>)}
         </select>
-        <div><button style={{ ...primaryBtn, opacity: valid ? 1 : 0.5, marginTop: 14 }} disabled={!valid} onClick={start}>
-          {project ? 'Opprett ny demo →' : 'Generér demo-flow →'}
+        <p style={{ color: C.inkFaint, fontSize: 12, margin: '6px 2px 0', lineHeight: 1.4 }}>{DEMO_TYPE_FRIENDLY[demoType].desc} <span style={{ color: C.accent }}>· AI justerer dette automatisk etter siden din.</span></p>
+
+        <div style={{ fontSize: 12, fontWeight: 600, color: C.inkSoft, margin: '18px 0 7px' }}>2. Nettadressen</div>
+        <input style={{ ...field, fontSize: 15, padding: '13px 15px' }} placeholder="https://din-side.no" value={urlInput}
+          onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && valid) start(); }} />
+        {!valid && urlInput.length > 2 && <p style={{ color: C.inkSoft, fontSize: 12.5, margin: '6px 2px 0' }}>Skriv inn en gyldig nettadresse (f.eks. <code>theroleroom.com</code>).</p>}
+
+        <div><button style={{ ...primaryBtn, opacity: valid ? 1 : 0.5, marginTop: 18 }} disabled={!valid} onClick={start}>
+          {project ? 'Lag ny video →' : 'Kom i gang →'}
         </button></div>
-        {!valid && <p style={{ color: C.inkSoft, fontSize: 12.5, margin: '8px 0 0' }}>Skriv inn en gyldig URL (f.eks. <code>theroleroom.com</code>).</p>}
+        <p style={{ color: C.inkFaint, fontSize: 12, margin: '12px 2px 0', lineHeight: 1.45 }}>Neste steg kan du la AI lage hele videoen ferdig automatisk — med stemme og det hele — eller styre hvert steg selv.</p>
       </div>
     </div>
   );
