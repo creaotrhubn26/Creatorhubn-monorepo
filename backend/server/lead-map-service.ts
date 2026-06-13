@@ -10,6 +10,17 @@
  */
 
 import type { Pool } from "pg";
+import Anthropic from "@anthropic-ai/sdk";
+
+const CLAUDE_MODEL = "claude-opus-4-7";
+let cachedAnthropic: Anthropic | null = null;
+function getAnthropic(): Anthropic | null {
+  if (cachedAnthropic) return cachedAnthropic;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+  cachedAnthropic = new Anthropic({ apiKey });
+  return cachedAnthropic;
+}
 
 export type LeadStatus =
   | 'unvisited' | 'visited' | 'return' | 'not_present' | 'declined'
@@ -412,4 +423,269 @@ export async function setLeadGeo(
     ],
   );
   return { ok: (r.rowCount ?? 0) > 0 };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Claude AI pitch + Google Places integration
+// ─────────────────────────────────────────────────────────────────────
+
+export interface PitchSuggestion {
+  opportunityScore: number;        // 0-100
+  summary: string;
+  suggestedPackage: string;
+  pitchSubject: string;
+  pitchBody: string;
+}
+
+/**
+ * Generer pitch + opportunity-score for en lead via Claude.
+ * Bruker lead-kontekst (kategori, notater, status, Google-rating, social).
+ * Persisteres i activity-log + crm_customers.ai_opportunity_score.
+ */
+export async function generateLeadPitch(
+  pool: Pool, opts: { ownerUserId: string; leadId: string; serviceFocus?: string },
+): Promise<PitchSuggestion | null> {
+  const lead = await getLeadById(pool, opts.ownerUserId, opts.leadId);
+  if (!lead) return null;
+
+  const client = getAnthropic();
+  if (!client) return null;
+
+  const context = `LEAD: ${lead.name}${lead.company ? ` (${lead.company})` : ''}
+KATEGORI: ${lead.category ?? 'ukjent'}
+STATUS: ${lead.status}
+LOKASJON: ${lead.address ?? ''}${lead.city ? `, ${lead.city}` : ''}
+GOOGLE-RATING: ${lead.googleRating ?? 'n/a'}
+NOTES: ${lead.notes ?? 'ingen'}
+WEBSITE: ${lead.websiteUrl ?? 'n/a'}
+INSTAGRAM: ${lead.instagramUrl ?? 'n/a'}
+SISTE BESØK: ${lead.lastVisitAt ?? 'aldri'}
+${opts.serviceFocus ? `\nFOKUS-OMRÅDE: ${opts.serviceFocus}` : ''}`;
+
+  const prompt = `Du er Customer Acquisition-strateg for The Role Room (norsk casting-/produksjonsplattform fra Creatorhub AS).
+Skriv NORSK. Lag en konkret, ikke-generisk pitch til en lokal bedrift.
+
+${context}
+
+Mål: 1) score opportunity 0-100 basert på match med The Role Rooms tjenester (produksjon, casting, sosial-mediar-innhold, B2B-akkvisisjon),
+2) foreslå konkret pakke,
+3) skriv pitch-email (norsk, vennlig, ikke-pågående).
+
+Returner KUN JSON (ingen markdown, ingen kommentarer):
+{
+  "opportunity_score": <0-100>,
+  "summary": "<2 setninger som forklarer scoren>",
+  "suggested_package": "<konkret pakke-beskrivelse, f.eks 'månedlig sosial-pakke: 4 reels + 8 stillsbilder + meta-ads'>",
+  "pitch_subject": "<engasjerende email-emne>",
+  "pitch_body": "<3-4 avsnitt email-tekst, norsk, ikke salesy>"
+}`;
+
+  try {
+    const response = await client.messages.create({
+      model: CLAUDE_MODEL, max_tokens: 1200,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const block = response.content[0];
+    const text = block?.type === 'text' ? block.text : '';
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]) as {
+      opportunity_score?: number; summary?: string;
+      suggested_package?: string; pitch_subject?: string; pitch_body?: string;
+    };
+    if (!parsed.summary || !parsed.pitch_body) return null;
+
+    const score = Math.min(100, Math.max(0, Math.round(parsed.opportunity_score ?? 50)));
+
+    // Persister score + audit
+    await pool.query(
+      `UPDATE crm_customers SET ai_opportunity_score = $1, updated_at = NOW()
+       WHERE id = $2::uuid AND owner_user_id = $3`,
+      [score, opts.leadId, opts.ownerUserId],
+    );
+    await pool.query(
+      `INSERT INTO crm_lead_activities (
+         customer_id, user_id, activity_type, new_value, description, metadata
+       ) VALUES ($1::uuid, $2, 'pitch_generated', $3, $4, $5::jsonb)`,
+      [
+        opts.leadId, opts.ownerUserId,
+        String(score),
+        `Pitch generert (score ${score})`,
+        JSON.stringify({
+          suggestedPackage: parsed.suggested_package,
+          pitchSubject: parsed.pitch_subject,
+        }),
+      ],
+    );
+
+    return {
+      opportunityScore: score,
+      summary: parsed.summary.slice(0, 600),
+      suggestedPackage: (parsed.suggested_package ?? '').slice(0, 400),
+      pitchSubject: (parsed.pitch_subject ?? '').slice(0, 200),
+      pitchBody: parsed.pitch_body.slice(0, 2000),
+    };
+  } catch (err) {
+    console.warn('[lead-map] Claude pitch feilet', { err: (err as Error).message });
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Google Places-integrasjon — søk + import
+// ─────────────────────────────────────────────────────────────────────
+
+interface PlacesSearchOpts {
+  ownerUserId: string;
+  query: string;                   // f.eks. "skuespiller-byrå Oslo"
+  latitude?: number;
+  longitude?: number;
+  radiusMeters?: number;
+  type?: string;                   // Google Places type
+}
+
+interface PlaceResult {
+  placeId: string;
+  name: string;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+  rating: number | null;
+  category: string | null;
+  websiteUrl: string | null;
+  phone: string | null;
+  alreadyImported: boolean;
+}
+
+/** Søk Google Places. Returnerer kandidater + om de allerede er importert. */
+export async function searchPlaces(
+  pool: Pool, opts: PlacesSearchOpts,
+): Promise<{ ok: true; results: PlaceResult[] } | { ok: false; reason: string }> {
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) return { ok: false, reason: 'places_api_key_missing' };
+
+  // Bruk Places API v1 Text Search (nyere endpoint, mer fleksibel enn legacy)
+  const body: Record<string, unknown> = {
+    textQuery: opts.query,
+    languageCode: 'no',
+    maxResultCount: 20,
+  };
+  if (opts.latitude && opts.longitude && opts.radiusMeters) {
+    body.locationBias = {
+      circle: {
+        center: { latitude: opts.latitude, longitude: opts.longitude },
+        radius: opts.radiusMeters,
+      },
+    };
+  }
+
+  try {
+    const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.websiteUri,places.internationalPhoneNumber',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const text = await r.text();
+      return { ok: false, reason: `places_http_${r.status}: ${text.slice(0, 200)}` };
+    }
+    const data = await r.json() as {
+      places?: Array<{
+        id: string;
+        displayName?: { text?: string };
+        formattedAddress?: string;
+        location?: { latitude?: number; longitude?: number };
+        rating?: number;
+        types?: string[];
+        websiteUri?: string;
+        internationalPhoneNumber?: string;
+      }>;
+    };
+    const places = data.places ?? [];
+    const placeIds = places.map((p) => p.id);
+
+    // Sjekk hvilke som allerede er importert
+    let importedSet = new Set<string>();
+    if (placeIds.length > 0) {
+      const existing = await pool.query<{ google_place_id: string }>(
+        `SELECT google_place_id FROM crm_customers
+         WHERE owner_user_id = $1 AND google_place_id = ANY($2::text[])`,
+        [opts.ownerUserId, placeIds],
+      );
+      importedSet = new Set(existing.rows.map((row) => row.google_place_id));
+    }
+
+    const results: PlaceResult[] = places.map((p) => ({
+      placeId: p.id,
+      name: p.displayName?.text ?? 'Unknown',
+      address: p.formattedAddress ?? null,
+      latitude: p.location?.latitude ?? 0,
+      longitude: p.location?.longitude ?? 0,
+      rating: p.rating ?? null,
+      category: p.types?.[0]?.replace(/_/g, ' ') ?? null,
+      websiteUrl: p.websiteUri ?? null,
+      phone: p.internationalPhoneNumber ?? null,
+      alreadyImported: importedSet.has(p.id),
+    }));
+
+    return { ok: true, results };
+  } catch (err) {
+    return { ok: false, reason: `places_error: ${(err as Error).message}` };
+  }
+}
+
+/** Importer ett Places-resultat som ny crm_customers-rad. */
+export async function importPlaceAsLead(
+  pool: Pool, opts: {
+    ownerUserId: string;
+    place: PlaceResult;
+    leadCategory?: string;
+  },
+): Promise<{ ok: true; leadId: string } | { ok: false; reason: string }> {
+  // Sjekk om allerede importert
+  const dup = await pool.query<{ id: string }>(
+    `SELECT id FROM crm_customers
+     WHERE owner_user_id = $1 AND google_place_id = $2 LIMIT 1`,
+    [opts.ownerUserId, opts.place.placeId],
+  );
+  if (dup.rowCount && dup.rowCount > 0) {
+    return { ok: false, reason: 'already_imported' };
+  }
+
+  const r = await pool.query<{ id: string }>(
+    `INSERT INTO crm_customers (
+       id, name, phone, email, company, status, source, owner_user_id,
+       latitude, longitude, address, google_place_id, google_rating,
+       website_url, lead_category, lead_status, lead_source,
+       created_at, updated_at
+     ) VALUES (
+       gen_random_uuid(), $1, $2, NULL, $3, 'lead', 'google_places', $4,
+       $5::numeric, $6::numeric, $7, $8, $9::numeric, $10, $11, 'unvisited',
+       'google_places', NOW(), NOW()
+     )
+     RETURNING id::text`,
+    [
+      opts.place.name, opts.place.phone, opts.place.name,
+      opts.ownerUserId,
+      opts.place.latitude, opts.place.longitude, opts.place.address,
+      opts.place.placeId, opts.place.rating,
+      opts.place.websiteUrl,
+      opts.leadCategory ?? opts.place.category,
+    ],
+  );
+  const leadId = r.rows[0].id;
+
+  // Audit
+  await pool.query(
+    `INSERT INTO crm_lead_activities (
+       customer_id, user_id, activity_type, new_value, description
+     ) VALUES ($1::uuid, $2, 'lead_imported', 'google_places', $3)`,
+    [leadId, opts.ownerUserId, `Imported "${opts.place.name}" from Google Places`],
+  );
+
+  return { ok: true, leadId };
 }

@@ -18,9 +18,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
-  Dialog, DialogActions, DialogContent, DialogTitle, IconButton,
+  Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton,
   MenuItem, Select, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
+import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
+import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
+import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined';
+import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -68,6 +72,27 @@ interface Activity {
   activityType: string;
   description: string | null;
   createdAt: string;
+}
+
+interface PitchResult {
+  opportunityScore: number;
+  summary: string;
+  suggestedPackage: string;
+  pitchSubject: string;
+  pitchBody: string;
+}
+
+interface PlaceResult {
+  placeId: string;
+  name: string;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+  rating: number | null;
+  category: string | null;
+  websiteUrl: string | null;
+  phone: string | null;
+  alreadyImported: boolean;
 }
 
 interface Metrics {
@@ -184,6 +209,33 @@ export default function LeadMapPanel() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const boundsRef = useRef<L.LatLngBounds | null>(null);
 
+  // Inline quick-status anchor (FAB ved selected pin)
+  const [quickStatusFor, setQuickStatusFor] = useState<MapLead | null>(null);
+
+  // Visit log modal
+  const [visitOpen, setVisitOpen] = useState(false);
+  const [visitForm, setVisitForm] = useState({
+    visitType: 'physical' as 'physical'|'phone'|'email'|'online_meeting'|'research',
+    contactPerson: '', conversationSummary: '', objectionReason: '',
+    notes: '', newStatus: '' as LeadStatus | '',
+    nextAction: '', nextFollowUpAt: '',
+  });
+  const [visitSaving, setVisitSaving] = useState(false);
+
+  // AI pitch dialog
+  const [pitchOpen, setPitchOpen] = useState(false);
+  const [pitch, setPitch] = useState<PitchResult | null>(null);
+  const [pitchLoading, setPitchLoading] = useState(false);
+  const [pitchServiceFocus, setPitchServiceFocus] = useState('');
+
+  // Places discovery dialog
+  const [placesOpen, setPlacesOpen] = useState(false);
+  const [placesQuery, setPlacesQuery] = useState('');
+  const [placesResults, setPlacesResults] = useState<PlaceResult[]>([]);
+  const [placesLoading, setPlacesLoading] = useState(false);
+  const [placesError, setPlacesError] = useState<string | null>(null);
+  const [importingPlaceId, setImportingPlaceId] = useState<string | null>(null);
+
   const fetchLeads = useCallback(async (bounds?: L.LatLngBounds) => {
     setError(null);
     try {
@@ -235,22 +287,131 @@ export default function LeadMapPanel() {
     fetchLeads(b);
   }, [fetchLeads]);
 
-  const updateStatus = async (newStatus: LeadStatus) => {
-    if (!selected) return;
+  const updateStatusForLead = async (leadId: string, newStatus: LeadStatus) => {
     setUpdatingStatus(true);
     try {
-      const r = await fetch(`/api/admin-room/lead-map/leads/${selected.id}/status`, {
+      const r = await fetch(`/api/admin-room/lead-map/leads/${leadId}/status`, {
         method: 'PATCH', credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ status: newStatus }),
       });
       if (r.ok) {
-        setLeads((prev) => prev.map((l) => l.id === selected.id ? { ...l, status: newStatus } : l));
-        setSelected((prev) => prev ? { ...prev, status: newStatus } : null);
+        setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, status: newStatus } : l));
+        setSelected((prev) => prev?.id === leadId ? { ...prev, status: newStatus } : prev);
+        setQuickStatusFor((prev) => prev?.id === leadId ? { ...prev, status: newStatus } : prev);
         void fetchMeta();
       }
     } finally {
       setUpdatingStatus(false);
+    }
+  };
+
+  const updateStatus = (newStatus: LeadStatus) =>
+    selected ? updateStatusForLead(selected.id, newStatus) : Promise.resolve();
+
+  const logVisit = async () => {
+    if (!selected) return;
+    setVisitSaving(true);
+    try {
+      const body: Record<string, unknown> = { visitType: visitForm.visitType };
+      if (visitForm.contactPerson) body.contactPerson = visitForm.contactPerson;
+      if (visitForm.conversationSummary) body.conversationSummary = visitForm.conversationSummary;
+      if (visitForm.objectionReason) body.objectionReason = visitForm.objectionReason;
+      if (visitForm.notes) body.notes = visitForm.notes;
+      if (visitForm.newStatus) body.newStatus = visitForm.newStatus;
+      if (visitForm.nextAction) body.nextAction = visitForm.nextAction;
+      if (visitForm.nextFollowUpAt) body.nextFollowUpAt = visitForm.nextFollowUpAt;
+
+      const r = await fetch(`/api/admin-room/lead-map/leads/${selected.id}/visits`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(body),
+      });
+      if (r.ok) {
+        setVisitOpen(false);
+        setVisitForm({
+          visitType: 'physical', contactPerson: '', conversationSummary: '',
+          objectionReason: '', notes: '', newStatus: '', nextAction: '', nextFollowUpAt: '',
+        });
+        if (visitForm.newStatus) {
+          await updateStatusForLead(selected.id, visitForm.newStatus);
+        }
+        void fetchLeads(boundsRef.current ?? undefined);
+        void fetchMeta();
+      }
+    } finally {
+      setVisitSaving(false);
+    }
+  };
+
+  const generatePitch = async () => {
+    if (!selected) return;
+    setPitchLoading(true);
+    setPitch(null);
+    try {
+      const r = await fetch(`/api/admin-room/lead-map/leads/${selected.id}/generate-pitch`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ serviceFocus: pitchServiceFocus || undefined }),
+      });
+      if (r.ok) {
+        const body = await r.json();
+        setPitch(body);
+      } else {
+        const body = await r.json().catch(() => ({}));
+        setPitch({ opportunityScore: 0, summary: body.error || 'Feilet', suggestedPackage: '', pitchSubject: '', pitchBody: '' });
+      }
+    } finally {
+      setPitchLoading(false);
+    }
+  };
+
+  const searchPlaces = async () => {
+    if (!placesQuery.trim()) return;
+    setPlacesLoading(true);
+    setPlacesError(null);
+    try {
+      const body: Record<string, unknown> = { query: placesQuery };
+      if (boundsRef.current) {
+        const c = boundsRef.current.getCenter();
+        body.latitude = c.lat;
+        body.longitude = c.lng;
+        body.radiusMeters = 10000;
+      }
+      const r = await fetch('/api/admin-room/lead-map/places/search', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(body),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setPlacesResults(data.results ?? []);
+      } else {
+        const data = await r.json().catch(() => ({}));
+        setPlacesError(data.error ?? `HTTP ${r.status}`);
+      }
+    } finally {
+      setPlacesLoading(false);
+    }
+  };
+
+  const importPlace = async (place: PlaceResult) => {
+    setImportingPlaceId(place.placeId);
+    try {
+      const r = await fetch('/api/admin-room/lead-map/places/import', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ place, leadCategory: place.category }),
+      });
+      if (r.ok) {
+        setPlacesResults((prev) => prev.map((p) =>
+          p.placeId === place.placeId ? { ...p, alreadyImported: true } : p
+        ));
+        void fetchLeads(boundsRef.current ?? undefined);
+        void fetchMeta();
+      }
+    } finally {
+      setImportingPlaceId(null);
     }
   };
 
@@ -285,11 +446,21 @@ export default function LeadMapPanel() {
               </Typography>
             </Stack>
           </Stack>
-          <Tooltip title="Oppdater">
-            <IconButton onClick={() => { void fetchLeads(boundsRef.current ?? undefined); void fetchMeta(); }} sx={{ color: palette.textSecondary }}>
-              <RefreshIcon />
-            </IconButton>
-          </Tooltip>
+          <Stack direction="row" spacing={0.8}>
+            <Button
+              size="small" variant="outlined"
+              onClick={() => setPlacesOpen(true)}
+              startIcon={<SearchOutlinedIcon sx={{ fontSize: 16 }} />}
+              sx={{ color: palette.amber, borderColor: 'rgba(251,191,36,0.4)', fontWeight: 700, fontSize: '0.78rem' }}
+            >
+              Discover leads
+            </Button>
+            <Tooltip title="Oppdater">
+              <IconButton onClick={() => { void fetchLeads(boundsRef.current ?? undefined); void fetchMeta(); }} sx={{ color: palette.textSecondary }}>
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
+          </Stack>
         </Stack>
 
         {/* Metric-cards */}
@@ -373,13 +544,42 @@ export default function LeadMapPanel() {
                   position={[lead.latitude, lead.longitude]}
                   icon={makePinIcon(lead.status, selected?.id === lead.id)}
                   eventHandlers={{
-                    click: () => setSelected(lead),
+                    click: () => { setSelected(lead); setQuickStatusFor(lead); },
+                    contextmenu: (e: L.LeafletMouseEvent) => {
+                      e.originalEvent.preventDefault();
+                      setQuickStatusFor(lead);
+                    },
                   }}
                 >
                   <Popup>
-                    <strong>{lead.name}</strong><br />
-                    {lead.category}<br />
-                    {lead.address}
+                    <div style={{ minWidth: 180 }}>
+                      <strong>{lead.name}</strong><br />
+                      {lead.category && <span>{lead.category}<br /></span>}
+                      {lead.address && <span style={{ color: '#666' }}>{lead.address}</span>}
+                      <Divider sx={{ my: 1 }} />
+                      <div style={{ fontSize: 11, color: '#666', marginBottom: 6 }}>Endre status:</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {PRIMARY_STATUSES.map((s) => {
+                          const meta = STATUS_META[s];
+                          return (
+                            <button
+                              key={s}
+                              onClick={() => updateStatusForLead(lead.id, s)}
+                              disabled={updatingStatus || lead.status === s}
+                              style={{
+                                background: lead.status === s ? meta.bg : meta.color,
+                                color: lead.status === s ? meta.color : '#0a0a0f',
+                                border: 'none', borderRadius: 4,
+                                padding: '4px 8px', fontSize: 10, fontWeight: 700,
+                                cursor: updatingStatus ? 'wait' : 'pointer',
+                              }}
+                            >
+                              {meta.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </Popup>
                 </Marker>
               ))}
@@ -523,20 +723,45 @@ export default function LeadMapPanel() {
                 })}
               </Stack>
 
-              {/* Links */}
-              {(selected.websiteUrl || selected.instagramUrl) && (
-                <Stack direction="row" spacing={0.6} sx={{ mt: 2 }}>
-                  {selected.websiteUrl && (
-                    <Button
-                      size="small" variant="outlined"
-                      startIcon={<LanguageOutlinedIcon sx={{ fontSize: 14 }} />}
-                      onClick={() => window.open(selected.websiteUrl!, '_blank')}
-                      sx={{ color: palette.accent, borderColor: palette.borderStrong, fontSize: '0.72rem' }}
-                    >
-                      Website
-                    </Button>
-                  )}
-                </Stack>
+              {/* Action-knapper */}
+              <Stack direction="row" spacing={0.6} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
+                <Button
+                  size="small" variant="contained"
+                  startIcon={<AssignmentOutlinedIcon sx={{ fontSize: 14 }} />}
+                  onClick={() => setVisitOpen(true)}
+                  sx={{ bgcolor: palette.amber, color: '#0a0a0f', fontWeight: 700, fontSize: '0.74rem' }}
+                >
+                  Log Visit
+                </Button>
+                <Button
+                  size="small" variant="outlined"
+                  startIcon={<AutoAwesomeOutlinedIcon sx={{ fontSize: 14 }} />}
+                  onClick={() => setPitchOpen(true)}
+                  sx={{ color: palette.accent, borderColor: palette.borderStrong, fontWeight: 700, fontSize: '0.74rem' }}
+                >
+                  Generate Pitch
+                </Button>
+                {selected.websiteUrl && (
+                  <Button
+                    size="small" variant="outlined"
+                    startIcon={<LanguageOutlinedIcon sx={{ fontSize: 14 }} />}
+                    onClick={() => window.open(selected.websiteUrl!, '_blank')}
+                    sx={{ color: palette.accent, borderColor: palette.borderStrong, fontSize: '0.72rem' }}
+                  >
+                    Website
+                  </Button>
+                )}
+              </Stack>
+
+              {selected.aiOpportunityScore != null && (
+                <Box sx={{ mt: 1.4, p: 1, borderRadius: 1, bgcolor: 'rgba(192,132,252,0.08)', border: '1px solid rgba(192,132,252,0.32)' }}>
+                  <Typography sx={{ fontSize: '0.66rem', color: palette.accent, fontWeight: 700, textTransform: 'uppercase' }}>
+                    AI Opportunity Score
+                  </Typography>
+                  <Typography sx={{ fontSize: '1.4rem', color: palette.accent, fontWeight: 800, lineHeight: 1 }}>
+                    {selected.aiOpportunityScore}/100
+                  </Typography>
+                </Box>
               )}
 
               {selected.notes && (
@@ -547,6 +772,200 @@ export default function LeadMapPanel() {
             </Box>
           )}
         </Stack>
+
+        {/* Visit log modal */}
+        <Dialog open={visitOpen} onClose={() => setVisitOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Log Visit — {selected?.name}</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Select
+                size="small" fullWidth value={visitForm.visitType}
+                onChange={(e) => setVisitForm({ ...visitForm, visitType: e.target.value as typeof visitForm.visitType })}
+              >
+                <MenuItem value="physical">Fysisk besøk</MenuItem>
+                <MenuItem value="phone">Telefon</MenuItem>
+                <MenuItem value="email">E-post</MenuItem>
+                <MenuItem value="online_meeting">Online-møte</MenuItem>
+                <MenuItem value="research">Research</MenuItem>
+              </Select>
+              <TextField size="small" fullWidth label="Kontaktperson"
+                value={visitForm.contactPerson} onChange={(e) => setVisitForm({ ...visitForm, contactPerson: e.target.value })} />
+              <TextField size="small" fullWidth multiline rows={3} label="Samtale-sammendrag"
+                value={visitForm.conversationSummary} onChange={(e) => setVisitForm({ ...visitForm, conversationSummary: e.target.value })} />
+              <TextField size="small" fullWidth label="Innvending / årsak (valgfritt)"
+                value={visitForm.objectionReason} onChange={(e) => setVisitForm({ ...visitForm, objectionReason: e.target.value })} />
+              <TextField size="small" fullWidth label="Neste handling"
+                value={visitForm.nextAction} onChange={(e) => setVisitForm({ ...visitForm, nextAction: e.target.value })} />
+              <Stack direction="row" spacing={1}>
+                <Select size="small" fullWidth displayEmpty
+                  value={visitForm.newStatus}
+                  onChange={(e) => setVisitForm({ ...visitForm, newStatus: e.target.value as LeadStatus })}>
+                  <MenuItem value="">Behold status</MenuItem>
+                  {ALL_STATUSES.map((s) => (
+                    <MenuItem key={s} value={s}>{STATUS_META[s].label}</MenuItem>
+                  ))}
+                </Select>
+                <TextField size="small" fullWidth type="datetime-local" label="Follow-up"
+                  InputLabelProps={{ shrink: true }}
+                  value={visitForm.nextFollowUpAt}
+                  onChange={(e) => setVisitForm({ ...visitForm, nextFollowUpAt: e.target.value })} />
+              </Stack>
+              <TextField size="small" fullWidth multiline rows={2} label="Interne notater"
+                value={visitForm.notes} onChange={(e) => setVisitForm({ ...visitForm, notes: e.target.value })} />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setVisitOpen(false)}>Avbryt</Button>
+            <Button onClick={logVisit} variant="contained" disabled={visitSaving}
+              startIcon={visitSaving ? <CircularProgress size={14} /> : null}
+              sx={{ bgcolor: palette.amber, color: '#0a0a0f', fontWeight: 700 }}>
+              Lagre besøk
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* AI Pitch dialog */}
+        <Dialog open={pitchOpen} onClose={() => setPitchOpen(false)} maxWidth="md" fullWidth>
+          <DialogTitle>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <AutoAwesomeOutlinedIcon sx={{ color: palette.accent }} />
+              <span>AI Pitch — {selected?.name}</span>
+            </Stack>
+          </DialogTitle>
+          <DialogContent>
+            <TextField
+              size="small" fullWidth sx={{ mt: 1 }}
+              label="Fokus-område (valgfritt — f.eks. 'sosial-media-pakke', 'B2B-akkvisisjon')"
+              value={pitchServiceFocus}
+              onChange={(e) => setPitchServiceFocus(e.target.value)}
+            />
+            <Button
+              onClick={generatePitch} variant="contained"
+              disabled={pitchLoading}
+              startIcon={pitchLoading ? <CircularProgress size={14} /> : <AutoAwesomeOutlinedIcon sx={{ fontSize: 14 }} />}
+              sx={{ mt: 2, bgcolor: palette.accent, fontWeight: 700 }}
+            >
+              {pitchLoading ? 'Genererer …' : 'Generer pitch med Claude'}
+            </Button>
+            {pitch && (
+              <Box sx={{ mt: 2 }}>
+                {pitch.opportunityScore > 0 && (
+                  <Box sx={{ p: 1.6, mb: 2, borderRadius: 1.4, bgcolor: 'rgba(192,132,252,0.08)', border: `1px solid ${palette.borderStrong}` }}>
+                    <Typography sx={{ fontSize: '0.7rem', color: palette.accent, fontWeight: 700, textTransform: 'uppercase' }}>
+                      Opportunity Score
+                    </Typography>
+                    <Typography sx={{ fontSize: '2rem', color: palette.accent, fontWeight: 800, lineHeight: 1 }}>
+                      {pitch.opportunityScore}/100
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.84rem', color: 'text.primary', mt: 1 }}>
+                      {pitch.summary}
+                    </Typography>
+                  </Box>
+                )}
+                {pitch.suggestedPackage && (
+                  <Box sx={{ p: 1.6, mb: 2, borderRadius: 1.4, bgcolor: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.32)' }}>
+                    <Typography sx={{ fontSize: '0.7rem', color: palette.amber, fontWeight: 700, textTransform: 'uppercase' }}>
+                      Foreslått pakke
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.86rem', mt: 0.4 }}>
+                      {pitch.suggestedPackage}
+                    </Typography>
+                  </Box>
+                )}
+                {pitch.pitchBody && (
+                  <Box sx={{ p: 1.6, borderRadius: 1.4, bgcolor: 'background.paper', border: '1px solid #ddd' }}>
+                    <Stack direction="row" justifyContent="space-between" sx={{ mb: 1 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: '0.88rem' }}>
+                        {pitch.pitchSubject || 'Pitch'}
+                      </Typography>
+                      <IconButton size="small" onClick={() => navigator.clipboard.writeText(`Emne: ${pitch.pitchSubject}\n\n${pitch.pitchBody}`)}>
+                        <ContentCopyOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                    <Typography sx={{ fontSize: '0.86rem', whiteSpace: 'pre-wrap' }}>
+                      {pitch.pitchBody}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => { setPitchOpen(false); setPitch(null); }}>Lukk</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Places discovery dialog */}
+        <Dialog open={placesOpen} onClose={() => setPlacesOpen(false)} maxWidth="md" fullWidth>
+          <DialogTitle>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <SearchOutlinedIcon sx={{ color: palette.amber }} />
+              <span>Discover leads via Google Places</span>
+            </Stack>
+          </DialogTitle>
+          <DialogContent>
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+              <TextField
+                size="small" fullWidth autoFocus
+                placeholder="F.eks. 'kafé Grünerløkka' eller 'reklamebyrå Oslo'"
+                value={placesQuery}
+                onChange={(e) => setPlacesQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void searchPlaces(); }}
+              />
+              <Button
+                onClick={searchPlaces} variant="contained" disabled={placesLoading}
+                startIcon={placesLoading ? <CircularProgress size={14} /> : <SearchOutlinedIcon sx={{ fontSize: 14 }} />}
+                sx={{ bgcolor: palette.amber, color: '#0a0a0f', fontWeight: 700 }}
+              >
+                Søk
+              </Button>
+            </Stack>
+            <Typography sx={{ fontSize: '0.74rem', color: 'text.secondary', mt: 1 }}>
+              Søker innenfor 10 km av nåværende kart-senter.
+            </Typography>
+            {placesError && (
+              <Alert severity="warning" sx={{ mt: 2 }}>{placesError}</Alert>
+            )}
+            <Stack spacing={0.8} sx={{ mt: 2 }}>
+              {placesResults.map((p) => (
+                <Box key={p.placeId} sx={{
+                  p: 1.4, borderRadius: 1.2,
+                  border: '1px solid #ddd',
+                  display: 'flex', alignItems: 'center', gap: 1.4,
+                }}>
+                  <Stack sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontSize: '0.88rem', fontWeight: 700 }}>
+                      {p.name}
+                      {p.rating && (
+                        <Box component="span" sx={{ ml: 1, color: 'orange', fontSize: '0.78rem' }}>
+                          ★ {p.rating}
+                        </Box>
+                      )}
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.74rem', color: 'text.secondary' }}>
+                      {p.address}{p.category && ` · ${p.category}`}
+                    </Typography>
+                  </Stack>
+                  {p.alreadyImported ? (
+                    <Chip size="small" label="Importert" sx={{ bgcolor: 'success.light', color: 'success.dark' }} />
+                  ) : (
+                    <Button
+                      size="small" variant="outlined"
+                      onClick={() => importPlace(p)}
+                      disabled={importingPlaceId === p.placeId}
+                      sx={{ fontWeight: 700 }}
+                    >
+                      {importingPlaceId === p.placeId ? 'Importerer …' : 'Importer'}
+                    </Button>
+                  )}
+                </Box>
+              ))}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setPlacesOpen(false)}>Lukk</Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Activity feed */}
         <Box sx={{ mt: 2.4, p: 2, borderRadius: 1.6, bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}` }}>
