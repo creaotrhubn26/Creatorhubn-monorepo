@@ -493,6 +493,10 @@ import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes
 import { setupTalentSelftapesRoutes } from "./talent-selftapes-routes";
 import { setupAgencyLeadsRoutes } from "./agency-leads-routes";
 import { setupCustomerSuccessRoutes } from "./customer-success-routes.js";
+import {
+  upsertRenewalFromStripeSubscription as upsertCsRenewalFromStripe,
+  markRenewalChurnedForStripeSubscription as markCsRenewalChurned,
+} from "./customer-success-service.js";
 import { setupClientAdsRoutes } from "./client-ads-routes";
 import { setupCockpitB2BRoutes } from "./cockpit-b2b-routes";
 import { setupLinkedInOAuthRoutes } from "./linkedin-oauth-routes";
@@ -1240,12 +1244,16 @@ app.post(
           }
           // I tillegg: revoker tilgangen til alle team-medlemmer
           await handleRoleRoomSubscriptionDeleted(pool, subscription);
+          // Wave M2: marker renewal-rad som churned
+          void markCsRenewalChurned(pool, subscription.id);
           break;
         }
         case "customer.subscription.updated": {
           const subscription = event.data.object as Stripe.Subscription;
           // Detecter quantity-drift + status-overganger til past_due/unpaid
           await handleRoleRoomSubscriptionUpdated(pool, subscription);
+          // Wave M2: upsert renewal-pipeline
+          void upsertCsRenewalFromStripe(pool, subscription as unknown as Parameters<typeof upsertCsRenewalFromStripe>[1]);
           break;
         }
         default:
@@ -1428,6 +1436,8 @@ app.post(
             interval: item?.price?.recurring?.interval || '',
             trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
           });
+          // Wave M2: opprett renewal-rad i CSM-pipeline
+          void upsertCsRenewalFromStripe(pool, subscription as unknown as Parameters<typeof upsertCsRenewalFromStripe>[1]);
           break;
         }
         // Slice 10.2 — gallery checkout completion. We only act when
