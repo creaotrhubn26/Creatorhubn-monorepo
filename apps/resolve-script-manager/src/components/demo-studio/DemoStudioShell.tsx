@@ -33,6 +33,8 @@ import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, completeDemoFlow, fetchSiteContext, analyzeSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, suggestVisualBeats, type CommandResult, type VisualBeat, type SiteUnderstanding } from './demoStudioAI';
 import { executeScript, playwrightStatus, playwrightCaptureShots } from '../../api';
+import { openPath } from '@tauri-apps/plugin-opener';
+import { runAutonomousDemo } from './autonomousDemo';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
@@ -169,6 +171,27 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [showTools, setShowTools] = useState(false); // sammenleggbare sekundære verktøy
   const [showAdvanced, setShowAdvanced] = useState(false); // sammenleggbart «Avansert» i Beskriv-steget
   const [generated, setGenerated] = useState(false); // har vi generert en demo i denne sesjonen?
+  // «Generér ferdig demo» (autonom): TTS → Playwright-opptak → mux til ferdig mp4.
+  const [demoVidBusy, setDemoVidBusy] = useState(false);
+  const [demoVidMsg, setDemoVidMsg] = useState<string | null>(null);
+  const [demoVidPct, setDemoVidPct] = useState(0);
+  const [demoVidResult, setDemoVidResult] = useState<string | null>(null);
+  const runAutoDemo = async () => {
+    if (!project || demoVidBusy) return;
+    if (!aiReady) { setShowSignIn(true); return; }
+    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidPct(0); setDemoVidMsg('Starter…');
+    try {
+      const voice = project.language === 'en' ? undefined : 'Nora'; // norsk on-device-stemme
+      const out = await runAutonomousDemo(project, { voice, onProgress: (m, p) => { setDemoVidMsg(m); setDemoVidPct(p); } });
+      setDemoVidResult(out);
+      setDemoVidMsg('✓ Ferdig demo klar');
+      void openPath(out).catch(() => {});
+    } catch (e) {
+      setDemoVidMsg('Feil: ' + (e as Error).message);
+    } finally {
+      setDemoVidBusy(false);
+    }
+  };
   const pickAudience = (a: string) => {
     const m = project?.scriptMeta ?? { tone: 'professional' as const, audience: '', language: 'Norsk', length: 'medium' as const };
     setProjectField('scriptMeta', { ...m, audience: a });
@@ -896,8 +919,26 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                       </div>
                       {clarifyBox}
                       {replyLine}
-                      <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', opacity: directorBusy ? 0.6 : 1 }}
-                        disabled={directorBusy} onClick={() => void generateDemo()}>{directorBusy ? 'Lager…' : '↻ Generér på nytt'}</button>
+                      {/* Headline: autonom ferdig demo (TTS → Playwright-opptak → mux) */}
+                      <button style={{ ...btn, width: '100%', justifyContent: 'center', background: C.accent, color: '#fff', borderColor: C.accent, fontWeight: 600, padding: '10px 13px', boxShadow: '0 1px 3px rgba(239,138,93,0.35)', opacity: demoVidBusy || directorBusy ? 0.6 : 1 }}
+                        disabled={demoVidBusy || directorBusy} onClick={() => void runAutoDemo()}
+                        title="AI kjører nettsiden, narrerer med voiceover og leverer en ferdig video — uten at du tar opp noe">
+                        {demoVidBusy ? 'Lager ferdig demo…' : '✨ Generér ferdig demo (autonom)'}
+                      </button>
+                      {demoVidBusy && (
+                        <div style={{ marginTop: 8 }}>
+                          <div style={{ height: 5, background: C.line, borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${demoVidPct}%`, background: C.accent, transition: 'width .3s' }} />
+                          </div>
+                        </div>
+                      )}
+                      {demoVidMsg && <div style={{ fontSize: 11, color: demoVidMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 6 }}>{demoVidMsg}</div>}
+                      {demoVidResult && !demoVidBusy && (
+                        <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8 }}
+                          onClick={() => void openPath(demoVidResult).catch(() => {})}>▶ Åpne ferdig video</button>
+                      )}
+                      <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8, opacity: directorBusy ? 0.6 : 1 }}
+                        disabled={directorBusy} onClick={() => void generateDemo()}>{directorBusy ? 'Lager…' : '↻ Generér scener på nytt'}</button>
                       {directorLine}
                       <div style={{ marginTop: 12 }}>
                         <div onClick={() => setShowTools((v) => !v)}

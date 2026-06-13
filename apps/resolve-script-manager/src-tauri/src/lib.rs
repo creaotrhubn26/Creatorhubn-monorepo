@@ -7,6 +7,7 @@ mod creations;
 mod cull;
 mod folder_watcher;
 mod history;
+mod autonomous_demo;
 mod capture_sources;
 mod demo_capture;
 mod demo_export;
@@ -942,6 +943,8 @@ pub fn run() {
             capture_sources::open_iphone_mirroring,
             capture_sources::start_screen_record,
             capture_sources::stop_screen_record,
+            autonomous_demo::synthesize_tts,
+            autonomous_demo::mux_demo_video,
             photoshop_bridge::photoshop_send_command,
             photoshop_bridge::photoshop_status,
             psd_indexer::psd_index_directory,

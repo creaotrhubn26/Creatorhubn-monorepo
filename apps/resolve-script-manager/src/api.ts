@@ -134,6 +134,16 @@ export async function stopScreenRecord(sessionId: string): Promise<string> {
   return invoke<string>("stop_screen_record", { sessionId });
 }
 
+// ── Autonom demo (URL → ferdig narrert video) ──
+/** Syntetiser narration for én scene (macOS say) → m4a + varighet. */
+export async function synthesizeTts(projectId: string, sceneId: string, text: string, voice?: string): Promise<{ path: string; durationSec: number }> {
+  return invoke<{ path: string; durationSec: number }>("synthesize_tts", { projectId, sceneId, text, voice });
+}
+/** Legg per-scene narration på sine tids-offset over Playwright-videoen → ferdig mp4. */
+export async function muxDemoVideo(projectId: string, videoPath: string, segments: Array<{ audioPath: string; offsetMs: number }>): Promise<string> {
+  return invoke<string>("mux_demo_video", { projectId, videoPath, segments });
+}
+
 /** Skriv ren tekst (f.eks. .srt) til en bruker-valgt sti. Returnerer stien. */
 export async function demoWriteText(path: string, contents: string): Promise<string> {
   return invoke<string>("demo_write_text", { path, contents });
