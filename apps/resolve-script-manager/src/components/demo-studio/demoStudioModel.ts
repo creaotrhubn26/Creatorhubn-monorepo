@@ -475,6 +475,18 @@ export interface DemoTypeTemplate {
  * Ren data — deterministisk, ingen backend. AI Director kan deretter skrive om
  * manuset på toppen av disse stegene.
  */
+/** Bestemor-vennlige norske etiketter + én-setnings-forklaring per type. */
+export const DEMO_TYPE_FRIENDLY: Record<DemoType, { label: string; desc: string }> = {
+  product_demo: { label: 'Vis frem produktet', desc: 'En kort video som viser hva nettsiden/produktet ditt gjør.' },
+  tutorial: { label: 'Lær bort hvordan', desc: 'Steg-for-steg-veiledning for hvordan man bruker det.' },
+  onboarding: { label: 'Velkommen for nye', desc: 'Hva nye brukere ser og gjør når de starter.' },
+  sales_video: { label: 'Selg det inn', desc: 'Kort og fengende: problem → løsning → kom i gang.' },
+  investor_demo: { label: 'Pitch til investorer', desc: 'Marked, produkt og hvorfor det er verdt å satse på.' },
+  social_clip: { label: 'Kort klipp for sosiale medier', desc: '15–30 sek vertikal video for Instagram/TikTok.' },
+  support_guide: { label: 'Hjelp kunder selv', desc: '«Slik løser du dette» – en rolig hjelpevideo.' },
+  feature_walkthrough: { label: 'Vis én funksjon i detalj', desc: 'Dybde-demo av én bestemt funksjon.' },
+};
+
 export const DEMO_TYPE_TEMPLATES: Record<DemoType, DemoTypeTemplate> = {
   product_demo: {
     tone: 'professional', length: 'medium', targetSeconds: 75, format: '16:9', device: 'macbook',
