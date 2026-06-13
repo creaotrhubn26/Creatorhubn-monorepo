@@ -191,6 +191,61 @@ export function buildPlaywrightScript(project: DemoProject): string {
   return L.join('\n');
 }
 
+/**
+ * AUTONOM demo-script: som buildPlaywrightScript, men dveler per scene =
+ * narration-varigheten (dwellsMs) og logger tids-markører (MARK_T0 / MARK i)
+ * slik at orkestratoren kan legge hver narration på riktig tid i muxingen.
+ * Ingen menneskelig opptak — dette KJØRES og produserer videoen.
+ */
+export function buildAutonomousScript(project: DemoProject, dwellsMs: number[]): string {
+  const L: string[] = [];
+  L.push('// Auto-generert: AUTONOM demo (URL → narrert video). MARK-linjer lar');
+  L.push('// orkestratoren synkronisere voiceover med videoen.');
+  L.push("import { chromium } from 'playwright';");
+  L.push("import { readFileSync, writeFileSync, existsSync } from 'node:fs';");
+  L.push('');
+  SELF_HEAL_RUNTIME.forEach((l) => L.push(l));
+  L.push('');
+  L.push('let browser;');
+  L.push("try { browser = await chromium.launch({ headless: false, slowMo: 120, channel: 'chrome' }); }");
+  L.push('catch { browser = await chromium.launch({ headless: false, slowMo: 120 }); }');
+  L.push("const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, recordVideo: { dir: 'demo-video', size: { width: 1280, height: 800 } } });");
+  L.push('const page = await context.newPage();');
+  L.push("console.log('MARK_T0 ' + Date.now()); // video-t0 ≈ context-opprettelse");
+  L.push(`await page.goto(${jsStr(project.url)}, { waitUntil: 'domcontentloaded' });`);
+  L.push('await page.waitForTimeout(1800);');
+  L.push('await dismissOverlays(page); // fjern cookie/consent før opptak');
+  L.push('await page.waitForTimeout(400);');
+  L.push('');
+  project.scenes.forEach((s, i) => {
+    const n = i + 1;
+    const at = s.actionType ?? 'click';
+    const oneLine = (x: string) => (x || '').replace(/\s+/g, ' ').trim();
+    const tuples = sceneLocatorTuples(s);
+    const hasTarget = tuples !== '[]';
+    const label = oneLine(s.targetLabel || '');
+    const dwell = Math.max(1500, Math.round(dwellsMs[i] || 3000));
+    L.push(`// ── Scene ${n}: ${oneLine(s.title).slice(0, 60)}`);
+    if (s.startScrollPct) L.push(`await page.evaluate(() => window.scrollTo({ top: (document.body.scrollHeight - innerHeight) * ${(s.startScrollPct / 100).toFixed(2)}, behavior: 'smooth' }));`);
+    L.push('await page.waitForTimeout(500);');
+    if (at === 'wait') {
+      // bare dvel
+    } else if (hasTarget) {
+      const kind = at === 'type' ? 'type' : at === 'hover' ? 'hover' : at === 'click' ? 'click' : 'show';
+      L.push(`await act(page, ${tuples}, ${jsStr(kind)}, ${jsStr(label)}).catch(() => {});`);
+    } else if (at === 'scroll') {
+      L.push('await page.mouse.wheel(0, 500);');
+    }
+    // MARK = start på dvel (her spilles narration i muxingen)
+    L.push(`console.log('MARK ${i} ' + Date.now());`);
+    L.push(`await page.waitForTimeout(${dwell});`);
+    L.push('');
+  });
+  L.push('await context.close();');
+  L.push('await browser.close();');
+  return L.join('\n');
+}
+
 /** SRT-timecode: «HH:MM:SS,mmm». */
 function srtTime(totalSec: number): string {
   const ms = Math.round(totalSec * 1000);
