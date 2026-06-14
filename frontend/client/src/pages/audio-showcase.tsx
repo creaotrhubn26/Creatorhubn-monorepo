@@ -1090,6 +1090,20 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
     } catch { /* */ } finally { if (kind === 'canvas') setSpotBusy(false); }
   };
 
+  const clipInputRef = React.useRef<HTMLInputElement>(null);
+  const uploadCanvasClip = async (file?: File | null) => {
+    if (!rel || !file) return; setSpotBusy(true);
+    try {
+      const fd = new FormData(); fd.append('clip', file);
+      const headers = await getAuthHeader(); delete (headers as any)['Content-Type'];
+      const res = await fetch(`/api/releases/${rel.id}/canvas/from-clip`, { method: 'POST', headers, body: fd });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const name = (res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/) || [])[1] || 'canvas.mp4';
+      const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    } catch { /* */ } finally { setSpotBusy(false); }
+  };
+
   const exportPackage = async () => {
     if (!rel) return; setBusy(true);
     try {
@@ -1177,11 +1191,13 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
                   </Stack>
                 ); })()}
                 {/* Spotify-verktøy (manuelt — Spotify har ikke opplastings-API) */}
-                <Stack direction="row" spacing={1} sx={{ mt: 1, pt: 1, borderTop: '1px solid rgba(29,185,84,0.18)' }}>
-                  <Button onClick={() => downloadSpotifyAsset('canvas')} disabled={spotBusy} startIcon={<MovieCreationOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Canvas (9:16)</Button>
+                <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1, pt: 1, borderTop: '1px solid rgba(29,185,84,0.18)' }}>
+                  <Button onClick={() => downloadSpotifyAsset('canvas')} disabled={spotBusy} startIcon={<MovieCreationOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Canvas fra cover</Button>
+                  <Button onClick={() => clipInputRef.current?.click()} disabled={spotBusy} startIcon={<CloudUpload sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Last opp eget klipp</Button>
                   <Button onClick={() => downloadSpotifyAsset('lyrics')} startIcon={<SubjectOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Tekst → Musixmatch</Button>
+                  <input ref={clipInputRef} type="file" accept="video/*" hidden onChange={(e) => { void uploadCanvasClip(e.target.files?.[0]); e.target.value = ''; }} />
                 </Stack>
-                <Typography sx={{ fontSize: '0.6rem', color: FAINT, mt: 0.5 }}>Canvas lastes opp i Spotify for Artists. Tekst (.lrc m/ timing hvis satt, ellers .txt) sendes til Musixmatch.</Typography>
+                <Typography sx={{ fontSize: '0.6rem', color: FAINT, mt: 0.5 }}>Canvas (9:16, ~6 s) lages fra coveret eller ditt eget klipp, og lastes opp i Spotify for Artists. Tekst (.lrc m/ timing hvis satt, ellers .txt) sendes til Musixmatch.</Typography>
               </Box>
               {/* YouTube-publisering (visualizer / lyric-video / karaoke) */}
               <YouTubePublishPanel releaseId={rel.id} projectId={projectId} masterUrl={rel.master_url} />

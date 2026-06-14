@@ -70252,6 +70252,8 @@ setupAudioShowcaseRoutes({
     try { const { youtube } = await buildAuthorizedYoutubeClient(pool, userId, req); return { youtube }; }
     catch { return null; }
   },
+  // Opplasting av eget Canvas-klipp (memoryStorage, 250 MB).
+  uploadClip: showcaseMediaUpload,
 });
 
 
