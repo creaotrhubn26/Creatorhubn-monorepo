@@ -347,7 +347,6 @@ def _build_reveal(comp, dur, fps, idx, total, force, report):
     try:
         for ch in ("TopLeftRed", "TopLeftGreen", "TopLeftBlue"):
             bg.SetInput(ch, 0.0)
-        bg.SetInput("TopLeftAlpha", 1.0)
     except Exception:  # noqa: BLE001
         report.append("reveal-bg farge feilet")
     fade_in = max(2, int(round((0.6 if force else 0.4) * fps)))
@@ -358,7 +357,9 @@ def _build_reveal(comp, dur, fps, idx, total, force, report):
         keys = [(0, 1.0), (fade_in, 0.0)]
     else:  # last
         keys = [(0, 0.0), (max(2, dur - fade_out), 0.0), (dur, 1.0)]
-    _kf_scalar(comp, bg, "Blend", keys, report)
+    # Background er en generator UTEN bilde-input → "Blend" er no-op. Bruk
+    # TopLeftAlpha for å fade selve det svarte bildets alpha.
+    _kf_scalar(comp, bg, "TopLeftAlpha", keys, report)
     return bg
 
 
@@ -403,7 +404,6 @@ def _fx_spotlight(comp, fx, dur, fps, brand, report, with_glow, with_label):
         return None, None
     for ch in ("TopLeftRed", "TopLeftGreen", "TopLeftBlue"):
         _set(overlay, ch, 0.02, report)
-    _set(overlay, "TopLeftAlpha", 1.0, report)
     _set(hole, "Center", [cx, cy], report)
     _set(hole, "Width", w * 1.12, report)
     _set(hole, "Height", h * 1.5, report)
@@ -411,9 +411,9 @@ def _fx_spotlight(comp, fx, dur, fps, brand, report, with_glow, with_label):
     _set(hole, "SoftEdge", 0.03, report)
     _set(hole, "Invert", 1, report)          # mask = utenfor rekt
     _connect(overlay, "EffectMask", hole, report)
-    # fade overlay inn
+    # fade dimming inn via TopLeftAlpha (Background «Blend» er no-op)
     fade = max(2, int(round(0.4 * fps)))
-    _kf_scalar(comp, overlay, "Blend", [(0, 0.0), (fade, dim)], report)
+    _kf_scalar(comp, overlay, "TopLeftAlpha", [(0, 0.0), (fade, dim)], report)
     out = overlay
 
     if with_glow:
@@ -581,14 +581,14 @@ def _fx_cursor(comp, fx, dur, fps, brand, report):
         if ring and rmask:
             for i, ch in enumerate(("TopLeftRed", "TopLeftGreen", "TopLeftBlue")):
                 _set(ring, ch, brand["accent"][i], report)
-            _set(ring, "TopLeftAlpha", 1.0, report)
             _set(rmask, "Center", [tx0, ty0], report)
             _set(rmask, "BorderWidth", 0.004, report)
             _set(rmask, "Solid", 0, report)
             _connect(ring, "EffectMask", rmask, report)
             click = max(2, int(dur * 0.6))
             _kf_scalar(comp, rmask, "Width", [(click, 0.01), (click + int(0.4 * fps), 0.08)], report)
-            _kf_scalar(comp, ring, "Blend", [(click, 0.9), (click + int(0.4 * fps), 0.0)], report)
+            # ripple fader ut via TopLeftAlpha (Background «Blend» er no-op)
+            _kf_scalar(comp, ring, "TopLeftAlpha", [(click, 0.9), (click + int(0.4 * fps), 0.0)], report)
             cm = _add(comp, "Merge", 1, 11, report)
             if cm:
                 _connect(cm, "Background", out, report)
@@ -922,10 +922,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         if not comp:
             scene_reports.append({"scene": i, "error": "ingen Fusion-comp"})
             continue
-        try:
-            comp.Lock()
-        except Exception:  # noqa: BLE001
-            pass
+        # MERK: IKKE bruk comp.Lock()/Unlock() her. Verifisert mot Resolve 21 at
+        # Lock/Unlock hindrer at keyframe-animasjonen (BezierSpline/XYPath) blir
+        # registrert for Edit/Deliver-render → kameraet «fryser» og effektene
+        # forsvinner i den ferdige videoen. Bygg uten lås.
         dur_frames = max(2, int(round(float(scene.get("durationSec", 4.0)) * fps)))
         try:
             built = _build_scene_comp(comp, scene, i, len(items), fps, brand, dur_frames, per_report)
@@ -933,11 +933,6 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             scene_reports.append(built)
         except Exception as exc:  # noqa: BLE001
             scene_reports.append({"scene": i, "error": str(exc), "warnings": per_report})
-        finally:
-            try:
-                comp.Unlock()
-            except Exception:  # noqa: BLE001
-                pass
         bridge.progress(i + 1, len(items), f"Fusion-scene {i + 1}/{len(items)}")
 
     ok_scenes = sum(1 for r in scene_reports if not r.get("error"))
