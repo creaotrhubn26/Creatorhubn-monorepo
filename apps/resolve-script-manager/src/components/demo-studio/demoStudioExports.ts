@@ -144,7 +144,7 @@ const CINEMATIC_RUNTIME: string[] = [
   '    // Push-in: skaler body med origin i elementets senter (det punktet står stille',
   '    // i viewporten, så peker + element holder seg justert under zoomen).',
   '    window.__paZoom = (vx, vy, sc) => { const b = document.body; if (!b) return; const ox = vx + (window.scrollX || 0), oy = vy + (window.scrollY || 0); b.style.transition = "transform 1s cubic-bezier(.4,0,.2,1)"; b.style.transformOrigin = ox + "px " + oy + "px"; b.style.transform = "scale(" + sc + ")"; };',
-  '    window.__paZoomReset = () => { const b = document.body; if (!b) return; b.style.transition = "transform .5s ease"; b.style.transform = "none"; };',
+  '    window.__paZoomReset = () => { const b = document.body; if (!b) return; b.style.transition = "transform .5s ease, filter .3s ease"; b.style.transform = "none"; b.style.filter = "none"; };',
   '    // Kinetisk tekst-banner: animert overlay-tekst som glir inn (motion + info).',
   '    window.__paCaption = (text) => { const old = document.getElementById("__pa_cap"); if (old) old.remove(); if (!text) return; const c = document.createElement("div"); c.id = "__pa_cap"; c.textContent = text; c.style.cssText = "position:fixed;left:50%;bottom:48px;transform:translate(-50%,16px);max-width:78%;z-index:2147483646;background:rgba(29,27,25,.92);color:#fff;font:600 24px -apple-system,Helvetica,Arial,sans-serif;padding:14px 26px;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.35);opacity:0;transition:opacity .45s,transform .45s;text-align:center;pointer-events:none"; document.documentElement.appendChild(c); requestAnimationFrame(() => { c.style.opacity = "1"; c.style.transform = "translate(-50%,0)"; }); };',
   '    window.__paCaptionHide = () => { const c = document.getElementById("__pa_cap"); if (c) { c.style.opacity = "0"; c.style.transform = "translate(-50%,16px)"; setTimeout(() => c.remove(), 450); } };',
@@ -155,9 +155,14 @@ const CINEMATIC_RUNTIME: string[] = [
   '    window.__paReveal = () => { const o = document.createElement("div"); o.id = "__pa_reveal"; o.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#141210;pointer-events:none;transition:opacity 1.1s ease"; document.documentElement.appendChild(o); const b = document.body; if (b) { b.style.transition = "transform 1.2s cubic-bezier(.2,0,.2,1)"; b.style.transformOrigin = "50% 42%"; b.style.transform = "scale(1.06)"; } requestAnimationFrame(() => { o.style.opacity = "0"; if (b) b.style.transform = "none"; }); setTimeout(() => o.remove(), 1200); };',
   '    // Light sweep: en lysstripe glir diagonalt over skjermen (premium-shine).',
   '    window.__paSweep = () => { const old = document.getElementById("__pa_sweep"); if (old) old.remove(); const s = document.createElement("div"); s.id = "__pa_sweep"; s.style.cssText = "position:fixed;top:-30%;left:-60%;width:40%;height:160%;z-index:2147483646;pointer-events:none;transform:rotate(18deg) translateX(0);background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);transition:transform 1.1s ease-in-out,opacity .3s;opacity:.9;mix-blend-mode:screen"; document.documentElement.appendChild(s); requestAnimationFrame(() => { s.style.transform = "rotate(18deg) translateX(420%)"; }); setTimeout(() => { s.style.opacity = "0"; setTimeout(() => s.remove(), 300); }, 1000); };',
+  '    // Virtuelt kamera: alle bevegelser forankret i fokus-elementets senter',
+  '    // (transform-origin der → kameraet «følger brukerens fokus»).',
+  '    window.__paCamera = (move, x, y, w, h) => { const b = document.body; if (!b) return; const ox = (x + w / 2) + (window.scrollX || 0), oy = (y + h / 2) + (window.scrollY || 0); b.style.transformOrigin = ox + "px " + oy + "px"; const set = (tr, ms) => { b.style.transition = "transform " + (ms || 1100) + "ms cubic-bezier(.4,0,.2,1)"; b.style.transform = tr; }; if (move === "zoom_out") { b.style.transition = "none"; b.style.transform = "scale(1.2)"; requestAnimationFrame(() => set("none", 1200)); } else if (move === "pan_left") { set("scale(1.12) translateX(3.5%)"); } else if (move === "pan_right") { set("scale(1.12) translateX(-3.5%)"); } else if (move === "section_snap") { set("scale(1.04)", 700); } else { set("scale(1.18)"); } };',
+  '    // Whip-overgang: rask uskarp pan (energisk klipp mellom scener).',
+  '    window.__paWhip = (dir) => { const b = document.body; if (!b) return; b.style.transition = "transform .22s ease-in, filter .22s ease-in"; b.style.transform = "translateX(" + (dir < 0 ? "-" : "") + "8%) scale(1.04)"; b.style.filter = "blur(7px)"; setTimeout(() => { b.style.transition = "transform .32s ease-out, filter .32s ease-out"; b.style.transform = "none"; b.style.filter = "none"; }, 220); };',
   '  }).catch(() => {});',
   '}',
-  'async function cinematicAct(page, strategies, kind, label) {',
+  'async function cinematicAct(page, strategies, kind, label, move) {',
   '  await injectCursor(page);',
   '  await page.evaluate(() => { window.__paZoomReset && window.__paZoomReset(); window.__paSpotlightOff && window.__paSpotlightOff(); }).catch(() => {});',
   '  await page.waitForTimeout(250);',
@@ -182,8 +187,8 @@ const CINEMATIC_RUNTIME: string[] = [
   '    await page.evaluate(([x, y, w, h]) => window.__paGlow && window.__paGlow(Math.round(x), Math.round(y), Math.round(w), Math.round(h)), [box.x, box.y, box.width, box.height]).catch(() => {});',
   "    if (kind !== 'show' && kind !== 'hover') { await page.evaluate(([x, y]) => window.__paRipple && window.__paRipple(x, y), [cx, cy]).catch(() => {}); }",
   '    await page.waitForTimeout(320);',
-  '    // Push-in + spotlight: dim resten, dra blikket mot elementet (kino-fokus).',
-  '    await page.evaluate(([x, y]) => window.__paZoom && window.__paZoom(x, y, 1.16), [cx, cy]).catch(() => {});',
+  '    // Virtuelt kamera (forankret i fokus) + spotlight: dra blikket mot elementet.',
+  '    await page.evaluate(([m, x, y, w, h]) => window.__paCamera && window.__paCamera(m, x, y, w, h), [move || "push_in", box.x, box.y, box.width, box.height]).catch(() => {});',
   "    if (kind === 'show' || kind === 'highlight' || kind === 'zoom') { await page.evaluate(([x, y, w, h]) => window.__paSpotlight && window.__paSpotlight(Math.round(x), Math.round(y), Math.round(w), Math.round(h)), [box.x, box.y, box.width, box.height]).catch(() => {}); }",
   '    await page.waitForTimeout(450);',
   '  }',
@@ -303,17 +308,21 @@ export function buildAutonomousScript(project: DemoProject, dwellsMs: number[]):
     const label = oneLine(s.targetLabel || '');
     const dwell = Math.max(1500, Math.round(dwellsMs[i] || 3000));
     const kind = at === 'type' ? 'type' : at === 'hover' ? 'hover' : at === 'click' ? 'click' : 'show';
-    L.push(`// ── Scene ${n}: ${oneLine(s.title).slice(0, 60)}`);
+    // Virtuelt kamera: varier bevegelsen per scene (alltid forankret i fokus).
+    const CAM_MOVES = ['push_in', 'pan_right', 'zoom_out', 'pan_left', 'section_snap'];
+    const move = CAM_MOVES[i % CAM_MOVES.length];
+    L.push(`// ── Scene ${n}: ${oneLine(s.title).slice(0, 60)} [kamera: ${move}]`);
     // MARK FØR handlingen, så narrasjonen dekker peker-reisen + handlingen.
     L.push(`console.log('MARK ${i} ' + Date.now());`);
     L.push('await injectCursor(page); // re-injiser (navigasjon kan ha fjernet pekeren)');
     L.push('await page.evaluate(() => { window.__paZoomReset && window.__paZoomReset(); window.__paSpotlightOff && window.__paSpotlightOff(); window.__paCaptionHide && window.__paCaptionHide(); }).catch(() => {}); // nullstill effekter fra forrige scene');
+    if (i > 0) { L.push(`await page.evaluate(() => window.__paWhip && window.__paWhip(${i % 2 === 0 ? 1 : -1})).catch(() => {}); // whip-overgang`); L.push('await page.waitForTimeout(300);'); }
     if (s.startScrollPct) L.push(`await page.evaluate(() => window.scrollTo({ top: (document.body.scrollHeight - innerHeight) * ${(s.startScrollPct / 100).toFixed(2)}, behavior: 'smooth' })).catch(() => {});`);
     if (at === 'wait') {
       L.push('await page.waitForTimeout(600);');
     } else if (hasTarget) {
-      // Cinematisk: peker reiser til elementet + glow/ripple + handling.
-      L.push(`await cinematicAct(page, ${tuples}, ${jsStr(kind)}, ${jsStr(label)});`);
+      // Cinematisk: peker reiser til elementet + virtuelt kamera + handling.
+      L.push(`await cinematicAct(page, ${tuples}, ${jsStr(kind)}, ${jsStr(label)}, ${jsStr(move)});`);
     } else {
       // Ingen target → vis bevegelse uansett så videoen lever.
       L.push('await page.evaluate(() => window.scrollBy({ top: Math.min(420, innerHeight * 0.55), behavior: "smooth" })).catch(() => {});');
