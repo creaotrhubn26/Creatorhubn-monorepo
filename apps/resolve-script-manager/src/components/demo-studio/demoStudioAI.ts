@@ -230,6 +230,144 @@ Svar med KUN ett JSON-objekt: { "score": 0-100, "missing": ["beat som mangler/sv
   return { score, ok: score >= 70, framework: fw.label, missing: Array.isArray(p?.missing) ? p!.missing.slice(0, 6) : [], issue: (p?.issue || '').trim() };
 }
 
+// ── AI Director → Fusion: naturlig språk → strukturert motion-graphics-plan ──
+export interface FusionEffectSpec {
+  type: 'ctaHighlight' | 'spotlight' | 'callout' | 'cursor' | 'card' | 'lightSweep' | 'glow';
+  rect?: [number, number, number, number];
+  label?: string;
+  text?: string;
+  title?: string;
+  side?: 'top' | 'bottom' | 'left' | 'right';
+  from?: [number, number];
+  to?: [number, number];
+  pos?: [number, number];
+  click?: boolean;
+}
+export interface FusionScenePlan {
+  index: number;
+  cameraMove?: string;
+  effects?: FusionEffectSpec[];
+}
+export interface FusionDirectivePlan {
+  scenes: FusionScenePlan[];
+  global?: { intro?: boolean; outro?: boolean; cta?: string; fps?: number };
+  note: string;
+  /** Diskusjon-først: når formålet er uklart spør AI Director tilbake i stedet
+   *  for å gjette. UI viser spørsmålet + svar-alternativer. */
+  question?: { ask: string; options: string[] };
+  /** Forbedrings-forslag når siden mangler elementene som trengs for en god
+   *  video (f.eks. ingen tydelig CTA, tynt innhold, ingen åpenbart fokus). */
+  suggestions?: string[];
+}
+
+const FUSION_VOCAB = `
+KAMERA-BEVEGELSER (cameraMove, én per scene): "push_in" (zoom sakte inn mot fokus), "zoom_out",
+"pan_left", "pan_right", "section_snap" (vertikal forflytning mellom seksjoner),
+"parallax" (dybde-drift), "cinematic_reveal" (fade fra svart + zoom ut), "auto" (la systemet variere).
+
+UI-EFFEKTER (effects[], lag-på-lag per scene). Alle rect/koordinater er 0..1 av skjermflaten,
+origo øverst-venstre (x høyre, y ned):
+- { "type":"ctaHighlight", "rect":[x,y,w,h], "label":"Start her", "arrow":true } → mørk overlay over alt UNNTATT fokus-rekt + pulserende glow-ring + label. Bruk for «få seeren til å fokusere på knappen X».
+- { "type":"spotlight", "rect":[x,y,w,h] } → samme dimming uten label (bare fremhev et område).
+- { "type":"callout", "rect":[x,y,w,h], "text":"...", "side":"top|bottom|left|right" } → elegant tekstboks med pil mot rekt. Bruk for «forklar funksjon X».
+- { "type":"cursor", "from":[x,y], "to":[x,y], "click":true } → animert cursor som beveger seg og klikker.
+- { "type":"card", "title":"+38%", "text":"konvertering", "pos":[x,y] } → floating feature-card (tall/statuskort).
+- { "type":"glow", "rect":[x,y,w,h] } → bare glød rundt et element.
+- { "type":"lightSweep" } → premium lys-stripe som feier over bildet.`;
+
+/**
+ * AI Director: tolk en fri instruks om hva videoen skal gjøre i Resolve Fusion,
+ * og returner en konkret per-scene plan (kamera + effekter) appen kan bygge.
+ * F.eks. «fremhev book-demo-knappen i siste scene med pil og glow, og zoom inn».
+ */
+export async function planFusionDirectives(params: {
+  instruction: string;
+  scenes: DemoScene[];
+  goal?: string;
+  /** Oppdagelses-samtale: spørsmål AI Director har stilt og brukerens svar.
+   *  AI-en stiller neste nødvendige spørsmål til den vet nok, så leverer planen. */
+  answers?: Array<{ ask: string; answer: string }>;
+  /** AI lærer: tidligere tilbakemeldinger/preferanser fra brukeren (persistert)
+   *  som biaser nye forslag mot det brukeren pleier å like. */
+  learnings?: string[];
+  /** Revider forrige forslag basert på en konkret tilbakemelding. */
+  feedback?: string;
+}): Promise<FusionDirectivePlan> {
+  const sceneList = params.scenes.map((s, i) => {
+    const hs = s.hotspot ? ` [hotspot ~[${s.hotspot.x.toFixed(2)},${s.hotspot.y.toFixed(2)},${s.hotspot.w.toFixed(2)},${s.hotspot.h.toFixed(2)}]]` : '';
+    return `${i}: «${s.title}» — ${(s.narration || s.overlayText || '(tomt)').slice(0, 90)}${s.targetLabel ? ` (mål: ${s.targetLabel})` : ''}${hs}`;
+  }).join('\n');
+  const user = `Du styrer DaVinci Resolve Fusion for en produkt-/SaaS-demo. Oversett brukerens ønske til en konkret plan.
+${FUSION_VOCAB}
+
+SCENER (index: tittel — manus):
+${sceneList}
+${params.goal ? `\nKonverteringsmål: ${params.goal}` : ''}
+
+BRUKERENS ØNSKE: «${params.instruction}»
+${(params.answers && params.answers.length)
+  ? `\nOPPDAGELSES-SAMTALE SÅ LANGT (dine spørsmål + brukerens svar):\n${params.answers.map((a) => `- ${a.ask} → ${a.answer}`).join('\n')}`
+  : ''}${(params.learnings && params.learnings.length)
+  ? `\nLÆRT FRA BRUKEREN TIDLIGERE (følg disse preferansene):\n${params.learnings.map((l) => `- ${l}`).join('\n')}`
+  : ''}${params.feedback
+  ? `\nBRUKERENS TILBAKEMELDING PÅ FORRIGE FORSLAG (revider planen deretter, ikke spør på nytt): «${params.feedback}»`
+  : ''}
+
+DISKUSJON FØRST (viktig): Ikke gjett formålet — INTERVJU brukeren før du foreslår noe.
+VÆR KONTEKSTUELL: Begynn det FØRSTE spørsmålet med en kort, konkret observasjon som VISER at du har analysert nettopp denne siden — f.eks. «Jeg ser at dette er The Role Room — et operativsystem for film/innholdsproduksjon med flere vertikaler og en Agent. …» — og still SÅ spørsmålet. Bruk faktiske navn/begreper fra scenene/manuset, ikke generisk tekst.
+Still ETT kort spørsmål av gangen, med 3–4 konkrete svar-alternativer tilpasset DENNE siden, til du vet nok.
+Typiske ting å avklare i rekkefølge:
+  1. Formålet — f.eks. «Er dette for markedsføring, eller en funksjons-demo for eksisterende brukere?»
+  2. Anledning — f.eks. «Lager du demoen for en lansering, eller løpende bruk?»
+  3. Hva du vil oppnå — f.eks. «Hva er hovedmålet — booke demo, sign-ups, eller forklare en funksjon?»
+  4. Målgruppe — f.eks. «Hvem skal se den — byråer, talenter, eller produsenter?»
+Hopp over det som allerede er besvart over eller åpenbart fra siden/manuset. Når du har nok (typisk 2–3 svar), lever planen — ikke spør i det uendelige.
+
+Når du fortsatt mangler info, returner KUN et spørsmål:
+{ "question": { "ask": "Er dette for markedsføring, eller en funksjons-demo?", "options": ["Markedsføring (få nye kunder)", "Funksjons-demo for eksisterende brukere", "Lansering av ny funksjon"] }, "scenes": [], "note": "" }
+
+FORBEDRINGS-FORSLAG: Hvis siden/scenene MANGLER det som trengs for en sterk video — f.eks. ingen tydelig CTA-knapp å fremheve, tynt/uklart innhold, ingen åpenbare nøkkeltall/bevis, eller ingen tydelig fokus — så IKKE bare lever en svak plan. Si fra, og legg konkrete forbedringer i "suggestions" (f.eks. «Legg til en tydelig 'Book demo'-knapp øverst», «Hero mangler ett klart verdiløfte å zoome mot», «Legg til et nøkkeltall (f.eks. kundetall) vi kan vise i et card»). Lever gjerne en plan AV det som finnes i tillegg.
+
+Regler (når du lager planen):
+- Velg fornuftige rect-koordinater. Hvis en scene har [hotspot ...], bruk DEN for ctaHighlight/callout/spotlight.
+- Kamera skal alltid følge fokuset (zoom/pan mot der handlingen er).
+- Ikke overlat scenen tom hvis ønsket gjelder den; men ikke legg på effekter brukeren ikke ba om.
+- Hold det smakfullt (SaaS-look): som regel 1–2 effekter per scene.
+Svar med KUN ett JSON-objekt. Enten et spørsmål:
+{ "question": { "ask": "Hva er hovedmålet med videoen?", "options": ["Få byråer til å booke demo", "Forklare hvordan Agent funker", "Rekruttere talenter"] }, "scenes": [], "note": "" }
+…eller en plan:
+{ "scenes":[{"index":0,"cameraMove":"push_in","effects":[{"type":"ctaHighlight","rect":[0.4,0.7,0.2,0.08],"label":"Book demo","arrow":true}]}], "global":{"intro":true,"outro":true,"cta":"Book demo"}, "note":"kort hva du gjorde på norsk" }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du er en AI Director som oversetter naturlig språk til en konkret Fusion motion-graphics-plan (kamera + UI-effekter) for en produktdemo. Svar ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 1200,
+  });
+  const p = extractJson<FusionDirectivePlan>(raw);
+  if (!p) {
+    return { scenes: [], note: 'Forstod ikke ønsket — prøv å være mer konkret (hvilken scene, hvilket element).' };
+  }
+  // Diskusjon-først: AI Director vil avklare formålet før den foreslår noe.
+  if (p.question && typeof p.question.ask === 'string' && Array.isArray(p.question.options)) {
+    return {
+      scenes: [],
+      note: '',
+      question: { ask: p.question.ask.slice(0, 200), options: p.question.options.slice(0, 4).map((o) => String(o).slice(0, 80)) },
+    };
+  }
+  // saniter
+  const scenes = (Array.isArray(p.scenes) ? p.scenes : [])
+    .filter((s) => typeof s.index === 'number' && s.index >= 0 && s.index < params.scenes.length)
+    .map((s) => ({
+      index: s.index,
+      cameraMove: typeof s.cameraMove === 'string' ? s.cameraMove : undefined,
+      effects: Array.isArray(s.effects) ? s.effects.slice(0, 4) : undefined,
+    }));
+  const suggestions = Array.isArray(p.suggestions)
+    ? p.suggestions.map((s) => String(s).slice(0, 160)).slice(0, 6)
+    : undefined;
+  return { scenes, global: p.global, note: (p.note || 'Plan klar.').slice(0, 240), suggestions };
+}
+
 /**
  * Vision-pass: la Claude «se» et skjermbilde og lese ut synlig tekst/påstander
  * — inkludert det som ligger i bilder, grafikk og hero-banner som DOM-scan

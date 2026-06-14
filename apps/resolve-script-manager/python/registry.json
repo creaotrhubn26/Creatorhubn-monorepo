@@ -2249,6 +2249,27 @@
       "requiresTimeline": false
     },
     {
+      "id": "build_fusion_demo",
+      "name": "Build Fusion Demo (motion graphics + virtuelt kamera)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/build_fusion_demo.py",
+      "description": "Bygger en KOMPLETT Resolve-timeline med Fusion-komposisjoner for en produkt-/SaaS-demo: virtuelle kamerabevegelser (push-in, pan, parallax, section-snap, cinematic reveal) med myke ease-kurver + rene UI-animasjoner (CTA-highlight med dimming/glow/pil/label, spotlight, callout-bokser, animert cursor m/klikk, floating feature-cards, light-sweep) + brand motion-system (logo-intro, animated typography, CTA end-screen). Setter timeline korrekt (oppløsning, fps default 60, color science) FØR bygging. Alle effekter lever i Fusion-grafen. dry_run skriver hele node/keyframe-planen uten å røre Resolve.",
+      "requiredInputs": [
+        { "key": "scenes", "label": "Scener (JSON: imagePath/clipPath, caption, durationSec, cameraMove, effects[])", "type": "json", "required": true },
+        { "key": "platform", "label": "Timeline-preset (youtube_master, landing_hero, instagram_reels, tiktok, square, linkedin, youtube_master_4k)", "type": "text", "required": false },
+        { "key": "fps", "label": "FPS (default fra preset, 60 for smooth motion)", "type": "number", "required": false },
+        { "key": "projectName", "label": "Prosjektnavn (opprettes hvis intet er åpent)", "type": "text", "required": false },
+        { "key": "timelineName", "label": "Timeline-navn", "type": "text", "required": false },
+        { "key": "brand", "label": "Branding (JSON: accent[r,g,b], textColor, barColor, font, logoPath, intro, outro, title, cta)", "type": "json", "required": false }
+      ],
+      "resolvePageDependency": "fusion",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "build_vertical_social_cut",
       "name": "Build Vertical Social Cut (Studio Smart Reframe)",
       "category": "timeline",

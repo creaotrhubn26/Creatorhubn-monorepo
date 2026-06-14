@@ -146,6 +146,10 @@ export interface DemoScene {
    * plassering, AI-forslag eller capture-laget (klikk-gjennom).
    */
   hotspot?: { x: number; y: number; w: number; h: number };
+  /** AI Director → Fusion: eksplisitte motion-graphics-effekter for denne scenen
+   *  (CTA-highlight, callout, cursor, card, …). Overstyrer hotspot-avledning når
+   *  satt. Tom/undefined ⇒ effekter avledes automatisk fra hotspot. */
+  fusionEffects?: Array<Record<string, unknown>>;
   /** Strukturerte browser-handlinger (valgfritt, for automasjon). */
   actions: DemoAction[];
   /** Tekst-overlay vist i videoen. */

@@ -214,6 +214,35 @@ pub async fn read_image_b64(path: String) -> Result<String, String> {
     Ok(format!("data:{};base64,{}", mime, base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
 
+/// Skriv en data-URL (eller rå base64) til en PNG/JPG på disk og returner stien.
+/// Brukes av Fusion-demo-broen: scene-screenshots (scanShots) persistes som
+/// filer slik at Resolve/Fusion-scriptet kan importere dem i media pool.
+#[tauri::command]
+pub async fn save_demo_frame(
+    app: AppHandle,
+    project_id: String,
+    name: String,
+    data_url: String,
+) -> Result<String, String> {
+    use base64::Engine;
+    let dir = work_dir(&app, &project_id, "fusion-frames")?;
+    let safe: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
+    let lower = data_url.to_ascii_lowercase();
+    let ext = if lower.contains("image/jpeg") || lower.contains("image/jpg") { "jpg" }
+        else if lower.contains("image/webp") { "webp" }
+        else { "png" };
+    let out = dir.join(format!("{}.{}", safe, ext));
+    let payload = data_url.rsplit(',').next().unwrap_or(&data_url);
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(payload.trim())
+        .map_err(|e| format!("base64: {e}"))?;
+    if bytes.is_empty() {
+        return Err("tomt bilde".into());
+    }
+    std::fs::write(&out, &bytes).map_err(|e| format!("skriv bilde: {e}"))?;
+    Ok(out.to_string_lossy().to_string())
+}
+
 /// Åpne en fil/sti med systemets standard-app (`/usr/bin/open`). Mer pålitelig
 /// enn opener-pluginen for vilkårlige stier (f.eks. ~/Movies/Post Agent/).
 #[tauri::command]

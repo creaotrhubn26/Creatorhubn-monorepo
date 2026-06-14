@@ -31,10 +31,11 @@ import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
-import { generateDemoFlow, completeDemoFlow, fetchSiteContext, analyzeSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, suggestVisualBeats, type CommandResult, type VisualBeat, type SiteUnderstanding } from './demoStudioAI';
+import { generateDemoFlow, completeDemoFlow, fetchSiteContext, analyzeSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, suggestVisualBeats, planFusionDirectives, type CommandResult, type VisualBeat, type SiteUnderstanding } from './demoStudioAI';
 import { executeScript, playwrightStatus, playwrightCaptureShots, extractPdfText, systemOpen } from '../../api';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { runAutonomousDemo } from './autonomousDemo';
+import { exportToFusion, getFusionLearnings, addFusionLearning } from './fusionDemoExport';
 import { renderIntroCard, renderOutroCard, renderBrowserFrame } from './demoBranding';
 import type { DemoFinalizeOpts } from '../../api';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
@@ -48,7 +49,7 @@ import {
   sceneActionMatch, expectedActionText, validateScene, learnCtas, CTA_LABELS,
   recordLearnedTarget, learnedTargetCount, listLearnedTargetsForHost, removeLearnedTarget, syncLearnedTargetsFromBackend,
   clearLearnedTargets, detectLearnedDrift, pickShot, type LearnedTarget,
-  type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult,
+  type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult, type ScannedElement,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
 
@@ -183,6 +184,67 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [demoVidQa, setDemoVidQa] = useState<Array<{ score: number; ok: boolean; issue: string } | null> | null>(null);
   const [demoVidScriptQa, setDemoVidScriptQa] = useState<{ score: number; ok: boolean; framework: string; missing: string[]; issue: string } | null>(null);
   const [brandedOutput, setBrandedOutput] = useState(true); // intro/outro + ramme på autonom video
+  // «Bygg i DaVinci Resolve Fusion»: timeline + Fusion-grafer (kamera + motion graphics).
+  const [fusionBusy, setFusionBusy] = useState(false);
+  const [fusionMsg, setFusionMsg] = useState<string | null>(null);
+  // AI Director → Fusion: naturlig-språk-instruks om hva videoen skal gjøre.
+  const [fusionDirective, setFusionDirective] = useState('');
+  const [fusionPlanBusy, setFusionPlanBusy] = useState(false);
+  const [fusionPlanNote, setFusionPlanNote] = useState<string | null>(null);
+  // Diskusjon-først: AI Director intervjuer om formålet før den foreslår.
+  const [fusionQuestion, setFusionQuestion] = useState<{ ask: string; options: string[] } | null>(null);
+  const [fusionSuggestions, setFusionSuggestions] = useState<string[] | null>(null);
+  const [fusionApplied, setFusionApplied] = useState(false); // plan lagt på → vis «fornøyd?»
+  const [fusionFeedback, setFusionFeedback] = useState('');
+  const fusionAnswers = useRef<Array<{ ask: string; answer: string }>>([]);
+  const fusionIntent = useRef<string>('');
+  // Synlig skann-progress: hva AI-en faktisk leser av siden før den foreslår.
+  const [scanPct, setScanPct] = useState(0);
+  const [scanLabel, setScanLabel] = useState<string | null>(null);
+  const [scanBusy, setScanBusy] = useState(false);
+  /** Skann siden/appen — med synlig progress. `passes` > 1 gjør flere runder og
+   *  akkumulerer kontekst (nyttig for JS-tunge app-grensesnitt; brukeren kan logge
+   *  inn i capture-vinduet mellom rundene). `force` skanner på nytt selv om vi
+   *  allerede har en forståelse. */
+  const ensureUnderstanding = async (passes = 1, force = false): Promise<SiteUnderstanding | null> => {
+    if (understanding && !force && passes <= 1) return understanding;
+    const proj = useDemoStudio.getState().project!;
+    setScanBusy(true);
+    try {
+      const seenText: string[] = [];
+      const seenEls = new Map<string, ScannedElement>();
+      let u: SiteUnderstanding | null = understanding;
+      const total = Math.max(1, Math.min(5, passes));
+      for (let pass = 0; pass < total; pass++) {
+        const base = Math.round((pass / total) * 100);
+        const span = Math.round(100 / total);
+        const lbl = total > 1 ? `Runde ${pass + 1}/${total} · ` : '';
+        setScanLabel(`${lbl}Henter ${pass > 0 ? 'gjeldende skjerm' : 'nettsiden'}…`); setScanPct(base + Math.round(span * 0.15));
+        const scan = await scanDom(proj.url).catch(() => null);
+        const pageText = scan?.pageText || await fetchSiteContext(proj.url).catch(() => '');
+        if (pageText) seenText.push(pageText);
+        setScanLabel(`${lbl}Leser innhold og elementer…`); setScanPct(base + Math.round(span * 0.45));
+        if (scan?.shots?.length) setProjectField('scanShots', scan.shots);
+        const shot = pickShot(scan?.shots, 0);
+        let elements = scan?.elements ?? [];
+        if (!elements.length && shot) { setScanLabel(`${lbl}Ser på skjermen visuelt…`); setScanPct(base + Math.round(span * 0.6)); elements = await ocrDetectElements({ screenshot: shot }).catch(() => []); }
+        for (const el of elements) { const k = `${el.label || ''}|${el.actionType || ''}`; if (!seenEls.has(k)) seenEls.set(k, el); }
+        setScanLabel(`${lbl}Forstår produktet…`); setScanPct(base + Math.round(span * 0.85));
+        const brandName = proj.branding?.brandName || (() => { try { return new URL(proj.url).host.replace(/^www\./, '').split('.')[0]; } catch { return proj.name; } })();
+        const merged = Array.from(new Set(seenText)).join('\n\n').slice(0, 12000);
+        u = await analyzeSiteContext({ url: proj.url, pageText: merged, brandName, elements: Array.from(seenEls.values()) }).catch(() => u);
+        if (u) setUnderstanding(u);
+      }
+      setScanPct(100); setScanLabel(total > 1 ? `Full kontekst etter ${total} runder ✓` : 'Forstår siden ✓');
+      window.setTimeout(() => { setScanLabel(null); setScanPct(0); }, 1100);
+      return u;
+    } catch {
+      setScanLabel(null); setScanPct(0);
+      return null;
+    } finally {
+      setScanBusy(false);
+    }
+  };
   const [elevenKey, setElevenKeyState] = useState<string>(() => { try { return localStorage.getItem('trrpa.eleven_key') || ''; } catch { return ''; } });
   const setElevenKey = (v: string) => { setElevenKeyState(v); try { localStorage.setItem('trrpa.eleven_key', v); } catch { /* */ } };
   /** Bygg branding (ramme + intro/outro PNG-er) fra prosjekt + forståelse. */
@@ -244,6 +306,91 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     } finally {
       setDemoVidScene(null);
       setDemoVidBusy(false);
+    }
+  };
+  /** Bygg en KOMPLETT Resolve-timeline med Fusion motion-graphics (kamera +
+   *  CTA-highlight/callout/cursor/cards + brand-intro/outro) fra scenene.
+   *  Krever at DaVinci Resolve kjører med scripting aktivert. */
+  const runFusionBuild = async () => {
+    if (!project || fusionBusy) return;
+    setFusionBusy(true);
+    setFusionMsg('Bygger timeline + Fusion-grafer i Resolve…');
+    try {
+      const proj = useDemoStudio.getState().project!;
+      const summary = await exportToFusion(proj, false);
+      const r = (summary.events.find((e) => e.type === 'result')?.value ?? {}) as { scenesBuilt?: number; resolution?: string; fps?: number; clipsAppended?: number };
+      const errEvt = summary.events.find((e) => e.type === 'error');
+      if (!summary.succeeded || errEvt) {
+        const em = (errEvt?.value as { message?: string } | undefined)?.message || errEvt?.message;
+        setFusionMsg('Feil: ' + (em || 'Resolve svarte ikke. Er Resolve åpen med scripting (Local) på?'));
+      } else {
+        setFusionMsg(`✓ Bygde ${r.scenesBuilt ?? 0} Fusion-scener · ${r.resolution || ''}@${r.fps || 60}fps. Åpne Fusion-fanen i Resolve for å finjustere, eller Deliver for å rendre.`);
+      }
+    } catch (e) {
+      setFusionMsg('Feil: ' + (e instanceof Error ? e.message : String(e)) + ' — sjekk at DaVinci Resolve kjører med External scripting = Local.');
+    } finally {
+      setFusionBusy(false);
+    }
+  };
+  /** AI Director → Fusion (diskusjon-først): intervjuer om formålet, og legger så
+   *  kamera + motion-graphics-effekter på de relevante scenene.
+   *   - start(auto): begynn samtalen (auto = «foreslå basert på siden»).
+   *   - answer:      brukerens svar på forrige spørsmål (fortsetter samtalen). */
+  const runFusionDirective = async (opts: { auto?: boolean; answer?: string; feedback?: string; passes?: number } = {}) => {
+    if (!project || fusionPlanBusy) return;
+    if (!aiReady) { setShowSignIn(true); return; }
+    const proj = useDemoStudio.getState().project!;
+    if (!proj.scenes.length) { setFusionPlanNote('Lag scener først (Generér demo), så kan AI Director legge på Fusion-effekter.'); return; }
+
+    // Ny samtale-start: skann siden (synlig progress) + nullstill historikk.
+    if (!opts.answer && !opts.feedback) {
+      fusionAnswers.current = [];
+      setFusionSuggestions(null);
+      setFusionPlanBusy(true);
+      const u = await ensureUnderstanding(opts.passes ?? 1);
+      const ctx = (u?.summary || understanding?.summary) ? `Side-kontekst: ${u?.summary || understanding?.summary}\n` : '';
+      fusionIntent.current = opts.auto
+        ? `${ctx}Foreslå en passende, smakfull Fusion-behandling for HELE denne demoen basert på innholdet og målet: kamerabevegelser som følger fokus, fremhev de viktigste elementene (CTA/nøkkelfunksjoner) med highlight/callout/cursor, evt. et nøkkeltall i et card. Premium og rolig.`
+        : `${ctx}${fusionDirective.trim()}`;
+    } else if (opts.answer && fusionQuestion) {
+      // Knytt svaret til spørsmålet som ble stilt.
+      fusionAnswers.current = [...fusionAnswers.current, { ask: fusionQuestion.ask, answer: opts.answer }];
+    }
+    setFusionQuestion(null);
+    setFusionPlanBusy(true);
+    setFusionPlanNote(opts.feedback ? 'AI Director reviderer…' : opts.answer ? 'AI Director tenker…' : (opts.auto ? 'AI Director ser på siden…' : 'AI Director planlegger…'));
+    try {
+      const plan = await planFusionDirectives({
+        instruction: fusionIntent.current,
+        scenes: proj.scenes,
+        goal: proj.goal,
+        answers: fusionAnswers.current,
+        learnings: getFusionLearnings(proj.url),
+        feedback: opts.feedback,
+      });
+      setFusionSuggestions(plan.suggestions && plan.suggestions.length ? plan.suggestions : null);
+      // Diskusjon-først: AI vil avklare formålet → vis spørsmålet.
+      if (plan.question) {
+        setFusionQuestion(plan.question);
+        setFusionPlanNote(null);
+        setFusionApplied(false);
+        return;
+      }
+      let applied = 0;
+      for (const sp of plan.scenes) {
+        const sc = proj.scenes[sp.index];
+        if (!sc) continue;
+        const patch: Partial<typeof sc> = {};
+        if (sp.cameraMove) patch.cameraMove = sp.cameraMove as typeof sc.cameraMove;
+        if (sp.effects) patch.fusionEffects = sp.effects as unknown as Array<Record<string, unknown>>;
+        if (Object.keys(patch).length) { updateScene(sc.id, patch); applied++; }
+      }
+      setFusionApplied(applied > 0);
+      setFusionPlanNote(applied ? `✓ ${plan.note} (oppdaterte ${applied} scene${applied === 1 ? '' : 'r'}). Fornøyd, eller skal noe forbedres?` : (plan.note || 'Ingen endringer.'));
+    } catch (e) {
+      setFusionPlanNote('Feil: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setFusionPlanBusy(false);
     }
   };
   /** Ett klikk fra URL: forstå → generér scener → autonom render → ferdig video. */
@@ -949,6 +1096,95 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   {demoVidResult && !demoVidBusy && (
                     <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8 }}
                       onClick={() => void systemOpen(demoVidResult).catch(() => {})}>▶ Åpne ferdig video</button>
+                  )}
+                  {/* ── DaVinci Resolve Fusion: AI Director + bygg motion-graphics ── */}
+                  {!demoVidBusy && (
+                    <div style={{ marginTop: 10, border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, background: C.cream }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.ink, marginBottom: 6 }}>◆ DaVinci Resolve Fusion</div>
+                      <div style={{ fontSize: 10.5, color: C.inkSoft, marginBottom: 8, lineHeight: 1.4 }}>
+                        Be AI Director om en motion-graphics-behandling (virtuelt kamera, CTA-highlight, callouts, cursor, cards). Den ser på siden og spør om formålet før den foreslår.
+                      </div>
+                      {/* Skann-progress: hva AI-en faktisk leser */}
+                      {scanLabel && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ height: 5, background: C.line, borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${scanPct}%`, background: C.accent, transition: 'width .3s' }} />
+                          </div>
+                          <div style={{ fontSize: 10, color: C.inkSoft, marginTop: 3 }}>{scanLabel}</div>
+                        </div>
+                      )}
+                      {/* Fri instruks + Foreslå-knapp */}
+                      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                        <input value={fusionDirective} onChange={(e) => setFusionDirective(e.target.value)}
+                          placeholder="F.eks. «fremhev book-demo-knappen med pil og zoom inn»"
+                          disabled={fusionPlanBusy}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && fusionDirective.trim()) void runFusionDirective({}); }}
+                          style={{ flex: 1, fontSize: 11.5, padding: '7px 9px', borderRadius: 7, border: `1px solid ${C.line}`, background: '#fff', colorScheme: 'light' }} />
+                        <button style={{ ...btn, padding: '6px 10px', fontSize: 11.5, opacity: fusionPlanBusy ? 0.6 : 1 }} disabled={fusionPlanBusy}
+                          onClick={() => { if (fusionDirective.trim()) void runFusionDirective({}); }}>Tolk</button>
+                      </div>
+                      <button style={{ ...outlineBtn, width: '100%', justifyContent: 'center', fontSize: 11.5, opacity: fusionPlanBusy ? 0.6 : 1 }} disabled={fusionPlanBusy}
+                        onClick={() => void runFusionDirective({ auto: true })}>
+                        {fusionPlanBusy ? 'AI Director jobber…' : '✦ Foreslå behandling for denne siden'}
+                      </button>
+                      {/* Dyp skann av app-grensesnittet (logg inn i capture-vinduet først) */}
+                      <button style={{ ...outlineBtn, width: '100%', justifyContent: 'center', fontSize: 11, marginTop: 6, opacity: (scanBusy || fusionPlanBusy) ? 0.6 : 1 }}
+                        disabled={scanBusy || fusionPlanBusy}
+                        title="Skanner gjeldende skjerm 5 ganger og slår sammen konteksten. Logg inn i capture-vinduet først for å la AI-en se app-grensesnittet."
+                        onClick={() => { setUnderstanding(null); void ensureUnderstanding(5, true); }}>
+                        {scanBusy ? 'Skanner…' : '⟳ Skann appen dypt (5 runder)'}
+                      </button>
+                      {/* Diskusjon-først: AI Director spør om formålet */}
+                      {fusionQuestion && !fusionPlanBusy && (
+                        <div style={{ marginTop: 8, border: `1px solid ${C.accent}`, borderRadius: 9, padding: 10, background: '#fff' }}>
+                          <div style={{ fontSize: 11.5, marginBottom: 7, lineHeight: 1.4 }}>{fusionQuestion.ask}</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {fusionQuestion.options.map((o) => (
+                              <button key={o} style={{ ...btn, padding: '5px 10px', fontSize: 11.5 }}
+                                onClick={() => void runFusionDirective({ answer: o })}>{o}</button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {/* Forbedrings-forslag når siden mangler elementer */}
+                      {fusionSuggestions && fusionSuggestions.length > 0 && (
+                        <div style={{ marginTop: 8, border: '1px solid #f0d9a8', background: '#fff8ec', borderRadius: 9, padding: '8px 10px' }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#8a6516', marginBottom: 4 }}>Forslag til forbedringer av siden</div>
+                          <ul style={{ margin: 0, paddingLeft: 16, fontSize: 10.5, color: '#8a6516', lineHeight: 1.45 }}>
+                            {fusionSuggestions.map((s, i) => <li key={i}>{s}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      {fusionPlanNote && <div style={{ fontSize: 11, color: fusionPlanNote.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 7, lineHeight: 1.4 }}>{fusionPlanNote}</div>}
+                      {/* AI lærer: er du fornøyd? hva kan forbedres? */}
+                      {fusionApplied && !fusionPlanBusy && (
+                        <div style={{ marginTop: 8, border: `1px solid ${C.line}`, borderRadius: 9, padding: '8px 10px', background: '#fff' }}>
+                          <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 6 }}>Er du fornøyd med behandlingen?</div>
+                          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                            <button style={{ ...btn, padding: '5px 10px', fontSize: 11.5 }}
+                              onClick={() => { const proj = useDemoStudio.getState().project!; addFusionLearning(proj.url, `Brukeren likte: ${(fusionPlanNote || '').replace(/^✓\s*/, '').slice(0, 120)}`); setFusionApplied(false); setFusionPlanNote('Lagret — AI Director husker denne stilen til neste gang. Trykk «Bygg i DaVinci Resolve Fusion».'); }}>
+                              👍 Fornøyd
+                            </button>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <input value={fusionFeedback} onChange={(e) => setFusionFeedback(e.target.value)}
+                              placeholder="Hva kan forbedres? (f.eks. «mindre zoom, sterkere glow»)"
+                              onKeyDown={(e) => { if (e.key === 'Enter' && fusionFeedback.trim()) { const proj = useDemoStudio.getState().project!; const fb = fusionFeedback.trim(); addFusionLearning(proj.url, `Foretrekker: ${fb}`); setFusionFeedback(''); void runFusionDirective({ feedback: fb }); } }}
+                              style={{ flex: 1, fontSize: 11.5, padding: '6px 9px', borderRadius: 7, border: `1px solid ${C.line}`, background: '#fff', colorScheme: 'light' }} />
+                            <button style={{ ...btn, padding: '5px 10px', fontSize: 11.5 }}
+                              onClick={() => { if (!fusionFeedback.trim()) return; const proj = useDemoStudio.getState().project!; const fb = fusionFeedback.trim(); addFusionLearning(proj.url, `Foretrekker: ${fb}`); setFusionFeedback(''); void runFusionDirective({ feedback: fb }); }}>Forbedre</button>
+                          </div>
+                        </div>
+                      )}
+                      {/* Bygg i Resolve */}
+                      <button style={{ ...btn, width: '100%', justifyContent: 'center', background: fusionBusy ? '#f3f3f3' : C.ink, color: fusionBusy ? C.inkSoft : '#fff', marginTop: 8 }}
+                        disabled={fusionBusy || fusionPlanBusy}
+                        title="Bygg en redigerbar Resolve-timeline med Fusion-grafer. Krever at DaVinci Resolve kjører med External scripting = Local."
+                        onClick={() => void runFusionBuild()}>
+                        {fusionBusy ? 'Bygger i Resolve…' : '◆ Bygg i DaVinci Resolve Fusion'}
+                      </button>
+                      {fusionMsg && <div style={{ fontSize: 11, color: fusionMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 6, lineHeight: 1.4 }}>{fusionMsg}</div>}
+                    </div>
                   )}
                   {/* Narrativ QA: følger manuset rammeverket (PAS/AIDA/…)? */}
                   {demoVidScriptQa && !demoVidBusy && (
