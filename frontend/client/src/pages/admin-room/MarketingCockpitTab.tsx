@@ -31,6 +31,7 @@ import B2BAcquisitionPanel from './B2BAcquisitionPanel';
 import AgencyAcquisitionDashboard from './AgencyAcquisitionDashboard';
 import CustomerSuccessDashboard from './CustomerSuccessDashboard';
 import LeadMapPanel from './LeadMapPanel';
+import MarketIntelligenceSection from '../../components/admin-room/market-intelligence/MarketIntelligenceSection';
 import MarketingCockpitTiktokSection from '../../components/admin-room/marketing-cockpit/MarketingCockpitTiktokSection';
 import CompetitorReportPanel from './CompetitorReportPanel';
 import PostDraftsPanel from './PostDraftsPanel';
@@ -634,6 +635,11 @@ export default function MarketingCockpitTab() {
           </Divider>
 
           <LeadMapPanel />
+
+          <MarketIntelligenceSection
+            projectId="theroleroom"
+            defaultBrandScanUrl="https://theroleroom.com"
+          />
 
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }} />
           <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.4)', textAlign: 'center' }}>
