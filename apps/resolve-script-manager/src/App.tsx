@@ -90,6 +90,9 @@ import { updateAppSettings } from "./api";
 import { useProjectTemplate } from "./hooks/useProjectTemplate";
 
 const MAX_LOG_EVENTS = 500;
+// Interne hjelpe-skript som kjører ofte i bakgrunnen — vis dem ALDRI i det
+// flytende «kjører»-panelet og ikke som varsler (ellers spam).
+const INTERNAL_SCRIPTS = new Set(["health_check", "get_media_pool_state", "check_dependencies"]);
 
 /**
  * Test-bypass: når URL har `?test=story`, eksporter vi en harness som
@@ -422,8 +425,9 @@ export default function App() {
         const next = [...prev, event];
         return next.length > MAX_LOG_EVENTS ? next.slice(-MAX_LOG_EVENTS) : next;
       });
-      // Track running scripts for the progress panel
-      if (event.type === "started" && event.runId) {
+      // Track running scripts for the progress panel — men IKKE interne
+      // hjelpe-skript (health_check etc.); de skal ikke poppe opp panelet.
+      if (event.type === "started" && event.runId && !INTERNAL_SCRIPTS.has(event.scriptId ?? "")) {
         setRunningScripts((prev) => ({
           ...prev,
           [event.runId]: {
@@ -460,10 +464,7 @@ export default function App() {
         // #286 / #287 — surface completion as a native notification.
         // Don't notify on health_check / get_media_pool_state etc. — internal
         // helpers that run frequently would create notification spam.
-        const internalScripts = new Set([
-          "health_check", "get_media_pool_state", "check_dependencies",
-        ]);
-        if (event.scriptId && !internalScripts.has(event.scriptId)) {
+        if (event.scriptId && !INTERNAL_SCRIPTS.has(event.scriptId)) {
           const succeeded = !!event.succeeded;
           void fireNotification(
             succeeded ? "Script ferdig" : "Script feilet",
@@ -636,14 +637,15 @@ export default function App() {
     const onAuthChange = () => { silentAuthCheck(); };
     window.addEventListener("focus", onFocus);
     window.addEventListener("trrpa:auth-changed", onAuthChange);
-    const interval = setInterval(() => {
-      silentHealthCheck();
-      silentAuthCheck();
-    }, 30_000);
+    // Auth-pillen sjekkes ofte (lett); health-check er en spawn → sjeldent
+    // (hver 30. min). Begge kjøres også ved fokus. Manuell via menyen når ønsket.
+    const authInterval = setInterval(() => { silentAuthCheck(); }, 30_000);
+    const healthInterval = setInterval(() => { silentHealthCheck(); }, 1_800_000);
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("trrpa:auth-changed", onAuthChange);
-      clearInterval(interval);
+      clearInterval(authInterval);
+      clearInterval(healthInterval);
     };
   }, [silentHealthCheck, silentAuthCheck]);
 

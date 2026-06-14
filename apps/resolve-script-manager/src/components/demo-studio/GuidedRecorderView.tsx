@@ -16,11 +16,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDemoStudio } from './demoStudioStore';
 import { useSceneRecorder, REC_UNAVAILABLE } from './useSceneRecorder';
-import { listCaptureSources, recordAvfoundation, recordSimulator, recordIphoneMirroring, checkUrlEmbeddable, type CaptureSource } from '../../api';
+import { listCaptureSources, recordAvfoundation, recordSimulator, recordIphoneMirroring, checkUrlEmbeddable, playwrightCaptureShots, type CaptureSource } from '../../api';
 import { DeviceConnectGuide } from './DeviceConnectGuide';
 import { type FrameVariant } from './deviceFrames';
 import { FramedDevice } from './FramedDevice';
-import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, type DemoDevice } from './demoStudioModel';
+import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, pickShot, type DemoDevice } from './demoStudioModel';
 import { fetchCurrentUser, roleLabel, userInitials, type CurrentUser } from '../../services/currentUserService';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -74,6 +74,19 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
 
   // Frigjør skjermdelings-streamen når man forlater Guided Recorder.
   useEffect(() => () => rec.release(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Hent forhåndsvisnings-screenshots hvis de mangler, så scene-miniatyrene
+  // viser den ekte siden i stedet for blanke bokser. Best-effort, én gang per URL.
+  const shotsTried = useRef('');
+  useEffect(() => {
+    const url = project?.url;
+    if (!url || shotsTried.current === url) return;
+    if (project?.scanShots && project.scanShots.length) return;
+    shotsTried.current = url;
+    void playwrightCaptureShots(url).then((r) => {
+      if (r?.shots?.length) setProjectField('scanShots', r.shots);
+    }).catch(() => { /* Playwright ikke satt opp — miniatyrer forblir tomme */ });
+  }, [project?.url, project?.scanShots, setProjectField]);
 
   // Advar hvis nettsiden ikke kan bygges inn i <iframe> (X-Frame-Options/CSP):
   // ellers tas svart skjerm opp stille ved web-opptak.
@@ -288,8 +301,8 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', background: C.panel, borderBottom: `1px solid ${C.line}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${C.lineStrong}`, borderRadius: 10, padding: '8px 12px', flex: 1, maxWidth: 360 }}>
             <span style={{ color: C.inkFaint }}>🌐</span>
-            <input style={{ flex: 1, border: 0, outline: 'none', fontSize: 13, color: C.ink }} value={project.url}
-              onChange={(e) => setProjectField('url', e.target.value)} />
+            <input style={{ flex: 1, border: 0, outline: 'none', fontSize: 13, color: C.ink, background: 'transparent', colorScheme: 'light' }} value={project.url}
+              placeholder="https://din-side.no" onChange={(e) => setProjectField('url', e.target.value)} />
             <span style={{ color: C.inkFaint, cursor: 'pointer' }}>✕</span>
           </div>
 
@@ -500,7 +513,12 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 <span style={{ fontWeight: 700, fontSize: 11 }}>{i + 1}</span>
                 <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</span>
               </div>
-              <div style={{ height: 48, borderRadius: 7, background: C.cream, marginBottom: 8 }} />
+              {(() => {
+                const shot = pickShot(project.scanShots, (s.startScrollPct ?? 0) / 100);
+                return shot
+                  ? <img src={shot} alt="" style={{ width: '100%', height: 48, objectFit: 'cover', objectPosition: 'top', borderRadius: 7, marginBottom: 8, display: 'block' }} />
+                  : <div style={{ height: 48, borderRadius: 7, background: C.cream, marginBottom: 8 }} />;
+              })()}
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: SCENE_STATUS_COLORS[s.status] }} />
                 <span style={{ color: C.inkSoft }}>{SCENE_STATUS_LABELS[s.status]}</span>

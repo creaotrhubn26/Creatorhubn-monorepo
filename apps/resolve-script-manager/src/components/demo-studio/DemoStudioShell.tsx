@@ -290,6 +290,16 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   // Re-render når entitlements endres (kjøp/refresh) så Marketing-gaten åpner.
   const [, bumpEntitlements] = useState(0);
   useEffect(() => onEntitlementsChanged(() => bumpEntitlements((n) => n + 1)), []);
+  // Nullstill URL-avledet state når man bytter prosjekt, så forrige prosjekts
+  // forståelse/QA/«generert»-flagg ikke lekker inn i en ny video.
+  const prevProjectId = useRef<string | undefined>(project?.id);
+  useEffect(() => {
+    if (project?.id === prevProjectId.current) return;
+    prevProjectId.current = project?.id;
+    setUnderstanding(null);
+    setGenerated(false);
+    setDemoVidResult(null); setDemoVidQa(null); setDemoVidScriptQa(null); setDemoVidScene(null); setDemoVidMsg(null);
+  }, [project?.id]);
   const [respBusy, setRespBusy] = useState(false);
   const [respReport, setRespReport] = useState<ResponsiveReport | null>(null);
   const [critique, setCritique] = useState<DirectorCritique | null>(null);
@@ -1895,10 +1905,33 @@ function CreateDemoView({ onCreated }: { onCreated?: () => void }) {
 function DevicePreviewView() {
   const { project, selectedSceneId, selectScene } = useDemoStudio();
   const [override, setOverride] = useState<DemoDevice | null>(null);
-  if (!project) return null;
-  const scenes = project.scenes;
+  const [playing, setPlaying] = useState(false);
+  const scenes = project?.scenes ?? [];
   const idx = Math.max(0, scenes.findIndex((s) => s.id === selectedSceneId));
   const scene = scenes[idx] ?? scenes[0];
+  // Spill gjennom hele demoen: avansér per scene-varighet + les narrasjon (Web
+  // Speech) — så man «ser hele videoen» før eksport. Spacebar = play/pause.
+  useEffect(() => {
+    if (!playing || !scene) return;
+    try { if (scene.narration && window.speechSynthesis) { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(scene.narration); u.lang = project?.language === 'en' ? 'en-US' : 'nb-NO'; window.speechSynthesis.speak(u); } } catch { /* */ }
+    const atEnd = idx >= scenes.length - 1;
+    const t = setTimeout(() => {
+      if (atEnd) { setPlaying(false); }
+      else selectScene(scenes[idx + 1].id);
+    }, Math.max(1800, (scene.duration || 4) * 1000));
+    return () => clearTimeout(t);
+  }, [playing, idx, scene, scenes, selectScene, project?.language]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (e.code !== 'Space' || (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT'))) return;
+      e.preventDefault();
+      setPlaying((p) => { if (!p && idx >= scenes.length - 1 && scenes[0]) selectScene(scenes[0].id); return !p; });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); try { window.speechSynthesis?.cancel(); } catch { /* */ } };
+  }, [idx, scenes, selectScene]);
+  if (!project) return null;
   if (!scene) return <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: C.inkSoft }}>Ingen scener ennå.</div>;
   const device = override ?? scene.device;
   const variant: FrameVariant = device === 'ipad' && scene.orientation === 'landscape' ? 'ipad_landscape' : device;
@@ -1912,8 +1945,8 @@ function DevicePreviewView() {
             style={{ minWidth: 46, height: 28, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '0 8px', background: device === d ? C.creamActive : 'transparent', color: device === d ? C.ink : C.inkFaint }}>{DEVICE_LABEL[d]}</div>
         ))}
       </div>
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 24px', overflow: 'auto' }}>
-        <div style={{ width: variant === 'macbook' ? '72%' : variant === 'ipad_landscape' ? '58%' : variant === 'ipad' ? '40%' : '24%', maxWidth: variant === 'macbook' ? 820 : variant === 'ipad_landscape' ? 720 : variant === 'ipad' ? 460 : 300, flexShrink: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '18px 24px', display: 'grid', placeItems: 'center' }}>
+        <div style={{ width: '100%', maxWidth: variant === 'macbook' ? 820 : variant === 'ipad_landscape' ? 720 : variant === 'ipad' ? 460 : 300, margin: '0 auto' }}>
           <FramedDevice variant={variant} url={project.url} width="100%"
             screenshot={pickShot(project.scanShots, (scene.startScrollPct ?? 0) / 100) ?? undefined}
             overlay={<SceneInteractionOverlay hotspot={scene.hotspot} render={render} device={device} />} />
@@ -1921,8 +1954,12 @@ function DevicePreviewView() {
       </div>
       <div style={{ borderTop: `1px solid ${C.line}`, background: '#fff', padding: '14px 22px', display: 'flex', alignItems: 'center', gap: 14 }}>
         <button style={{ ...outlineBtn, opacity: idx === 0 ? 0.5 : 1 }} disabled={idx === 0} onClick={() => go(-1)}>‹ Forrige</button>
+        <button style={{ ...btn, background: playing ? C.accent : '#fff', color: playing ? '#fff' : C.ink, borderColor: playing ? C.accent : C.lineStrong }}
+          title="Spill gjennom hele demoen (mellomrom)" onClick={() => { if (!playing && idx >= scenes.length - 1 && scenes[0]) selectScene(scenes[0].id); setPlaying((p) => !p); }}>
+          {playing ? '❚❚ Pause' : '▶ Spill av alt'}
+        </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>Scene {idx + 1}/{scenes.length} — {scene.title}</div>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>Scene {idx + 1}/{scenes.length} — {scene.title} <span style={{ fontWeight: 400, color: C.inkFaint, fontSize: 11 }}>· mellomrom = spill av</span></div>
           <div style={{ fontSize: 12, color: C.inkSoft, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{scene.narration || scene.requiredAction || '—'}</div>
         </div>
         <div style={{ display: 'flex', gap: 5 }}>{scenes.map((s, i) => <span key={s.id} onClick={() => selectScene(s.id)} style={{ width: i === idx ? 16 : 7, height: 7, borderRadius: 4, background: i === idx ? C.accent : '#d8d2c8', cursor: 'pointer' }} />)}</div>
