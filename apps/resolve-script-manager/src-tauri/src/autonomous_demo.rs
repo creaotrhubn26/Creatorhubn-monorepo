@@ -336,15 +336,17 @@ pub async fn mux_demo_video(
         current = joined;
     }
 
-    // ── Steg 4: skriv ferdig (faststart) til ~/Movies/Post Agent/ ──
+    // ── Steg 4: subtil fargegrad + vignett (premium-look) + faststart ──
+    // Lett løft i kontrast/metning + myk vignett gjør videoen mer kino-aktig.
     run_ff(&ffmpeg, &[
         "-y".into(), "-i".into(), current.to_string_lossy().to_string(),
-        "-c".into(), "copy".into(), "-movflags".into(), "+faststart".into(), final_out.to_string_lossy().to_string(),
-    ], "faststart").or_else(|_| {
-        // copy kan feile hvis container-mismatch → re-encode som fallback
+        "-vf".into(), "eq=contrast=1.04:saturation=1.07,vignette=angle=PI/6".into(),
+        "-c:v".into(), "libx264".into(), "-preset".into(), "veryfast".into(), "-pix_fmt".into(), "yuv420p".into(),
+        "-c:a".into(), "copy".into(), "-movflags".into(), "+faststart".into(), final_out.to_string_lossy().to_string(),
+    ], "grade+faststart").or_else(|_| {
+        // fallback uten grad hvis filteret feiler
         run_ff(&ffmpeg, &["-y".into(), "-i".into(), current.to_string_lossy().to_string(),
-            "-c:v".into(), "libx264".into(), "-pix_fmt".into(), "yuv420p".into(), "-c:a".into(), "aac".into(),
-            "-movflags".into(), "+faststart".into(), final_out.to_string_lossy().to_string()], "faststart-reencode")
+            "-c".into(), "copy".into(), "-movflags".into(), "+faststart".into(), final_out.to_string_lossy().to_string()], "faststart")
     })?;
     Ok(final_out.to_string_lossy().to_string())
 }

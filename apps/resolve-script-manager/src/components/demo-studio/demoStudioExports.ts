@@ -145,11 +145,17 @@ const CINEMATIC_RUNTIME: string[] = [
   '    // i viewporten, så peker + element holder seg justert under zoomen).',
   '    window.__paZoom = (vx, vy, sc) => { const b = document.body; if (!b) return; const ox = vx + (window.scrollX || 0), oy = vy + (window.scrollY || 0); b.style.transition = "transform 1s cubic-bezier(.4,0,.2,1)"; b.style.transformOrigin = ox + "px " + oy + "px"; b.style.transform = "scale(" + sc + ")"; };',
   '    window.__paZoomReset = () => { const b = document.body; if (!b) return; b.style.transition = "transform .5s ease"; b.style.transform = "none"; };',
+  '    // Kinetisk tekst-banner: animert overlay-tekst som glir inn (motion + info).',
+  '    window.__paCaption = (text) => { const old = document.getElementById("__pa_cap"); if (old) old.remove(); if (!text) return; const c = document.createElement("div"); c.id = "__pa_cap"; c.textContent = text; c.style.cssText = "position:fixed;left:50%;bottom:48px;transform:translate(-50%,16px);max-width:78%;z-index:2147483646;background:rgba(29,27,25,.92);color:#fff;font:600 24px -apple-system,Helvetica,Arial,sans-serif;padding:14px 26px;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.35);opacity:0;transition:opacity .45s,transform .45s;text-align:center;pointer-events:none"; document.documentElement.appendChild(c); requestAnimationFrame(() => { c.style.opacity = "1"; c.style.transform = "translate(-50%,0)"; }); };',
+  '    window.__paCaptionHide = () => { const c = document.getElementById("__pa_cap"); if (c) { c.style.opacity = "0"; c.style.transform = "translate(-50%,16px)"; setTimeout(() => c.remove(), 450); } };',
+  '    // Spotlight: dim alt unntatt elementet (kino-fokus). Layout-trygt fixed-overlay.',
+  '    window.__paSpotlight = (x, y, w, h) => { const old = document.getElementById("__pa_spot"); if (old) old.remove(); const pad = 10; const s = document.createElement("div"); s.id = "__pa_spot"; s.style.cssText = `position:fixed;inset:0;z-index:2147483644;pointer-events:none;opacity:0;transition:opacity .5s;box-shadow:0 0 0 9999px rgba(20,18,16,.45);border-radius:12px;left:${Math.max(0,x-pad)}px;top:${Math.max(0,y-pad)}px;width:${w+pad*2}px;height:${h+pad*2}px;inset:auto`; document.documentElement.appendChild(s); requestAnimationFrame(() => { s.style.opacity = "1"; }); };',
+  '    window.__paSpotlightOff = () => { const s = document.getElementById("__pa_spot"); if (s) { s.style.opacity = "0"; setTimeout(() => s.remove(), 500); } };',
   '  }).catch(() => {});',
   '}',
   'async function cinematicAct(page, strategies, kind, label) {',
   '  await injectCursor(page);',
-  '  await page.evaluate(() => window.__paZoomReset && window.__paZoomReset()).catch(() => {});',
+  '  await page.evaluate(() => { window.__paZoomReset && window.__paZoomReset(); window.__paSpotlightOff && window.__paSpotlightOff(); }).catch(() => {});',
   '  await page.waitForTimeout(250);',
   "  const key = label || JSON.stringify(strategies[0] || null);",
   '  const ordered = (LEARNED[key] ? [LEARNED[key]] : []).concat(strategies);',
@@ -172,8 +178,9 @@ const CINEMATIC_RUNTIME: string[] = [
   '    await page.evaluate(([x, y, w, h]) => window.__paGlow && window.__paGlow(Math.round(x), Math.round(y), Math.round(w), Math.round(h)), [box.x, box.y, box.width, box.height]).catch(() => {});',
   "    if (kind !== 'show' && kind !== 'hover') { await page.evaluate(([x, y]) => window.__paRipple && window.__paRipple(x, y), [cx, cy]).catch(() => {}); }",
   '    await page.waitForTimeout(320);',
-  '    // Push-in mot elementet (subtilt) — gjør videoen levende.',
+  '    // Push-in + spotlight: dim resten, dra blikket mot elementet (kino-fokus).',
   '    await page.evaluate(([x, y]) => window.__paZoom && window.__paZoom(x, y, 1.16), [cx, cy]).catch(() => {});',
+  "    if (kind === 'show' || kind === 'highlight' || kind === 'zoom') { await page.evaluate(([x, y, w, h]) => window.__paSpotlight && window.__paSpotlight(Math.round(x), Math.round(y), Math.round(w), Math.round(h)), [box.x, box.y, box.width, box.height]).catch(() => {}); }",
   '    await page.waitForTimeout(450);',
   '  }',
   '  try {',
@@ -292,7 +299,7 @@ export function buildAutonomousScript(project: DemoProject, dwellsMs: number[]):
     // MARK FØR handlingen, så narrasjonen dekker peker-reisen + handlingen.
     L.push(`console.log('MARK ${i} ' + Date.now());`);
     L.push('await injectCursor(page); // re-injiser (navigasjon kan ha fjernet pekeren)');
-    L.push('await page.evaluate(() => window.__paZoomReset && window.__paZoomReset()).catch(() => {}); // nullstill push-in fra forrige scene');
+    L.push('await page.evaluate(() => { window.__paZoomReset && window.__paZoomReset(); window.__paSpotlightOff && window.__paSpotlightOff(); window.__paCaptionHide && window.__paCaptionHide(); }).catch(() => {}); // nullstill effekter fra forrige scene');
     if (s.startScrollPct) L.push(`await page.evaluate(() => window.scrollTo({ top: (document.body.scrollHeight - innerHeight) * ${(s.startScrollPct / 100).toFixed(2)}, behavior: 'smooth' })).catch(() => {});`);
     if (at === 'wait') {
       L.push('await page.waitForTimeout(600);');
@@ -304,6 +311,9 @@ export function buildAutonomousScript(project: DemoProject, dwellsMs: number[]):
       L.push('await page.evaluate(() => window.scrollBy({ top: Math.min(420, innerHeight * 0.55), behavior: "smooth" })).catch(() => {});');
       L.push('await page.waitForTimeout(900);');
     }
+    // Kinetisk tekst-banner: animert overlay-tekst (motion + budskap på skjermen).
+    const cap = oneLine(s.overlayText || '');
+    if (cap) L.push(`await page.evaluate((t) => window.__paCaption && window.__paCaption(t), ${jsStr(cap)}).catch(() => {});`);
     L.push(`await page.waitForTimeout(${dwell});`);
     L.push('');
   });
