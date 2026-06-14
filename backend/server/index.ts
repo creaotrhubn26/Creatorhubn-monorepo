@@ -502,6 +502,7 @@ import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing
 import { registerMarketIntelAgentRoutes } from "./market-intelligence/market-intel-agent-routes.js";
 import { registerLearningLoopRoutes } from "./market-intelligence/learning-loop-routes.js";
 import { registerLeadMapCampaignRoutes } from "./market-intelligence/lead-map-campaign-routes.js";
+import { registerSuperAdminEmergencyLoginRoutes } from "./super-admin-emergency-login-routes.js";
 import {
   upsertRenewalFromStripeSubscription as upsertCsRenewalFromStripe,
   markRenewalChurnedForStripeSubscription as markCsRenewalChurned,
@@ -24217,6 +24218,8 @@ registerLeadMapCampaignRoutes({
   activeSessions,
   isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
 });
+// Emergency login for Super Admin når Google OAuth er ødelagt
+registerSuperAdminEmergencyLoginRoutes({ app, pool, activeSessions });
 // Multi-tenant Google Ads conversion-tracking for The Role Room Agent
 // (B0/B1 live; B2/B3/B4 i pipeline). Innholdsprodusenter setter opp
 // conversion-tracking for klienter via Agent.
