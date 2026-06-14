@@ -151,6 +151,10 @@ const CINEMATIC_RUNTIME: string[] = [
   '    // Spotlight: dim alt unntatt elementet (kino-fokus). Layout-trygt fixed-overlay.',
   '    window.__paSpotlight = (x, y, w, h) => { const old = document.getElementById("__pa_spot"); if (old) old.remove(); const pad = 10; const s = document.createElement("div"); s.id = "__pa_spot"; s.style.cssText = `position:fixed;inset:0;z-index:2147483644;pointer-events:none;opacity:0;transition:opacity .5s;box-shadow:0 0 0 9999px rgba(20,18,16,.45);border-radius:12px;left:${Math.max(0,x-pad)}px;top:${Math.max(0,y-pad)}px;width:${w+pad*2}px;height:${h+pad*2}px;inset:auto`; document.documentElement.appendChild(s); requestAnimationFrame(() => { s.style.opacity = "1"; }); };',
   '    window.__paSpotlightOff = () => { const s = document.getElementById("__pa_spot"); if (s) { s.style.opacity = "0"; setTimeout(() => s.remove(), 500); } };',
+  '    // Cinematisk reveal: siden «avsløres» fra mørkt med en mild zoom-inn.',
+  '    window.__paReveal = () => { const o = document.createElement("div"); o.id = "__pa_reveal"; o.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#141210;pointer-events:none;transition:opacity 1.1s ease"; document.documentElement.appendChild(o); const b = document.body; if (b) { b.style.transition = "transform 1.2s cubic-bezier(.2,0,.2,1)"; b.style.transformOrigin = "50% 42%"; b.style.transform = "scale(1.06)"; } requestAnimationFrame(() => { o.style.opacity = "0"; if (b) b.style.transform = "none"; }); setTimeout(() => o.remove(), 1200); };',
+  '    // Light sweep: en lysstripe glir diagonalt over skjermen (premium-shine).',
+  '    window.__paSweep = () => { const old = document.getElementById("__pa_sweep"); if (old) old.remove(); const s = document.createElement("div"); s.id = "__pa_sweep"; s.style.cssText = "position:fixed;top:-30%;left:-60%;width:40%;height:160%;z-index:2147483646;pointer-events:none;transform:rotate(18deg) translateX(0);background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);transition:transform 1.1s ease-in-out,opacity .3s;opacity:.9;mix-blend-mode:screen"; document.documentElement.appendChild(s); requestAnimationFrame(() => { s.style.transform = "rotate(18deg) translateX(420%)"; }); setTimeout(() => { s.style.opacity = "0"; setTimeout(() => s.remove(), 300); }, 1000); };',
   '  }).catch(() => {});',
   '}',
   'async function cinematicAct(page, strategies, kind, label) {',
@@ -284,7 +288,11 @@ export function buildAutonomousScript(project: DemoProject, dwellsMs: number[]):
   L.push('await page.waitForTimeout(1800);');
   L.push('await dismissOverlays(page); // fjern cookie/consent før opptak');
   L.push('await injectCursor(page); // synlig peker i opptaket');
-  L.push('await page.waitForTimeout(400);');
+  L.push('// Premium intro: cinematisk reveal fra mørkt + light-sweep over skjermen.');
+  L.push('await page.evaluate(() => window.__paReveal && window.__paReveal()).catch(() => {});');
+  L.push('await page.waitForTimeout(1200);');
+  L.push('await page.evaluate(() => window.__paSweep && window.__paSweep()).catch(() => {});');
+  L.push('await page.waitForTimeout(500);');
   L.push('');
   project.scenes.forEach((s, i) => {
     const n = i + 1;

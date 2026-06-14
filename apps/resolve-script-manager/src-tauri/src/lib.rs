@@ -947,6 +947,7 @@ pub fn run() {
             autonomous_demo::synthesize_tts,
             autonomous_demo::tts_from_audio,
             autonomous_demo::extract_frame,
+            autonomous_demo::read_image_b64,
             autonomous_demo::mux_demo_video,
             autonomous_demo::system_open,
             product_brain::extract_pdf_text,
