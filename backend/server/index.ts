@@ -70312,6 +70312,16 @@ setupAudioShowcaseRoutes({
     const text = `${inviterName} inviterer deg til å samarbeide på «${projectTitle}». Åpne invitasjonen: ${inviteUrl}`;
     await sendAudioReviewEmail({ to, subject, html, text, kind: "audio_review_invite" });
   },
+  sendEmail: async ({ to, subject, html, text, kind }) => {
+    await sendAudioReviewEmail({ to, subject, html, text, kind: kind || "audio_showcase" });
+  },
+  // Avtale-PDF arver produsentens branding fra Universal Dashboard → settings.
+  getBrandingForUser: async (userId) => {
+    try {
+      const b = await getStoredBusinessBrandingInfo(userId);
+      return { businessName: b?.businessName || "", logoUrl: b?.customLogo || "", accentColor: b?.brandingColor || "" };
+    } catch { return null; }
+  },
 });
 
 
