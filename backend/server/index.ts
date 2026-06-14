@@ -497,6 +497,7 @@ import { setupCustomerSuccessRoutes } from "./customer-success-routes.js";
 import { setupAdminLeadMapPricingRoutes } from "./admin-lead-map-pricing-routes.js";
 import { setupLeadMapRoutes } from "./lead-map-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
+import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import {
   upsertRenewalFromStripeSubscription as upsertCsRenewalFromStripe,
   markRenewalChurnedForStripeSubscription as markCsRenewalChurned,
@@ -24172,6 +24173,13 @@ setupAdminLeadMapPricingRoutes({
 setupLeadMapRoutes({ app, pool, activeSessions });
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Market Intelligence Scanner (Fase 2 — orkestrert competitor/funnel/teknikk-scan)
+registerMarketScanRoutes({
   app,
   pool,
   activeSessions,
