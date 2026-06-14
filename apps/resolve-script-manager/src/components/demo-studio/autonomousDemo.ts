@@ -11,7 +11,7 @@
 import { synthesizeTts, ttsFromAudio, runPlaywrightDemo, onScriptEvent, muxDemoVideo, playwrightStatus, setupPlaywright, playwrightCaptureShots, extractFrame, type DemoFinalizeOpts } from '../../api';
 import { ttsProxy } from '../../services/claudeProxyService';
 import { buildAutonomousScript } from './demoStudioExports';
-import { gradeSceneFrame, type SceneGrade } from './demoStudioAI';
+import { gradeSceneFrame, gradeScriptFramework, type SceneGrade, type ScriptGrade } from './demoStudioAI';
 import type { DemoProject } from './demoStudioModel';
 
 export interface AutonomousProgress { (msg: string, pct: number): void }
@@ -31,10 +31,15 @@ export async function runAutonomousDemo(
     elevenKey?: string;
     elevenVoiceId?: string;
   } = {},
-): Promise<{ path: string; qa: Array<SceneGrade | null> }> {
+): Promise<{ path: string; qa: Array<SceneGrade | null>; scriptQa: ScriptGrade | null }> {
   const { voice, onProgress = () => {}, onScene, onShots, finalize, elevenKey, elevenVoiceId } = opts;
   const scenes = project.scenes;
   if (!scenes.length) throw new Error('Ingen scener — generér demoen først.');
+
+  // NARRATIV QA (port 0): følger manuset markedsførings-rammeverket (PAS/AIDA/…)
+  // for demo-typen? Kjøres FØR opptak så et svakt manus fanges tidlig.
+  onProgress('Sjekker at manuset følger rammeverket…', 3);
+  const scriptQa = await gradeScriptFramework({ scenes, demoType: project.demoType, goal: project.goal }).catch(() => null);
 
   // 0) Sørg for at Playwright-runtime finnes — sett opp automatisk hvis ikke
   //    (engangs; hopper over Chromium-nedlasting hvis system-Chrome finnes).
@@ -141,5 +146,5 @@ export async function runAutonomousDemo(
   }
   const out = await muxDemoVideo(project.id, videoPath, segments, project.name || 'demo', finalize);
   onProgress('Ferdig!', 100);
-  return { path: out, qa };
+  return { path: out, qa, scriptQa };
 }

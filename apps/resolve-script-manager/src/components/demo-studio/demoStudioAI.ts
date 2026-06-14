@@ -18,7 +18,7 @@ import {
   type DemoScene, type ScriptMeta, type DemoType, type DemoDevice, type DemoActionType,
   type ResponsiveReport, type ResponsiveViewportResult, type ResponsiveStatus, type ResponsiveFix,
   classifyCta, describePosition, getLearnedTarget, getVoicePrefs,
-  CHANNEL_PRESETS, FRAMEWORKS, FUNNEL_INTENT, FUNNEL_LABELS,
+  CHANNEL_PRESETS, FRAMEWORKS, DEMO_TYPE_FRAMEWORK, FUNNEL_INTENT, FUNNEL_LABELS,
   type ScannedElement, type DirectorCritique, type CritiqueIssue, type CritiqueSeverity,
   type MarketingBrief, type MarketingChannel, type FunnelStage, type MarketingObjective,
   type ProductEvidence, type ProductBrain, type BrainNode, type BrainNodeKind,
@@ -192,6 +192,41 @@ export async function gradeSceneFrame(params: { screenshot: string; narration?: 
   const p = extractJson<{ score?: number; issue?: string }>(raw);
   const score = typeof p?.score === 'number' ? Math.max(0, Math.min(100, p.score)) : 0;
   return { score, ok: score >= 60, issue: (p?.issue || '').trim() };
+}
+
+export interface ScriptGrade { score: number; ok: boolean; framework: string; missing: string[]; issue: string }
+
+/**
+ * NARRATIV QA-port: verifiserer at MANUSET (ikke bildet) følger markedsførings-
+ * rammeverket for demo-typen — f.eks. at en salgsvideo faktisk gjør PAS
+ * (Problem → Agiter → Løsning → Bevis → CTA), med hook tidlig og tydelig CTA.
+ * Kjøres FØR opptak, så et svakt manus fanges før vi bruker tid på render.
+ */
+export async function gradeScriptFramework(params: { scenes: DemoScene[]; demoType: DemoType; goal?: string }): Promise<ScriptGrade> {
+  const fwKey = DEMO_TYPE_FRAMEWORK[params.demoType];
+  const fw = FRAMEWORKS[fwKey];
+  if (!params.scenes.length) return { score: 0, ok: false, framework: fw.label, missing: fw.beats, issue: 'Ingen scener' };
+  const sceneList = params.scenes.map((s, i) => `${i + 1}: «${s.title}» — ${(s.narration || '(tomt)').slice(0, 110)}`).join('\n');
+  const user = `Vurder om dette demo-MANUSET følger markedsførings-rammeverket ${fw.label}.
+Forventede beats i rekkefølge: ${fw.beats.map((b) => `«${b}»`).join(' → ')}.
+${params.goal ? `Konverteringsmål: ${params.goal}\n` : ''}Scener (i rekkefølge):
+${sceneList}
+
+Sjekk strengt:
+- Dekkes HVER beat, i riktig rekkefølge?
+- Er det en ekte HOOK i starten (smerte/«før», ikke «velkommen til X»)?
+- Er det en tydelig CTA til slutt mot målet?
+- Persuaderer det, eller er det en flat featureliste?
+Gi score 0–100 (100 = følger rammeverket perfekt). List beats som mangler eller er svake.
+Svar med KUN ett JSON-objekt: { "score": 0-100, "missing": ["beat som mangler/svak", "..."], "issue": "kort hva som mangler (tomt hvis bra)" }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du er en streng markedsførings-strateg som vurderer om et demo-manus følger et konkret rammeverk (PAS/AIDA/PASTOR osv.). Svar ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 500,
+  });
+  const p = extractJson<{ score?: number; missing?: string[]; issue?: string }>(raw);
+  const score = typeof p?.score === 'number' ? Math.max(0, Math.min(100, p.score)) : 0;
+  return { score, ok: score >= 70, framework: fw.label, missing: Array.isArray(p?.missing) ? p!.missing.slice(0, 6) : [], issue: (p?.issue || '').trim() };
 }
 
 /**
@@ -789,13 +824,9 @@ ${task
   7) TEAM: hvorfor akkurat dette teamet.
   8) THE ASK: hva dere reiser + hva pengene brukes til + milepælene de låser opp.
   Narration skal være selvsikker, tall-drevet og investor-orientert (ROI, marked, skala) — IKKE «klikk her». Hold produkt-klikk til ÉN kort scene; resten er forretning.`
-  : `Foreslå 5-7 scener med en STERK dramaturgisk bue, ikke en featureliste:
-  1) HOOK (0-5s): navngi smerten/«før»-tilstanden publikum kjenner seg igjen i — IKKE «velkommen til X».
-  2) Løfte/aha: vis ÉN ting som umiddelbart viser at dette løser smerten.
-  3) Kjernefunksjon i bruk: den mest verdifulle handlingen (høyest viktighet i katalogen), vist konkret.
-  4) Bevis/verdi: tall, resultat, tillit, eller «etter»-tilstanden.
-  5) CTA: tydelig neste steg mot målet.
-  Bygg mot en topp; ikke flat oppramsing.`}
+  : `Følg markedsførings-rammeverket ${FRAMEWORKS[DEMO_TYPE_FRAMEWORK[demoType]].label} STRENGT — bruk én eller flere scener per beat, i NØYAKTIG denne rekkefølgen:
+  ${FRAMEWORKS[DEMO_TYPE_FRAMEWORK[demoType]].beats.map((b, i) => `${i + 1}) ${b}`).join('\n  ')}
+  Regler: åpne med en HOOK i første beat (navngi smerten/«før»-tilstanden — IKKE «velkommen til X»). HVER beat skal vise noe KONKRET fra produktet (en navngitt funksjon/seksjon/bevis), ikke generisk prat. Avslutt med en tydelig CTA mot målet. Bygg mot en topp; ikke flat oppramsing.`}
 Velg device per scene fra de tilgjengelige (bruk mobil for mobil-flyt hvis relevant).
 For hver scene: angi handlingstypen (actionType: click/hover/type/scroll/highlight/open_url/switch_device/zoom/wait).
 Narration: skriv som et menneske, FORDEL-først («Du slipper å…», «På sekunder får du…») — ikke «klikk her»/«denne knappen». Konkret, ikke generisk markedssjargong; bruk ekte verdiløfter fra nettside-konteksten over.
