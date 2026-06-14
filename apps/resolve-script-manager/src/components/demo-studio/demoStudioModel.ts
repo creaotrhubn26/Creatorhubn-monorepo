@@ -936,6 +936,20 @@ export const FRAMEWORKS: Record<MarketingFramework, { label: string; beats: stri
   jtbd:             { label: 'Jobs-to-be-done', beats: ['Jobben kunden vil ha gjort', 'Dagens dårlige løsning', 'Hvordan produktet gjør jobben', 'Bevis', 'CTA'], bestFor: 'innovasjon/onboarding, ny kategori' },
 };
 
+/** Hvilket markedsførings-rammeverk hver demo-type følger (og verifiseres mot).
+ *  investor_demo har egen bespoke pitch-rekkefølge i generatoren, mappes til
+ *  pastor for QA. tutorial/support følger enkel prosess, ikke salgs-arc. */
+export const DEMO_TYPE_FRAMEWORK: Record<DemoType, MarketingFramework> = {
+  product_demo: 'aida',
+  tutorial: 'problem_solution',
+  onboarding: 'jtbd',
+  sales_video: 'pas',
+  investor_demo: 'pastor',
+  social_clip: 'pas',
+  support_guide: 'problem_solution',
+  feature_walkthrough: 'fab',
+};
+
 /** Markedsføringsmål — hva du vil oppnå. Anbefaler funnel-steg + metode + kanaler. */
 export type MarketingObjective =
   | 'awareness' | 'lead_gen' | 'conversion' | 'activation' | 'retention' | 'expansion' | 'advocacy'

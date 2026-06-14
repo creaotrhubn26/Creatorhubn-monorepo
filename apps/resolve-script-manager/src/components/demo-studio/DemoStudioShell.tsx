@@ -180,6 +180,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [demoVidResult, setDemoVidResult] = useState<string | null>(null);
   const [demoVidScene, setDemoVidScene] = useState<{ index: number; total: number } | null>(null);
   const [demoVidQa, setDemoVidQa] = useState<Array<{ score: number; ok: boolean; issue: string } | null> | null>(null);
+  const [demoVidScriptQa, setDemoVidScriptQa] = useState<{ score: number; ok: boolean; framework: string; missing: string[]; issue: string } | null>(null);
   const [brandedOutput, setBrandedOutput] = useState(true); // intro/outro + ramme på autonom video
   const [elevenKey, setElevenKeyState] = useState<string>(() => { try { return localStorage.getItem('trrpa.eleven_key') || ''; } catch { return ''; } });
   const setElevenKey = (v: string) => { setElevenKeyState(v); try { localStorage.setItem('trrpa.eleven_key', v); } catch { /* */ } };
@@ -221,7 +222,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const runAutoDemo = async () => {
     if (!project || demoVidBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
-    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidQa(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Starter…');
+    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidQa(null); setDemoVidScriptQa(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Starter…');
     try {
       const voice = project.language === 'en' ? undefined : 'Nora'; // norsk on-device-stemme
       const out = await runAutonomousDemo(project, {
@@ -233,7 +234,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         elevenKey: elevenKey.trim() || undefined,
       });
       setDemoVidResult(out.path);
-      setDemoVidQa(out.qa);
+      setDemoVidQa(out.qa); setDemoVidScriptQa(out.scriptQa);
       const bad = out.qa.filter((g) => g && !g.ok).length;
       setDemoVidMsg(bad ? `✓ Ferdig — ${bad} scene(r) bør sjekkes` : '✓ Ferdig demo klar (alle scener verifisert)');
       void systemOpen(out.path).catch(() => {});
@@ -248,7 +249,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const runOneClickDemo = async () => {
     if (!project || demoVidBusy || directorBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
-    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidQa(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Forstår + genererer scener…');
+    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidQa(null); setDemoVidScriptQa(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Forstår + genererer scener…');
     try {
       // 1) Generér scener hvis vi ikke har dem (generateDemo forstår automatisk først).
       let proj = useDemoStudio.getState().project!;
@@ -933,6 +934,19 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   {demoVidResult && !demoVidBusy && (
                     <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8 }}
                       onClick={() => void systemOpen(demoVidResult).catch(() => {})}>▶ Åpne ferdig video</button>
+                  )}
+                  {/* Narrativ QA: følger manuset rammeverket (PAS/AIDA/…)? */}
+                  {demoVidScriptQa && !demoVidBusy && (
+                    <div style={{ marginTop: 8, border: `1px solid ${demoVidScriptQa.ok ? '#bfe0c9' : '#f0d9a8'}`, background: demoVidScriptQa.ok ? '#eef7f0' : '#fff8ec', borderRadius: 8, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: demoVidScriptQa.ok ? C.green : '#8a6516' }}>
+                        {demoVidScriptQa.ok ? '✓ ' : ''}Manus følger {demoVidScriptQa.framework.split(' (')[0]}: {demoVidScriptQa.score}/100
+                      </div>
+                      {!demoVidScriptQa.ok && (demoVidScriptQa.issue || demoVidScriptQa.missing.length) ? (
+                        <div style={{ fontSize: 10.5, color: '#8a6516', marginTop: 3, lineHeight: 1.35 }}>
+                          {demoVidScriptQa.issue}{demoVidScriptQa.missing.length ? ` Mangler: ${demoVidScriptQa.missing.join(', ')}.` : ''}
+                        </div>
+                      ) : null}
+                    </div>
                   )}
                   {/* QA-rapport: AI-verifisering av hver scene i videoen */}
                   {demoVidQa && !demoVidBusy && (() => {
