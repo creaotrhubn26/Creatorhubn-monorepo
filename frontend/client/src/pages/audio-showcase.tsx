@@ -31,6 +31,7 @@ import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBU
 import SpotifyArtistField from '@/components/universal/showcase/SpotifyArtistField';
 import SignaturePad, { type SignatureHandle } from '@/components/universal/showcase/SignaturePad';
 import YouTubePublishPanel from '@/components/universal/showcase/YouTubePublishPanel';
+import { SpotifyIcon } from '@/components/universal/showcase/BrandIcons';
 import { audioShowcaseEvents } from '@/utils/creatorhub-events';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
@@ -390,7 +391,7 @@ export default function AudioShowcasePage() {
           {spotifyLive?.live && (() => { const e = spotifyLive.track || spotifyLive.album; return (
             <Box sx={{ bgcolor: 'rgba(29,185,84,0.07)', border: '1px solid rgba(29,185,84,0.3)', borderRadius: '16px', p: 2, mb: 2.5 }}>
               <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
-                <MusicNote sx={{ fontSize: 18, color: '#1DB954' }} />
+                <SpotifyIcon sx={{ fontSize: 18, color: '#1DB954' }} />
                 <Typography sx={{ fontWeight: 700, flex: 1 }}>Nå på Spotify</Typography>
                 <Button href={e.url} target="_blank" size="small" sx={{ color: '#1DB954', textTransform: 'none' }}>Åpne</Button>
               </Stack>
@@ -1113,7 +1114,7 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
               </Stack>
               <Stack direction="row" spacing={1}>{field('Sjanger', 'primary_genre')}{field('Undersjanger', 'secondary_genre')}</Stack>
               <Stack direction="row" alignItems="center" spacing={1}>
-                <Button onClick={enrich} disabled={spotBusy} size="small" startIcon={<MusicNote sx={{ fontSize: '15px !important' }} />} sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.72rem', minWidth: 0 }}>Berik fra Spotify</Button>
+                <Button onClick={enrich} disabled={spotBusy} size="small" startIcon={<SpotifyIcon sx={{ fontSize: '15px !important' }} />} sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.72rem', minWidth: 0 }}>Berik fra Spotify</Button>
                 {enrichNote && <Typography sx={{ fontSize: '0.68rem', color: MUTED }} noWrap>{enrichNote}</Typography>}
               </Stack>
               <Stack direction="row" spacing={1}>
@@ -1148,7 +1149,7 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
               {/* Spotify-verifisering (etter publisering hos distributør) */}
               <Box sx={{ bgcolor: 'rgba(29,185,84,0.06)', border: '1px solid rgba(29,185,84,0.25)', borderRadius: '10px', p: 1.25 }}>
                 <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.75 }}>
-                  <MusicNote sx={{ fontSize: 15, color: '#1DB954' }} />
+                  <SpotifyIcon sx={{ fontSize: 15, color: '#1DB954' }} />
                   <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, flex: 1 }}>Live på Spotify?</Typography>
                   <Button onClick={checkSpotify} disabled={spotBusy || (!rel.isrc && !rel.upc)} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.7rem', minWidth: 0 }}>{spotBusy ? '…' : 'Sjekk'}</Button>
                 </Stack>

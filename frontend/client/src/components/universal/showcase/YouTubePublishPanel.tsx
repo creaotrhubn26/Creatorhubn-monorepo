@@ -8,11 +8,12 @@ import React from 'react';
 import {
   Box, Stack, Typography, Button, TextField, Switch, FormControlLabel, CircularProgress, Chip, Link,
 } from '@mui/material';
-import { MusicNote, CheckCircle, RadioButtonUnchecked, OpenInNew, GraphicEq, Lyrics, TouchApp } from '@mui/icons-material';
+import { CheckCircle, RadioButtonUnchecked, OpenInNew, GraphicEq, Lyrics, TouchApp } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import LyricTimingDialog from './LyricTimingDialog';
+import { YouTubeIcon, YOUTUBE_RED } from './BrandIcons';
 
-const BORDER = 'rgba(255,255,255,0.08)', TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', FAINT = 'rgba(245,242,234,0.38)', ACCENT = '#FF6B35', YT = '#FF0033', GREEN = '#5fb88a';
+const BORDER = 'rgba(255,255,255,0.08)', TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', FAINT = 'rgba(245,242,234,0.38)', ACCENT = '#FF6B35', YT = YOUTUBE_RED, GREEN = '#5fb88a';
 const fieldSx = { '& .MuiInputBase-input': { color: TEXT }, '& .MuiInputLabel-root': { color: MUTED }, '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER } };
 
 const CHANNEL_TIPS = [
@@ -68,7 +69,7 @@ const YouTubePublishPanel: React.FC<{ releaseId: string; projectId: string; mast
   return (
     <Box sx={{ bgcolor: 'rgba(255,0,51,0.05)', border: '1px solid rgba(255,0,51,0.25)', borderRadius: '10px', p: 1.5 }}>
       <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
-        <MusicNote sx={{ fontSize: 16, color: YT }} />
+        <YouTubeIcon sx={{ fontSize: 18, color: YT }} />
         <Typography sx={{ fontSize: '0.78rem', fontWeight: 800, flex: 1 }}>Publiser til YouTube</Typography>
         {status?.connected && status?.channelTitle && <Chip size="small" label={status.channelTitle} sx={{ height: 18, fontSize: '0.62rem', bgcolor: 'rgba(95,184,138,0.16)', color: GREEN }} />}
       </Stack>
@@ -123,7 +124,7 @@ const YouTubePublishPanel: React.FC<{ releaseId: string; projectId: string; mast
             </Stack>
           )}
           {err && <Typography sx={{ fontSize: '0.72rem', color: '#e0606a' }}>{err}</Typography>}
-          <Button onClick={publish} disabled={busy || !title.trim()} startIcon={busy ? <CircularProgress size={15} sx={{ color: '#fff' }} /> : <MusicNote />} variant="contained"
+          <Button onClick={publish} disabled={busy || !title.trim()} startIcon={busy ? <CircularProgress size={15} sx={{ color: '#fff' }} /> : <YouTubeIcon />} variant="contained"
             sx={{ bgcolor: YT, color: '#fff', fontWeight: 700, textTransform: 'none', borderRadius: '999px', alignSelf: 'flex-start', px: 3, '&:hover': { bgcolor: '#e60030' } }}>
             {busy ? 'Lager video + laster opp…' : 'Publiser til YouTube'}
           </Button>
