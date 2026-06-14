@@ -13,6 +13,7 @@ import BrandKitPanel from "./BrandKitPanel";
 import MarketIntelligenceOverviewPanel from "./MarketIntelligenceOverviewPanel";
 import MarketScanDetailPanel from "./MarketScanDetailPanel";
 import AgentContextPreviewPanel from "./AgentContextPreviewPanel";
+import LeadMapCampaignsPanel from "./LeadMapCampaignsPanel";
 
 interface Props {
   /** Aktivt prosjekt — brukes til Brand Kit + scans-isolering. */
@@ -60,6 +61,7 @@ export default function MarketIntelligenceSection({
             projectId={projectId}
             onOpenScanDetail={setActiveScanId}
           />
+          <LeadMapCampaignsPanel />
           <AgentContextPreviewPanel projectId={projectId} />
         </Stack>
       )}
