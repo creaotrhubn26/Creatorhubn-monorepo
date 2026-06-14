@@ -50,6 +50,7 @@ import {
   Person as PersonIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  Close as CloseIcon,
   Refresh as RefreshIcon,
   CheckCircle as CheckCircleIcon,
   Send as KlientSendIcon,
@@ -8966,6 +8967,25 @@ type RoleRoomProjectWorkspaceState = {
                 }}
               />
               {pinnedProjectIdSet.has(projectQuickActionsProject?.id ?? '') ? 'Løsne fra toppen' : 'Fest til toppen'}
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                // Lukk prosjektet: rydd state + URL slik at brukeren havner
+                // på dashboard og kan navigere fritt (Admin Room etc).
+                setCurrentProject(null);
+                setCurrentProjectId(null);
+                setActiveTab(0);
+                if (typeof window !== 'undefined') {
+                  try {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                  } catch { /* ignore */ }
+                }
+                handleCloseProjectQuickActions();
+              }}
+              sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
+            >
+              <CloseIcon sx={{ fontSize: 18, color: '#fda4af' }} />
+              Lukk prosjekt
             </MenuItem>
             {projectQuickActionsProject && canSwitchRoleRoomRole && !isTemplateProject(projectQuickActionsProject) ? (
               <MenuItem
