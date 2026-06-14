@@ -22,13 +22,15 @@ import {
   ThumbUpAlt, AccessTime, Send, WorkspacePremium, GridViewOutlined, GraphicEq, LayersOutlined,
   Inventory2Outlined, SubjectOutlined, StickyNote2Outlined, TimelineOutlined, Speed, VpnKey,
   CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
-  PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined,
+  PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined, TipsAndUpdatesOutlined,
 } from '@mui/icons-material';
 import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
 import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBUTION_OPTIONS } from '@/components/universal/showcase/ComboField';
 import SpotifyArtistField from '@/components/universal/showcase/SpotifyArtistField';
+import SignaturePad, { type SignatureHandle } from '@/components/universal/showcase/SignaturePad';
+import { audioShowcaseEvents } from '@/utils/creatorhub-events';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
@@ -146,7 +148,7 @@ export default function AudioShowcasePage() {
         const r = await apiRequest(`/api/audio-showcases/${projectId}/release`);
         const rel = r?.release; if (!rel || (!rel.isrc && !rel.upc)) return;
         const st = await apiRequest(`/api/releases/${rel.id}/spotify-status`);
-        if (!cancelled && st?.live) setSpotifyLive(st);
+        if (!cancelled && st?.live) { setSpotifyLive(st); audioShowcaseEvents.nowOnSpotifyShown(); }
       } catch { /* */ }
     })();
     return () => { cancelled = true; };
@@ -244,6 +246,7 @@ export default function AudioShowcasePage() {
         xhr.send(fd);
       });
       const v = await apiRequest('/api/audio-versions', { method: 'POST', body: { projectId, fileUrl: url, fileName: file.name } });
+      audioShowcaseEvents.versionUploaded({ sizeBytes: file.size });
       await loadProject(); setCurrentVid(v.id);
     } catch { /* ignore */ } finally { setBusy(false); setUploadPct(null); }
   };
@@ -254,7 +257,7 @@ export default function AudioShowcasePage() {
   };
   const createProject = async () => {
     if (!newTitle.trim()) return; setBusy(true);
-    try { const p = await apiRequest('/api/audio-showcases', { method: 'POST', body: { title: newTitle.trim(), bandName: newBand.trim() || null } }); window.location.href = `/audio-review/${p.id}`; }
+    try { const p = await apiRequest('/api/audio-showcases', { method: 'POST', body: { title: newTitle.trim(), bandName: newBand.trim() || null } }); audioShowcaseEvents.projectCreated({ hasBand: !!newBand.trim() }); window.location.href = `/audio-review/${p.id}`; }
     finally { setBusy(false); }
   };
 
@@ -579,7 +582,7 @@ export default function AudioShowcasePage() {
       </Stack>
 
       {/* Dialoger */}
-      <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={async (name, role, email) => { const m = await apiRequest(`/api/audio-showcases/${projectId}/members`, { method: 'POST', body: { name, role, email } }); setMembers((p) => [...p, m]); return m; }} />
+      <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={async (name, role, email) => { const m = await apiRequest(`/api/audio-showcases/${projectId}/members`, { method: 'POST', body: { name, role, email } }); audioShowcaseEvents.memberInvited({ method: email?.trim() ? 'email' : 'link' }); setMembers((p) => [...p, m]); return m; }} />
       <MemberProfileDialog member={memberDialog} externalTrackId={easeverseTrack?.id} onClose={() => setMemberDialog(null)} onSave={saveMemberProfile}
         onDelete={async (id) => { await apiRequest(`/api/audio-members/${id}`, { method: 'DELETE' }); setMembers((p) => p.filter((x) => x.id !== id)); setMemberDialog(null); }} />
       <SplitSheetDialog open={splitOpen} projectId={projectId} ownerName={owner?.name} onClose={() => setSplitOpen(false)} />
@@ -673,7 +676,7 @@ const MemberProfileDialog: React.FC<{ member: any; externalTrackId?: string; onC
           <Stack direction="row" spacing={1.5}><TextField label="Instagram" value={f.links?.instagram || ''} onChange={(e) => setLink('instagram', e.target.value)} size="small" fullWidth sx={fieldSx} /><TextField label="TikTok" value={f.links?.tiktok || ''} onChange={(e) => setLink('tiktok', e.target.value)} size="small" fullWidth sx={fieldSx} /></Stack>
           <Stack direction="row" spacing={1.5} alignItems="flex-start">
             <SpotifyArtistField value={f.links?.spotify || ''} onChange={(v) => setLink('spotify', v)} fieldSx={fieldSx}
-              onPick={(a) => { if (!f.avatarUrl && a.image) { setF((p: any) => ({ ...p, avatarUrl: a.image })); void onSave(member.id, { avatarUrl: a.image }); } }} />
+              onPick={(a) => { audioShowcaseEvents.spotifyArtistLinked('profile'); if (!f.avatarUrl && a.image) { setF((p: any) => ({ ...p, avatarUrl: a.image })); void onSave(member.id, { avatarUrl: a.image }); } }} />
             <TextField label="YouTube" value={f.links?.youtube || ''} onChange={(e) => setLink('youtube', e.target.value)} size="small" fullWidth sx={fieldSx} />
           </Stack>
           {link && (
@@ -886,6 +889,10 @@ const SplitSheetDialog: React.FC<{ open: boolean; projectId: string; ownerName?:
   const [rows, setRows] = React.useState<any[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [signFor, setSignFor] = React.useState<any>(null); const [sigName, setSigName] = React.useState(''); const [consent, setConsent] = React.useState(false);
+  const sigPadRef = React.useRef<SignatureHandle>(null);
+  const [creo, setCreo] = React.useState<any>(null);
+  const [rateMenu, setRateMenu] = React.useState<{ el: HTMLElement; row: number } | null>(null);
+  React.useEffect(() => { if (open && !creo) apiRequest('/api/audio-showcase/rate-guidance').then(setCreo).catch(() => {}); }, [open, creo]);
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -900,11 +907,29 @@ const SplitSheetDialog: React.FC<{ open: boolean; projectId: string; ownerName?:
   const compTotal = Math.round(rows.reduce((a, r) => a + (Number(r.comp) || 0), 0) * 100) / 100;
   const locked = (sheet?.signedCount || 0) > 0;
   const upd = (i: number, k: string, v: any) => setRows(rows.map((x, j) => j === i ? { ...x, [k]: v } : x));
-  const generate = async () => { setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`, { method: 'POST', body: {} }); await load(); } finally { setBusy(false); } };
+  const generate = async () => { setBusy(true); try { const r = await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`, { method: 'POST', body: {} }); audioShowcaseEvents.splitGenerated((r?.contributors || []).length); await load(); } finally { setBusy(false); } };
   const save = async () => { setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet`, { method: 'PATCH', body: { contributors: rows.map((r) => ({ id: r.id, masterPct: Number(r.master) || 0, compositionPct: Number(r.comp) || 0, feeAmount: Number(r.feeAmount) || 0, feeCurrency: r.feeCurrency, feeType: r.feeType })) } }); await load(); } catch { /* */ } finally { setBusy(false); } };
   const unlock = async () => { setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet/unlock`, { method: 'POST', body: {} }); await load(); } finally { setBusy(false); } };
   const splitEven = () => { const ev = Math.floor((10000 / rows.length)) / 100; setRows(rows.map((r, i) => ({ ...r, master: i === 0 ? Math.round((100 - ev * (rows.length - 1)) * 100) / 100 : ev, comp: i === 0 ? Math.round((100 - ev * (rows.length - 1)) * 100) / 100 : ev }))); };
-  const doSign = async () => { if (!signFor || !sigName.trim() || !consent) return; setBusy(true); try { await apiRequest(`/api/audio-showcases/${projectId}/split-sheet/sign`, { method: 'POST', body: { contributorId: signFor.id, signature: sigName.trim(), consent: true } }); setSignFor(null); setSigName(''); setConsent(false); await load(); } catch { /* */ } finally { setBusy(false); } };
+  const doSign = async () => {
+    if (!signFor || !sigName.trim() || !consent) return; setBusy(true);
+    try {
+      const sg = sigPadRef.current?.get() || null;
+      await apiRequest(`/api/audio-showcases/${projectId}/split-sheet/sign`, { method: 'POST', body: { contributorId: signFor.id, signature: sigName.trim(), consent: true, signatureImage: sg?.dataUrl, signatureMethod: sg?.method } });
+      audioShowcaseEvents.splitSigned({ method: sg?.method || 'simple', by: 'owner' });
+      setSignFor(null); setSigName(''); setConsent(false); await load();
+    } catch { /* */ } finally { setBusy(false); }
+  };
+  const downloadPdf = async () => {
+    try {
+      const headers = await getAuthHeader();
+      const res = await fetch(`/api/audio-showcases/${projectId}/agreement.pdf`, { headers });
+      if (!res.ok) return;
+      const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a');
+      a.href = url; a.download = 'splittavtale.pdf'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      audioShowcaseEvents.agreementDownloaded('owner');
+    } catch { /* */ }
+  };
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
@@ -923,7 +948,9 @@ const SplitSheetDialog: React.FC<{ open: boolean; projectId: string; ownerName?:
                 {signFor.contributions?.length > 0 && <Typography sx={{ fontSize: '0.74rem', color: MUTED, mt: 0.5 }}>Bidrag: {signFor.contributions.join(', ')}</Typography>}
               </Box>
               <FormControlLabel control={<Switch checked={consent} onChange={(e) => setConsent(e.target.checked)} sx={{ '& .Mui-checked': { color: ACCENT } }} />} label={<Typography sx={{ fontSize: '0.8rem' }}>Jeg bekrefter at fordelingen er korrekt og at jeg godkjenner avtalen som bindende.</Typography>} />
-              <TextField label="Skriv navnet ditt som signatur" value={sigName} onChange={(e) => setSigName(e.target.value)} size="small" sx={fieldSx} />
+              <TextField label="Fullt navn (juridisk)" value={sigName} onChange={(e) => setSigName(e.target.value)} size="small" sx={fieldSx} />
+              <SignaturePad ref={sigPadRef} name={sigName} fieldSx={fieldSx} />
+              <Typography sx={{ fontSize: '0.66rem', color: FAINT, lineHeight: 1.45 }}>Vi lagrer navn, tidspunkt, IP og signaturbilde som bevis på avtalen (GDPR art. 6(1)(b) – avtaleinngåelse). Kvittering sendes på e-post.</Typography>
             </Stack>
           ) : (
             <Stack spacing={0.75}>
@@ -938,7 +965,12 @@ const SplitSheetDialog: React.FC<{ open: boolean; projectId: string; ownerName?:
                   <TextField type="number" size="small" disabled={locked} value={r.master} onChange={(e) => upd(i, 'master', e.target.value)} sx={{ width: 70, ...fieldSx }} />
                   <TextField type="number" size="small" disabled={locked} value={r.comp} onChange={(e) => upd(i, 'comp', e.target.value)} sx={{ width: 70, ...fieldSx }} />
                   <TextField type="number" size="small" disabled={locked} value={r.feeAmount} placeholder="0" onChange={(e) => upd(i, 'feeAmount', e.target.value)} sx={{ width: 130, ...fieldSx }}
-                    InputProps={{ endAdornment: <Typography sx={{ color: MUTED, fontSize: '0.7rem' }}>{r.feeCurrency}</Typography> }} />
+                    InputProps={{ endAdornment: (
+                      <Stack direction="row" alignItems="center" spacing={0.25}>
+                        <Typography sx={{ color: MUTED, fontSize: '0.7rem' }}>{r.feeCurrency}</Typography>
+                        {!locked && creo?.rates?.length > 0 && <Tooltip title="Veiledende sats (Creo)"><IconButton size="small" onClick={(e) => setRateMenu({ el: e.currentTarget, row: i })} sx={{ color: ACCENT, p: 0.25 }}><TipsAndUpdatesOutlined sx={{ fontSize: 15 }} /></IconButton></Tooltip>}
+                      </Stack>
+                    ) }} />
                   {!r.signed_at && (r.name === ownerName)
                     ? <Button size="small" onClick={() => { setSignFor(r); setSigName(r.name); }} sx={{ width: 76, color: ACCENT, textTransform: 'none', fontSize: '0.72rem' }}>Signér</Button>
                     : <Box sx={{ width: 76, textAlign: 'center' }}>{r.signed_at ? <Typography sx={{ fontSize: '0.66rem', color: '#5fb88a' }}>signert</Typography> : <Typography sx={{ fontSize: '0.62rem', color: FAINT }}>via lenke</Typography>}</Box>}
@@ -954,6 +986,17 @@ const SplitSheetDialog: React.FC<{ open: boolean; projectId: string; ownerName?:
             </Stack>
           )}
       </DialogContent>
+      <Menu anchorEl={rateMenu?.el} open={Boolean(rateMenu)} onClose={() => setRateMenu(null)}
+        PaperProps={{ sx: { bgcolor: '#1a1a1e', color: TEXT, border: `1px solid ${BORDER}`, maxWidth: 320 } }}>
+        <Typography sx={{ px: 2, pt: 1, pb: 0.5, fontSize: '0.66rem', color: FAINT, textTransform: 'uppercase', letterSpacing: 0.5 }}>Veiledende sats · {creo?.source}</Typography>
+        {(creo?.rates || []).map((rt: any) => (
+          <MenuItem key={rt.key} onClick={() => { if (rateMenu) { upd(rateMenu.row, 'feeAmount', rt.amount); upd(rateMenu.row, 'feeType', rt.key === 'concert' ? 'flat' : 'session'); } setRateMenu(null); }} sx={{ display: 'block', py: 0.75 }}>
+            <Stack direction="row" alignItems="baseline" spacing={1}><Typography sx={{ fontSize: '0.82rem', fontWeight: 600, flex: 1 }}>{rt.label}</Typography><Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: ACCENT }}>{rt.amount.toLocaleString('no-NO')} kr</Typography></Stack>
+            <Typography sx={{ fontSize: '0.68rem', color: MUTED }}>{rt.unit}{rt.note ? ` · ${rt.note}` : ''}</Typography>
+          </MenuItem>
+        ))}
+        <Typography sx={{ px: 2, py: 1, fontSize: '0.64rem', color: FAINT, lineHeight: 1.4 }}>{creo?.markupNote} Oppdatert {creo?.updated}.</Typography>
+      </Menu>
       {sheet?.exists && (
         <DialogActions sx={{ px: 3, pb: 2 }}>
           {signFor ? (
@@ -961,6 +1004,7 @@ const SplitSheetDialog: React.FC<{ open: boolean; projectId: string; ownerName?:
               <Button onClick={doSign} disabled={busy || !sigName.trim() || !consent} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Signér bindende</Button></>
           ) : (
             <><Button href={sheet.url} target="_blank" sx={{ color: MUTED, textTransform: 'none', mr: 'auto' }}>Åpne i CRM</Button>
+              <Button onClick={downloadPdf} startIcon={<FileDownloadOutlined sx={{ fontSize: '17px !important' }} />} sx={{ color: TEXT, textTransform: 'none' }}>Last ned avtale (PDF)</Button>
               <Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none' }}>Lukk</Button>
               <Button onClick={save} disabled={busy || locked || masterTotal > 100.01} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Lagre vilkår</Button></>
           )}
@@ -991,7 +1035,7 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
     setLoading(true);
     try {
       const d = await apiRequest(`/api/audio-showcases/${projectId}/release`, { method: 'POST', body: {} });
-      setRel(d.release); await refresh(d.release.id);
+      setRel(d.release); await refresh(d.release.id); audioShowcaseEvents.releaseStarted();
     } catch { setRel(null); } finally { setLoading(false); }
   }, [projectId, refresh]);
   React.useEffect(() => { if (open) void load(); }, [open, load]);
@@ -1019,13 +1063,14 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
       if (!a) { setEnrichNote('Fant ingen Spotify-artist.'); return; }
       setRel((r: any) => ({ ...r, primary_genre: r.primary_genre || a.genres?.[0] || r.primary_genre, secondary_genre: r.secondary_genre || a.genres?.[1] || r.secondary_genre }));
       setEnrichNote(`Matchet «${a.name}»${a.genres?.length ? ` · ${a.genres.slice(0, 2).join(', ')}` : ' (ingen sjanger registrert)'}`);
+      audioShowcaseEvents.spotifyEnriched();
     } catch (e: any) { setEnrichNote(typeof e?.message === 'string' && e.message.includes('503') ? 'Spotify ikke konfigurert.' : 'Oppslag feilet.'); }
     finally { setSpotBusy(false); }
   };
   // ISRC/UPC-verifisering: er utgivelsen live på Spotify?
   const checkSpotify = async () => {
     if (!rel) return; setSpotBusy(true);
-    try { await save(); setSpot(await apiRequest(`/api/releases/${rel.id}/spotify-status`)); }
+    try { await save(); const st = await apiRequest(`/api/releases/${rel.id}/spotify-status`); setSpot(st); audioShowcaseEvents.spotifyStatusChecked(!!st?.live); }
     catch { setSpot({ error: true }); } finally { setSpotBusy(false); }
   };
 
@@ -1039,6 +1084,7 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
       const url = URL.createObjectURL(blob); const a = document.createElement('a');
       a.href = url; a.download = `release-${(rel.title || 'release').replace(/[^a-z0-9]/gi, '-').toLowerCase()}.json`;
       document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      audioShowcaseEvents.releaseExported({ valid });
       await refresh(rel.id);
     } catch { /* */ } finally { setBusy(false); }
   };

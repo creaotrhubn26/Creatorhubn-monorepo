@@ -14,6 +14,7 @@ import { apiRequest } from '@/lib/queryClient';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
 import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBUTION_OPTIONS } from '@/components/universal/showcase/ComboField';
 import SpotifyArtistField from '@/components/universal/showcase/SpotifyArtistField';
+import { audioShowcaseEvents } from '@/utils/creatorhub-events';
 
 const BG = '#0A0A0B', PANEL = '#131316', BORDER = 'rgba(255,255,255,0.08)';
 const TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', ACCENT = '#FF6B35';
@@ -32,6 +33,7 @@ export default function AudioReviewInvitePage() {
   const [done, setDone] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [form, setForm] = React.useState<any>({ name: '', role: '', instrument: '', email: '', phone: '', bio: '', avatarUrl: '', easeverseAccess: false, links: {} as Record<string, string>, contributions: [] as string[] });
+  const [hp, setHp] = React.useState(''); // honeypot (skjult) — bot-beskyttelse
   const setLink = (k: string, v: string) => setForm((f: any) => ({ ...f, links: { ...f.links, [k]: v } }));
   const [copied, setCopied] = React.useState(false);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -51,8 +53,11 @@ export default function AudioReviewInvitePage() {
   const submit = async () => {
     if (!form.name.trim()) return;
     setBusy(true);
-    try { await apiRequest(`/api/audio-review-invite/${token}`, { method: 'POST', body: form }); setDone(true); }
-    catch { /* ignore */ } finally { setBusy(false); }
+    try {
+      await apiRequest(`/api/audio-review-invite/${token}`, { method: 'POST', body: { ...form, company_website: hp } });
+      audioShowcaseEvents.profileCompleted({ isVocalist: /vokal/i.test(form.role || ''), hasAvatar: !!form.avatarUrl });
+      setDone(true);
+    } catch { /* ignore */ } finally { setBusy(false); }
   };
 
   if (loading) return <Box sx={{ bgcolor: BG, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
@@ -114,11 +119,14 @@ export default function AudioReviewInvitePage() {
               </Stack>
               <Stack direction="row" spacing={1.5} alignItems="flex-start">
                 <SpotifyArtistField value={form.links.spotify || ''} onChange={(v) => setLink('spotify', v)} fieldSx={fieldSx}
-                  onPick={(a) => { if (!form.avatarUrl && a.image) setForm((f: any) => ({ ...f, avatarUrl: a.image })); }} />
+                  onPick={(a) => { audioShowcaseEvents.spotifyArtistLinked('invite'); if (!form.avatarUrl && a.image) setForm((f: any) => ({ ...f, avatarUrl: a.image })); }} />
                 <TextField label="YouTube" value={form.links.youtube || ''} onChange={(e) => setLink('youtube', e.target.value)} size="small" fullWidth sx={fieldSx} placeholder="kanal-lenke" />
               </Stack>
+              {/* Honeypot — skjult for mennesker, fanger bots */}
+              <input type="text" name="company_website" value={hp} onChange={(e) => setHp(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true"
+                style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} />
               <Button onClick={submit} disabled={busy || !form.name.trim()} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px', py: 1 }}>{busy ? 'Lagrer…' : 'Lagre profil'}</Button>
-              <Typography sx={{ fontSize: '0.7rem', color: MUTED, textAlign: 'center' }}>Profilen knyttes også til splittark (royalty) for låten.</Typography>
+              <Typography sx={{ fontSize: '0.66rem', color: MUTED, textAlign: 'center', lineHeight: 1.45 }}>Profilen knyttes til splittark (royalty) for låten. Vi lagrer opplysningene du oppgir for å administrere samarbeidet (GDPR art. 6(1)(b)). Du kan be om innsyn eller sletting når som helst.</Typography>
             </Stack>
           </>
         )}

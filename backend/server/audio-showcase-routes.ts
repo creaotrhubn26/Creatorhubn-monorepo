@@ -11,6 +11,31 @@
 
 import type express from "express";
 import { randomUUID, createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import PDFDocument from "pdfkit";
+
+// Innebygd TrueType-font (DejaVu Sans, libre) — sikrer at avtale-PDF rendres
+// identisk i alle visere (pdfkit-standardfonter rendres ikke i alle renderere).
+const FONT_DIR = join(dirname(fileURLToPath(import.meta.url)), "assets", "fonts");
+let PDF_FONTS: { regular: Buffer; bold: Buffer; oblique: Buffer } | null = null;
+function pdfFonts() {
+  if (!PDF_FONTS) PDF_FONTS = {
+    regular: readFileSync(join(FONT_DIR, "DejaVuSans.ttf")),
+    bold: readFileSync(join(FONT_DIR, "DejaVuSans-Bold.ttf")),
+    oblique: readFileSync(join(FONT_DIR, "DejaVuSans-Oblique.ttf")),
+  };
+  return PDF_FONTS;
+}
+
+// Fallback-logo (CreatorHub) — brukes når produsenten ikke har lastet opp egen.
+const BRAND_DIR = join(dirname(fileURLToPath(import.meta.url)), "assets", "brand");
+let FALLBACK_LOGO: Buffer | null | undefined;
+function fallbackLogo(): Buffer | null {
+  if (FALLBACK_LOGO === undefined) { try { FALLBACK_LOGO = readFileSync(join(BRAND_DIR, "creatorhub-logo.png")); } catch { FALLBACK_LOGO = null; } }
+  return FALLBACK_LOGO;
+}
 
 const makeInviteToken = () => "inv_" + randomUUID().replace(/-/g, "");
 
@@ -25,6 +50,11 @@ export interface AudioShowcaseDeps {
   // Valgfri: send invitasjons-e-post (injiseres fra index.ts m/ Resend). Ruten
   // virker uansett — e-post hoppes over hvis ikke konfigurert.
   sendInviteEmail?: (to: string, data: { inviterName: string; projectTitle: string; inviteUrl: string }) => Promise<void>;
+  // Valgfri: generell e-post (brukes til signatur-kvittering). Hoppes over hvis ikke satt.
+  sendEmail?: (opts: { to: string; subject: string; html: string; text: string; kind?: string }) => Promise<void>;
+  // Valgfri: hent universell business-branding (Universal Dashboard → settings)
+  // slik at avtale-PDF arver produsentens logo/farge/navn automatisk.
+  getBrandingForUser?: (userId: string) => Promise<{ businessName?: string; logoUrl?: string; accentColor?: string } | null>;
 }
 
 const isMissingTable = (e: unknown) =>
@@ -109,6 +139,13 @@ function rateLimited(key: string, max = 30, windowMs = 60_000): boolean {
 }
 const clientIp = (req: any): string => (req.headers?.["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || req.socket?.remoteAddress || "?");
 
+// Honeypot: skjult felt mennesker aldri fyller ut. Er det utfylt → bot/spam.
+// Vi svarer «ok» uten å lagre noe, så boten ikke skjønner at den ble stoppet.
+const isHoneypot = (req: any): boolean => {
+  const v = req.body?.company_website ?? req.body?.hp_field;
+  return typeof v === "string" && v.trim().length > 0;
+};
+
 // ── Spotify (Client Credentials, server-til-server, token-cachet) ──────────
 // Kun lese-tilgang (søk/artist/album/track + ISRC/UPC-oppslag). Kan IKKE
 // laste opp musikk — det gjør distributøren. Token caches til ~utløp.
@@ -143,7 +180,7 @@ const PT_SECTION_COLOR: Record<string, string> = {
 };
 
 export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
-  const { app, pool, requireUserSession, sendInviteEmail } = deps;
+  const { app, pool, requireUserSession, sendInviteEmail, sendEmail, getBrandingForUser } = deps;
   const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
 
   // Send invitasjons-e-post (fire-and-forget) hvis dep + e-post finnes.
@@ -593,6 +630,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-review-invite/:token", async (req, res) => {
     const token = str(req.params.token, 80);
     if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    if (isHoneypot(req)) return res.json({ ok: true });
     if (rateLimited(`inv:${clientIp(req)}`)) return res.status(429).json({ error: "rate_limited" });
     const name = str(req.body?.name, 200);
     if (!name) return res.status(400).json({ error: "name_required" });
@@ -983,21 +1021,58 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
 
   // Juridisk signering av en part: samtykke + revisjonslogg (IP/tid) + snapshot
   // av nøyaktig hva som ble signert. Setter status når alle har signert.
-  async function signContributor(ssId: string, contributorId: string, signerName: string, ip: string, ua: string): Promise<any | null> {
-    const cur = await pool.query(`SELECT id, name, percentage, custom_fields FROM split_sheet_contributors WHERE id=$1::uuid AND split_sheet_id=$2::uuid LIMIT 1`, [contributorId, ssId]);
+  async function signContributor(ssId: string, contributorId: string, signerName: string, ip: string, ua: string, opts?: { signatureImage?: string; method?: string }): Promise<any | null> {
+    const cur = await pool.query(`SELECT id, name, email, percentage, custom_fields, signed_at FROM split_sheet_contributors WHERE id=$1::uuid AND split_sheet_id=$2::uuid LIMIT 1`, [contributorId, ssId]);
     if (cur.rowCount === 0) return null;
     const c = cur.rows[0];
+    // Allerede signert → idempotent: ikke overskriv, bare bekreft.
+    if (c.signed_at) {
+      const cnt = await pool.query(`SELECT COUNT(*)::int total, COUNT(signed_at)::int signed FROM split_sheet_contributors WHERE split_sheet_id=$1`, [ssId]);
+      return { id: c.id, name: c.name, signed_at: c.signed_at, alreadySigned: true, allSigned: cnt.rows[0].signed >= cnt.rows[0].total };
+    }
     const snapshot = { contributorId: c.id, name: c.name, masterPct: Number(c.percentage), compositionPct: c.custom_fields?.compositionPct ?? null, feeAmount: c.custom_fields?.feeAmount ?? null, feeCurrency: c.custom_fields?.feeCurrency ?? null, feeType: c.custom_fields?.feeType ?? null, contributions: c.custom_fields?.contributions ?? [] };
     const at = new Date().toISOString();
+    // Bare PNG data-URL aksepteres som signaturbilde (tegnet/typografert på klient), maks ~200KB.
+    const sigImg = typeof opts?.signatureImage === "string" && /^data:image\/png;base64,/.test(opts.signatureImage) && opts.signatureImage.length < 280_000 ? opts.signatureImage : null;
+    const method = opts?.method === "drawn" ? "drawn_electronic_signature" : opts?.method === "typed" ? "typed_electronic_signature" : "simple_electronic_signature";
     // Integritets-hash (tamper-evidens): SHA-256 av nøyaktig signerte vilkår + signatar + tid.
     const signatureHash = createHash("sha256").update(JSON.stringify({ snapshot, signerName, at })).digest("hex");
-    const sig = { name: signerName, consent: true, at, ip, userAgent: (ua || "").slice(0, 300), method: "simple_electronic_signature", signatureHash, snapshot };
+    const sig = { name: signerName, consent: true, at, ip, userAgent: (ua || "").slice(0, 300), method, signatureImage: sigImg, signatureHash, snapshot };
     const r = await pool.query(`UPDATE split_sheet_contributors SET signed_at=NOW(), signature_data=$3::jsonb, updated_at=NOW() WHERE id=$1::uuid AND split_sheet_id=$2::uuid RETURNING id, name, signed_at`, [contributorId, ssId, JSON.stringify(sig)]);
     // Sett status når alle har signert.
     const counts = await pool.query(`SELECT COUNT(*)::int total, COUNT(signed_at)::int signed FROM split_sheet_contributors WHERE split_sheet_id=$1`, [ssId]);
     const { total, signed } = counts.rows[0];
     await pool.query(`UPDATE split_sheets SET status=$2, updated_at=NOW() WHERE id=$1`, [ssId, signed >= total ? "completed" : "pending_signatures"]);
+    // Kvittering til signataren (fire-and-forget) — etterprøvbart bevis på signaturen.
+    if (sendEmail && c.email) void sendSignatureReceipt(ssId, c.email, signerName, sig).catch(() => {});
     return { ...r.rows[0], allSigned: signed >= total };
+  }
+
+  // Send signatur-kvittering med nøyaktig signerte vilkår + integritetshash.
+  async function sendSignatureReceipt(ssId: string, to: string, signerName: string, sig: any): Promise<void> {
+    if (!sendEmail) return;
+    const ssRow = await pool.query(`SELECT title FROM split_sheets WHERE id=$1 LIMIT 1`, [ssId]).catch(() => ({ rows: [] as any[] }));
+    const title = ssRow.rows[0]?.title || "avtale";
+    const s = sig.snapshot || {};
+    const fee = Number(s.feeAmount) > 0 ? `${s.feeAmount} ${s.feeCurrency || "NOK"}` : "—";
+    const when = new Date(sig.at).toLocaleString("no-NO");
+    const subject = `Kvittering: du har signert «${title}»`;
+    const html = `<div style="font-family:system-ui,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
+      <h2 style="margin:0 0 4px">Signatur bekreftet</h2>
+      <p style="margin:0 0 16px;color:#555">Dette bekrefter at <strong>${signerName}</strong> har signert avtalen for <strong>«${title}»</strong>.</p>
+      <table style="border-collapse:collapse;width:100%;font-size:14px">
+        <tr><td style="padding:6px 0;color:#888">Master-andel</td><td style="text-align:right;font-weight:600">${s.masterPct ?? 0}%</td></tr>
+        <tr><td style="padding:6px 0;color:#888">Komposisjon</td><td style="text-align:right;font-weight:600">${s.compositionPct ?? 0}%</td></tr>
+        <tr><td style="padding:6px 0;color:#888">Honorar</td><td style="text-align:right;font-weight:600">${fee}</td></tr>
+        ${(s.contributions || []).length ? `<tr><td style="padding:6px 0;color:#888">Bidrag</td><td style="text-align:right;font-weight:600">${s.contributions.join(", ")}</td></tr>` : ""}
+        <tr><td style="padding:6px 0;color:#888">Signert</td><td style="text-align:right">${when}</td></tr>
+      </table>
+      <p style="margin:16px 0 0;padding:10px 12px;background:#f5f5f7;border-radius:8px;color:#666;font-size:12px">
+        Elektronisk signatur (enkel). Integritetskontroll (SHA-256):<br><code style="word-break:break-all">${sig.signatureHash}</code>
+      </p>
+      <p style="margin:12px 0 0;color:#888;font-size:12px">Ta vare på denne e-posten som kvittering. Endres vilkårene må alle signere på nytt.</p></div>`;
+    const text = `Signatur bekreftet. ${signerName} har signert «${title}».\nMaster ${s.masterPct ?? 0}% · Komposisjon ${s.compositionPct ?? 0}% · Honorar ${fee}\nSignert: ${when}\nIntegritetskontroll (SHA-256): ${sig.signatureHash}`;
+    await sendEmail({ to, subject, html, text, kind: "audio_split_signature_receipt" });
   }
 
   app.post("/api/audio-showcases/:id/split-sheet/sign", async (req, res) => {
@@ -1010,7 +1085,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     try {
       const ss = await pool.query(`SELECT id FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
       if (ss.rowCount === 0) return res.status(404).json({ error: "not_found" });
-      const out = await signContributor(ss.rows[0].id, contributorId, signature, clientIp(req), String(req.headers["user-agent"] || ""));
+      const out = await signContributor(ss.rows[0].id, contributorId, signature, clientIp(req), String(req.headers["user-agent"] || ""), { signatureImage: req.body?.signatureImage, method: str(req.body?.signatureMethod, 12) });
       if (!out) return res.status(404).json({ error: "contributor_not_found" });
       return res.json({ ok: true, signed: out });
     } catch (e) {
@@ -1214,6 +1289,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-review-shared/:token/comments", async (req, res) => {
     const token = str(req.params.token, 80);
     if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    if (isHoneypot(req)) return res.json({ ok: true });
     if (rateLimited(`shc:${clientIp(req)}`)) return res.status(429).json({ error: "rate_limited" });
     const versionId = str(req.body?.versionId, 64);
     const body = str(req.body?.body, 4000);
@@ -1272,6 +1348,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-review-shared/:token/sign", async (req, res) => {
     const token = str(req.params.token, 80);
     if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    if (isHoneypot(req)) return res.json({ ok: true });
     if (rateLimited(`sign:${clientIp(req)}`)) return res.status(429).json({ error: "rate_limited" });
     const signature = str(req.body?.signature, 200);
     if (!signature) return res.status(400).json({ error: "signature_required" });
@@ -1283,12 +1360,277 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       if (ss.rowCount === 0) return res.status(409).json({ error: "no_split_sheet" });
       const c = await pool.query(`SELECT id FROM split_sheet_contributors WHERE split_sheet_id=$1 AND name=$2 LIMIT 1`, [ss.rows[0].id, ctx.name]);
       if (c.rowCount === 0) return res.status(404).json({ error: "not_a_party" });
-      const out = await signContributor(ss.rows[0].id, c.rows[0].id, signature, clientIp(req), String(req.headers["user-agent"] || ""));
+      const out = await signContributor(ss.rows[0].id, c.rows[0].id, signature, clientIp(req), String(req.headers["user-agent"] || ""), { signatureImage: req.body?.signatureImage, method: str(req.body?.signatureMethod, 12) });
       return res.json({ ok: true, signed: out });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       return res.status(500).json({ error: "shared_sign_failed" });
     }
+  });
+
+  // ── Signert avtaledokument (PDF) — branded, profesjonelt oppsett ───────────
+  const FEE_LABEL: Record<string, string> = { royalty: "Royalty", flat: "Fast honorar", hybrid: "Royalty + honorar", buyout: "Buyout", session: "Sesjonshonorar" };
+  type Brand = { name: string; accent: string; logo: Buffer | null };
+  function buildAgreementPdf(title: string, status: string, contributors: any[], agreementId: string, brand: Brand, cover?: Buffer | null): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ size: "A4", margin: 0, bufferPages: true, info: { Title: `Splittavtale – ${title}`, Author: "CreatorHub" } });
+      const chunks: Buffer[] = [];
+      doc.on("data", (c: Buffer) => chunks.push(c));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+
+      const F = pdfFonts();
+      doc.registerFont("Sans", F.regular);
+      doc.registerFont("Sans-Bold", F.bold);
+      doc.registerFont("Sans-Oblique", F.oblique);
+
+      const PW = 595.28, PH = 841.89, L = 50, R = 545, W = R - L;
+      const ACCENT = brand.accent || "#FF6B35", INK = "#16110b", GREY = "#6b665e", FAINT = "#a8a298",
+        LINE = "#e7e3db", CREAM = "#faf8f4", GREEN = "#1a7a4a", GREENBG = "#e8f4ee", AMBER = "#a8670a", AMBERBG = "#fbf0df", RED = "#b00020";
+
+      const pill = (x: number, y: number, text: string, bg: string, fg: string): number => {
+        doc.font("Sans-Bold").fontSize(7.5);
+        const w = doc.widthOfString(text) + 16;
+        doc.roundedRect(x, y, w, 15, 7.5).fill(bg);
+        doc.fillColor(fg).text(text, x + 8, y + 4, { lineBreak: false });
+        return w;
+      };
+
+      // ── HEADER ──
+      doc.rect(0, 0, PW, 7).fill(ACCENT);
+      let logoOk = false;
+      if (brand.logo) { try { doc.image(brand.logo, L, 28, { fit: [34, 34], align: "left", valign: "center" }); logoOk = true; } catch { logoOk = false; } }
+      if (!logoOk) { doc.roundedRect(L, 30, 30, 30, 8).fill(INK); doc.fillColor(ACCENT).font("Sans-Bold").fontSize(17).text("C", L, 38, { width: 30, align: "center" }); }
+      const wordmark = brand.name || "CreatorHub";
+      doc.fillColor(INK).font("Sans-Bold").fontSize(13).text(wordmark, L + 44, 34, { lineBreak: false });
+      doc.fillColor(GREY).font("Sans").fontSize(9).text(brand.name ? "Audio Showcase" : "Audio Showcase", L + 44, 50, { lineBreak: false });
+      doc.fillColor(FAINT).font("Sans-Bold").fontSize(8).text("AVTALEDOKUMENT", L, 36, { width: W, align: "right" });
+      doc.fillColor(GREY).font("Sans").fontSize(8).text(`Ref. ${agreementId}`, L, 49, { width: W, align: "right" });
+
+      // ── TITTEL (+ cover-bilde av låta hvis det finnes) ──
+      let y = 92;
+      let coverOk = false;
+      if (cover) { try { doc.save(); doc.roundedRect(R - 62, y - 2, 62, 62, 8).clip(); doc.image(cover, R - 62, y - 2, { fit: [62, 62], align: "center", valign: "center" }); doc.restore(); doc.roundedRect(R - 62, y - 2, 62, 62, 8).lineWidth(0.75).stroke(LINE); coverOk = true; } catch { coverOk = false; } }
+      const titleW = coverOk ? W - 74 : W;
+      doc.fillColor(INK).font("Sans-Bold").fontSize(23).text("Splitt- og bidragsavtale", L, y, { width: titleW });
+      doc.fillColor(GREY).font("Sans").fontSize(13).text(title, L, doc.y + 1, { width: titleW });
+      y = Math.max(doc.y + 12, coverOk ? 92 + 62 + 6 : doc.y + 12);
+
+      const signedCount = contributors.filter((c) => c.signed_at).length;
+      const full = status === "completed" || (contributors.length > 0 && signedCount >= contributors.length);
+      pill(L, y, full ? "FULLT SIGNERT" : signedCount > 0 ? `${signedCount}/${contributors.length} SIGNERT` : "IKKE SIGNERT", full ? GREENBG : AMBERBG, full ? GREEN : AMBER);
+      doc.fillColor(FAINT).font("Sans").fontSize(8.5).text(`Generert ${new Date().toLocaleString("no-NO")}`, L, y + 3.5, { width: W, align: "right" });
+      y += 30;
+
+      const masterTotal = Math.round(contributors.reduce((a, c) => a + Number(c.percentage || 0), 0) * 100) / 100;
+      const compTotal = Math.round(contributors.reduce((a, c) => a + Number(c.custom_fields?.compositionPct || 0), 0) * 100) / 100;
+
+      // ── TABELL: parter og fordeling ──
+      doc.fillColor(INK).font("Sans-Bold").fontSize(11).text("Parter og fordeling", L, y); y = doc.y + 8;
+      const CX = { name: L + 10, master: 210, comp: 268, fee: 326, status: 452 };
+      const drawHead = () => {
+        doc.rect(L, y, W, 22).fill(INK);
+        doc.fillColor("#fff").font("Sans-Bold").fontSize(7.5);
+        doc.text("PART", CX.name, y + 7.5, { lineBreak: false });
+        doc.text("MASTER", CX.master, y + 7.5, { width: 50, align: "right" });
+        doc.text("KOMP.", CX.comp, y + 7.5, { width: 50, align: "right" });
+        doc.text("HONORAR", CX.fee, y + 7.5, { width: 118, align: "right" });
+        doc.text("STATUS", CX.status, y + 7.5, { width: 83, align: "right" });
+        y += 22;
+      };
+      drawHead();
+      contributors.forEach((c, i) => {
+        const RH = 32;
+        if (y + RH > PH - 70) { doc.addPage(); y = 60; drawHead(); }
+        const cf = c.custom_fields || {};
+        if (i % 2 === 1) doc.rect(L, y, W, RH).fill(CREAM);
+        doc.fillColor(INK).font("Sans-Bold").fontSize(9.5).text(c.name || "—", CX.name, y + 7, { width: 150, lineBreak: false, ellipsis: true });
+        const sub = [c.role, ...((cf.contributions || []))].filter(Boolean).join(" · ") || "—";
+        doc.fillColor(GREY).font("Sans").fontSize(7.5).text(sub, CX.name, y + 19, { width: 150, lineBreak: false, ellipsis: true });
+        doc.fillColor(INK).font("Sans").fontSize(10);
+        doc.text(`${Number(c.percentage) || 0}%`, CX.master, y + 11, { width: 50, align: "right" });
+        doc.text(`${Number(cf.compositionPct) || 0}%`, CX.comp, y + 11, { width: 50, align: "right" });
+        const feeStr = Number(cf.feeAmount) > 0 ? `${Number(cf.feeAmount).toLocaleString("no-NO")} ${cf.feeCurrency || "NOK"}` : "—";
+        doc.fontSize(9.5).text(feeStr, CX.fee, y + 7, { width: 118, align: "right" });
+        if (Number(cf.feeAmount) > 0) doc.fillColor(FAINT).fontSize(6.5).text(FEE_LABEL[cf.feeType] || cf.feeType || "royalty", CX.fee, y + 19, { width: 118, align: "right" });
+        const pl = c.signed_at ? { t: "Signert", bg: GREENBG, fg: GREEN } : { t: "Venter", bg: AMBERBG, fg: AMBER };
+        doc.font("Sans-Bold").fontSize(7.5);
+        const pw = doc.widthOfString(pl.t) + 16;
+        pill(R - 10 - pw, y + 8.5, pl.t, pl.bg, pl.fg);
+        y += RH;
+        doc.strokeColor(LINE).lineWidth(0.5).moveTo(L, y).lineTo(R, y).stroke();
+      });
+      // Sum-rad
+      const balanced = Math.abs(masterTotal - 100) < 0.01;
+      doc.rect(L, y, W, 24).fill(balanced ? GREENBG : "#fdeceb");
+      doc.fillColor(INK).font("Sans-Bold").fontSize(8.5).text("SUM", CX.name, y + 8, { lineBreak: false });
+      doc.fillColor(balanced ? GREEN : RED).fontSize(10).text(`${masterTotal}%`, CX.master, y + 7.5, { width: 50, align: "right" });
+      doc.text(`${compTotal}%`, CX.comp, y + 7.5, { width: 50, align: "right" });
+      if (!balanced) doc.fillColor(RED).font("Sans").fontSize(7).text("master ≠ 100%", CX.fee, y + 8.5, { width: 118, align: "right" });
+      y += 24 + 26;
+
+      // ── SIGNATURER ──
+      if (y > PH - 140) { doc.addPage(); y = 60; }
+      doc.fillColor(INK).font("Sans-Bold").fontSize(11).text("Signaturer", L, y); y = doc.y + 8;
+      const signed = contributors.filter((c) => c.signed_at);
+      if (!signed.length) {
+        doc.fillColor(GREY).font("Sans").fontSize(9.5).text("Ingen parter har signert ennå.", L, y); y = doc.y + 4;
+      }
+      signed.forEach((c) => {
+        const sd = c.signature_data || {}; const CH = 56;
+        if (y + CH > PH - 70) { doc.addPage(); y = 60; }
+        doc.roundedRect(L, y, W, CH, 8).fillAndStroke(CREAM, LINE);
+        doc.fillColor(INK).font("Sans-Bold").fontSize(10).text(sd.name || c.name, L + 14, y + 11, { width: 280, lineBreak: false, ellipsis: true });
+        doc.fillColor(GREEN).font("Sans").fontSize(8).text(`Elektronisk signatur · ${new Date(c.signed_at).toLocaleString("no-NO")}`, L + 14, y + 26, { lineBreak: false });
+        if (sd.signatureHash) doc.fillColor(FAINT).font("Sans").fontSize(6.5).text(`SHA-256: ${sd.signatureHash}`, L + 14, y + 40, { width: W - 28, lineBreak: false });
+        // Signatur til høyre: tegnet/typografert bilde hvis levert, ellers stilisert navn.
+        let imgOk = false;
+        if (sd.signatureImage && typeof sd.signatureImage === "string" && sd.signatureImage.startsWith("data:image/png;base64,")) {
+          try { doc.image(Buffer.from(sd.signatureImage.split(",")[1], "base64"), R - 174, y + 6, { fit: [160, 30], align: "right", valign: "bottom" }); imgOk = true; } catch { imgOk = false; }
+        }
+        if (!imgOk) doc.fillColor(INK).font("Sans-Oblique").fontSize(16).text(sd.name || c.name, R - 214, y + 16, { width: 200, align: "right" });
+        doc.strokeColor(LINE).lineWidth(0.75).moveTo(R - 214, y + 40).lineTo(R - 14, y + 40).stroke();
+        y += CH + 8;
+      });
+
+      // ── JURIDISK NOTE ──
+      y += 6;
+      if (y > PH - 124) { doc.addPage(); y = 60; }
+      doc.roundedRect(L, y, W, 96, 8).fill(CREAM);
+      doc.fillColor(INK).font("Sans-Bold").fontSize(8.5).text("Om signaturen", L + 14, y + 11, { lineBreak: false });
+      doc.fillColor(GREY).font("Sans").fontSize(8).text(
+        "Avtalen er inngått med enkel elektronisk signatur. Hver part har bekreftet sin andel ved aktivt samtykke, og hver " +
+        "signatur er bundet til en SHA-256 integritetskontroll over de nøyaktige vilkårene på signeringstidspunktet. Endres " +
+        "vilkårene oppheves alle signaturer, og partene må signere på nytt. Personopplysninger (navn, tidspunkt, IP-adresse og " +
+        "signatur) behandles for å inngå og dokumentere avtalen (GDPR art. 6(1)(b)); partene kan be om innsyn eller sletting. " +
+        "Dokumentet er ment som etterprøvbart bevis på enighet om fordeling av master- (Gramo) og komposisjonsrettigheter (TONO).",
+        L + 14, y + 24, { width: W - 28, align: "left", lineGap: 1 });
+
+      // ── FOTER på hver side ──
+      const range = doc.bufferedPageRange();
+      for (let i = 0; i < range.count; i++) {
+        doc.switchToPage(range.start + i);
+        doc.strokeColor(LINE).lineWidth(0.5).moveTo(L, PH - 38).lineTo(R, PH - 38).stroke();
+        doc.fillColor(FAINT).font("Sans").fontSize(7.5).text(`${brand.name || "CreatorHub"} · Audio Showcase — etterprøvbart avtaledokument`, L, PH - 30, { lineBreak: false });
+        doc.fillColor(FAINT).text(`Ref. ${agreementId}   ·   Side ${i + 1}/${range.count}`, L, PH - 30, { width: W, align: "right" });
+      }
+      doc.end();
+    });
+  }
+  // Hent produsentens branding. Kilde-prioritet:
+  //   1) Audio Showcase-override (audio_showcase_branding, valgfri)
+  //   2) Universell business-branding fra Universal Dashboard (getBrandingForUser)
+  //   3) CreatorHub fallback-logo
+  // Hent bilde-bytes fra B2/https/data-URL/relativ asset (for PDF-innbygging).
+  async function fetchImageBytes(rawUrl?: string | null): Promise<Buffer | null> {
+    if (!rawUrl) return null;
+    let url = rawUrl;
+    if (url.startsWith("/")) url = APP_URL + url; // relativ asset → absolutt
+    try {
+      if (url.startsWith("data:image")) return Buffer.from(url.split(",")[1] || "", "base64");
+      if (/^https?:\/\//.test(url)) { const r = await fetch(url); if (r.ok) return Buffer.from(await r.arrayBuffer()); }
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  async function loadBrand(userId: string): Promise<{ name: string; accent: string; logo: Buffer | null }> {
+    const r = await pool.query(`SELECT brand_name, logo_url, accent_color FROM audio_showcase_branding WHERE user_id=$1 LIMIT 1`, [userId]).catch(() => ({ rows: [] as any[] }));
+    const ov = r.rows[0] || {};
+    let uni: { businessName?: string; logoUrl?: string; accentColor?: string } = {};
+    if (getBrandingForUser) { try { uni = (await getBrandingForUser(userId)) || {}; } catch { uni = {}; } }
+    const hex = (v?: string) => (/^#[0-9a-fA-F]{6}$/.test(v || "") ? (v as string) : "");
+    const name = ov.brand_name || uni.businessName || "";
+    const accent = hex(ov.accent_color) || hex(uni.accentColor) || "";
+    const logo = await fetchImageBytes(ov.logo_url || uni.logoUrl || "");
+    return { name, accent, logo: logo || fallbackLogo() };
+  }
+
+  async function agreementPdfResponse(res: any, ssId: string, title: string) {
+    const ss = await pool.query(`SELECT status, user_id, metadata->>'sourceReviewId' AS review_id FROM split_sheets WHERE id=$1 LIMIT 1`, [ssId]);
+    if (ss.rowCount === 0) return res.status(404).json({ error: "no_split_sheet" });
+    const c = await pool.query(`SELECT name, role, percentage, signed_at, custom_fields, signature_data FROM split_sheet_contributors WHERE split_sheet_id=$1 ORDER BY order_index ASC`, [ssId]);
+    const agreementId = String(ssId).replace(/-/g, "").slice(0, 8).toUpperCase();
+    const brand = await loadBrand(ss.rows[0].user_id);
+    // Cover-bilde av låta (hvis prosjektet har det) → vises i avtalen.
+    let cover: Buffer | null = null;
+    if (ss.rows[0].review_id) {
+      const pr = await pool.query(`SELECT cover_url FROM audio_review_projects WHERE id=$1::uuid LIMIT 1`, [ss.rows[0].review_id]).catch(() => ({ rows: [] as any[] }));
+      cover = await fetchImageBytes(pr.rows[0]?.cover_url);
+    }
+    const pdf = await buildAgreementPdf(title, ss.rows[0].status, c.rows, agreementId, brand, cover);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="splittavtale-${(title || "avtale").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf"`);
+    return res.end(pdf);
+  }
+
+  // Per-produsent branding (egen logo/navn/farge på avtaledokumenter).
+  app.get("/api/audio-showcase/branding", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const r = await pool.query(`SELECT brand_name, logo_url, accent_color FROM audio_showcase_branding WHERE user_id=$1 LIMIT 1`, [s.userId]);
+      const b = r.rows[0] || {};
+      return res.json({ brandName: b.brand_name || "", logoUrl: b.logo_url || "", accentColor: b.accent_color || "" });
+    } catch (e) { if (isMissingTable(e)) return res.json({ brandName: "", logoUrl: "", accentColor: "" }); return res.status(500).json({ error: "branding_get_failed" }); }
+  });
+  app.put("/api/audio-showcase/branding", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const brandName = str(req.body?.brandName, 120) || null;
+    const logoUrl = str(req.body?.logoUrl, 3_000_000) || null;
+    const ac = str(req.body?.accentColor, 9);
+    const accentColor = /^#[0-9a-fA-F]{6}$/.test(ac) ? ac : null;
+    try {
+      await pool.query(
+        `INSERT INTO audio_showcase_branding (user_id, brand_name, logo_url, accent_color, updated_at)
+         VALUES ($1,$2,$3,$4,NOW())
+         ON CONFLICT (user_id) DO UPDATE SET brand_name=$2, logo_url=$3, accent_color=$4, updated_at=NOW()`,
+        [s.userId, brandName, logoUrl, accentColor]);
+      return res.json({ ok: true, brandName: brandName || "", logoUrl: logoUrl || "", accentColor: accentColor || "" });
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "branding_save_failed" }); }
+  });
+
+  // Veiledende honorar-satser (kuratert fra Creos frilanssatser) — utgangspunkt
+  // for honorar i splittarket. Creo har ikke API; tabellen oppdateres manuelt.
+  // Kilde: https://creokultur.no/lonn-og-arbeidsvilkar/frilanssatser/
+  app.get("/api/audio-showcase/rate-guidance", (_req, res) => {
+    res.json({
+      source: "Creo – frilanssatser",
+      sourceUrl: "https://creokultur.no/lonn-og-arbeidsvilkar/frilanssatser/",
+      updated: "2026-05-12",
+      currency: "NOK",
+      markupNote: "Veiledende minstesatser (ikke maks). Næringsdrivende legger normalt til Creos påslag på 38,8 %.",
+      rates: [
+        { key: "studio", label: "Studio / innspilling (fonogram)", amount: 1680, unit: "per time", note: "Minimum 3 timer. Prøvetid faktureres likt." },
+        { key: "concert", label: "Konsert", amount: 6200, unit: "per musiker", note: "Per konsert." },
+        { key: "rehearsal3", label: "Prøve (innkalt, inntil 3 t)", amount: 4650, unit: "fast", note: "Deretter 1 040 kr per time." },
+        { key: "rehearsal_hour", label: "Prøve (innkalt, per time utover 3)", amount: 1040, unit: "per time", note: "" },
+        { key: "prep", label: "Egenøving / forberedelse / admin", amount: 620, unit: "per time", note: "" },
+        { key: "radiotv", label: "Radio/TV-studio (inntil 3 t)", amount: 2291, unit: "fast", note: "" },
+        { key: "tech_day", label: "Scene / teknisk", amount: 5895, unit: "per dag", note: "Inntil 10 timer." },
+      ],
+    });
+  });
+
+  // Eier laster ned signert avtale-PDF.
+  app.get("/api/audio-showcases/:id/agreement.pdf", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const ss = await pool.query(`SELECT s.id, s.title FROM split_sheets s WHERE s.user_id=$1 AND s.metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, str(req.params.id, 64)]);
+      if (ss.rowCount === 0) return res.status(404).json({ error: "no_split_sheet" });
+      return await agreementPdfResponse(res, ss.rows[0].id, ss.rows[0].title);
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "agreement_pdf_failed" }); }
+  });
+
+  // Part laster ned signert avtale-PDF via sin invitasjonslenke.
+  app.get("/api/audio-review-shared/:token/agreement.pdf", async (req, res) => {
+    const token = str(req.params.token, 80);
+    if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    try {
+      const ctx = await resolveSharedMember(token);
+      if (!ctx) return res.status(404).json({ error: "not_found" });
+      const ss = await pool.query(`SELECT id, title FROM split_sheets WHERE metadata->>'sourceReviewId'=$1 LIMIT 1`, [ctx.project_id]);
+      if (ss.rowCount === 0) return res.status(404).json({ error: "no_split_sheet" });
+      return await agreementPdfResponse(res, ss.rows[0].id, ss.rows[0].title);
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "agreement_pdf_failed" }); }
   });
 
   // ══ PUBLISERING (release-pakke) ═══════════════════════════════════════════
