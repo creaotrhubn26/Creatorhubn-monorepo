@@ -109,6 +109,33 @@ function rateLimited(key: string, max = 30, windowMs = 60_000): boolean {
 }
 const clientIp = (req: any): string => (req.headers?.["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || req.socket?.remoteAddress || "?");
 
+// ── Spotify (Client Credentials, server-til-server, token-cachet) ──────────
+// Kun lese-tilgang (søk/artist/album/track + ISRC/UPC-oppslag). Kan IKKE
+// laste opp musikk — det gjør distributøren. Token caches til ~utløp.
+let spotifyTok: { value: string; exp: number } | null = null;
+async function spotifyToken(): Promise<string | null> {
+  const id = process.env.SPOTIFY_CLIENT_ID, secret = process.env.SPOTIFY_CLIENT_SECRET;
+  if (!id || !secret) return null;
+  if (spotifyTok && spotifyTok.exp > Date.now() + 30_000) return spotifyTok.value;
+  try {
+    const r = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: "Basic " + Buffer.from(`${id}:${secret}`).toString("base64") },
+      body: "grant_type=client_credentials",
+    });
+    if (!r.ok) return null;
+    const j: any = await r.json();
+    if (!j?.access_token) return null;
+    spotifyTok = { value: j.access_token, exp: Date.now() + (Number(j.expires_in) || 3600) * 1000 };
+    return spotifyTok.value;
+  } catch { return null; }
+}
+async function spotifyGet(path: string): Promise<any | null> {
+  const tok = await spotifyToken(); if (!tok) return null;
+  try { const r = await fetch(`https://api.spotify.com/v1${path}`, { headers: { Authorization: `Bearer ${tok}` } }); if (!r.ok) return null; return await r.json(); } catch { return null; }
+}
+const spotifyArtistDTO = (a: any) => ({ id: a.id, name: a.name, url: a.external_urls?.spotify || null, image: a.images?.[a.images.length - 1]?.url || a.images?.[0]?.url || null, genres: a.genres || [], followers: a.followers?.total ?? null, popularity: a.popularity ?? null });
+
 // Seksjons-farge per markør-type (matcher frontend SECTION_COLORS-spekteret).
 const PT_SECTION_COLOR: Record<string, string> = {
   intro: "#d6457f", verse: "#3fa7d6", "pre-chorus": "#8aa0b6", chorus: "#FF6B35",
@@ -1396,5 +1423,70 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       res.setHeader("Content-Disposition", `attachment; filename="release-${(rel.title || "release").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.json"`);
       return res.json(manifest);
     } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "package_failed" }); }
+  });
+
+  // Hent eksisterende release for et review-rom UTEN å opprette (for studio-embed).
+  app.get("/api/audio-showcases/:id/release", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const r = await pool.query(`SELECT * FROM audio_releases WHERE review_project_id=$1::uuid AND owner_user_id=$2 ORDER BY created_at DESC LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      return res.json({ release: r.rows[0] || null });
+    } catch (e) { if (isMissingTable(e)) return res.json({ release: null }); return res.status(500).json({ error: "release_get_failed" }); }
+  });
+
+  // ══ SPOTIFY ═══════════════════════════════════════════════════════════════
+  const spotifyOff = (res: any) => res.status(503).json({ error: "spotify_unconfigured" });
+
+  // Artist-søk (offentlig + rate-limitet — brukes også på offentlig profilside).
+  app.get("/api/spotify/search-artist", async (req, res) => {
+    if (rateLimited(`spa:${clientIp(req)}`, 40)) return res.status(429).json({ error: "rate_limited" });
+    const q = str(req.query?.q, 120); if (!q) return res.json({ artists: [] });
+    const d = await spotifyGet(`/search?q=${encodeURIComponent(q)}&type=artist&limit=6`);
+    if (!d) return spotifyOff(res);
+    return res.json({ artists: (d.artists?.items || []).map(spotifyArtistDTO) });
+  });
+
+  // Generelt søk for metadata-berikelse (track/artist/album).
+  app.get("/api/spotify/search", async (req, res) => {
+    if (rateLimited(`sps:${clientIp(req)}`, 40)) return res.status(429).json({ error: "rate_limited" });
+    const q = str(req.query?.q, 160); if (!q) return res.json({ tracks: [], artists: [] });
+    const type = ["track", "artist", "album"].includes(String(req.query?.type)) ? String(req.query.type) : "track";
+    const d = await spotifyGet(`/search?q=${encodeURIComponent(q)}&type=${type}&limit=6`);
+    if (!d) return spotifyOff(res);
+    return res.json({
+      tracks: (d.tracks?.items || []).map((t: any) => ({ id: t.id, name: t.name, url: t.external_urls?.spotify || null, artists: (t.artists || []).map((a: any) => a.name), album: t.album?.name || null, image: t.album?.images?.[0]?.url || null, releaseDate: t.album?.release_date || null, isrc: t.external_ids?.isrc || null })),
+      artists: (d.artists?.items || []).map(spotifyArtistDTO),
+    });
+  });
+
+  // Verifiser om en release er live på Spotify (ISRC → track, ev. UPC → album).
+  app.get("/api/releases/:id/spotify-status", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const r = await pool.query(`SELECT isrc, upc, master_url FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const rel = r.rows[0];
+      if (!process.env.SPOTIFY_CLIENT_ID) return spotifyOff(res);
+      const digits = (v: any) => String(v || "").replace(/\D/g, "");
+      // ISRC er presis: søk gir tracken med external_ids.isrc — verifiser eksakt match.
+      if (rel.isrc) {
+        const norm = String(rel.isrc).replace(/[^a-z0-9]/gi, "").toUpperCase();
+        const d = await spotifyGet(`/search?q=isrc:${encodeURIComponent(norm)}&type=track&limit=5`);
+        const t = (d?.tracks?.items || []).find((x: any) => String(x.external_ids?.isrc || "").toUpperCase() === norm);
+        if (t) return res.json({ live: true, by: "isrc", track: { id: t.id, name: t.name, url: t.external_urls?.spotify || null, album: t.album?.name || null, image: t.album?.images?.[0]?.url || null, releaseDate: t.album?.release_date || null, embedUrl: `https://open.spotify.com/embed/track/${t.id}` } });
+      }
+      // UPC-søk er fuzzy → hent kandidat-albumet og verifiser external_ids.upc eksakt.
+      if (rel.upc) {
+        const target = digits(rel.upc).replace(/^0+/, "");
+        const d = await spotifyGet(`/search?q=upc:${encodeURIComponent(rel.upc)}&type=album&limit=3`);
+        for (const cand of (d?.albums?.items || [])) {
+          const full = await spotifyGet(`/albums/${cand.id}`);
+          if (full && digits(full.external_ids?.upc).replace(/^0+/, "") === target && target) {
+            return res.json({ live: true, by: "upc", album: { id: full.id, name: full.name, url: full.external_urls?.spotify || null, image: full.images?.[0]?.url || null, releaseDate: full.release_date || null, embedUrl: `https://open.spotify.com/embed/album/${full.id}` } });
+          }
+        }
+      }
+      return res.json({ live: false });
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "spotify_status_failed" }); }
   });
 }
