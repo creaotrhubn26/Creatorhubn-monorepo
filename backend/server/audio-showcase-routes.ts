@@ -174,6 +174,22 @@ function buildCanvas(coverPath: string, outPath: string, opts?: { audioPath?: st
   });
 }
 
+// Prosesser et produsent-opplastet klipp til Canvas-spec: 9:16, 1080×1920,
+// trimmet til ~6 s fra startoffset, lyd fjernet (Canvas er stille).
+function buildCanvasFromClip(clipPath: string, outPath: string, opts?: { start?: number }): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const args = [
+      "-y", "-ss", String(Math.max(0, opts?.start || 0)), "-i", clipPath, "-t", "6", "-an",
+      "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p",
+      "-r", "25", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-movflags", "+faststart", outPath,
+    ];
+    const ff = spawn(process.env.FFMPEG_PATH || "ffmpeg", args);
+    let err = ""; ff.stderr.on("data", (d) => { err += d.toString(); });
+    ff.on("error", reject);
+    ff.on("close", (code) => (code === 0 ? resolve() : reject(new Error("ffmpeg_failed: " + err.slice(-400)))));
+  });
+}
+
 // Tid → LRC-stempel [mm:ss.xx]
 const lrcStamp = (sec: number) => { const m = Math.floor(sec / 60), s = sec - m * 60; return `[${String(m).padStart(2, "0")}:${s.toFixed(2).padStart(5, "0")}]`; };
 
@@ -198,6 +214,8 @@ export interface AudioShowcaseDeps {
   // Valgfri: autorisert YouTube-klient for innlogget bruker (gjenbruker eksisterende
   // Google-tilkobling fra youtube-routes). Mangler den → publisering ikke tilgjengelig.
   getYoutubeClient?: (userId: string, req: any) => Promise<{ youtube: any } | null>;
+  // Valgfri: multer (memoryStorage) for opplasting av eget Canvas-klipp.
+  uploadClip?: { single: (field: string) => any };
 }
 
 const isMissingTable = (e: unknown) =>
@@ -323,7 +341,7 @@ const PT_SECTION_COLOR: Record<string, string> = {
 };
 
 export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
-  const { app, pool, requireUserSession, sendInviteEmail, sendEmail, getBrandingForUser, getYoutubeClient } = deps;
+  const { app, pool, requireUserSession, sendInviteEmail, sendEmail, getBrandingForUser, getYoutubeClient, uploadClip } = deps;
   const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
 
   // Send invitasjons-e-post (fire-and-forget) hvis dep + e-post finnes.
@@ -1835,6 +1853,30 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); console.error("[canvas] failed:", e); return res.status(500).json({ error: "canvas_failed" }); }
     finally { for (const f of tmp) unlink(f).catch(() => {}); }
   });
+
+  // Produsenten laster opp sitt EGET klipp → prosesseres til Canvas-spec (9:16, ~6 s, stille).
+  if (uploadClip) {
+    app.post("/api/releases/:id/canvas/from-clip", uploadClip.single("clip"), async (req: any, res) => {
+      const s = requireUserSession(req, res); if (!s) return;
+      const file = req.file;
+      if (!file?.buffer) return res.status(400).json({ error: "clip_required" });
+      if (!/^video\//.test(file.mimetype || "")) return res.status(415).json({ error: "not_a_video" });
+      const tmp: string[] = [];
+      try {
+        const r = await pool.query(`SELECT title FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+        if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+        const base = join(tmpdir(), `canvasclip-${randomUUID()}`);
+        const clipPath = `${base}.in`, outPath = `${base}.mp4`; tmp.push(clipPath, outPath);
+        await writeFile(clipPath, file.buffer);
+        await buildCanvasFromClip(clipPath, outPath, { start: Number(req.body?.start) || 0 });
+        const buf = await import("node:fs/promises").then((m) => m.readFile(outPath));
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Disposition", `attachment; filename="canvas-${(r.rows[0].title || "release").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.mp4"`);
+        return res.end(buf);
+      } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); console.error("[canvas-clip] failed:", e); return res.status(500).json({ error: "canvas_clip_failed" }); }
+      finally { for (const f of tmp) unlink(f).catch(() => {}); }
+    });
+  }
 
   // Tekst-eksport for Musixmatch: ren .txt, eller timed .lrc hvis timing finnes.
   app.get("/api/releases/:id/lyrics-export", async (req, res) => {
