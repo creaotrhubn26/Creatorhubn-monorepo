@@ -24,16 +24,33 @@ import { useEffect, useState } from 'react';
 
 const SUPER_ADMIN_EMAIL = 'daniel@creatorhubn.com';
 const AUTH_USER_KEY = 'creatorhub_auth_user';
+const USER_EMAIL_KEY = 'userEmail';
 
+/**
+ * Leser email fra localStorage med 2 fallbacks:
+ *   1. creatorhub_auth_user.email (full user-objekt, normal vei)
+ *   2. localStorage.userEmail (string, settes av useAuth.storeAuth som
+ *      separat fallback — Daniels prod-session hadde KUN denne i 06/2026)
+ */
 function readLocalEmail(): string | null {
   if (typeof window === 'undefined') return null;
   try {
+    // 1) Full user-objekt
     const raw = window.localStorage.getItem(AUTH_USER_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { email?: unknown } | null;
-    if (!parsed || typeof parsed !== 'object') return null;
-    const email = typeof parsed.email === 'string' ? parsed.email.trim().toLowerCase() : '';
-    return email || null;
+    if (raw) {
+      const parsed = JSON.parse(raw) as { email?: unknown } | null;
+      const email = parsed && typeof parsed.email === 'string'
+        ? parsed.email.trim().toLowerCase()
+        : '';
+      if (email) return email;
+    }
+    // 2) Direkte userEmail-streng (samme som useAuth.USER_EMAIL_KEY)
+    const direct = window.localStorage.getItem(USER_EMAIL_KEY);
+    if (direct && typeof direct === 'string') {
+      const trimmed = direct.trim().toLowerCase();
+      if (trimmed && trimmed.includes('@')) return trimmed;
+    }
+    return null;
   } catch {
     return null;
   }
