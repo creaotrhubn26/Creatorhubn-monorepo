@@ -145,17 +145,27 @@ function lyricLines(lyrics: string): string[] {
   return lyrics.replace(/\r/g, "").split("\n").map((l) => l.trim()).filter((l) => l && !/^\[[^\]]*\]$/.test(l));
 }
 
-// Spotify Canvas: 9:16, ~6 s loop fra coveret (uskarp bakgrunn m/ sakte zoom +
-// skarpt sentrert cover). Stille, MP4. Lastes opp manuelt i Spotify for Artists.
-function buildCanvas(coverPath: string, outPath: string): Promise<void> {
+// Spotify Canvas: 9:16, ~6 s SØMLØS loop fra coveret. Uskarp bakgrunn + skarpt
+// cover som driver sinusformet (perfekt loop, ingen «hopp»). Med audioPath legges
+// et audio-reaktivt bølgelag i merkefargen nederst. Stille MP4 (Canvas har ikke lyd).
+function buildCanvas(coverPath: string, outPath: string, opts?: { audioPath?: string; audioStart?: number; accentHex?: string }): Promise<void> {
   return new Promise((resolve, reject) => {
+    const P = 6; // loop-periode = klipplengde → sømløst
+    const accent = (opts?.accentHex && /^#[0-9a-fA-F]{6}$/.test(opts.accentHex)) ? "0x" + opts.accentHex.slice(1) : "0xffffff";
+    const driftX = `(W-w)/2+22*sin(2*PI*t/${P})`;
+    const driftY = `(H-h)/2+26*sin(2*PI*t/${P}+1.6)`;
+    const inputs = ["-loop", "1", "-i", coverPath];
+    if (opts?.audioPath) inputs.push("-ss", String(Math.max(0, opts.audioStart || 0)), "-t", String(P), "-i", opts.audioPath);
+    const layers =
+      `[0:v]scale=1300:2300:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20,eq=brightness=-0.16[bg];` +
+      `[0:v]scale=920:920:force_original_aspect_ratio=decrease[cv];`;
+    const fc = opts?.audioPath
+      ? `${layers}[bg][cv]overlay=x='${driftX}':y='${driftY}'[base];[1:a]showwaves=s=1080x200:mode=cline:colors=${accent}:rate=25,format=rgba,colorchannelmixer=aa=0.55[w];[base][w]overlay=x=0:y=H-260,format=yuv420p[v]`
+      : `${layers}[bg][cv]overlay=x='${driftX}':y='${driftY}',format=yuv420p[v]`;
     const args = [
-      "-y", "-loop", "1", "-i", coverPath, "-t", "6", "-r", "25",
-      "-filter_complex",
-      `[0:v]scale=1300:2300:force_original_aspect_ratio=increase,crop=1300:2300,zoompan=z='min(zoom+0.0004,1.08)':d=150:s=1080x1920:fps=25,boxblur=20,eq=brightness=-0.12[bg];` +
-      `[0:v]scale=900:900:force_original_aspect_ratio=decrease[fg];` +
-      `[bg][fg]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p[v]`,
-      "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-movflags", "+faststart", outPath,
+      "-y", ...inputs, "-t", String(P), "-r", "25",
+      "-filter_complex", fc, "-map", "[v]",
+      "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-movflags", "+faststart", outPath,
     ];
     const ff = spawn(process.env.FFMPEG_PATH || "ffmpeg", args);
     let err = ""; ff.stderr.on("data", (d) => { err += d.toString(); });
@@ -1801,14 +1811,23 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const s = requireUserSession(req, res); if (!s) return;
     const tmp: string[] = [];
     try {
-      const r = await pool.query(`SELECT cover_url, title FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      const r = await pool.query(`SELECT cover_url, title, master_url FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const cover = (await fetchImageBytes(r.rows[0].cover_url)) || fallbackLogo();
       if (!cover) return res.status(422).json({ error: "no_cover" });
       const base = join(tmpdir(), `canvas-${randomUUID()}`);
       const coverPath = `${base}.png`, outPath = `${base}.mp4`; tmp.push(coverPath, outPath);
       await writeFile(coverPath, cover);
-      await buildCanvas(coverPath, outPath);
+      // Valgfritt: audio-reaktivt bølgelag fra masteren + merkefarge.
+      let audioPath: string | undefined; let audioStart = 0;
+      const audio = await fetchImageBytes(r.rows[0].master_url);
+      if (audio) {
+        const ap = `${base}.audio`; tmp.push(ap); await writeFile(ap, audio);
+        const dur = await probeDuration(ap); // verifiser at fila faktisk er lyd
+        if (dur > 0) { audioPath = ap; audioStart = Math.min(Math.max(0, dur - 6), Math.round(dur * 0.3)); }
+      }
+      const brand = await loadBrand(s.userId);
+      await buildCanvas(coverPath, outPath, { audioPath, audioStart, accentHex: brand.accent || undefined });
       const buf = await import("node:fs/promises").then((m) => m.readFile(outPath));
       res.setHeader("Content-Type", "video/mp4");
       res.setHeader("Content-Disposition", `attachment; filename="canvas-${(r.rows[0].title || "release").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.mp4"`);
