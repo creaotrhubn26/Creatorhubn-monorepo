@@ -860,7 +860,7 @@ import {
 import { createWebSocketServer, broadcastChatEventToUser } from "./websocket-chat.js";
 import { createDanceRealtimeServer } from "./dance-realtime-server.js";
 import { createReferenceProxyRouter } from "./reference-proxy-routes.js";
-import { createYouTubeRouter } from "./youtube-routes.js";
+import { createYouTubeRouter, buildAuthorizedYoutubeClient } from "./youtube-routes.js";
 import {
   deletePersistedAuthSession,
   hydratePersistedAuthSessions,
@@ -70369,6 +70369,11 @@ setupAudioShowcaseRoutes({
       const b = await getStoredBusinessBrandingInfo(userId);
       return { businessName: b?.businessName || "", logoUrl: b?.customLogo || "", accentColor: b?.brandingColor || "" };
     } catch { return null; }
+  },
+  // Gjenbruk eksisterende YouTube-tilkobling (Google) for video-publisering.
+  getYoutubeClient: async (userId, req) => {
+    try { const { youtube } = await buildAuthorizedYoutubeClient(pool, userId, req); return { youtube }; }
+    catch { return null; }
   },
 });
 
