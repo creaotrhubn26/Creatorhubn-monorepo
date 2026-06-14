@@ -336,6 +336,12 @@ def _build_scene_comp(comp, scene, idx, total, fps, brand, dur, report):
         built["nodes"].append("Vignette")
         last = _merge_over(last, vig, 3, 2)
 
+    # 4c) Myk blur-overgang ved klipp-grensene
+    blurred = _transition_blur(comp, last, dur, fps, idx, total, report)
+    if blurred is not last:
+        built["nodes"].append("TransitionBlur")
+        last = blurred
+
     # 5) Reveal (fade fra/til svart, kun første/siste) — øverst på skjermen
     rev = _build_reveal(comp, dur, fps, idx, total, force=cam_keys.get("reveal", False),
                         report=report)
@@ -390,14 +396,33 @@ def _build_caption(comp, text, dur, fps, brand, report):
             _connect(bm, "Foreground", txt, report)
             bar_out = bm
 
-    # Slide-up + fade-in via Transform foran gruppen
+    # Kinetisk accent-understrek som «wiper» inn under teksten
+    uline = _add(comp, "Background", 0, 2, report)
+    umask = _add(comp, "RectangleMask", -1, 2, report)
+    if uline and umask and bar_out:
+        for i, ch in enumerate(("TopLeftRed", "TopLeftGreen", "TopLeftBlue")):
+            _set(uline, ch, brand["accent"][i], report)
+        _set(uline, "TopLeftAlpha", 1.0, report)
+        _set(umask, "Center", [0.5, 0.115], report)
+        _set(umask, "Height", 0.006, report)
+        _set(umask, "CornerRadius", 1.0, report)
+        _connect(uline, "EffectMask", umask, report)
+        intro_u = max(2, int(round(0.45 * fps)))
+        _kf_scalar(comp, umask, "Width", [(0, 0.0), (intro_u, 0.34)], report)
+        um = _add(comp, "Merge", 1, 1, report)
+        if um:
+            _connect(um, "Background", bar_out, report)
+            _connect(um, "Foreground", uline, report)
+            bar_out = um
+
+    # Slide-up + fade-in + scale-pop via Transform foran gruppen
     anim = _add(comp, "Transform", 2, 2, report)
     if anim and bar_out:
         _connect(anim, "Input", bar_out, report)
         intro = max(2, int(round(0.5 * fps)))
-        # slide opp (Center.y -0.06 → 0) + alpha-blend 0 → 1
         _kf_point(comp, anim, "Center", [(0, [0.5, 0.44]), (intro, [0.5, 0.5])], report)
         _kf_scalar(comp, anim, "Blend", [(0, 0.0), (intro, 1.0)], report)
+        _kf_scalar(comp, anim, "Size", [(0, 0.92), (intro, 1.0)], report)  # pop
         return anim
     return bar_out
 
@@ -756,6 +781,29 @@ def _fx_light_sweep(comp, fx, dur, fps, brand, report):
         _kf_scalar(comp, sweep, "Blend", [(0, 1.0), (dwell, 1.0), (dwell + 1, 0.0)], report)
         out = sweep
     return out, "Light-sweep"
+
+
+def _transition_blur(comp, src, dur, fps, idx, total, report):
+    """Myk blur inn ved klipp-start + ut ved klipp-slutt → «whip/dissolve»-følelse
+    ved kuttene (ekte cross-dissolve mellom klipp finnes ikke i scripting-API-et).
+    Hopper over blur-inn på første scene og blur-ut på siste (reveal tar dem)."""
+    bl = _add(comp, "Blur", 1, 2, report)
+    if not bl:
+        return src
+    _connect(bl, "Input", src, report)
+    t = max(2, int(round(0.18 * fps)))
+    amt = 6.0
+    keys = []
+    if idx > 0:
+        keys += [(0, amt), (t, 0.0)]
+    else:
+        keys += [(0, 0.0)]
+    if idx < total - 1:
+        keys += [(max(t + 1, dur - t), 0.0), (dur, amt)]
+    # bruk XBlurSize (låser Y automatisk); fallback Blur
+    if not _kf_scalar(comp, bl, "XBlurSize", keys, report):
+        _kf_scalar(comp, bl, "Blur", keys, report)
+    return bl
 
 
 def _add_grade(comp, src, report):
