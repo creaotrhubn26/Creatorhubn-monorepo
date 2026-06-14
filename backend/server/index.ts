@@ -501,6 +501,7 @@ import { registerMarketScanRoutes } from "./market-intelligence/market-scan-rout
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
 import { registerMarketIntelAgentRoutes } from "./market-intelligence/market-intel-agent-routes.js";
 import { registerLearningLoopRoutes } from "./market-intelligence/learning-loop-routes.js";
+import { registerLeadMapCampaignRoutes } from "./market-intelligence/lead-map-campaign-routes.js";
 import {
   upsertRenewalFromStripeSubscription as upsertCsRenewalFromStripe,
   markRenewalChurnedForStripeSubscription as markCsRenewalChurned,
@@ -24204,6 +24205,13 @@ registerMarketIntelAgentRoutes({
 });
 // MI Læringsløkke (Fase 6 — analytics feedback)
 registerLearningLoopRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// MI Fase 7 — Lead Map kampanjer (kategoribasert outreach + analytics)
+registerLeadMapCampaignRoutes({
   app,
   pool,
   activeSessions,

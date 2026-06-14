@@ -32,12 +32,23 @@ import type {
   OpportunityRecommendation,
 } from "./types.js";
 import { listWorkflowsForUser, type MarketingWorkflow } from "./marketing-cockpit-sync-service.js";
+import {
+  listCampaigns,
+  getCampaignAggregate,
+  type LeadMapCampaign,
+  type CampaignStatusAggregate,
+} from "./lead-map-campaign-service.js";
 
 export interface MarketIntelAgentContext {
   brandKit: BrandKitBaseline | null;
   recentScans: MarketScan[];
   topOpportunities: OpportunityRecommendation[];
   activeWorkflows: MarketingWorkflow[];
+  /** Aktive Lead Map-kampanjer m/ status-aggregat */
+  leadMapCampaigns: Array<{
+    campaign: LeadMapCampaign;
+    aggregate: CampaignStatusAggregate | null;
+  }>;
   /** Ferdig-formattert string klar for injection i system-prompt */
   promptInjectionText: string;
 }
@@ -112,12 +123,26 @@ export async function getMarketIntelAgentContext(
     )
     .slice(0, args.maxWorkflows ?? 5);
 
-  // 5. Build prompt-injection text
+  // 5. Lead Map-kampanjer (aktive) m/ status-aggregat
+  const activeCampaigns = await listCampaigns(pool, {
+    workspaceOwnerUserId: args.workspaceOwnerUserId,
+    status: "active",
+    limit: 5,
+  });
+  const leadMapCampaigns = await Promise.all(
+    activeCampaigns.map(async (c) => ({
+      campaign: c,
+      aggregate: await getCampaignAggregate(pool, c.id).catch(() => null),
+    })),
+  );
+
+  // 6. Build prompt-injection text
   const promptInjectionText = buildPromptInjectionText({
     brandKit,
     recentScans: completedScans,
     topOpportunities,
     activeWorkflows,
+    leadMapCampaigns,
   });
 
   return {
@@ -125,6 +150,7 @@ export async function getMarketIntelAgentContext(
     recentScans: completedScans,
     topOpportunities,
     activeWorkflows,
+    leadMapCampaigns,
     promptInjectionText,
   };
 }
@@ -134,6 +160,7 @@ function buildPromptInjectionText(args: {
   recentScans: MarketScan[];
   topOpportunities: OpportunityRecommendation[];
   activeWorkflows: MarketingWorkflow[];
+  leadMapCampaigns: Array<{ campaign: LeadMapCampaign; aggregate: CampaignStatusAggregate | null }>;
 }): string {
   const sections: string[] = [];
 
@@ -192,6 +219,23 @@ function buildPromptInjectionText(args: {
     }
   }
 
+  // Lead Map-kampanjer (kategoribasert lead-konvertering)
+  if (args.leadMapCampaigns.length > 0) {
+    sections.push("");
+    sections.push("AKTIVE LEAD MAP-KAMPANJER (kategoribaserte outreach-pipeline):");
+    for (const { campaign: c, aggregate: agg } of args.leadMapCampaigns) {
+      sections.push(`  · "${c.name}" (kategori: ${c.filterCategory ?? "alle"}, region: ${c.filterRegion ?? "alle"}, by: ${c.filterCity ?? "alle"})`);
+      if (agg) {
+        sections.push(`      Pipeline: ${agg.pipelineProgress.unvisited} ikke kontaktet · ${agg.pipelineProgress.contacted} kontaktet · ${agg.pipelineProgress.interested} interessert · ${agg.pipelineProgress.meetingBooked} møter · ${agg.pipelineProgress.proposalSent} tilbud · ${agg.pipelineProgress.won} vunnet`);
+        sections.push(`      Mål: ${agg.totalMatchingLeads}/${c.targetTotalLeads} leads (${agg.goalProgress.totalLeadsPct}%) · ${agg.pipelineProgress.won}/${c.targetWonLeads} vunnet (${agg.goalProgress.wonLeadsPct}%)`);
+        sections.push(`      Conversion: kontakt→interessert ${agg.conversionRate.contactToInterested}% · interessert→møte ${agg.conversionRate.interestedToMeeting}% · møte→vunnet ${agg.conversionRate.meetingToWon}%`);
+        if (agg.reEngagementCandidates > 0) {
+          sections.push(`      ⚠️ ${agg.reEngagementCandidates} declined leads klare for re-engagement (etter ${c.reEngagementDays} dager)`);
+        }
+      }
+    }
+  }
+
   sections.push("");
   sections.push("INSTRUKSJON FOR AGENTEN:");
   sections.push("  - Bruk denne konteksten til å svare på spørsmål om kampanjer, konkurrenter, anbefalinger.");
@@ -199,6 +243,8 @@ function buildPromptInjectionText(args: {
   sections.push("  - Når brukeren ber om sammenligning: referer til konkrete scans (med id).");
   sections.push("  - Aldri foreslå konkurrenter du ikke har sett i scans-listen.");
   sections.push("  - Hvis brukeren ber om 'lag kampanje for opportunity X': si at de kan klikke 'Lag kampanje'-knappen i Market Intelligence-detail-siden.");
+  sections.push("  - Spørsmål om Lead Map ('hvor mange restauranter er ikke kontaktet?', 'hvilke byer gir mest respons?'): bruk LEAD MAP-KAMPANJER-seksjonen over. Vis konkrete tall.");
+  sections.push("  - Foreslå re-engagement når declined-leads er over re-engagement-vinduet.");
   sections.push("");
   sections.push("===== END MARKET INTELLIGENCE CONTEXT =====");
 
