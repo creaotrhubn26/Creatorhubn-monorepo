@@ -50,7 +50,6 @@ import {
   Person as PersonIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Close as CloseIcon,
   Refresh as RefreshIcon,
   CheckCircle as CheckCircleIcon,
   Send as KlientSendIcon,
