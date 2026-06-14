@@ -251,10 +251,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     if (!aiReady) { setShowSignIn(true); return; }
     setDemoVidBusy(true); setDemoVidResult(null); setDemoVidQa(null); setDemoVidScriptQa(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Forstår + genererer scener…');
     try {
-      // 1) Generér scener hvis vi ikke har dem (generateDemo forstår automatisk først).
+      // 1) Generér scener hvis vi mangler dem ELLER manuset er for en annen URL
+      //    (unngå at forrige videos manus brukes på en ny side).
       let proj = useDemoStudio.getState().project!;
       const hasScenes = proj.scenes.some((s) => !!s.narration?.trim());
-      if (!hasScenes) {
+      const stale = !!proj.scenesUrl && proj.scenesUrl !== proj.url;
+      if (!hasScenes || stale) {
+        if (stale) setDemoVidMsg('Manuset var for en annen side — lager nytt…');
         await generateDemo();
         proj = useDemoStudio.getState().project!; // fersk, etter replaceScenes
       }
@@ -699,6 +702,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         url: project.url, demoType, devices: project.devices, meta, siteContext, elements, goal: project.goal || u?.suggestedGoal, task: project.task,
       });
       replaceScenes(scenes);
+      setProjectField('scenesUrl', project.url); // stemple hvilken URL manuset gjelder
       setGenerated(true);
       setDirectorMsg(`✓ ${scenes.length} scener generert`);
       setNav('script'); // samarbeid: åpne resultatet i Script Builder

@@ -276,6 +276,9 @@ export interface DemoProject {
    *  Director leser for å forstå produktet dypere enn nettsiden alene. */
   productDoc?: string;
   productDocName?: string;
+  /** URL-en scenene/manuset sist ble GENERERT for. Brukes til å oppdage at
+   *  manuset er utdatert (URL byttet) → unngå forrige manus på ny video. */
+  scenesUrl?: string;
   /** Valgt Resolve AI-stemme for voiceover (VoiceModel). Default «Female 1». */
   voiceModel?: string;
   /** Merkevare/white-label for output (interaktiv guide + video). */
