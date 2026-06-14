@@ -842,35 +842,28 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     except Exception as exc:  # noqa: BLE001
         bridge.warn(f"Bin-oppsett feilet, bruker rot: {exc}")
 
-    paths = [s["path"] for s in norm if s["path"] and os.path.isfile(s["path"])]
-    pool_items = []
-    if paths:
-        try:
-            pool_items = media_pool.ImportMedia(paths) or []
-        except Exception as exc:  # noqa: BLE001
-            bridge.error(f"ImportMedia feilet: {exc}")
-            return
-    bridge.log(f"Importerte {len(pool_items)}/{len(paths)} media-filer")
-
-    # map path → pool item. Bygg fra HELE bin-ens klippliste (ikke bare
-    # ImportMedia-returen), siden Resolve dedup'er media som alt er importert →
-    # ImportMedia returnerer da færre items. Slik gjenfinnes scener ved re-kjøring.
+    # VIKTIG: importer hver fil INDIVIDUELT. Numererte filnavn (scene_0.png,
+    # scene_1.png …) blir ellers tolket av Resolve som én BILDE-SEKVENS
+    # (scene_[0-1].png) → bare ett media-item. Én enkelt fil kan aldri bli en
+    # sekvens, så per-fil-import gir korrekt 1:1-mapping path → media-item.
+    unique_paths = []
+    for s in norm:
+        p = s["path"]
+        if p and os.path.isfile(p) and p not in unique_paths:
+            unique_paths.append(p)
     by_path = {}
-    by_name = {}
-    catalog = list(pool_items)
-    try:
-        if demo_bin:
-            catalog += list(demo_bin.GetClipList() or [])
-    except Exception:  # noqa: BLE001
-        pass
-    for it in catalog:
+    imported = 0
+    for p in unique_paths:
         try:
-            fp = it.GetClipProperty("File Path") or ""
-            if fp:
-                by_path[fp] = it
-                by_name[os.path.basename(fp)] = it
-        except Exception:  # noqa: BLE001
-            pass
+            items = media_pool.ImportMedia([p]) or []
+        except Exception as exc:  # noqa: BLE001
+            bridge.warn(f"ImportMedia feilet for {p}: {exc}")
+            continue
+        if items:
+            by_path[p] = items[0]
+            imported += 1
+    pool_items = list(by_path.values())
+    bridge.log(f"Importerte {imported}/{len(unique_paths)} media-filer (individuelt)")
 
     # 3) Lag tom timeline + append klipp med varighet
     try:
@@ -882,11 +875,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
     appended = 0
     for i, s in enumerate(norm):
-        it = None
-        if s["path"]:
-            it = by_path.get(s["path"]) or by_name.get(os.path.basename(s["path"]))
-        if not it and i < len(pool_items):
-            it = pool_items[i]
+        it = by_path.get(s["path"]) if s["path"] else None
         if not it:
             bridge.warn(f"Fant ikke media for scene {i}: {s['path']}")
             continue
