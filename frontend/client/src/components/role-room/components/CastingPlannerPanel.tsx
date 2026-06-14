@@ -3310,6 +3310,19 @@ type RoleRoomProjectWorkspaceState = {
       if (cancelled || !stored) {
         return;
       }
+      // 2026-06-13: Hvis URL er ren rot (ingen tab/project/surface/view i
+      // query), IKKE auto-restore backend workspace state. Uten dette blir
+      // brukere fast i sist åpne prosjekt selv når de bevisst går til
+      // theroleroom.com/ for å se dashboard. Deep-links (med ?project=...)
+      // restorerer fortsatt fordi de har URL-params.
+      const sp = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams();
+      const urlAsksForRestore =
+        !!sp.get('tab') || !!sp.get('project') || !!sp.get('surface') || !!sp.get('view');
+      if (!urlAsksForRestore) {
+        return;
+      }
       // URL-seedet ref (?project=<id>) skal overstyre stored=null. Uten
       // dette mister deep-links sin prosjekt-ID når hydrate-effekten kjører
       // ETTER seed-effekten og overskriver lastRealProjectId med null fra
