@@ -60,47 +60,39 @@ DEFAULT_BRAND = {
 }
 
 
-def _ease(start_v, end_v, frames, settle=0.78):
-    """Lag et 3-punkts ease-out/ease-in nøkkelramme-sett for smooth bevegelse.
-    Hovedbevegelsen skjer tidlig (settle) og 'lander' rolig — SaaS-følelsen.
-    Returnerer liste av (frame, value)."""
-    mid = max(1, int(frames * 0.62))
-    mid_v = start_v + (end_v - start_v) * settle
-    return [(0, start_v), (mid, mid_v), (max(2, frames), end_v)]
-
-
-def _camera_keys(move, frames):
-    """Returnerer dict med eased keyframes for Transform-inputene
-    (Size scalar, Center [x,y]) for et gitt kamera-trekk.
-    Center 0.5/0.5 = sentrert."""
-    f = max(2, frames)
-    if move in ("push_in", "zoom_in"):
-        return {"Size": _ease(1.0, 1.12, f), "Center": None}
-    if move == "zoom_out":
-        return {"Size": _ease(1.16, 1.0, f), "Center": None}
-    if move == "pan_left":
-        return {"Size": [(0, 1.08), (f, 1.08)], "Center": _ease_pt((0.56, 0.5), (0.44, 0.5), f)}
-    if move == "pan_right":
-        return {"Size": [(0, 1.08), (f, 1.08)], "Center": _ease_pt((0.44, 0.5), (0.56, 0.5), f)}
-    if move == "section_snap":
-        return {"Size": [(0, 1.06), (f, 1.06)], "Center": _ease_pt((0.5, 0.58), (0.5, 0.42), f)}
-    if move == "parallax":
-        return {"Size": _ease(1.14, 1.20, f), "Center": _ease_pt((0.53, 0.52), (0.47, 0.48), f)}
-    if move == "cinematic_reveal":
-        return {"Size": _ease(1.22, 1.02, f), "Center": None, "reveal": True}
-    # auto / ukjent → mild push-in
-    return {"Size": _ease(1.0, 1.10, f), "Center": None}
+def _ease(start_v, end_v, frames):
+    """To keyframes over HELE klippet. SetKeyFrames legger automatisk på myke
+    bezier-handles (RH/LH) → smooth ease-in-out som spenner hele varigheten
+    (mer synlig og jevnere enn front-lastet bevegelse)."""
+    return [(0, start_v), (max(2, frames), end_v)]
 
 
 def _ease_pt(start_xy, end_xy, frames):
-    """Eased 2D-bevegelse → liste av (frame, [x,y])."""
+    """Eased 2D-bevegelse over hele klippet → [(0,[x,y]),(dur,[x,y])]."""
+    return [(0, [start_xy[0], start_xy[1]]), (max(2, frames), [end_xy[0], end_xy[1]])]
+
+
+def _camera_keys(move, frames):
+    """Eased keyframes for Transform (Size scalar, Center [x,y]) per kamera-trekk.
+    Center 0.5/0.5 = sentrert. Amplituder er tydelige nok til å MERKES, men
+    fortsatt rolige/premium."""
     f = max(2, frames)
-    mid = max(1, int(f * 0.62))
-    sx, sy = start_xy
-    ex, ey = end_xy
-    mx = sx + (ex - sx) * 0.78
-    my = sy + (ey - sy) * 0.78
-    return [(0, [sx, sy]), (mid, [mx, my]), (f, [ex, ey])]
+    if move in ("push_in", "zoom_in"):
+        return {"Size": _ease(1.0, 1.20, f), "Center": None}
+    if move == "zoom_out":
+        return {"Size": _ease(1.24, 1.0, f), "Center": None}
+    if move == "pan_left":
+        return {"Size": [(0, 1.14), (f, 1.14)], "Center": _ease_pt((0.60, 0.5), (0.40, 0.5), f)}
+    if move == "pan_right":
+        return {"Size": [(0, 1.14), (f, 1.14)], "Center": _ease_pt((0.40, 0.5), (0.60, 0.5), f)}
+    if move == "section_snap":
+        return {"Size": [(0, 1.12), (f, 1.12)], "Center": _ease_pt((0.5, 0.62), (0.5, 0.38), f)}
+    if move == "parallax":
+        return {"Size": _ease(1.16, 1.26, f), "Center": _ease_pt((0.56, 0.54), (0.44, 0.46), f)}
+    if move == "cinematic_reveal":
+        return {"Size": _ease(1.30, 1.04, f), "Center": None, "reveal": True}
+    # auto / ukjent → tydelig push-in
+    return {"Size": _ease(1.0, 1.16, f), "Center": None}
 
 
 CAM_CYCLE = ["push_in", "pan_right", "parallax", "zoom_out", "pan_left", "section_snap"]
@@ -860,11 +852,23 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             return
     bridge.log(f"Importerte {len(pool_items)}/{len(paths)} media-filer")
 
-    # map path → pool item (ImportMedia bevarer rekkefølge, men vær defensiv)
+    # map path → pool item. Bygg fra HELE bin-ens klippliste (ikke bare
+    # ImportMedia-returen), siden Resolve dedup'er media som alt er importert →
+    # ImportMedia returnerer da færre items. Slik gjenfinnes scener ved re-kjøring.
+    by_path = {}
     by_name = {}
-    for it in pool_items:
+    catalog = list(pool_items)
+    try:
+        if demo_bin:
+            catalog += list(demo_bin.GetClipList() or [])
+    except Exception:  # noqa: BLE001
+        pass
+    for it in catalog:
         try:
-            by_name[os.path.basename(it.GetClipProperty("File Path") or it.GetName() or "")] = it
+            fp = it.GetClipProperty("File Path") or ""
+            if fp:
+                by_path[fp] = it
+                by_name[os.path.basename(fp)] = it
         except Exception:  # noqa: BLE001
             pass
 
@@ -880,10 +884,11 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     for i, s in enumerate(norm):
         it = None
         if s["path"]:
-            it = by_name.get(os.path.basename(s["path"]))
+            it = by_path.get(s["path"]) or by_name.get(os.path.basename(s["path"]))
         if not it and i < len(pool_items):
             it = pool_items[i]
         if not it:
+            bridge.warn(f"Fant ikke media for scene {i}: {s['path']}")
             continue
         dur_frames = max(2, int(round(s["durationSec"] * fps)))
         clip_info = {"mediaPoolItem": it, "startFrame": 0, "endFrame": dur_frames - 1}
