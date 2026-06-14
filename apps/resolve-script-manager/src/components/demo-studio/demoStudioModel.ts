@@ -77,12 +77,12 @@ export const ACTION_META: Record<DemoActionType, { label: string; icon: string; 
 };
 
 /** Virtuell kamera-bevegelse per scene (autonom video). 'auto' = veksle automatisk. */
-export type CameraMove = 'auto' | 'push_in' | 'zoom_in' | 'zoom_out' | 'pan_left' | 'pan_right' | 'section_snap';
+export type CameraMove = 'auto' | 'push_in' | 'zoom_in' | 'zoom_out' | 'pan_left' | 'pan_right' | 'section_snap' | 'parallax';
 /** Overgang inn til scenen. */
 export type SceneTransition = 'auto' | 'whip' | 'none';
 export const CAMERA_MOVE_LABELS: Record<CameraMove, string> = {
   auto: 'Auto (varier)', push_in: 'Zoom inn (push-in)', zoom_in: 'Zoom inn', zoom_out: 'Zoom ut',
-  pan_left: 'Panorer venstre', pan_right: 'Panorer høyre', section_snap: 'Snap til seksjon',
+  pan_left: 'Panorer venstre', pan_right: 'Panorer høyre', section_snap: 'Snap til seksjon', parallax: 'Parallax (dybde-drift)',
 };
 export const SCENE_TRANSITION_LABELS: Record<SceneTransition, string> = {
   auto: 'Auto', whip: 'Whip (rask sveip)', none: 'Ingen (rolig)',
