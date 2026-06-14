@@ -134,32 +134,46 @@ def _make_solid_png(path, w, h, rgb):
 
 
 # ── Live Fusion-API-hjelpere (defensive) ──────────────────────────────────
-def _kf_scalar(tool, name, keys, report):
-    """Sett keyframes på en scalar input via SetInput(name, value, frame)."""
+# Verifisert mot Resolve 21: animasjon settes ved å koble en BezierSpline
+# (scalar) eller en XYPath m/ to BezierSpliner (point/Center) til inputen, og
+# kalle SetKeyFrames({frame: value}). SetKeyFrames gir automatisk smooth
+# bezier-handles (RH/LH) = SaaS-ease. SetInput(name,value,frame) keyframer IKKE.
+def _kf_scalar(comp, tool, name, keys, report):
+    """Animer en scalar input (Size/Blend/GlowSize/Width…) med en BezierSpline."""
     try:
-        for frame, val in keys:
-            tool.SetInput(name, float(val), float(frame))
+        sp = comp.BezierSpline()
+        setattr(tool, name, sp)
+        sp.SetKeyFrames({float(f): float(v) for f, v in keys})
         return True
     except Exception as exc:  # noqa: BLE001
         report.append(f"scalar keyframe {name} feilet: {exc}")
+        # fallback: statisk siste verdi så scenen ikke blir tom
+        try:
+            tool.SetInput(name, float(keys[-1][1]))
+        except Exception:  # noqa: BLE001
+            pass
         return False
 
 
-def _kf_point(tool, name, keys, report):
-    """Sett keyframes på en point input (Center). Prøver list- og dict-form."""
-    for frame, xy in keys:
-        ok = False
-        for value in ([xy[0], xy[1]], {1.0: xy[0], 2.0: xy[1]}):
-            try:
-                tool.SetInput(name, value, float(frame))
-                ok = True
-                break
-            except Exception:  # noqa: BLE001
-                continue
-        if not ok:
-            report.append(f"point keyframe {name}@{frame} feilet")
-            return False
-    return True
+def _kf_point(comp, tool, name, keys, report):
+    """Animer en point input (Center) med XYPath + to BezierSpliner (X/Y)."""
+    try:
+        xp = comp.XYPath({})
+        setattr(tool, name, xp)
+        spx = comp.BezierSpline()
+        spy = comp.BezierSpline()
+        xp.X = spx
+        xp.Y = spy
+        spx.SetKeyFrames({float(f): float(xy[0]) for f, xy in keys})
+        spy.SetKeyFrames({float(f): float(xy[1]) for f, xy in keys})
+        return True
+    except Exception as exc:  # noqa: BLE001
+        report.append(f"point keyframe {name} feilet: {exc}")
+        try:
+            tool.SetInput(name, [float(keys[-1][1][0]), float(keys[-1][1][1])])
+        except Exception:  # noqa: BLE001
+            pass
+        return False
 
 
 def _set(tool, name, value, report):
@@ -221,9 +235,9 @@ def _build_scene_comp(comp, scene, idx, total, fps, brand, dur, report):
     if cam:
         built["nodes"].append("Transform(camera)")
         _connect(cam, "Input", media_in, report)
-        _kf_scalar(cam, "Size", cam_keys["Size"], report)
+        _kf_scalar(comp, cam, "Size", cam_keys["Size"], report)
         if cam_keys.get("Center"):
-            _kf_point(cam, "Center", cam_keys["Center"], report)
+            _kf_point(comp, cam, "Center", cam_keys["Center"], report)
     last = cam or media_in
 
     # 2) Ren UI-caption: Background-bar (masket) + Text+, slide-up + fade
@@ -291,7 +305,7 @@ def _build_caption(comp, text, dur, fps, brand, report):
 
     # Bakgrunns-bar (accent-tonet, lav opacity) masket til en pill
     bar = _add(comp, "Background", 0, 3, report)
-    rect = _add(comp, "Rectangle", -1, 3, report)
+    rect = _add(comp, "RectangleMask", -1, 3, report)
     bar_out = txt
     if bar and rect:
         try:
@@ -319,8 +333,8 @@ def _build_caption(comp, text, dur, fps, brand, report):
         _connect(anim, "Input", bar_out, report)
         intro = max(2, int(round(0.5 * fps)))
         # slide opp (Center.y -0.06 → 0) + alpha-blend 0 → 1
-        _kf_point(anim, "Center", [(0, [0.5, 0.44]), (intro, [0.5, 0.5])], report)
-        _kf_scalar(anim, "Blend", [(0, 0.0), (intro, 1.0)], report)
+        _kf_point(comp, anim, "Center", [(0, [0.5, 0.44]), (intro, [0.5, 0.5])], report)
+        _kf_scalar(comp, anim, "Blend", [(0, 0.0), (intro, 1.0)], report)
         return anim
     return bar_out
 
@@ -342,7 +356,7 @@ def _build_reveal(comp, dur, fps, idx, total, force, report):
     keys = [(0, 1.0), (fade_in, 0.0)]
     if dur - fade_out > fade_in:
         keys += [(dur - fade_out, 0.0), (dur, 1.0)]
-    _kf_scalar(bg, "Blend", keys, report)
+    _kf_scalar(comp, bg, "Blend", keys, report)
     return bg
 
 
@@ -382,7 +396,7 @@ def _fx_spotlight(comp, fx, dur, fps, brand, report, with_glow, with_label):
     cx, cy, w, h = _rect_to_fusion(fx.get("rect") or [0.4, 0.45, 0.2, 0.1])
     dim = float(fx.get("dim", 0.58))
     overlay = _add(comp, "Background", 0, 5, report)
-    hole = _add(comp, "Rectangle", -1, 5, report)
+    hole = _add(comp, "RectangleMask", -1, 5, report)
     if not overlay or not hole:
         return None, None
     for ch in ("TopLeftRed", "TopLeftGreen", "TopLeftBlue"):
@@ -397,12 +411,12 @@ def _fx_spotlight(comp, fx, dur, fps, brand, report, with_glow, with_label):
     _connect(overlay, "EffectMask", hole, report)
     # fade overlay inn
     fade = max(2, int(round(0.4 * fps)))
-    _kf_scalar(overlay, "Blend", [(0, 0.0), (fade, dim)], report)
+    _kf_scalar(comp, overlay, "Blend", [(0, 0.0), (fade, dim)], report)
     out = overlay
 
     if with_glow:
         ring = _add(comp, "Background", 0, 6, report)
-        ring_mask = _add(comp, "Rectangle", -1, 6, report)
+        ring_mask = _add(comp, "RectangleMask", -1, 6, report)
         if ring and ring_mask:
             _set(ring, "TopLeftRed", brand["accent"][0], report)
             _set(ring, "TopLeftGreen", brand["accent"][1], report)
@@ -420,7 +434,7 @@ def _fx_spotlight(comp, fx, dur, fps, brand, report, with_glow, with_label):
                 _connect(glow, "Input", ring, report)
                 # pulserende glow-gain
                 half = max(2, int(dur / 2))
-                _kf_scalar(glow, "GlowSize", [(0, 8.0), (half, 22.0), (dur, 8.0)], report)
+                _kf_scalar(comp, glow, "GlowSize", [(0, 8.0), (half, 22.0), (dur, 8.0)], report)
                 ring = glow
             gm = _add(comp, "Merge", 1, 5, report)
             if gm:
@@ -443,7 +457,7 @@ def _fx_spotlight(comp, fx, dur, fps, brand, report, with_glow, with_label):
             if anim:
                 _connect(anim, "Input", txt, report)
                 intro = max(2, int(round(0.4 * fps)))
-                _kf_scalar(anim, "Blend", [(0, 0.0), (intro, 1.0)], report)
+                _kf_scalar(comp, anim, "Blend", [(0, 0.0), (intro, 1.0)], report)
                 txt = anim
             lm = _add(comp, "Merge", 1, 4, report)
             if lm:
@@ -478,7 +492,7 @@ def _fx_callout(comp, fx, dur, fps, brand, report):
         bx = min(0.82, cx + w * 1.4); arrow_char = "◀"
 
     bar = _add(comp, "Background", 0, 8, report)
-    rect = _add(comp, "Rectangle", -1, 8, report)
+    rect = _add(comp, "RectangleMask", -1, 8, report)
     out = None
     if bar and rect:
         for i, ch in enumerate(("TopLeftRed", "TopLeftGreen", "TopLeftBlue")):
@@ -527,8 +541,8 @@ def _fx_callout(comp, fx, dur, fps, brand, report):
         _connect(anim, "Input", out, report)
         intro = max(2, int(round(0.45 * fps)))
         dy = 0.04 if side in ("top", "right", "left") else -0.04
-        _kf_point(anim, "Center", [(0, [0.5, 0.5 - dy]), (intro, [0.5, 0.5])], report)
-        _kf_scalar(anim, "Blend", [(0, 0.0), (intro, 1.0)], report)
+        _kf_point(comp, anim, "Center", [(0, [0.5, 0.5 - dy]), (intro, [0.5, 0.5])], report)
+        _kf_scalar(comp, anim, "Blend", [(0, 0.0), (intro, 1.0)], report)
         out = anim
     return out, "Callout(boks+pil+glow)"
 
@@ -541,7 +555,7 @@ def _fx_cursor(comp, fx, dur, fps, brand, report):
     fx0, fy0 = frm[0], 1.0 - frm[1]
     tx0, ty0 = to[0], 1.0 - to[1]
     dot = _add(comp, "Background", 0, 11, report)
-    dmask = _add(comp, "Ellipse", -1, 11, report)
+    dmask = _add(comp, "EllipseMask", -1, 11, report)
     out = None
     if dot and dmask:
         for i, ch in enumerate(("TopLeftRed", "TopLeftGreen", "TopLeftBlue")):
@@ -555,13 +569,13 @@ def _fx_cursor(comp, fx, dur, fps, brand, report):
         if move:
             _connect(move, "Input", dot, report)
             travel = max(2, int(dur * 0.55))
-            _kf_point(move, "Center", [(0, [fx0, fy0]), (travel, [tx0, ty0]),
+            _kf_point(comp, move, "Center", [(0, [fx0, fy0]), (travel, [tx0, ty0]),
                                        (dur, [tx0, ty0])], report)
             out = move
     # klikk-ripple ved ankomst
     if fx.get("click", True) and out:
         ring = _add(comp, "Background", 0, 12, report)
-        rmask = _add(comp, "Ellipse", -1, 12, report)
+        rmask = _add(comp, "EllipseMask", -1, 12, report)
         if ring and rmask:
             for i, ch in enumerate(("TopLeftRed", "TopLeftGreen", "TopLeftBlue")):
                 _set(ring, ch, brand["accent"][i], report)
@@ -571,8 +585,8 @@ def _fx_cursor(comp, fx, dur, fps, brand, report):
             _set(rmask, "Solid", 0, report)
             _connect(ring, "EffectMask", rmask, report)
             click = max(2, int(dur * 0.6))
-            _kf_scalar(rmask, "Width", [(click, 0.01), (click + int(0.4 * fps), 0.08)], report)
-            _kf_scalar(ring, "Blend", [(click, 0.9), (click + int(0.4 * fps), 0.0)], report)
+            _kf_scalar(comp, rmask, "Width", [(click, 0.01), (click + int(0.4 * fps), 0.08)], report)
+            _kf_scalar(comp, ring, "Blend", [(click, 0.9), (click + int(0.4 * fps), 0.0)], report)
             cm = _add(comp, "Merge", 1, 11, report)
             if cm:
                 _connect(cm, "Background", out, report)
@@ -589,7 +603,7 @@ def _fx_card(comp, fx, dur, fps, brand, report):
     title = (fx.get("title") or "").strip()
     body = (fx.get("text") or "").strip()
     bar = _add(comp, "Background", 0, 13, report)
-    rect = _add(comp, "Rectangle", -1, 13, report)
+    rect = _add(comp, "RectangleMask", -1, 13, report)
     out = None
     if bar and rect:
         for i, ch in enumerate(("TopLeftRed", "TopLeftGreen", "TopLeftBlue")):
@@ -635,8 +649,8 @@ def _fx_card(comp, fx, dur, fps, brand, report):
     if anim and out:
         _connect(anim, "Input", out, report)
         intro = max(2, int(round(0.5 * fps)))
-        _kf_point(anim, "Center", [(0, [0.5, 0.44]), (intro, [0.5, 0.5])], report)
-        _kf_scalar(anim, "Blend", [(0, 0.0), (intro, 1.0)], report)
+        _kf_point(comp, anim, "Center", [(0, [0.5, 0.44]), (intro, [0.5, 0.5])], report)
+        _kf_scalar(comp, anim, "Blend", [(0, 0.0), (intro, 1.0)], report)
         out = anim
     return out, "Floating feature-card"
 
@@ -644,7 +658,7 @@ def _fx_card(comp, fx, dur, fps, brand, report):
 def _fx_light_sweep(comp, fx, dur, fps, brand, report):
     """Premium light-sweep: lys diagonal stripe som feier over bildet."""
     stripe = _add(comp, "Background", 0, 16, report)
-    smask = _add(comp, "Rectangle", -1, 16, report)
+    smask = _add(comp, "RectangleMask", -1, 16, report)
     if not stripe or not smask:
         return None, None
     for ch in ("TopLeftRed", "TopLeftGreen", "TopLeftBlue"):
@@ -665,8 +679,8 @@ def _fx_light_sweep(comp, fx, dur, fps, brand, report):
     if sweep:
         _connect(sweep, "Input", out, report)
         dwell = max(2, int(dur * 0.5))
-        _kf_point(sweep, "Center", [(0, [-0.3, 0.5]), (dwell, [1.3, 0.5])], report)
-        _kf_scalar(sweep, "Blend", [(0, 1.0), (dwell, 1.0), (dwell + 1, 0.0)], report)
+        _kf_point(comp, sweep, "Center", [(0, [-0.3, 0.5]), (dwell, [1.3, 0.5])], report)
+        _kf_scalar(comp, sweep, "Blend", [(0, 1.0), (dwell, 1.0), (dwell + 1, 0.0)], report)
         out = sweep
     return out, "Light-sweep"
 
