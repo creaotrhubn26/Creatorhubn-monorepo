@@ -8,7 +8,7 @@ import React from 'react';
 import {
   Box, Stack, Typography, Button, TextField, Switch, FormControlLabel, CircularProgress, Chip, Link,
 } from '@mui/material';
-import { CheckCircle, RadioButtonUnchecked, OpenInNew, GraphicEq, Lyrics, TouchApp } from '@mui/icons-material';
+import { CheckCircle, OpenInNew, GraphicEq, Lyrics, TouchApp } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import LyricTimingDialog from './LyricTimingDialog';
 import { YouTubeIcon, YOUTUBE_RED } from './BrandIcons';
@@ -16,13 +16,13 @@ import { YouTubeIcon, YOUTUBE_RED } from './BrandIcons';
 const BORDER = 'rgba(255,255,255,0.08)', TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', FAINT = 'rgba(245,242,234,0.38)', ACCENT = '#FF6B35', YT = YOUTUBE_RED, GREEN = '#5fb88a';
 const fieldSx = { '& .MuiInputBase-input': { color: TEXT }, '& .MuiInputLabel-root': { color: MUTED }, '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER } };
 
-const CHANNEL_TIPS = [
-  'Opprett en egen YouTube-kanal (ikke bare Google-konto) med artist-/bandnavnet',
-  'Verifiser kanalen (telefon) — låser opp opplasting > 15 min og egne thumbnails',
-  'Profilbilde 800×800 + banner 2048×1152 i samme visuelle stil som coveret',
-  'Fyll ut «Om»-beskrivelse + lenker (Spotify, Instagram, nettside)',
-  'Sett standard språk og kategori = Musikk',
-  'Be distributøren koble sporene til en «Official Artist Channel» når musikken er live',
+type Step = { n: number; title: string; detail: string; link?: string; linkLabel?: string };
+const CHANNEL_STEPS: Step[] = [
+  { n: 1, title: 'Opprett en YouTube-kanal', detail: 'Logg inn med Google-kontoen din og lag en kanal med artist-/bandnavnet (ikke bare en Google-konto).', link: 'https://www.youtube.com/channel_switcher', linkLabel: 'Opprett kanal' },
+  { n: 2, title: 'Verifiser kanalen', detail: 'Verifiser med telefon — låser opp opplasting > 15 min, egne thumbnails og flere funksjoner.', link: 'https://www.youtube.com/verify', linkLabel: 'Verifiser' },
+  { n: 3, title: 'Tilpass kanalen i YouTube Studio', detail: 'Profilbilde 800×800 + banner 2048×1152 i samme stil som coveret, «Om»-tekst, lenker (Spotify/IG/nettside), språk og kategori Musikk.', link: 'https://studio.youtube.com', linkLabel: 'Åpne Studio' },
+  { n: 4, title: 'Koble til CreatorHub', detail: 'Koble Google/YouTube i Innstillinger → Integrasjoner med opplastingstilgang, så kan du publisere herfra.' },
+  { n: 5, title: '«Official Artist Channel» (senere)', detail: 'Be distributøren koble sporene til en offisiell artistkanal når musikken er live på YouTube Music.' },
 ];
 
 const YouTubePublishPanel: React.FC<{ releaseId: string; projectId: string; masterUrl?: string }> = ({ releaseId, projectId, masterUrl }) => {
@@ -80,20 +80,24 @@ const YouTubePublishPanel: React.FC<{ releaseId: string; projectId: string; mast
           <Button component="a" href={result.url} target="_blank" startIcon={<OpenInNew />} size="small" sx={{ color: YT, textTransform: 'none', alignSelf: 'flex-start' }}>{result.url}</Button>
         </Stack>
       ) : !ready ? (
-        // Ikke klar → guide til optimalisert kanal + tilkobling.
+        // Ikke klar → guidet flyt: opprett + optimaliser + koble kanal.
         <Stack spacing={1}>
           <Typography sx={{ fontSize: '0.74rem', color: '#e0a955' }}>
-            {status?.connected ? 'Tilkoblingen mangler opplastingstilgang. Koble Google/YouTube på nytt med YouTube-tilgang i Innstillinger → Integrasjoner.' : 'Koble YouTube-kontoen din i Innstillinger → Integrasjoner (med opplastingstilgang) for å publisere herfra.'}
+            {status?.connected ? 'Google er koblet, men vi finner ingen YouTube-kanal med opplastingstilgang. Følg stegene for å opprette/koble en kanal.' : 'Har du ikke en YouTube-kanal ennå? Vi hjelper deg i gang — følg stegene under.'}
           </Typography>
-          <Typography sx={{ fontSize: '0.66rem', color: FAINT, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, mt: 0.5 }}>Slik får du en optimalisert kanal</Typography>
-          <Stack spacing={0.4}>
-            {CHANNEL_TIPS.map((t, i) => (
-              <Stack key={i} direction="row" alignItems="flex-start" spacing={0.75}>
-                <RadioButtonUnchecked sx={{ fontSize: 13, color: FAINT, mt: '2px' }} />
-                <Typography sx={{ fontSize: '0.72rem', color: MUTED, lineHeight: 1.4 }}>{t}</Typography>
+          <Stack spacing={0.75} sx={{ mt: 0.5 }}>
+            {CHANNEL_STEPS.map((st) => (
+              <Stack key={st.n} direction="row" alignItems="flex-start" spacing={1}>
+                <Box sx={{ width: 18, height: 18, borderRadius: '50%', bgcolor: 'rgba(255,0,51,0.15)', color: YT, fontSize: '0.66rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, mt: '1px' }}>{st.n}</Box>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{ fontSize: '0.76rem', fontWeight: 700 }}>{st.title}</Typography>
+                  <Typography sx={{ fontSize: '0.68rem', color: MUTED, lineHeight: 1.4 }}>{st.detail}</Typography>
+                  {st.link && <Link href={st.link} target="_blank" rel="noopener" sx={{ fontSize: '0.7rem', color: YT, display: 'inline-flex', alignItems: 'center', gap: 0.3, mt: 0.25 }}>{st.linkLabel} <OpenInNew sx={{ fontSize: 12 }} /></Link>}
+                </Box>
               </Stack>
             ))}
           </Stack>
+          <Button onClick={() => void load()} size="small" sx={{ color: MUTED, textTransform: 'none', alignSelf: 'flex-start', fontSize: '0.7rem' }}>Sjekk tilkobling på nytt</Button>
         </Stack>
       ) : (
         // Klar → publiserings-skjema.
