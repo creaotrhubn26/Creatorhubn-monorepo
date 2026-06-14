@@ -243,6 +243,23 @@ interface UserPresenceSummary {
 }
 
 async function checkUserPresence(pool: AdminRoomRoutesDeps['pool']): Promise<UserPresenceSummary> {
+  try {
+    return await checkUserPresenceInner(pool);
+  } catch (err) {
+    // Defensiv: hvis schema mangler (user_presence-tabell, profession-kolonne),
+    // returner tomt fallback istedenfor å throw'e Promise.all i kaller.
+    console.warn('[platform-status] checkUserPresence failed:', (err as Error).message);
+    return {
+      activeNow: 0,
+      activeLast24h: 0,
+      activeLast7d: 0,
+      totalRoleRoomUsers: 0,
+      recentUsers: [],
+    };
+  }
+}
+
+async function checkUserPresenceInner(pool: AdminRoomRoutesDeps['pool']): Promise<UserPresenceSummary> {
   // Bruker user_presence-heartbeat hvis raden finnes, ellers faller tilbake
   // til users.last_login_at. 90 sek vindu for "aktiv nå" siden klient pinger
   // hvert 30 sek (toleranse for nettverks-jitter + lukket tab-deteksjon).
@@ -347,7 +364,12 @@ export function setupAdminPlatformStatusRoutes(deps: PlatformStatusDeps): void {
     if (!session) return;
     try {
       const stripeClient = getRoleRoomStripeClient();
-      const [render, neon, vercel, stripe, anthropic, presence] = await Promise.all([
+      const nowIso = new Date().toISOString();
+      const fallbackError = (provider: string, message: string): ProviderStatus => ({
+        provider, dashboardUrl: '', lastCheckedAt: nowIso,
+        health: 'error', message, metrics: {},
+      });
+      const results = await Promise.allSettled([
         checkRender(),
         checkNeon(),
         checkVercel(),
@@ -355,6 +377,15 @@ export function setupAdminPlatformStatusRoutes(deps: PlatformStatusDeps): void {
         checkAnthropic(pool),
         checkUserPresence(pool),
       ]);
+      const [renderR, neonR, vercelR, stripeR, anthropicR, presenceR] = results;
+      const render    = renderR.status    === 'fulfilled' ? renderR.value    : fallbackError('Render',    String(renderR.reason));
+      const neon      = neonR.status      === 'fulfilled' ? neonR.value      : fallbackError('Neon',      String(neonR.reason));
+      const vercel    = vercelR.status    === 'fulfilled' ? vercelR.value    : fallbackError('Vercel',    String(vercelR.reason));
+      const stripe    = stripeR.status    === 'fulfilled' ? stripeR.value    : fallbackError('Stripe',    String(stripeR.reason));
+      const anthropic = anthropicR.status === 'fulfilled' ? anthropicR.value : fallbackError('Anthropic', String(anthropicR.reason));
+      const presence: UserPresenceSummary  = presenceR.status === 'fulfilled' ? presenceR.value : {
+        activeNow: 0, activeLast24h: 0, activeLast7d: 0, totalRoleRoomUsers: 0, recentUsers: [],
+      };
 
       const providers = [render, neon, vercel, stripe, anthropic];
       const errorCount = providers.filter((p) => p.health === 'error').length;
