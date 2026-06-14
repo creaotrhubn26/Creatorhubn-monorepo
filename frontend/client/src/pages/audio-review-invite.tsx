@@ -13,6 +13,7 @@ import { MusicNote, CheckCircle, ContentCopy, DoneAll, GraphicEq } from '@mui/ic
 import { apiRequest } from '@/lib/queryClient';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
 import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBUTION_OPTIONS } from '@/components/universal/showcase/ComboField';
+import SpotifyArtistField from '@/components/universal/showcase/SpotifyArtistField';
 
 const BG = '#0A0A0B', PANEL = '#131316', BORDER = 'rgba(255,255,255,0.08)';
 const TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', ACCENT = '#FF6B35';
@@ -111,8 +112,9 @@ export default function AudioReviewInvitePage() {
                 <TextField label="Instagram" value={form.links.instagram || ''} onChange={(e) => setLink('instagram', e.target.value)} size="small" fullWidth sx={fieldSx} placeholder="@bruker" />
                 <TextField label="TikTok" value={form.links.tiktok || ''} onChange={(e) => setLink('tiktok', e.target.value)} size="small" fullWidth sx={fieldSx} placeholder="@bruker" />
               </Stack>
-              <Stack direction="row" spacing={1.5}>
-                <TextField label="Spotify" value={form.links.spotify || ''} onChange={(e) => setLink('spotify', e.target.value)} size="small" fullWidth sx={fieldSx} placeholder="artist-lenke" />
+              <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                <SpotifyArtistField value={form.links.spotify || ''} onChange={(v) => setLink('spotify', v)} fieldSx={fieldSx}
+                  onPick={(a) => { if (!form.avatarUrl && a.image) setForm((f: any) => ({ ...f, avatarUrl: a.image })); }} />
                 <TextField label="YouTube" value={form.links.youtube || ''} onChange={(e) => setLink('youtube', e.target.value)} size="small" fullWidth sx={fieldSx} placeholder="kanal-lenke" />
               </Stack>
               <Button onClick={submit} disabled={busy || !form.name.trim()} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px', py: 1 }}>{busy ? 'Lagrer…' : 'Lagre profil'}</Button>

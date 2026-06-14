@@ -22,12 +22,13 @@ import {
   ThumbUpAlt, AccessTime, Send, WorkspacePremium, GridViewOutlined, GraphicEq, LayersOutlined,
   Inventory2Outlined, SubjectOutlined, StickyNote2Outlined, TimelineOutlined, Speed, VpnKey,
   CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
-  PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll,
+  PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined,
 } from '@mui/icons-material';
 import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
 import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBUTION_OPTIONS } from '@/components/universal/showcase/ComboField';
+import SpotifyArtistField from '@/components/universal/showcase/SpotifyArtistField';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
@@ -94,6 +95,7 @@ export default function AudioShowcasePage() {
   const [sectionMenuEl, setSectionMenuEl] = React.useState<null | HTMLElement>(null);
   const [memberDialog, setMemberDialog] = React.useState<any>(null);
   const [splitOpen, setSplitOpen] = React.useState(false);
+  const [publishOpen, setPublishOpen] = React.useState(false);
   const [splitToast, setSplitToast] = React.useState<string | null>(null);
 
   const saveCover = async (dataUrl: string) => {
@@ -135,6 +137,20 @@ export default function AudioShowcasePage() {
   }, []);
   React.useEffect(() => { void loadProject(); }, [loadProject]);
   React.useEffect(() => { void loadVersion(currentVid); }, [currentVid, loadVersion]);
+  // «Now on Spotify»: hvis rommet har en utgivelse som er live, vis embed i senter.
+  const [spotifyLive, setSpotifyLive] = React.useState<any>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await apiRequest(`/api/audio-showcases/${projectId}/release`);
+        const rel = r?.release; if (!rel || (!rel.isrc && !rel.upc)) return;
+        const st = await apiRequest(`/api/releases/${rel.id}/spotify-status`);
+        if (!cancelled && st?.live) setSpotifyLive(st);
+      } catch { /* */ }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId, publishOpen]);
   // Sanntid: poll gjeldende versjon hvert 5. sek så nye kommentarer/seksjoner fra
   // andre anmeldere dukker opp live (uten å forstyrre lokal skriving/avspilling).
   React.useEffect(() => {
@@ -360,10 +376,23 @@ export default function AudioShowcasePage() {
             <Button onClick={() => setSplitOpen(true)} fullWidth startIcon={<ReceiptLongOutlined sx={{ fontSize: '17px !important' }} />}
               sx={{ mt: 1.5, color: ACCENT, bgcolor: 'rgba(255,107,53,0.1)', textTransform: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '0.78rem', '&:hover': { bgcolor: 'rgba(255,107,53,0.18)' } }}>Splittark (royalty)</Button>
           )}
+          <Button onClick={() => setPublishOpen(true)} fullWidth startIcon={<RocketLaunchOutlined sx={{ fontSize: '17px !important' }} />}
+            sx={{ mt: 1, color: '#150d05', bgcolor: ACCENT, textTransform: 'none', borderRadius: '10px', fontWeight: 800, fontSize: '0.78rem', '&:hover': { bgcolor: '#ff855a' } }}>Publiser utgivelse</Button>
         </Box>
 
         {/* ─── SENTER ─── */}
         <Box sx={{ flex: 1, overflowY: 'auto', p: 2.5, minWidth: 0 }}>
+          {/* «Now on Spotify» — vises kun når utgivelsen er verifisert live */}
+          {spotifyLive?.live && (() => { const e = spotifyLive.track || spotifyLive.album; return (
+            <Box sx={{ bgcolor: 'rgba(29,185,84,0.07)', border: '1px solid rgba(29,185,84,0.3)', borderRadius: '16px', p: 2, mb: 2.5 }}>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
+                <MusicNote sx={{ fontSize: 18, color: '#1DB954' }} />
+                <Typography sx={{ fontWeight: 700, flex: 1 }}>Nå på Spotify</Typography>
+                <Button href={e.url} target="_blank" size="small" sx={{ color: '#1DB954', textTransform: 'none' }}>Åpne</Button>
+              </Stack>
+              <Box component="iframe" title="Spotify-utgivelse" src={e.embedUrl} sx={{ width: '100%', height: spotifyLive.track ? 152 : 352, border: 0, borderRadius: '12px' }} allow="encrypted-media" loading="lazy" />
+            </Box>
+          ); })()}
           {/* Track-header + waveform */}
           <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5, mb: 2.5 }}>
             <Stack direction="row" alignItems="flex-start" sx={{ mb: 1.5 }}>
@@ -554,6 +583,7 @@ export default function AudioShowcasePage() {
       <MemberProfileDialog member={memberDialog} externalTrackId={easeverseTrack?.id} onClose={() => setMemberDialog(null)} onSave={saveMemberProfile}
         onDelete={async (id) => { await apiRequest(`/api/audio-members/${id}`, { method: 'DELETE' }); setMembers((p) => p.filter((x) => x.id !== id)); setMemberDialog(null); }} />
       <SplitSheetDialog open={splitOpen} projectId={projectId} ownerName={owner?.name} onClose={() => setSplitOpen(false)} />
+      <PublishDialog open={publishOpen} projectId={projectId} onClose={() => setPublishOpen(false)} />
       <TaskDialog open={taskOpen} onClose={() => setTaskOpen(false)} onAdd={async (title, category) => { const t = await apiRequest('/api/audio-tasks', { method: 'POST', body: { projectId, title, assignee: category, versionId: currentVid } }); setTasks((p) => [...p, t]); setTaskOpen(false); }} />
       <Menu anchorEl={moreEl} open={Boolean(moreEl)} onClose={() => setMoreEl(null)}><MenuItem onClick={() => setMoreEl(null)} sx={{ fontSize: '0.85rem' }}>Kopier review-lenke</MenuItem></Menu>
       <LyricsDialog
@@ -641,7 +671,11 @@ const MemberProfileDialog: React.FC<{ member: any; externalTrackId?: string; onC
           <TextField label="Om" value={f.bio} onChange={set('bio')} size="small" multiline minRows={2} sx={fieldSx} />
           <Typography sx={{ fontSize: '0.66rem', letterSpacing: 1, color: FAINT, textTransform: 'uppercase' }}>Sosiale kontoer</Typography>
           <Stack direction="row" spacing={1.5}><TextField label="Instagram" value={f.links?.instagram || ''} onChange={(e) => setLink('instagram', e.target.value)} size="small" fullWidth sx={fieldSx} /><TextField label="TikTok" value={f.links?.tiktok || ''} onChange={(e) => setLink('tiktok', e.target.value)} size="small" fullWidth sx={fieldSx} /></Stack>
-          <Stack direction="row" spacing={1.5}><TextField label="Spotify" value={f.links?.spotify || ''} onChange={(e) => setLink('spotify', e.target.value)} size="small" fullWidth sx={fieldSx} /><TextField label="YouTube" value={f.links?.youtube || ''} onChange={(e) => setLink('youtube', e.target.value)} size="small" fullWidth sx={fieldSx} /></Stack>
+          <Stack direction="row" spacing={1.5} alignItems="flex-start">
+            <SpotifyArtistField value={f.links?.spotify || ''} onChange={(v) => setLink('spotify', v)} fieldSx={fieldSx}
+              onPick={(a) => { if (!f.avatarUrl && a.image) { setF((p: any) => ({ ...p, avatarUrl: a.image })); void onSave(member.id, { avatarUrl: a.image }); } }} />
+            <TextField label="YouTube" value={f.links?.youtube || ''} onChange={(e) => setLink('youtube', e.target.value)} size="small" fullWidth sx={fieldSx} />
+          </Stack>
           {link && (
             <Stack direction="row" spacing={1} alignItems="center" sx={{ bgcolor: 'rgba(255,255,255,0.05)', border: `1px solid ${BORDER}`, borderRadius: '10px', p: 1 }}>
               <Typography sx={{ flex: 1, fontSize: '0.72rem', color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</Typography>
@@ -930,6 +964,167 @@ const SplitSheetDialog: React.FC<{ open: boolean; projectId: string; ownerName?:
               <Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none' }}>Lukk</Button>
               <Button onClick={save} disabled={busy || locked || masterTotal > 100.01} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Lagre vilkår</Button></>
           )}
+        </DialogActions>
+      )}
+    </Dialog>
+  );
+};
+
+/* ── Publiseringsdialog (release-pakke) ────────────────────────────────────
+ * Bygger en utgivelse fra det godkjente review-rommet: metadata + ISRC/UPC +
+ * cover/master + splitt/credits → validerer → eksporterer en «release-pakke»
+ * (JSON-manifest) som produsenten laster opp i sin egen distributørkonto. */
+const RELEASE_TYPES: [string, string][] = [['single', 'Singel'], ['ep', 'EP'], ['album', 'Album']];
+const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () => void }> = ({ open, projectId, onClose }) => {
+  const [loading, setLoading] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
+  const [rel, setRel] = React.useState<any>(null);
+  const [checks, setChecks] = React.useState<{ key: string; ok: boolean; label: string }[]>([]);
+  const [valid, setValid] = React.useState(false);
+  const [spot, setSpot] = React.useState<any>(null); const [spotBusy, setSpotBusy] = React.useState(false);
+  const [enrichNote, setEnrichNote] = React.useState('');
+
+  const refresh = React.useCallback(async (id: string) => {
+    try { const v = await apiRequest(`/api/releases/${id}/validate`); setChecks(v.checks || []); setValid(!!v.valid); } catch { /* */ }
+  }, []);
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const d = await apiRequest(`/api/audio-showcases/${projectId}/release`, { method: 'POST', body: {} });
+      setRel(d.release); await refresh(d.release.id);
+    } catch { setRel(null); } finally { setLoading(false); }
+  }, [projectId, refresh]);
+  React.useEffect(() => { if (open) void load(); }, [open, load]);
+
+  const set = (k: string, v: any) => setRel((r: any) => ({ ...r, [k]: v }));
+  const save = async () => {
+    if (!rel) return; setBusy(true);
+    try {
+      const u = await apiRequest(`/api/releases/${rel.id}`, { method: 'PATCH', body: {
+        title: rel.title, primaryArtist: rel.primary_artist, releaseType: rel.release_type,
+        primaryGenre: rel.primary_genre, secondaryGenre: rel.secondary_genre, language: rel.language,
+        explicit: !!rel.explicit, releaseDate: (rel.release_date || '').slice(0, 10), isrc: rel.isrc, upc: rel.upc,
+        label: rel.label, copyrightYear: Number(rel.copyright_year) || undefined, pLine: rel.p_line, cLine: rel.c_line,
+      } });
+      setRel(u); await refresh(u.id);
+    } catch { /* */ } finally { setBusy(false); }
+  };
+  // Metadata-berikelse: slå opp hovedartisten på Spotify, fyll sjanger om tom.
+  const enrich = async () => {
+    if (!rel?.primary_artist) { setEnrichNote('Fyll inn hovedartist først.'); return; }
+    setSpotBusy(true); setEnrichNote('');
+    try {
+      const d = await apiRequest(`/api/spotify/search-artist?q=${encodeURIComponent(rel.primary_artist)}`);
+      const a = (d?.artists || [])[0];
+      if (!a) { setEnrichNote('Fant ingen Spotify-artist.'); return; }
+      setRel((r: any) => ({ ...r, primary_genre: r.primary_genre || a.genres?.[0] || r.primary_genre, secondary_genre: r.secondary_genre || a.genres?.[1] || r.secondary_genre }));
+      setEnrichNote(`Matchet «${a.name}»${a.genres?.length ? ` · ${a.genres.slice(0, 2).join(', ')}` : ' (ingen sjanger registrert)'}`);
+    } catch (e: any) { setEnrichNote(typeof e?.message === 'string' && e.message.includes('503') ? 'Spotify ikke konfigurert.' : 'Oppslag feilet.'); }
+    finally { setSpotBusy(false); }
+  };
+  // ISRC/UPC-verifisering: er utgivelsen live på Spotify?
+  const checkSpotify = async () => {
+    if (!rel) return; setSpotBusy(true);
+    try { await save(); setSpot(await apiRequest(`/api/releases/${rel.id}/spotify-status`)); }
+    catch { setSpot({ error: true }); } finally { setSpotBusy(false); }
+  };
+
+  const exportPackage = async () => {
+    if (!rel) return; setBusy(true);
+    try {
+      await save();
+      const headers = await getAuthHeader();
+      const res = await fetch(`/api/releases/${rel.id}/package`, { headers });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob); const a = document.createElement('a');
+      a.href = url; a.download = `release-${(rel.title || 'release').replace(/[^a-z0-9]/gi, '-').toLowerCase()}.json`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      await refresh(rel.id);
+    } catch { /* */ } finally { setBusy(false); }
+  };
+
+  const field = (label: string, key: string, opts: { w?: number | string; ph?: string } = {}) => (
+    <TextField label={label} value={rel?.[key] ?? ''} placeholder={opts.ph} onChange={(e) => set(key, e.target.value)} size="small" sx={{ width: opts.w, ...fieldSx }} fullWidth={!opts.w} />
+  );
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
+      <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}><RocketLaunchOutlined sx={{ color: ACCENT }} /> Publiser utgivelse
+        {rel && <Chip label={valid ? 'Klar' : 'Mangler info'} size="small" sx={{ height: 20, fontSize: '0.64rem', bgcolor: valid ? 'rgba(95,184,138,0.16)' : 'rgba(224,169,85,0.16)', color: valid ? '#5fb88a' : '#e0a955' }} />}
+        {rel?.status === 'exported' && <Chip label="Eksportert" size="small" sx={{ height: 20, fontSize: '0.64rem', bgcolor: 'rgba(255,255,255,0.08)', color: MUTED }} />}</DialogTitle>
+      <DialogContent>
+        {loading || !rel ? <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} sx={{ color: ACCENT }} /></Box> : (
+          <Stack direction="row" spacing={2} sx={{ py: 0.5 }}>
+            {/* Venstre: metadata-skjema */}
+            <Stack spacing={1.25} sx={{ flex: 1, minWidth: 0 }}>
+              {field('Tittel', 'title')}
+              <Stack direction="row" spacing={1}>
+                {field('Hovedartist', 'primary_artist')}
+                <TextField select SelectProps={{ native: true }} label="Type" value={rel.release_type || 'single'} onChange={(e) => set('release_type', e.target.value)} size="small" sx={{ width: 120, ...fieldSx }}>
+                  {RELEASE_TYPES.map(([v, l]) => <option key={v} value={v} style={{ background: PANEL }}>{l}</option>)}
+                </TextField>
+              </Stack>
+              <Stack direction="row" spacing={1}>{field('Sjanger', 'primary_genre')}{field('Undersjanger', 'secondary_genre')}</Stack>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Button onClick={enrich} disabled={spotBusy} size="small" startIcon={<MusicNote sx={{ fontSize: '15px !important' }} />} sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.72rem', minWidth: 0 }}>Berik fra Spotify</Button>
+                {enrichNote && <Typography sx={{ fontSize: '0.68rem', color: MUTED }} noWrap>{enrichNote}</Typography>}
+              </Stack>
+              <Stack direction="row" spacing={1}>
+                <TextField type="date" label="Utgivelsesdato" InputLabelProps={{ shrink: true }} value={(rel.release_date || '').slice(0, 10)} onChange={(e) => set('release_date', e.target.value)} size="small" sx={{ flex: 1, ...fieldSx }} />
+                {field('Språk', 'language', { w: 90, ph: 'no' })}
+              </Stack>
+              <Stack direction="row" spacing={1}>{field('ISRC', 'isrc', { ph: 'NOABC2500001' })}{field('UPC/EAN', 'upc', { ph: 'strekkode' })}</Stack>
+              {field('Plateselskap / label', 'label')}
+              <Stack direction="row" spacing={1} alignItems="center">
+                {field('© Komposisjon (C-line)', 'c_line')}
+                <FormControlLabel control={<Switch checked={!!rel.explicit} onChange={(e) => set('explicit', e.target.checked)} sx={{ '& .Mui-checked': { color: ACCENT } }} />} label={<Typography sx={{ fontSize: '0.74rem', whiteSpace: 'nowrap' }}>Explicit</Typography>} />
+              </Stack>
+              {field('℗ Master (P-line)', 'p_line')}
+            </Stack>
+            {/* Høyre: cover + sjekkliste */}
+            <Stack spacing={1.25} sx={{ width: 230 }}>
+              <Box sx={{ aspectRatio: '1', borderRadius: '12px', overflow: 'hidden', border: `1px solid ${BORDER}`, bgcolor: PANEL2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {rel.cover_url ? <Box component="img" src={rel.cover_url} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <MusicNote sx={{ fontSize: 40, color: FAINT }} />}
+              </Box>
+              <Box sx={{ bgcolor: 'rgba(255,255,255,0.03)', borderRadius: '10px', p: 1.25 }}>
+                <Typography sx={{ fontSize: '0.68rem', color: FAINT, mb: 0.5, fontWeight: 700, letterSpacing: 0.5 }}>SJEKKLISTE FØR LEVERING</Typography>
+                <Stack spacing={0.4}>
+                  {checks.map((c) => (
+                    <Stack key={c.key} direction="row" alignItems="center" spacing={0.75}>
+                      {c.ok ? <CheckCircle sx={{ fontSize: 15, color: '#5fb88a' }} /> : <FiberManualRecord sx={{ fontSize: 9, color: '#e0a955', mx: '3px' }} />}
+                      <Typography sx={{ fontSize: '0.72rem', color: c.ok ? TEXT : MUTED }}>{c.label}</Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Box>
+              <Typography sx={{ fontSize: '0.66rem', color: FAINT, lineHeight: 1.4 }}>Pakken inneholder metadata, credits/splitt og asset-lenker (master + cover). Last den opp i din egen distributør (DistroKid, CD Baby, Amuse e.l.).</Typography>
+              {/* Spotify-verifisering (etter publisering hos distributør) */}
+              <Box sx={{ bgcolor: 'rgba(29,185,84,0.06)', border: '1px solid rgba(29,185,84,0.25)', borderRadius: '10px', p: 1.25 }}>
+                <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.75 }}>
+                  <MusicNote sx={{ fontSize: 15, color: '#1DB954' }} />
+                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, flex: 1 }}>Live på Spotify?</Typography>
+                  <Button onClick={checkSpotify} disabled={spotBusy || (!rel.isrc && !rel.upc)} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.7rem', minWidth: 0 }}>{spotBusy ? '…' : 'Sjekk'}</Button>
+                </Stack>
+                {!rel.isrc && !rel.upc && <Typography sx={{ fontSize: '0.66rem', color: FAINT }}>Legg inn ISRC eller UPC for å sjekke.</Typography>}
+                {spot?.error && <Typography sx={{ fontSize: '0.68rem', color: '#e0606a' }}>Oppslag feilet.</Typography>}
+                {spot && !spot.error && spot.live === false && <Typography sx={{ fontSize: '0.68rem', color: '#e0a955' }}>Ikke funnet ennå — det tar gjerne 1–3 dager etter levering.</Typography>}
+                {spot?.live && (() => { const e = spot.track || spot.album; return (
+                  <Stack spacing={0.75}>
+                    <Box component="iframe" title="Spotify" src={e.embedUrl} sx={{ width: '100%', height: spot.track ? 80 : 152, border: 0, borderRadius: '8px' }} allow="encrypted-media" />
+                    <Button href={e.url} target="_blank" size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.7rem', alignSelf: 'flex-start', minWidth: 0 }}>Åpne på Spotify</Button>
+                  </Stack>
+                ); })()}
+              </Box>
+            </Stack>
+          </Stack>
+        )}
+      </DialogContent>
+      {rel && (
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={onClose} sx={{ color: MUTED, textTransform: 'none', mr: 'auto' }}>Lukk</Button>
+          <Button onClick={save} disabled={busy} sx={{ color: TEXT, textTransform: 'none' }}>Lagre</Button>
+          <Button onClick={exportPackage} disabled={busy || !valid} startIcon={busy ? <CircularProgress size={15} sx={{ color: '#150d05' }} /> : <FileDownloadDoneOutlined />} variant="contained"
+            sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px', '&.Mui-disabled': { bgcolor: 'rgba(255,107,53,0.3)', color: 'rgba(21,13,5,0.5)' } }}>Eksporter release-pakke</Button>
         </DialogActions>
       )}
     </Dialog>
