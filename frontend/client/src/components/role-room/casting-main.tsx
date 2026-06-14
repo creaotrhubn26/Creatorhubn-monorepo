@@ -41,6 +41,14 @@ import {
   EmojiPeople as WelcomeIcon,
   Theaters as CastingIcon,
 } from '@mui/icons-material';
+// Super Admin: alltid-tilgjengelig kontrollflate for daniel@creatorhubn.com.
+// Mountes på toppen av Role Room-shellen så det er synlig SELV når et
+// prosjekt er åpent. /admin-room-ruten åpner AdminRoom direkte uten å
+// gå via dashboard-subtab (som var begravd bak email-gate + project-state).
+import SuperAdminOverlay from './components/admin/SuperAdminOverlay';
+import SuperAdminAdminRoomShell, {
+  isSuperAdminAdminRoomPath,
+} from './components/admin/SuperAdminAdminRoomShell';
 
 const castingQueryClient = new QueryClient({
   defaultOptions: {
@@ -97,6 +105,12 @@ function CastingStandaloneAppContent() {
     return isRoleRoomEducationPathname(localeCtx.pathname, window.location);
   }, [localeCtx.pathname]);
 
+  // Super Admin-rute: /admin-room mountes som egen toplevel-flate. Detekteres
+  // her — ikke i RoleRoomDashboardPanel — for å bypasse email-gate-bug og
+  // project-room-auto-restore. Bare daniel@creatorhubn.com slipper gjennom
+  // (verifisert i SuperAdminAdminRoomShell selv).
+  const isAdminRoomPath = useMemo(() => isSuperAdminAdminRoomPath(), [localeCtx.pathname]);
+
   // Public SEO-landingssider — detekteres før auth-gate slik at
   // Googlebot kan indeksere innholdet uten login.
   const competitorKey = useMemo(
@@ -144,6 +158,10 @@ function CastingStandaloneAppContent() {
 
     trackMarketingPageView(window.location.pathname);
   }, [isEducationPath, competitorKey, studentPageKey, isPressKitPath]);
+
+  if (isAdminRoomPath) {
+    return <SuperAdminAdminRoomShell />;
+  }
 
   if (competitorKey) {
     return <CompetitorComparisonPage competitor={competitorKey} locale={localeCtx.locale} />;
@@ -472,6 +490,15 @@ function CastingStandaloneRuntimeContent() {
 
   return (
     <Box sx={{ width: '100%', minHeight: '100vh', position: 'relative' }}>
+      {/*
+        Super Admin-overlay: alltid-tilgjengelig kontroll for daniel@creatorhubn.com.
+        Komponenten self-gater på email — andre brukere får null tilbake og
+        ingen DOM-fotavtrykk. FAB er nederst-venstre (?-knapp er nederst-høyre i
+        RoleRoomUXLayer, så de kolliderer ikke). Cmd/Ctrl + Shift + A toggler.
+        URL ?super=1 eller /super-admin åpner overlayen direkte.
+      */}
+      <SuperAdminOverlay />
+
       {!authResolved || processingGoogleLogin || processingClientInviteLogin ? (
         <Box
           sx={{
