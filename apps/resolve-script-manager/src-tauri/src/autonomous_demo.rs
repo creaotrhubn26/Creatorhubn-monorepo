@@ -190,6 +190,30 @@ pub async fn tts_from_audio(
     Ok(TtsResult { path: m4a.to_string_lossy().to_string(), duration_sec: probe_duration(&ffprobe, &m4a) })
 }
 
+/// Les et bilde fra disk → data-URL (for produkt-reveal: produktbildet embeddes
+/// i den animerte HTML-scenen). Støtter png/jpg/webp.
+#[tauri::command]
+pub async fn read_image_b64(path: String) -> Result<String, String> {
+    use base64::Engine;
+    let p = std::path::PathBuf::from(&path);
+    if !p.exists() {
+        return Err("bilde finnes ikke".into());
+    }
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        _ => "image/png",
+    };
+    let bytes = std::fs::read(&p).map_err(|e| format!("les bilde: {e}"))?;
+    if bytes.is_empty() {
+        return Err("tomt bilde".into());
+    }
+    Ok(format!("data:{};base64,{}", mime, base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
 /// Åpne en fil/sti med systemets standard-app (`/usr/bin/open`). Mer pålitelig
 /// enn opener-pluginen for vilkårlige stier (f.eks. ~/Movies/Post Agent/).
 #[tauri::command]
