@@ -500,6 +500,7 @@ import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
 import { registerMarketIntelAgentRoutes } from "./market-intelligence/market-intel-agent-routes.js";
+import { registerLearningLoopRoutes } from "./market-intelligence/learning-loop-routes.js";
 import {
   upsertRenewalFromStripeSubscription as upsertCsRenewalFromStripe,
   markRenewalChurnedForStripeSubscription as markCsRenewalChurned,
@@ -24196,6 +24197,13 @@ registerMarketingWorkflowRoutes({
 });
 // MI Agent kontekst (Fase 5 — agent får oversikt over markedet)
 registerMarketIntelAgentRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// MI Læringsløkke (Fase 6 — analytics feedback)
+registerLearningLoopRoutes({
   app,
   pool,
   activeSessions,
