@@ -72,11 +72,42 @@ def _ease_pt(start_xy, end_xy, frames):
     return [(0, [start_xy[0], start_xy[1]]), (max(2, frames), [end_xy[0], end_xy[1]])]
 
 
-def _camera_keys(move, frames):
+def _safe_center(cx, cy, size):
+    """Klem et ønsket senter slik at et bilde skalert med `size` aldri viser
+    kant (maks-offset fra 0.5 = (1 - 1/size)/2)."""
+    m = max(0.0, (1.0 - 1.0 / max(1.0001, size)) / 2.0)
+    return (min(0.5 + m, max(0.5 - m, cx)), min(0.5 + m, max(0.5 - m, cy)))
+
+
+def _camera_keys(move, frames, focus=None):
     """Eased keyframes for Transform (Size scalar, Center [x,y]) per kamera-trekk.
-    Center 0.5/0.5 = sentrert. Amplituder er tydelige nok til å MERKES, men
-    fortsatt rolige/premium."""
+    Hvis `focus` (cx,cy i Fusion-koord) er gitt, FØLGER kameraet fokuset: zoom
+    skyver inn mot fokuset, pan/section ender på fokuset. Klemt til trygt område
+    så vi aldri viser kant."""
     f = max(2, frames)
+    if focus is not None:
+        fx, fy = focus
+        if move in ("pan_left", "pan_right", "section_snap"):
+            s = 1.16
+            scx, scy = _safe_center(fx, fy, s)
+            # start speilet over senter, ende PÅ fokus → kamera glir mot fokuset
+            start = _safe_center(1.0 - scx, 1.0 - scy, s)
+            return {"Size": [(0, s), (f, s)], "Center": _ease_pt(start, (scx, scy), f)}
+        # zoom-familie: skyv inn MOT fokus (start vidt, ende tett på elementet)
+        start_s, end_s = 1.0, 1.30
+        if move == "zoom_out":
+            start_s, end_s = 1.30, 1.08
+        elif move == "cinematic_reveal":
+            start_s, end_s = 1.34, 1.16   # settle inn mot fokus i intro
+        # klem start- og slutt-senter hver for seg til sin egen trygge Size
+        scx0, scy0 = _safe_center(0.5 + (fx - 0.5) * 0.25, 0.5 + (fy - 0.5) * 0.25, start_s)
+        scx1, scy1 = _safe_center(fx, fy, end_s)
+        out = {"Size": _ease(start_s, end_s, f),
+               "Center": _ease_pt((scx0, scy0), (scx1, scy1), f)}
+        if move == "cinematic_reveal":
+            out["reveal"] = True
+        return out
+    # ── uten fokus: generiske, men tydelige bevegelser ──
     if move in ("push_in", "zoom_in"):
         return {"Size": _ease(1.0, 1.20, f), "Center": None}
     if move == "zoom_out":
@@ -91,7 +122,6 @@ def _camera_keys(move, frames):
         return {"Size": _ease(1.16, 1.26, f), "Center": _ease_pt((0.56, 0.54), (0.44, 0.46), f)}
     if move == "cinematic_reveal":
         return {"Size": _ease(1.30, 1.04, f), "Center": None, "reveal": True}
-    # auto / ukjent → tydelig push-in
     return {"Size": _ease(1.0, 1.16, f), "Center": None}
 
 
@@ -221,32 +251,76 @@ def _build_scene_comp(comp, scene, idx, total, fps, brand, dur, report):
         report.append("MediaIn/MediaOut mangler i comp — kan ikke bygge")
         return built
 
-    # 1) Virtuelt kamera (Transform), eased keyframes som følger fokus
+    # Fokus = scene.focusRect, ellers første effekt med en rect (CTA/callout/
+    #         spotlight). Kameraet zoomer/panorerer mot det faktiske elementet.
+    focus = None
+    frect = scene.get("focusRect")
+    if not frect:
+        for fx_ in (scene.get("effects") or []):
+            if fx_.get("rect"):
+                frect = fx_["rect"]
+                break
+    if frect:
+        fcx, fcy, _fw, _fh = _rect_to_fusion(frect)
+        focus = (fcx, fcy)
+
+    def _merge_over(base, fg, x, y):
+        if not fg:
+            return base
+        m = _add(comp, "Merge", x, y, report)
+        if not m:
+            return base
+        _connect(m, "Background", base, report)
+        _connect(m, "Foreground", fg, report)
+        return m
+
+    # Del effektene i element-forankrede (følger elementet → komponeres FØR
+    # kameraet, så de zoomer/panorerer SAMMEN med elementet) og skjerm-forankrede
+    # (caption/cards/sweep → ETTER kameraet, fast på skjermen).
+    ANCHORED = {"ctaHighlight", "spotlight", "callout", "cursor", "glow"}
+    anchored, screenfx = [], []
+    for fx in (scene.get("effects") or []):
+        (anchored if (fx.get("type") in ANCHORED) else screenfx).append(fx)
+
+    # 1) Element-forankrede effekter på rå media (media-rom)
+    last = media_in
+    for fx in anchored:
+        try:
+            fx_out, fx_name = _build_effect(comp, fx, dur, fps, brand, report)
+        except Exception as exc:  # noqa: BLE001
+            report.append(f"effekt {fx.get('type')} kastet: {exc}")
+            fx_out, fx_name = None, None
+        if fx_out:
+            built["nodes"].append(fx_name + "(anchored)")
+            last = _merge_over(last, fx_out, 2, 1)
+
+    # 2) Virtuelt kamera — transformerer media + forankrede effekter samlet
     cam = _add(comp, "Transform", 1, 0, report)
-    cam_keys = _camera_keys(move, dur)
+    cam_keys = _camera_keys(move, dur, focus=focus)
     if cam:
         built["nodes"].append("Transform(camera)")
-        _connect(cam, "Input", media_in, report)
+        _connect(cam, "Input", last, report)
         _kf_scalar(comp, cam, "Size", cam_keys["Size"], report)
         if cam_keys.get("Center"):
             _kf_point(comp, cam, "Center", cam_keys["Center"], report)
-    last = cam or media_in
+        last = cam
 
-    # 2) Ren UI-caption: Background-bar (masket) + Text+, slide-up + fade
+    # 2b) Premium color-grade på media+kamera (ikke på tekst)
+    graded = _add_grade(comp, last, report)
+    if graded is not last:
+        built["nodes"].append("ColorGrade")
+        last = graded
+
+    # 3) Skjerm-forankret caption (zoomer IKKE med kameraet)
     caption = (scene.get("caption") or "").strip()
     if caption:
         cap_out = _build_caption(comp, caption, dur, fps, brand, report)
         if cap_out:
-            built["nodes"].append("Caption(Text++Background+Merge)")
-            mrg = _add(comp, "Merge", 2, 0, report)
-            if mrg:
-                _connect(mrg, "Background", last, report)
-                _connect(mrg, "Foreground", cap_out, report)
-                last = mrg
+            built["nodes"].append("Caption")
+            last = _merge_over(last, cap_out, 2, 0)
 
-    # 2b) Motion-graphics-effekter (CTA-highlight, spotlight, callout, cursor,
-    #     card, light-sweep) — lag-på-lag merget over media+caption.
-    for fx in (scene.get("effects") or []):
+    # 4) Skjerm-forankrede effekter (card, light-sweep)
+    for fx in screenfx:
         try:
             fx_out, fx_name = _build_effect(comp, fx, dur, fps, brand, report)
         except Exception as exc:  # noqa: BLE001
@@ -254,24 +328,21 @@ def _build_scene_comp(comp, scene, idx, total, fps, brand, dur, report):
             fx_out, fx_name = None, None
         if fx_out:
             built["nodes"].append(fx_name)
-            m = _add(comp, "Merge", 2, 1, report)
-            if m:
-                _connect(m, "Background", last, report)
-                _connect(m, "Foreground", fx_out, report)
-                last = m
+            last = _merge_over(last, fx_out, 3, 1)
 
-    # 3) Cinematic reveal / kryss-toning: svart Background med Blend-keyframes
+    # 4b) Kino-vignett (skjerm-overlay)
+    vig = _build_vignette(comp, report)
+    if vig:
+        built["nodes"].append("Vignette")
+        last = _merge_over(last, vig, 3, 2)
+
+    # 5) Reveal (fade fra/til svart, kun første/siste) — øverst på skjermen
     rev = _build_reveal(comp, dur, fps, idx, total, force=cam_keys.get("reveal", False),
                         report=report)
     if rev:
         built["nodes"].append("Reveal(fade fra/til svart)")
-        mrg2 = _add(comp, "Merge", 3, 0, report)
-        if mrg2:
-            _connect(mrg2, "Background", last, report)
-            _connect(mrg2, "Foreground", rev, report)
-            last = mrg2
+        last = _merge_over(last, rev, 3, 0)
 
-    # 4) Koble til MediaOut
     _connect(media_out, "Input", last, report)
     return built
 
@@ -685,6 +756,36 @@ def _fx_light_sweep(comp, fx, dur, fps, brand, report):
         _kf_scalar(comp, sweep, "Blend", [(0, 1.0), (dwell, 1.0), (dwell + 1, 0.0)], report)
         out = sweep
     return out, "Light-sweep"
+
+
+def _add_grade(comp, src, report):
+    """Subtil premium color-grade: litt kontrast + metning. Returnerer ny output
+    (eller src hvis noden ikke kan lages)."""
+    bc = _add(comp, "BrightnessContrast", 1, 1, report)
+    if not bc:
+        return src
+    _connect(bc, "Input", src, report)
+    _set(bc, "Contrast", 1.06, report)
+    _set(bc, "Saturation", 1.10, report)
+    _set(bc, "Gamma", 1.02, report)
+    return bc
+
+
+def _build_vignette(comp, report):
+    """Myk kino-vignett (mørke hjørner) som skjerm-overlay."""
+    bg = _add(comp, "Background", 0, 17, report)
+    el = _add(comp, "EllipseMask", -1, 17, report)
+    if not bg or not el:
+        return None
+    for ch in ("TopLeftRed", "TopLeftGreen", "TopLeftBlue"):
+        _set(bg, ch, 0.0, report)
+    _set(bg, "TopLeftAlpha", 0.30, report)
+    _set(el, "Width", 1.5, report)
+    _set(el, "Height", 1.5, report)
+    _set(el, "SoftEdge", 0.5, report)
+    _set(el, "Invert", 1, report)   # mørkt UTENFOR ellipsen = hjørnene
+    _connect(bg, "EffectMask", el, report)
+    return bg
 
 
 def _apply_timeline_settings(project, preset, fps, report):
