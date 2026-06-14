@@ -11,8 +11,11 @@
 
 import type express from "express";
 import { randomUUID, createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, createReadStream } from "node:fs";
+import { writeFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
 
@@ -37,6 +40,111 @@ function fallbackLogo(): Buffer | null {
   return FALLBACK_LOGO;
 }
 
+// ── Video-generering (ffmpeg) for YouTube-publisering ───────────────────────
+// Render sangtekst til en høy, transparent PNG (1920 bred) via sharp+SVG.
+// Overlegges og rulles i ffmpeg — robust (sharp har prebygd binær, ingen freetype-
+// avhengighet i ffmpeg). Mørk kontur (paint-order) gjør teksten lesbar på cover.
+async function renderLyricsImage(lyrics: string, title: string, artist: string): Promise<{ buffer: Buffer; height: number }> {
+  const sharp = (await import("sharp")).default;
+  const W = 1920, LINE_H = 66, FS = 46, TOP = 1080 + 60, BOTTOM = 1080, WRAP = 60;
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const wrap = (ln: string): string[] => {
+    if (!ln.trim()) return [""];
+    const out: string[] = []; let cur = "";
+    for (const w of ln.split(/\s+/)) { const t = cur ? cur + " " + w : w; if (t.length > WRAP && cur) { out.push(cur); cur = w; } else cur = t; }
+    if (cur) out.push(cur); return out;
+  };
+  const lines = lyrics.replace(/\r/g, "").split("\n").flatMap(wrap);
+  const height = TOP + lines.length * LINE_H + BOTTOM;
+  const textEls = lines.map((ln, i) => ln ? `<text x="960" y="${TOP + i * LINE_H}" font-size="${FS}" fill="#ffffff" stroke="rgba(0,0,0,0.55)" stroke-width="4" paint-order="stroke" text-anchor="middle" font-family="sans-serif">${esc(ln)}</text>` : "").join("");
+  const titleEl = `<text x="960" y="${TOP - 110}" font-size="74" font-weight="bold" fill="#ffffff" stroke="rgba(0,0,0,0.6)" stroke-width="5" paint-order="stroke" text-anchor="middle" font-family="sans-serif">${esc(title)}</text>`;
+  const artistEl = artist ? `<text x="960" y="${TOP - 50}" font-size="42" fill="#ffffff" fill-opacity="0.88" stroke="rgba(0,0,0,0.55)" stroke-width="4" paint-order="stroke" text-anchor="middle" font-family="sans-serif">${esc(artist)}</text>` : "";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${height}">${titleEl}${artistEl}${textEls}</svg>`;
+  const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
+  return { buffer, height };
+}
+
+// Varighet (sek) på en lydfil via ffprobe (0 ved feil).
+function probeDuration(path: string): Promise<number> {
+  return new Promise((resolve) => {
+    const pr = spawn(process.env.FFPROBE_PATH || "ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", path]);
+    let out = ""; pr.stdout.on("data", (d) => { out += d.toString(); });
+    pr.on("error", () => resolve(0));
+    pr.on("close", () => resolve(Number(out.trim()) || 0));
+  });
+}
+
+const KARAOKE_SLOT = 150;
+// Stablet tekst (én linje per slot, sentrert) for beat-synket karaoke.
+async function renderStackedLyrics(lines: string[]): Promise<Buffer> {
+  const sharp = (await import("sharp")).default;
+  const W = 1920, FS = 56, SLOT = KARAOKE_SLOT;
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const els = lines.map((ln, i) => `<text x="960" y="${i * SLOT + SLOT / 2 + FS / 3}" font-size="${FS}" font-weight="bold" fill="#ffffff" stroke="rgba(0,0,0,0.6)" stroke-width="5" paint-order="stroke" text-anchor="middle" font-family="sans-serif">${esc(ln)}</text>`).join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${lines.length * SLOT}">${els}</svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+// Vignett som mørklegger topp/bunn så aktiv (sentrert) linje er i fokus.
+async function renderVignette(): Promise<Buffer> {
+  const sharp = (await import("sharp")).default;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="black" stop-opacity="0.88"/><stop offset="0.34" stop-color="black" stop-opacity="0"/><stop offset="0.66" stop-color="black" stop-opacity="0"/><stop offset="1" stop-color="black" stop-opacity="0.88"/></linearGradient></defs><rect width="1920" height="1080" fill="url(#g)"/></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+// Lag video fra cover + master-lyd.
+//  - karaoke: stablet tekst hopper slik at aktiv linje sentreres på sitt tidsstempel.
+//  - scroll: hele teksten ruller jevnt.
+//  - ellers: visualizer (cover sentrert på sort 16:9).
+function buildVideo(coverPath: string, audioPath: string, outPath: string, opts?: {
+  lyricsImagePath?: string; lyricsHeight?: number; durationSec?: number;
+  karaoke?: { stackedPath: string; vignettePath: string; starts: number[] };
+}): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let args: string[];
+    if (opts?.karaoke) {
+      const { stackedPath, vignettePath, starts } = opts.karaoke;
+      const K = 540 + KARAOKE_SLOT / 2;
+      const yexpr = `${K}-${KARAOKE_SLOT}*(${starts.map((s) => `gte(t\\,${s.toFixed(2)})`).join("+")})`;
+      args = [
+        "-y", "-loop", "1", "-i", coverPath, "-loop", "1", "-i", stackedPath, "-loop", "1", "-i", vignettePath, "-i", audioPath,
+        "-filter_complex",
+        `[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,boxblur=24:2,eq=brightness=-0.4:saturation=1.05[bg];` +
+        `[bg][1:v]overlay=x=(W-w)/2:y=${yexpr}[a];[a][2:v]overlay=0:0:format=auto,format=yuv420p[v]`,
+        "-map", "[v]", "-map", "3:a",
+        "-c:v", "libx264", "-preset", "veryfast", "-r", "25", "-c:a", "aac", "-b:a", "256k", "-shortest", "-movflags", "+faststart", outPath,
+      ];
+    } else if (opts?.lyricsImagePath && opts.lyricsHeight) {
+      const dur = Math.max(opts.durationSec || 0, 1);
+      const speed = Math.max(30, Math.round((opts.lyricsHeight + 1080) / dur));
+      args = [
+        "-y", "-loop", "1", "-i", coverPath, "-loop", "1", "-i", opts.lyricsImagePath, "-i", audioPath,
+        "-filter_complex",
+        `[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,boxblur=22:2,eq=brightness=-0.34:saturation=1.05[bg];` +
+        `[bg][1:v]overlay=x=(W-w)/2:y=H-t*${speed}:format=auto,format=yuv420p[v]`,
+        "-map", "[v]", "-map", "2:a",
+        "-c:v", "libx264", "-preset", "veryfast", "-r", "25", "-c:a", "aac", "-b:a", "256k", "-shortest", "-movflags", "+faststart", outPath,
+      ];
+    } else {
+      args = [
+        "-y", "-loop", "1", "-i", coverPath, "-i", audioPath,
+        "-c:v", "libx264", "-tune", "stillimage", "-preset", "veryfast", "-r", "25",
+        "-vf", "scale=1080:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,format=yuv420p",
+        "-c:a", "aac", "-b:a", "256k", "-shortest", "-movflags", "+faststart", outPath,
+      ];
+    }
+    const ff = spawn(process.env.FFMPEG_PATH || "ffmpeg", args);
+    let err = "";
+    ff.stderr.on("data", (d) => { err += d.toString(); });
+    ff.on("error", reject);
+    ff.on("close", (code) => (code === 0 ? resolve() : reject(new Error("ffmpeg_failed: " + err.slice(-500)))));
+  });
+}
+
+// Ikke-tomme tekstlinjer (uten seksjonsmarkører) — grunnlag for tap-to-time.
+function lyricLines(lyrics: string): string[] {
+  return lyrics.replace(/\r/g, "").split("\n").map((l) => l.trim()).filter((l) => l && !/^\[[^\]]*\]$/.test(l));
+}
+
 const makeInviteToken = () => "inv_" + randomUUID().replace(/-/g, "");
 
 type AnyPool = {
@@ -55,6 +163,9 @@ export interface AudioShowcaseDeps {
   // Valgfri: hent universell business-branding (Universal Dashboard → settings)
   // slik at avtale-PDF arver produsentens logo/farge/navn automatisk.
   getBrandingForUser?: (userId: string) => Promise<{ businessName?: string; logoUrl?: string; accentColor?: string } | null>;
+  // Valgfri: autorisert YouTube-klient for innlogget bruker (gjenbruker eksisterende
+  // Google-tilkobling fra youtube-routes). Mangler den → publisering ikke tilgjengelig.
+  getYoutubeClient?: (userId: string, req: any) => Promise<{ youtube: any } | null>;
 }
 
 const isMissingTable = (e: unknown) =>
@@ -180,7 +291,7 @@ const PT_SECTION_COLOR: Record<string, string> = {
 };
 
 export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
-  const { app, pool, requireUserSession, sendInviteEmail, sendEmail, getBrandingForUser } = deps;
+  const { app, pool, requireUserSession, sendInviteEmail, sendEmail, getBrandingForUser, getYoutubeClient } = deps;
   const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
 
   // Send invitasjons-e-post (fire-and-forget) hvis dep + e-post finnes.
@@ -1608,6 +1719,135 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         { key: "tech_day", label: "Scene / teknisk", amount: 5895, unit: "per dag", note: "Inntil 10 timer." },
       ],
     });
+  });
+
+  // ══ YOUTUBE-PUBLISERING ════════════════════════════════════════════════════
+  // Gjenbruker eksisterende Google/YouTube-tilkobling (youtube-routes /api/youtube).
+  // Status/connect skjer der; her genererer vi video (visualizer eller lyric-video)
+  // og laster opp. Lyrics hentes fra koblet EaseVerse-track.
+  app.get("/api/releases/:id/youtube/options", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const r = await pool.query(`SELECT easeverse_track_id, master_url, title, primary_artist FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const rel = r.rows[0];
+      let hasLyrics = false;
+      if (rel.easeverse_track_id) {
+        const t = await pool.query(`SELECT lyrics FROM easeverse_tracks WHERE id=$1::uuid LIMIT 1`, [rel.easeverse_track_id]).catch(() => ({ rows: [] as any[] }));
+        hasLyrics = !!str(t.rows[0]?.lyrics, 50);
+      }
+      let hasTiming = false;
+      if (rel.easeverse_track_id) {
+        const t = await pool.query(`SELECT lyrics_timing FROM easeverse_tracks WHERE id=$1::uuid LIMIT 1`, [rel.easeverse_track_id]).catch(() => ({ rows: [] as any[] }));
+        hasTiming = Array.isArray(t.rows[0]?.lyrics_timing) && t.rows[0].lyrics_timing.length > 0;
+      }
+      return res.json({ available: !!getYoutubeClient, hasMaster: !!rel.master_url, hasLyrics, hasTiming, suggestedTitle: `${rel.primary_artist ? rel.primary_artist + " – " : ""}${rel.title}` });
+    } catch (e) { if (isMissingTable(e)) return res.json({ available: false, hasMaster: false, hasLyrics: false }); return res.status(500).json({ error: "yt_options_failed" }); }
+  });
+
+  // Tap-to-time: hent linjer + eksisterende timing for et review-rom.
+  app.get("/api/audio-showcases/:id/lyric-timing", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const p = await pool.query(`SELECT easeverse_track_id FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const trackId = p.rows[0].easeverse_track_id;
+      if (!trackId) return res.json({ lines: [], timing: null });
+      const t = await pool.query(`SELECT lyrics, lyrics_timing FROM easeverse_tracks WHERE id=$1::uuid LIMIT 1`, [trackId]);
+      const lines = lyricLines(str(t.rows[0]?.lyrics, 20000));
+      const timing = Array.isArray(t.rows[0]?.lyrics_timing) ? t.rows[0].lyrics_timing : null;
+      return res.json({ lines, timing });
+    } catch (e) { if (isMissingTable(e)) return res.json({ lines: [], timing: null }); return res.status(500).json({ error: "timing_get_failed" }); }
+  });
+
+  // Lagre timing (sekunder per linje, stigende).
+  app.put("/api/audio-showcases/:id/lyric-timing", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const timing = Array.isArray(req.body?.timing) ? req.body.timing.map((n: unknown) => Number(n)).filter((n: number) => Number.isFinite(n) && n >= 0) : null;
+    if (!timing) return res.status(400).json({ error: "timing_required" });
+    try {
+      const p = await pool.query(`SELECT easeverse_track_id FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (p.rowCount === 0 || !p.rows[0].easeverse_track_id) return res.status(404).json({ error: "not_found" });
+      await pool.query(`UPDATE easeverse_tracks SET lyrics_timing=$2::jsonb, updated_at=NOW() WHERE id=$1::uuid AND user_id=$3`, [p.rows[0].easeverse_track_id, JSON.stringify(timing), s.userId]);
+      return res.json({ ok: true, count: timing.length });
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "timing_save_failed" }); }
+  });
+
+  app.post("/api/releases/:id/youtube/publish", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    if (!getYoutubeClient) return res.status(503).json({ error: "youtube_not_configured" });
+    const tmp: string[] = [];
+    try {
+      const rel = await pool.query(`SELECT * FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (rel.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const r = rel.rows[0];
+      if (!r.master_url) return res.status(400).json({ error: "no_master" });
+
+      // Autorisert YouTube-klient (eksisterende Google-tilkobling). Mangler den → 409.
+      let client: { youtube: any } | null = null;
+      try { client = await getYoutubeClient(s.userId, req); } catch { client = null; }
+      if (!client?.youtube) return res.status(409).json({ error: "not_connected" });
+
+      // Hent cover + master til temp.
+      const cover = (await fetchImageBytes(r.cover_url)) || fallbackLogo();
+      const audio = await fetchImageBytes(r.master_url);
+      if (!audio) return res.status(422).json({ error: "master_unreachable" });
+      const base = join(tmpdir(), `yt-${randomUUID()}`);
+      const coverPath = `${base}.png`, audioPath = `${base}.audio`, outPath = `${base}.mp4`;
+      tmp.push(coverPath, audioPath, outPath);
+      await writeFile(coverPath, cover || Buffer.alloc(0));
+      await writeFile(audioPath, audio);
+
+      // Lyric-video: karaoke (beat-synket) hvis timing finnes + valgt, ellers scroll.
+      const durationSec = await probeDuration(audioPath);
+      let lyricsImagePath: string | undefined; let lyricsHeight = 0;
+      let karaoke: { stackedPath: string; vignettePath: string; starts: number[] } | undefined;
+      let videoMode: "karaoke" | "scroll" | "visualizer" = "visualizer";
+      if (req.body?.includeLyrics && r.easeverse_track_id) {
+        const t = await pool.query(`SELECT lyrics, lyrics_timing FROM easeverse_tracks WHERE id=$1::uuid LIMIT 1`, [r.easeverse_track_id]).catch(() => ({ rows: [] as any[] }));
+        const lyrics = str(t.rows[0]?.lyrics, 20000);
+        const timing: number[] | null = Array.isArray(t.rows[0]?.lyrics_timing) ? t.rows[0].lyrics_timing : null;
+        if (lyrics) {
+          const lines = lyricLines(lyrics);
+          const wantKaraoke = req.body?.lyricStyle !== "scroll";
+          if (wantKaraoke && timing && timing.length === lines.length && lines.length > 0) {
+            // Beat-synket karaoke.
+            const stacked = await renderStackedLyrics(lines);
+            const vignette = await renderVignette();
+            const stackedPath = `${base}.karaoke.png`, vignettePath = `${base}.vignette.png`;
+            tmp.push(stackedPath, vignettePath);
+            await writeFile(stackedPath, stacked); await writeFile(vignettePath, vignette);
+            karaoke = { stackedPath, vignettePath, starts: timing.map((n) => Number(n) || 0) };
+            videoMode = "karaoke";
+          } else {
+            // Jevn scroll-fallback.
+            const clean = lyrics.replace(/^\s*\[[^\]]*\]\s*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+            const img = await renderLyricsImage(clean, r.title || "", r.primary_artist || "");
+            lyricsImagePath = `${base}.lyrics.png`; lyricsHeight = img.height; tmp.push(lyricsImagePath);
+            await writeFile(lyricsImagePath, img.buffer);
+            videoMode = "scroll";
+          }
+        }
+      }
+      await buildVideo(coverPath, audioPath, outPath, { lyricsImagePath, lyricsHeight, durationSec, karaoke });
+
+      const title = str(req.body?.title, 100) || `${r.primary_artist ? r.primary_artist + " – " : ""}${r.title}`;
+      const description = str(req.body?.description, 4500) || `${r.title}${r.primary_artist ? ` av ${r.primary_artist}` : ""}.`;
+      const privacy = ["public", "unlisted", "private"].includes(String(req.body?.privacy)) ? String(req.body.privacy) : "private";
+      const tags = Array.isArray(req.body?.tags) ? req.body.tags.filter((t: unknown) => typeof t === "string").slice(0, 15) : [r.primary_artist, r.primary_genre].filter(Boolean);
+      const ins = await client.youtube.videos.insert({
+        part: ["snippet", "status"],
+        requestBody: { snippet: { title, description, tags, categoryId: "10" }, status: { privacyStatus: privacy, selfDeclaredMadeForKids: false } },
+        media: { body: createReadStream(outPath) },
+      });
+      const videoId = ins.data.id; const url = videoId ? `https://youtu.be/${videoId}` : null;
+      await pool.query(`INSERT INTO youtube_publications (release_id, user_id, video_id, video_url, privacy, status) VALUES ($1::uuid,$2,$3,$4,$5,'uploaded')`, [r.id, s.userId, videoId, url, privacy]).catch(() => {});
+      return res.json({ ok: true, videoId, url, privacy, videoMode });
+    } catch (e: any) {
+      console.error("[youtube] publish failed:", e?.message || e);
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      return res.status(500).json({ error: "youtube_publish_failed", detail: String(e?.message || "").slice(0, 200) });
+    } finally { for (const f of tmp) unlink(f).catch(() => {}); }
   });
 
   // Eier laster ned signert avtale-PDF.

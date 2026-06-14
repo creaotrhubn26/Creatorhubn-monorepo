@@ -30,6 +30,7 @@ import ImageDrop from '@/components/universal/showcase/ImageDrop';
 import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBUTION_OPTIONS } from '@/components/universal/showcase/ComboField';
 import SpotifyArtistField from '@/components/universal/showcase/SpotifyArtistField';
 import SignaturePad, { type SignatureHandle } from '@/components/universal/showcase/SignaturePad';
+import YouTubePublishPanel from '@/components/universal/showcase/YouTubePublishPanel';
 import { audioShowcaseEvents } from '@/utils/creatorhub-events';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
@@ -1161,6 +1162,8 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
                   </Stack>
                 ); })()}
               </Box>
+              {/* YouTube-publisering (visualizer / lyric-video / karaoke) */}
+              <YouTubePublishPanel releaseId={rel.id} projectId={projectId} masterUrl={rel.master_url} />
             </Stack>
           </Stack>
         )}

@@ -225,7 +225,7 @@ function mapPublishingPlaylist(item: any): PublishingPlaylist {
   };
 }
 
-async function buildAuthorizedYoutubeClient(pool: Pool, userId: string, req?: Request) {
+export async function buildAuthorizedYoutubeClient(pool: Pool, userId: string, req?: Request) {
   const authorized = await resolveRoleRoomGoogleConnection(pool, userId, {
     allowFallbackToAnyUser: false,
     preferredOauthApps: derivePreferredGoogleWorkspaceOauthApps(req),
