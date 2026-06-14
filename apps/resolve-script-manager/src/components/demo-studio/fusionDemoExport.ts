@@ -102,13 +102,21 @@ export async function buildFusionParams(project: DemoProject): Promise<Record<st
     const effects = (s.fusionEffects && s.fusionEffects.length)
       ? s.fusionEffects
       : effectsForScene(s, showCursor);
-    scenes.push({
+    // Auto-fokus: la kameraet følge det DETEKTERTE elementet (hotspot), ellers
+    // det første effekt-rect-et. Slik «følger kamera brukerens fokus» automatisk.
+    const hs = s.hotspot;
+    const focusRect = (hs && hs.w > 0 && hs.h > 0)
+      ? [hs.x, hs.y, hs.w, hs.h]
+      : (effects.find((e) => Array.isArray((e as { rect?: number[] }).rect)) as { rect?: number[] } | undefined)?.rect;
+    const sceneParams: Record<string, unknown> = {
       [s.recordingPath ? "clipPath" : "imagePath"]: mediaPath || "",
       caption: s.overlayText || s.visualInstruction || s.title || "",
       durationSec: Math.max(2, s.duration || 4),
       cameraMove: s.cameraMove || "auto",
       effects,
-    });
+    };
+    if (focusRect) sceneParams.focusRect = focusRect;
+    scenes.push(sceneParams);
   }
 
   // Branding (+ logo persistert hvis data-URL)
