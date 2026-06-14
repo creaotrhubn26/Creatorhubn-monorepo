@@ -496,6 +496,12 @@ import { setupAgencyLeadsRoutes } from "./agency-leads-routes";
 import { setupCustomerSuccessRoutes } from "./customer-success-routes.js";
 import { setupAdminLeadMapPricingRoutes } from "./admin-lead-map-pricing-routes.js";
 import { setupLeadMapRoutes } from "./lead-map-routes.js";
+import { registerBrandKitRoutes } from "./brand-kit-routes.js";
+import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
+import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
+import { registerMarketIntelAgentRoutes } from "./market-intelligence/market-intel-agent-routes.js";
+import { registerLearningLoopRoutes } from "./market-intelligence/learning-loop-routes.js";
+import { registerLeadMapCampaignRoutes } from "./market-intelligence/lead-map-campaign-routes.js";
 import {
   upsertRenewalFromStripeSubscription as upsertCsRenewalFromStripe,
   markRenewalChurnedForStripeSubscription as markCsRenewalChurned,
@@ -24169,6 +24175,48 @@ setupAdminLeadMapPricingRoutes({
 });
 // Lead Map (Phase 1 — Marketing Cockpit-utvidelse)
 setupLeadMapRoutes({ app, pool, activeSessions });
+// Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
+registerBrandKitRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Market Intelligence Scanner (Fase 2 — orkestrert competitor/funnel/teknikk-scan)
+registerMarketScanRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Marketing Workflow-orkestrering (Fase 4 — broen til eksisterende Marketing Cockpit)
+registerMarketingWorkflowRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// MI Agent kontekst (Fase 5 — agent får oversikt over markedet)
+registerMarketIntelAgentRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// MI Læringsløkke (Fase 6 — analytics feedback)
+registerLearningLoopRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// MI Fase 7 — Lead Map kampanjer (kategoribasert outreach + analytics)
+registerLeadMapCampaignRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
 // Multi-tenant Google Ads conversion-tracking for The Role Room Agent
 // (B0/B1 live; B2/B3/B4 i pipeline). Innholdsprodusenter setter opp
 // conversion-tracking for klienter via Agent.

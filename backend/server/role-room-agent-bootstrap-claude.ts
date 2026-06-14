@@ -45,6 +45,8 @@ const BOOTSTRAP_CONSTRAINTS: string[] = [
   'Hvis agreementSuggestions finnes, bruk dem som avtalerisiko og praktiske anbefalinger, men formuler det som produksjonsråd, ikke juridisk rådgivning.',
   'Hvis socialProfileCandidates finnes, bruk kun kontoer med verified eller likely som kanalinnsikt, og marker kontoer som må bekreftes av produsent eller kunde før publisering.',
   'Hvis competitorAnalysis finnes, bruk kun konkurrenter med verified eller likely som markedsføringsinnsikt. Ikke påstå at en kandidat er konkurrent uten manuell bekreftelse fra kunden.',
+  'KRITISK region-regel: Konkurrenter MÅ operere i samme marked som kunden. En norsk lokal restaurant har IKKE konkurrenter i Brasil, Korea, Kina eller andre fjerne land. Et norsk casting-byrå har IKKE konkurrenter på andre kontinenter med mindre de eksplisitt selger i Norge. Hvis competitorAnalysis inneholder selskaper utenfor kundens marked, IGNORER dem og ikke ta dem med i analysen.',
+  'Hvis du ikke finner gode lokale konkurrenter i kundens region, si det heller enn å fylle opp listen med internasjonale referanser som ikke er relevante.',
   'Bruk konkurrentanalysen til posisjonering, content gaps, CTA og kanalprioritering, men ikke finn på annonsetall, markedsandeler eller private konkurrentdata.',
   'Hvis localPresencePlan finnes, bruk den til lokale eventforslag basert på bransje, adresse, nærliggende partnere og radius. Ikke påstå at partnere er kontaktet eller bekreftet.',
   'For restaurant/servering skal lokale forslag prioritere skole/klassekasse, idrettslag, arbeidsplasser, hotell, kulturarena og nabolag når slike finnes.',
