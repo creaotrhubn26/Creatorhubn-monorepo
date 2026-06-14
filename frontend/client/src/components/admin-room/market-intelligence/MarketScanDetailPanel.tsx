@@ -151,17 +151,48 @@ const FUNNEL_STAGE_LABELS: Record<string, string> = {
 
 interface Props {
   scanId: string;
+  projectId?: string;
+  brandKey?: string;
   onBack?: () => void;
-  onCreateCampaign?: (opportunityId: string) => void;
-  onCreateContentPack?: (opportunityId: string) => void;
-  onCreateFunnelMap?: (opportunityId: string) => void;
-  onSendToAgent?: (opportunityId: string) => void;
 }
 
 export default function MarketScanDetailPanel({
-  scanId, onBack,
-  onCreateCampaign, onCreateContentPack, onCreateFunnelMap, onSendToAgent,
+  scanId, projectId, brandKey = "theroleroom", onBack,
 }: Props) {
+  // Workflow-actions per opportunity
+  const [actingOpportunityId, setActingOpportunityId] = useState<string | null>(null);
+
+  const callWorkflowAction = useCallback(
+    async (
+      opportunityId: string,
+      action: "create-campaign" | "create-content-pack" | "create-funnel-map" | "send-to-agent",
+      successMsg: string,
+    ) => {
+      setActingOpportunityId(opportunityId);
+      try {
+        const r = await fetch(
+          `/api/market-scans/${scanId}/opportunities/${opportunityId}/${action}`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ projectId, brandKey }),
+          },
+        );
+        const body = await r.json();
+        if (!r.ok) {
+          setSnack(`Feil: ${body.error ?? r.status}`);
+        } else {
+          setSnack(successMsg);
+        }
+      } catch (e) {
+        setSnack(`Feil: ${String(e)}`);
+      } finally {
+        setActingOpportunityId(null);
+      }
+    },
+    [scanId, projectId, brandKey],
+  );
   const [scan, setScan] = useState<MarketScan | null>(null);
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [funnelStages, setFunnelStages] = useState<FunnelStage[]>([]);
@@ -400,8 +431,11 @@ export default function MarketScanDetailPanel({
                             {o.canCreateCampaign && (
                               <Button
                                 size="small" variant="contained"
-                                startIcon={<CampaignIcon sx={{ fontSize: 14 }} />}
-                                onClick={() => onCreateCampaign?.(o.id) ?? setSnack("Kampanje-funksjon kommer i Fase 4")}
+                                startIcon={actingOpportunityId === o.id
+                                  ? <CircularProgress size={12} />
+                                  : <CampaignIcon sx={{ fontSize: 14 }} />}
+                                onClick={() => callWorkflowAction(o.id, "create-campaign", "Kampanje-utkast opprettet i Marketing Cockpit")}
+                                disabled={actingOpportunityId !== null}
                                 sx={{ bgcolor: "#fbbf24", color: "#0a0a0f", "&:hover": { bgcolor: "#f59e0b" } }}
                               >
                                 Lag kampanje
@@ -410,8 +444,11 @@ export default function MarketScanDetailPanel({
                             {o.canCreateContentPack && (
                               <Button
                                 size="small" variant="outlined"
-                                startIcon={<AutoAwesomeIcon sx={{ fontSize: 14 }} />}
-                                onClick={() => onCreateContentPack?.(o.id) ?? setSnack("Content Pack kommer i Fase 4")}
+                                startIcon={actingOpportunityId === o.id
+                                  ? <CircularProgress size={12} />
+                                  : <AutoAwesomeIcon sx={{ fontSize: 14 }} />}
+                                onClick={() => callWorkflowAction(o.id, "create-content-pack", "Content pack generert (LinkedIn/IG/Meta/email/landing/video/carousel)")}
+                                disabled={actingOpportunityId !== null}
                                 sx={{ borderColor: "#a78bfa", color: "#a78bfa" }}
                               >
                                 Content pack
@@ -421,7 +458,8 @@ export default function MarketScanDetailPanel({
                               <Button
                                 size="small" variant="outlined"
                                 startIcon={<LayersIcon sx={{ fontSize: 14 }} />}
-                                onClick={() => onCreateFunnelMap?.(o.id) ?? setSnack("Funnel Map kommer i Fase 4")}
+                                onClick={() => callWorkflowAction(o.id, "create-funnel-map", "Funnel map markert")}
+                                disabled={actingOpportunityId !== null}
                               >
                                 Funnel map
                               </Button>
@@ -429,7 +467,8 @@ export default function MarketScanDetailPanel({
                             <Button
                               size="small" variant="outlined"
                               startIcon={<SendIcon sx={{ fontSize: 14 }} />}
-                              onClick={() => onSendToAgent?.(o.id) ?? setSnack("Send til Agent kommer i Fase 5")}
+                              onClick={() => callWorkflowAction(o.id, "send-to-agent", "Sendt til Role Room Agent-kontekst")}
+                              disabled={actingOpportunityId !== null}
                               sx={{ borderColor: "#60a5fa", color: "#60a5fa" }}
                             >
                               Send til Agent

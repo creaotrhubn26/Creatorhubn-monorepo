@@ -45,6 +45,8 @@ export default function MarketIntelligenceSection({
       {activeScanId ? (
         <MarketScanDetailPanel
           scanId={activeScanId}
+          projectId={projectId}
+          brandKey="theroleroom"
           onBack={() => setActiveScanId(null)}
         />
       ) : (
