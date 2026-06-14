@@ -145,6 +145,28 @@ function lyricLines(lyrics: string): string[] {
   return lyrics.replace(/\r/g, "").split("\n").map((l) => l.trim()).filter((l) => l && !/^\[[^\]]*\]$/.test(l));
 }
 
+// Spotify Canvas: 9:16, ~6 s loop fra coveret (uskarp bakgrunn m/ sakte zoom +
+// skarpt sentrert cover). Stille, MP4. Lastes opp manuelt i Spotify for Artists.
+function buildCanvas(coverPath: string, outPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const args = [
+      "-y", "-loop", "1", "-i", coverPath, "-t", "6", "-r", "25",
+      "-filter_complex",
+      `[0:v]scale=1300:2300:force_original_aspect_ratio=increase,crop=1300:2300,zoompan=z='min(zoom+0.0004,1.08)':d=150:s=1080x1920:fps=25,boxblur=20,eq=brightness=-0.12[bg];` +
+      `[0:v]scale=900:900:force_original_aspect_ratio=decrease[fg];` +
+      `[bg][fg]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p[v]`,
+      "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-movflags", "+faststart", outPath,
+    ];
+    const ff = spawn(process.env.FFMPEG_PATH || "ffmpeg", args);
+    let err = ""; ff.stderr.on("data", (d) => { err += d.toString(); });
+    ff.on("error", reject);
+    ff.on("close", (code) => (code === 0 ? resolve() : reject(new Error("ffmpeg_failed: " + err.slice(-400)))));
+  });
+}
+
+// Tid → LRC-stempel [mm:ss.xx]
+const lrcStamp = (sec: number) => { const m = Math.floor(sec / 60), s = sec - m * 60; return `[${String(m).padStart(2, "0")}:${s.toFixed(2).padStart(5, "0")}]`; };
+
 const makeInviteToken = () => "inv_" + randomUUID().replace(/-/g, "");
 
 type AnyPool = {
@@ -1771,6 +1793,54 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       await pool.query(`UPDATE easeverse_tracks SET lyrics_timing=$2::jsonb, updated_at=NOW() WHERE id=$1::uuid AND user_id=$3`, [p.rows[0].easeverse_track_id, JSON.stringify(timing), s.userId]);
       return res.json({ ok: true, count: timing.length });
     } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "timing_save_failed" }); }
+  });
+
+  // ══ SPOTIFY-VERKTØY (manuelle hjelpemidler — Spotify har ikke opplastings-API) ══
+  // Canvas-klipp (9:16, ~6 s) generert fra coveret — lastes opp i Spotify for Artists.
+  app.get("/api/releases/:id/canvas", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const tmp: string[] = [];
+    try {
+      const r = await pool.query(`SELECT cover_url, title FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const cover = (await fetchImageBytes(r.rows[0].cover_url)) || fallbackLogo();
+      if (!cover) return res.status(422).json({ error: "no_cover" });
+      const base = join(tmpdir(), `canvas-${randomUUID()}`);
+      const coverPath = `${base}.png`, outPath = `${base}.mp4`; tmp.push(coverPath, outPath);
+      await writeFile(coverPath, cover);
+      await buildCanvas(coverPath, outPath);
+      const buf = await import("node:fs/promises").then((m) => m.readFile(outPath));
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Disposition", `attachment; filename="canvas-${(r.rows[0].title || "release").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.mp4"`);
+      return res.end(buf);
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); console.error("[canvas] failed:", e); return res.status(500).json({ error: "canvas_failed" }); }
+    finally { for (const f of tmp) unlink(f).catch(() => {}); }
+  });
+
+  // Tekst-eksport for Musixmatch: ren .txt, eller timed .lrc hvis timing finnes.
+  app.get("/api/releases/:id/lyrics-export", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const format = str(req.query?.format, 8) === "lrc" ? "lrc" : "txt";
+    try {
+      const r = await pool.query(`SELECT easeverse_track_id, title, primary_artist FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (r.rowCount === 0 || !r.rows[0].easeverse_track_id) return res.status(404).json({ error: "not_found" });
+      const t = await pool.query(`SELECT lyrics, lyrics_timing FROM easeverse_tracks WHERE id=$1::uuid LIMIT 1`, [r.rows[0].easeverse_track_id]);
+      const lyrics = str(t.rows[0]?.lyrics, 20000);
+      if (!lyrics) return res.status(404).json({ error: "no_lyrics" });
+      const slug = (r.rows[0].title || "lyrics").replace(/[^a-z0-9]/gi, "-").toLowerCase();
+      const lines = lyricLines(lyrics);
+      const timing: number[] | null = Array.isArray(t.rows[0]?.lyrics_timing) ? t.rows[0].lyrics_timing : null;
+      let body: string, ext: string;
+      if (format === "lrc" && timing && timing.length === lines.length) {
+        const head = `[ti:${r.rows[0].title || ""}]\n[ar:${r.rows[0].primary_artist || ""}]\n[tool:CreatorHub Audio Showcase]\n`;
+        body = head + lines.map((ln, i) => `${lrcStamp(Number(timing[i]) || 0)}${ln}`).join("\n") + "\n"; ext = "lrc";
+      } else {
+        body = lines.join("\n") + "\n"; ext = "txt";
+      }
+      res.setHeader("Content-Type", ext === "lrc" ? "application/octet-stream" : "text/plain; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${slug}.${ext}"`);
+      return res.end(body);
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "lyrics_export_failed" }); }
   });
 
   app.post("/api/releases/:id/youtube/publish", async (req, res) => {

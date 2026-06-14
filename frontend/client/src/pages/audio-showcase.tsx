@@ -22,7 +22,7 @@ import {
   ThumbUpAlt, AccessTime, Send, WorkspacePremium, GridViewOutlined, GraphicEq, LayersOutlined,
   Inventory2Outlined, SubjectOutlined, StickyNote2Outlined, TimelineOutlined, Speed, VpnKey,
   CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
-  PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined, TipsAndUpdatesOutlined,
+  PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined, TipsAndUpdatesOutlined, MovieCreationOutlined,
 } from '@mui/icons-material';
 import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
@@ -1076,6 +1076,20 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
     catch { setSpot({ error: true }); } finally { setSpotBusy(false); }
   };
 
+  const downloadSpotifyAsset = async (kind: 'canvas' | 'lyrics') => {
+    if (!rel) return; if (kind === 'canvas') setSpotBusy(true);
+    try {
+      const headers = await getAuthHeader();
+      const path = kind === 'canvas' ? `/api/releases/${rel.id}/canvas` : `/api/releases/${rel.id}/lyrics-export?format=lrc`;
+      const res = await fetch(path, { headers });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const cd = res.headers.get('Content-Disposition') || '';
+      const name = (cd.match(/filename="([^"]+)"/) || [])[1] || (kind === 'canvas' ? 'canvas.mp4' : 'lyrics.txt');
+      const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    } catch { /* */ } finally { if (kind === 'canvas') setSpotBusy(false); }
+  };
+
   const exportPackage = async () => {
     if (!rel) return; setBusy(true);
     try {
@@ -1162,6 +1176,12 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
                     <Button href={e.url} target="_blank" size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.7rem', alignSelf: 'flex-start', minWidth: 0 }}>Åpne på Spotify</Button>
                   </Stack>
                 ); })()}
+                {/* Spotify-verktøy (manuelt — Spotify har ikke opplastings-API) */}
+                <Stack direction="row" spacing={1} sx={{ mt: 1, pt: 1, borderTop: '1px solid rgba(29,185,84,0.18)' }}>
+                  <Button onClick={() => downloadSpotifyAsset('canvas')} disabled={spotBusy} startIcon={<MovieCreationOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Canvas (9:16)</Button>
+                  <Button onClick={() => downloadSpotifyAsset('lyrics')} startIcon={<SubjectOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Tekst → Musixmatch</Button>
+                </Stack>
+                <Typography sx={{ fontSize: '0.6rem', color: FAINT, mt: 0.5 }}>Canvas lastes opp i Spotify for Artists. Tekst (.lrc m/ timing hvis satt, ellers .txt) sendes til Musixmatch.</Typography>
               </Box>
               {/* YouTube-publisering (visualizer / lyric-video / karaoke) */}
               <YouTubePublishPanel releaseId={rel.id} projectId={projectId} masterUrl={rel.master_url} />
