@@ -310,13 +310,14 @@ export function buildAutonomousScript(project: DemoProject, dwellsMs: number[]):
     const kind = at === 'type' ? 'type' : at === 'hover' ? 'hover' : at === 'click' ? 'click' : 'show';
     // Virtuelt kamera: varier bevegelsen per scene (alltid forankret i fokus).
     const CAM_MOVES = ['push_in', 'pan_right', 'zoom_out', 'pan_left', 'section_snap'];
-    const move = CAM_MOVES[i % CAM_MOVES.length];
+    const move = s.cameraMove && s.cameraMove !== 'auto' ? s.cameraMove : CAM_MOVES[i % CAM_MOVES.length];
     L.push(`// ── Scene ${n}: ${oneLine(s.title).slice(0, 60)} [kamera: ${move}]`);
     // MARK FØR handlingen, så narrasjonen dekker peker-reisen + handlingen.
     L.push(`console.log('MARK ${i} ' + Date.now());`);
     L.push('await injectCursor(page); // re-injiser (navigasjon kan ha fjernet pekeren)');
     L.push('await page.evaluate(() => { window.__paZoomReset && window.__paZoomReset(); window.__paSpotlightOff && window.__paSpotlightOff(); window.__paCaptionHide && window.__paCaptionHide(); }).catch(() => {}); // nullstill effekter fra forrige scene');
-    if (i > 0) { L.push(`await page.evaluate(() => window.__paWhip && window.__paWhip(${i % 2 === 0 ? 1 : -1})).catch(() => {}); // whip-overgang`); L.push('await page.waitForTimeout(300);'); }
+    const wantWhip = s.transition === 'whip' || (s.transition !== 'none' && i > 0);
+    if (wantWhip) { L.push(`await page.evaluate(() => window.__paWhip && window.__paWhip(${i % 2 === 0 ? 1 : -1})).catch(() => {}); // whip-overgang`); L.push('await page.waitForTimeout(300);'); }
     if (s.startScrollPct) L.push(`await page.evaluate(() => window.scrollTo({ top: (document.body.scrollHeight - innerHeight) * ${(s.startScrollPct / 100).toFixed(2)}, behavior: 'smooth' })).catch(() => {});`);
     if (at === 'wait') {
       L.push('await page.waitForTimeout(600);');

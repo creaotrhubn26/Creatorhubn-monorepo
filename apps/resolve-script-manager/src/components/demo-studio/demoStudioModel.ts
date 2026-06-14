@@ -76,12 +76,28 @@ export const ACTION_META: Record<DemoActionType, { label: string; icon: string; 
   zoom:             { label: 'Zoom',         icon: '⊕',  verb: 'Zoom inn på' },
 };
 
+/** Virtuell kamera-bevegelse per scene (autonom video). 'auto' = veksle automatisk. */
+export type CameraMove = 'auto' | 'push_in' | 'zoom_in' | 'zoom_out' | 'pan_left' | 'pan_right' | 'section_snap';
+/** Overgang inn til scenen. */
+export type SceneTransition = 'auto' | 'whip' | 'none';
+export const CAMERA_MOVE_LABELS: Record<CameraMove, string> = {
+  auto: 'Auto (varier)', push_in: 'Zoom inn (push-in)', zoom_in: 'Zoom inn', zoom_out: 'Zoom ut',
+  pan_left: 'Panorer venstre', pan_right: 'Panorer høyre', section_snap: 'Snap til seksjon',
+};
+export const SCENE_TRANSITION_LABELS: Record<SceneTransition, string> = {
+  auto: 'Auto', whip: 'Whip (rask sveip)', none: 'Ingen (rolig)',
+};
+
 export interface DemoScene {
   id: string;
   index: number;
   title: string;
   device: DemoDevice;
   viewport: DemoViewport;
+  /** Manuell kamera-bevegelse (overstyrer auto-syklus i autonom video). */
+  cameraMove?: CameraMove;
+  /** Manuell overgang inn til scenen. */
+  transition?: SceneTransition;
   /** Skjerm-orientering. Relevant for iPad (stående/liggende). Default 'portrait'. */
   orientation?: 'portrait' | 'landscape';
   /** Manus / teleprompter-tekst som leses opp. */

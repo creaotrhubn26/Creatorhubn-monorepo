@@ -41,6 +41,7 @@ import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, sca
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_FRIENDLY, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
+  CAMERA_MOVE_LABELS, SCENE_TRANSITION_LABELS, type CameraMove, type SceneTransition,
   RENDER_OPTION_LABELS, RESPONSIVE_STATUS_LABELS, RESPONSIVE_STATUS_COLORS, ACTION_META,
   ACTION_MATCH_LABELS, ACTION_MATCH_COLORS, CRITIQUE_SEVERITY_COLORS,
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
@@ -1518,6 +1519,16 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   {selected.ctaType && (
                     <span style={{ display: 'inline-block', marginTop: 6, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: '#fdf0e7', color: '#b5651d' }}>CTA: {CTA_LABELS[selected.ctaType]}</span>
                   )}
+
+                  <div style={fldLabel}>Kamera & overgang (autonom video)</div>
+                  <div style={row2}>
+                    <select style={field} value={selected.cameraMove ?? 'auto'} onChange={(e) => updateScene(selected.id, { cameraMove: e.target.value as CameraMove })}>
+                      {(Object.keys(CAMERA_MOVE_LABELS) as CameraMove[]).map((m) => <option key={m} value={m}>{CAMERA_MOVE_LABELS[m]}</option>)}
+                    </select>
+                    <select style={field} value={selected.transition ?? 'auto'} onChange={(e) => updateScene(selected.id, { transition: e.target.value as SceneTransition })}>
+                      {(Object.keys(SCENE_TRANSITION_LABELS) as SceneTransition[]).map((t) => <option key={t} value={t}>{SCENE_TRANSITION_LABELS[t]}</option>)}
+                    </select>
+                  </div>
 
                   <div style={fldLabel}>Overlay-tekst</div>
                   <input style={field} value={selected.overlayText ?? ''} onChange={(e) => updateScene(selected.id, { overlayText: e.target.value })} />
