@@ -927,6 +927,7 @@ pub fn run() {
             demo_capture::demo_capture_done,
             demo_capture::demo_fetch_site_context,
             demo_capture::demo_scan_dom,
+            demo_capture::demo_scan_current,
             demo_capture::demo_scan_result,
             demo_capture::demo_verify_action,
             demo_capture::demo_verify_result,

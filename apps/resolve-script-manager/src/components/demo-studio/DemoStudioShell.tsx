@@ -38,7 +38,7 @@ import { runAutonomousDemo } from './autonomousDemo';
 import { exportToFusion, getFusionLearnings, addFusionLearning } from './fusionDemoExport';
 import { renderIntroCard, renderOutroCard, renderBrowserFrame } from './demoBranding';
 import type { DemoFinalizeOpts } from '../../api';
-import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
+import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, scanCurrentDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_FRIENDLY, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
@@ -330,6 +330,43 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       setFusionMsg('Feil: ' + (e instanceof Error ? e.message : String(e)) + ' — sjekk at DaVinci Resolve kjører med External scripting = Local.');
     } finally {
       setFusionBusy(false);
+    }
+  };
+  // App-dykk: akkumuler kontekst fra flere innloggede app-skjermer (uten å miste
+  // sesjon). Bruker åpner appen, logger inn, navigerer, og skanner hver skjerm.
+  const appScanText = useRef<string[]>([]);
+  const appScanEls = useRef<Map<string, ScannedElement>>(new Map());
+  const [appScreenCount, setAppScreenCount] = useState(0);
+  /** Åpne app-grensesnittet i capture-vinduet så brukeren kan logge inn + navigere. */
+  const openAppForLogin = async () => {
+    if (!project) return;
+    try { await startDemoCapture(project.url); setFusionPlanNote('Capture-vinduet er åpnet. Logg inn og naviger til skjermen du vil vise, og trykk «Skann denne app-skjermen».'); }
+    catch (e) { setFusionPlanNote('Feil: kunne ikke åpne capture-vinduet — ' + (e instanceof Error ? e.message : String(e))); }
+  };
+  /** Skann den gjeldende (innloggede) app-skjermen og akkumuler konteksten. */
+  const scanAppScreen = async () => {
+    if (!project || scanBusy) return;
+    const proj = useDemoStudio.getState().project!;
+    setScanBusy(true); setScanLabel('Skanner gjeldende app-skjerm…'); setScanPct(30);
+    try {
+      const scan = await scanCurrentDom();
+      if (!scan) { setScanLabel(null); setScanPct(0); setFusionPlanNote('Fant ikke en åpen, innlogget app-skjerm. Trykk «Åpne app (logg inn)» først.'); return; }
+      setScanPct(70); setScanLabel('Slår sammen kontekst…');
+      if (scan.pageText) appScanText.current.push(scan.pageText);
+      for (const el of (scan.elements ?? [])) { const k = `${el.label || ''}|${el.actionType || ''}`; if (!appScanEls.current.has(k)) appScanEls.current.set(k, el); }
+      if (scan.shots?.length) setProjectField('scanShots', scan.shots);
+      const count = appScreenCount + 1; setAppScreenCount(count);
+      const brandName = proj.branding?.brandName || proj.name;
+      const merged = Array.from(new Set(appScanText.current)).join('\n\n').slice(0, 14000);
+      const u = await analyzeSiteContext({ url: proj.url, pageText: merged, brandName, elements: Array.from(appScanEls.current.values()) }).catch(() => null);
+      if (u) setUnderstanding(u);
+      setScanPct(100); setScanLabel(`Skannet ${count} app-skjerm${count === 1 ? '' : 'er'} ✓`);
+      setFusionPlanNote(`✓ ${count} app-skjerm${count === 1 ? '' : 'er'} skannet. Naviger videre og skann flere, eller trykk «Foreslå behandling».`);
+      window.setTimeout(() => { setScanLabel(null); setScanPct(0); }, 1100);
+    } catch (e) {
+      setScanLabel(null); setScanPct(0); setFusionPlanNote('Feil under skann: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setScanBusy(false);
     }
   };
   /** AI Director → Fusion (diskusjon-først): intervjuer om formålet, og legger så
@@ -1132,8 +1169,19 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                         disabled={scanBusy || fusionPlanBusy}
                         title="Skanner gjeldende skjerm 5 ganger og slår sammen konteksten. Logg inn i capture-vinduet først for å la AI-en se app-grensesnittet."
                         onClick={() => { setUnderstanding(null); void ensureUnderstanding(5, true); }}>
-                        {scanBusy ? 'Skanner…' : '⟳ Skann appen dypt (5 runder)'}
+                        {scanBusy ? 'Skanner…' : '⟳ Skann landingssiden dypt (5 runder)'}
                       </button>
+                      {/* App-dykk: logg inn + skann innloggede skjermer (beholder sesjon) */}
+                      {isCaptureAvailable() && (
+                        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                          <button style={{ ...outlineBtn, flex: 1, justifyContent: 'center', fontSize: 11, opacity: scanBusy ? 0.6 : 1 }} disabled={scanBusy}
+                            title="Åpner app-grensesnittet i capture-vinduet. Logg inn og naviger dit du vil — sesjonen beholdes."
+                            onClick={() => void openAppForLogin()}>↪ Åpne app (logg inn)</button>
+                          <button style={{ ...outlineBtn, flex: 1, justifyContent: 'center', fontSize: 11, opacity: scanBusy ? 0.6 : 1 }} disabled={scanBusy}
+                            title="Skann den innloggede skjermen som vises nå. Naviger og skann flere skjermer for full kontekst."
+                            onClick={() => void scanAppScreen()}>{scanBusy ? 'Skanner…' : `⊕ Skann app-skjerm${appScreenCount ? ` (${appScreenCount})` : ''}`}</button>
+                        </div>
+                      )}
                       {/* Diskusjon-først: AI Director spør om formålet */}
                       {fusionQuestion && !fusionPlanBusy && (
                         <div style={{ marginTop: 8, border: `1px solid ${C.accent}`, borderRadius: 9, padding: 10, background: '#fff' }}>

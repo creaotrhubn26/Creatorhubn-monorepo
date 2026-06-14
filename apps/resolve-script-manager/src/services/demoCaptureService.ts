@@ -64,6 +64,25 @@ export async function scanDom(url: string, timeoutMs = 20000): Promise<DomScanRe
 }
 
 /**
+ * Skann den GJELDENDE skjermen i det allerede åpne capture-vinduet — uten å
+ * re-navigere. Krever at start_demo_capture er kjørt (capture-vinduet åpent) og
+ * at brukeren har logget inn/navigert dit. Returnerer null hvis vinduet ikke er
+ * åpent eller skannet feiler/timer ut.
+ */
+export async function scanCurrentDom(timeoutMs = 25000): Promise<DomScanResult | null> {
+  if (!isCaptureAvailable()) return null;
+  let resolve!: (v: DomScanResult | null) => void;
+  const done = new Promise<DomScanResult | null>((r) => { resolve = r; });
+  const unlisten = await listen<DomScanResult>('demo-capture://dom', (e) => resolve(e.payload));
+  const timer = setTimeout(() => resolve(null), timeoutMs);
+  try { await invoke('demo_scan_current'); } catch { resolve(null); }
+  const result = await done;
+  clearTimeout(timer);
+  unlisten();
+  return result;
+}
+
+/**
  * Ta et skjermbilde av siden (html2canvas i eget vindu). Returnerer JPEG
  * data-URL eller null (timeout/feil/web-dev). Brukes til thumbnails + vision.
  */

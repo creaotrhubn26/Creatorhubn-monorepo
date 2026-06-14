@@ -72,6 +72,24 @@ pub async fn demo_scan_dom(app: AppHandle, url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Skann den GJELDENDE skjermen i det allerede åpne capture-vinduet — UTEN å
+/// re-navigere. Brukes til app-dykk: brukeren logger inn + navigerer dypt i
+/// app-grensesnittet i capture-vinduet, og denne kjører skann-scriptet på det
+/// som faktisk vises (beholder innlogget tilstand). Resultatet kommer via
+/// demo_scan_result → demo-capture://dom, som ellers. Nullstiller scan-guarden
+/// først slik at den kan kjøres flere ganger (én pr. skjerm).
+#[tauri::command]
+pub async fn demo_scan_current(app: AppHandle) -> Result<(), String> {
+    let win = app
+        .get_webview_window(CAPTURE_LABEL)
+        .ok_or("Capture-vinduet er ikke åpent. Åpne appen og logg inn først.")?;
+    win.eval("window.__demoScanDone=false;")
+        .map_err(|e| format!("kunne ikke nullstille scan-guard: {e}"))?;
+    win.eval(SCAN_JS)
+        .map_err(|e| format!("kunne ikke kjøre skann i capture-vinduet: {e}"))?;
+    Ok(())
+}
+
 /// Mottar element-katalogen fra skann-vinduet, videresender til hovedvinduet og
 /// lukker analyse-vinduet.
 #[tauri::command]
