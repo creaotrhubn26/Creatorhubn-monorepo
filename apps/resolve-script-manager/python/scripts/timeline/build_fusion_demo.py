@@ -332,8 +332,15 @@ def _build_caption(comp, text, dur, fps, brand, report):
 
 
 def _build_reveal(comp, dur, fps, idx, total, force, report):
-    """Svart Background med Blend-keyframes: fade fra svart inn (alle klipp,
-    kort) + ut mot slutten — gir kryss-toning mellom scener i Fusion."""
+    """Svart Background med Blend-keyframes for fade fra/til svart.
+    PROFESJONELT: fade-fra-svart KUN på første scene (eller cinematic_reveal),
+    fade-til-svart KUN på siste scene. Mellom-scener får INGEN reveal → rene
+    kutt (intet svart blink ved hvert klipp-kutt). Returnerer None når scenen
+    ikke trenger reveal."""
+    first = (idx == 0) or force
+    last = (idx == total - 1)
+    if not first and not last:
+        return None
     bg = _add(comp, "Background", 0, 4, report)
     if not bg:
         return None
@@ -343,11 +350,14 @@ def _build_reveal(comp, dur, fps, idx, total, force, report):
         bg.SetInput("TopLeftAlpha", 1.0)
     except Exception:  # noqa: BLE001
         report.append("reveal-bg farge feilet")
-    fade_in = max(2, int(round((0.5 if force else 0.33) * fps)))
-    fade_out = max(2, int(round(0.33 * fps)))
-    keys = [(0, 1.0), (fade_in, 0.0)]
-    if dur - fade_out > fade_in:
-        keys += [(dur - fade_out, 0.0), (dur, 1.0)]
+    fade_in = max(2, int(round((0.6 if force else 0.4) * fps)))
+    fade_out = max(2, int(round(0.5 * fps)))
+    if first and last:
+        keys = [(0, 1.0), (fade_in, 0.0), (max(fade_in + 1, dur - fade_out), 0.0), (dur, 1.0)]
+    elif first:
+        keys = [(0, 1.0), (fade_in, 0.0)]
+    else:  # last
+        keys = [(0, 0.0), (max(2, dur - fade_out), 0.0), (dur, 1.0)]
     _kf_scalar(comp, bg, "Blend", keys, report)
     return bg
 
