@@ -164,6 +164,36 @@ export async function verifyOutcomeVision(params: { screenshot: string; expected
   return { success: !!p?.success, reason: p?.reason || '' };
 }
 
+export interface SceneGrade { score: number; ok: boolean; issue: string }
+
+/**
+ * QA-port: Claude SER et bilde fra den ferdige videoen ved scenens tidspunkt og
+ * vurderer om scenen ble bra — matcher narrasjonen det som vises, er siden
+ * faktisk lastet (ikke blank/feil/cookie-vegg), er noe meningsfylt synlig.
+ * Brukes av den selv-verifiserende QA-sløyfen i den autonome demoen.
+ */
+export async function gradeSceneFrame(params: { screenshot: string; narration?: string; action?: string; title?: string }): Promise<SceneGrade> {
+  const img = imageBlock(params.screenshot);
+  if (!img) return { score: 0, ok: false, issue: 'Mangler bilde fra videoen' };
+  const txt = `Du SER ett bilde fra en ferdig produktdemo-VIDEO, tatt på tidspunktet for scenen «${params.title || ''}».\n` +
+    (params.narration ? `Stemmen sier her: «${params.narration}».\n` : '') +
+    (params.action ? `Tiltenkt handling: «${params.action}».\n` : '') +
+    `Vurder KVALITETEN på denne scenen i videoen:\n` +
+    `- Er siden faktisk lastet og meningsfylt (IKKE blank/hvit, feilside, cookie-vegg, eller halvlastet)?\n` +
+    `- Matcher det som vises det stemmen beskriver / den tiltenkte handlingen?\n` +
+    `- Ser det ut som en god demo-frame (riktig innhold synlig)?\n` +
+    `Gi en score 0–100 (100 = perfekt scene, <60 = noe er galt). Vær streng på blanke/feil/umatchende frames.\n` +
+    `Svar med KUN ett JSON-objekt: { "score": 0-100, "issue": "kort hva som evt. er galt (tomt hvis bra)" }`;
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du er en streng QA-vurderer for produktdemo-videoer. Du ser ETT video-frame og scorer scene-kvaliteten. Svar ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: [img, { type: 'text', text: txt }] }],
+    maxTokens: 250,
+  });
+  const p = extractJson<{ score?: number; issue?: string }>(raw);
+  const score = typeof p?.score === 'number' ? Math.max(0, Math.min(100, p.score)) : 0;
+  return { score, ok: score >= 60, issue: (p?.issue || '').trim() };
+}
+
 /**
  * Vision-pass: la Claude «se» et skjermbilde og lese ut synlig tekst/påstander
  * — inkludert det som ligger i bilder, grafikk og hero-banner som DOM-scan
