@@ -181,8 +181,9 @@ export async function gradeSceneFrame(params: { screenshot: string; narration?: 
     `Vurder KVALITETEN på denne scenen i videoen:\n` +
     `- Er siden faktisk lastet og meningsfylt (IKKE blank/hvit, feilside, cookie-vegg, eller halvlastet)?\n` +
     `- Matcher det som vises det stemmen beskriver / den tiltenkte handlingen?\n` +
+    `- KRITISK: handler stemmen om SAMME produkt/side som vises? Hvis stemmen tydelig beskriver et ANNET produkt/tjeneste enn skjermbildet (f.eks. gammelt manus fra en annen video), er det en ALVORLIG feil — gi score under 30 og forklar mismatchen.\n` +
     `- Ser det ut som en god demo-frame (riktig innhold synlig)?\n` +
-    `Gi en score 0–100 (100 = perfekt scene, <60 = noe er galt). Vær streng på blanke/feil/umatchende frames.\n` +
+    `Gi en score 0–100 (100 = perfekt scene, <60 = noe er galt). Vær streng på blanke/feil/umatchende frames og på produkt-mismatch.\n` +
     `Svar med KUN ett JSON-objekt: { "score": 0-100, "issue": "kort hva som evt. er galt (tomt hvis bra)" }`;
   const raw = await claudeProxyService.send({
     systemPrompt: 'Du er en streng QA-vurderer for produktdemo-videoer. Du ser ETT video-frame og scorer scene-kvaliteten. Svar ALLTID med kun ett JSON-objekt.',
