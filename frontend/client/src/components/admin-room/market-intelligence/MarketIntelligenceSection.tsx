@@ -12,6 +12,7 @@ import { Box, Chip, Divider, Stack, Typography } from "@mui/material";
 import BrandKitPanel from "./BrandKitPanel";
 import MarketIntelligenceOverviewPanel from "./MarketIntelligenceOverviewPanel";
 import MarketScanDetailPanel from "./MarketScanDetailPanel";
+import AgentContextPreviewPanel from "./AgentContextPreviewPanel";
 
 interface Props {
   /** Aktivt prosjekt — brukes til Brand Kit + scans-isolering. */
@@ -59,6 +60,7 @@ export default function MarketIntelligenceSection({
             projectId={projectId}
             onOpenScanDetail={setActiveScanId}
           />
+          <AgentContextPreviewPanel projectId={projectId} />
         </Stack>
       )}
     </Box>
