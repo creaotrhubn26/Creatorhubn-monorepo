@@ -143,6 +143,10 @@ export async function synthesizeTts(projectId: string, sceneId: string, text: st
 export async function ttsFromAudio(projectId: string, sceneId: string, audioB64: string): Promise<{ path: string; durationSec: number }> {
   return invoke<{ path: string; durationSec: number }>("tts_from_audio", { projectId, sceneId, audioB64 });
 }
+/** Hent ut ett bilde fra videoen ved offset (sek) → data-URL PNG. For vision-QA. */
+export async function extractFrame(videoPath: string, offsetSec: number): Promise<string> {
+  return invoke<string>("extract_frame", { videoPath, offsetSec });
+}
 export interface DemoFinalizeOpts {
   framePng?: string; frameX?: number; frameY?: number; frameW?: number; frameH?: number;
   introPng?: string; outroPng?: string; introSec?: number; outroSec?: number;

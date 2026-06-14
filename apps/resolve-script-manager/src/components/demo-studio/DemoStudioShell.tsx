@@ -179,6 +179,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [demoVidPct, setDemoVidPct] = useState(0);
   const [demoVidResult, setDemoVidResult] = useState<string | null>(null);
   const [demoVidScene, setDemoVidScene] = useState<{ index: number; total: number } | null>(null);
+  const [demoVidQa, setDemoVidQa] = useState<Array<{ score: number; ok: boolean; issue: string } | null> | null>(null);
   const [brandedOutput, setBrandedOutput] = useState(true); // intro/outro + ramme på autonom video
   const [elevenKey, setElevenKeyState] = useState<string>(() => { try { return localStorage.getItem('trrpa.eleven_key') || ''; } catch { return ''; } });
   const setElevenKey = (v: string) => { setElevenKeyState(v); try { localStorage.setItem('trrpa.eleven_key', v); } catch { /* */ } };
@@ -220,7 +221,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const runAutoDemo = async () => {
     if (!project || demoVidBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
-    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Starter…');
+    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidQa(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Starter…');
     try {
       const voice = project.language === 'en' ? undefined : 'Nora'; // norsk on-device-stemme
       const out = await runAutonomousDemo(project, {
@@ -231,9 +232,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         finalize: buildFinalize(),
         elevenKey: elevenKey.trim() || undefined,
       });
-      setDemoVidResult(out);
-      setDemoVidMsg('✓ Ferdig demo klar');
-      void systemOpen(out).catch(() => {});
+      setDemoVidResult(out.path);
+      setDemoVidQa(out.qa);
+      const bad = out.qa.filter((g) => g && !g.ok).length;
+      setDemoVidMsg(bad ? `✓ Ferdig — ${bad} scene(r) bør sjekkes` : '✓ Ferdig demo klar (alle scener verifisert)');
+      void systemOpen(out.path).catch(() => {});
     } catch (e) {
       setDemoVidMsg('Feil: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -245,7 +248,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const runOneClickDemo = async () => {
     if (!project || demoVidBusy || directorBusy) return;
     if (!aiReady) { setShowSignIn(true); return; }
-    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Forstår + genererer scener…');
+    setDemoVidBusy(true); setDemoVidResult(null); setDemoVidQa(null); setDemoVidPct(0); setDemoVidScene(null); setDemoVidMsg('Forstår + genererer scener…');
     try {
       // 1) Generér scener hvis vi ikke har dem (generateDemo forstår automatisk først).
       let proj = useDemoStudio.getState().project!;
@@ -264,7 +267,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         finalize: buildFinalize(),
         elevenKey: elevenKey.trim() || undefined,
       });
-      setDemoVidResult(out); setDemoVidMsg('✓ Ferdig demo klar'); void systemOpen(out).catch(() => {});
+      setDemoVidResult(out.path); setDemoVidQa(out.qa);
+      { const bad = out.qa.filter((g) => g && !g.ok).length; setDemoVidMsg(bad ? `✓ Ferdig — ${bad} scene(r) bør sjekkes` : '✓ Ferdig demo klar (alle scener verifisert)'); }
+      void systemOpen(out.path).catch(() => {});
     } catch (e) {
       setDemoVidMsg('Feil: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -929,6 +934,24 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     <button style={{ ...btn, width: '100%', justifyContent: 'center', background: '#fff', marginTop: 8 }}
                       onClick={() => void systemOpen(demoVidResult).catch(() => {})}>▶ Åpne ferdig video</button>
                   )}
+                  {/* QA-rapport: AI-verifisering av hver scene i videoen */}
+                  {demoVidQa && !demoVidBusy && (() => {
+                    const graded = demoVidQa.map((g, i) => ({ g, i })).filter((x) => x.g);
+                    if (!graded.length) return null;
+                    const bad = graded.filter((x) => x.g && !x.g.ok);
+                    return (
+                      <div style={{ marginTop: 8, border: `1px solid ${bad.length ? '#f0d9a8' : '#bfe0c9'}`, background: bad.length ? '#fff8ec' : '#eef7f0', borderRadius: 8, padding: '8px 10px' }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: bad.length ? '#8a6516' : C.green, marginBottom: bad.length ? 5 : 0 }}>
+                          {bad.length ? `AI-sjekk: ${graded.length - bad.length}/${graded.length} scener bra` : `✓ AI verifiserte alle ${graded.length} scener`}
+                        </div>
+                        {bad.map((x) => (
+                          <div key={x.i} style={{ fontSize: 10.5, color: '#8a6516', marginTop: 3, lineHeight: 1.35 }}>
+                            Scene {x.i + 1} ({x.g!.score}/100): {x.g!.issue || 'kunne ikke verifiseres'}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </>
               );
               return (

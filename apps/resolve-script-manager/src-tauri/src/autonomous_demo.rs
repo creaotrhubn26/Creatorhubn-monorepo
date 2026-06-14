@@ -134,6 +134,34 @@ pub async fn synthesize_tts(
     Ok(TtsResult { path: m4a.to_string_lossy().to_string(), duration_sec: probe_duration(&ffprobe, &m4a) })
 }
 
+/// Hent ut ett bilde fra videoen ved `offset_sec` → data-URL PNG (skalert til
+/// 960px bred for rask/billig vision-QA). Lar AI «se» hver scene i opptaket.
+#[tauri::command]
+pub async fn extract_frame(video_path: String, offset_sec: f64) -> Result<String, String> {
+    use base64::Engine;
+    let ffmpeg = find_ffmpeg().ok_or("ffmpeg ikke funnet")?;
+    if !PathBuf::from(&video_path).exists() {
+        return Err("video-fil mangler".into());
+    }
+    let ms = (offset_sec.max(0.0) * 1000.0) as u64;
+    let out = std::env::temp_dir().join(format!("paqa_frame_{}.png", ms));
+    let ok = Command::new(&ffmpeg)
+        .args([
+            "-y", "-ss", &format!("{:.2}", offset_sec.max(0.0)), "-i", &video_path,
+            "-frames:v", "1", "-vf", "scale=960:-1", &out.to_string_lossy(),
+        ])
+        .status().map(|s| s.success()).unwrap_or(false);
+    if !ok {
+        return Err("frame-ekstraksjon feilet".into());
+    }
+    let bytes = std::fs::read(&out).map_err(|e| format!("les frame: {e}"))?;
+    let _ = std::fs::remove_file(&out);
+    if bytes.is_empty() {
+        return Err("tomt frame".into());
+    }
+    Ok(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
 /// Konverter ferdig narration-lyd (mp3/bytes fra TTS-proxy, base64) → m4a +
 /// varighet. Brukes når frontend henter stemmen via backend-proxyen.
 #[tauri::command]
