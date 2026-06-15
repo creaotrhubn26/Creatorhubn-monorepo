@@ -22,7 +22,7 @@ import {
   ThumbUpAlt, AccessTime, Send, WorkspacePremium, GridViewOutlined, GraphicEq, LayersOutlined,
   Inventory2Outlined, SubjectOutlined, StickyNote2Outlined, TimelineOutlined, Speed, VpnKey,
   CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
-  PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined, TipsAndUpdatesOutlined, MovieCreationOutlined,
+  PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined, TipsAndUpdatesOutlined, MovieCreationOutlined, SelfImprovement,
 } from '@mui/icons-material';
 import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
@@ -32,6 +32,7 @@ import SpotifyArtistField from '@/components/universal/showcase/SpotifyArtistFie
 import SignaturePad, { type SignatureHandle } from '@/components/universal/showcase/SignaturePad';
 import YouTubePublishPanel from '@/components/universal/showcase/YouTubePublishPanel';
 import { SpotifyIcon } from '@/components/universal/showcase/BrandIcons';
+import WarmupDialog from '@/components/universal/showcase/WarmupDialog';
 import { audioShowcaseEvents } from '@/utils/creatorhub-events';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
@@ -100,6 +101,7 @@ export default function AudioShowcasePage() {
   const [memberDialog, setMemberDialog] = React.useState<any>(null);
   const [splitOpen, setSplitOpen] = React.useState(false);
   const [publishOpen, setPublishOpen] = React.useState(false);
+  const [warmupOpen, setWarmupOpen] = React.useState(false);
   const [splitToast, setSplitToast] = React.useState<string | null>(null);
 
   const saveCover = async (dataUrl: string) => {
@@ -381,6 +383,10 @@ export default function AudioShowcasePage() {
             <Button onClick={() => setSplitOpen(true)} fullWidth startIcon={<ReceiptLongOutlined sx={{ fontSize: '17px !important' }} />}
               sx={{ mt: 1.5, color: ACCENT, bgcolor: 'rgba(255,107,53,0.1)', textTransform: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '0.78rem', '&:hover': { bgcolor: 'rgba(255,107,53,0.18)' } }}>Splittark (royalty)</Button>
           )}
+          {members.length > 0 && (
+            <Button onClick={() => setWarmupOpen(true)} fullWidth startIcon={<SelfImprovement sx={{ fontSize: '17px !important' }} />}
+              sx={{ mt: 1, color: ACCENT, bgcolor: 'rgba(255,107,53,0.1)', textTransform: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '0.78rem', '&:hover': { bgcolor: 'rgba(255,107,53,0.18)' } }}>Oppvarming & fokus</Button>
+          )}
           <Button onClick={() => setPublishOpen(true)} fullWidth startIcon={<RocketLaunchOutlined sx={{ fontSize: '17px !important' }} />}
             sx={{ mt: 1, color: '#150d05', bgcolor: ACCENT, textTransform: 'none', borderRadius: '10px', fontWeight: 800, fontSize: '0.78rem', '&:hover': { bgcolor: '#ff855a' } }}>Publiser utgivelse</Button>
         </Box>
@@ -589,6 +595,7 @@ export default function AudioShowcasePage() {
         onDelete={async (id) => { await apiRequest(`/api/audio-members/${id}`, { method: 'DELETE' }); setMembers((p) => p.filter((x) => x.id !== id)); setMemberDialog(null); }} />
       <SplitSheetDialog open={splitOpen} projectId={projectId} ownerName={owner?.name} onClose={() => setSplitOpen(false)} />
       <PublishDialog open={publishOpen} projectId={projectId} onClose={() => setPublishOpen(false)} />
+      <WarmupDialog open={warmupOpen} projectId={projectId} onClose={() => setWarmupOpen(false)} />
       <TaskDialog open={taskOpen} onClose={() => setTaskOpen(false)} onAdd={async (title, category) => { const t = await apiRequest('/api/audio-tasks', { method: 'POST', body: { projectId, title, assignee: category, versionId: currentVid } }); setTasks((p) => [...p, t]); setTaskOpen(false); }} />
       <Menu anchorEl={moreEl} open={Boolean(moreEl)} onClose={() => setMoreEl(null)}><MenuItem onClick={() => setMoreEl(null)} sx={{ fontSize: '0.85rem' }}>Kopier review-lenke</MenuItem></Menu>
       <LyricsDialog
