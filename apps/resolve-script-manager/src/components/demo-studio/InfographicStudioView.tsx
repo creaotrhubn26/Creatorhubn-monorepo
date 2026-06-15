@@ -1,8 +1,8 @@
-// InfographicStudioView — «studio» inne i Product Demo for å lage animerte
-// infographic-overlays UTEN at brukeren rører HTML. Velg et design (galleri,
-// «anbefalt — matcher brandet ditt»), fyll enkle felter, se en TYDELIG live-
-// preview som spiller animasjonen, sett når den skal dukke opp, og lag + legg
-// den i Resolve. AI kan også foreslå hva som passer demoen.
+// InfographicStudioView — «Infographic Studio» inne i Product Demo.
+// Layout etter Daniels mockup: mørk topbar (Preview / Export / Send to Resolve),
+// venstre rail (Templates, Brand Kit, Export), sentralt canvas med live-preview +
+// scene-stripe, høyre panel med Design / Animate / Data. Brukeren rører ALDRI HTML.
+// Motor under: config-drevet HTML → transparent ProRes 4444 → place_overlay i Resolve.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -13,22 +13,24 @@ import {
   type InfographicTemplate,
 } from './infographicStudio';
 
-const C = {
-  bg: '#f4f6fb', panel: '#fff', ink: '#1f2d4a', soft: '#5b6b7d', line: '#e4e9f2',
-  accent: '#2f6df0', faint: '#9aa7bd',
+const D = {
+  bg: '#0e1320', panel: '#141b2b', panel2: '#1b2436', line: '#27314a',
+  ink: '#e8eefc', soft: '#8a98b5', faint: '#5d6b88', accent: '#3b82f6', teal: '#2dd4bf',
 };
+const ANIM_PRESETS = [
+  { id: 'fadeUp', label: 'Fade Up' },
+  { id: 'scaleIn', label: 'Scale In' },
+  { id: 'slideLeft', label: 'Slide Left' },
+];
+const EASINGS = ['Ease Out Cubic', 'Ease In Out', 'Linear', 'Spring'];
 
-/** Hent ut logoens dominante (mest fremtredende, mettede) farge → hex. */
 async function dominantColor(dataUrl: string): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       try {
-        const s = 28;
-        const cv = document.createElement('canvas');
-        cv.width = s; cv.height = s;
-        const ctx = cv.getContext('2d');
-        if (!ctx) { resolve(''); return; }
+        const s = 28; const cv = document.createElement('canvas'); cv.width = s; cv.height = s;
+        const ctx = cv.getContext('2d'); if (!ctx) { resolve(''); return; }
         ctx.drawImage(img, 0, 0, s, s);
         const d = ctx.getImageData(0, 0, s, s).data;
         const bins: Record<string, { n: number; r: number; g: number; b: number }> = {};
@@ -36,23 +38,20 @@ async function dominantColor(dataUrl: string): Promise<string> {
           const a = d[i + 3]; if (a < 160) continue;
           const r = d[i], g = d[i + 1], b = d[i + 2];
           const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
-          if (mx > 244 && mn > 240) continue;  // nær-hvit
-          if (mx < 24) continue;               // nær-svart
+          if (mx > 244 && mn > 240) continue; if (mx < 24) continue;
           const key = `${r >> 5}-${g >> 5}-${b >> 5}`;
           const bn = bins[key] || (bins[key] = { n: 0, r: 0, g: 0, b: 0 });
           bn.n++; bn.r += r; bn.g += g; bn.b += b;
         }
         let best: { r: number; g: number; b: number; score: number } | null = null;
         for (const k in bins) {
-          const bn = bins[k];
-          const r = bn.r / bn.n, g = bn.g / bn.n, b = bn.b / bn.n;
+          const bn = bins[k]; const r = bn.r / bn.n, g = bn.g / bn.n, b = bn.b / bn.n;
           const sat = Math.max(r, g, b) - Math.min(r, g, b);
           const score = bn.n * (1 + sat / 40);
           if (!best || score > best.score) best = { r, g, b, score };
         }
         if (!best) { resolve(''); return; }
-        const hex = '#' + [best.r, best.g, best.b].map((x) => Math.round(x).toString(16).padStart(2, '0')).join('');
-        resolve(hex);
+        resolve('#' + [best.r, best.g, best.b].map((x) => Math.round(x).toString(16).padStart(2, '0')).join(''));
       } catch { resolve(''); }
     };
     img.onerror = () => resolve('');
@@ -62,36 +61,20 @@ async function dominantColor(dataUrl: string): Promise<string> {
 
 export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }) {
   const project = useDemoStudio((s) => s.project);
-  const brandColor = project?.branding?.brandColor || '#2f6df0';
-  const [accent, setAccent] = useState<string>(brandColor);
-  const [logo, setLogo] = useState<string>(() => {
-    const u = project?.branding?.logoUrl;
-    return u && u.startsWith('data:') ? u : '';
-  });
-  const [suggested, setSuggested] = useState<string>('');  // foreslått accent fra logo
-  const brand = useMemo(() => ({ accent, ink: '#1f2d4a', logo: logo || undefined }), [accent, logo]);
-  const pickLogo = (file: File | null) => {
-    if (!file) return;
-    const r = new FileReader();
-    r.onload = () => {
-      const url = typeof r.result === 'string' ? r.result : '';
-      setLogo(url);
-      // Trekk ut logoens dominante farge og foreslå den som accent — så designet
-      // støtter logoens branding.
-      void dominantColor(url).then((hex) => {
-        if (hex && hex.toLowerCase() !== accent.toLowerCase()) setSuggested(hex);
-      });
-    };
-    r.readAsDataURL(file);
-  };
-
   const [tplId, setTplId] = useState<string>(INFOGRAPHIC_TEMPLATES[0].id);
   const tpl: InfographicTemplate = useMemo(
-    () => INFOGRAPHIC_TEMPLATES.find((t) => t.id === tplId) || INFOGRAPHIC_TEMPLATES[0],
-    [tplId],
-  );
+    () => INFOGRAPHIC_TEMPLATES.find((t) => t.id === tplId) || INFOGRAPHIC_TEMPLATES[0], [tplId]);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [accent, setAccent] = useState<string>(project?.branding?.brandColor || '#3b82f6');
+  const [logo, setLogo] = useState<string>(() => {
+    const u = project?.branding?.logoUrl; return u && u.startsWith('data:') ? u : '';
+  });
+  const [suggested, setSuggested] = useState('');
   const [atSec, setAtSec] = useState('4');
+  const [rightTab, setRightTab] = useState<'Design' | 'Animate' | 'Data'>('Data');
+  const [leftSec, setLeftSec] = useState<'templates' | 'brand' | 'export'>('templates');
+  const [palette, setPalette] = useState<string[]>(['#2dd4bf', '#3b82f6', '#ffffff', '#1f2d4a', '#f59e0b', '#a855f7']);
+  const [easing, setEasing] = useState(EASINGS[0]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -102,21 +85,15 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
     for (const f of t.fields) if (values[f.key] !== undefined) out[f.key] = values[f.key];
     return out;
   };
-  const config = useMemo(() => buildInfographicConfig(tpl, fieldVals(tpl), brand),
+  const config = useMemo(() => buildInfographicConfig(tpl, fieldVals(tpl), { accent, ink: '#1f2d4a', logo: logo || undefined }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tpl, values, brandColor]);
-
-  // Bygg preview-HTML (config injisert som global) + autoplay-animasjon.
-  const srcDoc = useMemo(
-    () => `<script>window.__CFG__=${JSON.stringify(config)}</script>` + INFOGRAPHIC_HTML,
-    [config],
-  );
+    [tpl, values, accent, logo]);
+  const srcDoc = useMemo(() => `<script>window.__CFG__=${JSON.stringify(config)}</script>` + INFOGRAPHIC_HTML, [config]);
 
   const play = () => {
     const win = iframeRef.current?.contentWindow as (Window & { setProgress?: (p: number) => void }) | null | undefined;
     if (!win || typeof win.setProgress !== 'function') return;
-    const dur = Math.max(1, tpl.durationSec) * 1000;
-    const t0 = performance.now();
+    const dur = Math.max(1, tpl.durationSec) * 1000, t0 = performance.now();
     const tick = (now: number) => {
       const p = Math.min(1, (now - t0) / dur);
       try { win.setProgress!(p); } catch { /* */ }
@@ -125,147 +102,193 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(tick);
   };
-  // Spill av når preview lastes / config endres.
   const onIframeLoad = () => { window.setTimeout(play, 250); };
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
 
-  const recommendedId = INFOGRAPHIC_TEMPLATES.find((t) => t.style === 'light')?.id;
-
-  const generate = async () => {
-    if (busy) return;
-    setBusy(true); setMsg('Lager overlay (HTML → transparent video) …');
-    try {
-      const out = await invoke<string>('render_infographic', {
-        html: srcDoc, durationSec: tpl.durationSec, name: `${tpl.id}-${Date.now()}`,
-      });
-      setMsg('Legger overlayet på Resolve-timelinen …');
-      const summary = await executeScript('place_overlay', {
-        overlays: [{ path: out, atSec: parseFloat(atSec) || 0, durationSec: tpl.durationSec, track: 2 }],
-      });
-      const okEvt = summary.events.find((e) => e.type === 'result');
-      const errEvt = summary.events.find((e) => e.type === 'error');
-      if (!summary.succeeded || errEvt) {
-        setMsg('Overlay laget (' + out + '), men kunne ikke legges i Resolve: ' + ((errEvt?.value as { message?: string } | undefined)?.message || 'er Resolve åpen med en timeline?'));
-        void systemOpen(out).catch(() => {});
-      } else {
-        const r = (okEvt?.value ?? {}) as { placed?: number };
-        setMsg(`✓ Lagt på timelinen ved ${atSec}s (${r.placed ?? 1} overlay). Åpne Resolve for å se det over opptaket.`);
-      }
-    } catch (e) {
-      setMsg('Feil: ' + (e instanceof Error ? e.message : String(e)) + ' — render_infographic-kommandoen krever ny app-versjon.');
-    } finally {
-      setBusy(false);
-    }
+  const pickLogo = (file: File | null) => {
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = () => {
+      const url = typeof r.result === 'string' ? r.result : ''; setLogo(url);
+      void dominantColor(url).then((hex) => { if (hex && hex.toLowerCase() !== accent.toLowerCase()) setSuggested(hex); });
+    };
+    r.readAsDataURL(file);
   };
 
-  const inp: React.CSSProperties = { width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: `1px solid ${C.line}`, background: '#fff', colorScheme: 'light', color: C.ink };
-  const btn: React.CSSProperties = { padding: '8px 14px', borderRadius: 9, border: `1px solid ${C.line}`, background: '#fff', color: C.ink, cursor: 'pointer', fontSize: 13, fontWeight: 600 };
+  const recommendedId = INFOGRAPHIC_TEMPLATES.find((t) => t.style === 'light')?.id;
+
+  const sendToResolve = async () => {
+    if (busy) return;
+    setBusy(true); setMsg('Lager overlay (HTML → transparent ProRes 4444) …');
+    try {
+      const out = await invoke<string>('render_infographic', { html: srcDoc, durationSec: tpl.durationSec, name: `${tpl.id}-${Date.now()}` });
+      setMsg('Sender til Resolve (legger på timeline) …');
+      const summary = await executeScript('place_overlay', { overlays: [{ path: out, atSec: parseFloat(atSec) || 0, durationSec: tpl.durationSec, track: 2 }] });
+      const errEvt = summary.events.find((e) => e.type === 'error');
+      if (!summary.succeeded || errEvt) {
+        setMsg('Overlay laget, men ikke lagt i Resolve: ' + ((errEvt?.value as { message?: string } | undefined)?.message || 'er Resolve åpen med en timeline?'));
+        void systemOpen(out).catch(() => {});
+      } else { setMsg(`✓ Sendt til Resolve ved ${atSec}s, på overlay-spor over opptaket.`); }
+    } catch (e) {
+      setMsg('Feil: ' + (e instanceof Error ? e.message : String(e)) + ' — krever Playwright-runtime (kjør «Sett opp Playwright»).');
+    } finally { setBusy(false); }
+  };
+
+  // ── styles ──
+  const railItem = (active: boolean): React.CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', color: active ? D.ink : D.soft, background: active ? D.panel2 : 'transparent', borderLeft: `3px solid ${active ? D.accent : 'transparent'}`, fontSize: 13 });
+  const topBtn: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 8, border: `1px solid ${D.line}`, background: D.panel2, color: D.ink, cursor: 'pointer', fontSize: 12.5, fontWeight: 600 };
+  const inp: React.CSSProperties = { width: '100%', fontSize: 12.5, padding: '7px 9px', borderRadius: 7, border: `1px solid ${D.line}`, background: D.bg, color: D.ink, colorScheme: 'dark' };
+  const tabBtn = (active: boolean): React.CSSProperties => ({ flex: 1, padding: '7px 0', textAlign: 'center', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: active ? D.ink : D.soft, background: active ? D.panel2 : 'transparent', borderBottom: `2px solid ${active ? D.accent : 'transparent'}` });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.bg, color: C.ink, fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', borderBottom: `1px solid ${C.line}`, background: '#fff' }}>
-        <button style={btn} onClick={() => onNav('flow')}>← Tilbake</button>
-        <div style={{ fontSize: 16, fontWeight: 800 }}>◷ Infographic Studio</div>
-        <div style={{ fontSize: 12, color: C.soft }}>Lag animerte data-overlays — ingen design­erfaring nødvendig</div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: D.bg, color: D.ink, fontFamily: 'Inter, system-ui, sans-serif' }}>
+      {/* Topbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: `1px solid ${D.line}`, background: D.panel }}>
+        <button style={{ ...topBtn, border: 'none', background: 'transparent', color: D.soft }} onClick={() => onNav('flow')}>←</button>
+        <div style={{ fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ color: D.accent }}>▥</span> Infographic Studio</div>
+        <div style={{ flex: 1 }} />
+        <div style={{ fontSize: 12, color: D.soft }}>{project?.name || 'Uten navn'}</div>
+        <button style={topBtn} onClick={play}>▶ Preview</button>
+        <button style={topBtn} onClick={() => { const out = config; void navigator.clipboard?.writeText(JSON.stringify(out, null, 2)).catch(() => {}); setMsg('Config kopiert (Export kommer som egen fil).'); }}>⤓ Export</button>
+        <button style={{ ...topBtn, background: D.accent, border: 'none', opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={() => void sendToResolve()}>✦ {busy ? 'Sender …' : 'Send to Resolve'}</button>
       </div>
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {/* Venstre: galleri + felter */}
-        <div style={{ width: 360, borderRight: `1px solid ${C.line}`, overflowY: 'auto', padding: 16, background: '#fbfcfe' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Velg design</div>
-          <div style={{ display: 'grid', gap: 10, marginBottom: 18 }}>
-            {INFOGRAPHIC_TEMPLATES.map((t) => {
-              const sel = t.id === tplId;
-              return (
-                <button key={t.id} onClick={() => { setTplId(t.id); }}
-                  style={{ textAlign: 'left', padding: 12, borderRadius: 12, cursor: 'pointer',
-                    border: `2px solid ${sel ? C.accent : C.line}`, background: sel ? '#eef4ff' : '#fff', position: 'relative' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 38, height: 38, borderRadius: 9, background: '#eef4ff', display: 'grid', placeItems: 'center', fontSize: 20, color: C.accent }}>{t.glyph}</div>
-                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{t.name}</div>
-                  </div>
-                  <div style={{ fontSize: 11.5, color: C.soft, marginTop: 6, lineHeight: 1.4 }}>{t.desc}</div>
-                  {t.id === recommendedId && (
-                    <div style={{ position: 'absolute', top: 10, right: 10, fontSize: 10, fontWeight: 700, color: '#0c8f6f', background: '#e3f5f1', padding: '3px 8px', borderRadius: 20 }}>Anbefalt · matcher brandet</div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Innhold</div>
-          <div style={{ display: 'grid', gap: 10 }}>
-            {tpl.fields.map((f) => (
-              <label key={f.key} style={{ display: 'grid', gap: 4 }}>
-                <span style={{ fontSize: 11.5, color: C.soft }}>{f.label}</span>
-                <input style={inp} placeholder={f.placeholder}
-                  value={values[f.key] ?? tpl.defaults[f.key] ?? ''}
-                  onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} />
-              </label>
-            ))}
-          </div>
-
-          {/* Logo & brand */}
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.soft, textTransform: 'uppercase', letterSpacing: 0.5, margin: '18px 0 8px' }}>Logo & brand</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 64, height: 44, borderRadius: 8, border: `1px solid ${C.line}`, background: '#1b2330', display: 'grid', placeItems: 'center', overflow: 'hidden', flex: 'none' }}>
-              {logo ? <img src={logo} alt="logo" style={{ maxWidth: '100%', maxHeight: '100%' }} /> : <span style={{ fontSize: 10, color: C.faint }}>ingen</span>}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ ...btn, fontSize: 12, padding: '6px 12px', display: 'inline-block' }}>
-                Last opp logo
-                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => pickLogo(e.target.files?.[0] || null)} />
-              </label>
-              {logo && <button style={{ ...btn, fontSize: 11, padding: '4px 10px' }} onClick={() => setLogo('')}>Fjern logo</button>}
-            </div>
-          </div>
-          <div style={{ fontSize: 10.5, color: C.faint, marginTop: 6, lineHeight: 1.4 }}>PNG med gjennomsiktig bakgrunn anbefales. Brukes i bar/kort + matcher brand-fargen.</div>
-
-          {/* Brand-farge + forslag fra logo */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
-            <input type="color" value={accent} onChange={(e) => setAccent(e.target.value)}
-              style={{ width: 38, height: 30, border: `1px solid ${C.line}`, borderRadius: 7, background: '#fff', cursor: 'pointer', padding: 0 }} />
-            <span style={{ fontSize: 12, color: C.soft }}>Brand-farge <b style={{ color: C.ink }}>{accent}</b></span>
-          </label>
-          {suggested && suggested.toLowerCase() !== accent.toLowerCase() && (
-            <div style={{ marginTop: 10, border: `1px solid ${C.line}`, background: '#fff', borderRadius: 10, padding: '10px 12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                <span style={{ width: 22, height: 22, borderRadius: 6, background: suggested, border: `1px solid ${C.line}`, flex: 'none' }} />
-                <div style={{ fontSize: 11.5, color: C.soft, lineHeight: 1.35 }}>Logoen din ser ut til å bruke <b style={{ color: C.ink }}>{suggested}</b>. Vil du la designet støtte den?</div>
-              </div>
-              <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
-                <button style={{ ...btn, padding: '5px 12px', fontSize: 12, background: suggested, color: '#fff', border: 'none' }}
-                  onClick={() => { setAccent(suggested); setSuggested(''); }}>Bruk logoens farge</button>
-                <button style={{ ...btn, padding: '5px 10px', fontSize: 12 }} onClick={() => setSuggested('')}>Behold</button>
-              </div>
-            </div>
-          )}
+        {/* Venstre rail */}
+        <div style={{ width: 180, borderRight: `1px solid ${D.line}`, background: D.panel, paddingTop: 8, display: 'flex', flexDirection: 'column' }}>
+          <div style={railItem(leftSec === 'templates')} onClick={() => setLeftSec('templates')}>▦ Templates <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.length}</span></div>
+          <div style={railItem(false)} title="Kommer">▤ Charts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>snart</span></div>
+          <div style={railItem(false)} title="Kommer">◷ Icons <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>snart</span></div>
+          <div style={railItem(leftSec === 'brand')} onClick={() => setLeftSec('brand')}>◆ Brand Kit</div>
+          <div style={railItem(false)} title="Kommer">▭ Scenes <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>snart</span></div>
+          <div style={railItem(leftSec === 'export')} onClick={() => setLeftSec('export')}>⤓ Export</div>
+          <div style={{ flex: 1 }} />
+          {logo && <img src={logo} alt="" style={{ maxWidth: 120, maxHeight: 40, margin: '0 auto 14px', opacity: 0.9 }} />}
         </div>
 
-        {/* Høyre: TYDELIG preview + handlinger */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', padding: 18, overflowY: 'auto' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Slik blir det</div>
-          {/* preview på mørk bakgrunn (slik det legges over video) */}
-          <div style={{ borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.line}`, background: '#1b2330', minHeight: 320, display: 'grid', placeItems: 'center' }}>
-            <iframe ref={iframeRef} title="preview" srcDoc={srcDoc} onLoad={onIframeLoad}
-              style={{ width: '100%', height: 360, border: 0, background: 'transparent' }} />
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
-            <button style={btn} onClick={play}>▶ Spill av preview</button>
-            <span style={{ fontSize: 12, color: C.soft }}>Transparent — legges over opptaket i Resolve.</span>
-          </div>
-
-          <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginTop: 18, flexWrap: 'wrap' }}>
-            <label style={{ display: 'grid', gap: 4 }}>
-              <span style={{ fontSize: 11.5, color: C.soft }}>Dukker opp ved (sek)</span>
-              <input style={{ ...inp, width: 120 }} type="number" min="0" step="0.5" value={atSec} onChange={(e) => setAtSec(e.target.value)} />
+        {/* Sekundær-panel (innhold for valgt rail-seksjon) */}
+        <div style={{ width: 280, borderRight: `1px solid ${D.line}`, overflowY: 'auto', padding: 14, background: D.panel }}>
+          {leftSec === 'templates' && (<>
+            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Templates</div>
+            <div style={{ display: 'grid', gap: 9 }}>
+              {INFOGRAPHIC_TEMPLATES.map((t) => {
+                const sel = t.id === tplId;
+                return (
+                  <button key={t.id} onClick={() => setTplId(t.id)} style={{ textAlign: 'left', padding: 11, borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${sel ? D.accent : D.line}`, background: sel ? D.panel2 : D.bg, color: D.ink, position: 'relative' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 8, background: D.panel2, display: 'grid', placeItems: 'center', fontSize: 18, color: D.teal }}>{t.glyph}</div>
+                      <div style={{ fontWeight: 700, fontSize: 12.5 }}>{t.name}</div>
+                    </div>
+                    <div style={{ fontSize: 11, color: D.soft, marginTop: 5, lineHeight: 1.35 }}>{t.desc}</div>
+                    {t.id === recommendedId && <div style={{ position: 'absolute', top: 9, right: 9, fontSize: 9.5, fontWeight: 700, color: D.teal, background: 'rgba(45,212,191,.14)', padding: '2px 7px', borderRadius: 20 }}>Anbefalt</div>}
+                  </button>
+                );
+              })}
+            </div>
+          </>)}
+          {leftSec === 'brand' && (<>
+            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Brand Kit</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{ width: 64, height: 44, borderRadius: 8, border: `1px solid ${D.line}`, background: D.bg, display: 'grid', placeItems: 'center', overflow: 'hidden', flex: 'none' }}>
+                {logo ? <img src={logo} alt="" style={{ maxWidth: '100%', maxHeight: '100%' }} /> : <span style={{ fontSize: 10, color: D.faint }}>ingen</span>}
+              </div>
+              <label style={{ ...topBtn, fontSize: 12 }}>Last opp logo<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => pickLogo(e.target.files?.[0] || null)} /></label>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <input type="color" value={accent} onChange={(e) => setAccent(e.target.value)} style={{ width: 36, height: 28, border: `1px solid ${D.line}`, borderRadius: 6, background: D.bg, padding: 0, cursor: 'pointer' }} />
+              <span style={{ fontSize: 12, color: D.soft }}>Brand-farge <b style={{ color: D.ink }}>{accent}</b></span>
             </label>
-            <button style={{ ...btn, background: busy ? '#e7ecf5' : C.accent, color: busy ? C.soft : '#fff', border: 'none', padding: '11px 18px', fontSize: 14 }}
-              disabled={busy} onClick={() => void generate()}>
-              {busy ? 'Lager …' : '◆ Lag + legg i Resolve'}
-            </button>
+            {suggested && suggested.toLowerCase() !== accent.toLowerCase() && (
+              <div style={{ border: `1px solid ${D.line}`, background: D.bg, borderRadius: 9, padding: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                  <span style={{ width: 20, height: 20, borderRadius: 5, background: suggested, flex: 'none' }} />
+                  <div style={{ fontSize: 11, color: D.soft, lineHeight: 1.35 }}>Logoen bruker <b style={{ color: D.ink }}>{suggested}</b>. La designet støtte den?</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  <button style={{ ...topBtn, padding: '4px 11px', fontSize: 11.5, background: suggested, border: 'none' }} onClick={() => { setAccent(suggested); setSuggested(''); }}>Bruk farge</button>
+                  <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11.5 }} onClick={() => setSuggested('')}>Behold</button>
+                </div>
+              </div>
+            )}
+          </>)}
+          {leftSec === 'export' && (<>
+            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Export</div>
+            <div style={{ fontSize: 12, color: D.soft, lineHeight: 1.5 }}>
+              Format: <b style={{ color: D.ink }}>Apple ProRes 4444</b> (transparent bakgrunn)<br />
+              Bakgrunn: <b style={{ color: D.ink }}>Transparent (alfa)</b><br />
+              Bruk <b style={{ color: D.ink }}>Send to Resolve</b> for å rendre + legge på timelinen, eller <b style={{ color: D.ink }}>Export</b> for fil.
+            </div>
+          </>)}
+        </div>
+
+        {/* Center: canvas + scene-stripe */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1, minHeight: 0, padding: 18, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontSize: 11, color: D.faint, marginBottom: 8 }}>Canvas · slik blir overlayet (transparent, over video i Resolve)</div>
+            <div style={{ flex: 1, borderRadius: 12, overflow: 'hidden', border: `1px solid ${D.line}`, background: 'linear-gradient(135deg,#10182a,#0b1120)', display: 'grid', placeItems: 'center' }}>
+              <iframe ref={iframeRef} title="preview" srcDoc={srcDoc} onLoad={onIframeLoad} style={{ width: '100%', height: '100%', minHeight: 300, border: 0, background: 'transparent' }} />
+            </div>
           </div>
-          {msg && <div style={{ fontSize: 12.5, color: msg.startsWith('Feil') ? '#c4453b' : C.soft, marginTop: 12, lineHeight: 1.5 }}>{msg}</div>}
+          {/* Scene-stripe (én scene nå; multi-scene kommer) */}
+          <div style={{ borderTop: `1px solid ${D.line}`, background: D.panel, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button style={topBtn} onClick={play}>▶</button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ width: 90, height: 52, borderRadius: 8, border: `2px solid ${D.accent}`, background: D.bg, display: 'grid', placeItems: 'center', fontSize: 10, color: D.soft }}>{tpl.name.split(' ')[0]}</div>
+              <div style={{ width: 56, height: 52, borderRadius: 8, border: `1px dashed ${D.line}`, display: 'grid', placeItems: 'center', fontSize: 20, color: D.faint, cursor: 'pointer' }} title="Multi-scene kommer">＋</div>
+            </div>
+            <div style={{ flex: 1 }} />
+            <label style={{ fontSize: 12, color: D.soft, display: 'flex', alignItems: 'center', gap: 7 }}>Dukker opp ved
+              <input style={{ ...inp, width: 70 }} type="number" min="0" step="0.5" value={atSec} onChange={(e) => setAtSec(e.target.value)} /> s</label>
+          </div>
+          {msg && <div style={{ fontSize: 12, color: msg.startsWith('Feil') ? '#f08a82' : D.soft, padding: '8px 16px', borderTop: `1px solid ${D.line}`, background: D.panel }}>{msg}</div>}
+        </div>
+
+        {/* Høyre: Design / Animate / Data */}
+        <div style={{ width: 280, borderLeft: `1px solid ${D.line}`, background: D.panel, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', borderBottom: `1px solid ${D.line}` }}>
+            {(['Design', 'Animate', 'Data'] as const).map((t) => <div key={t} style={tabBtn(rightTab === t)} onClick={() => setRightTab(t)}>{t}</div>)}
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: 14 }}>
+            {rightTab === 'Data' && (<>
+              <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', marginBottom: 10 }}>Innhold</div>
+              <div style={{ display: 'grid', gap: 9 }}>
+                {tpl.fields.map((f) => (
+                  <label key={f.key} style={{ display: 'grid', gap: 4 }}>
+                    <span style={{ fontSize: 11, color: D.soft }}>{f.label}</span>
+                    <input style={inp} placeholder={f.placeholder} value={values[f.key] ?? tpl.defaults[f.key] ?? ''} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} />
+                  </label>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', margin: '16px 0 8px' }}>Transparency / Export</div>
+              <div style={{ fontSize: 12, color: D.soft, lineHeight: 1.5 }}>Background: <b style={{ color: D.ink }}>Transparent</b> · Format: <b style={{ color: D.ink }}>ProRes 4444</b></div>
+            </>)}
+            {rightTab === 'Design' && (<>
+              <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', marginBottom: 8 }}>Color Palette</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                {palette.map((c, i) => (
+                  <button key={i} onClick={() => setAccent(c)} title={c} style={{ width: 30, height: 30, borderRadius: 8, background: c, border: `2px solid ${accent.toLowerCase() === c.toLowerCase() ? D.ink : D.line}`, cursor: 'pointer' }} />
+                ))}
+                <label style={{ width: 30, height: 30, borderRadius: 8, border: `1px dashed ${D.line}`, display: 'grid', placeItems: 'center', color: D.soft, cursor: 'pointer' }}>＋
+                  <input type="color" style={{ display: 'none' }} onChange={(e) => { setPalette((p) => [...p, e.target.value]); setAccent(e.target.value); }} />
+                </label>
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', marginBottom: 8 }}>Typography</div>
+              <div style={{ fontSize: 12, color: D.soft }}>Inter · Semi Bold <span style={{ color: D.faint }}>(brand-font kommer)</span></div>
+            </>)}
+            {rightTab === 'Animate' && (<>
+              <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', marginBottom: 8 }}>Animation Presets</div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                {ANIM_PRESETS.map((a) => (
+                  <div key={a.id} style={{ flex: 1, padding: '12px 6px', borderRadius: 9, border: `1px solid ${D.line}`, background: D.bg, textAlign: 'center', fontSize: 11, color: D.soft, cursor: 'pointer' }} onClick={play}>{a.label}</div>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', marginBottom: 8 }}>Easing</div>
+              <select style={inp} value={easing} onChange={(e) => setEasing(e.target.value)}>
+                {EASINGS.map((e) => <option key={e} value={e}>{e}</option>)}
+              </select>
+              <div style={{ fontSize: 10.5, color: D.faint, marginTop: 8, lineHeight: 1.4 }}>Animasjonen er innebygd i malen (count-up, søyle-vekst, stagger). Flere presets + per-element-styring kommer.</div>
+            </>)}
+          </div>
         </div>
       </div>
     </div>
