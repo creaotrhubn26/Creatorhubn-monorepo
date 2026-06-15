@@ -70431,9 +70431,13 @@ setupAudioShowcaseRoutes({
     catch { return null; }
   },
   // Google Calendar (samme tilkobling) for å legge økter i produsentens kalender.
+  // Returnerer også innvilgede scopes + e-post slik at UI kan vise om kalender-
+  // tilgang er gitt og tilby «koble til på nytt» når den mangler.
   getGoogleCalendar: async (userId, req) => {
-    try { return await buildAuthorizedGoogleCalendar(pool, userId, req); }
-    catch { return null; }
+    try {
+      const { calendar, authorized } = await buildAuthorizedGoogleCalendar(pool, userId, req);
+      return { calendar, scopes: authorized.connection.storedScopes || [], email: authorized.connection.googleEmail || null };
+    } catch { return null; }
   },
   // Opplasting av eget Canvas-klipp (memoryStorage, 250 MB).
   uploadClip: showcaseMediaUpload,

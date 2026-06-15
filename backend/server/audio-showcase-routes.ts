@@ -269,8 +269,9 @@ export interface AudioShowcaseDeps {
   // Valgfri: autorisert YouTube-klient for innlogget bruker (gjenbruker eksisterende
   // Google-tilkobling fra youtube-routes). Mangler den → publisering ikke tilgjengelig.
   getYoutubeClient?: (userId: string, req: any) => Promise<{ youtube: any } | null>;
-  // Valgfri: Google Calendar-klient (samme tilkobling) for å pushe økter.
-  getGoogleCalendar?: (userId: string, req: any) => Promise<any | null>;
+  // Valgfri: Google Calendar-klient (samme tilkobling) for å pushe/synke økter.
+  // Returnerer klient + innvilgede scopes + e-post (null hvis ingen tilkobling).
+  getGoogleCalendar?: (userId: string, req: any) => Promise<{ calendar: any; scopes?: string[]; email?: string | null } | null>;
   // Valgfri: multer (memoryStorage) for opplasting av eget Canvas-klipp.
   uploadClip?: { single: (field: string) => any };
 }
@@ -2353,7 +2354,24 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     catch (e) { if (isMissingTable(e)) return res.json({ ok: true }); return res.status(500).json({ error: "session_delete_failed" }); }
   });
 
-  // Legg en økt i produsentens Google Calendar (samme Google-tilkobling).
+  // Har Google-tilkoblingen kalender-tilgang? (calendar eller calendar.events)
+  const hasCalendarScope = (scopes?: string[]) =>
+    (scopes || []).some((sc) => /auth\/calendar(\.events)?$/.test(String(sc)));
+
+  // Status på produsentens Google Calendar-tilkobling → UI viser tilkoblet/scope
+  // og kan tilby «koble til på nytt med Calendar-tilgang» når scope mangler.
+  app.get("/api/audio-showcase/google-calendar/status", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    if (!getGoogleCalendar) return res.json({ configured: false, connected: false, calendarScope: false });
+    try {
+      const cal = await getGoogleCalendar(s.userId, req);
+      if (!cal) return res.json({ configured: true, connected: false, calendarScope: false });
+      return res.json({ configured: true, connected: true, calendarScope: hasCalendarScope(cal.scopes), email: cal.email || null });
+    } catch { return res.json({ configured: true, connected: false, calendarScope: false }); }
+  });
+
+  // Legg/oppdater en økt i produsentens Google Calendar (idempotent — lagrer
+  // event-id slik at gjentatt push oppdaterer i stedet for å duplisere).
   app.post("/api/sessions/:sid/gcal", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     if (!getGoogleCalendar) return res.status(503).json({ error: "calendar_not_configured" });
@@ -2363,27 +2381,87 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       const sess = r.rows[0];
       const cal = await getGoogleCalendar(s.userId, req);
       if (!cal) return res.status(409).json({ error: "google_not_connected" });
+      if (!hasCalendarScope(cal.scopes)) return res.status(409).json({ error: "calendar_scope_missing", detail: "Google-tilkoblingen mangler kalender-tilgang. Koble til på nytt med Calendar-scope." });
       const start = new Date(sess.start_at);
       const end = sess.end_at ? new Date(sess.end_at) : new Date(start.getTime() + 2 * 3600_000);
+      const requestBody = {
+        summary: sess.title,
+        location: sess.location || undefined,
+        description: [sess.notes, sess.online_url ? `Online: ${sess.online_url}` : ""].filter(Boolean).join("\n") || undefined,
+        start: { dateTime: start.toISOString() }, end: { dateTime: end.toISOString() },
+        reminders: { useDefault: true },
+        // Merk eventet slik at vi trygt kan kjenne igjen / hente det tilbake.
+        extendedProperties: { private: { audioSessionId: String(sess.id) } },
+      };
       try {
-        const ins = await cal.events.insert({
-          calendarId: "primary",
-          requestBody: {
-            summary: sess.title,
-            location: sess.location || undefined,
-            description: [sess.notes, sess.online_url ? `Online: ${sess.online_url}` : ""].filter(Boolean).join("\n") || undefined,
-            start: { dateTime: start.toISOString() }, end: { dateTime: end.toISOString() },
-            reminders: { useDefault: true },
-          },
-        });
-        return res.json({ ok: true, htmlLink: ins.data?.htmlLink || null, eventId: ins.data?.id || null });
+        let data: any; let updated = false;
+        if (sess.gcal_event_id) {
+          // Finnes eventet ennå? Oppdater. Hvis slettet i Google → lag på nytt.
+          try {
+            const up = await cal.calendar.events.update({ calendarId: "primary", eventId: sess.gcal_event_id, requestBody });
+            data = up.data; updated = true;
+          } catch (ue: any) {
+            if (Number(ue?.code) === 404 || Number(ue?.response?.status) === 404) {
+              const ins = await cal.calendar.events.insert({ calendarId: "primary", requestBody });
+              data = ins.data;
+            } else throw ue;
+          }
+        } else {
+          const ins = await cal.calendar.events.insert({ calendarId: "primary", requestBody });
+          data = ins.data;
+        }
+        await pool.query(`UPDATE audio_sessions SET gcal_event_id=$2, gcal_html_link=$3, gcal_synced_at=NOW(), updated_at=NOW() WHERE id=$1::uuid`,
+          [sess.id, data?.id || sess.gcal_event_id || null, data?.htmlLink || sess.gcal_html_link || null]);
+        return res.json({ ok: true, updated, htmlLink: data?.htmlLink || null, eventId: data?.id || null });
       } catch (ge: any) {
         const msg = String(ge?.message || ge?.errors?.[0]?.message || "");
         if (/insufficient|scope|forbidden|permission/i.test(msg)) return res.status(409).json({ error: "calendar_scope_missing", detail: "Google-tilkoblingen mangler kalender-tilgang. Koble til på nytt med Calendar-scope." });
-        console.error("[sessions] gcal insert failed:", msg);
+        console.error("[sessions] gcal push failed:", msg);
         return res.status(502).json({ error: "calendar_insert_failed" });
       }
     } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "gcal_failed" }); }
+  });
+
+  // Toveis: hent endringer fra Google tilbake til økta (tid/sted/tittel/notat).
+  // Slettet i Google → nullstill koblingen så produsenten kan pushe på nytt.
+  app.post("/api/sessions/:sid/gcal/pull", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    if (!getGoogleCalendar) return res.status(503).json({ error: "calendar_not_configured" });
+    try {
+      const r = await pool.query(`SELECT * FROM audio_sessions WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.sid, 64), s.userId]);
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const sess = r.rows[0];
+      if (!sess.gcal_event_id) return res.status(409).json({ error: "not_pushed", detail: "Økta er ikke lagt i Google Calendar ennå." });
+      const cal = await getGoogleCalendar(s.userId, req);
+      if (!cal) return res.status(409).json({ error: "google_not_connected" });
+      if (!hasCalendarScope(cal.scopes)) return res.status(409).json({ error: "calendar_scope_missing" });
+      try {
+        const ev = (await cal.calendar.events.get({ calendarId: "primary", eventId: sess.gcal_event_id })).data;
+        if (!ev || ev.status === "cancelled") {
+          await pool.query(`UPDATE audio_sessions SET gcal_event_id=NULL, gcal_html_link=NULL, gcal_synced_at=NULL, updated_at=NOW() WHERE id=$1::uuid`, [sess.id]);
+          return res.json({ ok: true, deleted: true });
+        }
+        const startIso = ev.start?.dateTime || (ev.start?.date ? `${ev.start.date}T00:00:00` : null);
+        const endIso = ev.end?.dateTime || (ev.end?.date ? `${ev.end.date}T00:00:00` : null);
+        const title = str(ev.summary, 160) || sess.title;
+        const location = ev.location != null ? str(ev.location, 200) : sess.location;
+        const changed = (startIso && startIso !== new Date(sess.start_at).toISOString())
+          || title !== sess.title || (location || null) !== (sess.location || null);
+        const up = await pool.query(
+          `UPDATE audio_sessions SET title=$2, start_at=COALESCE($3, start_at), end_at=$4, location=$5, gcal_html_link=$6, gcal_synced_at=NOW(), updated_at=NOW() WHERE id=$1::uuid RETURNING *`,
+          [sess.id, title, startIso, endIso, location || null, ev.htmlLink || sess.gcal_html_link || null]);
+        return res.json({ ok: true, changed, session: up.rows[0] });
+      } catch (ge: any) {
+        if (Number(ge?.code) === 404 || Number(ge?.response?.status) === 404) {
+          await pool.query(`UPDATE audio_sessions SET gcal_event_id=NULL, gcal_html_link=NULL, gcal_synced_at=NULL, updated_at=NOW() WHERE id=$1::uuid`, [sess.id]);
+          return res.json({ ok: true, deleted: true });
+        }
+        const msg = String(ge?.message || "");
+        if (/insufficient|scope|forbidden|permission/i.test(msg)) return res.status(409).json({ error: "calendar_scope_missing" });
+        console.error("[sessions] gcal pull failed:", msg);
+        return res.status(502).json({ error: "calendar_pull_failed" });
+      }
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "gcal_pull_failed" }); }
   });
 
   // Medlem: økter jeg er invitert til + RSVP.

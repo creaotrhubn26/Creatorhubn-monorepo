@@ -247,7 +247,10 @@ export async function buildAuthorizedGoogleCalendar(pool: Pool, userId: string, 
     allowFallbackToAnyUser: false,
     preferredOauthApps: derivePreferredGoogleWorkspaceOauthApps(req),
   });
-  return google.calendar({ version: "v3", auth: authorized.oauthClient });
+  return {
+    authorized,
+    calendar: google.calendar({ version: "v3", auth: authorized.oauthClient }),
+  };
 }
 
 async function resolveUploadsPlaylistId(youtube: ReturnType<typeof google.youtube>) {
