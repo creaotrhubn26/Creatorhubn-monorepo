@@ -184,6 +184,13 @@ Dette er det dyrekjøpte. Vanlige guider tar feil her.
 - **Ingen public transition-API** for cross-dissolve mellom klipp — løs innen-klipp.
 - **Verifiser ALLTID ved å RENDRE + se på pikslene**, ikke bare node-introspeksjon.
 - **Python-versjon:** `fusionscript.so` krever Python ≤ ~3.12 (3.14 er for nytt).
+- **Ugyldig Text+ `Style` ØDELEGGER render STILLE:** `SetInput("Style","Medium")`
+  på en font som ikke har «Medium» kaster INGEN exception, men gir en Text+ som
+  ikke rendrer → hele klippet kollapser til ~3 frames / svart. Sett kun kjente
+  trygge stiler («Bold»/«Regular»), eller la være å sette Style. (Verifisert:
+  «Medium» på Open Sans → 3-frame render; «Regular» → full render.)
+- **Tall-teller-expression kan også brekke render** på enkelte bygg — ha en
+  statisk-tall-fallback (pop-in) som default, count-up bak et flagg.
 
 ### Minimal automatiserings-mal (Python, faktisk fungerende)
 ```python

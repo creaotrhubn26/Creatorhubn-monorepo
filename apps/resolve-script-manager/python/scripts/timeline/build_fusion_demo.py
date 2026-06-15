@@ -155,6 +155,37 @@ def _make_solid_png(path, w, h, rgb):
         return None
 
 
+def _make_gradient_png(path, w, h, top_rgb, bottom_rgb):
+    """Avhengighetsfri vertikal 2-tone gradient-PNG (branded infographic-bg)."""
+    import zlib
+    import struct
+    tr, tg, tb = [max(0.0, min(1.0, float(c))) for c in top_rgb[:3]]
+    br, bg2, bb = [max(0.0, min(1.0, float(c))) for c in bottom_rgb[:3]]
+    raw = bytearray()
+    for y in range(h):
+        t = y / max(1, h - 1)
+        r = int((tr + (br - tr) * t) * 255)
+        g = int((tg + (bg2 - tg) * t) * 255)
+        b = int((tb + (bb - tb) * t) * 255)
+        raw.append(0)
+        raw.extend(bytes([r, g, b]) * w)
+
+    def chunk(typ, data):
+        return (struct.pack(">I", len(data)) + typ + data
+                + struct.pack(">I", zlib.crc32(typ + data) & 0xffffffff))
+
+    png = (b"\x89PNG\r\n\x1a\n"
+           + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+           + chunk(b"IEND", b""))
+    try:
+        with open(path, "wb") as f:
+            f.write(png)
+        return path
+    except OSError:
+        return None
+
+
 # ── Live Fusion-API-hjelpere (defensive) ──────────────────────────────────
 # Verifisert mot Resolve 21: animasjon settes ved å koble en BezierSpline
 # (scalar) eller en XYPath m/ to BezierSpliner (point/Center) til inputen, og
@@ -280,7 +311,9 @@ def _build_scene_comp(comp, scene, idx, total, fps, brand, dur, report):
     # Browser-card-modus (default): skjermbildet som et avrundet kort på branded
     # bakgrunn → proff produktvideo-look. Da hopper vi over element-forankret
     # dimming (passer ikke kort-metaforen) og lar kameraet skyve inn mot kortet.
-    frame_mode = (brand.get("frame", "browser") != "none")
+    # Per-scene `frame` overstyrer brand-nivået; infographic-scener bruker "none".
+    scene_frame = scene.get("frame") or ("infographic" if scene.get("kind") == "infographic" else brand.get("frame", "browser"))
+    frame_mode = scene_frame not in ("none", "infographic")
     base_media = media_in
     if frame_mode:
         base_media = _build_browser_card(comp, media_in, brand, report)
@@ -519,7 +552,11 @@ def _text(comp, x, y, report, styled, size, center, color, font, style="Bold", j
         return None
     _set(t, "StyledText", styled, report)
     _set(t, "Font", font, report)
-    _set(t, "Style", style, report)
+    # MERK: ugyldig Style (f.eks. "Medium" på en font som ikke har den) gir IKKE
+    # exception, men ødelegger Text+-render (svart/3-frame render). Sett kun
+    # Style når den er oppgitt, og hold deg til trygge verdier ("Bold"/"Regular").
+    if style:
+        _set(t, "Style", style, report)
     _set(t, "Size", size, report)
     _set(t, "Center", center, report)
     for i, ch in enumerate(("Red1", "Green1", "Blue1")):
@@ -559,18 +596,22 @@ def _fx_stat(comp, fx, dur, fps, brand, report):
             _connect(bg, "EffectMask", m, report)
             out = bg
 
-    # stort tall (teller opp via expression)
-    num = _text(comp, 0, 14, report, "0", 0.11, [px, fpy + 0.03], brand["accent"], font)
-    if num:
+    # stort tall. Default STATISK (pop-in) — robust i render. Count-up via
+    # expression er valgfritt (fx.countUp), men kan brekke Edit/Deliver-render
+    # på enkelte Resolve-bygg, så det er ikke default.
+    num = _text(comp, 0, 14, report, f"{prefix}{value}{suffix}", 0.11,
+                [px, fpy + 0.03], brand["accent"], font)
+    if num and fx.get("countUp"):
         try:
             num.StyledText.SetExpression(_count_expr(value, suffix, prefix, span))
         except Exception:  # noqa: BLE001
-            _set(num, "StyledText", f"{prefix}{value}{suffix}", report)
+            pass
+    if num:
         out = _merge_2(comp, out, num, report) if out else num
     # label under
     if label:
         lab = _text(comp, 0, 15, report, label, 0.028, [px, fpy - 0.05],
-                    brand["textColor"], font, style="Medium")
+                    brand["textColor"], font, style="Regular")
         if lab:
             out = _merge_2(comp, out, lab, report) if out else lab
 
@@ -624,7 +665,7 @@ def _fx_bar_chart(comp, fx, dur, fps, brand, report):
         lab = (b.get("label") or "").strip()
         if lab:
             t = _text(comp, 0, 13 + i, report, lab, 0.022, [bx, baseline - 0.04],
-                      brand["textColor"], font, style="Medium")
+                      brand["textColor"], font, style="Regular")
             if t:
                 out = _merge_2(comp, out, t, report) if out else t
     return out, f"BarChart({n})"
@@ -1124,6 +1165,9 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "durationSec": float(s.get("durationSec") or s.get("dwellSec") or 4.0),
             "cameraMove": (s.get("cameraMove") or "auto"),
             "effects": s.get("effects") or [],
+            "kind": s.get("kind"),
+            "frame": s.get("frame"),
+            "focusRect": s.get("focusRect"),
         })
 
     # Brand motion-system: logo-intro + CTA/end-screen som egne scener.
@@ -1133,6 +1177,19 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         os.makedirs(_tmp_dir, exist_ok=True)
     except OSError:
         _tmp_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Infographic-scener uten media → auto-generer branded gradient-bakgrunn.
+    acc = brand.get("accent", DEFAULT_BRAND["accent"])
+    barc = brand.get("barColor", DEFAULT_BRAND["barColor"])
+    grad_top = [barc[0] + 0.06, barc[1] + 0.07, barc[2] + 0.10]
+    grad_bot = [max(0.0, barc[0] - 0.01), max(0.0, barc[1] - 0.01), max(0.0, barc[2] + 0.01)]
+    for i, s in enumerate(norm):
+        if (s.get("kind") == "infographic" or s.get("frame") == "infographic") and not s.get("path"):
+            bgp = _make_gradient_png(os.path.join(_tmp_dir, f"infographic_bg_{i}.png"),
+                                     480, 270, grad_top, grad_bot)
+            if bgp:
+                s["path"] = bgp
+
     if brand.get("intro"):
         logo = brand.get("logoPath") if (brand.get("logoPath") and os.path.isfile(brand.get("logoPath", ""))) else None
         bg = logo or _make_solid_png(os.path.join(_tmp_dir, "intro_bg.png"),
