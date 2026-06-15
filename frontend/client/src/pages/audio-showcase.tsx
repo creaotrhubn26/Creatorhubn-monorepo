@@ -1077,12 +1077,14 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
   };
 
   const [clipStart, setClipStart] = React.useState('');
-  const downloadSpotifyAsset = async (kind: 'canvas' | 'lyrics' | 'social') => {
+  const [reelLen, setReelLen] = React.useState('30');
+  const downloadSpotifyAsset = async (kind: 'canvas' | 'lyrics' | 'social' | 'motion') => {
     if (!rel) return; if (kind !== 'lyrics') setSpotBusy(true);
     try {
       const headers = await getAuthHeader();
       const path = kind === 'canvas' ? `/api/releases/${rel.id}/canvas`
-        : kind === 'social' ? `/api/releases/${rel.id}/social-clip?maxSec=30`
+        : kind === 'motion' ? `/api/releases/${rel.id}/canvas?format=square`
+        : kind === 'social' ? `/api/releases/${rel.id}/social-clip?maxSec=${Number(reelLen) || 30}${Number(clipStart) > 0 ? `&start=${Number(clipStart)}` : ''}`
         : `/api/releases/${rel.id}/lyrics-export?format=lrc`;
       const res = await fetch(path, { headers });
       if (!res.ok) return;
@@ -1198,11 +1200,17 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
                   <Button onClick={() => downloadSpotifyAsset('canvas')} disabled={spotBusy} startIcon={<MovieCreationOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Canvas fra cover</Button>
                   <Button onClick={() => clipInputRef.current?.click()} disabled={spotBusy} startIcon={<CloudUpload sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Eget klipp</Button>
                   <TextField value={clipStart} onChange={(e) => setClipStart(e.target.value.replace(/[^0-9]/g, ''))} placeholder="start s" size="small" sx={{ width: 70, '& .MuiInputBase-input': { color: TEXT, fontSize: '0.7rem', py: 0.5 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER } }} />
+                  <Button onClick={() => downloadSpotifyAsset('motion')} disabled={spotBusy} startIcon={<MovieCreationOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Apple Music (1:1)</Button>
                   <Button onClick={() => downloadSpotifyAsset('social')} disabled={spotBusy} startIcon={<MovieCreationOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Reels/TikTok (9:16)</Button>
+                  <TextField select SelectProps={{ native: true }} value={reelLen} onChange={(e) => setReelLen(e.target.value)} size="small" sx={{ width: 64, '& .MuiInputBase-input': { color: TEXT, fontSize: '0.68rem', py: 0.5 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER } }}>
+                    <option value="15" style={{ background: PANEL }}>15s</option>
+                    <option value="30" style={{ background: PANEL }}>30s</option>
+                    <option value="60" style={{ background: PANEL }}>60s</option>
+                  </TextField>
                   <Button onClick={() => downloadSpotifyAsset('lyrics')} startIcon={<SubjectOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Tekst → Musixmatch</Button>
                   <input ref={clipInputRef} type="file" accept="video/*" hidden onChange={(e) => { void uploadCanvasClip(e.target.files?.[0]); e.target.value = ''; }} />
                 </Stack>
-                <Typography sx={{ fontSize: '0.6rem', color: FAINT, mt: 0.5 }}>Canvas (9:16, ~6 s, beat-puls fra BPM) fra cover eller eget klipp (valgfri start-sek) → Spotify for Artists. Reels/TikTok = 9:16 med lyd. Tekst (.lrc/.txt) → Musixmatch.</Typography>
+                <Typography sx={{ fontSize: '0.6rem', color: FAINT, mt: 0.5 }}>Canvas (9:16, beat-puls fra BPM) + Apple Music motion art (1:1) → Spotify/Apple. Reels/TikTok = 9:16 med lyd (15/30/60s). Tekst (.lrc/.txt) → Musixmatch.</Typography>
               </Box>
               {/* YouTube-publisering (visualizer / lyric-video / karaoke) */}
               <YouTubePublishPanel releaseId={rel.id} projectId={projectId} masterUrl={rel.master_url} />

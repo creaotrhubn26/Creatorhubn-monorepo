@@ -148,22 +148,24 @@ function lyricLines(lyrics: string): string[] {
 // Spotify Canvas: 9:16, ~6 s SØMLØS loop fra coveret. Uskarp bakgrunn + skarpt
 // cover som driver sinusformet (perfekt loop, ingen «hopp»). Med audioPath legges
 // et audio-reaktivt bølgelag i merkefargen nederst. Stille MP4 (Canvas har ikke lyd).
-function buildCanvas(coverPath: string, outPath: string, opts?: { audioPath?: string; audioStart?: number; accentHex?: string; bpm?: number }): Promise<void> {
+function buildCanvas(coverPath: string, outPath: string, opts?: { audioPath?: string; audioStart?: number; accentHex?: string; bpm?: number; square?: boolean }): Promise<void> {
   return new Promise((resolve, reject) => {
     const P = 6; // loop-periode = klipplengde → sømløst
+    const W = 1080, H = opts?.square ? 1080 : 1920;          // square = Apple Music motion art
+    const fgSize = opts?.square ? 760 : 920, waveH = opts?.square ? 140 : 200, waveY = opts?.square ? "H-170" : "H-260";
     const accent = (opts?.accentHex && /^#[0-9a-fA-F]{6}$/.test(opts.accentHex)) ? "0x" + opts.accentHex.slice(1) : "0xffffff";
     const driftX = `(W-w)/2+22*sin(2*PI*t/${P})`;
     const driftY = `(H-h)/2+26*sin(2*PI*t/${P}+1.6)`;
     // Beat-puls: lett zoom på slaget (fra BPM). on = utframe, 1500 = 60*25fps.
     const bpm = Number(opts?.bpm);
-    const pulse = bpm > 20 && bpm < 300 ? `,zoompan=z='1+0.025*abs(sin(PI*on*${Math.round(bpm)}/1500))':d=1:s=1080x1920:fps=25` : "";
+    const pulse = bpm > 20 && bpm < 300 ? `,zoompan=z='1+0.025*abs(sin(PI*on*${Math.round(bpm)}/1500))':d=1:s=${W}x${H}:fps=25` : "";
     const inputs = ["-loop", "1", "-i", coverPath];
     if (opts?.audioPath) inputs.push("-ss", String(Math.max(0, opts.audioStart || 0)), "-t", String(P), "-i", opts.audioPath);
     const layers =
-      `[0:v]scale=1300:2300:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20,eq=brightness=-0.16[bg];` +
-      `[0:v]scale=920:920:force_original_aspect_ratio=decrease[cv];`;
+      `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=20,eq=brightness=-0.16[bg];` +
+      `[0:v]scale=${fgSize}:${fgSize}:force_original_aspect_ratio=decrease[cv];`;
     const fc = opts?.audioPath
-      ? `${layers}[bg][cv]overlay=x='${driftX}':y='${driftY}'[base];[1:a]showwaves=s=1080x200:mode=cline:colors=${accent}:rate=25,format=rgba,colorchannelmixer=aa=0.55[w];[base][w]overlay=x=0:y=H-260,format=yuv420p${pulse}[v]`
+      ? `${layers}[bg][cv]overlay=x='${driftX}':y='${driftY}'[base];[1:a]showwaves=s=${W}x${waveH}:mode=cline:colors=${accent}:rate=25,format=rgba,colorchannelmixer=aa=0.55[w];[base][w]overlay=x=0:y=${waveY},format=yuv420p${pulse}[v]`
       : `${layers}[bg][cv]overlay=x='${driftX}':y='${driftY}',format=yuv420p${pulse}[v]`;
     const args = [
       "-y", ...inputs, "-t", String(P), "-r", "25",
@@ -1878,10 +1880,11 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         bpm = Number(pr.rows[0]?.bpm) || 0;
       }
       const brand = await loadBrand(s.userId);
-      await buildCanvas(coverPath, outPath, { audioPath, audioStart, accentHex: brand.accent || undefined, bpm });
+      const square = str(req.query?.format, 8) === "square"; // Apple Music motion art (1:1)
+      await buildCanvas(coverPath, outPath, { audioPath, audioStart, accentHex: brand.accent || undefined, bpm, square });
       const buf = await import("node:fs/promises").then((m) => m.readFile(outPath));
       res.setHeader("Content-Type", "video/mp4");
-      res.setHeader("Content-Disposition", `attachment; filename="canvas-${(r.rows[0].title || "release").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.mp4"`);
+      res.setHeader("Content-Disposition", `attachment; filename="${square ? "motion-art" : "canvas"}-${(r.rows[0].title || "release").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.mp4"`);
       return res.end(buf);
     } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); console.error("[canvas] failed:", e); return res.status(500).json({ error: "canvas_failed" }); }
     finally { for (const f of tmp) unlink(f).catch(() => {}); }
