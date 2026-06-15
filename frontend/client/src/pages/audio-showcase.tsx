@@ -266,8 +266,12 @@ export default function AudioShowcasePage() {
   };
   const syncCollaborators = async () => {
     setSyncingCollab(true);
-    try { await apiRequest(`/api/audio-showcases/${projectId}/sync-collaborators`, { method: 'POST', body: {} }); await loadProject(); }
-    catch { /* */ } finally { setSyncingCollab(false); }
+    try {
+      // Full EaseVerse-synk: metadata (tittel/artist/BPM, last-write-wins) + samarbeidspartnere.
+      await apiRequest(`/api/audio-showcases/${projectId}/sync-metadata`, { method: 'POST', body: {} }).catch(() => {});
+      await apiRequest(`/api/audio-showcases/${projectId}/sync-collaborators`, { method: 'POST', body: {} }).catch(() => {});
+      await loadProject();
+    } catch { /* */ } finally { setSyncingCollab(false); }
   };
   const createProject = async () => {
     if (!newTitle.trim()) return; setBusy(true);
@@ -376,7 +380,7 @@ export default function AudioShowcasePage() {
           <Divider sx={{ borderColor: BORDER, my: 1 }} />
           <Stack direction="row" alignItems="center" sx={{ mb: 1 }}>
             <Typography sx={{ fontSize: '0.72rem', letterSpacing: 1, color: FAINT, flex: 1, textTransform: 'uppercase' }}>Prosjektmedlemmer</Typography>
-            {easeverseTrack && <Tooltip title="Synk samarbeidspartnere med EaseVerse"><span><Button size="small" disabled={syncingCollab} onClick={syncCollaborators} sx={{ color: MUTED, textTransform: 'none', fontSize: '0.7rem', minWidth: 0 }}>{syncingCollab ? '…' : 'Synk'}</Button></span></Tooltip>}
+            {easeverseTrack && <Tooltip title="Synk med EaseVerse (metadata + samarbeidspartnere)"><span><Button size="small" disabled={syncingCollab} onClick={syncCollaborators} sx={{ color: MUTED, textTransform: 'none', fontSize: '0.7rem', minWidth: 0 }}>{syncingCollab ? '…' : 'Synk'}</Button></span></Tooltip>}
             <Button size="small" startIcon={<Add sx={{ fontSize: '16px !important' }} />} onClick={() => setInviteOpen(true)} sx={{ color: ACCENT, textTransform: 'none', fontSize: '0.75rem', minWidth: 0 }}>Inviter</Button>
           </Stack>
           <Stack spacing={0.5}>
