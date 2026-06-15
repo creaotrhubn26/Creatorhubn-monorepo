@@ -366,6 +366,155 @@ export function registerLeadMapCompetitorRoutes({
     },
   );
 
+  // ─── GET /reminders (stille leads + dagens follow-ups) ──────────
+  app.get(
+    "/api/admin-room/lead-map/reminders",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const stale = await pool.query<{
+          id: string; name: string; lead_status: string; city: string | null;
+          days_silent: number; updated_at: string;
+        }>(
+          `SELECT id::text, name, lead_status, city,
+                  (EXTRACT(EPOCH FROM (NOW() - updated_at)) / 86400)::int AS days_silent,
+                  updated_at::text
+             FROM crm_customers
+            WHERE owner_user_id = $1
+              AND lead_status NOT IN ('won', 'lost', 'do_not_contact')
+              AND updated_at < NOW() - INTERVAL '7 days'
+            ORDER BY updated_at ASC
+            LIMIT 50`,
+          [session.userId],
+        );
+
+        const buckets = {
+          over30days: stale.rows.filter((r) => r.days_silent >= 30).length,
+          over14days: stale.rows.filter((r) => r.days_silent >= 14 && r.days_silent < 30).length,
+          over7days: stale.rows.filter((r) => r.days_silent >= 7 && r.days_silent < 14).length,
+        };
+
+        const dueToday = await pool.query<{
+          id: string; name: string; next_follow_up_at: string; next_action: string | null;
+        }>(
+          `SELECT id::text, name, next_follow_up_at::text, next_action
+             FROM crm_customers
+            WHERE owner_user_id = $1
+              AND next_follow_up_at IS NOT NULL
+              AND next_follow_up_at <= NOW() + INTERVAL '24 hours'
+              AND next_follow_up_at >= NOW() - INTERVAL '24 hours'
+              AND lead_status NOT IN ('won', 'lost', 'do_not_contact')
+            ORDER BY next_follow_up_at ASC
+            LIMIT 20`,
+          [session.userId],
+        );
+
+        return res.json({
+          staleLeads: stale.rows.map((r) => ({
+            id: r.id,
+            name: r.name,
+            status: r.lead_status,
+            city: r.city,
+            daysSilent: r.days_silent,
+            updatedAt: r.updated_at,
+          })),
+          buckets,
+          dueToday: dueToday.rows.map((r) => ({
+            id: r.id,
+            name: r.name,
+            datetime: r.next_follow_up_at,
+            nextAction: r.next_action,
+          })),
+          totalStale: stale.rows.length,
+        });
+      } catch (err) {
+        return res.status(500).json({ error: "reminders_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── GET /status-report (ukens status-rapport) ──────────────────
+  app.get(
+    "/api/admin-room/lead-map/status-report",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const r = await pool.query<{
+          new_leads_7d: number;
+          won_7d: number;
+          meetings_7d: number;
+          longest_silent_days: number;
+          longest_silent_name: string | null;
+          active_pipeline: number;
+        }>(
+          `SELECT
+             COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int AS new_leads_7d,
+             COUNT(*) FILTER (
+               WHERE lead_status = 'won'
+                 AND updated_at >= NOW() - INTERVAL '7 days'
+             )::int AS won_7d,
+             COUNT(*) FILTER (
+               WHERE lead_status = 'meeting_booked'
+                 AND updated_at >= NOW() - INTERVAL '7 days'
+             )::int AS meetings_7d,
+             COALESCE(MAX(
+               (EXTRACT(EPOCH FROM (NOW() - updated_at)) / 86400)::int
+             ) FILTER (
+               WHERE lead_status NOT IN ('won', 'lost', 'do_not_contact')
+             ), 0)::int AS longest_silent_days,
+             (SELECT name FROM crm_customers
+               WHERE owner_user_id = $1
+                 AND lead_status NOT IN ('won', 'lost', 'do_not_contact')
+               ORDER BY updated_at ASC LIMIT 1
+             ) AS longest_silent_name,
+             COUNT(*) FILTER (
+               WHERE lead_status NOT IN ('won', 'lost', 'do_not_contact')
+             )::int AS active_pipeline
+           FROM crm_customers
+          WHERE owner_user_id = $1`,
+          [session.userId],
+        );
+        const row = r.rows[0];
+
+        const recommendations: string[] = [];
+        if (row.longest_silent_days >= 14 && row.longest_silent_name) {
+          recommendations.push(
+            `${row.longest_silent_name} har ikke fått oppmerksomhet på ${row.longest_silent_days} dager — følg opp eller marker som tapt`,
+          );
+        }
+        if (row.new_leads_7d === 0) {
+          recommendations.push(
+            "Ingen nye leads siste uken — kjør 'Discover leads' eller importer fra Google Places",
+          );
+        } else if (row.new_leads_7d >= 5 && row.meetings_7d === 0) {
+          recommendations.push(
+            `${row.new_leads_7d} nye leads, men 0 bookede møter — øk follow-up-takt`,
+          );
+        }
+        if (row.active_pipeline >= 20 && row.won_7d === 0) {
+          recommendations.push(
+            `${row.active_pipeline} aktive leads, men ingen vunnet siste uken — review pitch-strategi`,
+          );
+        }
+
+        return res.json({
+          newLeads7d: row.new_leads_7d,
+          won7d: row.won_7d,
+          meetings7d: row.meetings_7d,
+          longestSilentDays: row.longest_silent_days,
+          longestSilentName: row.longest_silent_name,
+          activePipeline: row.active_pipeline,
+          recommendations,
+          generatedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        return res.status(500).json({ error: "status_report_failed", detail: String(err) });
+      }
+    },
+  );
+
   // ─── GET /leaderboard (konkurranse blant lead-skaffere) ──────────
   // Per-bruker aggregat: hvem har skaffet flest leads, mest converted,
   // beste conversion-rate. Workspace-isolert til admin-room-tenant.
