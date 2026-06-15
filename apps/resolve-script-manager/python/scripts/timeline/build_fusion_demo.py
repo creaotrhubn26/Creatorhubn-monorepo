@@ -277,13 +277,25 @@ def _build_scene_comp(comp, scene, idx, total, fps, brand, dur, report):
     # Del effektene i element-forankrede (følger elementet → komponeres FØR
     # kameraet, så de zoomer/panorerer SAMMEN med elementet) og skjerm-forankrede
     # (caption/cards/sweep → ETTER kameraet, fast på skjermen).
+    # Browser-card-modus (default): skjermbildet som et avrundet kort på branded
+    # bakgrunn → proff produktvideo-look. Da hopper vi over element-forankret
+    # dimming (passer ikke kort-metaforen) og lar kameraet skyve inn mot kortet.
+    frame_mode = (brand.get("frame", "browser") != "none")
+    base_media = media_in
+    if frame_mode:
+        base_media = _build_browser_card(comp, media_in, brand, report)
+        built["nodes"].append("BrowserCard")
+        focus = None  # rolig push-in mot kortet
+
     ANCHORED = {"ctaHighlight", "spotlight", "callout", "cursor", "glow"}
     anchored, screenfx = [], []
     for fx in (scene.get("effects") or []):
+        if frame_mode and fx.get("type") in ANCHORED:
+            continue  # element-forankrede effekter passer ikke kort-metaforen
         (anchored if (fx.get("type") in ANCHORED) else screenfx).append(fx)
 
     # 1) Element-forankrede effekter på rå media (media-rom)
-    last = media_in
+    last = base_media
     for fx in anchored:
         try:
             fx_out, fx_name = _build_effect(comp, fx, dur, fps, brand, report)
@@ -485,8 +497,137 @@ def _build_effect(comp, fx, dur, fps, brand, report):
         return _fx_light_sweep(comp, fx, dur, fps, brand, report)
     if kind == "glow":
         return _fx_glow(comp, fx, dur, fps, brand, report)
+    if kind == "stat":
+        return _fx_stat(comp, fx, dur, fps, brand, report)
+    if kind in ("barChart", "bars"):
+        return _fx_bar_chart(comp, fx, dur, fps, brand, report)
     report.append(f"ukjent effekt-type: {kind}")
     return None, None
+
+
+def _count_expr(value, suffix, prefix, span):
+    """Fusion-uttrykk som teller prefix+0..value+suffix over `span` frames."""
+    pre = str(prefix or "")
+    suf = str(suffix or "")
+    return ('"' + pre + '"..tostring(math.floor(math.min(1,math.max(0,time/'
+            + str(max(1, int(span))) + '))*' + str(value) + '))..\"' + suf + '"')
+
+
+def _text(comp, x, y, report, styled, size, center, color, font, style="Bold", justify=None):
+    t = _add(comp, "TextPlus", x, y, report)
+    if not t:
+        return None
+    _set(t, "StyledText", styled, report)
+    _set(t, "Font", font, report)
+    _set(t, "Style", style, report)
+    _set(t, "Size", size, report)
+    _set(t, "Center", center, report)
+    for i, ch in enumerate(("Red1", "Green1", "Blue1")):
+        _set(t, ch, color[i], report)
+    return t
+
+
+def _fx_stat(comp, fx, dur, fps, brand, report):
+    """Animert nøkkeltall: stort tall som TELLER OPP + label, på et valgfritt
+    kort. Pop-in. = klassisk infographic-stat."""
+    try:
+        value = float(fx.get("value", 0))
+    except Exception:  # noqa: BLE001
+        value = 0
+    value = int(round(value))
+    suffix = fx.get("suffix", "")
+    prefix = fx.get("prefix", "")
+    label = (fx.get("label") or "").strip()
+    px, py = (fx.get("pos") or [0.5, 0.5])[:2]
+    fpy = 1.0 - py
+    font = brand.get("font", "Open Sans")
+    span = max(2, int(round(0.9 * fps)))
+
+    out = None
+    # valgfritt kort bak
+    if fx.get("card", True):
+        bg = _add(comp, "Background", 0, 13, report)
+        m = _add(comp, "RectangleMask", -1, 13, report)
+        if bg and m:
+            for i, ch in enumerate(("TopLeftRed", "TopLeftGreen", "TopLeftBlue")):
+                _set(bg, ch, brand["barColor"][i] + 0.05, report)
+            _set(bg, "TopLeftAlpha", 0.9, report)
+            _set(m, "Center", [px, fpy], report)
+            _set(m, "Width", 0.22, report)
+            _set(m, "Height", 0.22, report)
+            _set(m, "CornerRadius", 0.16, report)
+            _connect(bg, "EffectMask", m, report)
+            out = bg
+
+    # stort tall (teller opp via expression)
+    num = _text(comp, 0, 14, report, "0", 0.11, [px, fpy + 0.03], brand["accent"], font)
+    if num:
+        try:
+            num.StyledText.SetExpression(_count_expr(value, suffix, prefix, span))
+        except Exception:  # noqa: BLE001
+            _set(num, "StyledText", f"{prefix}{value}{suffix}", report)
+        out = _merge_2(comp, out, num, report) if out else num
+    # label under
+    if label:
+        lab = _text(comp, 0, 15, report, label, 0.028, [px, fpy - 0.05],
+                    brand["textColor"], font, style="Medium")
+        if lab:
+            out = _merge_2(comp, out, lab, report) if out else lab
+
+    # pop-in + fade
+    anim = _add(comp, "Transform", 2, 13, report)
+    if anim and out:
+        _connect(anim, "Input", out, report)
+        intro = max(2, int(round(0.4 * fps)))
+        _kf_scalar(comp, anim, "Size", [(0, 0.86), (intro, 1.0)], report)
+        _kf_scalar(comp, anim, "Blend", [(0, 0.0), (intro, 1.0)], report)
+        out = anim
+    return out, f"Stat({prefix}{value}{suffix})"
+
+
+def _fx_bar_chart(comp, fx, dur, fps, brand, report):
+    """Søylediagram: søyler som VOKSER opp fra baselinje + verdi/kategori-tekst."""
+    bars = fx.get("bars") or []
+    if not bars:
+        return None, None
+    px, py = (fx.get("pos") or [0.5, 0.45])[:2]
+    fpy = 1.0 - py
+    font = brand.get("font", "Open Sans")
+    cw = float(fx.get("width", 0.5))
+    maxh = 0.34
+    vals = [float(b.get("value", 0) or 0) for b in bars]
+    vmax = max(vals + [1.0])
+    n = len(bars)
+    baseline = fpy - maxh / 2.0
+    grow = max(2, int(round(0.7 * fps)))
+    out = None
+    for i, b in enumerate(bars):
+        frac = max(0.02, float(b.get("value", 0) or 0) / vmax)
+        bh = maxh * frac
+        bx = px - cw / 2.0 + (i + 0.5) * (cw / n)
+        bar = _add(comp, "Background", 0, 13 + i, report)
+        bm = _add(comp, "RectangleMask", -1, 13 + i, report)
+        if bar and bm:
+            acc = brand["accent"]
+            for j, ch in enumerate(("TopLeftRed", "TopLeftGreen", "TopLeftBlue")):
+                _set(bar, ch, acc[j], report)
+            _set(bar, "TopLeftAlpha", 1.0, report)
+            _set(bm, "Center", [bx, baseline], report)
+            _set(bm, "Width", (cw / n) * 0.5, report)
+            _set(bm, "CornerRadius", 0.3, report)
+            # voks opp: høyde 0→bh, og senter opp slik at bunnen står fast
+            _kf_scalar(comp, bm, "Height", [(0, 0.0), (grow, bh)], report)
+            _kf_point(comp, bm, "Center", [(0, [bx, baseline]), (grow, [bx, baseline + bh / 2.0])], report)
+            _connect(bar, "EffectMask", bm, report)
+            out = _merge_2(comp, out, bar, report) if out else bar
+        # kategori-label under baselinje
+        lab = (b.get("label") or "").strip()
+        if lab:
+            t = _text(comp, 0, 13 + i, report, lab, 0.022, [bx, baseline - 0.04],
+                      brand["textColor"], font, style="Medium")
+            if t:
+                out = _merge_2(comp, out, t, report) if out else t
+    return out, f"BarChart({n})"
 
 
 def _fx_spotlight(comp, fx, dur, fps, brand, report, with_glow, with_label):
@@ -804,6 +945,100 @@ def _transition_blur(comp, src, dur, fps, idx, total, report):
     if not _kf_scalar(comp, bl, "XBlurSize", keys, report):
         _kf_scalar(comp, bl, "Blur", keys, report)
     return bl
+
+
+def _build_browser_card(comp, media_in, brand, report):
+    """Proff «browser-card»-look: skjermbildet som et avrundet kort med
+    nettleser-chrome (3 prikker) + myk slagskygge, på en mørk branded bakgrunn.
+    Gjør et flatt skjermbilde om til en designet produktvideo. Returnerer output
+    (full ramme) som kameraet kan skyve inn mot."""
+    # 1) Branded mørk bakgrunn (full ramme)
+    bg = _add(comp, "Background", -2, 0, report)
+    if not bg:
+        return media_in
+    bgcol = [c * 0.5 + 0.03 for c in brand.get("barColor", [0.04, 0.05, 0.09])]
+    for i, ch in enumerate(("TopLeftRed", "TopLeftGreen", "TopLeftBlue")):
+        _set(bg, ch, bgcol[i], report)
+    _set(bg, "TopLeftAlpha", 1.0, report)
+    out = bg
+
+    cx, cy = 0.5, 0.5
+    cw, ch_ = 0.78, 0.80   # kort-bredde/høyde (mask-enheter)
+
+    # 2) Slagskygge: mørkt avrundet rektangel, blurret, litt nedforskjøvet
+    sh = _add(comp, "Background", -2, 1, report)
+    shm = _add(comp, "RectangleMask", -3, 1, report)
+    if sh and shm:
+        for ch in ("TopLeftRed", "TopLeftGreen", "TopLeftBlue"):
+            _set(sh, ch, 0.0, report)
+        _set(sh, "TopLeftAlpha", 0.55, report)
+        _set(shm, "Center", [cx, cy - 0.02], report)
+        _set(shm, "Width", cw + 0.02, report)
+        _set(shm, "Height", ch_ + 0.02, report)
+        _set(shm, "CornerRadius", 0.06, report)
+        _connect(sh, "EffectMask", shm, report)
+        blur = _add(comp, "Blur", -1, 1, report)
+        if blur:
+            _connect(blur, "Input", sh, report)
+            _set(blur, "XBlurSize", 28.0, report)
+            sh = blur
+        out = _merge_2(comp, out, sh, report)
+
+    # 3) Hvitt kort-bakplate (gir ramme rundt skjermbildet + plass til chrome)
+    card = _add(comp, "Background", -2, 2, report)
+    cardm = _add(comp, "RectangleMask", -3, 2, report)
+    if card and cardm:
+        for ch in ("TopLeftRed", "TopLeftGreen", "TopLeftBlue"):
+            _set(card, ch, 0.97, report)
+        _set(card, "TopLeftAlpha", 1.0, report)
+        _set(cardm, "Center", [cx, cy], report)
+        _set(cardm, "Width", cw, report)
+        _set(cardm, "Height", ch_, report)
+        _set(cardm, "CornerRadius", 0.06, report)
+        _connect(card, "EffectMask", cardm, report)
+        out = _merge_2(comp, out, card, report)
+
+    # 4) Skjermbildet skalert inn i kortet (under chrome-stripa)
+    mxf = _add(comp, "Transform", -1, 3, report)
+    mmask = _add(comp, "RectangleMask", -2, 3, report)
+    if mxf:
+        _connect(mxf, "Input", media_in, report)
+        _set(mxf, "Size", cw - 0.02, report)
+        _set(mxf, "Center", [cx, cy - 0.018], report)   # litt ned for chrome øverst
+        if mmask:
+            _set(mmask, "Center", [cx, cy - 0.018], report)
+            _set(mmask, "Width", cw - 0.02, report)
+            _set(mmask, "Height", ch_ - 0.06, report)
+            _set(mmask, "CornerRadius", 0.02, report)
+            _connect(mxf, "EffectMask", mmask, report)
+        out = _merge_2(comp, out, mxf, report)
+
+    # 5) Nettleser-chrome: 3 trafikklys-prikker øverst til venstre i kortet
+    dot_y = cy + ch_ / 2.0 - 0.028
+    for k, (col, dx) in enumerate([([0.93, 0.36, 0.34], -0.34),
+                                   ([0.96, 0.74, 0.30], -0.315),
+                                   ([0.38, 0.78, 0.40], -0.29)]):
+        dbg = _add(comp, "Background", -2, 4 + k, report)
+        dm = _add(comp, "EllipseMask", -3, 4 + k, report)
+        if dbg and dm:
+            for i, chn in enumerate(("TopLeftRed", "TopLeftGreen", "TopLeftBlue")):
+                _set(dbg, chn, col[i], report)
+            _set(dbg, "TopLeftAlpha", 1.0, report)
+            _set(dm, "Center", [cx + dx, dot_y], report)
+            _set(dm, "Width", 0.012, report)
+            _set(dm, "Height", 0.012 * 16 / 9, report)
+            _connect(dbg, "EffectMask", dm, report)
+            out = _merge_2(comp, out, dbg, report)
+    return out
+
+
+def _merge_2(comp, base, fg, report):
+    m = _add(comp, "Merge", 0, 0, report)
+    if not m:
+        return base
+    _connect(m, "Background", base, report)
+    _connect(m, "Foreground", fg, report)
+    return m
 
 
 def _add_grade(comp, src, report):
