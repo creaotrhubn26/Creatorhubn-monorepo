@@ -32,6 +32,10 @@ export default function AudioReviewSharedPage() {
   const [agreement, setAgreement] = React.useState<any>(null);
   const [sigName, setSigName] = React.useState(''); const [consent, setConsent] = React.useState(false); const [signing, setSigning] = React.useState(false);
   const [hp, setHp] = React.useState(''); // honeypot (skjult) — bot-beskyttelse
+  const [sessions, setSessions] = React.useState<any[]>([]);
+  const loadSessions = React.useCallback(() => apiRequest(`/api/audio-review-shared/${token}/sessions`).then((d: any) => setSessions(d.sessions || [])).catch(() => setSessions([])), [token]);
+  React.useEffect(() => { if (token) loadSessions(); }, [token, loadSessions]);
+  const rsvp = async (sid: string, status: string) => { try { await apiRequest(`/api/audio-review-shared/${token}/sessions/${sid}/rsvp`, { method: 'POST', body: { status } }); loadSessions(); } catch { /* */ } };
   const sigPadRef = React.useRef<SignatureHandle>(null);
   const loadAgreement = React.useCallback(() => {
     apiRequest(`/api/audio-review-shared/${token}/agreement`).then((d: any) => { setAgreement(d); if (d?.viewer?.name) setSigName(d.viewer.name); }).catch(() => setAgreement(null));
@@ -120,6 +124,31 @@ export default function AudioReviewSharedPage() {
             />
           ) : <Typography sx={{ color: MUTED }}>Ingen versjon å spille ennå.</Typography>}
         </Box>
+        {sessions.length > 0 && (
+          <Box sx={{ bgcolor: 'rgba(63,167,214,0.07)', border: '1px solid rgba(63,167,214,0.3)', borderRadius: '16px', p: 2, mb: 2 }}>
+            <Typography sx={{ fontWeight: 700, mb: 1 }}>Kommende økter</Typography>
+            <Stack spacing={1}>
+              {sessions.map((se) => (
+                <Box key={se.id} sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '10px', p: 1.25 }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: '0.86rem', fontWeight: 700 }} noWrap>{se.title}</Typography>
+                      <Typography sx={{ fontSize: '0.72rem', color: MUTED }}>{new Date(se.start_at).toLocaleString('no-NO', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}{se.location ? ` · ${se.location}` : ''}</Typography>
+                      {se.notes && <Typography sx={{ fontSize: '0.7rem', color: FAINT }}>{se.notes}</Typography>}
+                    </Box>
+                    <Button component="a" href={`/api/audio-review-shared/${token}/sessions/${se.id}/session.ics`} size="small" sx={{ color: '#3fa7d6', textTransform: 'none', whiteSpace: 'nowrap', minWidth: 0 }}>+ Kalender</Button>
+                  </Stack>
+                  <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                    {[['confirmed', 'Bekreft', '#5fb88a'], ['tentative', 'Kanskje', '#e0a955'], ['declined', 'Avslå', '#e0606a']].map(([st, label, col]) => (
+                      <Button key={st} onClick={() => rsvp(se.id, st)} size="small" variant={se.status === st ? 'contained' : 'outlined'}
+                        sx={{ textTransform: 'none', borderRadius: '999px', flex: 1, fontSize: '0.72rem', ...(se.status === st ? { bgcolor: col, color: '#0A0A0B', fontWeight: 700 } : { color: col, borderColor: BORDER }) }}>{label}</Button>
+                    ))}
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        )}
         {token && <WarmupPlayer token={token} musicalKey={project.musical_key} />}
         {agreement?.exists && agreement?.mine && (
           <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5, mb: 2 }}>

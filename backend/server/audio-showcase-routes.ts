@@ -222,6 +222,19 @@ function buildSocialClip(coverPath: string, audioPath: string, outPath: string, 
 // Tid → LRC-stempel [mm:ss.xx]
 const lrcStamp = (sec: number) => { const m = Math.floor(sec / 60), s = sec - m * 60; return `[${String(m).padStart(2, "0")}:${s.toFixed(2).padStart(5, "0")}]`; };
 
+// ── .ics-kalenderfil (RFC 5545) for en økt ────────────────────────────────
+const icsDate = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+const icsEsc = (s: string) => String(s || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
+function buildIcs(sess: any): string {
+  const start = new Date(sess.start_at); const end = sess.end_at ? new Date(sess.end_at) : new Date(start.getTime() + 2 * 3600_000);
+  const desc = [sess.notes, sess.online_url ? `Online: ${sess.online_url}` : ""].filter(Boolean).join("\\n");
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//CreatorHub//Audio Showcase//NO", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    "BEGIN:VEVENT", `UID:${sess.id}@creatorhub`, `DTSTAMP:${icsDate(new Date())}`,
+    `DTSTART:${icsDate(start)}`, `DTEND:${icsDate(end)}`,
+    `SUMMARY:${icsEsc(sess.title)}`, sess.location ? `LOCATION:${icsEsc(sess.location)}` : "",
+    desc ? `DESCRIPTION:${desc}` : "", "END:VEVENT", "END:VCALENDAR"].filter(Boolean).join("\r\n");
+}
+
 const makeInviteToken = () => "inv_" + randomUUID().replace(/-/g, "");
 
 type AnyPool = {
@@ -2172,6 +2185,97 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       await pool.query(`INSERT INTO audio_warmup_completions (routine_id, member_name) VALUES ($1::uuid,$2) ON CONFLICT (routine_id, member_name) DO UPDATE SET completed_at=NOW()`, [str(req.params.rid, 64), ctx.name]);
       return res.json({ ok: true });
     } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "warmup_complete_failed" }); }
+  });
+
+  // ══ ØKT-KALENDER & BOOKING ═════════════════════════════════════════════════
+  app.get("/api/audio-showcases/:id/sessions", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const r = await pool.query(`SELECT * FROM audio_sessions WHERE project_id=$1::uuid AND owner_user_id=$2 ORDER BY start_at ASC`, [str(req.params.id, 64), s.userId]);
+      const ids = r.rows.map((x) => x.id);
+      const inv = ids.length ? await pool.query(`SELECT session_id, member_name, status FROM audio_session_invitees WHERE session_id = ANY($1::uuid[])`, [ids]) : { rows: [] as any[] };
+      const byS: Record<string, any[]> = {}; for (const i of inv.rows) (byS[i.session_id] ||= []).push({ name: i.member_name, status: i.status });
+      return res.json({ sessions: r.rows.map((x) => ({ ...x, invitees: byS[x.id] || [] })) });
+    } catch (e) { if (isMissingTable(e)) return res.json({ sessions: [] }); return res.status(500).json({ error: "sessions_get_failed" }); }
+  });
+
+  app.post("/api/audio-showcases/:id/sessions", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    const title = str(req.body?.title, 160); const startAt = str(req.body?.startAt, 40);
+    const kind = ["opptak", "review", "prove", "mix"].includes(String(req.body?.kind)) ? String(req.body.kind) : "opptak";
+    const target = str(req.body?.target, 60) || "all";
+    if (!title || !startAt) return res.status(400).json({ error: "title_and_start_required" });
+    try {
+      const p = await pool.query(`SELECT title FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [id, s.userId]);
+      if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const sess = await pool.query(
+        `INSERT INTO audio_sessions (project_id, owner_user_id, title, kind, start_at, end_at, location, online_url, notes)
+         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [id, s.userId, title, kind, startAt, str(req.body?.endAt, 40) || null, str(req.body?.location, 200) || null, str(req.body?.onlineUrl, 600) || null, str(req.body?.notes, 1000) || null]);
+      const session = sess.rows[0];
+      // Deltakere fra medlemmer (etter rolle/target).
+      const m = await pool.query(`SELECT name, role, email, invite_token FROM audio_review_members WHERE project_id=$1::uuid`, [id]);
+      const attendees = m.rows.filter((x) => warmupMatches(target, x.role));
+      for (const a of attendees) {
+        await pool.query(`INSERT INTO audio_session_invitees (session_id, member_name, email) VALUES ($1::uuid,$2,$3) ON CONFLICT (session_id, member_name) DO NOTHING`, [session.id, a.name, a.email || null]);
+        if (sendEmail && a.email && a.invite_token) {
+          const when = new Date(startAt).toLocaleString("no-NO", { dateStyle: "full", timeStyle: "short" });
+          const rsvp = `${APP_URL}/audio-review/shared/${a.invite_token}`;
+          const ics = `${APP_URL}/api/audio-review-shared/${a.invite_token}/sessions/${session.id}/session.ics`;
+          const html = `<div style="font-family:system-ui,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a"><h2 style="margin:0 0 4px">${icsEsc(title)}</h2>
+            <p style="margin:0 0 8px;color:#555">${when}${session.location ? ` · ${session.location}` : ""}${session.online_url ? ` · ${session.online_url}` : ""}</p>
+            ${session.notes ? `<p style="margin:0 0 12px;color:#555">${session.notes}</p>` : ""}
+            <a href="${rsvp}" style="display:inline-block;background:#FF6B35;color:#150d05;font-weight:700;text-decoration:none;padding:10px 20px;border-radius:999px">Svar (bekreft/avslå)</a>
+            <p style="margin:14px 0 0;font-size:13px"><a href="${ics}">Legg til i kalenderen (.ics)</a></p></div>`;
+          void sendEmail({ to: a.email, subject: `Innkalling: ${title}`, html, text: `${title}\n${when}\nSvar: ${rsvp}\nKalender: ${ics}`, kind: "audio_session_invite" }).catch(() => {});
+        }
+      }
+      return res.status(201).json({ session, invited: attendees.length });
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); console.error("[sessions] create failed:", e); return res.status(500).json({ error: "session_create_failed" }); }
+  });
+
+  app.delete("/api/sessions/:sid", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try { await pool.query(`DELETE FROM audio_sessions WHERE id=$1::uuid AND owner_user_id=$2`, [str(req.params.sid, 64), s.userId]); return res.json({ ok: true }); }
+    catch (e) { if (isMissingTable(e)) return res.json({ ok: true }); return res.status(500).json({ error: "session_delete_failed" }); }
+  });
+
+  // Medlem: økter jeg er invitert til + RSVP.
+  app.get("/api/audio-review-shared/:token/sessions", async (req, res) => {
+    const token = str(req.params.token, 80); if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    try {
+      const ctx = await resolveSharedMember(token); if (!ctx) return res.status(404).json({ error: "not_found" });
+      const r = await pool.query(
+        `SELECT s.id, s.title, s.kind, s.start_at, s.end_at, s.location, s.online_url, s.notes, i.status
+           FROM audio_sessions s JOIN audio_session_invitees i ON i.session_id = s.id
+          WHERE s.project_id=$1::uuid AND i.member_name=$2 AND s.start_at > NOW() - INTERVAL '12 hours'
+          ORDER BY s.start_at ASC`, [ctx.project_id, ctx.name]);
+      return res.json({ sessions: r.rows });
+    } catch (e) { if (isMissingTable(e)) return res.json({ sessions: [] }); return res.status(500).json({ error: "member_sessions_failed" }); }
+  });
+  app.post("/api/audio-review-shared/:token/sessions/:sid/rsvp", async (req, res) => {
+    const token = str(req.params.token, 80); if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    const status = ["confirmed", "declined", "tentative"].includes(String(req.body?.status)) ? String(req.body.status) : null;
+    if (!status) return res.status(400).json({ error: "invalid_status" });
+    try {
+      const ctx = await resolveSharedMember(token); if (!ctx) return res.status(404).json({ error: "not_found" });
+      const own = await pool.query(`SELECT 1 FROM audio_sessions WHERE id=$1::uuid AND project_id=$2::uuid LIMIT 1`, [str(req.params.sid, 64), ctx.project_id]);
+      if (own.rowCount === 0) return res.status(404).json({ error: "session_not_found" });
+      await pool.query(`UPDATE audio_session_invitees SET status=$3, responded_at=NOW() WHERE session_id=$1::uuid AND member_name=$2`, [str(req.params.sid, 64), ctx.name, status]);
+      return res.json({ ok: true, status });
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "rsvp_failed" }); }
+  });
+  app.get("/api/audio-review-shared/:token/sessions/:sid/session.ics", async (req, res) => {
+    const token = str(req.params.token, 80); if (!token.startsWith("inv_")) return res.status(400).send("invalid");
+    try {
+      const ctx = await resolveSharedMember(token); if (!ctx) return res.status(404).send("not found");
+      const r = await pool.query(`SELECT * FROM audio_sessions WHERE id=$1::uuid AND project_id=$2::uuid LIMIT 1`, [str(req.params.sid, 64), ctx.project_id]);
+      if (r.rowCount === 0) return res.status(404).send("not found");
+      res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="okt.ics"`);
+      return res.end(buildIcs(r.rows[0]));
+    } catch { return res.status(500).send("error"); }
   });
 
   // Eier laster ned signert avtale-PDF.
