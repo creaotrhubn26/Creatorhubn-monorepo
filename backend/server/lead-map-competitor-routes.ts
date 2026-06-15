@@ -446,7 +446,9 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
             : "NULL::int AS claude_recommendation_rank, NULL::text AS claude_recommendation_reason";
 
           const l = await pool.query(
-            `SELECT id::text, name, category, lead_status AS status,
+            // Kolonnen heter `lead_category` på crm_customers (mig 271) — ikke `category`.
+            // Aliasen gjør at downstream-mapping (r.category) fortsatt fungerer.
+            `SELECT id::text, name, lead_category AS category, lead_status AS status,
                     latitude, longitude, address, city,
                     ${claudeRankSelect},
                     ai_opportunity_score, google_rating
