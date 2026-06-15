@@ -88,6 +88,9 @@ const RR_KIT_IDS = new Set<string>([
   'rr-shortlist', 'rr-shoot-day-detail', 'rr-dance-rehearsal', 'rr-client-review',
   // full-frame landingsside (batch 26)
   'rr-landing-hero', 'rr-landing-flow', 'rr-landing-verticals', 'rr-landing-pillars', 'rr-landing-cta',
+  // The Role Room Agent (batch 27)
+  'rr-agent-hero', 'rr-agent-chat', 'rr-agent-competitor', 'rr-agent-leadgen',
+  'rr-agent-marketing', 'rr-agent-partner', 'rr-agent-insight', 'rr-agent-merch',
 ]);
 const CH_KIT_IDS = new Set<string>([
   'ch-kpi-cards', 'ch-revenue-trend', 'ch-client-pipeline', 'ch-project-card',
