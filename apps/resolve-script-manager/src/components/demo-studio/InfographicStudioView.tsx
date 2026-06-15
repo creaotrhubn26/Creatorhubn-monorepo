@@ -53,6 +53,11 @@ const UI_IDS = new Set<string>([
   'ui-toggle', 'ui-progress-loader', 'ui-modal', 'ui-search',
 ]);
 
+const UX_LAYOUT_IDS = new Set<string>([
+  'ux-user-flow', 'ux-wireframe', 'ux-journey-map', 'ux-sitemap',
+  'ux-before-after', 'ux-ab-test', 'ux-screen-flow', 'ux-grid-guide',
+]);
+
 // Branded kits — palett + kuratert mal-sett per produkt.
 const RR_KIT_IDS = new Set<string>([
   // casting
@@ -78,6 +83,11 @@ const RR_KIT_IDS = new Set<string>([
   'rr-ui-pagination', 'rr-ui-breadcrumb', 'rr-ui-accordion',
   'rr-ui-kanban', 'rr-ui-chat', 'rr-ui-activity', 'rr-ui-slider',
   'rr-ui-progress-ring', 'rr-ui-empty', 'rr-ui-tooltip',
+  // innholdsmaler (batch 25)
+  'rr-story-arc', 'rr-storyboard-sequence', 'rr-project-brief', 'rr-audition-scorecard',
+  'rr-shortlist', 'rr-shoot-day-detail', 'rr-dance-rehearsal', 'rr-client-review',
+  // full-frame landingsside (batch 26)
+  'rr-landing-hero', 'rr-landing-flow', 'rr-landing-verticals', 'rr-landing-pillars', 'rr-landing-cta',
 ]);
 const CH_KIT_IDS = new Set<string>([
   'ch-kpi-cards', 'ch-revenue-trend', 'ch-client-pipeline', 'ch-project-card',
@@ -92,6 +102,9 @@ const CH_KIT_IDS = new Set<string>([
   'ch-ui-pagination', 'ch-ui-breadcrumb', 'ch-ui-accordion',
   'ch-ui-kanban', 'ch-ui-chat', 'ch-ui-activity', 'ch-ui-slider',
   'ch-ui-progress-ring', 'ch-ui-empty', 'ch-ui-tooltip',
+  // innholdsmaler (batch 23): Evendi/wedding, Photo Enhancer, Academy, Audio Showcase
+  'ch-wedding-timeline', 'ch-wedding-hero', 'ch-photo-before-after', 'ch-photo-stats',
+  'ch-academy-course', 'ch-academy-progress', 'ch-audio-review', 'ch-audio-release',
 ]);
 const BRAND_KITS = [
   { id: 'kit-rr', name: 'The Role Room', accent: '#a78bfa', tagline: 'Casting · Roller · Produksjon', ids: RR_KIT_IDS, logo: ROLE_ROOM_LOGO },
@@ -100,11 +113,11 @@ const BRAND_KITS = [
 
 const CATEGORY_IDS: Record<string, Set<string>> = {
   charts: CHART_IDS, marketing: MARKETING_IDS, filmtv: FILMTV_IDS,
-  callouts: CALLOUT_IDS, ui: UI_IDS, 'kit-rr': RR_KIT_IDS, 'kit-ch': CH_KIT_IDS,
+  callouts: CALLOUT_IDS, ui: UI_IDS, uxlayout: UX_LAYOUT_IDS, 'kit-rr': RR_KIT_IDS, 'kit-ch': CH_KIT_IDS,
 };
 const CATEGORY_LABEL: Record<string, string> = {
   templates: 'Templates', charts: 'Charts', marketing: 'Marketing', filmtv: 'Film & TV',
-  callouts: 'Callouts', ui: 'UI-elementer', 'kit-rr': 'The Role Room', 'kit-ch': 'Creatorhub',
+  callouts: 'Callouts', ui: 'UI-elementer', uxlayout: 'Layout & UX', 'kit-rr': 'The Role Room', 'kit-ch': 'Creatorhub',
 };
 
 interface Scene { id: string; tplId: string; values: Record<string, string>; atSec: number; bindings?: Record<string, string>; posX?: number; posY?: number }
@@ -224,7 +237,7 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
   const [logo, setLogo] = useState<string>(() => { const u = project?.branding?.logoUrl; return u && u.startsWith('data:') ? u : ''; });
   const [suggested, setSuggested] = useState('');
   const [rightTab, setRightTab] = useState<'Design' | 'Animate' | 'Data'>('Data');
-  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'marketing' | 'filmtv' | 'callouts' | 'ui' | 'kit-rr' | 'kit-ch' | 'brand' | 'data' | 'export'>('templates');
+  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'marketing' | 'filmtv' | 'callouts' | 'ui' | 'uxlayout' | 'kit-rr' | 'kit-ch' | 'brand' | 'data' | 'export'>('templates');
   const [dataText, setDataText] = useState('');
   const dataMap = useMemo(() => parseDataSource(dataText), [dataText]);
   const dataKeys = useMemo(() => Object.keys(dataMap), [dataMap]);
@@ -361,6 +374,7 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
           <div style={railItem(leftSec === 'filmtv')} onClick={() => setLeftSec('filmtv')}>▶ Film &amp; TV <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => FILMTV_IDS.has(t.id)).length}</span></div>
           <div style={railItem(leftSec === 'callouts')} onClick={() => setLeftSec('callouts')}>⌖ Callouts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => CALLOUT_IDS.has(t.id)).length}</span></div>
           <div style={railItem(leftSec === 'ui')} onClick={() => setLeftSec('ui')}>▭ UI <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => UI_IDS.has(t.id)).length}</span></div>
+          <div style={railItem(leftSec === 'uxlayout')} onClick={() => setLeftSec('uxlayout')}>▥ Layout &amp; UX <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => UX_LAYOUT_IDS.has(t.id)).length}</span></div>
           <div style={railItem(false)} title="Velg ikoner i Data-fanen per felt">◷ Icons <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{ALL_MATERIAL_ICONS.length}</span></div>
           <div style={{ fontSize: 9.5, fontWeight: 700, color: D.faint, textTransform: 'uppercase', letterSpacing: 0.6, padding: '12px 14px 4px' }}>Brand Kits</div>
           {BRAND_KITS.map((k) => (
