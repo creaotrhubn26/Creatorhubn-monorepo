@@ -23,6 +23,11 @@ import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
 import { searchPlaces } from "./lead-map-service.js";
 import { assessCompetitorThreat } from "./competitor-threat-assessment.js";
+import {
+  generateCounterCampaign,
+  saveCounterCampaignToWorkflow,
+  type CounterCampaign,
+} from "./competitor-counter-campaign.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -278,6 +283,208 @@ export function registerLeadMapCompetitorRoutes({
     },
   );
 
+  // ─── DELETE /competitors/:id ──────────────────────────────────────
+  app.delete(
+    "/api/admin-room/lead-map/competitors/:id",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const r = await pool.query(
+          `DELETE FROM market_scan_competitors
+            WHERE id = $1 AND workspace_owner_user_id = $2
+          RETURNING id::text`,
+          [req.params.id, session.userId],
+        );
+        if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+        return res.json({ ok: true, deleted: r.rows[0].id });
+      } catch (err) {
+        return res.status(500).json({ error: "delete_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── GET /calendar (kommende møter + follow-ups) ─────────────────
+  // Returner alle leads med:
+  //   1. lead_status = 'meeting_booked' (booket møte — bruk next_follow_up_at som dato)
+  //   2. next_follow_up_at innen 30 dager (planlagt follow-up)
+  // Sortert etter dato. UI viser som liste eller mini-kalender.
+  app.get(
+    "/api/admin-room/lead-map/calendar",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const r = await pool.query<{
+          id: string;
+          name: string;
+          lead_status: string;
+          next_follow_up_at: string | null;
+          next_action: string | null;
+          city: string | null;
+          phone: string | null;
+          email: string | null;
+          owner_user_id: string | null;
+          assigned_user_name: string | null;
+          assigned_user_email: string | null;
+        }>(
+          `SELECT c.id::text, c.name, c.lead_status,
+                  c.next_follow_up_at::text,
+                  c.next_action, c.city, c.phone, c.email,
+                  c.owner_user_id,
+                  u.name AS assigned_user_name,
+                  u.email AS assigned_user_email
+             FROM crm_customers c
+             LEFT JOIN users u ON u.id = c.owner_user_id
+            WHERE c.owner_user_id = $1
+              AND c.next_follow_up_at IS NOT NULL
+              AND c.next_follow_up_at >= NOW() - INTERVAL '1 day'
+              AND c.next_follow_up_at <= NOW() + INTERVAL '60 days'
+              AND c.lead_status NOT IN ('won', 'lost', 'do_not_contact')
+            ORDER BY c.next_follow_up_at ASC
+            LIMIT 100`,
+          [session.userId],
+        );
+        const events = r.rows.map((row) => ({
+          id: row.id,
+          leadName: row.name,
+          status: row.lead_status,
+          datetime: row.next_follow_up_at,
+          nextAction: row.next_action,
+          city: row.city,
+          phone: row.phone,
+          email: row.email,
+          assignedUserId: row.owner_user_id,
+          assignedUserName: row.assigned_user_name,
+          assignedUserEmail: row.assigned_user_email,
+          eventType: row.lead_status === "meeting_booked" ? "meeting" : "follow_up",
+        }));
+        return res.json({ events });
+      } catch (err) {
+        return res.status(500).json({ error: "calendar_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── GET /leaderboard (konkurranse blant lead-skaffere) ──────────
+  // Per-bruker aggregat: hvem har skaffet flest leads, mest converted,
+  // beste conversion-rate. Workspace-isolert til admin-room-tenant.
+  app.get(
+    "/api/admin-room/lead-map/leaderboard",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const r = await pool.query<{
+          owner_user_id: string | null;
+          user_name: string | null;
+          user_email: string | null;
+          total_leads: number;
+          won: number;
+          lost: number;
+          meeting_booked: number;
+          interested: number;
+          declined: number;
+          last_activity_at: string | null;
+        }>(
+          `SELECT c.owner_user_id,
+                  u.name AS user_name,
+                  u.email AS user_email,
+                  COUNT(*)::int AS total_leads,
+                  COUNT(*) FILTER (WHERE c.lead_status = 'won')::int AS won,
+                  COUNT(*) FILTER (WHERE c.lead_status = 'lost')::int AS lost,
+                  COUNT(*) FILTER (WHERE c.lead_status = 'meeting_booked')::int AS meeting_booked,
+                  COUNT(*) FILTER (WHERE c.lead_status = 'interested')::int AS interested,
+                  COUNT(*) FILTER (WHERE c.lead_status = 'declined')::int AS declined,
+                  MAX(c.updated_at)::text AS last_activity_at
+             FROM crm_customers c
+             LEFT JOIN users u ON u.id = c.owner_user_id
+            WHERE c.owner_user_id = $1
+               OR EXISTS (
+                 SELECT 1 FROM users me
+                  WHERE me.id = $1
+                    AND LOWER(COALESCE(me.role, '')) IN ('admin','super_admin','owner')
+               )
+            GROUP BY c.owner_user_id, u.name, u.email
+            ORDER BY total_leads DESC, won DESC
+            LIMIT 50`,
+          [session.userId],
+        );
+        const leaders = r.rows.map((row, idx) => {
+          const closeable = row.won + row.lost;
+          const conversionRate = closeable > 0 ? Math.round((row.won / closeable) * 100) : null;
+          return {
+            rank: idx + 1,
+            userId: row.owner_user_id,
+            userName: row.user_name,
+            userEmail: row.user_email,
+            totalLeads: row.total_leads,
+            won: row.won,
+            lost: row.lost,
+            meetingBooked: row.meeting_booked,
+            interested: row.interested,
+            declined: row.declined,
+            conversionRate,
+            lastActivityAt: row.last_activity_at,
+          };
+        });
+        return res.json({ leaders });
+      } catch (err) {
+        return res.status(500).json({ error: "leaderboard_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── POST /competitors/:id/counter-campaign (Claude → Marketing Cockpit-bro) ──
+  // Genererer en mot-kampanje. Returnerer JSON-struktur (target-segment,
+  // key-messages, content-drafts, channel-mix) UTEN å persistere. Bruker
+  // kaller separat /save for å lagre som marketing_workflow.
+  app.post(
+    "/api/admin-room/lead-map/competitors/:id/counter-campaign",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const campaign = await generateCounterCampaign(pool, {
+          competitorId: req.params.id,
+          workspaceOwnerUserId: session.userId,
+        });
+        return res.json({ campaign });
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === "competitor_not_found") return res.status(404).json({ error: msg });
+        if (msg.includes("ANTHROPIC_API_KEY mangler")) {
+          return res.status(500).json({ error: "anthropic_key_missing" });
+        }
+        return res.status(500).json({ error: "counter_campaign_failed", detail: msg });
+      }
+    },
+  );
+
+  // ─── POST /competitors/:id/counter-campaign/save (persistere som workflow) ──
+  // Lagrer en allerede generert counter-campaign som marketing_workflow
+  // slik at den havner i Marketing Cockpit. Cockpit-UI parser
+  // workflow.notes (JSON) for å vise innholdet.
+  app.post(
+    "/api/admin-room/lead-map/competitors/:id/counter-campaign/save",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const body = req.body as { campaign?: CounterCampaign };
+      if (!body.campaign) return res.status(400).json({ error: "campaign_kreves_i_body" });
+      try {
+        const result = await saveCounterCampaignToWorkflow(pool, {
+          workspaceOwnerUserId: session.userId,
+          competitorId: req.params.id,
+          campaign: body.campaign,
+        });
+        return res.json(result);
+      } catch (err) {
+        return res.status(500).json({ error: "save_failed", detail: String((err as Error).message) });
+      }
+    },
+  );
+
   // ─── POST /competitors/:id/assess (Claude threat-vurdering) ───────
   app.post(
     "/api/admin-room/lead-map/competitors/:id/assess",
@@ -447,14 +654,18 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
 
           const l = await pool.query(
             // Kolonnen heter `lead_category` på crm_customers (mig 271) — ikke `category`.
-            // Aliasen gjør at downstream-mapping (r.category) fortsatt fungerer.
-            `SELECT id::text, name, lead_category AS category, lead_status AS status,
-                    latitude, longitude, address, city,
-                    ${claudeRankSelect},
-                    ai_opportunity_score, google_rating
-               FROM crm_customers
-              WHERE owner_user_id = $1
-                AND latitude IS NOT NULL AND longitude IS NOT NULL`,
+            // JOIN users for å vise eier-navn ('skaffet av').
+            `SELECT c.id::text, c.name, c.lead_category AS category, c.lead_status AS status,
+                    c.latitude, c.longitude, c.address, c.city,
+                    ${claudeRankSelect.replace(/claude_recommendation_/g, 'c.claude_recommendation_')},
+                    c.ai_opportunity_score, c.google_rating,
+                    c.owner_user_id,
+                    u.name AS assigned_user_name,
+                    u.email AS assigned_user_email
+               FROM crm_customers c
+               LEFT JOIN users u ON u.id = c.owner_user_id
+              WHERE c.owner_user_id = $1
+                AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL`,
             [session.userId],
           );
           out.leads = l.rows.map((r: Record<string, unknown>) => ({
@@ -471,6 +682,9 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
             recommendationReason: r.claude_recommendation_reason,
             aiOpportunityScore: r.ai_opportunity_score,
             googleRating: r.google_rating != null ? Number(r.google_rating) : null,
+            assignedUserId: r.owner_user_id,
+            assignedUserName: r.assigned_user_name,
+            assignedUserEmail: r.assigned_user_email,
           }));
         } catch (err) {
           console.error("[market-points] leads-query failed", err);

@@ -55,6 +55,10 @@ import InstagramIcon from '@mui/icons-material/Instagram';
 import { useAuth } from '../../hooks/useAuth';
 import { fireGoogleAdsConversion } from '../../utils/google-ads-conversions';
 import AddLocationAltOutlinedIcon from '@mui/icons-material/AddLocationAltOutlined';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import CampaignOutlinedIcon from '@mui/icons-material/CampaignOutlined';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import { Menu } from '@mui/material';
 
 type LeadStatus =
   | 'unvisited' | 'visited' | 'return' | 'not_present' | 'declined'
@@ -86,6 +90,10 @@ interface MapLead {
   // Role Room Agent Claude-rangering — "mest anbefalt å nå ut til"
   recommendationRank?: number | null;
   recommendationReason?: string | null;
+  // Eier-bruker — "skaffet av"
+  assignedUserId?: string | null;
+  assignedUserName?: string | null;
+  assignedUserEmail?: string | null;
 }
 
 interface Activity {
@@ -358,6 +366,68 @@ export default function LeadMapPanel() {
   const [threatFilter, setThreatFilter] = useState<('near' | 'medium' | 'far')[]>([]);
   const [assessingCompetitorId, setAssessingCompetitorId] = useState<string | null>(null);
   const [rankingLeads, setRankingLeads] = useState(false);
+  const [deletingCompetitorId, setDeletingCompetitorId] = useState<string | null>(null);
+
+  // Counter-campaign (Lead Map → Marketing Cockpit-bro)
+  const [counterCampaignOpen, setCounterCampaignOpen] = useState(false);
+  const [counterCampaignLoading, setCounterCampaignLoading] = useState(false);
+  const [counterCampaignError, setCounterCampaignError] = useState<string | null>(null);
+  const [counterCampaign, setCounterCampaign] = useState<{
+    competitorName: string;
+    threatLevel: 'near' | 'medium' | 'far' | null;
+    targetSegment: string;
+    keyMessages: string[];
+    contentDrafts: Array<{
+      type: 'social_post' | 'email' | 'ad_copy' | 'landing_hero' | 'outreach_dm';
+      title: string;
+      body: string;
+      rationale: string;
+    }>;
+    channelMix: Array<{ channel: string; weight: number; rationale: string }>;
+    generatedAt: string;
+  } | null>(null);
+  const [counterCampaignSaving, setCounterCampaignSaving] = useState(false);
+  const [counterCampaignSavedWorkflowId, setCounterCampaignSavedWorkflowId] = useState<string | null>(null);
+
+  // Anker for threat-level edit-meny
+  const [threatMenuAnchor, setThreatMenuAnchor] = useState<{
+    el: HTMLElement;
+    competitorId: string;
+  } | null>(null);
+
+  // Leaderboard — konkurranse blant lead-skaffere
+  type LeaderboardEntry = {
+    rank: number;
+    userId: string | null;
+    userName: string | null;
+    userEmail: string | null;
+    totalLeads: number;
+    won: number;
+    lost: number;
+    meetingBooked: number;
+    interested: number;
+    declined: number;
+    conversionRate: number | null;
+    lastActivityAt: string | null;
+  };
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+
+  // Kalender — kommende møter + follow-ups
+  type CalendarEvent = {
+    id: string;
+    leadName: string;
+    status: string;
+    datetime: string | null;
+    nextAction: string | null;
+    city: string | null;
+    phone: string | null;
+    email: string | null;
+    assignedUserId: string | null;
+    assignedUserName: string | null;
+    assignedUserEmail: string | null;
+    eventType: 'meeting' | 'follow_up';
+  };
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
 
   // Inline quick-status anchor (FAB ved selected pin)
   const [quickStatusFor, setQuickStatusFor] = useState<MapLead | null>(null);
@@ -429,6 +499,30 @@ export default function LeadMapPanel() {
       setLoading(false);
     }
   }, [statusFilter]);
+
+  const fetchLeaderboard = useCallback(async () => {
+    try {
+      const r = await fetch('/api/admin-room/lead-map/leaderboard', {
+        credentials: 'include', headers: authHeaders(),
+      });
+      if (r.ok) {
+        const body = await r.json();
+        setLeaderboard(body.leaders ?? []);
+      }
+    } catch { /* noop */ }
+  }, []);
+
+  const fetchCalendar = useCallback(async () => {
+    try {
+      const r = await fetch('/api/admin-room/lead-map/calendar', {
+        credentials: 'include', headers: authHeaders(),
+      });
+      if (r.ok) {
+        const body = await r.json();
+        setCalendarEvents(body.events ?? []);
+      }
+    } catch { /* noop */ }
+  }, []);
 
   // Hent konkurrenter fra Role Room Agent's market_scan_competitors (m/ geo)
   const fetchCompetitors = useCallback(async () => {
@@ -545,6 +639,92 @@ export default function LeadMapPanel() {
     }
   }, [addCompForm]);
 
+  // Slett konkurrent — bekreft først, så DELETE
+  const deleteCompetitor = useCallback(async (id: string) => {
+    if (!window.confirm('Slette denne konkurrenten? Dette kan ikke angres.')) return;
+    setDeletingCompetitorId(id);
+    try {
+      const r = await fetch(`/api/admin-room/lead-map/competitors/${id}`, {
+        method: 'DELETE', credentials: 'include', headers: authHeaders(),
+      });
+      if (r.ok) {
+        setCompetitors((prev) => prev.filter((c) => c.id !== id));
+        setSelectedCompetitor((prev) => (prev?.id === id ? null : prev));
+      }
+    } finally {
+      setDeletingCompetitorId(null);
+    }
+  }, []);
+
+  // Inline threat-level edit — bruker eksisterende PATCH
+  const setCompetitorThreatLevel = useCallback(
+    async (id: string, level: 'near' | 'medium' | 'far' | null) => {
+      try {
+        const r = await fetch(`/api/admin-room/lead-map/competitors/${id}`, {
+          method: 'PATCH', credentials: 'include',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ threatLevel: level }),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          const updated: CompetitorPoint = { ...data.competitor, kind: 'competitor' };
+          setCompetitors((prev) => prev.map((c) => (c.id === id ? updated : c)));
+          setSelectedCompetitor((prev) => (prev?.id === id ? updated : prev));
+        }
+      } catch { /* noop */ }
+    },
+    [],
+  );
+
+  // Generer counter-campaign mot konkurrent
+  const generateCounterCampaign = useCallback(async (competitorId: string) => {
+    setCounterCampaignLoading(true);
+    setCounterCampaignError(null);
+    setCounterCampaign(null);
+    try {
+      const r = await fetch(
+        `/api/admin-room/lead-map/competitors/${competitorId}/counter-campaign`,
+        { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', ...authHeaders() } },
+      );
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        setCounterCampaignError(e.error ?? `HTTP ${r.status}`);
+        return;
+      }
+      const data = await r.json();
+      setCounterCampaign(data.campaign);
+    } catch (e) {
+      setCounterCampaignError(String(e));
+    } finally {
+      setCounterCampaignLoading(false);
+    }
+  }, []);
+
+  // Lagre counter-campaign som marketing_workflow
+  const saveCounterCampaign = useCallback(async () => {
+    if (!counterCampaign || !selectedCompetitor) return;
+    setCounterCampaignSaving(true);
+    try {
+      const r = await fetch(
+        `/api/admin-room/lead-map/competitors/${selectedCompetitor.id}/counter-campaign/save`,
+        {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ campaign: counterCampaign }),
+        },
+      );
+      if (r.ok) {
+        const data = await r.json();
+        setCounterCampaignSavedWorkflowId(data.workflowId);
+      } else {
+        const e = await r.json().catch(() => ({}));
+        setCounterCampaignError(e.error ?? `HTTP ${r.status}`);
+      }
+    } finally {
+      setCounterCampaignSaving(false);
+    }
+  }, [counterCampaign, selectedCompetitor]);
+
   const fetchMeta = useCallback(async () => {
     try {
       const [mRes, aRes] = await Promise.all([
@@ -559,7 +739,13 @@ export default function LeadMapPanel() {
     } catch { /* noop */ }
   }, []);
 
-  useEffect(() => { fetchLeads(); fetchMeta(); fetchCompetitors(); }, [fetchLeads, fetchMeta, fetchCompetitors]);
+  useEffect(() => {
+    fetchLeads();
+    fetchMeta();
+    fetchCompetitors();
+    fetchLeaderboard();
+    fetchCalendar();
+  }, [fetchLeads, fetchMeta, fetchCompetitors, fetchLeaderboard, fetchCalendar]);
 
   const handleBoundsChange = useCallback((b: L.LatLngBounds) => {
     boundsRef.current = b;
@@ -1297,9 +1483,23 @@ export default function LeadMapPanel() {
                     </Stack>
                   )}
                 </Stack>
-                <IconButton size="small" onClick={() => setSelectedCompetitor(null)} sx={{ color: palette.textMuted }}>
-                  <CloseIcon fontSize="small" />
-                </IconButton>
+                <Stack direction="row" spacing={0.4}>
+                  <Tooltip title="Slett konkurrent">
+                    <IconButton
+                      size="small"
+                      onClick={() => deleteCompetitor(selectedCompetitor.id)}
+                      disabled={deletingCompetitorId === selectedCompetitor.id}
+                      sx={{ color: '#ef4444', '&:hover': { bgcolor: 'rgba(239,68,68,0.1)' } }}
+                    >
+                      {deletingCompetitorId === selectedCompetitor.id
+                        ? <CircularProgress size={14} sx={{ color: '#ef4444' }} />
+                        : <DeleteOutlineIcon fontSize="small" />}
+                    </IconButton>
+                  </Tooltip>
+                  <IconButton size="small" onClick={() => setSelectedCompetitor(null)} sx={{ color: palette.textMuted }}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
               </Stack>
 
               {/* Meta */}
@@ -1411,6 +1611,28 @@ export default function LeadMapPanel() {
                   </Button>
                 </Box>
               )}
+
+              {/* Marketing Cockpit-bro: Generer mot-kampanje */}
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={() => {
+                  setCounterCampaignOpen(true);
+                  setCounterCampaign(null);
+                  setCounterCampaignError(null);
+                  setCounterCampaignSavedWorkflowId(null);
+                  generateCounterCampaign(selectedCompetitor.id);
+                }}
+                startIcon={<CampaignOutlinedIcon sx={{ fontSize: 16 }} />}
+                sx={{
+                  mt: 2,
+                  bgcolor: palette.amber, color: '#0a0a0f',
+                  fontWeight: 800, fontSize: '0.82rem', textTransform: 'none',
+                  '&:hover': { bgcolor: palette.amber, filter: 'brightness(0.92)' },
+                }}
+              >
+                Generer mot-kampanje
+              </Button>
             </Box>
           ) : selected ? (
             <Box sx={{
@@ -1527,22 +1749,56 @@ export default function LeadMapPanel() {
                   <PersonOutlineIcon sx={{ color: palette.textMuted, fontSize: 16, mt: 0.2 }} />
                   <Stack sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                      Assigned Rep
+                      Skaffet av
                     </Typography>
-                    <Stack direction="row" alignItems="center" spacing={0.8}>
-                      <Box sx={{
-                        width: 22, height: 22, borderRadius: '50%',
-                        background: `linear-gradient(135deg, ${palette.accent}, ${palette.amber})`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#0a0a0f', fontWeight: 800, fontSize: '0.62rem',
-                        flexShrink: 0,
-                      }}>
-                        {repInitials}
-                      </Box>
-                      <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {repName}
-                      </Typography>
-                    </Stack>
+                    {(() => {
+                      // Ekte eier hvis lead har det — fallback til innlogget bruker.
+                      const ownerName =
+                        selected.assignedUserName?.trim() ||
+                        selected.assignedUserEmail ||
+                        repName;
+                      const ownerInitials = (() => {
+                        if (!selected.assignedUserName && !selected.assignedUserEmail) {
+                          return repInitials;
+                        }
+                        const src = (selected.assignedUserName ?? selected.assignedUserEmail ?? '?').trim();
+                        const parts = src.split(/[\s@.]+/).filter(Boolean);
+                        if (parts.length === 0) return '?';
+                        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+                        return (parts[0][0] + parts[1][0]).toUpperCase();
+                      })();
+                      const isMe = !selected.assignedUserId || selected.assignedUserId === currentUser?.id;
+                      return (
+                        <Stack direction="row" alignItems="center" spacing={0.8}>
+                          <Box sx={{
+                            width: 22, height: 22, borderRadius: '50%',
+                            background: isMe
+                              ? `linear-gradient(135deg, ${palette.accent}, ${palette.amber})`
+                              : `linear-gradient(135deg, #60a5fa, #34d399)`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: '#0a0a0f', fontWeight: 800, fontSize: '0.62rem',
+                            flexShrink: 0,
+                          }}>
+                            {ownerInitials}
+                          </Box>
+                          <Stack sx={{ minWidth: 0 }}>
+                            <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {ownerName}
+                              {isMe && (
+                                <Box component="span" sx={{ ml: 0.6, color: palette.amber, fontSize: '0.7rem', fontWeight: 700 }}>
+                                  (du)
+                                </Box>
+                              )}
+                            </Typography>
+                            {selected.assignedUserEmail && selected.assignedUserName && (
+                              <Typography sx={{ fontSize: '0.68rem', color: palette.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {selected.assignedUserEmail}
+                              </Typography>
+                            )}
+                          </Stack>
+                        </Stack>
+                      );
+                    })()}
                   </Stack>
                 </Stack>
 
@@ -2153,6 +2409,208 @@ export default function LeadMapPanel() {
           </DialogActions>
         </Dialog>
 
+        {/* Counter-campaign-dialog — Lead Map ↔ Marketing Cockpit-bro */}
+        <Dialog
+          open={counterCampaignOpen}
+          onClose={() => !counterCampaignLoading && setCounterCampaignOpen(false)}
+          maxWidth="md" fullWidth
+          PaperProps={{ sx: { bgcolor: palette.bgPanel, border: `1px solid ${palette.borderStrong}` } }}
+        >
+          <DialogTitle sx={{ color: palette.textPrimary }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <CampaignOutlinedIcon sx={{ color: palette.amber }} />
+              <span>Mot-kampanje{counterCampaign ? `: ${counterCampaign.competitorName}` : ''}</span>
+            </Stack>
+            <Typography sx={{ fontSize: '0.78rem', color: palette.textMuted, mt: 0.4 }}>
+              Role Room Agent foreslår hvordan du kan nå konkurrentens kunder.
+            </Typography>
+          </DialogTitle>
+          <DialogContent>
+            {counterCampaignLoading && (
+              <Stack alignItems="center" spacing={1.4} sx={{ p: 4 }}>
+                <CircularProgress sx={{ color: palette.amber }} />
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
+                  Claude analyserer konkurrenten og genererer kampanje …
+                </Typography>
+              </Stack>
+            )}
+            {counterCampaignError && (
+              <Alert severity="error">{counterCampaignError}</Alert>
+            )}
+            {counterCampaign && !counterCampaignLoading && (
+              <Stack spacing={2}>
+                {/* Target segment */}
+                <Box sx={{ p: 1.6, borderRadius: 1.2, bgcolor: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.28)' }}>
+                  <Typography sx={{ fontSize: '0.68rem', color: palette.amber, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Målgruppe
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.86rem', color: palette.textPrimary, mt: 0.4 }}>
+                    {counterCampaign.targetSegment}
+                  </Typography>
+                </Box>
+
+                {/* Key messages */}
+                <Box>
+                  <Typography sx={{ fontSize: '0.68rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.8 }}>
+                    Nøkkel-budskap
+                  </Typography>
+                  <Stack spacing={0.6}>
+                    {counterCampaign.keyMessages.map((msg, i) => (
+                      <Stack key={i} direction="row" spacing={0.8} alignItems="flex-start">
+                        <Box sx={{
+                          width: 18, height: 18, borderRadius: '50%',
+                          bgcolor: `${palette.accent}22`,
+                          color: palette.accent,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontWeight: 800, fontSize: '0.7rem', flexShrink: 0, mt: 0.2,
+                        }}>
+                          {i + 1}
+                        </Box>
+                        <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary, flex: 1 }}>
+                          {msg}
+                        </Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Box>
+
+                {/* Channel mix */}
+                <Box>
+                  <Typography sx={{ fontSize: '0.68rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.8 }}>
+                    Kanal-mix
+                  </Typography>
+                  <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                    {counterCampaign.channelMix.map((c) => (
+                      <Tooltip key={c.channel} title={c.rationale}>
+                        <Chip
+                          label={`${c.channel} · ${c.weight}%`}
+                          size="small"
+                          sx={{
+                            bgcolor: 'rgba(192,132,252,0.12)',
+                            color: palette.accent,
+                            fontWeight: 700, fontSize: '0.72rem',
+                          }}
+                        />
+                      </Tooltip>
+                    ))}
+                  </Stack>
+                </Box>
+
+                {/* Content drafts */}
+                <Box>
+                  <Typography sx={{ fontSize: '0.68rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.8 }}>
+                    Innholds-utkast ({counterCampaign.contentDrafts.length})
+                  </Typography>
+                  <Stack spacing={1.4}>
+                    {counterCampaign.contentDrafts.map((d, i) => (
+                      <Box key={i} sx={{
+                        p: 1.4, borderRadius: 1.2,
+                        bgcolor: 'rgba(10,10,15,0.4)',
+                        border: `1px solid ${palette.border}`,
+                      }}>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.6 }}>
+                          <Stack direction="row" alignItems="center" spacing={0.6}>
+                            <Chip
+                              label={d.type.replace(/_/g, ' ').toUpperCase()}
+                              size="small"
+                              sx={{
+                                bgcolor: 'rgba(251,191,36,0.15)',
+                                color: palette.amber,
+                                fontWeight: 800, fontSize: '0.6rem', height: 18,
+                              }}
+                            />
+                            <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: palette.textPrimary }}>
+                              {d.title}
+                            </Typography>
+                          </Stack>
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              navigator.clipboard.writeText(`${d.title}\n\n${d.body}`);
+                            }}
+                            sx={{ color: palette.textMuted }}
+                          >
+                            <ContentCopyOutlinedIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        </Stack>
+                        <Typography sx={{ fontSize: '0.8rem', color: palette.textSecondary, whiteSpace: 'pre-wrap' }}>
+                          {d.body}
+                        </Typography>
+                        <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted, mt: 0.6, fontStyle: 'italic' }}>
+                          → {d.rationale}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Box>
+
+                {counterCampaignSavedWorkflowId && (
+                  <Alert severity="success">
+                    Lagret som workflow #{counterCampaignSavedWorkflowId.slice(0, 8)}. Du finner den i Marketing Cockpit.
+                  </Alert>
+                )}
+              </Stack>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={() => setCounterCampaignOpen(false)}
+              disabled={counterCampaignSaving}
+              sx={{ color: palette.textMuted }}
+            >
+              Lukk
+            </Button>
+            {counterCampaign && !counterCampaignSavedWorkflowId && (
+              <Button
+                onClick={saveCounterCampaign}
+                variant="contained"
+                disabled={counterCampaignSaving}
+                startIcon={counterCampaignSaving ? <CircularProgress size={14} /> : <CampaignOutlinedIcon sx={{ fontSize: 16 }} />}
+                sx={{ bgcolor: palette.amber, color: '#0a0a0f', fontWeight: 800 }}
+              >
+                {counterCampaignSaving ? 'Lagrer …' : 'Lagre til Marketing Cockpit'}
+              </Button>
+            )}
+          </DialogActions>
+        </Dialog>
+
+        {/* Threat-level edit menu (klikk chip → bytt) */}
+        <Menu
+          anchorEl={threatMenuAnchor?.el ?? null}
+          open={Boolean(threatMenuAnchor)}
+          onClose={() => setThreatMenuAnchor(null)}
+        >
+          {(['near', 'medium', 'far'] as const).map((level) => (
+            <MenuItem
+              key={level}
+              onClick={() => {
+                if (threatMenuAnchor) {
+                  void setCompetitorThreatLevel(threatMenuAnchor.competitorId, level);
+                  setThreatMenuAnchor(null);
+                }
+              }}
+            >
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: THREAT_COLOR[level] }} />
+                <span>
+                  {level === 'near' ? 'Nær trussel' : level === 'medium' ? 'Medium' : 'Fjern'}
+                </span>
+              </Stack>
+            </MenuItem>
+          ))}
+          <Divider />
+          <MenuItem
+            onClick={() => {
+              if (threatMenuAnchor) {
+                void setCompetitorThreatLevel(threatMenuAnchor.competitorId, null);
+                setThreatMenuAnchor(null);
+              }
+            }}
+          >
+            <span style={{ color: palette.textMuted }}>Fjern trussel-nivå</span>
+          </MenuItem>
+        </Menu>
+
         {/* Places discovery dialog */}
         <Dialog open={placesOpen} onClose={() => setPlacesOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle>
@@ -2343,19 +2801,27 @@ export default function LeadMapPanel() {
                         </td>
                         <td>{c.category ?? '—'}</td>
                         <td>
-                          {c.threatLevel ? (
-                            <Chip
-                              label={c.threatLevel === 'near' ? 'Nær' : c.threatLevel === 'medium' ? 'Medium' : 'Fjern'}
-                              size="small"
-                              sx={{
-                                bgcolor: `${THREAT_COLOR[c.threatLevel]}22`,
-                                color: THREAT_COLOR[c.threatLevel],
-                                fontWeight: 800, fontSize: '0.66rem', height: 20,
-                              }}
-                            />
-                          ) : (
-                            <span style={{ color: palette.textMuted, fontSize: '0.72rem' }}>—</span>
-                          )}
+                          <Chip
+                            label={
+                              c.threatLevel
+                                ? (c.threatLevel === 'near' ? 'Nær' : c.threatLevel === 'medium' ? 'Medium' : 'Fjern')
+                                : 'Sett'
+                            }
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setThreatMenuAnchor({ el: e.currentTarget, competitorId: c.id });
+                            }}
+                            sx={{
+                              bgcolor: c.threatLevel ? `${THREAT_COLOR[c.threatLevel]}22` : 'rgba(148,163,184,0.12)',
+                              color: c.threatLevel ? THREAT_COLOR[c.threatLevel] : '#94a3b8',
+                              fontWeight: 800, fontSize: '0.66rem', height: 20,
+                              cursor: 'pointer',
+                              '&:hover': {
+                                bgcolor: c.threatLevel ? `${THREAT_COLOR[c.threatLevel]}33` : 'rgba(148,163,184,0.2)',
+                              },
+                            }}
+                          />
                         </td>
                         <td style={{ textAlign: 'center', fontWeight: 700 }}>
                           {c.threatScore != null ? c.threatScore : '—'}
@@ -2395,6 +2861,16 @@ export default function LeadMapPanel() {
                               Re-vurder
                             </Button>
                           )}
+                          <IconButton
+                            size="small"
+                            onClick={(e) => { e.stopPropagation(); deleteCompetitor(c.id); }}
+                            disabled={deletingCompetitorId === c.id}
+                            sx={{ color: '#ef4444', ml: 0.4, '&:hover': { bgcolor: 'rgba(239,68,68,0.1)' } }}
+                          >
+                            {deletingCompetitorId === c.id
+                              ? <CircularProgress size={12} sx={{ color: '#ef4444' }} />
+                              : <DeleteOutlineIcon sx={{ fontSize: 16 }} />}
+                          </IconButton>
                         </td>
                       </tr>
                     ))}
@@ -2403,6 +2879,183 @@ export default function LeadMapPanel() {
             </Box>
           )}
         </Box>
+
+        {/* Kalender — kommende møter + follow-ups */}
+        <Box sx={{ mt: 2.4, p: 2, borderRadius: 1.6, bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}` }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.4 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <CalendarMonthOutlinedIcon sx={{ color: palette.amber, fontSize: 18 }} />
+              <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: palette.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Kommende møter & oppfølginger
+              </Typography>
+              <Chip
+                label={calendarEvents.length}
+                size="small"
+                sx={{ bgcolor: 'rgba(251,191,36,0.12)', color: palette.amber, fontWeight: 800, fontSize: '0.66rem', height: 20 }}
+              />
+            </Stack>
+          </Stack>
+          {calendarEvents.length === 0 ? (
+            <Typography sx={{ fontSize: '0.76rem', color: palette.textMuted, fontStyle: 'italic' }}>
+              Ingen møter eller follow-ups planlagt de neste 60 dagene.
+            </Typography>
+          ) : (
+            <Stack spacing={0.8}>
+              {calendarEvents.slice(0, 10).map((ev) => {
+                const date = ev.datetime ? new Date(ev.datetime) : null;
+                const isMeeting = ev.eventType === 'meeting';
+                const accent = isMeeting ? STATUS_META.meeting_booked.color : palette.amber;
+                const dateLabel = date
+                  ? date.toLocaleDateString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short' })
+                  : '?';
+                const timeLabel = date
+                  ? date.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
+                  : '';
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const isToday = date && date.toDateString() === new Date().toDateString();
+                const isPast = date && date < new Date();
+                return (
+                  <Stack
+                    key={ev.id} direction="row" spacing={1.4} alignItems="center"
+                    onClick={() => {
+                      const lead = leads.find((l) => l.id === ev.id);
+                      if (lead) { setSelected(lead); setSelectedCompetitor(null); }
+                    }}
+                    sx={{
+                      p: 1.2, borderRadius: 1.2,
+                      bgcolor: 'rgba(10,10,15,0.4)',
+                      border: `1px solid ${palette.border}`,
+                      borderLeft: `3px solid ${accent}`,
+                      cursor: 'pointer',
+                      transition: 'border-color 140ms ease',
+                      '&:hover': { borderColor: accent },
+                      opacity: isPast ? 0.65 : 1,
+                    }}
+                  >
+                    <Box sx={{ minWidth: 64, textAlign: 'center' }}>
+                      <Typography sx={{ fontSize: '0.7rem', color: isToday ? palette.amber : palette.textMuted, fontWeight: 800, textTransform: 'uppercase' }}>
+                        {isToday ? 'I dag' : dateLabel}
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.76rem', color: palette.textPrimary, fontWeight: 700 }}>
+                        {timeLabel}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ width: 1, height: 32, bgcolor: palette.border }} />
+                    <Stack sx={{ flex: 1, minWidth: 0 }}>
+                      <Stack direction="row" alignItems="center" spacing={0.6}>
+                        <Typography sx={{ fontSize: '0.84rem', fontWeight: 700, color: palette.textPrimary }}>
+                          {ev.leadName}
+                        </Typography>
+                        <Chip
+                          label={isMeeting ? 'MØTE' : 'OPPFØLGING'}
+                          size="small"
+                          sx={{
+                            bgcolor: `${accent}22`,
+                            color: accent,
+                            fontWeight: 800, fontSize: '0.58rem', height: 16,
+                          }}
+                        />
+                      </Stack>
+                      <Typography sx={{ fontSize: '0.72rem', color: palette.textSecondary, mt: 0.2 }}>
+                        {ev.nextAction ?? (isMeeting ? 'Booket møte' : 'Planlagt follow-up')}
+                        {ev.city && <Box component="span" sx={{ color: palette.textMuted }}> · {ev.city}</Box>}
+                      </Typography>
+                    </Stack>
+                    {ev.assignedUserName && ev.assignedUserId !== currentUser?.id && (
+                      <Chip
+                        label={ev.assignedUserName.split(' ')[0]}
+                        size="small"
+                        sx={{ bgcolor: 'rgba(96,165,250,0.12)', color: '#60a5fa', fontSize: '0.66rem', fontWeight: 700, height: 20 }}
+                      />
+                    )}
+                  </Stack>
+                );
+              })}
+            </Stack>
+          )}
+        </Box>
+
+        {/* Leaderboard — konkurranse blant lead-skaffere */}
+        {leaderboard.length > 0 && (
+          <Box sx={{ mt: 2.4, p: 2, borderRadius: 1.6, bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}` }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.4 }}>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <EmojiEventsIcon sx={{ color: palette.amber, fontSize: 18 }} />
+                <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: palette.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Lead-leaderboard
+                </Typography>
+              </Stack>
+            </Stack>
+            <Box component="table" sx={{
+              width: '100%', borderCollapse: 'collapse',
+              '& th, & td': {
+                textAlign: 'left', padding: '6px 10px',
+                borderBottom: `1px solid ${palette.border}`,
+                fontSize: '0.78rem', color: palette.textSecondary,
+              },
+              '& th': {
+                fontSize: '0.64rem', color: palette.textMuted,
+                fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em',
+              },
+            }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 40, textAlign: 'center' }}>#</th>
+                  <th>Skaffet av</th>
+                  <th style={{ textAlign: 'right' }}>Leads</th>
+                  <th style={{ textAlign: 'right' }}>Møter</th>
+                  <th style={{ textAlign: 'right' }}>Won</th>
+                  <th style={{ textAlign: 'right' }}>Conv.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leaderboard.slice(0, 10).map((entry) => {
+                  const isMe = entry.userId === currentUser?.id;
+                  const medal = entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : null;
+                  return (
+                    <tr key={entry.userId ?? `${entry.rank}`} style={{ backgroundColor: isMe ? 'rgba(192,132,252,0.06)' : undefined }}>
+                      <td style={{ textAlign: 'center', fontWeight: 800, color: medal ? palette.amber : palette.textMuted }}>
+                        {medal ?? entry.rank}
+                      </td>
+                      <td>
+                        <Stack direction="row" alignItems="center" spacing={0.8}>
+                          <Box sx={{
+                            width: 22, height: 22, borderRadius: '50%',
+                            background: isMe
+                              ? `linear-gradient(135deg, ${palette.accent}, ${palette.amber})`
+                              : `linear-gradient(135deg, #60a5fa, #34d399)`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: '#0a0a0f', fontWeight: 800, fontSize: '0.62rem',
+                          }}>
+                            {(entry.userName ?? entry.userEmail ?? '?').slice(0, 2).toUpperCase()}
+                          </Box>
+                          <span style={{ color: palette.textPrimary, fontWeight: 700 }}>
+                            {entry.userName ?? entry.userEmail ?? 'Ukjent'}
+                            {isMe && <Box component="span" sx={{ ml: 0.6, color: palette.amber, fontSize: '0.7rem' }}>(du)</Box>}
+                          </span>
+                        </Stack>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: palette.textPrimary }}>{entry.totalLeads}</td>
+                      <td style={{ textAlign: 'right' }}>{entry.meetingBooked}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: '#34d399' }}>{entry.won}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {entry.conversionRate != null ? (
+                          <Box component="span" sx={{
+                            color: entry.conversionRate >= 50 ? '#34d399' : entry.conversionRate >= 20 ? palette.amber : palette.textMuted,
+                            fontWeight: 700,
+                          }}>
+                            {entry.conversionRate}%
+                          </Box>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Box>
+          </Box>
+        )}
 
         {/* Recent Activity — horisontale kort */}
         <Box sx={{ mt: 2.4, p: 2, borderRadius: 1.6, bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}` }}>
