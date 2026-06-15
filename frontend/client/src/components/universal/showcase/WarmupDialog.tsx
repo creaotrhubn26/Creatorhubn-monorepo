@@ -95,6 +95,10 @@ const WarmupDialog: React.FC<{ open: boolean; projectId: string; onClose: () => 
                   {(lib.breathing || []).map((b: any) => <Item key={b.id} k={`b:${b.id}`} step={{ sourceId: b.id, title: b.title, type: 'breath', durationSec: (b.inhale + b.hold + b.exhale + (b.holdAfter || 0)) * (b.cycles || 4), instruction: b.description, breathing: { inhale: b.inhale, hold: b.hold, exhale: b.exhale, holdAfter: b.holdAfter, cycles: b.cycles } }} sub={`${b.inhale}-${b.hold}-${b.exhale}${b.holdAfter ? '-' + b.holdAfter : ''}`} />)}
                   <Typography sx={{ fontSize: '0.62rem', color: FAINT, textTransform: 'uppercase', px: 1, pt: 0.5 }}>Mindfulness / fokus</Typography>
                   {(lib.techniques || []).map((t: any) => <Item key={t.id} k={`t:${t.id}`} step={{ sourceId: t.id, title: t.title, type: 'mindfulness', durationSec: t.durationSeconds, instruction: (t.steps || []).join(' · ') }} sub={t.description} />)}
+                  <Typography sx={{ fontSize: '0.62rem', color: FAINT, textTransform: 'uppercase', px: 1, pt: 0.5 }}>Visualisering</Typography>
+                  {(lib.visualizations || []).map((v: any) => <Item key={v.id} k={`v:${v.id}`} step={{ sourceId: v.id, title: v.title, type: 'visualization', durationSec: v.durationSeconds, instruction: (v.narration || []).join(' · ') }} sub={v.bestFor} />)}
+                  {(lib.affirmations || []).length > 0 && <Typography sx={{ fontSize: '0.62rem', color: FAINT, textTransform: 'uppercase', px: 1, pt: 0.5 }}>Affirmasjoner</Typography>}
+                  {(lib.affirmations || []).length > 0 && <Item k="aff" step={{ sourceId: 'affirmations', title: 'Affirmasjoner', type: 'affirmation', durationSec: 45, instruction: (lib.affirmations || []).slice(0, 6).map((a: any) => a.text).join('  ·  ') }} sub="Gjenta rolig før opptak" />}
                 </Box>
               )}
               {/* Egen oppvarmings-lyd */}
