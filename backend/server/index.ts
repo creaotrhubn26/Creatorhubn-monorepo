@@ -2,6 +2,10 @@ import "dotenv/config";
 import { config } from "dotenv";
 config({ override: true });
 
+// Sentry MUST initialiseres FØR alle andre imports for å fange tidlig errors
+import { initBackendSentry } from "./sentry-init.js";
+initBackendSentry();
+
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -1691,8 +1695,35 @@ async function ensureFirmwareUpdatesCompatibilityColumns(): Promise<void> {
   await firmwareCompatColumnsPromise;
 }
 
-// CORS — apply CORS_ALLOW_ORIGINS to Role Room routes; wide-open for legacy routes
-app.use(cors());
+// CORS — credentials: 'include' fra frontend krever EKSPLISITT origin (ikke *).
+// Lister kjente prod- og dev-origins; reflekterer requestens origin ved match
+// så browseren tillater credentials. Ukjent origin svarer uten CORS-header.
+const KNOWN_ORIGINS = new Set([
+  'https://creatorhubn.com',
+  'https://www.creatorhubn.com',
+  'https://theroleroom.com',
+  'https://www.theroleroom.com',
+  'http://localhost:5001',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5001',
+  'http://127.0.0.1:5173',
+]);
+app.use(cors({
+  origin: (origin, callback) => {
+    // Ingen origin (samme-origin eller server-til-server) — tillat
+    if (!origin) return callback(null, true);
+    if (KNOWN_ORIGINS.has(origin)) return callback(null, origin);
+    // Vercel preview-deploys
+    if (/^https:\/\/[a-z0-9-]+-creatorhubcom\.vercel\.app$/.test(origin)) {
+      return callback(null, origin);
+    }
+    // Ikke-matchet origin — svar uten CORS-header (browseren blokkerer da)
+    return callback(null, false);
+  },
+  credentials: true,
+  exposedHeaders: ['Content-Disposition'],
+}));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
