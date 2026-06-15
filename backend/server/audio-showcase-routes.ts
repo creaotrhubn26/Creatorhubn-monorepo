@@ -2366,7 +2366,15 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     try {
       const cal = await getGoogleCalendar(s.userId, req);
       if (!cal) return res.json({ configured: true, connected: false, calendarScope: false });
-      return res.json({ configured: true, connected: true, calendarScope: hasCalendarScope(cal.scopes), email: cal.email || null });
+      const sync = (await pool.query(`SELECT auto_enabled, channel_id, channel_expiration, last_synced_at FROM audio_gcal_sync WHERE owner_user_id=$1 LIMIT 1`, [s.userId]).catch(() => ({ rows: [] as any[] }))).rows[0];
+      return res.json({
+        configured: true, connected: true, calendarScope: hasCalendarScope(cal.scopes), email: cal.email || null,
+        autoSync: {
+          enabled: !!sync?.auto_enabled,
+          instant: !!(sync?.auto_enabled && sync?.channel_id),
+          lastSyncedAt: sync?.last_synced_at || null,
+        },
+      });
     } catch { return res.json({ configured: true, connected: false, calendarScope: false }); }
   });
 
@@ -2462,6 +2470,156 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         return res.status(502).json({ error: "calendar_pull_failed" });
       }
     } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "gcal_pull_failed" }); }
+  });
+
+  // ══ AUTOMATISK TOVEIS GOOGLE CALENDAR-SYNK ════════════════════════════════
+  // Webhook (umiddelbar via events.watch) + polling-cron (robust fallback) som
+  // begge bruker samme inkrementelle syncToken-motor.
+  const GCAL_WEBHOOK_URL = `${APP_URL}/api/google-calendar/webhook`;
+
+  // Speil ett endret Google-event inn i en økt vi eier. Returnerer hva som skjedde.
+  const applyEventToSession = async (userId: string, ev: any): Promise<"updated" | "deleted" | "skip"> => {
+    if (!ev?.id) return "skip";
+    const q = await pool.query(`SELECT * FROM audio_sessions WHERE owner_user_id=$1 AND gcal_event_id=$2 LIMIT 1`, [userId, String(ev.id)]);
+    if (q.rowCount === 0) return "skip";
+    const sess = q.rows[0];
+    if (ev.status === "cancelled") {
+      await pool.query(`UPDATE audio_sessions SET gcal_event_id=NULL, gcal_html_link=NULL, gcal_synced_at=NULL, updated_at=NOW() WHERE id=$1::uuid`, [sess.id]);
+      return "deleted";
+    }
+    const startIso = ev.start?.dateTime || (ev.start?.date ? `${ev.start.date}T00:00:00` : null);
+    const endIso = ev.end?.dateTime || (ev.end?.date ? `${ev.end.date}T00:00:00` : null);
+    const title = str(ev.summary, 160) || sess.title;
+    const location = ev.location != null ? str(ev.location, 200) : sess.location;
+    await pool.query(
+      `UPDATE audio_sessions SET title=$2, start_at=COALESCE($3, start_at), end_at=$4, location=$5, gcal_html_link=$6, gcal_synced_at=NOW(), updated_at=NOW() WHERE id=$1::uuid`,
+      [sess.id, title, startIso, endIso, location || null, ev.htmlLink || sess.gcal_html_link || null]);
+    return "updated";
+  };
+
+  // Seed en fersk syncToken (paginer til siste side) uten å behandle events.
+  const seedSyncToken = async (cal: any): Promise<string | null> => {
+    let pageToken: string | undefined; let next: string | null = null;
+    const timeMin = new Date(Date.now() - 24 * 3600_000).toISOString();
+    do {
+      const resp = await cal.calendar.events.list({ calendarId: "primary", singleEvents: true, showDeleted: false, maxResults: 250, ...(pageToken ? { pageToken } : { timeMin }) });
+      pageToken = resp.data?.nextPageToken || undefined;
+      next = resp.data?.nextSyncToken || next;
+    } while (pageToken);
+    return next;
+  };
+
+  // Inkrementell synk: hent endringer siden lagret syncToken → speil inn i økter.
+  const runIncrementalCalendarSync = async (userId: string, cal: any): Promise<{ applied: number; deleted: number; reset: boolean }> => {
+    let applied = 0, deleted = 0, reset = false;
+    const cur = (await pool.query(`SELECT sync_token FROM audio_gcal_sync WHERE owner_user_id=$1 LIMIT 1`, [userId])).rows[0];
+    let syncToken: string | null = cur?.sync_token || null;
+    if (!syncToken) {
+      syncToken = await seedSyncToken(cal);
+      await pool.query(`INSERT INTO audio_gcal_sync (owner_user_id, sync_token, last_synced_at, updated_at) VALUES ($1,$2,NOW(),NOW()) ON CONFLICT (owner_user_id) DO UPDATE SET sync_token=$2, last_synced_at=NOW(), updated_at=NOW()`, [userId, syncToken]);
+      return { applied, deleted, reset: true };
+    }
+    let pageToken: string | undefined; let nextSync: string | null = null;
+    try {
+      do {
+        const resp = await cal.calendar.events.list({ calendarId: "primary", showDeleted: true, maxResults: 250, ...(pageToken ? { pageToken } : { syncToken }) });
+        for (const ev of resp.data?.items || []) {
+          const r = await applyEventToSession(userId, ev);
+          if (r === "deleted") deleted++; else if (r === "updated") applied++;
+        }
+        pageToken = resp.data?.nextPageToken || undefined;
+        nextSync = resp.data?.nextSyncToken || nextSync;
+      } while (pageToken);
+      if (nextSync) await pool.query(`UPDATE audio_gcal_sync SET sync_token=$2, last_synced_at=NOW(), updated_at=NOW() WHERE owner_user_id=$1`, [userId, nextSync]);
+    } catch (e: any) {
+      // 410 Gone → syncToken utløpt; reseed og prøv neste runde.
+      if (Number(e?.code) === 410 || Number(e?.response?.status) === 410) {
+        const fresh = await seedSyncToken(cal).catch(() => null);
+        await pool.query(`UPDATE audio_gcal_sync SET sync_token=$2, last_synced_at=NOW(), updated_at=NOW() WHERE owner_user_id=$1`, [userId, fresh]);
+        reset = true;
+      } else throw e;
+    }
+    return { applied, deleted, reset };
+  };
+
+  // Registrer/forny en watch-kanal → Google pinger webhooken ved endring.
+  const registerCalendarWatch = async (userId: string, cal: any): Promise<{ watch: boolean; error?: string }> => {
+    const channelId = `gcalch_${randomUUID()}`;
+    const token = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+    try {
+      const resp = await cal.calendar.events.watch({ calendarId: "primary", requestBody: { id: channelId, type: "web_hook", address: GCAL_WEBHOOK_URL, token, params: { ttl: String(7 * 24 * 3600) } } });
+      const exp = resp.data?.expiration ? new Date(Number(resp.data.expiration)).toISOString() : null;
+      await pool.query(`UPDATE audio_gcal_sync SET channel_id=$2, channel_token=$3, resource_id=$4, channel_expiration=$5, updated_at=NOW() WHERE owner_user_id=$1`,
+        [userId, channelId, token, resp.data?.resourceId || null, exp]);
+      return { watch: true };
+    } catch (e: any) {
+      const msg = String(e?.message || e?.errors?.[0]?.message || "");
+      console.warn("[gcal watch] kunne ikke registrere kanal:", msg);
+      return { watch: false, error: /webhook|address|unauthorized|domain/i.test(msg) ? "webhook_domain_unverified" : "watch_failed" };
+    }
+  };
+
+  // Slå automatisk synk av/på for produsenten.
+  app.post("/api/audio-showcase/google-calendar/auto-sync", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    if (!getGoogleCalendar) return res.status(503).json({ error: "calendar_not_configured" });
+    const enabled = !!req.body?.enabled;
+    try {
+      const cal = await getGoogleCalendar(s.userId, req);
+      if (!cal) return res.status(409).json({ error: "google_not_connected" });
+      if (!hasCalendarScope(cal.scopes)) return res.status(409).json({ error: "calendar_scope_missing" });
+      if (!enabled) {
+        const row = (await pool.query(`SELECT channel_id, resource_id FROM audio_gcal_sync WHERE owner_user_id=$1 LIMIT 1`, [s.userId])).rows[0];
+        if (row?.channel_id && row?.resource_id) { try { await cal.calendar.channels.stop({ requestBody: { id: row.channel_id, resourceId: row.resource_id } }); } catch { /* best effort */ } }
+        await pool.query(`INSERT INTO audio_gcal_sync (owner_user_id, auto_enabled, updated_at) VALUES ($1,false,NOW()) ON CONFLICT (owner_user_id) DO UPDATE SET auto_enabled=false, channel_id=NULL, channel_token=NULL, resource_id=NULL, channel_expiration=NULL, updated_at=NOW()`, [s.userId]);
+        return res.json({ ok: true, enabled: false });
+      }
+      const syncToken = await seedSyncToken(cal).catch(() => null);
+      await pool.query(`INSERT INTO audio_gcal_sync (owner_user_id, auto_enabled, sync_token, last_synced_at, updated_at) VALUES ($1,true,$2,NOW(),NOW()) ON CONFLICT (owner_user_id) DO UPDATE SET auto_enabled=true, sync_token=COALESCE($2, audio_gcal_sync.sync_token), last_synced_at=NOW(), updated_at=NOW()`, [s.userId, syncToken]);
+      const w = await registerCalendarWatch(s.userId, cal);
+      // instant=true når webhook er aktiv; ellers dekker polling-cron synken.
+      return res.json({ ok: true, enabled: true, instant: w.watch, mode: w.watch ? "webhook" : "polling", watchError: w.error });
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); console.error("[gcal] auto-sync toggle failed:", e); return res.status(500).json({ error: "auto_sync_failed" }); }
+  });
+
+  // Webhook: Google pinger ved kalender-endring (tom body — vi re-henter selv).
+  app.post("/api/google-calendar/webhook", async (req, res) => {
+    res.status(200).end(); // ack umiddelbart — Google forventer rask 200
+    const channelId = String(req.headers["x-goog-channel-id"] || "");
+    const state = String(req.headers["x-goog-resource-state"] || "");
+    const token = String(req.headers["x-goog-channel-token"] || "");
+    if (!channelId || state === "sync") return; // 'sync' = handshake ved oppsett
+    try {
+      if (!getGoogleCalendar) return;
+      const row = (await pool.query(`SELECT owner_user_id, channel_token FROM audio_gcal_sync WHERE channel_id=$1 AND auto_enabled=true LIMIT 1`, [channelId])).rows[0];
+      if (!row) return;
+      if (row.channel_token && token && row.channel_token !== token) return; // ugyldig token
+      const cal = await getGoogleCalendar(row.owner_user_id, req);
+      if (cal && hasCalendarScope(cal.scopes)) await runIncrementalCalendarSync(row.owner_user_id, cal);
+    } catch (e) { if (!isMissingTable(e)) console.error("[gcal webhook] sync failed:", e); }
+  });
+
+  // Cron: polling-fallback for alle med auto-synk + forny watch-kanaler nær utløp.
+  app.post("/api/audio-showcase/google-calendar/sync-cron", async (req, res) => {
+    const presented = String(req.headers["x-cron-trigger-token"] || "").trim();
+    const expected = (process.env.CRON_TRIGGER_TOKEN || "").trim();
+    if (!presented || !expected || presented !== expected) return res.status(401).json({ error: "unauthorized" });
+    if (!getGoogleCalendar) return res.json({ ok: true, synced: 0 });
+    try {
+      const rows = (await pool.query(`SELECT owner_user_id, channel_expiration FROM audio_gcal_sync WHERE auto_enabled=true`)).rows;
+      let synced = 0, applied = 0, deleted = 0, renewed = 0;
+      for (const row of rows) {
+        try {
+          const cal = await getGoogleCalendar(row.owner_user_id, req);
+          if (!cal || !hasCalendarScope(cal.scopes)) continue;
+          const r = await runIncrementalCalendarSync(row.owner_user_id, cal);
+          synced++; applied += r.applied; deleted += r.deleted;
+          const expMs = row.channel_expiration ? new Date(row.channel_expiration).getTime() : 0;
+          if (expMs - Date.now() < 24 * 3600_000) { const w = await registerCalendarWatch(row.owner_user_id, cal); if (w.watch) renewed++; }
+        } catch (inner) { console.error("[gcal sync-cron] user failed:", row.owner_user_id, inner); }
+      }
+      return res.json({ ok: true, synced, applied, deleted, renewed });
+    } catch (e) { if (isMissingTable(e)) return res.json({ ok: true, synced: 0 }); console.error("[gcal] sync-cron failed:", e); return res.status(500).json({ error: "sync_cron_failed" }); }
   });
 
   // Medlem: økter jeg er invitert til + RSVP.
