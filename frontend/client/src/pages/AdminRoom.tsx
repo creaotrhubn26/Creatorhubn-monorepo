@@ -87,6 +87,7 @@ import {
 
 import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
 import { WhatsNewTab } from '../components/role-room/components/admin-room/WhatsNewTab';
+import ObservabilityPanel from '../components/admin-room/observability/ObservabilityPanel';
 import { ResendStatusTab } from '../components/role-room/components/admin-room/ResendStatusTab';
 import { B2ArchiveTab } from '../components/role-room/components/admin-room/B2ArchiveTab';
 import { PlatformStatusWidget } from '../components/role-room/components/admin-room/PlatformStatusWidget';
@@ -112,7 +113,7 @@ import ContentCalendarTab from './admin-room/ContentCalendarTab';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations' | 'observability';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -4425,6 +4426,7 @@ export default function AdminRoom() {
   else if (tab === 'newsletter-studio') content = <NewsletterStudioTab />;
   else if (tab === 'ai-citation') content = <AiCitationTab />;
   else if (tab === 'whats-new') content = <WhatsNewTab />;
+  else if (tab === 'observability') content = <ObservabilityPanel />;
   else if (tab === 'resend') content = <ResendStatusTab />;
   else if (tab === 'marketing-cockpit') content = <MarketingCockpitTab />;
   else if (tab === 'role-room-agent') content = <RoleRoomAgentTab />;

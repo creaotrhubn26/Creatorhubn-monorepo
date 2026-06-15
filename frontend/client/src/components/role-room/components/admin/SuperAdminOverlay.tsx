@@ -102,6 +102,7 @@ const ADMIN_TABS: AdminTabEntry[] = [
   { value: 'analytics', label: 'Analytics', Icon: AnalyticsIcon, description: 'Trafikk og events.' },
   { value: 'migrations', label: 'Migrasjoner', Icon: StorageIcon, description: 'DB-migrasjoner og status.' },
   { value: 'activity', label: 'Aktivitets-logg', Icon: HistoryIcon, description: 'Audit trail.' },
+  { value: 'observability', label: 'Observability', Icon: AnalyticsIcon, description: 'Errors + Clarity-sessions samlet.' },
 ];
 
 // Localstorage-nøkler for prosjekt-tilstand som vi vil rydde i.

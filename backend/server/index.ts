@@ -5,6 +5,11 @@ config({ override: true });
 // Sentry MUST initialiseres FØR alle andre imports for å fange tidlig errors
 import { initBackendSentry } from "./sentry-init.js";
 initBackendSentry();
+import {
+  registerErrorLogRoutes,
+  buildErrorLogMiddleware,
+  installProcessErrorHandlers,
+} from "./error-log-routes.js";
 
 import express from "express";
 import cors from "cors";
@@ -24251,6 +24256,12 @@ registerLeadMapCampaignRoutes({
 });
 // Emergency login for Super Admin når Google OAuth er ødelagt
 registerSuperAdminEmergencyLoginRoutes({ app, pool, activeSessions });
+// Observability — error_log som Sentry-erstatning i Admin Room
+registerErrorLogRoutes({
+  app, pool, activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+installProcessErrorHandlers(pool);
 // Multi-tenant Google Ads conversion-tracking for The Role Room Agent
 // (B0/B1 live; B2/B3/B4 i pipeline). Innholdsprodusenter setter opp
 // conversion-tracking for klienter via Agent.
