@@ -26,6 +26,20 @@ const CHART_IDS = new Set<string>([
   'donut', 'line-growth', 'radar-chart', 'stacked-bar', 'comparison-bars', 'funnel',
   'gauge', 'stat-trio-ring', 'heatmap-week', 'progress-goals', 'big-percent',
   'hud-stack', 'kpi-hud-tiles', 'ab-test', 'live-analytics',
+  'area-chart', 'multi-line', 'bubble-chart', 'waterfall', 'rose-chart',
+  'sparkline-grid', 'progress-donut-grid',
+]);
+
+const MARKETING_IDS = new Set<string>([
+  'cta-banner', 'offer-badge', 'product-launch', 'limited-time',
+  'feature-announce', 'social-promo', 'webinar-event', 'pricing',
+  'countdown', 'logo-reveal',
+]);
+
+const FILMTV_IDS = new Set<string>([
+  'name-lower-third', 'cinematic-title', 'location-title', 'chapter-title',
+  'social-lower-third', 'topic-lower-third', 'quote-lower-third', 'minimal-title',
+  'name-lowerthird', 'quote-fullscreen',
 ]);
 
 interface Scene { id: string; tplId: string; values: Record<string, string>; atSec: number; bindings?: Record<string, string> }
@@ -145,7 +159,7 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
   const [logo, setLogo] = useState<string>(() => { const u = project?.branding?.logoUrl; return u && u.startsWith('data:') ? u : ''; });
   const [suggested, setSuggested] = useState('');
   const [rightTab, setRightTab] = useState<'Design' | 'Animate' | 'Data'>('Data');
-  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'brand' | 'data' | 'export'>('templates');
+  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'marketing' | 'filmtv' | 'brand' | 'data' | 'export'>('templates');
   const [dataText, setDataText] = useState('');
   const dataMap = useMemo(() => parseDataSource(dataText), [dataText]);
   const dataKeys = useMemo(() => Object.keys(dataMap), [dataMap]);
@@ -278,6 +292,8 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
           <div style={railItem(leftSec === 'data')} onClick={() => setLeftSec('data')}>⛁ Data Sources{dataKeys.length ? <span style={{ marginLeft: 'auto', fontSize: 10, color: D.teal }}>{dataKeys.length}</span> : null}</div>
           <div style={railItem(leftSec === 'templates')} onClick={() => setLeftSec('templates')}>▦ Templates <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.length}</span></div>
           <div style={railItem(leftSec === 'charts')} onClick={() => setLeftSec('charts')}>▤ Charts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => CHART_IDS.has(t.id)).length}</span></div>
+          <div style={railItem(leftSec === 'marketing')} onClick={() => setLeftSec('marketing')}>✷ Marketing <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => MARKETING_IDS.has(t.id)).length}</span></div>
+          <div style={railItem(leftSec === 'filmtv')} onClick={() => setLeftSec('filmtv')}>▶ Film &amp; TV <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => FILMTV_IDS.has(t.id)).length}</span></div>
           <div style={railItem(false)} title="Velg ikoner i Data-fanen per felt">◷ Icons <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{ALL_MATERIAL_ICONS.length}</span></div>
           <div style={railItem(leftSec === 'brand')} onClick={() => setLeftSec('brand')}>◆ Brand Kit</div>
           <div style={railItem(leftSec === 'export')} onClick={() => setLeftSec('export')}>⤓ Export</div>
@@ -287,10 +303,10 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
 
         {/* Sekundær-panel */}
         <div style={{ width: 280, borderRight: `1px solid ${D.line}`, overflowY: 'auto', padding: 14, background: D.panel }}>
-          {(leftSec === 'templates' || leftSec === 'charts') && (<>
-            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>{leftSec === 'charts' ? 'Charts' : 'Templates'} <span style={{ color: D.faint, fontWeight: 500 }}>· endrer scene {sel + 1}</span></div>
+          {(leftSec === 'templates' || leftSec === 'charts' || leftSec === 'marketing' || leftSec === 'filmtv') && (<>
+            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>{leftSec === 'charts' ? 'Charts' : leftSec === 'marketing' ? 'Marketing' : leftSec === 'filmtv' ? 'Film & TV' : 'Templates'} <span style={{ color: D.faint, fontWeight: 500 }}>· endrer scene {sel + 1}</span></div>
             <div style={{ display: 'grid', gap: 9 }}>
-              {INFOGRAPHIC_TEMPLATES.filter((t) => leftSec === 'charts' ? CHART_IDS.has(t.id) : true).map((t) => {
+              {INFOGRAPHIC_TEMPLATES.filter((t) => leftSec === 'charts' ? CHART_IDS.has(t.id) : leftSec === 'marketing' ? MARKETING_IDS.has(t.id) : leftSec === 'filmtv' ? FILMTV_IDS.has(t.id) : true).map((t) => {
                 const selT = t.id === scene.tplId;
                 return (
                   <button key={t.id} onClick={() => pickTemplate(t.id)} style={{ textAlign: 'left', padding: 11, borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${selT ? D.accent : D.line}`, background: selT ? D.panel2 : D.bg, color: D.ink, position: 'relative' }}>
