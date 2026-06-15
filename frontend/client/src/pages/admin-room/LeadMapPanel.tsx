@@ -65,6 +65,7 @@ import TipsAndUpdatesOutlinedIcon from '@mui/icons-material/TipsAndUpdatesOutlin
 import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined';
 import LocalPhoneOutlinedIcon from '@mui/icons-material/LocalPhoneOutlined';
 import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined';
+import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined';
 import { Menu } from '@mui/material';
 
 type LeadStatus =
@@ -391,6 +392,34 @@ export default function LeadMapPanel() {
   const [strategy, setStrategy] = useState<OutreachStrategy | null>(null);
   const [strategyLoading, setStrategyLoading] = useState(false);
   const [strategyError, setStrategyError] = useState<string | null>(null);
+
+  // BRREG-berikkelse — firma-data per lead (cached i komponent)
+  type Enrichment = {
+    found: boolean;
+    orgNr?: string;
+    source: string;
+    fetchedAt: string;
+    company?: {
+      name: string;
+      orgNr: string;
+      orgForm: string | null;
+      registeredAt: string | null;
+      naceCode: string | null;
+      naceDescription: string | null;
+      employees: number | null;
+      address: string | null;
+      postalCode: string | null;
+      city: string | null;
+      municipality: string | null;
+      website: string | null;
+      isBankrupt: boolean;
+      isInLiquidation: boolean;
+      status: 'active' | 'in_liquidation' | 'bankrupt';
+    };
+    contacts?: Array<{ role: string; name: string }>;
+  };
+  const [enrichmentByLeadId, setEnrichmentByLeadId] = useState<Record<string, Enrichment | null>>({});
+  const [enrichingLeadId, setEnrichingLeadId] = useState<string | null>(null);
 
   // Counter-campaign (Lead Map → Marketing Cockpit-bro)
   const [counterCampaignOpen, setCounterCampaignOpen] = useState(false);
@@ -747,6 +776,38 @@ export default function LeadMapPanel() {
     [],
   );
 
+  // Hent BRREG-berikkelse (cache hvis allerede berikket)
+  const loadEnrichment = useCallback(async (leadId: string) => {
+    if (enrichmentByLeadId[leadId] !== undefined) return; // allerede lastet
+    try {
+      const r = await fetch(`/api/admin-room/lead-map/leads/${leadId}/enrichment`, {
+        credentials: 'include', headers: authHeaders(),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setEnrichmentByLeadId((prev) => ({ ...prev, [leadId]: data.enrichment ?? null }));
+      }
+    } catch { /* noop */ }
+  }, [enrichmentByLeadId]);
+
+  // Trigger BRREG-berikkelse manuelt
+  const enrichLead = useCallback(async (leadId: string, force = false) => {
+    setEnrichingLeadId(leadId);
+    try {
+      const r = await fetch(`/api/admin-room/lead-map/leads/${leadId}/enrich`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ force }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setEnrichmentByLeadId((prev) => ({ ...prev, [leadId]: data.enrichment }));
+      }
+    } finally {
+      setEnrichingLeadId(null);
+    }
+  }, []);
+
   // Generer outreach-strategi for lead
   const generateStrategy = useCallback(async (leadId: string) => {
     setStrategyLoading(true);
@@ -842,6 +903,13 @@ export default function LeadMapPanel() {
     fetchCalendar();
     fetchReminders();
   }, [fetchLeads, fetchMeta, fetchCompetitors, fetchLeaderboard, fetchCalendar, fetchReminders]);
+
+  // Auto-last BRREG-berikkelse når lead velges
+  useEffect(() => {
+    if (selected?.id) {
+      void loadEnrichment(selected.id);
+    }
+  }, [selected?.id, loadEnrichment]);
 
   const handleBoundsChange = useCallback((b: L.LatLngBounds) => {
     boundsRef.current = b;
@@ -2146,6 +2214,187 @@ export default function LeadMapPanel() {
                   )}
                 </Box>
               )}
+
+              {/* Firma-data (BRREG-berikkelse) */}
+              {(() => {
+                const enrichment = enrichmentByLeadId[selected.id];
+                const isLoading = enrichingLeadId === selected.id;
+                // Hvis ikke lastet ennå → vis "Hent firma-data"-CTA
+                if (enrichment === undefined) {
+                  return (
+                    <Box sx={{
+                      mb: 2, p: 1.4, borderRadius: 1.2,
+                      bgcolor: 'rgba(96,165,250,0.06)',
+                      border: '1px dashed rgba(96,165,250,0.4)',
+                    }}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <DomainOutlinedIcon sx={{ color: '#60a5fa', fontSize: 18 }} />
+                        <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary, flex: 1 }}>
+                          Henter firma-data fra BRREG …
+                        </Typography>
+                        <CircularProgress size={14} sx={{ color: '#60a5fa' }} />
+                      </Stack>
+                    </Box>
+                  );
+                }
+                // Aldri berikket — vis CTA for å trigge
+                if (enrichment === null) {
+                  return (
+                    <Box sx={{
+                      mb: 2, p: 1.4, borderRadius: 1.2,
+                      bgcolor: 'rgba(96,165,250,0.06)',
+                      border: '1px dashed rgba(96,165,250,0.4)',
+                    }}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <DomainOutlinedIcon sx={{ color: '#60a5fa', fontSize: 18 }} />
+                        <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary, flex: 1 }}>
+                          Ingen firma-data ennå
+                        </Typography>
+                        <Button
+                          size="small" variant="text"
+                          onClick={() => void enrichLead(selected.id)}
+                          disabled={isLoading}
+                          startIcon={isLoading ? <CircularProgress size={12} sx={{ color: '#60a5fa' }} /> : null}
+                          sx={{ color: '#60a5fa', fontWeight: 700, fontSize: '0.74rem', textTransform: 'none' }}
+                        >
+                          {isLoading ? 'Henter …' : 'Hent fra BRREG'}
+                        </Button>
+                      </Stack>
+                    </Box>
+                  );
+                }
+                // Ikke funnet i BRREG
+                if (!enrichment.found) {
+                  return (
+                    <Box sx={{
+                      mb: 2, p: 1.2, borderRadius: 1.2,
+                      bgcolor: 'rgba(148,163,184,0.06)',
+                      border: '1px solid rgba(148,163,184,0.3)',
+                    }}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <DomainOutlinedIcon sx={{ color: '#94a3b8', fontSize: 16 }} />
+                        <Typography sx={{ fontSize: '0.74rem', color: palette.textMuted, flex: 1, fontStyle: 'italic' }}>
+                          Ikke registrert i BRREG (sjekket {new Date(enrichment.fetchedAt).toLocaleDateString('nb-NO')})
+                        </Typography>
+                        <Button
+                          size="small" variant="text"
+                          onClick={() => void enrichLead(selected.id, true)}
+                          disabled={isLoading}
+                          sx={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'none', minWidth: 0 }}
+                        >
+                          Sjekk på nytt
+                        </Button>
+                      </Stack>
+                    </Box>
+                  );
+                }
+                // Berikket — vis hele firma-data-kortet
+                const c = enrichment.company!;
+                const statusColor = c.status === 'active'
+                  ? '#34d399'
+                  : c.status === 'in_liquidation'
+                  ? palette.amber
+                  : '#f87171';
+                const statusLabel = c.status === 'active'
+                  ? 'Aktivt'
+                  : c.status === 'in_liquidation'
+                  ? 'Under avvikling'
+                  : 'Konkurs';
+                return (
+                  <Box sx={{
+                    mb: 2, p: 1.6, borderRadius: 1.4,
+                    bgcolor: 'rgba(96,165,250,0.06)',
+                    border: '1px solid rgba(96,165,250,0.32)',
+                  }}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                      <Stack direction="row" alignItems="center" spacing={0.8}>
+                        <DomainOutlinedIcon sx={{ color: '#60a5fa', fontSize: 18 }} />
+                        <Typography sx={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                          Firma (BRREG)
+                        </Typography>
+                        <Chip
+                          label={statusLabel}
+                          size="small"
+                          sx={{
+                            bgcolor: `${statusColor}22`,
+                            color: statusColor,
+                            fontWeight: 800, fontSize: '0.62rem', height: 18,
+                          }}
+                        />
+                      </Stack>
+                      <Tooltip title="Oppdater fra BRREG">
+                        <IconButton
+                          size="small"
+                          onClick={() => void enrichLead(selected.id, true)}
+                          disabled={isLoading}
+                          sx={{ color: palette.textMuted }}
+                        >
+                          {isLoading ? <CircularProgress size={12} /> : <RefreshIcon sx={{ fontSize: 14 }} />}
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                    <Typography sx={{ fontSize: '0.84rem', fontWeight: 700, color: palette.textPrimary }}>
+                      {c.name}
+                    </Typography>
+                    <Stack direction="row" spacing={1.2} sx={{ mt: 0.4 }}>
+                      <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted }}>
+                        Org-nr {c.orgNr.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')}
+                      </Typography>
+                      {c.registeredAt && (
+                        <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted }}>
+                          · Reg. {new Date(c.registeredAt).getFullYear()}
+                        </Typography>
+                      )}
+                    </Stack>
+                    {c.naceDescription && (
+                      <Typography sx={{ fontSize: '0.74rem', color: palette.textSecondary, mt: 0.6 }}>
+                        {c.naceDescription}
+                      </Typography>
+                    )}
+                    <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+                      {c.employees != null && (
+                        <Box>
+                          <Typography sx={{ fontSize: '0.6rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                            Ansatte
+                          </Typography>
+                          <Typography sx={{ fontSize: '0.96rem', fontWeight: 800, color: palette.textPrimary }}>
+                            {c.employees}
+                          </Typography>
+                        </Box>
+                      )}
+                      {c.orgForm && (
+                        <Box>
+                          <Typography sx={{ fontSize: '0.6rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                            Form
+                          </Typography>
+                          <Typography sx={{ fontSize: '0.82rem', color: palette.textPrimary, fontWeight: 700 }}>
+                            {c.orgForm}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Stack>
+                    {enrichment.contacts && enrichment.contacts.length > 0 && (
+                      <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(96,165,250,0.18)' }}>
+                        <Typography sx={{ fontSize: '0.62rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.6 }}>
+                          Nøkkelpersoner
+                        </Typography>
+                        <Stack spacing={0.4}>
+                          {enrichment.contacts.slice(0, 4).map((p, i) => (
+                            <Stack key={i} direction="row" justifyContent="space-between">
+                              <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
+                                {p.name}
+                              </Typography>
+                              <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted }}>
+                                {p.role}
+                              </Typography>
+                            </Stack>
+                          ))}
+                        </Stack>
+                      </Box>
+                    )}
+                  </Box>
+                );
+              })()}
 
               {/* Anbefal outreach-strategi (Claude) */}
               <Button
