@@ -1852,6 +1852,38 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "timing_save_failed" }); }
   });
 
+  // Auto-timing: hent ord-nivå timing fra EaseVerse (siste analyserte take) og
+  // map til våre tekstlinjer → beat-synket karaoke uten manuell tap-to-time.
+  app.post("/api/audio-showcases/:id/lyric-timing/from-easeverse", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const p = await pool.query(`SELECT easeverse_track_id, external_track_id FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const trackId = p.rows[0].easeverse_track_id; const extId = p.rows[0].external_track_id || trackId;
+      if (!trackId || !extId) return res.status(409).json({ error: "no_easeverse_link" });
+      if (!EV_URL) return res.status(503).json({ error: "easeverse_unreachable" });
+      // Hent ord-timing fra EaseVerse.
+      let data: any = null;
+      try { const headers: Record<string, string> = {}; if (EV_KEY) headers["x-api-key"] = EV_KEY; const r = await fetch(`${EV_URL}/api/v1/collab/take-timing/${encodeURIComponent(extId)}`, { headers }); if (r.ok) data = await r.json(); } catch { /* */ }
+      const words: Array<{ start: number }> = Array.isArray(data?.words) ? data.words : [];
+      if (words.length === 0) return res.json({ ok: false, reason: "no_take_timing", hint: "Vokalisten må ha en analysert take i EaseVerse først." });
+      // Vår tekst → linjer (samme grunnlag som tap-to-time).
+      const t = await pool.query(`SELECT lyrics FROM easeverse_tracks WHERE id=$1::uuid LIMIT 1`, [trackId]);
+      const lines = lyricLines(str(t.rows[0]?.lyrics, 20000));
+      if (lines.length === 0) return res.json({ ok: false, reason: "no_lyrics" });
+      // Index-basert justering: linjestart = start på linjens første ord.
+      let wi = 0; let prev = 0; const timing: number[] = [];
+      for (const line of lines) {
+        const start = words[Math.min(wi, words.length - 1)]?.start;
+        const v = Math.max(prev, Number.isFinite(start) ? Math.round((start as number) * 100) / 100 : prev);
+        timing.push(v); prev = v;
+        wi += Math.max(1, line.split(/\s+/).filter(Boolean).length);
+      }
+      await pool.query(`UPDATE easeverse_tracks SET lyrics_timing=$2::jsonb, updated_at=NOW() WHERE id=$1::uuid AND user_id=$3`, [trackId, JSON.stringify(timing), s.userId]);
+      return res.json({ ok: true, count: timing.length, source: "easeverse" });
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "auto_timing_failed" }); }
+  });
+
   // ══ SPOTIFY-VERKTØY (manuelle hjelpemidler — Spotify har ikke opplastings-API) ══
   // Canvas-klipp (9:16, ~6 s) generert fra coveret — lastes opp i Spotify for Artists.
   app.get("/api/releases/:id/canvas", async (req, res) => {

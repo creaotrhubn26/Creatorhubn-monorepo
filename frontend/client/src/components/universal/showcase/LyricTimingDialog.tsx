@@ -63,6 +63,15 @@ const LyricTimingDialog: React.FC<{ open: boolean; projectId: string; masterUrl?
     try { await apiRequest(`/api/audio-showcases/${projectId}/lyric-timing`, { method: 'PUT', body: { timing } }); onSaved?.(); onClose(); }
     catch { /* */ } finally { setBusy(false); }
   };
+  const [autoMsg, setAutoMsg] = React.useState('');
+  const autoFromEaseVerse = async () => {
+    setBusy(true); setAutoMsg('');
+    try {
+      const r = await apiRequest(`/api/audio-showcases/${projectId}/lyric-timing/from-easeverse`, { method: 'POST', body: {} });
+      if (r?.ok) { const d = await apiRequest(`/api/audio-showcases/${projectId}/lyric-timing`); setTiming(d.timing && d.timing.length === lines.length ? d.timing : timing); setCursor(lines.length); setAutoMsg(`Hentet timing for ${r.count} linjer fra EaseVerse ✓`); }
+      else setAutoMsg(r?.reason === 'no_take_timing' ? 'Ingen analysert take i EaseVerse ennå — ta opp i booten først.' : 'Fant ikke timing.');
+    } catch { setAutoMsg('Auto-henting feilet.'); } finally { setBusy(false); }
+  };
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
@@ -73,6 +82,10 @@ const LyricTimingDialog: React.FC<{ open: boolean; projectId: string; masterUrl?
             : (
               <Stack spacing={1.5}>
                 <Typography sx={{ fontSize: '0.8rem', color: MUTED }}>Spill av masteren og trykk <b>Tapp</b> (eller mellomrom) i det hver linje begynner. Du kan angre eller nullstille.</Typography>
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ bgcolor: 'rgba(255,107,53,0.08)', border: '1px solid rgba(255,107,53,0.25)', borderRadius: '10px', p: 1 }}>
+                  <Box sx={{ flex: 1 }}><Typography sx={{ fontSize: '0.74rem', fontWeight: 700 }}>Auto fra EaseVerse</Typography><Typography sx={{ fontSize: '0.66rem', color: MUTED }}>{autoMsg || 'Bruk vokalistens analyserte take (ord-timing) til å sette tidene automatisk.'}</Typography></Box>
+                  <Button onClick={autoFromEaseVerse} disabled={busy} size="small" variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px', whiteSpace: 'nowrap' }}>Hent timing</Button>
+                </Stack>
                 {/* Transport */}
                 <Stack direction="row" alignItems="center" spacing={1.5} sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '10px', p: 1 }}>
                   <IconButton onClick={togglePlay} sx={{ color: '#150d05', bgcolor: ACCENT, '&:hover': { bgcolor: '#ff855a' } }}>{playing ? <Pause /> : <PlayArrow />}</IconButton>
