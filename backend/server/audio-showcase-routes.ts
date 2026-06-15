@@ -1046,6 +1046,41 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     }
   });
 
+  // ── Toveis metadata-synk (tittel/artist/BPM) med EaseVerse, last-write-wins ─
+  app.post("/api/audio-showcases/:id/sync-metadata", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    try {
+      const track = await loadLinkedTrack(id, s.userId);
+      if (track?.notFound) return res.status(404).json({ error: "not_found" });
+      if (!track) return res.status(409).json({ error: "no_linked_track" });
+      const prj = await pool.query(`SELECT title, artist_name, band_name, bpm, updated_at FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [id, s.userId]);
+      if (prj.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const p = prj.rows[0];
+      const ev = await evGetLyrics(track.externalTrackId);
+      const item = ev?.item || null;
+      const evNewer = item?.updatedAt && (!p.updated_at || new Date(item.updatedAt).getTime() > new Date(p.updated_at).getTime());
+
+      if (item && evNewer) {
+        // PULL: EaseVerse → CreatorHub.
+        const title = str(item.title, 200) || p.title; const artist = str(item.artist, 200) || p.artist_name || p.band_name;
+        const bpm = Number.isFinite(Number(item.bpm)) ? Math.round(Number(item.bpm)) : p.bpm;
+        await pool.query(`UPDATE audio_review_projects SET title=$2, artist_name=$3, band_name=COALESCE(band_name,$3), bpm=$4, updated_at=NOW() WHERE id=$1::uuid AND owner_user_id=$5`, [id, title, artist, bpm, s.userId]);
+        await pool.query(`UPDATE easeverse_tracks SET title=$2, artist=$3, bpm=$4, updated_at=NOW() WHERE id=$1::uuid`, [track.id, title, artist, bpm]).catch(() => {});
+        return res.json({ ok: true, applied: "pull", metadata: { title, artist, bpm } });
+      }
+      // PUSH: CreatorHub → EaseVerse (vår er nyere eller ingen ekstern record).
+      const lr = await pool.query(`SELECT lyrics FROM easeverse_tracks WHERE id=$1::uuid LIMIT 1`, [track.id]).catch(() => ({ rows: [] as any[] }));
+      const collaborators = Array.isArray(track.collaborators) ? track.collaborators : (() => { try { return JSON.parse(track.collaborators || "[]"); } catch { return []; } })();
+      const push = await evPushLyrics({ externalTrackId: track.externalTrackId, title: p.title || "Uten tittel", artist: p.artist_name || p.band_name || undefined, bpm: p.bpm || undefined, lyrics: str(lr.rows[0]?.lyrics, 20000), collaborators, source: "creatorhub", updatedAt: new Date().toISOString() });
+      return res.json({ ok: true, applied: item ? "push" : "push_new", reachable: !!push.reachable, metadata: { title: p.title, artist: p.artist_name || p.band_name, bpm: p.bpm } });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      console.error("[audio-showcase] sync-metadata failed:", e);
+      return res.status(500).json({ error: "sync_metadata_failed" });
+    }
+  });
+
   // ── Synk-status: lokal tekst + EaseVerse-tilkobling + om ekstern er nyere ──
   app.get("/api/audio-showcases/:id/lyrics-sync", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
