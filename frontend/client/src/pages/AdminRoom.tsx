@@ -4352,8 +4352,36 @@ function PrototypeTestersTab() {
 // Page shell
 // ─────────────────────────────────────────────────────────
 
+// Leser initial tab fra URL (?adminTab=...) eller sessionStorage
+// (satt av SuperAdminOverlay/Shell). Fallback til 'dashboard'.
+function resolveInitialAdminTab(): AdminRoomTab {
+  if (typeof window === 'undefined') return 'dashboard';
+  const validTabs: AdminRoomTab[] = [
+    'dashboard', 'business-plan', 'funding', 'investors', 'partners',
+    'activity', 'analytics', 'cms', 'presence', 'role-nav',
+    'prototype-testers', 'post-agent-seats', 'operating-system',
+    'content-marketing', 'industry-crm', 'role-room-economy',
+    'newsletter-studio', 'ai-citation', 'whats-new', 'resend',
+    'marketing-cockpit', 'role-room-agent', 'content-calendar',
+    'b2-archive', 'migrations', 'observability',
+  ];
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get('adminTab');
+    if (fromUrl && validTabs.includes(fromUrl as AdminRoomTab)) {
+      return fromUrl as AdminRoomTab;
+    }
+    const fromStorage = sessionStorage.getItem('superAdmin:targetAdminRoomTab');
+    if (fromStorage && validTabs.includes(fromStorage as AdminRoomTab)) {
+      // Bruk én gang, så rydd opp
+      sessionStorage.removeItem('superAdmin:targetAdminRoomTab');
+      return fromStorage as AdminRoomTab;
+    }
+  } catch { /* ignore */ }
+  return 'dashboard';
+}
+
 export default function AdminRoom() {
-  const [tab, setTab] = useState<AdminRoomTab>('dashboard');
+  const [tab, setTab] = useState<AdminRoomTab>(resolveInitialAdminTab);
   const localEmail = useMemo(() => getCurrentUserEmail(), []);
   // Backup: sjekk server-side hvis localStorage ikke har email. Google-OAuth-
   // redirect kan miste localStorage avhengig av flyten; backend vet hvem som
