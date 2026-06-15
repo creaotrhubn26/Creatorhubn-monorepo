@@ -534,8 +534,79 @@ def _build_effect(comp, fx, dur, fps, brand, report):
         return _fx_stat(comp, fx, dur, fps, brand, report)
     if kind in ("barChart", "bars"):
         return _fx_bar_chart(comp, fx, dur, fps, brand, report)
+    if kind in ("ring", "donut", "gauge"):
+        return _fx_ring(comp, fx, dur, fps, brand, report)
     report.append(f"ukjent effekt-type: {kind}")
     return None, None
+
+
+def _fx_ring(comp, fx, dur, fps, brand, report):
+    """Donut/ring-måler (HUD): dim spor-ring + accent progress-bue som tegnes til
+    prosent via WriteLength + stort %-tall i midten + glød. = 42% / 71% / +9%."""
+    try:
+        pct = float(fx.get("value", fx.get("percent", 0)))
+    except Exception:  # noqa: BLE001
+        pct = 0
+    frac = max(0.0, min(1.0, pct / 100.0))
+    suffix = fx.get("suffix", "%")
+    prefix = fx.get("prefix", "")
+    label = (fx.get("label") or "").strip()
+    px, py = (fx.get("pos") or [0.5, 0.5])[:2]
+    fpy = 1.0 - py
+    font = brand.get("font", "Open Sans")
+    rW = float(fx.get("size", 0.26))
+    rH = rW * 16.0 / 9.0
+    grow = max(2, int(round(0.9 * fps)))
+    acc = brand["accent"]
+
+    def ring(write_len, col, alpha, border, animate):
+        bg = _add(comp, "Background", 0, 13, report)
+        m = _add(comp, "EllipseMask", -1, 13, report)
+        if not bg or not m:
+            return None
+        for i, ch in enumerate(("TopLeftRed", "TopLeftGreen", "TopLeftBlue")):
+            _set(bg, ch, col[i], report)
+        _set(bg, "TopLeftAlpha", alpha, report)
+        _set(m, "Center", [px, fpy], report)
+        _set(m, "Width", rW, report)
+        _set(m, "Height", rH, report)
+        _set(m, "Solid", 0, report)        # kun omriss
+        _set(m, "BorderWidth", border, report)
+        _set(m, "Angle", 90.0, report)      # start på toppen
+        if animate:
+            _kf_scalar(comp, m, "WriteLength", [(0, 0.0), (grow, write_len)], report)
+        else:
+            _set(m, "WriteLength", write_len, report)
+        _connect(bg, "EffectMask", m, report)
+        return bg
+
+    track = ring(1.0, [acc[0] * 0.4 + 0.05, acc[1] * 0.4 + 0.05, acc[2] * 0.4 + 0.08], 0.5, 0.022, False)
+    prog = ring(frac, acc, 1.0, 0.03, True)
+    out = track
+    if prog:
+        glow = _add(comp, "Glow", 1, 13, report)
+        if glow:
+            _connect(glow, "Input", prog, report)
+            _set(glow, "GlowSize", 10.0, report)
+            prog = glow
+        out = _merge_2(comp, out, prog, report) if out else prog
+    # stort %-tall i midten
+    num = _text(comp, 0, 14, report, f"{prefix}{int(round(pct))}{suffix}", 0.06,
+                [px, fpy], [1.0, 1.0, 1.0], font)
+    if num:
+        out = _merge_2(comp, out, num, report) if out else num
+    if label:
+        lab = _text(comp, 0, 15, report, label, 0.022, [px, fpy - rH / 2.0 - 0.03],
+                    brand["textColor"], font, style="Regular")
+        if lab:
+            out = _merge_2(comp, out, lab, report) if out else lab
+    anim = _add(comp, "Transform", 2, 13, report)
+    if anim and out:
+        _connect(anim, "Input", out, report)
+        intro = max(2, int(round(0.4 * fps)))
+        _kf_scalar(comp, anim, "Blend", [(0, 0.0), (intro, 1.0)], report)
+        out = anim
+    return out, f"Ring({int(round(pct))}%)"
 
 
 def _count_expr(value, suffix, prefix, span):
