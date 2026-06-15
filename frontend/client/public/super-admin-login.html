@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<meta charset="UTF-8">
+<title>Super Admin Emergency Login</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0a0a0f; color: #fff; margin: 0; padding: 40px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+  h1 { color: #fbbf24; }
+  .card { background: #1a1f2e; padding: 24px; border-radius: 12px; max-width: 600px; width: 100%; border: 1px solid #fbbf24; }
+  button { background: #fbbf24; color: #0a0a0f; border: none; padding: 14px 28px; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 16px; }
+  button:hover { background: #f59e0b; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  pre { background: #0a0a0f; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; color: #cbd5e1; max-height: 240px; }
+  .ok { color: #34d399; }
+  .err { color: #fda4af; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Super Admin Emergency Login</h1>
+  <p>Kun for daniel@creatorhubn.com. Klikk knappen — vi henter en session-token, lagrer i localStorage, og sender deg til Admin Room.</p>
+  <button id="loginBtn">Logg inn nå</button>
+  <p id="status"></p>
+  <pre id="output"></pre>
+</div>
+
+<script>
+const TOKEN = 'a2fd4a5c152df63ef3a6bfee2704147fc3d258df0a977b1c99ebcf539be6beb9';
+const EMAIL = 'daniel@creatorhubn.com';
+
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('loginBtn');
+  const status = document.getElementById('status');
+  const output = document.getElementById('output');
+  btn.disabled = true;
+  status.textContent = 'Logger inn…';
+  status.className = '';
+  try {
+    const r = await fetch('/api/super-admin/emergency-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: EMAIL, token: TOKEN })
+    });
+    const b = await r.json();
+    output.textContent = JSON.stringify(b, null, 2);
+    if (!b.token) {
+      status.textContent = '✗ Login feilet (HTTP ' + r.status + ')';
+      status.className = 'err';
+      btn.disabled = false;
+      return;
+    }
+    localStorage.setItem('creatorhub_auth_token', b.token);
+    localStorage.setItem('creatorhub_auth_user', JSON.stringify(b.user));
+    localStorage.setItem('userEmail', b.user.email);
+
+    // Verifiser
+    const test = await fetch('/api/admin-room/funding-apps', {
+      headers: { Authorization: 'Bearer ' + b.token }
+    });
+    if (test.status === 200) {
+      status.textContent = '✓ Innlogget — sender til Admin Room om 1 sek';
+      status.className = 'ok';
+      setTimeout(() => {
+        window.location.href = '/admin-room?adminTab=marketing-cockpit';
+      }, 1000);
+    } else {
+      status.textContent = '⚠ Login lagret men test-kall ga HTTP ' + test.status;
+      status.className = 'err';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    status.textContent = '✗ Feil: ' + e.message;
+    status.className = 'err';
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
