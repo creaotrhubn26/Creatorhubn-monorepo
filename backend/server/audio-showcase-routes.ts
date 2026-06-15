@@ -2283,7 +2283,10 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       const r = await pool.query(`SELECT * FROM audio_sessions WHERE project_id=$1::uuid AND owner_user_id=$2 ORDER BY start_at ASC`, [str(req.params.id, 64), s.userId]);
       const ids = r.rows.map((x) => x.id);
       const inv = ids.length ? await pool.query(`SELECT session_id, member_name, status FROM audio_session_invitees WHERE session_id = ANY($1::uuid[])`, [ids]) : { rows: [] as any[] };
-      const byS: Record<string, any[]> = {}; for (const i of inv.rows) (byS[i.session_id] ||= []).push({ name: i.member_name, status: i.status });
+      // «Klar til opptak» = medlem har fullført en oppvarmingsrutine i prosjektet.
+      const warm = await pool.query(`SELECT DISTINCT c.member_name FROM audio_warmup_completions c JOIN audio_warmup_routines r ON r.id = c.routine_id WHERE r.project_id=$1::uuid`, [str(req.params.id, 64)]).catch(() => ({ rows: [] as any[] }));
+      const ready = new Set(warm.rows.map((w) => w.member_name));
+      const byS: Record<string, any[]> = {}; for (const i of inv.rows) (byS[i.session_id] ||= []).push({ name: i.member_name, status: i.status, warmedUp: ready.has(i.member_name) });
       return res.json({ sessions: r.rows.map((x) => ({ ...x, invitees: byS[x.id] || [] })) });
     } catch (e) { if (isMissingTable(e)) return res.json({ sessions: [] }); return res.status(500).json({ error: "sessions_get_failed" }); }
   });

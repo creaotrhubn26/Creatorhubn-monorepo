@@ -24,7 +24,7 @@ import {
   CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
   PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined, TipsAndUpdatesOutlined, MovieCreationOutlined, SelfImprovement, EventOutlined,
 } from '@mui/icons-material';
-import { apiRequest, getAuthHeader } from '@/lib/queryClient';
+import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
 import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBUTION_OPTIONS } from '@/components/universal/showcase/ComboField';
@@ -247,7 +247,7 @@ export default function AudioShowcasePage() {
       const headers = await getAuthHeader(); delete (headers as any)['Content-Type'];
       const url: string = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/upload/audio');
+        xhr.open('POST', buildApiUrl('/api/upload/audio'));
         Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v as string));
         xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploadPct(Math.round((e.loaded / e.total) * 100)); };
         xhr.onload = () => { try { const j = JSON.parse(xhr.responseText); j?.url ? resolve(j.url) : reject(new Error('no url')); } catch { reject(new Error('bad response')); } };
@@ -974,7 +974,7 @@ const SplitSheetDialog: React.FC<{ open: boolean; projectId: string; ownerName?:
   const downloadPdf = async () => {
     try {
       const headers = await getAuthHeader();
-      const res = await fetch(`/api/audio-showcases/${projectId}/agreement.pdf`, { headers });
+      const res = await fetch(buildApiUrl(`/api/audio-showcases/${projectId}/agreement.pdf`), { headers });
       if (!res.ok) return;
       const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a');
       a.href = url; a.download = 'splittavtale.pdf'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
@@ -1139,7 +1139,7 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
       : `/api/releases/${rel.id}/lyrics-export?format=lrc`;
   const fetchAsset = async (path: string): Promise<{ blob: Blob; name: string } | null> => {
     const headers = await getAuthHeader();
-    const res = await fetch(path, { headers });
+    const res = await fetch(buildApiUrl(path), { headers });
     if (!res.ok) return null;
     const blob = await res.blob();
     const name = (res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/) || [])[1] || 'fil';
@@ -1185,7 +1185,7 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
     try {
       const fd = new FormData(); fd.append('clip', file); if (Number(clipStart) > 0) fd.append('start', String(Number(clipStart)));
       const headers = await getAuthHeader(); delete (headers as any)['Content-Type'];
-      const res = await fetch(`/api/releases/${rel.id}/canvas/from-clip`, { method: 'POST', headers, body: fd });
+      const res = await fetch(buildApiUrl(`/api/releases/${rel.id}/canvas/from-clip`), { method: 'POST', headers, body: fd });
       if (!res.ok) return;
       const blob = await res.blob();
       const name = (res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/) || [])[1] || 'canvas.mp4';
@@ -1199,7 +1199,7 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
     try {
       await save();
       const headers = await getAuthHeader();
-      const res = await fetch(`/api/releases/${rel.id}/package`, { headers });
+      const res = await fetch(buildApiUrl(`/api/releases/${rel.id}/package`), { headers });
       const blob = await res.blob();
       const url = URL.createObjectURL(blob); const a = document.createElement('a');
       a.href = url; a.download = `release-${(rel.title || 'release').replace(/[^a-z0-9]/gi, '-').toLowerCase()}.json`;

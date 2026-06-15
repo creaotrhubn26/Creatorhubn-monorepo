@@ -24,7 +24,7 @@ function clearClientAuthState() {
   }
 }
 
-function buildApiUrl(url: string): string {
+export function buildApiUrl(url: string): string {
   const normalizedUrl = normalizeRequestUrl(url);
   const apiBaseUrl = import.meta.env?.VITE_API_URL?.trim() || '';
   const isDevelopment = import.meta.env?.DEV || (typeof window !== 'undefined' && window.location.hostname === 'localhost');

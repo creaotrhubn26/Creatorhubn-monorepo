@@ -9,7 +9,7 @@ import {
   TextField, Checkbox, Chip, CircularProgress, Divider, IconButton,
 } from '@mui/material';
 import { SelfImprovement, CheckCircle, DeleteOutline, GraphicEq, Air, FitnessCenter, CloudUpload, MusicNote } from '@mui/icons-material';
-import { apiRequest, getAuthHeader } from '@/lib/queryClient';
+import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 
 const PANEL = '#131316', BORDER = 'rgba(255,255,255,0.08)', TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', FAINT = 'rgba(245,242,234,0.38)', ACCENT = '#FF6B35', GREEN = '#5fb88a';
 const fieldSx = { '& .MuiInputBase-input': { color: TEXT }, '& .MuiInputLabel-root': { color: MUTED }, '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER } };
@@ -33,7 +33,7 @@ const WarmupDialog: React.FC<{ open: boolean; projectId: string; onClose: () => 
     try {
       const fd = new FormData(); fd.append('file', file);
       const headers = await getAuthHeader(); delete (headers as any)['Content-Type'];
-      const res = await fetch('/api/upload/audio', { method: 'POST', headers, body: fd });
+      const res = await fetch(buildApiUrl('/api/upload/audio'), { method: 'POST', headers, body: fd });
       if (!res.ok) return;
       const { url } = await res.json();
       if (!url) return;
