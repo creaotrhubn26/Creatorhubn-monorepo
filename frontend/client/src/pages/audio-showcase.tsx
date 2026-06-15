@@ -104,6 +104,7 @@ export default function AudioShowcasePage() {
   const [publishOpen, setPublishOpen] = React.useState(false);
   const [warmupOpen, setWarmupOpen] = React.useState(false);
   const [sessionsOpen, setSessionsOpen] = React.useState(false);
+  const [syncingCollab, setSyncingCollab] = React.useState(false);
   const [splitToast, setSplitToast] = React.useState<string | null>(null);
 
   const saveCover = async (dataUrl: string) => {
@@ -263,6 +264,11 @@ export default function AudioShowcasePage() {
     const updated = await apiRequest(`/api/audio-tasks/${t.id}`, { method: 'PATCH', body: { status: next } });
     setTasks((p) => p.map((x) => (x.id === t.id ? updated : x)));
   };
+  const syncCollaborators = async () => {
+    setSyncingCollab(true);
+    try { await apiRequest(`/api/audio-showcases/${projectId}/sync-collaborators`, { method: 'POST', body: {} }); await loadProject(); }
+    catch { /* */ } finally { setSyncingCollab(false); }
+  };
   const createProject = async () => {
     if (!newTitle.trim()) return; setBusy(true);
     try { const p = await apiRequest('/api/audio-showcases', { method: 'POST', body: { title: newTitle.trim(), bandName: newBand.trim() || null } }); audioShowcaseEvents.projectCreated({ hasBand: !!newBand.trim() }); window.location.href = `/audio-review/${p.id}`; }
@@ -370,6 +376,7 @@ export default function AudioShowcasePage() {
           <Divider sx={{ borderColor: BORDER, my: 1 }} />
           <Stack direction="row" alignItems="center" sx={{ mb: 1 }}>
             <Typography sx={{ fontSize: '0.72rem', letterSpacing: 1, color: FAINT, flex: 1, textTransform: 'uppercase' }}>Prosjektmedlemmer</Typography>
+            {easeverseTrack && <Tooltip title="Synk samarbeidspartnere med EaseVerse"><span><Button size="small" disabled={syncingCollab} onClick={syncCollaborators} sx={{ color: MUTED, textTransform: 'none', fontSize: '0.7rem', minWidth: 0 }}>{syncingCollab ? '…' : 'Synk'}</Button></span></Tooltip>}
             <Button size="small" startIcon={<Add sx={{ fontSize: '16px !important' }} />} onClick={() => setInviteOpen(true)} sx={{ color: ACCENT, textTransform: 'none', fontSize: '0.75rem', minWidth: 0 }}>Inviter</Button>
           </Stack>
           <Stack spacing={0.5}>
