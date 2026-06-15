@@ -1066,10 +1066,7 @@
 "label3": "Viaplay",
 "value3": "19,5 %",
 "label4": "TV 2 Play",
-"value4": "12,1 %",
-"accent": "#3b82f6",
-"ink": "#1f2d4a",
-"logo": ""
+"value4": "12,1 %"
 },
 "html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:38px 44px 40px;\n    background:#ffffff;\n    border-radius:22px;\n    box-shadow:0 24px 60px -18px rgba(20,30,55,.28), 0 2px 8px rgba(20,30,55,.06);\n    color:var(--ink,#1f2d4a);\n    position:relative;\n    overflow:hidden;\n  }\n  #wrap::before{\n    content:\"\";position:absolute;left:0;top:0;bottom:0;width:6px;\n    background:var(--accent,#3b82f6);\n  }\n  .head{display:flex;align-items:center;gap:14px;margin-bottom:6px}\n  .logo{height:34px;width:auto;display:none;border-radius:6px}\n  .titles{display:flex;flex-direction:column;gap:3px}\n  .kicker{\n    font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;\n    color:var(--accent,#3b82f6);\n  }\n  .title{font-size:25px;font-weight:800;letter-spacing:-.02em;line-height:1.1}\n  .subtitle{font-size:13px;font-weight:500;color:#64748b;margin-top:1px}\n  .rows{margin-top:26px;display:flex;flex-direction:column;gap:16px;width:520px}\n  .row{display:flex;flex-direction:column;gap:7px}\n  .rowtop{display:flex;justify-content:space-between;align-items:baseline}\n  .rowlabel{font-size:14px;font-weight:600;color:#334155;display:flex;align-items:center;gap:8px}\n  .rank{\n    display:inline-flex;align-items:center;justify-content:center;\n    width:20px;height:20px;border-radius:6px;font-size:11px;font-weight:700;\n    background:#eef2f7;color:#64748b;\n  }\n  .row.lead .rank{background:var(--accent,#3b82f6);color:#fff}\n  .row.lead .rowlabel{color:var(--ink,#1f2d4a);font-weight:700}\n  .rowval{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:#1f2d4a}\n  .track{height:14px;border-radius:8px;background:#eef2f7;overflow:hidden;position:relative}\n  .fill{\n    height:100%;border-radius:8px;width:0;\n    background:linear-gradient(90deg,color-mix(in srgb,var(--accent,#3b82f6) 55%,#94a3b8),var(--accent-soft,#94a3b8));\n  }\n  .row.lead .fill{\n    background:linear-gradient(90deg,var(--accent,#3b82f6),color-mix(in srgb,var(--accent,#3b82f6) 70%,#fff));\n    box-shadow:0 1px 8px -1px color-mix(in srgb,var(--accent,#3b82f6) 60%,transparent);\n  }\n  .foot{\n    margin-top:26px;display:flex;align-items:center;gap:8px;\n    font-size:11.5px;font-weight:500;color:#94a3b8;\n  }\n  .foot .material-icons-outlined{font-size:15px}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"head\">\n    <img class=\"logo\" id=\"logo\" alt=\"\">\n    <div class=\"titles\">\n      <div class=\"kicker\" id=\"kicker\">Sammenligning</div>\n      <div class=\"title\" id=\"title\">Tittel</div>\n      <div class=\"subtitle\" id=\"subtitle\"></div>\n    </div>\n  </div>\n  <div class=\"rows\" id=\"rows\"></div>\n  <div class=\"foot\">\n    <span class=\"material-icons-outlined\">leaderboard</span>\n    <span id=\"footnote\">Rangert etter verdi</span>\n  </div>\n</div>\n\n<script>\n(function(){\n  var cfg = window.__CFG__ || {};\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n  var wrap = document.getElementById('wrap');\n  wrap.style.setProperty('--accent', accent);\n  wrap.style.setProperty('--ink', ink);\n  wrap.style.setProperty('--accent-soft', mix(accent, '#cbd5e1', 0.55));\n\n  function mix(a,b,t){\n    function h(x){x=x.replace('#','');if(x.length===3)x=x.split('').map(c=>c+c).join('');return [parseInt(x.slice(0,2),16),parseInt(x.slice(2,4),16),parseInt(x.slice(4,6),16)];}\n    var ca=h(a),cb=h(b);\n    var r=Math.round(ca[0]+(cb[0]-ca[0])*t),g=Math.round(ca[1]+(cb[1]-ca[1])*t),bl=Math.round(ca[2]+(cb[2]-ca[2])*t);\n    return 'rgb('+r+','+g+','+bl+')';\n  }\n\n  if (cfg.logo) { var l=document.getElementById('logo'); l.src=cfg.logo; l.style.display='block'; }\n  if (cfg.kicker) document.getElementById('kicker').textContent = cfg.kicker;\n  document.getElementById('title').textContent = cfg.title || 'Sammenligning';\n  var sub = document.getElementById('subtitle');\n  if (cfg.subtitle) { sub.textContent = cfg.subtitle; } else { sub.style.display='none'; }\n  if (cfg.footnote) document.getElementById('footnote').textContent = cfg.footnote;\n\n  var items = [];\n  for (var i=1;i<=4;i++){\n    var lab = cfg['label'+i];\n    var val = cfg['value'+i];\n    if (lab==null && val==null) continue;\n    var num = parseFloat(String(val==null?'':val).replace(/[^0-9.\\-]/g,''));\n    if (isNaN(num)) num = 0;\n    items.push({ label: lab||('Element '+i), raw: (val==null?'':String(val)), num: num });\n  }\n  items.sort(function(a,b){ return b.num - a.num; });\n  var max = Math.max.apply(null, items.map(function(x){return x.num;}).concat([1]));\n\n  var rowsEl = document.getElementById('rows');\n  var rowObjs = [];\n  items.forEach(function(it, idx){\n    var row = document.createElement('div');\n    row.className = 'row' + (idx===0 ? ' lead' : '');\n    row.innerHTML =\n      '<div class=\"rowtop\">'+\n        '<div class=\"rowlabel\"><span class=\"rank\">'+(idx+1)+'</span><span></span></div>'+\n        '<div class=\"rowval\"></div>'+\n      '</div>'+\n      '<div class=\"track\"><div class=\"fill\"></div></div>';\n    row.querySelector('.rowlabel span:last-child').textContent = it.label;\n    rowsEl.appendChild(row);\n    rowObjs.push({\n      el: row,\n      fill: row.querySelector('.fill'),\n      valEl: row.querySelector('.rowval'),\n      it: it,\n      target: max>0 ? (it.num/max) : 0\n    });\n  });\n\n  function easeInOut(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }\n\n  function fmtVal(it, frac){\n    var m = it.raw.match(/^(\\D*)(-?[0-9][0-9., \\s]*)(.*)$/);\n    if (!m) return it.raw;\n    var pre = m[1], numStr = m[2], suf = m[3];\n    var hasComma = numStr.indexOf(',') !== -1;\n    var hasDot = numStr.indexOf('.') !== -1;\n    var decSep = hasComma ? ',' : (hasDot ? '.' : '');\n    var thouSep = '';\n    if (hasComma && hasDot) { thouSep = '.'; }\n    else if (hasComma) { thouSep = ''; }\n    else if (numStr.replace(/[^ \\s]/g,'').length) { thouSep = ' '; }\n    var plain = numStr.replace(/[ \\s]/g,'');\n    if (hasComma && hasDot) plain = plain.replace(/\\./g,'').replace(',', '.');\n    else if (hasComma) plain = plain.replace(',', '.');\n    var n = parseFloat(plain);\n    if (isNaN(n)) return it.raw;\n    var decimals = 0;\n    var decPart = plain.split('.')[1];\n    if (decPart) decimals = decPart.length;\n    var cur = (n * frac).toFixed(decimals);\n    var parts = cur.split('.');\n    if (thouSep) parts[0] = parts[0].replace(/\\B(?=(\\d{3})+(?!\\d))/g, thouSep);\n    var out = parts.length > 1 ? parts[0] + (decSep || '.') + parts[1] : parts[0];\n    return pre + out + suf;\n  }\n\n  var N = rowObjs.length;\n  function setProgress(p){\n    p = Math.max(0, Math.min(1, p));\n    rowObjs.forEach(function(r, idx){\n      var span = N>1 ? 0.45 : 0;\n      var start = (N>1 ? (idx/(N-1)) : 0) * (1 - span);\n      var local = span>0 ? (p - start)/span : p;\n      local = Math.max(0, Math.min(1, local));\n      var e = easeInOut(local);\n      r.fill.style.width = (r.target * e * 100).toFixed(2) + '%';\n      r.valEl.textContent = fmtVal(r.it, e);\n      r.el.style.opacity = (0.25 + 0.75*Math.min(1, local*2)).toFixed(3);\n    });\n  }\n  window.setProgress = setProgress;\n  setProgress(0);\n})();\n</script>\n</body>\n</html>"
 },
@@ -1143,24 +1140,6 @@
 "label": "Enhet",
 "type": "text",
 "placeholder": "stk"
-},
-{
-"key": "accent",
-"label": "Aksentfarge",
-"type": "color",
-"placeholder": "#3b82f6"
-},
-{
-"key": "ink",
-"label": "Tekstfarge",
-"type": "color",
-"placeholder": "#1f2d4a"
-},
-{
-"key": "logo",
-"label": "Logo (data-URL)",
-"type": "text",
-"placeholder": ""
 }
 ],
 "defaults": {
@@ -1169,10 +1148,7 @@
 "label": "NPS-score",
 "min": "0",
 "max": "100",
-"unit": "",
-"accent": "#3b82f6",
-"ink": "#1f2d4a",
-"logo": ""
+"unit": ""
 },
 "html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:38px 46px 34px;\n    box-sizing:border-box;\n    border-radius:24px;\n    background:linear-gradient(160deg,rgba(255,255,255,0.96),rgba(247,249,252,0.94));\n    border:1px solid rgba(31,45,74,0.08);\n    box-shadow:0 24px 60px -22px rgba(31,45,74,0.32), 0 2px 8px rgba(31,45,74,0.06);\n    position:relative;\n    overflow:hidden;\n  }\n  #wrap::before{\n    content:\"\";position:absolute;inset:0;border-radius:24px;pointer-events:none;\n    box-shadow:inset 0 1px 0 rgba(255,255,255,0.7);\n  }\n  .gx-head{display:flex;align-items:center;gap:12px;margin-bottom:6px;min-height:30px}\n  .gx-logo{height:28px;width:auto;display:none;object-fit:contain}\n  .gx-eyebrow{\n    display:flex;align-items:center;gap:7px;\n    font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;\n    color:var(--accent);\n  }\n  .gx-eyebrow .material-icons-outlined{font-size:16px}\n  .gx-gaugewrap{position:relative;width:340px;height:230px;margin:6px auto 0}\n  .gx-gaugewrap svg{display:block;overflow:visible}\n  .gx-hub{fill:var(--ink)}\n  .gx-hub-ring{fill:#fff}\n  .gx-center{\n    position:absolute;left:0;right:0;bottom:0;text-align:center;\n  }\n  .gx-value{\n    font-size:46px;font-weight:800;line-height:1;color:var(--ink);\n    letter-spacing:-0.02em;font-variant-numeric:tabular-nums;\n  }\n  .gx-value .gx-unit{font-size:20px;font-weight:700;color:var(--accent);margin-left:3px}\n  .gx-label{\n    margin-top:7px;font-size:13.5px;font-weight:600;color:#64748b;\n    letter-spacing:.04em;text-transform:uppercase;\n  }\n  .gx-scale{\n    display:flex;justify-content:space-between;align-items:center;\n    width:300px;margin:14px auto 0;\n    font-size:12px;font-weight:600;color:#94a3b8;\n    font-variant-numeric:tabular-nums;\n  }\n  .gx-scale .gx-mid{\n    display:flex;align-items:center;gap:5px;color:#64748b;\n    font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;\n  }\n  .gx-dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"gx-head\">\n    <img id=\"gxLogo\" class=\"gx-logo\" alt=\"\">\n    <div class=\"gx-eyebrow\">\n      <span class=\"material-icons-outlined\">speed</span>\n      <span id=\"gxEyebrow\">Ytelse</span>\n    </div>\n  </div>\n\n  <div class=\"gx-gaugewrap\">\n    <svg width=\"340\" height=\"230\" viewBox=\"0 0 340 230\">\n      <defs>\n        <linearGradient id=\"gxArcGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n          <stop offset=\"0%\"  stop-color=\"var(--accent)\" stop-opacity=\"0.55\"/>\n          <stop offset=\"100%\" stop-color=\"var(--accent)\" stop-opacity=\"1\"/>\n        </linearGradient>\n        <filter id=\"gxGlow\" x=\"-30%\" y=\"-30%\" width=\"160%\" height=\"160%\">\n          <feGaussianBlur stdDeviation=\"3.2\" result=\"b\"/>\n          <feMerge><feMergeNode in=\"b\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>\n        </filter>\n        <filter id=\"gxNeedleShadow\" x=\"-15%\" y=\"-15%\" width=\"130%\" height=\"130%\">\n          <feDropShadow dx=\"0\" dy=\"1.5\" stdDeviation=\"1.6\" flood-color=\"#1f2d4a\" flood-opacity=\"0.20\"/>\n        </filter>\n      </defs>\n\n      <!-- track -->\n      <path id=\"gxTrack\" fill=\"none\" stroke=\"#e6eaf1\" stroke-width=\"20\" stroke-linecap=\"round\"/>\n      <!-- tick marks -->\n      <g id=\"gxTicks\" stroke=\"#cbd5e1\" stroke-width=\"2\" stroke-linecap=\"round\"></g>\n      <!-- progress arc -->\n      <path id=\"gxArc\" fill=\"none\" stroke=\"url(#gxArcGrad)\" stroke-width=\"20\"\n            stroke-linecap=\"round\" filter=\"url(#gxGlow)\"/>\n\n      <!-- needle -->\n      <g class=\"gx-needle\" id=\"gxNeedle\" filter=\"url(#gxNeedleShadow)\">\n        <polygon id=\"gxNeedleShape\" fill=\"var(--ink)\"/>\n      </g>\n      <circle class=\"gx-hub\" cx=\"170\" cy=\"148\" r=\"12\"/>\n      <circle class=\"gx-hub-ring\" cx=\"170\" cy=\"148\" r=\"5\"/>\n    </svg>\n\n    <div class=\"gx-center\">\n      <div class=\"gx-value\"><span id=\"gxNum\">0</span><span class=\"gx-unit\" id=\"gxUnit\"></span></div>\n      <div class=\"gx-label\" id=\"gxLabel\">Etikett</div>\n    </div>\n  </div>\n\n  <div class=\"gx-scale\">\n    <span id=\"gxMin\">0</span>\n    <span class=\"gx-mid\"><span class=\"gx-dot\"></span><span id=\"gxMidLbl\">Skala</span></span>\n    <span id=\"gxMax\">100</span>\n  </div>\n</div>\n\n<script>\n(function(){\n  var CFG = (window.__CFG__ && typeof window.__CFG__==='object') ? window.__CFG__ : {};\n  var accent = CFG.accent || '#3b82f6';\n  var ink    = CFG.ink    || '#1f2d4a';\n  document.documentElement.style.setProperty('--accent', accent);\n  document.documentElement.style.setProperty('--ink', ink);\n\n  // logo\n  if (CFG.logo){\n    var lg = document.getElementById('gxLogo');\n    lg.src = CFG.logo; lg.style.display='block';\n  }\n\n  var rawValue = parseFloat(CFG.value);\n  if (isNaN(rawValue)) rawValue = 0;\n  var rawMax = parseFloat(CFG.max);\n  if (isNaN(rawMax) || rawMax<=0) rawMax = 100;\n  var rawMin = parseFloat(CFG.min);\n  if (isNaN(rawMin)) rawMin = 0;\n  var label = (CFG.label!=null && CFG.label!=='') ? CFG.label : 'Etikett';\n  var unit  = (CFG.unit!=null) ? CFG.unit : '';\n  var eyebrow = (CFG.eyebrow!=null && CFG.eyebrow!=='') ? CFG.eyebrow : 'Ytelse';\n\n  document.getElementById('gxEyebrow').textContent = eyebrow;\n  document.getElementById('gxLabel').textContent = label;\n  document.getElementById('gxUnit').textContent = unit;\n  document.getElementById('gxMin').textContent = formatNum(rawMin);\n  document.getElementById('gxMax').textContent = formatNum(rawMax);\n  document.getElementById('gxMidLbl').textContent = 'av ' + formatNum(rawMax) + (unit?(' '+unit):'');\n\n  // ---- gauge geometry: 180deg arc, left->right ----\n  var CX=170, CY=148, R=122;\n  var A0=180, A1=0; // degrees, sweeping over the top\n\n  function polar(cx,cy,r,deg){\n    var a=deg*Math.PI/180;\n    return [cx + r*Math.cos(a), cy - r*Math.sin(a)];\n  }\n  function arcPath(r, fromDeg, toDeg){\n    var p0=polar(CX,CY,r,fromDeg), p1=polar(CX,CY,r,toDeg);\n    var large = Math.abs(toDeg-fromDeg) > 180 ? 1 : 0;\n    var sweep = toDeg < fromDeg ? 1 : 0; // clockwise on screen\n    return 'M '+p0[0].toFixed(2)+' '+p0[1].toFixed(2)+\n           ' A '+r+' '+r+' 0 '+large+' '+sweep+' '+p1[0].toFixed(2)+' '+p1[1].toFixed(2);\n  }\n\n  document.getElementById('gxTrack').setAttribute('d', arcPath(R, A0, A1));\n\n  // ticks\n  var ticksG = document.getElementById('gxTicks');\n  var NT=11;\n  for (var i=0;i<NT;i++){\n    var deg = A0 + (A1-A0)*(i/(NT-1));\n    var inner = polar(CX,CY,R-14,deg);\n    var outer = polar(CX,CY,R-4,deg);\n    var ln = document.createElementNS('http://www.w3.org/2000/svg','line');\n    ln.setAttribute('x1',inner[0].toFixed(2)); ln.setAttribute('y1',inner[1].toFixed(2));\n    ln.setAttribute('x2',outer[0].toFixed(2)); ln.setAttribute('y2',outer[1].toFixed(2));\n    if (i===0 || i===NT-1) ln.setAttribute('stroke-width','2.5');\n    ticksG.appendChild(ln);\n  }\n\n  var arcEl = document.getElementById('gxArc');\n  var needleEl = document.getElementById('gxNeedle');\n  var needleShape = document.getElementById('gxNeedleShape');\n  var numEl = document.getElementById('gxNum');\n\n  // needle shape: slim tapered pointer originating at hub (no back tail,\n  // so it never sweeps down into the value readout).\n  function buildNeedle(){\n    var len=R-40, base=9;\n    var tip=[CX+len, CY];\n    var bl=[CX, CY+base/2];\n    var tr=[CX, CY-base/2];\n    needleShape.setAttribute('points',\n      tip.join(',')+' '+tr.join(',')+' '+bl.join(','));\n  }\n  buildNeedle();\n\n  // fraction of value within [min,max]\n  var span = (rawMax-rawMin)||1;\n  var valFrac = Math.max(0, Math.min(1, (rawValue-rawMin)/span));\n\n  function formatNum(n){\n    if (Math.abs(n) >= 1000) return Math.round(n).toLocaleString('no-NO');\n    if (Number.isInteger(n)) return String(n);\n    return (Math.round(n*10)/10).toLocaleString('no-NO');\n  }\n\n  function easeInOut(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }\n\n  window.setProgress = function(p){\n    p = Math.max(0, Math.min(1, p));\n    var e = easeInOut(p);\n\n    // current fraction of full gauge that is filled\n    var f = valFrac * e;\n    var curDeg = A0 + (A1-A0)*f;\n\n    // arc fill\n    if (f <= 0.0005){\n      arcEl.setAttribute('d','');\n    } else {\n      arcEl.setAttribute('d', arcPath(R, A0, curDeg));\n    }\n\n    // Needle base points along +x; rotate it so the tip aims at the same\n    // screen position the arc currently reaches (curDeg). curDeg runs 180->0\n    // as the gauge fills, sweeping the needle from left to right.\n    var rot = curDeg;\n    needleEl.setAttribute('transform','rotate('+rot.toFixed(2)+' '+CX+' '+CY+')');\n\n    // count-up\n    var shown = rawMin + (rawValue-rawMin)*e;\n    numEl.textContent = formatNum(shown);\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
 },
@@ -1279,5 +1255,524 @@
 "desc4": "Dedikert kontaktperson gjennom hele produksjonen."
 },
 "html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:48px;\n  }\n  .card{\n    width:920px;\n    background:#ffffff;\n    border-radius:28px;\n    padding:48px 52px 52px;\n    box-shadow:0 30px 80px -30px rgba(20,30,60,.28), 0 2px 6px rgba(20,30,60,.06);\n    border:1px solid rgba(20,30,60,.06);\n  }\n  .head{\n    display:flex;align-items:center;justify-content:space-between;\n    margin-bottom:38px;gap:24px;\n  }\n  .headline{\n    font-size:38px;font-weight:800;letter-spacing:-.02em;line-height:1.12;\n    color:var(--ink,#1f2d4a);\n    position:relative;\n  }\n  .headline .accentbar{\n    display:block;height:5px;border-radius:99px;\n    background:var(--accent,#3b82f6);\n    margin-top:16px;width:0;\n  }\n  .logo{height:44px;width:auto;opacity:0;flex-shrink:0}\n  .grid{\n    display:grid;\n    grid-template-columns:1fr 1fr;\n    gap:24px;\n  }\n  .feature{\n    background:#f7f9fc;\n    border:1px solid rgba(20,30,60,.05);\n    border-radius:20px;\n    padding:26px 26px 28px;\n    display:flex;flex-direction:column;\n    opacity:0;transform:translateY(18px);\n  }\n  .iconwrap{\n    width:60px;height:60px;border-radius:16px;\n    display:flex;align-items:center;justify-content:center;\n    margin-bottom:20px;\n    color:#fff;\n    transform:scale(.6);\n    box-shadow:0 10px 22px -8px var(--accentShadow,rgba(59,130,246,.55));\n  }\n  .iconwrap .material-icons-outlined{font-size:30px}\n  .ftitle{\n    font-size:21px;font-weight:700;letter-spacing:-.01em;\n    color:var(--ink,#1f2d4a);margin-bottom:9px;\n  }\n  .fdesc{\n    font-size:15.5px;font-weight:400;line-height:1.5;\n    color:#5d6b86;\n  }\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"card\">\n    <div class=\"head\">\n      <div class=\"headline\" id=\"headline\">\n        <span id=\"headTxt\"></span>\n        <span class=\"accentbar\" id=\"accentbar\"></span>\n      </div>\n      <img id=\"logo\" class=\"logo\" alt=\"\">\n    </div>\n    <div class=\"grid\" id=\"grid\"></div>\n  </div>\n</div>\n<script>\n(function(){\n  var DEF = {\n    accent:'#3b82f6', ink:'#1f2d4a', logo:'',\n    heading:'Hvorfor velge oss',\n    icon1:'bolt', title1:'Lynrask levering', desc1:'Ferdig redigert materiale levert innen 48 timer, hver gang.',\n    icon2:'palette', title2:'Skreddersydd stil', desc2:'Visuell identitet tilpasset merkevaren din ned til minste detalj.',\n    icon3:'verified', title3:'Garantert kvalitet', desc3:'Profesjonell fargegradering og lyd på alle prosjekter.',\n    icon4:'support_agent', title4:'Tett oppfølging', desc4:'Dedikert kontaktperson gjennom hele produksjonen.'\n  };\n  var cfg = Object.assign({}, DEF, (window.__CFG__||{}));\n  function hexToRgba(hex,a){\n    var c=hex.replace('#',''); if(c.length===3)c=c[0]+c[0]+c[1]+c[1]+c[2]+c[2];\n    return 'rgba('+parseInt(c.substr(0,2),16)+','+parseInt(c.substr(2,2),16)+','+parseInt(c.substr(4,2),16)+','+a+')';\n  }\n  function mix(hex,target,t){\n    var c=hex.replace('#',''); if(c.length===3)c=c[0]+c[0]+c[1]+c[1]+c[2]+c[2];\n    var tc=target.replace('#','');\n    var r=Math.round(parseInt(c.substr(0,2),16)*(1-t)+parseInt(tc.substr(0,2),16)*t);\n    var g=Math.round(parseInt(c.substr(2,2),16)*(1-t)+parseInt(tc.substr(2,2),16)*t);\n    var b=Math.round(parseInt(c.substr(4,2),16)*(1-t)+parseInt(tc.substr(4,2),16)*t);\n    return 'rgb('+r+','+g+','+b+')';\n  }\n  var root=document.getElementById('wrap');\n  root.style.setProperty('--accent',cfg.accent);\n  root.style.setProperty('--ink',cfg.ink);\n  root.style.setProperty('--accentShadow',hexToRgba(cfg.accent,.55));\n\n  document.getElementById('headTxt').textContent=cfg.heading;\n\n  var logoEl=document.getElementById('logo');\n  if(cfg.logo){ logoEl.src=cfg.logo; } else { logoEl.style.display='none'; }\n\n  var palettes=[\n    cfg.accent,\n    mix(cfg.accent,'#7c3aed',.35),\n    mix(cfg.accent,'#06b6d4',.30),\n    mix(cfg.accent,'#1f2d4a',.20)\n  ];\n  var grid=document.getElementById('grid');\n  var tiles=[];\n  for(var i=1;i<=4;i++){\n    var f=document.createElement('div');\n    f.className='feature';\n    var bg=palettes[i-1];\n    f.innerHTML=\n      '<div class=\"iconwrap\" style=\"background:linear-gradient(135deg,'+bg+','+mix(cfg.accent,\"#000000\",.18)+')\">'+\n        '<span class=\"material-icons-outlined\">'+(cfg['icon'+i]||'star')+'</span>'+\n      '</div>'+\n      '<div class=\"ftitle\">'+(cfg['title'+i]||'')+'</div>'+\n      '<div class=\"fdesc\">'+(cfg['desc'+i]||'')+'</div>';\n    grid.appendChild(f);\n    tiles.push(f);\n  }\n\n  var bar=document.getElementById('accentbar');\n  var headTxt=document.getElementById('headTxt');\n\n  function easeInOut(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }\n  function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }\n  function seg(p,s,e){ return easeInOut(clamp((p-s)/(e-s),0,1)); }\n\n  window.setProgress=function(p){\n    p=clamp(p,0,1);\n\n    var h=seg(p,0,0.22);\n    headTxt.style.opacity=h;\n    headTxt.style.display='inline-block';\n    headTxt.style.transform='translateY('+(12*(1-h))+'px)';\n\n    if(cfg.logo){\n      var lg=seg(p,0.05,0.28);\n      logoEl.style.opacity=lg;\n      logoEl.style.transform='translateY('+(10*(1-lg))+'px)';\n    }\n\n    var ab=seg(p,0.12,0.34);\n    bar.style.width=(96*ab)+'px';\n\n    var startBase=0.20, span=0.80, each=0.16;\n    for(var i=0;i<tiles.length;i++){\n      var s=startBase + (i*( (span-each)/(tiles.length-1) ));\n      var t=seg(p,s,s+each);\n      tiles[i].style.opacity=t;\n      tiles[i].style.transform='translateY('+(18*(1-t))+'px)';\n      var ic=tiles[i].querySelector('.iconwrap');\n      ic.style.transform='scale('+(0.6+0.4*t)+')';\n    }\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "pricing",
+"name": "Pris-kort (3 nivåer)",
+"desc": "Tre pris-kort side om side med navn, månedspris, tre funksjoner med haker og CTA-knapp. Det midterste kortet er uthevet som «mest populær» i accent-fargen med badge. Lys, moderne SaaS-stil med deterministisk inn-animasjon (kort som tones inn etappevis, pris som teller opp, funksjoner og knapper med forskutt fade).",
+"style": "light",
+"glyph": "💳",
+"durationSec": 6.0,
+"fields": [
+{
+"key": "name0",
+"label": "Nivå 1 – navn",
+"type": "text",
+"placeholder": "Start"
+},
+{
+"key": "price0",
+"label": "Nivå 1 – pris/mnd",
+"type": "text",
+"placeholder": "149"
+},
+{
+"key": "desc0",
+"label": "Nivå 1 – undertittel",
+"type": "text",
+"placeholder": "For frilansere"
+},
+{
+"key": "feat0_1",
+"label": "Nivå 1 – punkt 1",
+"type": "text",
+"placeholder": "1 bruker"
+},
+{
+"key": "feat0_2",
+"label": "Nivå 1 – punkt 2",
+"type": "text",
+"placeholder": "10 prosjekter"
+},
+{
+"key": "feat0_3",
+"label": "Nivå 1 – punkt 3",
+"type": "text",
+"placeholder": "E-poststøtte"
+},
+{
+"key": "cta0",
+"label": "Nivå 1 – knapp",
+"type": "text",
+"placeholder": "Velg Start"
+},
+{
+"key": "name1",
+"label": "Nivå 2 – navn (populær)",
+"type": "text",
+"placeholder": "Pro"
+},
+{
+"key": "price1",
+"label": "Nivå 2 – pris/mnd",
+"type": "text",
+"placeholder": "349"
+},
+{
+"key": "desc1",
+"label": "Nivå 2 – undertittel",
+"type": "text",
+"placeholder": "For voksende team"
+},
+{
+"key": "badge",
+"label": "Nivå 2 – badge-tekst",
+"type": "text",
+"placeholder": "Mest populær"
+},
+{
+"key": "feat1_1",
+"label": "Nivå 2 – punkt 1",
+"type": "text",
+"placeholder": "5 brukere"
+},
+{
+"key": "feat1_2",
+"label": "Nivå 2 – punkt 2",
+"type": "text",
+"placeholder": "Ubegrensede prosjekter"
+},
+{
+"key": "feat1_3",
+"label": "Nivå 2 – punkt 3",
+"type": "text",
+"placeholder": "Prioritert support"
+},
+{
+"key": "cta1",
+"label": "Nivå 2 – knapp",
+"type": "text",
+"placeholder": "Velg Pro"
+},
+{
+"key": "name2",
+"label": "Nivå 3 – navn",
+"type": "text",
+"placeholder": "Enterprise"
+},
+{
+"key": "price2",
+"label": "Nivå 3 – pris/mnd",
+"type": "text",
+"placeholder": "899"
+},
+{
+"key": "desc2",
+"label": "Nivå 3 – undertittel",
+"type": "text",
+"placeholder": "For store organisasjoner"
+},
+{
+"key": "feat2_1",
+"label": "Nivå 3 – punkt 1",
+"type": "text",
+"placeholder": "Ubegrenset brukere"
+},
+{
+"key": "feat2_2",
+"label": "Nivå 3 – punkt 2",
+"type": "text",
+"placeholder": "SSO og revisjon"
+},
+{
+"key": "feat2_3",
+"label": "Nivå 3 – punkt 3",
+"type": "text",
+"placeholder": "Dedikert rådgiver"
+},
+{
+"key": "cta2",
+"label": "Nivå 3 – knapp",
+"type": "text",
+"placeholder": "Kontakt salg"
+},
+{
+"key": "currency",
+"label": "Valuta-symbol",
+"type": "text",
+"placeholder": "kr"
+}
+],
+"defaults": {
+"name0": "Start",
+"price0": "149",
+"desc0": "For frilansere",
+"feat0_1": "1 bruker",
+"feat0_2": "10 prosjekter",
+"feat0_3": "E-poststøtte",
+"cta0": "Velg Start",
+"name1": "Pro",
+"price1": "349",
+"desc1": "For voksende team",
+"badge": "Mest populær",
+"feat1_1": "5 brukere",
+"feat1_2": "Ubegrensede prosjekter",
+"feat1_3": "Prioritert support",
+"cta1": "Velg Pro",
+"name2": "Enterprise",
+"price2": "899",
+"desc2": "For store organisasjoner",
+"feat2_1": "Ubegrenset brukere",
+"feat2_2": "SSO og revisjon",
+"feat2_3": "Dedikert rådgiver",
+"cta2": "Kontakt salg",
+"currency": "kr"
+},
+"html": "<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif}\n  html,body{margin:0;background:transparent}\n  #wrap{display:flex;gap:30px;align-items:stretch;padding:64px;width:max-content}\n  .logo{position:absolute;top:30px;left:64px;height:38px;opacity:0}\n  .card{position:relative;background:#fff;border-radius:26px;padding:40px 38px 38px;width:368px;\n        display:flex;flex-direction:column;\n        box-shadow:0 26px 64px rgba(20,40,80,.10),0 4px 14px rgba(20,40,80,.05);\n        border:1px solid rgba(20,40,80,.06);opacity:0;transform:translateY(30px)}\n  .card.pop{box-shadow:0 34px 80px rgba(20,40,80,.18),0 6px 18px rgba(20,40,80,.08);\n            transform-origin:center bottom}\n  .badge{position:absolute;top:-15px;left:50%;transform:translateX(-50%);\n         color:#fff;font-weight:700;font-size:14px;letter-spacing:.4px;text-transform:uppercase;\n         padding:8px 20px;border-radius:30px;white-space:nowrap;\n         box-shadow:0 10px 22px rgba(20,40,80,.20);opacity:0}\n  .pname{font-size:21px;font-weight:700;letter-spacing:.2px}\n  .pdesc{color:#7a899c;font-size:15px;font-weight:500;margin-top:6px;min-height:21px}\n  .pricerow{display:flex;align-items:baseline;gap:4px;margin-top:24px}\n  .cur{font-size:30px;font-weight:700;align-self:flex-start;margin-top:8px}\n  .price{font-size:62px;font-weight:800;letter-spacing:-2px;line-height:1}\n  .per{color:#8b99ab;font-size:18px;font-weight:500}\n  .rule{height:1px;background:rgba(20,40,80,.08);margin:28px 0 26px}\n  .feat{display:flex;align-items:center;gap:14px;margin-bottom:18px;opacity:0;transform:translateX(-10px)}\n  .feat .chk{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex:none}\n  .feat .chk .material-icons-outlined{font-size:17px;color:#fff}\n  .feat span.t{color:#39485c;font-size:17px;font-weight:500}\n  .cta{margin-top:auto;display:flex;align-items:center;justify-content:center;gap:8px;\n       padding:16px;border-radius:14px;font-size:17px;font-weight:700;cursor:default;\n       border:1.5px solid rgba(20,40,80,.12);background:#fff;opacity:0}\n  .cta .material-icons-outlined{font-size:19px}\n  .cta.solid{border:none;color:#fff;box-shadow:0 14px 28px rgba(20,40,80,.16)}\n</style></head>\n<body>\n<img id=\"logo\" class=\"logo\" alt=\"\">\n<div id=\"wrap\">\n\n  <div class=\"card\" data-i=\"0\">\n    <div class=\"pname\" id=\"n0\">Start</div>\n    <div class=\"pdesc\" id=\"d0\">For enkeltbrukere</div>\n    <div class=\"pricerow\"><span class=\"cur\" id=\"cur0\">kr</span><span class=\"price\" data-to=\"149\">0</span><span class=\"per\">/mnd</span></div>\n    <div class=\"rule\"></div>\n    <div class=\"feats\">\n      <div class=\"feat\"><span class=\"chk\"><span class=\"material-icons-outlined\">check</span></span><span class=\"t\" id=\"f0_1\">1 bruker</span></div>\n      <div class=\"feat\"><span class=\"chk\"><span class=\"material-icons-outlined\">check</span></span><span class=\"t\" id=\"f0_2\">10 prosjekter</span></div>\n      <div class=\"feat\"><span class=\"chk\"><span class=\"material-icons-outlined\">check</span></span><span class=\"t\" id=\"f0_3\">E-poststøtte</span></div>\n    </div>\n    <div class=\"cta\"><span id=\"cta0\">Velg Start</span><span class=\"material-icons-outlined\">arrow_forward</span></div>\n  </div>\n\n  <div class=\"card pop\" data-i=\"1\">\n    <div class=\"badge\" id=\"badge\">Mest populær</div>\n    <div class=\"pname\" id=\"n1\">Pro</div>\n    <div class=\"pdesc\" id=\"d1\">For voksende team</div>\n    <div class=\"pricerow\"><span class=\"cur\" id=\"cur1\">kr</span><span class=\"price\" data-to=\"349\">0</span><span class=\"per\">/mnd</span></div>\n    <div class=\"rule\"></div>\n    <div class=\"feats\">\n      <div class=\"feat\"><span class=\"chk\"><span class=\"material-icons-outlined\">check</span></span><span class=\"t\" id=\"f1_1\">5 brukere</span></div>\n      <div class=\"feat\"><span class=\"chk\"><span class=\"material-icons-outlined\">check</span></span><span class=\"t\" id=\"f1_2\">Ubegrensede prosjekter</span></div>\n      <div class=\"feat\"><span class=\"chk\"><span class=\"material-icons-outlined\">check</span></span><span class=\"t\" id=\"f1_3\">Prioritert support</span></div>\n    </div>\n    <div class=\"cta solid\"><span id=\"cta1\">Velg Pro</span><span class=\"material-icons-outlined\">arrow_forward</span></div>\n  </div>\n\n  <div class=\"card\" data-i=\"2\">\n    <div class=\"pname\" id=\"n2\">Enterprise</div>\n    <div class=\"pdesc\" id=\"d2\">For store organisasjoner</div>\n    <div class=\"pricerow\"><span class=\"cur\" id=\"cur2\">kr</span><span class=\"price\" data-to=\"899\">0</span><span class=\"per\">/mnd</span></div>\n    <div class=\"rule\"></div>\n    <div class=\"feats\">\n      <div class=\"feat\"><span class=\"chk\"><span class=\"material-icons-outlined\">check</span></span><span class=\"t\" id=\"f2_1\">Ubegrenset brukere</span></div>\n      <div class=\"feat\"><span class=\"chk\"><span class=\"material-icons-outlined\">check</span></span><span class=\"t\" id=\"f2_2\">SSO og revisjon</span></div>\n      <div class=\"feat\"><span class=\"chk\"><span class=\"material-icons-outlined\">check</span></span><span class=\"t\" id=\"f2_3\">Dedikert rådgiver</span></div>\n    </div>\n    <div class=\"cta\"><span id=\"cta2\">Kontakt salg</span><span class=\"material-icons-outlined\">arrow_forward</span></div>\n  </div>\n\n</div>\n<script>\n(function(){\n  var cfg = window.__CFG__ || {};\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n\n  function hexToRgb(h){h=h.replace('#','');if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];\n    return {r:parseInt(h.slice(0,2),16),g:parseInt(h.slice(2,4),16),b:parseInt(h.slice(4,6),16)};}\n  function rgba(h,a){var c=hexToRgb(h);return 'rgba('+c.r+','+c.g+','+c.b+','+a+')';}\n\n  function setTxt(id,key){var el=document.getElementById(id);if(el&&cfg[key]!=null&&cfg[key]!=='')el.textContent=cfg[key];}\n  ['0','1','2'].forEach(function(i){\n    setTxt('n'+i,'name'+i);\n    setTxt('d'+i,'desc'+i);\n    setTxt('f'+i+'_1','feat'+i+'_1');\n    setTxt('f'+i+'_2','feat'+i+'_2');\n    setTxt('f'+i+'_3','feat'+i+'_3');\n    setTxt('cta'+i,'cta'+i);\n    var cur=document.getElementById('cur'+i);if(cur&&cfg.currency)cur.textContent=cfg.currency;\n  });\n  var prices=document.querySelectorAll('.price');\n  ['0','1','2'].forEach(function(i,idx){if(cfg['price'+i]!=null&&cfg['price'+i]!=='')prices[idx].dataset.to=cfg['price'+i];});\n  if(cfg.badge){document.getElementById('badge').textContent=cfg.badge;}\n\n  if(cfg.logo){var lg=document.getElementById('logo');lg.src=cfg.logo;}\n\n  var ink70 = rgba(ink,0.78);\n  document.querySelectorAll('.pname').forEach(function(e){e.style.color=ink;});\n  document.querySelectorAll('.price,.cur').forEach(function(e){e.style.color=ink;});\n  document.querySelectorAll('.feat .t').forEach(function(e){e.style.color=ink70;});\n  document.querySelectorAll('.card .chk').forEach(function(e){e.style.background=rgba(ink,0.32);});\n  var pop=document.querySelector('.card.pop');\n  pop.style.background='#fff';\n  pop.querySelectorAll('.chk').forEach(function(e){e.style.background=accent;});\n  pop.style.boxShadow='0 34px 80px '+rgba(accent,0.28)+',0 6px 18px '+rgba(accent,0.12);\n  pop.style.border='1.5px solid '+rgba(accent,0.55);\n  document.getElementById('badge').style.background=accent;\n  document.querySelector('.cta.solid').style.background=accent;\n  document.querySelector('.cta.solid').style.boxShadow='0 14px 28px '+rgba(accent,0.30);\n  document.querySelectorAll('.cta:not(.solid)').forEach(function(e){e.style.color=ink;});\n\n  function clamp(v){return Math.max(0,Math.min(1,v));}\n  function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}\n\n  window.setProgress=function(p){\n    p=clamp(p);\n    document.querySelectorAll('.card').forEach(function(card){\n      var i=parseFloat(card.dataset.i)||0;\n      var d=i*0.10, span=0.5;\n      var e=ease(clamp((p-d)/span));\n      card.style.opacity=e;\n      if(card.classList.contains('pop')){\n        card.style.transform='translateY('+(30*(1-e))+'px) scale('+(0.96+0.04*e)+')';\n      } else {\n        card.style.transform='translateY('+(30*(1-e))+'px)';\n      }\n    });\n    var be=ease(clamp((p-0.30)/0.35));\n    var bd=document.getElementById('badge');\n    bd.style.opacity=be;\n    bd.style.transform='translateX(-50%) translateY('+(-8*(1-be))+'px)';\n    document.getElementById('logo').style.opacity=ease(clamp((p-0.05)/0.3));\n    document.querySelectorAll('.price[data-to]').forEach(function(el){\n      var to=parseFloat(el.dataset.to)||0;\n      var t=ease(clamp((p-0.20)/0.55));\n      el.textContent=Math.round(to*t).toLocaleString('nb-NO');\n    });\n    document.querySelectorAll('.card').forEach(function(card){\n      var ci=parseFloat(card.dataset.i)||0;\n      var base=0.34+ci*0.08;\n      card.querySelectorAll('.feat').forEach(function(f,fi){\n        var d=base+fi*0.07, span=0.3;\n        var e=ease(clamp((p-d)/span));\n        f.style.opacity=e;\n        f.style.transform='translateX('+(-10*(1-e))+'px)';\n      });\n      var cd=0.58+ci*0.06;\n      var ce=ease(clamp((p-cd)/0.3));\n      card.querySelector('.cta').style.opacity=ce;\n    });\n  };\n  window.setProgress(0);\n})();\n</script>\n</body></html>"
+},
+{
+"id": "funnel",
+"name": "Konverteringsfunnel",
+"desc": "Vertikal trapes-funnel med fire trinn (etikett, antall og prosent), hvert trinn smalere enn det over. Barer vokser inn stegvis, tallene teller opp, og en ring nederst viser total konvertering. Lys, ren stil for overlay over video.",
+"style": "light",
+"glyph": "▽",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "title",
+"label": "Tittel",
+"type": "text",
+"placeholder": "Salgsfunnel Q2"
+},
+{
+"key": "eyebrow",
+"label": "Overskrift (liten)",
+"type": "text",
+"placeholder": "Konverteringsfunnel"
+},
+{
+"key": "label1",
+"label": "Trinn 1 – etikett",
+"type": "text",
+"placeholder": "Besøkende"
+},
+{
+"key": "value1",
+"label": "Trinn 1 – antall",
+"type": "number",
+"placeholder": "24800"
+},
+{
+"key": "label2",
+"label": "Trinn 2 – etikett",
+"type": "text",
+"placeholder": "Leads"
+},
+{
+"key": "value2",
+"label": "Trinn 2 – antall",
+"type": "number",
+"placeholder": "7240"
+},
+{
+"key": "label3",
+"label": "Trinn 3 – etikett",
+"type": "text",
+"placeholder": "Prøvebruk"
+},
+{
+"key": "value3",
+"label": "Trinn 3 – antall",
+"type": "number",
+"placeholder": "2180"
+},
+{
+"key": "label4",
+"label": "Trinn 4 – etikett",
+"type": "text",
+"placeholder": "Kunder"
+},
+{
+"key": "value4",
+"label": "Trinn 4 – antall",
+"type": "number",
+"placeholder": "486"
+}
+],
+"defaults": {
+"title": "Kundereise",
+"eyebrow": "Konverteringsfunnel",
+"label1": "Besøkende",
+"value1": "12400",
+"label2": "Påmeldte",
+"value2": "4820",
+"label3": "Prøvebruk",
+"value3": "1560",
+"label4": "Kunder",
+"value4": "412"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:40px 44px;\n    background:linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%);\n    border-radius:24px;\n    box-shadow:0 30px 80px rgba(31,45,74,.16),0 2px 8px rgba(31,45,74,.06);\n    color:var(--ink,#1f2d4a);\n    border:1px solid rgba(31,45,74,.06);\n  }\n  .head{display:flex;align-items:center;gap:16px;margin-bottom:30px}\n  .logo{height:38px;display:none}\n  .logo.on{display:block}\n  .title-block{display:flex;flex-direction:column;gap:4px}\n  .eyebrow{\n    font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;\n    color:var(--accent,#3b82f6);\n  }\n  .title{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1}\n  .accent-bar{\n    width:46px;height:4px;border-radius:99px;margin-top:10px;\n    background:var(--accent,#3b82f6);\n  }\n  .funnel{display:flex;flex-direction:column;align-items:center;gap:14px;width:560px}\n  .step{\n    position:relative;\n    display:flex;align-items:center;justify-content:space-between;\n    height:84px;border-radius:16px;overflow:hidden;\n    background:#fff;\n    box-shadow:0 6px 18px rgba(31,45,74,.07);\n    transform-origin:center;\n  }\n  .step .fill{\n    position:absolute;inset:0;\n    background:linear-gradient(135deg,var(--c1),var(--c2));\n    transform-origin:left center;\n    z-index:0;\n  }\n  .step .content{\n    position:relative;z-index:1;\n    display:flex;align-items:center;justify-content:space-between;\n    width:100%;padding:0 26px;color:#fff;\n  }\n  .step .left{display:flex;flex-direction:column;gap:3px}\n  .step .label{font-size:15px;font-weight:600;letter-spacing:.01em;opacity:.96;white-space:nowrap}\n  .step .pct{font-size:12px;font-weight:600;opacity:.78;letter-spacing:.02em;white-space:nowrap}\n  .step .value{font-size:30px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}\n  .arrow{\n    display:flex;align-items:center;justify-content:center;\n    width:24px;height:24px;color:var(--ink,#1f2d4a);opacity:.3;\n  }\n  .arrow .material-icons-outlined{font-size:22px}\n  .foot{\n    display:flex;align-items:center;justify-content:space-between;gap:40px;\n    margin-top:26px;padding-top:18px;border-top:1px solid rgba(31,45,74,.08);\n  }\n  .foot .conv-label{font-size:12px;font-weight:600;color:rgba(31,45,74,.55);letter-spacing:.04em;text-transform:uppercase}\n  .foot .conv-val{display:flex;align-items:baseline;gap:7px;margin-top:4px}\n  .foot .conv-num{font-size:26px;font-weight:800;color:var(--accent,#3b82f6);font-variant-numeric:tabular-nums;letter-spacing:-.02em}\n  .foot .conv-sub{font-size:13px;font-weight:600;color:rgba(31,45,74,.5);white-space:nowrap}\n  .ring-wrap{position:relative;width:54px;height:54px;flex-shrink:0}\n  .ring-wrap svg{transform:rotate(-90deg)}\n  .ring-pct{\n    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;\n    font-size:13px;font-weight:800;color:var(--accent,#3b82f6);font-variant-numeric:tabular-nums;\n  }\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"head\">\n    <img id=\"logo\" class=\"logo\" alt=\"\">\n    <div class=\"title-block\">\n      <div class=\"eyebrow\" id=\"eyebrow\">Konverteringsfunnel</div>\n      <div class=\"title\" id=\"title\">Kundereise</div>\n      <div class=\"accent-bar\"></div>\n    </div>\n  </div>\n  <div class=\"funnel\" id=\"funnel\"></div>\n  <div class=\"foot\">\n    <div>\n      <div class=\"conv-label\">Total konvertering</div>\n      <div class=\"conv-val\">\n        <span class=\"conv-num\" id=\"convNum\">0%</span>\n        <span class=\"conv-sub\" id=\"convSub\"></span>\n      </div>\n    </div>\n    <div class=\"ring-wrap\">\n      <svg width=\"54\" height=\"54\" viewBox=\"0 0 54 54\">\n        <circle cx=\"27\" cy=\"27\" r=\"23\" fill=\"none\" stroke=\"rgba(31,45,74,.10)\" stroke-width=\"6\"/>\n        <circle id=\"ring\" cx=\"27\" cy=\"27\" r=\"23\" fill=\"none\" stroke=\"var(--accent,#3b82f6)\" stroke-width=\"6\" stroke-linecap=\"round\"/>\n      </svg>\n      <div class=\"ring-pct\" id=\"ringPct\">0%</div>\n    </div>\n  </div>\n</div>\n<script>\n(function(){\n  var cfg = window.__CFG__ || {};\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n  var wrap = document.getElementById('wrap');\n  wrap.style.setProperty('--accent', accent);\n  wrap.style.setProperty('--ink', ink);\n\n  if (cfg.title) document.getElementById('title').textContent = cfg.title;\n  if (cfg.eyebrow) document.getElementById('eyebrow').textContent = cfg.eyebrow;\n\n  if (cfg.logo) {\n    var lg = document.getElementById('logo');\n    lg.src = cfg.logo; lg.classList.add('on');\n  }\n\n  var steps = [];\n  for (var i=1;i<=4;i++){\n    var lbl = cfg['label'+i];\n    var val = cfg['value'+i];\n    if (lbl == null && val == null) continue;\n    steps.push({\n      label: lbl != null ? String(lbl) : ('Trinn '+i),\n      value: val != null ? (parseFloat(String(val).replace(/[^\\d.\\-]/g,''))||0) : 0\n    });\n  }\n  if (!steps.length){\n    steps = [\n      {label:'Besøkende', value:12400},\n      {label:'Påmeldte', value:4820},\n      {label:'Prøvebruk', value:1560},\n      {label:'Kunder', value:412}\n    ];\n  }\n\n  var top = steps[0].value || 1;\n  function hexToRgb(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(function(c){return c+c}).join('');return[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}\n  function mix(a,b,t){return a.map(function(v,i){return Math.round(v+(b[i]-v)*t)});}\n  function rgb(c){return 'rgb('+c[0]+','+c[1]+','+c[2]+')';}\n  var base = hexToRgb(accent);\n  var dark = mix(base, hexToRgb(ink), 0.35);\n\n  var funnelEl = document.getElementById('funnel');\n  var minW = 0.42;\n  var els = [];\n  steps.forEach(function(s, idx){\n    var prevPct = idx===0 ? 100 : Math.round((s.value/(steps[idx-1].value||1))*100);\n    var wRatio = 1 - (idx/(steps.length-1||1))*(1-minW);\n    var t = idx/(steps.length-1||1);\n    var c1 = rgb(mix(base, dark, t*0.55));\n    var c2 = rgb(mix(base, dark, t*0.55+0.18));\n\n    var step = document.createElement('div');\n    step.className='step';\n    step.style.width = (wRatio*100)+'%';\n    step.style.setProperty('--c1', c1);\n    step.style.setProperty('--c2', c2);\n\n    var fill = document.createElement('div');\n    fill.className='fill';\n\n    var content = document.createElement('div');\n    content.className='content';\n    var left = document.createElement('div');\n    left.className='left';\n    var label = document.createElement('div');\n    label.className='label'; label.textContent = s.label;\n    var pct = document.createElement('div');\n    pct.className='pct'; pct.textContent = (idx===0?'Start · 100%':(prevPct+'% fra forrige'));\n    left.appendChild(label); left.appendChild(pct);\n    var value = document.createElement('div');\n    value.className='value'; value.textContent='0';\n    content.appendChild(left); content.appendChild(value);\n\n    step.appendChild(fill); step.appendChild(content);\n    funnelEl.appendChild(step);\n    els.push({step:step, fill:fill, value:value, target:s.value});\n\n    if (idx < steps.length-1){\n      var arr = document.createElement('div');\n      arr.className='arrow';\n      arr.innerHTML='<span class=\"material-icons-outlined\">expand_more</span>';\n      funnelEl.appendChild(arr);\n    }\n  });\n\n  var bottom = steps[steps.length-1].value;\n  var totalConv = top ? (bottom/top*100) : 0;\n  var ring = document.getElementById('ring');\n  var R = 23, CIRC = 2*Math.PI*R;\n  ring.style.strokeDasharray = CIRC;\n  ring.style.strokeDashoffset = CIRC;\n\n  function ease(p){ return p<0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2; }\n  function fmt(n){ return Math.round(n).toLocaleString('no-NO'); }\n\n  window.setProgress = function(p){\n    p = Math.max(0, Math.min(1, p));\n    var n = steps.length;\n    els.forEach(function(e, idx){\n      var s0 = (idx/n)*0.55;\n      var s1 = s0 + 0.45;\n      var local = (s1>s0) ? (p - s0)/(s1 - s0) : 1;\n      local = Math.max(0, Math.min(1, local));\n      var le = ease(local);\n      e.fill.style.transform = 'scaleX('+le+')';\n      e.step.style.opacity = (0.25 + 0.75*Math.min(1, local*3));\n      e.value.textContent = fmt(e.target * le);\n      e.value.style.opacity = le<0.05 ? 0 : 1;\n    });\n    var fe = ease(p);\n    document.getElementById('convNum').textContent = (totalConv*fe).toFixed(1).replace('.',',')+'%';\n    document.getElementById('convSub').textContent = fmt(bottom*fe)+' av '+fmt(top);\n    ring.style.strokeDashoffset = CIRC*(1-fe*(totalConv/100));\n    document.getElementById('ringPct').textContent = Math.round(totalConv*fe)+'%';\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "social-stats",
+"name": "Sosiale stats",
+"desc": "Rad med tre plattform-kort som viser store stats-tall (følgere, likes, visninger) som teller opp med delta-endring og Material-ikon per plattform. Lys, ren stil for overlay i Resolve.",
+"style": "light",
+"glyph": "📊",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "headline",
+"label": "Overskrift",
+"type": "text",
+"placeholder": "Sosiale resultater"
+},
+{
+"key": "subhead",
+"label": "Underskrift",
+"type": "text",
+"placeholder": "Denne måneden"
+},
+{
+"key": "platform1",
+"label": "Plattform 1",
+"type": "text",
+"placeholder": "Instagram"
+},
+{
+"key": "value1",
+"label": "Verdi 1",
+"type": "text",
+"placeholder": "128K"
+},
+{
+"key": "delta1",
+"label": "Endring 1",
+"type": "text",
+"placeholder": "+12.4%"
+},
+{
+"key": "platform2",
+"label": "Plattform 2",
+"type": "text",
+"placeholder": "TikTok"
+},
+{
+"key": "value2",
+"label": "Verdi 2",
+"type": "text",
+"placeholder": "86.4K"
+},
+{
+"key": "delta2",
+"label": "Endring 2",
+"type": "text",
+"placeholder": "+8.1%"
+},
+{
+"key": "platform3",
+"label": "Plattform 3",
+"type": "text",
+"placeholder": "YouTube"
+},
+{
+"key": "value3",
+"label": "Verdi 3",
+"type": "text",
+"placeholder": "512K"
+},
+{
+"key": "delta3",
+"label": "Endring 3",
+"type": "text",
+"placeholder": "+24.7%"
+}
+],
+"defaults": {
+"headline": "Sosiale resultater",
+"subhead": "Denne måneden",
+"platform1": "Instagram",
+"value1": "128K",
+"delta1": "+12.4%",
+"platform2": "TikTok",
+"value2": "86.4K",
+"delta2": "+8.1%",
+"platform3": "YouTube",
+"value3": "512K",
+"delta3": "+24.7%"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',-apple-system,sans-serif;\n    padding:34px 38px;\n    display:flex;\n    flex-direction:column;\n    gap:22px;\n    color:var(--ink,#1f2d4a);\n  }\n  .hdr{display:flex;align-items:center;gap:14px}\n  .hdr .logo{height:34px;width:auto;display:none;border-radius:8px}\n  .hdr .title{display:flex;flex-direction:column;gap:3px}\n  .hdr .title .t1{font-size:20px;font-weight:800;letter-spacing:-.02em;line-height:1}\n  .hdr .title .t2{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;opacity:.55}\n  .hdr .accent-dot{width:10px;height:10px;border-radius:50%;background:var(--accent,#3b82f6);box-shadow:0 0 12px var(--accent,#3b82f6)}\n  .row{display:flex;gap:22px}\n  .card{\n    position:relative;\n    width:236px;\n    background:rgba(255,255,255,.78);\n    backdrop-filter:blur(14px);\n    -webkit-backdrop-filter:blur(14px);\n    border:1px solid rgba(31,45,74,.08);\n    border-radius:20px;\n    padding:24px 24px 22px;\n    box-shadow:0 18px 44px -22px rgba(31,45,74,.32),0 2px 6px -2px rgba(31,45,74,.10);\n    overflow:hidden;\n    opacity:0;\n    transform:translateY(18px);\n  }\n  .card::before{\n    content:\"\";position:absolute;top:0;left:0;right:0;height:4px;\n    background:linear-gradient(90deg,var(--accent,#3b82f6),color-mix(in srgb,var(--accent,#3b82f6) 40%,#fff));\n  }\n  .card .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}\n  .card .ic{\n    width:46px;height:46px;border-radius:14px;\n    display:flex;align-items:center;justify-content:center;\n    background:color-mix(in srgb,var(--accent,#3b82f6) 12%,#fff);\n    color:var(--accent,#3b82f6);\n  }\n  .card .ic .material-icons-outlined{font-size:26px}\n  .card .plat{font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;opacity:.6}\n  .card .val{font-size:42px;font-weight:800;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}\n  .card .deltarow{display:flex;align-items:center;gap:6px;margin-top:12px}\n  .card .delta{\n    display:inline-flex;align-items:center;gap:3px;\n    font-size:13px;font-weight:700;\n    padding:4px 9px;border-radius:999px;\n    background:rgba(16,185,129,.12);color:#0f9d70;\n  }\n  .card .delta.neg{background:rgba(239,68,68,.12);color:#dc4040}\n  .card .delta .material-icons-outlined{font-size:15px}\n  .card .deltalbl{font-size:12px;font-weight:500;opacity:.5}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"hdr\">\n    <div class=\"accent-dot\"></div>\n    <img class=\"logo\" id=\"logo\" alt=\"\">\n    <div class=\"title\">\n      <div class=\"t1\" id=\"headline\">Sosiale resultater</div>\n      <div class=\"t2\" id=\"subhead\">Denne måneden</div>\n    </div>\n  </div>\n  <div class=\"row\" id=\"row\"></div>\n</div>\n\n<script>\n(function(){\n  var CFG = window.__CFG__ || {};\n  var accent = CFG.accent || '#3b82f6';\n  var ink = CFG.ink || '#1f2d4a';\n  document.getElementById('wrap').style.setProperty('--accent',accent);\n  document.getElementById('wrap').style.setProperty('--ink',ink);\n\n  if(CFG.headline) document.getElementById('headline').textContent = CFG.headline;\n  if(CFG.subhead) document.getElementById('subhead').textContent = CFG.subhead;\n\n  var logo = document.getElementById('logo');\n  if(CFG.logo){ logo.src = CFG.logo; logo.style.display='block'; }\n\n  var ICONS = {\n    instagram:'photo_camera', tiktok:'music_note', youtube:'play_circle',\n    facebook:'thumb_up', twitter:'tag', x:'tag', linkedin:'work',\n    følgere:'group', likes:'favorite', visninger:'visibility',\n    snapchat:'auto_awesome', spotify:'graphic_eq', threads:'forum'\n  };\n  function iconFor(name){\n    var k = (name||'').toLowerCase().trim();\n    return ICONS[k] || 'insights';\n  }\n\n  function parseVal(raw){\n    raw = String(raw==null?'':raw).trim();\n    var m = raw.match(/^([\\d.,\\s]+)\\s*([A-Za-zøæåØÆÅ%]*)$/);\n    if(!m) return {n:null, raw:raw};\n    var numStr = m[1].replace(/[\\s,]/g,'');\n    var n = parseFloat(numStr);\n    if(isNaN(n)) return {n:null, raw:raw};\n    var decimals = (numStr.split('.')[1]||'').length;\n    return {n:n, suf:m[2]||'', decimals:Math.min(decimals,1)};\n  }\n\n  var cards = [];\n  for(var i=1;i<=3;i++){\n    var plat = CFG['platform'+i] || ['Instagram','TikTok','YouTube'][i-1];\n    var value = CFG['value'+i] || ['128K','86.4K','512K'][i-1];\n    var delta = CFG['delta'+i] || ['+12.4%','+8.1%','+24.7%'][i-1];\n    cards.push({plat:plat, value:value, delta:delta});\n  }\n\n  var rowEl = document.getElementById('row');\n  var nodes = [];\n\n  function escapeHtml(s){return String(s).replace(/[&<>\"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c];});}\n\n  cards.forEach(function(c){\n    var pv = parseVal(c.value);\n    var neg = /^-/.test(String(c.delta).trim());\n    var el = document.createElement('div');\n    el.className='card';\n    el.innerHTML =\n      '<div class=\"top\">'+\n        '<div class=\"ic\"><span class=\"material-icons-outlined\">'+iconFor(c.plat)+'</span></div>'+\n        '<div class=\"plat\">'+escapeHtml(c.plat)+'</div>'+\n      '</div>'+\n      '<div class=\"val\">'+(pv.n!=null?'0':escapeHtml(pv.raw)) +'</div>'+\n      '<div class=\"deltarow\">'+\n        '<span class=\"delta'+(neg?' neg':'')+'\">'+\n          '<span class=\"material-icons-outlined\">'+(neg?'trending_down':'trending_up')+'</span>'+\n          '<span class=\"dval\">'+escapeHtml(c.delta)+'</span>'+\n        '</span>'+\n        '<span class=\"deltalbl\">vs forrige</span>'+\n      '</div>';\n    rowEl.appendChild(el);\n    nodes.push({el:el, pv:pv, valEl:el.querySelector('.val')});\n  });\n\n  function easeInOut(t){return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;}\n\n  function fmt(n, decimals){\n    if(decimals>0) return n.toFixed(decimals);\n    return Math.round(n).toLocaleString('nb-NO');\n  }\n\n  window.setProgress = function(p){\n    p = Math.max(0, Math.min(1, p));\n    var n = nodes.length;\n    nodes.forEach(function(nd, idx){\n      var start = idx * 0.16;\n      var span = 1 - (n-1)*0.16;\n      var local = (p - start) / span;\n      local = Math.max(0, Math.min(1, local));\n      var e = easeInOut(local);\n\n      nd.el.style.opacity = e.toFixed(3);\n      nd.el.style.transform = 'translateY('+((1-e)*18).toFixed(2)+'px)';\n\n      if(nd.pv.n!=null){\n        nd.valEl.textContent = fmt(nd.pv.n * e, nd.pv.decimals) + (nd.pv.suf||'');\n      }\n    });\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>\n"
+},
+{
+"id": "process-steps",
+"name": "Prosess-steg (nummererte)",
+"desc": "Horisontal rad med fire nummererte steg – sirkel-nummer med animert ring, tittel og kort beskrivelse – koblet med piler som fylles progressivt. Stegene tones inn forskjøvet (staggered) styrt deterministisk av setProgress. Lys, ren stil for studio-overlay i DaVinci Resolve.",
+"style": "light",
+"glyph": "⊕",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "kicker",
+"label": "Overskrift (liten)",
+"type": "text",
+"placeholder": "Slik jobber vi"
+},
+{
+"key": "title",
+"label": "Tittel",
+"type": "text",
+"placeholder": "Vår prosess"
+},
+{
+"key": "title1",
+"label": "Steg 1 – tittel",
+"type": "text",
+"placeholder": "Brief & idé"
+},
+{
+"key": "desc1",
+"label": "Steg 1 – tekst",
+"type": "text",
+"placeholder": "Vi kartlegger mål, målgruppe og budskap sammen med deg."
+},
+{
+"key": "title2",
+"label": "Steg 2 – tittel",
+"type": "text",
+"placeholder": "Manus & plan"
+},
+{
+"key": "desc2",
+"label": "Steg 2 – tekst",
+"type": "text",
+"placeholder": "Storyboard, lokasjoner og produksjonsplan klargjøres."
+},
+{
+"key": "title3",
+"label": "Steg 3 – tittel",
+"type": "text",
+"placeholder": "Opptak"
+},
+{
+"key": "desc3",
+"label": "Steg 3 – tekst",
+"type": "text",
+"placeholder": "Profesjonelt team filmer alt materiale på sett."
+},
+{
+"key": "title4",
+"label": "Steg 4 – tittel",
+"type": "text",
+"placeholder": "Redigering & levering"
+},
+{
+"key": "desc4",
+"label": "Steg 4 – tekst",
+"type": "text",
+"placeholder": "Klipp, fargegradering og lyd – ferdig film levert."
+}
+],
+"defaults": {
+"kicker": "Slik jobber vi",
+"title": "Vår produksjonsprosess",
+"title1": "Brief & idé",
+"desc1": "Vi kartlegger mål, målgruppe og budskap sammen med deg.",
+"title2": "Manus & plan",
+"desc2": "Storyboard, lokasjoner og produksjonsplan klargjøres.",
+"title3": "Opptak",
+"desc3": "Profesjonelt team filmer alt materiale på sett.",
+"title4": "Redigering & levering",
+"desc4": "Klipp, fargegradering og lyd – ferdig film levert."
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:48px 56px;\n    color:var(--ink,#1f2d4a);\n  }\n  .hdr{display:flex;align-items:center;gap:16px;margin:0 0 38px 8px;}\n  .hdr-logo{height:34px;width:auto;display:block;}\n  .hdr-txt{display:flex;flex-direction:column;gap:3px;}\n  .hdr-kicker{\n    font-size:12.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;\n    color:var(--accent,#3b82f6);\n  }\n  .hdr-title{font-size:23px;font-weight:800;letter-spacing:-.01em;line-height:1;}\n  .row{display:flex;align-items:flex-start;gap:0;}\n  .step{\n    width:228px;flex:0 0 auto;\n    display:flex;flex-direction:column;align-items:flex-start;\n    padding:0 6px;\n  }\n  .num-wrap{position:relative;margin-bottom:22px;}\n  .num{\n    width:62px;height:62px;border-radius:50%;\n    display:flex;align-items:center;justify-content:center;\n    font-size:25px;font-weight:800;color:#fff;\n    background:var(--accent,#3b82f6);\n    box-shadow:0 10px 26px -8px var(--accentShadow,rgba(59,130,246,.55));\n    position:relative;z-index:2;\n  }\n  .ring{\n    position:absolute;top:-9px;left:-9px;width:80px;height:80px;z-index:1;\n    transform:rotate(-90deg);\n  }\n  .ring circle{fill:none;stroke-width:3;stroke-linecap:round;}\n  .ring .track{stroke:var(--ringTrack,rgba(31,45,74,.10));}\n  .ring .prog{stroke:var(--accent,#3b82f6);}\n  .step-title{\n    font-size:17px;font-weight:700;line-height:1.25;margin:0 0 8px 0;\n    letter-spacing:-.005em;\n  }\n  .step-desc{\n    font-size:13.5px;font-weight:400;line-height:1.5;\n    color:var(--inkMute,rgba(31,45,74,.62));margin:0;max-width:206px;\n  }\n  .conn{\n    flex:0 0 auto;width:48px;align-self:flex-start;\n    margin-top:31px;position:relative;height:0;\n  }\n  .conn svg{position:absolute;top:-6px;left:-4px;overflow:visible;}\n  .conn .line{stroke:var(--connTrack,rgba(31,45,74,.16));stroke-width:2.5;}\n  .conn .line-fill{stroke:var(--accent,#3b82f6);stroke-width:2.5;stroke-linecap:round;}\n  .conn .arrow{fill:var(--accent,#3b82f6);}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"hdr\">\n    <img id=\"logo\" class=\"hdr-logo\" alt=\"\" style=\"display:none\">\n    <div class=\"hdr-txt\">\n      <div class=\"hdr-kicker\" id=\"kicker\">Slik jobber vi</div>\n      <div class=\"hdr-title\" id=\"title\">Vår prosess</div>\n    </div>\n  </div>\n  <div class=\"row\" id=\"row\"></div>\n</div>\n\n<script>\n(function(){\n  var CFG = window.__CFG__ || {};\n  var accent = CFG.accent || '#3b82f6';\n  var ink    = CFG.ink || '#1f2d4a';\n\n  function hexToRgb(h){\n    h=(h||'').replace('#','');\n    if(h.length===3){h=h.split('').map(function(c){return c+c;}).join('');}\n    var n=parseInt(h,16);\n    return {r:(n>>16)&255,g:(n>>8)&255,b:n&255};\n  }\n  var ar=hexToRgb(accent), ir=hexToRgb(ink);\n  var root=document.getElementById('wrap');\n  root.style.setProperty('--accent',accent);\n  root.style.setProperty('--ink',ink);\n  root.style.setProperty('--accentShadow','rgba('+ar.r+','+ar.g+','+ar.b+',.5)');\n  root.style.setProperty('--inkMute','rgba('+ir.r+','+ir.g+','+ir.b+',.62)');\n  root.style.setProperty('--ringTrack','rgba('+ir.r+','+ir.g+','+ir.b+',.10)');\n  root.style.setProperty('--connTrack','rgba('+ir.r+','+ir.g+','+ir.b+',.16)');\n\n  if(CFG.kicker) document.getElementById('kicker').textContent=CFG.kicker;\n  if(CFG.title)  document.getElementById('title').textContent=CFG.title;\n\n  if(CFG.logo){\n    var lg=document.getElementById('logo');\n    lg.src=CFG.logo; lg.style.display='block';\n  }\n\n  function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}\n\n  var steps=[];\n  for(var i=1;i<=4;i++){\n    var t=CFG['title'+i], d=CFG['desc'+i];\n    if(t||d) steps.push({n:i,title:t||'',desc:d||''});\n  }\n  if(steps.length===0){\n    steps=[{n:1,title:'Steg én',desc:'Beskrivelse'}];\n  }\n\n  var R=37, C=2*Math.PI*R;\n  var row=document.getElementById('row');\n  var stepEls=[];\n  steps.forEach(function(s,idx){\n    if(idx>0){\n      var conn=document.createElement('div');\n      conn.className='conn';\n      conn.innerHTML=\n        '<svg width=\"56\" height=\"14\" viewBox=\"0 0 56 14\">'+\n        '<line class=\"line\" x1=\"0\" y1=\"7\" x2=\"44\" y2=\"7\"/>'+\n        '<line class=\"line-fill\" x1=\"0\" y1=\"7\" x2=\"44\" y2=\"7\" data-w=\"44\"/>'+\n        '<polygon class=\"arrow\" points=\"44,2 54,7 44,12\"/>'+\n        '</svg>';\n      row.appendChild(conn);\n      conn._fill=conn.querySelector('.line-fill');\n      conn._arrow=conn.querySelector('.arrow');\n    }\n    var el=document.createElement('div');\n    el.className='step';\n    el.innerHTML=\n      '<div class=\"num-wrap\">'+\n        '<svg class=\"ring\" width=\"80\" height=\"80\" viewBox=\"0 0 80 80\">'+\n          '<circle class=\"track\" cx=\"40\" cy=\"40\" r=\"'+R+'\"/>'+\n          '<circle class=\"prog\"  cx=\"40\" cy=\"40\" r=\"'+R+'\"/>'+\n        '</svg>'+\n        '<div class=\"num\">'+s.n+'</div>'+\n      '</div>'+\n      '<div class=\"step-title\">'+esc(s.title)+'</div>'+\n      '<div class=\"step-desc\">'+esc(s.desc)+'</div>';\n    row.appendChild(el);\n    el._ring=el.querySelector('.prog');\n    el._ring.style.strokeDasharray=C+' '+C;\n    el._ring.style.strokeDashoffset=C;\n    el._num=el.querySelector('.num');\n    stepEls.push(el);\n  });\n\n  function clamp(v,a,b){return v<a?a:(v>b?b:v);}\n  function easeInOut(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}\n\n  var conns=[].slice.call(row.querySelectorAll('.conn'));\n\n  window.setProgress=function(p){\n    p=clamp(p,0,1);\n    var ep=easeInOut(p);\n    var n=stepEls.length;\n    var span=1/n;\n    stepEls.forEach(function(el,i){\n      var start=i*span*0.78;\n      var local=clamp((ep-start)/(span*0.95),0,1);\n      var le=easeInOut(local);\n      el._ring.style.strokeDashoffset=C-(C*le);\n      var ty=(1-le)*16;\n      el.style.transform='translateY('+ty+'px)';\n      el.style.opacity=(0.12+0.88*le).toFixed(3);\n      var pop=0.86+0.14*le;\n      el._num.style.transform='scale('+pop.toFixed(3)+')';\n    });\n    conns.forEach(function(c,i){\n      var start=(i+1)*span*0.78 - span*0.25;\n      var local=clamp((ep-start)/(span*0.55),0,1);\n      var le=easeInOut(local);\n      var w=44;\n      c._fill.setAttribute('x2',(w*le).toFixed(2));\n      c._arrow.style.opacity=(le>0.9?(le-0.9)/0.1:0).toFixed(3);\n    });\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "countdown",
+"name": "Nedtelling / event",
+"desc": "Mørkt HUD-panel med stort event-navn, dato og en nedtelling i bokser for dager, timer, minutter og sekunder. setProgress animerer boksene inn med forskjøvet rekkefølge og deterministisk count-up — ingen ekte sanntid. Glødende aksent-ramme og topp-strek. Transparent bakgrunn for overlay i DaVinci Resolve.",
+"style": "hud",
+"glyph": "⏳",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "title",
+"label": "Event-navn",
+"type": "text",
+"placeholder": "Sommerpremiere 2026"
+},
+{
+"key": "eyebrow",
+"label": "Etikett over tittel",
+"type": "text",
+"placeholder": "Kommer snart"
+},
+{
+"key": "date",
+"label": "Dato / tidspunkt",
+"type": "text",
+"placeholder": "21. juni 2026 · kl. 20:00"
+},
+{
+"key": "days",
+"label": "Dager",
+"type": "text",
+"placeholder": "12"
+},
+{
+"key": "hours",
+"label": "Timer",
+"type": "text",
+"placeholder": "7"
+},
+{
+"key": "mins",
+"label": "Minutter",
+"type": "text",
+"placeholder": "45"
+},
+{
+"key": "secs",
+"label": "Sekunder",
+"type": "text",
+"placeholder": "9"
+}
+],
+"defaults": {
+"title": "Sommerpremiere 2026",
+"eyebrow": "Kommer snart",
+"date": "21. juni 2026 · kl. 20:00",
+"days": "12",
+"hours": "7",
+"mins": "45",
+"secs": "9"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:46px;\n  }\n  .panel{\n    position:relative;\n    background:linear-gradient(155deg, rgba(14,18,30,0.94) 0%, rgba(9,12,22,0.96) 100%);\n    border:1px solid rgba(255,255,255,0.08);\n    border-radius:22px;\n    padding:40px 46px 44px;\n    box-shadow:0 30px 90px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05);\n    overflow:hidden;\n  }\n  .panel::before{\n    content:\"\";\n    position:absolute;inset:0;\n    border-radius:22px;\n    padding:1px;\n    background:linear-gradient(155deg, var(--glow) 0%, transparent 38%, transparent 62%, var(--glow) 100%);\n    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);\n    -webkit-mask-composite:xor;mask-composite:exclude;\n    opacity:0.55;\n    pointer-events:none;\n  }\n  .glowbar{\n    position:absolute;top:0;left:0;height:3px;\n    width:100%;\n    background:linear-gradient(90deg, transparent, var(--accent), transparent);\n    opacity:0;\n    filter:drop-shadow(0 0 10px var(--accent));\n  }\n  .head{\n    display:flex;align-items:center;gap:18px;\n    margin-bottom:8px;\n  }\n  .logo{height:34px;width:auto;display:none;border-radius:6px}\n  .eyebrow{\n    display:inline-flex;align-items:center;gap:8px;\n    font-size:12px;font-weight:600;letter-spacing:3px;text-transform:uppercase;\n    color:var(--accent);\n  }\n  .eyebrow .material-icons-outlined{font-size:16px}\n  .dot{\n    width:8px;height:8px;border-radius:50%;background:var(--accent);\n    box-shadow:0 0 12px var(--accent);\n  }\n  .title{\n    font-size:48px;font-weight:800;letter-spacing:-1px;line-height:1.04;\n    color:#fff;margin:10px 0 4px;white-space:nowrap;\n  }\n  .date{\n    display:flex;align-items:center;gap:8px;\n    font-size:14px;font-weight:500;color:rgba(255,255,255,0.55);\n    margin-bottom:30px;\n  }\n  .date .material-icons-outlined{font-size:17px;color:var(--accent)}\n  .boxes{display:flex;gap:16px}\n  .box{\n    position:relative;\n    width:128px;\n    background:linear-gradient(160deg, rgba(255,255,255,0.055), rgba(255,255,255,0.012));\n    border:1px solid rgba(255,255,255,0.09);\n    border-radius:16px;\n    padding:22px 10px 16px;\n    text-align:center;\n    opacity:0;\n    transform:translateY(16px);\n    overflow:hidden;\n  }\n  .box::after{\n    content:\"\";position:absolute;left:0;right:0;top:0;height:2px;\n    background:linear-gradient(90deg,transparent,var(--accent),transparent);\n    opacity:0.65;\n  }\n  .num{\n    font-size:54px;font-weight:800;line-height:1;color:#fff;\n    font-variant-numeric:tabular-nums;letter-spacing:-1px;\n    text-shadow:0 0 22px rgba(0,0,0,0.4);\n  }\n  .lbl{\n    margin-top:12px;font-size:11px;font-weight:600;letter-spacing:2.5px;\n    text-transform:uppercase;color:rgba(255,255,255,0.5);\n  }\n  .sep{\n    align-self:center;font-size:40px;font-weight:700;color:var(--accent);\n    opacity:0;line-height:0;margin-top:-14px;\n  }\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"panel\">\n    <div class=\"glowbar\" id=\"glowbar\"></div>\n    <div class=\"head\">\n      <img class=\"logo\" id=\"logo\" alt=\"logo\">\n      <span class=\"eyebrow\"><span class=\"dot\"></span><span class=\"material-icons-outlined\">event</span><span id=\"eyebrow\">Kommer snart</span></span>\n    </div>\n    <div class=\"title\" id=\"title\">Premiere</div>\n    <div class=\"date\"><span class=\"material-icons-outlined\">calendar_today</span><span id=\"date\">—</span></div>\n    <div class=\"boxes\" id=\"boxes\"></div>\n  </div>\n</div>\n<script>\n(function(){\n  var cfg = window.__CFG__ || {};\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n  document.documentElement.style.setProperty('--accent', accent);\n  document.documentElement.style.setProperty('--glow', accent);\n\n  if(cfg.eyebrow) document.getElementById('eyebrow').textContent = cfg.eyebrow;\n  document.getElementById('title').textContent = cfg.title || 'Premiere';\n  document.getElementById('date').textContent = cfg.date || '';\n\n  if(cfg.logo){\n    var lg = document.getElementById('logo');\n    lg.src = cfg.logo; lg.style.display='block';\n  }\n\n  var units = [\n    {key:'days',  lbl:'Dager'},\n    {key:'hours', lbl:'Timer'},\n    {key:'mins',  lbl:'Min'},\n    {key:'secs',  lbl:'Sek'}\n  ];\n  var targets = {\n    days:  parseInt(cfg.days, 10),\n    hours: parseInt(cfg.hours,10),\n    mins:  parseInt(cfg.mins, 10),\n    secs:  parseInt(cfg.secs, 10)\n  };\n  if(isNaN(targets.days))  targets.days  = 14;\n  if(isNaN(targets.hours)) targets.hours = 6;\n  if(isNaN(targets.mins))  targets.mins  = 32;\n  if(isNaN(targets.secs))  targets.secs  = 18;\n\n  var boxesEl = document.getElementById('boxes');\n  var numEls = {};\n  units.forEach(function(u, i){\n    var b = document.createElement('div');\n    b.className = 'box';\n    b.dataset.idx = i;\n    var n = document.createElement('div'); n.className='num'; n.textContent='0';\n    var l = document.createElement('div'); l.className='lbl'; l.textContent=u.lbl;\n    b.appendChild(n); b.appendChild(l);\n    boxesEl.appendChild(b);\n    numEls[u.key] = n;\n    if(i < units.length-1){\n      var s = document.createElement('div'); s.className='sep'; s.textContent=':';\n      boxesEl.appendChild(s);\n    }\n  });\n  var boxNodes = boxesEl.querySelectorAll('.box');\n  var sepNodes = boxesEl.querySelectorAll('.sep');\n\n  function easeInOut(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }\n  function pad(v){ return v<10 ? '0'+v : ''+v; }\n  function clamp(v){ return Math.max(0, Math.min(1, v)); }\n  function seg(p,a,b){ return clamp((p-a)/(b-a)); }\n\n  window.setProgress = function(p){\n    p = clamp(p);\n\n    var gb = document.getElementById('glowbar');\n    gb.style.opacity = Math.min(1, seg(p,0,0.25)).toFixed(3);\n\n    units.forEach(function(u, i){\n      var start = 0.12 + i*0.16;\n      var end   = start + 0.42;\n      var local = easeInOut(seg(p, start, end));\n      var box = boxNodes[i];\n      box.style.opacity = local.toFixed(3);\n      box.style.transform = 'translateY('+((1-local)*16).toFixed(2)+'px)';\n      var val = Math.round(targets[u.key] * local);\n      var first = (u.key === 'days');\n      numEls[u.key].textContent = first ? String(val) : pad(val);\n    });\n    for(var s=0;s<sepNodes.length;s++){\n      sepNodes[s].style.opacity = (Math.min(1, seg(p,0.2,0.7))*0.85).toFixed(3);\n    }\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "name-lowerthird",
+"name": "Navne-lower-third",
+"desc": "Broadcast navne-strap for nedre tredjedel: stort navn, mindre tittel/rolle, accent-strek som wiper inn og valgfri logo eller ikon-badge. Hele strapen glir inn fra venstre med stagget animasjon — proft og rent for video-overlay.",
+"style": "light",
+"glyph": "▮",
+"durationSec": 4.0,
+"fields": [
+{
+"key": "name",
+"label": "Navn",
+"type": "text",
+"placeholder": "Astrid Bergljot Haugen"
+},
+{
+"key": "role",
+"label": "Tittel / rolle",
+"type": "text",
+"placeholder": "Regissør & Produsent"
+}
+],
+"defaults": {
+"name": "Navn Navnesen",
+"role": "Rolle"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:48px 56px;\n    -webkit-font-smoothing:antialiased;\n  }\n  .strap{\n    position:relative;\n    display:flex;\n    align-items:stretch;\n    will-change:transform,opacity;\n  }\n  .accent-bar{\n    width:7px;\n    border-radius:4px;\n    margin-right:24px;\n    align-self:stretch;\n    transform-origin:bottom center;\n    will-change:transform;\n  }\n  .card{\n    position:relative;\n    display:flex;\n    align-items:center;\n    gap:24px;\n    background:linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(246,248,252,0.90) 100%);\n    backdrop-filter:blur(14px);\n    -webkit-backdrop-filter:blur(14px);\n    border:1px solid rgba(255,255,255,0.7);\n    border-radius:18px;\n    padding:26px 38px 28px 34px;\n    box-shadow:0 24px 60px -22px rgba(20,30,55,0.45), 0 2px 0 rgba(255,255,255,0.6) inset;\n    overflow:hidden;\n  }\n  .card::before{\n    content:\"\";\n    position:absolute;\n    top:0; left:0; right:0;\n    height:3px;\n    transform-origin:left center;\n    will-change:transform;\n  }\n  .logo-wrap{\n    display:flex;\n    align-items:center;\n    justify-content:center;\n    width:64px;height:64px;\n    border-radius:14px;\n    flex:0 0 auto;\n    overflow:hidden;\n    will-change:transform,opacity;\n  }\n  .logo-wrap img{width:100%;height:100%;object-fit:contain;display:block}\n  .logo-wrap .badge{\n    width:64px;height:64px;border-radius:14px;\n    display:flex;align-items:center;justify-content:center;\n    color:#fff;\n  }\n  .logo-wrap .badge .material-icons-outlined{font-size:34px}\n  .text{display:flex;flex-direction:column;gap:6px;min-width:280px}\n  .name{\n    font-size:40px;\n    font-weight:800;\n    letter-spacing:-0.5px;\n    line-height:1.02;\n    white-space:nowrap;\n    will-change:transform,opacity;\n  }\n  .role-row{\n    display:flex;\n    align-items:center;\n    gap:12px;\n    will-change:transform,opacity;\n  }\n  .role-tick{\n    width:0;\n    height:2px;\n    border-radius:2px;\n    will-change:width;\n  }\n  .role{\n    font-size:18px;\n    font-weight:600;\n    letter-spacing:0.3px;\n    white-space:nowrap;\n  }\n</style>\n</head>\n<body>\n  <div id=\"wrap\">\n    <div class=\"strap\" id=\"strap\">\n      <div class=\"accent-bar\" id=\"accentBar\"></div>\n      <div class=\"card\" id=\"card\">\n        <div class=\"logo-wrap\" id=\"logoWrap\"></div>\n        <div class=\"text\">\n          <div class=\"name\" id=\"name\">Navn Navnesen</div>\n          <div class=\"role-row\" id=\"roleRow\">\n            <span class=\"role-tick\" id=\"roleTick\"></span>\n            <span class=\"role\" id=\"role\">Rolle</span>\n          </div>\n        </div>\n      </div>\n    </div>\n  </div>\n\n<script>\n(function(){\n  var CFG = window.__CFG__ || {};\n  var accent = CFG.accent || '#3b82f6';\n  var ink    = CFG.ink    || '#1f2d4a';\n\n  function rgba(hex, a){\n    hex = (hex||'').replace('#','');\n    if(hex.length===3) hex = hex.split('').map(function(c){return c+c;}).join('');\n    var r=parseInt(hex.substr(0,2),16)||0, g=parseInt(hex.substr(2,2),16)||0, b=parseInt(hex.substr(4,2),16)||0;\n    return 'rgba('+r+','+g+','+b+','+a+')';\n  }\n\n  var elName   = document.getElementById('name');\n  var elRole   = document.getElementById('role');\n  var elTick   = document.getElementById('roleTick');\n  var elBar    = document.getElementById('accentBar');\n  var elStrap  = document.getElementById('strap');\n  var elCard   = document.getElementById('card');\n  var elLogo   = document.getElementById('logoWrap');\n  var elRoleRow= document.getElementById('roleRow');\n\n  if(CFG.name) elName.textContent = CFG.name;\n  if(CFG.role) elRole.textContent = CFG.role;\n\n  elName.style.color = ink;\n  elRole.style.color = rgba(ink, 0.72);\n  elTick.style.background = accent;\n  elBar.style.background  = 'linear-gradient(180deg,'+accent+','+rgba(accent,0.55)+')';\n  elBar.style.boxShadow   = '0 0 16px '+rgba(accent,0.55);\n\n  var styleTag = document.createElement('style');\n  styleTag.textContent = '#card::before{background:linear-gradient(90deg,'+accent+','+rgba(accent,0)+');}';\n  document.head.appendChild(styleTag);\n\n  if(CFG.logo){\n    var img = document.createElement('img');\n    img.src = CFG.logo;\n    elLogo.appendChild(img);\n    elLogo.style.background = rgba(ink,0.04);\n  } else {\n    var badge = document.createElement('div');\n    badge.className = 'badge';\n    badge.style.background = 'linear-gradient(135deg,'+accent+','+rgba(accent,0.7)+')';\n    badge.style.boxShadow = '0 8px 20px -8px '+rgba(accent,0.7);\n    var ic = document.createElement('span');\n    ic.className = 'material-icons-outlined';\n    ic.textContent = 'badge';\n    badge.appendChild(ic);\n    elLogo.appendChild(badge);\n  }\n\n  function easeInOut(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }\n  function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }\n  function seg(p,a,b){ return clamp((p-a)/(b-a),0,1); }\n\n  window.setProgress = function(p){\n    p = clamp(p,0,1);\n\n    var sIn = easeInOut(seg(p,0,0.45));\n    var dx = (1 - sIn) * -160;\n    elStrap.style.transform = 'translateX('+dx.toFixed(2)+'px)';\n    elStrap.style.opacity = sIn.toFixed(3);\n\n    var bar = easeInOut(seg(p,0.10,0.55));\n    elBar.style.transform = 'scaleY('+bar.toFixed(3)+')';\n\n    var line = easeInOut(seg(p,0.15,0.6));\n    var styleLine = document.getElementById('__cardline');\n    if(!styleLine){ styleLine=document.createElement('style'); styleLine.id='__cardline'; document.head.appendChild(styleLine); }\n    styleLine.textContent = '#card::before{transform:scaleX('+line.toFixed(3)+');}';\n\n    var lg = easeInOut(seg(p,0.20,0.55));\n    elLogo.style.opacity = lg.toFixed(3);\n    elLogo.style.transform = 'translateY('+((1-lg)*10).toFixed(2)+'px) scale('+(0.85+lg*0.15).toFixed(3)+')';\n\n    var nm = easeInOut(seg(p,0.28,0.66));\n    elName.style.opacity = nm.toFixed(3);\n    elName.style.transform = 'translateY('+((1-nm)*16).toFixed(2)+'px)';\n\n    var rl = easeInOut(seg(p,0.42,0.78));\n    elRoleRow.style.opacity = rl.toFixed(3);\n    elRoleRow.style.transform = 'translateY('+((1-rl)*12).toFixed(2)+'px)';\n\n    var tk = easeInOut(seg(p,0.55,0.95));\n    elTick.style.width = (tk*26).toFixed(2)+'px';\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
 }
 ]
