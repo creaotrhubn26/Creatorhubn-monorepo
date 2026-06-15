@@ -21,6 +21,13 @@ const D = {
 const ANIM_PRESETS = [{ id: 'fadeUp', label: 'Fade Up' }, { id: 'scaleIn', label: 'Scale In' }, { id: 'slideLeft', label: 'Slide Left' }];
 const EASINGS = ['Ease Out Cubic', 'Ease In Out', 'Linear', 'Spring'];
 
+// Maler som er «charts» (graf/data-viz) → egen Charts-fane i mockup-stil.
+const CHART_IDS = new Set<string>([
+  'donut', 'line-growth', 'radar-chart', 'stacked-bar', 'comparison-bars', 'funnel',
+  'gauge', 'stat-trio-ring', 'heatmap-week', 'progress-goals', 'big-percent',
+  'hud-stack', 'kpi-hud-tiles', 'ab-test', 'live-analytics',
+]);
+
 interface Scene { id: string; tplId: string; values: Record<string, string>; atSec: number; bindings?: Record<string, string> }
 let _sid = 1;
 const newScene = (tplId: string, atSec: number): Scene => ({ id: `s${_sid++}`, tplId, values: {}, atSec, bindings: {} });
@@ -138,7 +145,7 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
   const [logo, setLogo] = useState<string>(() => { const u = project?.branding?.logoUrl; return u && u.startsWith('data:') ? u : ''; });
   const [suggested, setSuggested] = useState('');
   const [rightTab, setRightTab] = useState<'Design' | 'Animate' | 'Data'>('Data');
-  const [leftSec, setLeftSec] = useState<'templates' | 'brand' | 'data' | 'export'>('templates');
+  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'brand' | 'data' | 'export'>('templates');
   const [dataText, setDataText] = useState('');
   const dataMap = useMemo(() => parseDataSource(dataText), [dataText]);
   const dataKeys = useMemo(() => Object.keys(dataMap), [dataMap]);
@@ -270,8 +277,8 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
         <div style={{ width: 178, borderRight: `1px solid ${D.line}`, background: D.panel, paddingTop: 8, display: 'flex', flexDirection: 'column' }}>
           <div style={railItem(leftSec === 'data')} onClick={() => setLeftSec('data')}>⛁ Data Sources{dataKeys.length ? <span style={{ marginLeft: 'auto', fontSize: 10, color: D.teal }}>{dataKeys.length}</span> : null}</div>
           <div style={railItem(leftSec === 'templates')} onClick={() => setLeftSec('templates')}>▦ Templates <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.length}</span></div>
-          <div style={railItem(false)} title="Kommer">▤ Charts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>snart</span></div>
-          <div style={railItem(false)} title="Kommer">◷ Icons <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>snart</span></div>
+          <div style={railItem(leftSec === 'charts')} onClick={() => setLeftSec('charts')}>▤ Charts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => CHART_IDS.has(t.id)).length}</span></div>
+          <div style={railItem(false)} title="Velg ikoner i Data-fanen per felt">◷ Icons <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{ALL_MATERIAL_ICONS.length}</span></div>
           <div style={railItem(leftSec === 'brand')} onClick={() => setLeftSec('brand')}>◆ Brand Kit</div>
           <div style={railItem(leftSec === 'export')} onClick={() => setLeftSec('export')}>⤓ Export</div>
           <div style={{ flex: 1 }} />
@@ -280,10 +287,10 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
 
         {/* Sekundær-panel */}
         <div style={{ width: 280, borderRight: `1px solid ${D.line}`, overflowY: 'auto', padding: 14, background: D.panel }}>
-          {leftSec === 'templates' && (<>
-            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Templates <span style={{ color: D.faint, fontWeight: 500 }}>· endrer scene {sel + 1}</span></div>
+          {(leftSec === 'templates' || leftSec === 'charts') && (<>
+            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>{leftSec === 'charts' ? 'Charts' : 'Templates'} <span style={{ color: D.faint, fontWeight: 500 }}>· endrer scene {sel + 1}</span></div>
             <div style={{ display: 'grid', gap: 9 }}>
-              {INFOGRAPHIC_TEMPLATES.map((t) => {
+              {INFOGRAPHIC_TEMPLATES.filter((t) => leftSec === 'charts' ? CHART_IDS.has(t.id) : true).map((t) => {
                 const selT = t.id === scene.tplId;
                 return (
                   <button key={t.id} onClick={() => pickTemplate(t.id)} style={{ textAlign: 'left', padding: 11, borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${selT ? D.accent : D.line}`, background: selT ? D.panel2 : D.bg, color: D.ink, position: 'relative' }}>
