@@ -2225,6 +2225,185 @@ export default function LeadMapPanel() {
           </DialogActions>
         </Dialog>
 
+        {/* Alle konkurrenter — tabell-visning inkl. de uten geo */}
+        <Box sx={{ mt: 2.4, p: 2, borderRadius: 1.6, bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}` }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.4 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: palette.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Alle konkurrenter
+              </Typography>
+              <Chip
+                label={competitors.length}
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(239,68,68,0.12)',
+                  color: '#ef4444',
+                  fontWeight: 800, fontSize: '0.66rem', height: 20,
+                }}
+              />
+              {competitors.filter((c) => c.latitude == null).length > 0 && (
+                <Tooltip title="Konkurrenter uten geo (ikke på kart)">
+                  <Chip
+                    label={`${competitors.filter((c) => c.latitude == null).length} uten geo`}
+                    size="small"
+                    sx={{
+                      bgcolor: 'rgba(148,163,184,0.12)',
+                      color: '#94a3b8',
+                      fontWeight: 700, fontSize: '0.62rem', height: 20,
+                    }}
+                  />
+                </Tooltip>
+              )}
+            </Stack>
+            <Button
+              size="small" variant="outlined"
+              onClick={() => setAddCompOpen(true)}
+              startIcon={<AddLocationAltOutlinedIcon sx={{ fontSize: 14 }} />}
+              sx={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)', fontWeight: 700, fontSize: '0.72rem', textTransform: 'none' }}
+            >
+              Legg til
+            </Button>
+          </Stack>
+          {competitors.length === 0 ? (
+            <Typography sx={{ fontSize: '0.76rem', color: palette.textMuted, fontStyle: 'italic' }}>
+              Ingen konkurrenter ennå. Trykk «Legg til» eller kjør Role Room Agent's Market Scan.
+            </Typography>
+          ) : (
+            <Box sx={{ overflowX: 'auto' }}>
+              <Box component="table" sx={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                '& th, & td': {
+                  textAlign: 'left',
+                  padding: '8px 10px',
+                  borderBottom: `1px solid ${palette.border}`,
+                  fontSize: '0.78rem',
+                  color: palette.textSecondary,
+                  whiteSpace: 'nowrap',
+                },
+                '& th': {
+                  fontSize: '0.66rem',
+                  color: palette.textMuted,
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                },
+                '& tr:hover td': {
+                  bgcolor: 'rgba(168,85,247,0.05)',
+                  cursor: 'pointer',
+                },
+              }}>
+                <thead>
+                  <tr>
+                    <th>Navn</th>
+                    <th>Kategori</th>
+                    <th>Trussel</th>
+                    <th style={{ textAlign: 'center' }}>Score</th>
+                    <th>Posisjonering</th>
+                    <th style={{ textAlign: 'center' }}>På kart</th>
+                    <th>Handling</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {competitors
+                    .slice()
+                    .sort((a, b) => {
+                      // priority først, så threat-level, så score
+                      const pa = a.priorityRank ?? -1;
+                      const pb = b.priorityRank ?? -1;
+                      if (pa !== pb) return pb - pa;
+                      const order = { near: 1, medium: 2, far: 3 } as const;
+                      const oa = a.threatLevel ? order[a.threatLevel] : 4;
+                      const ob = b.threatLevel ? order[b.threatLevel] : 4;
+                      if (oa !== ob) return oa - ob;
+                      return (b.threatScore ?? 0) - (a.threatScore ?? 0);
+                    })
+                    .map((c) => (
+                      <tr key={c.id} onClick={() => {
+                        if (c.latitude != null && c.longitude != null) {
+                          setSelectedCompetitor(c);
+                          setSelected(null);
+                        }
+                      }}>
+                        <td>
+                          <Stack direction="row" alignItems="center" spacing={0.6}>
+                            <Box sx={{
+                              width: 8, height: 8, borderRadius: '50%',
+                              bgcolor: c.threatLevel ? THREAT_COLOR[c.threatLevel] : UNASSESSED_COLOR,
+                            }} />
+                            <span style={{ fontWeight: 700, color: palette.textPrimary }}>{c.name}</span>
+                            {c.isManualAddition && (
+                              <Chip label="MANUELL" size="small" sx={{
+                                bgcolor: 'rgba(192,132,252,0.15)',
+                                color: palette.accent,
+                                fontWeight: 800, fontSize: '0.56rem', height: 16,
+                              }} />
+                            )}
+                          </Stack>
+                        </td>
+                        <td>{c.category ?? '—'}</td>
+                        <td>
+                          {c.threatLevel ? (
+                            <Chip
+                              label={c.threatLevel === 'near' ? 'Nær' : c.threatLevel === 'medium' ? 'Medium' : 'Fjern'}
+                              size="small"
+                              sx={{
+                                bgcolor: `${THREAT_COLOR[c.threatLevel]}22`,
+                                color: THREAT_COLOR[c.threatLevel],
+                                fontWeight: 800, fontSize: '0.66rem', height: 20,
+                              }}
+                            />
+                          ) : (
+                            <span style={{ color: palette.textMuted, fontSize: '0.72rem' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'center', fontWeight: 700 }}>
+                          {c.threatScore != null ? c.threatScore : '—'}
+                        </td>
+                        <td style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {c.positioning ?? c.claudeThreatSummary ?? <span style={{ color: palette.textMuted }}>—</span>}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          {c.latitude != null ? (
+                            <PlaceOutlinedIcon sx={{ color: '#34d399', fontSize: 16 }} />
+                          ) : (
+                            <span style={{ color: palette.textMuted, fontSize: '0.72rem' }}>—</span>
+                          )}
+                        </td>
+                        <td>
+                          {!c.claudeThreatSummary ? (
+                            <Button
+                              size="small" variant="text"
+                              onClick={(e) => { e.stopPropagation(); assessCompetitor(c.id); }}
+                              disabled={assessingCompetitorId === c.id}
+                              startIcon={
+                                assessingCompetitorId === c.id
+                                  ? <CircularProgress size={10} sx={{ color: palette.accent }} />
+                                  : <AutoAwesomeOutlinedIcon sx={{ fontSize: 12 }} />
+                              }
+                              sx={{ color: palette.accent, fontWeight: 700, fontSize: '0.68rem', textTransform: 'none', minWidth: 0, p: 0.4 }}
+                            >
+                              Vurder
+                            </Button>
+                          ) : (
+                            <Button
+                              size="small" variant="text"
+                              onClick={(e) => { e.stopPropagation(); assessCompetitor(c.id); }}
+                              disabled={assessingCompetitorId === c.id}
+                              sx={{ color: palette.textMuted, fontWeight: 700, fontSize: '0.68rem', textTransform: 'none', minWidth: 0, p: 0.4 }}
+                            >
+                              Re-vurder
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </Box>
+            </Box>
+          )}
+        </Box>
+
         {/* Recent Activity — horisontale kort */}
         <Box sx={{ mt: 2.4, p: 2, borderRadius: 1.6, bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}` }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.4 }}>

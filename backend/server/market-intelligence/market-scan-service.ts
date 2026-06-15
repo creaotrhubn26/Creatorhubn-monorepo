@@ -345,6 +345,30 @@ export async function runMarketScan(
       [scanId, competitors.length, opportunities.length, confidenceSummary],
     );
 
+    // 7. Beriker konkurrentene med Google Places-data (lat/lng/rating)
+    //    så de havner direkte på Lead Map sammen med leads.
+    //    Best-effort — feiler aldri runMarketScan-resultatet.
+    void (async () => {
+      try {
+        const { enrichCompetitorsWithPlaces } = await import(
+          "../competitor-place-enrichment.js"
+        );
+        const result = await enrichCompetitorsWithPlaces(pool, {
+          scanId,
+          ownerUserId: scan.workspaceOwnerUserId,
+          region: scan.region,
+        });
+        if (result.enriched > 0) {
+          console.log(
+            `[market-scan] Berikket ${result.enriched} konkurrenter m/ Places ` +
+              `(skipped ${result.skipped}, failed ${result.failed})`,
+          );
+        }
+      } catch (err) {
+        console.warn("[market-scan] auto-Places-berikkelse feilet:", (err as Error).message);
+      }
+    })();
+
     return {
       scan: rowToScan(finalScan.rows[0]),
       competitors,

@@ -22,6 +22,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
 import { searchPlaces } from "./lead-map-service.js";
+import { assessCompetitorThreat } from "./competitor-threat-assessment.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -208,7 +209,29 @@ export function registerLeadMapCompetitorRoutes({
             body.threatLevel ?? null,
           ],
         );
-        return res.json({ competitor: rowToCompetitor(ins.rows[0]) });
+        const competitor = rowToCompetitor(ins.rows[0]);
+
+        // Auto-fyr Claude threat-vurdering i bakgrunnen — bruker venter ikke.
+        // Hopper over hvis brukeren har eksplisitt satt threat_level i form-en
+        // (de har allerede tatt et standpunkt).
+        if (!body.threatLevel && process.env.ANTHROPIC_API_KEY) {
+          void (async () => {
+            try {
+              await assessCompetitorThreat(pool, {
+                competitorId: competitor.id,
+                workspaceOwnerUserId: session.userId,
+              });
+              console.log(`[competitor-add] Auto-assessed threat for ${competitor.name}`);
+            } catch (err) {
+              console.warn(
+                `[competitor-add] Auto-assess feilet for ${competitor.name}:`,
+                (err as Error).message,
+              );
+            }
+          })();
+        }
+
+        return res.json({ competitor });
       } catch (err) {
         return res.status(500).json({ error: "add_failed", detail: String(err) });
       }
@@ -261,106 +284,32 @@ export function registerLeadMapCompetitorRoutes({
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) return res.status(500).json({ error: "anthropic_key_missing" });
-
       try {
-        // Hent konkurrent + min Brand Kit som baseline
-        const cr = await pool.query<{
-          id: string; name: string; domain: string;
-          category: string | null; positioning: string | null;
-          primary_offer: string | null;
-        }>(
-          `SELECT id::text, name, domain, category, positioning, primary_offer
+        await assessCompetitorThreat(pool, {
+          competitorId: req.params.id,
+          workspaceOwnerUserId: session.userId,
+        });
+        // Hent oppdatert rad så frontend ikke trenger ny round-trip
+        const r = await pool.query<CompetitorRow>(
+          `SELECT id::text, name, domain, category, positioning, primary_offer,
+                  latitude, longitude, google_address, google_phone, google_rating,
+                  is_manual_addition, threat_level, threat_score,
+                  claude_threat_summary, claude_what_to_worry_about,
+                  claude_what_to_ignore, claude_assessed_at::text,
+                  priority_rank, created_at::text
              FROM market_scan_competitors
             WHERE id = $1 AND workspace_owner_user_id = $2`,
           [req.params.id, session.userId],
         );
-        if (cr.rows.length === 0) return res.status(404).json({ error: "not_found" });
-        const comp = cr.rows[0];
-
-        // Min egen brand-kit-summary (siste)
-        const bk = await pool.query<{ profile: string | null }>(
-          `SELECT (brand_profile->>'positioning_summary')::text AS profile
-             FROM brand_kits
-            WHERE workspace_owner_user_id = $1
-            ORDER BY updated_at DESC LIMIT 1`,
-          [session.userId],
-        );
-        const myProfile = bk.rows[0]?.profile ?? "(ingen brand-kit-summary registrert)";
-
-        const client = new Anthropic({ apiKey });
-        const msg = await client.messages.create({
-          model: "claude-opus-4-7",
-          max_tokens: 800,
-          messages: [{
-            role: "user",
-            content: `Du er Role Room Agent. Vurder en konkurrent for vår egen bedrift.
-
-VÅR EGEN POSISJONERING:
-${myProfile}
-
-KONKURRENTEN:
-- Navn: ${comp.name}
-- Domene: ${comp.domain}
-- Kategori: ${comp.category ?? "?"}
-- Tilbud: ${comp.primary_offer ?? "?"}
-- Posisjonering: ${comp.positioning ?? "?"}
-
-Returner strengt JSON:
-{
-  "threat_level": "near" | "medium" | "far",
-  "threat_score": 0-100,
-  "threat_summary": "1-2 setninger om hvorfor dette trussel-nivået",
-  "what_to_worry_about": "konkrete grunner du må holde øye med dette",
-  "what_to_ignore": "hva du IKKE bør bruke energi på rundt denne konkurrenten"
-}`,
-          }],
-        });
-
-        const text = msg.content
-          .filter((b): b is Anthropic.TextBlock => b.type === "text")
-          .map((b) => b.text)
-          .join("\n");
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) return res.status(500).json({ error: "claude_no_json", raw: text });
-        const parsed = JSON.parse(jsonMatch[0]) as {
-          threat_level: "near" | "medium" | "far";
-          threat_score: number;
-          threat_summary: string;
-          what_to_worry_about: string;
-          what_to_ignore: string;
-        };
-
-        const updated = await pool.query<CompetitorRow>(
-          `UPDATE market_scan_competitors
-              SET threat_level = $3,
-                  threat_score = $4,
-                  claude_threat_summary = $5,
-                  claude_what_to_worry_about = $6,
-                  claude_what_to_ignore = $7,
-                  claude_assessed_at = NOW()
-            WHERE id = $1 AND workspace_owner_user_id = $2
-          RETURNING id::text, name, domain, category, positioning, primary_offer,
-                    latitude, longitude, google_address, google_phone, google_rating,
-                    is_manual_addition, threat_level, threat_score,
-                    claude_threat_summary, claude_what_to_worry_about,
-                    claude_what_to_ignore, claude_assessed_at::text,
-                    priority_rank, created_at::text`,
-          [
-            comp.id,
-            session.userId,
-            parsed.threat_level,
-            parsed.threat_score,
-            parsed.threat_summary,
-            parsed.what_to_worry_about,
-            parsed.what_to_ignore,
-          ],
-        );
-        return res.json({ competitor: rowToCompetitor(updated.rows[0]) });
+        if (r.rows.length === 0) return res.status(404).json({ error: "not_found" });
+        return res.json({ competitor: rowToCompetitor(r.rows[0]) });
       } catch (err) {
-        return res.status(500).json({ error: "assess_failed", detail: String(err) });
+        const msg = (err as Error).message;
+        if (msg === "competitor_not_found") return res.status(404).json({ error: msg });
+        if (msg.includes("ANTHROPIC_API_KEY mangler")) {
+          return res.status(500).json({ error: "anthropic_key_missing" });
+        }
+        return res.status(500).json({ error: "assess_failed", detail: msg });
       }
     },
   );
@@ -463,20 +412,43 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
   );
 
   // ─── GET /market-points (kombinert kart-data) ─────────────────────
+  //
+  // Defensiv mot delvis kjørte migrasjoner: hver del (leads/competitors)
+  // har egen try/catch slik at hvis ett av sub-spørringene feiler (f.eks.
+  // mig 281 ikke applied → claude_recommendation_rank mangler), får vi
+  // FORTSATT en delvis respons med det som finnes. UI degraderer pent.
   app.get(
     "/api/admin-room/lead-map/market-points",
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const include = String(req.query.include ?? "both"); // 'leads' | 'competitors' | 'both'
-      try {
-        const out: { leads: unknown[]; competitors: unknown[] } = { leads: [], competitors: [] };
+      const out: {
+        leads: unknown[];
+        competitors: unknown[];
+        warnings?: string[];
+      } = { leads: [], competitors: [] };
+      const warnings: string[] = [];
 
-        if (include === "leads" || include === "both") {
+      // ── Leads (m/ defensiv fallback hvis mig 281 ikke applied) ────
+      if (include === "leads" || include === "both") {
+        try {
+          // Sjekk om mig 281's crm_customers-utvidelse er applied
+          const hasClaudeCols = await pool.query<{ exists: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'crm_customers'
+                  AND column_name = 'claude_recommendation_rank'
+             ) AS exists`,
+          );
+          const claudeRankSelect = hasClaudeCols.rows[0].exists
+            ? "claude_recommendation_rank, claude_recommendation_reason"
+            : "NULL::int AS claude_recommendation_rank, NULL::text AS claude_recommendation_reason";
+
           const l = await pool.query(
             `SELECT id::text, name, category, lead_status AS status,
                     latitude, longitude, address, city,
-                    claude_recommendation_rank, claude_recommendation_reason,
+                    ${claudeRankSelect},
                     ai_opportunity_score, google_rating
                FROM crm_customers
               WHERE owner_user_id = $1
@@ -498,31 +470,50 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
             aiOpportunityScore: r.ai_opportunity_score,
             googleRating: r.google_rating != null ? Number(r.google_rating) : null,
           }));
+        } catch (err) {
+          console.error("[market-points] leads-query failed", err);
+          warnings.push(`leads_unavailable: ${(err as Error).message}`);
         }
-
-        if (include === "competitors" || include === "both") {
-          const c = await pool.query<CompetitorRow>(
-            `SELECT id::text, name, domain, category, positioning, primary_offer,
-                    latitude, longitude, google_address, google_phone, google_rating,
-                    is_manual_addition, threat_level, threat_score,
-                    claude_threat_summary, claude_what_to_worry_about,
-                    claude_what_to_ignore, claude_assessed_at::text,
-                    priority_rank, created_at::text
-               FROM market_scan_competitors
-              WHERE workspace_owner_user_id = $1
-                AND latitude IS NOT NULL AND longitude IS NOT NULL`,
-            [session.userId],
-          );
-          out.competitors = c.rows.map((r) => ({
-            kind: "competitor",
-            ...rowToCompetitor(r),
-          }));
-        }
-
-        return res.json(out);
-      } catch (err) {
-        return res.status(500).json({ error: "market_points_failed", detail: String(err) });
       }
+
+      // ── Konkurrenter (m/ defensiv fallback hvis mig 281 ikke applied) ──
+      if (include === "competitors" || include === "both") {
+        try {
+          const hasCompCols = await pool.query<{ exists: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'market_scan_competitors'
+                  AND column_name = 'workspace_owner_user_id'
+             ) AS exists`,
+          );
+          if (!hasCompCols.rows[0].exists) {
+            warnings.push("competitors_unavailable: mig 281 not applied");
+          } else {
+            const c = await pool.query<CompetitorRow>(
+              `SELECT id::text, name, domain, category, positioning, primary_offer,
+                      latitude, longitude, google_address, google_phone, google_rating,
+                      is_manual_addition, threat_level, threat_score,
+                      claude_threat_summary, claude_what_to_worry_about,
+                      claude_what_to_ignore, claude_assessed_at::text,
+                      priority_rank, created_at::text
+                 FROM market_scan_competitors
+                WHERE workspace_owner_user_id = $1
+                  AND latitude IS NOT NULL AND longitude IS NOT NULL`,
+              [session.userId],
+            );
+            out.competitors = c.rows.map((r) => ({
+              kind: "competitor",
+              ...rowToCompetitor(r),
+            }));
+          }
+        } catch (err) {
+          console.error("[market-points] competitors-query failed", err);
+          warnings.push(`competitors_unavailable: ${(err as Error).message}`);
+        }
+      }
+
+      if (warnings.length > 0) out.warnings = warnings;
+      return res.json(out);
     },
   );
 }
