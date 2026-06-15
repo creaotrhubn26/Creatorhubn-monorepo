@@ -1,0 +1,73 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif}
+  html,body{background:transparent}
+  #wrap{display:flex;gap:34px;align-items:center;padding:60px;width:max-content}
+  .card{background:#fff;border-radius:24px;padding:30px 34px;width:430px;
+        box-shadow:0 24px 60px rgba(20,40,80,.10),0 4px 14px rgba(20,40,80,.05);
+        border:1px solid rgba(20,40,80,.05);opacity:0;transform:translateY(26px)}
+  .top{display:flex;align-items:center;gap:18px}
+  .ic{width:66px;height:66px;border-radius:50%;display:grid;place-items:center;flex:none}
+  .ic .material-icons-outlined{font-size:32px}
+  .ic.blue{background:#e8f1fe}.ic.blue .material-icons-outlined{color:#2f6df0}
+  .ic.teal{background:#e3f5f1}.ic.teal .material-icons-outlined{color:#0f9d8a}
+  .lbl{color:#5b6b7d;font-size:21px;font-weight:500}
+  .num{font-size:62px;font-weight:800;color:#1f2d4a;letter-spacing:-1px;line-height:1.05;margin-top:2px}
+  .num.teal{color:#0f9d8a}
+  .bars{display:flex;align-items:flex-end;gap:6px;height:64px;margin-top:14px}
+  .bars i{flex:1;background:#cfe0fb;border-radius:4px;height:0%}
+  .bars i.hi{background:#2f6df0}
+  .pill{display:inline-flex;align-items:center;gap:7px;background:#e3f5f1;color:#0c8f6f;
+        font-weight:600;font-size:18px;padding:9px 16px;border-radius:30px;margin-top:16px;opacity:0}
+  .pill .material-icons-outlined{font-size:18px}
+  .chev{color:#c7d2e3;font-size:30px;flex:none;opacity:0}
+</style></head>
+<body><div id="wrap">
+  <div class="card" data-d="0"><div class="top">
+    <div class="ic blue"><span class="material-icons-outlined">groups</span></div>
+    <div><div class="lbl">Pasienter i dag</div><div class="num" data-to="124" data-suf="">0</div></div>
+  </div></div>
+  <span class="material-icons-outlined chev" data-d="0.1">chevron_right</span>
+  <div class="card" data-d="0.15"><div class="top">
+    <div class="ic blue"><span class="material-icons-outlined">task_alt</span></div>
+    <div><div class="lbl">Digitale innsjekk</div><div class="num" data-to="76" data-suf="%">0%</div></div>
+  </div>
+    <div class="bars" data-bars="30,38,34,48,56,50,66,72,64,80,88,100">
+      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="hi"></i>
+    </div>
+  </div>
+  <span class="material-icons-outlined chev" data-d="0.25">chevron_right</span>
+  <div class="card" data-d="0.3"><div class="top">
+    <div class="ic teal"><span class="material-icons-outlined">schedule</span></div>
+    <div><div class="lbl">Redusert ventetid</div><div class="num teal" data-to="-18" data-suf="%">0%</div></div>
+  </div>
+    <div class="pill" data-d="0.5"><span class="material-icons-outlined">south</span> vs. forrige måned</div>
+  </div>
+</div>
+<script>
+function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
+// p = global progresjon 0..1 (styres frame-for-frame av Playwright)
+window.setProgress=function(p){
+  document.querySelectorAll('[data-d]').forEach(function(el){
+    var d=parseFloat(el.dataset.d||0), span=0.45;
+    var t=Math.max(0,Math.min(1,(p-d)/span));
+    var e=ease(t);
+    el.style.opacity=e;
+    if(el.classList.contains('card')) el.style.transform='translateY('+(26*(1-e))+'px)';
+  });
+  document.querySelectorAll('.num[data-to]').forEach(function(el){
+    var to=parseFloat(el.dataset.to), suf=el.dataset.suf||'';
+    var t=ease(Math.max(0,Math.min(1,(p-0.15)/0.6)));
+    el.textContent=Math.round(to*t)+suf;
+  });
+  document.querySelectorAll('.bars[data-bars]').forEach(function(b){
+    var vals=b.dataset.bars.split(',').map(Number), bs=b.querySelectorAll('i');
+    var t=ease(Math.max(0,Math.min(1,(p-0.2)/0.6)));
+    bs.forEach(function(bar,i){bar.style.height=(vals[i]*t)+'%'});
+  });
+};
+window.setProgress(0);
+</script>
+</body></html>

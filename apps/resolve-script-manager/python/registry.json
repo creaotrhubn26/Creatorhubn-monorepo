@@ -2270,6 +2270,23 @@
       "requiresTimeline": false
     },
     {
+      "id": "place_overlay",
+      "name": "Place Infographic Overlay (alfa → timeline)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/place_overlay.py",
+      "description": "Legger transparente infographic-overlays (ProRes 4444 m/alfa, rendret fra Infographic Studio sine HTML-maler) på overlay-spor (V2/V3) i den åpne timelinen, ved tidspunktet de skal dukke opp i videoen (atSec). Resolve-siden av studio→Resolve-pipelinen.",
+      "requiredInputs": [
+        { "key": "overlays", "label": "Overlays (JSON: path, atSec, durationSec, track)", "type": "json", "required": true },
+        { "key": "fps", "label": "FPS (default fra timeline)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "build_vertical_social_cut",
       "name": "Build Vertical Social Cut (Studio Smart Reframe)",
       "category": "timeline",
