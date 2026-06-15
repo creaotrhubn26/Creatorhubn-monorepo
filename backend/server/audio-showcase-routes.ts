@@ -1005,6 +1005,47 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     }
   });
 
+  // ── Toveis samarbeidspartner-synk: EaseVerse collaborators ↔ medlemmer ─────
+  // Henter collaborators fra EaseVerse → legger til som medlemmer (idempotent),
+  // og pusher unionen av medlemsnavn tilbake til EaseVerse som collaborators.
+  app.post("/api/audio-showcases/:id/sync-collaborators", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    try {
+      const track = await loadLinkedTrack(id, s.userId);
+      if (track?.notFound) return res.status(404).json({ error: "not_found" });
+      if (!track) return res.status(409).json({ error: "no_linked_track" });
+      const evCollabs: string[] = Array.isArray(track.collaborators) ? track.collaborators
+        : (() => { try { return JSON.parse(track.collaborators || "[]"); } catch { return []; } })();
+      const existing = await pool.query(`SELECT name, is_owner FROM audio_review_members WHERE project_id=$1::uuid ORDER BY order_index ASC`, [id]);
+      const have = new Set(existing.rows.map((r) => r.name.toLowerCase()));
+      const PALETTE = ["#FF6B35", "#9b59b6", "#3fa7d6", "#e0a955", "#5fb88a", "#e0606a", "#8aa0b6"];
+      let added = 0; let idx = existing.rowCount;
+      for (const c of evCollabs) {
+        const nm = String(c).trim(); if (!nm || have.has(nm.toLowerCase())) continue;
+        const token = makeInviteToken();
+        await pool.query(
+          `INSERT INTO audio_review_members (project_id, name, role, avatar_color, is_owner, order_index, invite_token, invite_status, invited_at, invite_expires_at)
+           VALUES ($1::uuid,$2,'Bidragsyter',$3,false,$4,$5,'pending',NOW(),NOW()+INTERVAL '90 days')`,
+          [id, nm, PALETTE[idx % PALETTE.length], idx, token]); idx++; added++; have.add(nm.toLowerCase());
+      }
+      // Push union (medlemmer som ikke er eier) tilbake til EaseVerse.
+      const allMembers = await pool.query(`SELECT name FROM audio_review_members WHERE project_id=$1::uuid AND is_owner=false ORDER BY order_index ASC`, [id]);
+      const union = Array.from(new Set([...allMembers.rows.map((r) => r.name), ...evCollabs.map((c) => String(c).trim()).filter(Boolean)]));
+      let pushed = false;
+      try {
+        const lr = await pool.query(`SELECT lyrics FROM easeverse_tracks WHERE id=$1::uuid LIMIT 1`, [track.id]).catch(() => ({ rows: [] as any[] }));
+        const push = await evPushLyrics({ externalTrackId: track.externalTrackId, title: track.title || "Uten tittel", artist: track.artist || undefined, bpm: track.bpm || undefined, lyrics: str(lr.rows[0]?.lyrics, 20000), collaborators: union, source: "creatorhub", updatedAt: new Date().toISOString() });
+        pushed = !!push.reachable;
+      } catch { /* */ }
+      return res.json({ ok: true, added, members: existing.rowCount + added, pushedToEaseverse: pushed, collaborators: union.length });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      console.error("[audio-showcase] sync-collaborators failed:", e);
+      return res.status(500).json({ error: "sync_collaborators_failed" });
+    }
+  });
+
   // ── Synk-status: lokal tekst + EaseVerse-tilkobling + om ekstern er nyere ──
   app.get("/api/audio-showcases/:id/lyrics-sync", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
