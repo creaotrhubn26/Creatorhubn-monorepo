@@ -10,6 +10,7 @@ import { executeScript, systemOpen } from '../../api';
 import { useDemoStudio } from './demoStudioStore';
 import {
   INFOGRAPHIC_TEMPLATES, htmlForTemplate, buildInfographicConfig,
+  isIconField, MATERIAL_ICONS,
   type InfographicTemplate,
 } from './infographicStudio';
 
@@ -23,6 +24,38 @@ const EASINGS = ['Ease Out Cubic', 'Ease In Out', 'Linear', 'Spring'];
 interface Scene { id: string; tplId: string; values: Record<string, string>; atSec: number }
 let _sid = 1;
 const newScene = (tplId: string, atSec: number): Scene => ({ id: `s${_sid++}`, tplId, values: {}, atSec });
+
+/** Visuell Material-ikon-velger (søk + rutenett) — ingen teknisk skriving. */
+function IconField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const list = q ? MATERIAL_ICONS.filter((i) => i.includes(q.toLowerCase())) : MATERIAL_ICONS;
+  return (
+    <div>
+      <button onClick={() => setOpen((o) => !o)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderRadius: 7, border: `1px solid ${D.line}`, background: D.bg, color: D.ink, cursor: 'pointer', fontSize: 12.5 }}>
+        <span className="material-icons-outlined" style={{ fontSize: 20, color: D.accent }}>{value || 'help_outline'}</span>
+        <span style={{ flex: 1, textAlign: 'left', color: value ? D.ink : D.faint }}>{value || 'velg ikon'}</span>
+        <span style={{ color: D.faint }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 6, border: `1px solid ${D.line}`, borderRadius: 9, background: D.panel2, padding: 8 }}>
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Søk ikon …"
+            style={{ width: '100%', fontSize: 12, padding: '6px 8px', borderRadius: 6, border: `1px solid ${D.line}`, background: D.bg, color: D.ink, colorScheme: 'dark', marginBottom: 8 }} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
+            {list.map((ic) => (
+              <button key={ic} title={ic} onClick={() => { onChange(ic); setOpen(false); setQ(''); }}
+                style={{ display: 'grid', placeItems: 'center', height: 34, borderRadius: 7, cursor: 'pointer', border: `1px solid ${value === ic ? D.accent : 'transparent'}`, background: value === ic ? D.bg : 'transparent', color: value === ic ? D.accent : D.soft }}>
+                <span className="material-icons-outlined" style={{ fontSize: 19 }}>{ic}</span>
+              </button>
+            ))}
+            {!list.length && <div style={{ gridColumn: '1/-1', fontSize: 11, color: D.faint, padding: 6 }}>Ingen treff</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 async function dominantColor(dataUrl: string): Promise<string> {
   return new Promise((resolve) => {
@@ -119,6 +152,16 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
   };
   const onIframeLoad = () => { window.setTimeout(play, 250); };
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
+  // Material Icons-font for ikon-velgeren i studio-UI-et.
+  useEffect(() => {
+    const id = 'material-icons-cdn';
+    if (!document.getElementById(id)) {
+      const l = document.createElement('link');
+      l.id = id; l.rel = 'stylesheet';
+      l.href = 'https://fonts.googleapis.com/icon?family=Material+Icons+Outlined';
+      document.head.appendChild(l);
+    }
+  }, []);
 
   const pickLogo = (file: File | null) => {
     if (!file) return;
@@ -285,7 +328,9 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
                 {tpl.fields.map((f) => (
                   <label key={f.key} style={{ display: 'grid', gap: 4 }}>
                     <span style={{ fontSize: 11, color: D.soft }}>{f.label}</span>
-                    <input style={inp} placeholder={f.placeholder} value={scene.values[f.key] ?? tpl.defaults[f.key] ?? ''} onChange={(e) => setValue(f.key, e.target.value)} />
+                    {isIconField(f.key)
+                      ? <IconField value={scene.values[f.key] ?? tpl.defaults[f.key] ?? ''} onChange={(v) => setValue(f.key, v)} />
+                      : <input style={inp} placeholder={f.placeholder} value={scene.values[f.key] ?? tpl.defaults[f.key] ?? ''} onChange={(e) => setValue(f.key, e.target.value)} />}
                   </label>
                 ))}
               </div>

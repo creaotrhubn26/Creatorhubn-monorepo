@@ -41,6 +41,43 @@ export function htmlForTemplate(tpl: InfographicTemplate): string {
   return tpl.html || INFOGRAPHIC_HTML;
 }
 
+/** Er feltet et Material-ikon-felt? (vis ikon-velger i stedet for tekst). */
+export function isIconField(key: string): boolean {
+  return /(^|_)icon(\d*)$/i.test(key) || key.toLowerCase().endsWith('icon');
+}
+
+/** Kuratert sett Material Icons (Outlined) for ikon-velgeren, gruppert etter
+ *  bruk. (Material-fonten har ~1200; dette er de mest relevante for produkt/
+ *  demo/helse/analyse — søkbart i velgeren, kan utvides.) */
+export const MATERIAL_ICONS: string[] = [
+  // people / brukere
+  'person', 'group', 'groups', 'person_add', 'supervisor_account', 'diversity_3', 'handshake', 'support_agent', 'face',
+  // analyse / data
+  'insights', 'analytics', 'trending_up', 'trending_down', 'bar_chart', 'show_chart', 'pie_chart', 'donut_large', 'leaderboard', 'query_stats', 'monitoring', 'data_usage', 'percent', 'speed',
+  // handlinger / status
+  'check_circle', 'task_alt', 'verified', 'done_all', 'thumb_up', 'star', 'flag', 'priority_high', 'new_releases', 'workspace_premium', 'military_tech',
+  // tid
+  'schedule', 'timer', 'hourglass_top', 'event', 'calendar_today', 'update', 'history', 'alarm',
+  // kommunikasjon
+  'chat', 'forum', 'mail', 'notifications', 'campaign', 'send', 'call', 'sms', 'mark_email_read',
+  // forretning / penger
+  'payments', 'attach_money', 'savings', 'account_balance', 'receipt_long', 'shopping_cart', 'sell', 'store', 'work', 'business_center', 'rocket_launch',
+  // sikkerhet
+  'lock', 'shield', 'security', 'verified_user', 'gpp_good', 'visibility', 'visibility_off', 'fingerprint',
+  // helse
+  'favorite', 'monitor_heart', 'medical_services', 'health_and_safety', 'medication', 'vaccines', 'stethoscope', 'ecg_heart',
+  // media / produksjon
+  'play_circle', 'movie', 'videocam', 'photo_camera', 'mic', 'music_note', 'palette', 'brush', 'auto_awesome', 'bolt', 'lightbulb',
+  // navigasjon / sted
+  'location_on', 'public', 'map', 'explore', 'near_me', 'flight', 'language',
+  // dokumenter / arbeidsflyt
+  'description', 'article', 'folder', 'checklist', 'edit_note', 'draw', 'fact_check', 'inventory_2', 'assignment', 'rule',
+  // natur / energi
+  'eco', 'energy_savings_leaf', 'water_drop', 'solar_power', 'recycling', 'forest',
+  // diverse symboler
+  'settings', 'tune', 'build', 'extension', 'hub', 'cloud', 'wifi', 'devices', 'smartphone', 'laptop', 'dashboard', 'widgets', 'category', 'layers', 'grid_view',
+];
+
 export const INFOGRAPHIC_TEMPLATES: InfographicTemplate[] = [
   {
     id: 'kpi-cards',
