@@ -240,6 +240,16 @@ export async function buildAuthorizedYoutubeClient(pool: Pool, userId: string, r
   };
 }
 
+// Gjenbruker samme Google-tilkobling for Calendar (krever calendar-scope på
+// tilkoblingen; ellers feiler insert med insufficient-scope og håndteres pent).
+export async function buildAuthorizedGoogleCalendar(pool: Pool, userId: string, req?: Request) {
+  const authorized = await resolveRoleRoomGoogleConnection(pool, userId, {
+    allowFallbackToAnyUser: false,
+    preferredOauthApps: derivePreferredGoogleWorkspaceOauthApps(req),
+  });
+  return google.calendar({ version: "v3", auth: authorized.oauthClient });
+}
+
 async function resolveUploadsPlaylistId(youtube: ReturnType<typeof google.youtube>) {
   const channelResponse = await youtube.channels.list({
     part: ["snippet", "contentDetails"],

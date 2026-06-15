@@ -269,6 +269,8 @@ export interface AudioShowcaseDeps {
   // Valgfri: autorisert YouTube-klient for innlogget bruker (gjenbruker eksisterende
   // Google-tilkobling fra youtube-routes). Mangler den → publisering ikke tilgjengelig.
   getYoutubeClient?: (userId: string, req: any) => Promise<{ youtube: any } | null>;
+  // Valgfri: Google Calendar-klient (samme tilkobling) for å pushe økter.
+  getGoogleCalendar?: (userId: string, req: any) => Promise<any | null>;
   // Valgfri: multer (memoryStorage) for opplasting av eget Canvas-klipp.
   uploadClip?: { single: (field: string) => any };
 }
@@ -396,7 +398,7 @@ const PT_SECTION_COLOR: Record<string, string> = {
 };
 
 export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
-  const { app, pool, requireUserSession, sendInviteEmail, sendEmail, getBrandingForUser, getYoutubeClient, uploadClip } = deps;
+  const { app, pool, requireUserSession, sendInviteEmail, sendEmail, getBrandingForUser, getYoutubeClient, getGoogleCalendar, uploadClip } = deps;
   const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
 
   // Send invitasjons-e-post (fire-and-forget) hvis dep + e-post finnes.
@@ -2349,6 +2351,39 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const s = requireUserSession(req, res); if (!s) return;
     try { await pool.query(`DELETE FROM audio_sessions WHERE id=$1::uuid AND owner_user_id=$2`, [str(req.params.sid, 64), s.userId]); return res.json({ ok: true }); }
     catch (e) { if (isMissingTable(e)) return res.json({ ok: true }); return res.status(500).json({ error: "session_delete_failed" }); }
+  });
+
+  // Legg en økt i produsentens Google Calendar (samme Google-tilkobling).
+  app.post("/api/sessions/:sid/gcal", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    if (!getGoogleCalendar) return res.status(503).json({ error: "calendar_not_configured" });
+    try {
+      const r = await pool.query(`SELECT * FROM audio_sessions WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.sid, 64), s.userId]);
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const sess = r.rows[0];
+      const cal = await getGoogleCalendar(s.userId, req);
+      if (!cal) return res.status(409).json({ error: "google_not_connected" });
+      const start = new Date(sess.start_at);
+      const end = sess.end_at ? new Date(sess.end_at) : new Date(start.getTime() + 2 * 3600_000);
+      try {
+        const ins = await cal.events.insert({
+          calendarId: "primary",
+          requestBody: {
+            summary: sess.title,
+            location: sess.location || undefined,
+            description: [sess.notes, sess.online_url ? `Online: ${sess.online_url}` : ""].filter(Boolean).join("\n") || undefined,
+            start: { dateTime: start.toISOString() }, end: { dateTime: end.toISOString() },
+            reminders: { useDefault: true },
+          },
+        });
+        return res.json({ ok: true, htmlLink: ins.data?.htmlLink || null, eventId: ins.data?.id || null });
+      } catch (ge: any) {
+        const msg = String(ge?.message || ge?.errors?.[0]?.message || "");
+        if (/insufficient|scope|forbidden|permission/i.test(msg)) return res.status(409).json({ error: "calendar_scope_missing", detail: "Google-tilkoblingen mangler kalender-tilgang. Koble til på nytt med Calendar-scope." });
+        console.error("[sessions] gcal insert failed:", msg);
+        return res.status(502).json({ error: "calendar_insert_failed" });
+      }
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "gcal_failed" }); }
   });
 
   // Medlem: økter jeg er invitert til + RSVP.

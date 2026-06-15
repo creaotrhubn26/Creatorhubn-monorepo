@@ -38,6 +38,18 @@ const SessionsDialog: React.FC<{ open: boolean; projectId: string; onClose: () =
     } catch { /* */ } finally { setBusy(false); }
   };
   const del = async (id: string) => { await apiRequest(`/api/sessions/${id}`, { method: 'DELETE' }); await load(); };
+  const [gcalMsg, setGcalMsg] = React.useState<Record<string, string>>({});
+  const pushGcal = async (id: string) => {
+    setGcalMsg((m) => ({ ...m, [id]: '…' }));
+    try {
+      const r = await apiRequest(`/api/sessions/${id}/gcal`, { method: 'POST', body: {} });
+      if (r?.htmlLink) window.open(r.htmlLink, '_blank');
+      setGcalMsg((m) => ({ ...m, [id]: 'Lagt i Google Calendar' }));
+    } catch (e: any) {
+      const msg = String(e?.message || '');
+      setGcalMsg((m) => ({ ...m, [id]: msg.includes('409') ? 'Koble Google m/ Calendar-tilgang i Integrasjoner først' : 'Kunne ikke legge til' }));
+    }
+  };
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
@@ -77,6 +89,10 @@ const SessionsDialog: React.FC<{ open: boolean; projectId: string; onClose: () =
                   <Typography sx={{ fontSize: '0.68rem', color: MUTED }}>{fmtWhen(sx2.start_at)}{sx2.location ? ` · ${sx2.location}` : ''}</Typography>
                   <Stack direction="row" flexWrap="wrap" spacing={0.5} sx={{ mt: 0.5 }}>
                     {(sx2.invitees || []).map((iv: any) => { const c = statusChip(iv.status); return <Chip key={iv.name} icon={iv.warmedUp ? <LocalFireDepartmentOutlined sx={{ fontSize: '12px !important' }} /> : c.i} label={iv.warmedUp ? `${iv.name} · klar` : iv.name} size="small" sx={{ height: 18, fontSize: '0.58rem', bgcolor: iv.warmedUp ? 'rgba(95,184,138,0.14)' : 'rgba(255,255,255,0.06)', color: iv.warmedUp ? GREEN : c.c, '& .MuiChip-icon': { color: iv.warmedUp ? GREEN : c.c } }} />; })}
+                  </Stack>
+                  <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 0.5 }}>
+                    <Button onClick={() => pushGcal(sx2.id)} startIcon={<EventOutlined sx={{ fontSize: '14px !important' }} />} size="small" sx={{ color: '#3fa7d6', textTransform: 'none', fontSize: '0.66rem', minWidth: 0 }}>Google Calendar</Button>
+                    {gcalMsg[sx2.id] && <Typography sx={{ fontSize: '0.62rem', color: MUTED }}>{gcalMsg[sx2.id]}</Typography>}
                   </Stack>
                 </Box>
               ))}
