@@ -7,6 +7,11 @@
 // Workflow-genererte + render-verifiserte maler (cover, donut, linjegraf,
 // KPI-hero, verdenskart, A/B-test). Selvstendige config-drevne HTML-maler.
 import GENERATED_TEMPLATES from './infographicTemplates.generated.json';
+// Hele Material Icons (Outlined)-katalogen (2195 navn) for ikon-velgeren.
+import ALL_ICONS from './materialIcons.generated.json';
+
+/** Hele Material Icons-katalogen (søkbar i ikon-velgeren). */
+export const ALL_MATERIAL_ICONS: string[] = ALL_ICONS as string[];
 
 export type InfographicStyle = 'light' | 'hud';
 

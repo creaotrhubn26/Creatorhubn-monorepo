@@ -10,7 +10,7 @@ import { executeScript, systemOpen } from '../../api';
 import { useDemoStudio } from './demoStudioStore';
 import {
   INFOGRAPHIC_TEMPLATES, htmlForTemplate, buildInfographicConfig,
-  isIconField, MATERIAL_ICONS,
+  isIconField, MATERIAL_ICONS, ALL_MATERIAL_ICONS,
   type InfographicTemplate,
 } from './infographicStudio';
 
@@ -62,7 +62,8 @@ function parseDataSource(text: string): Record<string, string> {
 function IconField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
-  const list = q ? MATERIAL_ICONS.filter((i) => i.includes(q.toLowerCase())) : MATERIAL_ICONS;
+  // Kuratert sett vises uten søk; søk dekker HELE katalogen (2195 ikoner).
+  const list = q ? ALL_MATERIAL_ICONS.filter((i) => i.includes(q.toLowerCase())).slice(0, 120) : MATERIAL_ICONS;
   return (
     <div>
       <button onClick={() => setOpen((o) => !o)}
