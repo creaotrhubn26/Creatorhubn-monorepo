@@ -5,7 +5,7 @@
 import React from 'react';
 import {
   Box, Stack, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Chip, CircularProgress, IconButton, Divider,
+  TextField, Chip, CircularProgress, IconButton, Divider, Switch, FormControlLabel,
 } from '@mui/material';
 import { EventOutlined, DeleteOutline, CheckCircle, Cancel, HelpOutline, LocalFireDepartmentOutlined, SyncOutlined, LinkOutlined } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
@@ -24,7 +24,9 @@ const SessionsDialog: React.FC<{ open: boolean; projectId: string; onClose: () =
   const [f, setF] = React.useState<any>({ title: '', kind: 'opptak', startAt: '', endAt: '', location: '', target: 'all', notes: '' });
   const set = (k: string) => (e: any) => setF((p: any) => ({ ...p, [k]: e.target.value }));
 
-  const [gcalStatus, setGcalStatus] = React.useState<{ connected: boolean; calendarScope: boolean; email?: string | null } | null>(null);
+  const [gcalStatus, setGcalStatus] = React.useState<{ connected: boolean; calendarScope: boolean; email?: string | null; autoSync?: { enabled: boolean; instant: boolean; lastSyncedAt?: string | null } } | null>(null);
+  const [autoBusy, setAutoBusy] = React.useState(false);
+  const [autoMsg, setAutoMsg] = React.useState('');
   const load = React.useCallback(() => apiRequest(`/api/audio-showcases/${projectId}/sessions`).then((d: any) => setSessions(d.sessions || [])).catch(() => setSessions([])).finally(() => setLoading(false)), [projectId]);
   const loadGcalStatus = React.useCallback(() => apiRequest(`/api/audio-showcase/google-calendar/status`).then((d: any) => setGcalStatus(d)).catch(() => setGcalStatus(null)), []);
   React.useEffect(() => { if (open) { setLoading(true); load(); loadGcalStatus(); } }, [open, load, loadGcalStatus]);
@@ -40,6 +42,16 @@ const SessionsDialog: React.FC<{ open: boolean; projectId: string; onClose: () =
       if (r?.authorizationUrl) window.location.href = r.authorizationUrl;
       else setConnecting(false);
     } catch { setConnecting(false); }
+  };
+
+  // Slå automatisk toveis-synk av/på.
+  const toggleAutoSync = async (enabled: boolean) => {
+    setAutoBusy(true); setAutoMsg('');
+    try {
+      const r = await apiRequest('/api/audio-showcase/google-calendar/auto-sync', { method: 'POST', body: { enabled } });
+      setAutoMsg(!enabled ? 'Automatisk synk av' : r?.instant ? 'På — umiddelbar synk aktiv' : 'På — synker hvert 15. min (webhook venter på domene-verifisering)');
+      await loadGcalStatus();
+    } catch { setAutoMsg('Kunne ikke endre'); } finally { setAutoBusy(false); }
   };
 
   const create = async () => {
@@ -96,7 +108,17 @@ const SessionsDialog: React.FC<{ open: boolean; projectId: string; onClose: () =
           </Box>
         )}
         {gcalStatus?.calendarScope && (
-          <Typography sx={{ mb: 1, fontSize: '0.64rem', color: GREEN, display: 'flex', alignItems: 'center', gap: 0.5 }}><CheckCircle sx={{ fontSize: 13 }} /> Google Calendar koblet{gcalStatus.email ? ` (${gcalStatus.email})` : ''} — toveis synk aktiv.</Typography>
+          <Box sx={{ mb: 1, p: 1, borderRadius: '10px', bgcolor: 'rgba(95,184,138,0.08)', border: '1px solid rgba(95,184,138,0.2)' }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} flexWrap="wrap">
+              <Typography sx={{ fontSize: '0.66rem', color: GREEN, display: 'flex', alignItems: 'center', gap: 0.5 }}><CheckCircle sx={{ fontSize: 13 }} /> Google Calendar koblet{gcalStatus.email ? ` (${gcalStatus.email})` : ''}</Typography>
+              <FormControlLabel
+                control={<Switch size="small" checked={!!gcalStatus.autoSync?.enabled} disabled={autoBusy} onChange={(e) => toggleAutoSync(e.target.checked)} />}
+                label={<Typography sx={{ fontSize: '0.66rem', color: TEXT }}>Automatisk toveis-synk{gcalStatus.autoSync?.enabled ? (gcalStatus.autoSync?.instant ? ' · umiddelbar' : ' · hvert 15. min') : ''}</Typography>}
+                sx={{ m: 0 }}
+              />
+            </Stack>
+            {autoMsg && <Typography sx={{ fontSize: '0.6rem', color: MUTED, mt: 0.25 }}>{autoMsg}</Typography>}
+          </Box>
         )}
         {loading ? <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} sx={{ color: ACCENT }} /></Box> : (
           <Stack direction="row" spacing={2}>
