@@ -1078,21 +1078,56 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
 
   const [clipStart, setClipStart] = React.useState('');
   const [reelLen, setReelLen] = React.useState('30');
-  const downloadSpotifyAsset = async (kind: 'canvas' | 'lyrics' | 'social' | 'motion') => {
-    if (!rel) return; if (kind !== 'lyrics') setSpotBusy(true);
+  const [preview, setPreview] = React.useState<{ url: string; name: string; label: string } | null>(null);
+  const [batchMsg, setBatchMsg] = React.useState('');
+  React.useEffect(() => () => { if (preview?.url) URL.revokeObjectURL(preview.url); }, [preview]);
+
+  const assetPath = (kind: 'canvas' | 'motion' | 'social' | 'lyrics' | 'package') =>
+    kind === 'canvas' ? `/api/releases/${rel.id}/canvas`
+      : kind === 'motion' ? `/api/releases/${rel.id}/canvas?format=square`
+      : kind === 'social' ? `/api/releases/${rel.id}/social-clip?maxSec=${Number(reelLen) || 30}${Number(clipStart) > 0 ? `&start=${Number(clipStart)}` : ''}`
+      : kind === 'package' ? `/api/releases/${rel.id}/package`
+      : `/api/releases/${rel.id}/lyrics-export?format=lrc`;
+  const fetchAsset = async (path: string): Promise<{ blob: Blob; name: string } | null> => {
+    const headers = await getAuthHeader();
+    const res = await fetch(path, { headers });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const name = (res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/) || [])[1] || 'fil';
+    return { blob, name };
+  };
+  const triggerDownload = (blob: Blob, name: string) => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000); };
+
+  // Forhåndsvis et videoformat i dialogen (auto-laster ikke ned).
+  const previewVideo = async (kind: 'canvas' | 'motion' | 'social', label: string) => {
+    if (!rel) return; setSpotBusy(true);
     try {
-      const headers = await getAuthHeader();
-      const path = kind === 'canvas' ? `/api/releases/${rel.id}/canvas`
-        : kind === 'motion' ? `/api/releases/${rel.id}/canvas?format=square`
-        : kind === 'social' ? `/api/releases/${rel.id}/social-clip?maxSec=${Number(reelLen) || 30}${Number(clipStart) > 0 ? `&start=${Number(clipStart)}` : ''}`
-        : `/api/releases/${rel.id}/lyrics-export?format=lrc`;
-      const res = await fetch(path, { headers });
-      if (!res.ok) return;
-      const blob = await res.blob();
-      const cd = res.headers.get('Content-Disposition') || '';
-      const name = (cd.match(/filename="([^"]+)"/) || [])[1] || (kind === 'canvas' ? 'canvas.mp4' : 'lyrics.txt');
-      const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    } catch { /* */ } finally { if (kind !== 'lyrics') setSpotBusy(false); }
+      const a = await fetchAsset(assetPath(kind)); if (!a) return;
+      if (preview?.url) URL.revokeObjectURL(preview.url);
+      setPreview({ url: URL.createObjectURL(a.blob), name: a.name, label });
+    } catch { /* */ } finally { setSpotBusy(false); }
+  };
+  // Direkte nedlasting (tekst).
+  const downloadSpotifyAsset = async (kind: 'lyrics') => {
+    if (!rel) return;
+    try { const a = await fetchAsset(assetPath(kind)); if (a) triggerDownload(a.blob, a.name); } catch { /* */ }
+  };
+  // Batch: hent alle formater og last ned sekvensielt.
+  const exportAll = async () => {
+    if (!rel) return; setSpotBusy(true);
+    const jobs: { path: string; label: string }[] = [
+      { path: assetPath('canvas'), label: 'Canvas' }, { path: assetPath('motion'), label: 'Apple Music' },
+      { path: assetPath('social'), label: 'Reels/TikTok' }, { path: assetPath('lyrics'), label: 'Tekst' },
+      { path: assetPath('package'), label: 'Release-pakke' },
+    ];
+    try {
+      for (const j of jobs) {
+        setBatchMsg(`Lager ${j.label}…`);
+        const a = await fetchAsset(j.path);
+        if (a) { triggerDownload(a.blob, a.name); await new Promise((r) => setTimeout(r, 900)); }
+      }
+      setBatchMsg('Alle formater lastet ned ✓');
+    } catch { setBatchMsg('Noe feilet — prøv enkeltvis.'); } finally { setSpotBusy(false); setTimeout(() => setBatchMsg(''), 4000); }
   };
 
   const clipInputRef = React.useRef<HTMLInputElement>(null);
@@ -1105,7 +1140,8 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
       if (!res.ok) return;
       const blob = await res.blob();
       const name = (res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/) || [])[1] || 'canvas.mp4';
-      const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      if (preview?.url) URL.revokeObjectURL(preview.url);
+      setPreview({ url: URL.createObjectURL(blob), name, label: 'Eget klipp' });
     } catch { /* */ } finally { setSpotBusy(false); }
   };
 
@@ -1197,11 +1233,11 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
                 ); })()}
                 {/* Spotify-verktøy (manuelt — Spotify har ikke opplastings-API) */}
                 <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center" sx={{ mt: 1, pt: 1, borderTop: '1px solid rgba(29,185,84,0.18)' }}>
-                  <Button onClick={() => downloadSpotifyAsset('canvas')} disabled={spotBusy} startIcon={<MovieCreationOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Canvas fra cover</Button>
+                  <Button onClick={() => previewVideo('canvas', 'Canvas (9:16)')} disabled={spotBusy} startIcon={<MovieCreationOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Canvas fra cover</Button>
                   <Button onClick={() => clipInputRef.current?.click()} disabled={spotBusy} startIcon={<CloudUpload sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Eget klipp</Button>
                   <TextField value={clipStart} onChange={(e) => setClipStart(e.target.value.replace(/[^0-9]/g, ''))} placeholder="start s" size="small" sx={{ width: 70, '& .MuiInputBase-input': { color: TEXT, fontSize: '0.7rem', py: 0.5 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER } }} />
-                  <Button onClick={() => downloadSpotifyAsset('motion')} disabled={spotBusy} startIcon={<MovieCreationOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Apple Music (1:1)</Button>
-                  <Button onClick={() => downloadSpotifyAsset('social')} disabled={spotBusy} startIcon={<MovieCreationOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Reels/TikTok (9:16)</Button>
+                  <Button onClick={() => previewVideo('motion', 'Apple Music (1:1)')} disabled={spotBusy} startIcon={<MovieCreationOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Apple Music (1:1)</Button>
+                  <Button onClick={() => previewVideo('social', 'Reels/TikTok (9:16)')} disabled={spotBusy} startIcon={<MovieCreationOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Reels/TikTok (9:16)</Button>
                   <TextField select SelectProps={{ native: true }} value={reelLen} onChange={(e) => setReelLen(e.target.value)} size="small" sx={{ width: 64, '& .MuiInputBase-input': { color: TEXT, fontSize: '0.68rem', py: 0.5 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER } }}>
                     <option value="15" style={{ background: PANEL }}>15s</option>
                     <option value="30" style={{ background: PANEL }}>30s</option>
@@ -1210,7 +1246,23 @@ const PublishDialog: React.FC<{ open: boolean; projectId: string; onClose: () =>
                   <Button onClick={() => downloadSpotifyAsset('lyrics')} startIcon={<SubjectOutlined sx={{ fontSize: '15px !important' }} />} size="small" sx={{ color: '#1DB954', textTransform: 'none', fontSize: '0.68rem', minWidth: 0 }}>Tekst → Musixmatch</Button>
                   <input ref={clipInputRef} type="file" accept="video/*" hidden onChange={(e) => { void uploadCanvasClip(e.target.files?.[0]); e.target.value = ''; }} />
                 </Stack>
-                <Typography sx={{ fontSize: '0.6rem', color: FAINT, mt: 0.5 }}>Canvas (9:16, beat-puls fra BPM) + Apple Music motion art (1:1) → Spotify/Apple. Reels/TikTok = 9:16 med lyd (15/30/60s). Tekst (.lrc/.txt) → Musixmatch.</Typography>
+                {/* Forhåndsvisning av valgt klipp før nedlasting */}
+                {spotBusy && !preview && <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}><CircularProgress size={14} sx={{ color: '#1DB954' }} /><Typography sx={{ fontSize: '0.68rem', color: MUTED }}>{batchMsg || 'Lager klipp…'}</Typography></Stack>}
+                {preview && (
+                  <Stack spacing={0.75} sx={{ mt: 1, bgcolor: 'rgba(0,0,0,0.25)', borderRadius: '10px', p: 1 }}>
+                    <Typography sx={{ fontSize: '0.66rem', color: MUTED }}>{preview.label} — forhåndsvisning</Typography>
+                    <Box component="video" src={preview.url} controls autoPlay loop muted playsInline sx={{ width: '100%', maxHeight: 280, borderRadius: '8px', bgcolor: '#000' }} />
+                    <Stack direction="row" spacing={1}>
+                      <Button onClick={async () => { const a = await fetch(preview.url).then((r) => r.blob()); triggerDownload(a, preview.name); }} startIcon={<FileDownloadOutlined sx={{ fontSize: '16px !important' }} />} size="small" variant="contained" sx={{ bgcolor: '#1DB954', color: '#082b16', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Last ned</Button>
+                      <Button onClick={() => setPreview(null)} size="small" sx={{ color: MUTED, textTransform: 'none' }}>Lukk</Button>
+                    </Stack>
+                  </Stack>
+                )}
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 0.75 }}>
+                  <Button onClick={exportAll} disabled={spotBusy} startIcon={<FileDownloadDoneOutlined sx={{ fontSize: '15px !important' }} />} size="small" variant="outlined" sx={{ color: '#1DB954', borderColor: 'rgba(29,185,84,0.4)', textTransform: 'none', fontSize: '0.68rem' }}>Eksporter alt</Button>
+                  {batchMsg && preview === null && <Typography sx={{ fontSize: '0.66rem', color: MUTED }}>{batchMsg}</Typography>}
+                </Stack>
+                <Typography sx={{ fontSize: '0.6rem', color: FAINT, mt: 0.5 }}>Forhåndsvis før nedlasting. «Eksporter alt» laster ned alle formater (Canvas, Apple Music, Reels/TikTok, tekst, release-pakke).</Typography>
               </Box>
               {/* YouTube-publisering (visualizer / lyric-video / karaoke) */}
               <YouTubePublishPanel releaseId={rel.id} projectId={projectId} masterUrl={rel.master_url} />
