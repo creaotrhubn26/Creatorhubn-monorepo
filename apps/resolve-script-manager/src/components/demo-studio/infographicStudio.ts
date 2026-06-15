@@ -4,6 +4,10 @@
 // styrer animasjonen deterministisk (count-up, søyle-vekst, stagger). Samme HTML
 // brukes til (a) live-preview (iframe srcdoc) og (b) alfa-capture → ProRes → Resolve.
 
+// Workflow-genererte + render-verifiserte maler (cover, donut, linjegraf,
+// KPI-hero, verdenskart, A/B-test). Selvstendige config-drevne HTML-maler.
+import GENERATED_TEMPLATES from './infographicTemplates.generated.json';
+
 export type InfographicStyle = 'light' | 'hud';
 
 export interface InfographicField {
@@ -26,6 +30,15 @@ export interface InfographicTemplate {
   defaults: Record<string, string>;
   /** Default varighet på klippet i sekunder. */
   durationSec: number;
+  /** Selvstendig HTML-mal (config-drevet via window.__CFG__ + setProgress). Når
+   *  satt brukes GENERISK config = {...feltverdier, accent, ink, logo}. Når tom
+   *  brukes den delte INFOGRAPHIC_HTML + buildInfographicConfig-logikken. */
+  html?: string;
+}
+
+/** HTML som faktisk brukes for en mal (egen html eller den delte). */
+export function htmlForTemplate(tpl: InfographicTemplate): string {
+  return tpl.html || INFOGRAPHIC_HTML;
 }
 
 export const INFOGRAPHIC_TEMPLATES: InfographicTemplate[] = [
@@ -64,6 +77,7 @@ export const INFOGRAPHIC_TEMPLATES: InfographicTemplate[] = [
     ],
     defaults: { title: 'PreVisit AI', k1: 'Utfylte skjema', kv1: '82%', k2: 'Gj.sn. svartid', kv2: '2:14', k3: 'Pasientforberedelse', kv3: '91%' },
   },
+  ...(GENERATED_TEMPLATES as unknown as InfographicTemplate[]),
 ];
 
 export interface InfographicBrand {
@@ -79,6 +93,12 @@ export function buildInfographicConfig(
   brand: InfographicBrand,
 ): Record<string, unknown> {
   const v = (k: string) => (values[k] ?? tpl.defaults[k] ?? '');
+  // Selvstendige maler: generisk config = alle feltverdier + brand.
+  if (tpl.html) {
+    const cfg: Record<string, unknown> = { accent: brand.accent, ink: brand.ink, logo: brand.logo };
+    for (const f of tpl.fields) cfg[f.key] = v(f.key);
+    return cfg;
+  }
   if (tpl.id === 'kpi-cards') {
     return {
       layout: 'kpi-cards', accent: brand.accent, ink: brand.ink, logo: brand.logo,
