@@ -88,9 +88,18 @@ const RR_KIT_IDS = new Set<string>([
   'rr-shortlist', 'rr-shoot-day-detail', 'rr-dance-rehearsal', 'rr-client-review',
   // full-frame landingsside (batch 26)
   'rr-landing-hero', 'rr-landing-flow', 'rr-landing-verticals', 'rr-landing-pillars', 'rr-landing-cta',
-  // The Role Room Agent (batch 27)
+  // The Role Room Agent (batch 27-28)
   'rr-agent-hero', 'rr-agent-chat', 'rr-agent-competitor', 'rr-agent-leadgen',
   'rr-agent-marketing', 'rr-agent-partner', 'rr-agent-insight', 'rr-agent-merch',
+  'rr-agent-ads', 'rr-agent-content-calendar', 'rr-agent-lead-score', 'rr-agent-followup', 'rr-agent-pitch',
+  // Agent-faner (batch 29)
+  'rr-agent-workflow', 'rr-agent-connections', 'rr-agent-research', 'rr-agent-inbox',
+  'rr-agent-analytics', 'rr-agent-discovery', 'rr-agent-feed-planner', 'rr-agent-mentions',
+  // Agent-faner/verktøy (batch 30)
+  'rr-agent-events', 'rr-agent-hashtag', 'rr-agent-publish', 'rr-agent-meta-page',
+  'rr-agent-profile', 'rr-agent-approvals', 'rr-agent-kpi', 'rr-agent-brand-snapshot',
+  // flere landing-seksjoner (batch 28)
+  'rr-landing-manifest', 'rr-landing-pricing', 'rr-landing-blog',
 ]);
 const CH_KIT_IDS = new Set<string>([
   'ch-kpi-cards', 'ch-revenue-trend', 'ch-client-pipeline', 'ch-project-card',
@@ -108,6 +117,9 @@ const CH_KIT_IDS = new Set<string>([
   // innholdsmaler (batch 23): Evendi/wedding, Photo Enhancer, Academy, Audio Showcase
   'ch-wedding-timeline', 'ch-wedding-hero', 'ch-photo-before-after', 'ch-photo-stats',
   'ch-academy-course', 'ch-academy-progress', 'ch-audio-review', 'ch-audio-release',
+  // landingsside + flere områder (batch 31)
+  'ch-landing-hero', 'ch-landing-modules', 'ch-landing-pricing', 'ch-landing-cta',
+  'ch-professions', 'ch-invoice', 'ch-showcase-gallery', 'ch-academy-cert',
 ]);
 const BRAND_KITS = [
   { id: 'kit-rr', name: 'The Role Room', accent: '#a78bfa', tagline: 'Casting · Roller · Produksjon', ids: RR_KIT_IDS, logo: ROLE_ROOM_LOGO },
@@ -116,7 +128,14 @@ const BRAND_KITS = [
 
 const CATEGORY_IDS: Record<string, Set<string>> = {
   charts: CHART_IDS, marketing: MARKETING_IDS, filmtv: FILMTV_IDS,
-  callouts: CALLOUT_IDS, ui: UI_IDS, uxlayout: UX_LAYOUT_IDS, 'kit-rr': RR_KIT_IDS, 'kit-ch': CH_KIT_IDS,
+  callouts: CALLOUT_IDS, ui: UI_IDS, uxlayout: UX_LAYOUT_IDS,
+};
+// Brand-kits matcher på id-PREFIKS (rr-/ch-) så alle branded maler auto-inkluderes.
+const kitPrefix = (sec: string): string | null => (sec === 'kit-rr' ? 'rr-' : sec === 'kit-ch' ? 'ch-' : null);
+const inCategory = (sec: string, id: string): boolean => {
+  const pre = kitPrefix(sec);
+  if (pre) return id.startsWith(pre);
+  return CATEGORY_IDS[sec] ? CATEGORY_IDS[sec].has(id) : true;
 };
 const CATEGORY_LABEL: Record<string, string> = {
   templates: 'Templates', charts: 'Charts', marketing: 'Marketing', filmtv: 'Film & TV',
@@ -383,7 +402,7 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
           {BRAND_KITS.map((k) => (
             <div key={k.id} style={railItem(leftSec === k.id)} onClick={() => { setLeftSec(k.id); setAccent(k.accent); setLogo(k.logo); }} title={`${k.name} — ${k.tagline}`}>
               <img src={k.logo} alt="" style={{ width: 16, height: 16, objectFit: 'contain', marginRight: 2 }} />{k.name}
-              <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => k.ids.has(t.id)).length}</span>
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => inCategory(k.id, t.id)).length}</span>
             </div>
           ))}
           <div style={railItem(leftSec === 'brand')} onClick={() => setLeftSec('brand')}>◆ Brand Kit</div>
@@ -394,10 +413,10 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
 
         {/* Sekundær-panel */}
         <div style={{ width: 280, borderRight: `1px solid ${D.line}`, overflowY: 'auto', padding: 14, background: D.panel }}>
-          {(leftSec === 'templates' || leftSec in CATEGORY_IDS) && (<>
+          {(leftSec === 'templates' || leftSec in CATEGORY_IDS || leftSec === 'kit-rr' || leftSec === 'kit-ch') && (<>
             <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>{CATEGORY_LABEL[leftSec] || 'Templates'} <span style={{ color: D.faint, fontWeight: 500 }}>· endrer scene {sel + 1}</span></div>
             <div style={{ display: 'grid', gap: 9 }}>
-              {INFOGRAPHIC_TEMPLATES.filter((t) => CATEGORY_IDS[leftSec] ? CATEGORY_IDS[leftSec].has(t.id) : true).map((t) => {
+              {INFOGRAPHIC_TEMPLATES.filter((t) => inCategory(leftSec, t.id)).map((t) => {
                 const selT = t.id === scene.tplId;
                 return (
                   <button key={t.id} onClick={() => pickTemplate(t.id)} style={{ textAlign: 'left', padding: 11, borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${selT ? D.accent : D.line}`, background: selT ? D.panel2 : D.bg, color: D.ink, position: 'relative' }}>
