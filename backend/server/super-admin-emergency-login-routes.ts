@@ -21,6 +21,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
+import { persistSession } from "./persistent-session-store.js";
 
 const SUPER_ADMIN_EMAIL = "daniel@creatorhubn.com";
 
@@ -89,10 +90,23 @@ export function registerSuperAdminEmergencyLoginRoutes({
 
       // Generer ny session-token
       const sessionToken = crypto.randomBytes(32).toString("hex");
-      activeSessions.set(sessionToken, {
+      const sessionData = {
         userId: user.id,
         email: user.email,
         role: "admin",
+      };
+      activeSessions.set(sessionToken, sessionData);
+
+      // Persistér til DB så sessionen overlever Render-restart.
+      // Best-effort: hvis DB skriv feiler logger vi men returnerer
+      // fortsatt token (in-memory holder fortsatt på denne instansen).
+      void persistSession(pool, {
+        token: sessionToken,
+        session: sessionData,
+        source: "emergency_login",
+        ttlDays: 30,
+        ip,
+        userAgent: req.headers["user-agent"] as string | undefined,
       });
 
       // Logg aktiviteten

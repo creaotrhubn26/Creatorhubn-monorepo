@@ -10,6 +10,7 @@ import {
   buildErrorLogMiddleware,
   installProcessErrorHandlers,
 } from "./error-log-routes.js";
+import { hydrateSessionsFromDb } from "./persistent-session-store.js";
 
 import express from "express";
 import cors from "cors";
@@ -24262,6 +24263,11 @@ registerErrorLogRoutes({
   isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
 });
 installProcessErrorHandlers(pool);
+
+// Hydrate sessions fra DB ved oppstart — slik at Daniel slipper å
+// re-logge etter hver Render-restart. Persistent sessions lagres av
+// emergency-login + andre login-flyter som opt-er inn.
+void hydrateSessionsFromDb(pool, activeSessions);
 // Multi-tenant Google Ads conversion-tracking for The Role Room Agent
 // (B0/B1 live; B2/B3/B4 i pipeline). Innholdsprodusenter setter opp
 // conversion-tracking for klienter via Agent.
