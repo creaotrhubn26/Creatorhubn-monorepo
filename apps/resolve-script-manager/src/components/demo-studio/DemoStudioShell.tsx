@@ -20,6 +20,7 @@ import { StoryView } from '../story/StoryView';
 import { ScriptBuilderView } from './ScriptBuilderView';
 import { GuidedRecorderView } from './GuidedRecorderView';
 import { ExportView } from './ExportView';
+import { InfographicStudioView } from './InfographicStudioView';
 import { MarketingPanel } from './MarketingPanel';
 import { ModuleGate } from '../ModuleGate';
 import { hasModule, onEntitlementsChanged } from '../../entitlements';
@@ -68,6 +69,7 @@ const NAV_ITEMS = [
   { id: 'script', label: 'Script Builder', ic: '✎' },
   { id: 'recorder', label: 'Guided Recorder', ic: '●' },
   { id: 'preview', label: 'Device Preview', ic: '▭' },
+  { id: 'infographics', label: 'Infographic Studio', ic: '◷' },
   { id: 'export', label: 'Export', ic: '⤓' },
 ] as const;
 type NavId = (typeof NAV_ITEMS)[number]['id'];
@@ -1012,6 +1014,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   }
   if (nav === 'recorder' && !storyMode) {
     return <GuidedRecorderView onNav={(id) => setNav(id as NavId)} />;
+  }
+  if (nav === 'infographics' && !storyMode) {
+    return <InfographicStudioView onNav={(id) => setNav(id as NavId)} />;
   }
 
   return (

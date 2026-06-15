@@ -296,3 +296,89 @@ pub async fn playwright_capture_shots(app: AppHandle, url: String) -> Result<Val
     let txt = std::fs::read_to_string(&out_file).map_err(|e| format!("Kunne ikke lese shots.json: {e}"))?;
     serde_json::from_str::<Value>(&txt).map_err(|e| format!("Kunne ikke parse shots.json: {e}"))
 }
+
+// ── Infographic Studio: render HTML-mal → transparent PNG-sekvens → ProRes 4444
+//    (alfa). Den genererte .mov-en legges på Resolve-timelinen av place_overlay.
+const IG_CAPTURE_MJS: &str = r#"
+import { chromium } from 'playwright';
+const htmlPath = process.argv[2], outDir = process.argv[3];
+const N = parseInt(process.argv[4]||'48'), useChrome = process.argv[5]==='1';
+const b = await chromium.launch(useChrome ? { headless:true, channel:'chrome' } : { headless:true });
+const p = await b.newPage({ viewport:{ width:1760, height:560 }, deviceScaleFactor:2 });
+await p.goto('file://'+htmlPath, { waitUntil:'networkidle', timeout:30000 }).catch(()=>{});
+await p.waitForTimeout(1200);
+let el = await p.$('#wrap'); if(!el) el = await p.$('body');
+for (let i=0;i<N;i++){
+  const prog = N>1 ? i/(N-1) : 1;
+  await p.evaluate((v)=>window.setProgress && window.setProgress(v), prog);
+  await el.screenshot({ path: `${outDir}/f${String(i).padStart(3,'0')}.png`, omitBackground:true });
+}
+console.log('IG_DONE '+N);
+await b.close();
+"#;
+
+#[tauri::command]
+pub async fn render_infographic(
+    app: AppHandle,
+    html: String,
+    duration_sec: f64,
+    name: String,
+) -> Result<String, String> {
+    let dir = runtime_dir(&app);
+    if !dir.join("node_modules/playwright").exists() {
+        return Err("Playwright ikke installert. Kjør «Sett opp Playwright» først.".into());
+    }
+    let node = find_bin("node");
+    let ffmpeg = find_bin("ffmpeg");
+    let safe: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    let work = dir.join("ig").join(&safe);
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).map_err(|e| format!("kunne ikke lage arbeidsmappe: {e}"))?;
+    let html_file = work.join("template.html");
+    std::fs::write(&html_file, &html).map_err(|e| format!("kunne ikke skrive HTML: {e}"))?;
+    let script = dir.join("ig_capture.mjs");
+    std::fs::write(&script, IG_CAPTURE_MJS).map_err(|e| format!("kunne ikke skrive capture-skript: {e}"))?;
+
+    let frames = ((duration_sec.max(1.0)) * 30.0).round().clamp(8.0, 240.0) as i64;
+    let use_chrome = if system_chrome_present() { "1" } else { "0" };
+    let run_id = Uuid::new_v4().to_string();
+    let mut cmd = Command::new(&node);
+    cmd.arg(&script)
+        .arg(html_file.to_string_lossy().to_string())
+        .arg(work.to_string_lossy().to_string())
+        .arg(frames.to_string())
+        .arg(use_chrome)
+        .current_dir(&dir);
+    let code = stream_child(&app, cmd, &run_id, "render_infographic").await?;
+    if code != 0 {
+        return Err(format!("frame-capture feilet (exit {code})"));
+    }
+
+    // ProRes 4444 m/alfa → ~/Movies/Post Agent Infographics/
+    let out_dir = app
+        .path()
+        .home_dir()
+        .map(|h| h.join("Movies").join("Post Agent Infographics"))
+        .unwrap_or_else(|_| std::env::temp_dir());
+    let _ = std::fs::create_dir_all(&out_dir);
+    let out_file = out_dir.join(format!("{safe}.mov"));
+    let status = Command::new(&ffmpeg)
+        .args([
+            "-y",
+            "-framerate", "30",
+            "-i", &format!("{}/f%03d.png", work.to_string_lossy()),
+            "-c:v", "prores_ks", "-profile:v", "4444",
+            "-pix_fmt", "yuva444p10le",
+            &out_file.to_string_lossy(),
+        ])
+        .status()
+        .await
+        .map_err(|e| format!("ffmpeg-start feilet: {e}"))?;
+    if !status.success() {
+        return Err("ffmpeg klarte ikke å lage ProRes-fil".into());
+    }
+    Ok(out_file.to_string_lossy().to_string())
+}
