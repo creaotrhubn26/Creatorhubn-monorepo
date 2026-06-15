@@ -2042,6 +2042,88 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     } finally { for (const f of tmp) unlink(f).catch(() => {}); }
   });
 
+  // ══ OPPVARMING & FOKUS ═════════════════════════════════════════════════════
+  // Innholdet kommer fra EaseVerse (single source) via collab-API; cachet 1t.
+  let warmupCache: { at: number; data: any } | null = null;
+  async function fetchWarmupLibrary(): Promise<any | null> {
+    if (warmupCache && Date.now() - warmupCache.at < 3_600_000) return warmupCache.data;
+    if (!EV_URL) return null;
+    try {
+      const headers: Record<string, string> = {}; if (EV_KEY) headers["x-api-key"] = EV_KEY;
+      const r = await fetch(`${EV_URL}/api/v1/collab/warmups`, { headers });
+      if (!r.ok) return null;
+      const j = await r.json();
+      warmupCache = { at: Date.now(), data: j };
+      return j;
+    } catch { return null; }
+  }
+  app.get("/api/audio-showcase/warmup-library", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const lib = await fetchWarmupLibrary();
+    if (!lib) return res.status(503).json({ error: "easeverse_unreachable", warmups: [], breathing: [], techniques: [] });
+    return res.json(lib);
+  });
+
+  // Produsent: rutiner for et review-rom.
+  app.get("/api/audio-showcases/:id/warmups", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const r = await pool.query(`SELECT * FROM audio_warmup_routines WHERE project_id=$1::uuid AND owner_user_id=$2 ORDER BY created_at ASC`, [str(req.params.id, 64), s.userId]);
+      const ids = r.rows.map((x) => x.id);
+      const comps = ids.length ? await pool.query(`SELECT routine_id, member_name, completed_at FROM audio_warmup_completions WHERE routine_id = ANY($1::uuid[])`, [ids]) : { rows: [] as any[] };
+      const byR: Record<string, any[]> = {};
+      for (const c of comps.rows) (byR[c.routine_id] ||= []).push({ name: c.member_name, at: c.completed_at });
+      return res.json({ routines: r.rows.map((x) => ({ ...x, completions: byR[x.id] || [] })) });
+    } catch (e) { if (isMissingTable(e)) return res.json({ routines: [] }); return res.status(500).json({ error: "warmups_get_failed" }); }
+  });
+  app.post("/api/audio-showcases/:id/warmups", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const title = str(req.body?.title, 120); const target = str(req.body?.target, 60) || "all";
+    const steps = Array.isArray(req.body?.steps) ? req.body.steps.slice(0, 30) : [];
+    if (!title || steps.length === 0) return res.status(400).json({ error: "title_and_steps_required" });
+    try {
+      const p = await pool.query(`SELECT 1 FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const r = await pool.query(`INSERT INTO audio_warmup_routines (project_id, owner_user_id, title, target, steps, note) VALUES ($1::uuid,$2,$3,$4,$5::jsonb,$6) RETURNING *`,
+        [str(req.params.id, 64), s.userId, title, target, JSON.stringify(steps), str(req.body?.note, 600) || null]);
+      return res.status(201).json({ routine: r.rows[0] });
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "warmup_create_failed" }); }
+  });
+  app.delete("/api/warmups/:rid", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try { await pool.query(`DELETE FROM audio_warmup_routines WHERE id=$1::uuid AND owner_user_id=$2`, [str(req.params.rid, 64), s.userId]); return res.json({ ok: true }); }
+    catch (e) { if (isMissingTable(e)) return res.json({ ok: true }); return res.status(500).json({ error: "warmup_delete_failed" }); }
+  });
+
+  // Hvilke rutiner gjelder for et medlem (etter rolle).
+  const warmupMatches = (target: string, role: string): boolean => {
+    if (target === "all") return true;
+    if (target === "vocalist") return /vokal|vocal|sang/i.test(role || "");
+    if (target === "instrument") return !/vokal|vocal|sang/i.test(role || "");
+    return (role || "").toLowerCase().includes(target.toLowerCase());
+  };
+  app.get("/api/audio-review-shared/:token/warmup", async (req, res) => {
+    const token = str(req.params.token, 80); if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    try {
+      const ctx = await resolveSharedMember(token); if (!ctx) return res.status(404).json({ error: "not_found" });
+      const r = await pool.query(`SELECT id, title, target, steps, note FROM audio_warmup_routines WHERE project_id=$1::uuid ORDER BY created_at ASC`, [ctx.project_id]);
+      const mine = r.rows.filter((x) => warmupMatches(x.target, ctx.role));
+      const done = mine.length ? await pool.query(`SELECT routine_id FROM audio_warmup_completions WHERE member_name=$1 AND routine_id = ANY($2::uuid[])`, [ctx.name, mine.map((x) => x.id)]) : { rows: [] as any[] };
+      const doneSet = new Set(done.rows.map((x) => x.routine_id));
+      return res.json({ routines: mine.map((x) => ({ ...x, completed: doneSet.has(x.id) })) });
+    } catch (e) { if (isMissingTable(e)) return res.json({ routines: [] }); return res.status(500).json({ error: "warmup_shared_failed" }); }
+  });
+  app.post("/api/audio-review-shared/:token/warmup/:rid/complete", async (req, res) => {
+    const token = str(req.params.token, 80); if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    try {
+      const ctx = await resolveSharedMember(token); if (!ctx) return res.status(404).json({ error: "not_found" });
+      const ok = await pool.query(`SELECT 1 FROM audio_warmup_routines WHERE id=$1::uuid AND project_id=$2::uuid LIMIT 1`, [str(req.params.rid, 64), ctx.project_id]);
+      if (ok.rowCount === 0) return res.status(404).json({ error: "routine_not_found" });
+      await pool.query(`INSERT INTO audio_warmup_completions (routine_id, member_name) VALUES ($1::uuid,$2) ON CONFLICT (routine_id, member_name) DO UPDATE SET completed_at=NOW()`, [str(req.params.rid, 64), ctx.name]);
+      return res.json({ ok: true });
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "warmup_complete_failed" }); }
+  });
+
   // Eier laster ned signert avtale-PDF.
   app.get("/api/audio-showcases/:id/agreement.pdf", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;

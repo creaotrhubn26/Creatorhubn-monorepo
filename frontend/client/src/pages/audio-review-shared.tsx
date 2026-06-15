@@ -16,6 +16,7 @@ import AudioReviewPlayer from '@/components/universal/showcase/AudioReviewPlayer
 import SignaturePad, { type SignatureHandle } from '@/components/universal/showcase/SignaturePad';
 import { parseSongSections, SECTION_COLORS } from '@/lib/lyric-sections';
 import { audioShowcaseEvents } from '@/utils/creatorhub-events';
+import WarmupPlayer from '@/components/universal/showcase/WarmupPlayer';
 
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
 const TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', FAINT = 'rgba(245,242,234,0.38)', ACCENT = '#FF6B35';
@@ -119,6 +120,7 @@ export default function AudioReviewSharedPage() {
             />
           ) : <Typography sx={{ color: MUTED }}>Ingen versjon å spille ennå.</Typography>}
         </Box>
+        {token && <WarmupPlayer token={token} musicalKey={project.musical_key} />}
         {agreement?.exists && agreement?.mine && (
           <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5, mb: 2 }}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
