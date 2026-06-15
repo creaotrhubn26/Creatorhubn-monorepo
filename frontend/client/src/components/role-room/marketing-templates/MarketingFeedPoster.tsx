@@ -281,12 +281,14 @@ export const MarketingFeedPoster = forwardRef<HTMLDivElement, MarketingFeedPoste
         data-theme={theme}
         sx={{
           width,
-          aspectRatio: '4 / 5',
+          // min-aspect garanterer 4:5 men lar content vokse om
+          // 4 cards + lang headline krever det.
+          minHeight: `calc(${typeof width === 'number' ? `${width}px` : width} * 5 / 4)`,
           containerType: 'inline-size',
           background: t.background,
           color: '#fff',
           borderRadius: 2,
-          overflow: 'hidden',
+          overflow: 'visible',
           position: 'relative',
           fontFamily: '"Inter", "SF Pro Display", system-ui, sans-serif',
           boxShadow: t.shadow,
@@ -320,10 +322,10 @@ export const MarketingFeedPoster = forwardRef<HTMLDivElement, MarketingFeedPoste
               alt="The Role Room"
               crossOrigin="anonymous"
               sx={{
-                width: '12cqw',
-                height: '12cqw',
+                width: '14cqw',
+                height: '14cqw',
                 objectFit: 'contain',
-                filter: `drop-shadow(0 0 10px rgba(${t.glowRgb},0.45))`,
+                filter: `drop-shadow(0 0 4px rgba(${t.glowRgb},0.25))`,
                 flexShrink: 0,
               }}
             />
@@ -341,9 +343,9 @@ export const MarketingFeedPoster = forwardRef<HTMLDivElement, MarketingFeedPoste
             <Typography
               sx={{
                 fontFamily: '"Playfair Display", "Times New Roman", Georgia, serif',
-                fontSize: 'clamp(20px, 11cqw, 96px)',
+                fontSize: 'clamp(20px, 9cqw, 80px)',
                 fontWeight: 800,
-                lineHeight: 0.96,
+                lineHeight: 0.98,
                 color: '#fff',
                 letterSpacing: '-0.04em',
                 whiteSpace: 'pre-line',

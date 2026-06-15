@@ -401,18 +401,35 @@ export const WeeklyBriefEditor: React.FC<WeeklyBriefEditorProps> = ({
     if (!previewRef.current) return;
     setExporting(true);
     setError(null);
+    const el = previewRef.current;
+    const original = {
+      minHeight: el.style.minHeight,
+      height: el.style.height,
+      overflow: el.style.overflow,
+      maxHeight: el.style.maxHeight,
+    };
     try {
-      // Await QR-state før snapshot (ingen 300ms-hack)
       if (fields.qrUrl) await preloadQrCode(fields.qrUrl);
-      // Vent én tick så React rakk å mounte ferdig QR-img
+
+      // Tving full innholds-rendering uten clipping for snapshot
+      el.style.minHeight = '0';
+      el.style.height = 'auto';
+      el.style.maxHeight = 'none';
+      el.style.overflow = 'visible';
+
+      await new Promise(requestAnimationFrame);
       await new Promise(requestAnimationFrame);
 
       const scale = EXPORT_WIDTH / PREVIEW_WIDTH;
-      const canvas = await html2canvas(previewRef.current, {
+      const canvas = await html2canvas(el, {
         backgroundColor: null,
         scale,
         useCORS: true,
         logging: false,
+        width: el.scrollWidth,
+        height: el.scrollHeight,
+        windowWidth: el.scrollWidth,
+        windowHeight: el.scrollHeight,
       });
       const blob = await new Promise<Blob | null>((resolve) =>
         canvas.toBlob(resolve, 'image/png', 0.95),
@@ -429,6 +446,11 @@ export const WeeklyBriefEditor: React.FC<WeeklyBriefEditorProps> = ({
     } catch (err) {
       setError(`PNG-eksport feilet: ${(err as Error).message}`);
     } finally {
+      // Reset CSS uansett — også ved feil
+      el.style.minHeight = original.minHeight;
+      el.style.height = original.height;
+      el.style.overflow = original.overflow;
+      el.style.maxHeight = original.maxHeight;
       setExporting(false);
     }
   };
