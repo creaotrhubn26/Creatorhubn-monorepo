@@ -2209,6 +2209,24 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     } catch (e) { if (isMissingTable(e)) return res.json({ items: [], linked: false }); return res.status(500).json({ error: "coaching_failed" }); }
   });
 
+  // Live-bro: er det en aktiv opptaksøkt i EaseVerse for dette tracket?
+  app.get("/api/audio-showcases/:id/live-session", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const p = await pool.query(`SELECT easeverse_track_id, external_track_id FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const extId = p.rows[0].external_track_id || p.rows[0].easeverse_track_id;
+      if (!extId || !EV_URL) return res.json({ live: false });
+      try {
+        const headers: Record<string, string> = {}; if (EV_KEY) headers["x-api-key"] = EV_KEY;
+        const r = await fetch(`${EV_URL}/api/v1/collab/live-session/${encodeURIComponent(extId)}`, { headers });
+        if (!r.ok) return res.json({ live: false });
+        const j = await r.json();
+        return res.json({ live: !!j?.live, session: j?.session || null });
+      } catch { return res.json({ live: false }); }
+    } catch (e) { if (isMissingTable(e)) return res.json({ live: false }); return res.status(500).json({ error: "live_session_failed" }); }
+  });
+
   app.get("/api/audio-showcase/warmup-library", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     const lib = await fetchWarmupLibrary();
