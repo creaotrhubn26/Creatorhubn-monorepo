@@ -53,6 +53,7 @@ import PhoneOutlinedIcon from '@mui/icons-material/PhoneOutlined';
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import InstagramIcon from '@mui/icons-material/Instagram';
 import { useAuth } from '../../hooks/useAuth';
+import { fireGoogleAdsConversion } from '../../utils/google-ads-conversions';
 
 type LeadStatus =
   | 'unvisited' | 'visited' | 'return' | 'not_present' | 'declined'
@@ -81,6 +82,9 @@ interface MapLead {
   tags: string[] | null;
   notes: string | null;
   updatedAt: string;
+  // Role Room Agent Claude-rangering — "mest anbefalt å nå ut til"
+  recommendationRank?: number | null;
+  recommendationReason?: string | null;
 }
 
 interface Activity {
@@ -111,6 +115,30 @@ interface PlaceResult {
   websiteUrl: string | null;
   phone: string | null;
   alreadyImported: boolean;
+}
+
+// Role Room Agent's konkurrent — fra market_scan_competitors + Google Places
+interface CompetitorPoint {
+  kind: 'competitor';
+  id: string;
+  name: string;
+  domain: string;
+  category: string | null;
+  positioning: string | null;
+  primaryOffer: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  address: string | null;
+  phone: string | null;
+  rating: number | null;
+  isManualAddition: boolean;
+  threatLevel: 'near' | 'medium' | 'far' | null;
+  threatScore: number | null;
+  claudeThreatSummary: string | null;
+  claudeWhatToWorryAbout: string | null;
+  claudeWhatToIgnore: string | null;
+  claudeAssessedAt: string | null;
+  priorityRank: number | null;
 }
 
 interface Metrics {
@@ -227,6 +255,45 @@ function makePinIcon(status: LeadStatus, selected: boolean): L.DivIcon {
   return icon;
 }
 
+// Diamant-formet pin for konkurrenter. Farge per threat-level
+// (near=rød, medium=oransje, far=grå, unassessed=mørk-grå).
+const THREAT_COLOR: Record<NonNullable<CompetitorPoint['threatLevel']>, string> = {
+  near: '#ef4444',
+  medium: '#f59e0b',
+  far: '#94a3b8',
+};
+const UNASSESSED_COLOR = '#475569';
+
+const competitorPinCache = new Map<string, L.DivIcon>();
+function makeCompetitorIcon(threat: CompetitorPoint['threatLevel'], selected: boolean): L.DivIcon {
+  const key = `${threat ?? 'none'}-${selected ? 1 : 0}`;
+  const cached = competitorPinCache.get(key);
+  if (cached) return cached;
+  const color = threat ? THREAT_COLOR[threat] : UNASSESSED_COLOR;
+  const w = selected ? 28 : 24;
+  const h = w;
+  const filter = selected
+    ? `drop-shadow(0 0 10px ${color}cc) drop-shadow(0 2px 3px rgba(0,0,0,0.7))`
+    : `drop-shadow(0 2px 3px rgba(0,0,0,0.6))`;
+  const selectedRing = selected
+    ? `<circle cx="12" cy="12" r="14" fill="none" stroke="#fbbf24" stroke-width="1.6" opacity="0.85"/>`
+    : '';
+  // 24x24 diamant
+  const html = `<svg width="${w}" height="${h}" viewBox="0 0 24 24" style="filter:${filter};display:block;overflow:visible;">
+    <polygon points="12,1 23,12 12,23 1,12" fill="${color}" stroke="#0a0a0f" stroke-width="1.4"/>
+    <g transform="translate(12, 12)">
+      <path d="M0,-4 L1,-1.5 L4,-1 L1.7,1 L2.5,4 L0,2.5 L-2.5,4 L-1.7,1 L-4,-1 L-1,-1.5 Z"
+            fill="#fff" opacity="0.95"/>
+    </g>
+    ${selectedRing}
+  </svg>`;
+  const icon = L.divIcon({
+    html, className: '', iconSize: [w, h], iconAnchor: [w / 2, h / 2],
+  });
+  competitorPinCache.set(key, icon);
+  return icon;
+}
+
 function authHeaders(): HeadersInit {
   const token = typeof window !== 'undefined' ? localStorage.getItem('rr_bearer') : null;
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -272,14 +339,24 @@ export default function LeadMapPanel() {
   })();
 
   const [leads, setLeads] = useState<MapLead[]>([]);
+  const [competitors, setCompetitors] = useState<CompetitorPoint[]>([]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<MapLead | null>(null);
+  const [selectedCompetitor, setSelectedCompetitor] = useState<CompetitorPoint | null>(null);
   const [statusFilter, setStatusFilter] = useState<LeadStatus[]>([]);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const boundsRef = useRef<L.LatLngBounds | null>(null);
+
+  // View-toggles — bestemmer hvilke pins som vises på kartet
+  const [showLeads, setShowLeads] = useState(true);
+  const [showCompetitors, setShowCompetitors] = useState(true);
+  const [recommendedOnly, setRecommendedOnly] = useState(false);
+  const [threatFilter, setThreatFilter] = useState<('near' | 'medium' | 'far')[]>([]);
+  const [assessingCompetitorId, setAssessingCompetitorId] = useState<string | null>(null);
+  const [rankingLeads, setRankingLeads] = useState(false);
 
   // Inline quick-status anchor (FAB ved selected pin)
   const [quickStatusFor, setQuickStatusFor] = useState<MapLead | null>(null);
@@ -338,6 +415,65 @@ export default function LeadMapPanel() {
     }
   }, [statusFilter]);
 
+  // Hent konkurrenter fra Role Room Agent's market_scan_competitors (m/ geo)
+  const fetchCompetitors = useCallback(async () => {
+    try {
+      const r = await fetch('/api/admin-room/lead-map/market-points?include=competitors', {
+        credentials: 'include', headers: authHeaders(),
+      });
+      if (!r.ok) return;
+      const body = await r.json();
+      setCompetitors(body.competitors ?? []);
+    } catch { /* noop — konkurrent-data er optional */ }
+  }, []);
+
+  // Trigger Claude threat-assessment på én konkurrent
+  const assessCompetitor = useCallback(async (id: string) => {
+    setAssessingCompetitorId(id);
+    try {
+      const r = await fetch(`/api/admin-room/lead-map/competitors/${id}/assess`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      });
+      if (r.ok) {
+        const body = await r.json();
+        setCompetitors((prev) => prev.map((c) =>
+          c.id === id ? { ...c, ...body.competitor, kind: 'competitor' as const } : c
+        ));
+        setSelectedCompetitor((prev) =>
+          prev?.id === id ? { ...prev, ...body.competitor, kind: 'competitor' as const } : prev
+        );
+      }
+    } finally {
+      setAssessingCompetitorId(null);
+    }
+  }, []);
+
+  // Trigger Claude lead-ranking (alle aktive leads)
+  const rankAllLeads = useCallback(async () => {
+    setRankingLeads(true);
+    try {
+      const r = await fetch('/api/admin-room/lead-map/leads/rank-all', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      });
+      if (r.ok) {
+        // Re-fetch leads så vi får nye rank-tall
+        void (async () => {
+          const lr = await fetch('/api/admin-room/lead-map/leads', {
+            credentials: 'include', headers: authHeaders(),
+          });
+          if (lr.ok) {
+            const body = await lr.json();
+            setLeads(body.leads ?? []);
+          }
+        })();
+      }
+    } finally {
+      setRankingLeads(false);
+    }
+  }, []);
+
   const fetchMeta = useCallback(async () => {
     try {
       const [mRes, aRes] = await Promise.all([
@@ -352,7 +488,7 @@ export default function LeadMapPanel() {
     } catch { /* noop */ }
   }, []);
 
-  useEffect(() => { fetchLeads(); fetchMeta(); }, [fetchLeads, fetchMeta]);
+  useEffect(() => { fetchLeads(); fetchMeta(); fetchCompetitors(); }, [fetchLeads, fetchMeta, fetchCompetitors]);
 
   const handleBoundsChange = useCallback((b: L.LatLngBounds) => {
     boundsRef.current = b;
@@ -372,6 +508,16 @@ export default function LeadMapPanel() {
         setSelected((prev) => prev?.id === leadId ? { ...prev, status: newStatus } : prev);
         setQuickStatusFor((prev) => prev?.id === leadId ? { ...prev, status: newStatus } : prev);
         void fetchMeta();
+
+        // Google Ads conversion-firing — kobler Lead Map til Ads ROI-funnel
+        // meeting_booked → 'demo'-conversion (booket møte = pipeline-event)
+        // won           → 'signup'-conversion (faktisk vunnet kunde)
+        // se [[google-ads-conversion-tracking-live]]
+        if (newStatus === 'meeting_booked') {
+          void fireGoogleAdsConversion('demo', { transactionId: leadId });
+        } else if (newStatus === 'won') {
+          void fireGoogleAdsConversion('signup', { transactionId: leadId });
+        }
       }
     } finally {
       setUpdatingStatus(false);
@@ -487,10 +633,32 @@ export default function LeadMapPanel() {
     }
   };
 
-  const filteredLeads = useMemo(() =>
-    statusFilter.length > 0 ? leads.filter((l) => statusFilter.includes(l.status)) : leads,
-    [leads, statusFilter],
-  );
+  const filteredLeads = useMemo(() => {
+    if (!showLeads) return [];
+    let pool = leads;
+    if (statusFilter.length > 0) {
+      pool = pool.filter((l) => statusFilter.includes(l.status));
+    }
+    if (recommendedOnly) {
+      pool = pool.filter((l) => (l.recommendationRank ?? 0) >= 60);
+    }
+    return pool;
+  }, [leads, statusFilter, showLeads, recommendedOnly]);
+
+  const filteredCompetitors = useMemo(() => {
+    if (!showCompetitors) return [];
+    let pool = competitors.filter(
+      (c) => c.latitude != null && c.longitude != null,
+    );
+    if (threatFilter.length > 0) {
+      pool = pool.filter((c) => c.threatLevel && threatFilter.includes(c.threatLevel));
+    }
+    if (recommendedOnly) {
+      // I "fokus"-modus: vis bare prioriterte eller nære konkurrenter
+      pool = pool.filter((c) => c.threatLevel === 'near' || (c.priorityRank ?? 0) > 0);
+    }
+    return pool;
+  }, [competitors, showCompetitors, threatFilter, recommendedOnly]);
 
   // Default-senter: Oslo
   const defaultCenter: [number, number] = [59.9139, 10.7522];
@@ -593,11 +761,99 @@ export default function LeadMapPanel() {
               Discover leads
             </Button>
             <Tooltip title="Oppdater">
-              <IconButton onClick={() => { void fetchLeads(boundsRef.current ?? undefined); void fetchMeta(); }} sx={{ color: palette.textSecondary }}>
+              <IconButton onClick={() => { void fetchLeads(boundsRef.current ?? undefined); void fetchMeta(); void fetchCompetitors(); }} sx={{ color: palette.textSecondary }}>
                 <RefreshIcon />
               </IconButton>
             </Tooltip>
           </Stack>
+        </Stack>
+
+        {/* View-toggles: Lead/Konkurrent/Anbefalt + Rank-leads-CTA */}
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 0.8 }} useFlexGap>
+          {[
+            {
+              key: 'leads',
+              label: `Leads (${leads.length})`,
+              active: showLeads,
+              color: palette.amber,
+              onClick: () => setShowLeads((v) => !v),
+            },
+            {
+              key: 'competitors',
+              label: `Konkurrenter (${competitors.length})`,
+              active: showCompetitors,
+              color: '#ef4444',
+              onClick: () => setShowCompetitors((v) => !v),
+            },
+            {
+              key: 'focus',
+              label: 'Kun anbefalte',
+              active: recommendedOnly,
+              color: palette.accent,
+              onClick: () => setRecommendedOnly((v) => !v),
+            },
+          ].map((t) => (
+            <Chip
+              key={t.key}
+              label={t.label}
+              size="small"
+              onClick={t.onClick}
+              sx={{
+                bgcolor: t.active ? t.color : 'rgba(168,85,247,0.06)',
+                color: t.active ? '#0a0a0f' : t.color,
+                fontWeight: 700, fontSize: '0.72rem',
+                border: `1px solid ${t.color}`,
+                cursor: 'pointer',
+                '&:hover': { bgcolor: t.color, color: '#0a0a0f' },
+              }}
+            />
+          ))}
+          {/* Threat-level-filter (kun aktiv når Konkurrenter er på) */}
+          {showCompetitors && (
+            <>
+              {(['near', 'medium', 'far'] as const).map((level) => {
+                const active = threatFilter.includes(level);
+                const color = THREAT_COLOR[level];
+                const label = level === 'near' ? 'Nær' : level === 'medium' ? 'Medium' : 'Fjern';
+                return (
+                  <Chip
+                    key={level}
+                    label={label}
+                    size="small"
+                    onClick={() =>
+                      setThreatFilter((prev) =>
+                        prev.includes(level)
+                          ? prev.filter((p) => p !== level)
+                          : [...prev, level],
+                      )
+                    }
+                    sx={{
+                      bgcolor: active ? color : 'transparent',
+                      color: active ? '#0a0a0f' : color,
+                      fontWeight: 700, fontSize: '0.68rem',
+                      border: `1px solid ${color}`,
+                      cursor: 'pointer',
+                      height: 24,
+                    }}
+                  />
+                );
+              })}
+            </>
+          )}
+          <Box sx={{ flex: 1 }} />
+          <Button
+            size="small" variant="outlined"
+            onClick={rankAllLeads}
+            disabled={rankingLeads}
+            startIcon={
+              rankingLeads
+                ? <CircularProgress size={12} sx={{ color: palette.accent }} />
+                : <AutoAwesomeOutlinedIcon sx={{ fontSize: 14 }} />
+            }
+            sx={{ color: palette.accent, borderColor: palette.borderStrong, fontWeight: 700, fontSize: '0.72rem', textTransform: 'none' }}
+          >
+            {rankingLeads ? 'Ranker …' : 'Ranger leads m/ Claude'}
+          </Button>
         </Stack>
 
         {/* KPI-stripe */}
@@ -753,7 +1009,11 @@ export default function LeadMapPanel() {
                   position={[lead.latitude, lead.longitude]}
                   icon={makePinIcon(lead.status, selected?.id === lead.id)}
                   eventHandlers={{
-                    click: () => { setSelected(lead); setQuickStatusFor(lead); },
+                    click: () => {
+                      setSelected(lead);
+                      setSelectedCompetitor(null);
+                      setQuickStatusFor(lead);
+                    },
                     contextmenu: (e: L.LeafletMouseEvent) => {
                       e.originalEvent.preventDefault();
                       setQuickStatusFor(lead);
@@ -788,6 +1048,45 @@ export default function LeadMapPanel() {
                           );
                         })}
                       </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+
+              {/* Konkurrent-pins (diamant-form, fra Role Room Agent's Market Scan) */}
+              {filteredCompetitors.map((comp) => (
+                <Marker
+                  key={`comp-${comp.id}`}
+                  position={[comp.latitude as number, comp.longitude as number]}
+                  icon={makeCompetitorIcon(comp.threatLevel, selectedCompetitor?.id === comp.id)}
+                  eventHandlers={{
+                    click: () => { setSelectedCompetitor(comp); setSelected(null); },
+                  }}
+                >
+                  <Popup>
+                    <div style={{ minWidth: 200 }}>
+                      <strong>{comp.name}</strong>
+                      <span style={{
+                        marginLeft: 8, padding: '2px 6px', borderRadius: 4,
+                        background: comp.threatLevel
+                          ? `${THREAT_COLOR[comp.threatLevel]}22`
+                          : `${UNASSESSED_COLOR}22`,
+                        color: comp.threatLevel
+                          ? THREAT_COLOR[comp.threatLevel]
+                          : UNASSESSED_COLOR,
+                        fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                      }}>
+                        {comp.threatLevel ?? 'unassessed'}
+                      </span>
+                      <br />
+                      {comp.category && <span style={{ color: '#666', fontSize: 12 }}>{comp.category}</span>}
+                      {comp.address && <><br /><span style={{ color: '#666', fontSize: 11 }}>{comp.address}</span></>}
+                      {comp.claudeThreatSummary && (
+                        <>
+                          <Divider sx={{ my: 1 }} />
+                          <div style={{ fontSize: 11, color: '#333' }}>{comp.claudeThreatSummary}</div>
+                        </>
+                      )}
                     </div>
                   </Popup>
                 </Marker>
@@ -838,8 +1137,203 @@ export default function LeadMapPanel() {
             )}
           </Box>
 
-          {/* Detail-panel */}
-          {selected ? (
+          {/* Detail-panel: konkurrent-view har prioritet hvis valgt */}
+          {selectedCompetitor ? (
+            <Box sx={{
+              width: { xs: '100%', md: 400 }, height: 540,
+              borderRadius: 1.6, overflowY: 'auto',
+              border: `1px solid ${selectedCompetitor.threatLevel ? THREAT_COLOR[selectedCompetitor.threatLevel] : UNASSESSED_COLOR}55`,
+              bgcolor: 'rgba(239,68,68,0.04)', p: 2,
+            }}>
+              {/* Header */}
+              <Stack direction="row" alignItems="flex-start" spacing={1.4} sx={{ mb: 1.6 }}>
+                <Box sx={{
+                  width: 48, height: 48, borderRadius: 1.4, flexShrink: 0,
+                  bgcolor: '#0a0a0f',
+                  border: `1.5px solid ${selectedCompetitor.threatLevel ? THREAT_COLOR[selectedCompetitor.threatLevel] : UNASSESSED_COLOR}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transform: 'rotate(45deg)',
+                }}>
+                  <Box sx={{ transform: 'rotate(-45deg)', color: '#fff', fontWeight: 800, fontSize: '0.8rem' }}>
+                    {(selectedCompetitor.name?.[0] ?? '?').toUpperCase()}
+                  </Box>
+                </Box>
+                <Stack sx={{ flex: 1, minWidth: 0 }}>
+                  <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 0.2 }}>
+                    <Chip
+                      label="KONKURRENT"
+                      size="small"
+                      sx={{
+                        bgcolor: 'rgba(239,68,68,0.15)',
+                        color: '#ef4444',
+                        fontWeight: 800, fontSize: '0.6rem', height: 18,
+                      }}
+                    />
+                    {selectedCompetitor.isManualAddition && (
+                      <Chip
+                        label="MANUELL"
+                        size="small"
+                        sx={{
+                          bgcolor: 'rgba(192,132,252,0.15)',
+                          color: palette.accent,
+                          fontWeight: 800, fontSize: '0.6rem', height: 18,
+                        }}
+                      />
+                    )}
+                  </Stack>
+                  <Typography sx={{ fontSize: '1.05rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1.2 }}>
+                    {selectedCompetitor.name}
+                  </Typography>
+                  {selectedCompetitor.domain && (
+                    <Typography
+                      component="a"
+                      href={`https://${selectedCompetitor.domain.replace(/^https?:\/\//, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      sx={{ fontSize: '0.78rem', color: palette.textMuted, textDecoration: 'none' }}
+                    >
+                      {selectedCompetitor.domain}
+                    </Typography>
+                  )}
+                  {selectedCompetitor.threatLevel && (
+                    <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mt: 0.6 }}>
+                      <Box sx={{
+                        width: 8, height: 8, borderRadius: '50%',
+                        bgcolor: THREAT_COLOR[selectedCompetitor.threatLevel],
+                        boxShadow: `0 0 6px ${THREAT_COLOR[selectedCompetitor.threatLevel]}99`,
+                      }} />
+                      <Typography sx={{
+                        fontSize: '0.74rem', fontWeight: 800,
+                        color: THREAT_COLOR[selectedCompetitor.threatLevel],
+                        textTransform: 'uppercase', letterSpacing: '0.05em',
+                      }}>
+                        {selectedCompetitor.threatLevel === 'near' ? 'Nær trussel' :
+                         selectedCompetitor.threatLevel === 'medium' ? 'Medium' : 'Fjern'}
+                      </Typography>
+                      {selectedCompetitor.threatScore != null && (
+                        <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted }}>
+                          ({selectedCompetitor.threatScore}/100)
+                        </Typography>
+                      )}
+                    </Stack>
+                  )}
+                </Stack>
+                <IconButton size="small" onClick={() => setSelectedCompetitor(null)} sx={{ color: palette.textMuted }}>
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Stack>
+
+              {/* Meta */}
+              <Stack spacing={1.2} sx={{ mb: 2 }}>
+                {selectedCompetitor.address && (
+                  <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <PlaceOutlinedIcon sx={{ color: palette.textMuted, fontSize: 16, mt: 0.2 }} />
+                    <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary, flex: 1 }}>
+                      {selectedCompetitor.address}
+                    </Typography>
+                  </Stack>
+                )}
+                {selectedCompetitor.category && (
+                  <Typography sx={{ fontSize: '0.76rem', color: palette.textMuted }}>
+                    {selectedCompetitor.category}
+                  </Typography>
+                )}
+                {selectedCompetitor.primaryOffer && (
+                  <Box sx={{ p: 1, borderRadius: 1, bgcolor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.18)' }}>
+                    <Typography sx={{ fontSize: '0.66rem', color: '#ef4444', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Tilbud
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.8rem', color: palette.textSecondary, mt: 0.2 }}>
+                      {selectedCompetitor.primaryOffer}
+                    </Typography>
+                  </Box>
+                )}
+                {selectedCompetitor.positioning && (
+                  <Box sx={{ p: 1, borderRadius: 1, bgcolor: 'rgba(168,85,247,0.04)', border: `1px solid ${palette.border}` }}>
+                    <Typography sx={{ fontSize: '0.66rem', color: palette.accent, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Posisjonering
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary, mt: 0.2 }}>
+                      {selectedCompetitor.positioning}
+                    </Typography>
+                  </Box>
+                )}
+              </Stack>
+
+              {/* Claude vurdering */}
+              {selectedCompetitor.claudeThreatSummary ? (
+                <Stack spacing={1.4}>
+                  <Box sx={{ p: 1.4, borderRadius: 1.2, bgcolor: 'rgba(192,132,252,0.06)', border: `1px solid ${palette.borderStrong}` }}>
+                    <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mb: 0.6 }}>
+                      <AutoAwesomeOutlinedIcon sx={{ color: palette.accent, fontSize: 14 }} />
+                      <Typography sx={{ fontSize: '0.66rem', color: palette.accent, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Claude vurdering
+                      </Typography>
+                    </Stack>
+                    <Typography sx={{ fontSize: '0.8rem', color: palette.textPrimary, mb: 1 }}>
+                      {selectedCompetitor.claudeThreatSummary}
+                    </Typography>
+                    {selectedCompetitor.claudeWhatToWorryAbout && (
+                      <Box sx={{ mt: 1 }}>
+                        <Typography sx={{ fontSize: '0.66rem', color: '#ef4444', fontWeight: 700, textTransform: 'uppercase' }}>
+                          Bekymre seg for
+                        </Typography>
+                        <Typography sx={{ fontSize: '0.76rem', color: palette.textSecondary }}>
+                          {selectedCompetitor.claudeWhatToWorryAbout}
+                        </Typography>
+                      </Box>
+                    )}
+                    {selectedCompetitor.claudeWhatToIgnore && (
+                      <Box sx={{ mt: 1 }}>
+                        <Typography sx={{ fontSize: '0.66rem', color: '#34d399', fontWeight: 700, textTransform: 'uppercase' }}>
+                          Ignorer
+                        </Typography>
+                        <Typography sx={{ fontSize: '0.76rem', color: palette.textSecondary }}>
+                          {selectedCompetitor.claudeWhatToIgnore}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                  <Button
+                    size="small" variant="outlined"
+                    onClick={() => assessCompetitor(selectedCompetitor.id)}
+                    disabled={assessingCompetitorId === selectedCompetitor.id}
+                    startIcon={
+                      assessingCompetitorId === selectedCompetitor.id
+                        ? <CircularProgress size={12} sx={{ color: palette.accent }} />
+                        : <AutoAwesomeOutlinedIcon sx={{ fontSize: 14 }} />
+                    }
+                    sx={{ color: palette.accent, borderColor: palette.borderStrong, fontWeight: 700, fontSize: '0.74rem', textTransform: 'none' }}
+                  >
+                    Re-vurder
+                  </Button>
+                </Stack>
+              ) : (
+                <Box sx={{ p: 2, borderRadius: 1.2, border: `1px dashed ${palette.border}`, textAlign: 'center' }}>
+                  <AutoAwesomeOutlinedIcon sx={{ color: palette.accent, fontSize: 28, mb: 0.8 }} />
+                  <Typography sx={{ fontSize: '0.86rem', fontWeight: 700, color: palette.textPrimary, mb: 0.4 }}>
+                    Ikke vurdert ennå
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.74rem', color: palette.textMuted, mb: 1.4 }}>
+                    Få Role Room Agent til å vurdere om dette er en nær trussel — og hva du bør (eller ikke bør) bekymre deg for.
+                  </Typography>
+                  <Button
+                    size="small" variant="contained"
+                    onClick={() => assessCompetitor(selectedCompetitor.id)}
+                    disabled={assessingCompetitorId === selectedCompetitor.id}
+                    startIcon={
+                      assessingCompetitorId === selectedCompetitor.id
+                        ? <CircularProgress size={12} sx={{ color: '#0a0a0f' }} />
+                        : <AutoAwesomeOutlinedIcon sx={{ fontSize: 14 }} />
+                    }
+                    sx={{ bgcolor: palette.accent, color: '#0a0a0f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'none' }}
+                  >
+                    Vurder med Claude
+                  </Button>
+                </Box>
+              )}
+            </Box>
+          ) : selected ? (
             <Box sx={{
               width: { xs: '100%', md: 400 }, height: 540,
               borderRadius: 1.6, overflowY: 'auto',
@@ -1105,6 +1599,32 @@ export default function LeadMapPanel() {
                   </Stack>
                 )}
               </Stack>
+
+              {/* Claude rec-rank — vises kun når Agent har rangert leaden */}
+              {selected.recommendationRank != null && (
+                <Box sx={{
+                  mb: 2, p: 1.4, borderRadius: 1.2,
+                  bgcolor: 'rgba(192,132,252,0.08)',
+                  border: `1px solid ${palette.borderStrong}`,
+                }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <AutoAwesomeOutlinedIcon sx={{ color: palette.accent, fontSize: 20 }} />
+                    <Stack sx={{ flex: 1 }}>
+                      <Typography sx={{ fontSize: '0.66rem', color: palette.accent, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Anbefalt prioritet
+                      </Typography>
+                      <Typography sx={{ fontSize: '1.2rem', fontWeight: 800, color: palette.accent, lineHeight: 1 }}>
+                        {selected.recommendationRank}/100
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                  {selected.recommendationReason && (
+                    <Typography sx={{ fontSize: '0.76rem', color: palette.textSecondary, mt: 0.8 }}>
+                      {selected.recommendationReason}
+                    </Typography>
+                  )}
+                </Box>
+              )}
 
               {/* UPDATE STATUS — 6 store sirkel-knapper m/ ikon over label */}
               <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 1 }}>
