@@ -13,6 +13,7 @@ import {
   isIconField, MATERIAL_ICONS, ALL_MATERIAL_ICONS,
   type InfographicTemplate,
 } from './infographicStudio';
+import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
 
 const D = {
   bg: '#0e1320', panel: '#141b2b', panel2: '#1b2436', line: '#27314a',
@@ -42,7 +43,35 @@ const FILMTV_IDS = new Set<string>([
   'name-lowerthird', 'quote-fullscreen',
 ]);
 
-interface Scene { id: string; tplId: string; values: Record<string, string>; atSec: number; bindings?: Record<string, string> }
+const CALLOUT_IDS = new Set<string>([
+  'callout-arrow', 'callout-marker', 'callout-tooltip', 'callout-label-line',
+  'callout-feature-badge', 'callout-zoom-box', 'callout-step-card', 'callout-cursor-click',
+]);
+
+// Branded kits — palett + kuratert mal-sett per produkt.
+const RR_KIT_IDS = new Set<string>([
+  'rr-casting-call', 'rr-role-announcement', 'rr-audition-info', 'rr-callback-status',
+  'rr-callsheet', 'rr-shoot-schedule', 'rr-talent-spotlight', 'rr-location-card',
+]);
+const CH_KIT_IDS = new Set<string>([
+  'ch-kpi-cards', 'ch-revenue-trend', 'ch-client-pipeline', 'ch-project-card',
+  'ch-showcase-portfolio', 'ch-pricing-package', 'ch-testimonial', 'ch-booking-cta',
+]);
+const BRAND_KITS = [
+  { id: 'kit-rr', name: 'The Role Room', accent: '#a78bfa', tagline: 'Casting · Roller · Produksjon', ids: RR_KIT_IDS, logo: ROLE_ROOM_LOGO },
+  { id: 'kit-ch', name: 'Creatorhub', accent: '#ffba6c', tagline: 'Dashboard · Showcase', ids: CH_KIT_IDS, logo: CREATORHUB_LOGO },
+] as const;
+
+const CATEGORY_IDS: Record<string, Set<string>> = {
+  charts: CHART_IDS, marketing: MARKETING_IDS, filmtv: FILMTV_IDS,
+  callouts: CALLOUT_IDS, 'kit-rr': RR_KIT_IDS, 'kit-ch': CH_KIT_IDS,
+};
+const CATEGORY_LABEL: Record<string, string> = {
+  templates: 'Templates', charts: 'Charts', marketing: 'Marketing', filmtv: 'Film & TV',
+  callouts: 'Callouts', 'kit-rr': 'The Role Room', 'kit-ch': 'Creatorhub',
+};
+
+interface Scene { id: string; tplId: string; values: Record<string, string>; atSec: number; bindings?: Record<string, string>; posX?: number; posY?: number }
 let _sid = 1;
 const newScene = (tplId: string, atSec: number): Scene => ({ id: `s${_sid++}`, tplId, values: {}, atSec, bindings: {} });
 
@@ -159,7 +188,7 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
   const [logo, setLogo] = useState<string>(() => { const u = project?.branding?.logoUrl; return u && u.startsWith('data:') ? u : ''; });
   const [suggested, setSuggested] = useState('');
   const [rightTab, setRightTab] = useState<'Design' | 'Animate' | 'Data'>('Data');
-  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'marketing' | 'filmtv' | 'brand' | 'data' | 'export'>('templates');
+  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'marketing' | 'filmtv' | 'callouts' | 'kit-rr' | 'kit-ch' | 'brand' | 'data' | 'export'>('templates');
   const [dataText, setDataText] = useState('');
   const dataMap = useMemo(() => parseDataSource(dataText), [dataText]);
   const dataKeys = useMemo(() => Object.keys(dataMap), [dataMap]);
@@ -255,7 +284,7 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
         const html = `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + htmlForTemplate(t);
         setMsg(`Rendrer scene ${i + 1}/${scenes.length} (${t.name}) …`);
         const out = await invoke<string>('render_infographic', { html, durationSec: t.durationSec, name: `${t.id}-${sc.id}-${Date.now()}` });
-        overlays.push({ path: out, atSec: sc.atSec, durationSec: t.durationSec, track: 2 });
+        overlays.push({ path: out, atSec: sc.atSec, durationSec: t.durationSec, track: 2, posX: sc.posX ?? 50, posY: sc.posY ?? 50 });
       }
       setMsg('Sender alle scener til Resolve …');
       const summary = await executeScript('place_overlay', { overlays });
@@ -294,7 +323,15 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
           <div style={railItem(leftSec === 'charts')} onClick={() => setLeftSec('charts')}>▤ Charts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => CHART_IDS.has(t.id)).length}</span></div>
           <div style={railItem(leftSec === 'marketing')} onClick={() => setLeftSec('marketing')}>✷ Marketing <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => MARKETING_IDS.has(t.id)).length}</span></div>
           <div style={railItem(leftSec === 'filmtv')} onClick={() => setLeftSec('filmtv')}>▶ Film &amp; TV <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => FILMTV_IDS.has(t.id)).length}</span></div>
+          <div style={railItem(leftSec === 'callouts')} onClick={() => setLeftSec('callouts')}>⌖ Callouts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => CALLOUT_IDS.has(t.id)).length}</span></div>
           <div style={railItem(false)} title="Velg ikoner i Data-fanen per felt">◷ Icons <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{ALL_MATERIAL_ICONS.length}</span></div>
+          <div style={{ fontSize: 9.5, fontWeight: 700, color: D.faint, textTransform: 'uppercase', letterSpacing: 0.6, padding: '12px 14px 4px' }}>Brand Kits</div>
+          {BRAND_KITS.map((k) => (
+            <div key={k.id} style={railItem(leftSec === k.id)} onClick={() => { setLeftSec(k.id); setAccent(k.accent); setLogo(k.logo); }} title={`${k.name} — ${k.tagline}`}>
+              <img src={k.logo} alt="" style={{ width: 16, height: 16, objectFit: 'contain', marginRight: 2 }} />{k.name}
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => k.ids.has(t.id)).length}</span>
+            </div>
+          ))}
           <div style={railItem(leftSec === 'brand')} onClick={() => setLeftSec('brand')}>◆ Brand Kit</div>
           <div style={railItem(leftSec === 'export')} onClick={() => setLeftSec('export')}>⤓ Export</div>
           <div style={{ flex: 1 }} />
@@ -303,10 +340,10 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
 
         {/* Sekundær-panel */}
         <div style={{ width: 280, borderRight: `1px solid ${D.line}`, overflowY: 'auto', padding: 14, background: D.panel }}>
-          {(leftSec === 'templates' || leftSec === 'charts' || leftSec === 'marketing' || leftSec === 'filmtv') && (<>
-            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>{leftSec === 'charts' ? 'Charts' : leftSec === 'marketing' ? 'Marketing' : leftSec === 'filmtv' ? 'Film & TV' : 'Templates'} <span style={{ color: D.faint, fontWeight: 500 }}>· endrer scene {sel + 1}</span></div>
+          {(leftSec === 'templates' || leftSec in CATEGORY_IDS) && (<>
+            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>{CATEGORY_LABEL[leftSec] || 'Templates'} <span style={{ color: D.faint, fontWeight: 500 }}>· endrer scene {sel + 1}</span></div>
             <div style={{ display: 'grid', gap: 9 }}>
-              {INFOGRAPHIC_TEMPLATES.filter((t) => leftSec === 'charts' ? CHART_IDS.has(t.id) : leftSec === 'marketing' ? MARKETING_IDS.has(t.id) : leftSec === 'filmtv' ? FILMTV_IDS.has(t.id) : true).map((t) => {
+              {INFOGRAPHIC_TEMPLATES.filter((t) => CATEGORY_IDS[leftSec] ? CATEGORY_IDS[leftSec].has(t.id) : true).map((t) => {
                 const selT = t.id === scene.tplId;
                 return (
                   <button key={t.id} onClick={() => pickTemplate(t.id)} style={{ textAlign: 'left', padding: 11, borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${selT ? D.accent : D.line}`, background: selT ? D.panel2 : D.bg, color: D.ink, position: 'relative' }}>
@@ -402,6 +439,11 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
               </div>
               <label style={{ fontSize: 12, color: D.soft, display: 'flex', alignItems: 'center', gap: 7, flex: 'none' }}>Dukker opp ved
                 <input style={{ ...inp, width: 64 }} type="number" min="0" step="0.5" value={scene.atSec} onChange={(e) => updateScene({ atSec: parseFloat(e.target.value) || 0 })} /> s</label>
+              {CALLOUT_IDS.has(scene.tplId) && (
+                <label style={{ fontSize: 12, color: D.soft, display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }} title="Hvor i bildet callouten peker (% av ramme; 50/50 = sentrert)">⌖ Plassering
+                  <input style={{ ...inp, width: 54 }} type="number" min="0" max="100" step="1" value={scene.posX ?? 50} onChange={(e) => updateScene({ posX: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })} />X
+                  <input style={{ ...inp, width: 54 }} type="number" min="0" max="100" step="1" value={scene.posY ?? 50} onChange={(e) => updateScene({ posY: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })} />Y%</label>
+              )}
             </div>
           </div>
           {msg && <div style={{ fontSize: 12, color: msg.startsWith('Feil') ? '#f08a82' : D.soft, padding: '8px 16px', borderTop: `1px solid ${D.line}`, background: D.panel }}>{msg}</div>}

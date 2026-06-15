@@ -40,11 +40,17 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     norm = []
     for o in overlays:
         p = o.get("path") or ""
+        # posX/posY: prosent (0-100) av rammen der overlayet skal forankres.
+        # 50/50 = sentrert (standard). Brukes for callouts som peker på UI-elementer.
+        px = o.get("posX")
+        py = o.get("posY")
         norm.append({
             "path": p,
             "atSec": float(o.get("atSec") or 0),
             "durationSec": float(o.get("durationSec") or 0),
             "track": int(o.get("track") or 2),
+            "posX": float(px) if px is not None else 50.0,
+            "posY": float(py) if py is not None else 50.0,
             "exists": bool(p) and os.path.isfile(p),
         })
 
@@ -65,6 +71,16 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         tfps = float(timeline.GetSetting("timelineFrameRate") or fps)
         if tfps > 0:
             fps = int(round(tfps))
+    except Exception:  # noqa: BLE001
+        pass
+
+    # ramme-oppløsning (for posX/posY → Pan/Tilt i piksler)
+    frame_w, frame_h = 1920, 1080
+    try:
+        fw = int(timeline.GetSetting("timelineResolutionWidth") or 0)
+        fh = int(timeline.GetSetting("timelineResolutionHeight") or 0)
+        if fw > 0 and fh > 0:
+            frame_w, frame_h = fw, fh
     except Exception:  # noqa: BLE001
         pass
 
@@ -99,7 +115,20 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             res = media_pool.AppendToTimeline([clip])
             if res:
                 placed += 1
-                reports.append({"i": i, "track": track, "atSec": o["atSec"], "ok": True})
+                # forankre i rom: posX/posY (prosent) → Pan/Tilt (piksler fra senter).
+                # Pan +→ høyre, Tilt +→ opp. 50/50 = sentrert = ingen forflytning.
+                ti = res[0] if isinstance(res, list) else res
+                pan = (o["posX"] / 100.0 - 0.5) * frame_w
+                tilt = (0.5 - o["posY"] / 100.0) * frame_h
+                pos_set = False
+                if ti is not None and (abs(pan) > 0.5 or abs(tilt) > 0.5):
+                    try:
+                        ti.SetProperty("Pan", pan)
+                        ti.SetProperty("Tilt", tilt)
+                        pos_set = True
+                    except Exception:  # noqa: BLE001
+                        pos_set = False
+                reports.append({"i": i, "track": track, "atSec": o["atSec"], "posX": o["posX"], "posY": o["posY"], "positioned": pos_set, "ok": True})
             else:
                 reports.append({"i": i, "error": "AppendToTimeline returnerte tomt"})
         except Exception as exc:  # noqa: BLE001
