@@ -2418,6 +2418,38 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     } catch (e) { if (isMissingTable(e)) return res.json({ ok: true, sessions: 0 }); console.error("[sessions] reminders failed:", e); return res.status(500).json({ error: "reminders_failed" }); }
   });
 
+  // ══ MOOD / READINESS-INNSJEKK ══════════════════════════════════════════════
+  // Medlem: hent mood-valg (fra EaseVerse) + min nåværende mood.
+  app.get("/api/audio-review-shared/:token/mood", async (req, res) => {
+    const token = str(req.params.token, 80); if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    try {
+      const ctx = await resolveSharedMember(token); if (!ctx) return res.status(404).json({ error: "not_found" });
+      const lib = await fetchWarmupLibrary();
+      const r = await pool.query(`SELECT mood, note, updated_at FROM audio_member_mood WHERE project_id=$1::uuid AND member_name=$2 LIMIT 1`, [ctx.project_id, ctx.name]);
+      return res.json({ options: lib?.moods || [], mine: r.rows[0] || null });
+    } catch (e) { if (isMissingTable(e)) return res.json({ options: [], mine: null }); return res.status(500).json({ error: "mood_get_failed" }); }
+  });
+  app.post("/api/audio-review-shared/:token/mood", async (req, res) => {
+    const token = str(req.params.token, 80); if (!token.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+    if (isHoneypot(req)) return res.json({ ok: true });
+    const mood = str(req.body?.mood, 40); if (!mood) return res.status(400).json({ error: "mood_required" });
+    try {
+      const ctx = await resolveSharedMember(token); if (!ctx) return res.status(404).json({ error: "not_found" });
+      await pool.query(`INSERT INTO audio_member_mood (project_id, member_name, mood, note, updated_at) VALUES ($1::uuid,$2,$3,$4,NOW()) ON CONFLICT (project_id, member_name) DO UPDATE SET mood=$3, note=$4, updated_at=NOW()`, [ctx.project_id, ctx.name, mood, str(req.body?.note, 300) || null]);
+      return res.json({ ok: true });
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "mood_save_failed" }); }
+  });
+  // Produsent: medlemmenes mood/readiness.
+  app.get("/api/audio-showcases/:id/mood", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const p = await pool.query(`SELECT 1 FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const r = await pool.query(`SELECT member_name, mood, note, updated_at FROM audio_member_mood WHERE project_id=$1::uuid ORDER BY updated_at DESC`, [str(req.params.id, 64)]);
+      return res.json({ moods: r.rows });
+    } catch (e) { if (isMissingTable(e)) return res.json({ moods: [] }); return res.status(500).json({ error: "mood_list_failed" }); }
+  });
+
   // Eier laster ned signert avtale-PDF.
   app.get("/api/audio-showcases/:id/agreement.pdf", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
