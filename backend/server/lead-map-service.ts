@@ -62,6 +62,9 @@ export interface MapLead {
   postalCode: string | null;
   city: string | null;
   country: string | null;
+  /** Navn på eier-bruker (JOIN users.name). null hvis eier mangler eller eier ikke finnes lenger. */
+  assignedUserName: string | null;
+  assignedUserEmail: string | null;
   latitude: number;
   longitude: number;
   phone: string | null;
@@ -138,6 +141,8 @@ function rowToLead(row: any): MapLead {
     estimatedValue: row.estimated_value ? Number(row.estimated_value) : null,
     leadSource: row.lead_source,
     assignedUserId: row.owner_user_id,
+    assignedUserName: row.assigned_user_name ?? null,
+    assignedUserEmail: row.assigned_user_email ?? null,
     lastVisitAt: row.last_visit_at?.toISOString() ?? null,
     nextFollowUpAt: row.next_follow_up_at?.toISOString() ?? null,
     nextAction: row.next_action,
@@ -181,13 +186,15 @@ export async function listLeadsInBounds(
 
   params.push(opts.limit ?? 500);
   const r = await pool.query(
-    `SELECT id, name, company, lead_category, lead_status, address, postal_code,
-            city, country, latitude, longitude, phone, email, website_url,
-            instagram_url, linkedin_url, google_rating, google_place_id,
-            ai_opportunity_score, estimated_value, lead_source, owner_user_id,
-            last_visit_at, next_follow_up_at, next_action, tags, notes,
-            created_at, updated_at
-     FROM crm_customers
+    `SELECT c.id, c.name, c.company, c.lead_category, c.lead_status, c.address, c.postal_code,
+            c.city, c.country, c.latitude, c.longitude, c.phone, c.email, c.website_url,
+            c.instagram_url, c.linkedin_url, c.google_rating, c.google_place_id,
+            c.ai_opportunity_score, c.estimated_value, c.lead_source, c.owner_user_id,
+            c.last_visit_at, c.next_follow_up_at, c.next_action, c.tags, c.notes,
+            c.created_at, c.updated_at,
+            u.name AS assigned_user_name, u.email AS assigned_user_email
+     FROM crm_customers c
+     LEFT JOIN users u ON u.id = c.owner_user_id
      WHERE ${conditions.join(' AND ')}
      ORDER BY updated_at DESC
      LIMIT $${params.length}`,
@@ -202,13 +209,15 @@ export async function getLeadById(
   const params: unknown[] = [leadId];
   const tenantConds = buildTenantConditions(scope, params);
   const r = await pool.query(
-    `SELECT id, name, company, lead_category, lead_status, address, postal_code,
-            city, country, latitude, longitude, phone, email, website_url,
-            instagram_url, linkedin_url, google_rating, google_place_id,
-            ai_opportunity_score, estimated_value, lead_source, owner_user_id,
-            last_visit_at, next_follow_up_at, next_action, tags, notes,
-            created_at, updated_at
-     FROM crm_customers
+    `SELECT c.id, c.name, c.company, c.lead_category, c.lead_status, c.address, c.postal_code,
+            c.city, c.country, c.latitude, c.longitude, c.phone, c.email, c.website_url,
+            c.instagram_url, c.linkedin_url, c.google_rating, c.google_place_id,
+            c.ai_opportunity_score, c.estimated_value, c.lead_source, c.owner_user_id,
+            c.last_visit_at, c.next_follow_up_at, c.next_action, c.tags, c.notes,
+            c.created_at, c.updated_at,
+            u.name AS assigned_user_name, u.email AS assigned_user_email
+     FROM crm_customers c
+     LEFT JOIN users u ON u.id = c.owner_user_id
      WHERE id = $1::uuid AND ${tenantConds.join(' AND ')}`,
     params,
   );
