@@ -54,6 +54,7 @@ import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import InstagramIcon from '@mui/icons-material/Instagram';
 import { useAuth } from '../../hooks/useAuth';
 import { fireGoogleAdsConversion } from '../../utils/google-ads-conversions';
+import AddLocationAltOutlinedIcon from '@mui/icons-material/AddLocationAltOutlined';
 
 type LeadStatus =
   | 'unvisited' | 'visited' | 'return' | 'not_present' | 'declined'
@@ -385,6 +386,20 @@ export default function LeadMapPanel() {
   const [placesError, setPlacesError] = useState<string | null>(null);
   const [importingPlaceId, setImportingPlaceId] = useState<string | null>(null);
 
+  // Add-competitor modal
+  const [addCompOpen, setAddCompOpen] = useState(false);
+  const [addCompSaving, setAddCompSaving] = useState(false);
+  const [addCompError, setAddCompError] = useState<string | null>(null);
+  const [addCompForm, setAddCompForm] = useState({
+    name: '',
+    domain: '',
+    category: '',
+    region: '',
+    threatLevel: '' as '' | 'near' | 'medium' | 'far',
+    positioning: '',
+    primaryOffer: '',
+  });
+
   const fetchLeads = useCallback(async (bounds?: L.LatLngBounds) => {
     setError(null);
     try {
@@ -473,6 +488,62 @@ export default function LeadMapPanel() {
       setRankingLeads(false);
     }
   }, []);
+
+  // Submit manuell konkurrent. Backend gjør auto-Places-lookup på navn+region
+  // og populerer geo (lat/lng) når mulig — slik at den havner på kartet.
+  const submitAddCompetitor = useCallback(async () => {
+    setAddCompError(null);
+    if (!addCompForm.name.trim()) {
+      setAddCompError('Navn er påkrevd');
+      return;
+    }
+    // Domain er valgfri i UI — defaulter til lower-cased navn hvis tom,
+    // så vi alltid har en sortbar nøkkel uten å plage brukeren.
+    const domain =
+      addCompForm.domain.trim() ||
+      addCompForm.name.trim().toLowerCase().replace(/\s+/g, '-');
+    setAddCompSaving(true);
+    try {
+      const body: Record<string, unknown> = {
+        name: addCompForm.name.trim(),
+        domain: domain.replace(/^https?:\/\//, '').replace(/\/$/, ''),
+      };
+      if (addCompForm.category.trim()) body.category = addCompForm.category.trim();
+      if (addCompForm.region.trim()) body.region = addCompForm.region.trim();
+      if (addCompForm.threatLevel) body.threatLevel = addCompForm.threatLevel;
+      if (addCompForm.positioning.trim()) body.positioning = addCompForm.positioning.trim();
+      if (addCompForm.primaryOffer.trim()) body.primaryOffer = addCompForm.primaryOffer.trim();
+
+      const r = await fetch('/api/admin-room/lead-map/competitors', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        setAddCompError(e.error ?? `HTTP ${r.status}`);
+        return;
+      }
+      const data = await r.json();
+      const newComp: CompetitorPoint = { ...data.competitor, kind: 'competitor' };
+      setCompetitors((prev) => [newComp, ...prev]);
+      // Hvis den landet på kartet (geo funnet), select den så Daniel ser den
+      if (newComp.latitude != null && newComp.longitude != null) {
+        setSelectedCompetitor(newComp);
+        setSelected(null);
+      }
+      // Reset form + lukk
+      setAddCompForm({
+        name: '', domain: '', category: '', region: '',
+        threatLevel: '', positioning: '', primaryOffer: '',
+      });
+      setAddCompOpen(false);
+    } catch (e) {
+      setAddCompError(String(e));
+    } finally {
+      setAddCompSaving(false);
+    }
+  }, [addCompForm]);
 
   const fetchMeta = useCallback(async () => {
     try {
@@ -759,6 +830,14 @@ export default function LeadMapPanel() {
               sx={{ color: palette.amber, borderColor: 'rgba(251,191,36,0.4)', fontWeight: 700, fontSize: '0.78rem' }}
             >
               Discover leads
+            </Button>
+            <Button
+              size="small" variant="outlined"
+              onClick={() => setAddCompOpen(true)}
+              startIcon={<AddLocationAltOutlinedIcon sx={{ fontSize: 16 }} />}
+              sx={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)', fontWeight: 700, fontSize: '0.78rem' }}
+            >
+              Legg til konkurrent
             </Button>
             <Tooltip title="Oppdater">
               <IconButton onClick={() => { void fetchLeads(boundsRef.current ?? undefined); void fetchMeta(); void fetchCompetitors(); }} sx={{ color: palette.textSecondary }}>
@@ -1937,6 +2016,140 @@ export default function LeadMapPanel() {
           </DialogContent>
           <DialogActions>
             <Button onClick={() => { setPitchOpen(false); setPitch(null); }}>Lukk</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Add-competitor dialog — manuell add m/ auto-Places-lookup */}
+        <Dialog
+          open={addCompOpen}
+          onClose={() => !addCompSaving && setAddCompOpen(false)}
+          maxWidth="sm" fullWidth
+          PaperProps={{ sx: { bgcolor: palette.bgPanel, border: `1px solid ${palette.borderStrong}` } }}
+        >
+          <DialogTitle sx={{ color: palette.textPrimary }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <AddLocationAltOutlinedIcon sx={{ color: '#ef4444' }} />
+              <span>Legg til konkurrent</span>
+            </Stack>
+            <Typography sx={{ fontSize: '0.78rem', color: palette.textMuted, mt: 0.4 }}>
+              Role Room Agent slår opp navn + region i Google Places automatisk
+              for å finne lokasjon, kontaktinfo og rating.
+            </Typography>
+          </DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              {addCompError && (
+                <Alert severity="error" onClose={() => setAddCompError(null)}>
+                  {addCompError}
+                </Alert>
+              )}
+              <TextField
+                size="small" fullWidth autoFocus required
+                label="Navn"
+                placeholder="F.eks. Holy Crust"
+                value={addCompForm.name}
+                onChange={(e) => setAddCompForm({ ...addCompForm, name: e.target.value })}
+                disabled={addCompSaving}
+              />
+              <TextField
+                size="small" fullWidth
+                label="Domene"
+                placeholder="holycrust.no (valgfri)"
+                value={addCompForm.domain}
+                onChange={(e) => setAddCompForm({ ...addCompForm, domain: e.target.value })}
+                disabled={addCompSaving}
+                helperText="Hvis tom: bruker lower-cased navn som sortbar nøkkel"
+              />
+              <Stack direction="row" spacing={1}>
+                <TextField
+                  size="small" fullWidth
+                  label="Kategori"
+                  placeholder="F.eks. pizzeria, byrå"
+                  value={addCompForm.category}
+                  onChange={(e) => setAddCompForm({ ...addCompForm, category: e.target.value })}
+                  disabled={addCompSaving}
+                />
+                <TextField
+                  size="small" fullWidth
+                  label="Region"
+                  placeholder="Oslo, Norge"
+                  value={addCompForm.region}
+                  onChange={(e) => setAddCompForm({ ...addCompForm, region: e.target.value })}
+                  disabled={addCompSaving}
+                  helperText="For Google Places-oppslag"
+                />
+              </Stack>
+              <Select
+                size="small" fullWidth displayEmpty
+                value={addCompForm.threatLevel}
+                onChange={(e) => setAddCompForm({
+                  ...addCompForm,
+                  threatLevel: e.target.value as '' | 'near' | 'medium' | 'far',
+                })}
+                disabled={addCompSaving}
+              >
+                <MenuItem value="">
+                  <em>Trussel-nivå (Claude vurderer hvis tom)</em>
+                </MenuItem>
+                <MenuItem value="near">
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#ef4444' }} />
+                    <span>Nær — direkte konkurrent</span>
+                  </Stack>
+                </MenuItem>
+                <MenuItem value="medium">
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#f59e0b' }} />
+                    <span>Medium — indirekte</span>
+                  </Stack>
+                </MenuItem>
+                <MenuItem value="far">
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#94a3b8' }} />
+                    <span>Fjern — randzone</span>
+                  </Stack>
+                </MenuItem>
+              </Select>
+              <TextField
+                size="small" fullWidth multiline rows={2}
+                label="Posisjonering (valgfri)"
+                placeholder="Hvordan posisjonerer de seg? Hva er deres &quot;hook&quot;?"
+                value={addCompForm.positioning}
+                onChange={(e) => setAddCompForm({ ...addCompForm, positioning: e.target.value })}
+                disabled={addCompSaving}
+              />
+              <TextField
+                size="small" fullWidth multiline rows={2}
+                label="Hovedtilbud (valgfri)"
+                placeholder="Hva er deres primære tjeneste/produkt?"
+                value={addCompForm.primaryOffer}
+                onChange={(e) => setAddCompForm({ ...addCompForm, primaryOffer: e.target.value })}
+                disabled={addCompSaving}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={() => setAddCompOpen(false)}
+              disabled={addCompSaving}
+              sx={{ color: palette.textMuted }}
+            >
+              Avbryt
+            </Button>
+            <Button
+              onClick={submitAddCompetitor}
+              variant="contained"
+              disabled={addCompSaving || !addCompForm.name.trim()}
+              startIcon={addCompSaving ? <CircularProgress size={14} /> : <AddLocationAltOutlinedIcon sx={{ fontSize: 16 }} />}
+              sx={{
+                bgcolor: '#ef4444',
+                color: '#fff',
+                fontWeight: 700,
+                '&:hover': { bgcolor: '#ef4444', filter: 'brightness(0.92)' },
+              }}
+            >
+              {addCompSaving ? 'Legger til …' : 'Legg til konkurrent'}
+            </Button>
           </DialogActions>
         </Dialog>
 
