@@ -61,6 +61,10 @@ import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import NotificationsActiveOutlinedIcon from '@mui/icons-material/NotificationsActiveOutlined';
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
+import TipsAndUpdatesOutlinedIcon from '@mui/icons-material/TipsAndUpdatesOutlined';
+import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined';
+import LocalPhoneOutlinedIcon from '@mui/icons-material/LocalPhoneOutlined';
+import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined';
 import { Menu } from '@mui/material';
 
 type LeadStatus =
@@ -370,6 +374,23 @@ export default function LeadMapPanel() {
   const [assessingCompetitorId, setAssessingCompetitorId] = useState<string | null>(null);
   const [rankingLeads, setRankingLeads] = useState(false);
   const [deletingCompetitorId, setDeletingCompetitorId] = useState<string | null>(null);
+
+  // Outreach-strategi (Claude anbefalt kanal + sekvens per lead)
+  type OutreachStrategy = {
+    leadName: string;
+    primaryChannel: string;
+    secondaryChannels: string[];
+    openingLine: string;
+    bestTime: string;
+    sequence: Array<{ day: number; channel: string; action: string; template: string }>;
+    rationale: string;
+    confidence: 'low' | 'medium' | 'high';
+    generatedAt: string;
+  };
+  const [strategyOpen, setStrategyOpen] = useState(false);
+  const [strategy, setStrategy] = useState<OutreachStrategy | null>(null);
+  const [strategyLoading, setStrategyLoading] = useState(false);
+  const [strategyError, setStrategyError] = useState<string | null>(null);
 
   // Counter-campaign (Lead Map → Marketing Cockpit-bro)
   const [counterCampaignOpen, setCounterCampaignOpen] = useState(false);
@@ -725,6 +746,30 @@ export default function LeadMapPanel() {
     },
     [],
   );
+
+  // Generer outreach-strategi for lead
+  const generateStrategy = useCallback(async (leadId: string) => {
+    setStrategyLoading(true);
+    setStrategyError(null);
+    setStrategy(null);
+    try {
+      const r = await fetch(
+        `/api/admin-room/lead-map/leads/${leadId}/strategy`,
+        { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', ...authHeaders() } },
+      );
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        setStrategyError(e.error ?? `HTTP ${r.status}`);
+        return;
+      }
+      const data = await r.json();
+      setStrategy(data.strategy);
+    } catch (e) {
+      setStrategyError(String(e));
+    } finally {
+      setStrategyLoading(false);
+    }
+  }, []);
 
   // Generer counter-campaign mot konkurrent
   const generateCounterCampaign = useCallback(async (competitorId: string) => {
@@ -2102,6 +2147,27 @@ export default function LeadMapPanel() {
                 </Box>
               )}
 
+              {/* Anbefal outreach-strategi (Claude) */}
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={() => {
+                  setStrategyOpen(true);
+                  setStrategy(null);
+                  setStrategyError(null);
+                  void generateStrategy(selected.id);
+                }}
+                startIcon={<TipsAndUpdatesOutlinedIcon sx={{ fontSize: 16 }} />}
+                sx={{
+                  mb: 2,
+                  bgcolor: palette.accent, color: '#0a0a0f',
+                  fontWeight: 800, fontSize: '0.82rem', textTransform: 'none',
+                  '&:hover': { bgcolor: palette.accent, filter: 'brightness(0.92)' },
+                }}
+              >
+                Anbefal strategi
+              </Button>
+
               {/* UPDATE STATUS — 6 store sirkel-knapper m/ ikon over label */}
               <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 1 }}>
                 Update Status
@@ -2804,6 +2870,229 @@ export default function LeadMapPanel() {
             <Button onClick={() => setStatusReportOpen(false)} sx={{ color: palette.textMuted }}>
               Lukk
             </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Anbefal outreach-strategi (Claude) */}
+        <Dialog
+          open={strategyOpen}
+          onClose={() => !strategyLoading && setStrategyOpen(false)}
+          maxWidth="md" fullWidth
+          PaperProps={{ sx: { bgcolor: palette.bgPanel, border: `1px solid ${palette.borderStrong}` } }}
+        >
+          <DialogTitle sx={{ color: palette.textPrimary }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <TipsAndUpdatesOutlinedIcon sx={{ color: palette.accent }} />
+              <span>Outreach-strategi{strategy ? `: ${strategy.leadName}` : ''}</span>
+            </Stack>
+          </DialogTitle>
+          <DialogContent>
+            {/* Refleksjons-banner — ALLTID synlig, FØR Claude-resultatet */}
+            <Box sx={{
+              p: 1.6, mb: 2.4, borderRadius: 1.4,
+              bgcolor: 'rgba(251,191,36,0.06)',
+              border: '1px solid rgba(251,191,36,0.32)',
+            }}>
+              <Stack direction="row" alignItems="flex-start" spacing={1.4}>
+                <PsychologyOutlinedIcon sx={{ color: palette.amber, fontSize: 22, mt: 0.2 }} />
+                <Stack sx={{ flex: 1 }}>
+                  <Typography sx={{ fontSize: '0.74rem', color: palette.amber, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.6 }}>
+                    Tenk selv først
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.82rem', color: palette.textPrimary, mb: 1 }}>
+                    AI er en hjelper, ikke fasit. Still deg disse spørsmålene før du følger anbefalingen:
+                  </Typography>
+                  <Stack spacing={0.4} component="ol" sx={{ pl: 2.4, m: 0 }}>
+                    <Box component="li" sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
+                      Hvor godt kjenner du kunden? Har du møtt dem, eller bare sett profilen?
+                    </Box>
+                    <Box component="li" sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
+                      Hva er deres faktiske problem du løser — har du belegg for det?
+                    </Box>
+                    <Box component="li" sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
+                      Hvorfor skulle de svare nettopp nå? Hva har endret seg?
+                    </Box>
+                    <Box component="li" sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
+                      Hva er ditt klare mål med kontakten — booke møte, avklare interesse, eller noe annet?
+                    </Box>
+                    <Box component="li" sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
+                      Hva er den ene tingen ved akkurat denne leaden som AI ikke vet, men du gjør?
+                    </Box>
+                  </Stack>
+                </Stack>
+              </Stack>
+            </Box>
+
+            {strategyLoading && (
+              <Stack alignItems="center" spacing={1.4} sx={{ p: 4 }}>
+                <CircularProgress sx={{ color: palette.accent }} />
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
+                  Claude analyserer leaden og bygger strategi …
+                </Typography>
+              </Stack>
+            )}
+            {strategyError && (
+              <Alert severity="error">{strategyError}</Alert>
+            )}
+            {strategy && !strategyLoading && (
+              <Stack spacing={2}>
+                {/* Primær-kanal */}
+                <Box sx={{ p: 1.6, borderRadius: 1.4, bgcolor: 'rgba(192,132,252,0.08)', border: `1px solid ${palette.borderStrong}` }}>
+                  <Stack direction="row" alignItems="center" spacing={1.4}>
+                    {(() => {
+                      const Icon =
+                        strategy.primaryChannel === 'cold_call' || strategy.primaryChannel === 'sms'
+                          ? LocalPhoneOutlinedIcon
+                          : strategy.primaryChannel === 'email'
+                          ? EmailOutlinedIcon
+                          : strategy.primaryChannel === 'instagram_dm'
+                          ? InstagramIcon
+                          : strategy.primaryChannel === 'in_person'
+                          ? HandshakeOutlinedIcon
+                          : ChatBubbleOutlineOutlinedIcon;
+                      return <Icon sx={{ color: palette.accent, fontSize: 28 }} />;
+                    })()}
+                    <Stack sx={{ flex: 1 }}>
+                      <Typography sx={{ fontSize: '0.68rem', color: palette.accent, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Primær-kanal
+                      </Typography>
+                      <Typography sx={{ fontSize: '1.05rem', fontWeight: 800, color: palette.textPrimary }}>
+                        {strategy.primaryChannel.replace(/_/g, ' ')}
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted, mt: 0.2 }}>
+                        Beste tidspunkt: {strategy.bestTime}
+                      </Typography>
+                    </Stack>
+                    <Chip
+                      label={strategy.confidence}
+                      size="small"
+                      sx={{
+                        bgcolor: strategy.confidence === 'high'
+                          ? 'rgba(52,211,153,0.18)'
+                          : strategy.confidence === 'medium'
+                          ? 'rgba(251,191,36,0.18)'
+                          : 'rgba(148,163,184,0.18)',
+                        color: strategy.confidence === 'high'
+                          ? '#34d399'
+                          : strategy.confidence === 'medium'
+                          ? palette.amber
+                          : '#94a3b8',
+                        fontWeight: 800, fontSize: '0.66rem',
+                      }}
+                    />
+                  </Stack>
+                  {strategy.secondaryChannels.length > 0 && (
+                    <Stack direction="row" spacing={0.6} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
+                      {strategy.secondaryChannels.map((c) => (
+                        <Chip
+                          key={c} label={c.replace(/_/g, ' ')} size="small"
+                          sx={{ bgcolor: 'rgba(168,85,247,0.10)', color: palette.accent, fontWeight: 700, fontSize: '0.7rem' }}
+                        />
+                      ))}
+                    </Stack>
+                  )}
+                </Box>
+
+                {/* Opening-line */}
+                <Box>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.6 }}>
+                    <Typography sx={{ fontSize: '0.68rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Åpningslinje
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      onClick={() => navigator.clipboard.writeText(strategy.openingLine)}
+                      sx={{ color: palette.textMuted }}
+                    >
+                      <ContentCopyOutlinedIcon sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  </Stack>
+                  <Typography sx={{
+                    fontSize: '0.86rem', color: palette.textPrimary,
+                    p: 1.4, borderRadius: 1.2,
+                    bgcolor: 'rgba(10,10,15,0.4)',
+                    border: `1px solid ${palette.border}`,
+                    fontStyle: 'italic',
+                  }}>
+                    "{strategy.openingLine}"
+                  </Typography>
+                </Box>
+
+                {/* Sekvens */}
+                <Box>
+                  <Typography sx={{ fontSize: '0.68rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.8 }}>
+                    Oppfølgings-sekvens ({strategy.sequence.length} trinn)
+                  </Typography>
+                  <Stack spacing={1}>
+                    {strategy.sequence.map((s, i) => (
+                      <Box key={i} sx={{
+                        p: 1.4, borderRadius: 1.2,
+                        bgcolor: 'rgba(10,10,15,0.4)',
+                        border: `1px solid ${palette.border}`,
+                      }}>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.6 }}>
+                          <Stack direction="row" alignItems="center" spacing={0.8}>
+                            <Box sx={{
+                              minWidth: 36, height: 22, borderRadius: 1,
+                              bgcolor: s.day === 0 ? `${palette.amber}22` : 'rgba(168,85,247,0.12)',
+                              color: s.day === 0 ? palette.amber : palette.accent,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontWeight: 800, fontSize: '0.66rem',
+                              px: 0.6,
+                            }}>
+                              {s.day === 0 ? 'I dag' : `+${s.day}d`}
+                            </Box>
+                            <Chip
+                              label={s.channel.replace(/_/g, ' ')}
+                              size="small"
+                              sx={{ bgcolor: 'rgba(192,132,252,0.12)', color: palette.accent, fontWeight: 700, fontSize: '0.66rem', height: 18 }}
+                            />
+                            <Typography sx={{ fontSize: '0.8rem', color: palette.textPrimary, fontWeight: 700 }}>
+                              {s.action}
+                            </Typography>
+                          </Stack>
+                          <IconButton
+                            size="small"
+                            onClick={() => navigator.clipboard.writeText(s.template)}
+                            sx={{ color: palette.textMuted }}
+                          >
+                            <ContentCopyOutlinedIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        </Stack>
+                        <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary, whiteSpace: 'pre-wrap' }}>
+                          {s.template}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Box>
+
+                {/* Rationale */}
+                <Box sx={{ p: 1.4, borderRadius: 1.2, bgcolor: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.28)' }}>
+                  <Typography sx={{ fontSize: '0.68rem', color: '#60a5fa', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.4 }}>
+                    Hvorfor denne strategien?
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary }}>
+                    {strategy.rationale}
+                  </Typography>
+                </Box>
+              </Stack>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setStrategyOpen(false)} sx={{ color: palette.textMuted }}>
+              Lukk
+            </Button>
+            {strategy && selected && (
+              <Button
+                onClick={() => void generateStrategy(selected.id)}
+                disabled={strategyLoading}
+                startIcon={<RefreshIcon sx={{ fontSize: 14 }} />}
+                sx={{ color: palette.accent, fontWeight: 700 }}
+              >
+                Generer på nytt
+              </Button>
+            )}
           </DialogActions>
         </Dialog>
 

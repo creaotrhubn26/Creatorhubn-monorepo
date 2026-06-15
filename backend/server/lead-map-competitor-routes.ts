@@ -28,6 +28,7 @@ import {
   saveCounterCampaignToWorkflow,
   type CounterCampaign,
 } from "./competitor-counter-campaign.js";
+import { recommendOutreachStrategy } from "./lead-outreach-strategy.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -666,6 +667,32 @@ export function registerLeadMapCompetitorRoutes({
           return res.status(500).json({ error: "anthropic_key_missing" });
         }
         return res.status(500).json({ error: "assess_failed", detail: msg });
+      }
+    },
+  );
+
+  // ─── POST /leads/:id/strategy (Claude anbefalt outreach-strategi) ──
+  // Returnerer primary_channel + sekvens + opening-line + best-time +
+  // rationale. Brukes fra lead-detail-panel for å vite om man skal
+  // ringe, sende email, DM-e på Instagram, dra på besøk, eller noe annet.
+  app.post(
+    "/api/admin-room/lead-map/leads/:id/strategy",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const strategy = await recommendOutreachStrategy(pool, {
+          leadId: req.params.id,
+          workspaceOwnerUserId: session.userId,
+        });
+        return res.json({ strategy });
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === "lead_not_found") return res.status(404).json({ error: msg });
+        if (msg.includes("ANTHROPIC_API_KEY mangler")) {
+          return res.status(500).json({ error: "anthropic_key_missing" });
+        }
+        return res.status(500).json({ error: "strategy_failed", detail: msg });
       }
     },
   );
