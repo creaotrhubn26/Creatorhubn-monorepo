@@ -21,9 +21,42 @@ const D = {
 const ANIM_PRESETS = [{ id: 'fadeUp', label: 'Fade Up' }, { id: 'scaleIn', label: 'Scale In' }, { id: 'slideLeft', label: 'Slide Left' }];
 const EASINGS = ['Ease Out Cubic', 'Ease In Out', 'Linear', 'Spring'];
 
-interface Scene { id: string; tplId: string; values: Record<string, string>; atSec: number }
+interface Scene { id: string; tplId: string; values: Record<string, string>; atSec: number; bindings?: Record<string, string> }
 let _sid = 1;
-const newScene = (tplId: string, atSec: number): Scene => ({ id: `s${_sid++}`, tplId, values: {}, atSec });
+const newScene = (tplId: string, atSec: number): Scene => ({ id: `s${_sid++}`, tplId, values: {}, atSec, bindings: {} });
+
+/** Parse limt inn data (JSON-objekt eller CSV med header+verdi-rad) → flat
+ *  key→value-kart for data-binding. */
+function parseDataSource(text: string): Record<string, string> {
+  const t = (text || '').trim();
+  if (!t) return {};
+  try {
+    const j = JSON.parse(t);
+    if (j && typeof j === 'object' && !Array.isArray(j)) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(j)) out[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+      return out;
+    }
+    if (Array.isArray(j) && j.length && typeof j[0] === 'object') {
+      const out: Record<string, string> = {};
+      Object.entries(j[0] as Record<string, unknown>).forEach(([k, v]) => { out[k] = String(v); });
+      return out;
+    }
+  } catch { /* ikke JSON — prøv CSV */ }
+  const lines = t.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length >= 2) {
+    const sep = lines[0].includes(';') ? ';' : ',';
+    const heads = lines[0].split(sep).map((s) => s.trim());
+    const vals = lines[1].split(sep).map((s) => s.trim());
+    const out: Record<string, string> = {};
+    heads.forEach((h, i) => { if (h) out[h] = vals[i] ?? ''; });
+    return out;
+  }
+  // ev. "key: value" per linje
+  const out: Record<string, string> = {};
+  for (const l of lines) { const m = l.match(/^([^:=]+)[:=](.*)$/); if (m) out[m[1].trim()] = m[2].trim(); }
+  return out;
+}
 
 /** Visuell Material-ikon-velger (søk + rutenett) — ingen teknisk skriving. */
 function IconField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -104,7 +137,10 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
   const [logo, setLogo] = useState<string>(() => { const u = project?.branding?.logoUrl; return u && u.startsWith('data:') ? u : ''; });
   const [suggested, setSuggested] = useState('');
   const [rightTab, setRightTab] = useState<'Design' | 'Animate' | 'Data'>('Data');
-  const [leftSec, setLeftSec] = useState<'templates' | 'brand' | 'export'>('templates');
+  const [leftSec, setLeftSec] = useState<'templates' | 'brand' | 'data' | 'export'>('templates');
+  const [dataText, setDataText] = useState('');
+  const dataMap = useMemo(() => parseDataSource(dataText), [dataText]);
+  const dataKeys = useMemo(() => Object.keys(dataMap), [dataMap]);
   const [palette, setPalette] = useState<string[]>(['#2dd4bf', '#3b82f6', '#ffffff', '#1f2d4a', '#f59e0b', '#a855f7']);
   const [easing, setEasing] = useState(EASINGS[0]);
   const [busy, setBusy] = useState(false);
@@ -114,6 +150,11 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
 
   const updateScene = (patch: Partial<Scene>) => setScenes((ss) => ss.map((s, i) => (i === sel ? { ...s, ...patch } : s)));
   const setValue = (k: string, v: string) => updateScene({ values: { ...scene.values, [k]: v } });
+  const setBinding = (k: string, dataKey: string) => {
+    const b = { ...(scene.bindings || {}) };
+    if (dataKey) b[k] = dataKey; else delete b[k];
+    updateScene({ bindings: b });
+  };
   const pickTemplate = (id: string) => updateScene({ tplId: id });
   const addScene = () => {
     const last = scenes[scenes.length - 1];
@@ -131,6 +172,12 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
   const fieldVals = (sc: Scene, t: InfographicTemplate) => {
     const out: Record<string, string> = { ...t.defaults };
     for (const f of t.fields) if (sc.values[f.key] !== undefined) out[f.key] = sc.values[f.key];
+    // Data-binding overstyrer: bundet felt henter verdi fra datakilden.
+    const b = sc.bindings || {};
+    for (const f of t.fields) {
+      const bk = b[f.key];
+      if (bk && dataMap[bk] !== undefined) out[f.key] = dataMap[bk];
+    }
     return out;
   };
   const config = useMemo(() => buildInfographicConfig(tpl, fieldVals(scene, tpl), { accent, ink: '#1f2d4a', logo: logo || undefined }),
@@ -220,6 +267,7 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* Rail */}
         <div style={{ width: 178, borderRight: `1px solid ${D.line}`, background: D.panel, paddingTop: 8, display: 'flex', flexDirection: 'column' }}>
+          <div style={railItem(leftSec === 'data')} onClick={() => setLeftSec('data')}>⛁ Data Sources{dataKeys.length ? <span style={{ marginLeft: 'auto', fontSize: 10, color: D.teal }}>{dataKeys.length}</span> : null}</div>
           <div style={railItem(leftSec === 'templates')} onClick={() => setLeftSec('templates')}>▦ Templates <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.length}</span></div>
           <div style={railItem(false)} title="Kommer">▤ Charts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>snart</span></div>
           <div style={railItem(false)} title="Kommer">◷ Icons <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>snart</span></div>
@@ -270,6 +318,25 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
                 <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                   <button style={{ ...topBtn, padding: '4px 11px', fontSize: 11.5, background: suggested, border: 'none' }} onClick={() => { setAccent(suggested); setSuggested(''); }}>Bruk farge</button>
                   <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11.5 }} onClick={() => setSuggested('')}>Behold</button>
+                </div>
+              </div>
+            )}
+          </>)}
+          {leftSec === 'data' && (<>
+            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Data Sources</div>
+            <div style={{ fontSize: 11, color: D.faint, lineHeight: 1.45, marginBottom: 8 }}>Lim inn JSON-objekt eller CSV (header-rad + verdi-rad). Bind så felter til kolonnene i Data-fanen — tallene fylles automatisk.</div>
+            <textarea value={dataText} onChange={(e) => setDataText(e.target.value)}
+              placeholder={'{"total_twh":"24.8T","renewable":"18.6%"}\n\neller CSV:\ntotal_twh,renewable\n24.8T,18.6%'}
+              style={{ width: '100%', height: 150, fontSize: 11.5, fontFamily: 'ui-monospace,monospace', padding: 9, borderRadius: 8, border: `1px solid ${D.line}`, background: D.bg, color: D.ink, colorScheme: 'dark', resize: 'vertical' }} />
+            {dataKeys.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 10.5, color: D.teal, fontWeight: 700, marginBottom: 6 }}>{dataKeys.length} felt funnet</div>
+                <div style={{ display: 'grid', gap: 4 }}>
+                  {dataKeys.map((k) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: D.soft, background: D.bg, borderRadius: 6, padding: '5px 8px' }}>
+                      <span style={{ color: D.ink, fontWeight: 600 }}>{k}</span><span>{dataMap[k]}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -325,14 +392,29 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
             {rightTab === 'Data' && (<>
               <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', marginBottom: 10 }}>Innhold · scene {sel + 1}</div>
               <div style={{ display: 'grid', gap: 9 }}>
-                {tpl.fields.map((f) => (
-                  <label key={f.key} style={{ display: 'grid', gap: 4 }}>
-                    <span style={{ fontSize: 11, color: D.soft }}>{f.label}</span>
-                    {isIconField(f.key)
-                      ? <IconField value={scene.values[f.key] ?? tpl.defaults[f.key] ?? ''} onChange={(v) => setValue(f.key, v)} />
-                      : <input style={inp} placeholder={f.placeholder} value={scene.values[f.key] ?? tpl.defaults[f.key] ?? ''} onChange={(e) => setValue(f.key, e.target.value)} />}
-                  </label>
-                ))}
+                {tpl.fields.map((f) => {
+                  const bound = scene.bindings?.[f.key];
+                  return (
+                    <div key={f.key} style={{ display: 'grid', gap: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 11, color: D.soft }}>{f.label}</span>
+                        {dataKeys.length > 0 && !isIconField(f.key) && (
+                          <select value={bound || ''} onChange={(e) => setBinding(f.key, e.target.value)}
+                            title="Bind til datakilde"
+                            style={{ fontSize: 10, padding: '1px 4px', borderRadius: 5, border: `1px solid ${bound ? D.teal : D.line}`, background: D.bg, color: bound ? D.teal : D.faint, colorScheme: 'dark' }}>
+                            <option value="">⛁ bind…</option>
+                            {dataKeys.map((k) => <option key={k} value={k}>{k}</option>)}
+                          </select>
+                        )}
+                      </div>
+                      {bound
+                        ? <input style={{ ...inp, borderColor: D.teal, color: D.teal }} readOnly value={`⛁ ${dataMap[bound] ?? ''}`} title={`Bundet til ${bound}`} />
+                        : isIconField(f.key)
+                          ? <IconField value={scene.values[f.key] ?? tpl.defaults[f.key] ?? ''} onChange={(v) => setValue(f.key, v)} />
+                          : <input style={inp} placeholder={f.placeholder} value={scene.values[f.key] ?? tpl.defaults[f.key] ?? ''} onChange={(e) => setValue(f.key, e.target.value)} />}
+                    </div>
+                  );
+                })}
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', margin: '16px 0 8px' }}>Transparency / Export</div>
               <div style={{ fontSize: 12, color: D.soft, lineHeight: 1.5 }}>Background: <b style={{ color: D.ink }}>Transparent</b> · Format: <b style={{ color: D.ink }}>ProRes 4444</b></div>
