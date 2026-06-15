@@ -45,6 +45,14 @@ import ChatBubbleOutlineOutlinedIcon from '@mui/icons-material/ChatBubbleOutline
 import BookmarkBorderOutlinedIcon from '@mui/icons-material/BookmarkBorderOutlined';
 import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined';
 import StickyNote2OutlinedIcon from '@mui/icons-material/StickyNote2Outlined';
+import FavoriteBorderOutlinedIcon from '@mui/icons-material/FavoriteBorderOutlined';
+import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
+import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined';
+import EmojiEventsOutlinedIcon from '@mui/icons-material/EmojiEventsOutlined';
+import PhoneOutlinedIcon from '@mui/icons-material/PhoneOutlined';
+import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
+import InstagramIcon from '@mui/icons-material/Instagram';
+import { useAuth } from '../../hooks/useAuth';
 
 type LeadStatus =
   | 'unvisited' | 'visited' | 'return' | 'not_present' | 'declined'
@@ -111,6 +119,18 @@ interface Metrics {
   meetingsBooked: number;
   conversionRate: number;
   statusCounts: Record<string, number>;
+  trends?: {
+    totalLeads: number | null;
+    followUpsDue: number | null;
+    meetingsBooked: number | null;
+    conversionRate: number | null;
+  };
+  sparklines?: {
+    totalLeads: number[] | null;
+    followUpsDue: number[] | null;
+    meetingsBooked: number[] | null;
+    conversionRate: number[] | null;
+  };
 }
 
 const STATUS_META: Record<LeadStatus, { label: string; color: string; bg: string }> = {
@@ -153,28 +173,55 @@ const palette = {
 const DARK_TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const DARK_TILE_ATTR = '&copy; <a href="https://carto.com/attributions">CARTO</a> · <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>';
 
-// Lag pin-icon for én status. Cached i Map så vi ikke re-genererer på hver render.
+// Inline SVG-ikoner som tegnes INNE i pin-hodet (sentrert på 0,0).
+// Hvit fyll for kontrast mot status-farget pin-bakgrunn.
+const PIN_ICON_SVG: Record<LeadStatus, string> = {
+  // hjerte
+  interested: '<path d="M0,-1.5 C-1.6,-4 -5,-3 -5,0.2 C-5,3 -1.5,5.5 0,7 C1.5,5.5 5,3 5,0.2 C5,-3 1.6,-4 0,-1.5 Z" fill="#fff"/>',
+  // 5-takks stjerne
+  won: '<polygon points="0,-5 1.4,-1.6 5,-1.6 2.2,0.8 3.2,4.5 0,2.4 -3.2,4.5 -2.2,0.8 -5,-1.6 -1.4,-1.6" fill="#fff"/>',
+  // X
+  declined: '<g stroke="#fff" stroke-width="1.6" stroke-linecap="round"><line x1="-3" y1="-3" x2="3" y2="3"/><line x1="3" y1="-3" x2="-3" y2="3"/></g>',
+  // sirkulær pil (refresh)
+  return: '<g fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5,-1 A4,4 0 1,0 3.5,1"/><polyline points="3.5,-2 3.5,1 6,1"/></g>',
+  // mini kalender
+  meeting_booked: '<g fill="none" stroke="#fff" stroke-width="1.2"><rect x="-3.5" y="-3" width="7" height="7" rx="0.8"/><line x1="-3.5" y1="-1" x2="3.5" y2="-1"/><line x1="-1.5" y1="-4.5" x2="-1.5" y2="-2.8"/><line x1="1.5" y1="-4.5" x2="1.5" y2="-2.8"/></g>',
+  // proposal: dokument
+  proposal_sent: '<g fill="none" stroke="#fff" stroke-width="1.2"><path d="M-2.5,-3.5 L1,-3.5 L3,-1.5 L3,3.5 L-2.5,3.5 Z"/><line x1="-1" y1="-1" x2="1.5" y2="-1"/><line x1="-1" y1="1" x2="1.5" y2="1"/></g>',
+  // not present: streek
+  not_present: '<line x1="-3" y1="0" x2="3" y2="0" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
+  // unvisited / visited: liten prikk
+  unvisited: '<circle r="2.4" fill="#fff"/>',
+  visited: '<circle r="2.4" fill="#fff" opacity="0.85"/>',
+  // lost / do_not_contact: bom (matt)
+  lost: '<circle r="2.4" fill="#fff" opacity="0.5"/>',
+  do_not_contact: '<g stroke="#fff" stroke-width="1.4" fill="none"><circle r="3"/><line x1="-2.1" y1="-2.1" x2="2.1" y2="2.1"/></g>',
+};
+
+// Lag droppin-formet pin med ikon inni. Cached så vi ikke re-genererer på hver render.
 const pinIconCache = new Map<string, L.DivIcon>();
 function makePinIcon(status: LeadStatus, selected: boolean): L.DivIcon {
   const key = `${status}-${selected ? 1 : 0}`;
   const cached = pinIconCache.get(key);
   if (cached) return cached;
   const meta = STATUS_META[status];
-  const glow = selected
-    ? `0 0 0 4px ${palette.amber}aa, 0 0 24px ${palette.amber}cc`
-    : `0 1px 3px rgba(0,0,0,0.6)`;
-  const html = `
-    <div style="
-      width: ${selected ? 22 : 18}px;
-      height: ${selected ? 22 : 18}px;
-      border-radius: 50%;
-      background: ${meta.color};
-      border: 2px solid #0a0a0f;
-      box-shadow: ${glow};
-      transition: all 160ms ease;
-    "></div>`;
+  const iconSvg = PIN_ICON_SVG[status] ?? PIN_ICON_SVG.unvisited;
+  const w = selected ? 34 : 28;
+  const h = selected ? 44 : 36;
+  const filter = selected
+    ? `drop-shadow(0 0 10px ${palette.amber}cc) drop-shadow(0 2px 3px rgba(0,0,0,0.7))`
+    : `drop-shadow(0 2px 3px rgba(0,0,0,0.6))`;
+  // viewBox 24x32: rundt hode 0..24 (sentrum 12,12), tail ender ved 12,32
+  const selectedRing = selected
+    ? `<circle cx="12" cy="12" r="13" fill="none" stroke="${palette.amber}" stroke-width="1.6" opacity="0.85"/>`
+    : '';
+  const html = `<svg width="${w}" height="${h}" viewBox="0 0 24 32" style="filter:${filter};display:block;overflow:visible;">
+    <path d="M12 0.5C5.65 0.5 0.5 5.65 0.5 12c0 8.6 11.5 19.5 11.5 19.5S23.5 20.6 23.5 12c0-6.35-5.15-11.5-11.5-11.5z" fill="${meta.color}" stroke="#0a0a0f" stroke-width="1.2"/>
+    <g transform="translate(12, 12)">${iconSvg}</g>
+    ${selectedRing}
+  </svg>`;
   const icon = L.divIcon({
-    html, className: '', iconSize: [22, 22], iconAnchor: [11, 11],
+    html, className: '', iconSize: [w, h], iconAnchor: [w / 2, h],
   });
   pinIconCache.set(key, icon);
   return icon;
@@ -209,6 +256,21 @@ function MapBoundsTracker({ onBoundsChange }: { onBoundsChange: (b: L.LatLngBoun
 }
 
 export default function LeadMapPanel() {
+  // Innlogget bruker — brukes som Assigned Rep når lead ikke har egen tildeling.
+  const { user: currentUser } = useAuth();
+  const repName =
+    currentUser?.displayName?.trim() ||
+    currentUser?.name?.trim() ||
+    currentUser?.email ||
+    'Ikke tildelt';
+  const repInitials = (() => {
+    const src = (currentUser?.name ?? currentUser?.displayName ?? currentUser?.email ?? '?').trim();
+    const parts = src.split(/[\s@.]+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  })();
+
   const [leads, setLeads] = useState<MapLead[]>([]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -512,7 +574,15 @@ export default function LeadMapPanel() {
                 textTransform: 'none',
               }}
             >
-              May 12 – May 18, 2025
+              {(() => {
+                const end = new Date();
+                const start = new Date(end);
+                start.setDate(end.getDate() - 6);
+                const fmt = (d: Date) =>
+                  d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const yearFmt = end.toLocaleDateString('en-US', { year: 'numeric' });
+                return `${fmt(start)} – ${fmt(end)}, ${yearFmt}`;
+              })()}
             </Button>
             <Button
               size="small" variant="outlined"
@@ -543,28 +613,32 @@ export default function LeadMapPanel() {
               value: metrics?.totalLeads ?? 0,
               icon: <GroupsOutlinedIcon sx={{ fontSize: 18 }} />,
               color: palette.amber,
-              trend: '+18%',
+              trend: metrics?.trends?.totalLeads ?? null,
+              sparkline: metrics?.sparklines?.totalLeads ?? null,
             },
             {
               label: 'Follow-ups',
               value: metrics?.followUpsDue ?? 0,
               icon: <RefreshIcon sx={{ fontSize: 18 }} />,
               color: '#fb923c',
-              trend: '+12%',
+              trend: metrics?.trends?.followUpsDue ?? null,
+              sparkline: metrics?.sparklines?.followUpsDue ?? null,
             },
             {
               label: 'Meetings',
               value: metrics?.meetingsBooked ?? 0,
               icon: <CalendarMonthOutlinedIcon sx={{ fontSize: 18 }} />,
               color: '#a78bfa',
-              trend: '+20%',
+              trend: metrics?.trends?.meetingsBooked ?? null,
+              sparkline: metrics?.sparklines?.meetingsBooked ?? null,
             },
             {
               label: 'Conversion Rate',
               value: metrics ? `${metrics.conversionRate}%` : '0%',
               icon: <PieChartOutlineIcon sx={{ fontSize: 18 }} />,
               color: '#34d399',
-              trend: '+6.3%',
+              trend: metrics?.trends?.conversionRate ?? null,
+              sparkline: metrics?.sparklines?.conversionRate ?? null,
             },
           ].map((m) => (
             <Box key={m.label} sx={{
@@ -580,30 +654,76 @@ export default function LeadMapPanel() {
                 pointerEvents: 'none',
               },
             }}>
-              <Stack direction="row" alignItems="center" spacing={0.8} sx={{ position: 'relative', zIndex: 1, mb: 0.6 }}>
+              {/* Top-rad: ikon-boks venstre + trend høyre */}
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ position: 'relative', zIndex: 1, mb: 1.2 }}>
                 <Box sx={{
-                  width: 28, height: 28, borderRadius: 1,
+                  width: 36, height: 36, borderRadius: 1.2,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   bgcolor: `${m.color}1f`, color: m.color,
                 }}>
                   {m.icon}
                 </Box>
-                <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {m.label}
-                </Typography>
+                {m.trend != null && (
+                  <Stack direction="row" alignItems="center" spacing={0.2}>
+                    <TrendingUpIcon sx={{
+                      fontSize: 14,
+                      color: m.trend >= 0 ? '#34d399' : '#f87171',
+                      transform: m.trend >= 0 ? 'none' : 'rotate(180deg)',
+                    }} />
+                    <Typography sx={{ fontSize: '0.74rem', color: m.trend >= 0 ? '#34d399' : '#f87171', fontWeight: 800 }}>
+                      {m.trend >= 0 ? '+' : ''}{m.trend}%
+                    </Typography>
+                  </Stack>
+                )}
               </Stack>
-              <Typography sx={{ fontSize: '1.95rem', fontWeight: 800, color: m.color, lineHeight: 1.1, position: 'relative', zIndex: 1 }}>
+
+              {/* Stort tall + label */}
+              <Typography sx={{ fontSize: '2.05rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1.05, position: 'relative', zIndex: 1 }}>
                 {m.value}
               </Typography>
-              <Stack direction="row" alignItems="center" spacing={0.4} sx={{ mt: 0.6, position: 'relative', zIndex: 1 }}>
-                <TrendingUpIcon sx={{ fontSize: 14, color: '#34d399' }} />
-                <Typography sx={{ fontSize: '0.72rem', color: '#34d399', fontWeight: 700 }}>
-                  {m.trend}
-                </Typography>
-                <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted }}>
-                  from last month
-                </Typography>
-              </Stack>
+              <Typography sx={{ fontSize: '0.78rem', color: palette.textMuted, fontWeight: 600, mt: 0.2, position: 'relative', zIndex: 1 }}>
+                {m.label}
+              </Typography>
+
+              {/* Sparkline — kun når ekte historikk finnes */}
+              {m.sparkline && m.sparkline.length >= 2 && (
+                <Box sx={{ mt: 1, position: 'relative', zIndex: 1, height: 24 }}>
+                  <svg width="100%" height="24" viewBox="0 0 100 24" preserveAspectRatio="none" style={{ display: 'block' }}>
+                    <defs>
+                      <linearGradient id={`spark-grad-${m.label.replace(/\s/g, '-')}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={m.color} stopOpacity="0.35" />
+                        <stop offset="100%" stopColor={m.color} stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+                    {(() => {
+                      const pts = m.sparkline!;
+                      const max = Math.max(...pts);
+                      const min = Math.min(...pts);
+                      const range = max - min || 1;
+                      const coords = pts.map((p, i) => {
+                        const x = (i / (pts.length - 1)) * 100;
+                        const y = 22 - ((p - min) / range) * 18;
+                        return [x, y] as const;
+                      });
+                      const linePoints = coords.map(([x, y]) => `${x},${y}`).join(' ');
+                      const areaPoints = `0,24 ${linePoints} 100,24`;
+                      return (
+                        <>
+                          <polygon points={areaPoints} fill={`url(#spark-grad-${m.label.replace(/\s/g, '-')})`} />
+                          <polyline
+                            points={linePoints}
+                            fill="none"
+                            stroke={m.color}
+                            strokeWidth="1.6"
+                            strokeLinejoin="round"
+                            strokeLinecap="round"
+                          />
+                        </>
+                      );
+                    })()}
+                  </svg>
+                </Box>
+              )}
             </Box>
           ))}
         </Box>
@@ -726,18 +846,53 @@ export default function LeadMapPanel() {
               border: `1px solid ${palette.borderStrong}`,
               bgcolor: palette.bgSubtle, p: 2,
             }}>
-              {/* Header med avatar + navn + close */}
+              {/* Header med square brand-logo + navn + close */}
               <Stack direction="row" alignItems="flex-start" spacing={1.4} sx={{ mb: 1.6 }}>
-                <Box sx={{
-                  width: 48, height: 48, borderRadius: 1.4, flexShrink: 0,
-                  bgcolor: `${STATUS_META[selected.status].color}22`,
-                  border: `1px solid ${STATUS_META[selected.status].color}66`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: STATUS_META[selected.status].color,
-                  fontWeight: 800, fontSize: '1.1rem',
-                }}>
-                  {(selected.name?.[0] ?? '?').toUpperCase()}
-                </Box>
+                {(() => {
+                  // Bygg monogram fra ekte firmanavn: "Framehouse Studios" → "FRAME / HOUSE"
+                  // hvis 1 ord m/ camelcase, split. Ellers split på mellomrom.
+                  const raw = (selected.name ?? '').toUpperCase();
+                  const words = raw.split(/\s+/).filter(Boolean);
+                  let line1 = '?';
+                  let line2 = '';
+                  if (words.length >= 2) {
+                    line1 = words[0].slice(0, 8);
+                    line2 = words[1].slice(0, 8);
+                  } else if (words.length === 1) {
+                    const w = words[0];
+                    if (w.length > 6) {
+                      // split midtveis
+                      const mid = Math.ceil(w.length / 2);
+                      line1 = w.slice(0, mid);
+                      line2 = w.slice(mid, mid + 8);
+                    } else {
+                      line1 = w;
+                    }
+                  }
+                  const longest = Math.max(line1.length, line2.length);
+                  const fontSize = longest > 6 ? '0.56rem' : longest > 4 ? '0.66rem' : '0.78rem';
+                  const statusColor = STATUS_META[selected.status].color;
+                  return (
+                    <Box sx={{
+                      width: 56, height: 56, borderRadius: 1.4, flexShrink: 0,
+                      bgcolor: '#0a0a0f',
+                      border: `1.5px solid ${statusColor}55`,
+                      display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center',
+                      gap: 0.2,
+                      boxShadow: `inset 0 0 12px ${statusColor}1a`,
+                    }}>
+                      <Typography sx={{ fontSize, lineHeight: 1, fontWeight: 900, color: '#fff', letterSpacing: '0.08em' }}>
+                        {line1}
+                      </Typography>
+                      {line2 && (
+                        <Typography sx={{ fontSize, lineHeight: 1, fontWeight: 900, color: '#fff', letterSpacing: '0.08em' }}>
+                          {line2}
+                        </Typography>
+                      )}
+                    </Box>
+                  );
+                })()}
                 <Stack sx={{ flex: 1, minWidth: 0 }}>
                   <Typography sx={{ fontSize: '1.05rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1.2 }}>
                     {selected.name}
@@ -801,11 +956,96 @@ export default function LeadMapPanel() {
                     <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                       Assigned Rep
                     </Typography>
-                    <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary }}>
-                      Alex Morgan
-                    </Typography>
+                    <Stack direction="row" alignItems="center" spacing={0.8}>
+                      <Box sx={{
+                        width: 22, height: 22, borderRadius: '50%',
+                        background: `linear-gradient(135deg, ${palette.accent}, ${palette.amber})`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#0a0a0f', fontWeight: 800, fontSize: '0.62rem',
+                        flexShrink: 0,
+                      }}>
+                        {repInitials}
+                      </Box>
+                      <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {repName}
+                      </Typography>
+                    </Stack>
                   </Stack>
                 </Stack>
+
+                {/* Kontakt-info fra Google Places (vises kun når DB har data) */}
+                {selected.phone && (
+                  <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <PhoneOutlinedIcon sx={{ color: palette.textMuted, fontSize: 16, mt: 0.2 }} />
+                    <Stack sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Phone
+                      </Typography>
+                      <Typography
+                        component="a"
+                        href={`tel:${selected.phone}`}
+                        sx={{ fontSize: '0.82rem', color: palette.textSecondary, textDecoration: 'none', '&:hover': { color: palette.amber } }}
+                      >
+                        {selected.phone}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                )}
+                {selected.email && (
+                  <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <EmailOutlinedIcon sx={{ color: palette.textMuted, fontSize: 16, mt: 0.2 }} />
+                    <Stack sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Email
+                      </Typography>
+                      <Typography
+                        component="a"
+                        href={`mailto:${selected.email}`}
+                        sx={{ fontSize: '0.82rem', color: palette.textSecondary, textDecoration: 'none', '&:hover': { color: palette.amber } }}
+                      >
+                        {selected.email}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                )}
+                {selected.websiteUrl && (
+                  <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <LanguageOutlinedIcon sx={{ color: palette.textMuted, fontSize: 16, mt: 0.2 }} />
+                    <Stack sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Website
+                      </Typography>
+                      <Typography
+                        component="a"
+                        href={selected.websiteUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{ fontSize: '0.82rem', color: palette.textSecondary, textDecoration: 'none', '&:hover': { color: palette.amber }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
+                      >
+                        {selected.websiteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                )}
+                {selected.instagramUrl && (
+                  <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <InstagramIcon sx={{ color: palette.textMuted, fontSize: 16, mt: 0.2 }} />
+                    <Stack sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Instagram
+                      </Typography>
+                      <Typography
+                        component="a"
+                        href={selected.instagramUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{ fontSize: '0.82rem', color: palette.textSecondary, textDecoration: 'none', '&:hover': { color: palette.amber }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
+                      >
+                        {selected.instagramUrl.replace(/^https?:\/\/(?:www\.)?instagram\.com\//, '@').replace(/\/$/, '')}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                )}
 
                 {selected.lastVisitAt && (
                   <Stack direction="row" spacing={1} alignItems="flex-start">
@@ -866,35 +1106,70 @@ export default function LeadMapPanel() {
                 )}
               </Stack>
 
-              {/* UPDATE STATUS — 6 quick-buttons */}
-              <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 0.8 }}>
+              {/* UPDATE STATUS — 6 store sirkel-knapper m/ ikon over label */}
+              <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 1 }}>
                 Update Status
               </Typography>
               <Box sx={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
+                gridTemplateColumns: 'repeat(6, 1fr)',
                 gap: 0.6, mb: 2,
               }}>
                 {PRIMARY_STATUSES.map((s) => {
                   const meta = STATUS_META[s];
                   const active = selected.status === s;
+                  const StatusIcon =
+                    s === 'return' ? RefreshIcon
+                    : s === 'not_present' ? RemoveCircleOutlineIcon
+                    : s === 'declined' ? CancelOutlinedIcon
+                    : s === 'interested' ? FavoriteBorderOutlinedIcon
+                    : s === 'meeting_booked' ? CalendarMonthOutlinedIcon
+                    : EmojiEventsOutlinedIcon;
+                  // Forkortet label for trang plass
+                  const shortLabel =
+                    s === 'meeting_booked' ? 'Meeting'
+                    : s === 'not_present' ? 'Not\nPresent'
+                    : meta.label;
                   return (
-                    <Button
-                      key={s} size="small" variant={active ? 'contained' : 'outlined'}
-                      onClick={() => updateStatus(s)}
-                      disabled={updatingStatus || active}
+                    <Box
+                      key={s}
+                      onClick={() => !active && !updatingStatus && updateStatus(s)}
                       sx={{
-                        bgcolor: active ? meta.color : meta.bg,
-                        color: active ? '#0a0a0f' : meta.color,
-                        borderColor: meta.color,
-                        fontWeight: 700, fontSize: '0.7rem',
-                        textTransform: 'none', minWidth: 0, px: 0.8,
-                        '&:hover': { bgcolor: meta.color, color: '#0a0a0f', borderColor: meta.color },
-                        '&:disabled': { bgcolor: meta.color, color: '#0a0a0f', opacity: 1 },
+                        cursor: active || updatingStatus ? 'default' : 'pointer',
+                        p: 1, borderRadius: 1.2,
+                        bgcolor: active ? `${meta.color}1f` : 'rgba(10,10,15,0.4)',
+                        border: `1px solid ${active ? meta.color : palette.border}`,
+                        display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', gap: 0.6,
+                        transition: 'all 140ms ease',
+                        opacity: updatingStatus && !active ? 0.5 : 1,
+                        '&:hover': active || updatingStatus ? {} : {
+                          borderColor: meta.color,
+                          bgcolor: `${meta.color}14`,
+                          transform: 'translateY(-1px)',
+                        },
                       }}
                     >
-                      {meta.label}
-                    </Button>
+                      <Box sx={{
+                        width: 32, height: 32, borderRadius: '50%',
+                        bgcolor: `${meta.color}22`,
+                        border: `1.5px solid ${meta.color}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: meta.color,
+                        boxShadow: active ? `0 0 12px ${meta.color}77` : 'none',
+                      }}>
+                        <StatusIcon sx={{ fontSize: 16 }} />
+                      </Box>
+                      <Typography sx={{
+                        fontSize: '0.62rem',
+                        color: active ? meta.color : palette.textSecondary,
+                        fontWeight: 700, textAlign: 'center',
+                        lineHeight: 1.1,
+                        whiteSpace: 'pre-line',
+                      }}>
+                        {shortLabel}
+                      </Typography>
+                    </Box>
                   );
                 })}
               </Box>
@@ -1247,6 +1522,7 @@ export default function LeadMapPanel() {
                 const isWon = typeKey.includes('won');
                 const isDeclined = typeKey.includes('declin') || typeKey.includes('lost');
                 const isReturn = typeKey.includes('return') || typeKey.includes('visit');
+                const isInterested = typeKey.includes('interested');
                 const accent = isWon
                   ? STATUS_META.won.color
                   : isMeeting
@@ -1255,46 +1531,56 @@ export default function LeadMapPanel() {
                   ? STATUS_META.declined.color
                   : isReturn
                   ? STATUS_META.return.color
+                  : isInterested
+                  ? STATUS_META.interested.color
                   : palette.amber;
+                const Icon = isWon
+                  ? StarOutlineIcon
+                  : isMeeting
+                  ? CalendarMonthOutlinedIcon
+                  : isDeclined
+                  ? CloseIcon
+                  : isReturn
+                  ? RefreshIcon
+                  : isInterested
+                  ? FavoriteBorderOutlinedIcon
+                  : AutoAwesomeOutlinedIcon;
+                // Pen "Marked as / by ..."-subtitle
+                const subtitle = a.description ?? a.activityType.replace(/_/g, ' ');
                 return (
                   <Box key={a.id} sx={{
-                    p: 1.4, borderRadius: 1.2,
+                    p: 1.6, borderRadius: 1.2,
                     bgcolor: 'rgba(10,10,15,0.4)',
                     border: `1px solid ${palette.border}`,
-                    borderTop: `2px solid ${accent}`,
-                    minHeight: 92, display: 'flex', flexDirection: 'column',
+                    minHeight: 132, display: 'flex', flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    transition: 'border-color 160ms ease',
+                    '&:hover': { borderColor: `${accent}66` },
                   }}>
-                    <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mb: 0.6 }}>
-                      <Box sx={{
-                        width: 8, height: 8, borderRadius: '50%', bgcolor: accent,
-                        boxShadow: `0 0 6px ${accent}99`,
-                      }} />
-                      <Typography sx={{ fontSize: '0.66rem', color: accent, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        {a.activityType.replace(/_/g, ' ')}
-                      </Typography>
-                    </Stack>
-                    <Typography sx={{ fontSize: '0.8rem', color: palette.textPrimary, fontWeight: 700, lineHeight: 1.2 }}>
+                    {/* Stor ikon-sirkel */}
+                    <Box sx={{
+                      width: 36, height: 36, borderRadius: '50%',
+                      bgcolor: `${accent}22`,
+                      border: `1.5px solid ${accent}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: accent, mb: 0.8,
+                      boxShadow: `0 0 12px ${accent}33`,
+                    }}>
+                      <Icon sx={{ fontSize: 18 }} />
+                    </Box>
+                    <Typography sx={{ fontSize: '0.82rem', color: palette.textPrimary, fontWeight: 800, lineHeight: 1.2 }}>
                       {a.customerName ?? 'Lead'}
                     </Typography>
-                    {a.description && (
-                      <Typography sx={{
-                        fontSize: '0.72rem', color: palette.textSecondary, mt: 0.2,
-                        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                      }}>
-                        {a.description}
-                      </Typography>
-                    )}
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 'auto', pt: 0.6 }}>
-                      {a.userName ? (
-                        <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted }}>
-                          {a.userName}
-                        </Typography>
-                      ) : <span />}
-                      <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700 }}>
-                        {formatRelative(a.createdAt)}
-                      </Typography>
-                    </Stack>
+                    <Typography sx={{
+                      fontSize: '0.72rem', color: palette.textSecondary, mt: 0.2,
+                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}>
+                      {subtitle}
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, mt: 'auto', pt: 0.8 }}>
+                      {a.userName ? `by ${a.userName} · ` : ''}{formatRelative(a.createdAt)}
+                    </Typography>
                   </Box>
                 );
               })}

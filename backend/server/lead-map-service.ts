@@ -417,6 +417,20 @@ export async function getLeadMapMetrics(
   meetingsBooked: number;
   conversionRate: number;
   statusCounts: Record<LeadStatus, number>;
+  // Reelle tidsserier (siste 7 dager) + trend-% (siste 7d vs forrige 7d).
+  // null = ingen historikk ennå → frontend skjuler sparkline/trend.
+  trends: {
+    totalLeads: number | null;
+    followUpsDue: number | null;
+    meetingsBooked: number | null;
+    conversionRate: number | null;
+  };
+  sparklines: {
+    totalLeads: number[] | null;
+    followUpsDue: number[] | null;
+    meetingsBooked: number[] | null;
+    conversionRate: number[] | null;
+  };
 }> {
   const statsParams: unknown[] = [];
   const statsConds = buildTenantConditions(scope, statsParams);
@@ -446,12 +460,146 @@ export async function getLeadMapMetrics(
   const closeable = won + lost;
   const conversionRate = closeable > 0 ? Math.round((won / closeable) * 100) : 0;
 
+  // === Historikk-serier (siste 14 dager → split i 7+7) ===
+  // Ekte data fra crm_customers + crm_lead_activities. Hvis ingen rader → null.
+  const histParams: unknown[] = [];
+  const histConds = buildTenantConditions(scope, histParams);
+
+  // 1) New leads per dag (siste 14 dager) — basert på created_at
+  const newLeadsHist = await pool.query<{ d: string; n: number }>(
+    `WITH days AS (
+       SELECT generate_series(
+         (CURRENT_DATE - INTERVAL '13 days')::date,
+         CURRENT_DATE,
+         INTERVAL '1 day'
+       )::date AS d
+     )
+     SELECT days.d::text AS d,
+            COUNT(c.id)::int AS n
+       FROM days
+       LEFT JOIN crm_customers c
+         ON DATE(c.created_at) = days.d
+        AND ${histConds.join(' AND ')}
+      GROUP BY days.d
+      ORDER BY days.d`,
+    histParams,
+  );
+
+  // 2) Meeting-booking-events per dag (siste 14 dager) — fra crm_lead_activities
+  //    Bruker new_value på 'status_changed'-rader for å fange status='meeting_booked'.
+  //    'meeting_scheduled' er en separat activity-type for kalender-events.
+  const meetingsHist = await pool.query<{ d: string; n: number }>(
+    `WITH days AS (
+       SELECT generate_series(
+         (CURRENT_DATE - INTERVAL '13 days')::date,
+         CURRENT_DATE,
+         INTERVAL '1 day'
+       )::date AS d
+     )
+     SELECT days.d::text AS d,
+            COUNT(a.id)::int AS n
+       FROM days
+       LEFT JOIN crm_lead_activities a
+         ON DATE(a.created_at) = days.d
+        AND (
+          a.activity_type = 'meeting_scheduled'
+          OR (a.activity_type = 'status_changed' AND a.new_value = 'meeting_booked')
+        )
+      GROUP BY days.d
+      ORDER BY days.d`,
+  );
+
+  // 3) Wins per dag (siste 14 dager) — for conversion-trend
+  const winsHist = await pool.query<{ d: string; n: number }>(
+    `WITH days AS (
+       SELECT generate_series(
+         (CURRENT_DATE - INTERVAL '13 days')::date,
+         CURRENT_DATE,
+         INTERVAL '1 day'
+       )::date AS d
+     )
+     SELECT days.d::text AS d,
+            COUNT(a.id)::int AS n
+       FROM days
+       LEFT JOIN crm_lead_activities a
+         ON DATE(a.created_at) = days.d
+        AND a.activity_type = 'status_changed'
+        AND a.new_value = 'won'
+      GROUP BY days.d
+      ORDER BY days.d`,
+  );
+
+  // 4) Follow-ups due per dag (siste 14 dager) — snapshot pr dag
+  const followupsHist = await pool.query<{ d: string; n: number }>(
+    `WITH days AS (
+       SELECT generate_series(
+         (CURRENT_DATE - INTERVAL '13 days')::date,
+         CURRENT_DATE,
+         INTERVAL '1 day'
+       )::date AS d
+     )
+     SELECT days.d::text AS d,
+            COUNT(c.id)::int AS n
+       FROM days
+       LEFT JOIN crm_customers c
+         ON DATE(c.next_follow_up_at) = days.d
+        AND ${histConds.join(' AND ')}
+      GROUP BY days.d
+      ORDER BY days.d`,
+    histParams,
+  );
+
+  // Hjelpere — bygg 14-tall serie + trend + last-7-window for sparkline
+  function toSeries(rows: { n: number }[]): number[] {
+    return rows.map((r) => r.n);
+  }
+  function lastSeven(series: number[]): number[] | null {
+    if (series.length < 7) return null;
+    const seven = series.slice(-7);
+    if (seven.every((n) => n === 0)) return null;
+    return seven;
+  }
+  function trendPct(series: number[]): number | null {
+    if (series.length < 14) return null;
+    const prev = series.slice(0, 7).reduce((a, b) => a + b, 0);
+    const last = series.slice(-7).reduce((a, b) => a + b, 0);
+    if (prev === 0 && last === 0) return null;
+    if (prev === 0) return 100; // alt nytt
+    return Math.round(((last - prev) / prev) * 1000) / 10; // 1 desimal
+  }
+
+  const newLeadsSeries = toSeries(newLeadsHist.rows);
+  const meetingsSeries = toSeries(meetingsHist.rows);
+  const winsSeries = toSeries(winsHist.rows);
+  const followupsSeries = toSeries(followupsHist.rows);
+
+  // Conversion-rate per dag (rolling): wins / (wins+lost-actions per dag).
+  // For enkelhet bruker vi cumulative wins-ratio som proxy — hvis ingen
+  // historikk gir vi null.
+  const totalAction = winsSeries.reduce((a, b) => a + b, 0);
+  const convSparkline =
+    totalAction > 0
+      ? winsSeries.map((w) => (totalAction > 0 ? Math.round((w / totalAction) * 100) : 0))
+      : null;
+
   return {
     totalLeads: total,
     followUpsDue: followups.rows[0]?.n ?? 0,
     meetingsBooked: meetings,
     conversionRate,
     statusCounts: statusCounts as Record<LeadStatus, number>,
+    trends: {
+      totalLeads: trendPct(newLeadsSeries),
+      followUpsDue: trendPct(followupsSeries),
+      meetingsBooked: trendPct(meetingsSeries),
+      conversionRate: trendPct(winsSeries),
+    },
+    sparklines: {
+      totalLeads: lastSeven(newLeadsSeries),
+      followUpsDue: lastSeven(followupsSeries),
+      meetingsBooked: lastSeven(meetingsSeries),
+      conversionRate: convSparkline,
+    },
   };
 }
 
