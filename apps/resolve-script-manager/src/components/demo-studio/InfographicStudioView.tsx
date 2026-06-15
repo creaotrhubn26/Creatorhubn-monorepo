@@ -48,14 +48,38 @@ const CALLOUT_IDS = new Set<string>([
   'callout-feature-badge', 'callout-zoom-box', 'callout-step-card', 'callout-cursor-click',
 ]);
 
+const UI_IDS = new Set<string>([
+  'ui-notification', 'ui-browser-frame', 'ui-app-window', 'ui-button-press',
+  'ui-toggle', 'ui-progress-loader', 'ui-modal', 'ui-search',
+]);
+
 // Branded kits — palett + kuratert mal-sett per produkt.
 const RR_KIT_IDS = new Set<string>([
+  // casting
   'rr-casting-call', 'rr-role-announcement', 'rr-audition-info', 'rr-callback-status',
   'rr-callsheet', 'rr-shoot-schedule', 'rr-talent-spotlight', 'rr-location-card',
+  // backdrops
+  'rr-bd-intro', 'rr-bd-outro', 'rr-bd-section', 'rr-bd-quote', 'rr-bd-gradient', 'rr-bd-title-band',
+  // produksjon
+  'rr-project-status', 'rr-shot-list', 'rr-storyboard', 'rr-crew-call', 'rr-equipment',
+  'rr-moodboard', 'rr-bts', 'rr-wrap',
+  // øvrige produkt-flater
+  'rr-budget', 'rr-approval', 'rr-delivery', 'rr-schedule', 'rr-contract',
+  'rr-story-beat', 'rr-dance-formation', 'rr-milestone',
+  // mer (batch 17)
+  'rr-cast-list', 'rr-selftape', 'rr-scene-breakdown', 'rr-talent-profile',
+  'rr-live-set', 'rr-premiere', 'rr-dance-piece', 'rr-feedback',
+  // UI-elementer (batch 19)
+  'rr-ui-button', 'rr-ui-notification', 'rr-ui-modal', 'rr-ui-toggle',
+  'rr-ui-tabs', 'rr-ui-status-pills', 'rr-ui-avatar-chip',
 ]);
 const CH_KIT_IDS = new Set<string>([
   'ch-kpi-cards', 'ch-revenue-trend', 'ch-client-pipeline', 'ch-project-card',
   'ch-showcase-portfolio', 'ch-pricing-package', 'ch-testimonial', 'ch-booking-cta',
+  'ch-bd-intro', 'ch-bd-outro', 'ch-bd-section', 'ch-bd-stat-hero', 'ch-bd-gradient', 'ch-bd-title-band',
+  // UI-elementer (batch 19)
+  'ch-ui-button', 'ch-ui-notification', 'ch-ui-modal', 'ch-ui-toggle',
+  'ch-ui-tabs', 'ch-ui-stat-pill', 'ch-ui-avatar-chip',
 ]);
 const BRAND_KITS = [
   { id: 'kit-rr', name: 'The Role Room', accent: '#a78bfa', tagline: 'Casting · Roller · Produksjon', ids: RR_KIT_IDS, logo: ROLE_ROOM_LOGO },
@@ -64,11 +88,11 @@ const BRAND_KITS = [
 
 const CATEGORY_IDS: Record<string, Set<string>> = {
   charts: CHART_IDS, marketing: MARKETING_IDS, filmtv: FILMTV_IDS,
-  callouts: CALLOUT_IDS, 'kit-rr': RR_KIT_IDS, 'kit-ch': CH_KIT_IDS,
+  callouts: CALLOUT_IDS, ui: UI_IDS, 'kit-rr': RR_KIT_IDS, 'kit-ch': CH_KIT_IDS,
 };
 const CATEGORY_LABEL: Record<string, string> = {
   templates: 'Templates', charts: 'Charts', marketing: 'Marketing', filmtv: 'Film & TV',
-  callouts: 'Callouts', 'kit-rr': 'The Role Room', 'kit-ch': 'Creatorhub',
+  callouts: 'Callouts', ui: 'UI-elementer', 'kit-rr': 'The Role Room', 'kit-ch': 'Creatorhub',
 };
 
 interface Scene { id: string; tplId: string; values: Record<string, string>; atSec: number; bindings?: Record<string, string>; posX?: number; posY?: number }
@@ -188,7 +212,7 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
   const [logo, setLogo] = useState<string>(() => { const u = project?.branding?.logoUrl; return u && u.startsWith('data:') ? u : ''; });
   const [suggested, setSuggested] = useState('');
   const [rightTab, setRightTab] = useState<'Design' | 'Animate' | 'Data'>('Data');
-  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'marketing' | 'filmtv' | 'callouts' | 'kit-rr' | 'kit-ch' | 'brand' | 'data' | 'export'>('templates');
+  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'marketing' | 'filmtv' | 'callouts' | 'ui' | 'kit-rr' | 'kit-ch' | 'brand' | 'data' | 'export'>('templates');
   const [dataText, setDataText] = useState('');
   const dataMap = useMemo(() => parseDataSource(dataText), [dataText]);
   const dataKeys = useMemo(() => Object.keys(dataMap), [dataMap]);
@@ -324,6 +348,7 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
           <div style={railItem(leftSec === 'marketing')} onClick={() => setLeftSec('marketing')}>✷ Marketing <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => MARKETING_IDS.has(t.id)).length}</span></div>
           <div style={railItem(leftSec === 'filmtv')} onClick={() => setLeftSec('filmtv')}>▶ Film &amp; TV <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => FILMTV_IDS.has(t.id)).length}</span></div>
           <div style={railItem(leftSec === 'callouts')} onClick={() => setLeftSec('callouts')}>⌖ Callouts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => CALLOUT_IDS.has(t.id)).length}</span></div>
+          <div style={railItem(leftSec === 'ui')} onClick={() => setLeftSec('ui')}>▭ UI <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => UI_IDS.has(t.id)).length}</span></div>
           <div style={railItem(false)} title="Velg ikoner i Data-fanen per felt">◷ Icons <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{ALL_MATERIAL_ICONS.length}</span></div>
           <div style={{ fontSize: 9.5, fontWeight: 700, color: D.faint, textTransform: 'uppercase', letterSpacing: 0.6, padding: '12px 14px 4px' }}>Brand Kits</div>
           {BRAND_KITS.map((k) => (
