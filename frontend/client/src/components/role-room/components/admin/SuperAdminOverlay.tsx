@@ -175,14 +175,19 @@ export const SuperAdminOverlay: React.FC<SuperAdminOverlayProps> = ({ forceOpen 
     }
   }, [ready, isSuperAdmin, forceOpen]);
 
-  // Globalt keyboard-shortcut: Cmd/Ctrl + Shift + A
+  // Globale keyboard-shortcuts:
+  //   - Option/Alt + Shift + A (primær — kolliderer ikke med Chrome)
+  //   - Backtick `  trippelklikk (raskt 3×) som backup
+  // Chrome 132+ stjeler Cmd/Ctrl+Shift+A til "Search tabs", så vi bruker
+  // Option+Shift+A på Mac og Alt+Shift+A på Windows i stedet.
   useEffect(() => {
     if (!isSuperAdmin) return undefined;
     const handler = (event: KeyboardEvent) => {
-      const isMeta = event.metaKey || event.ctrlKey;
-      if (isMeta && event.shiftKey && (event.key === 'A' || event.key === 'a')) {
+      // Alt+Shift+A — primær snarvei
+      if (event.altKey && event.shiftKey && (event.key === 'A' || event.key === 'a' || event.code === 'KeyA')) {
         event.preventDefault();
         setOpen((prev) => !prev);
+        return;
       }
     };
     window.addEventListener('keydown', handler);
@@ -444,7 +449,7 @@ export const SuperAdminOverlay: React.FC<SuperAdminOverlayProps> = ({ forceOpen 
             variant="caption"
             sx={{ display: 'block', mt: 2, color: 'rgba(255,255,255,0.40)', fontSize: '0.68rem' }}
           >
-            Tips: Cmd/Ctrl + Shift + A åpner/lukker. URL <code>?super=1</code> eller <code>/super-admin</code> åpner overlayen direkte.
+            Tips: Alt + Shift + A åpner/lukker. URL <code>?super=1</code> eller <code>/super-admin</code> åpner overlayen direkte.
           </Typography>
         </DialogContent>
       </Dialog>
