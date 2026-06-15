@@ -7,7 +7,7 @@ import {
   Box, Stack, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Chip, CircularProgress, IconButton, Divider,
 } from '@mui/material';
-import { EventOutlined, DeleteOutline, CheckCircle, Cancel, HelpOutline } from '@mui/icons-material';
+import { EventOutlined, DeleteOutline, CheckCircle, Cancel, HelpOutline, LocalFireDepartmentOutlined } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
 const PANEL = '#131316', BORDER = 'rgba(255,255,255,0.08)', TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', FAINT = 'rgba(245,242,234,0.38)', ACCENT = '#FF6B35', GREEN = '#5fb88a';
@@ -76,7 +76,7 @@ const SessionsDialog: React.FC<{ open: boolean; projectId: string; onClose: () =
                   </Stack>
                   <Typography sx={{ fontSize: '0.68rem', color: MUTED }}>{fmtWhen(sx2.start_at)}{sx2.location ? ` · ${sx2.location}` : ''}</Typography>
                   <Stack direction="row" flexWrap="wrap" spacing={0.5} sx={{ mt: 0.5 }}>
-                    {(sx2.invitees || []).map((iv: any) => { const c = statusChip(iv.status); return <Chip key={iv.name} icon={c.i} label={iv.name} size="small" sx={{ height: 18, fontSize: '0.58rem', bgcolor: 'rgba(255,255,255,0.06)', color: c.c, '& .MuiChip-icon': { color: c.c } }} />; })}
+                    {(sx2.invitees || []).map((iv: any) => { const c = statusChip(iv.status); return <Chip key={iv.name} icon={iv.warmedUp ? <LocalFireDepartmentOutlined sx={{ fontSize: '12px !important' }} /> : c.i} label={iv.warmedUp ? `${iv.name} · klar` : iv.name} size="small" sx={{ height: 18, fontSize: '0.58rem', bgcolor: iv.warmedUp ? 'rgba(95,184,138,0.14)' : 'rgba(255,255,255,0.06)', color: iv.warmedUp ? GREEN : c.c, '& .MuiChip-icon': { color: iv.warmedUp ? GREEN : c.c } }} />; })}
                   </Stack>
                 </Box>
               ))}
