@@ -106,6 +106,8 @@ const WarmupPlayer: React.FC<{ token: string; musicalKey?: string }> = ({ token,
                 </Box>
               </Box>
               {step.instruction && <Typography sx={{ fontSize: '0.82rem', color: MUTED, lineHeight: 1.5 }}>{step.instruction}</Typography>}
+              {/* Egen oppvarmings-lyd fra produsenten */}
+              {step.audioUrl && <Box component="audio" src={step.audioUrl} controls autoPlay sx={{ width: '100%', height: 36 }} />}
               {/* Referansetone for vokal-steg */}
               {keyToFreq(musicalKey) && /vocal|vokal|breath|articul/i.test(step.type) && (
                 <Button onClick={toggleDrone} startIcon={<MusicNote />} size="small" sx={{ color: drone ? ACCENT : MUTED, textTransform: 'none' }}>{drone ? 'Stopp referansetone' : `Referansetone (${musicalKey})`}</Button>
