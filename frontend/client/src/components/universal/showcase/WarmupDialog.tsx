@@ -8,8 +8,8 @@ import {
   Box, Stack, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Checkbox, Chip, CircularProgress, Divider, IconButton,
 } from '@mui/material';
-import { SelfImprovement, CheckCircle, DeleteOutline, GraphicEq, Air, FitnessCenter } from '@mui/icons-material';
-import { apiRequest } from '@/lib/queryClient';
+import { SelfImprovement, CheckCircle, DeleteOutline, GraphicEq, Air, FitnessCenter, CloudUpload, MusicNote } from '@mui/icons-material';
+import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 
 const PANEL = '#131316', BORDER = 'rgba(255,255,255,0.08)', TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', FAINT = 'rgba(245,242,234,0.38)', ACCENT = '#FF6B35', GREEN = '#5fb88a';
 const fieldSx = { '& .MuiInputBase-input': { color: TEXT }, '& .MuiInputLabel-root': { color: MUTED }, '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER } };
@@ -24,6 +24,24 @@ const WarmupDialog: React.FC<{ open: boolean; projectId: string; onClose: () => 
   const [note, setNote] = React.useState('');
   const [picked, setPicked] = React.useState<Record<string, any>>({});
   const [busy, setBusy] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
+  const audioInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Produsenten laster opp sin egen oppvarmings-lyd (gjenbruker /api/upload/audio).
+  const uploadAudio = async (file?: File | null) => {
+    if (!file) return; setUploading(true);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const headers = await getAuthHeader(); delete (headers as any)['Content-Type'];
+      const res = await fetch('/api/upload/audio', { method: 'POST', headers, body: fd });
+      if (!res.ok) return;
+      const { url } = await res.json();
+      if (!url) return;
+      const durationSec = await new Promise<number>((resolve) => { const a = new Audio(); a.onloadedmetadata = () => resolve(Math.round(a.duration) || 60); a.onerror = () => resolve(60); a.src = url; });
+      const key = `custom:${Date.now()}`;
+      setPicked((p) => ({ ...p, [key]: { sourceId: key, title: file.name.replace(/\.[^.]+$/, '').slice(0, 80) || 'Egen oppvarming', type: 'custom', durationSec, audioUrl: url, instruction: 'Egen lydfil fra produsenten — følg med og varm opp.' } }));
+    } catch { /* */ } finally { setUploading(false); }
+  };
 
   const loadRoutines = React.useCallback(() => apiRequest(`/api/audio-showcases/${projectId}/warmups`).then((d: any) => setRoutines(d.routines || [])).catch(() => setRoutines([])), [projectId]);
   React.useEffect(() => {
@@ -79,6 +97,21 @@ const WarmupDialog: React.FC<{ open: boolean; projectId: string; onClose: () => 
                   {(lib.techniques || []).map((t: any) => <Item key={t.id} k={`t:${t.id}`} step={{ sourceId: t.id, title: t.title, type: 'mindfulness', durationSec: t.durationSeconds, instruction: (t.steps || []).join(' · ') }} sub={t.description} />)}
                 </Box>
               )}
+              {/* Egen oppvarmings-lyd */}
+              <Stack spacing={0.5}>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <Button onClick={() => audioInputRef.current?.click()} disabled={uploading} startIcon={uploading ? <CircularProgress size={14} sx={{ color: ACCENT }} /> : <CloudUpload sx={{ fontSize: '16px !important' }} />} size="small" sx={{ color: ACCENT, textTransform: 'none', fontSize: '0.72rem' }}>{uploading ? 'Laster opp…' : 'Last opp egen oppvarmings-lyd'}</Button>
+                  <input ref={audioInputRef} type="file" accept="audio/*" hidden onChange={(e) => { void uploadAudio(e.target.files?.[0]); e.target.value = ''; }} />
+                </Stack>
+                {steps.filter((s: any) => s.type === 'custom').map((s: any) => (
+                  <Stack key={s.sourceId} direction="row" alignItems="center" spacing={1} sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', px: 1, py: 0.5 }}>
+                    <MusicNote sx={{ fontSize: 15, color: ACCENT }} />
+                    <Typography sx={{ fontSize: '0.76rem', flex: 1 }} noWrap>{s.title}</Typography>
+                    <Typography sx={{ fontSize: '0.66rem', color: FAINT }}>{Math.round(s.durationSec / 60) || 1} min</Typography>
+                    <IconButton size="small" onClick={() => toggle(s.sourceId, s)} sx={{ color: FAINT, p: 0.25 }}><DeleteOutline sx={{ fontSize: 15 }} /></IconButton>
+                  </Stack>
+                ))}
+              </Stack>
               <TextField label="Beskjed til medlemmet (valgfri)" value={note} onChange={(e) => setNote(e.target.value)} size="small" multiline minRows={2} sx={fieldSx} />
               <Button onClick={save} disabled={busy || !title.trim() || steps.length === 0} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>{busy ? 'Lagrer…' : `Tilordne rutine (${steps.length} steg)`}</Button>
             </Stack>
