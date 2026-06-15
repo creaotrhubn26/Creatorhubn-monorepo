@@ -58,6 +58,9 @@ import AddLocationAltOutlinedIcon from '@mui/icons-material/AddLocationAltOutlin
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import CampaignOutlinedIcon from '@mui/icons-material/CampaignOutlined';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import NotificationsActiveOutlinedIcon from '@mui/icons-material/NotificationsActiveOutlined';
+import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined';
+import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import { Menu } from '@mui/material';
 
 type LeadStatus =
@@ -412,6 +415,32 @@ export default function LeadMapPanel() {
   };
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
+  // Reminders + status-rapport
+  type Reminders = {
+    staleLeads: Array<{
+      id: string; name: string; status: string; city: string | null;
+      daysSilent: number; updatedAt: string;
+    }>;
+    buckets: { over30days: number; over14days: number; over7days: number };
+    dueToday: Array<{ id: string; name: string; datetime: string; nextAction: string | null }>;
+    totalStale: number;
+  };
+  type StatusReport = {
+    newLeads7d: number;
+    won7d: number;
+    meetings7d: number;
+    longestSilentDays: number;
+    longestSilentName: string | null;
+    activePipeline: number;
+    recommendations: string[];
+    generatedAt: string;
+  };
+  const [reminders, setReminders] = useState<Reminders | null>(null);
+  const [statusReport, setStatusReport] = useState<StatusReport | null>(null);
+  const [statusReportOpen, setStatusReportOpen] = useState(false);
+  const [statusReportLoading, setStatusReportLoading] = useState(false);
+  const [staleListOpen, setStaleListOpen] = useState(false);
+
   // Kalender — kommende møter + follow-ups
   type CalendarEvent = {
     id: string;
@@ -499,6 +528,27 @@ export default function LeadMapPanel() {
       setLoading(false);
     }
   }, [statusFilter]);
+
+  const fetchReminders = useCallback(async () => {
+    try {
+      const r = await fetch('/api/admin-room/lead-map/reminders', {
+        credentials: 'include', headers: authHeaders(),
+      });
+      if (r.ok) setReminders(await r.json());
+    } catch { /* noop */ }
+  }, []);
+
+  const fetchStatusReport = useCallback(async () => {
+    setStatusReportLoading(true);
+    try {
+      const r = await fetch('/api/admin-room/lead-map/status-report', {
+        credentials: 'include', headers: authHeaders(),
+      });
+      if (r.ok) setStatusReport(await r.json());
+    } finally {
+      setStatusReportLoading(false);
+    }
+  }, []);
 
   const fetchLeaderboard = useCallback(async () => {
     try {
@@ -745,7 +795,8 @@ export default function LeadMapPanel() {
     fetchCompetitors();
     fetchLeaderboard();
     fetchCalendar();
-  }, [fetchLeads, fetchMeta, fetchCompetitors, fetchLeaderboard, fetchCalendar]);
+    fetchReminders();
+  }, [fetchLeads, fetchMeta, fetchCompetitors, fetchLeaderboard, fetchCalendar, fetchReminders]);
 
   const handleBoundsChange = useCallback((b: L.LatLngBounds) => {
     boundsRef.current = b;
@@ -1025,8 +1076,21 @@ export default function LeadMapPanel() {
             >
               Legg til konkurrent
             </Button>
+            <Button
+              size="small" variant="outlined"
+              onClick={() => { setStatusReportOpen(true); void fetchStatusReport(); }}
+              startIcon={<AssessmentOutlinedIcon sx={{ fontSize: 16 }} />}
+              sx={{ color: palette.accent, borderColor: palette.borderStrong, fontWeight: 700, fontSize: '0.78rem' }}
+            >
+              Status-rapport
+            </Button>
             <Tooltip title="Oppdater">
-              <IconButton onClick={() => { void fetchLeads(boundsRef.current ?? undefined); void fetchMeta(); void fetchCompetitors(); }} sx={{ color: palette.textSecondary }}>
+              <IconButton onClick={() => {
+                void fetchLeads(boundsRef.current ?? undefined);
+                void fetchMeta();
+                void fetchCompetitors();
+                void fetchReminders();
+              }} sx={{ color: palette.textSecondary }}>
                 <RefreshIcon />
               </IconButton>
             </Tooltip>
@@ -1120,6 +1184,83 @@ export default function LeadMapPanel() {
             {rankingLeads ? 'Ranker …' : 'Ranger leads m/ Claude'}
           </Button>
         </Stack>
+
+        {/* Reminder-banner — viser stille leads + dagens follow-ups */}
+        {reminders && (reminders.totalStale > 0 || reminders.dueToday.length > 0) && (
+          <Box sx={{
+            mb: 2.4, p: 1.6, borderRadius: 1.4,
+            bgcolor: reminders.buckets.over30days > 0
+              ? 'rgba(248,113,113,0.08)'
+              : reminders.buckets.over14days > 0
+              ? 'rgba(251,191,36,0.08)'
+              : 'rgba(96,165,250,0.08)',
+            border: `1px solid ${
+              reminders.buckets.over30days > 0
+                ? 'rgba(248,113,113,0.4)'
+                : reminders.buckets.over14days > 0
+                ? 'rgba(251,191,36,0.4)'
+                : 'rgba(96,165,250,0.4)'
+            }`,
+          }}>
+            <Stack direction="row" alignItems="center" spacing={1.4} flexWrap="wrap" useFlexGap>
+              <NotificationsActiveOutlinedIcon sx={{
+                color: reminders.buckets.over30days > 0
+                  ? '#f87171'
+                  : reminders.buckets.over14days > 0
+                  ? palette.amber
+                  : '#60a5fa',
+                fontSize: 22,
+              }} />
+              <Stack sx={{ flex: 1, minWidth: 200 }}>
+                <Typography sx={{ fontSize: '0.84rem', fontWeight: 800, color: palette.textPrimary }}>
+                  {reminders.totalStale > 0
+                    ? `${reminders.totalStale} leads venter på oppmerksomhet`
+                    : `${reminders.dueToday.length} follow-ups i dag`}
+                </Typography>
+                <Stack direction="row" spacing={0.6} sx={{ mt: 0.4 }} flexWrap="wrap" useFlexGap>
+                  {reminders.buckets.over30days > 0 && (
+                    <Chip
+                      label={`${reminders.buckets.over30days} over 30d`}
+                      size="small"
+                      icon={<WarningAmberOutlinedIcon sx={{ fontSize: 12 }} />}
+                      sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#f87171', fontWeight: 800, fontSize: '0.66rem', height: 20 }}
+                    />
+                  )}
+                  {reminders.buckets.over14days > 0 && (
+                    <Chip
+                      label={`${reminders.buckets.over14days} over 14d`}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: palette.amber, fontWeight: 800, fontSize: '0.66rem', height: 20 }}
+                    />
+                  )}
+                  {reminders.buckets.over7days > 0 && (
+                    <Chip
+                      label={`${reminders.buckets.over7days} over 7d`}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: '#60a5fa', fontWeight: 800, fontSize: '0.66rem', height: 20 }}
+                    />
+                  )}
+                  {reminders.dueToday.length > 0 && (
+                    <Chip
+                      label={`${reminders.dueToday.length} i dag`}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399', fontWeight: 800, fontSize: '0.66rem', height: 20 }}
+                    />
+                  )}
+                </Stack>
+              </Stack>
+              {reminders.totalStale > 0 && (
+                <Button
+                  size="small" variant="outlined"
+                  onClick={() => setStaleListOpen(true)}
+                  sx={{ color: palette.amber, borderColor: 'rgba(251,191,36,0.4)', fontWeight: 700, fontSize: '0.74rem', textTransform: 'none' }}
+                >
+                  Vis stille leads
+                </Button>
+              )}
+            </Stack>
+          </Box>
+        )}
 
         {/* KPI-stripe */}
         <Box sx={{
@@ -2571,6 +2712,165 @@ export default function LeadMapPanel() {
                 {counterCampaignSaving ? 'Lagrer …' : 'Lagre til Marketing Cockpit'}
               </Button>
             )}
+          </DialogActions>
+        </Dialog>
+
+        {/* Status-rapport-dialog */}
+        <Dialog
+          open={statusReportOpen}
+          onClose={() => setStatusReportOpen(false)}
+          maxWidth="sm" fullWidth
+          PaperProps={{ sx: { bgcolor: palette.bgPanel, border: `1px solid ${palette.borderStrong}` } }}
+        >
+          <DialogTitle sx={{ color: palette.textPrimary }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <AssessmentOutlinedIcon sx={{ color: palette.accent }} />
+              <span>Status-rapport — siste 7 dager</span>
+            </Stack>
+          </DialogTitle>
+          <DialogContent>
+            {statusReportLoading && (
+              <Stack alignItems="center" spacing={1} sx={{ p: 3 }}>
+                <CircularProgress sx={{ color: palette.accent }} />
+              </Stack>
+            )}
+            {statusReport && !statusReportLoading && (
+              <Stack spacing={2.4}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.2 }}>
+                  {[
+                    { label: 'Nye leads', value: statusReport.newLeads7d, color: palette.amber },
+                    { label: 'Bookede møter', value: statusReport.meetings7d, color: '#a78bfa' },
+                    { label: 'Vunnet', value: statusReport.won7d, color: '#34d399' },
+                  ].map((s) => (
+                    <Box key={s.label} sx={{
+                      p: 1.4, borderRadius: 1.2,
+                      bgcolor: `${s.color}11`,
+                      border: `1px solid ${s.color}44`,
+                      textAlign: 'center',
+                    }}>
+                      <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: s.color, lineHeight: 1 }}>
+                        {s.value}
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', mt: 0.4 }}>
+                        {s.label}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+
+                <Stack direction="row" justifyContent="space-between" sx={{ p: 1.4, borderRadius: 1.2, bgcolor: 'rgba(10,10,15,0.4)', border: `1px solid ${palette.border}` }}>
+                  <Box>
+                    <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                      Aktiv pipeline
+                    </Typography>
+                    <Typography sx={{ fontSize: '1.2rem', fontWeight: 800, color: palette.textPrimary }}>
+                      {statusReport.activePipeline} leads
+                    </Typography>
+                  </Box>
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                      Lengst stille
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.84rem', fontWeight: 700, color: statusReport.longestSilentDays >= 14 ? '#f87171' : palette.textPrimary }}>
+                      {statusReport.longestSilentName ?? '—'}
+                      <Box component="span" sx={{ ml: 0.6, color: palette.textMuted, fontSize: '0.72rem' }}>
+                        ({statusReport.longestSilentDays}d)
+                      </Box>
+                    </Typography>
+                  </Box>
+                </Stack>
+
+                {statusReport.recommendations.length > 0 && (
+                  <Box sx={{ p: 1.4, borderRadius: 1.2, bgcolor: 'rgba(192,132,252,0.08)', border: `1px solid ${palette.borderStrong}` }}>
+                    <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mb: 0.8 }}>
+                      <AutoAwesomeOutlinedIcon sx={{ color: palette.accent, fontSize: 14 }} />
+                      <Typography sx={{ fontSize: '0.68rem', color: palette.accent, fontWeight: 800, textTransform: 'uppercase' }}>
+                        Anbefalte handlinger
+                      </Typography>
+                    </Stack>
+                    <Stack spacing={0.8} component="ul" sx={{ pl: 2, m: 0 }}>
+                      {statusReport.recommendations.map((rec, i) => (
+                        <Box key={i} component="li" sx={{ fontSize: '0.82rem', color: palette.textSecondary }}>
+                          {rec}
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+              </Stack>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setStatusReportOpen(false)} sx={{ color: palette.textMuted }}>
+              Lukk
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Stille leads-dialog */}
+        <Dialog
+          open={staleListOpen}
+          onClose={() => setStaleListOpen(false)}
+          maxWidth="sm" fullWidth
+          PaperProps={{ sx: { bgcolor: palette.bgPanel, border: `1px solid ${palette.borderStrong}` } }}
+        >
+          <DialogTitle sx={{ color: palette.textPrimary }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <NotificationsActiveOutlinedIcon sx={{ color: palette.amber }} />
+              <span>Stille leads</span>
+            </Stack>
+            <Typography sx={{ fontSize: '0.78rem', color: palette.textMuted, mt: 0.4 }}>
+              Leads som ikke har fått oppmerksomhet på 7+ dager. Klikk for å se detaljer.
+            </Typography>
+          </DialogTitle>
+          <DialogContent>
+            {reminders && reminders.staleLeads.length > 0 ? (
+              <Stack spacing={0.6}>
+                {reminders.staleLeads.map((sl) => {
+                  const color = sl.daysSilent >= 30 ? '#f87171' : sl.daysSilent >= 14 ? palette.amber : '#60a5fa';
+                  return (
+                    <Stack
+                      key={sl.id} direction="row" spacing={1} alignItems="center"
+                      onClick={() => {
+                        const lead = leads.find((l) => l.id === sl.id);
+                        if (lead) { setSelected(lead); setStaleListOpen(false); }
+                      }}
+                      sx={{
+                        p: 1.2, borderRadius: 1.2,
+                        bgcolor: 'rgba(10,10,15,0.4)',
+                        border: `1px solid ${palette.border}`,
+                        borderLeft: `3px solid ${color}`,
+                        cursor: 'pointer',
+                        transition: 'border-color 140ms ease',
+                        '&:hover': { borderColor: color },
+                      }}
+                    >
+                      <Stack sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: palette.textPrimary }}>
+                          {sl.name}
+                        </Typography>
+                        <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted }}>
+                          {STATUS_META[sl.status as LeadStatus]?.label ?? sl.status}
+                          {sl.city && <> · {sl.city}</>}
+                        </Typography>
+                      </Stack>
+                      <Typography sx={{ fontSize: '0.78rem', fontWeight: 800, color }}>
+                        {sl.daysSilent}d
+                      </Typography>
+                    </Stack>
+                  );
+                })}
+              </Stack>
+            ) : (
+              <Typography sx={{ color: palette.textMuted, fontStyle: 'italic' }}>
+                Ingen stille leads — bra jobbet!
+              </Typography>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setStaleListOpen(false)} sx={{ color: palette.textMuted }}>
+              Lukk
+            </Button>
           </DialogActions>
         </Dialog>
 
