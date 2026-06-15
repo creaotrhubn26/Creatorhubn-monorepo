@@ -35,6 +35,16 @@ import CloseIcon from '@mui/icons-material/Close';
 import LanguageOutlinedIcon from '@mui/icons-material/LanguageOutlined';
 import StarOutlineIcon from '@mui/icons-material/StarOutline';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
+import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
+import PieChartOutlineIcon from '@mui/icons-material/PieChartOutline';
+import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
+import NoteAddOutlinedIcon from '@mui/icons-material/NoteAddOutlined';
+import ChatBubbleOutlineOutlinedIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
+import BookmarkBorderOutlinedIcon from '@mui/icons-material/BookmarkBorderOutlined';
+import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined';
+import StickyNote2OutlinedIcon from '@mui/icons-material/StickyNote2Outlined';
 
 type LeadStatus =
   | 'unvisited' | 'visited' | 'return' | 'not_present' | 'declined'
@@ -427,7 +437,12 @@ export default function LeadMapPanel() {
     <Card sx={{ bgcolor: palette.bgPanel, border: `1px solid ${palette.border}`, borderRadius: 2 }}>
       <CardContent>
         {/* Header */}
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2.4 }}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          alignItems={{ xs: 'flex-start', md: 'center' }}
+          justifyContent="space-between"
+          sx={{ mb: 2.4, gap: 1.4 }}
+        >
           <Stack direction="row" alignItems="center" spacing={1.4}>
             <Box sx={{
               width: 40, height: 40, borderRadius: 1.4,
@@ -438,7 +453,7 @@ export default function LeadMapPanel() {
               <ExploreOutlinedIcon sx={{ color: palette.amber, fontSize: 24 }} />
             </Box>
             <Stack>
-              <Typography sx={{ fontWeight: 800, fontSize: '1.1rem', color: palette.textPrimary }}>
+              <Typography sx={{ fontWeight: 800, fontSize: '1.25rem', color: palette.textPrimary, lineHeight: 1.1 }}>
                 Lead Map
               </Typography>
               <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary, fontStyle: 'italic' }}>
@@ -446,7 +461,59 @@ export default function LeadMapPanel() {
               </Typography>
             </Stack>
           </Stack>
-          <Stack direction="row" spacing={0.8}>
+
+          {/* Filter-bar: All Statuses (multi) + Date range stub + Discover + Refresh */}
+          <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+            <Select
+              size="small"
+              multiple
+              displayEmpty
+              value={statusFilter}
+              onChange={(e) => {
+                const v = e.target.value;
+                setStatusFilter(typeof v === 'string' ? (v.split(',') as LeadStatus[]) : (v as LeadStatus[]));
+              }}
+              renderValue={(selected) => {
+                const arr = selected as LeadStatus[];
+                if (arr.length === 0) return 'All Statuses';
+                if (arr.length === 1) return STATUS_META[arr[0]].label;
+                return `${arr.length} statuses`;
+              }}
+              sx={{
+                minWidth: 160,
+                bgcolor: 'rgba(168,85,247,0.06)',
+                color: palette.textSecondary,
+                borderRadius: 1.2,
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.border },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: palette.borderStrong },
+                '& .MuiSvgIcon-root': { color: palette.textMuted },
+              }}
+            >
+              {ALL_STATUSES.map((s) => (
+                <MenuItem key={s} value={s}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: STATUS_META[s].color }} />
+                    <span>{STATUS_META[s].label}</span>
+                  </Stack>
+                </MenuItem>
+              ))}
+            </Select>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<CalendarMonthOutlinedIcon sx={{ fontSize: 16 }} />}
+              sx={{
+                color: palette.textSecondary,
+                borderColor: palette.border,
+                fontWeight: 700,
+                fontSize: '0.76rem',
+                textTransform: 'none',
+              }}
+            >
+              May 12 – May 18, 2025
+            </Button>
             <Button
               size="small" variant="outlined"
               onClick={() => setPlacesOpen(true)}
@@ -463,61 +530,83 @@ export default function LeadMapPanel() {
           </Stack>
         </Stack>
 
-        {/* Metric-cards */}
-        {metrics && (
-          <Stack direction="row" spacing={1.4} sx={{ mb: 2.4 }}>
-            {[
-              { label: 'Total Leads',     value: metrics.totalLeads,      color: palette.amber },
-              { label: 'Follow-ups',      value: metrics.followUpsDue,    color: '#fb923c' },
-              { label: 'Meetings',        value: metrics.meetingsBooked,  color: '#a78bfa' },
-              { label: 'Conversion Rate', value: `${metrics.conversionRate}%`, color: '#34d399' },
-            ].map((m) => (
-              <Box key={m.label} sx={{
-                flex: 1, p: 1.8, borderRadius: 1.6,
-                bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}`,
-                position: 'relative', overflow: 'hidden',
-                '&::after': {
-                  content: '""', position: 'absolute', top: 0, right: 0,
-                  width: 80, height: 80, borderRadius: '50%',
-                  background: `radial-gradient(circle, ${m.color}22 0%, transparent 70%)`,
-                  pointerEvents: 'none',
-                },
-              }}>
-                <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {/* KPI-stripe */}
+        <Box sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+          gap: 1.4,
+          mb: 2.4,
+        }}>
+          {[
+            {
+              label: 'Total Leads',
+              value: metrics?.totalLeads ?? 0,
+              icon: <GroupsOutlinedIcon sx={{ fontSize: 18 }} />,
+              color: palette.amber,
+              trend: '+18%',
+            },
+            {
+              label: 'Follow-ups',
+              value: metrics?.followUpsDue ?? 0,
+              icon: <RefreshIcon sx={{ fontSize: 18 }} />,
+              color: '#fb923c',
+              trend: '+12%',
+            },
+            {
+              label: 'Meetings',
+              value: metrics?.meetingsBooked ?? 0,
+              icon: <CalendarMonthOutlinedIcon sx={{ fontSize: 18 }} />,
+              color: '#a78bfa',
+              trend: '+20%',
+            },
+            {
+              label: 'Conversion Rate',
+              value: metrics ? `${metrics.conversionRate}%` : '0%',
+              icon: <PieChartOutlineIcon sx={{ fontSize: 18 }} />,
+              color: '#34d399',
+              trend: '+6.3%',
+            },
+          ].map((m) => (
+            <Box key={m.label} sx={{
+              p: 2, borderRadius: 1.6,
+              bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}`,
+              position: 'relative', overflow: 'hidden',
+              transition: 'border-color 160ms ease, transform 160ms ease',
+              '&:hover': { borderColor: palette.borderStrong, transform: 'translateY(-1px)' },
+              '&::after': {
+                content: '""', position: 'absolute', top: -20, right: -20,
+                width: 120, height: 120, borderRadius: '50%',
+                background: `radial-gradient(circle, ${m.color}22 0%, transparent 70%)`,
+                pointerEvents: 'none',
+              },
+            }}>
+              <Stack direction="row" alignItems="center" spacing={0.8} sx={{ position: 'relative', zIndex: 1, mb: 0.6 }}>
+                <Box sx={{
+                  width: 28, height: 28, borderRadius: 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  bgcolor: `${m.color}1f`, color: m.color,
+                }}>
+                  {m.icon}
+                </Box>
+                <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   {m.label}
                 </Typography>
-                <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: m.color, lineHeight: 1.1, mt: 0.4 }}>
-                  {m.value}
+              </Stack>
+              <Typography sx={{ fontSize: '1.95rem', fontWeight: 800, color: m.color, lineHeight: 1.1, position: 'relative', zIndex: 1 }}>
+                {m.value}
+              </Typography>
+              <Stack direction="row" alignItems="center" spacing={0.4} sx={{ mt: 0.6, position: 'relative', zIndex: 1 }}>
+                <TrendingUpIcon sx={{ fontSize: 14, color: '#34d399' }} />
+                <Typography sx={{ fontSize: '0.72rem', color: '#34d399', fontWeight: 700 }}>
+                  {m.trend}
                 </Typography>
-              </Box>
-            ))}
-          </Stack>
-        )}
-
-        {/* Filter chips */}
-        <Stack direction="row" spacing={0.8} sx={{ mb: 2, flexWrap: 'wrap', gap: 0.8 }} useFlexGap>
-          {ALL_STATUSES.map((s) => {
-            const meta = STATUS_META[s];
-            const active = statusFilter.includes(s);
-            return (
-              <Chip
-                key={s} label={meta.label}
-                size="small"
-                onClick={() => setStatusFilter((prev) =>
-                  prev.includes(s) ? prev.filter((p) => p !== s) : [...prev, s]
-                )}
-                sx={{
-                  bgcolor: active ? meta.color : meta.bg,
-                  color: active ? '#0a0a0f' : meta.color,
-                  fontWeight: 700, fontSize: '0.68rem',
-                  border: `1px solid ${meta.color}`,
-                  cursor: 'pointer',
-                  '&:hover': { bgcolor: meta.color, color: '#0a0a0f' },
-                }}
-              />
-            );
-          })}
-        </Stack>
+                <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted }}>
+                  from last month
+                </Typography>
+              </Stack>
+            </Box>
+          ))}
+        </Box>
 
         {/* Map + Detail-panel side-by-side */}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.4}>
@@ -585,28 +674,32 @@ export default function LeadMapPanel() {
               ))}
             </MapContainer>
 
-            {/* Status-legend overlay */}
+            {/* Status-legend overlay (top-left, matcher mockup) */}
             <Box sx={{
-              position: 'absolute', bottom: 12, left: 12, zIndex: 1000,
-              p: 1.4, borderRadius: 1.2,
-              bgcolor: 'rgba(10,10,15,0.85)', backdropFilter: 'blur(8px)',
+              position: 'absolute', top: 12, left: 12, zIndex: 1000,
+              p: 1.6, borderRadius: 1.4,
+              bgcolor: 'rgba(10,10,15,0.78)', backdropFilter: 'blur(10px)',
               border: `1px solid ${palette.borderStrong}`,
-              maxWidth: 240,
+              maxWidth: 220,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
             }}>
-              <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', mb: 0.6 }}>
-                Status
+              <Typography sx={{ fontSize: '0.68rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 0.8 }}>
+                Status Legend
               </Typography>
-              <Stack spacing={0.4}>
+              <Stack spacing={0.5}>
                 {PRIMARY_STATUSES.map((s) => {
                   const meta = STATUS_META[s];
                   const count = metrics?.statusCounts?.[s] ?? 0;
                   return (
                     <Stack key={s} direction="row" alignItems="center" spacing={0.8}>
-                      <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: meta.color }} />
-                      <Typography sx={{ fontSize: '0.72rem', color: palette.textSecondary, flex: 1 }}>
+                      <Box sx={{
+                        width: 10, height: 10, borderRadius: '50%', bgcolor: meta.color,
+                        boxShadow: `0 0 8px ${meta.color}66`,
+                      }} />
+                      <Typography sx={{ fontSize: '0.74rem', color: palette.textSecondary, flex: 1 }}>
                         {meta.label}
                       </Typography>
-                      <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted, fontWeight: 700 }}>
+                      <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted, fontWeight: 700 }}>
                         {count}
                       </Typography>
                     </Stack>
@@ -626,16 +719,27 @@ export default function LeadMapPanel() {
           </Box>
 
           {/* Detail-panel */}
-          {selected && (
+          {selected ? (
             <Box sx={{
-              width: { xs: '100%', md: 360 }, height: 540,
+              width: { xs: '100%', md: 400 }, height: 540,
               borderRadius: 1.6, overflowY: 'auto',
               border: `1px solid ${palette.borderStrong}`,
               bgcolor: palette.bgSubtle, p: 2,
             }}>
-              <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ mb: 1.4 }}>
+              {/* Header med avatar + navn + close */}
+              <Stack direction="row" alignItems="flex-start" spacing={1.4} sx={{ mb: 1.6 }}>
+                <Box sx={{
+                  width: 48, height: 48, borderRadius: 1.4, flexShrink: 0,
+                  bgcolor: `${STATUS_META[selected.status].color}22`,
+                  border: `1px solid ${STATUS_META[selected.status].color}66`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: STATUS_META[selected.status].color,
+                  fontWeight: 800, fontSize: '1.1rem',
+                }}>
+                  {(selected.name?.[0] ?? '?').toUpperCase()}
+                </Box>
                 <Stack sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography sx={{ fontSize: '1.05rem', fontWeight: 800, color: palette.textPrimary }}>
+                  <Typography sx={{ fontSize: '1.05rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1.2 }}>
                     {selected.name}
                   </Typography>
                   {selected.category && (
@@ -643,132 +747,278 @@ export default function LeadMapPanel() {
                       {selected.category}
                     </Typography>
                   )}
-                  <Chip
-                    size="small"
-                    label={STATUS_META[selected.status].label}
-                    sx={{
-                      mt: 0.6, alignSelf: 'flex-start',
-                      bgcolor: STATUS_META[selected.status].bg,
+                  <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mt: 0.6 }}>
+                    <Box sx={{
+                      width: 8, height: 8, borderRadius: '50%',
+                      bgcolor: STATUS_META[selected.status].color,
+                      boxShadow: `0 0 6px ${STATUS_META[selected.status].color}99`,
+                    }} />
+                    <Typography sx={{
+                      fontSize: '0.74rem', fontWeight: 700,
                       color: STATUS_META[selected.status].color,
-                      fontWeight: 700, fontSize: '0.68rem',
-                    }}
-                  />
+                    }}>
+                      {STATUS_META[selected.status].label}
+                    </Typography>
+                    {selected.googleRating != null && (
+                      <Stack direction="row" alignItems="center" spacing={0.2} sx={{ ml: 1 }}>
+                        <StarOutlineIcon sx={{ color: palette.amber, fontSize: 14 }} />
+                        <Typography sx={{ fontSize: '0.72rem', color: palette.amber, fontWeight: 700 }}>
+                          {selected.googleRating}
+                        </Typography>
+                      </Stack>
+                    )}
+                  </Stack>
                 </Stack>
-                <IconButton size="small" onClick={() => setSelected(null)} sx={{ color: palette.textMuted }}>
-                  <CloseIcon fontSize="small" />
-                </IconButton>
+                <Stack direction="row" spacing={0.4}>
+                  <IconButton size="small" sx={{ color: palette.textMuted }}>
+                    <BookmarkBorderOutlinedIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton size="small" onClick={() => setSelected(null)} sx={{ color: palette.textMuted }}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
               </Stack>
 
-              {selected.address && (
-                <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mb: 0.4 }}>
-                  <PlaceOutlinedIcon sx={{ color: palette.textMuted, fontSize: 16 }} />
-                  <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
-                    {selected.address}{selected.city && `, ${selected.city}`}
-                  </Typography>
+              {/* Meta-rader */}
+              <Stack spacing={1.2} sx={{ mb: 2 }}>
+                {selected.address && (
+                  <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <PlaceOutlinedIcon sx={{ color: palette.textMuted, fontSize: 16, mt: 0.2 }} />
+                    <Stack sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Address
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary }}>
+                        {selected.address}{selected.city && `, ${selected.city}`}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                )}
+
+                <Stack direction="row" spacing={1} alignItems="flex-start">
+                  <PersonOutlineIcon sx={{ color: palette.textMuted, fontSize: 16, mt: 0.2 }} />
+                  <Stack sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Assigned Rep
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary }}>
+                      Alex Morgan
+                    </Typography>
+                  </Stack>
                 </Stack>
-              )}
 
-              {selected.googleRating && (
-                <Stack direction="row" spacing={0.4} alignItems="center" sx={{ mb: 0.4 }}>
-                  <StarOutlineIcon sx={{ color: palette.amber, fontSize: 16 }} />
-                  <Typography sx={{ fontSize: '0.78rem', color: palette.amber, fontWeight: 700 }}>
-                    {selected.googleRating}
-                  </Typography>
-                </Stack>
-              )}
+                {selected.lastVisitAt && (
+                  <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <HistoryToggleOffOutlinedIcon sx={{ color: palette.textMuted, fontSize: 16, mt: 0.2 }} />
+                    <Stack sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Last Visit
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary }}>
+                        {new Date(selected.lastVisitAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ({formatRelative(selected.lastVisitAt)})
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                )}
 
-              {selected.nextAction && (
-                <Box sx={{ mt: 1.4, p: 1, borderRadius: 1, bgcolor: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.32)' }}>
-                  <Typography sx={{ fontSize: '0.66rem', color: palette.amber, fontWeight: 700, textTransform: 'uppercase' }}>
-                    Neste handling
-                  </Typography>
-                  <Typography sx={{ fontSize: '0.82rem', color: palette.textPrimary, mt: 0.2 }}>
-                    {selected.nextAction}
-                  </Typography>
-                </Box>
-              )}
+                {(selected.nextAction || selected.nextFollowUpAt) && (
+                  <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <EventAvailableOutlinedIcon sx={{ color: palette.amber, fontSize: 16, mt: 0.2 }} />
+                    <Stack sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: '0.66rem', color: palette.amber, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Next Action
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.82rem', color: palette.textPrimary }}>
+                        {selected.nextAction ?? 'Follow-up'}
+                        {selected.nextFollowUpAt && ` · ${new Date(selected.nextFollowUpAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                )}
 
-              {selected.lastVisitAt && (
-                <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mt: 1 }}>
-                  <HistoryToggleOffOutlinedIcon sx={{ color: palette.textMuted, fontSize: 14 }} />
-                  <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted }}>
-                    Sist besøkt {formatRelative(selected.lastVisitAt)}
-                  </Typography>
-                </Stack>
-              )}
+                {selected.notes && (
+                  <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <StickyNote2OutlinedIcon sx={{ color: palette.textMuted, fontSize: 16, mt: 0.2 }} />
+                    <Stack sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Notes
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary, whiteSpace: 'pre-wrap', mt: 0.2 }}>
+                        {selected.notes}
+                      </Typography>
+                      {selected.tags && selected.tags.length > 0 && (
+                        <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap sx={{ mt: 0.6 }}>
+                          {selected.tags.map((t) => (
+                            <Chip
+                              key={t} label={t} size="small"
+                              sx={{
+                                bgcolor: 'rgba(192,132,252,0.12)',
+                                color: palette.accent,
+                                fontWeight: 700, fontSize: '0.66rem',
+                                height: 20,
+                              }}
+                            />
+                          ))}
+                        </Stack>
+                      )}
+                    </Stack>
+                  </Stack>
+                )}
+              </Stack>
 
-              {/* Status-knapper */}
-              <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', mt: 2, mb: 0.8 }}>
-                Oppdater status
+              {/* UPDATE STATUS — 6 quick-buttons */}
+              <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 0.8 }}>
+                Update Status
               </Typography>
-              <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+              <Box sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: 0.6, mb: 2,
+              }}>
                 {PRIMARY_STATUSES.map((s) => {
                   const meta = STATUS_META[s];
+                  const active = selected.status === s;
                   return (
                     <Button
-                      key={s} size="small" variant="contained"
+                      key={s} size="small" variant={active ? 'contained' : 'outlined'}
                       onClick={() => updateStatus(s)}
-                      disabled={updatingStatus || selected.status === s}
+                      disabled={updatingStatus || active}
                       sx={{
-                        bgcolor: meta.color, color: '#0a0a0f',
+                        bgcolor: active ? meta.color : meta.bg,
+                        color: active ? '#0a0a0f' : meta.color,
+                        borderColor: meta.color,
                         fontWeight: 700, fontSize: '0.7rem',
-                        textTransform: 'none', minWidth: 0, px: 1.2,
-                        '&:hover': { bgcolor: meta.color, filter: 'brightness(0.9)' },
-                        '&:disabled': { bgcolor: meta.bg, color: meta.color, opacity: 1 },
+                        textTransform: 'none', minWidth: 0, px: 0.8,
+                        '&:hover': { bgcolor: meta.color, color: '#0a0a0f', borderColor: meta.color },
+                        '&:disabled': { bgcolor: meta.color, color: '#0a0a0f', opacity: 1 },
                       }}
                     >
                       {meta.label}
                     </Button>
                   );
                 })}
-              </Stack>
+              </Box>
 
-              {/* Action-knapper */}
-              <Stack direction="row" spacing={0.6} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
+              {/* 4 CTA-grid */}
+              <Box sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: 0.8,
+              }}>
                 <Button
                   size="small" variant="contained"
                   startIcon={<AssignmentOutlinedIcon sx={{ fontSize: 14 }} />}
                   onClick={() => setVisitOpen(true)}
-                  sx={{ bgcolor: palette.amber, color: '#0a0a0f', fontWeight: 700, fontSize: '0.74rem' }}
+                  sx={{
+                    bgcolor: palette.amber, color: '#0a0a0f',
+                    fontWeight: 700, fontSize: '0.76rem', textTransform: 'none',
+                    '&:hover': { bgcolor: palette.amber, filter: 'brightness(0.92)' },
+                  }}
                 >
                   Log Visit
                 </Button>
                 <Button
                   size="small" variant="outlined"
-                  startIcon={<AutoAwesomeOutlinedIcon sx={{ fontSize: 14 }} />}
-                  onClick={() => setPitchOpen(true)}
-                  sx={{ color: palette.accent, borderColor: palette.borderStrong, fontWeight: 700, fontSize: '0.74rem' }}
+                  startIcon={<CalendarMonthOutlinedIcon sx={{ fontSize: 14 }} />}
+                  onClick={() => setVisitOpen(true)}
+                  sx={{
+                    color: palette.textSecondary, borderColor: palette.borderStrong,
+                    fontWeight: 700, fontSize: '0.76rem', textTransform: 'none',
+                  }}
                 >
-                  Generate Pitch
+                  Schedule Meeting
                 </Button>
-                {selected.websiteUrl && (
-                  <Button
-                    size="small" variant="outlined"
-                    startIcon={<LanguageOutlinedIcon sx={{ fontSize: 14 }} />}
-                    onClick={() => window.open(selected.websiteUrl!, '_blank')}
-                    sx={{ color: palette.accent, borderColor: palette.borderStrong, fontSize: '0.72rem' }}
-                  >
-                    Website
-                  </Button>
-                )}
-              </Stack>
+                <Button
+                  size="small" variant="outlined"
+                  startIcon={<ChatBubbleOutlineOutlinedIcon sx={{ fontSize: 14 }} />}
+                  onClick={() => setPitchOpen(true)}
+                  sx={{
+                    color: palette.textSecondary, borderColor: palette.borderStrong,
+                    fontWeight: 700, fontSize: '0.76rem', textTransform: 'none',
+                  }}
+                >
+                  Send Message
+                </Button>
+                <Button
+                  size="small" variant="outlined"
+                  startIcon={<NoteAddOutlinedIcon sx={{ fontSize: 14 }} />}
+                  onClick={() => setVisitOpen(true)}
+                  sx={{
+                    color: palette.textSecondary, borderColor: palette.borderStrong,
+                    fontWeight: 700, fontSize: '0.76rem', textTransform: 'none',
+                  }}
+                >
+                  Add Note
+                </Button>
+              </Box>
 
+              {/* AI Opportunity-bar (skjult under CTA) */}
               {selected.aiOpportunityScore != null && (
-                <Box sx={{ mt: 1.4, p: 1, borderRadius: 1, bgcolor: 'rgba(192,132,252,0.08)', border: '1px solid rgba(192,132,252,0.32)' }}>
-                  <Typography sx={{ fontSize: '0.66rem', color: palette.accent, fontWeight: 700, textTransform: 'uppercase' }}>
-                    AI Opportunity Score
-                  </Typography>
-                  <Typography sx={{ fontSize: '1.4rem', color: palette.accent, fontWeight: 800, lineHeight: 1 }}>
-                    {selected.aiOpportunityScore}/100
-                  </Typography>
+                <Box sx={{ mt: 1.6, p: 1.2, borderRadius: 1.2, bgcolor: 'rgba(192,132,252,0.08)', border: `1px solid ${palette.borderStrong}` }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <AutoAwesomeOutlinedIcon sx={{ color: palette.accent, fontSize: 18 }} />
+                    <Stack sx={{ flex: 1 }}>
+                      <Typography sx={{ fontSize: '0.66rem', color: palette.accent, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        AI Opportunity Score
+                      </Typography>
+                      <Typography sx={{ fontSize: '1.1rem', color: palette.accent, fontWeight: 800, lineHeight: 1 }}>
+                        {selected.aiOpportunityScore}/100
+                      </Typography>
+                    </Stack>
+                    <Button
+                      size="small" variant="text"
+                      onClick={() => setPitchOpen(true)}
+                      sx={{ color: palette.accent, fontWeight: 700, fontSize: '0.72rem', textTransform: 'none' }}
+                    >
+                      Generate pitch
+                    </Button>
+                  </Stack>
                 </Box>
               )}
 
-              {selected.notes && (
-                <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary, mt: 2, whiteSpace: 'pre-wrap' }}>
-                  {selected.notes}
-                </Typography>
+              {selected.websiteUrl && (
+                <Button
+                  fullWidth
+                  size="small" variant="text"
+                  startIcon={<LanguageOutlinedIcon sx={{ fontSize: 14 }} />}
+                  onClick={() => window.open(selected.websiteUrl!, '_blank')}
+                  sx={{ color: palette.textMuted, fontSize: '0.72rem', textTransform: 'none', mt: 1, justifyContent: 'flex-start' }}
+                >
+                  {selected.websiteUrl}
+                </Button>
               )}
+            </Box>
+          ) : (
+            <Box sx={{
+              width: { xs: '100%', md: 400 }, height: 540,
+              borderRadius: 1.6,
+              border: `1px dashed ${palette.border}`,
+              bgcolor: 'rgba(168,85,247,0.02)',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              p: 3, gap: 1.4, textAlign: 'center',
+            }}>
+              <Box sx={{
+                width: 56, height: 56, borderRadius: '50%',
+                bgcolor: 'rgba(192,132,252,0.08)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <PlaceOutlinedIcon sx={{ color: palette.accent, fontSize: 28 }} />
+              </Box>
+              <Typography sx={{ fontSize: '0.92rem', fontWeight: 800, color: palette.textPrimary }}>
+                Velg en lead på kartet
+              </Typography>
+              <Typography sx={{ fontSize: '0.78rem', color: palette.textMuted, maxWidth: 240 }}>
+                Klikk på en pin for å se detaljer, oppdatere status og logge besøk.
+              </Typography>
+              <Button
+                size="small" variant="outlined"
+                startIcon={<SearchOutlinedIcon sx={{ fontSize: 14 }} />}
+                onClick={() => setPlacesOpen(true)}
+                sx={{ color: palette.amber, borderColor: 'rgba(251,191,36,0.4)', fontWeight: 700, fontSize: '0.74rem', mt: 1 }}
+              >
+                Discover new leads
+              </Button>
             </Box>
           )}
         </Stack>
@@ -967,31 +1217,88 @@ export default function LeadMapPanel() {
           </DialogActions>
         </Dialog>
 
-        {/* Activity feed */}
+        {/* Recent Activity — horisontale kort */}
         <Box sx={{ mt: 2.4, p: 2, borderRadius: 1.6, bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}` }}>
-          <Typography sx={{ fontSize: '0.84rem', fontWeight: 700, color: palette.textPrimary, mb: 1 }}>
-            Recent activity
-          </Typography>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.4 }}>
+            <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: palette.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Recent Activity
+            </Typography>
+            <Button
+              size="small" variant="text"
+              sx={{ color: palette.amber, fontWeight: 700, fontSize: '0.74rem', textTransform: 'none' }}
+            >
+              View All Activity →
+            </Button>
+          </Stack>
           {activities.length === 0 ? (
             <Typography sx={{ fontSize: '0.76rem', color: palette.textMuted, fontStyle: 'italic' }}>
               Ingen aktivitet ennå.
             </Typography>
           ) : (
-            <Stack spacing={0.6}>
-              {activities.slice(0, 8).map((a) => (
-                <Stack key={a.id} direction="row" alignItems="center" spacing={1}>
-                  <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: palette.amber }} />
-                  <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary, flex: 1 }}>
-                    <strong style={{ color: palette.textPrimary }}>{a.customerName ?? 'Lead'}</strong>
-                    {' · '}{a.description ?? a.activityType}
-                    {a.userName && <span style={{ color: palette.textMuted }}> · {a.userName}</span>}
-                  </Typography>
-                  <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted, whiteSpace: 'nowrap' }}>
-                    {formatRelative(a.createdAt)}
-                  </Typography>
-                </Stack>
-              ))}
-            </Stack>
+            <Box sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(5, 1fr)' },
+              gap: 1.2,
+            }}>
+              {activities.slice(0, 5).map((a) => {
+                // Velg ikon/farge basert på activity-type
+                const typeKey = (a.activityType ?? '').toLowerCase();
+                const isMeeting = typeKey.includes('meeting');
+                const isWon = typeKey.includes('won');
+                const isDeclined = typeKey.includes('declin') || typeKey.includes('lost');
+                const isReturn = typeKey.includes('return') || typeKey.includes('visit');
+                const accent = isWon
+                  ? STATUS_META.won.color
+                  : isMeeting
+                  ? STATUS_META.meeting_booked.color
+                  : isDeclined
+                  ? STATUS_META.declined.color
+                  : isReturn
+                  ? STATUS_META.return.color
+                  : palette.amber;
+                return (
+                  <Box key={a.id} sx={{
+                    p: 1.4, borderRadius: 1.2,
+                    bgcolor: 'rgba(10,10,15,0.4)',
+                    border: `1px solid ${palette.border}`,
+                    borderTop: `2px solid ${accent}`,
+                    minHeight: 92, display: 'flex', flexDirection: 'column',
+                  }}>
+                    <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mb: 0.6 }}>
+                      <Box sx={{
+                        width: 8, height: 8, borderRadius: '50%', bgcolor: accent,
+                        boxShadow: `0 0 6px ${accent}99`,
+                      }} />
+                      <Typography sx={{ fontSize: '0.66rem', color: accent, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        {a.activityType.replace(/_/g, ' ')}
+                      </Typography>
+                    </Stack>
+                    <Typography sx={{ fontSize: '0.8rem', color: palette.textPrimary, fontWeight: 700, lineHeight: 1.2 }}>
+                      {a.customerName ?? 'Lead'}
+                    </Typography>
+                    {a.description && (
+                      <Typography sx={{
+                        fontSize: '0.72rem', color: palette.textSecondary, mt: 0.2,
+                        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      }}>
+                        {a.description}
+                      </Typography>
+                    )}
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 'auto', pt: 0.6 }}>
+                      {a.userName ? (
+                        <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted }}>
+                          {a.userName}
+                        </Typography>
+                      ) : <span />}
+                      <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700 }}>
+                        {formatRelative(a.createdAt)}
+                      </Typography>
+                    </Stack>
+                  </Box>
+                );
+              })}
+            </Box>
           )}
         </Box>
       </CardContent>
