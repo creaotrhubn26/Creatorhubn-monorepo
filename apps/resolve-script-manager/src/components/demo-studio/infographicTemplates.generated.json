@@ -1774,5 +1774,1034 @@
 "role": "Rolle"
 },
 "html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:48px 56px;\n    -webkit-font-smoothing:antialiased;\n  }\n  .strap{\n    position:relative;\n    display:flex;\n    align-items:stretch;\n    will-change:transform,opacity;\n  }\n  .accent-bar{\n    width:7px;\n    border-radius:4px;\n    margin-right:24px;\n    align-self:stretch;\n    transform-origin:bottom center;\n    will-change:transform;\n  }\n  .card{\n    position:relative;\n    display:flex;\n    align-items:center;\n    gap:24px;\n    background:linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(246,248,252,0.90) 100%);\n    backdrop-filter:blur(14px);\n    -webkit-backdrop-filter:blur(14px);\n    border:1px solid rgba(255,255,255,0.7);\n    border-radius:18px;\n    padding:26px 38px 28px 34px;\n    box-shadow:0 24px 60px -22px rgba(20,30,55,0.45), 0 2px 0 rgba(255,255,255,0.6) inset;\n    overflow:hidden;\n  }\n  .card::before{\n    content:\"\";\n    position:absolute;\n    top:0; left:0; right:0;\n    height:3px;\n    transform-origin:left center;\n    will-change:transform;\n  }\n  .logo-wrap{\n    display:flex;\n    align-items:center;\n    justify-content:center;\n    width:64px;height:64px;\n    border-radius:14px;\n    flex:0 0 auto;\n    overflow:hidden;\n    will-change:transform,opacity;\n  }\n  .logo-wrap img{width:100%;height:100%;object-fit:contain;display:block}\n  .logo-wrap .badge{\n    width:64px;height:64px;border-radius:14px;\n    display:flex;align-items:center;justify-content:center;\n    color:#fff;\n  }\n  .logo-wrap .badge .material-icons-outlined{font-size:34px}\n  .text{display:flex;flex-direction:column;gap:6px;min-width:280px}\n  .name{\n    font-size:40px;\n    font-weight:800;\n    letter-spacing:-0.5px;\n    line-height:1.02;\n    white-space:nowrap;\n    will-change:transform,opacity;\n  }\n  .role-row{\n    display:flex;\n    align-items:center;\n    gap:12px;\n    will-change:transform,opacity;\n  }\n  .role-tick{\n    width:0;\n    height:2px;\n    border-radius:2px;\n    will-change:width;\n  }\n  .role{\n    font-size:18px;\n    font-weight:600;\n    letter-spacing:0.3px;\n    white-space:nowrap;\n  }\n</style>\n</head>\n<body>\n  <div id=\"wrap\">\n    <div class=\"strap\" id=\"strap\">\n      <div class=\"accent-bar\" id=\"accentBar\"></div>\n      <div class=\"card\" id=\"card\">\n        <div class=\"logo-wrap\" id=\"logoWrap\"></div>\n        <div class=\"text\">\n          <div class=\"name\" id=\"name\">Navn Navnesen</div>\n          <div class=\"role-row\" id=\"roleRow\">\n            <span class=\"role-tick\" id=\"roleTick\"></span>\n            <span class=\"role\" id=\"role\">Rolle</span>\n          </div>\n        </div>\n      </div>\n    </div>\n  </div>\n\n<script>\n(function(){\n  var CFG = window.__CFG__ || {};\n  var accent = CFG.accent || '#3b82f6';\n  var ink    = CFG.ink    || '#1f2d4a';\n\n  function rgba(hex, a){\n    hex = (hex||'').replace('#','');\n    if(hex.length===3) hex = hex.split('').map(function(c){return c+c;}).join('');\n    var r=parseInt(hex.substr(0,2),16)||0, g=parseInt(hex.substr(2,2),16)||0, b=parseInt(hex.substr(4,2),16)||0;\n    return 'rgba('+r+','+g+','+b+','+a+')';\n  }\n\n  var elName   = document.getElementById('name');\n  var elRole   = document.getElementById('role');\n  var elTick   = document.getElementById('roleTick');\n  var elBar    = document.getElementById('accentBar');\n  var elStrap  = document.getElementById('strap');\n  var elCard   = document.getElementById('card');\n  var elLogo   = document.getElementById('logoWrap');\n  var elRoleRow= document.getElementById('roleRow');\n\n  if(CFG.name) elName.textContent = CFG.name;\n  if(CFG.role) elRole.textContent = CFG.role;\n\n  elName.style.color = ink;\n  elRole.style.color = rgba(ink, 0.72);\n  elTick.style.background = accent;\n  elBar.style.background  = 'linear-gradient(180deg,'+accent+','+rgba(accent,0.55)+')';\n  elBar.style.boxShadow   = '0 0 16px '+rgba(accent,0.55);\n\n  var styleTag = document.createElement('style');\n  styleTag.textContent = '#card::before{background:linear-gradient(90deg,'+accent+','+rgba(accent,0)+');}';\n  document.head.appendChild(styleTag);\n\n  if(CFG.logo){\n    var img = document.createElement('img');\n    img.src = CFG.logo;\n    elLogo.appendChild(img);\n    elLogo.style.background = rgba(ink,0.04);\n  } else {\n    var badge = document.createElement('div');\n    badge.className = 'badge';\n    badge.style.background = 'linear-gradient(135deg,'+accent+','+rgba(accent,0.7)+')';\n    badge.style.boxShadow = '0 8px 20px -8px '+rgba(accent,0.7);\n    var ic = document.createElement('span');\n    ic.className = 'material-icons-outlined';\n    ic.textContent = 'badge';\n    badge.appendChild(ic);\n    elLogo.appendChild(badge);\n  }\n\n  function easeInOut(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }\n  function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }\n  function seg(p,a,b){ return clamp((p-a)/(b-a),0,1); }\n\n  window.setProgress = function(p){\n    p = clamp(p,0,1);\n\n    var sIn = easeInOut(seg(p,0,0.45));\n    var dx = (1 - sIn) * -160;\n    elStrap.style.transform = 'translateX('+dx.toFixed(2)+'px)';\n    elStrap.style.opacity = sIn.toFixed(3);\n\n    var bar = easeInOut(seg(p,0.10,0.55));\n    elBar.style.transform = 'scaleY('+bar.toFixed(3)+')';\n\n    var line = easeInOut(seg(p,0.15,0.6));\n    var styleLine = document.getElementById('__cardline');\n    if(!styleLine){ styleLine=document.createElement('style'); styleLine.id='__cardline'; document.head.appendChild(styleLine); }\n    styleLine.textContent = '#card::before{transform:scaleX('+line.toFixed(3)+');}';\n\n    var lg = easeInOut(seg(p,0.20,0.55));\n    elLogo.style.opacity = lg.toFixed(3);\n    elLogo.style.transform = 'translateY('+((1-lg)*10).toFixed(2)+'px) scale('+(0.85+lg*0.15).toFixed(3)+')';\n\n    var nm = easeInOut(seg(p,0.28,0.66));\n    elName.style.opacity = nm.toFixed(3);\n    elName.style.transform = 'translateY('+((1-nm)*16).toFixed(2)+'px)';\n\n    var rl = easeInOut(seg(p,0.42,0.78));\n    elRoleRow.style.opacity = rl.toFixed(3);\n    elRoleRow.style.transform = 'translateY('+((1-rl)*12).toFixed(2)+'px)';\n\n    var tk = easeInOut(seg(p,0.55,0.95));\n    elTick.style.width = (tk*26).toFixed(2)+'px';\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "quote-fullscreen",
+"name": "Sitat – fullskjerm",
+"desc": "Stort, sentrert kinematisk sitat med ord-for-ord-avsløring (blur + stigning), tynn accent-strek og navn/kilde. Mørkt, elegant HUD-panel med glødende ramme – laget som transparent overlay over video i DaVinci Resolve.",
+"style": "hud",
+"glyph": "”",
+"durationSec": 7.0,
+"fields": [
+{
+"key": "quote",
+"label": "Sitat",
+"type": "text",
+"placeholder": "Den beste måten å forutsi fremtiden på er å skape den selv."
+},
+{
+"key": "author",
+"label": "Navn",
+"type": "text",
+"placeholder": "Astrid Lindgren"
+},
+{
+"key": "source",
+"label": "Kilde",
+"type": "text",
+"placeholder": "Intervju · Stockholm, 1987"
+}
+],
+"defaults": {
+"quote": "Den beste måten å forutsi fremtiden på er å skape den selv.",
+"author": "Astrid Lindgren",
+"source": "Intervju · Stockholm, 1987"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    max-width:1080px;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:64px 72px;\n    position:relative;\n  }\n  .panel{\n    position:relative;\n    background:linear-gradient(155deg, rgba(16,20,30,0.94) 0%, rgba(10,13,20,0.96) 100%);\n    border-radius:22px;\n    padding:72px 84px 60px;\n    overflow:hidden;\n    box-shadow:0 40px 120px -30px rgba(0,0,0,0.75);\n  }\n  .panel::before{\n    content:\"\";\n    position:absolute; inset:0;\n    border-radius:22px;\n    padding:1px;\n    background:linear-gradient(140deg, var(--accent) 0%, rgba(255,255,255,0.08) 40%, rgba(255,255,255,0.02) 100%);\n    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);\n    -webkit-mask-composite:xor; mask-composite:exclude;\n    pointer-events:none;\n  }\n  .glow{\n    position:absolute;\n    width:420px; height:420px;\n    border-radius:50%;\n    filter:blur(90px);\n    opacity:0;\n    pointer-events:none;\n  }\n  .glow.tl{ top:-160px; left:-140px; background:var(--accent); }\n  .glow.br{ bottom:-180px; right:-160px; background:var(--accent); }\n\n  .top{\n    display:flex; align-items:center; gap:14px;\n    margin-bottom:30px;\n    min-height:30px;\n  }\n  .markwrap{\n    display:flex; align-items:center; justify-content:center;\n    width:46px; height:46px; flex:none;\n    border-radius:12px;\n    background:rgba(255,255,255,0.04);\n    border:1px solid rgba(255,255,255,0.08);\n    position:relative;\n  }\n  .markwrap .qmark{\n    font-family:'Inter',serif;\n    font-weight:800;\n    font-size:40px;\n    line-height:1;\n    color:var(--accent);\n    transform:translateY(4px);\n    opacity:0;\n  }\n  .logo{ height:34px; width:auto; display:none; opacity:0; }\n  .kicker{\n    font-size:12px; letter-spacing:0.32em; font-weight:600;\n    text-transform:uppercase;\n    color:rgba(255,255,255,0.42);\n    opacity:0;\n  }\n\n  .quote{\n    font-size:46px;\n    line-height:1.32;\n    font-weight:600;\n    color:#f4f6fb;\n    letter-spacing:-0.01em;\n    margin:0;\n  }\n  .quote .word{\n    display:inline-block;\n    opacity:0;\n    transform:translateY(14px);\n    filter:blur(6px);\n    margin-right:0.26em;\n    white-space:pre;\n  }\n\n  .rule{\n    height:2px;\n    width:0px;\n    margin:42px 0 22px;\n    background:linear-gradient(90deg, var(--accent), rgba(255,255,255,0.0));\n    border-radius:2px;\n  }\n\n  .meta{ display:flex; flex-direction:column; gap:5px; }\n  .author{\n    font-size:22px; font-weight:700; color:#fff;\n    opacity:0; transform:translateY(10px);\n  }\n  .source{\n    font-size:15px; font-weight:500;\n    color:rgba(255,255,255,0.5);\n    letter-spacing:0.01em;\n    opacity:0; transform:translateY(10px);\n  }\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"panel\">\n    <div class=\"glow tl\"></div>\n    <div class=\"glow br\"></div>\n    <div class=\"top\">\n      <div class=\"markwrap\"><span class=\"qmark\">&ldquo;</span></div>\n      <img class=\"logo\" id=\"logo\" alt=\"\">\n      <div class=\"kicker\" id=\"kicker\">Sitat</div>\n    </div>\n    <p class=\"quote\" id=\"quote\"></p>\n    <div class=\"rule\" id=\"rule\"></div>\n    <div class=\"meta\">\n      <div class=\"author\" id=\"author\"></div>\n      <div class=\"source\" id=\"source\"></div>\n    </div>\n  </div>\n</div>\n\n<script>\n(function(){\n  var cfg = window.__CFG__ || {};\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n  document.documentElement.style.setProperty('--accent', accent);\n  document.documentElement.style.setProperty('--ink', ink);\n\n  var quoteText = (cfg.quote != null ? cfg.quote : '');\n  var authorText = (cfg.author != null ? cfg.author : '');\n  var sourceText = (cfg.source != null ? cfg.source : '');\n\n  var logoEl = document.getElementById('logo');\n  var kickerEl = document.getElementById('kicker');\n  if (cfg.logo) {\n    logoEl.src = cfg.logo;\n    logoEl.style.display = 'block';\n    kickerEl.style.display = 'none';\n  }\n\n  var qEl = document.getElementById('quote');\n  var words = String(quoteText).split(/(\\s+)/).filter(function(w){return w.length>0;});\n  var wordSpans = [];\n  words.forEach(function(w){\n    if (/^\\s+$/.test(w)) { qEl.appendChild(document.createTextNode(w)); return; }\n    var s = document.createElement('span');\n    s.className = 'word';\n    s.textContent = w;\n    qEl.appendChild(s);\n    wordSpans.push(s);\n  });\n\n  document.getElementById('author').textContent = authorText;\n  var srcEl = document.getElementById('source');\n  srcEl.textContent = sourceText;\n\n  function clamp(v){ return v<0?0:(v>1?1:v); }\n  function easeInOut(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }\n  function seg(p, a, b){ if(p<=a)return 0; if(p>=b)return 1; return (p-a)/(b-a); }\n\n  window.setProgress = function(p){\n    p = clamp(p);\n\n    var introR = easeInOut(seg(p, 0, 0.16));\n    document.querySelector('.glow.tl').style.opacity = (0.30*introR).toFixed(3);\n    document.querySelector('.glow.br').style.opacity = (0.22*introR).toFixed(3);\n\n    var qmark = document.querySelector('.qmark');\n    var qm = easeInOut(seg(p, 0.02, 0.16));\n    qmark.style.opacity = qm.toFixed(3);\n    qmark.style.transform = 'translateY(' + (4 - 4*qm).toFixed(2) + 'px)';\n\n    var kick = easeInOut(seg(p, 0.04, 0.18));\n    kickerEl.style.opacity = kick.toFixed(3);\n    if (cfg.logo) logoEl.style.opacity = kick.toFixed(3);\n\n    var wStart = 0.12, wEnd = 0.74;\n    var n = wordSpans.length;\n    if (n > 0) {\n      var span = (wEnd - wStart);\n      var per = span / n;\n      var win = per * 2.4;\n      for (var i=0;i<n;i++){\n        var s0 = wStart + i*per;\n        var local = easeInOut(seg(p, s0, Math.min(s0+win, 1)));\n        wordSpans[i].style.opacity = local.toFixed(3);\n        wordSpans[i].style.transform = 'translateY(' + (14 - 14*local).toFixed(2) + 'px)';\n        wordSpans[i].style.filter = 'blur(' + (6 - 6*local).toFixed(2) + 'px)';\n      }\n    }\n\n    var rule = easeInOut(seg(p, 0.72, 0.86));\n    document.getElementById('rule').style.width = (rule * 220).toFixed(1) + 'px';\n\n    var au = easeInOut(seg(p, 0.80, 0.92));\n    var aEl = document.getElementById('author');\n    aEl.style.opacity = au.toFixed(3);\n    aEl.style.transform = 'translateY(' + (10 - 10*au).toFixed(2) + 'px)';\n\n    var so = easeInOut(seg(p, 0.86, 1.0));\n    srcEl.style.opacity = so.toFixed(3);\n    srcEl.style.transform = 'translateY(' + (10 - 10*so).toFixed(2) + 'px)';\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "stat-trio-ring",
+"name": "Tre ring-målere",
+"desc": "Tre rene donut-/ringmålere på rad, hver med prosent tegnet via SVG-bue, count-up-tall i senter og egen etikett. Lys, moderne stil for transparent video-overlay. Verdiene animeres deterministisk og forskutt.",
+"style": "light",
+"glyph": "◔",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "title",
+"label": "Tittel",
+"type": "text",
+"placeholder": "Resultater Q2"
+},
+{
+"key": "value1",
+"label": "Verdi 1 (%)",
+"type": "number",
+"placeholder": "92"
+},
+{
+"key": "label1",
+"label": "Etikett 1",
+"type": "text",
+"placeholder": "Kundetilfredshet"
+},
+{
+"key": "value2",
+"label": "Verdi 2 (%)",
+"type": "number",
+"placeholder": "78"
+},
+{
+"key": "label2",
+"label": "Etikett 2",
+"type": "text",
+"placeholder": "Fullføringsgrad"
+},
+{
+"key": "value3",
+"label": "Verdi 3 (%)",
+"type": "number",
+"placeholder": "64"
+},
+{
+"key": "label3",
+"label": "Etikett 3",
+"type": "text",
+"placeholder": "Gjenkjøpsrate"
+}
+],
+"defaults": {
+"title": "Nøkkeltall",
+"value1": "92",
+"label1": "Kundetilfredshet",
+"value2": "78",
+"label2": "Fullføringsgrad",
+"value3": "64",
+"label3": "Gjenkjøp"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:48px 56px;\n    display:flex;\n    flex-direction:column;\n    gap:34px;\n    color:var(--ink);\n  }\n  #header{\n    display:flex;\n    align-items:center;\n    gap:16px;\n    min-height:1px;\n  }\n  #logo{height:40px;width:auto;display:none;object-fit:contain}\n  #title{\n    font-size:15px;\n    font-weight:700;\n    letter-spacing:.16em;\n    text-transform:uppercase;\n    color:var(--ink);\n    opacity:.55;\n    white-space:nowrap;\n  }\n  #accentbar{\n    width:38px;height:4px;border-radius:2px;\n    background:var(--accent);\n    flex:0 0 auto;\n  }\n  #rings{\n    display:flex;\n    gap:40px;\n    align-items:flex-start;\n  }\n  .card{\n    width:240px;\n    background:#ffffff;\n    border:1px solid rgba(20,30,55,.07);\n    border-radius:22px;\n    padding:30px 26px 26px;\n    display:flex;\n    flex-direction:column;\n    align-items:center;\n    gap:20px;\n    box-shadow:0 14px 40px -22px rgba(20,30,55,.35), 0 2px 6px -2px rgba(20,30,55,.08);\n  }\n  .ringbox{position:relative;width:158px;height:158px}\n  .ringbox svg{transform:rotate(-90deg);display:block}\n  .center{\n    position:absolute;inset:0;\n    display:flex;flex-direction:column;align-items:center;justify-content:center;\n    gap:2px;\n  }\n  .num{\n    font-size:42px;\n    font-weight:800;\n    letter-spacing:-.02em;\n    line-height:1;\n    color:var(--ink);\n    font-variant-numeric:tabular-nums;\n  }\n  .num .pct{font-size:22px;font-weight:700;opacity:.6;margin-left:1px}\n  .label{\n    font-size:14px;\n    font-weight:600;\n    letter-spacing:.01em;\n    text-align:center;\n    color:var(--ink);\n    opacity:.62;\n    line-height:1.35;\n    max-width:200px;\n  }\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div id=\"header\">\n    <div id=\"accentbar\"></div>\n    <img id=\"logo\" alt=\"\">\n    <div id=\"title\">Nøkkeltall</div>\n  </div>\n  <div id=\"rings\"></div>\n</div>\n\n<script>\n(function(){\n  var DEF = {\n    title:'Nøkkeltall',\n    value1:92, label1:'Kundetilfredshet',\n    value2:78, label2:'Fullføringsgrad',\n    value3:64, label3:'Gjenkjøp',\n    accent:'#3b82f6', ink:'#1f2d4a', logo:''\n  };\n  var cfg = Object.assign({}, DEF, window.__CFG__ || {});\n\n  document.documentElement.style.setProperty('--accent', cfg.accent);\n  document.documentElement.style.setProperty('--ink', cfg.ink);\n  if(cfg.title){ document.getElementById('title').textContent = cfg.title; }\n\n  var logoEl = document.getElementById('logo');\n  if(cfg.logo){ logoEl.src = cfg.logo; logoEl.style.display='block'; }\n\n  function hexToRgb(h){\n    h=(h||'').replace('#','');\n    if(h.length===3){h=h.split('').map(function(c){return c+c;}).join('');}\n    var n=parseInt(h||'000000',16);\n    return {r:(n>>16)&255,g:(n>>8)&255,b:n&255};\n  }\n  var ac = hexToRgb(cfg.accent);\n  var trackCol = 'rgba('+ac.r+','+ac.g+','+ac.b+',0.13)';\n\n  var R = 66;\n  var C = 2*Math.PI*R;\n  var SW = 14;\n\n  function clamp(v){ v=Number(v); if(isNaN(v))v=0; return Math.max(0,Math.min(100,v)); }\n\n  var rings = [\n    {target:clamp(cfg.value1), label:cfg.label1},\n    {target:clamp(cfg.value2), label:cfg.label2},\n    {target:clamp(cfg.value3), label:cfg.label3}\n  ];\n\n  var host = document.getElementById('rings');\n  var nodes = [];\n  rings.forEach(function(r){\n    var card=document.createElement('div'); card.className='card';\n    var box=document.createElement('div'); box.className='ringbox';\n    box.innerHTML =\n      '<svg width=\"158\" height=\"158\" viewBox=\"0 0 158 158\">'+\n        '<circle cx=\"79\" cy=\"79\" r=\"'+R+'\" fill=\"none\" stroke=\"'+trackCol+'\" stroke-width=\"'+SW+'\"/>'+\n        '<circle class=\"prog\" cx=\"79\" cy=\"79\" r=\"'+R+'\" fill=\"none\" stroke=\"'+cfg.accent+'\" '+\n          'stroke-width=\"'+SW+'\" stroke-linecap=\"round\" '+\n          'stroke-dasharray=\"'+C+'\" stroke-dashoffset=\"'+C+'\"/>'+\n      '</svg>';\n    var center=document.createElement('div'); center.className='center';\n    var num=document.createElement('div'); num.className='num';\n    num.innerHTML='<span class=\"val\">0</span><span class=\"pct\">%</span>';\n    center.appendChild(num);\n    box.appendChild(center);\n    var lab=document.createElement('div'); lab.className='label'; lab.textContent=r.label||'';\n    card.appendChild(box); card.appendChild(lab);\n    host.appendChild(card);\n    nodes.push({\n      prog: box.querySelector('.prog'),\n      val: num.querySelector('.val'),\n      target: r.target\n    });\n  });\n\n  function easeInOut(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }\n\n  window.setProgress = function(p){\n    p = Math.max(0, Math.min(1, Number(p)||0));\n    var n = nodes.length;\n    nodes.forEach(function(nd, i){\n      var start = i*0.12;\n      var span = 1 - (n-1)*0.12;\n      var local = (p - start)/span;\n      local = Math.max(0, Math.min(1, local));\n      var e = easeInOut(local);\n      var frac = (nd.target/100)*e;\n      nd.prog.setAttribute('stroke-dashoffset', C*(1-frac));\n      nd.val.textContent = Math.round(nd.target*e);\n    });\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "timeline-vertical",
+"name": "Tidslinje (vertikal)",
+"desc": "Ren, lys vertikal tidslinje med fire hendelser (node, dato, tittel og tekst) langs en linje som vokser nedover. Hver hendelse spretter inn med forskjøvet timing styrt deterministisk av setProgress — ideell som transparent overlay over video i DaVinci Resolve.",
+"style": "light",
+"glyph": "🕒",
+"durationSec": 7.0,
+"fields": [
+{
+"key": "kicker",
+"label": "Etikett (liten overskrift)",
+"type": "text",
+"placeholder": "Veikart 2024"
+},
+{
+"key": "heading",
+"label": "Hovedtittel",
+"type": "text",
+"placeholder": "Fra idé til skalering"
+},
+{
+"key": "date1",
+"label": "Hendelse 1 – dato",
+"type": "text",
+"placeholder": "Jan 2024"
+},
+{
+"key": "title1",
+"label": "Hendelse 1 – tittel",
+"type": "text",
+"placeholder": "Idé og research"
+},
+{
+"key": "desc1",
+"label": "Hendelse 1 – tekst",
+"type": "text",
+"placeholder": "Konseptet tar form gjennom intervjuer og tidlig validering."
+},
+{
+"key": "date2",
+"label": "Hendelse 2 – dato",
+"type": "text",
+"placeholder": "Apr 2024"
+},
+{
+"key": "title2",
+"label": "Hendelse 2 – tittel",
+"type": "text",
+"placeholder": "Første prototype"
+},
+{
+"key": "desc2",
+"label": "Hendelse 2 – tekst",
+"type": "text",
+"placeholder": "En kjørbar MVP bygges og testes internt."
+},
+{
+"key": "date3",
+"label": "Hendelse 3 – dato",
+"type": "text",
+"placeholder": "Aug 2024"
+},
+{
+"key": "title3",
+"label": "Hendelse 3 – tittel",
+"type": "text",
+"placeholder": "Lansering i markedet"
+},
+{
+"key": "desc3",
+"label": "Hendelse 3 – tekst",
+"type": "text",
+"placeholder": "Produktet rulles ut til de første betalende kundene."
+},
+{
+"key": "date4",
+"label": "Hendelse 4 – dato",
+"type": "text",
+"placeholder": "Des 2024"
+},
+{
+"key": "title4",
+"label": "Hendelse 4 – tittel",
+"type": "text",
+"placeholder": "Skalering"
+},
+{
+"key": "desc4",
+"label": "Hendelse 4 – tekst",
+"type": "text",
+"placeholder": "Teamet vokser og inntektene akselererer jevnt."
+}
+],
+"defaults": {
+"kicker": "Veikart 2024",
+"heading": "Fra idé til skalering",
+"date1": "Jan 2024",
+"title1": "Idé og research",
+"desc1": "Konseptet tar form gjennom dybdeintervjuer, skisser og tidlig validering med kjernekundene.",
+"date2": "Apr 2024",
+"title2": "Første prototype",
+"desc2": "En kjørbar MVP bygges og testes internt — de sentrale antakelsene bekreftes raskt.",
+"date3": "Aug 2024",
+"title3": "Lansering i markedet",
+"desc3": "Produktet rulles ut til de første betalende kundene med målbar adopsjon.",
+"date4": "Des 2024",
+"title4": "Skalering",
+"desc4": "Teamet vokser, infrastrukturen herdes og inntektene akselererer jevnt."
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:48px 56px;\n    -webkit-font-smoothing:antialiased;\n  }\n  .card{\n    position:relative;\n    background:#ffffff;\n    border:1px solid rgba(15,23,42,.07);\n    border-radius:24px;\n    padding:40px 44px 44px;\n    box-shadow:0 24px 60px -20px rgba(15,23,42,.18), 0 4px 14px rgba(15,23,42,.05);\n    width:560px;\n  }\n  .head{display:flex;align-items:center;gap:16px;margin-bottom:34px}\n  .head .logo{height:36px;width:auto;display:block;border-radius:8px}\n  .head .titles{display:flex;flex-direction:column;gap:4px}\n  .kicker{\n    font-size:11.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;\n    color:var(--accent);\n  }\n  .maintitle{font-size:23px;font-weight:800;letter-spacing:-.01em;color:var(--ink);line-height:1.1}\n\n  .timeline{position:relative;padding-left:38px}\n  .track{\n    position:absolute;left:11px;top:6px;width:3px;\n    border-radius:99px;\n    background:rgba(15,23,42,.08);\n    height:var(--trackH,0px);\n  }\n  .track-fill{\n    position:absolute;left:11px;top:6px;width:3px;border-radius:99px;\n    background:linear-gradient(180deg,var(--accent),color-mix(in srgb,var(--accent) 55%, #ffffff));\n    height:0px;\n  }\n  .event{position:relative;margin-bottom:30px}\n  .event:last-child{margin-bottom:0}\n  .node{\n    position:absolute;left:-38px;top:1px;\n    width:24px;height:24px;border-radius:50%;\n    background:#ffffff;\n    border:3px solid var(--accent);\n    display:flex;align-items:center;justify-content:center;\n    box-shadow:0 4px 12px -3px color-mix(in srgb,var(--accent) 55%, transparent);\n    transform:scale(.2);opacity:0;\n  }\n  .node .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}\n  .ev-inner{opacity:0;transform:translateY(8px)}\n  .ev-date{\n    display:inline-block;\n    font-size:11px;font-weight:700;letter-spacing:.06em;\n    color:var(--accent);\n    background:color-mix(in srgb,var(--accent) 12%, #ffffff);\n    padding:3px 10px;border-radius:99px;margin-bottom:8px;\n  }\n  .ev-title{font-size:16.5px;font-weight:700;color:var(--ink);line-height:1.25;margin:0 0 5px}\n  .ev-desc{font-size:13.5px;font-weight:400;color:rgba(31,45,74,.62);line-height:1.5;margin:0;max-width:430px}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"card\">\n    <div class=\"head\">\n      <img class=\"logo\" id=\"logo\" alt=\"\" style=\"display:none\">\n      <div class=\"titles\">\n        <div class=\"kicker\" id=\"kicker\">Tidslinje</div>\n        <div class=\"maintitle\" id=\"maintitle\">Prosjektets reise</div>\n      </div>\n    </div>\n    <div class=\"timeline\" id=\"timeline\">\n      <div class=\"track\" id=\"track\"></div>\n      <div class=\"track-fill\" id=\"trackFill\"></div>\n    </div>\n  </div>\n</div>\n\n<script>\n(function(){\n  var CFG = window.__CFG__ || {};\n  var accent = CFG.accent || '#3b82f6';\n  var ink = CFG.ink || '#1f2d4a';\n  document.documentElement.style.setProperty('--accent', accent);\n  document.documentElement.style.setProperty('--ink', ink);\n\n  if (CFG.logo) {\n    var lg = document.getElementById('logo');\n    lg.src = CFG.logo; lg.style.display = 'block';\n  }\n  if (CFG.heading) document.getElementById('maintitle').textContent = CFG.heading;\n  if (CFG.kicker) document.getElementById('kicker').textContent = CFG.kicker;\n\n  var fallbacks = [\n    {date:'2024 · Q1', title:'Idé og research', desc:'Konseptet tar form gjennom intervjuer, skisser og tidlig validering med kjernekundene.'},\n    {date:'2024 · Q2', title:'Første prototype', desc:'En kjørbar MVP bygges og testes internt — sentrale antakelser bekreftes raskt.'},\n    {date:'2024 · Q3', title:'Lansering i markedet', desc:'Produktet rulles ut til de første betalende kundene med målbar adopsjon.'},\n    {date:'2024 · Q4', title:'Skalering', desc:'Teamet vokser, infrastrukturen herdes og inntektene akselererer jevnt.'}\n  ];\n  var events = [];\n  for (var i=1;i<=4;i++){\n    events.push({\n      date: CFG['date'+i] || fallbacks[i-1].date,\n      title: CFG['title'+i] || fallbacks[i-1].title,\n      desc: CFG['desc'+i] || fallbacks[i-1].desc\n    });\n  }\n\n  var tl = document.getElementById('timeline');\n  var nodes = [];\n  events.forEach(function(e){\n    var ev = document.createElement('div');\n    ev.className = 'event';\n    var node = document.createElement('div');\n    node.className = 'node';\n    node.innerHTML = '<span class=\"dot\"></span>';\n    var inner = document.createElement('div');\n    inner.className = 'ev-inner';\n    inner.innerHTML =\n      '<span class=\"ev-date\"></span>' +\n      '<h3 class=\"ev-title\"></h3>' +\n      '<p class=\"ev-desc\"></p>';\n    inner.querySelector('.ev-date').textContent = e.date;\n    inner.querySelector('.ev-title').textContent = e.title;\n    inner.querySelector('.ev-desc').textContent = e.desc;\n    ev.appendChild(node);\n    ev.appendChild(inner);\n    tl.appendChild(ev);\n    nodes.push({el:ev, node:node, inner:inner});\n  });\n\n  var trackEl = document.getElementById('track');\n  var trackFill = document.getElementById('trackFill');\n\n  function easeInOut(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }\n  function clamp01(v){ return v<0?0:v>1?1:v; }\n\n  function measure(){\n    var first = nodes[0].node;\n    var last = nodes[nodes.length-1].node;\n    var tlRect = tl.getBoundingClientRect();\n    var fRect = first.getBoundingClientRect();\n    var lRect = last.getBoundingClientRect();\n    var top = (fRect.top - tlRect.top) + fRect.height/2 - 3;\n    var bottom = (lRect.top - tlRect.top) + lRect.height/2;\n    var h = bottom - top;\n    trackEl.style.top = top+'px';\n    trackFill.style.top = top+'px';\n    trackEl.style.height = h+'px';\n    return {top:top, h:h};\n  }\n\n  var geom = measure();\n\n  window.setProgress = function(p){\n    p = clamp01(p);\n    var e = easeInOut(p);\n    geom = measure();\n\n    trackFill.style.height = (geom.h * clamp01(e/0.85)) + 'px';\n\n    var n = nodes.length;\n    nodes.forEach(function(item, idx){\n      var start = 0.06 + (idx/n) * 0.7;\n      var dur = 0.34;\n      var local = clamp01((e - start)/dur);\n      var le = easeInOut(local);\n      item.node.style.opacity = le;\n      item.node.style.transform = 'scale(' + (0.2 + 0.8*le) + ')';\n      item.inner.style.opacity = le;\n      item.inner.style.transform = 'translateY(' + (8*(1-le)) + 'px)';\n    });\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "team-grid",
+"name": "Team / personer",
+"desc": "Lyst, rent rutenett som presenterer 3–4 teammedlemmer med fargede initial-avatarer, navn og rolle. Medlemmene tones inn etter hverandre (staggered) mens en glødende ring tegnes rundt hver avatar. All animasjon styres deterministisk av setProgress for jevn, repeterbar avspilling som overlay i DaVinci Resolve.",
+"style": "light",
+"glyph": "👥",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "heading",
+"label": "Overskrift",
+"type": "text",
+"placeholder": "Vårt team"
+},
+{
+"key": "name1",
+"label": "Navn 1",
+"type": "text",
+"placeholder": "Astrid Berg"
+},
+{
+"key": "role1",
+"label": "Rolle 1",
+"type": "text",
+"placeholder": "Daglig leder"
+},
+{
+"key": "name2",
+"label": "Navn 2",
+"type": "text",
+"placeholder": "Jonas Lie"
+},
+{
+"key": "role2",
+"label": "Rolle 2",
+"type": "text",
+"placeholder": "Kreativ leder"
+},
+{
+"key": "name3",
+"label": "Navn 3",
+"type": "text",
+"placeholder": "Mira Solberg"
+},
+{
+"key": "role3",
+"label": "Rolle 3",
+"type": "text",
+"placeholder": "Produsent"
+},
+{
+"key": "name4",
+"label": "Navn 4",
+"type": "text",
+"placeholder": "Henrik Dahl"
+},
+{
+"key": "role4",
+"label": "Rolle 4",
+"type": "text",
+"placeholder": "Teknisk sjef"
+}
+],
+"defaults": {
+"heading": "Vårt team",
+"name1": "Astrid Berg",
+"role1": "Daglig leder",
+"name2": "Jonas Lie",
+"role2": "Kreativ leder",
+"name3": "Mira Solberg",
+"role3": "Produsent",
+"name4": "Henrik Dahl",
+"role4": "Teknisk sjef"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:40px;\n  }\n  .card{\n    background:#ffffff;\n    border-radius:26px;\n    padding:38px 44px 42px;\n    box-shadow:0 30px 70px -28px rgba(20,30,55,.35), 0 4px 16px rgba(20,30,55,.06);\n    border:1px solid rgba(20,30,55,.05);\n  }\n  .head{\n    display:flex;\n    align-items:center;\n    gap:16px;\n    margin-bottom:34px;\n  }\n  .head .bar{\n    width:5px;\n    height:38px;\n    border-radius:99px;\n    background:var(--accent);\n  }\n  .head h1{\n    margin:0;\n    font-size:30px;\n    font-weight:800;\n    letter-spacing:-.02em;\n    color:var(--ink);\n    line-height:1.05;\n  }\n  .head .logo{\n    margin-left:auto;\n    height:34px;\n    width:auto;\n    display:block;\n    object-fit:contain;\n  }\n  .grid{\n    display:grid;\n    grid-template-columns:repeat(var(--cols),1fr);\n    gap:26px;\n  }\n  .person{\n    display:flex;\n    flex-direction:column;\n    align-items:center;\n    text-align:center;\n    width:188px;\n    padding:24px 18px 26px;\n    border-radius:20px;\n    background:#fafbfd;\n    border:1px solid rgba(20,30,55,.06);\n    will-change:transform,opacity;\n  }\n  .avatar{\n    width:74px;\n    height:74px;\n    border-radius:50%;\n    display:flex;\n    align-items:center;\n    justify-content:center;\n    font-size:27px;\n    font-weight:700;\n    color:#fff;\n    margin-bottom:16px;\n    letter-spacing:.5px;\n    box-shadow:0 8px 22px -8px var(--accent);\n    position:relative;\n  }\n  .avatar .ring{\n    position:absolute;\n    inset:-7px;\n  }\n  .avatar .ring circle{\n    fill:none;\n    stroke:var(--accent);\n    stroke-width:2.5;\n    stroke-linecap:round;\n    opacity:.5;\n    transform:rotate(-90deg);\n    transform-origin:center;\n  }\n  .name{\n    font-size:17px;\n    font-weight:700;\n    color:var(--ink);\n    letter-spacing:-.01em;\n    line-height:1.2;\n    margin-bottom:5px;\n  }\n  .role{\n    font-size:13px;\n    font-weight:500;\n    color:#7a86a0;\n    line-height:1.3;\n  }\n  .role .dot{\n    display:inline-block;\n    width:6px;height:6px;border-radius:50%;\n    background:var(--accent);\n    margin-right:7px;\n    vertical-align:middle;\n  }\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"card\">\n    <div class=\"head\">\n      <div class=\"bar\"></div>\n      <h1 id=\"heading\"></h1>\n      <img class=\"logo\" id=\"logo\" alt=\"\" style=\"display:none\">\n    </div>\n    <div class=\"grid\" id=\"grid\"></div>\n  </div>\n</div>\n<script>\n  var CFG = window.__CFG__ || {\n    heading:'Vårt team',\n    name1:'Astrid Berg', role1:'Daglig leder',\n    name2:'Jonas Lie',   role2:'Kreativ leder',\n    name3:'Mira Solberg', role3:'Produsent',\n    name4:'Henrik Dahl', role4:'Teknisk sjef',\n    accent:'#3b82f6', ink:'#1f2d4a', logo:''\n  };\n  var accent = CFG.accent || '#3b82f6';\n  var ink = CFG.ink || '#1f2d4a';\n  document.documentElement.style.setProperty('--accent', accent);\n  document.documentElement.style.setProperty('--ink', ink);\n\n  document.getElementById('heading').textContent = CFG.heading || '';\n\n  if (CFG.logo) {\n    var lg = document.getElementById('logo');\n    lg.src = CFG.logo;\n    lg.style.display = 'block';\n  }\n\n  function hexToRgb(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(function(c){return c+c}).join('');return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}\n  function mix(a,b,t){return Math.round(a+(b-a)*t);}\n  var ar=hexToRgb(accent);\n  function shade(t){\n    var r=mix(ar[0],255,t),g=mix(ar[1],255,t),b=mix(ar[2],255,t);\n    return 'rgb('+r+','+g+','+b+')';\n  }\n  function initials(n){\n    if(!n) return '';\n    var p=n.trim().split(/\\s+/);\n    if(p.length===1) return p[0].slice(0,2).toUpperCase();\n    return (p[0][0]+p[p.length-1][0]).toUpperCase();\n  }\n\n  var people=[];\n  for(var i=1;i<=4;i++){\n    var nm=CFG['name'+i], rl=CFG['role'+i];\n    if(nm && nm.trim()) people.push({name:nm, role:rl||''});\n  }\n  var cols = people.length>=4?4:(people.length===3?3:people.length||1);\n  document.documentElement.style.setProperty('--cols', cols);\n\n  var grid=document.getElementById('grid');\n  var nodes=[];\n  var RING_C = 2*Math.PI*40;\n  people.forEach(function(p,idx){\n    var el=document.createElement('div');\n    el.className='person';\n    var tint=people.length>1?(idx/(people.length-1))*0.14:0;\n    el.innerHTML=\n      '<div class=\"avatar\" style=\"background:'+shade(tint)+'\">'+\n        '<svg class=\"ring\" viewBox=\"0 0 88 88\"><circle cx=\"44\" cy=\"44\" r=\"40\"></circle></svg>'+\n        '<span>'+initials(p.name)+'</span>'+\n      '</div>'+\n      '<div class=\"name\">'+p.name+'</div>'+\n      '<div class=\"role\"><span class=\"dot\"></span>'+p.role+'</div>';\n    grid.appendChild(el);\n    nodes.push({el:el, ring:el.querySelector('.ring circle')});\n  });\n\n  function easeInOut(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}\n\n  window.setProgress=function(p){\n    p=Math.max(0,Math.min(1,p));\n    var n=nodes.length;\n    nodes.forEach(function(node,idx){\n      var span=0.55;\n      var start=n>1?(idx/(n-1))*(1-span):0;\n      var local=easeInOut(Math.max(0,Math.min(1,(p-start)/span)));\n      node.el.style.opacity=local;\n      node.el.style.transform='translateY('+((1-local)*22).toFixed(2)+'px) scale('+(0.94+0.06*local).toFixed(3)+')';\n      node.ring.style.strokeDasharray=RING_C;\n      node.ring.style.strokeDashoffset=(RING_C*(1-local)).toFixed(2);\n    });\n  };\n\n  window.setProgress(0);\n</script>\n</body>\n</html>"
+},
+{
+"id": "icon-list",
+"name": "Funksjons-liste (ikoner)",
+"desc": "Vertikal liste med inntil fire punkter, hvert med et Material-ikon i en farget firkant, tittel og kort beskrivelse. Punktene tones inn staggered med voksende ikon-fyll. Lyst, rent panel for overlay over video.",
+"style": "light",
+"glyph": "☰",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "heading",
+"label": "Overskrift",
+"type": "text",
+"placeholder": "Hvorfor velge oss"
+},
+{
+"key": "icon1",
+"label": "Ikon 1 (Material-navn)",
+"type": "text",
+"placeholder": "bolt"
+},
+{
+"key": "title1",
+"label": "Tittel 1",
+"type": "text",
+"placeholder": "Lynrask levering"
+},
+{
+"key": "desc1",
+"label": "Tekst 1",
+"type": "text",
+"placeholder": "Ferdig redigert materiale innen 48 timer."
+},
+{
+"key": "icon2",
+"label": "Ikon 2 (Material-navn)",
+"type": "text",
+"placeholder": "verified"
+},
+{
+"key": "title2",
+"label": "Tittel 2",
+"type": "text",
+"placeholder": "Sertifisert kvalitet"
+},
+{
+"key": "desc2",
+"label": "Tekst 2",
+"type": "text",
+"placeholder": "Fargegradert og lydmikset av profesjonelle."
+},
+{
+"key": "icon3",
+"label": "Ikon 3 (Material-navn)",
+"type": "text",
+"placeholder": "hub"
+},
+{
+"key": "title3",
+"label": "Tittel 3",
+"type": "text",
+"placeholder": "Sømløs samhandling"
+},
+{
+"key": "desc3",
+"label": "Tekst 3",
+"type": "text",
+"placeholder": "Del og kommenter direkte i nettleseren."
+},
+{
+"key": "icon4",
+"label": "Ikon 4 (Material-navn)",
+"type": "text",
+"placeholder": "lock"
+},
+{
+"key": "title4",
+"label": "Tittel 4",
+"type": "text",
+"placeholder": "Trygg lagring"
+},
+{
+"key": "desc4",
+"label": "Tekst 4",
+"type": "text",
+"placeholder": "Kryptert skylagring med full tilgangskontroll."
+}
+],
+"defaults": {
+"heading": "Hvorfor velge oss",
+"icon1": "bolt",
+"title1": "Lynrask levering",
+"desc1": "Ferdig redigert materiale innen 48 timer etter opptak.",
+"icon2": "verified",
+"title2": "Sertifisert kvalitet",
+"desc2": "Fargegradert og lydmikset av profesjonelle.",
+"icon3": "hub",
+"title3": "Sømløs samhandling",
+"desc3": "Del og kommenter direkte i nettleseren.",
+"icon4": "lock",
+"title4": "Trygg lagring",
+"desc4": "Kryptert skylagring med full tilgangskontroll."
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    padding:44px 52px;\n    font-family:'Inter',system-ui,sans-serif;\n    -webkit-font-smoothing:antialiased;\n  }\n  .panel{\n    background:#ffffff;\n    border-radius:22px;\n    padding:40px 44px;\n    box-shadow:0 24px 60px -18px rgba(20,30,55,.28), 0 2px 8px rgba(20,30,55,.06);\n    border:1px solid rgba(20,30,55,.06);\n    min-width:520px;\n  }\n  .topbar{\n    display:flex;\n    align-items:center;\n    gap:16px;\n    margin-bottom:34px;\n  }\n  .logo{height:34px;width:auto;display:none;border-radius:6px}\n  .accentbar{\n    width:38px;height:6px;border-radius:6px;flex:none;\n  }\n  .heading{\n    font-size:30px;\n    font-weight:800;\n    letter-spacing:-.02em;\n    margin:0;\n    line-height:1.1;\n  }\n  .list{display:flex;flex-direction:column;gap:22px}\n  .row{\n    display:flex;\n    align-items:flex-start;\n    gap:20px;\n    opacity:0;\n    transform:translateY(14px);\n  }\n  .iconbox{\n    width:54px;height:54px;flex:none;\n    border-radius:14px;\n    display:flex;align-items:center;justify-content:center;\n    position:relative;\n    overflow:hidden;\n  }\n  .iconbox .fill{\n    position:absolute;inset:0;\n    transform:scale(.4);\n    opacity:0;\n    border-radius:14px;\n  }\n  .iconbox .material-icons-outlined{\n    position:relative;\n    font-size:28px;\n    color:#fff;\n    z-index:1;\n  }\n  .txt{padding-top:3px}\n  .title{\n    font-size:18px;\n    font-weight:700;\n    letter-spacing:-.01em;\n    margin:0 0 4px;\n    line-height:1.2;\n  }\n  .desc{\n    font-size:14.5px;\n    font-weight:400;\n    line-height:1.45;\n    margin:0;\n    max-width:340px;\n  }\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"panel\">\n    <div class=\"topbar\">\n      <div class=\"accentbar\" id=\"accentbar\"></div>\n      <img class=\"logo\" id=\"logo\" alt=\"\">\n      <h1 class=\"heading\" id=\"heading\"></h1>\n    </div>\n    <div class=\"list\" id=\"list\"></div>\n  </div>\n</div>\n<script>\n  var cfg = window.__CFG__ || {};\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n\n  function hexToRgb(h){\n    h = (h||'').replace('#','');\n    if(h.length===3){h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];}\n    var n=parseInt(h,16);\n    return {r:(n>>16)&255,g:(n>>8)&255,b:n&255};\n  }\n  var a = hexToRgb(accent);\n  var i = hexToRgb(ink);\n  function rgba(c,al){return 'rgba('+c.r+','+c.g+','+c.b+','+al+')';}\n\n  document.getElementById('heading').textContent = cfg.heading || 'Funksjoner';\n  document.getElementById('heading').style.color = ink;\n  document.getElementById('accentbar').style.background = accent;\n\n  var logoEl = document.getElementById('logo');\n  if(cfg.logo){ logoEl.src = cfg.logo; logoEl.style.display='block'; }\n\n  var items = [];\n  for(var k=1;k<=4;k++){\n    var ic = cfg['icon'+k], ti = cfg['title'+k], de = cfg['desc'+k];\n    if(ic||ti||de){\n      items.push({icon: ic||'star_outline', title: ti||'', desc: de||''});\n    }\n  }\n  if(items.length===0){\n    items = [\n      {icon:'bolt',title:'Punkt',desc:'Beskrivelse'}\n    ];\n  }\n\n  var listEl = document.getElementById('list');\n  var rows = [];\n  items.forEach(function(it){\n    var row = document.createElement('div');\n    row.className='row';\n    var box = document.createElement('div');\n    box.className='iconbox';\n    box.style.background = rgba(a,.12);\n    var fill = document.createElement('div');\n    fill.className='fill';\n    fill.style.background = 'linear-gradient(135deg,'+accent+','+rgba(a,.78)+')';\n    var icon = document.createElement('span');\n    icon.className='material-icons-outlined';\n    icon.textContent = it.icon;\n    box.appendChild(fill);\n    box.appendChild(icon);\n    var txt = document.createElement('div');\n    txt.className='txt';\n    var t = document.createElement('p');\n    t.className='title'; t.textContent = it.title; t.style.color = ink;\n    var d = document.createElement('p');\n    d.className='desc'; d.textContent = it.desc; d.style.color = rgba(i,.62);\n    txt.appendChild(t); txt.appendChild(d);\n    row.appendChild(box); row.appendChild(txt);\n    listEl.appendChild(row);\n    rows.push({row:row, fill:fill});\n  });\n\n  function easeInOut(t){ return t<.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }\n  function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }\n\n  window.setProgress = function(p){\n    p = clamp(p,0,1);\n    var n = rows.length;\n    rows.forEach(function(r, idx){\n      var start = (idx/n)*0.55;\n      var end = start + 0.45;\n      var local = clamp((p-start)/(end-start),0,1);\n      var e = easeInOut(local);\n      r.row.style.opacity = e;\n      r.row.style.transform = 'translateY('+((1-e)*14)+'px)';\n      var fStart = start + 0.12;\n      var fLocal = clamp((p-fStart)/(end-fStart),0,1);\n      var fe = easeInOut(fLocal);\n      r.fill.style.opacity = fe;\n      r.fill.style.transform = 'scale('+(0.4+0.6*fe)+')';\n    });\n  };\n  window.setProgress(0);\n</script>\n</body>\n</html>"
+},
+{
+"id": "big-percent",
+"name": "Stort prosent-hero",
+"desc": "Ett gigantisk prosent-tall som teller opp, med en glødende ring rundt som fylles proporsjonalt. Under tallet vises en kontekst-etikett, en valgfri delta-pill (opp/ned med fargekoding) og en forklarende setning. Lys, ren og moderne stil — perfekt som transparent overlay over video.",
+"style": "light",
+"glyph": "%",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "value",
+"label": "Prosentverdi",
+"type": "number",
+"placeholder": "94"
+},
+{
+"key": "label",
+"label": "Etikett under tallet",
+"type": "text",
+"placeholder": "Kundetilfredshet"
+},
+{
+"key": "context",
+"label": "Kontekst-setning",
+"type": "text",
+"placeholder": "Basert på 1 280 verifiserte tilbakemeldinger siste kvartal"
+},
+{
+"key": "delta",
+"label": "Endring (valgfri, f.eks. +6 pp)",
+"type": "text",
+"placeholder": "+6 pp"
+}
+],
+"defaults": {
+"value": "94",
+"label": "Kundetilfredshet",
+"context": "Basert på 1 280 verifiserte tilbakemeldinger siste kvartal",
+"delta": "+6 pp"
+},
+"html": "<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif}\n  html,body{margin:0;background:transparent}\n  #wrap{display:flex;flex-direction:column;align-items:center;gap:0;padding:72px 88px;width:max-content}\n  .logo{height:40px;margin-bottom:30px;opacity:0;display:none}\n  .ringwrap{position:relative;width:440px;height:440px;display:grid;place-items:center}\n  svg.ring{position:absolute;inset:0;width:440px;height:440px;transform:rotate(-90deg)}\n  .track{fill:none;stroke:rgba(20,40,80,.07);stroke-width:18}\n  .prog{fill:none;stroke-width:18;stroke-linecap:round;\n        filter:drop-shadow(0 6px 18px rgba(31,130,240,.28))}\n  .center{display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}\n  .pct{font-size:150px;font-weight:800;line-height:.92;letter-spacing:-5px;\n       color:#1f2d4a;display:flex;align-items:baseline}\n  .pct .sym{font-size:74px;font-weight:700;margin-left:6px;letter-spacing:-2px}\n  .label{margin-top:8px;font-size:25px;font-weight:600;color:#5b6b7d;\n         text-align:center;opacity:0;transform:translateY(10px)}\n  .delta{display:inline-flex;align-items:center;gap:7px;margin-top:18px;\n         font-weight:700;font-size:20px;padding:9px 18px;border-radius:30px;\n         background:#e6f6ef;color:#0c8f6f;opacity:0;transform:translateY(8px)}\n  .delta .material-icons-outlined{font-size:21px}\n  .context{margin-top:34px;max-width:520px;text-align:center;font-size:22px;\n           font-weight:500;line-height:1.5;color:#46566c;opacity:0;transform:translateY(12px)}\n</style></head>\n<body><div id=\"wrap\">\n  <img class=\"logo\" id=\"logo\" alt=\"\">\n  <div class=\"ringwrap\">\n    <svg class=\"ring\" viewBox=\"0 0 440 440\">\n      <circle class=\"track\" cx=\"220\" cy=\"220\" r=\"196\"></circle>\n      <circle class=\"prog\" id=\"arc\" cx=\"220\" cy=\"220\" r=\"196\"></circle>\n    </svg>\n    <div class=\"center\">\n      <div class=\"pct\"><span id=\"num\">0</span><span class=\"sym\">%</span></div>\n      <div class=\"label\" id=\"label\">Kundetilfredshet</div>\n      <div class=\"delta\" id=\"delta\"><span class=\"material-icons-outlined\">north</span><span id=\"deltaTxt\"></span></div>\n    </div>\n  </div>\n  <div class=\"context\" id=\"context\"></div>\n</div>\n<script>\nvar CFG=window.__CFG__||{};\nvar accent=CFG.accent||'#3b82f6', ink=CFG.ink||'#1f2d4a';\nfunction shade(hex,amt){var n=parseInt(hex.replace('#',''),16);\n  var r=Math.max(0,Math.min(255,(n>>16)+amt)),g=Math.max(0,Math.min(255,((n>>8)&255)+amt)),b=Math.max(0,Math.min(255,(n&255)+amt));\n  return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);}\ndocument.documentElement.style.setProperty('--accent',accent);\ndocument.querySelector('.pct').style.color=ink;\nvar arc=document.getElementById('arc');\narc.setAttribute('stroke',accent);\nvar ns='http://www.w3.org/2000/svg';\nvar svg=document.querySelector('svg.ring');\nvar defs=document.createElementNS(ns,'defs');\nvar grad=document.createElementNS(ns,'linearGradient');\ngrad.setAttribute('id','agrad');grad.setAttribute('x1','0');grad.setAttribute('y1','0');grad.setAttribute('x2','1');grad.setAttribute('y2','1');\nvar s1=document.createElementNS(ns,'stop');s1.setAttribute('offset','0');s1.setAttribute('stop-color',shade(accent,30));\nvar s2=document.createElementNS(ns,'stop');s2.setAttribute('offset','1');s2.setAttribute('stop-color',shade(accent,-15));\ngrad.appendChild(s1);grad.appendChild(s2);defs.appendChild(grad);svg.insertBefore(defs,svg.firstChild);\narc.setAttribute('stroke','url(#agrad)');\n\nvar value=parseFloat(CFG.value);if(isNaN(value))value=92;\nvar label=CFG.label||'Kundetilfredshet';\nvar context=CFG.context||'';\nvar delta=(CFG.delta||'').trim();\ndocument.getElementById('label').textContent=label;\ndocument.getElementById('context').textContent=context;\nif(!context){document.getElementById('context').style.display='none';}\nif(delta){var neg=/^-|↓|ned/i.test(delta)&&!/\\+/.test(delta);\n  document.getElementById('deltaTxt').textContent=delta;\n  if(neg){var d=document.getElementById('delta');d.style.background='#fdecec';d.style.color='#d03b3b';\n    d.querySelector('.material-icons-outlined').textContent='south';}\n}else{document.getElementById('delta').style.display='none';}\nvar logo=document.getElementById('logo');\nif(CFG.logo){logo.src=CFG.logo;logo.style.display='block';}\n\nvar C=2*Math.PI*196;\narc.style.strokeDasharray=C;\narc.style.strokeDashoffset=C;\n\nfunction ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}\nfunction clamp(t){return Math.max(0,Math.min(1,t))}\n\nwindow.setProgress=function(p){\n  var t=ease(clamp((p-0.05)/0.7));\n  var cur=value*t;\n  var disp=(value%1!==0)?cur.toFixed(1):Math.round(cur).toString();\n  document.getElementById('num').textContent=disp;\n  var frac=Math.max(0,Math.min(1,value/100))*t;\n  arc.style.strokeDashoffset=C*(1-frac);\n  var le=ease(clamp((p-0.3)/0.4)),lbl=document.getElementById('label');\n  lbl.style.opacity=le;lbl.style.transform='translateY('+(10*(1-le))+'px)';\n  var de=ease(clamp((p-0.45)/0.4)),del=document.getElementById('delta');\n  del.style.opacity=de;del.style.transform='translateY('+(8*(1-de))+'px)';\n  var ce=ease(clamp((p-0.55)/0.4)),ctx=document.getElementById('context');\n  ctx.style.opacity=ce;ctx.style.transform='translateY('+(12*(1-ce))+'px)';\n  if(CFG.logo){var ge=ease(clamp(p/0.3));logo.style.opacity=ge;}\n};\nwindow.setProgress(0);\n</script>\n</body></html>"
+},
+{
+"id": "logo-wall",
+"name": "Logo-vegg / Kundebevis",
+"desc": "«Brukt av»-tittel over et 3x2-rutenett av kundebokser med ikon og navn som fader inn forskjøvet, venstre-til-høyre. Lys og ren stil for sosial bevisførsel over video.",
+"style": "light",
+"glyph": "★",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "heading",
+"label": "Tittel",
+"type": "text",
+"placeholder": "Stolt brukt av ledende studioer"
+},
+{
+"key": "name1",
+"label": "Kunde 1",
+"type": "text",
+"placeholder": "Northlight Studios"
+},
+{
+"key": "name2",
+"label": "Kunde 2",
+"type": "text",
+"placeholder": "Aurora Films"
+},
+{
+"key": "name3",
+"label": "Kunde 3",
+"type": "text",
+"placeholder": "Meridian Media"
+},
+{
+"key": "name4",
+"label": "Kunde 4",
+"type": "text",
+"placeholder": "Polaris Post"
+},
+{
+"key": "name5",
+"label": "Kunde 5",
+"type": "text",
+"placeholder": "Vanta Creative"
+},
+{
+"key": "name6",
+"label": "Kunde 6",
+"type": "text",
+"placeholder": "Helix Pictures"
+}
+],
+"defaults": {
+"heading": "Stolt brukt av ledende studioer",
+"name1": "Northlight Studios",
+"name2": "Aurora Films",
+"name3": "Meridian Media",
+"name4": "Polaris Post",
+"name5": "Vanta Creative",
+"name6": "Helix Pictures"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:48px 56px;\n    box-sizing:border-box;\n    -webkit-font-smoothing:antialiased;\n  }\n  .hdr{display:flex;align-items:center;gap:16px;margin-bottom:34px}\n  .hdr .logo{height:40px;display:none}\n  .hdr .logo.on{display:block}\n  .eyebrow{\n    font-size:14px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;\n    color:var(--accent);\n    display:flex;align-items:center;gap:10px;\n  }\n  .eyebrow .bar{\n    width:34px;height:3px;border-radius:3px;background:var(--accent);\n    transform-origin:left center;\n  }\n  .heading{\n    font-size:30px;font-weight:800;letter-spacing:-.01em;\n    color:var(--ink);margin-top:8px;line-height:1.1;\n  }\n  .grid{\n    display:grid;\n    grid-template-columns:repeat(3,1fr);\n    gap:18px;\n  }\n  .cell{\n    width:208px;height:104px;\n    background:#ffffff;\n    border:1px solid #e7ebf1;\n    border-radius:16px;\n    display:flex;flex-direction:column;align-items:center;justify-content:center;\n    gap:8px;\n    box-shadow:0 8px 22px -14px rgba(31,45,74,.28);\n    opacity:0;\n    transform:translateY(14px) scale(.97);\n  }\n  .cell .mi{\n    font-family:'Material Icons Outlined';font-size:30px;\n    color:var(--accent);line-height:1;\n    font-feature-settings:'liga';\n  }\n  .cell .nm{\n    font-size:17px;font-weight:700;color:var(--ink);\n    letter-spacing:-.01em;text-align:center;max-width:170px;\n    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\n  }\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"hdr\">\n    <img class=\"logo\" id=\"brandLogo\" alt=\"\">\n    <div>\n      <div class=\"eyebrow\"><span class=\"bar\" id=\"ebBar\"></span><span id=\"ebText\">Brukt av</span></div>\n      <div class=\"heading\" id=\"heading\">Ledende team stoler på oss</div>\n    </div>\n  </div>\n  <div class=\"grid\" id=\"grid\"></div>\n</div>\n\n<script>\n(function(){\n  var ICONS = ['business','apartment','rocket_launch','auto_awesome','public','workspace_premium'];\n  var cfg = window.__CFG__ || {};\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n  document.documentElement.style.setProperty('--accent', accent);\n  document.documentElement.style.setProperty('--ink', ink);\n\n  if(cfg.logo){\n    var l = document.getElementById('brandLogo');\n    l.src = cfg.logo; l.classList.add('on');\n  }\n  if(cfg.heading != null) document.getElementById('heading').textContent = cfg.heading;\n\n  var grid = document.getElementById('grid');\n  var cells = [];\n  for(var i=0;i<6;i++){\n    var key = 'name'+(i+1);\n    var name = cfg[key];\n    var cell = document.createElement('div');\n    cell.className='cell';\n    var ic = document.createElement('span'); ic.className='mi'; ic.textContent=ICONS[i%ICONS.length];\n    cell.appendChild(ic);\n    if(name && String(name).trim()){\n      var nm = document.createElement('span'); nm.className='nm'; nm.textContent=name;\n      cell.appendChild(nm);\n    }\n    grid.appendChild(cell);\n    cells.push(cell);\n  }\n\n  function easeInOut(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }\n  function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }\n\n  window.setProgress = function(p){\n    p = clamp(p,0,1);\n    var e = easeInOut(p);\n\n    var hp = clamp(e/0.22,0,1);\n    document.getElementById('ebBar').style.transform = 'scaleX('+hp+')';\n    var hdr = document.querySelector('.hdr');\n    hdr.style.opacity = hp;\n    hdr.style.transform = 'translateY('+((1-hp)*8)+'px)';\n\n    var n = cells.length;\n    var startBase = 0.18;\n    var span = 1 - startBase;\n    var per = span / n;\n    var overlap = 1.7;\n    for(var i=0;i<n;i++){\n      var s = startBase + i*per;\n      var local = clamp((e - s)/(per*overlap), 0, 1);\n      var le = easeInOut(local);\n      var c = cells[i];\n      c.style.opacity = le;\n      c.style.transform = 'translateY('+((1-le)*14)+'px) scale('+(0.97+0.03*le)+')';\n    }\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "radar-chart",
+"name": "Radar / ferdighets-diagram",
+"desc": "Et rent radar-/spider-diagram med 3–6 akser som tegnes ut fra senter via setProgress. Verdi-polygonet i accent-fargen vokser med count-up per akse, akse-etiketter og verdier vises rundt, og snittscoren teller opp i midten. Lys stil — perfekt som transparent overlay over video i DaVinci Resolve for ferdighets-, kompetanse- eller vurderingsprofiler.",
+"style": "light",
+"glyph": "◈",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "title",
+"label": "Tittel",
+"type": "text",
+"placeholder": "Ferdighetsprofil"
+},
+{
+"key": "subtitle",
+"label": "Undertittel",
+"type": "text",
+"placeholder": "Kompetansevurdering"
+},
+{
+"key": "seriesLabel",
+"label": "Serie-etikett (legend)",
+"type": "text",
+"placeholder": "Score"
+},
+{
+"key": "axis1",
+"label": "Akse 1 – navn",
+"type": "text",
+"placeholder": "Kreativitet"
+},
+{
+"key": "value1",
+"label": "Akse 1 – verdi (0–100)",
+"type": "number",
+"placeholder": "88"
+},
+{
+"key": "axis2",
+"label": "Akse 2 – navn",
+"type": "text",
+"placeholder": "Teknikk"
+},
+{
+"key": "value2",
+"label": "Akse 2 – verdi (0–100)",
+"type": "number",
+"placeholder": "72"
+},
+{
+"key": "axis3",
+"label": "Akse 3 – navn",
+"type": "text",
+"placeholder": "Kommunikasjon"
+},
+{
+"key": "value3",
+"label": "Akse 3 – verdi (0–100)",
+"type": "number",
+"placeholder": "64"
+},
+{
+"key": "axis4",
+"label": "Akse 4 – navn",
+"type": "text",
+"placeholder": "Effektivitet"
+},
+{
+"key": "value4",
+"label": "Akse 4 – verdi (0–100)",
+"type": "number",
+"placeholder": "80"
+},
+{
+"key": "axis5",
+"label": "Akse 5 – navn",
+"type": "text",
+"placeholder": "Strategi"
+},
+{
+"key": "value5",
+"label": "Akse 5 – verdi (0–100)",
+"type": "number",
+"placeholder": "55"
+},
+{
+"key": "axis6",
+"label": "Akse 6 – navn",
+"type": "text",
+"placeholder": "Samarbeid"
+},
+{
+"key": "value6",
+"label": "Akse 6 – verdi (0–100)",
+"type": "number",
+"placeholder": "90"
+}
+],
+"defaults": {
+"title": "Ferdighetsprofil",
+"subtitle": "Kompetansevurdering",
+"seriesLabel": "Score",
+"axis1": "Kreativitet",
+"value1": "88",
+"axis2": "Teknikk",
+"value2": "72",
+"axis3": "Kommunikasjon",
+"value3": "64",
+"axis4": "Effektivitet",
+"value4": "80",
+"axis5": "Strategi",
+"value5": "55",
+"axis6": "Samarbeid",
+"value6": "90"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:34px 38px;\n    background:#ffffff;\n    border-radius:22px;\n    box-shadow:0 24px 60px rgba(20,30,55,.16), 0 2px 0 rgba(255,255,255,.9) inset;\n    border:1px solid rgba(20,30,55,.06);\n  }\n  .hdr{display:flex;align-items:center;gap:14px;margin-bottom:24px}\n  .hdr .logo{height:34px;width:auto;display:block;border-radius:6px}\n  .hdr .badge{\n    width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;\n    color:#fff;flex:0 0 auto;\n  }\n  .hdr .badge .material-icons-outlined{font-size:24px}\n  .hdr .ttl{display:flex;flex-direction:column;gap:2px}\n  .hdr .ttl .t{font-size:19px;font-weight:800;letter-spacing:-.02em;line-height:1}\n  .hdr .ttl .s{font-size:12.5px;font-weight:500;line-height:1}\n  .chartbox{position:relative;width:420px;height:420px;margin:0 auto}\n  .legend{display:flex;align-items:center;justify-content:center;gap:18px;margin-top:18px;flex-wrap:wrap}\n  .legend .item{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600}\n  .legend .dot{width:12px;height:12px;border-radius:50%}\n  .axlbl{font-size:12.5px;font-weight:700;letter-spacing:-.01em}\n  .axval{font-size:11px;font-weight:600}\n  .scorebox{\n    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);\n    display:flex;flex-direction:column;align-items:center;gap:0;pointer-events:none;\n  }\n  .scorebox .num{font-size:34px;font-weight:800;letter-spacing:-.03em;line-height:1}\n  .scorebox .cap{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;margin-top:3px}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"hdr\">\n    <div class=\"badge\" id=\"badge\"><span class=\"material-icons-outlined\">radar</span></div>\n    <img class=\"logo\" id=\"logo\" alt=\"\" style=\"display:none\">\n    <div class=\"ttl\">\n      <div class=\"t\" id=\"title\">Ferdighetsprofil</div>\n      <div class=\"s\" id=\"subtitle\">Kompetansevurdering</div>\n    </div>\n  </div>\n  <div class=\"chartbox\">\n    <svg id=\"svg\" width=\"420\" height=\"420\" viewBox=\"0 0 420 420\"></svg>\n    <div class=\"scorebox\">\n      <div class=\"num\" id=\"scoreNum\">0</div>\n      <div class=\"cap\" id=\"scoreCap\">Snitt</div>\n    </div>\n  </div>\n  <div class=\"legend\" id=\"legend\"></div>\n</div>\n\n<script>\n(function(){\n  var DEF = {\n    title:'Ferdighetsprofil',\n    subtitle:'Kompetansevurdering',\n    seriesLabel:'Score',\n    axis1:'Kreativitet', value1:88,\n    axis2:'Teknikk',     value2:72,\n    axis3:'Kommunikasjon',value3:64,\n    axis4:'Effektivitet', value4:80,\n    axis5:'Strategi',     value5:55,\n    axis6:'Samarbeid',    value6:90,\n    accent:'#3b82f6',\n    ink:'#1f2d4a',\n    logo:''\n  };\n  var cfg = Object.assign({}, DEF, (window.__CFG__||{}));\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n\n  function hexToRgb(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(function(c){return c+c;}).join('');var n=parseInt(h,16);return{r:(n>>16)&255,g:(n>>8)&255,b:n&255};}\n  function rgba(h,a){var c=hexToRgb(h);return'rgba('+c.r+','+c.g+','+c.b+','+a+')';}\n  var muted = rgba(ink,.5);\n  var faint = rgba(ink,.10);\n\n  var axes=[];\n  for(var i=1;i<=6;i++){\n    var ax=cfg['axis'+i], v=cfg['value'+i];\n    if(ax!==undefined && ax!=='' && v!==undefined && v!==''){\n      axes.push({label:String(ax), value:Math.max(0,Math.min(100,Number(v)||0))});\n    }\n  }\n  if(axes.length<3){\n    axes=[];\n    for(var j=1;j<=6;j++){axes.push({label:DEF['axis'+j],value:DEF['value'+j]});}\n  }\n\n  var N = axes.length;\n  var cx=210, cy=212, R=128;\n  var rings=4;\n  var startAng=-Math.PI/2;\n\n  document.getElementById('wrap').style.color = ink;\n  var badge=document.getElementById('badge');\n  badge.style.background='linear-gradient(135deg,'+accent+','+rgba(accent,.78)+')';\n  document.getElementById('subtitle').style.color = muted;\n  document.getElementById('scoreNum').style.color = ink;\n  document.getElementById('scoreCap').style.color = accent;\n  document.getElementById('title').textContent = cfg.title;\n  document.getElementById('subtitle').textContent = cfg.subtitle;\n\n  if(cfg.logo){\n    var lg=document.getElementById('logo');\n    lg.src=cfg.logo; lg.style.display='block';\n    badge.style.display='none';\n  }\n\n  var leg=document.getElementById('legend');\n  leg.innerHTML='<div class=\"item\"><span class=\"dot\" style=\"background:'+accent+'\"></span><span style=\"color:'+ink+'\">'+(cfg.seriesLabel||'Score')+'</span></div>'+\n                '<div class=\"item\"><span class=\"dot\" style=\"background:'+faint+';border:1px solid '+rgba(ink,.18)+'\"></span><span style=\"color:'+muted+'\">Skala 0–100</span></div>';\n\n  var SVG='http://www.w3.org/2000/svg';\n  var svg=document.getElementById('svg');\n  function el(t,a){var e=document.createElementNS(SVG,t);for(var k in a)e.setAttribute(k,a[k]);return e;}\n  function pt(ang,r){return[cx+Math.cos(ang)*r, cy+Math.sin(ang)*r];}\n  function angOf(i){return startAng + (i/N)*Math.PI*2;}\n\n  for(var ri=1;ri<=rings;ri++){\n    var rr=R*ri/rings;\n    var pts=[];\n    for(var k=0;k<N;k++){var p=pt(angOf(k),rr);pts.push(p[0].toFixed(1)+','+p[1].toFixed(1));}\n    svg.appendChild(el('polygon',{points:pts.join(' '),fill:'none',stroke:faint,'stroke-width':ri===rings?1.4:1}));\n  }\n  for(var s=0;s<N;s++){\n    var ep=pt(angOf(s),R);\n    svg.appendChild(el('line',{x1:cx,y1:cy,x2:ep[0].toFixed(1),y2:ep[1].toFixed(1),stroke:faint,'stroke-width':1}));\n  }\n\n  var valPoly=el('polygon',{points:'',fill:rgba(accent,.16),stroke:accent,'stroke-width':2.4,'stroke-linejoin':'round'});\n  svg.appendChild(valPoly);\n\n  var dots=[], labels=[], valTags=[];\n  for(var d=0;d<N;d++){\n    var dot=el('circle',{cx:cx,cy:cy,r:4.5,fill:'#fff',stroke:accent,'stroke-width':2.4});\n    svg.appendChild(dot); dots.push(dot);\n\n    var lp=pt(angOf(d), R+30);\n    var fo=el('foreignObject',{x:(lp[0]-60).toFixed(1),y:(lp[1]-20).toFixed(1),width:120,height:40});\n    var div=document.createElement('div');\n    div.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;height:40px;text-align:center;line-height:1.15';\n    var cos=Math.cos(angOf(d));\n    div.style.alignItems = cos>0.3?'flex-start':(cos<-0.3?'flex-end':'center');\n    var lab=document.createElement('div'); lab.className='axlbl'; lab.style.color=ink; lab.textContent=axes[d].label;\n    var val=document.createElement('div'); val.className='axval'; val.style.color=accent; val.textContent='0';\n    div.appendChild(lab); div.appendChild(val);\n    fo.appendChild(div); svg.appendChild(fo);\n    labels.push(lab); valTags.push(val);\n  }\n\n  var scoreNum=document.getElementById('scoreNum');\n  var avgTarget = axes.reduce(function(a,b){return a+b.value;},0)/N;\n\n  function easeInOut(t){return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;}\n\n  window.setProgress=function(p){\n    p=Math.max(0,Math.min(1,p));\n    var e=easeInOut(p);\n    var pts=[];\n    for(var k=0;k<N;k++){\n      var local = Math.max(0, Math.min(1, (p - (k/N)*0.35) / (1 - (k/N)*0.35)));\n      var le = easeInOut(local);\n      var rr = R * (axes[k].value/100) * le;\n      var pp = pt(angOf(k), rr);\n      pts.push(pp[0].toFixed(2)+','+pp[1].toFixed(2));\n      dots[k].setAttribute('cx',pp[0].toFixed(2));\n      dots[k].setAttribute('cy',pp[1].toFixed(2));\n      dots[k].setAttribute('r',(4.5*le).toFixed(2));\n      valTags[k].textContent = Math.round(axes[k].value*le);\n    }\n    valPoly.setAttribute('points',pts.join(' '));\n    valPoly.setAttribute('fill', rgba(accent, .16*e));\n    valPoly.setAttribute('opacity', (0.25+0.75*e).toFixed(2));\n    scoreNum.textContent = Math.round(avgTarget*e);\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "heatmap-week",
+"name": "Aktivitets-heatmap (uke)",
+"desc": "Et rent, lyst ukentlig heatmap-rutenett (7 dager × flere uker) der hver celle fader inn til ulik accent-intensitet basert på dine data. Inkluderer dag-etiketter, tittel, fargeskala-forklaring og et animert snitt-tall. Perfekt som overlay i DaVinci Resolve.",
+"style": "light",
+"glyph": "▦",
+"durationSec": 4.5,
+"fields": [
+{
+"key": "title",
+"label": "Tittel",
+"type": "text",
+"placeholder": "Ukentlig aktivitet"
+},
+{
+"key": "subtitle",
+"label": "Undertittel",
+"type": "text",
+"placeholder": "Intensitet per dag"
+},
+{
+"key": "intensities",
+"label": "Intensiteter (kommaseparert, 0–100, 7 per uke)",
+"type": "text",
+"placeholder": "10,40,75,55,90,30,20, 35,60,85,45,70,25,15"
+}
+],
+"defaults": {
+"title": "Ukentlig aktivitet",
+"subtitle": "Treningsøkter siste 5 uker",
+"intensities": "10,40,75,55,90,30,20, 35,60,85,45,70,25,15, 50,80,95,40,65,30,10, 20,55,70,88,50,35,18, 30,65,80,60,95,40,22"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:34px 38px 30px;\n    border-radius:22px;\n    background:rgba(255,255,255,0.94);\n    box-shadow:0 24px 60px rgba(20,30,55,0.16), 0 2px 0 rgba(255,255,255,0.6) inset;\n    border:1px solid rgba(20,30,55,0.06);\n    color:#1f2d4a;\n    -webkit-font-smoothing:antialiased;\n  }\n  .head{display:flex;align-items:center;gap:14px;margin-bottom:22px}\n  .badge{\n    width:46px;height:46px;flex:0 0 46px;border-radius:13px;\n    display:flex;align-items:center;justify-content:center;\n    color:#fff;\n  }\n  .badge .material-icons-outlined{font-size:26px}\n  .titles{display:flex;flex-direction:column;gap:2px;min-width:0}\n  .title{font-size:21px;font-weight:800;letter-spacing:-0.02em;line-height:1.15}\n  .sub{font-size:12.5px;font-weight:500;color:#6b7793;letter-spacing:0.01em}\n  .logo{margin-left:auto;height:30px;display:block}\n  .logo img{height:30px;display:block;object-fit:contain}\n\n  .grid-area{margin-top:4px}\n  .daylabels{display:grid;grid-template-columns:repeat(7,42px);gap:9px;margin-bottom:9px}\n  .daylabels span{\n    text-align:center;font-size:11px;font-weight:700;color:#8a94ac;\n    letter-spacing:0.06em;text-transform:uppercase;\n  }\n  .cells{display:grid;grid-template-columns:repeat(7,42px);gap:9px}\n  .cell{\n    width:42px;height:42px;border-radius:10px;\n    background:#eef1f7;\n    border:1px solid rgba(20,30,55,0.05);\n    opacity:0;transform:scale(.82);\n  }\n\n  .legend{display:flex;align-items:center;gap:9px;margin-top:24px}\n  .legend .lab{font-size:11px;font-weight:600;color:#8a94ac;letter-spacing:0.02em}\n  .legend .scale{display:flex;gap:5px}\n  .legend .sw{width:16px;height:16px;border-radius:5px;border:1px solid rgba(20,30,55,0.05)}\n  .stat{margin-left:auto;display:flex;align-items:baseline;gap:7px}\n  .stat .num{font-size:24px;font-weight:800;letter-spacing:-0.02em}\n  .stat .unit{font-size:12px;font-weight:600;color:#6b7793}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"head\">\n    <div class=\"badge\" id=\"badge\"><span class=\"material-icons-outlined\">grid_view</span></div>\n    <div class=\"titles\">\n      <div class=\"title\" id=\"title\">Ukentlig aktivitet</div>\n      <div class=\"sub\" id=\"sub\">Intensitet per dag</div>\n    </div>\n    <div class=\"logo\" id=\"logo\"></div>\n  </div>\n\n  <div class=\"grid-area\">\n    <div class=\"daylabels\" id=\"daylabels\"></div>\n    <div class=\"cells\" id=\"cells\"></div>\n  </div>\n\n  <div class=\"legend\">\n    <span class=\"lab\">Mindre</span>\n    <div class=\"scale\" id=\"scale\"></div>\n    <span class=\"lab\">Mer</span>\n    <div class=\"stat\">\n      <span class=\"num\" id=\"statnum\">0</span>\n      <span class=\"unit\">snitt</span>\n    </div>\n  </div>\n</div>\n\n<script>\n(function(){\n  var CFG = window.__CFG__ || {};\n  var accent = CFG.accent || '#3b82f6';\n  var ink = CFG.ink || '#1f2d4a';\n  var logo = CFG.logo || '';\n\n  var title = CFG.title || 'Ukentlig aktivitet';\n  var sub = CFG.subtitle || 'Intensitet per dag';\n  document.getElementById('title').textContent = title;\n  document.getElementById('sub').textContent = sub;\n  document.getElementById('wrap').style.color = ink;\n  document.getElementById('title').style.color = ink;\n\n  var badge = document.getElementById('badge');\n  badge.style.background = 'linear-gradient(135deg,'+accent+','+shade(accent,-18)+')';\n  badge.style.boxShadow = '0 8px 18px '+hexA(accent,0.32);\n\n  if(logo){\n    document.getElementById('logo').innerHTML = '<img src=\"'+logo+'\" alt=\"\">';\n  }\n\n  var raw = (CFG.intensities || '').toString().trim();\n  var vals = raw ? raw.split(',').map(function(s){return parseFloat(s.trim());}).filter(function(n){return !isNaN(n);}) : [];\n  if(!vals.length){\n    vals = [10,40,75,55,90,30,20, 35,60,85,45,70,25,15, 50,80,95,40,65,30,10, 20,55,70,88,50,35,18, 30,65,80,60,95,40,22];\n  }\n  var maxRaw = Math.max.apply(null, vals);\n  var norm = vals.map(function(v){ return maxRaw>1 ? v/100 : v; }).map(function(v){return Math.max(0,Math.min(1,v));});\n\n  var COLS = 7;\n  var rows = Math.max(1, Math.ceil(norm.length / COLS));\n  var total = rows*COLS;\n  while(norm.length < total) norm.push(0);\n\n  var days = ['Man','Tir','Ons','Tor','Fre','Lør','Søn'];\n  var dl = document.getElementById('daylabels');\n  for(var d=0; d<COLS; d++){\n    var sp = document.createElement('span');\n    sp.textContent = days[d];\n    dl.appendChild(sp);\n  }\n\n  var cells = document.getElementById('cells');\n  cells.style.gridTemplateRows = 'repeat('+rows+',42px)';\n  var cellEls = [];\n  for(var i=0;i<total;i++){\n    var c = document.createElement('div');\n    c.className='cell';\n    cells.appendChild(c);\n    cellEls.push(c);\n  }\n\n  var scale = document.getElementById('scale');\n  [0.12,0.32,0.55,0.78,1.0].forEach(function(t){\n    var sw = document.createElement('div');\n    sw.className='sw';\n    sw.style.background = cellColor(t);\n    scale.appendChild(sw);\n  });\n\n  var nonZero = norm.filter(function(v){return v>0;});\n  var avg = nonZero.length ? Math.round(nonZero.reduce(function(a,b){return a+b;},0)/nonZero.length*100) : 0;\n  var statnum = document.getElementById('statnum');\n  statnum.style.color = accent;\n\n  function cellColor(t){\n    if(t<=0.001) return '#eef1f7';\n    var rgb = hexToRgb(accent);\n    var a = 0.10 + t*0.90;\n    var R = Math.round(rgb.r*a + 255*(1-a));\n    var G = Math.round(rgb.g*a + 255*(1-a));\n    var B = Math.round(rgb.b*a + 255*(1-a));\n    return 'rgb('+R+','+G+','+B+')';\n  }\n  function hexToRgb(h){\n    h=h.replace('#','');\n    if(h.length===3) h=h.split('').map(function(x){return x+x;}).join('');\n    var n=parseInt(h,16);\n    return {r:(n>>16)&255,g:(n>>8)&255,b:n&255};\n  }\n  function shade(h,p){\n    var c=hexToRgb(h);\n    var f=p/100;\n    function ad(x){return Math.max(0,Math.min(255,Math.round(x + (f<0?x:255-x)*f)));}\n    return 'rgb('+ad(c.r)+','+ad(c.g)+','+ad(c.b)+')';\n  }\n  function hexA(h,a){var c=hexToRgb(h);return 'rgba('+c.r+','+c.g+','+c.b+','+a+')';}\n\n  function easeInOut(t){return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;}\n\n  window.setProgress = function(p){\n    p = Math.max(0,Math.min(1,p));\n    var e = easeInOut(p);\n    var n = total;\n    var span = 0.55;\n    for(var i=0;i<n;i++){\n      var t0 = (i/n)*(1-span);\n      var local = (e - t0)/span;\n      local = Math.max(0,Math.min(1,local));\n      var le = easeInOut(local);\n      var cell = cellEls[i];\n      cell.style.opacity = (le).toFixed(3);\n      cell.style.transform = 'scale('+(0.82+0.18*le).toFixed(3)+')';\n      var target = norm[i];\n      cell.style.background = cellColor(target*le);\n    }\n    statnum.textContent = Math.round(avg*e);\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "stacked-bar",
+"name": "Stablet søylediagram",
+"desc": "Fire stablede søyler med tre segmenter hver (i accent-toner) som vokser opp med forskjøvet animasjon, totalsum-tall som teller opp på toppen av hver søyle, akse-gridlinjer, kategori-etiketter og fargeforklaring. Lyst, rent kort-design for transparent overlay over video i DaVinci Resolve.",
+"style": "light",
+"glyph": "▥",
+"durationSec": 3.5,
+"fields": [
+{
+"key": "title",
+"label": "Tittel",
+"type": "text",
+"placeholder": "Kvartalsvis omsetning"
+},
+{
+"key": "subtitle",
+"label": "Undertittel",
+"type": "text",
+"placeholder": "Fordelt på tre tjenestelinjer (MNOK)"
+},
+{
+"key": "cat1",
+"label": "Kategori 1",
+"type": "text",
+"placeholder": "Q1"
+},
+{
+"key": "cat2",
+"label": "Kategori 2",
+"type": "text",
+"placeholder": "Q2"
+},
+{
+"key": "cat3",
+"label": "Kategori 3",
+"type": "text",
+"placeholder": "Q3"
+},
+{
+"key": "cat4",
+"label": "Kategori 4",
+"type": "text",
+"placeholder": "Q4"
+},
+{
+"key": "seg1",
+"label": "Segment 1 (nederst)",
+"type": "text",
+"placeholder": "Produksjon"
+},
+{
+"key": "seg2",
+"label": "Segment 2 (midten)",
+"type": "text",
+"placeholder": "Etterarbeid"
+},
+{
+"key": "seg3",
+"label": "Segment 3 (øverst)",
+"type": "text",
+"placeholder": "Lisens"
+}
+],
+"defaults": {
+"title": "Kvartalsvis omsetning",
+"subtitle": "Fordelt på tre tjenestelinjer (MNOK)",
+"cat1": "Q1",
+"cat2": "Q2",
+"cat3": "Q3",
+"cat4": "Q4",
+"seg1": "Produksjon",
+"seg2": "Etterarbeid",
+"seg3": "Lisens"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:38px 44px 34px;\n    color:var(--ink,#1f2d4a);\n    -webkit-font-smoothing:antialiased;\n  }\n  .card{\n    background:#ffffff;\n    border:1px solid rgba(31,45,74,0.08);\n    border-radius:22px;\n    box-shadow:0 24px 60px -22px rgba(31,45,74,0.28), 0 2px 6px rgba(31,45,74,0.05);\n    padding:30px 34px 26px;\n  }\n  .head{display:flex;align-items:center;gap:14px;margin-bottom:6px}\n  .logo{height:34px;width:auto;display:block}\n  .accent-dot{\n    width:11px;height:11px;border-radius:50%;\n    background:var(--accent,#3b82f6);\n    box-shadow:0 0 0 4px color-mix(in srgb, var(--accent,#3b82f6) 16%, transparent);\n  }\n  .title{font-size:25px;font-weight:800;letter-spacing:-0.02em;margin:0;line-height:1.1}\n  .subtitle{font-size:13.5px;font-weight:500;color:color-mix(in srgb,var(--ink,#1f2d4a) 55%, #fff);margin:3px 0 0}\n  .head-text{display:flex;flex-direction:column}\n\n  .chart{\n    margin-top:22px;\n    display:flex;\n    align-items:flex-end;\n    gap:30px;\n    height:300px;\n    padding:0 6px 0 46px;\n    position:relative;\n  }\n  .gridlines{position:absolute;left:46px;right:6px;top:0;bottom:34px;pointer-events:none}\n  .gridline{position:absolute;left:0;right:0;height:1px;background:rgba(31,45,74,0.07)}\n  .gridline span{\n    position:absolute;left:-40px;top:-8px;width:34px;text-align:right;\n    font-size:11px;font-weight:600;color:color-mix(in srgb,var(--ink,#1f2d4a) 42%, #fff);\n  }\n\n  .col{display:flex;flex-direction:column;align-items:center;width:78px}\n  .barbox{\n    width:62px;height:266px;\n    display:flex;flex-direction:column-reverse;\n    justify-content:flex-start;\n    position:relative;\n  }\n  .seg{\n    width:100%;\n    height:0;\n    border-radius:3px;\n    margin-bottom:3px;\n    transition:none;\n    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.18);\n  }\n  .seg:first-child{border-radius:3px 3px 6px 6px}\n  .seg:last-child{margin-bottom:0;border-radius:6px 6px 3px 3px}\n  .total{\n    position:absolute;left:0;right:0;\n    text-align:center;\n    font-size:13px;font-weight:800;\n    color:var(--ink,#1f2d4a);\n    opacity:0;\n  }\n  .catlabel{\n    margin-top:12px;\n    font-size:13px;font-weight:700;\n    color:color-mix(in srgb,var(--ink,#1f2d4a) 78%, #fff);\n    text-align:center;letter-spacing:-0.01em;\n  }\n\n  .legend{\n    display:flex;gap:22px;flex-wrap:wrap;\n    margin-top:24px;padding-top:18px;\n    border-top:1px solid rgba(31,45,74,0.08);\n  }\n  .lg{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;\n    color:color-mix(in srgb,var(--ink,#1f2d4a) 70%, #fff)}\n  .swatch{width:13px;height:13px;border-radius:4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.2)}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"card\">\n    <div class=\"head\">\n      <img id=\"logo\" class=\"logo\" alt=\"\" style=\"display:none\">\n      <span class=\"accent-dot\" id=\"accentDot\"></span>\n      <div class=\"head-text\">\n        <h1 class=\"title\" id=\"title\">Tittel</h1>\n        <p class=\"subtitle\" id=\"subtitle\">Undertittel</p>\n      </div>\n    </div>\n\n    <div class=\"chart\" id=\"chart\">\n      <div class=\"gridlines\" id=\"gridlines\"></div>\n    </div>\n\n    <div class=\"legend\" id=\"legend\"></div>\n  </div>\n</div>\n\n<script>\n(function(){\n  var DEF = {\n    title:'Kvartalsvis omsetning',\n    subtitle:'Fordelt på tre tjenestelinjer (MNOK)',\n    cat1:'Q1', cat2:'Q2', cat3:'Q3', cat4:'Q4',\n    seg1:'Produksjon', seg2:'Etterarbeid', seg3:'Lisens',\n    accent:'#3b82f6', ink:'#1f2d4a', logo:''\n  };\n  var cfg = Object.assign({}, DEF, (window.__CFG__||{}));\n  var root = document.getElementById('wrap');\n  root.style.setProperty('--accent', cfg.accent || DEF.accent);\n  root.style.setProperty('--ink', cfg.ink || DEF.ink);\n\n  document.getElementById('title').textContent = cfg.title;\n  document.getElementById('subtitle').textContent = cfg.subtitle;\n  if (cfg.logo){\n    var lg = document.getElementById('logo');\n    lg.src = cfg.logo; lg.style.display='block';\n    document.getElementById('accentDot').style.display='none';\n  }\n\n  function hexToRgb(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(function(c){return c+c}).join('');return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}\n  function mix(rgb,t){\n    return 'rgb('+rgb.map(function(v){return Math.round(v + (255-v)*t)}).join(',')+')';\n  }\n  var base = hexToRgb(cfg.accent || DEF.accent);\n  var tones = [ mix(base,0), mix(base,0.30), mix(base,0.58) ];\n\n  var DATA = [\n    [42, 28, 18],\n    [55, 34, 22],\n    [38, 30, 26],\n    [61, 40, 30]\n  ];\n  var totals = DATA.map(function(r){return r.reduce(function(a,b){return a+b},0)});\n  var maxTotal = Math.max.apply(null, totals);\n  function niceMax(v){\n    var pow = Math.pow(10, Math.floor(Math.log10(v)));\n    var n = Math.ceil(v/pow)*pow;\n    if (n - v > pow*0.5) n = Math.ceil((v/pow)*2)/2*pow;\n    return n;\n  }\n  var axisMax = niceMax(maxTotal);\n  var TRACK = 266;\n\n  var gl = document.getElementById('gridlines');\n  var STEPS = 4;\n  for (var s=0;s<=STEPS;s++){\n    var frac = s/STEPS;\n    var line = document.createElement('div');\n    line.className='gridline';\n    line.style.bottom = (frac*100)+'%';\n    var lab = document.createElement('span');\n    lab.textContent = Math.round(axisMax*frac);\n    line.appendChild(lab);\n    gl.appendChild(line);\n  }\n\n  var cats = [cfg.cat1,cfg.cat2,cfg.cat3,cfg.cat4];\n  var chart = document.getElementById('chart');\n  var allSegs = [];\n  var totalEls = [];\n  var colSegs = [];\n\n  DATA.forEach(function(row,ci){\n    var col = document.createElement('div'); col.className='col';\n    var box = document.createElement('div'); box.className='barbox';\n    var totEl = document.createElement('div'); totEl.className='total';\n    totEl.textContent = '0';\n    box.appendChild(totEl);\n    totalEls.push({el:totEl, val:totals[ci]});\n\n    var thisColSegs = [];\n    row.forEach(function(val,si){\n      var seg = document.createElement('div');\n      seg.className='seg';\n      seg.style.background = tones[si];\n      var fh = (val/axisMax)*TRACK;\n      box.appendChild(seg);\n      var ref = {el:seg, finalH:fh, order:ci*0.06 + si*0.04, curH:0};\n      allSegs.push(ref);\n      thisColSegs.push(ref);\n    });\n    colSegs.push(thisColSegs);\n    col.appendChild(box);\n    var clab = document.createElement('div'); clab.className='catlabel';\n    clab.textContent = cats[ci];\n    col.appendChild(clab);\n    chart.appendChild(col);\n  });\n\n  var legend = document.getElementById('legend');\n  [cfg.seg1,cfg.seg2,cfg.seg3].forEach(function(name,i){\n    var lg = document.createElement('div'); lg.className='lg';\n    var sw = document.createElement('span'); sw.className='swatch';\n    sw.style.background = tones[i];\n    lg.appendChild(sw);\n    var t = document.createElement('span'); t.textContent = name;\n    lg.appendChild(t);\n    legend.appendChild(lg);\n  });\n\n  function easeInOut(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }\n\n  var SEG_GAP = 3;\n  window.setProgress = function(p){\n    p = Math.max(0, Math.min(1, p));\n    allSegs.forEach(function(s){\n      var local = (p - s.order) / (1 - s.order);\n      local = Math.max(0, Math.min(1, local));\n      var e = easeInOut(local);\n      s.curH = s.finalH * e;\n      s.el.style.height = s.curH + 'px';\n    });\n    totalEls.forEach(function(t, ci){\n      var local = Math.max(0, Math.min(1, (p - 0.45)/0.55));\n      var e = easeInOut(local);\n      t.el.style.opacity = e;\n      var stackH = 0, nVisible = 0;\n      colSegs[ci].forEach(function(s){ stackH += s.curH; if (s.curH > 0.5) nVisible++; });\n      stackH += Math.max(0, nVisible - 1) * SEG_GAP;\n      t.el.style.bottom = (stackH + 9) + 'px';\n      t.el.textContent = Math.round(t.val * e);\n    });\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "kpi-hud-tiles",
+"name": "HUD KPI-fliser",
+"desc": "Mørk HUD-rad med inntil 4 fliser. Hver flis har tynn glødende ramme, ikon, animert progresjons-ring, stor verdi som teller opp, etikett og en fargekodet delta-pille (grønn opp / rød ned). Helt config-drevet og transparent for video-overlay i DaVinci Resolve.",
+"style": "hud",
+"glyph": "▦",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "title",
+"label": "Overskrift",
+"type": "text",
+"placeholder": "Q2 Resultater"
+},
+{
+"key": "value1",
+"label": "Flis 1 – verdi",
+"type": "text",
+"placeholder": "248K"
+},
+{
+"key": "label1",
+"label": "Flis 1 – etikett",
+"type": "text",
+"placeholder": "Visninger"
+},
+{
+"key": "icon1",
+"label": "Flis 1 – ikon (Material)",
+"type": "text",
+"placeholder": "visibility"
+},
+{
+"key": "delta1",
+"label": "Flis 1 – delta",
+"type": "text",
+"placeholder": "+18%"
+},
+{
+"key": "value2",
+"label": "Flis 2 – verdi",
+"type": "text",
+"placeholder": "96%"
+},
+{
+"key": "label2",
+"label": "Flis 2 – etikett",
+"type": "text",
+"placeholder": "Fullføringsrate"
+},
+{
+"key": "icon2",
+"label": "Flis 2 – ikon (Material)",
+"type": "text",
+"placeholder": "task_alt"
+},
+{
+"key": "delta2",
+"label": "Flis 2 – delta",
+"type": "text",
+"placeholder": "+4%"
+},
+{
+"key": "value3",
+"label": "Flis 3 – verdi",
+"type": "text",
+"placeholder": "12.4K"
+},
+{
+"key": "label3",
+"label": "Flis 3 – etikett",
+"type": "text",
+"placeholder": "Nye følgere"
+},
+{
+"key": "icon3",
+"label": "Flis 3 – ikon (Material)",
+"type": "text",
+"placeholder": "group_add"
+},
+{
+"key": "delta3",
+"label": "Flis 3 – delta",
+"type": "text",
+"placeholder": "+32%"
+},
+{
+"key": "value4",
+"label": "Flis 4 – verdi",
+"type": "text",
+"placeholder": "4.8"
+},
+{
+"key": "label4",
+"label": "Flis 4 – etikett",
+"type": "text",
+"placeholder": "Snittvurdering"
+},
+{
+"key": "icon4",
+"label": "Flis 4 – ikon (Material)",
+"type": "text",
+"placeholder": "star_rate"
+},
+{
+"key": "delta4",
+"label": "Flis 4 – delta",
+"type": "text",
+"placeholder": "-0.1"
+}
+],
+"defaults": {
+"title": "Q2 Resultater",
+"value1": "248K",
+"label1": "Visninger",
+"icon1": "visibility",
+"delta1": "+18%",
+"value2": "96%",
+"label2": "Fullføringsrate",
+"icon2": "task_alt",
+"delta2": "+4%",
+"value3": "12.4K",
+"label3": "Nye følgere",
+"icon3": "group_add",
+"delta3": "+32%",
+"value4": "4.8",
+"label4": "Snittvurdering",
+"icon4": "star_rate",
+"delta4": "-0.1"
+},
+"html": "<!doctype html><html><head><meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif}\n  html,body{margin:0;background:transparent}\n  #wrap{display:flex;flex-direction:column;gap:26px;padding:60px;width:max-content}\n  #head{display:flex;align-items:center;gap:18px;opacity:0}\n  #head img{height:40px;width:auto;display:block;filter:drop-shadow(0 2px 8px rgba(0,0,0,.4))}\n  #head .ht{color:#cfe0f5;font-size:22px;font-weight:600;letter-spacing:.5px}\n  #head .hbar{flex:1;height:1px;min-width:60px;background:linear-gradient(90deg,var(--acc),transparent)}\n  #row{display:flex;gap:24px}\n  .tile{position:relative;width:300px;background:linear-gradient(160deg,rgba(18,26,44,.92),rgba(10,16,30,.96));\n        border-radius:20px;padding:30px 30px 26px;border:1px solid rgba(120,150,200,.18);\n        box-shadow:0 24px 60px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.05);\n        opacity:0;transform:translateY(28px)}\n  .tile::before{content:'';position:absolute;inset:0;border-radius:20px;padding:1px;\n        background:linear-gradient(150deg,var(--acc),transparent 55%);\n        -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);\n        -webkit-mask-composite:xor;mask-composite:exclude;opacity:.55;pointer-events:none}\n  .tile .glow{position:absolute;top:-1px;left:24px;right:24px;height:2px;border-radius:2px;\n        background:linear-gradient(90deg,transparent,var(--acc),transparent);\n        box-shadow:0 0 14px var(--acc);opacity:.0}\n  .ttop{display:flex;align-items:center;justify-content:space-between}\n  .ic{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;flex:none;\n      background:rgba(120,150,200,.10);border:1px solid rgba(120,150,200,.22)}\n  .ic .material-icons-outlined{font-size:28px;color:var(--acc)}\n  .ring{width:54px;height:54px;flex:none}\n  .ring circle{fill:none;stroke-width:4;stroke-linecap:round}\n  .ring .bg{stroke:rgba(120,150,200,.15)}\n  .ring .fg{stroke:var(--acc);filter:drop-shadow(0 0 4px var(--acc));\n        stroke-dasharray:150.8;stroke-dashoffset:150.8}\n  .num{font-size:54px;font-weight:800;color:#f3f7ff;letter-spacing:-1.5px;line-height:1.0;margin-top:22px}\n  .lbl{color:#8ea3c2;font-size:18px;font-weight:500;margin-top:8px;letter-spacing:.2px}\n  .delta{display:inline-flex;align-items:center;gap:5px;font-size:16px;font-weight:600;\n        padding:5px 12px;border-radius:30px;margin-top:16px;opacity:0;\n        background:rgba(120,150,200,.10);border:1px solid rgba(120,150,200,.20)}\n  .delta .material-icons-outlined{font-size:16px}\n  .delta.up{color:#46e3a0}.delta.up .material-icons-outlined{color:#46e3a0}\n  .delta.down{color:#ff7a8a}.delta.down .material-icons-outlined{color:#ff7a8a}\n</style></head>\n<body><div id=\"wrap\">\n  <div id=\"head\" data-d=\"0\">\n    <img id=\"logo\" alt=\"\" style=\"display:none\">\n    <div class=\"ht\" id=\"htitle\">Resultater</div>\n    <div class=\"hbar\"></div>\n  </div>\n  <div id=\"row\"></div>\n</div>\n<script>\nvar CFG=window.__CFG__||{};\nvar acc=CFG.accent||'#3b82f6', ink=CFG.ink||'#1f2d4a';\ndocument.documentElement.style.setProperty('--acc',acc);\nif(CFG.logo){var lg=document.getElementById('logo');lg.src=CFG.logo;lg.style.display='block';}\nif(CFG.title!==undefined) document.getElementById('htitle').textContent=CFG.title;\n\nvar tiles=[];\nfor(var i=1;i<=4;i++){\n  var v=CFG['value'+i], l=CFG['label'+i], ic=CFG['icon'+i], dl=CFG['delta'+i];\n  if(v===undefined && l===undefined) continue;\n  tiles.push({value:v||'', label:l||'', icon:ic||'insights', delta:dl||''});\n}\nif(tiles.length===0){\n  tiles=[\n    {value:'248K',label:'Visninger',icon:'visibility',delta:'+18%'},\n    {value:'96%',label:'Fullføringsrate',icon:'task_alt',delta:'+4%'},\n    {value:'12.4K',label:'Nye følgere',icon:'group_add',delta:'+32%'},\n    {value:'4.8',label:'Snittvurdering',icon:'star_rate',delta:'-0.1'}\n  ];\n}\nvar C=2*Math.PI*24;\nvar row=document.getElementById('row');\ntiles.forEach(function(t,i){\n  var s=String(t.value);\n  var m=s.match(/^([^0-9\\-]*)(-?[0-9][0-9.,]*)(.*)$/);\n  var pre='',numStr=s,suf='';\n  if(m){pre=m[1];numStr=m[2];suf=m[3];}\n  var to=parseFloat(numStr.replace(/,/g,'.'));\n  var dec=(numStr.split('.')[1]||'').length;\n  var hasNum=!isNaN(to);\n  var dd=String(t.delta).trim();\n  var down=/^[-–]/.test(dd)||/south|down|↓/i.test(dd);\n  var div=document.createElement('div');\n  div.className='tile';div.dataset.d=(0.08*i).toFixed(2);\n  div.innerHTML=\n    '<div class=\"glow\"></div>'+\n    '<div class=\"ttop\">'+\n      '<div class=\"ic\"><span class=\"material-icons-outlined\">'+t.icon+'</span></div>'+\n      '<svg class=\"ring\" viewBox=\"0 0 54 54\"><circle class=\"bg\" cx=\"27\" cy=\"27\" r=\"24\"/>'+\n      '<circle class=\"fg\" cx=\"27\" cy=\"27\" r=\"24\" transform=\"rotate(-90 27 27)\"/></svg>'+\n    '</div>'+\n    '<div class=\"num\" data-to=\"'+(hasNum?to:'')+'\" data-pre=\"'+pre+'\" data-suf=\"'+suf+'\" data-dec=\"'+dec+'\">'+(hasNum?'0':s)+'</div>'+\n    '<div class=\"lbl\">'+t.label+'</div>'+\n    (dd?'<div class=\"delta '+(down?'down':'up')+'\" data-d=\"'+(0.4+0.06*i).toFixed(2)+'\">'+\n      '<span class=\"material-icons-outlined\">'+(down?'south':'north')+'</span>'+dd.replace(/^[-–]/,'')+'</div>':'');\n  row.appendChild(div);\n});\n\nfunction ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}\nwindow.setProgress=function(p){\n  p=Math.max(0,Math.min(1,p));\n  document.querySelectorAll('[data-d]').forEach(function(el){\n    var d=parseFloat(el.dataset.d||0), span=0.45;\n    var e=ease(Math.max(0,Math.min(1,(p-d)/span)));\n    el.style.opacity=e;\n    if(el.classList.contains('tile')) el.style.transform='translateY('+(28*(1-e))+'px)';\n    if(el.classList.contains('delta')) el.style.opacity=e;\n  });\n  document.querySelectorAll('.num[data-to]').forEach(function(el){\n    if(el.dataset.to==='') return;\n    var to=parseFloat(el.dataset.to),pre=el.dataset.pre,suf=el.dataset.suf,dec=parseInt(el.dataset.dec||0);\n    var e=ease(Math.max(0,Math.min(1,(p-0.12)/0.6)));\n    var val=(to*e);\n    el.textContent=pre+(dec?val.toFixed(dec):Math.round(val))+suf;\n  });\n  document.querySelectorAll('.tile').forEach(function(tile,i){\n    var fg=tile.querySelector('.ring .fg'), glow=tile.querySelector('.glow');\n    var e=ease(Math.max(0,Math.min(1,(p-0.12-0.05*i)/0.6)));\n    if(fg) fg.style.strokeDashoffset=(C*(1-e));\n    if(glow) glow.style.opacity=(0.9*e);\n  });\n};\nwindow.setProgress(0);\n</script>\n</body></html>"
+},
+{
+"id": "progress-goals",
+"name": "Mål og fremdrift (flere)",
+"desc": "Lys infografikk-mal som viser 3-4 mål, hvert med etikett og en horisontal fremdriftslinje som fylles til angitt prosent. Prosenttall teller opp synkront med linjen, og målene animeres forskjøvet (staggered). Helt config-drevet og transparent bakgrunn for overlegg over video i DaVinci Resolve. All animasjon styres deterministisk av setProgress.",
+"style": "light",
+"glyph": "🏁",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "title",
+"label": "Tittel",
+"type": "text",
+"placeholder": "Mål Q2 2026"
+},
+{
+"key": "subtitle",
+"label": "Undertittel",
+"type": "text",
+"placeholder": "Status mot kvartalsmål"
+},
+{
+"key": "label1",
+"label": "Mål 1 – etikett",
+"type": "text",
+"placeholder": "Nye byråkunder"
+},
+{
+"key": "percent1",
+"label": "Mål 1 – prosent",
+"type": "number",
+"placeholder": "78"
+},
+{
+"key": "label2",
+"label": "Mål 2 – etikett",
+"type": "text",
+"placeholder": "MRR-vekst"
+},
+{
+"key": "percent2",
+"label": "Mål 2 – prosent",
+"type": "number",
+"placeholder": "54"
+},
+{
+"key": "label3",
+"label": "Mål 3 – etikett",
+"type": "text",
+"placeholder": "App Review-godkjenning"
+},
+{
+"key": "percent3",
+"label": "Mål 3 – prosent",
+"type": "number",
+"placeholder": "92"
+},
+{
+"key": "label4",
+"label": "Mål 4 – etikett",
+"type": "text",
+"placeholder": "Onboarding fullført"
+},
+{
+"key": "percent4",
+"label": "Mål 4 – prosent",
+"type": "number",
+"placeholder": "35"
+}
+],
+"defaults": {
+"title": "Mål og fremdrift",
+"subtitle": "Status mot kvartalsmål",
+"label1": "Nye byråkunder",
+"percent1": "78",
+"label2": "MRR-vekst",
+"percent2": "54",
+"label3": "App Review-godkjenning",
+"percent3": "92",
+"label4": "Onboarding fullført",
+"percent4": "35"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:38px 44px;\n    border-radius:22px;\n    background:linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%);\n    box-shadow:0 24px 60px rgba(31,45,74,.16),0 2px 8px rgba(31,45,74,.06);\n    border:1px solid rgba(31,45,74,.06);\n    color:var(--ink,#1f2d4a);\n  }\n  .head{\n    display:flex;align-items:center;gap:14px;\n    margin-bottom:30px;\n  }\n  .logo{height:34px;width:auto;display:block;border-radius:6px}\n  .head .icon{\n    width:42px;height:42px;border-radius:12px;\n    display:flex;align-items:center;justify-content:center;\n    background:color-mix(in srgb,var(--accent) 14%,transparent);\n    color:var(--accent);\n    flex:0 0 auto;\n  }\n  .head .icon .material-icons-outlined{font-size:24px}\n  .titles{display:flex;flex-direction:column;line-height:1.15}\n  .title{font-size:21px;font-weight:800;letter-spacing:-.01em}\n  .subtitle{font-size:12.5px;font-weight:500;color:color-mix(in srgb,var(--ink,#1f2d4a) 55%,transparent);margin-top:3px}\n  .goals{display:flex;flex-direction:column;gap:24px;min-width:440px}\n  .goal{opacity:0}\n  .goal .row{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px}\n  .goal .label{font-size:15px;font-weight:600;letter-spacing:-.005em}\n  .goal .pct{\n    font-size:16px;font-weight:800;\n    font-variant-numeric:tabular-nums;\n    color:var(--accent);\n  }\n  .track{\n    position:relative;height:11px;border-radius:99px;\n    background:color-mix(in srgb,var(--ink,#1f2d4a) 8%,transparent);\n    overflow:hidden;\n  }\n  .fill{\n    position:absolute;left:0;top:0;bottom:0;width:0%;\n    border-radius:99px;\n    background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 72%,#ffffff),var(--accent));\n    box-shadow:0 1px 6px color-mix(in srgb,var(--accent) 42%,transparent);\n  }\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"head\">\n    <img id=\"logo\" class=\"logo\" alt=\"\" style=\"display:none\">\n    <div class=\"icon\" id=\"headIcon\"><span class=\"material-icons-outlined\">flag</span></div>\n    <div class=\"titles\">\n      <div class=\"title\" id=\"title\">Mål og fremdrift</div>\n      <div class=\"subtitle\" id=\"subtitle\">Status mot kvartalsmål</div>\n    </div>\n  </div>\n  <div class=\"goals\" id=\"goals\"></div>\n</div>\n\n<script>\n(function(){\n  var cfg = window.__CFG__ || {};\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n  document.documentElement.style.setProperty('--accent', accent);\n  document.documentElement.style.setProperty('--ink', ink);\n\n  if(cfg.title){ document.getElementById('title').textContent = cfg.title; }\n  if(cfg.subtitle){ document.getElementById('subtitle').textContent = cfg.subtitle; }\n\n  if(cfg.logo){\n    var lg = document.getElementById('logo');\n    lg.src = cfg.logo; lg.style.display = 'block';\n    document.getElementById('headIcon').style.display = 'none';\n  }\n\n  // Collect goals from cfg: label1/percent1 ... label4/percent4\n  var goals = [];\n  for(var i=1;i<=4;i++){\n    var lab = cfg['label'+i];\n    var pct = cfg['percent'+i];\n    if(lab===undefined && pct===undefined) continue;\n    var n = parseFloat(pct);\n    if(isNaN(n)) n = 0;\n    n = Math.max(0, Math.min(100, n));\n    goals.push({ label: (lab===undefined||lab==='')?('Mål '+i):lab, percent:n });\n  }\n  if(goals.length===0){\n    goals = [\n      {label:'Mål 1', percent:72},\n      {label:'Mål 2', percent:48},\n      {label:'Mål 3', percent:90}\n    ];\n  }\n\n  var container = document.getElementById('goals');\n  var nodes = [];\n  goals.forEach(function(g){\n    var el = document.createElement('div');\n    el.className = 'goal';\n    el.innerHTML =\n      '<div class=\"row\"><span class=\"label\"></span><span class=\"pct\">0%</span></div>'+\n      '<div class=\"track\"><div class=\"fill\"></div></div>';\n    el.querySelector('.label').textContent = g.label;\n    container.appendChild(el);\n    nodes.push({ root:el, fill:el.querySelector('.fill'), pct:el.querySelector('.pct'), target:g.percent });\n  });\n\n  function easeInOut(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }\n  function clamp01(x){ return Math.max(0,Math.min(1,x)); }\n\n  var N = nodes.length;\n  // stagger window: each goal gets its own sub-window of the timeline\n  var stagger = 0.16; // fraction of timeline used to offset goals\n  window.setProgress = function(p){\n    p = clamp01(p);\n    for(var i=0;i<N;i++){\n      var start = (N>1) ? (i*(stagger/(N-1))) : 0;\n      // each goal animates over the remaining span after its start\n      var span = 1 - stagger;\n      var local = clamp01((p - start)/span);\n      var e = easeInOut(local);\n      var node = nodes[i];\n      var val = node.target * e;\n      node.fill.style.width = val + '%';\n      node.pct.textContent = Math.round(val) + '%';\n      // fade-in the goal row slightly ahead of its bar\n      var appear = clamp01((p - start*0.6)/0.12);\n      node.root.style.opacity = appear;\n    }\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "award-badge",
+"name": "Pris / utmerkelse",
+"desc": "En elegant utmerkelse-reveal for premium studio-bruk: en medalje/badge med glødende ring popper inn i et mørkt HUD-panel, etterfulgt av tittel, undertekst og årstall som tones inn stegvis. Transparent bakgrunn for overlay over video i DaVinci Resolve.",
+"style": "hud",
+"glyph": "🏆",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "eyebrow",
+"label": "Etikett (over tittel)",
+"type": "text",
+"placeholder": "Utmerkelse"
+},
+{
+"key": "title",
+"label": "Tittel",
+"type": "text",
+"placeholder": "Årets Produksjon"
+},
+{
+"key": "subtitle",
+"label": "Undertekst",
+"type": "text",
+"placeholder": "Tildelt for fremragende kreativt arbeid og teknisk håndverk."
+},
+{
+"key": "year",
+"label": "Årstall",
+"type": "text",
+"placeholder": "2026"
+}
+],
+"defaults": {
+"eyebrow": "Utmerkelse",
+"title": "Årets Produksjon",
+"subtitle": "Tildelt for fremragende kreativt arbeid og teknisk håndverk.",
+"year": "2026"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:48px;\n  }\n  .panel{\n    position:relative;\n    width:520px;\n    padding:44px 48px 40px;\n    border-radius:24px;\n    background:linear-gradient(160deg, rgba(18,22,34,0.92) 0%, rgba(10,13,22,0.96) 100%);\n    border:1px solid rgba(255,255,255,0.08);\n    box-shadow:0 30px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06);\n    overflow:hidden;\n    text-align:center;\n  }\n  .frame{\n    position:absolute; inset:0; border-radius:24px; pointer-events:none;\n    border:1px solid var(--accent-soft);\n    box-shadow:0 0 0 1px var(--accent-faint), inset 0 0 24px var(--accent-faint);\n    opacity:0;\n  }\n  .glowtop{\n    position:absolute; top:-120px; left:50%; transform:translateX(-50%);\n    width:340px; height:240px; border-radius:50%;\n    background:radial-gradient(closest-side, var(--accent-glow), transparent 70%);\n    opacity:0.6; filter:blur(8px); pointer-events:none;\n  }\n  .logo{ height:26px; margin:0 auto 22px; display:block; opacity:0.9; }\n  .logo[hidden]{display:none}\n\n  .badge{\n    position:relative;\n    width:118px; height:118px; margin:0 auto 40px;\n    display:flex; align-items:center; justify-content:center;\n  }\n  .ring{ position:absolute; inset:0; }\n  .ring svg{ width:100%; height:100%; transform:rotate(-90deg); }\n  .disc{\n    position:absolute; inset:14px; border-radius:50%;\n    background:radial-gradient(circle at 38% 32%, color-mix(in srgb, var(--accent) 55%, #ffffff 0%), var(--accent) 55%, color-mix(in srgb, var(--accent) 60%, #000 40%) 100%);\n    box-shadow:0 10px 30px var(--accent-glow), inset 0 2px 6px rgba(255,255,255,0.35), inset 0 -8px 16px rgba(0,0,0,0.3);\n    display:flex; align-items:center; justify-content:center;\n  }\n  .disc .material-icons-outlined{\n    font-size:48px; color:#fff;\n    text-shadow:0 2px 8px rgba(0,0,0,0.4);\n  }\n  .ribbon{ position:absolute; bottom:-2px; left:50%; width:0; height:0; }\n  .ribbon span{\n    position:absolute; top:0; width:14px; height:30px;\n    background:var(--accent); opacity:0.85;\n    clip-path:polygon(0 0,100% 0,100% 100%,50% 78%,0 100%);\n  }\n  .ribbon span.l{ left:-22px; transform:rotate(8deg); transform-origin:top; }\n  .ribbon span.r{ left:8px;  transform:rotate(-8deg); transform-origin:top; }\n\n  .eyebrow{\n    font-size:11px; font-weight:700; letter-spacing:3px; text-transform:uppercase;\n    color:var(--accent); margin-bottom:10px;\n  }\n  .title{\n    font-size:30px; font-weight:800; line-height:1.15; color:#f4f6fb;\n    letter-spacing:-0.4px; margin:0 0 12px;\n  }\n  .subtitle{\n    font-size:15px; font-weight:500; line-height:1.5; color:rgba(226,232,240,0.66);\n    margin:0 auto 22px; max-width:380px;\n  }\n  .year{\n    display:inline-flex; align-items:center; gap:8px;\n    padding:8px 18px; border-radius:999px;\n    background:rgba(255,255,255,0.04);\n    border:1px solid var(--accent-soft);\n    font-size:14px; font-weight:700; letter-spacing:1px; color:#f4f6fb;\n  }\n  .year .dot{ width:6px; height:6px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent-glow); }\n\n  .reveal{ opacity:0; }\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"panel\" id=\"panel\">\n    <div class=\"frame\" id=\"frame\"></div>\n    <div class=\"glowtop\" id=\"glowtop\"></div>\n\n    <img class=\"logo reveal\" id=\"logo\" alt=\"\">\n\n    <div class=\"badge\" id=\"badge\">\n      <div class=\"ring\">\n        <svg viewBox=\"0 0 118 118\">\n          <circle cx=\"59\" cy=\"59\" r=\"54\" fill=\"none\" stroke=\"rgba(255,255,255,0.07)\" stroke-width=\"2.5\"/>\n          <circle id=\"ringArc\" cx=\"59\" cy=\"59\" r=\"54\" fill=\"none\" stroke=\"var(--accent)\" stroke-width=\"2.5\" stroke-linecap=\"round\"/>\n        </svg>\n      </div>\n      <div class=\"ribbon\"><span class=\"l reveal\" id=\"ribL\"></span><span class=\"r reveal\" id=\"ribR\"></span></div>\n      <div class=\"disc\" id=\"disc\"><span class=\"material-icons-outlined\" id=\"icon\">emoji_events</span></div>\n    </div>\n\n    <div class=\"eyebrow reveal\" id=\"eyebrow\">Utmerkelse</div>\n    <h1 class=\"title reveal\" id=\"title\">Årets Produksjon</h1>\n    <p class=\"subtitle reveal\" id=\"subtitle\">Tildelt for fremragende kreativt arbeid og teknisk håndverk.</p>\n    <div class=\"year reveal\" id=\"yearWrap\"><span class=\"dot\"></span><span id=\"year\">2026</span></div>\n  </div>\n</div>\n\n<script>\n  var CFG = window.__CFG__ || {};\n  var accent = CFG.accent || '#3b82f6';\n  var ink    = CFG.ink    || '#1f2d4a';\n\n  function hexToRgb(h){\n    h = (h||'').replace('#','');\n    if(h.length===3){ h = h.split('').map(function(c){return c+c;}).join(''); }\n    var n = parseInt(h,16);\n    return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };\n  }\n  var rgb = hexToRgb(accent);\n  function rgba(a){ return 'rgba('+rgb.r+','+rgb.g+','+rgb.b+','+a+')'; }\n\n  var root = document.documentElement.style;\n  root.setProperty('--accent', accent);\n  root.setProperty('--accent-soft',  rgba(0.30));\n  root.setProperty('--accent-faint', rgba(0.12));\n  root.setProperty('--accent-glow',  rgba(0.45));\n\n  if(CFG.title    != null) document.getElementById('title').textContent = CFG.title;\n  if(CFG.subtitle != null) document.getElementById('subtitle').textContent = CFG.subtitle;\n  if(CFG.year     != null) document.getElementById('year').textContent = CFG.year;\n  if(CFG.eyebrow  != null) document.getElementById('eyebrow').textContent = CFG.eyebrow;\n\n  var logoEl = document.getElementById('logo');\n  if(CFG.logo){ logoEl.src = CFG.logo; logoEl.hidden = false; }\n  else { logoEl.hidden = true; logoEl.style.opacity = 0; }\n\n  var R = 54, CIRC = 2 * Math.PI * R;\n  var arc = document.getElementById('ringArc');\n  arc.style.strokeDasharray = CIRC;\n  arc.style.strokeDashoffset = CIRC;\n\n  function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }\n  function easeInOut(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }\n  function seg(p,s,e){ return easeInOut(clamp((p-s)/(e-s),0,1)); }\n\n  window.setProgress = function(p){\n    p = clamp(p, 0, 1);\n\n    var f = seg(p, 0.0, 0.18);\n    document.getElementById('frame').style.opacity = f;\n\n    var b = seg(p, 0.05, 0.45);\n    var scale = 0.4 + 0.6 * b;\n    var overshoot = b < 1 ? (1 + 0.08 * Math.sin(b * Math.PI)) : 1;\n    document.getElementById('disc').style.transform = 'scale(' + (scale * overshoot) + ')';\n    document.getElementById('disc').style.opacity = clamp(b * 1.4, 0, 1);\n    document.getElementById('icon').style.transform = 'scale(' + (0.7 + 0.3 * b) + ')';\n\n    arc.style.strokeDashoffset = CIRC * (1 - b);\n\n    var rb = seg(p, 0.30, 0.50);\n    var ribL = document.getElementById('ribL'), ribR = document.getElementById('ribR');\n    ribL.style.opacity = rb; ribR.style.opacity = rb;\n    ribL.style.height = (30 * rb) + 'px'; ribR.style.height = (30 * rb) + 'px';\n\n    document.getElementById('glowtop').style.opacity = 0.15 + 0.5 * b;\n\n    function rise(el, s, e){\n      var t = seg(p, s, e);\n      el.style.opacity = t;\n      el.style.transform = 'translateY(' + (14 * (1 - t)) + 'px)';\n    }\n    if(!logoEl.hidden) rise(logoEl, 0.0, 0.15);\n    rise(document.getElementById('eyebrow'),  0.42, 0.56);\n    rise(document.getElementById('title'),    0.50, 0.66);\n    rise(document.getElementById('subtitle'), 0.60, 0.76);\n    rise(document.getElementById('yearWrap'), 0.70, 0.86);\n  };\n\n  window.setProgress(0);\n</script>\n</body>\n</html>"
+},
+{
+"id": "split-stat",
+"name": "To store tall (split)",
+"desc": "To store nøkkeltall side om side, adskilt av en glødende skillelinje. Hvert tall har ikon-badge, tall som teller opp (med prefiks/suffiks som %, kr, +) og en etikett. Ren, lys stil for proff overlay i DaVinci Resolve. Tallene animeres forskjøvet (stagger) styrt av tidslinjen.",
+"style": "light",
+"glyph": "⇄",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "value1",
+"label": "Tall 1 (venstre)",
+"type": "text",
+"placeholder": "f.eks. 248% eller 12 400"
+},
+{
+"key": "label1",
+"label": "Etikett 1",
+"type": "text",
+"placeholder": "f.eks. Økning i engasjement"
+},
+{
+"key": "icon1",
+"label": "Ikon 1 (Material-navn)",
+"type": "text",
+"placeholder": "f.eks. trending_up"
+},
+{
+"key": "value2",
+"label": "Tall 2 (høyre)",
+"type": "text",
+"placeholder": "f.eks. 12 400 eller kr 89 000"
+},
+{
+"key": "label2",
+"label": "Etikett 2",
+"type": "text",
+"placeholder": "f.eks. Nye følgere denne måneden"
+},
+{
+"key": "icon2",
+"label": "Ikon 2 (Material-navn)",
+"type": "text",
+"placeholder": "f.eks. group_add"
+}
+],
+"defaults": {
+"value1": "248%",
+"label1": "Økning i engasjement",
+"icon1": "trending_up",
+"value2": "12 400",
+"label2": "Nye følgere denne måneden",
+"icon2": "group_add"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',sans-serif;\n    padding:40px;\n    display:flex;\n    flex-direction:column;\n    gap:0;\n  }\n  .panel{\n    background:#ffffff;\n    border-radius:24px;\n    box-shadow:0 24px 60px -20px rgba(20,30,55,.28), 0 4px 16px rgba(20,30,55,.08);\n    padding:44px 52px;\n    display:flex;\n    align-items:stretch;\n    gap:0;\n    position:relative;\n    overflow:hidden;\n  }\n  .logo-row{\n    display:flex;\n    align-items:center;\n    margin:0 0 18px 4px;\n    height:0;\n    overflow:visible;\n  }\n  .logo-row img{height:34px;width:auto;display:block;opacity:0;transform:translateY(-6px)}\n  .stat{\n    display:flex;\n    flex-direction:column;\n    align-items:center;\n    text-align:center;\n    padding:0 46px;\n    min-width:240px;\n  }\n  .icon-badge{\n    width:64px;height:64px;\n    border-radius:18px;\n    display:flex;align-items:center;justify-content:center;\n    margin-bottom:20px;\n    color:#fff;\n    transform:scale(.6);\n    opacity:0;\n  }\n  .icon-badge .material-icons-outlined{font-size:34px;line-height:1}\n  .value{\n    font-weight:800;\n    font-size:76px;\n    line-height:.95;\n    letter-spacing:-.03em;\n    display:flex;\n    align-items:baseline;\n    justify-content:center;\n    white-space:nowrap;\n  }\n  .value .pre,.value .suf{font-size:44px;font-weight:700;opacity:.85;}\n  .value .pre{margin-right:4px}\n  .value .suf{margin-left:4px}\n  .label{\n    margin-top:16px;\n    font-weight:600;\n    font-size:18px;\n    letter-spacing:.01em;\n    max-width:280px;\n    opacity:0;\n    transform:translateY(8px);\n  }\n  .divider{\n    width:2px;\n    align-self:stretch;\n    margin:6px 0;\n    border-radius:2px;\n    position:relative;\n    overflow:hidden;\n  }\n  .divider .fill{\n    position:absolute;left:0;top:0;width:100%;height:100%;\n    transform-origin:top;\n    transform:scaleY(0);\n  }\n  .divider .dot{\n    position:absolute;left:50%;top:50%;\n    width:9px;height:9px;border-radius:50%;\n    transform:translate(-50%,-50%) scale(0);\n  }\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"logo-row\"><img id=\"logo\" alt=\"\"></div>\n  <div class=\"panel\">\n    <div class=\"stat\" id=\"stat0\">\n      <div class=\"icon-badge\" id=\"badge0\"><span class=\"material-icons-outlined\" id=\"icon0\">bolt</span></div>\n      <div class=\"value\" id=\"val0\"></div>\n      <div class=\"label\" id=\"lab0\"></div>\n    </div>\n    <div class=\"divider\" id=\"divider\">\n      <div class=\"fill\" id=\"divfill\"></div>\n      <div class=\"dot\" id=\"divdot\"></div>\n    </div>\n    <div class=\"stat\" id=\"stat1\">\n      <div class=\"icon-badge\" id=\"badge1\"><span class=\"material-icons-outlined\" id=\"icon1\">trending_up</span></div>\n      <div class=\"value\" id=\"val1\"></div>\n      <div class=\"label\" id=\"lab1\"></div>\n    </div>\n  </div>\n</div>\n\n<script>\n(function(){\n  var CFG = window.__CFG__ || {};\n  var accent = CFG.accent || '#3b82f6';\n  var ink = CFG.ink || '#1f2d4a';\n\n  function hexToRgb(h){\n    h=(h||'').replace('#','');\n    if(h.length===3)h=h.split('').map(function(c){return c+c}).join('');\n    var n=parseInt(h,16);\n    return {r:(n>>16)&255,g:(n>>8)&255,b:n&255};\n  }\n  function rgba(h,a){var c=hexToRgb(h);return 'rgba('+c.r+','+c.g+','+c.b+','+a+')';}\n  function mix(h1,h2,t){var a=hexToRgb(h1),b=hexToRgb(h2);\n    return 'rgb('+Math.round(a.r+(b.r-a.r)*t)+','+Math.round(a.g+(b.g-a.g)*t)+','+Math.round(a.b+(b.b-a.b)*t)+')';}\n\n  // Parse a value string into prefix / number / suffix.\n  function parseVal(raw){\n    raw = (raw==null?'':String(raw)).trim();\n    var m = raw.match(/^([^\\d\\-]*)(-?[\\d\\s.,]*\\d)?(.*)$/);\n    if(!m) return {pre:'',num:null,suf:raw,decimals:0,thousands:false};\n    var pre = m[1]||'', numStr = m[2]||'', suf = m[3]||'';\n    if(numStr===''){ return {pre:pre,num:null,suf:suf,decimals:0,thousands:false}; }\n    var thousands = /[\\s,](\\d{3})(\\D|$)/.test(numStr) || numStr.indexOf(' ')>-1;\n    var clean = numStr.replace(/\\s/g,'').replace(/,/g,'.');\n    var parts = clean.split('.');\n    var decimals = 0;\n    if(parts.length>1){ decimals = parts[parts.length-1].length<=2 ? parts[parts.length-1].length : 0; }\n    var num = parseFloat(parts.length>1 ? parts.slice(0,-1).join('')+'.'+parts[parts.length-1] : clean);\n    if(isNaN(num)){ return {pre:pre,num:null,suf:suf,decimals:0,thousands:false}; }\n    return {pre:pre.trim(),num:num,suf:suf.trim(),decimals:decimals,thousands:thousands};\n  }\n  function fmt(n,decimals,thousands){\n    var s = n.toFixed(decimals);\n    if(thousands){\n      var p = s.split('.');\n      p[0] = p[0].replace(/\\B(?=(\\d{3})+(?!\\d))/g,' ');\n      s = p.join('.');\n    }\n    return s.replace('.',',');\n  }\n\n  var stats = [\n    {val:CFG.value1, lab:CFG.label1, ic:CFG.icon1, badge:'badge0', icon:'icon0', valEl:'val0', labEl:'lab0'},\n    {val:CFG.value2, lab:CFG.label2, ic:CFG.icon2, badge:'badge1', icon:'icon1', valEl:'val1', labEl:'lab1'}\n  ];\n  var parsed = [];\n  stats.forEach(function(s,i){\n    var p = parseVal(s.val);\n    parsed.push(p);\n    var badge = document.getElementById(s.badge);\n    badge.style.background = i===0 ? accent : mix(accent,ink,0.32);\n    badge.style.boxShadow = '0 10px 24px -8px '+rgba(i===0?accent:ink,.5);\n    document.getElementById(s.icon).textContent = (s.ic||'').trim() || (i===0?'bolt':'trending_up');\n    var lab = document.getElementById(s.labEl);\n    lab.textContent = s.lab || '';\n    lab.style.color = rgba(ink,.62);\n    document.getElementById(s.valEl).style.color = ink;\n  });\n\n  if(CFG.logo){\n    var lg = document.getElementById('logo');\n    lg.src = CFG.logo;\n    lg.dataset.has = '1';\n  }\n\n  var divider = document.getElementById('divider');\n  divider.style.background = rgba(ink,.07);\n  var divfill = document.getElementById('divfill');\n  divfill.style.background = 'linear-gradient(to bottom,'+rgba(accent,.0)+' 0%,'+rgba(accent,.7)+' 20%,'+rgba(accent,.7)+' 80%,'+rgba(accent,0)+' 100%)';\n  var divdot = document.getElementById('divdot');\n  divdot.style.background = accent;\n  divdot.style.boxShadow = '0 0 0 5px '+rgba(accent,.16);\n\n  function easeInOut(t){return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;}\n  function clamp(x,a,b){return Math.max(a,Math.min(b,x));}\n  function seg(p,start,end){return clamp((p-start)/(end-start),0,1);}\n\n  function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\n\n  window.setProgress = function(p){\n    p = clamp(p||0,0,1);\n\n    if(document.getElementById('logo').dataset.has==='1'){\n      var lp = easeInOut(seg(p,0,0.12));\n      var lg = document.getElementById('logo');\n      lg.style.opacity = lp;\n      lg.style.transform = 'translateY('+((1-lp)*-6)+'px)';\n    }\n\n    var dp = easeInOut(seg(p,0.05,0.45));\n    divfill.style.transform = 'scaleY('+dp+')';\n    var dotp = easeInOut(seg(p,0.30,0.5));\n    divdot.style.transform = 'translate(-50%,-50%) scale('+dotp+')';\n\n    stats.forEach(function(s,i){\n      var base = 0.10 + i*0.16;\n      var bp = easeInOut(seg(p,base,base+0.20));\n      var badge = document.getElementById(s.badge);\n      badge.style.opacity = bp;\n      badge.style.transform = 'scale('+(0.6+0.4*bp)+')';\n\n      var vp = easeInOut(seg(p,base+0.06,base+0.55));\n      var pr = parsed[i];\n      var valEl = document.getElementById(s.valEl);\n      if(pr.num===null){\n        valEl.innerHTML = '<span>'+escapeHtml(s.val||'')+'</span>';\n      } else {\n        var cur = pr.num * vp;\n        valEl.innerHTML =\n          (pr.pre? '<span class=\"pre\">'+escapeHtml(pr.pre)+'</span>':'') +\n          '<span class=\"num\">'+fmt(cur,pr.decimals,pr.thousands)+'</span>' +\n          (pr.suf? '<span class=\"suf\">'+escapeHtml(pr.suf)+'</span>':'');\n      }\n\n      var lp2 = easeInOut(seg(p,base+0.20,base+0.55));\n      var lab = document.getElementById(s.labEl);\n      lab.style.opacity = lp2;\n      lab.style.transform = 'translateY('+((1-lp2)*8)+'px)';\n    });\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
 }
 ]
