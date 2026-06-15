@@ -251,3 +251,54 @@ mockups, kamera) + macro-import der det krever motion-design.
 
 Bunnlinje: bruk Fusion til å *styre blikk og heve verdi* — ikke til å vise frem
 effekter. Det dyre ser alltid enkelt ut.
+
+---
+
+## K. Research & kilder (krysssjekket mot nett 2026-06)
+
+Det jeg verifiserte selv mot Resolve 21 (§F) er kryss-sjekket mot eksterne
+kilder. Viktig funn: **de offisielle/uoffisielle scripting-docs dokumenterer
+IKKE spline/keyframe-API-et** (BezierSpline/SetKeyFrames) — derfor er §F reell
+merverdi, ikke å finne i tutorials.
+
+**Macro/template-workflow (offisiell manual-speil) — bekreftet:**
+- Lag macro: velg alle noder UNNTATT MediaIn/MediaOut (Loader/Saver i Studio),
+  høyreklikk → *Macro → Create Macro*. Cmd-klikk i ønsket rekkefølge styrer
+  kontroll-rekkefølgen.
+- I Macro Editor: huk av KUN parametrene som skal være redigerbare.
+- Lagre `.setting` i (macOS):
+  `~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Templates/Edit/{Titles|Generators|Transitions|Effects}`
+  → dukker opp i Effects Library, settes inn via `InsertFusionTitleIntoTimeline`.
+  (Kilde: Blackmagic-manual via steakunderwater; Motion Array macros-guide; VFXstudy.)
+
+**Motion-design-prinsipper (proff praksis) — bekrefter §I:**
+- Lineær easing på alt = den vanligste feilen; får det til å føles som en
+  lysbildeserie, ikke et produkt. Myk ease = proff.
+- «Restraint»: animasjonen skal aldri være høyere enn budskapet. Grain/vignett
+  med måtehold.
+- Elastisk «snap» på automatiserte handlinger trener kjøperen til å assosiere
+  produktet med friksjonsfri utførelse (nyttig for app-demoer).
+  (Kilder: Toptal Motion Design Principles; Bettermockups; advids; graduateschool.)
+
+**Count-up-tall (kryss-sjekk av §E.4):** community bekrefter expression-veien.
+Nyanse: Fusion har to former — et **rent uttrykk** (det jeg bruker:
+`tostring(math.floor(math.min(1,time/SPAN)*VALUE))`) ELLER et **Lua-script-
+uttrykk med ledende kolon** `:` (f.eks. `:return tostring(...)`). Begge funker;
+kolon tvinger Lua-tolkning. (Kilder: Blackmagic-forum «Count up in Fusion»;
+Sabbirz; YouTube-tutorials.)
+
+**Scripting-API-referanser (comp-håndtering bekreftet, spline IKKE dokumentert):**
+deric.github.io / diop.github.io DaVinciResolve-API-Docs, resolvedevdoc,
+X-Raym, dvresolve wiki — alle lister `AddFusionComp/ImportFusionComp/
+LoadFusionCompByName/GetFusionCompByIndex` men INGEN spline/keyframe-metoder.
+
+Lenker:
+- Blackmagic Fusion: https://www.blackmagicdesign.com/products/davinciresolve/fusion
+- Fusion-template-manual: https://www.steakunderwater.com/VFXPedia/__man/Resolve18-6/DaVinciResolve18_Manual_files/part1637.htm
+- Saving a Title Macro: https://www.steakunderwater.com/VFXPedia/__man/Resolve18-6/DaVinciResolve18_Manual_files/part1639.htm
+- Motion Array – Resolve macros: https://motionarray.com/learn/davinci-resolve/davinci-resolve-macros/
+- VFXstudy – macros & templates: https://vfxstudy.com/tutorials/macros-templates/
+- Toptal – Motion Design Principles: https://www.toptal.com/designers/ux/motion-design-principles
+- Bettermockups – motion principles: https://www.bettermockups.com/blogs/resources/motion-design-principles
+- Resolve scripting docs (uoffisiell): https://deric.github.io/DaVinciResolve-API-Docs/
+- Blackmagic-forum – Count up in Fusion: https://forum.blackmagicdesign.com/viewtopic.php?f=21&t=83991
