@@ -225,6 +225,19 @@ const lrcStamp = (sec: number) => { const m = Math.floor(sec / 60), s = sec - m 
 // ── .ics-kalenderfil (RFC 5545) for en økt ────────────────────────────────
 const icsDate = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 const icsEsc = (s: string) => String(s || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
+// SMS via Twilio (env-gated). Returnerer true ved sendt, false ellers/uten config.
+async function sendSms(to: string, body: string): Promise<boolean> {
+  const sid = process.env.TWILIO_ACCOUNT_SID, tok = process.env.TWILIO_AUTH_TOKEN, from = process.env.TWILIO_FROM;
+  if (!sid || !tok || !from || !to) return false;
+  try {
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: "POST",
+      headers: { Authorization: "Basic " + Buffer.from(`${sid}:${tok}`).toString("base64"), "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ To: to, From: from, Body: body.slice(0, 600) }),
+    });
+    return r.ok;
+  } catch { return false; }
+}
 function buildIcs(sess: any): string {
   const start = new Date(sess.start_at); const end = sess.end_at ? new Date(sess.end_at) : new Date(start.getTime() + 2 * 3600_000);
   const desc = [sess.notes, sess.online_url ? `Online: ${sess.online_url}` : ""].filter(Boolean).join("\\n");
@@ -2352,6 +2365,36 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       res.setHeader("Content-Disposition", `attachment; filename="okt.ics"`);
       return res.end(buildIcs(r.rows[0]));
     } catch { return res.status(500).send("error"); }
+  });
+
+  // CRON: send 24t- og 1t-påminnelser for kommende økter (e-post + valgfri SMS).
+  app.post("/api/audio-showcase/sessions/run-reminders", async (req, res) => {
+    const presented = String(req.headers["x-cron-trigger-token"] || "").trim();
+    const expected = (process.env.CRON_TRIGGER_TOKEN || "").trim();
+    if (!presented || !expected || presented !== expected) return res.status(401).json({ error: "unauthorized" });
+    try {
+      const windows = [
+        { col: "reminded_24h", where: "start_at BETWEEN NOW()+INTERVAL '23 hours' AND NOW()+INTERVAL '25 hours' AND reminded_24h=false", label: "i morgen" },
+        { col: "reminded_1h", where: "start_at BETWEEN NOW() AND NOW()+INTERVAL '70 minutes' AND reminded_1h=false", label: "om kort tid" },
+      ];
+      let sessions = 0, emails = 0, sms = 0;
+      for (const w of windows) {
+        const due = await pool.query(`SELECT * FROM audio_sessions WHERE ${w.where}`);
+        for (const sess of due.rows) {
+          sessions++;
+          const hasWarmup = ((await pool.query(`SELECT 1 FROM audio_warmup_routines WHERE project_id=$1::uuid LIMIT 1`, [sess.project_id]).catch(() => ({ rowCount: 0 }))) as any).rowCount > 0;
+          const inv = await pool.query(`SELECT i.member_name, i.email, m.phone FROM audio_session_invitees i LEFT JOIN audio_review_members m ON m.project_id=$2::uuid AND m.name=i.member_name WHERE i.session_id=$1::uuid AND i.status<>'declined'`, [sess.id, sess.project_id]);
+          const when = new Date(sess.start_at).toLocaleString("no-NO", { dateStyle: "full", timeStyle: "short" });
+          const text = `Påminnelse: «${sess.title}» ${w.label} (${when})${sess.location ? ` · ${sess.location}` : ""}.${hasWarmup ? " Husk oppvarming før økta." : ""}`;
+          for (const a of inv.rows) {
+            if (sendEmail && a.email) { await sendEmail({ to: a.email, subject: `Påminnelse: ${sess.title}`, html: `<div style="font-family:system-ui,Arial,sans-serif;color:#1a1a1a">${text}</div>`, text, kind: "audio_session_reminder" }).then(() => { emails++; }).catch(() => {}); }
+            if (a.phone && await sendSms(a.phone, text)) sms++;
+          }
+          await pool.query(`UPDATE audio_sessions SET ${w.col}=true WHERE id=$1::uuid`, [sess.id]);
+        }
+      }
+      return res.json({ ok: true, sessions, emails, sms });
+    } catch (e) { if (isMissingTable(e)) return res.json({ ok: true, sessions: 0 }); console.error("[sessions] reminders failed:", e); return res.status(500).json({ error: "reminders_failed" }); }
   });
 
   // Eier laster ned signert avtale-PDF.

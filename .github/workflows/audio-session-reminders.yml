@@ -1,0 +1,45 @@
+name: Audio Showcase økt-påminnelser
+
+# Sender 24t- og 1t-påminnelser for kommende studio-økter (e-post + valgfri SMS).
+# Token-gated via CRON_TRIGGER_TOKEN (GitHub secret + Render env). Idempotent —
+# backend flagger sendte påminnelser, så gjentatte kjøringer dupliserer ikke.
+
+on:
+  schedule:
+    - cron: '0,30 * * * *'   # hver halvtime (fanger 24t- og 1t-vinduene presist nok)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audio-session-reminders
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  run-reminders:
+    name: Kjør økt-påminnelser
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger run-reminders
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN secret er ikke satt"
+            exit 1
+          fi
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-trigger-token: $CRON_TRIGGER_TOKEN" \
+            -d '{}' \
+            "$BACKEND_URL/api/audio-showcase/sessions/run-reminders")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "HTTP $HTTP_CODE — $BODY"
+          [ "$HTTP_CODE" = "200" ] || exit 1
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
