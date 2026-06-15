@@ -838,7 +838,7 @@ import {
 import { createWebSocketServer, broadcastChatEventToUser } from "./websocket-chat.js";
 import { createDanceRealtimeServer } from "./dance-realtime-server.js";
 import { createReferenceProxyRouter } from "./reference-proxy-routes.js";
-import { createYouTubeRouter, buildAuthorizedYoutubeClient } from "./youtube-routes.js";
+import { createYouTubeRouter, buildAuthorizedYoutubeClient, buildAuthorizedGoogleCalendar } from "./youtube-routes.js";
 import {
   deletePersistedAuthSession,
   hydratePersistedAuthSessions,
@@ -70250,6 +70250,11 @@ setupAudioShowcaseRoutes({
   // Gjenbruk eksisterende YouTube-tilkobling (Google) for video-publisering.
   getYoutubeClient: async (userId, req) => {
     try { const { youtube } = await buildAuthorizedYoutubeClient(pool, userId, req); return { youtube }; }
+    catch { return null; }
+  },
+  // Google Calendar (samme tilkobling) for å legge økter i produsentens kalender.
+  getGoogleCalendar: async (userId, req) => {
+    try { return await buildAuthorizedGoogleCalendar(pool, userId, req); }
     catch { return null; }
   },
   // Opplasting av eget Canvas-klipp (memoryStorage, 250 MB).
