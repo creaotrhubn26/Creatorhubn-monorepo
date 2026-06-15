@@ -156,6 +156,10 @@ try {
 installFetchNormalization();
 installPerformanceTimingFallback();
 
+// Observability: fang JS-errors + unhandled rejections og send til
+// /api/admin-room/errors (Sentry-erstatning, ses i Admin Room).
+import('./utils/installFrontendErrorReporter').then(m => m.installFrontendErrorReporter()).catch(() => {});
+
 // Auto-inject Bearer-token i alle interne /api/-kall hvis token finnes i
 // localStorage. Mange admin-room-paneler bruker egne jsonRequest-wrappers
 // som ikke leser token-en selv — denne globale patchen sikrer at de alle
