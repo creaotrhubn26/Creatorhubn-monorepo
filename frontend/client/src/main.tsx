@@ -156,6 +156,41 @@ try {
 installFetchNormalization();
 installPerformanceTimingFallback();
 
+// Auto-inject Bearer-token i alle interne /api/-kall hvis token finnes i
+// localStorage. Mange admin-room-paneler bruker egne jsonRequest-wrappers
+// som ikke leser token-en selv — denne globale patchen sikrer at de alle
+// får Authorization-header uten å måtte oppdatere hver fil.
+(() => {
+  if (typeof window === 'undefined' || (window as { __rrAuthFetchPatched?: boolean }).__rrAuthFetchPatched) return;
+  (window as { __rrAuthFetchPatched?: boolean }).__rrAuthFetchPatched = true;
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    try {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+      const isInternalApi = url.startsWith('/api/')
+        || url.startsWith(window.location.origin + '/api/')
+        || (url.startsWith('http') && url.includes('/api/') && new URL(url).host === window.location.host);
+      if (isInternalApi) {
+        const token = localStorage.getItem('creatorhub_auth_token');
+        if (token) {
+          const headers = new Headers(init?.headers ?? (typeof input !== 'string' && !(input instanceof URL) ? input.headers : undefined));
+          if (!headers.has('Authorization')) {
+            headers.set('Authorization', `Bearer ${token}`);
+          }
+          init = { ...(init ?? {}), headers, credentials: init?.credentials ?? 'include' };
+        }
+      }
+    } catch {
+      // Ignore — fallback til originalFetch uten patching
+    }
+    return originalFetch(input, init);
+  };
+})();
+
 if (shouldUseRoleRoomDedicatedHostBootstrap(window.location)) {
   void registerRoleRoomPwaServiceWorker().catch((error) => {
     console.warn('[main.tsx] Role Room service worker registration failed:', error);
