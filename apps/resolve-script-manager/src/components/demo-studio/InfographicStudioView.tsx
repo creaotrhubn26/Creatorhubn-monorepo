@@ -69,17 +69,21 @@ const RR_KIT_IDS = new Set<string>([
   // mer (batch 17)
   'rr-cast-list', 'rr-selftape', 'rr-scene-breakdown', 'rr-talent-profile',
   'rr-live-set', 'rr-premiere', 'rr-dance-piece', 'rr-feedback',
-  // UI-elementer (batch 19)
+  // UI-elementer (batch 19-20)
   'rr-ui-button', 'rr-ui-notification', 'rr-ui-modal', 'rr-ui-toggle',
   'rr-ui-tabs', 'rr-ui-status-pills', 'rr-ui-avatar-chip',
+  'rr-ui-dropdown', 'rr-ui-input', 'rr-ui-card', 'rr-ui-sidebar',
+  'rr-ui-stepper', 'rr-ui-chips', 'rr-ui-rating',
 ]);
 const CH_KIT_IDS = new Set<string>([
   'ch-kpi-cards', 'ch-revenue-trend', 'ch-client-pipeline', 'ch-project-card',
   'ch-showcase-portfolio', 'ch-pricing-package', 'ch-testimonial', 'ch-booking-cta',
   'ch-bd-intro', 'ch-bd-outro', 'ch-bd-section', 'ch-bd-stat-hero', 'ch-bd-gradient', 'ch-bd-title-band',
-  // UI-elementer (batch 19)
+  // UI-elementer (batch 19-20)
   'ch-ui-button', 'ch-ui-notification', 'ch-ui-modal', 'ch-ui-toggle',
   'ch-ui-tabs', 'ch-ui-stat-pill', 'ch-ui-avatar-chip',
+  'ch-ui-dropdown', 'ch-ui-input', 'ch-ui-card', 'ch-ui-sidebar',
+  'ch-ui-stepper', 'ch-ui-segmented', 'ch-ui-banner',
 ]);
 const BRAND_KITS = [
   { id: 'kit-rr', name: 'The Role Room', accent: '#a78bfa', tagline: 'Casting · Roller · Produksjon', ids: RR_KIT_IDS, logo: ROLE_ROOM_LOGO },
