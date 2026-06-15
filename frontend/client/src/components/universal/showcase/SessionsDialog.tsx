@@ -7,7 +7,7 @@ import {
   Box, Stack, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Chip, CircularProgress, IconButton, Divider,
 } from '@mui/material';
-import { EventOutlined, DeleteOutline, CheckCircle, Cancel, HelpOutline, LocalFireDepartmentOutlined } from '@mui/icons-material';
+import { EventOutlined, DeleteOutline, CheckCircle, Cancel, HelpOutline, LocalFireDepartmentOutlined, SyncOutlined, LinkOutlined } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
 const PANEL = '#131316', BORDER = 'rgba(255,255,255,0.08)', TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', FAINT = 'rgba(245,242,234,0.38)', ACCENT = '#FF6B35', GREEN = '#5fb88a';
@@ -24,8 +24,23 @@ const SessionsDialog: React.FC<{ open: boolean; projectId: string; onClose: () =
   const [f, setF] = React.useState<any>({ title: '', kind: 'opptak', startAt: '', endAt: '', location: '', target: 'all', notes: '' });
   const set = (k: string) => (e: any) => setF((p: any) => ({ ...p, [k]: e.target.value }));
 
+  const [gcalStatus, setGcalStatus] = React.useState<{ connected: boolean; calendarScope: boolean; email?: string | null } | null>(null);
   const load = React.useCallback(() => apiRequest(`/api/audio-showcases/${projectId}/sessions`).then((d: any) => setSessions(d.sessions || [])).catch(() => setSessions([])).finally(() => setLoading(false)), [projectId]);
-  React.useEffect(() => { if (open) { setLoading(true); load(); } }, [open, load]);
+  const loadGcalStatus = React.useCallback(() => apiRequest(`/api/audio-showcase/google-calendar/status`).then((d: any) => setGcalStatus(d)).catch(() => setGcalStatus(null)), []);
+  React.useEffect(() => { if (open) { setLoading(true); load(); loadGcalStatus(); } }, [open, load, loadGcalStatus]);
+
+  // Koble til (på nytt) med Calendar-tilgang — sender til Googles samtykke-skjerm.
+  const [connecting, setConnecting] = React.useState(false);
+  const connectGoogle = async () => {
+    setConnecting(true);
+    try {
+      const r = await apiRequest('/api/creatorhub/google/oauth/start', { method: 'POST', body: {
+        mode: 'link', returnPath: window.location.pathname + window.location.search, browserOrigin: window.location.origin,
+      } });
+      if (r?.authorizationUrl) window.location.href = r.authorizationUrl;
+      else setConnecting(false);
+    } catch { setConnecting(false); }
+  };
 
   const create = async () => {
     if (!f.title.trim() || !f.startAt) return; setBusy(true);
@@ -43,11 +58,23 @@ const SessionsDialog: React.FC<{ open: boolean; projectId: string; onClose: () =
     setGcalMsg((m) => ({ ...m, [id]: '…' }));
     try {
       const r = await apiRequest(`/api/sessions/${id}/gcal`, { method: 'POST', body: {} });
-      if (r?.htmlLink) window.open(r.htmlLink, '_blank');
-      setGcalMsg((m) => ({ ...m, [id]: 'Lagt i Google Calendar' }));
+      setGcalMsg((m) => ({ ...m, [id]: r?.updated ? 'Oppdatert i Google Calendar' : 'Lagt i Google Calendar' }));
+      await load();
     } catch (e: any) {
       const msg = String(e?.message || '');
-      setGcalMsg((m) => ({ ...m, [id]: msg.includes('409') ? 'Koble Google m/ Calendar-tilgang i Integrasjoner først' : 'Kunne ikke legge til' }));
+      setGcalMsg((m) => ({ ...m, [id]: msg.includes('409') ? 'Koble Google m/ Calendar-tilgang først' : 'Kunne ikke legge til' }));
+      loadGcalStatus();
+    }
+  };
+  const pullGcal = async (id: string) => {
+    setGcalMsg((m) => ({ ...m, [id]: 'Henter…' }));
+    try {
+      const r = await apiRequest(`/api/sessions/${id}/gcal/pull`, { method: 'POST', body: {} });
+      setGcalMsg((m) => ({ ...m, [id]: r?.deleted ? 'Slettet i Google — koblingen nullstilt' : r?.changed ? 'Oppdatert fra Google' : 'Ingen endringer' }));
+      await load();
+    } catch (e: any) {
+      const msg = String(e?.message || '');
+      setGcalMsg((m) => ({ ...m, [id]: msg.includes('409') ? 'Push økta til Google først' : 'Kunne ikke hente' }));
     }
   };
 
@@ -55,6 +82,22 @@ const SessionsDialog: React.FC<{ open: boolean; projectId: string; onClose: () =
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
       <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}><EventOutlined sx={{ color: ACCENT }} /> Økter & booking</DialogTitle>
       <DialogContent>
+        {/* Google Calendar-tilkobling: tilbyr «koble til» når scope mangler. */}
+        {gcalStatus && !gcalStatus.calendarScope && (
+          <Box sx={{ mb: 1.5, p: 1.25, borderRadius: '10px', bgcolor: 'rgba(63,167,214,0.10)', border: '1px solid rgba(63,167,214,0.25)' }}>
+            <Stack direction="row" alignItems="center" spacing={1.25}>
+              <EventOutlined sx={{ color: '#3fa7d6', fontSize: 20 }} />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ fontSize: '0.74rem', fontWeight: 700 }}>{gcalStatus.connected ? 'Google er koblet, men mangler kalender-tilgang' : 'Koble til Google Calendar'}</Typography>
+                <Typography sx={{ fontSize: '0.64rem', color: MUTED }}>Koble til (på nytt) med Calendar-tilgang for å legge økter rett i Google og hente endringer tilbake.</Typography>
+              </Box>
+              <Button onClick={connectGoogle} disabled={connecting} startIcon={<LinkOutlined sx={{ fontSize: '15px !important' }} />} size="small" variant="outlined" sx={{ color: '#3fa7d6', borderColor: 'rgba(63,167,214,0.5)', textTransform: 'none', fontSize: '0.68rem', whiteSpace: 'nowrap' }}>{connecting ? 'Åpner…' : 'Koble til'}</Button>
+            </Stack>
+          </Box>
+        )}
+        {gcalStatus?.calendarScope && (
+          <Typography sx={{ mb: 1, fontSize: '0.64rem', color: GREEN, display: 'flex', alignItems: 'center', gap: 0.5 }}><CheckCircle sx={{ fontSize: 13 }} /> Google Calendar koblet{gcalStatus.email ? ` (${gcalStatus.email})` : ''} — toveis synk aktiv.</Typography>
+        )}
         {loading ? <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} sx={{ color: ACCENT }} /></Box> : (
           <Stack direction="row" spacing={2}>
             {/* Ny økt */}
@@ -90,10 +133,12 @@ const SessionsDialog: React.FC<{ open: boolean; projectId: string; onClose: () =
                   <Stack direction="row" flexWrap="wrap" spacing={0.5} sx={{ mt: 0.5 }}>
                     {(sx2.invitees || []).map((iv: any) => { const c = statusChip(iv.status); return <Chip key={iv.name} icon={iv.warmedUp ? <LocalFireDepartmentOutlined sx={{ fontSize: '12px !important' }} /> : c.i} label={iv.warmedUp ? `${iv.name} · klar` : iv.name} size="small" sx={{ height: 18, fontSize: '0.58rem', bgcolor: iv.warmedUp ? 'rgba(95,184,138,0.14)' : 'rgba(255,255,255,0.06)', color: iv.warmedUp ? GREEN : c.c, '& .MuiChip-icon': { color: iv.warmedUp ? GREEN : c.c } }} />; })}
                   </Stack>
-                  <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 0.5 }}>
-                    <Button onClick={() => pushGcal(sx2.id)} startIcon={<EventOutlined sx={{ fontSize: '14px !important' }} />} size="small" sx={{ color: '#3fa7d6', textTransform: 'none', fontSize: '0.66rem', minWidth: 0 }}>Google Calendar</Button>
-                    {gcalMsg[sx2.id] && <Typography sx={{ fontSize: '0.62rem', color: MUTED }}>{gcalMsg[sx2.id]}</Typography>}
+                  <Stack direction="row" alignItems="center" flexWrap="wrap" spacing={1} sx={{ mt: 0.5 }}>
+                    <Button onClick={() => pushGcal(sx2.id)} startIcon={<EventOutlined sx={{ fontSize: '14px !important' }} />} size="small" sx={{ color: '#3fa7d6', textTransform: 'none', fontSize: '0.66rem', minWidth: 0 }}>{sx2.gcal_event_id ? 'Oppdater i Google' : 'Google Calendar'}</Button>
+                    {sx2.gcal_event_id && <Button onClick={() => pullGcal(sx2.id)} startIcon={<SyncOutlined sx={{ fontSize: '14px !important' }} />} size="small" sx={{ color: MUTED, textTransform: 'none', fontSize: '0.66rem', minWidth: 0 }}>Hent endringer</Button>}
+                    {sx2.gcal_html_link && <Button href={sx2.gcal_html_link} target="_blank" size="small" sx={{ color: FAINT, textTransform: 'none', fontSize: '0.66rem', minWidth: 0 }}>Åpne</Button>}
                   </Stack>
+                  {gcalMsg[sx2.id] && <Typography sx={{ fontSize: '0.62rem', color: MUTED, mt: 0.25 }}>{gcalMsg[sx2.id]}</Typography>}
                 </Box>
               ))}
             </Stack>
