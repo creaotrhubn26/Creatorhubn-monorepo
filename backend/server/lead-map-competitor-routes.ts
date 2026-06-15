@@ -29,6 +29,7 @@ import {
   type CounterCampaign,
 } from "./competitor-counter-campaign.js";
 import { recommendOutreachStrategy } from "./lead-outreach-strategy.js";
+import { enrichLeadWithBrreg, getStoredEnrichment } from "./lead-brreg-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -667,6 +668,52 @@ export function registerLeadMapCompetitorRoutes({
           return res.status(500).json({ error: "anthropic_key_missing" });
         }
         return res.status(500).json({ error: "assess_failed", detail: msg });
+      }
+    },
+  );
+
+  // ─── GET /leads/:id/enrichment (hent lagret BRREG-berikkelse) ──
+  app.get(
+    "/api/admin-room/lead-map/leads/:id/enrichment",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const enrichment = await getStoredEnrichment(pool, {
+          leadId: req.params.id,
+          workspaceOwnerUserId: session.userId,
+        });
+        return res.json({ enrichment });
+      } catch (err) {
+        return res.status(500).json({ error: "enrichment_fetch_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── POST /leads/:id/enrich (kjør BRREG-berikkelse) ──
+  // Daniel ba om å bruke ExternalDataService — BRREG er åpent gratis API
+  // (data.brreg.no). Vi henter firma-data + roller og lagrer som
+  // crm_customers.enrichment_data (JSONB). Cache 30 dager.
+  app.post(
+    "/api/admin-room/lead-map/leads/:id/enrich",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const force = req.body?.force === true;
+      try {
+        const result = await enrichLeadWithBrreg(pool, {
+          leadId: req.params.id,
+          workspaceOwnerUserId: session.userId,
+          forceRefresh: force,
+        });
+        return res.json({ enrichment: result });
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === "lead_not_found") return res.status(404).json({ error: msg });
+        if (msg === "brreg_detail_fetch_failed") {
+          return res.status(502).json({ error: "brreg_unavailable", detail: msg });
+        }
+        return res.status(500).json({ error: "enrich_failed", detail: msg });
       }
     },
   );
