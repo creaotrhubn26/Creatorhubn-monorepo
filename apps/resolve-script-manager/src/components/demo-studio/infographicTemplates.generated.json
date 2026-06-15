@@ -454,5 +454,482 @@
 "nameB": "Ny CTA"
 },
 "html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box;font-family:'Inter',system-ui,sans-serif}\n  #wrap{\n    width:max-content;\n    padding:48px;\n    display:flex;\n    align-items:center;\n    gap:40px;\n  }\n  .panel{\n    position:relative;\n    width:420px;\n    border-radius:22px;\n    padding:30px 32px 34px;\n    background:linear-gradient(165deg, rgba(28,36,54,0.92), rgba(16,21,34,0.94));\n    border:1px solid rgba(255,255,255,0.08);\n    box-shadow:0 24px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06);\n    overflow:hidden;\n  }\n  .panel::before{\n    content:\"\";position:absolute;inset:0;border-radius:22px;\n    background:radial-gradient(120% 80% at 0% 0%, var(--glow) 0%, transparent 55%);\n    opacity:.5;pointer-events:none;\n  }\n  .panel-head{display:flex;align-items:center;gap:12px;margin-bottom:6px}\n  .badge{\n    width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;\n    font-size:20px;font-weight:800;color:#fff;\n    box-shadow:0 6px 18px var(--glowstrong);\n  }\n  .ptitle{font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:rgba(220,228,245,0.55)}\n  .pname{font-size:19px;font-weight:700;color:#fff;margin-top:1px}\n  .metric{display:flex;align-items:baseline;gap:8px;margin:18px 0 4px}\n  .mval{font-size:58px;font-weight:800;color:#fff;line-height:1;letter-spacing:-0.02em}\n  .munit{font-size:26px;font-weight:700;color:rgba(255,255,255,0.5)}\n  .mlabel{font-size:13px;font-weight:500;color:rgba(220,228,245,0.5);letter-spacing:.02em}\n  .spark{margin-top:22px;width:100%;height:70px;display:block}\n  /* center */\n  #center{display:flex;flex-direction:column;align-items:center;gap:18px;width:264px}\n  .ring-wrap{position:relative;width:256px;height:256px}\n  .ring-wrap svg{position:absolute;inset:0}\n  .ring-core{\n    position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;\n  }\n  .imp-label{font-size:10px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:rgba(220,228,245,0.55)}\n  .imp-val{font-size:50px;font-weight:800;line-height:1;letter-spacing:-0.02em;text-shadow:0 0 24px var(--accentglow)}\n  .imp-sub{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:rgba(220,228,245,0.42)}\n  .logo{height:26px;width:auto;display:block;opacity:.9}\n  .winner{\n    display:inline-flex;align-items:center;gap:6px;\n    padding:6px 14px;border-radius:999px;\n    font-size:12px;font-weight:700;letter-spacing:.05em;\n    color:#fff;\n  }\n  .winner .material-icons-outlined{font-size:16px}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <!-- Version A -->\n  <div class=\"panel\" id=\"panelA\" style=\"--glow:rgba(99,116,150,0.22);--glowstrong:rgba(99,116,150,0.4)\">\n    <div class=\"panel-head\">\n      <div class=\"badge\" id=\"badgeA\" style=\"background:linear-gradient(160deg,#5b6b8c,#3c4863)\">A</div>\n      <div>\n        <div class=\"ptitle\">Versjon</div>\n        <div class=\"pname\" id=\"nameA\">Kontroll</div>\n      </div>\n    </div>\n    <div class=\"metric\">\n      <div class=\"mval\" id=\"aNum\">0</div>\n      <div class=\"munit\">%</div>\n    </div>\n    <div class=\"mlabel\">Klikkrate (CTR)</div>\n    <svg class=\"spark\" id=\"sparkA\" viewBox=\"0 0 356 70\" preserveAspectRatio=\"none\"></svg>\n  </div>\n\n  <!-- Center improvement -->\n  <div id=\"center\">\n    <div id=\"logoSlot\"></div>\n    <div class=\"ring-wrap\">\n      <svg viewBox=\"0 0 256 256\">\n        <defs>\n          <linearGradient id=\"ringGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\">\n            <stop offset=\"0%\" id=\"rg0\"/>\n            <stop offset=\"100%\" id=\"rg1\"/>\n          </linearGradient>\n          <filter id=\"ringGlow\" x=\"-50%\" y=\"-50%\" width=\"200%\" height=\"200%\">\n            <feGaussianBlur stdDeviation=\"4\" result=\"b\"/>\n            <feMerge><feMergeNode in=\"b\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>\n          </filter>\n        </defs>\n        <circle cx=\"128\" cy=\"128\" r=\"110\" fill=\"none\" stroke=\"rgba(255,255,255,0.07)\" stroke-width=\"13\"/>\n        <circle id=\"ringArc\" cx=\"128\" cy=\"128\" r=\"110\" fill=\"none\" stroke=\"url(#ringGrad)\" stroke-width=\"13\"\n          stroke-linecap=\"round\" filter=\"url(#ringGlow)\" transform=\"rotate(-90 128 128)\"/>\n      </svg>\n      <div class=\"ring-core\">\n        <div class=\"imp-label\">Improvement</div>\n        <div class=\"imp-val\" id=\"impNum\">+0%</div>\n        <div class=\"imp-sub\">B vs A</div>\n      </div>\n    </div>\n    <div class=\"winner\" id=\"winnerPill\" style=\"background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1)\">\n      <span class=\"material-icons-outlined\" id=\"winnerIcon\">emoji_events</span>\n      <span id=\"winnerText\">Vinner: Versjon B</span>\n    </div>\n  </div>\n\n  <!-- Version B -->\n  <div class=\"panel\" id=\"panelB\">\n    <div class=\"panel-head\">\n      <div class=\"badge\" id=\"badgeB\">B</div>\n      <div>\n        <div class=\"ptitle\">Versjon</div>\n        <div class=\"pname\" id=\"nameB\">Variant</div>\n      </div>\n    </div>\n    <div class=\"metric\">\n      <div class=\"mval\" id=\"bNum\">0</div>\n      <div class=\"munit\">%</div>\n    </div>\n    <div class=\"mlabel\">Klikkrate (CTR)</div>\n    <svg class=\"spark\" id=\"sparkB\" viewBox=\"0 0 356 70\" preserveAspectRatio=\"none\"></svg>\n  </div>\n</div>\n\n<script>\n(function(){\n  var cfg = window.__CFG__ || {};\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n\n  function hexToRgb(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(function(c){return c+c}).join('');var n=parseInt(h,16);return[(n>>16)&255,(n>>8)&255,n&255];}\n  function rgba(h,a){var c=hexToRgb(h);return'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')';}\n  function lighten(h,amt){var c=hexToRgb(h);return'rgb('+Math.min(255,Math.round(c[0]+(255-c[0])*amt))+','+Math.min(255,Math.round(c[1]+(255-c[1])*amt))+','+Math.min(255,Math.round(c[2]+(255-c[2])*amt))+')';}\n\n  var aValue = parseFloat(cfg.aValue!=null?cfg.aValue:3.2);\n  var bValue = parseFloat(cfg.bValue!=null?cfg.bValue:4.8);\n  var improvement = cfg.improvement!=null?parseFloat(cfg.improvement):(aValue>0?Math.round((bValue-aValue)/aValue*1000)/10:0);\n\n  // apply theme\n  var accentLight = lighten(accent,0.35);\n  document.getElementById('rg0').setAttribute('stop-color', accentLight);\n  document.getElementById('rg1').setAttribute('stop-color', accent);\n  document.documentElement.style.setProperty('--accentglow', rgba(accent,0.55));\n\n  // B panel themed with accent glow\n  var panelB = document.getElementById('panelB');\n  panelB.style.setProperty('--glow', rgba(accent,0.30));\n  panelB.style.setProperty('--glowstrong', rgba(accent,0.5));\n  panelB.style.borderColor = rgba(accent,0.35);\n  panelB.style.boxShadow = '0 24px 60px rgba(0,0,0,0.45), 0 0 40px '+rgba(accent,0.18)+', inset 0 1px 0 rgba(255,255,255,0.06)';\n  document.getElementById('badgeB').style.background = 'linear-gradient(160deg,'+accentLight+','+accent+')';\n\n  // winner pill\n  var winB = bValue >= aValue;\n  var wp = document.getElementById('winnerPill');\n  if(winB){\n    wp.style.background = rgba(accent,0.15);\n    wp.style.borderColor = rgba(accent,0.4);\n    document.getElementById('winnerText').textContent = 'Vinner: Versjon B';\n  } else {\n    document.getElementById('winnerText').textContent = 'Vinner: Versjon A';\n  }\n  document.getElementById('winnerIcon').style.color = winB?accentLight:'#fff';\n\n  // names from config (optional)\n  if(cfg.nameA) document.getElementById('nameA').textContent = cfg.nameA;\n  if(cfg.nameB) document.getElementById('nameB').textContent = cfg.nameB;\n\n  // logo\n  if(cfg.logo){\n    var img=document.createElement('img');img.src=cfg.logo;img.className='logo';\n    document.getElementById('logoSlot').appendChild(img);\n  }\n\n  // spark data: gentle upward trend, B steeper\n  var dataA=[0.30,0.36,0.32,0.45,0.42,0.55,0.52,0.62];\n  var dataB=[0.28,0.40,0.48,0.55,0.68,0.74,0.85,0.95];\n  var W=356,H=70;\n  function pts(data){\n    return data.map(function(v,i){\n      var x=(i/(data.length-1))*W;\n      var y=H-6-v*(H-12);\n      return[x,y];\n    });\n  }\n  function smoothPath(p){\n    var d='M'+p[0][0].toFixed(1)+','+p[0][1].toFixed(1);\n    for(var i=0;i<p.length-1;i++){\n      var x0=p[i][0],y0=p[i][1],x1=p[i+1][0],y1=p[i+1][1];\n      var cx=(x0+x1)/2;\n      d+=' C'+cx.toFixed(1)+','+y0.toFixed(1)+' '+cx.toFixed(1)+','+y1.toFixed(1)+' '+x1.toFixed(1)+','+y1.toFixed(1);\n    }\n    return d;\n  }\n  function buildSpark(svgId,data,color){\n    var svg=document.getElementById(svgId);\n    var p=pts(data);\n    var line=smoothPath(p);\n    var gid=svgId+'fill';\n    var area=line+' L'+W+','+H+' L0,'+H+' Z';\n    svg.innerHTML=\n      '<defs><linearGradient id=\"'+gid+'\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">'+\n      '<stop offset=\"0%\" stop-color=\"'+color+'\" stop-opacity=\"0.35\"/>'+\n      '<stop offset=\"100%\" stop-color=\"'+color+'\" stop-opacity=\"0\"/></linearGradient></defs>'+\n      '<path class=\"area\" d=\"'+area+'\" fill=\"url(#'+gid+')\" opacity=\"0\"/>'+\n      '<path class=\"ln\" d=\"'+line+'\" fill=\"none\" stroke=\"'+color+'\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>'+\n      '<circle class=\"dot\" r=\"4.5\" fill=\"'+color+'\" cx=\"'+p[p.length-1][0]+'\" cy=\"'+p[p.length-1][1]+'\"/>';\n    var ln=svg.querySelector('.ln');\n    var len=ln.getTotalLength();\n    ln.style.strokeDasharray=len;\n    ln.style.strokeDashoffset=len;\n    return {ln:ln,len:len,area:svg.querySelector('.area'),dot:svg.querySelector('.dot')};\n  }\n  var sA=buildSpark('sparkA',dataA,'#7e8aa6');\n  var sB=buildSpark('sparkB',dataB,accentLight);\n\n  // ring\n  var ring=document.getElementById('ringArc');\n  var R=110, C=2*Math.PI*R;\n  ring.style.strokeDasharray=C;\n  ring.style.strokeDashoffset=C;\n\n  function ease(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}\n  function stagger(p,start,end){\n    if(p<=start)return 0; if(p>=end)return 1;\n    return ease((p-start)/(end-start));\n  }\n\n  function fmt(v){ return (Math.round(v*10)/10).toFixed(1); }\n\n  window.setProgress=function(p){\n    p=Math.max(0,Math.min(1,p));\n\n    // panels fade/slide in (A then B)\n    var pa=stagger(p,0.0,0.35);\n    var pb=stagger(p,0.08,0.43);\n    var A=document.getElementById('panelA'), B=document.getElementById('panelB');\n    A.style.opacity=pa; A.style.transform='translateX('+((1-pa)*-26)+'px) scale('+(0.96+0.04*pa)+')';\n    B.style.opacity=pb; B.style.transform='translateX('+((1-pb)*26)+'px) scale('+(0.96+0.04*pb)+')';\n\n    // numbers count up\n    var na=stagger(p,0.12,0.6);\n    var nb=stagger(p,0.18,0.66);\n    document.getElementById('aNum').textContent=fmt(aValue*na);\n    document.getElementById('bNum').textContent=fmt(bValue*nb);\n\n    // sparklines draw\n    var dA=stagger(p,0.15,0.62);\n    var dB=stagger(p,0.22,0.7);\n    sA.ln.style.strokeDashoffset=sA.len*(1-dA);\n    sB.ln.style.strokeDashoffset=sB.len*(1-dB);\n    sA.area.style.opacity=Math.max(0,(dA-0.6)/0.4);\n    sB.area.style.opacity=Math.max(0,(dB-0.6)/0.4);\n    sA.dot.style.opacity=dA>0.97?1:0;\n    sB.dot.style.opacity=dB>0.97?1:0;\n\n    // center ring + improvement\n    var ce=stagger(p,0.4,0.95);\n    var maxArc=0.82; // leave gap at bottom for style\n    ring.style.strokeDashoffset=C*(1-maxArc*ce);\n    var impNum=stagger(p,0.45,0.96);\n    var sign=improvement>=0?'+':'';\n    document.getElementById('impNum').textContent=sign+(Math.round(improvement*impNum*10)/10)+'%';\n\n    // center group fade\n    var center=document.getElementById('center');\n    var cf=stagger(p,0.38,0.7);\n    center.style.opacity=cf;\n    document.getElementById('winnerPill').style.opacity=stagger(p,0.7,1.0);\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "checklist",
+"name": "Sjekkliste / fremdrift",
+"desc": "Vertikal fremdriftsliste med 5 steg. Fullførte steg får fylt accent-sirkel med hake, aktivt steg får ring, gjenstående er grå — koblet med en voksende vertikal linje. Lys, ren PreVisit-stil med fremdriftsbar og status-pill per steg.",
+"style": "light",
+"glyph": "✓",
+"durationSec": 6.0,
+"fields": [
+{
+"key": "kicker",
+"label": "Overskrift (liten)",
+"type": "text",
+"placeholder": "Produksjon · 2026"
+},
+{
+"key": "title",
+"label": "Tittel",
+"type": "text",
+"placeholder": "Prosjektsjekkliste"
+},
+{
+"key": "progressLabel",
+"label": "Fremdrift-etikett",
+"type": "text",
+"placeholder": "Fullført"
+},
+{
+"key": "title1",
+"label": "Steg 1 — tittel",
+"type": "text",
+"placeholder": "Forprosjekt & kontrakt"
+},
+{
+"key": "status1",
+"label": "Steg 1 — status",
+"type": "text",
+"placeholder": "Fullført"
+},
+{
+"key": "icon1",
+"label": "Steg 1 — ikon (Material)",
+"type": "text",
+"placeholder": "description"
+},
+{
+"key": "title2",
+"label": "Steg 2 — tittel",
+"type": "text",
+"placeholder": "Storyboard godkjent"
+},
+{
+"key": "status2",
+"label": "Steg 2 — status",
+"type": "text",
+"placeholder": "Fullført"
+},
+{
+"key": "icon2",
+"label": "Steg 2 — ikon (Material)",
+"type": "text",
+"placeholder": "draw"
+},
+{
+"key": "title3",
+"label": "Steg 3 — tittel",
+"type": "text",
+"placeholder": "Opptaksdag"
+},
+{
+"key": "status3",
+"label": "Steg 3 — status",
+"type": "text",
+"placeholder": "Pågår"
+},
+{
+"key": "icon3",
+"label": "Steg 3 — ikon (Material)",
+"type": "text",
+"placeholder": "videocam"
+},
+{
+"key": "title4",
+"label": "Steg 4 — tittel",
+"type": "text",
+"placeholder": "Redigering & fargegrading"
+},
+{
+"key": "status4",
+"label": "Steg 4 — status",
+"type": "text",
+"placeholder": "Gjenstår"
+},
+{
+"key": "icon4",
+"label": "Steg 4 — ikon (Material)",
+"type": "text",
+"placeholder": "movie"
+},
+{
+"key": "title5",
+"label": "Steg 5 — tittel",
+"type": "text",
+"placeholder": "Levering til kunde"
+},
+{
+"key": "status5",
+"label": "Steg 5 — status",
+"type": "text",
+"placeholder": "Gjenstår"
+},
+{
+"key": "icon5",
+"label": "Steg 5 — ikon (Material)",
+"type": "text",
+"placeholder": "rocket_launch"
+}
+],
+"defaults": {
+"kicker": "Produksjon · 2026",
+"title": "Prosjektsjekkliste",
+"progressLabel": "Fullført",
+"title1": "Forprosjekt & kontrakt",
+"status1": "Fullført",
+"icon1": "description",
+"title2": "Storyboard godkjent",
+"status2": "Fullført",
+"icon2": "draw",
+"title3": "Opptaksdag",
+"status3": "Pågår",
+"icon3": "videocam",
+"title4": "Redigering & fargegrading",
+"status4": "Gjenstår",
+"icon4": "movie",
+"title5": "Levering til kunde",
+"status5": "Gjenstår",
+"icon5": "rocket_launch"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',sans-serif;\n    padding:44px 52px;\n  }\n  .card{\n    width:560px;\n    background:linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%);\n    border:1px solid #e7ecf4;\n    border-radius:24px;\n    box-shadow:0 24px 60px -24px rgba(31,45,74,.28), 0 2px 6px rgba(31,45,74,.05);\n    padding:36px 38px 30px;\n    position:relative;\n    overflow:hidden;\n  }\n  .accentbar{\n    position:absolute;top:0;left:0;height:5px;width:0%;\n    background:var(--accent);\n    border-radius:0 4px 4px 0;\n  }\n  .head{display:flex;align-items:center;gap:14px;margin-bottom:8px}\n  .logo{height:34px;width:auto;border-radius:7px;display:block}\n  .logoFallback{\n    height:34px;width:34px;border-radius:9px;flex:0 0 auto;\n    background:var(--accent);display:flex;align-items:center;justify-content:center;\n    color:#fff;\n  }\n  .logoFallback .material-icons-outlined{font-size:21px}\n  .titles{display:flex;flex-direction:column}\n  .kicker{font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}\n  .maintitle{font-size:21px;font-weight:800;color:var(--ink);letter-spacing:-.01em;line-height:1.15}\n  .progwrap{margin:18px 0 26px}\n  .progmeta{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}\n  .proglabel{font-size:12.5px;font-weight:600;color:#6b7790}\n  .progcount{font-size:13px;font-weight:800;color:var(--ink)}\n  .progcount b{color:var(--accent)}\n  .progtrack{height:8px;border-radius:99px;background:#eaeef6;overflow:hidden}\n  .progfill{height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 60%,#7cc3ff));}\n  .steps{display:flex;flex-direction:column;position:relative}\n  .step{\n    display:flex;align-items:flex-start;gap:16px;\n    position:relative;padding:10px 0;\n    opacity:0;transform:translateX(-12px);\n  }\n  .rail{\n    position:absolute;left:18px;top:46px;width:2px;\n    background:linear-gradient(180deg,var(--accent),#e2e8f3);\n    height:0;\n    z-index:0;\n  }\n  .dot{\n    flex:0 0 auto;width:38px;height:38px;border-radius:50%;\n    display:flex;align-items:center;justify-content:center;\n    position:relative;z-index:1;background:#fff;\n    border:2px solid #d9e1ee;color:#aeb8cc;\n    transition:none;\n  }\n  .dot.done{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 6px 16px -6px var(--accent)}\n  .dot.active{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 14%,transparent)}\n  .dot .material-icons-outlined{font-size:21px}\n  .dot .num{font-size:14px;font-weight:800}\n  .checkmark{transform:scale(0);transform-origin:center}\n  .body{padding-top:3px;flex:1}\n  .leftico{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;\n    border-radius:6px;background:#eef3fb;color:var(--accent);margin-right:9px;vertical-align:-6px}\n  .leftico .material-icons-outlined{font-size:15px}\n  .step .stitle{font-size:15.5px;font-weight:700;color:var(--ink);line-height:1.25}\n  .step.muted .stitle{color:#8b95a9}\n  .sstatus{font-size:12.5px;font-weight:500;color:#7a8499;margin-top:3px;display:flex;align-items:center;gap:6px}\n  .sstatus.done{color:#16a34a;font-weight:600}\n  .sstatus.active{color:var(--accent);font-weight:600}\n  .pill{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;\n    padding:3px 9px;border-radius:99px;background:#eef3fb;color:#7a8499}\n  .pill.done{background:#e7f7ec;color:#16a34a}\n  .pill.active{background:color-mix(in srgb,var(--accent) 14%,#fff);color:var(--accent)}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"card\">\n    <div class=\"accentbar\" id=\"accentbar\"></div>\n    <div class=\"head\">\n      <div id=\"logoSlot\"></div>\n      <div class=\"titles\">\n        <span class=\"kicker\" id=\"kicker\">Fremdrift</span>\n        <span class=\"maintitle\" id=\"maintitle\">Prosjektsjekkliste</span>\n      </div>\n    </div>\n    <div class=\"progwrap\">\n      <div class=\"progmeta\">\n        <span class=\"proglabel\" id=\"proglabel\">Fullført</span>\n        <span class=\"progcount\"><b id=\"progNum\">0</b> / <span id=\"progDen\">5</span></span>\n      </div>\n      <div class=\"progtrack\"><div class=\"progfill\" id=\"progfill\"></div></div>\n    </div>\n    <div class=\"steps\" id=\"steps\">\n      <div class=\"rail\" id=\"rail\"></div>\n    </div>\n  </div>\n</div>\n\n<script>\n(function(){\n  var CFG = window.__CFG__ || {};\n  var accent = CFG.accent || '#3b82f6';\n  var ink = CFG.ink || '#1f2d4a';\n  document.documentElement.style.setProperty('--accent', accent);\n  document.documentElement.style.setProperty('--ink', ink);\n\n  if(CFG.kicker) document.getElementById('kicker').textContent = CFG.kicker;\n  if(CFG.title) document.getElementById('maintitle').textContent = CFG.title;\n  if(CFG.progressLabel) document.getElementById('proglabel').textContent = CFG.progressLabel;\n\n  var logoSlot = document.getElementById('logoSlot');\n  if(CFG.logo && CFG.logo.length){\n    var img = document.createElement('img');\n    img.src = CFG.logo; img.className='logo'; img.alt='';\n    logoSlot.appendChild(img);\n  } else {\n    var fb = document.createElement('div');\n    fb.className='logoFallback';\n    fb.innerHTML='<span class=\"material-icons-outlined\">checklist</span>';\n    logoSlot.appendChild(fb);\n  }\n\n  var steps=[];\n  for(var i=1;i<=5;i++){\n    var t = CFG['title'+i];\n    if(t===undefined || t==='') continue;\n    steps.push({\n      title:t,\n      statusRaw: CFG['status'+i] || '',\n      icon: CFG['icon'+i] || 'task_alt'\n    });\n  }\n  if(steps.length===0){\n    steps=[\n      {title:'Forprosjekt & avtale',statusRaw:'Fullført',icon:'description'},\n      {title:'Storyboard godkjent',statusRaw:'Fullført',icon:'draw'},\n      {title:'Opptaksdag',statusRaw:'Pågår',icon:'videocam'},\n      {title:'Redigering & farge',statusRaw:'Gjenstår',icon:'movie'},\n      {title:'Levering til kunde',statusRaw:'Gjenstår',icon:'rocket_launch'}\n    ];\n  }\n\n  var doneLabels={'fullført':1,'ferdig':1,'done':1,'fullfort':1};\n  var activeLabels={'pågår':1,'aktiv':1,'active':1,'pagar':1,'igang':1};\n\n  var stepsEl = document.getElementById('steps');\n  var nodes=[];\n  var doneCount=0;\n  steps.forEach(function(s,idx){\n    var low=(s.statusRaw||'').toLowerCase().trim();\n    var kind = doneLabels[low] ? 'done' : (activeLabels[low] ? 'active' : 'pending');\n    if(kind==='done') doneCount++;\n\n    var el=document.createElement('div');\n    el.className='step'+(kind==='pending'?' muted':'');\n\n    var dotInner = kind==='done'\n      ? '<span class=\"material-icons-outlined checkmark\">check</span>'\n      : '<span class=\"num\">'+(idx+1)+'</span>';\n\n    var statusText = s.statusRaw || (kind==='done'?'Fullført':kind==='active'?'Pågår':'Gjenstår');\n    var statusIcon = kind==='done'?'check_circle':kind==='active'?'autorenew':'schedule';\n\n    el.innerHTML =\n      '<div class=\"dot '+kind+'\">'+dotInner+'</div>'+\n      '<div class=\"body\">'+\n        '<div class=\"stitle\"><span class=\"leftico\"><span class=\"material-icons-outlined\">'+s.icon+'</span></span>'+s.title+'</div>'+\n        '<div class=\"sstatus '+kind+'\"><span class=\"material-icons-outlined\" style=\"font-size:15px\">'+statusIcon+'</span>'+statusText+'</div>'+\n      '</div>'+\n      '<span class=\"pill '+kind+'\">'+(kind==='done'?'OK':kind==='active'?'Nå':'•••')+'</span>';\n\n    stepsEl.appendChild(el);\n    nodes.push({el:el,kind:kind});\n  });\n\n  document.getElementById('progDen').textContent = steps.length;\n\n  var rail=document.getElementById('rail');\n  var accentbar=document.getElementById('accentbar');\n  var progfill=document.getElementById('progfill');\n  var progNum=document.getElementById('progNum');\n\n  function clamp(x){return Math.max(0,Math.min(1,x));}\n  function easeInOut(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}\n\n  function railFull(){\n    if(nodes.length<2) return 0;\n    var first=nodes[0].el.querySelector('.dot');\n    var last=nodes[nodes.length-1].el.querySelector('.dot');\n    var fr=first.getBoundingClientRect();\n    var lr=last.getBoundingClientRect();\n    var sr=stepsEl.getBoundingClientRect();\n    var start=(fr.top-sr.top)+fr.height;\n    var end=(lr.top-sr.top)+lr.height/2;\n    return Math.max(0,end-start);\n  }\n  var railH=0;\n  function measure(){\n    var first=nodes[0]?nodes[0].el.querySelector('.dot'):null;\n    if(!first) return;\n    var fr=first.getBoundingClientRect();\n    var sr=stepsEl.getBoundingClientRect();\n    rail.style.top=((fr.top-sr.top)+fr.height-4)+'px';\n    railH=railFull()+8;\n  }\n\n  window.setProgress=function(p){\n    p=clamp(p);\n    measure();\n    var e=easeInOut(p);\n\n    accentbar.style.width=(e*100).toFixed(2)+'%';\n    rail.style.height=(railH*e).toFixed(1)+'px';\n\n    var targetFrac = steps.length? doneCount/steps.length : 0;\n    progfill.style.width=(targetFrac*100*e).toFixed(2)+'%';\n    progNum.textContent = Math.round(doneCount*e);\n\n    var n=nodes.length;\n    nodes.forEach(function(node,idx){\n      var span=0.55/Math.max(1,n);\n      var startT=idx*span*0.9;\n      var local=clamp((e-startT)/Math.max(0.0001,(0.45+span)));\n      var le=easeInOut(local);\n      node.el.style.opacity=le.toFixed(3);\n      node.el.style.transform='translateX('+((1-le)*-12).toFixed(2)+'px)';\n\n      if(node.kind==='done'){\n        var cm=node.el.querySelector('.checkmark');\n        if(cm){\n          var pop=clamp((local-0.55)/0.45);\n          var ov=pop<1?(pop*pop*(3-2*pop)):1;\n          var scale = pop>=1?1:(0.2+ov*1.0);\n          cm.style.transform='scale('+scale.toFixed(3)+')';\n        }\n      }\n    });\n  };\n\n  requestAnimationFrame(function(){ measure(); window.setProgress(0); });\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "progress-card",
+"name": "Fremdriftskort",
+"desc": "Rent, lyst kort med ikon, tittel, animert fremdriftsbar og stor prosentvisning. Baren fylles og prosenten teller opp synkront, drevet deterministisk av setProgress. Perfekt som overlay for status, milepæler eller renderfremdrift.",
+"style": "light",
+"glyph": "▰",
+"durationSec": 3.5,
+"fields": [
+{
+"key": "title",
+"label": "Tittel",
+"type": "text",
+"placeholder": "Prosjektfremdrift Q2"
+},
+{
+"key": "percent",
+"label": "Prosent (0–100)",
+"type": "number",
+"placeholder": "78"
+},
+{
+"key": "sub",
+"label": "Undertekst",
+"type": "text",
+"placeholder": "Render-pipeline · oppdatert i dag"
+},
+{
+"key": "icon",
+"label": "Ikon (Material-navn)",
+"type": "text",
+"placeholder": "rocket_launch"
+}
+],
+"defaults": {
+"title": "Prosjektfremdrift Q2",
+"percent": "78",
+"sub": "Render-pipeline · oppdatert i dag",
+"icon": "rocket_launch"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',-apple-system,sans-serif;\n    padding:28px;\n  }\n  .card{\n    width:560px;\n    background:#ffffff;\n    border-radius:22px;\n    padding:30px 34px;\n    box-shadow:0 24px 60px -20px rgba(17,28,53,.28), 0 4px 14px -6px rgba(17,28,53,.12);\n    border:1px solid rgba(17,28,53,.05);\n    position:relative;\n    overflow:hidden;\n  }\n  .toprow{\n    display:flex;\n    align-items:center;\n    gap:18px;\n    margin-bottom:26px;\n  }\n  .iconbox{\n    flex:0 0 auto;\n    width:60px;height:60px;\n    border-radius:16px;\n    display:flex;align-items:center;justify-content:center;\n    color:#fff;\n    box-shadow:0 10px 22px -8px var(--accent-shadow);\n  }\n  .iconbox .material-icons-outlined{font-size:32px}\n  .headtext{flex:1 1 auto;min-width:0}\n  .title{\n    font-size:22px;font-weight:700;color:var(--ink);\n    letter-spacing:-.01em;line-height:1.2;\n    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\n  }\n  .sub{\n    font-size:14px;font-weight:500;color:#7b869c;\n    margin-top:5px;line-height:1.3;\n    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\n  }\n  .logo{flex:0 0 auto;height:30px;width:auto;opacity:.9;object-fit:contain}\n  .barrow{\n    display:flex;align-items:center;gap:22px;\n  }\n  .track{\n    flex:1 1 auto;\n    height:16px;\n    border-radius:10px;\n    background:#eef1f7;\n    position:relative;overflow:hidden;\n  }\n  .fill{\n    position:absolute;left:0;top:0;bottom:0;\n    width:0%;\n    border-radius:10px;\n    background:linear-gradient(90deg,var(--accent-soft),var(--accent));\n    box-shadow:0 0 0 1px rgba(255,255,255,.25) inset;\n  }\n  .shine{\n    position:absolute;top:0;bottom:0;width:36px;\n    background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);\n    transform:skewX(-18deg);\n    opacity:0;\n  }\n  .pct{\n    flex:0 0 auto;\n    font-size:42px;font-weight:800;color:var(--ink);\n    letter-spacing:-.02em;line-height:1;\n    min-width:118px;text-align:right;\n    font-variant-numeric:tabular-nums;\n  }\n  .pct .sign{font-size:24px;font-weight:700;color:var(--accent);margin-left:2px;vertical-align:top;position:relative;top:3px}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"card\" id=\"card\">\n    <div class=\"toprow\" id=\"toprow\">\n      <div class=\"iconbox\" id=\"iconbox\"><span class=\"material-icons-outlined\" id=\"icon\">trending_up</span></div>\n      <div class=\"headtext\">\n        <div class=\"title\" id=\"title\">Tittel</div>\n        <div class=\"sub\" id=\"sub\">Undertekst</div>\n      </div>\n      <img class=\"logo\" id=\"logo\" style=\"display:none\" alt=\"logo\">\n    </div>\n    <div class=\"barrow\">\n      <div class=\"track\"><div class=\"fill\" id=\"fill\"><div class=\"shine\" id=\"shine\"></div></div></div>\n      <div class=\"pct\"><span id=\"pctnum\">0</span><span class=\"sign\">%</span></div>\n    </div>\n  </div>\n</div>\n<script>\n(function(){\n  var cfg = window.__CFG__ || {};\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n\n  function hexToRgb(h){\n    h=h.replace('#','');\n    if(h.length===3)h=h.split('').map(function(c){return c+c}).join('');\n    return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];\n  }\n  function mix(hex,white,amt){\n    var c=hexToRgb(hex);\n    return 'rgb('+c.map(function(v){return Math.round(v+(255-v)*amt)}).join(',')+')';\n  }\n  var rgb=hexToRgb(accent);\n\n  document.documentElement.style.setProperty('--accent',accent);\n  document.documentElement.style.setProperty('--accent-soft',mix(accent,255,.30));\n  document.documentElement.style.setProperty('--accent-shadow','rgba('+rgb.join(',')+',.45)');\n  document.documentElement.style.setProperty('--ink',ink);\n\n  document.getElementById('iconbox').style.background='linear-gradient(135deg,'+mix(accent,255,.12)+','+accent+')';\n\n  var target = Math.max(0, Math.min(100, parseFloat(cfg.percent)||0));\n  document.getElementById('title').textContent = cfg.title || 'Fremdrift';\n  var subEl=document.getElementById('sub');\n  if(cfg.sub){subEl.textContent=cfg.sub;}else{subEl.style.display='none';}\n  if(cfg.icon){document.getElementById('icon').textContent=cfg.icon;}\n\n  if(cfg.logo){\n    var lg=document.getElementById('logo');\n    lg.src=cfg.logo;lg.style.display='block';\n  }\n\n  var fill=document.getElementById('fill');\n  var pctnum=document.getElementById('pctnum');\n  var shine=document.getElementById('shine');\n  var card=document.getElementById('card');\n\n  function easeInOut(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}\n\n  window.setProgress=function(p){\n    p=Math.max(0,Math.min(1,p));\n\n    var entP=easeInOut(Math.min(1,p/0.25));\n    card.style.opacity=entP;\n    card.style.transform='translateY('+((1-entP)*16)+'px) scale('+(0.985+0.015*entP)+')';\n\n    var growRaw=Math.max(0,(p-0.12)/0.88);\n    var grow=easeInOut(Math.min(1,growRaw));\n    var cur=target*grow;\n    fill.style.width=cur+'%';\n    pctnum.textContent=Math.round(cur);\n\n    if(grow>0.02 && grow<0.999){\n      shine.style.opacity='1';\n      shine.style.left=(grow*100)+'%';\n    }else{\n      shine.style.opacity='0';\n    }\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "hud-stack",
+"name": "HUD-stabel",
+"desc": "Mørk sci-fi HUD med vertikal stabel av glasspaneler: publikum-ring med aldersgruppe-søyler, gjennomsnittlig visningstid-ring, og en stor interaksjons-verdi med sparkline og endring. Tynne glødende rammer og hjørnemarkører. Transparent bakgrunn for video-overlay i Resolve.",
+"style": "hud",
+"glyph": "▤",
+"durationSec": 7.0,
+"fields": [
+{
+"key": "audienceTitle",
+"label": "Publikum-tittel",
+"type": "text",
+"placeholder": "Publikum"
+},
+{
+"key": "audiencePct",
+"label": "Publikum %",
+"type": "number",
+"placeholder": "68"
+},
+{
+"key": "audienceLabel",
+"label": "Publikum-etikett (under ring)",
+"type": "text",
+"placeholder": "Tilbakevendende"
+},
+{
+"key": "avgView",
+"label": "Gj.snitt visning %",
+"type": "number",
+"placeholder": "54"
+},
+{
+"key": "interactions",
+"label": "Interaksjoner (verdi)",
+"type": "text",
+"placeholder": "12 480"
+},
+{
+"key": "interactionsDelta",
+"label": "Interaksjoner endring %",
+"type": "number",
+"placeholder": "23"
+}
+],
+"defaults": {
+"audienceTitle": "Publikum",
+"audiencePct": "68",
+"audienceLabel": "Tilbakevendende",
+"avgView": "54",
+"interactions": "12 480",
+"interactionsDelta": "23"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:34px;\n    display:flex;\n    flex-direction:column;\n    gap:16px;\n  }\n  .panel{\n    position:relative;\n    width:380px;\n    background:linear-gradient(160deg, rgba(11,18,32,0.94), rgba(7,12,22,0.96));\n    border:1px solid var(--frame);\n    border-radius:14px;\n    padding:18px 20px;\n    box-shadow:0 0 0 1px rgba(255,255,255,0.02) inset, 0 0 28px var(--glow), 0 14px 40px rgba(0,0,0,0.45);\n    overflow:hidden;\n  }\n  .panel::before{\n    content:'';position:absolute;left:14px;right:14px;top:0;height:1px;\n    background:linear-gradient(90deg,transparent,var(--accent),transparent);\n    opacity:0.7;\n  }\n  .corner{position:absolute;width:14px;height:14px;border:0 solid var(--accent);opacity:0.85}\n  .corner.tl{top:8px;left:8px;border-top-width:2px;border-left-width:2px;border-top-left-radius:4px}\n  .corner.tr{top:8px;right:8px;border-top-width:2px;border-right-width:2px;border-top-right-radius:4px}\n  .corner.bl{bottom:8px;left:8px;border-bottom-width:2px;border-left-width:2px;border-bottom-left-radius:4px}\n  .corner.br{bottom:8px;right:8px;border-bottom-width:2px;border-right-width:2px;border-bottom-right-radius:4px}\n\n  .phead{display:flex;align-items:center;gap:9px;margin-bottom:14px}\n  .phead .mi{font-size:18px;color:var(--accent);text-shadow:0 0 10px var(--glow)}\n  .ptitle{\n    font-size:11px;font-weight:700;letter-spacing:2.4px;text-transform:uppercase;\n    color:#9fb4d6;\n  }\n  .dot{margin-left:auto;width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}\n\n  .ringrow{display:flex;align-items:center;gap:20px}\n  .ringbox{position:relative;width:118px;height:118px;flex:0 0 auto}\n  .ringbox svg{transform:rotate(-90deg)}\n  .ringval{\n    position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;\n  }\n  .ringnum{font-size:30px;font-weight:800;color:#eaf2ff;line-height:1;font-variant-numeric:tabular-nums}\n  .ringnum .pct{font-size:15px;font-weight:700;color:var(--accent);margin-left:1px}\n  .ringsub{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#7f93b5;margin-top:5px}\n\n  .bars{display:flex;flex-direction:column;gap:9px;flex:1}\n  .barrow{display:flex;align-items:center;gap:9px}\n  .barlbl{font-size:10px;font-weight:600;color:#90a4c6;width:42px;text-align:right;font-variant-numeric:tabular-nums}\n  .bartrack{flex:1;height:8px;border-radius:5px;background:rgba(120,150,200,0.12);overflow:hidden}\n  .barfill{height:100%;border-radius:5px;width:0%;\n    background:linear-gradient(90deg,var(--accent),#7dd3fc);\n    box-shadow:0 0 8px var(--glow);}\n  .barpct{font-size:10px;font-weight:700;color:#cdddf5;width:30px;font-variant-numeric:tabular-nums}\n\n  .intwrap{display:flex;flex-direction:column;gap:12px}\n  .intval{display:flex;align-items:baseline;gap:10px}\n  .intnum{font-size:42px;font-weight:800;color:#eaf2ff;line-height:0.9;font-variant-numeric:tabular-nums;letter-spacing:-1px}\n  .delta{\n    display:inline-flex;align-items:center;gap:2px;\n    font-size:12px;font-weight:700;\n    padding:3px 8px;border-radius:20px;\n    color:#34d399;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.3);\n  }\n  .delta.neg{color:#f87171;background:rgba(248,113,113,0.12);border-color:rgba(248,113,113,0.3)}\n  .delta .mi{font-size:14px}\n  .sparkbox{position:relative;height:54px;width:100%}\n  .sparkbox svg{position:absolute;inset:0;width:100%;height:100%}\n\n  .footer{\n    display:flex;align-items:center;gap:8px;justify-content:flex-end;\n    padding:2px 6px 0;\n  }\n  .footer img{height:20px;width:auto;opacity:0.95;filter:drop-shadow(0 0 6px var(--glow))}\n  .footer .lt{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#5d6f8f}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"panel\" id=\"p-aud\">\n    <span class=\"corner tl\"></span><span class=\"corner tr\"></span><span class=\"corner bl\"></span><span class=\"corner br\"></span>\n    <div class=\"phead\">\n      <span class=\"material-icons-outlined mi\">groups</span>\n      <span class=\"ptitle\" id=\"audienceTitle\">Audience</span>\n      <span class=\"dot\"></span>\n    </div>\n    <div class=\"ringrow\">\n      <div class=\"ringbox\">\n        <svg width=\"118\" height=\"118\" viewBox=\"0 0 118 118\">\n          <circle cx=\"59\" cy=\"59\" r=\"50\" fill=\"none\" stroke=\"rgba(120,150,200,0.14)\" stroke-width=\"9\"/>\n          <circle id=\"audRing\" cx=\"59\" cy=\"59\" r=\"50\" fill=\"none\" stroke=\"var(--accent)\" stroke-width=\"9\"\n                  stroke-linecap=\"round\" stroke-dasharray=\"314.16\" stroke-dashoffset=\"314.16\"\n                  style=\"filter:drop-shadow(0 0 6px var(--glow))\"/>\n        </svg>\n        <div class=\"ringval\">\n          <div class=\"ringnum\"><span id=\"audNum\">0</span><span class=\"pct\">%</span></div>\n          <div class=\"ringsub\" id=\"audienceLabel\">Returning</div>\n        </div>\n      </div>\n      <div class=\"bars\" id=\"ageBars\"></div>\n    </div>\n  </div>\n\n  <div class=\"panel\" id=\"p-avg\">\n    <span class=\"corner tl\"></span><span class=\"corner tr\"></span><span class=\"corner bl\"></span><span class=\"corner br\"></span>\n    <div class=\"phead\">\n      <span class=\"material-icons-outlined mi\">visibility</span>\n      <span class=\"ptitle\">Avg View Duration</span>\n      <span class=\"dot\"></span>\n    </div>\n    <div class=\"ringrow\">\n      <div class=\"ringbox\">\n        <svg width=\"118\" height=\"118\" viewBox=\"0 0 118 118\">\n          <circle cx=\"59\" cy=\"59\" r=\"50\" fill=\"none\" stroke=\"rgba(120,150,200,0.14)\" stroke-width=\"9\"/>\n          <circle id=\"avgRing\" cx=\"59\" cy=\"59\" r=\"50\" fill=\"none\" stroke=\"var(--accent)\" stroke-width=\"9\"\n                  stroke-linecap=\"round\" stroke-dasharray=\"314.16\" stroke-dashoffset=\"314.16\"\n                  style=\"filter:drop-shadow(0 0 6px var(--glow))\"/>\n        </svg>\n        <div class=\"ringval\">\n          <div class=\"ringnum\"><span id=\"avgNum\">0</span><span class=\"pct\">%</span></div>\n          <div class=\"ringsub\">Watched</div>\n        </div>\n      </div>\n      <div class=\"bars\" style=\"gap:6px\">\n        <div style=\"font-size:11px;color:#90a4c6;line-height:1.5\">Andelen av videoen<br>en gjennomsnittlig<br>seer faktisk ser.</div>\n      </div>\n    </div>\n  </div>\n\n  <div class=\"panel\" id=\"p-int\">\n    <span class=\"corner tl\"></span><span class=\"corner tr\"></span><span class=\"corner bl\"></span><span class=\"corner br\"></span>\n    <div class=\"phead\">\n      <span class=\"material-icons-outlined mi\">bolt</span>\n      <span class=\"ptitle\">Interactions</span>\n      <span class=\"dot\"></span>\n    </div>\n    <div class=\"intwrap\">\n      <div class=\"intval\">\n        <span class=\"intnum\" id=\"intNum\">0</span>\n        <span class=\"delta\" id=\"intDelta\"><span class=\"material-icons-outlined mi\">trending_up</span><span id=\"intDeltaTxt\">0%</span></span>\n      </div>\n      <div class=\"sparkbox\">\n        <svg id=\"sparkSvg\" viewBox=\"0 0 320 54\" preserveAspectRatio=\"none\">\n          <defs>\n            <linearGradient id=\"sparkFill\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">\n              <stop offset=\"0\" stop-color=\"var(--accent)\" stop-opacity=\"0.32\"/>\n              <stop offset=\"1\" stop-color=\"var(--accent)\" stop-opacity=\"0\"/>\n            </linearGradient>\n          </defs>\n          <path id=\"sparkArea\" fill=\"url(#sparkFill)\" d=\"\"/>\n          <path id=\"sparkLine\" fill=\"none\" stroke=\"var(--accent)\" stroke-width=\"2.4\"\n                stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"\"\n                style=\"filter:drop-shadow(0 0 5px var(--glow))\"/>\n          <circle id=\"sparkDot\" r=\"3.5\" fill=\"#eaf2ff\" style=\"filter:drop-shadow(0 0 6px var(--accent))\"/>\n        </svg>\n      </div>\n    </div>\n  </div>\n\n  <div class=\"footer\">\n    <img id=\"logoImg\" alt=\"\" style=\"display:none\">\n    <span class=\"lt\">Analytics</span>\n  </div>\n</div>\n\n<script>\n(function(){\n  var cfg = window.__CFG__ || {};\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n\n  function hexToRgb(h){h=(h||'').replace('#','');if(h.length===3)h=h.split('').map(function(c){return c+c}).join('');var n=parseInt(h,16);return{r:(n>>16)&255,g:(n>>8)&255,b:n&255};}\n  var a = hexToRgb(accent);\n  var glow = 'rgba('+a.r+','+a.g+','+a.b+',0.30)';\n  var frame = 'rgba('+a.r+','+a.g+','+a.b+',0.42)';\n\n  var root = document.getElementById('wrap');\n  root.style.setProperty('--accent', accent);\n  root.style.setProperty('--glow', glow);\n  root.style.setProperty('--frame', frame);\n\n  document.getElementById('audienceTitle').textContent = cfg.audienceTitle || 'Audience';\n  document.getElementById('audienceLabel').textContent = cfg.audienceLabel || 'Returning';\n\n  if (cfg.logo){var li=document.getElementById('logoImg');li.src=cfg.logo;li.style.display='inline-block';}\n\n  var num = function(v,d){var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\\-]/g,''));return isNaN(n)?d:n;};\n\n  var audiencePct   = num(cfg.audiencePct, 68);\n  var avgView       = num(cfg.avgView, 54);\n  var interactions  = num(cfg.interactions, 12480);\n  var interactionsDelta = num(cfg.interactionsDelta, 23);\n\n  var ages = [\n    {l:'13-17', v:8},\n    {l:'18-24', v:34},\n    {l:'25-34', v:31},\n    {l:'35-44', v:16},\n    {l:'45+',   v:11}\n  ];\n  var barsEl = document.getElementById('ageBars');\n  ages.forEach(function(g){\n    var row=document.createElement('div');row.className='barrow';\n    row.innerHTML='<span class=\"barlbl\">'+g.l+'</span>'+\n      '<span class=\"bartrack\"><span class=\"barfill\" data-v=\"'+g.v+'\"></span></span>'+\n      '<span class=\"barpct\" data-v=\"'+g.v+'\">0%</span>';\n    barsEl.appendChild(row);\n  });\n  var barFills = Array.prototype.slice.call(barsEl.querySelectorAll('.barfill'));\n  var barPcts  = Array.prototype.slice.call(barsEl.querySelectorAll('.barpct'));\n\n  var dEl = document.getElementById('intDelta');\n  var dIcon = dEl.querySelector('.mi');\n  if (interactionsDelta < 0){dEl.classList.add('neg');dIcon.textContent='trending_down';}\n  else {dEl.classList.remove('neg');dIcon.textContent='trending_up';}\n\n  var spark = [0.30,0.22,0.40,0.34,0.52,0.46,0.60,0.55,0.72,0.66,0.84,0.78,1.0];\n  var SW=320, SH=54, PAD=4;\n  function sparkPathAt(prog){\n    var n = spark.length;\n    var visible = 1 + (n-1)*prog;\n    var pts=[];\n    for(var i=0;i<n;i++){\n      if(i > visible) break;\n      var x = PAD + (SW-2*PAD)*(i/(n-1));\n      var y = SH-PAD - (SH-2*PAD)*spark[i];\n      pts.push([x,y]);\n    }\n    var fi = Math.floor(visible);\n    if(fi < n-1){\n      var f = visible - fi;\n      var x0=PAD+(SW-2*PAD)*(fi/(n-1)), x1=PAD+(SW-2*PAD)*((fi+1)/(n-1));\n      var y0=SH-PAD-(SH-2*PAD)*spark[fi], y1=SH-PAD-(SH-2*PAD)*spark[fi+1];\n      pts.push([x0+(x1-x0)*f, y0+(y1-y0)*f]);\n    }\n    if(pts.length<2) pts.push([pts[0][0]+0.1, pts[0][1]]);\n    var d='M'+pts.map(function(p){return p[0].toFixed(1)+' '+p[1].toFixed(1)}).join(' L');\n    var last=pts[pts.length-1];\n    return {line:d, area:d+(' L'+last[0].toFixed(1)+' '+(SH-PAD)+' L'+PAD+' '+(SH-PAD)+' Z'), last:last};\n  }\n  var sparkLine=document.getElementById('sparkLine');\n  var sparkArea=document.getElementById('sparkArea');\n  var sparkDot=document.getElementById('sparkDot');\n\n  var audRing=document.getElementById('audRing');\n  var avgRing=document.getElementById('avgRing');\n  var C=2*Math.PI*50;\n  audRing.setAttribute('stroke-dasharray',C.toFixed(2));\n  avgRing.setAttribute('stroke-dasharray',C.toFixed(2));\n\n  var audNum=document.getElementById('audNum');\n  var avgNum=document.getElementById('avgNum');\n  var intNum=document.getElementById('intNum');\n  var intDeltaTxt=document.getElementById('intDeltaTxt');\n\n  function ease(t){return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;}\n  function fmt(n){return Math.round(n).toLocaleString('en-US');}\n\n  function seg(p, start, end){\n    if(p<=start) return 0;\n    if(p>=end) return 1;\n    return (p-start)/(end-start);\n  }\n\n  window.setProgress = function(p){\n    p = Math.max(0, Math.min(1, p));\n\n    var p1 = ease(seg(p, 0.00, 0.55));\n    audRing.setAttribute('stroke-dashoffset', (C*(1-p1*(audiencePct/100))).toFixed(2));\n    audNum.textContent = Math.round(p1*audiencePct);\n    var p1b = ease(seg(p, 0.10, 0.62));\n    barFills.forEach(function(b){var v=+b.getAttribute('data-v');b.style.width=(p1b*v)+'%';});\n    barPcts.forEach(function(b){var v=+b.getAttribute('data-v');b.textContent=Math.round(p1b*v)+'%';});\n\n    var p2 = ease(seg(p, 0.20, 0.72));\n    avgRing.setAttribute('stroke-dashoffset', (C*(1-p2*(avgView/100))).toFixed(2));\n    avgNum.textContent = Math.round(p2*avgView);\n\n    var p3 = ease(seg(p, 0.40, 0.92));\n    intNum.textContent = fmt(p3*interactions);\n    var p3s = ease(seg(p, 0.45, 1.0));\n    var sp = sparkPathAt(p3s);\n    sparkLine.setAttribute('d', sp.line);\n    sparkArea.setAttribute('d', sp.area);\n    sparkDot.setAttribute('cx', sp.last[0].toFixed(1));\n    sparkDot.setAttribute('cy', sp.last[1].toFixed(1));\n    sparkDot.setAttribute('opacity', p3s>0.02?1:0);\n    var p3d = ease(seg(p, 0.55, 1.0));\n    var sign = interactionsDelta<0?'-':'+';\n    intDeltaTxt.textContent = sign + Math.round(p3d*Math.abs(interactionsDelta)) + '%';\n    dEl.style.opacity = p3d;\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "live-analytics",
+"name": "Live analytics-bar",
+"desc": "Mørk horisontal HUD-bar med glødende linjegraf som tegnes og 4 KPI-kort (visninger, seetid, vekst, konvertering) med ikon og animert count-up. Drevet helt av setProgress for deterministisk overlay i DaVinci Resolve.",
+"style": "hud",
+"glyph": "📊",
+"durationSec": 6.0,
+"fields": [
+{
+"key": "views",
+"label": "Visninger",
+"type": "text",
+"placeholder": "248,930"
+},
+{
+"key": "watchTime",
+"label": "Seetid",
+"type": "text",
+"placeholder": "12.4k hrs"
+},
+{
+"key": "growth",
+"label": "Vekst",
+"type": "text",
+"placeholder": "+18.6%"
+},
+{
+"key": "conversion",
+"label": "Konvertering",
+"type": "text",
+"placeholder": "4.2%"
+}
+],
+"defaults": {
+"views": "248,930",
+"watchTime": "12.4k hrs",
+"growth": "+18.6%",
+"conversion": "4.2%"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:28px;\n  }\n  .panel{\n    position:relative;\n    display:flex;\n    align-items:stretch;\n    gap:26px;\n    padding:26px 30px;\n    border-radius:18px;\n    background:linear-gradient(160deg,rgba(13,20,34,0.94),rgba(8,13,24,0.96));\n    border:1px solid var(--frame);\n    box-shadow:0 0 0 1px rgba(0,0,0,0.4),0 24px 70px rgba(0,0,0,0.55),inset 0 0 60px rgba(59,130,246,0.05);\n  }\n  .panel::before{\n    content:\"\";position:absolute;inset:0;border-radius:18px;pointer-events:none;\n    box-shadow:inset 0 0 22px var(--glow);\n  }\n  /* LEFT: title + graph */\n  .left{display:flex;flex-direction:column;width:380px;min-width:380px}\n  .hdr{display:flex;align-items:center;gap:10px;margin-bottom:4px}\n  .livedot{\n    width:9px;height:9px;border-radius:50%;background:var(--accent);\n    box-shadow:0 0 10px var(--accent),0 0 4px var(--accent);\n    opacity:var(--dot,1);\n  }\n  .title{\n    font-size:14px;font-weight:800;letter-spacing:3px;color:#eaf2ff;\n    text-transform:uppercase;\n  }\n  .logo{height:20px;margin-left:auto;opacity:0.9}\n  .sub{font-size:10.5px;font-weight:600;letter-spacing:1.5px;color:#5d7396;text-transform:uppercase;margin-bottom:14px}\n  .chart{position:relative;flex:1;min-height:150px}\n  .chart svg{display:block;width:100%;height:160px;overflow:visible}\n  .gridline{stroke:rgba(120,150,200,0.10);stroke-width:1}\n  .axislbl{fill:#4a5d80;font-size:9px;font-weight:600;font-family:'Inter',sans-serif}\n  .area{opacity:0.9}\n  .nodedot{fill:var(--accent);opacity:var(--nodeop,0)}\n  .nodeglow{fill:var(--accent);opacity:calc(var(--nodeop,0)*0.25)}\n\n  /* RIGHT: KPI cards */\n  .right{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-content:center}\n  .kpi{\n    width:178px;\n    background:linear-gradient(155deg,rgba(22,32,52,0.85),rgba(14,22,38,0.85));\n    border:1px solid rgba(70,110,170,0.22);\n    border-radius:13px;\n    padding:14px 16px;\n    position:relative;\n    overflow:hidden;\n  }\n  .kpi::after{\n    content:\"\";position:absolute;left:0;top:0;bottom:0;width:3px;\n    background:var(--accent);box-shadow:0 0 12px var(--accent);\n    border-radius:3px;\n  }\n  .kpitop{display:flex;align-items:center;gap:8px;margin-bottom:9px}\n  .kpiicon{\n    width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;\n    background:rgba(59,130,246,0.14);border:1px solid rgba(90,140,210,0.25);\n  }\n  .kpiicon .material-icons-outlined{font-size:18px;color:var(--accent)}\n  .kpilbl{font-size:9.5px;font-weight:700;letter-spacing:1.4px;color:#728bb0;text-transform:uppercase}\n  .kpival{font-size:25px;font-weight:800;color:#f3f8ff;letter-spacing:-0.5px;line-height:1;font-variant-numeric:tabular-nums}\n  .kpiunit{font-size:13px;font-weight:600;color:#8fa6c8;margin-left:2px}\n  .kpitrend{display:flex;align-items:center;gap:3px;font-size:10.5px;font-weight:700;color:var(--accent);margin-top:6px}\n  .kpitrend .material-icons-outlined{font-size:13px}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"panel\" id=\"panel\">\n    <div class=\"left\">\n      <div class=\"hdr\">\n        <span class=\"livedot\" id=\"livedot\"></span>\n        <span class=\"title\">Live Analytics</span>\n        <img id=\"logo\" class=\"logo\" style=\"display:none\" alt=\"\">\n      </div>\n      <div class=\"sub\">Performance · Last 24h</div>\n      <div class=\"chart\">\n        <svg id=\"svg\" viewBox=\"0 0 360 160\" preserveAspectRatio=\"none\">\n          <defs>\n            <linearGradient id=\"areaGrad\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">\n              <stop offset=\"0%\" stop-color=\"var(--accent)\" stop-opacity=\"0.42\"/>\n              <stop offset=\"100%\" stop-color=\"var(--accent)\" stop-opacity=\"0\"/>\n            </linearGradient>\n            <filter id=\"lineGlow\" x=\"-20%\" y=\"-40%\" width=\"140%\" height=\"180%\">\n              <feGaussianBlur stdDeviation=\"3.2\" result=\"b\"/>\n              <feMerge><feMergeNode in=\"b\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>\n            </filter>\n          </defs>\n          <g id=\"grid\"></g>\n          <path id=\"area\" class=\"area\" fill=\"url(#areaGrad)\" d=\"\"/>\n          <path id=\"line\" fill=\"none\" stroke=\"var(--accent)\" stroke-width=\"2.4\"\n                stroke-linecap=\"round\" stroke-linejoin=\"round\" filter=\"url(#lineGlow)\" d=\"\"/>\n          <g id=\"nodes\"></g>\n        </svg>\n      </div>\n    </div>\n    <div class=\"right\" id=\"kpis\"></div>\n  </div>\n</div>\n\n<script>\n(function(){\n  var cfg = window.__CFG__ || {};\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n\n  function hexToRgb(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(function(c){return c+c}).join('');return [parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)];}\n  var rgb = hexToRgb(accent);\n  var glow='rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0.22)';\n  var frame='rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0.35)';\n\n  var root=document.getElementById('wrap');\n  var panel=document.getElementById('panel');\n  panel.style.setProperty('--accent',accent);\n  panel.style.setProperty('--glow',glow);\n  panel.style.setProperty('--frame',frame);\n\n  if(cfg.logo){var lg=document.getElementById('logo');lg.src=cfg.logo;lg.style.display='block';}\n\n  // ---- data\n  var W=360,H=160,PADL=8,PADR=8,PADT=14,PADB=22;\n  var series=[28,34,30,42,38,52,48,63,58,72,80,76,92,88,100];\n  var maxV=Math.max.apply(null,series);\n  function px(i){return PADL+(W-PADL-PADR)*(i/(series.length-1));}\n  function py(v){return PADT+(H-PADT-PADB)*(1-v/maxV);}\n\n  var grid=document.getElementById('grid'),svgNS='http://www.w3.org/2000/svg';\n  for(var r=0;r<4;r++){\n    var y=PADT+(H-PADT-PADB)*(r/3);\n    var l=document.createElementNS(svgNS,'line');\n    l.setAttribute('class','gridline');l.setAttribute('x1',PADL);l.setAttribute('x2',W-PADR);\n    l.setAttribute('y1',y);l.setAttribute('y2',y);grid.appendChild(l);\n  }\n  var hrs=['00','06','12','18','24'];\n  for(var t=0;t<hrs.length;t++){\n    var tx=PADL+(W-PADL-PADR)*(t/(hrs.length-1));\n    var tl=document.createElementNS(svgNS,'text');\n    tl.setAttribute('class','axislbl');tl.setAttribute('x',tx);tl.setAttribute('y',H-6);\n    tl.setAttribute('text-anchor',t===0?'start':t===hrs.length-1?'end':'middle');\n    tl.textContent=hrs[t];grid.appendChild(tl);\n  }\n\n  var nodesG=document.getElementById('nodes');\n  var lastG=document.createElementNS(svgNS,'circle');\n  lastG.setAttribute('class','nodeglow');lastG.setAttribute('r','9');\n  lastG.setAttribute('cx',px(series.length-1));lastG.setAttribute('cy',py(series[series.length-1]));\n  nodesG.appendChild(lastG);\n  var lastD=document.createElementNS(svgNS,'circle');\n  lastD.setAttribute('class','nodedot');lastD.setAttribute('r','3.4');\n  lastD.setAttribute('cx',px(series.length-1));lastD.setAttribute('cy',py(series[series.length-1]));\n  nodesG.appendChild(lastD);\n\n  function buildLine(n){\n    var pts=[];\n    var total=series.length-1;\n    var shown=Math.min(total, n);\n    var full=Math.floor(shown);\n    for(var i=0;i<=full;i++)pts.push([px(i),py(series[i])]);\n    if(full<total){\n      var frac=shown-full;\n      var x0=px(full),y0=py(series[full]),x1=px(full+1),y1=py(series[full+1]);\n      pts.push([x0+(x1-x0)*frac, y0+(y1-y0)*frac]);\n    }\n    return pts;\n  }\n  function lineD(pts){return pts.map(function(p,i){return (i?'L':'M')+p[0].toFixed(2)+' '+p[1].toFixed(2)}).join(' ');}\n  function areaD(pts){\n    if(pts.length<2)return '';\n    var d=lineD(pts);\n    var last=pts[pts.length-1];\n    d+=' L'+last[0].toFixed(2)+' '+(H-PADB)+' L'+pts[0][0].toFixed(2)+' '+(H-PADB)+' Z';\n    return d;\n  }\n  var lineEl=document.getElementById('line'),areaEl=document.getElementById('area');\n\n  var kpiDefs=[\n    {key:'views',label:'Views',icon:'visibility',unit:''},\n    {key:'watchTime',label:'Watch Time',icon:'schedule',unit:''},\n    {key:'growth',label:'Growth',icon:'trending_up',unit:''},\n    {key:'conversion',label:'Conversion',icon:'bolt',unit:''}\n  ];\n  function parseVal(s){\n    s=String(s==null?'':s).trim();\n    var m=s.match(/^([+\\-]?[\\d.,]+)\\s*(.*)$/);\n    if(!m)return {num:null,suffix:s,prefix:''};\n    var numRaw=m[1].replace(/,/g,'');\n    var pfx='';\n    if(numRaw[0]==='+'||numRaw[0]==='-'){pfx=numRaw[0];numRaw=numRaw.slice(1);}\n    return {num:parseFloat(numRaw)||0, suffix:m[2], prefix:pfx, decimals:(numRaw.split('.')[1]||'').length};\n  }\n  var kpisEl=document.getElementById('kpis');\n  var cards=[];\n  kpiDefs.forEach(function(d){\n    var raw=cfg[d.key]!=null?cfg[d.key]:'—';\n    var pv=parseVal(raw);\n    var card=document.createElement('div');card.className='kpi';\n    card.innerHTML=\n      '<div class=\"kpitop\">'+\n        '<div class=\"kpiicon\"><span class=\"material-icons-outlined\">'+d.icon+'</span></div>'+\n        '<div class=\"kpilbl\">'+d.label+'</div>'+\n      '</div>'+\n      '<div class=\"kpival\" data-num></div>';\n    kpisEl.appendChild(card);\n    cards.push({el:card.querySelector('[data-num]'),pv:pv,raw:raw,icon:d.icon});\n  });\n\n  function easeInOut(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}\n  function fmtNum(n,decimals){\n    if(decimals>0)return n.toFixed(decimals);\n    return Math.round(n).toLocaleString('en-US');\n  }\n\n  function setProgress(p){\n    p=Math.max(0,Math.min(1,p));\n    var e=easeInOut(p);\n\n    var gp=Math.min(1, e/0.65);\n    var segs=(series.length-1)*easeInOut(gp);\n    var pts=buildLine(segs);\n    lineEl.setAttribute('d', lineD(pts));\n    areaEl.setAttribute('d', areaD(pts));\n    areaEl.style.opacity = (0.9*gp).toFixed(3);\n    panel.style.setProperty('--nodeop', gp>=0.999?'1':'0');\n\n    var pulse=0.55+0.45*(0.5+0.5*Math.sin(p*Math.PI*6));\n    panel.style.setProperty('--dot', pulse.toFixed(3));\n    lastG.setAttribute('r', (7+4*(0.5+0.5*Math.sin(p*Math.PI*6))).toFixed(2));\n\n    cards.forEach(function(c,i){\n      var start=0.30+i*0.10, end=start+0.34;\n      var lp=(e-start)/(end-start);\n      lp=Math.max(0,Math.min(1,lp));\n      var le=easeInOut(lp);\n      c.el.parentElement.style.opacity=le.toFixed(3);\n      c.el.parentElement.style.transform='translateY('+((1-le)*10).toFixed(2)+'px)';\n      if(c.pv.num==null){c.el.textContent=c.raw;return;}\n      var cur=c.pv.num*le;\n      var html=c.pv.prefix+fmtNum(cur,c.pv.decimals||0);\n      if(c.pv.suffix)html+='<span class=\"kpiunit\">'+c.pv.suffix+'</span>';\n      c.el.innerHTML=html;\n    });\n  }\n  window.setProgress=setProgress;\n  setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "before-after",
+"name": "Før / etter",
+"desc": "To verdier side om side – FØR (dempet) og ETTER (accent) – med pil imellom og en stor forbedrings-prosent under. Ren, lys stil. Tall teller opp, søyler vokser, pilringen tegnes og elementene fader inn etter hverandre.",
+"style": "light",
+"glyph": "↗",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "title",
+"label": "Tittel",
+"type": "text",
+"placeholder": "Kampanjeresultater"
+},
+{
+"key": "beforeLabel",
+"label": "Før-etikett",
+"type": "text",
+"placeholder": "Før"
+},
+{
+"key": "beforeValue",
+"label": "Før-verdi",
+"type": "text",
+"placeholder": "1,8 %"
+},
+{
+"key": "afterLabel",
+"label": "Etter-etikett",
+"type": "text",
+"placeholder": "Etter"
+},
+{
+"key": "afterValue",
+"label": "Etter-verdi",
+"type": "text",
+"placeholder": "9,2 %"
+},
+{
+"key": "improvement",
+"label": "Forbedring (tall)",
+"type": "text",
+"placeholder": "411"
+},
+{
+"key": "improvementLabel",
+"label": "Forbedrings-etikett",
+"type": "text",
+"placeholder": "forbedring i konvertering"
+}
+],
+"defaults": {
+"title": "Resultater",
+"beforeLabel": "Før",
+"beforeValue": "18",
+"afterLabel": "Etter",
+"afterValue": "92",
+"improvement": "411",
+"improvementLabel": "forbedring"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"UTF-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',sans-serif;\n    padding:48px;\n    display:flex;\n    flex-direction:column;\n    align-items:center;\n    gap:36px;\n  }\n  .panel{\n    background:#ffffff;\n    border-radius:28px;\n    padding:44px 56px;\n    box-shadow:0 24px 70px rgba(20,30,55,0.16), 0 2px 8px rgba(20,30,55,0.06);\n    display:flex;\n    align-items:center;\n    gap:40px;\n  }\n  .head{\n    display:flex;\n    align-items:center;\n    gap:14px;\n    align-self:flex-start;\n  }\n  .logo-img{height:40px;width:auto;display:block}\n  .title{\n    font-size:30px;\n    font-weight:800;\n    letter-spacing:-0.02em;\n    color:var(--ink);\n  }\n  .title .dot{color:var(--accent)}\n  .card{\n    width:300px;\n    border-radius:22px;\n    padding:34px 30px;\n    display:flex;\n    flex-direction:column;\n    gap:10px;\n    position:relative;\n    overflow:hidden;\n  }\n  .card.before{ background:#f1f3f7; border:1px solid #e3e7ef; }\n  .card.after{ background:var(--accent-tint); border:1px solid var(--accent-border); }\n  .card .label{\n    font-size:14px;\n    font-weight:700;\n    letter-spacing:0.08em;\n    text-transform:uppercase;\n  }\n  .card.before .label{ color:#8a94a6; }\n  .card.after .label{ color:var(--accent); }\n  .card .value{\n    font-size:64px;\n    font-weight:800;\n    letter-spacing:-0.03em;\n    line-height:1;\n  }\n  .card.before .value{ color:#6b7689; }\n  .card.after .value{ color:var(--ink); }\n  .bar-track{position:relative;background:#e0e4ec;height:8px;border-radius:6px;width:100%;margin-top:16px;}\n  .card.after .bar-track{ background:var(--accent-border); }\n  .bar-fill{position:absolute;top:0;left:0;height:8px;border-radius:6px;width:0%;}\n  .card.before .bar-fill{ background:#aab2c2; }\n  .card.after .bar-fill{ background:var(--accent); }\n  .arrow{\n    display:flex;\n    flex-direction:column;\n    align-items:center;\n    gap:6px;\n  }\n  .arrow .ring{\n    width:64px;\n    height:64px;\n    display:flex;\n    align-items:center;\n    justify-content:center;\n    position:relative;\n  }\n  .arrow .ring svg{position:absolute;top:0;left:0;transform:rotate(-90deg)}\n  .arrow .ico{\n    color:var(--accent);\n    font-size:34px;\n  }\n  .improve{\n    display:flex;\n    flex-direction:column;\n    align-items:center;\n    gap:4px;\n    background:var(--accent);\n    color:#fff;\n    border-radius:20px;\n    padding:22px 40px;\n    box-shadow:0 16px 40px var(--accent-shadow);\n  }\n  .improve .pct{\n    font-size:52px;\n    font-weight:800;\n    letter-spacing:-0.02em;\n    line-height:1;\n    display:flex;\n    align-items:baseline;\n    gap:4px;\n  }\n  .improve .pct .sym{font-size:34px;font-weight:700}\n  .improve .pct .up{font-size:34px;line-height:1}\n  .improve .cap{\n    font-size:14px;\n    font-weight:600;\n    letter-spacing:0.06em;\n    text-transform:uppercase;\n    opacity:0.9;\n  }\n  .stagger{opacity:0;transform:translateY(16px)}\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"head stagger\" id=\"s-head\">\n    <img class=\"logo-img\" id=\"logo\" style=\"display:none\" alt=\"\">\n    <div class=\"title\" id=\"title\">Resultater<span class=\"dot\">.</span></div>\n  </div>\n  <div class=\"panel\">\n    <div class=\"card before stagger\" id=\"s-before\">\n      <div class=\"label\" id=\"beforeLabel\">Før</div>\n      <div class=\"value\" id=\"beforeValue\">0</div>\n      <div class=\"bar-track\"><div class=\"bar-fill\" id=\"beforeBar\"></div></div>\n    </div>\n    <div class=\"arrow stagger\" id=\"s-arrow\">\n      <div class=\"ring\">\n        <svg width=\"64\" height=\"64\" viewBox=\"0 0 64 64\">\n          <circle cx=\"32\" cy=\"32\" r=\"29\" fill=\"none\" stroke=\"var(--accent-border)\" stroke-width=\"4\"/>\n          <circle id=\"ring-fg\" cx=\"32\" cy=\"32\" r=\"29\" fill=\"none\" stroke=\"var(--accent)\" stroke-width=\"4\" stroke-linecap=\"round\" stroke-dasharray=\"182.2\" stroke-dashoffset=\"182.2\"/>\n        </svg>\n        <span class=\"material-icons-outlined ico\">arrow_forward</span>\n      </div>\n    </div>\n    <div class=\"card after stagger\" id=\"s-after\">\n      <div class=\"label\" id=\"afterLabel\">Etter</div>\n      <div class=\"value\" id=\"afterValue\">0</div>\n      <div class=\"bar-track\"><div class=\"bar-fill\" id=\"afterBar\"></div></div>\n    </div>\n  </div>\n  <div class=\"improve stagger\" id=\"s-improve\">\n    <div class=\"pct\"><span class=\"up\">&#9650;</span><span id=\"improvement\">0</span><span class=\"sym\">%</span></div>\n    <div class=\"cap\" id=\"impCap\">forbedring</div>\n  </div>\n</div>\n<script>\n(function(){\n  var cfg = window.__CFG__ || {};\n  var accent = cfg.accent || '#3b82f6';\n  var ink = cfg.ink || '#1f2d4a';\n\n  function hexToRgb(h){\n    h = String(h).replace('#','');\n    if(h.length===3){h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];}\n    return {r:parseInt(h.substr(0,2),16),g:parseInt(h.substr(2,2),16),b:parseInt(h.substr(4,2),16)};\n  }\n  var rgb = hexToRgb(accent);\n  function rgba(a){return 'rgba('+rgb.r+','+rgb.g+','+rgb.b+','+a+')';}\n\n  var root = document.documentElement;\n  root.style.setProperty('--accent', accent);\n  root.style.setProperty('--ink', ink);\n  root.style.setProperty('--accent-tint', rgba(0.10));\n  root.style.setProperty('--accent-border', rgba(0.28));\n  root.style.setProperty('--accent-shadow', rgba(0.38));\n\n  if(cfg.logo){\n    var lg = document.getElementById('logo');\n    lg.src = cfg.logo; lg.style.display='block';\n  }\n\n  function setTxt(id,v,fb){var e=document.getElementById(id); if(e) e.textContent=(v!==undefined&&v!=='')?v:fb;}\n  setTxt('beforeLabel', cfg.beforeLabel, 'Før');\n  setTxt('afterLabel', cfg.afterLabel, 'Etter');\n  if(cfg.title!==undefined && cfg.title!==''){\n    document.getElementById('title').innerHTML = cfg.title + '<span class=\"dot\">.</span>';\n  }\n  setTxt('impCap', cfg.improvementLabel, 'forbedring');\n\n  function parseNum(str){\n    if(str===undefined||str===null) return null;\n    var s = String(str);\n    var m = s.match(/-?[\\d\\s.,]*\\d/);\n    if(!m) return {prefix:s, num:null, suffix:'', decimals:0};\n    var raw = m[0];\n    var idx = s.indexOf(raw);\n    var prefix = s.slice(0, idx);\n    var suffix = s.slice(idx+raw.length);\n    var cleaned = raw.replace(/\\s/g,'');\n    var dec = 0;\n    var dm = cleaned.match(/[.,](\\d{1,2})$/);\n    var stripped;\n    if(dm){\n      dec = dm[1].length;\n      stripped = cleaned.slice(0, cleaned.length-dec-1).replace(/[.,]/g,'') + '.' + dm[1];\n    } else {\n      stripped = cleaned.replace(/[.,]/g,'');\n    }\n    var num = parseFloat(stripped);\n    if(isNaN(num)) return {prefix:s, num:null, suffix:'', decimals:0};\n    return {prefix:prefix, num:num, suffix:suffix, decimals:dec};\n  }\n  function fmt(n, decimals){\n    var fixed = n.toFixed(decimals);\n    var parts = fixed.split('.');\n    parts[0] = parts[0].replace(/\\B(?=(\\d{3})+(?!\\d))/g, ' ');\n    return parts.join(decimals>0 ? ',' : '');\n  }\n\n  var beforeP = parseNum(cfg.beforeValue!==undefined?cfg.beforeValue:'18');\n  var afterP  = parseNum(cfg.afterValue!==undefined?cfg.afterValue:'92');\n  var impP    = parseNum(cfg.improvement!==undefined?cfg.improvement:'411');\n\n  function renderVal(id, p, prog){\n    var e = document.getElementById(id);\n    if(!e) return;\n    if(p.num===null){ e.textContent = p.prefix; return; }\n    var v = p.num * prog;\n    e.textContent = p.prefix + fmt(v, p.decimals) + p.suffix;\n  }\n\n  var maxV = Math.max(Math.abs(beforeP.num||0), Math.abs(afterP.num||0), 1);\n  var beforeFrac = (beforeP.num!==null) ? Math.abs(beforeP.num)/maxV : 0.3;\n  var afterFrac  = (afterP.num!==null)  ? Math.abs(afterP.num)/maxV  : 0.9;\n\n  var ringLen = 182.2;\n  var staggers = ['s-head','s-before','s-arrow','s-after','s-improve'];\n\n  function easeInOut(t){ return t<0.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2; }\n  function clamp(v,a,b){return Math.max(a,Math.min(b,v));}\n\n  window.setProgress = function(p){\n    p = clamp(p,0,1);\n    var n = staggers.length;\n    for(var i=0;i<n;i++){\n      var el = document.getElementById(staggers[i]);\n      if(!el) continue;\n      var start = i * 0.08;\n      var span = 0.30;\n      var local = clamp((p - start)/span, 0, 1);\n      var e = easeInOut(local);\n      el.style.opacity = e;\n      el.style.transform = 'translateY(' + ((1-e)*16) + 'px)';\n    }\n    var grow = easeInOut(clamp((p - 0.15)/0.7, 0, 1));\n    renderVal('beforeValue', beforeP, grow);\n    renderVal('afterValue', afterP, grow);\n    renderVal('improvement', impP, grow);\n    document.getElementById('beforeBar').style.width = (beforeFrac * grow * 100) + '%';\n    document.getElementById('afterBar').style.width  = (afterFrac * grow * 100) + '%';\n    var ringProg = easeInOut(clamp((p - 0.2)/0.6, 0, 1));\n    document.getElementById('ring-fg').setAttribute('stroke-dashoffset', ringLen * (1 - ringProg));\n  };\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
+},
+{
+"id": "roadmap",
+"name": "Tidslinje / veikart",
+"desc": "Horisontal tidslinje med 4 milepæler på en linje. Hver milepæl har en node-prikk, årstall, Material-ikon, tittel og kort beskrivelse. Linjen tegnes inn og nodene popper opp forskjøvet (stagger) mens teksten glir inn. Lys, ren, moderne stil — perfekt for produktveikart, prosjektplaner eller historikk.",
+"style": "light",
+"glyph": "🗺",
+"durationSec": 5.0,
+"fields": [
+{
+"key": "kicker",
+"label": "Etikett (liten overtekst)",
+"type": "text",
+"placeholder": "Produktveikart"
+},
+{
+"key": "heading",
+"label": "Overskrift",
+"type": "text",
+"placeholder": "Vår reise mot 2027"
+},
+{
+"key": "year1",
+"label": "Milepæl 1 — årstall",
+"type": "text",
+"placeholder": "2024"
+},
+{
+"key": "title1",
+"label": "Milepæl 1 — tittel",
+"type": "text",
+"placeholder": "Lansering"
+},
+{
+"key": "desc1",
+"label": "Milepæl 1 — beskrivelse",
+"type": "text",
+"placeholder": "Første versjon ut til markedet."
+},
+{
+"key": "icon1",
+"label": "Milepæl 1 — ikon (Material-navn)",
+"type": "text",
+"placeholder": "rocket_launch"
+},
+{
+"key": "year2",
+"label": "Milepæl 2 — årstall",
+"type": "text",
+"placeholder": "2025"
+},
+{
+"key": "title2",
+"label": "Milepæl 2 — tittel",
+"type": "text",
+"placeholder": "Skalering"
+},
+{
+"key": "desc2",
+"label": "Milepæl 2 — beskrivelse",
+"type": "text",
+"placeholder": "Utvider til nye markeder."
+},
+{
+"key": "icon2",
+"label": "Milepæl 2 — ikon (Material-navn)",
+"type": "text",
+"placeholder": "trending_up"
+},
+{
+"key": "year3",
+"label": "Milepæl 3 — årstall",
+"type": "text",
+"placeholder": "2026"
+},
+{
+"key": "title3",
+"label": "Milepæl 3 — tittel",
+"type": "text",
+"placeholder": "Automatisering"
+},
+{
+"key": "desc3",
+"label": "Milepæl 3 — beskrivelse",
+"type": "text",
+"placeholder": "AI-drevne arbeidsflyter."
+},
+{
+"key": "icon3",
+"label": "Milepæl 3 — ikon (Material-navn)",
+"type": "text",
+"placeholder": "smart_toy"
+},
+{
+"key": "year4",
+"label": "Milepæl 4 — årstall",
+"type": "text",
+"placeholder": "2027"
+},
+{
+"key": "title4",
+"label": "Milepæl 4 — tittel",
+"type": "text",
+"placeholder": "Markedsleder"
+},
+{
+"key": "desc4",
+"label": "Milepæl 4 — beskrivelse",
+"type": "text",
+"placeholder": "Ledende aktør i bransjen."
+},
+{
+"key": "icon4",
+"label": "Milepæl 4 — ikon (Material-navn)",
+"type": "text",
+"placeholder": "workspace_premium"
+}
+],
+"defaults": {
+"kicker": "Produktveikart",
+"heading": "Vår reise mot 2027",
+"year1": "2024",
+"title1": "Lansering",
+"desc1": "Første versjon ut til markedet med kjernefunksjoner.",
+"icon1": "rocket_launch",
+"year2": "2025",
+"title2": "Skalering",
+"desc2": "Utvider til tre nye markeder og dobler teamet.",
+"icon2": "trending_up",
+"year3": "2026",
+"title3": "Automatisering",
+"desc3": "AI-drevne arbeidsflyter på tvers av plattformen.",
+"icon3": "smart_toy",
+"year4": "2027",
+"title4": "Markedsleder",
+"desc4": "Etablert som ledende aktør i bransjen.",
+"icon4": "workspace_premium"
+},
+"html": "<!DOCTYPE html>\n<html lang=\"no\">\n<head>\n<meta charset=\"utf-8\">\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n<link href=\"https://fonts.googleapis.com/icon?family=Material+Icons+Outlined\" rel=\"stylesheet\">\n<style>\n  html,body{margin:0;background:transparent}\n  *{box-sizing:border-box}\n  #wrap{\n    width:max-content;\n    font-family:'Inter',system-ui,sans-serif;\n    padding:64px 72px 72px;\n    -webkit-font-smoothing:antialiased;\n  }\n  .rm-head{margin-bottom:48px;display:flex;align-items:center;gap:18px}\n  .rm-logo{height:40px;display:block}\n  .rm-kicker-wrap{display:flex;flex-direction:column;gap:6px}\n  .rm-kicker{\n    font-size:13px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;\n    color:var(--accent);\n  }\n  .rm-title{\n    font-size:34px;font-weight:800;letter-spacing:-.02em;color:var(--ink);margin:0;\n  }\n  .rm-track{position:relative;display:flex;gap:0}\n  .rm-line-bg{\n    position:absolute;left:18px;right:18px;top:18px;height:3px;border-radius:3px;\n    background:rgba(31,45,74,.10);\n  }\n  .rm-line-fg{\n    position:absolute;left:18px;top:18px;height:3px;border-radius:3px;width:0;\n    background:linear-gradient(90deg,var(--accent),var(--accent));\n    box-shadow:0 1px 8px rgba(0,0,0,.06);\n  }\n  .rm-step{\n    position:relative;width:248px;padding:0 24px;\n    opacity:0;transform:translateY(14px);\n  }\n  .rm-node{\n    position:relative;width:38px;height:38px;border-radius:50%;\n    background:#fff;border:3px solid rgba(31,45,74,.14);\n    display:flex;align-items:center;justify-content:center;margin-bottom:26px;\n    transition:none;z-index:2;\n  }\n  .rm-node-fill{\n    position:absolute;inset:5px;border-radius:50%;\n    background:var(--accent);\n    transform:scale(0);transform-origin:center;\n  }\n  .rm-node .material-icons-outlined{\n    position:relative;z-index:1;color:#fff;font-size:18px;opacity:0;\n  }\n  .rm-year{\n    font-size:13px;font-weight:800;letter-spacing:.14em;color:var(--accent);\n    margin-bottom:8px;\n  }\n  .rm-step-title{\n    font-size:19px;font-weight:700;color:var(--ink);margin:0 0 8px;letter-spacing:-.01em;\n  }\n  .rm-step-desc{\n    font-size:14px;font-weight:400;line-height:1.55;color:rgba(31,45,74,.62);margin:0;\n  }\n</style>\n</head>\n<body>\n<div id=\"wrap\">\n  <div class=\"rm-head\">\n    <img class=\"rm-logo\" id=\"rm-logo\" alt=\"\">\n    <div class=\"rm-kicker-wrap\">\n      <span class=\"rm-kicker\" id=\"rm-kicker\">Veikart</span>\n      <h1 class=\"rm-title\" id=\"rm-title\">Vår reise fremover</h1>\n    </div>\n  </div>\n  <div class=\"rm-track\" id=\"rm-track\">\n    <div class=\"rm-line-bg\"></div>\n    <div class=\"rm-line-fg\" id=\"rm-line\"></div>\n  </div>\n</div>\n\n<script>\n(function(){\n  var CFG = window.__CFG__ || {};\n  var accent = CFG.accent || '#3b82f6';\n  var ink = CFG.ink || '#1f2d4a';\n  document.documentElement.style.setProperty('--accent', accent);\n  document.documentElement.style.setProperty('--ink', ink);\n\n  if(CFG.logo){\n    var lg = document.getElementById('rm-logo');\n    lg.src = CFG.logo;\n  } else {\n    document.getElementById('rm-logo').style.display='none';\n  }\n  if(CFG.kicker) document.getElementById('rm-kicker').textContent = CFG.kicker;\n  if(CFG.heading) document.getElementById('rm-title').textContent = CFG.heading;\n\n  var steps = [];\n  for(var i=1;i<=4;i++){\n    steps.push({\n      year: CFG['year'+i] || '',\n      title: CFG['title'+i] || '',\n      desc: CFG['desc'+i] || '',\n      icon: CFG['icon'+i] || 'flag'\n    });\n  }\n\n  var track = document.getElementById('rm-track');\n  var stepEls = [];\n  steps.forEach(function(s){\n    var el = document.createElement('div');\n    el.className = 'rm-step';\n    el.innerHTML =\n      '<div class=\"rm-node\"><div class=\"rm-node-fill\"></div>'+\n      '<span class=\"material-icons-outlined\">'+s.icon+'</span></div>'+\n      '<div class=\"rm-year\">'+s.year+'</div>'+\n      '<h3 class=\"rm-step-title\">'+s.title+'</h3>'+\n      '<p class=\"rm-step-desc\">'+s.desc+'</p>';\n    track.appendChild(el);\n    stepEls.push(el);\n  });\n\n  function easeInOut(t){ return t<.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }\n  function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }\n\n  var line = document.getElementById('rm-line');\n  var N = stepEls.length;\n\n  window.setProgress = function(p){\n    p = clamp(p,0,1);\n    var lineP = easeInOut(clamp(p/0.55,0,1));\n    var trackW = track.offsetWidth;\n    var fullSpan = trackW - 36;\n    line.style.width = (fullSpan * lineP) + 'px';\n\n    for(var i=0;i<N;i++){\n      var start = 0.10 + i*0.18;\n      var dur = 0.42;\n      var local = easeInOut(clamp((p-start)/dur,0,1));\n      var el = stepEls[i];\n      el.style.opacity = local;\n      el.style.transform = 'translateY('+ (14*(1-local)) +'px)';\n      var fill = el.querySelector('.rm-node-fill');\n      var icon = el.querySelector('.material-icons-outlined');\n      var node = el.querySelector('.rm-node');\n      fill.style.transform = 'scale('+ local +')';\n      icon.style.opacity = clamp((local-0.4)/0.6,0,1);\n      node.style.borderColor = local>0.05 ? hexA(accent, Math.min(1,local)) : 'rgba(31,45,74,.14)';\n    }\n  };\n\n  function hexA(hex,a){\n    hex = hex.replace('#','');\n    if(hex.length===3) hex = hex.split('').map(function(c){return c+c;}).join('');\n    var r=parseInt(hex.substr(0,2),16),g=parseInt(hex.substr(2,2),16),b=parseInt(hex.substr(4,2),16);\n    return 'rgba('+r+','+g+','+b+','+a+')';\n  }\n\n  window.setProgress(0);\n})();\n</script>\n</body>\n</html>"
 }
 ]
