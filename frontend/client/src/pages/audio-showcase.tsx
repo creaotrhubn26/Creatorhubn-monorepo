@@ -145,6 +145,8 @@ export default function AudioShowcasePage() {
   React.useEffect(() => { void loadVersion(currentVid); }, [currentVid, loadVersion]);
   // «Now on Spotify»: hvis rommet har en utgivelse som er live, vis embed i senter.
   const [spotifyLive, setSpotifyLive] = React.useState<any>(null);
+  const [coaching, setCoaching] = React.useState<any[]>([]);
+  React.useEffect(() => { let c = false; apiRequest(`/api/audio-showcases/${projectId}/coaching`).then((d: any) => { if (!c) setCoaching(d?.items || []); }).catch(() => {}); return () => { c = true; }; }, [projectId]);
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -404,6 +406,28 @@ export default function AudioShowcasePage() {
               <Box component="iframe" title="Spotify-utgivelse" src={e.embedUrl} sx={{ width: '100%', height: spotifyLive.track ? 152 : 352, border: 0, borderRadius: '12px' }} allow="encrypted-media" loading="lazy" />
             </Box>
           ); })()}
+          {/* Vokal-coach (EaseVerse) */}
+          {coaching.length > 0 && (
+            <Box sx={{ bgcolor: 'rgba(95,184,138,0.07)', border: '1px solid rgba(95,184,138,0.3)', borderRadius: '16px', p: 2, mb: 2.5 }}>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                <SelfImprovement sx={{ fontSize: 18, color: '#5fb88a' }} /><Typography sx={{ fontWeight: 700, flex: 1 }}>Vokal-coach</Typography>
+                <Chip label="fra EaseVerse" size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(255,255,255,0.08)', color: MUTED }} />
+              </Stack>
+              <Stack spacing={0.75}>
+                {coaching.slice(0, 5).map((c: any) => (
+                  <Stack key={c.takeId} direction="row" alignItems="center" spacing={1} sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '10px', p: 1 }}>
+                    {c.bestInGroup && <Chip label="Beste" size="small" sx={{ height: 18, fontSize: '0.58rem', bgcolor: 'rgba(95,184,138,0.18)', color: '#5fb88a' }} />}
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: '0.78rem', fontWeight: 600 }} noWrap>{c.filename}</Typography>
+                      {c.aiNotes && <Typography sx={{ fontSize: '0.68rem', color: MUTED }} noWrap>{c.aiNotes}</Typography>}
+                    </Box>
+                    {c.timingScore != null && <Tooltip title="Timing"><Chip label={`T ${c.timingScore}`} size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(255,255,255,0.06)', color: TEXT }} /></Tooltip>}
+                    {c.pronunciationScore != null && <Tooltip title="Uttale"><Chip label={`U ${c.pronunciationScore}`} size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(255,255,255,0.06)', color: TEXT }} /></Tooltip>}
+                  </Stack>
+                ))}
+              </Stack>
+            </Box>
+          )}
           {/* Track-header + waveform */}
           <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5, mb: 2.5 }}>
             <Stack direction="row" alignItems="flex-start" sx={{ mb: 1.5 }}>

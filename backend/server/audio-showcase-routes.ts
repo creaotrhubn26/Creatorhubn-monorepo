@@ -2089,6 +2089,24 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       return j;
     } catch { return null; }
   }
+  // Vokal-coach (EaseVerse): per-take timing/uttale-score + AI-notater for tracket.
+  app.get("/api/audio-showcases/:id/coaching", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const p = await pool.query(`SELECT easeverse_track_id, external_track_id FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const extId = p.rows[0].external_track_id || p.rows[0].easeverse_track_id;
+      if (!extId || !EV_URL) return res.json({ items: [], linked: false });
+      try {
+        const headers: Record<string, string> = {}; if (EV_KEY) headers["x-api-key"] = EV_KEY;
+        const r = await fetch(`${EV_URL}/api/v1/collab/coaching/${encodeURIComponent(extId)}`, { headers });
+        if (!r.ok) return res.json({ items: [], linked: true });
+        const j = await r.json();
+        return res.json({ items: Array.isArray(j?.items) ? j.items : [], linked: true });
+      } catch { return res.json({ items: [], linked: true }); }
+    } catch (e) { if (isMissingTable(e)) return res.json({ items: [], linked: false }); return res.status(500).json({ error: "coaching_failed" }); }
+  });
+
   app.get("/api/audio-showcase/warmup-library", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     const lib = await fetchWarmupLibrary();
