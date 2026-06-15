@@ -150,6 +150,8 @@ export default function AudioShowcasePage() {
   const [spotifyLive, setSpotifyLive] = React.useState<any>(null);
   const [coaching, setCoaching] = React.useState<any[]>([]);
   React.useEffect(() => { let c = false; apiRequest(`/api/audio-showcases/${projectId}/coaching`).then((d: any) => { if (!c) setCoaching(d?.items || []); }).catch(() => {}); return () => { c = true; }; }, [projectId]);
+  const [moods, setMoods] = React.useState<any[]>([]);
+  React.useEffect(() => { let c = false; apiRequest(`/api/audio-showcases/${projectId}/mood`).then((d: any) => { if (!c) setMoods(d?.moods || []); }).catch(() => {}); return () => { c = true; }; }, [projectId]);
   // Live-bro: poll om det er en aktiv opptaksøkt i EaseVerse.
   const [live, setLive] = React.useState<any>(null);
   React.useEffect(() => {
@@ -442,6 +444,18 @@ export default function AudioShowcasePage() {
                   <Typography sx={{ fontSize: '0.72rem', color: MUTED }}>{live.takeCount} take{live.takeCount === 1 ? '' : 's'} så langt{live.bpm ? ` · ${live.bpm} BPM` : ''}{live.clickOn ? ' · klikk på' : ''}</Typography>
                 </Box>
                 {easeverseTrack && <Button onClick={pullTakes} startIcon={<CloudUpload />} size="small" variant="contained" sx={{ bgcolor: '#e0606a', color: '#fff', fontWeight: 700, textTransform: 'none', borderRadius: '999px', '&:hover': { bgcolor: '#d44e58' } }}>Hent takes</Button>}
+              </Stack>
+            </Box>
+          )}
+          {/* Bandets form (mood/readiness-innsjekk) */}
+          {moods.length > 0 && (
+            <Box sx={{ bgcolor: 'rgba(155,89,182,0.06)', border: '1px solid rgba(155,89,182,0.28)', borderRadius: '16px', p: 2, mb: 2.5 }}>
+              <Typography sx={{ fontWeight: 700, mb: 1 }}>Bandets form</Typography>
+              <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.75}>
+                {moods.map((m: any) => (
+                  <Chip key={m.member_name} label={`${m.member_name}: ${String(m.mood).charAt(0).toUpperCase()}${String(m.mood).slice(1)}`} size="small"
+                    title={m.note || ''} sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: '#c39bd3', fontSize: '0.66rem' }} />
+                ))}
               </Stack>
             </Box>
           )}

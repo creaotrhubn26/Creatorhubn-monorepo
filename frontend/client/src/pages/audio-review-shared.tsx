@@ -36,6 +36,10 @@ export default function AudioReviewSharedPage() {
   const loadSessions = React.useCallback(() => apiRequest(`/api/audio-review-shared/${token}/sessions`).then((d: any) => setSessions(d.sessions || [])).catch(() => setSessions([])), [token]);
   React.useEffect(() => { if (token) loadSessions(); }, [token, loadSessions]);
   const rsvp = async (sid: string, status: string) => { try { await apiRequest(`/api/audio-review-shared/${token}/sessions/${sid}/rsvp`, { method: 'POST', body: { status } }); loadSessions(); } catch { /* */ } };
+  const [moodData, setMoodData] = React.useState<{ options: any[]; mine: any } | null>(null);
+  const loadMood = React.useCallback(() => apiRequest(`/api/audio-review-shared/${token}/mood`).then((d: any) => setMoodData(d)).catch(() => setMoodData(null)), [token]);
+  React.useEffect(() => { if (token) loadMood(); }, [token, loadMood]);
+  const setMood = async (mood: string) => { try { await apiRequest(`/api/audio-review-shared/${token}/mood`, { method: 'POST', body: { mood } }); loadMood(); } catch { /* */ } };
   const sigPadRef = React.useRef<SignatureHandle>(null);
   const loadAgreement = React.useCallback(() => {
     apiRequest(`/api/audio-review-shared/${token}/agreement`).then((d: any) => { setAgreement(d); if (d?.viewer?.name) setSigName(d.viewer.name); }).catch(() => setAgreement(null));
@@ -147,6 +151,19 @@ export default function AudioReviewSharedPage() {
                 </Box>
               ))}
             </Stack>
+          </Box>
+        )}
+        {moodData && moodData.options.length > 0 && (
+          <Box sx={{ bgcolor: 'rgba(155,89,182,0.07)', border: '1px solid rgba(155,89,182,0.3)', borderRadius: '16px', p: 2, mb: 2 }}>
+            <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Hvordan føler du deg?</Typography>
+            <Typography sx={{ fontSize: '0.72rem', color: MUTED, mb: 1 }}>Gi produsenten et hint om formen din før opptak.</Typography>
+            <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.75}>
+              {moodData.options.map((o: any) => (
+                <Chip key={o.id} label={o.label || o.id} onClick={() => setMood(o.id)} size="small"
+                  sx={{ cursor: 'pointer', bgcolor: moodData.mine?.mood === o.id ? (o.color ? `${o.color}33` : 'rgba(155,89,182,0.25)') : 'rgba(255,255,255,0.06)', color: moodData.mine?.mood === o.id ? (o.color || '#c39bd3') : MUTED, fontWeight: moodData.mine?.mood === o.id ? 700 : 400, border: moodData.mine?.mood === o.id ? `1px solid ${o.color || '#9b59b6'}` : '1px solid transparent' }} />
+              ))}
+            </Stack>
+            {moodData.mine?.mood && (() => { const sel = moodData.options.find((o: any) => o.id === moodData.mine.mood); return sel?.suggestion ? <Typography sx={{ fontSize: '0.72rem', color: '#c39bd3', mt: 1 }}>{sel.suggestion}</Typography> : null; })()}
           </Box>
         )}
         {token && <WarmupPlayer token={token} musicalKey={project.musical_key} />}
