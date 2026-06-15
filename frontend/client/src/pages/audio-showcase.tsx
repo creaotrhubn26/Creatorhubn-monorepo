@@ -150,6 +150,15 @@ export default function AudioShowcasePage() {
   const [spotifyLive, setSpotifyLive] = React.useState<any>(null);
   const [coaching, setCoaching] = React.useState<any[]>([]);
   React.useEffect(() => { let c = false; apiRequest(`/api/audio-showcases/${projectId}/coaching`).then((d: any) => { if (!c) setCoaching(d?.items || []); }).catch(() => {}); return () => { c = true; }; }, [projectId]);
+  // Live-bro: poll om det er en aktiv opptaksøkt i EaseVerse.
+  const [live, setLive] = React.useState<any>(null);
+  React.useEffect(() => {
+    if (!easeverseTrack) { setLive(null); return; }
+    let stop = false;
+    const tick = () => apiRequest(`/api/audio-showcases/${projectId}/live-session`).then((d: any) => { if (!stop) setLive(d?.live ? d.session : null); }).catch(() => {});
+    tick(); const t = setInterval(tick, 12000);
+    return () => { stop = true; clearInterval(t); };
+  }, [projectId, easeverseTrack]);
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -423,6 +432,19 @@ export default function AudioShowcasePage() {
               <Box component="iframe" title="Spotify-utgivelse" src={e.embedUrl} sx={{ width: '100%', height: spotifyLive.track ? 152 : 352, border: 0, borderRadius: '12px' }} allow="encrypted-media" loading="lazy" />
             </Box>
           ); })()}
+          {/* Live i EaseVerse — aktiv opptaksøkt */}
+          {live && (
+            <Box sx={{ bgcolor: 'rgba(224,96,106,0.1)', border: '1px solid rgba(224,96,106,0.45)', borderRadius: '16px', p: 2, mb: 2.5 }}>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <FiberManualRecord sx={{ fontSize: 16, color: '#e0606a', animation: 'lvpulse 1.4s ease-in-out infinite', '@keyframes lvpulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.3 } } }} />
+                <Box sx={{ flex: 1 }}>
+                  <Typography sx={{ fontWeight: 700 }}>{live.recording ? 'Tar opp nå i EaseVerse' : live.armed ? 'Klar til opptak i EaseVerse' : 'Live-økt i EaseVerse'}</Typography>
+                  <Typography sx={{ fontSize: '0.72rem', color: MUTED }}>{live.takeCount} take{live.takeCount === 1 ? '' : 's'} så langt{live.bpm ? ` · ${live.bpm} BPM` : ''}{live.clickOn ? ' · klikk på' : ''}</Typography>
+                </Box>
+                {easeverseTrack && <Button onClick={pullTakes} startIcon={<CloudUpload />} size="small" variant="contained" sx={{ bgcolor: '#e0606a', color: '#fff', fontWeight: 700, textTransform: 'none', borderRadius: '999px', '&:hover': { bgcolor: '#d44e58' } }}>Hent takes</Button>}
+              </Stack>
+            </Box>
+          )}
           {/* Vokal-coach (EaseVerse) */}
           {coaching.length > 0 && (
             <Box sx={{ bgcolor: 'rgba(95,184,138,0.07)', border: '1px solid rgba(95,184,138,0.3)', borderRadius: '16px', p: 2, mb: 2.5 }}>
