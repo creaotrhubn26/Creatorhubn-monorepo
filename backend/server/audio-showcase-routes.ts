@@ -148,20 +148,23 @@ function lyricLines(lyrics: string): string[] {
 // Spotify Canvas: 9:16, ~6 s SØMLØS loop fra coveret. Uskarp bakgrunn + skarpt
 // cover som driver sinusformet (perfekt loop, ingen «hopp»). Med audioPath legges
 // et audio-reaktivt bølgelag i merkefargen nederst. Stille MP4 (Canvas har ikke lyd).
-function buildCanvas(coverPath: string, outPath: string, opts?: { audioPath?: string; audioStart?: number; accentHex?: string }): Promise<void> {
+function buildCanvas(coverPath: string, outPath: string, opts?: { audioPath?: string; audioStart?: number; accentHex?: string; bpm?: number }): Promise<void> {
   return new Promise((resolve, reject) => {
     const P = 6; // loop-periode = klipplengde → sømløst
     const accent = (opts?.accentHex && /^#[0-9a-fA-F]{6}$/.test(opts.accentHex)) ? "0x" + opts.accentHex.slice(1) : "0xffffff";
     const driftX = `(W-w)/2+22*sin(2*PI*t/${P})`;
     const driftY = `(H-h)/2+26*sin(2*PI*t/${P}+1.6)`;
+    // Beat-puls: lett zoom på slaget (fra BPM). on = utframe, 1500 = 60*25fps.
+    const bpm = Number(opts?.bpm);
+    const pulse = bpm > 20 && bpm < 300 ? `,zoompan=z='1+0.025*abs(sin(PI*on*${Math.round(bpm)}/1500))':d=1:s=1080x1920:fps=25` : "";
     const inputs = ["-loop", "1", "-i", coverPath];
     if (opts?.audioPath) inputs.push("-ss", String(Math.max(0, opts.audioStart || 0)), "-t", String(P), "-i", opts.audioPath);
     const layers =
       `[0:v]scale=1300:2300:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20,eq=brightness=-0.16[bg];` +
       `[0:v]scale=920:920:force_original_aspect_ratio=decrease[cv];`;
     const fc = opts?.audioPath
-      ? `${layers}[bg][cv]overlay=x='${driftX}':y='${driftY}'[base];[1:a]showwaves=s=1080x200:mode=cline:colors=${accent}:rate=25,format=rgba,colorchannelmixer=aa=0.55[w];[base][w]overlay=x=0:y=H-260,format=yuv420p[v]`
-      : `${layers}[bg][cv]overlay=x='${driftX}':y='${driftY}',format=yuv420p[v]`;
+      ? `${layers}[bg][cv]overlay=x='${driftX}':y='${driftY}'[base];[1:a]showwaves=s=1080x200:mode=cline:colors=${accent}:rate=25,format=rgba,colorchannelmixer=aa=0.55[w];[base][w]overlay=x=0:y=H-260,format=yuv420p${pulse}[v]`
+      : `${layers}[bg][cv]overlay=x='${driftX}':y='${driftY}',format=yuv420p${pulse}[v]`;
     const args = [
       "-y", ...inputs, "-t", String(P), "-r", "25",
       "-filter_complex", fc, "-map", "[v]",
@@ -182,6 +185,30 @@ function buildCanvasFromClip(clipPath: string, outPath: string, opts?: { start?:
       "-y", "-ss", String(Math.max(0, opts?.start || 0)), "-i", clipPath, "-t", "6", "-an",
       "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p",
       "-r", "25", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-movflags", "+faststart", outPath,
+    ];
+    const ff = spawn(process.env.FFMPEG_PATH || "ffmpeg", args);
+    let err = ""; ff.stderr.on("data", (d) => { err += d.toString(); });
+    ff.on("error", reject);
+    ff.on("close", (code) => (code === 0 ? resolve() : reject(new Error("ffmpeg_failed: " + err.slice(-400)))));
+  });
+}
+
+// Reels/TikTok-klipp: 9:16 MED lyd (cover på uskarp bg + audio-reaktiv bølge),
+// kappet til maxSec. For deling på sosiale medier (i motsetning til stille Canvas).
+function buildSocialClip(coverPath: string, audioPath: string, outPath: string, opts?: { accentHex?: string; maxSec?: number; start?: number }): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const accent = (opts?.accentHex && /^#[0-9a-fA-F]{6}$/.test(opts.accentHex)) ? "0x" + opts.accentHex.slice(1) : "0xffffff";
+    const max = Math.min(Math.max(opts?.maxSec || 60, 5), 90);
+    const fc =
+      `[0:v]scale=1300:2300:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=18,eq=brightness=-0.14[bg];` +
+      `[0:v]scale=940:940:force_original_aspect_ratio=decrease[cv];` +
+      `[bg][cv]overlay=(W-w)/2:(H-h)/2[base];` +
+      `[1:a]showwaves=s=1080x240:mode=cline:colors=${accent}:rate=25,format=rgba,colorchannelmixer=aa=0.6[w];` +
+      `[base][w]overlay=0:H-300,format=yuv420p[v]`;
+    const args = [
+      "-y", "-loop", "1", "-i", coverPath, "-ss", String(Math.max(0, opts?.start || 0)), "-i", audioPath,
+      "-filter_complex", fc, "-map", "[v]", "-map", "1:a", "-t", String(max), "-r", "25",
+      "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "256k", "-shortest", "-movflags", "+faststart", outPath,
     ];
     const ff = spawn(process.env.FFMPEG_PATH || "ffmpeg", args);
     let err = ""; ff.stderr.on("data", (d) => { err += d.toString(); });
@@ -1829,7 +1856,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const s = requireUserSession(req, res); if (!s) return;
     const tmp: string[] = [];
     try {
-      const r = await pool.query(`SELECT cover_url, title, master_url FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      const r = await pool.query(`SELECT cover_url, title, master_url, review_project_id FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const cover = (await fetchImageBytes(r.rows[0].cover_url)) || fallbackLogo();
       if (!cover) return res.status(422).json({ error: "no_cover" });
@@ -1844,8 +1871,14 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         const dur = await probeDuration(ap); // verifiser at fila faktisk er lyd
         if (dur > 0) { audioPath = ap; audioStart = Math.min(Math.max(0, dur - 6), Math.round(dur * 0.3)); }
       }
+      // Beat-puls fra prosjektets BPM (hvis kjent).
+      let bpm = 0;
+      if (r.rows[0].review_project_id) {
+        const pr = await pool.query(`SELECT bpm FROM audio_review_projects WHERE id=$1::uuid LIMIT 1`, [r.rows[0].review_project_id]).catch(() => ({ rows: [] as any[] }));
+        bpm = Number(pr.rows[0]?.bpm) || 0;
+      }
       const brand = await loadBrand(s.userId);
-      await buildCanvas(coverPath, outPath, { audioPath, audioStart, accentHex: brand.accent || undefined });
+      await buildCanvas(coverPath, outPath, { audioPath, audioStart, accentHex: brand.accent || undefined, bpm });
       const buf = await import("node:fs/promises").then((m) => m.readFile(outPath));
       res.setHeader("Content-Type", "video/mp4");
       res.setHeader("Content-Disposition", `attachment; filename="canvas-${(r.rows[0].title || "release").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.mp4"`);
@@ -1877,6 +1910,31 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       finally { for (const f of tmp) unlink(f).catch(() => {}); }
     });
   }
+
+  // Reels/TikTok-klipp: 9:16 MED lyd fra coveret + master (audio-reaktiv bølge).
+  app.get("/api/releases/:id/social-clip", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const tmp: string[] = [];
+    try {
+      const r = await pool.query(`SELECT cover_url, title, master_url FROM audio_releases WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!r.rows[0].master_url) return res.status(400).json({ error: "no_master" });
+      const cover = (await fetchImageBytes(r.rows[0].cover_url)) || fallbackLogo();
+      const audio = await fetchImageBytes(r.rows[0].master_url);
+      const base = join(tmpdir(), `social-${randomUUID()}`);
+      const coverPath = `${base}.png`, audioPath = `${base}.audio`, outPath = `${base}.mp4`; tmp.push(coverPath, audioPath, outPath);
+      await writeFile(coverPath, cover || Buffer.alloc(0)); await writeFile(audioPath, audio || Buffer.alloc(0));
+      if ((await probeDuration(audioPath)) <= 0) return res.status(422).json({ error: "master_unreachable" });
+      const brand = await loadBrand(s.userId);
+      const maxSec = Math.min(Math.max(Number(req.query?.maxSec) || 30, 5), 90);
+      await buildSocialClip(coverPath, audioPath, outPath, { accentHex: brand.accent || undefined, maxSec, start: Number(req.query?.start) || 0 });
+      const buf = await import("node:fs/promises").then((m) => m.readFile(outPath));
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Disposition", `attachment; filename="reel-${(r.rows[0].title || "release").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.mp4"`);
+      return res.end(buf);
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); console.error("[social-clip] failed:", e); return res.status(500).json({ error: "social_clip_failed" }); }
+    finally { for (const f of tmp) unlink(f).catch(() => {}); }
+  });
 
   // Tekst-eksport for Musixmatch: ren .txt, eller timed .lrc hvis timing finnes.
   app.get("/api/releases/:id/lyrics-export", async (req, res) => {
