@@ -3513,6 +3513,75 @@ export const producerWorkflowService = {
     return fetchNotifications(projectId);
   },
 
+  /**
+   * Åpne en SSE-stream for produsent-varsler (cluster D). Leser via
+   * fetch-streaming (ikke EventSource — vi trenger auth-headere) og
+   * auto-reconnecter med backoff til stop() kalles. Best-effort: hvis streamen
+   * ikke kan åpnes faller kalleren tilbake på vanlig polling.
+   * Returnerer en stop-funksjon.
+   */
+  streamNotifications(
+    projectId: string,
+    handlers: { onNotification: (n: ProducerProjectNotification) => void },
+  ): () => void {
+    const controller = new AbortController();
+    let stopped = false;
+    const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+    void (async () => {
+      while (!stopped) {
+        try {
+          const response = await fetch(
+            `${API_BASE}/projects/${projectId}/producer/notifications/stream`,
+            { headers: { ...buildAuthHeaders() }, signal: controller.signal },
+          );
+          if (!response.ok || !response.body) {
+            await delay(5000);
+            continue;
+          }
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          while (!stopped) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let sep: number;
+            while ((sep = buffer.indexOf('\n\n')) >= 0) {
+              const frame = buffer.slice(0, sep);
+              buffer = buffer.slice(sep + 2);
+              if (!frame || frame.startsWith(':')) continue; // keepalive ping
+              let event = 'message';
+              let data = '';
+              for (const line of frame.split('\n')) {
+                if (line.startsWith('event:')) event = line.slice(6).trim();
+                else if (line.startsWith('data:')) data += line.slice(5).trim();
+              }
+              if (event === 'notification' && data) {
+                try {
+                  handlers.onNotification(normalizeNotification(JSON.parse(data), projectId));
+                } catch {
+                  /* ugyldig frame — ignorer */
+                }
+              }
+              // 'reconnect'/'connected' trenger ingen handling — løkka
+              // reopener selv når serveren lukker.
+            }
+          }
+        } catch {
+          // abort eller nettverksfeil — reopen med mindre vi er stoppet
+        }
+        if (stopped) break;
+        await delay(2000);
+      }
+    })();
+
+    return () => {
+      stopped = true;
+      controller.abort();
+    };
+  },
+
   async getExpenses(projectId: string): Promise<ProducerExpense[]> {
     return fetchExpenses(projectId);
   },
