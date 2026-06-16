@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   acceptPlanPostIntoFeedPlanner,
+  bulkUpdatePlanPostsPlatform,
   listPlanPosts,
   persistPlanPosts,
 } from './role-room-marketing-plan-posts';
@@ -321,5 +322,39 @@ describe('listPlanPosts', () => {
     expect(posts[0].goalKpi).toEqual({ metric: 'saves', target: 10, per: 'post' });
     expect(posts[0].format).toBe('reel');
     expect(posts[0].pillarId).toBe('pillar-a');
+  });
+});
+
+describe('bulkUpdatePlanPostsPlatform', () => {
+  it('UPDATEs primary_platform scoped to the project and returns rowCount', async () => {
+    const { pool, queries } = makePool(async (sql) => {
+      if (sql.includes('UPDATE role_room_marketing_plan_posts')) return { rows: [], rowCount: 3 };
+      return { rows: [] };
+    });
+    const updated = await bulkUpdatePlanPostsPlatform(pool, {
+      projectId: 'proj-1',
+      postIds: ['a', 'b', 'c'],
+      primaryPlatform: 'tiktok',
+    });
+    expect(updated).toBe(3);
+    const update = queries.find((q) => q.sql.includes('UPDATE role_room_marketing_plan_posts'));
+    expect(update).toBeDefined();
+    // Scoping: må joine mot plan + filtrere på project_id.
+    expect(update!.sql).toContain('mp.project_id');
+    expect(update!.args).toEqual(['tiktok', 'proj-1', ['a', 'b', 'c']]);
+  });
+
+  it('rejects an invalid platform', async () => {
+    const { pool } = makePool(async () => ({ rows: [] }));
+    await expect(
+      bulkUpdatePlanPostsPlatform(pool, { projectId: 'p', postIds: ['a'], primaryPlatform: 'myspace' }),
+    ).rejects.toThrow(/Ugyldig plattform/);
+  });
+
+  it('no-ops on empty postIds', async () => {
+    const { pool, queries } = makePool(async () => ({ rows: [] }));
+    const updated = await bulkUpdatePlanPostsPlatform(pool, { projectId: 'p', postIds: [], primaryPlatform: 'instagram' });
+    expect(updated).toBe(0);
+    expect(queries.length).toBe(0);
   });
 });

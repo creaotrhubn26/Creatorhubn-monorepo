@@ -1266,11 +1266,24 @@ function PostsSection({
   const handleBulkPlatform = useCallback(async (newPlatform: NonNullable<MarketingPlanPost['primaryPlatform']>) => {
     if (selectedIds.size === 0) return;
     setBulkPlatformMenuOpen(false);
-    // Backend trenger eget PATCH-endepoint for post-edit; for nå bruker vi
-    // den eksisterende accept-API'en hvis tilgjengelig, ellers viser vi
-    // en notice om at backend-støtte er nødvendig.
-    onError(`Bulk-platform-endring til ${newPlatform} for ${selectedIds.size} posts krever en PATCH /posts/:id-endepoint (ikke implementert backend-side i denne batchen).`);
-  }, [selectedIds, onError]);
+    const ids = Array.from(selectedIds);
+    try {
+      await roleRoomAgentService.bulkUpdateMarketingPlanPostPlatform({
+        projectId,
+        postIds: ids,
+        primaryPlatform: newPlatform,
+      });
+      // Reflekter endringen lokalt — onPostAccepted upserter per id.
+      for (const post of posts) {
+        if (selectedIds.has(post.id)) {
+          onPostAccepted({ ...post, primaryPlatform: newPlatform });
+        }
+      }
+      setSelectedIds(new Set());
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Kunne ikke endre plattform for valgte poster.');
+    }
+  }, [selectedIds, projectId, posts, onPostAccepted, onError]);
 
   return (
     <Box>
