@@ -83,6 +83,16 @@ const SEED_CATALOG: Array<Omit<RecommendationRow, "id" | "owner_user_id" | "proj
   { type: "partner", title: "Partner-mulighet", insight: "Agenten fant en relevant samarbeidspartner basert på din profil og marked.", stat_value: "1", stat_label: "foreslått partner", cta_label: "Utfør · Se partner", icon: "diversity_3" },
   { type: "konkurrent", title: "Konkurrent-trekk", insight: "En konkurrent gjorde nylig et trekk verdt å reagere på i din strategi.", stat_value: "Nytt", stat_label: "oppdaget i dag", cta_label: "Utfør · Se analyse", icon: "insights" },
   { type: "ny_pillar", title: "Ny content-pillar", insight: "Et tema mangler i planen — en ny pillar kan balansere innholdsmiksen.", stat_value: "+1", stat_label: "foreslått pillar", cta_label: "Utfør · Legg til", icon: "category" },
+  { type: "kommentar_vinn", title: "Vinn kommentarfeltet", insight: "Svar raskt på nye kommentarer — rask respons gir mer rekkevidde og lojalitet.", stat_value: "< 1t", stat_label: "ideell responstid", cta_label: "Utfør · Svar nå", icon: "forum" },
+  { type: "dm_oppfolging", title: "DM-oppfølging", insight: "Du har ubesvarte DM-er fra engasjerte følgere — følg opp før de blir kalde.", stat_value: "7", stat_label: "ventende DM-er", cta_label: "Utfør · Åpne innboks", icon: "mark_chat_unread" },
+  { type: "ugc", title: "UGC-mulighet", insight: "En følger har laget innhold om deg — del det som sosialt bevis (med kreditering).", stat_value: "Nytt", stat_label: "UGC funnet", cta_label: "Utfør · Del", icon: "photo_library" },
+  { type: "hashtag", title: "Hashtag-forslag", insight: "Nye relevante hashtags er i vekst i din nisje — legg dem til neste innlegg.", stat_value: "5", stat_label: "foreslåtte tags", cta_label: "Utfør · Bruk", icon: "tag" },
+  { type: "sesong_kampanje", title: "Sesong-kampanje", insight: "En sesong nærmer seg — planlegg en kampanje mens interessen bygger seg opp.", stat_value: "3 uker", stat_label: "til topp", cta_label: "Utfør · Planlegg", icon: "calendar_month" },
+  { type: "webinar", title: "Webinar-idé", insight: "Publikummet ditt stiller gjentatte spørsmål — et webinar kan svare og konvertere.", stat_value: "Høy", stat_label: "etterspørsel", cta_label: "Utfør · Sett opp", icon: "co_present" },
+  { type: "pr", title: "PR-mulighet", insight: "En journalist dekker temaet ditt — ta kontakt mens saken er aktuell.", stat_value: "1", stat_label: "relevant journalist", cta_label: "Utfør · Kontakt", icon: "newspaper" },
+  { type: "henvisning", title: "Henvisnings-program", insight: "Fornøyde kunder er din beste vekstkanal — sett opp et henvisningsprogram.", stat_value: "+18%", stat_label: "vekst-potensial", cta_label: "Utfør · Aktiver", icon: "group_add" },
+  { type: "case_study", title: "Case-study", insight: "Et nylig prosjekt gjorde det svært bra — gjør det til en case-study.", stat_value: "Klar", stat_label: "for publisering", cta_label: "Utfør · Lag", icon: "auto_stories" },
+  { type: "gjenbruk", title: "Gjenbruk innhold", insight: "Et topp-innlegg kan gjenbrukes i nytt format for å nå flere uten ekstra arbeid.", stat_value: "3", stat_label: "format-ideer", cta_label: "Utfør · Gjenbruk", icon: "recycling" },
 ];
 
 export function setupRoleRoomAgentRecommendationsRoutes(
