@@ -793,30 +793,35 @@ export default function LeadMapPanel() {
     } catch { /* noop */ }
   }, []);
 
+  // Bygger prosjekt-query-string (?projectId=...) når aktivt prosjekt er valgt.
+  const projectQuery = useCallback((sep: '?' | '&' = '?') =>
+    activeProjectId ? `${sep}projectId=${encodeURIComponent(activeProjectId)}` : '',
+  [activeProjectId]);
+
   const fetchReminders = useCallback(async () => {
     try {
-      const r = await fetch('/api/admin-room/lead-map/reminders', {
+      const r = await fetch(`/api/admin-room/lead-map/reminders${projectQuery()}`, {
         credentials: 'include', headers: authHeaders(),
       });
       if (r.ok) setReminders(await r.json());
     } catch { /* noop */ }
-  }, []);
+  }, [projectQuery]);
 
   const fetchStatusReport = useCallback(async () => {
     setStatusReportLoading(true);
     try {
-      const r = await fetch('/api/admin-room/lead-map/status-report', {
+      const r = await fetch(`/api/admin-room/lead-map/status-report${projectQuery()}`, {
         credentials: 'include', headers: authHeaders(),
       });
       if (r.ok) setStatusReport(await r.json());
     } finally {
       setStatusReportLoading(false);
     }
-  }, []);
+  }, [projectQuery]);
 
   const fetchLeaderboard = useCallback(async () => {
     try {
-      const r = await fetch('/api/admin-room/lead-map/leaderboard', {
+      const r = await fetch(`/api/admin-room/lead-map/leaderboard${projectQuery()}`, {
         credentials: 'include', headers: authHeaders(),
       });
       if (r.ok) {
@@ -824,11 +829,11 @@ export default function LeadMapPanel() {
         setLeaderboard(body.leaders ?? []);
       }
     } catch { /* noop */ }
-  }, []);
+  }, [projectQuery]);
 
   const fetchCalendar = useCallback(async () => {
     try {
-      const r = await fetch('/api/admin-room/lead-map/calendar', {
+      const r = await fetch(`/api/admin-room/lead-map/calendar${projectQuery()}`, {
         credentials: 'include', headers: authHeaders(),
       });
       if (r.ok) {
@@ -836,16 +841,17 @@ export default function LeadMapPanel() {
         setCalendarEvents(body.events ?? []);
       }
     } catch { /* noop */ }
-  }, []);
+  }, [projectQuery]);
 
   // Hent konkurrenter fra Role Room Agent's market_scan_competitors (m/ geo)
   const fetchCompetitors = useCallback(async () => {
     try {
-      const r = await fetch('/api/admin-room/lead-map/market-points?include=competitors', {
+      const r = await fetch(`/api/admin-room/lead-map/market-points?include=competitors${projectQuery('&')}`, {
         credentials: 'include', headers: authHeaders(),
       });
       if (!r.ok) return;
       const body = await r.json();
+      // markedspunkter har { kind, ... } men setCompetitors forventer CompetitorPoint
       setCompetitors(body.competitors ?? []);
     } catch { /* noop — konkurrent-data er optional */ }
   }, []);

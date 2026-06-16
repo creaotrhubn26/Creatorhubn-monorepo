@@ -51,6 +51,18 @@ function getUser(
   return null;
 }
 
+/**
+ * Hent valgfri prosjekt-filter fra request (query eller body).
+ * Returner null hvis ikke satt → ingen filtering.
+ */
+function getProjectId(req: Request): string | null {
+  const q = req.query.projectId;
+  if (typeof q === "string" && q.length > 0) return q;
+  const b = (req.body as { projectId?: unknown } | undefined)?.projectId;
+  if (typeof b === "string" && b.length > 0) return b;
+  return null;
+}
+
 interface CompetitorRow {
   id: string;
   name: string;
@@ -110,7 +122,14 @@ export function registerLeadMapCompetitorRoutes({
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const projectId = getProjectId(req);
       try {
+        const params: unknown[] = [session.userId];
+        let projectClause = "";
+        if (projectId) {
+          params.push(projectId);
+          projectClause = `AND (project_id = $${params.length} OR project_id IS NULL)`;
+        }
         const r = await pool.query<CompetitorRow>(
           `SELECT id::text, name, domain, category, positioning, primary_offer,
                   latitude, longitude, google_address, google_phone, google_rating,
@@ -119,6 +138,7 @@ export function registerLeadMapCompetitorRoutes({
                   claude_assessed_at::text, priority_rank, created_at::text
              FROM market_scan_competitors
             WHERE workspace_owner_user_id = $1
+              ${projectClause}
             ORDER BY
               priority_rank DESC NULLS LAST,
               CASE threat_level
@@ -130,7 +150,7 @@ export function registerLeadMapCompetitorRoutes({
               threat_score DESC NULLS LAST,
               created_at DESC
             LIMIT 200`,
-          [session.userId],
+          params,
         );
         return res.json({ competitors: r.rows.map(rowToCompetitor) });
       } catch (err) {
@@ -317,7 +337,14 @@ export function registerLeadMapCompetitorRoutes({
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const projectId = getProjectId(req);
       try {
+        const params: unknown[] = [session.userId];
+        let projectClause = "";
+        if (projectId) {
+          params.push(projectId);
+          projectClause = `AND c.project_id = $${params.length}`;
+        }
         const r = await pool.query<{
           id: string;
           name: string;
@@ -340,13 +367,14 @@ export function registerLeadMapCompetitorRoutes({
              FROM crm_customers c
              LEFT JOIN users u ON u.id = c.owner_user_id
             WHERE c.owner_user_id = $1
+              ${projectClause}
               AND c.next_follow_up_at IS NOT NULL
               AND c.next_follow_up_at >= NOW() - INTERVAL '1 day'
               AND c.next_follow_up_at <= NOW() + INTERVAL '60 days'
               AND c.lead_status NOT IN ('won', 'lost', 'do_not_contact')
             ORDER BY c.next_follow_up_at ASC
             LIMIT 100`,
-          [session.userId],
+          params,
         );
         const events = r.rows.map((row) => ({
           id: row.id,
@@ -375,7 +403,14 @@ export function registerLeadMapCompetitorRoutes({
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const projectId = getProjectId(req);
       try {
+        const params: unknown[] = [session.userId];
+        let projectClause = "";
+        if (projectId) {
+          params.push(projectId);
+          projectClause = `AND project_id = $${params.length}`;
+        }
         const stale = await pool.query<{
           id: string; name: string; lead_status: string; city: string | null;
           days_silent: number; updated_at: string;
@@ -385,11 +420,12 @@ export function registerLeadMapCompetitorRoutes({
                   updated_at::text
              FROM crm_customers
             WHERE owner_user_id = $1
+              ${projectClause}
               AND lead_status NOT IN ('won', 'lost', 'do_not_contact')
               AND updated_at < NOW() - INTERVAL '7 days'
             ORDER BY updated_at ASC
             LIMIT 50`,
-          [session.userId],
+          params,
         );
 
         const buckets = {
@@ -404,13 +440,14 @@ export function registerLeadMapCompetitorRoutes({
           `SELECT id::text, name, next_follow_up_at::text, next_action
              FROM crm_customers
             WHERE owner_user_id = $1
+              ${projectClause}
               AND next_follow_up_at IS NOT NULL
               AND next_follow_up_at <= NOW() + INTERVAL '24 hours'
               AND next_follow_up_at >= NOW() - INTERVAL '24 hours'
               AND lead_status NOT IN ('won', 'lost', 'do_not_contact')
             ORDER BY next_follow_up_at ASC
             LIMIT 20`,
-          [session.userId],
+          params,
         );
 
         return res.json({
@@ -443,7 +480,16 @@ export function registerLeadMapCompetitorRoutes({
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const projectId = getProjectId(req);
       try {
+        const params: unknown[] = [session.userId];
+        let projectClause = "";
+        let subqueryProjectClause = "";
+        if (projectId) {
+          params.push(projectId);
+          projectClause = `AND project_id = $${params.length}`;
+          subqueryProjectClause = `AND project_id = $${params.length}`;
+        }
         const r = await pool.query<{
           new_leads_7d: number;
           won_7d: number;
@@ -469,6 +515,7 @@ export function registerLeadMapCompetitorRoutes({
              ), 0)::int AS longest_silent_days,
              (SELECT name FROM crm_customers
                WHERE owner_user_id = $1
+                 ${subqueryProjectClause}
                  AND lead_status NOT IN ('won', 'lost', 'do_not_contact')
                ORDER BY updated_at ASC LIMIT 1
              ) AS longest_silent_name,
@@ -476,8 +523,9 @@ export function registerLeadMapCompetitorRoutes({
                WHERE lead_status NOT IN ('won', 'lost', 'do_not_contact')
              )::int AS active_pipeline
            FROM crm_customers
-          WHERE owner_user_id = $1`,
-          [session.userId],
+          WHERE owner_user_id = $1
+            ${projectClause}`,
+          params,
         );
         const row = r.rows[0];
 
@@ -526,7 +574,14 @@ export function registerLeadMapCompetitorRoutes({
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const projectId = getProjectId(req);
       try {
+        const params: unknown[] = [session.userId];
+        let projectClause = "";
+        if (projectId) {
+          params.push(projectId);
+          projectClause = `AND c.project_id = $${params.length}`;
+        }
         const r = await pool.query<{
           owner_user_id: string | null;
           user_name: string | null;
@@ -551,16 +606,17 @@ export function registerLeadMapCompetitorRoutes({
                   MAX(c.updated_at)::text AS last_activity_at
              FROM crm_customers c
              LEFT JOIN users u ON u.id = c.owner_user_id
-            WHERE c.owner_user_id = $1
+            WHERE (c.owner_user_id = $1
                OR EXISTS (
                  SELECT 1 FROM users me
                   WHERE me.id = $1
                     AND LOWER(COALESCE(me.role, '')) IN ('admin','super_admin','owner')
-               )
+               ))
+              ${projectClause}
             GROUP BY c.owner_user_id, u.name, u.email
             ORDER BY total_leads DESC, won DESC
             LIMIT 50`,
-          [session.userId],
+          params,
         );
         const leaders = r.rows.map((row, idx) => {
           const closeable = row.won + row.lost;
@@ -1028,6 +1084,7 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const include = String(req.query.include ?? "both"); // 'leads' | 'competitors' | 'both'
+      const projectId = getProjectId(req);
       const out: {
         leads: unknown[];
         competitors: unknown[];
@@ -1050,6 +1107,12 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
             ? "claude_recommendation_rank, claude_recommendation_reason"
             : "NULL::int AS claude_recommendation_rank, NULL::text AS claude_recommendation_reason";
 
+          const leadParams: unknown[] = [session.userId];
+          let leadProjectClause = "";
+          if (projectId) {
+            leadParams.push(projectId);
+            leadProjectClause = `AND c.project_id = $${leadParams.length}`;
+          }
           const l = await pool.query(
             // Kolonnen heter `lead_category` på crm_customers (mig 271) — ikke `category`.
             // JOIN users for å vise eier-navn ('skaffet av').
@@ -1063,8 +1126,9 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
                FROM crm_customers c
                LEFT JOIN users u ON u.id = c.owner_user_id
               WHERE c.owner_user_id = $1
+                ${leadProjectClause}
                 AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL`,
-            [session.userId],
+            leadParams,
           );
           out.leads = l.rows.map((r: Record<string, unknown>) => ({
             kind: "lead",
@@ -1112,8 +1176,9 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
                       priority_rank, created_at::text
                  FROM market_scan_competitors
                 WHERE workspace_owner_user_id = $1
+                  ${projectId ? `AND (project_id = $2 OR project_id IS NULL)` : ""}
                   AND latitude IS NOT NULL AND longitude IS NOT NULL`,
-              [session.userId],
+              projectId ? [session.userId, projectId] : [session.userId],
             );
             out.competitors = c.rows.map((r) => ({
               kind: "competitor",
