@@ -63,6 +63,7 @@ struct LeadModel: Identifiable, Codable, Hashable {
     let assignedUserId: String?
     let assignedUserName: String?
     let assignedUserEmail: String?
+    let projectId: String?
     let lastVisitAt: Date?
     let nextFollowUpAt: Date?
     let nextAction: String?
