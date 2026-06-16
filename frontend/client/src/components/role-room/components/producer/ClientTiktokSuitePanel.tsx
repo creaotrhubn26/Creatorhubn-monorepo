@@ -25,6 +25,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import TiktokPublisher from './TiktokPublisher';
 
 const palette = {
   bgCard: '#150b2e',
@@ -178,6 +179,10 @@ export default function ClientTiktokSuitePanel({
   return (
     <Card sx={{ bgcolor: palette.bgCard, border: `1px solid ${palette.borderStrong}`, color: palette.textPrimary }}>
       <CardContent>
+        {/* Publiser til TikTok med telefon-mockup (pub-tiktok) */}
+        <Box sx={{ mb: 2 }}>
+          <TiktokPublisher handle={clientName ? `@${clientName.replace(/\s+/g, '').toLowerCase()}` : undefined} />
+        </Box>
         <Stack direction="row" alignItems="center" spacing={1.2} sx={{ mb: 1.4 }}>
           <Box sx={{
             width: 36, height: 36, borderRadius: 1.4,

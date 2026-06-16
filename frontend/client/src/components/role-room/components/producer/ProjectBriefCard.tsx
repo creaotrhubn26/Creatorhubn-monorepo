@@ -13,6 +13,7 @@ import GroupsIcon from '@mui/icons-material/Groups';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import GraphicEqIcon from '@mui/icons-material/GraphicEq';
 import EventIcon from '@mui/icons-material/Event';
+import PersonIcon from '@mui/icons-material/Person';
 import HandshakeIcon from '@mui/icons-material/Handshake';
 import { producerWorkflowService } from '../../services/producerWorkflowService';
 import type { ProducerClientIntake } from '../../models/casting';
@@ -45,6 +46,7 @@ export default function ProjectBriefCard({ projectId, projectName }: ProjectBrie
     { icon: <Inventory2Icon sx={{ fontSize: 16 }} />, label: 'Leveranse', val: intake?.deliverables?.trim() || '' },
     { icon: <GraphicEqIcon sx={{ fontSize: 16 }} />, label: 'Tone', val: intake?.brandNotes?.trim() || intake?.keyMessage?.trim() || '' },
     { icon: <EventIcon sx={{ fontSize: 16 }} />, label: 'Frist', val: intake?.timingConstraints?.trim() || '' },
+    { icon: <PersonIcon sx={{ fontSize: 16 }} />, label: 'Ansvarlig', val: intake?.contactName?.trim() || '' },
   ];
 
   const hasAny = goal || fields.some((f) => f.val);
