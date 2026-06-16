@@ -4,17 +4,84 @@
 // /api/admin-room/lead-map/* — samme backend som web.
 
 import SwiftUI
+import UIKit
+import UserNotifications
 
 @main
 struct LeadMapApp: App {
     @State private var appState = AppState()
+    @UIApplicationDelegateAdaptor(NotificationAppDelegate.self) private var delegate
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(appState)
                 .preferredColorScheme(.dark)
+                .onAppear {
+                    NotificationAppDelegate.appStateRef = appState
+                }
         }
+    }
+}
+
+/// AppDelegate-shim som håndterer APNs device-token-registrering.
+/// SwiftUI får tilgang til AppState via statisk `appStateRef`.
+final class NotificationAppDelegate: NSObject, UIApplicationDelegate {
+    static weak var appStateRef: AppState?
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        // Be om push-permission + register for APNs
+        UNUserNotificationCenter.current().requestAuthorization(
+            options: [.alert, .badge, .sound]
+        ) { granted, _ in
+            if granted {
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            }
+        }
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        // Send til backend
+        Task { @MainActor in
+            guard let api = NotificationAppDelegate.appStateRef?.api else { return }
+            try? await api.registerDeviceToken(
+                token: tokenString,
+                platform: "apns",
+                deviceName: UIDevice.current.name,
+                appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+            )
+        }
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        print("[APNs] Registrering feilet: \(error.localizedDescription)")
+    }
+}
+
+extension NotificationAppDelegate: UNUserNotificationCenterDelegate {
+    /// Vis varsel selv om app er i forgrunnen.
+    /// Tar nonisolated for å unngå non-Sendable cross-actor-call på
+    /// UNUserNotificationCenter + UNNotification (Swift 6).
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping @Sendable (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .badge])
     }
 }
 
@@ -36,9 +103,10 @@ struct RootView: View {
     }
 }
 
-/// Tabs: Min dag (default) + Kart + Team + Org. Etablert i v1 (PR #618).
-/// Team-leaderboard skjules automatisk inni viewen for ikke-tillatte roller.
+/// Tabs: Min dag (default) + Kart + Team + Varsler + Org.
 struct MainTabView: View {
+    @Environment(AppState.self) private var state
+
     var body: some View {
         TabView {
             MyDayView()
@@ -47,6 +115,11 @@ struct MainTabView: View {
                 .tabItem { Label("Kart", systemImage: "map.fill") }
             LeaderboardView()
                 .tabItem { Label("Team", systemImage: "trophy.fill") }
+            NotificationsView()
+                .tabItem {
+                    Label("Varsler", systemImage: "bell.fill")
+                }
+                .badge(state.unreadNotificationsCount)
             OrgSettingsView()
                 .tabItem { Label("Org", systemImage: "building.2.fill") }
         }

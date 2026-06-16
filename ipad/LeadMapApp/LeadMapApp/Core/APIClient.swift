@@ -244,6 +244,36 @@ actor APIClient {
         )
     }
 
+    // MARK: - Varsler (PR #622)
+
+    func fetchNotifications(unreadOnly: Bool = false, limit: Int = 50) async throws -> NotificationFeedResponse {
+        let qs = "?unread_only=\(unreadOnly)&limit=\(limit)"
+        return try await get("/api/admin-room/lead-map/me/notifications\(qs)")
+    }
+
+    func markNotificationRead(_ id: String) async throws {
+        try await post("/api/admin-room/lead-map/me/notifications/\(id)/read", body: [:])
+    }
+
+    func markAllNotificationsRead() async throws {
+        try await post("/api/admin-room/lead-map/me/notifications/read-all", body: [:])
+    }
+
+    func registerDeviceToken(
+        token: String,
+        platform: String = "apns",
+        deviceName: String? = nil,
+        appVersion: String? = nil
+    ) async throws {
+        var body: [String: Any] = [
+            "platform": platform,
+            "token": token,
+        ]
+        if let dn = deviceName { body["device_name"] = dn }
+        if let av = appVersion { body["app_version"] = av }
+        try await post("/api/admin-room/lead-map/me/notifications/device-token", body: body)
+    }
+
     // MARK: - Lead-tildeling (PR #616)
 
     func assignLead(_ leadId: String, toUserId: String, reason: String = "manual") async throws {
