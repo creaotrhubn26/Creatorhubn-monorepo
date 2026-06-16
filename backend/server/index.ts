@@ -507,6 +507,7 @@ import { setupCustomerSuccessRoutes } from "./customer-success-routes.js";
 import { setupAdminLeadMapPricingRoutes } from "./admin-lead-map-pricing-routes.js";
 import { setupLeadMapRoutes } from "./lead-map-routes.js";
 import { registerLeadMapCompetitorRoutes } from "./lead-map-competitor-routes.js";
+import { registerIpadPairRoutes } from "./ipad-pair-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24217,6 +24218,8 @@ setupLeadMapRoutes({ app, pool, activeSessions });
 // Lead Map ↔ Konkurrent-management (manuell add, Claude threat-assessment,
 // lead-rangering, kombinert /market-points-endepunkt)
 registerLeadMapCompetitorRoutes({ app, pool, activeSessions });
+// iPad-paring (LeadMapApp + fremtidige iPad-apper)
+registerIpadPairRoutes({ app, pool, activeSessions });
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,
