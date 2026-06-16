@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import { Instagram as InstagramIcon, Send as SendIcon, Close as CloseIcon } from '@mui/icons-material';
 import { BrandScope } from './crm-brand';
+import AgentDmReplySuggestion from '../role-room/components/producer/AgentDmReplySuggestion';
 
 interface Props { open: boolean; onClose: () => void; brandColor?: string; }
 
@@ -279,6 +280,17 @@ export default function IgDmInbox({ open, onClose, brandColor }: Props) {
                       </Stack>
                     )}
                   </Box>
+                  {/* Agentens svarforslag (eng-dm) */}
+                  {messages.length > 0 ? (
+                    <AgentDmReplySuggestion
+                      messages={messages}
+                      participantName={selectedConversation?.participantName ?? selectedConversation?.participantUsername ?? null}
+                      platform="Instagram"
+                      onEdit={(t) => setReplyText(t)}
+                      onSend={(t) => { if (t.trim()) replyMutation.mutate(t.trim()); }}
+                      sending={replyMutation.isPending}
+                    />
+                  ) : null}
                   <Divider />
                   <Stack direction="row" spacing={1} sx={{ p: 1.5 }}>
                     <TextField

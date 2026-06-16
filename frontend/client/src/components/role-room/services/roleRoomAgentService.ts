@@ -1343,6 +1343,9 @@ export interface KpiReport {
   hasData: boolean;
 }
 
+// ── Agent svarforslag på DM ───────────────────────────────────────────
+export interface DmReplySuggestion { tag: string; confidence: number; reply: string; tone: string }
+
 // ── Pristilbud (mig 289) ──────────────────────────────────────────────
 export interface RoleRoomQuoteLineItem { label: string; detail: string | null; units: number; unitLabel: string | null; unitPriceKr: number }
 export interface RoleRoomQuote {
@@ -1560,6 +1563,16 @@ export const roleRoomAgentService = {
     if (!r.ok) return null;
     const body = await r.json().catch(() => null);
     return (body?.audience as RoleRoomAdAudience | null) ?? null;
+  },
+
+  // ── Agent svarforslag på DM ─────────────────────────────────────────
+  async generateDmReplySuggestion(input: { participantName?: string | null; platform?: string; messages: Array<{ direction: string; body: string }> }): Promise<DmReplySuggestion | null> {
+    const r = await fetch('/api/role-room/dm/reply-suggestion', {
+      method: 'POST', headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    });
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.suggestion as DmReplySuggestion | null) ?? null;
   },
 
   // ── Pristilbud (mig 289) ────────────────────────────────────────────
