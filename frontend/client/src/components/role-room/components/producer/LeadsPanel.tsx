@@ -17,6 +17,7 @@ import {
 } from '@mui/icons-material';
 import NurtureSequenceDialog from './NurtureSequenceDialog';
 import LeadDetailDialog from './LeadDetailDialog';
+import LostLeadsDialog from './LostLeadsDialog';
 import CtaCard from './CtaCard';
 import InsightsCard from './InsightsCard';
 import ConnectionPicker from './ConnectionPicker';
@@ -198,6 +199,7 @@ export default function LeadsPanel() {
   const [showFollowup, setShowFollowup] = useState(false);
   const [nurtureLead, setNurtureLead] = useState<Lead | null>(null);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
+  const [lostOpen, setLostOpen] = useState(false);
   const { data: followupData } = useQuery<{
     config: FollowupConfig; smsConfigured: boolean; emailConfigured: boolean; whatsappConfigured: boolean; success: boolean;
   }>({
@@ -639,6 +641,17 @@ export default function LeadsPanel() {
                   </Box>
 
                   <Divider />
+                  {leads.some((l) => l.stage === 'tapt') ? (
+                    <Stack direction="row" justifyContent="flex-end" sx={{ pt: 0.5 }}>
+                      <Button
+                        size="small" variant="text" startIcon={<NurtureIcon sx={{ fontSize: 15 }} />}
+                        onClick={() => setLostOpen(true)}
+                        sx={{ fontSize: '0.74rem', color: '#c084fc', textTransform: 'none', fontWeight: 700 }}
+                      >
+                        Tapte leads · vinn tilbake ({leads.filter((l) => l.stage === 'tapt').length})
+                      </Button>
+                    </Stack>
+                  ) : null}
                   {visibleLeads.length === 0 ? (
                     <Typography sx={{ p: 2, color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>
                       {leads.length === 0 ? 'Ingen leads i dette skjemaet ennå.' : 'Ingen leads i denne gruppen ennå.'}
@@ -780,6 +793,28 @@ export default function LeadsPanel() {
       {detailLead ? (
         <LeadDetailDialog open={!!detailLead} onClose={() => setDetailLead(null)} lead={detailLead} />
       ) : null}
+
+      {/* Tapte leads — vinn-tilbake-analyse */}
+      <LostLeadsDialog
+        open={lostOpen}
+        onClose={() => setLostOpen(false)}
+        leads={leads.filter((l) => l.stage === 'tapt').map((l) => ({
+          id: l.id,
+          name: l.name,
+          company: pickLeadCompany(l.fields),
+          platform: null,
+          valueKr: l.valueKr,
+          segmentReason: l.segmentReason,
+          hasContact: Boolean(l.email || l.phone),
+          daysSinceCreated: l.createdTime ? Math.round((Date.now() - new Date(l.createdTime).getTime()) / 86400000) : null,
+        }))}
+      />
     </Stack>
   );
+}
+
+function pickLeadCompany(fields?: Record<string, string>): string | null {
+  if (!fields) return null;
+  const key = Object.keys(fields).find((k) => /firma|bedrift|company|selskap|org/i.test(k));
+  return key ? fields[key] : null;
 }

@@ -1514,6 +1514,20 @@ export const roleRoomAgentService = {
     return (body?.audience as RoleRoomAdAudience | null) ?? null;
   },
 
+  // ── Tapte leads — vinn-tilbake-analyse ──────────────────────────────
+  async analyzeLostLeads(
+    leads: Array<{ id: string; name?: string | null; company?: string | null; platform?: string | null; valueKr?: number | null; segmentReason?: string | null; daysSinceCreated?: number | null }>,
+  ): Promise<{ analyses: Array<{ id: string; lossReason: string; winBack: string }>; insight: string }> {
+    const r = await fetch('/api/role-room/leads/lost-analysis', {
+      method: 'POST',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leads }),
+    });
+    if (!r.ok) return { analyses: [], insight: '' };
+    const body = await r.json().catch(() => null);
+    return { analyses: Array.isArray(body?.analyses) ? body.analyses : [], insight: typeof body?.insight === 'string' ? body.insight : '' };
+  },
+
   async generateProducerBootstrap(
     input: RoleRoomAgentGenerateInput,
   ): Promise<RoleRoomAgentProducerBootstrapResult> {
