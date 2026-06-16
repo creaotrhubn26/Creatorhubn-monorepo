@@ -24,6 +24,8 @@ targets:
     platform: iOS
     sources:
       - path: LeadMapApp
+    dependencies:
+      - target: LeadMapWidget
     info:
       path: LeadMapApp/Generated/Info.plist
       properties:
@@ -50,9 +52,41 @@ targets:
         NSCameraUsageDescription: Lead Map skanner QR-koden i Admin Room for å koble iPad til kontoen din.
         # Apple Pencil til notater i visit-loggen.
         UIApplicationSupportsIndirectInputEvents: true
+    entitlements:
+      path: LeadMapApp/Generated/LeadMapApp.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.creatorhubn.LeadMapApp
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp
         INFOPLIST_FILE: LeadMapApp/Generated/Info.plist
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
+
+  # Widget Extension: 'Møter i dag' + 'Stille leads' på homescreen.
+  # Leser data fra delt App Group skrevet av hovedappen etter hver
+  # refreshAll.
+  LeadMapWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: LeadMapWidget
+      # Shared snapshot-modell — kompileres i begge targets.
+      - path: LeadMapApp/Core/WidgetSnapshot.swift
+    info:
+      path: LeadMapWidget/Generated/Info.plist
+      properties:
+        CFBundleDisplayName: Lead Map
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: LeadMapWidget/Generated/LeadMapWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.creatorhubn.LeadMapApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp.LeadMapWidget
+        INFOPLIST_FILE: LeadMapWidget/Generated/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
