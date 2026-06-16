@@ -1,18 +1,17 @@
 // PairingFlow.swift
 //
-// QR-scan-flow for å koble iPad til en eksisterende web-konto. Web
-// Admin Room viser en kort-levd QR-kode → vi scanner med iPad-kamera →
-// utveksler scan-data mot et permanent bearer-token.
+// Pair-flow: brukeren skriver inn 8-tegns kode (XXXX-XXXX) som ble
+// generert i web. Vi bytter mot et permanent bearer-token via
+// /api/ipad-tokens/exchange og lagrer i Keychain.
 //
-// SKELETON. Faktisk QR-kamera-implementasjonen kommer i fase 1.
+// AVCaptureSession QR-scanner kommer i fase 3.
 
 import SwiftUI
 import AVFoundation
 
 struct PairingView: View {
     @Environment(AppState.self) private var appState
-    @State private var manualToken: String = ""
-    @State private var manualEmail: String = ""
+    @State private var pairCode: String = ""
     @State private var isPairing = false
     @State private var errorMessage: String?
 
@@ -25,40 +24,58 @@ struct PairingView: View {
                 .font(.largeTitle.bold())
             Text("Koble iPad til Lead Map-kontoen din")
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
 
-            // TODO Fase 1: erstatt med ekte QR-scanner (AVCaptureSession)
+            instructionsCard
+
+            // TODO Fase 3: erstatt med ekte QR-scanner (AVCaptureSession)
             ScannerStub()
-                .frame(maxWidth: 420, maxHeight: 280)
+                .frame(maxWidth: 420, maxHeight: 200)
 
             VStack(spacing: 12) {
-                Text("Eller lim inn token manuelt")
+                Text("Eller skriv koden manuelt")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                TextField("Bearer-token", text: $manualToken)
+
+                TextField("XXXX-XXXX", text: $pairCode)
                     .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 28, weight: .bold, design: .monospaced))
+                    .multilineTextAlignment(.center)
+                    .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                TextField("E-post", text: $manualEmail)
-                    .textFieldStyle(.roundedBorder)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
+                    .onChange(of: pairCode) { _, newValue in
+                        // Auto-formater: store bokstaver + bindestrek etter 4 tegn
+                        let upper = newValue.uppercased().filter { $0.isLetter || $0.isNumber }
+                        if upper.count > 4 && !newValue.contains("-") {
+                            pairCode = "\(upper.prefix(4))-\(upper.suffix(upper.count - 4))"
+                        } else if upper.count <= 4 {
+                            pairCode = upper
+                        } else {
+                            pairCode = newValue.uppercased()
+                        }
+                    }
+
                 Button {
-                    Task { await signInManually() }
+                    Task { await exchange() }
                 } label: {
                     if isPairing {
                         ProgressView().progressViewStyle(.circular)
+                            .tint(.white)
                     } else {
-                        Text("Logg inn")
+                        Text("Koble til")
                             .frame(maxWidth: .infinity)
+                            .fontWeight(.bold)
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(manualToken.isEmpty || isPairing)
+                .controlSize(.large)
+                .disabled(pairCode.replacingOccurrences(of: "-", with: "").count < 8 || isPairing)
 
                 if let errorMessage {
                     Text(errorMessage)
                         .foregroundStyle(.red)
                         .font(.caption)
+                        .multilineTextAlignment(.center)
                 }
             }
             .padding(.horizontal, 32)
@@ -69,16 +86,44 @@ struct PairingView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func signInManually() async {
-        guard !manualToken.isEmpty else { return }
+    private var instructionsCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Slik kobler du til", systemImage: "info.circle")
+                .font(.caption.bold())
+                .foregroundStyle(.tint)
+            Text("1. Åpne theroleroom.com → Admin Room → Lead Map")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("2. Trykk på iPad-ikonet i toppen")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("3. Skriv inn 8-tegns koden under (eller scan QR senere)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(Color.tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 32)
+    }
+
+    private func exchange() async {
+        let cleaned = pairCode.replacingOccurrences(of: "-", with: "")
+        guard cleaned.count == 8 else { return }
         isPairing = true
         errorMessage = nil
-        await appState.signIn(token: manualToken, email: manualEmail.isEmpty ? nil : manualEmail)
+        do {
+            let response = try await PairExchangeService.shared.exchange(shortCode: pairCode)
+            await appState.signIn(token: response.bearer, email: response.user.email)
+        } catch let err as PairExchangeError {
+            errorMessage = err.errorDescription
+        } catch {
+            errorMessage = "Uventet feil: \(error.localizedDescription)"
+        }
         isPairing = false
     }
 }
 
-/// Placeholder for ekte QR-scanner. Fase 1 erstatter med AVCaptureSession.
+/// Placeholder for ekte QR-scanner. Fase 3 erstatter med AVCaptureSession.
 private struct ScannerStub: View {
     var body: some View {
         RoundedRectangle(cornerRadius: 16)
@@ -87,10 +132,18 @@ private struct ScannerStub: View {
                 VStack(spacing: 8) {
                     Image(systemName: "qrcode.viewfinder")
                         .font(.system(size: 48))
-                    Text("Kamera-scanner kommer")
                         .foregroundStyle(.secondary)
+                    Text("QR-scanner kommer i neste versjon")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
                 }
             )
-            .background(Color.black.opacity(0.2))
+            .background(Color.black.opacity(0.1))
+            .padding(.horizontal, 32)
     }
+}
+
+// Workaround: Color.tint krever ekstern type — bruker en mild accent.
+private extension Color {
+    static var tint: Color { Color(red: 0.752, green: 0.518, blue: 0.988) } // #c084fc (samme som web-accent)
 }
