@@ -411,6 +411,46 @@ export default function LeadMapPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
+  // Prosjekt-kontekst: hvilken bedrift jobber jeg for akkurat nå?
+  type ProjectListItem = {
+    id: string;
+    name: string;
+    description: string | null;
+    status: string | null;
+    hasBrandKit: boolean;
+    leadCount: number;
+    competitorCount: number;
+  };
+  type ProjectSummary = {
+    project: {
+      id: string; name: string; description: string | null;
+      projectType: string | null; genre: string | null; status: string;
+    };
+    brandKit: {
+      id: string;
+      sourceUrl: string | null;
+      lastScannedAt: string | null;
+      positioningSummary: string | null;
+      tone: string | null;
+      targetAudience: string | null;
+      valueProposition: string | null;
+    } | null;
+    marketScan: {
+      id: string; name: string; marketQuery: string;
+      status: string; confidence: string; completedAt: string | null;
+    } | null;
+    leads: { total: number; statusCounts: Record<string, number> };
+    competitorCount: number;
+  };
+  const [projects, setProjects] = useState<ProjectListItem[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(
+    () => (typeof window !== 'undefined'
+      ? localStorage.getItem('rr_lead_map_active_project') ?? null
+      : null),
+  );
+  const [projectSummary, setProjectSummary] = useState<ProjectSummary | null>(null);
+  const [projectCardExpanded, setProjectCardExpanded] = useState(true);
+
   // Radius-filter: "Vis innen X km av {sted}". null = ikke aktivt.
   const [radiusFilter, setRadiusFilter] = useState<{
     centerLat: number;
@@ -722,6 +762,32 @@ export default function LeadMapPanel() {
     }, 2000);
     return () => clearInterval(interval);
   }, [pairToken, pairStatus]);
+
+  // Hent prosjekt-liste
+  const fetchProjects = useCallback(async () => {
+    try {
+      const r = await fetch('/api/admin-room/lead-map/projects', {
+        credentials: 'include', headers: authHeaders(),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setProjects(data.projects ?? []);
+      }
+    } catch { /* noop */ }
+  }, []);
+
+  // Hent prosjekt-summary for aktivt prosjekt
+  const fetchProjectSummary = useCallback(async (projectId: string) => {
+    try {
+      const r = await fetch(`/api/admin-room/lead-map/projects/${projectId}/summary`, {
+        credentials: 'include', headers: authHeaders(),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setProjectSummary(data);
+      }
+    } catch { /* noop */ }
+  }, []);
 
   const fetchReminders = useCallback(async () => {
     try {
@@ -1167,7 +1233,19 @@ export default function LeadMapPanel() {
     fetchLeaderboard();
     fetchCalendar();
     fetchReminders();
-  }, [fetchLeads, fetchMeta, fetchCompetitors, fetchLeaderboard, fetchCalendar, fetchReminders]);
+    fetchProjects();
+  }, [fetchLeads, fetchMeta, fetchCompetitors, fetchLeaderboard, fetchCalendar, fetchReminders, fetchProjects]);
+
+  useEffect(() => {
+    if (activeProjectId) {
+      void fetchProjectSummary(activeProjectId);
+      // Persist valg lokalt
+      try { localStorage.setItem('rr_lead_map_active_project', activeProjectId); } catch { /* noop */ }
+    } else {
+      setProjectSummary(null);
+      try { localStorage.removeItem('rr_lead_map_active_project'); } catch { /* noop */ }
+    }
+  }, [activeProjectId, fetchProjectSummary]);
 
   // Auto-last BRREG-berikkelse + SSB-demografi når lead velges
   useEffect(() => {
@@ -1851,6 +1929,147 @@ export default function LeadMapPanel() {
               Tøm
             </Button>
           </Stack>
+        )}
+
+        {/* Prosjekt-kontekst: hvilken bedrift jobber jeg for? */}
+        <Stack direction="row" alignItems="center" spacing={1.4} sx={{ mb: 1.4, flexWrap: 'wrap', gap: 1 }} useFlexGap>
+          <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Prosjekt
+          </Typography>
+          <Select
+            size="small"
+            value={activeProjectId ?? ''}
+            displayEmpty
+            onChange={(e) => {
+              const v = e.target.value as string;
+              setActiveProjectId(v || null);
+            }}
+            renderValue={(v) => {
+              if (!v) return <Box component="span" sx={{ color: palette.textMuted }}>Alle leads (uten prosjekt-filter)</Box>;
+              const p = projects.find((x) => x.id === v);
+              return p?.name ?? v;
+            }}
+            sx={{
+              minWidth: 280,
+              bgcolor: 'rgba(168,85,247,0.08)',
+              color: palette.textPrimary,
+              borderRadius: 1.2,
+              fontSize: '0.84rem',
+              fontWeight: 700,
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.borderStrong },
+              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: palette.accent },
+              '& .MuiSvgIcon-root': { color: palette.textMuted },
+            }}
+          >
+            <MenuItem value=""><em>Alle leads (uten prosjekt-filter)</em></MenuItem>
+            {projects.map((p) => (
+              <MenuItem key={p.id} value={p.id}>
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ width: '100%' }}>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography sx={{ fontSize: '0.86rem', fontWeight: 700 }}>{p.name}</Typography>
+                    {p.description && (
+                      <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted, lineHeight: 1.1, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.description}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Stack direction="row" spacing={0.4}>
+                    {p.hasBrandKit && <Chip label="brand" size="small" sx={{ bgcolor: 'rgba(192,132,252,0.18)', color: palette.accent, fontSize: '0.58rem', fontWeight: 800, height: 16 }} />}
+                    <Chip label={`${p.leadCount}`} size="small" sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: palette.amber, fontSize: '0.58rem', fontWeight: 800, height: 16 }} />
+                  </Stack>
+                </Stack>
+              </MenuItem>
+            ))}
+          </Select>
+          {projectSummary && (
+            <Button
+              size="small" variant="text"
+              onClick={() => setProjectCardExpanded((v) => !v)}
+              sx={{ color: palette.textMuted, fontSize: '0.72rem', textTransform: 'none' }}
+            >
+              {projectCardExpanded ? 'Skjul kontekst' : 'Vis kontekst'}
+            </Button>
+          )}
+        </Stack>
+
+        {/* Prosjekt-kort: bedrift + posisjonering + mål + analyser */}
+        {projectSummary && projectCardExpanded && (
+          <Box sx={{
+            mb: 2.4, p: 2, borderRadius: 1.6,
+            bgcolor: 'rgba(192,132,252,0.06)',
+            border: `1px solid ${palette.borderStrong}`,
+          }}>
+            <Stack direction="row" alignItems="flex-start" spacing={2}>
+              <Box sx={{
+                width: 48, height: 48, borderRadius: 1.2, flexShrink: 0,
+                bgcolor: 'rgba(192,132,252,0.18)',
+                border: `1px solid ${palette.accent}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: palette.accent, fontWeight: 800, fontSize: '1.1rem',
+              }}>
+                {projectSummary.project.name.slice(0, 2).toUpperCase()}
+              </Box>
+              <Stack sx={{ flex: 1, minWidth: 0 }} spacing={0.6}>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <Typography sx={{ fontSize: '1rem', fontWeight: 800, color: palette.textPrimary }}>
+                    {projectSummary.project.name}
+                  </Typography>
+                  {projectSummary.brandKit?.lastScannedAt && (
+                    <Chip
+                      label={`Brand Kit · ${new Date(projectSummary.brandKit.lastScannedAt).toLocaleDateString('nb-NO')}`}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(192,132,252,0.18)', color: palette.accent, fontWeight: 700, fontSize: '0.66rem', height: 18 }}
+                    />
+                  )}
+                  {projectSummary.marketScan && (
+                    <Chip
+                      label={`Scan · ${projectSummary.marketScan.confidence}`}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(251,191,36,0.15)', color: palette.amber, fontWeight: 700, fontSize: '0.66rem', height: 18 }}
+                    />
+                  )}
+                </Stack>
+                {projectSummary.brandKit?.positioningSummary && (
+                  <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary }}>
+                    {projectSummary.brandKit.positioningSummary}
+                  </Typography>
+                )}
+                {projectSummary.brandKit?.targetAudience && (
+                  <Stack direction="row" spacing={0.6} alignItems="flex-start">
+                    <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', mt: 0.2 }}>
+                      Målgruppe
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
+                      {projectSummary.brandKit.targetAudience}
+                    </Typography>
+                  </Stack>
+                )}
+                {projectSummary.brandKit?.valueProposition && (
+                  <Stack direction="row" spacing={0.6} alignItems="flex-start">
+                    <Typography sx={{ fontSize: '0.66rem', color: palette.amber, fontWeight: 700, textTransform: 'uppercase', mt: 0.2 }}>
+                      Mål
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.78rem', color: palette.textPrimary, fontWeight: 600 }}>
+                      Finn leads som matcher: {projectSummary.brandKit.valueProposition}
+                    </Typography>
+                  </Stack>
+                )}
+                <Stack direction="row" spacing={1.4} sx={{ mt: 0.6 }}>
+                  <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted }}>
+                    <Box component="span" sx={{ color: palette.amber, fontWeight: 800 }}>{projectSummary.leads.total}</Box> leads
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted }}>
+                    <Box component="span" sx={{ color: '#ef4444', fontWeight: 800 }}>{projectSummary.competitorCount}</Box> konkurrenter
+                  </Typography>
+                  {projectSummary.brandKit?.tone && (
+                    <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted }}>
+                      Tone: <Box component="span" sx={{ color: palette.textSecondary }}>{projectSummary.brandKit.tone}</Box>
+                    </Typography>
+                  )}
+                </Stack>
+              </Stack>
+            </Stack>
+          </Box>
         )}
 
         {/* Reminder-banner — viser stille leads + dagens follow-ups */}
