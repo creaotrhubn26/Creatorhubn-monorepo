@@ -325,6 +325,34 @@ function makeCompetitorIcon(threat: CompetitorPoint['threatLevel'], selected: bo
   return icon;
 }
 
+// WCAG 2.3.3 (Animation from Interactions) — respekter
+// prefers-reduced-motion. Injecter en global CSS-regel ved første
+// import; nullifier kun de overgangene som er rene visuelle effekter
+// (hover-glow, banner-pulser).
+if (typeof document !== 'undefined' && !document.getElementById('rr-lead-map-a11y-style')) {
+  const style = document.createElement('style');
+  style.id = 'rr-lead-map-a11y-style';
+  style.textContent = `
+    @media (prefers-reduced-motion: reduce) {
+      .rr-lm-animated,
+      .rr-lm-animated * {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+    /* WCAG 2.5.5 (Target Size) — utvid touch-targets på liten skjerm */
+    @media (pointer: coarse) {
+      .rr-lm-chip-clickable {
+        min-height: 32px !important;
+        min-width: 44px !important;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 // WCAG 2.1.1 (Keyboard) — keyboard-aktivering for klikkbare elementer
 // som ikke er native <button>. Trykk Enter/Space → samme handler som
 // onClick.
@@ -1982,11 +2010,15 @@ export default function LeadMapPanel() {
 
         {/* Søke-info-banner — vises kun når aktivt søk gir resultat-undermengde */}
         {normalizedQuery && (
-          <Stack direction="row" alignItems="center" spacing={1} sx={{
-            mb: 2, p: 1, borderRadius: 1.2,
-            bgcolor: 'rgba(251,191,36,0.06)',
-            border: '1px solid rgba(251,191,36,0.25)',
-          }}>
+          <Stack
+            direction="row" alignItems="center" spacing={1}
+            role="status"
+            aria-live="polite"
+            sx={{
+              mb: 2, p: 1, borderRadius: 1.2,
+              bgcolor: 'rgba(251,191,36,0.06)',
+              border: '1px solid rgba(251,191,36,0.25)',
+            }}>
             <SearchOutlinedIcon sx={{ color: palette.amber, fontSize: 16 }} />
             <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary, flex: 1 }}>
               <Box component="span" sx={{ color: palette.amber, fontWeight: 700 }}>
@@ -2206,7 +2238,11 @@ export default function LeadMapPanel() {
 
         {/* Reminder-banner — viser stille leads + dagens follow-ups */}
         {reminders && (reminders.totalStale > 0 || reminders.dueToday.length > 0) && (
-          <Box sx={{
+          <Box
+            role="status"
+            aria-live="polite"
+            aria-label={`Påminnelser: ${reminders.totalStale} stille leads, ${reminders.dueToday.length} follow-ups i dag`}
+            sx={{
             mb: 2.4, p: 1.6, borderRadius: 1.4,
             bgcolor: reminders.buckets.over30days > 0
               ? 'rgba(248,113,113,0.08)'
