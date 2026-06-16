@@ -785,4 +785,5 @@ export interface PartnerInviteDetail {
   talent_name: string;
 }
 
+export { roleRoomTalentsService };
 export default roleRoomTalentsService;
