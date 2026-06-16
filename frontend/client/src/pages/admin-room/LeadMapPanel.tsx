@@ -364,6 +364,7 @@ export default function LeadMapPanel() {
   const [selected, setSelected] = useState<MapLead | null>(null);
   const [selectedCompetitor, setSelectedCompetitor] = useState<CompetitorPoint | null>(null);
   const [statusFilter, setStatusFilter] = useState<LeadStatus[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const boundsRef = useRef<L.LatLngBounds | null>(null);
 
@@ -1054,6 +1055,10 @@ export default function LeadMapPanel() {
     }
   };
 
+  // Normalisert søke-streng (lowercased + trimmed). Brukes til både
+  // leads og konkurrenter — matcher på navn/by/adresse/kategori/notater.
+  const normalizedQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
+
   const filteredLeads = useMemo(() => {
     if (!showLeads) return [];
     let pool = leads;
@@ -1063,8 +1068,23 @@ export default function LeadMapPanel() {
     if (recommendedOnly) {
       pool = pool.filter((l) => (l.recommendationRank ?? 0) >= 60);
     }
+    if (normalizedQuery) {
+      pool = pool.filter((l) => {
+        const haystack = [
+          l.name,
+          l.company,
+          l.city,
+          l.address,
+          l.category,
+          l.notes,
+          STATUS_META[l.status]?.label,
+          l.assignedUserName,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(normalizedQuery);
+      });
+    }
     return pool;
-  }, [leads, statusFilter, showLeads, recommendedOnly]);
+  }, [leads, statusFilter, showLeads, recommendedOnly, normalizedQuery]);
 
   const filteredCompetitors = useMemo(() => {
     if (!showCompetitors) return [];
@@ -1078,8 +1098,37 @@ export default function LeadMapPanel() {
       // I "fokus"-modus: vis bare prioriterte eller nære konkurrenter
       pool = pool.filter((c) => c.threatLevel === 'near' || (c.priorityRank ?? 0) > 0);
     }
+    if (normalizedQuery) {
+      pool = pool.filter((c) => {
+        const haystack = [
+          c.name,
+          c.domain,
+          c.category,
+          c.positioning,
+          c.primaryOffer,
+          c.address,
+          c.claudeThreatSummary,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(normalizedQuery);
+      });
+    }
     return pool;
-  }, [competitors, showCompetitors, threatFilter, recommendedOnly]);
+  }, [competitors, showCompetitors, threatFilter, recommendedOnly, normalizedQuery]);
+
+  // Match-counters for søke-info-banner (bare leads/competitors WITHOUT
+  // søk er full liste — så vi kan vise "X av Y treff" når søk er aktivt)
+  const totalLeadsCount = useMemo(() => {
+    if (!showLeads) return 0;
+    let pool = leads;
+    if (statusFilter.length > 0) pool = pool.filter((l) => statusFilter.includes(l.status));
+    if (recommendedOnly) pool = pool.filter((l) => (l.recommendationRank ?? 0) >= 60);
+    return pool.length;
+  }, [leads, statusFilter, showLeads, recommendedOnly]);
+
+  const totalCompetitorsCount = useMemo(() => {
+    if (!showCompetitors) return 0;
+    return competitors.filter((c) => c.latitude != null && c.longitude != null).length;
+  }, [competitors, showCompetitors]);
 
   // Default-senter: Oslo
   const defaultCenter: [number, number] = [59.9139, 10.7522];
@@ -1173,6 +1222,37 @@ export default function LeadMapPanel() {
                 return `${fmt(start)} – ${fmt(end)}, ${yearFmt}`;
               })()}
             </Button>
+            <TextField
+              size="small"
+              placeholder="Søk leads, by, navn …"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <SearchOutlinedIcon sx={{ color: palette.textMuted, fontSize: 16, mr: 0.6 }} />
+                ),
+                endAdornment: searchQuery && (
+                  <IconButton
+                    size="small"
+                    onClick={() => setSearchQuery('')}
+                    sx={{ color: palette.textMuted, p: 0.2 }}
+                  >
+                    <CloseIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                ),
+              }}
+              sx={{
+                minWidth: 200,
+                '& .MuiOutlinedInput-root': {
+                  bgcolor: 'rgba(168,85,247,0.06)',
+                  color: palette.textPrimary,
+                  fontSize: '0.78rem',
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.border },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: palette.borderStrong },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: palette.amber },
+                },
+              }}
+            />
             <Button
               size="small" variant="outlined"
               onClick={() => setPlacesOpen(true)}
@@ -1297,6 +1377,33 @@ export default function LeadMapPanel() {
             {rankingLeads ? 'Ranker …' : 'Ranger leads m/ Claude'}
           </Button>
         </Stack>
+
+        {/* Søke-info-banner — vises kun når aktivt søk gir resultat-undermengde */}
+        {normalizedQuery && (
+          <Stack direction="row" alignItems="center" spacing={1} sx={{
+            mb: 2, p: 1, borderRadius: 1.2,
+            bgcolor: 'rgba(251,191,36,0.06)',
+            border: '1px solid rgba(251,191,36,0.25)',
+          }}>
+            <SearchOutlinedIcon sx={{ color: palette.amber, fontSize: 16 }} />
+            <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary, flex: 1 }}>
+              <Box component="span" sx={{ color: palette.amber, fontWeight: 700 }}>
+                «{searchQuery}»
+              </Box>
+              {' '}gir {filteredLeads.length} av {totalLeadsCount} leads
+              {totalCompetitorsCount > 0 && (
+                <> og {filteredCompetitors.length} av {totalCompetitorsCount} konkurrenter</>
+              )}
+            </Typography>
+            <Button
+              size="small" variant="text"
+              onClick={() => setSearchQuery('')}
+              sx={{ color: palette.amber, fontSize: '0.74rem', textTransform: 'none', minWidth: 0 }}
+            >
+              Tøm
+            </Button>
+          </Stack>
+        )}
 
         {/* Reminder-banner — viser stille leads + dagens follow-ups */}
         {reminders && (reminders.totalStale > 0 || reminders.dueToday.length > 0) && (
@@ -3602,6 +3709,15 @@ export default function LeadMapPanel() {
                 </thead>
                 <tbody>
                   {competitors
+                    .filter((c) => {
+                      // Søke-filter — også konkurrent-tabellen respekterer søk
+                      if (!normalizedQuery) return true;
+                      const haystack = [
+                        c.name, c.domain, c.category, c.positioning,
+                        c.primaryOffer, c.address, c.claudeThreatSummary,
+                      ].filter(Boolean).join(' ').toLowerCase();
+                      return haystack.includes(normalizedQuery);
+                    })
                     .slice()
                     .sort((a, b) => {
                       // priority først, så threat-level, så score
