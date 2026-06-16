@@ -13,6 +13,7 @@ struct LeadDetailSheet: View {
     @State private var enrichment: EnrichmentModel?
     @State private var demographics: DemographicsModel?
     @State private var visitLogShown = false
+    @State private var strategyShown = false
 
     var body: some View {
         NavigationStack {
@@ -43,6 +44,9 @@ struct LeadDetailSheet: View {
             }
             .sheet(isPresented: $visitLogShown) {
                 VisitLogModal(lead: lead)
+            }
+            .sheet(isPresented: $strategyShown) {
+                StrategySheet(lead: lead)
             }
         }
         .presentationDetents([.medium, .large])
@@ -179,7 +183,7 @@ struct LeadDetailSheet: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            Button { /* TODO: Strategy sheet */ } label: {
+            Button { strategyShown = true } label: {
                 Label("Strategi", systemImage: "lightbulb")
                     .frame(maxWidth: .infinity)
             }
