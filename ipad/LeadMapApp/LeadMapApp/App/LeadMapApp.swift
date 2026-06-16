@@ -25,13 +25,27 @@ struct RootView: View {
     var body: some View {
         Group {
             if appState.isAuthenticated {
-                MapScreen()
+                MainTabView()
             } else {
                 PairingView()
             }
         }
         .task {
             await appState.bootstrap()
+        }
+    }
+}
+
+/// Tabs: Min dag (default) + Kart + Org. Etablert i v1 (PR #618).
+struct MainTabView: View {
+    var body: some View {
+        TabView {
+            MyDayView()
+                .tabItem { Label("Min dag", systemImage: "sun.max.fill") }
+            MapScreen()
+                .tabItem { Label("Kart", systemImage: "map.fill") }
+            OrgSettingsView()
+                .tabItem { Label("Org", systemImage: "building.2.fill") }
         }
     }
 }

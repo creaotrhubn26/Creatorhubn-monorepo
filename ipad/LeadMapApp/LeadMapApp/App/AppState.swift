@@ -62,11 +62,51 @@ final class AppState {
     var pendingVisitsCount: Int = 0
     var isUsingStaleCache: Bool = false
 
+    // ── Org + RBAC (PR #611–#615) ───────────────────────────────
+    var organizations: [OrganizationSummary] = []
+    var activeOrganizationId: String? {
+        didSet {
+            if let id = activeOrganizationId {
+                UserDefaults.standard.set(id, forKey: "rr.lead_map.active_org")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "rr.lead_map.active_org")
+            }
+            Task {
+                await loadOrgContext()
+                await refreshWorkload()
+            }
+        }
+    }
+    /// Effective permissions for current user i active org.
+    var permissions: Set<String> = []
+    var roleInOrg: String?
+    var locationConsentGranted: Bool = false
+
+    // ── Min dag (PR #616) ───────────────────────────────────────
+    var workloadLeads: [WorkloadLead] = []
+    var quota: QuotaProgress?
+
+    // ── Live selger-pins (PR #612) ─────────────────────────────
+    var memberLocations: [MemberLocation] = []
+
+    // ── Heartbeat-loop ─────────────────────────────────────────
+    private var heartbeatController: HeartbeatController?
+
+    var activeOrganization: OrganizationSummary? {
+        organizations.first { $0.id == activeOrganizationId }
+    }
+
+    func can(_ permissionKey: String) -> Bool {
+        permissions.contains(permissionKey)
+    }
+
     func bootstrap() async {
-        // 1. Hent persistert prosjekt-valg før vi laster cache så
-        //    refreshAll bruker riktig filter umiddelbart.
+        // 1. Hent persistert prosjekt + org-valg
         if let stored = UserDefaults.standard.string(forKey: "rr.lead_map.active_project"), !stored.isEmpty {
             self.activeProjectId = stored
+        }
+        if let storedOrg = UserDefaults.standard.string(forKey: "rr.lead_map.active_org"), !storedOrg.isEmpty {
+            self.activeOrganizationId = storedOrg
         }
 
         // 2. Last fra cache umiddelbart så UI er responsivt selv før refresh
@@ -81,6 +121,101 @@ final class AppState {
             if let id = activeProjectId {
                 await loadProjectSummary(id: id)
             }
+            await loadOrganizations()
+            await loadOrgContext()
+            await startHeartbeatIfNeeded()
+        }
+    }
+
+    /// Last alle organisasjoner brukeren er medlem av.
+    func loadOrganizations() async {
+        guard let api else { return }
+        do {
+            self.organizations = try await api.fetchOrganizations()
+            // Auto-velg første hvis ingen aktiv
+            if activeOrganizationId == nil, let first = organizations.first {
+                self.activeOrganizationId = first.id
+            }
+        } catch {
+            print("[AppState] loadOrganizations failed: \(error)")
+        }
+    }
+
+    /// Last permissions + location-consent + member-locations for active org.
+    func loadOrgContext() async {
+        guard let api, let orgId = activeOrganizationId else {
+            self.permissions = []
+            self.roleInOrg = nil
+            self.locationConsentGranted = false
+            self.memberLocations = []
+            return
+        }
+        async let permTask = api.fetchPermissions(organizationId: orgId)
+        async let consentTask = api.fetchLocationConsent(orgId)
+        async let locsTask = api.fetchMemberLocations(orgId)
+        do {
+            let perm = try await permTask
+            self.permissions = Set(perm.permissions)
+            self.roleInOrg = perm.role
+        } catch {
+            print("[AppState] permissions failed: \(error)")
+        }
+        do {
+            self.locationConsentGranted = try await consentTask
+        } catch {
+            print("[AppState] consent failed: \(error)")
+        }
+        do {
+            self.memberLocations = try await locsTask
+        } catch {
+            print("[AppState] memberLocations failed: \(error)")
+        }
+    }
+
+    /// Last Min dag-data (workload + quota).
+    func refreshWorkload() async {
+        guard let api, let orgId = activeOrganizationId else { return }
+        let loc = LocationService.shared.currentLocation
+        do {
+            let resp = try await api.fetchWorkload(organizationId: orgId, location: loc)
+            self.workloadLeads = resp.leads
+        } catch {
+            print("[AppState] workload failed: \(error)")
+        }
+        do {
+            self.quota = try await api.fetchQuota(organizationId: orgId)
+        } catch {
+            print("[AppState] quota failed: \(error)")
+        }
+    }
+
+    /// Start heartbeat-loopen for online-status + valgfri posisjon.
+    private func startHeartbeatIfNeeded() async {
+        guard let api, let orgId = activeOrganizationId else { return }
+        heartbeatController?.stop()
+        let hb = HeartbeatController(
+            api: api,
+            organizationId: orgId,
+            locationService: .shared,
+        )
+        hb.isSharingLocation = locationConsentGranted
+        hb.start()
+        self.heartbeatController = hb
+    }
+
+    /// Toggle posisjons-deling. Bruker må eksplisitt slå PÅ.
+    func setLocationConsent(_ on: Bool) async {
+        guard let api, let orgId = activeOrganizationId else { return }
+        do {
+            try await api.setLocationConsent(orgId, consent: on)
+            self.locationConsentGranted = on
+            heartbeatController?.isSharingLocation = on
+            if on {
+                LocationService.shared.requestPermissionIfNeeded()
+                LocationService.shared.startUpdating()
+            }
+        } catch {
+            print("[AppState] setLocationConsent failed: \(error)")
         }
     }
 
@@ -102,6 +237,8 @@ final class AppState {
     }
 
     func signOut() {
+        heartbeatController?.stop()
+        heartbeatController = nil
         AuthClient.clear()
         self.authToken = nil
         self.userEmail = nil
@@ -111,6 +248,13 @@ final class AppState {
         self.metrics = nil
         self.calendar = []
         self.reminders = nil
+        self.organizations = []
+        self.activeOrganizationId = nil
+        self.permissions = []
+        self.roleInOrg = nil
+        self.workloadLeads = []
+        self.quota = nil
+        self.memberLocations = []
         Task { await OfflineCache.shared.clear() }
     }
 
@@ -197,13 +341,15 @@ final class AppState {
 
     /// Log en visit — bruker backend hvis tilgjengelig, ellers
     /// legger i offline-kø som flushes ved neste vellykkede refresh.
+    /// `body` serialiseres til JSON-Data før kryssing av actor-grense for
+    /// å unngå non-Sendable [String:Any].
     func enqueueOrSendVisit(leadId: String, body: [String: Any]) async throws {
         guard let api else { throw URLError(.userAuthenticationRequired) }
+        let payload = try JSONSerialization.data(withJSONObject: body)
         do {
-            try await api.logVisit(leadId: leadId, body: body)
+            try await api.logVisitRaw(leadId: leadId, jsonBody: payload)
         } catch {
-            // Offline → legg i kø
-            await OfflineCache.shared.enqueue(leadId: leadId, body: body)
+            await OfflineCache.shared.enqueueRaw(leadId: leadId, jsonBody: payload)
             self.pendingVisitsCount = await OfflineCache.shared.pendingCount()
             throw OfflineEnqueuedError()
         }

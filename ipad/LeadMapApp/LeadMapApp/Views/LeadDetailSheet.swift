@@ -20,6 +20,7 @@ struct LeadDetailSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     headerSection
+                    distanceBar
                     metaSection
                     if let enrichment, enrichment.found, let company = enrichment.company {
                         brregSection(company: company, contacts: enrichment.contacts ?? [])
@@ -50,6 +51,48 @@ struct LeadDetailSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    // Distanse fra brukerens posisjon + Naviger m/ Apple Maps (PR #612)
+    @ViewBuilder
+    private var distanceBar: some View {
+        if let me = LocationService.shared.currentLocation {
+            let dist = LocationService.shared.distanceMeters(
+                from: me.coordinate,
+                to: .init(latitude: lead.latitude, longitude: lead.longitude)
+            )
+            let km = dist / 1000
+            HStack(spacing: 10) {
+                Image(systemName: "location.fill")
+                    .foregroundStyle(Color(red: 0.75, green: 0.52, blue: 0.99))
+                Text(formatDistanceKm(km))
+                    .font(.headline)
+                    .foregroundStyle(Color(red: 0.75, green: 0.52, blue: 0.99))
+                Text("≈ \(estimatedDriveMin(km)) min m/ bil")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let url = URL(string: "https://maps.apple.com/?daddr=\(lead.latitude),\(lead.longitude)&dirflg=d") {
+                    Link("Naviger", destination: url)
+                        .font(.callout.bold())
+                        .foregroundStyle(Color(red: 0.75, green: 0.52, blue: 0.99))
+                }
+            }
+            .padding(10)
+            .background(Color(red: 0.75, green: 0.52, blue: 0.99).opacity(0.10),
+                        in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private func formatDistanceKm(_ km: Double) -> String {
+        if km < 1 { return "\(Int(km * 1000)) m" }
+        if km < 10 { return String(format: "%.1f km", km).replacingOccurrences(of: ".", with: ",") }
+        return "\(Int(km)) km"
+    }
+
+    private func estimatedDriveMin(_ km: Double) -> Int {
+        let avgKmh = km < 5 ? 30.0 : km < 20 ? 45.0 : 65.0
+        return Int((km / avgKmh) * 60)
     }
 
     private var headerSection: some View {

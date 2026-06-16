@@ -91,6 +91,28 @@ final class LocationService: NSObject {
         let lb = CLLocation(latitude: b.latitude, longitude: b.longitude)
         return la.distance(from: lb)
     }
+
+    // MARK: - Kontinuerlig tracking (for heartbeat + Min dag-distanse)
+
+    /// Sist mottatte posisjon. Settes mens startUpdating() er aktiv.
+    /// Nil hvis ennå ikke fixet eller authorization mangler.
+    private(set) var currentLocation: CLLocation?
+
+    /// Ber om when-in-use authorization hvis ikke avgjort.
+    func requestPermissionIfNeeded() {
+        if manager.authorizationStatus == .notDetermined {
+            manager.requestWhenInUseAuthorization()
+        }
+    }
+
+    /// Start kontinuerlig oppdatering. Trigger heartbeat-loopen.
+    func startUpdating() {
+        manager.startUpdatingLocation()
+    }
+
+    func stopUpdating() {
+        manager.stopUpdatingLocation()
+    }
 }
 
 extension LocationService: CLLocationManagerDelegate {
@@ -98,10 +120,13 @@ extension LocationService: CLLocationManagerDelegate {
         _ manager: CLLocationManager,
         didUpdateLocations locations: [CLLocation]
     ) {
-        guard let coord = locations.last?.coordinate else { return }
+        guard let loc = locations.last else { return }
         Task { @MainActor in
+            // Lagre for heartbeat + Min dag-distanse
+            self.currentLocation = loc
+            // Resume one-shot continuation hvis aktiv
             self.timeoutTask?.cancel()
-            self.continuation?.resume(returning: coord)
+            self.continuation?.resume(returning: loc.coordinate)
             self.continuation = nil
         }
     }
@@ -118,8 +143,11 @@ extension LocationService: CLLocationManagerDelegate {
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        // Snapshot status FØR vi krysser actor-grensa (CLLocationManager
+        // er ikke Sendable — vi får ikke sende den inn i en Task).
+        let status = manager.authorizationStatus
         Task { @MainActor in
-            switch manager.authorizationStatus {
+            switch status {
             case .denied:
                 self.continuation?.resume(throwing: LocationError.denied)
                 self.continuation = nil
@@ -127,7 +155,7 @@ extension LocationService: CLLocationManagerDelegate {
                 self.continuation?.resume(throwing: LocationError.restricted)
                 self.continuation = nil
             case .authorizedWhenInUse, .authorizedAlways:
-                manager.requestLocation()
+                self.manager.requestLocation()
             default:
                 break
             }

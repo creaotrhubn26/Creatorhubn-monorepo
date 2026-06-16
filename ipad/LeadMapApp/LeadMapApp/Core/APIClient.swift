@@ -7,6 +7,7 @@
 // LEAD_MAP_API_BASE i Info.plist senere.
 
 import Foundation
+import CoreLocation
 
 actor APIClient {
     private let token: String
@@ -97,6 +98,14 @@ actor APIClient {
         )
     }
 
+    /// Sendable-vennlig variant — body er ferdig JSON-serialisert til Data.
+    func logVisitRaw(leadId: String, jsonBody: Data) async throws {
+        var req = makeRequest("/api/admin-room/lead-map/leads/\(leadId)/visits", method: "POST")
+        req.httpBody = jsonBody
+        let (_, response) = try await session.data(for: req)
+        try Self.validate(response)
+    }
+
     func generateStrategy(leadId: String) async throws -> StrategyModel {
         let resp: StrategyEnvelope = try await post(
             "/api/admin-room/lead-map/leads/\(leadId)/strategy"
@@ -109,6 +118,120 @@ actor APIClient {
             "/api/admin-room/lead-map/leads/\(leadId)/enrich"
         )
         return resp.enrichment
+    }
+
+    // MARK: - Min dag (PR #616)
+
+    func fetchWorkload(
+        organizationId: String?,
+        location: CLLocation? = nil
+    ) async throws -> WorkloadResponse {
+        var qs: [String] = []
+        if let orgId = organizationId {
+            qs.append("organization_id=\(orgId)")
+        }
+        if let loc = location {
+            qs.append("lat=\(loc.coordinate.latitude)")
+            qs.append("lng=\(loc.coordinate.longitude)")
+        }
+        let q = qs.isEmpty ? "" : "?\(qs.joined(separator: "&"))"
+        return try await get("/api/admin-room/lead-map/me/workload\(q)")
+    }
+
+    func fetchQuota(organizationId: String) async throws -> QuotaProgress {
+        try await get("/api/admin-room/lead-map/me/quota?organization_id=\(organizationId)")
+    }
+
+    // MARK: - Organisasjoner (PR #611+#612)
+
+    func fetchOrganizations() async throws -> [OrganizationSummary] {
+        let resp: OrgsResponse = try await get("/api/admin-room/lead-map/organizations")
+        return resp.organizations
+    }
+
+    func fetchOrgProfile(_ organizationId: String) async throws -> OrgProfileEnvelope {
+        try await get("/api/admin-room/lead-map/organizations/\(organizationId)/profile")
+    }
+
+    func fetchOrgMembers(_ organizationId: String) async throws -> [MemberProfile] {
+        let resp: OrgProfilesResponse = try await get(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/profiles"
+        )
+        return resp.profiles
+    }
+
+    func fetchSalesTeams(_ organizationId: String) async throws -> [SalesTeam] {
+        let resp: TeamsResponse = try await get(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/teams"
+        )
+        return resp.teams
+    }
+
+    func fetchMemberLocations(_ organizationId: String) async throws -> [MemberLocation] {
+        let resp: MemberLocationsResponse = try await get(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/member-locations"
+        )
+        return resp.locations
+    }
+
+    // MARK: - RBAC (PR #615)
+
+    func fetchPermissions(organizationId: String?) async throws -> PermissionsResponse {
+        let q = organizationId.map { "?organization_id=\($0)" } ?? ""
+        return try await get("/api/admin-room/lead-map/me/permissions\(q)")
+    }
+
+    // MARK: - Heartbeat + posisjons-deling (PR #612)
+
+    func sendHeartbeat(
+        organizationId: String,
+        location: CLLocation? = nil,
+        activity: String = "idle"
+    ) async throws {
+        var body: [String: Any] = ["organization_id": organizationId]
+        if let loc = location {
+            body["lat"] = loc.coordinate.latitude
+            body["lng"] = loc.coordinate.longitude
+            body["accuracy_m"] = loc.horizontalAccuracy
+            body["activity"] = activity
+        }
+        try await post("/api/admin-room/lead-map/heartbeat", body: body)
+    }
+
+    func setLocationConsent(_ organizationId: String, consent: Bool) async throws {
+        if consent {
+            try await post(
+                "/api/admin-room/lead-map/organizations/\(organizationId)/location/consent",
+                body: [:]
+            )
+        } else {
+            try await delete(
+                "/api/admin-room/lead-map/organizations/\(organizationId)/location/consent"
+            )
+        }
+    }
+
+    func fetchLocationConsent(_ organizationId: String) async throws -> Bool {
+        let resp: ConsentResponse = try await get(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/location/consent"
+        )
+        return resp.consented
+    }
+
+    // MARK: - Lead-tildeling (PR #616)
+
+    func assignLead(_ leadId: String, toUserId: String, reason: String = "manual") async throws {
+        try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/assign",
+            body: ["user_id": toUserId, "reason": reason]
+        )
+    }
+
+    func releaseLead(_ leadId: String) async throws {
+        try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/release",
+            body: [:]
+        )
     }
 
     // MARK: - Internal
@@ -152,6 +275,12 @@ actor APIClient {
         try Self.validate(response)
     }
 
+    private func delete(_ path: String) async throws {
+        let req = makeRequest(path, method: "DELETE")
+        let (_, response) = try await session.data(for: req)
+        try Self.validate(response)
+    }
+
     private static func validate(_ response: URLResponse) throws {
         guard let http = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
@@ -183,3 +312,15 @@ private struct CalendarResponse: Decodable { let events: [CalendarEvent] }
 private struct EnrichmentEnvelope: Decodable { let enrichment: EnrichmentModel? }
 private struct DemographicsEnvelope: Decodable { let demographics: DemographicsModel? }
 private struct StrategyEnvelope: Decodable { let strategy: StrategyModel }
+private struct OrgsResponse: Decodable { let organizations: [OrganizationSummary] }
+private struct OrgProfilesResponse: Decodable { let profiles: [MemberProfile] }
+private struct TeamsResponse: Decodable { let teams: [SalesTeam] }
+private struct MemberLocationsResponse: Decodable { let locations: [MemberLocation] }
+private struct ConsentResponse: Decodable { let consented: Bool }
+
+struct OrgProfileEnvelope: Decodable {
+    let profile: OrganizationProfile
+    let canEdit: Bool
+    let isOwner: Bool
+    let ownerOnlyFields: [String]
+}
