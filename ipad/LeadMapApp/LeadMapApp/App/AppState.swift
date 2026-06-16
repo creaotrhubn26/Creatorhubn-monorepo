@@ -2,6 +2,13 @@
 //
 // Global observable state. Sentralisert auth + last-fetched data så
 // vi unngår å re-fetche samme info i forskjellige views.
+//
+// Offline-strategi:
+//   - bootstrap() laster fra cache først (umiddelbart synlig UI) →
+//     forsøker refresh (overskriver hvis suksess)
+//   - refreshAll() lagrer suksess til cache + flusher pending visits
+//   - VisitLogModal sin save() går via enqueueOrSendVisit() som
+//     enten kaller backend direkte eller legger i offline-kø
 
 import Foundation
 import Observation
@@ -28,8 +35,16 @@ final class AppState {
     var selectedLead: LeadModel?
     var selectedCompetitor: CompetitorModel?
 
+    // Offline-state
+    var lastSyncAt: Date?
+    var pendingVisitsCount: Int = 0
+    var isUsingStaleCache: Bool = false
+
     func bootstrap() async {
-        // Last token fra Keychain
+        // 1. Last fra cache umiddelbart så UI er responsivt selv før refresh
+        await loadFromCache()
+
+        // 2. Hvis vi har token, prøv refresh — overskriver cache ved suksess
         if let token = AuthClient.loadToken() {
             self.authToken = token
             self.userEmail = AuthClient.loadEmail()
@@ -54,6 +69,9 @@ final class AppState {
         self.leads = []
         self.competitors = []
         self.metrics = nil
+        self.calendar = []
+        self.reminders = nil
+        Task { await OfflineCache.shared.clear() }
     }
 
     func refreshAll() async {
@@ -64,13 +82,80 @@ final class AppState {
         async let calendarTask = api.fetchCalendar()
         async let remindersTask = api.fetchReminders()
         do {
-            self.leads = try await leadsTask
-            self.competitors = try await competitorsTask
-            self.metrics = try await metricsTask
-            self.calendar = try await calendarTask
-            self.reminders = try await remindersTask
+            let newLeads = try await leadsTask
+            let newComps = try await competitorsTask
+            let newMetrics = try await metricsTask
+            let newCal = try await calendarTask
+            let newRem = try await remindersTask
+
+            self.leads = newLeads
+            self.competitors = newComps
+            self.metrics = newMetrics
+            self.calendar = newCal
+            self.reminders = newRem
+            self.lastSyncAt = Date()
+            self.isUsingStaleCache = false
+
+            // Lagre snapshot til disk
+            await OfflineCache.shared.save(newLeads, named: "leads")
+            await OfflineCache.shared.save(newComps, named: "competitors")
+            await OfflineCache.shared.save(newMetrics, named: "metrics")
+            await OfflineCache.shared.save(newCal, named: "calendar")
+            await OfflineCache.shared.save(newRem, named: "reminders")
+
+            // Flush pending visits hvis vi er online
+            let result = await OfflineCache.shared.flush(using: api)
+            if result.succeeded > 0 {
+                print("[AppState] Flushed \(result.succeeded) pending visits")
+            }
+            self.pendingVisitsCount = await OfflineCache.shared.pendingCount()
         } catch {
-            print("[AppState] refresh failed: \(error)")
+            print("[AppState] refresh failed (using cache): \(error)")
+            self.isUsingStaleCache = true
         }
+    }
+
+    /// Log en visit — bruker backend hvis tilgjengelig, ellers
+    /// legger i offline-kø som flushes ved neste vellykkede refresh.
+    func enqueueOrSendVisit(leadId: String, body: [String: Any]) async throws {
+        guard let api else { throw URLError(.userAuthenticationRequired) }
+        do {
+            try await api.logVisit(leadId: leadId, body: body)
+        } catch {
+            // Offline → legg i kø
+            await OfflineCache.shared.enqueue(leadId: leadId, body: body)
+            self.pendingVisitsCount = await OfflineCache.shared.pendingCount()
+            throw OfflineEnqueuedError()
+        }
+    }
+
+    // MARK: - Cache-loading
+
+    private func loadFromCache() async {
+        if let cached: (value: [LeadModel], age: TimeInterval) = await OfflineCache.shared.load([LeadModel].self, named: "leads") {
+            self.leads = cached.value
+            self.lastSyncAt = Date().addingTimeInterval(-cached.age)
+            self.isUsingStaleCache = true
+        }
+        if let cached: (value: [CompetitorModel], age: TimeInterval) = await OfflineCache.shared.load([CompetitorModel].self, named: "competitors") {
+            self.competitors = cached.value
+        }
+        if let cached: (value: MetricsModel, age: TimeInterval) = await OfflineCache.shared.load(MetricsModel.self, named: "metrics") {
+            self.metrics = cached.value
+        }
+        if let cached: (value: [CalendarEvent], age: TimeInterval) = await OfflineCache.shared.load([CalendarEvent].self, named: "calendar") {
+            self.calendar = cached.value
+        }
+        if let cached: (value: RemindersResponse, age: TimeInterval) = await OfflineCache.shared.load(RemindersResponse.self, named: "reminders") {
+            self.reminders = cached.value
+        }
+        self.pendingVisitsCount = await OfflineCache.shared.pendingCount()
+    }
+}
+
+/// Signal til UI om at visit ble lagret offline, ikke sendt til backend ennå.
+struct OfflineEnqueuedError: LocalizedError {
+    var errorDescription: String? {
+        "Lagret offline. Sendes når dekning er tilbake."
     }
 }
