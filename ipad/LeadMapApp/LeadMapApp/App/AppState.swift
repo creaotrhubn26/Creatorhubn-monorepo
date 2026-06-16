@@ -12,6 +12,9 @@
 
 import Foundation
 import Observation
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 @MainActor
 @Observable
@@ -149,9 +152,46 @@ final class AppState {
                 print("[AppState] Flushed \(result.succeeded) pending visits")
             }
             self.pendingVisitsCount = await OfflineCache.shared.pendingCount()
+
+            // Skriv widget-snapshot til delt App Group container
+            writeWidgetSnapshot()
         } catch {
             print("[AppState] refresh failed (using cache): \(error)")
             self.isUsingStaleCache = true
+        }
+    }
+
+    /// Skriver siste data til App Group container så widget kan lese.
+    /// Trigges automatisk etter hver vellykket refreshAll.
+    private func writeWidgetSnapshot() {
+        let activeName = activeProjectId.flatMap { id in
+            projects.first(where: { $0.id == id })?.name
+        }
+        let dueItems = (reminders?.dueToday ?? []).prefix(5).compactMap { due -> WidgetSnapshot.DueItem? in
+            let date = ISO8601DateFormatter().date(from: due.datetime)
+            return WidgetSnapshot.DueItem(
+                leadName: due.name,
+                datetime: date,
+                nextAction: due.nextAction
+            )
+        }
+        let snapshot = WidgetSnapshot(
+            activeProjectName: activeName,
+            totalLeads: metrics?.totalLeads ?? 0,
+            followUpsDue: metrics?.followUpsDue ?? 0,
+            meetingsBooked: metrics?.meetingsBooked ?? 0,
+            staleOver30: reminders?.buckets.over30days ?? 0,
+            staleOver14: reminders?.buckets.over14days ?? 0,
+            staleOver7: reminders?.buckets.over7days ?? 0,
+            dueToday: Array(dueItems),
+            writtenAt: Date()
+        )
+        WidgetSnapshotStore.write(snapshot)
+        // Be WidgetCenter om å reloade timelines
+        Task { @MainActor in
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+            #endif
         }
     }
 
