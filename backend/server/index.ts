@@ -512,6 +512,7 @@ import { registerLeadMapProjectRoutes } from "./lead-map-project-routes.js";
 import { registerLeadMapTeamRoutes } from "./lead-map-team-routes.js";
 import { registerLeadMapOrgRoutes } from "./lead-map-org-routes.js";
 import { registerLeadMapProfileRoutes } from "./lead-map-profile-routes.js";
+import { registerLeadMapPermissionRoutes } from "./lead-map-permission-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24232,6 +24233,8 @@ registerLeadMapTeamRoutes({ app, pool, activeSessions });
 registerLeadMapOrgRoutes({ app, pool, activeSessions });
 // Lead Map ↔ Profil + Salgs-team (org-profil, user-profil, teamleder/konsulent/promotør)
 registerLeadMapProfileRoutes({ app, pool, activeSessions });
+// Lead Map ↔ Granulær tillatelses-styring (RBAC + per-bruker overstyringer)
+registerLeadMapPermissionRoutes({ app, pool, activeSessions });
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,
