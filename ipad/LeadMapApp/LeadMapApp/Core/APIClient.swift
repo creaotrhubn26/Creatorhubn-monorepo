@@ -218,6 +218,32 @@ actor APIClient {
         return resp.consented
     }
 
+    // MARK: - Team-leaderboard (PR #620)
+
+    func fetchLeaderboard(
+        organizationId: String,
+        period: String = "this_month",
+        teamId: String? = nil,
+        sort: String = "progress"
+    ) async throws -> LeaderboardResponse {
+        var qs = "?period=\(period)&sort=\(sort)"
+        if let tid = teamId, !tid.isEmpty {
+            qs += "&team_id=\(tid)"
+        }
+        return try await get(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/leaderboard\(qs)"
+        )
+    }
+
+    func fetchLeaderboardSummary(
+        organizationId: String,
+        period: String = "this_month"
+    ) async throws -> LeaderboardSummary {
+        try await get(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/leaderboard-summary?period=\(period)"
+        )
+    }
+
     // MARK: - Lead-tildeling (PR #616)
 
     func assignLead(_ leadId: String, toUserId: String, reason: String = "manual") async throws {

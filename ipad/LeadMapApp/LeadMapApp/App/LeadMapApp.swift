@@ -36,7 +36,8 @@ struct RootView: View {
     }
 }
 
-/// Tabs: Min dag (default) + Kart + Org. Etablert i v1 (PR #618).
+/// Tabs: Min dag (default) + Kart + Team + Org. Etablert i v1 (PR #618).
+/// Team-leaderboard skjules automatisk inni viewen for ikke-tillatte roller.
 struct MainTabView: View {
     var body: some View {
         TabView {
@@ -44,6 +45,8 @@ struct MainTabView: View {
                 .tabItem { Label("Min dag", systemImage: "sun.max.fill") }
             MapScreen()
                 .tabItem { Label("Kart", systemImage: "map.fill") }
+            LeaderboardView()
+                .tabItem { Label("Team", systemImage: "trophy.fill") }
             OrgSettingsView()
                 .tabItem { Label("Org", systemImage: "building.2.fill") }
         }
