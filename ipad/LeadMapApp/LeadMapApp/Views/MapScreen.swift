@@ -72,6 +72,12 @@ struct MapHomeView: View {
             )) { lead in
                 LeadDetailSheet(lead: lead)
             }
+            .sheet(item: Binding(
+                get: { appState.selectedCompetitor },
+                set: { appState.selectedCompetitor = $0 }
+            )) { competitor in
+                CompetitorDetailSheet(competitor: competitor)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if let metrics = appState.metrics {
