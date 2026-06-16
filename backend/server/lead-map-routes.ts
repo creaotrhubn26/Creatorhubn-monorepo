@@ -39,6 +39,7 @@ import {
   type LeadStatus,
   type VisitType,
 } from "./lead-map-service.js";
+import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -144,7 +145,9 @@ export function setupLeadMapRoutes(deps: Deps): void {
   });
 
   // PATCH /leads/:id/status
-  app.patch("/api/admin-room/lead-map/leads/:id/status", async (req: Request, res: Response) => {
+  app.patch("/api/admin-room/lead-map/leads/:id/status",
+    requireLeadMapPermission("leads.update", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
     const session = getUser(req, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
@@ -167,7 +170,9 @@ export function setupLeadMapRoutes(deps: Deps): void {
   });
 
   // PATCH /leads/:id/geo
-  app.patch("/api/admin-room/lead-map/leads/:id/geo", async (req: Request, res: Response) => {
+  app.patch("/api/admin-room/lead-map/leads/:id/geo",
+    requireLeadMapPermission("leads.update", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
     const session = getUser(req, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
@@ -194,7 +199,9 @@ export function setupLeadMapRoutes(deps: Deps): void {
   });
 
   // POST /leads/:id/visits
-  app.post("/api/admin-room/lead-map/leads/:id/visits", async (req: Request, res: Response) => {
+  app.post("/api/admin-room/lead-map/leads/:id/visits",
+    requireLeadMapPermission("visits.create", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
     const session = getUser(req, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
@@ -281,7 +288,9 @@ export function setupLeadMapRoutes(deps: Deps): void {
   });
 
   // POST /leads/:id/generate-pitch — Claude AI pitch
-  app.post("/api/admin-room/lead-map/leads/:id/generate-pitch", async (req: Request, res: Response) => {
+  app.post("/api/admin-room/lead-map/leads/:id/generate-pitch",
+    requireLeadMapPermission("ai.use_claude", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
     const session = getUser(req, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const body = (req.body ?? {}) as { serviceFocus?: string };
