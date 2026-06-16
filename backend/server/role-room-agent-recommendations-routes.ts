@@ -73,6 +73,12 @@ const SEED_CATALOG: Array<Omit<RecommendationRow, "id" | "owner_user_id" | "proj
   { type: "viral", title: "Viral-mulighet", insight: "Et innlegg har uvanlig høy delingsrate — lag oppfølging mens momentet varer.", stat_value: "+212%", stat_label: "deling siste 7d", cta_label: "Utfør · Følg opp", icon: "bolt" },
   { type: "reels", title: "Reels-anbefaling", insight: "Reels gir mest rekkevidde for kontoen din nå — lag en kort om dette temaet.", stat_value: "4,1×", stat_label: "rekkevidde vs foto", cta_label: "Utfør · Lag Reel", icon: "movie" },
   { type: "merch", title: "Merch-idé", insight: "Produksjonen har et engasjert publikum — vurder branded merch som inntektskanal.", stat_value: "3", stat_label: "leverandører klare", cta_label: "Utfør · Se merch", icon: "storefront" },
+  { type: "poll", title: "Poll-idé", insight: "Kjør en avstemning i Story — polls gir høy interaksjon og verdifull innsikt.", stat_value: "+46%", stat_label: "interaksjon i Story", cta_label: "Utfør · Lag poll", icon: "poll" },
+  { type: "livestream", title: "Livestream-idé", insight: "Gå live om dette temaet — direktesendinger bygger nærhet og prioriteres i feeden.", stat_value: "2,7×", stat_label: "visningstid live", cta_label: "Utfør · Planlegg live", icon: "sensors" },
+  { type: "giveaway", title: "Giveaway", insight: "En konkurranse kan gi et hopp i følgere og rekkevidde foran lanseringen.", stat_value: "+1 200", stat_label: "snitt nye følgere", cta_label: "Utfør · Sett opp", icon: "card_giftcard" },
+  { type: "testimonial", title: "Kunde-testimonial", insight: "Del en kundeomtale — sosialt bevis konverterer bedre enn egen markedsføring.", stat_value: "+31%", stat_label: "konvertering", cta_label: "Utfør · Del", icon: "format_quote" },
+  { type: "story_serie", title: "Story-serie", insight: "Lag en flerdelt Story-serie — sekvenser holder følgerne lenger i Story-ringen.", stat_value: "5 deler", stat_label: "anbefalt lengde", cta_label: "Utfør · Bygg serie", icon: "auto_stories" },
+  { type: "beste_tid", title: "Beste-tid-skift", insight: "Publikum er mest aktivt på et nytt tidspunkt — flytt fast publisering dit.", stat_value: "07:30", stat_label: "ny topp-tid", cta_label: "Utfør", icon: "schedule" },
 ];
 
 export function setupRoleRoomAgentRecommendationsRoutes(
