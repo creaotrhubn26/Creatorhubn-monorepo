@@ -56,17 +56,24 @@ platform :ios do
       xcargs: "-allowProvisioningUpdates",
     )
 
+    # Sanity check FØR upload: bruk gyms faktiske output-sti
+    # (lane_context), ikke en hardkodet relativ sti. Den gamle
+    # ``sh "ls -lh build/CreatorHubOne.ipa"`` kjørte ETTER upload og
+    # feilet (exit 1 → "fastlane finished with errors") selv om
+    # opplastingen lyktes, fordi cwd/sti ikke matchet. Nå feiler vi
+    # lanen lokalt FØR upload hvis IPA-en mangler eller er for stor.
+    ipa_path = lane_context[SharedValues::IPA_OUTPUT_PATH]
+    UI.user_error!("Fant ingen IPA etter build_app") unless ipa_path && File.exist?(ipa_path)
+    ipa_mb = (File.size(ipa_path) / 1_000_000.0).round(1)
+    UI.message("IPA klar for upload: #{ipa_path} (#{ipa_mb} MB)")
+    UI.user_error!("IPA er #{ipa_mb} MB (> 200 MB) — Apple avviser") if ipa_mb > 200
+
     upload_to_testflight(
       skip_waiting_for_build_processing: true,
       # Changelog is pulled from ``fastlane/changelog.txt`` if
       # present; otherwise Apple shows "No changes provided".
       changelog: File.exist?("changelog.txt") ? File.read("changelog.txt") : nil,
     )
-
-    # Sanity check: fail the lane if the IPA is missing the icon
-    # or is bigger than 200 MB (both are Apple-side rejection
-    # causes we can catch locally).
-    sh "ls -lh build/CreatorHubOne.ipa"
   end
 
   desc "Archive + submit for App Store Review"
