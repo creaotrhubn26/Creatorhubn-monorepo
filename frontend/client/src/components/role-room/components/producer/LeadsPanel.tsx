@@ -16,6 +16,7 @@ import {
   Drafts as NurtureIcon,
 } from '@mui/icons-material';
 import NurtureSequenceDialog from './NurtureSequenceDialog';
+import LeadDetailDialog from './LeadDetailDialog';
 import CtaCard from './CtaCard';
 import InsightsCard from './InsightsCard';
 import ConnectionPicker from './ConnectionPicker';
@@ -196,6 +197,7 @@ export default function LeadsPanel() {
   // ── Fast follow-up: templates + seller notification + per-lead send ──────
   const [showFollowup, setShowFollowup] = useState(false);
   const [nurtureLead, setNurtureLead] = useState<Lead | null>(null);
+  const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const { data: followupData } = useQuery<{
     config: FollowupConfig; smsConfigured: boolean; emailConfigured: boolean; whatsappConfigured: boolean; success: boolean;
   }>({
@@ -659,7 +661,16 @@ export default function LeadsPanel() {
                         <TableBody>
                           {visibleLeads.map((l) => (
                             <TableRow key={l.id}>
-                              <TableCell>{l.name ?? '—'}</TableCell>
+                              <TableCell>
+                                <Box
+                                  component="button"
+                                  type="button"
+                                  onClick={() => setDetailLead(l)}
+                                  sx={{ background: 'none', border: 'none', p: 0, cursor: 'pointer', color: '#c084fc', fontWeight: 600, fontSize: 'inherit', fontFamily: 'inherit', textAlign: 'left', textDecoration: 'underline', textUnderlineOffset: 2 }}
+                                >
+                                  {l.name ?? '—'}
+                                </Box>
+                              </TableCell>
                               <TableCell>{l.email ?? '—'}</TableCell>
                               <TableCell>{l.phone ?? '—'}</TableCell>
                               <TableCell sx={{ minWidth: 120 }}>
@@ -763,6 +774,11 @@ export default function LeadsPanel() {
           lead={{ id: nurtureLead.id, name: nurtureLead.name, email: nurtureLead.email, segment: nurtureLead.segment }}
           connectionId={connectionId}
         />
+      ) : null}
+
+      {/* Lead-detalj — utvidet enkeltlead-visning med tidslinje */}
+      {detailLead ? (
+        <LeadDetailDialog open={!!detailLead} onClose={() => setDetailLead(null)} lead={detailLead} />
       ) : null}
     </Stack>
   );
