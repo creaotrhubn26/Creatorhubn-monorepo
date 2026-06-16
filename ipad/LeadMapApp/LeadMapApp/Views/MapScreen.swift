@@ -80,16 +80,33 @@ struct MapHomeView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    if let metrics = appState.metrics {
-                        Text("\(metrics.totalLeads) leads")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        if let metrics = appState.metrics {
+                            Text("\(metrics.totalLeads) leads")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                        }
+                        if appState.isUsingStaleCache {
+                            Image(systemName: "wifi.exclamationmark")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                        if appState.pendingVisitsCount > 0 {
+                            Label("\(appState.pendingVisitsCount)", systemImage: "arrow.triangle.2.circlepath")
+                                .font(.caption.bold())
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("Oppdater", systemImage: "arrow.clockwise") {
                             Task { await appState.refreshAll() }
+                        }
+                        if appState.pendingVisitsCount > 0 {
+                            Button("Send \(appState.pendingVisitsCount) ventende", systemImage: "paperplane") {
+                                Task { await appState.refreshAll() }
+                            }
                         }
                         Button("Logg ut", systemImage: "person.crop.circle.badge.minus") {
                             appState.signOut()

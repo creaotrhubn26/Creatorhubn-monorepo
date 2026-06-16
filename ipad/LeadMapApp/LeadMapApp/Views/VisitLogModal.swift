@@ -186,12 +186,16 @@ struct VisitLogModal: View {
     }
 
     private func save() async {
-        guard let api = appState.api else { return }
         saving = true
         errorMessage = nil
         do {
-            try await api.logVisit(leadId: lead.id, body: draft.toJSON())
+            try await appState.enqueueOrSendVisit(leadId: lead.id, body: draft.toJSON())
             await appState.refreshAll()
+            dismiss()
+        } catch is OfflineEnqueuedError {
+            // Lagret offline — vis kort feedback før dismiss
+            errorMessage = "✓ Lagret offline. Sendes når dekning er tilbake."
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
             dismiss()
         } catch {
             errorMessage = "Klarte ikke lagre: \(error.localizedDescription)"
