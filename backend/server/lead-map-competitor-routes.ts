@@ -24,6 +24,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { searchPlaces } from "./lead-map-service.js";
 import { assessCompetitorThreat } from "./competitor-threat-assessment.js";
 import { fetchBestLogo } from "./lead-logo-fetcher.js";
+import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 
 /**
  * Fire-and-forget: hent logo for opptil 10 leads som mangler logo_url
@@ -203,6 +204,7 @@ export function registerLeadMapCompetitorRoutes({
   // ─── POST /competitors (manuell add) ──────────────────────────────
   app.post(
     "/api/admin-room/lead-map/competitors",
+    requireLeadMapPermission("competitors.create", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -310,6 +312,7 @@ export function registerLeadMapCompetitorRoutes({
   // ─── PATCH /competitors/:id ───────────────────────────────────────
   app.patch(
     "/api/admin-room/lead-map/competitors/:id",
+    requireLeadMapPermission("competitors.update", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -350,6 +353,7 @@ export function registerLeadMapCompetitorRoutes({
   // ─── DELETE /competitors/:id ──────────────────────────────────────
   app.delete(
     "/api/admin-room/lead-map/competitors/:id",
+    requireLeadMapPermission("competitors.delete", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -690,6 +694,7 @@ export function registerLeadMapCompetitorRoutes({
   // kaller separat /save for å lagre som marketing_workflow.
   app.post(
     "/api/admin-room/lead-map/competitors/:id/counter-campaign",
+    requireLeadMapPermission("ai.use_claude", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -716,6 +721,7 @@ export function registerLeadMapCompetitorRoutes({
   // workflow.notes (JSON) for å vise innholdet.
   app.post(
     "/api/admin-room/lead-map/competitors/:id/counter-campaign/save",
+    requireLeadMapPermission("competitors.update", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -737,6 +743,7 @@ export function registerLeadMapCompetitorRoutes({
   // ─── POST /competitors/:id/assess (Claude threat-vurdering) ───────
   app.post(
     "/api/admin-room/lead-map/competitors/:id/assess",
+    requireLeadMapPermission("ai.use_claude", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -872,6 +879,7 @@ export function registerLeadMapCompetitorRoutes({
   // Returnerer: { imported: n, skipped: [{name, reason}] }
   app.post(
     "/api/admin-room/lead-map/leads/import-csv",
+    requireLeadMapPermission("leads.create", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -973,6 +981,7 @@ export function registerLeadMapCompetitorRoutes({
   // crm_customers.enrichment_data (JSONB). Cache 30 dager.
   app.post(
     "/api/admin-room/lead-map/leads/:id/enrich",
+    requireLeadMapPermission("leads.update", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -1001,6 +1010,7 @@ export function registerLeadMapCompetitorRoutes({
   // ringe, sende email, DM-e på Instagram, dra på besøk, eller noe annet.
   app.post(
     "/api/admin-room/lead-map/leads/:id/strategy",
+    requireLeadMapPermission("ai.use_claude", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -1024,6 +1034,7 @@ export function registerLeadMapCompetitorRoutes({
   // ─── POST /leads/rank-all (Claude rangering av leads) ─────────────
   app.post(
     "/api/admin-room/lead-map/leads/rank-all",
+    requireLeadMapPermission("ai.use_claude", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
