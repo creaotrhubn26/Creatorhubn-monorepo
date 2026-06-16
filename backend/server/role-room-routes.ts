@@ -13159,6 +13159,110 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   });
 
+  // SSE-stream for produsent-varsler (cluster D — erstatter 15-30s polling med
+  // near-instant push). Server-side poll→push: hver tilkoblet instans poller
+  // DB-en og dytter deltaer til SINE klienter, så det fungerer på tvers av
+  // Render-instanser uten LISTEN/NOTIFY. Klienten leser via fetch-streaming
+  // (ikke EventSource — vi trenger auth-headere) og faller tilbake til vanlig
+  // polling hvis streamen feiler.
+  router.get('/projects/:projectId/producer/notifications/stream', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+    const projectId = req.params.projectId;
+    const userId = getUserId(req);
+    let roleRecord: Awaited<ReturnType<typeof getProjectRoleRecord>>;
+    try {
+      roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    } catch {
+      res.status(500).json({ error: 'Kunne ikke verifisere tilgang' });
+      return;
+    }
+    if (!canReadProducerNotifications(req, roleRecord)) {
+      res.status(403).json({ error: 'Mangler tilgang til varsler' });
+      return;
+    }
+    const audiences = getProducerNotificationAudiences(req, roleRecord);
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // unngå proxy-buffering (Render)
+    res.flushHeaders?.();
+
+    let closed = false;
+    let pollId: ReturnType<typeof setInterval> | null = null;
+    let pingId: ReturnType<typeof setInterval> | null = null;
+    let maxId: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanup = (): void => {
+      if (closed) return;
+      closed = true;
+      if (pollId) clearInterval(pollId);
+      if (pingId) clearInterval(pingId);
+      if (maxId) clearTimeout(maxId);
+      try { res.end(); } catch { /* ignore */ }
+    };
+
+    const writeEvent = (event: string, data: unknown): void => {
+      if (closed) return;
+      try {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch { /* socket torn down */ }
+    };
+
+    writeEvent('connected', { projectId, at: new Date().toISOString() });
+
+    // lastSeen starter nå — klienten har nettopp gjort en initial GET, så vi
+    // pusher kun nye/oppdaterte varsler etter dette punktet.
+    let lastSeen = new Date().toISOString();
+    const poll = async (): Promise<void> => {
+      if (closed) return;
+      try {
+        const result = await pool.query(
+          `SELECT notification.*, reads.read_at,
+                  CASE WHEN reads.read_at IS NULL THEN FALSE ELSE TRUE END AS read
+           FROM role_room_project_notifications notification
+           LEFT JOIN role_room_project_notification_reads reads
+             ON reads.notification_id = notification.id AND reads.user_id = $2
+           WHERE notification.project_id = $1
+             AND notification.audience = ANY($3::text[])
+             AND notification.updated_at > $4
+           ORDER BY notification.updated_at ASC
+           LIMIT 50`,
+          [projectId, userId, audiences, lastSeen],
+        );
+        for (const row of result.rows) {
+          const typedRow = row as ProducerProjectNotificationRow;
+          const updatedAt = (row as { updated_at?: unknown }).updated_at;
+          const iso = updatedAt instanceof Date
+            ? updatedAt.toISOString()
+            : typeof updatedAt === 'string' ? updatedAt : null;
+          if (iso && iso > lastSeen) lastSeen = iso;
+          writeEvent('notification', buildProducerProjectNotificationResponse(typedRow));
+        }
+      } catch {
+        // Best-effort — behold tilkoblingen; klientens poll-fallback dekker hull.
+      }
+    };
+
+    pollId = setInterval(() => { void poll(); }, 4000);
+    pingId = setInterval(() => {
+      if (closed) return;
+      try { res.write(`: ping\n\n`); } catch { /* ignore */ }
+    }, 20000);
+    // Be klienten reconnecte etter 5 min så vi ikke holder stale long-lived
+    // connections (Render proxy timer dem uansett ut til slutt).
+    maxId = setTimeout(() => {
+      writeEvent('reconnect', { reason: 'max_duration' });
+      cleanup();
+    }, 5 * 60 * 1000);
+
+    req.on('close', cleanup);
+  });
+
   router.get('/projects/:projectId/producer/expenses', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!(await ensureProducerWorkflowTables())) {
       res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });

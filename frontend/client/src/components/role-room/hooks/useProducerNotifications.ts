@@ -77,6 +77,26 @@ export function useProducerNotifications(projectId?: string, pollIntervalMs = 30
     return () => window.clearInterval(intervalId);
   }, [load, pollIntervalMs, projectId]);
 
+  // SSE-stream (cluster D): near-instant push av nye/oppdaterte varsler.
+  // Pollingen over fortsetter som fallback hvis streamen feiler — vi stopper
+  // den ikke, men streamen gjør at oppdateringer dukker opp umiddelbart i
+  // stedet for ved neste poll-tick.
+  useEffect(() => {
+    if (!projectId) {
+      return () => undefined;
+    }
+    const stop = producerWorkflowService.streamNotifications(projectId, {
+      onNotification: (incoming) => {
+        setItems((previous) => {
+          const rest = previous.filter((item) => item.id !== incoming.id);
+          // Nyeste/oppdaterte først — matcher updated_at-desc-sorteringen.
+          return [incoming, ...rest];
+        });
+      },
+    });
+    return stop;
+  }, [projectId]);
+
   const markAsRead = useCallback(async (notificationId: string) => {
     if (!projectId) throw new Error('Mangler projectId');
     await producerWorkflowService.markNotificationRead(projectId, notificationId);
