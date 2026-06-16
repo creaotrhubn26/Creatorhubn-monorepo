@@ -28,9 +28,21 @@ struct PairingView: View {
 
             instructionsCard
 
-            // TODO Fase 3: erstatt med ekte QR-scanner (AVCaptureSession)
-            ScannerStub()
-                .frame(maxWidth: 420, maxHeight: 200)
+            QRScannerView(
+                onScan: { payload in
+                    Task { await exchangeQR(payload) }
+                },
+                onError: { error in
+                    errorMessage = error.localizedDescription
+                }
+            )
+            .frame(maxWidth: 420, maxHeight: 220)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(Color.purple.opacity(0.5), lineWidth: 2)
+            )
+            .padding(.horizontal, 32)
 
             VStack(spacing: 12) {
                 Text("Eller skriv koden manuelt")
@@ -121,25 +133,22 @@ struct PairingView: View {
         }
         isPairing = false
     }
-}
 
-/// Placeholder for ekte QR-scanner. Fase 3 erstatter med AVCaptureSession.
-private struct ScannerStub: View {
-    var body: some View {
-        RoundedRectangle(cornerRadius: 16)
-            .strokeBorder(.secondary, style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
-            .overlay(
-                VStack(spacing: 8) {
-                    Image(systemName: "qrcode.viewfinder")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.secondary)
-                    Text("QR-scanner kommer i neste versjon")
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                }
-            )
-            .background(Color.black.opacity(0.1))
-            .padding(.horizontal, 32)
+    /// Trigget av QR-scanner når en kode oppdages. Forventer
+    /// `ROLE-ROOM-PAIR:<token>` payload generert av web.
+    private func exchangeQR(_ payload: String) async {
+        guard !isPairing else { return }
+        isPairing = true
+        errorMessage = nil
+        do {
+            let response = try await PairExchangeService.shared.exchange(qrPayload: payload)
+            await appState.signIn(token: response.bearer, email: response.user.email)
+        } catch let err as PairExchangeError {
+            errorMessage = err.errorDescription
+        } catch {
+            errorMessage = "Uventet feil: \(error.localizedDescription)"
+        }
+        isPairing = false
     }
 }
 

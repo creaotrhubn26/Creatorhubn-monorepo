@@ -31,6 +31,25 @@ final class AppState {
     var calendar: [CalendarEvent] = []
     var reminders: RemindersResponse?
 
+    // Prosjekt-kontekst — hvilken bedrift jobber jeg for?
+    var projects: [ProjectListItem] = []
+    var activeProjectSummary: ProjectSummary?
+    var activeProjectId: String? {
+        didSet {
+            if let id = activeProjectId {
+                UserDefaults.standard.set(id, forKey: "rr.lead_map.active_project")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "rr.lead_map.active_project")
+            }
+            Task { await refreshAll() }
+            if let id = activeProjectId {
+                Task { await loadProjectSummary(id: id) }
+            } else {
+                self.activeProjectSummary = nil
+            }
+        }
+    }
+
     // Aktivt valgt
     var selectedLead: LeadModel?
     var selectedCompetitor: CompetitorModel?
@@ -41,15 +60,33 @@ final class AppState {
     var isUsingStaleCache: Bool = false
 
     func bootstrap() async {
-        // 1. Last fra cache umiddelbart så UI er responsivt selv før refresh
+        // 1. Hent persistert prosjekt-valg før vi laster cache så
+        //    refreshAll bruker riktig filter umiddelbart.
+        if let stored = UserDefaults.standard.string(forKey: "rr.lead_map.active_project"), !stored.isEmpty {
+            self.activeProjectId = stored
+        }
+
+        // 2. Last fra cache umiddelbart så UI er responsivt selv før refresh
         await loadFromCache()
 
-        // 2. Hvis vi har token, prøv refresh — overskriver cache ved suksess
+        // 3. Hvis vi har token, prøv refresh — overskriver cache ved suksess
         if let token = AuthClient.loadToken() {
             self.authToken = token
             self.userEmail = AuthClient.loadEmail()
             self.api = APIClient(token: token)
             await refreshAll()
+            if let id = activeProjectId {
+                await loadProjectSummary(id: id)
+            }
+        }
+    }
+
+    func loadProjectSummary(id: String) async {
+        guard let api else { return }
+        do {
+            self.activeProjectSummary = try await api.fetchProjectSummary(id: id)
+        } catch {
+            print("[AppState] projectSummary failed: \(error)")
         }
     }
 
@@ -76,17 +113,20 @@ final class AppState {
 
     func refreshAll() async {
         guard let api else { return }
-        async let leadsTask = api.fetchLeads()
-        async let competitorsTask = api.fetchCompetitors()
-        async let metricsTask = api.fetchMetrics()
-        async let calendarTask = api.fetchCalendar()
-        async let remindersTask = api.fetchReminders()
+        let proj = activeProjectId
+        async let leadsTask = api.fetchLeads(projectId: proj)
+        async let competitorsTask = api.fetchCompetitors(projectId: proj)
+        async let metricsTask = api.fetchMetrics(projectId: proj)
+        async let calendarTask = api.fetchCalendar(projectId: proj)
+        async let remindersTask = api.fetchReminders(projectId: proj)
+        async let projectsTask = api.fetchProjects()
         do {
             let newLeads = try await leadsTask
             let newComps = try await competitorsTask
             let newMetrics = try await metricsTask
             let newCal = try await calendarTask
             let newRem = try await remindersTask
+            self.projects = (try? await projectsTask) ?? []
 
             self.leads = newLeads
             self.competitors = newComps

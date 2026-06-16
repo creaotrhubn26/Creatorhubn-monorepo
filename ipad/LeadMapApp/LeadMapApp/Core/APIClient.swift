@@ -24,8 +24,15 @@ actor APIClient {
 
     // MARK: - GET-endepunkter
 
-    func fetchLeads() async throws -> [LeadModel] {
-        let resp: LeadsResponse = try await get("/api/admin-room/lead-map/leads")
+    /// Bygg ?projectId=… query-string når aktivt prosjekt er satt.
+    private func projectQuery(_ projectId: String?, sep: String = "?") -> String {
+        guard let p = projectId, !p.isEmpty else { return "" }
+        let encoded = p.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? p
+        return "\(sep)projectId=\(encoded)"
+    }
+
+    func fetchLeads(projectId: String? = nil) async throws -> [LeadModel] {
+        let resp: LeadsResponse = try await get("/api/admin-room/lead-map/leads\(projectQuery(projectId))")
         return resp.leads
     }
 
@@ -33,22 +40,31 @@ actor APIClient {
         try await get("/api/admin-room/lead-map/leads/\(id)")
     }
 
-    func fetchCompetitors() async throws -> [CompetitorModel] {
-        let resp: CompetitorsResponse = try await get("/api/admin-room/lead-map/competitors")
+    func fetchCompetitors(projectId: String? = nil) async throws -> [CompetitorModel] {
+        let resp: CompetitorsResponse = try await get("/api/admin-room/lead-map/competitors\(projectQuery(projectId))")
         return resp.competitors
     }
 
-    func fetchMetrics() async throws -> MetricsModel {
-        try await get("/api/admin-room/lead-map/metrics")
+    func fetchMetrics(projectId: String? = nil) async throws -> MetricsModel {
+        try await get("/api/admin-room/lead-map/metrics\(projectQuery(projectId))")
     }
 
-    func fetchCalendar() async throws -> [CalendarEvent] {
-        let resp: CalendarResponse = try await get("/api/admin-room/lead-map/calendar")
+    func fetchCalendar(projectId: String? = nil) async throws -> [CalendarEvent] {
+        let resp: CalendarResponse = try await get("/api/admin-room/lead-map/calendar\(projectQuery(projectId))")
         return resp.events
     }
 
-    func fetchReminders() async throws -> RemindersResponse {
-        try await get("/api/admin-room/lead-map/reminders")
+    func fetchReminders(projectId: String? = nil) async throws -> RemindersResponse {
+        try await get("/api/admin-room/lead-map/reminders\(projectQuery(projectId))")
+    }
+
+    func fetchProjects() async throws -> [ProjectListItem] {
+        let resp: ProjectsResponse = try await get("/api/admin-room/lead-map/projects")
+        return resp.projects
+    }
+
+    func fetchProjectSummary(id: String) async throws -> ProjectSummary {
+        try await get("/api/admin-room/lead-map/projects/\(id)/summary")
     }
 
     func fetchEnrichment(leadId: String) async throws -> EnrichmentModel? {
@@ -161,6 +177,7 @@ enum APIError: Error {
 // MARK: - Response envelopes
 
 private struct LeadsResponse: Decodable { let leads: [LeadModel] }
+private struct ProjectsResponse: Decodable { let projects: [ProjectListItem] }
 private struct CompetitorsResponse: Decodable { let competitors: [CompetitorModel] }
 private struct CalendarResponse: Decodable { let events: [CalendarEvent] }
 private struct EnrichmentEnvelope: Decodable { let enrichment: EnrichmentModel? }

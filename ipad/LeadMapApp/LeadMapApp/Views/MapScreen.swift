@@ -59,10 +59,11 @@ struct MapHomeView: View {
                 .mapStyle(.standard(elevation: .flat))
                 .ignoresSafeArea(edges: .bottom)
 
-                // Banner-overlay (vises kun hvis det er noe å minne om)
-                VStack {
-                    RemindersBanner()
+                // Topp-overlay: prosjekt-kort + reminders-banner
+                VStack(spacing: 8) {
+                    ProjectContextCard()
                         .padding(.top, 4)
+                    RemindersBanner()
                     Spacer()
                 }
             }
@@ -81,6 +82,7 @@ struct MapHomeView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     HStack(spacing: 6) {
+                        ProjectPicker()
                         if let metrics = appState.metrics {
                             Text("\(metrics.totalLeads) leads")
                                 .font(.caption.bold())
