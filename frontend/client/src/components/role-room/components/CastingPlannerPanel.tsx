@@ -142,6 +142,7 @@ import {
 import type { CastingProject, Role, Candidate, ContactInfo, Schedule, UserRole, UserRoleType } from '../models/casting';
 import { RichTextEditor } from './RichTextEditor';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import ProducerInboxRow from './producer/ProducerInboxRow';
 import { AuditionSchedulePanel } from './AuditionSchedulePanel';
 import rolesBackdrop4 from './icons/Keep/roles_backdrop_4.png';
 import { storyLogicService, type StoryLogicState } from '../services/storyLogicService';
@@ -3308,6 +3309,19 @@ type RoleRoomProjectWorkspaceState = {
     const hydrateWorkspaceState = async () => {
       const stored = await loadPersistedWorkspaceState();
       if (cancelled || !stored) {
+        return;
+      }
+      // 2026-06-13: Hvis URL er ren rot (ingen tab/project/surface/view i
+      // query), IKKE auto-restore backend workspace state. Uten dette blir
+      // brukere fast i sist åpne prosjekt selv når de bevisst går til
+      // theroleroom.com/ for å se dashboard. Deep-links (med ?project=...)
+      // restorerer fortsatt fordi de har URL-params.
+      const sp = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams();
+      const urlAsksForRestore =
+        !!sp.get('tab') || !!sp.get('project') || !!sp.get('surface') || !!sp.get('view');
+      if (!urlAsksForRestore) {
         return;
       }
       // URL-seedet ref (?project=<id>) skal overstyre stored=null. Uten
@@ -8953,6 +8967,25 @@ type RoleRoomProjectWorkspaceState = {
                 }}
               />
               {pinnedProjectIdSet.has(projectQuickActionsProject?.id ?? '') ? 'Løsne fra toppen' : 'Fest til toppen'}
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                // Lukk prosjektet: rydd state + URL slik at brukeren havner
+                // på dashboard og kan navigere fritt (Admin Room etc).
+                setCurrentProject(null);
+                setCurrentProjectId(null);
+                setActiveTab(0);
+                if (typeof window !== 'undefined') {
+                  try {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                  } catch { /* ignore */ }
+                }
+                handleCloseProjectQuickActions();
+              }}
+              sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
+            >
+              <CloseIcon sx={{ fontSize: 18, color: '#fda4af' }} />
+              Lukk prosjekt
             </MenuItem>
             {projectQuickActionsProject && canSwitchRoleRoomRole && !isTemplateProject(projectQuickActionsProject) ? (
               <MenuItem
@@ -15498,80 +15531,15 @@ type RoleRoomProjectWorkspaceState = {
               </Box>
             ) : null}
 
-            {visibleProducerInboxItems.map((item) => {
-              const createdAtLabel = item.created_at
-                ? new Date(item.created_at).toLocaleString('nb-NO', {
-                  day: '2-digit',
-                  month: 'short',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-                : '';
-              const isResolved = Boolean(item.resolved_at);
-              return (
-                <Box
-                  key={item.id}
-                  sx={{
-                    p: 1.25,
-                    borderRadius: 2.2,
-                    border: item.read ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(56,189,248,0.34)',
-                    bgcolor: item.read ? 'rgba(15,23,42,0.52)' : 'rgba(8,47,73,0.32)',
-                  }}
-                >
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ sm: 'flex-start' }}>
-                    <Box sx={{ minWidth: 0 }}>
-                      <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap" useFlexGap>
-                        <Chip
-                          size="small"
-                          label={item.inbox_type || item.event_type || 'Varsel'}
-                          sx={{ height: 21, bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe', fontWeight: 800 }}
-                        />
-                        {!item.read ? <Chip size="small" label="Ulest" sx={{ height: 21, bgcolor: 'rgba(248,113,113,0.16)', color: '#fecaca', fontWeight: 800 }} /> : null}
-                        {isResolved ? <Chip size="small" label="Løst" sx={{ height: 21, bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 800 }} /> : null}
-                      </Stack>
-                      <Typography sx={{ mt: 0.75, color: '#fff', fontWeight: 850, lineHeight: 1.25 }}>
-                        {item.title}
-                      </Typography>
-                      {item.message ? (
-                        <Typography sx={{ mt: 0.35, color: 'rgba(226,232,240,0.68)', fontSize: '0.82rem', lineHeight: 1.45 }}>
-                          {item.message}
-                        </Typography>
-                      ) : null}
-                      <Typography sx={{ mt: 0.55, color: 'rgba(148,163,184,0.72)', fontSize: '0.72rem' }}>
-                        {[item.client_name, createdAtLabel, item.assigned_to_label ? `Ansvar: ${item.assigned_to_label}` : null].filter(Boolean).join(' • ')}
-                      </Typography>
-                    </Box>
-                    <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap justifyContent={{ xs: 'flex-start', sm: 'flex-end' }}>
-                      {!item.read ? (
-                        <Button
-                          size="small"
-                          onClick={() => { void markProducerInboxAsRead(item.id); }}
-                          sx={{ textTransform: 'none', color: '#bae6fd', fontWeight: 800 }}
-                        >
-                          Lest
-                        </Button>
-                      ) : null}
-                      {!isResolved ? (
-                        <Button
-                          size="small"
-                          onClick={() => { void resolveProducerInboxNotification(item.id, true); }}
-                          sx={{ textTransform: 'none', color: '#86efac', fontWeight: 800 }}
-                        >
-                          Løs
-                        </Button>
-                      ) : null}
-                      <Button
-                        size="small"
-                        onClick={() => { void archiveProducerInboxNotification(item.id, true); }}
-                        sx={{ textTransform: 'none', color: 'rgba(226,232,240,0.68)', fontWeight: 800 }}
-                      >
-                        Arkiver
-                      </Button>
-                    </Stack>
-                  </Stack>
-                </Box>
-              );
-            })}
+            {visibleProducerInboxItems.map((item) => (
+              <ProducerInboxRow
+                key={item.id}
+                item={item}
+                onRead={(id) => { void markProducerInboxAsRead(id); }}
+                onResolve={(id) => { void resolveProducerInboxNotification(id, true); }}
+                onArchive={(id) => { void archiveProducerInboxNotification(id, true); }}
+              />
+            ))}
           </Box>
         </DialogContent>
       </Dialog>
