@@ -25,7 +25,7 @@ import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
 import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined';
 import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
-import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { Circle, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
@@ -66,7 +66,11 @@ import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined';
 import LocalPhoneOutlinedIcon from '@mui/icons-material/LocalPhoneOutlined';
 import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined';
 import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined';
-import { Menu } from '@mui/material';
+import { Menu, Slider } from '@mui/material';
+import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined';
+import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
+import KeyboardOutlinedIcon from '@mui/icons-material/KeyboardOutlined';
 
 type LeadStatus =
   | 'unvisited' | 'visited' | 'return' | 'not_present' | 'declined'
@@ -327,6 +331,44 @@ function formatRelative(iso: string): string {
   return `${days} d siden`;
 }
 
+// De største norske byene m/ koordinater til sentrum. Brukes både til
+// by-dropdown og til å lage radius-overlay på kartet.
+const KNOWN_CITIES: Array<{ key: string; label: string; lat: number; lng: number; defaultRadiusKm: number }> = [
+  { key: 'oslo', label: 'Oslo', lat: 59.9139, lng: 10.7522, defaultRadiusKm: 10 },
+  { key: 'bergen', label: 'Bergen', lat: 60.3913, lng: 5.3221, defaultRadiusKm: 10 },
+  { key: 'trondheim', label: 'Trondheim', lat: 63.4305, lng: 10.3951, defaultRadiusKm: 10 },
+  { key: 'stavanger', label: 'Stavanger', lat: 58.9700, lng: 5.7331, defaultRadiusKm: 10 },
+  { key: 'drammen', label: 'Drammen', lat: 59.7440, lng: 10.2045, defaultRadiusKm: 8 },
+  { key: 'fredrikstad', label: 'Fredrikstad', lat: 59.2181, lng: 10.9298, defaultRadiusKm: 8 },
+  { key: 'kristiansand', label: 'Kristiansand', lat: 58.1599, lng: 8.0182, defaultRadiusKm: 10 },
+  { key: 'sandnes', label: 'Sandnes', lat: 58.8516, lng: 5.7361, defaultRadiusKm: 8 },
+  { key: 'tromsø', label: 'Tromsø', lat: 69.6492, lng: 18.9553, defaultRadiusKm: 10 },
+  { key: 'ålesund', label: 'Ålesund', lat: 62.4722, lng: 6.1495, defaultRadiusKm: 8 },
+  { key: 'bodø', label: 'Bodø', lat: 67.2804, lng: 14.4049, defaultRadiusKm: 8 },
+  { key: 'haugesund', label: 'Haugesund', lat: 59.4138, lng: 5.2680, defaultRadiusKm: 8 },
+  { key: 'tønsberg', label: 'Tønsberg', lat: 59.2674, lng: 10.4079, defaultRadiusKm: 8 },
+  { key: 'arendal', label: 'Arendal', lat: 58.4610, lng: 8.7727, defaultRadiusKm: 8 },
+  { key: 'porsgrunn', label: 'Porsgrunn', lat: 59.1404, lng: 9.6561, defaultRadiusKm: 8 },
+  { key: 'larvik', label: 'Larvik', lat: 59.0533, lng: 10.0357, defaultRadiusKm: 8 },
+  { key: 'moss', label: 'Moss', lat: 59.4370, lng: 10.6643, defaultRadiusKm: 8 },
+  { key: 'sandefjord', label: 'Sandefjord', lat: 59.1313, lng: 10.2166, defaultRadiusKm: 8 },
+  { key: 'lillehammer', label: 'Lillehammer', lat: 61.1153, lng: 10.4663, defaultRadiusKm: 8 },
+  { key: 'hamar', label: 'Hamar', lat: 60.7945, lng: 11.0680, defaultRadiusKm: 8 },
+];
+
+// Haversine-avstand i km mellom to lat/lng-punkter
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // jordens radius i km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
 function MapBoundsTracker({ onBoundsChange }: { onBoundsChange: (b: L.LatLngBounds) => void }) {
   const map = useMap();
   useEffect(() => {
@@ -366,6 +408,40 @@ export default function LeadMapPanel() {
   const [statusFilter, setStatusFilter] = useState<LeadStatus[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  // Radius-filter: "Vis innen X km av {sted}". null = ikke aktivt.
+  const [radiusFilter, setRadiusFilter] = useState<{
+    centerLat: number;
+    centerLng: number;
+    label: string;
+    radiusKm: number;
+  } | null>(null);
+
+  // SSB demografi cached per lead-id (klient-side)
+  type Demographics = {
+    found: boolean;
+    city?: string;
+    kommuneNr?: string;
+    population?: number | null;
+    marketPotential?: number;
+    fetchedAt: string;
+  };
+  const [demographicsByLeadId, setDemographicsByLeadId] = useState<Record<string, Demographics | null>>({});
+
+  // CSV-import
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
+  const [csvParsing, setCsvParsing] = useState(false);
+  const [csvPreview, setCsvPreview] = useState<Array<Record<string, string>> | null>(null);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvImportResult, setCsvImportResult] = useState<{
+    imported: number;
+    skipped: Array<{ name: string; reason: string }>;
+    total: number;
+  } | null>(null);
+
+  // Hotkey-hjelp-overlay
+  const [hotkeysOpen, setHotkeysOpen] = useState(false);
   const boundsRef = useRef<L.LatLngBounds | null>(null);
 
   // View-toggles — bestemmer hvilke pins som vises på kartet
@@ -778,6 +854,127 @@ export default function LeadMapPanel() {
   );
 
   // Hent BRREG-berikkelse (cache hvis allerede berikket)
+  // Hent SSB-demografi (caches per lead-id)
+  const loadDemographics = useCallback(async (leadId: string) => {
+    if (demographicsByLeadId[leadId] !== undefined) return;
+    try {
+      const r = await fetch(`/api/admin-room/lead-map/leads/${leadId}/demographics`, {
+        credentials: 'include', headers: authHeaders(),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setDemographicsByLeadId((prev) => ({ ...prev, [leadId]: data.demographics ?? null }));
+      }
+    } catch { /* noop */ }
+  }, [demographicsByLeadId]);
+
+  // Parse CSV i nettleseren — enkelt komma-separert med quote-håndtering
+  const parseCsvFile = useCallback(async (file: File) => {
+    setCsvParsing(true);
+    setCsvPreview(null);
+    setCsvImportResult(null);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2) throw new Error('CSV må ha header + minst 1 rad');
+
+      const parseLine = (line: string): string[] => {
+        const result: string[] = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
+            else inQuotes = !inQuotes;
+          } else if (ch === ',' && !inQuotes) {
+            result.push(cur); cur = '';
+          } else {
+            cur += ch;
+          }
+        }
+        result.push(cur);
+        return result;
+      };
+
+      const headers = parseLine(lines[0]).map((h) => h.trim().toLowerCase());
+      const rows: Array<Record<string, string>> = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cells = parseLine(lines[i]);
+        const row: Record<string, string> = {};
+        headers.forEach((h, j) => { row[h] = (cells[j] ?? '').trim(); });
+        rows.push(row);
+      }
+      setCsvHeaders(headers);
+      setCsvPreview(rows.slice(0, 100));
+    } catch (e) {
+      setCsvImportResult({ imported: 0, skipped: [{ name: '(parse-feil)', reason: String(e) }], total: 0 });
+    } finally {
+      setCsvParsing(false);
+    }
+  }, []);
+
+  // Send parsed CSV til backend
+  const submitCsvImport = useCallback(async () => {
+    if (!csvPreview) return;
+    setCsvImporting(true);
+    try {
+      const map = (row: Record<string, string>, ...keys: string[]) => {
+        for (const k of keys) if (row[k]?.trim()) return row[k].trim();
+        return undefined;
+      };
+      const leads = csvPreview.map((row) => ({
+        name: map(row, 'name', 'navn', 'firma', 'company'),
+        company: map(row, 'company', 'firma', 'selskap'),
+        address: map(row, 'address', 'adresse'),
+        city: map(row, 'city', 'by', 'sted', 'poststed'),
+        postalCode: map(row, 'postal_code', 'postnr', 'postnummer'),
+        country: map(row, 'country', 'land'),
+        phone: map(row, 'phone', 'telefon', 'tlf'),
+        email: map(row, 'email', 'epost', 'e-post'),
+        websiteUrl: map(row, 'website', 'website_url', 'nettside', 'web'),
+        category: map(row, 'category', 'kategori', 'bransje'),
+        notes: map(row, 'notes', 'notater', 'beskrivelse'),
+        latitude: row.latitude ? parseFloat(row.latitude) : undefined,
+        longitude: row.longitude ? parseFloat(row.longitude) : undefined,
+      })).filter((l) => l.name);
+
+      const r = await fetch('/api/admin-room/lead-map/leads/import-csv', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ leads }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setCsvImportResult(data);
+        void fetchLeads(boundsRef.current ?? undefined);
+        void fetchMeta();
+      } else {
+        const e = await r.json().catch(() => ({}));
+        setCsvImportResult({ imported: 0, skipped: [{ name: '(api-feil)', reason: e.error ?? `HTTP ${r.status}` }], total: leads.length });
+      }
+    } finally {
+      setCsvImporting(false);
+    }
+  }, [csvPreview, fetchLeads, fetchMeta]);
+
+  // Eksport — laster ned CSV
+  const exportLeadsCsv = useCallback(() => {
+    void (async () => {
+      const r = await fetch('/api/admin-room/lead-map/leads/export-csv', {
+        credentials: 'include', headers: authHeaders(),
+      });
+      if (!r.ok) return;
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    })();
+  }, []);
+
   const loadEnrichment = useCallback(async (leadId: string) => {
     if (enrichmentByLeadId[leadId] !== undefined) return; // allerede lastet
     try {
@@ -905,12 +1102,72 @@ export default function LeadMapPanel() {
     fetchReminders();
   }, [fetchLeads, fetchMeta, fetchCompetitors, fetchLeaderboard, fetchCalendar, fetchReminders]);
 
-  // Auto-last BRREG-berikkelse når lead velges
+  // Auto-last BRREG-berikkelse + SSB-demografi når lead velges
   useEffect(() => {
     if (selected?.id) {
       void loadEnrichment(selected.id);
+      void loadDemographics(selected.id);
     }
-  }, [selected?.id, loadEnrichment]);
+  }, [selected?.id, loadEnrichment, loadDemographics]);
+
+  // Hotkeys — power-user-snarveier (kun aktive når ikke i input/textarea)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const inField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      // '/' = fokuser søk (alltid, selv i input — for kjent vim/Discord-mønster)
+      if (e.key === '/' && !inField) {
+        e.preventDefault();
+        const searchEl = document.querySelector<HTMLInputElement>('input[placeholder*="Søk leads"]');
+        searchEl?.focus();
+        return;
+      }
+      if (inField) return;
+
+      // '?' = vis hotkey-hjelp
+      if (e.key === '?' || (e.shiftKey && e.key === '?')) {
+        e.preventDefault();
+        setHotkeysOpen(true);
+        return;
+      }
+
+      // Esc = lukk valg + radius-filter
+      if (e.key === 'Escape') {
+        setSelected(null);
+        setSelectedCompetitor(null);
+        return;
+      }
+
+      // Slett: Delete / Backspace når noe valgt
+      if ((e.key === 'Delete' || e.key === 'Backspace')) {
+        if (selectedCompetitor) {
+          e.preventDefault();
+          void deleteCompetitor(selectedCompetitor.id);
+          return;
+        }
+      }
+
+      // Status-bytte 1-6 (krever lead valgt)
+      if (selected && /^[1-6]$/.test(e.key)) {
+        e.preventDefault();
+        const statusMap: Record<string, LeadStatus> = {
+          '1': 'return',
+          '2': 'not_present',
+          '3': 'declined',
+          '4': 'interested',
+          '5': 'meeting_booked',
+          '6': 'won',
+        };
+        const next = statusMap[e.key];
+        if (next && selected.status !== next) {
+          void updateStatusForLead(selected.id, next);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selected, selectedCompetitor, deleteCompetitor]);
 
   const handleBoundsChange = useCallback((b: L.LatLngBounds) => {
     boundsRef.current = b;
@@ -1083,8 +1340,14 @@ export default function LeadMapPanel() {
         return haystack.includes(normalizedQuery);
       });
     }
+    if (radiusFilter) {
+      pool = pool.filter((l) => {
+        const km = haversineKm(radiusFilter.centerLat, radiusFilter.centerLng, l.latitude, l.longitude);
+        return km <= radiusFilter.radiusKm;
+      });
+    }
     return pool;
-  }, [leads, statusFilter, showLeads, recommendedOnly, normalizedQuery]);
+  }, [leads, statusFilter, showLeads, recommendedOnly, normalizedQuery, radiusFilter]);
 
   const filteredCompetitors = useMemo(() => {
     if (!showCompetitors) return [];
@@ -1112,8 +1375,15 @@ export default function LeadMapPanel() {
         return haystack.includes(normalizedQuery);
       });
     }
+    if (radiusFilter) {
+      pool = pool.filter((c) => {
+        if (c.latitude == null || c.longitude == null) return false;
+        const km = haversineKm(radiusFilter.centerLat, radiusFilter.centerLng, c.latitude, c.longitude);
+        return km <= radiusFilter.radiusKm;
+      });
+    }
     return pool;
-  }, [competitors, showCompetitors, threatFilter, recommendedOnly, normalizedQuery]);
+  }, [competitors, showCompetitors, threatFilter, recommendedOnly, normalizedQuery, radiusFilter]);
 
   // Match-counters for søke-info-banner (bare leads/competitors WITHOUT
   // søk er full liste — så vi kan vise "X av Y treff" når søk er aktivt)
@@ -1277,6 +1547,27 @@ export default function LeadMapPanel() {
             >
               Status-rapport
             </Button>
+            <Button
+              size="small" variant="outlined"
+              onClick={() => setCsvImportOpen(true)}
+              startIcon={<UploadFileOutlinedIcon sx={{ fontSize: 16 }} />}
+              sx={{ color: palette.textSecondary, borderColor: palette.border, fontWeight: 700, fontSize: '0.78rem' }}
+            >
+              Import CSV
+            </Button>
+            <Button
+              size="small" variant="outlined"
+              onClick={exportLeadsCsv}
+              startIcon={<FileDownloadOutlinedIcon sx={{ fontSize: 16 }} />}
+              sx={{ color: palette.textSecondary, borderColor: palette.border, fontWeight: 700, fontSize: '0.78rem' }}
+            >
+              Eksport
+            </Button>
+            <Tooltip title="Hurtigtaster (eller trykk ?)">
+              <IconButton onClick={() => setHotkeysOpen(true)} sx={{ color: palette.textMuted }}>
+                <KeyboardOutlinedIcon />
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Oppdater">
               <IconButton onClick={() => {
                 void fetchLeads(boundsRef.current ?? undefined);
@@ -1288,6 +1579,88 @@ export default function LeadMapPanel() {
               </IconButton>
             </Tooltip>
           </Stack>
+        </Stack>
+
+        {/* By-radius-filter: dropdown + slider + tøm-knapp */}
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.4, flexWrap: 'wrap', gap: 0.8 }} useFlexGap>
+          <Typography sx={{ fontSize: '0.7rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Område
+          </Typography>
+          <Select
+            size="small"
+            value={radiusFilter ? KNOWN_CITIES.find(c => Math.abs(c.lat - radiusFilter.centerLat) < 0.01)?.key ?? '' : ''}
+            displayEmpty
+            onChange={(e) => {
+              const cityKey = e.target.value as string;
+              if (!cityKey) {
+                setRadiusFilter(null);
+                return;
+              }
+              const city = KNOWN_CITIES.find((c) => c.key === cityKey);
+              if (city) {
+                setRadiusFilter({
+                  centerLat: city.lat,
+                  centerLng: city.lng,
+                  label: city.label,
+                  radiusKm: radiusFilter?.radiusKm ?? city.defaultRadiusKm,
+                });
+              }
+            }}
+            renderValue={(v) => {
+              if (!v) return <Box component="span" sx={{ color: palette.textMuted }}>Velg by …</Box>;
+              return KNOWN_CITIES.find((c) => c.key === v)?.label ?? v;
+            }}
+            sx={{
+              minWidth: 160,
+              bgcolor: 'rgba(168,85,247,0.06)',
+              color: palette.textSecondary,
+              borderRadius: 1.2,
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.border },
+              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: palette.borderStrong },
+              '& .MuiSvgIcon-root': { color: palette.textMuted },
+            }}
+          >
+            <MenuItem value="">
+              <em>Alle byer</em>
+            </MenuItem>
+            {KNOWN_CITIES.map((c) => (
+              <MenuItem key={c.key} value={c.key}>{c.label}</MenuItem>
+            ))}
+          </Select>
+          {radiusFilter && (
+            <>
+              <Typography sx={{ fontSize: '0.74rem', color: palette.textMuted, minWidth: 60 }}>
+                {radiusFilter.radiusKm} km radius
+              </Typography>
+              <Box sx={{ width: 160, px: 1 }}>
+                <Slider
+                  size="small"
+                  value={radiusFilter.radiusKm}
+                  min={1}
+                  max={50}
+                  step={1}
+                  onChange={(_, v) => {
+                    if (typeof v === 'number' && radiusFilter) {
+                      setRadiusFilter({ ...radiusFilter, radiusKm: v });
+                    }
+                  }}
+                  sx={{
+                    color: palette.amber,
+                    '& .MuiSlider-thumb': { boxShadow: `0 0 8px ${palette.amber}cc` },
+                  }}
+                />
+              </Box>
+              <Button
+                size="small" variant="text"
+                onClick={() => setRadiusFilter(null)}
+                sx={{ color: palette.textMuted, fontSize: '0.72rem', textTransform: 'none' }}
+              >
+                Tøm
+              </Button>
+            </>
+          )}
         </Stack>
 
         {/* View-toggles: Lead/Konkurrent/Anbefalt + Rank-leads-CTA */}
@@ -1629,6 +2002,20 @@ export default function LeadMapPanel() {
             >
               <TileLayer url={DARK_TILE_URL} attribution={DARK_TILE_ATTR} />
               <MapBoundsTracker onBoundsChange={handleBoundsChange} />
+              {/* Radius-overlay — visualiserer hvilket område filteret matcher */}
+              {radiusFilter && (
+                <Circle
+                  center={[radiusFilter.centerLat, radiusFilter.centerLng]}
+                  radius={radiusFilter.radiusKm * 1000}
+                  pathOptions={{
+                    color: palette.amber,
+                    fillColor: palette.amber,
+                    fillOpacity: 0.08,
+                    weight: 2,
+                    dashArray: '6 6',
+                  }}
+                />
+              )}
               {filteredLeads.map((lead) => (
                 <Marker
                   key={lead.id}
@@ -2499,6 +2886,52 @@ export default function LeadMapPanel() {
                         </Stack>
                       </Box>
                     )}
+                  </Box>
+                );
+              })()}
+
+              {/* SSB demografi — markedspotensial for lead-by */}
+              {(() => {
+                const demo = demographicsByLeadId[selected.id];
+                if (demo === undefined || !demo) return null;
+                if (!demo.found) return null;
+                const potColor = demo.marketPotential != null
+                  ? demo.marketPotential >= 70 ? '#34d399'
+                  : demo.marketPotential >= 40 ? palette.amber
+                  : '#94a3b8'
+                  : '#94a3b8';
+                return (
+                  <Box sx={{
+                    mb: 2, p: 1.4, borderRadius: 1.2,
+                    bgcolor: 'rgba(52,211,153,0.04)',
+                    border: '1px solid rgba(52,211,153,0.28)',
+                  }}>
+                    <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 0.6 }}>
+                      <GroupOutlinedIcon sx={{ color: '#34d399', fontSize: 16 }} />
+                      <Typography sx={{ fontSize: '0.66rem', color: '#34d399', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Marked (SSB)
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between">
+                      <Box>
+                        <Typography sx={{ fontSize: '0.62rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                          Befolkning {demo.city}
+                        </Typography>
+                        <Typography sx={{ fontSize: '1.05rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1 }}>
+                          {demo.population != null ? demo.population.toLocaleString('nb-NO') : '—'}
+                        </Typography>
+                      </Box>
+                      {demo.marketPotential != null && (
+                        <Box sx={{ textAlign: 'right' }}>
+                          <Typography sx={{ fontSize: '0.62rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                            Markeds­potensial
+                          </Typography>
+                          <Typography sx={{ fontSize: '1.05rem', fontWeight: 800, color: potColor, lineHeight: 1 }}>
+                            {demo.marketPotential}/100
+                          </Typography>
+                        </Box>
+                      )}
+                    </Stack>
                   </Box>
                 );
               })()}
@@ -3516,6 +3949,193 @@ export default function LeadMapPanel() {
             <Button onClick={() => setStaleListOpen(false)} sx={{ color: palette.textMuted }}>
               Lukk
             </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Hurtigtaster-hjelp */}
+        <Dialog
+          open={hotkeysOpen}
+          onClose={() => setHotkeysOpen(false)}
+          maxWidth="xs" fullWidth
+          PaperProps={{ sx: { bgcolor: palette.bgPanel, border: `1px solid ${palette.borderStrong}` } }}
+        >
+          <DialogTitle sx={{ color: palette.textPrimary }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <KeyboardOutlinedIcon sx={{ color: palette.accent }} />
+              <span>Hurtigtaster</span>
+            </Stack>
+          </DialogTitle>
+          <DialogContent>
+            <Stack spacing={1}>
+              {[
+                { key: '/', desc: 'Fokuser søkefeltet' },
+                { key: 'Esc', desc: 'Lukk valg + radius-filter' },
+                { key: 'Delete', desc: 'Slett valgt konkurrent' },
+                { key: '1', desc: 'Sett status: Return' },
+                { key: '2', desc: 'Sett status: Not Present' },
+                { key: '3', desc: 'Sett status: Declined' },
+                { key: '4', desc: 'Sett status: Interested' },
+                { key: '5', desc: 'Sett status: Meeting' },
+                { key: '6', desc: 'Sett status: Won' },
+                { key: '?', desc: 'Vis denne hjelp-dialogen' },
+              ].map((h) => (
+                <Stack key={h.key} direction="row" alignItems="center" spacing={1.4}>
+                  <Box sx={{
+                    minWidth: 48, textAlign: 'center',
+                    p: 0.4, borderRadius: 0.8,
+                    bgcolor: 'rgba(192,132,252,0.12)',
+                    border: `1px solid ${palette.border}`,
+                    color: palette.accent,
+                    fontWeight: 800, fontSize: '0.78rem',
+                    fontFamily: 'monospace',
+                  }}>
+                    {h.key}
+                  </Box>
+                  <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary }}>
+                    {h.desc}
+                  </Typography>
+                </Stack>
+              ))}
+            </Stack>
+            <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted, mt: 2, fontStyle: 'italic' }}>
+              Tips: status-bytte 1-6 krever at en lead er valgt. Trykk på en pin på kartet først.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setHotkeysOpen(false)} sx={{ color: palette.textMuted }}>Lukk</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* CSV-import */}
+        <Dialog
+          open={csvImportOpen}
+          onClose={() => !csvImporting && !csvParsing && setCsvImportOpen(false)}
+          maxWidth="md" fullWidth
+          PaperProps={{ sx: { bgcolor: palette.bgPanel, border: `1px solid ${palette.borderStrong}` } }}
+        >
+          <DialogTitle sx={{ color: palette.textPrimary }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <UploadFileOutlinedIcon sx={{ color: palette.accent }} />
+              <span>Importer leads fra CSV</span>
+            </Stack>
+            <Typography sx={{ fontSize: '0.78rem', color: palette.textMuted, mt: 0.4 }}>
+              Drag-drop eller velg fil. Norske og engelske kolonne-navn mappes automatisk:
+              name/navn/firma, address/adresse, city/by/sted, phone/telefon, email/epost,
+              website/nettside, category/kategori, notes/notater, latitude, longitude.
+            </Typography>
+          </DialogTitle>
+          <DialogContent>
+            {!csvPreview && !csvImportResult && (
+              <Box
+                onDragOver={(e) => { e.preventDefault(); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files[0];
+                  if (file) void parseCsvFile(file);
+                }}
+                sx={{
+                  p: 4, borderRadius: 1.4,
+                  border: `2px dashed ${palette.borderStrong}`,
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  '&:hover': { borderColor: palette.amber, bgcolor: 'rgba(251,191,36,0.04)' },
+                }}
+                onClick={() => document.getElementById('csv-file-input')?.click()}
+              >
+                <UploadFileOutlinedIcon sx={{ fontSize: 40, color: palette.textMuted, mb: 1 }} />
+                <Typography sx={{ fontSize: '0.88rem', color: palette.textPrimary, fontWeight: 700 }}>
+                  Drag CSV-fil hit eller klikk for å velge
+                </Typography>
+                <Typography sx={{ fontSize: '0.74rem', color: palette.textMuted, mt: 0.6 }}>
+                  Maks 1000 rader per import
+                </Typography>
+                <input
+                  id="csv-file-input"
+                  type="file"
+                  accept=".csv,text/csv"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void parseCsvFile(file);
+                  }}
+                />
+              </Box>
+            )}
+            {csvParsing && (
+              <Stack alignItems="center" spacing={1} sx={{ p: 3 }}>
+                <CircularProgress sx={{ color: palette.amber }} />
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>Parser CSV …</Typography>
+              </Stack>
+            )}
+            {csvPreview && !csvImportResult && (
+              <Box>
+                <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary, mb: 1.2 }}>
+                  Forhåndsvisning: <strong>{csvPreview.length}</strong> rader funnet
+                  {csvPreview.length === 100 && ' (viser kun 100 første)'}.
+                  Header: {csvHeaders.join(', ')}.
+                </Typography>
+                <Box sx={{ maxHeight: 320, overflowY: 'auto', border: `1px solid ${palette.border}`, borderRadius: 1.2 }}>
+                  <Box component="table" sx={{
+                    width: '100%', borderCollapse: 'collapse',
+                    '& th, & td': { padding: '6px 8px', fontSize: '0.74rem', borderBottom: `1px solid ${palette.border}`, color: palette.textSecondary, whiteSpace: 'nowrap' },
+                    '& th': { color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', fontSize: '0.6rem' },
+                  }}>
+                    <thead>
+                      <tr>{csvHeaders.slice(0, 6).map((h) => <th key={h}>{h}</th>)}</tr>
+                    </thead>
+                    <tbody>
+                      {csvPreview.slice(0, 10).map((row, i) => (
+                        <tr key={i}>
+                          {csvHeaders.slice(0, 6).map((h) => <td key={h}>{row[h]?.slice(0, 40) || '—'}</td>)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Box>
+                </Box>
+              </Box>
+            )}
+            {csvImportResult && (
+              <Stack spacing={1.4}>
+                <Alert severity={csvImportResult.imported > 0 ? 'success' : 'warning'}>
+                  Importert {csvImportResult.imported} av {csvImportResult.total} leads.
+                  {csvImportResult.skipped.length > 0 && ` ${csvImportResult.skipped.length} hoppet over.`}
+                </Alert>
+                {csvImportResult.skipped.length > 0 && (
+                  <Box>
+                    <Typography sx={{ fontSize: '0.68rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', mb: 0.6 }}>
+                      Hoppet over
+                    </Typography>
+                    <Stack spacing={0.4} sx={{ maxHeight: 160, overflowY: 'auto' }}>
+                      {csvImportResult.skipped.slice(0, 20).map((s, i) => (
+                        <Typography key={i} sx={{ fontSize: '0.74rem', color: palette.textSecondary }}>
+                          <strong>{s.name}:</strong> {s.reason}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+              </Stack>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => {
+              setCsvImportOpen(false);
+              setCsvPreview(null);
+              setCsvImportResult(null);
+            }} sx={{ color: palette.textMuted }}>
+              Lukk
+            </Button>
+            {csvPreview && !csvImportResult && (
+              <Button
+                onClick={submitCsvImport}
+                variant="contained"
+                disabled={csvImporting}
+                startIcon={csvImporting ? <CircularProgress size={14} /> : <UploadFileOutlinedIcon sx={{ fontSize: 16 }} />}
+                sx={{ bgcolor: palette.amber, color: '#0a0a0f', fontWeight: 800 }}
+              >
+                {csvImporting ? 'Importerer …' : `Importer ${csvPreview.length} leads`}
+              </Button>
+            )}
           </DialogActions>
         </Dialog>
 

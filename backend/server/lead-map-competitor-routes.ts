@@ -30,6 +30,7 @@ import {
 } from "./competitor-counter-campaign.js";
 import { recommendOutreachStrategy } from "./lead-outreach-strategy.js";
 import { enrichLeadWithBrreg, getStoredEnrichment } from "./lead-brreg-service.js";
+import { getDemographics } from "./lead-ssb-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -669,6 +670,180 @@ export function registerLeadMapCompetitorRoutes({
         }
         return res.status(500).json({ error: "assess_failed", detail: msg });
       }
+    },
+  );
+
+  // ─── GET /leads/:id/demographics (SSB markedspotensial) ──
+  // Ingen DB-cache her — SSB endrer seg månedlig, klient cacher per
+  // sesjon. Returnerer befolkning + markedspotensial 0-100.
+  app.get(
+    "/api/admin-room/lead-map/leads/:id/demographics",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const lr = await pool.query<{ city: string | null; postal_code: string | null }>(
+          `SELECT city, postal_code FROM crm_customers
+            WHERE id = $1 AND owner_user_id = $2`,
+          [req.params.id, session.userId],
+        );
+        if (lr.rows.length === 0) return res.status(404).json({ error: "lead_not_found" });
+        const lead = lr.rows[0];
+        const demographics = await getDemographics({
+          city: lead.city,
+          postalCode: lead.postal_code,
+        });
+        return res.json({ demographics });
+      } catch (err) {
+        return res.status(500).json({ error: "demographics_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── GET /leads/export-csv (CSV-eksport av brukerens leads) ──
+  app.get(
+    "/api/admin-room/lead-map/leads/export-csv",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).send("Innlogging kreves");
+      }
+      try {
+        const r = await pool.query(
+          `SELECT c.name, c.company, c.lead_category, c.lead_status,
+                  c.address, c.postal_code, c.city, c.country,
+                  c.phone, c.email, c.website_url,
+                  c.latitude, c.longitude,
+                  c.google_rating, c.ai_opportunity_score,
+                  c.claude_recommendation_rank, c.notes,
+                  c.last_visit_at, c.next_follow_up_at, c.next_action,
+                  c.created_at, c.updated_at,
+                  u.name AS assigned_user_name,
+                  u.email AS assigned_user_email
+             FROM crm_customers c
+             LEFT JOIN users u ON u.id = c.owner_user_id
+            WHERE c.owner_user_id = $1
+            ORDER BY c.created_at DESC`,
+          [session.userId],
+        );
+        // Bygg CSV med BOM for Excel-kompatibilitet
+        const headers = [
+          "name", "company", "category", "status",
+          "address", "postal_code", "city", "country",
+          "phone", "email", "website",
+          "latitude", "longitude",
+          "google_rating", "ai_opportunity_score",
+          "claude_rec_rank", "notes",
+          "last_visit_at", "next_follow_up_at", "next_action",
+          "created_at", "updated_at",
+          "assigned_user", "assigned_email",
+        ];
+        const escape = (v: unknown): string => {
+          if (v === null || v === undefined) return "";
+          const s = String(v);
+          if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+            return `"${s.replace(/"/g, '""')}"`;
+          }
+          return s;
+        };
+        const lines: string[] = ["﻿" + headers.join(",")];
+        for (const row of r.rows) {
+          lines.push([
+            escape(row.name), escape(row.company), escape(row.lead_category),
+            escape(row.lead_status), escape(row.address), escape(row.postal_code),
+            escape(row.city), escape(row.country), escape(row.phone), escape(row.email),
+            escape(row.website_url), escape(row.latitude), escape(row.longitude),
+            escape(row.google_rating), escape(row.ai_opportunity_score),
+            escape(row.claude_recommendation_rank), escape(row.notes),
+            escape(row.last_visit_at), escape(row.next_follow_up_at), escape(row.next_action),
+            escape(row.created_at), escape(row.updated_at),
+            escape(row.assigned_user_name), escape(row.assigned_user_email),
+          ].join(","));
+        }
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="leads-${new Date().toISOString().slice(0, 10)}.csv"`);
+        return res.send(lines.join("\n"));
+      } catch (err) {
+        return res.status(500).json({ error: "export_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── POST /leads/import-csv (bulk-import) ──
+  // Body: { leads: [{name, address?, city?, phone?, email?, websiteUrl?,
+  //                  category?, notes?, latitude?, longitude?}, ...] }
+  // Returnerer: { imported: n, skipped: [{name, reason}] }
+  app.post(
+    "/api/admin-room/lead-map/leads/import-csv",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const body = req.body as {
+        leads?: Array<{
+          name?: string;
+          address?: string;
+          city?: string;
+          postalCode?: string;
+          country?: string;
+          phone?: string;
+          email?: string;
+          websiteUrl?: string;
+          category?: string;
+          notes?: string;
+          latitude?: number;
+          longitude?: number;
+        }>;
+      };
+      if (!Array.isArray(body.leads) || body.leads.length === 0) {
+        return res.status(400).json({ error: "leads_array_kreves" });
+      }
+      if (body.leads.length > 1000) {
+        return res.status(400).json({ error: "max_1000_per_import" });
+      }
+      const skipped: Array<{ name: string; reason: string }> = [];
+      let imported = 0;
+      for (const lead of body.leads) {
+        if (!lead.name?.trim()) {
+          skipped.push({ name: "(uten navn)", reason: "name_kreves" });
+          continue;
+        }
+        try {
+          await pool.query(
+            `INSERT INTO crm_customers (
+               name, address, city, postal_code, country,
+               phone, email, website_url, lead_category, notes,
+               latitude, longitude,
+               lead_status, lead_source, owner_user_id, agent_config_id
+             ) VALUES (
+               $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+               $11::numeric, $12::numeric,
+               'unvisited', 'csv_import', $13, NULL
+             )`,
+            [
+              lead.name.trim(),
+              lead.address ?? null,
+              lead.city ?? null,
+              lead.postalCode ?? null,
+              lead.country ?? null,
+              lead.phone ?? null,
+              lead.email ?? null,
+              lead.websiteUrl ?? null,
+              lead.category ?? null,
+              lead.notes ?? null,
+              lead.latitude ?? null,
+              lead.longitude ?? null,
+              session.userId,
+            ],
+          );
+          imported += 1;
+        } catch (err) {
+          skipped.push({
+            name: lead.name,
+            reason: (err as Error).message.slice(0, 100),
+          });
+        }
+      }
+      return res.json({ imported, skipped, total: body.leads.length });
     },
   );
 
