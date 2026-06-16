@@ -42,7 +42,7 @@ struct MapHomeView: View {
                 Map(position: $camera) {
                     ForEach(appState.leads) { lead in
                         Annotation(lead.name, coordinate: .init(latitude: lead.latitude, longitude: lead.longitude)) {
-                            StatusPin(status: lead.status, selected: appState.selectedLead?.id == lead.id)
+                            LeadPinView(lead: lead, selected: appState.selectedLead?.id == lead.id)
                                 .onTapGesture { appState.selectedLead = lead }
                         }
                     }
@@ -53,6 +53,13 @@ struct MapHomeView: View {
                         Annotation(comp.name, coordinate: coord) {
                             CompetitorPin(threat: comp.threatLevel, selected: appState.selectedCompetitor?.id == comp.id)
                                 .onTapGesture { appState.selectedCompetitor = comp }
+                        }
+                    }
+                    // Live selger-pins (PR #612)
+                    ForEach(appState.memberLocations) { m in
+                        Annotation(m.displayName ?? m.role,
+                                   coordinate: .init(latitude: m.lat, longitude: m.lng)) {
+                            MemberPinView(member: m)
                         }
                     }
                 }

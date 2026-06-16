@@ -57,6 +57,8 @@ struct LeadModel: Identifiable, Codable, Hashable {
     let linkedinUrl: String?
     let googleRating: Double?
     let googlePlaceId: String?
+    /// Bedrifts-logo (mig 288). Vises som sirkulær pin på kartet.
+    let logoUrl: String?
     let aiOpportunityScore: Int?
     let estimatedValue: Double?
     let leadSource: String?

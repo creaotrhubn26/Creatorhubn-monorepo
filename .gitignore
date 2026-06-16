@@ -195,3 +195,8 @@ mockups/*.png
 out-videos/
 apps/resolve-script-manager/src/components/demo-studio/_pixelcheck/
 scripts/.lead-map-admin-state.json
+
+# XcodeGen-generated (regenereres fra project.yml)
+ipad/LeadMapApp/LeadMapApp.xcodeproj
+ipad/LeadMapApp/LeadMapApp/Generated
+ipad/LeadMapApp/LeadMapWidget/Generated

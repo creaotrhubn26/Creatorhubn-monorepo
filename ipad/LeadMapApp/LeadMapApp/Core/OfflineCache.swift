@@ -18,8 +18,10 @@ import Foundation
 actor OfflineCache {
     static let shared = OfflineCache()
 
-    private let fm = FileManager.default
+    // FileManager er ikke Sendable; bruk lokal lookup inni hver bruk
+    // i stedet for å holde stored property på actor.
     private lazy var cacheDir: URL = {
+        let fm = FileManager.default
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         let dir = docs.appendingPathComponent("OfflineCache", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -60,7 +62,7 @@ actor OfflineCache {
     }
 
     func clear() async {
-        try? fm.removeItem(at: cacheDir)
+        try? FileManager.default.removeItem(at: cacheDir)
         _ = cacheDir // re-create
     }
 
@@ -87,6 +89,14 @@ actor OfflineCache {
         await saveQueue(queue)
     }
 
+    /// Sendable-vennlig variant — body er ferdig serialisert som Data.
+    func enqueueRaw(leadId: String, jsonBody: Data) async {
+        var queue = await loadQueue()
+        let entry = PendingVisit(id: UUID(), leadId: leadId, bodyJSON: jsonBody, queuedAt: Date())
+        queue.append(entry)
+        await saveQueue(queue)
+    }
+
     func pendingCount() async -> Int {
         await loadQueue().count
     }
@@ -101,11 +111,8 @@ actor OfflineCache {
         var remaining: [PendingVisit] = []
         for entry in queue {
             do {
-                guard let body = try JSONSerialization.jsonObject(with: entry.bodyJSON) as? [String: Any] else {
-                    failed += 1
-                    continue
-                }
-                try await api.logVisit(leadId: entry.leadId, body: body)
+                // Bruk Sendable-vennlig raw-variant (Data er Sendable)
+                try await api.logVisitRaw(leadId: entry.leadId, jsonBody: entry.bodyJSON)
                 succeeded += 1
             } catch {
                 failed += 1
