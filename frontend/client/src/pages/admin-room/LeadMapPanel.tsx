@@ -28,6 +28,7 @@ import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
 import { Circle, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import LeadMapMemberPins from './LeadMapMemberPins';
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
 import ExploreOutlinedIcon from '@mui/icons-material/ExploreOutlined';
 import HistoryToggleOffOutlinedIcon from '@mui/icons-material/HistoryToggleOffOutlined';
@@ -2641,6 +2642,19 @@ export default function LeadMapPanel() {
                   </Popup>
                 </Marker>
               ))}
+              {/* Selger-posisjoner som live profil-pins */}
+              <LeadMapMemberPins
+                organizationId={
+                  typeof window !== 'undefined'
+                    ? localStorage.getItem('rr_lead_map_active_org')
+                    : null
+                }
+                authToken={
+                  typeof window !== 'undefined'
+                    ? (localStorage.getItem('rr_bearer') ?? '')
+                    : ''
+                }
+              />
             </MapContainer>
 
             {/* Status-legend overlay (top-left, matcher mockup) */}

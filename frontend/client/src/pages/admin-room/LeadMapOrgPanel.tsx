@@ -243,6 +243,12 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
   const [editingTeam, setEditingTeam] = useState<Partial<SalesTeam> & { id?: string } | null>(null);
   const [editingMember, setEditingMember] = useState<MemberProfileRow | null>(null);
 
+  // Location-deling
+  const [locationConsent, setLocationConsent] = useState<boolean | null>(null);
+  const [lastKnownPosition, setLastKnownPosition] = useState<
+    { lat: number; lng: number; accuracy: number } | null
+  >(null);
+
   // Permissions
   const [permissionsCatalog, setPermissionsCatalog] = useState<PermissionDef[]>([]);
   const [permDialog, setPermDialog] = useState<{
@@ -308,20 +314,43 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
     if (activeOrgId) void loadOrgDetails(activeOrgId);
   }, [activeOrgId, loadOrgDetails]);
 
-  // ─── Heartbeat (marker meg som online hvert 60s) + auto-refresh status
+  // ─── Hent consent-status ────────────────────────────────────────
+  useEffect(() => {
+    if (!activeOrgId) return;
+    (async () => {
+      try {
+        const r = await fetch(
+          `/api/admin-room/lead-map/organizations/${activeOrgId}/location/consent`,
+          { headers },
+        );
+        if (r.ok) {
+          const j = await r.json();
+          setLocationConsent(Boolean(j.consented));
+        }
+      } catch { /* noop */ }
+    })();
+  }, [activeOrgId, headers]);
+
+  // ─── Heartbeat (marker meg som online hvert 60s) + valgfri posisjon
   useEffect(() => {
     if (!activeOrgId) return;
     const sendBeat = async () => {
       try {
+        const body: Record<string, unknown> = { organization_id: activeOrgId };
+        if (locationConsent && lastKnownPosition) {
+          body.lat = lastKnownPosition.lat;
+          body.lng = lastKnownPosition.lng;
+          body.accuracy_m = lastKnownPosition.accuracy;
+          body.activity = 'idle';
+        }
         await fetch('/api/admin-room/lead-map/heartbeat', {
           method: 'POST', headers,
-          body: JSON.stringify({ organization_id: activeOrgId }),
+          body: JSON.stringify(body),
         });
       } catch { /* offline ignored */ }
     };
     void sendBeat();
     const beatTimer = setInterval(sendBeat, 60 * 1000);
-    // Refresh online-status hvert 30s
     const refreshTimer = setInterval(() => {
       void loadOrgDetails(activeOrgId);
     }, 30 * 1000);
@@ -329,7 +358,58 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
       clearInterval(beatTimer);
       clearInterval(refreshTimer);
     };
-  }, [activeOrgId, headers, loadOrgDetails]);
+  }, [activeOrgId, headers, loadOrgDetails, locationConsent, lastKnownPosition]);
+
+  // ─── Watch geolocation når consent er aktivt ────────────────────
+  useEffect(() => {
+    if (!locationConsent || typeof navigator === 'undefined' || !navigator.geolocation) return;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setLastKnownPosition({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        });
+      },
+      () => { /* fail silently — bruker har skrudd av i nettleseren */ },
+      { enableHighAccuracy: false, maximumAge: 60000, timeout: 30000 },
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [locationConsent]);
+
+  const toggleLocationConsent = useCallback(async () => {
+    if (!activeOrgId) return;
+    try {
+      if (locationConsent) {
+        await fetch(
+          `/api/admin-room/lead-map/organizations/${activeOrgId}/location/consent`,
+          { method: 'DELETE', headers },
+        );
+        setLocationConsent(false);
+        setLastKnownPosition(null);
+        setStatus('Posisjonsdeling skrudd AV');
+      } else {
+        // Be om browser-permission først
+        if (typeof navigator !== 'undefined' && navigator.geolocation) {
+          await new Promise<void>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              () => resolve(),
+              (err) => reject(new Error(err.message)),
+              { enableHighAccuracy: false, timeout: 10000 },
+            );
+          });
+        }
+        await fetch(
+          `/api/admin-room/lead-map/organizations/${activeOrgId}/location/consent`,
+          { method: 'POST', headers },
+        );
+        setLocationConsent(true);
+        setStatus('Posisjonsdeling skrudd PÅ — du vises som pin på kartet');
+      }
+    } catch (err) {
+      setError(`Posisjonsdeling feilet: ${String(err)}`);
+    }
+  }, [activeOrgId, headers, locationConsent]);
 
   function formatLastSeen(iso: string | null): string {
     if (!iso) return 'Aldri pålogget';
@@ -638,7 +718,7 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
         </Alert>
       )}
 
-      {/* ─── Org-velger ─────────────────────────────────────────── */}
+      {/* ─── Org-velger + posisjonsdeling ───────────────────────── */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} spacing={2}>
@@ -672,6 +752,35 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
               ))}
             </Select>
           </Stack>
+
+          {/* Posisjons-deling-toggle */}
+          {activeOrgId && (
+            <Box sx={{ mt: 2, p: 1.5, bgcolor: 'rgba(192,132,252,0.05)', borderRadius: 1 }}>
+              <FormControlLabel
+                control={
+                  <MuiSwitch
+                    checked={Boolean(locationConsent)}
+                    onChange={toggleLocationConsent}
+                    inputProps={{ 'aria-label': 'Del min posisjon på kartet' }}
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body2">
+                      Del min posisjon på Lead Map-kartet
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {locationConsent
+                        ? lastKnownPosition
+                          ? `Pin: ${lastKnownPosition.lat.toFixed(4)}, ${lastKnownPosition.lng.toFixed(4)} (±${Math.round(lastKnownPosition.accuracy)} m)`
+                          : 'Venter på GPS-fix...'
+                        : 'Andre i org-en ser hvor du er — kun valgfritt'}
+                    </Typography>
+                  </Box>
+                }
+              />
+            </Box>
+          )}
         </CardContent>
       </Card>
 
