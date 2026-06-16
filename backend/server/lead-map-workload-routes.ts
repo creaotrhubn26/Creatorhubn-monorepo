@@ -27,6 +27,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { notifyLeadAssigned } from "./lead-map-notification-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -287,6 +288,15 @@ export function registerLeadMapWorkloadRoutes({ app, pool, activeSessions }: Dep
             session.userId, body.reason ?? "manual",
           ],
         );
+        // Fire-and-forget varsel — blokkerer ikke svaret hvis SMTP henger
+        setImmediate(() => {
+          void notifyLeadAssigned(pool, {
+            leadId: req.params.id,
+            fromUserId,
+            toUserId: body.user_id ?? "",
+            triggeredByUserId: session.userId,
+          });
+        });
         return res.json({ ok: true, fromUserId, toUserId: body.user_id });
       } catch (err) {
         return res.status(500).json({ error: "assign_failed", detail: String(err) });
