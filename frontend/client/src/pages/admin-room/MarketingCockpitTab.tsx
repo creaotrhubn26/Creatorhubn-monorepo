@@ -31,6 +31,7 @@ import B2BAcquisitionPanel from './B2BAcquisitionPanel';
 import AgencyAcquisitionDashboard from './AgencyAcquisitionDashboard';
 import CustomerSuccessDashboard from './CustomerSuccessDashboard';
 import LeadMapPanel from './LeadMapPanel';
+import LeadMapMyDayPanel from './LeadMapMyDayPanel';
 import MarketIntelligenceSection from '../../components/admin-room/market-intelligence/MarketIntelligenceSection';
 import MarketingCockpitTiktokSection from '../../components/admin-room/marketing-cockpit/MarketingCockpitTiktokSection';
 import CompetitorReportPanel from './CompetitorReportPanel';
@@ -628,6 +629,13 @@ export default function MarketingCockpitTab() {
           </Divider>
 
           <CustomerSuccessDashboard />
+
+          <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+            <Chip label="MIN DAG" size="small"
+              sx={{ background: 'rgba(192,132,252,0.18)', color: '#c084fc', fontSize: '0.7rem', fontWeight: 700 }} />
+          </Divider>
+
+          <LeadMapMyDayPanel />
 
           <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
             <Chip label="LEAD MAP" size="small"
