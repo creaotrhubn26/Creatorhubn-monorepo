@@ -34,15 +34,29 @@ function getAnthropic(): Anthropic | null {
 interface TenantScope {
   ownerUserId: string;
   agentConfigId?: string | null;
+  /**
+   * Lead Map prosjekt-filter. Når satt, returneres kun rader hvor
+   * crm_customers.project_id matcher. null/undefined = alle leads
+   * (uavhengig av prosjekt).
+   */
+  projectId?: string | null;
 }
 
 function buildTenantConditions(scope: TenantScope, params: unknown[]): string[] {
-  if (scope.agentConfigId) {
-    params.push(scope.agentConfigId);
-    return [`agent_config_id = $${params.length}::uuid`];
+  const base: string[] = scope.agentConfigId
+    ? (() => {
+        params.push(scope.agentConfigId);
+        return [`agent_config_id = $${params.length}::uuid`];
+      })()
+    : (() => {
+        params.push(scope.ownerUserId);
+        return [`owner_user_id = $${params.length}`, `agent_config_id IS NULL`];
+      })();
+  if (scope.projectId) {
+    params.push(scope.projectId);
+    base.push(`project_id = $${params.length}`);
   }
-  params.push(scope.ownerUserId);
-  return [`owner_user_id = $${params.length}`, `agent_config_id IS NULL`];
+  return base;
 }
 
 export type LeadStatus =
@@ -158,6 +172,7 @@ export async function listLeadsInBounds(
   pool: Pool, opts: {
     ownerUserId: string;
     agentConfigId?: string | null;
+    projectId?: string | null;
     bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number };
     statusFilter?: LeadStatus[];
     categoryFilter?: string[];
@@ -166,7 +181,7 @@ export async function listLeadsInBounds(
 ): Promise<MapLead[]> {
   const params: unknown[] = [];
   const tenantConds = buildTenantConditions(
-    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId },
+    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId, projectId: opts.projectId },
     params,
   );
   const conditions: string[] = [...tenantConds, 'latitude IS NOT NULL', 'longitude IS NOT NULL'];

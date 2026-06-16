@@ -198,6 +198,20 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
                 tone: (bp as Record<string, unknown>).tone ?? null,
                 targetAudience: (bp as Record<string, unknown>).target_audience ?? null,
                 valueProposition: (bp as Record<string, unknown>).value_proposition ?? null,
+                // Logo: eksplisitt logoUrl fra brand_profile, ellers
+                // Google favicon-tjeneste basert på source_url-domene.
+                logoUrl: (() => {
+                  const explicit = (bp as Record<string, unknown>).logoUrl
+                    ?? (bp as Record<string, unknown>).logo_url;
+                  if (typeof explicit === 'string' && explicit.length > 0) return explicit;
+                  if (bk.rows[0].source_url) {
+                    try {
+                      const host = new URL(bk.rows[0].source_url).host;
+                      return `https://www.google.com/s2/favicons?domain=${host}&sz=128`;
+                    } catch { /* noop */ }
+                  }
+                  return null;
+                })(),
               }
             : null,
           marketScan: ms.rows[0]
