@@ -1343,6 +1343,33 @@ export interface KpiReport {
   hasData: boolean;
 }
 
+// ── Pristilbud (mig 289) ──────────────────────────────────────────────
+export interface RoleRoomQuoteLineItem { label: string; detail: string | null; units: number; unitLabel: string | null; unitPriceKr: number }
+export interface RoleRoomQuote {
+  id: string;
+  project_id: string;
+  quote_number: string | null;
+  client_name: string | null;
+  line_items: RoleRoomQuoteLineItem[];
+  discount_pct: number;
+  vat_pct: number;
+  valid_until: string | null;
+  notes: string | null;
+  status: 'draft' | 'sent' | 'accepted' | 'declined';
+  subtotal_kr: number;
+  total_kr: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface RoleRoomQuoteInput {
+  clientName: string | null;
+  lineItems: RoleRoomQuoteLineItem[];
+  discountPct: number;
+  vatPct: number;
+  validUntil: string | null;
+  notes: string | null;
+}
+
 // ── Prosjektrom-møter (mig 288) ───────────────────────────────────────
 export interface RoleRoomMeetingActionItem { text: string; owner: string | null; done: boolean }
 export interface RoleRoomProjectMeeting {
@@ -1533,6 +1560,40 @@ export const roleRoomAgentService = {
     if (!r.ok) return null;
     const body = await r.json().catch(() => null);
     return (body?.audience as RoleRoomAdAudience | null) ?? null;
+  },
+
+  // ── Pristilbud (mig 289) ────────────────────────────────────────────
+  async listQuotes(projectId: string): Promise<RoleRoomQuote[]> {
+    const r = await fetch(`/api/role-room/projects/${encodeURIComponent(projectId)}/quotes`, { headers: readRoleRoomAgentHeaders() });
+    if (!r.ok) return [];
+    const body = await r.json().catch(() => null);
+    return Array.isArray(body?.quotes) ? body.quotes : [];
+  },
+  async createQuote(projectId: string, input: RoleRoomQuoteInput): Promise<RoleRoomQuote | null> {
+    const r = await fetch(`/api/role-room/projects/${encodeURIComponent(projectId)}/quotes`, {
+      method: 'POST', headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    });
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.quote as RoleRoomQuote | null) ?? null;
+  },
+  async updateQuote(id: string, input: RoleRoomQuoteInput): Promise<RoleRoomQuote | null> {
+    const r = await fetch(`/api/role-room/quotes/${encodeURIComponent(id)}`, {
+      method: 'PATCH', headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    });
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.quote as RoleRoomQuote | null) ?? null;
+  },
+  async setQuoteStatus(id: string, status: 'draft' | 'sent' | 'accepted' | 'declined'): Promise<boolean> {
+    const r = await fetch(`/api/role-room/quotes/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH', headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+    });
+    return r.ok;
+  },
+  async deleteQuote(id: string): Promise<boolean> {
+    const r = await fetch(`/api/role-room/quotes/${encodeURIComponent(id)}`, { method: 'DELETE', headers: readRoleRoomAgentHeaders() });
+    return r.ok;
   },
 
   // ── Prosjektrom-møter (mig 288) ─────────────────────────────────────

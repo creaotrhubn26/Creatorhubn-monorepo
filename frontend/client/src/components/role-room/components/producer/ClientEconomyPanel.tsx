@@ -34,6 +34,7 @@ import ClientConnectWizard from '../client-workspace/ClientConnectWizard';
 import ClientAdsPerformancePanel from './ClientAdsPerformancePanel';
 import AdConversionPanel from './AdConversionPanel';
 import AdAudiencePanel from './AdAudiencePanel';
+import QuoteBuilderPanel from './QuoteBuilderPanel';
 import ClientAdsApprovalSection from './ClientAdsApprovalSection';
 import MonthlyManagementFeeBox from './MonthlyManagementFeeBox';
 import ClientEconomyTiktokSection from './ClientEconomyTiktokSection';
@@ -346,6 +347,9 @@ export default function ClientEconomyPanel({
         period={period}
         userRole={userRole}
       />
+
+      {/* ── Pristilbud (egen Role Room-feature, produsent → klient) ── */}
+      <QuoteBuilderPanel projectId={projectId} />
 
       {/* ── Annonse-konvertering (ekte data) + målgruppe (AI-estimat) ── */}
       <AdConversionPanel projectId={projectId} period={period} />
