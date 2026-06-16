@@ -33,6 +33,7 @@ import {
 } from '@mui/material';
 import {
   AutoFixHigh as AutoFixIcon,
+  AutoAwesome as AutoAwesomeIcon,
   CheckCircleOutline as CheckCircleIcon,
   ErrorOutline as ErrorIcon,
   Send as SendIcon,
@@ -214,28 +215,35 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
         </Stack>
       </Stack>
 
-      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-        {SUGGESTED_PROMPTS.map((prompt) => (
-          <Chip
-            key={prompt}
-            label={prompt}
-            onClick={() => { void handleSend(prompt); }}
-            disabled={pending || !projectId}
-            clickable
-            size="small"
-            variant="outlined"
-            sx={{
-              color: '#a5f3fc',
-              borderColor: 'rgba(34,211,238,0.3)',
-              bgcolor: 'rgba(8,47,73,0.22)',
-              '&:hover': { bgcolor: 'rgba(8,47,73,0.4)', borderColor: 'rgba(34,211,238,0.5)' },
-              '&.Mui-disabled': {
-                color: 'rgba(165,243,252,0.4)',
-                borderColor: 'rgba(34,211,238,0.14)',
-              },
-            }}
-          />
-        ))}
+      <Stack spacing={0.7}>
+        <Stack direction="row" alignItems="center" spacing={0.6}>
+          <AutoAwesomeIcon sx={{ fontSize: 15, color: '#a78bfa' }} />
+          <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: '#c4b5fd', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Foreslåtte neste steg</Typography>
+        </Stack>
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+          {SUGGESTED_PROMPTS.map((prompt) => (
+            <Chip
+              key={prompt}
+              label={prompt}
+              onClick={() => { void handleSend(prompt); }}
+              disabled={pending || !projectId}
+              clickable
+              size="small"
+              variant="outlined"
+              sx={{
+                color: '#e9d5ff',
+                fontWeight: 600,
+                borderColor: 'rgba(168,85,247,0.34)',
+                bgcolor: 'rgba(168,85,247,0.1)',
+                '&:hover': { bgcolor: 'rgba(168,85,247,0.2)', borderColor: 'rgba(168,85,247,0.55)' },
+                '&.Mui-disabled': {
+                  color: 'rgba(233,213,255,0.4)',
+                  borderColor: 'rgba(168,85,247,0.14)',
+                },
+              }}
+            />
+          ))}
+        </Stack>
       </Stack>
 
       {messages.length === 0 ? (
