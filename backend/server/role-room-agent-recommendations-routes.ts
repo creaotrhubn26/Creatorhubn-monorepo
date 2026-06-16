@@ -99,6 +99,7 @@ const SEED_CATALOG: Array<Omit<RecommendationRow, "id" | "owner_user_id" | "proj
   { type: "vinnende_post", title: "Vinnende innlegg", insight: "Ett innlegg slo gjennom — finn ut hva som funket og gjenta oppskriften.", stat_value: "Topp 1%", stat_label: "av innleggene dine", cta_label: "Utfør · Analyser", icon: "emoji_events" },
   { type: "retargeting", title: "Retargeting", insight: "Nå igjen folk som alt har vist interesse — varme målgrupper konverterer billigst.", stat_value: "−41%", stat_label: "kost vs kald trafikk", cta_label: "Utfør · Sett opp", icon: "ads_click" },
   { type: "lokalt_event", title: "Lokalt event", insight: "Mye av publikummet ditt er i samme område — et lokalt arrangement kan styrke båndet.", stat_value: "Nær deg", stat_label: "publikum-konsentrasjon", cta_label: "Utfør · Planlegg", icon: "place" },
+  { type: "bio_lenke", title: "Optimer bio-lenken", insight: "Bio-lenken er din mest verdifulle klikk-flate — pek den mot riktig mål nå.", stat_value: "1 lenke", stat_label: "høyest trafikk", cta_label: "Utfør · Oppdater", icon: "link" },
 ];
 
 // Tillatte MUI-ikon-navn Claude kan velge mellom (matcher AgentRecommendationCard).
