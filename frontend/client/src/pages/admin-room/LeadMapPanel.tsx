@@ -29,7 +29,7 @@ import { Circle, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } 
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import LeadMapMemberPins from './LeadMapMemberPins';
-import { haversineKm, formatDistance, estimateDriveMinutes } from './lead-map-distance';
+import { formatDistance, estimateDriveMinutes } from './lead-map-distance';
 import NavigationOutlinedIcon from '@mui/icons-material/NavigationOutlined';
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
 import ExploreOutlinedIcon from '@mui/icons-material/ExploreOutlined';
@@ -2614,7 +2614,7 @@ export default function LeadMapPanel() {
                       {/* Logo hentes automatisk i bakgrunnen ved kart-load.
                           Vises ved neste refresh hvis bedriften har nettside. */}
                       {myPosition && (() => {
-                        const km = haversineKm(myPosition, { lat: lead.latitude, lng: lead.longitude });
+                        const km = haversineKm(myPosition.lat, myPosition.lng, lead.latitude, lead.longitude);
                         const minutes = estimateDriveMinutes(km);
                         const nav = `https://www.google.com/maps/dir/?api=1&origin=${myPosition.lat},${myPosition.lng}&destination=${lead.latitude},${lead.longitude}&travelmode=driving`;
                         return (
