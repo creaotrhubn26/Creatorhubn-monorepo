@@ -16,6 +16,7 @@ import { useParams } from 'wouter';
 import ClientPortalRequestsSection from '@/components/role-room/client-portal/ClientPortalRequestsSection';
 import ClientPortalRegisterCard from '@/components/role-room/client-portal/ClientPortalRegisterCard';
 import PostCommentLayer from '@/components/role-room/components/PostCommentLayer';
+import MarketingReportPanel from '@/components/role-room/components/producer/MarketingReportPanel';
 import PostVideoPreview from '@/components/role-room/components/PostVideoPreview';
 import {
   Alert,
@@ -251,6 +252,9 @@ export default function ClientPortalMarketingPage() {
           {/* Forespørsler øverst — viser kun seksjonen hvis det finnes noen */}
           <ClientPortalRequestsSection token={token} highlightRequestId={highlightRequestId} />
           <ProgressSection progress={data.progress!} plan={data.plan!} />
+          {/* Periode-rapport (uke/måned/kvartal) per kanal — samme som
+              produsenten ser i Agent-analytics. */}
+          <MarketingReportPanel clientToken={token} />
           <ConnectedPlatformsCard token={token} />
           <ClientMaterialUploadCard token={token} />
           <UpcomingSection upcoming={data.upcoming!} projectId={data.project?.id ?? null} clientToken={token} />

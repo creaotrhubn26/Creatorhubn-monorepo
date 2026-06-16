@@ -1330,6 +1330,19 @@ export interface GenerateNurtureInput {
   platform?: string;
 }
 
+// ── Periode-rapport (uke/måned/kvartal) per kanal ─────────────────────
+export type KpiReportPeriod = 'week' | 'month' | 'quarter';
+export interface KpiReportMetric { value: number; prevValue: number; deltaPct: number | null }
+export interface KpiReport {
+  period: KpiReportPeriod;
+  periodLabel: string;
+  channel: string;
+  channels: string[];
+  metrics: { visninger: KpiReportMetric; rekkevidde: KpiReportMetric; engasjement: KpiReportMetric; reaksjoner: KpiReportMetric };
+  byChannel: Array<{ platform: string; visninger: number; engasjement: number }>;
+  hasData: boolean;
+}
+
 export const roleRoomAgentService = {
   async getAccess(): Promise<RoleRoomAgentAccess> {
     const response = await fetch('/api/role-room/agent/access', {
@@ -1437,6 +1450,24 @@ export const roleRoomAgentService = {
       body: JSON.stringify({ status }),
     });
     return r.ok;
+  },
+
+  // ── Periode-rapport (uke/måned/kvartal) per kanal ───────────────────
+  async fetchKpiReport(projectId: string, period: KpiReportPeriod, channel = 'alle'): Promise<KpiReport | null> {
+    const params = new URLSearchParams({ projectId, period, channel });
+    const r = await fetch(`/api/role-room/kpi-report?${params.toString()}`, { headers: readRoleRoomAgentHeaders() });
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.report as KpiReport | null) ?? null;
+  },
+
+  // Klient-variant — bruker portal-token, ingen agent-headers.
+  async fetchClientKpiReport(token: string, period: KpiReportPeriod, channel = 'alle'): Promise<KpiReport | null> {
+    const params = new URLSearchParams({ token, period, channel });
+    const r = await fetch(`/api/client/portal/kpi-report?${params.toString()}`);
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.report as KpiReport | null) ?? null;
   },
 
   async generateProducerBootstrap(

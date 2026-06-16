@@ -53,6 +53,7 @@ import MentionsPanel from './MentionsPanel';
 import DiscoveryPanel from './DiscoveryPanel';
 import EventsPanel from './EventsPanel';
 import SocialAnalyticsPanel from './SocialAnalyticsPanel';
+import MarketingReportPanel from './MarketingReportPanel';
 import RoleRoomAgentWorkflowStepper from './RoleRoomAgentWorkflowStepper';
 import RoleRoomAgentConnectionsBar from './RoleRoomAgentConnectionsBar';
 import SocialAccessRequestDialog from './SocialAccessRequestDialog';
@@ -994,6 +995,13 @@ export default function RoleRoomAgentDialog({
           <LeadsPanel />
         ) : activeTab === 'social-analytics' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>
+            {/* Periode-rapport (uke/måned/kvartal) per kanal — samme rapport
+                klienten ser i portalen. */}
+            {projectId ? (
+              <Box sx={{ mb: 2 }}>
+                <MarketingReportPanel projectId={projectId} />
+              </Box>
+            ) : null}
             <SocialAnalyticsPanel />
           </Box>
         ) : (
