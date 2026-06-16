@@ -74,7 +74,13 @@ export default function FeedPostTile({
   const textColor = post.textColor || '#f8fafc';
   const conceptLabel = CONCEPT_LABELS[post.concept as keyof typeof CONCEPT_LABELS] || 'Post';
 
-  const hasCustomImage = Boolean(post.customImageUrl);
+  // Cover/thumbnail overstyrer post-bildet i grid-visningen (poster-frame for
+  // reels, eller et eget grid-utsnitt). Faller tilbake til customImageUrl.
+  const gridImageUrl = post.coverImageUrl || post.customImageUrl || null;
+  const hasCustomImage = Boolean(gridImageUrl);
+  // Grid-beskjæring styres per post. Mangler → '4 / 5' (historisk default).
+  const aspectRatioCss =
+    post.gridAspect === '1:1' ? '1 / 1' : post.gridAspect === '16:9' ? '16 / 9' : '4 / 5';
 
   return (
     <Box
@@ -92,7 +98,7 @@ export default function FeedPostTile({
       aria-pressed={selected}
       sx={{
         position: 'relative',
-        aspectRatio: '4 / 5',
+        aspectRatio: aspectRatioCss,
         cursor: onSelect ? 'pointer' : 'default',
         background: hasCustomImage ? '#000' : gradient,
         overflow: 'hidden',
@@ -110,7 +116,7 @@ export default function FeedPostTile({
       {hasCustomImage ? (
         <Box
           component="img"
-          src={post.customImageUrl ?? ''}
+          src={gridImageUrl ?? ''}
           alt=""
           sx={{
             position: 'absolute',

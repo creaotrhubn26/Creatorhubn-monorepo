@@ -58,6 +58,9 @@ export interface IgPublishInput {
   imageDataUrls?: string[];
   /** Single video data URL for reels (video/mp4 or video/quicktime). */
   videoDataUrl?: string;
+  /** Egendefinert cover/thumbnail (image/* data URL) for reels. Blir
+   *  `cover_url` på REELS-containeren. Ignoreres for image/carousel. */
+  coverDataUrl?: string;
   scheduledFor?: string | null;
 }
 
@@ -82,6 +85,9 @@ export interface IgPublishJobRow {
   imageKey: string | null;
   imageParts: IgJobImagePart[];
   imagePublicUrl: string | null;
+  /** R2 location of the reel cover/thumbnail (null = no custom cover). */
+  coverBucket: string | null;
+  coverKey: string | null;
   igContainerId: string | null;
   igMediaId: string | null;
   status: IgJobStatus;
@@ -121,6 +127,8 @@ function mapJob(row: Record<string, unknown>): IgPublishJobRow {
     imageKey: key,
     imageParts: parseImageParts(row.image_parts, bucket, key),
     imagePublicUrl: (row.image_public_url as string | null) ?? null,
+    coverBucket: (row.cover_bucket as string | null) ?? null,
+    coverKey: (row.cover_key as string | null) ?? null,
     igContainerId: (row.ig_container_id as string | null) ?? null,
     igMediaId: (row.ig_media_id as string | null) ?? null,
     status: row.status as IgJobStatus,
@@ -171,6 +179,7 @@ async function insertJob(
   pool: Pool,
   input: IgPublishInput,
   images: InstagramHostedImage[],
+  cover?: InstagramHostedImage | null,
 ): Promise<IgPublishJobRow | null> {
   if (images.length === 0) return null;
   const head = images[0];
@@ -183,8 +192,9 @@ async function insertJob(
     const result = await pool.query(
       `INSERT INTO role_room_instagram_publish_jobs
          (user_id, project_id, connection_id, feed_plan_post_id, media_type, caption,
-          scheduled_for, image_bucket, image_key, image_public_url, image_parts)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+          scheduled_for, image_bucket, image_key, image_public_url, image_parts,
+          cover_bucket, cover_key)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
        RETURNING *`,
       [
         input.userId,
@@ -198,6 +208,8 @@ async function insertJob(
         head.key,
         head.publicUrl,
         JSON.stringify(parts),
+        cover?.bucket ?? null,
+        cover?.key ?? null,
       ],
     );
     return result.rows[0] ? mapJob(result.rows[0]) : null;
@@ -345,6 +357,14 @@ async function executePublishJob(
         caption: job.caption,
         access_token: connection.accessToken,
       });
+      // Egendefinert cover/thumbnail → fersk signert URL som cover_url.
+      // Re-signeres her (ikke ved kø-tid) så den ikke utløper for scheduled
+      // jobs. Best-effort: hvis signering feiler faller Meta tilbake på
+      // auto-frame fra videoen.
+      if (job.coverBucket && job.coverKey) {
+        const coverUrl = await signInstagramHostedImageUrl(job.coverBucket, job.coverKey);
+        if (coverUrl) containerForm.set('cover_url', coverUrl);
+      }
       const containerUrl = `${META_GRAPH_BASE}/${connection.igBusinessAccountId}/media`;
       const containerResp = (await metaPost(containerUrl, containerForm)) as { id?: string };
       if (!containerResp.id) throw new Error('Meta returnerte ingen reel container-id');
@@ -393,6 +413,9 @@ async function executePublishJob(
     // Cleanup: best-effort delete every part from R2.
     for (const part of parts) {
       void deleteInstagramHostedImage(part.bucket, part.key);
+    }
+    if (job.coverBucket && job.coverKey) {
+      void deleteInstagramHostedImage(job.coverBucket, job.coverKey);
     }
 
     return { ...job, status: 'published', igMediaId: mediaId, publishedAt: new Date() };
@@ -536,14 +559,25 @@ export async function queueAndPublish(
   // image_parts — the worker needs these to re-sign fresh URLs at
   // execute time. If any one upload fails, clean up the ones that did.
   const hosted: InstagramHostedImage[] = [];
+  let hostedCover: InstagramHostedImage | null = null;
   try {
     for (const dataUrl of dataUrls) {
       const h = await uploadImageForInstagram({ userId: input.userId, dataUrl, pool });
       if (!h) throw new Error('Image upload failed (R2 ikke konfigurert?)');
       hosted.push(h);
     }
+    // Egendefinert cover er kun meningsfullt for reels (image/carousel
+    // bruker selve bildet). Ignorér ugyldig/ikke-bilde-cover stille.
+    if (input.mediaType === 'reel' && input.coverDataUrl && /^data:image\//i.test(input.coverDataUrl)) {
+      hostedCover = await uploadImageForInstagram({
+        userId: input.userId,
+        dataUrl: input.coverDataUrl,
+        pool,
+      });
+    }
   } catch (error) {
     for (const h of hosted) void deleteInstagramHostedImage(h.bucket, h.key);
+    if (hostedCover) void deleteInstagramHostedImage(hostedCover.bucket, hostedCover.key);
     throw error;
   }
 
@@ -553,7 +587,7 @@ export async function queueAndPublish(
   const used24h = await rateLimitedCheck(pool, conn.id);
   const wantsImmediate = !input.scheduledFor || new Date(input.scheduledFor).getTime() <= Date.now();
   if (wantsImmediate && used24h >= META_RATE_LIMIT_PER_24H) {
-    const job = await insertJob(pool, input, hosted);
+    const job = await insertJob(pool, input, hosted, hostedCover);
     if (job) await updateJob(pool, job.id, { status: 'rate_limited', lastError: `${used24h}/${META_RATE_LIMIT_PER_24H} brukt siste 24t` });
     return {
       job: job ?? ({} as IgPublishJobRow),
@@ -562,7 +596,7 @@ export async function queueAndPublish(
     };
   }
 
-  const job = await insertJob(pool, input, hosted);
+  const job = await insertJob(pool, input, hosted, hostedCover);
   if (!job) throw new Error('Kunne ikke kø-legge publish-jobben');
 
   if (!wantsImmediate) {

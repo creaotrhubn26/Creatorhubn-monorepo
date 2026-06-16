@@ -362,6 +362,8 @@ export function setupRoleRoomSocialMetaRoutes(
     const pageId = typeof body.pageId === "string" ? body.pageId.trim() : "";
     const videoDataUrl = typeof body.videoDataUrl === "string" ? body.videoDataUrl : "";
     const description = typeof body.description === "string" ? body.description.trim() : "";
+    // Egendefinert cover/thumbnail (image/* data URL) → Graph `thumb`-feltet.
+    const coverDataUrl = typeof body.coverDataUrl === "string" ? body.coverDataUrl : "";
     const scheduledForIso = typeof body.scheduledFor === "string" ? body.scheduledFor.trim() : "";
     if (!pageId || !videoDataUrl) {
       return res.status(400).json({ success: false, error: "pageId og videoDataUrl er påkrevd." });
@@ -425,6 +427,17 @@ export function setupRoleRoomSocialMetaRoutes(
     const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
     form.append("source", blob, `upload.${mimeType.split("/")[1] || "mp4"}`);
     if (description) form.append("description", description);
+    // Custom thumbnail: Graph `/videos` tar et `thumb`-multipart-bilde. Ignorér
+    // stille hvis coveret ikke er et gyldig image/* data-URL (Meta auto-genererer
+    // da en frame fra videoen).
+    const coverMatch = coverDataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+    if (coverMatch) {
+      const coverBuffer = Buffer.from(coverMatch[2], "base64");
+      if (coverBuffer.length > 0 && coverBuffer.length <= 10 * 1024 * 1024) {
+        const coverBlob = new Blob([new Uint8Array(coverBuffer)], { type: coverMatch[1] });
+        form.append("thumb", coverBlob, `cover.${coverMatch[1].split("/")[1] || "jpg"}`);
+      }
+    }
     if (scheduledPublishUnix) {
       // Two-part flag: published=false + scheduled_publish_time tells
       // Meta to queue rather than publish immediately.
@@ -590,6 +603,7 @@ export function setupRoleRoomSocialMetaRoutes(
       : undefined;
     const imageDataUrl = typeof body.imageDataUrl === "string" ? body.imageDataUrl : undefined;
     const videoDataUrl = typeof body.videoDataUrl === "string" ? body.videoDataUrl : undefined;
+    const coverDataUrl = typeof body.coverDataUrl === "string" ? body.coverDataUrl : undefined;
     const mediaType = body.mediaType as "image" | "reel" | "carousel";
     if (mediaType === "reel") {
       if (!videoDataUrl) {
@@ -613,6 +627,7 @@ export function setupRoleRoomSocialMetaRoutes(
         imageDataUrl,
         imageDataUrls,
         videoDataUrl,
+        coverDataUrl,
         scheduledFor: typeof body.scheduledFor === "string" ? body.scheduledFor : null,
       });
       return res.json({

@@ -697,6 +697,9 @@ export type RoleRoomFeedApprovalState =
   | 'rejected'
   | 'needs_changes';
 
+/** Beskjæringsformat for hvordan posten vises i feed-grid/portfolio. */
+export type RoleRoomFeedGridAspect = '1:1' | '4:5' | '16:9';
+
 export interface RoleRoomFeedPost {
   id: string;
   concept: RoleRoomFeedPostConcept | string;
@@ -714,6 +717,13 @@ export interface RoleRoomFeedPost {
   locked: boolean;
   customImageUrl?: string | null;
   customImageName?: string | null;
+  /** Hvordan ruten beskjæres i feed-grid/portfolio. Mangler → '4:5'. */
+  gridAspect?: RoleRoomFeedGridAspect | null;
+  /** Egendefinert cover/thumbnail (enhetsopplastet eller fra Drive) som
+   *  vises i grid, deling og link-preview. Overstyrer customImageUrl i
+   *  grid-visningen — nyttig som poster-frame for reels/video. */
+  coverImageUrl?: string | null;
+  coverImageName?: string | null;
   /** 2-10 images for carousel posts. Parallel to customImageUrl;
    *  when mediaType='carousel' this is the authoritative source. */
   customImageUrls?: string[] | null;
@@ -2209,6 +2219,8 @@ export const roleRoomAgentService = {
     imageDataUrls?: string[];
     /** Single video/mp4 or video/quicktime data URL — used for mediaType='reel'. */
     videoDataUrl?: string;
+    /** Egendefinert cover/thumbnail (image/* data URL) for reels → cover_url. */
+    coverDataUrl?: string;
     scheduledFor?: string | null;
   }): Promise<RoleRoomInstagramPublishResult> {
     const response = await fetch('/api/role-room/instagram/publish', {
