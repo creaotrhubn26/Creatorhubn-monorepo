@@ -43,6 +43,7 @@ import RoleRoomResearchCompleteOverlay from './RoleRoomResearchCompleteOverlay';
 import ResearchProgressLive from './ResearchProgressLive';
 import type { ResearchStage, ResearchProgressStatus } from '../../hooks/useResearchProgress';
 import MetaPagePublicMetadataInspector from './MetaPagePublicMetadataInspector';
+import ProfileSuggestionsPanel from './ProfileSuggestionsPanel';
 import AdsAttributionInspector from './AdsAttributionInspector';
 import FacebookVideoPublisher from './FacebookVideoPublisher';
 import FacebookPageMentionPublisher from './FacebookPageMentionPublisher';
@@ -955,6 +956,11 @@ export default function RoleRoomAgentDialog({
         ) : activeTab === 'meta-page' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>
             <MetaPagePublicMetadataInspector />
+            {/* Profilforslag: Agenten foreslår bio/nøkkelord/CTA for sidene du
+                har tilgang til etter analysen (mig 285). */}
+            <Box sx={{ mt: 2 }}>
+              <ProfileSuggestionsPanel projectId={projectId} platform="facebook" />
+            </Box>
           </Box>
         ) : activeTab === 'page-content' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>

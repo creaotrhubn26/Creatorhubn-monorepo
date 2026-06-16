@@ -1264,6 +1264,35 @@ export interface RoleRoomAgentRecommendation {
   created_at: string;
 }
 
+// ── Profilforslag (mig 285) ───────────────────────────────────────────
+export interface RoleRoomProfileSuggestion {
+  id: string;
+  platform: string;
+  page_id: string | null;
+  page_name: string | null;
+  bio: string | null;
+  hashtags: string[];
+  cta_label: string | null;
+  status: 'new' | 'applied' | 'dismissed';
+  source: string | null;
+  created_at: string;
+}
+
+export interface RoleRoomConnectedPage {
+  pageId: string | null;
+  pageName: string | null;
+}
+
+export interface GenerateProfileSuggestionInput {
+  projectId?: string | null;
+  platform?: string;
+  pageId?: string | null;
+  pageName?: string | null;
+  category?: string | null;
+  followersCount?: number | null;
+  currentBio?: string | null;
+}
+
 export const roleRoomAgentService = {
   async getAccess(): Promise<RoleRoomAgentAccess> {
     const response = await fetch('/api/role-room/agent/access', {
@@ -1304,6 +1333,44 @@ export const roleRoomAgentService = {
     if (!r.ok) return [];
     const body = await r.json().catch(() => null);
     return Array.isArray(body?.recommendations) ? (body.recommendations as RoleRoomAgentRecommendation[]) : [];
+  },
+
+  // ── Profilforslag (mig 285) ───────────────────────────────────────────
+  async getProfileSuggestion(
+    platform = 'facebook',
+    projectId?: string | null,
+    pageId?: string | null,
+  ): Promise<{ suggestion: RoleRoomProfileSuggestion | null; connectedPage: RoleRoomConnectedPage }> {
+    const params = new URLSearchParams({ platform });
+    if (projectId) params.set('projectId', projectId);
+    if (pageId) params.set('pageId', pageId);
+    const r = await fetch(`/api/role-room/profile-suggestions?${params.toString()}`, { headers: readRoleRoomAgentHeaders() });
+    if (!r.ok) return { suggestion: null, connectedPage: { pageId: null, pageName: null } };
+    const body = await r.json().catch(() => null);
+    return {
+      suggestion: (body?.suggestion as RoleRoomProfileSuggestion | null) ?? null,
+      connectedPage: (body?.connectedPage as RoleRoomConnectedPage) ?? { pageId: null, pageName: null },
+    };
+  },
+
+  async generateProfileSuggestion(input: GenerateProfileSuggestionInput): Promise<RoleRoomProfileSuggestion | null> {
+    const r = await fetch('/api/role-room/profile-suggestions/generate', {
+      method: 'POST',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.suggestion as RoleRoomProfileSuggestion | null) ?? null;
+  },
+
+  async patchProfileSuggestion(id: string, status: 'applied' | 'dismissed' | 'new'): Promise<boolean> {
+    const r = await fetch(`/api/role-room/profile-suggestions/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return r.ok;
   },
 
   async generateProducerBootstrap(
