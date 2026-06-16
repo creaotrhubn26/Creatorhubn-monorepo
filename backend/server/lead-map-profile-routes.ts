@@ -66,6 +66,214 @@ const SALES_LEAD = new Set(["admin", "salgssjef"]);
 const TEAM_LEAD_OR_ABOVE = new Set(["admin", "salgssjef", "teamleder"]);
 
 export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps): void {
+  // ─── POST /heartbeat ─────────────────────────────────────────────
+  // Frontend kaller dette hvert 60s for å markere brukeren som online.
+  // last_active_at i organization_members brukes til "online"-badge.
+  // Hvis brukeren har samtykket til posisjonsdeling, kan body inneholde
+  // lat/lng/accuracy_m + activity for live-pin på kartet.
+  app.post(
+    "/api/admin-room/lead-map/heartbeat",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const body = req.body as {
+        organization_id?: string;
+        lat?: number; lng?: number; accuracy_m?: number;
+        activity?: string;
+        current_lead_id?: string;
+        current_visit_id?: string;
+      };
+      if (!body.organization_id) {
+        return res.status(400).json({ error: "mangler_organization_id" });
+      }
+      try {
+        await pool.query(
+          `UPDATE organization_members
+              SET last_active_at = NOW()
+            WHERE organization_id = $1 AND user_id = $2`,
+          [body.organization_id, session.userId],
+        );
+        // Hvis posisjon sendt: krev consent + upsert
+        if (typeof body.lat === "number" && typeof body.lng === "number") {
+          const consentRes = await pool.query(
+            `SELECT 1 FROM member_location_consent
+              WHERE user_id = $1 AND organization_id = $2
+                AND revoked_at IS NULL LIMIT 1`,
+            [session.userId, body.organization_id],
+          );
+          if (consentRes.rowCount !== null && consentRes.rowCount > 0) {
+            await pool.query(
+              `INSERT INTO member_locations (
+                 organization_id, user_id, lat, lng, accuracy_m,
+                 activity, current_lead_id, current_visit_id
+               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+               ON CONFLICT (organization_id, user_id) DO UPDATE SET
+                 lat = EXCLUDED.lat,
+                 lng = EXCLUDED.lng,
+                 accuracy_m = EXCLUDED.accuracy_m,
+                 activity = EXCLUDED.activity,
+                 current_lead_id = EXCLUDED.current_lead_id,
+                 current_visit_id = EXCLUDED.current_visit_id,
+                 updated_at = NOW()`,
+              [
+                body.organization_id, session.userId,
+                body.lat, body.lng, body.accuracy_m ?? null,
+                body.activity ?? "idle",
+                body.current_lead_id ?? null,
+                body.current_visit_id ?? null,
+              ],
+            );
+          }
+        }
+        return res.json({ ok: true });
+      } catch (err) {
+        return res.status(500).json({ error: "heartbeat_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── POST /location/consent ──────────────────────────────────────
+  // Brukeren samtykker til at posisjonen kan deles med org
+  app.post(
+    "/api/admin-room/lead-map/organizations/:id/location/consent",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        await pool.query(
+          `INSERT INTO member_location_consent (
+             user_id, organization_id, ip_address, user_agent, consented_at
+           ) VALUES ($1, $2, $3, $4, NOW())
+           ON CONFLICT (user_id, organization_id) DO UPDATE SET
+             consented_at = NOW(),
+             revoked_at = NULL,
+             ip_address = EXCLUDED.ip_address,
+             user_agent = EXCLUDED.user_agent`,
+          [
+            session.userId, req.params.id,
+            String(req.ip ?? "").slice(0, 64),
+            String(req.headers["user-agent"] ?? "").slice(0, 500),
+          ],
+        );
+        return res.json({ ok: true });
+      } catch (err) {
+        return res.status(500).json({ error: "consent_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── DELETE /location/consent ────────────────────────────────────
+  app.delete(
+    "/api/admin-room/lead-map/organizations/:id/location/consent",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        await pool.query(
+          `UPDATE member_location_consent
+              SET revoked_at = NOW()
+            WHERE user_id = $1 AND organization_id = $2`,
+          [session.userId, req.params.id],
+        );
+        // Slett også cached posisjon
+        await pool.query(
+          `DELETE FROM member_locations
+            WHERE organization_id = $1 AND user_id = $2`,
+          [req.params.id, session.userId],
+        );
+        return res.json({ ok: true });
+      } catch (err) {
+        return res.status(500).json({ error: "revoke_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── GET /location/consent ───────────────────────────────────────
+  // Sjekk min egen consent-status
+  app.get(
+    "/api/admin-room/lead-map/organizations/:id/location/consent",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const r = await pool.query<{ consented_at: string | null; revoked_at: string | null }>(
+          `SELECT consented_at::text, revoked_at::text
+             FROM member_location_consent
+            WHERE user_id = $1 AND organization_id = $2 LIMIT 1`,
+          [session.userId, req.params.id],
+        );
+        const row = r.rows[0];
+        return res.json({
+          consented: Boolean(row && row.consented_at && !row.revoked_at),
+          consentedAt: row?.consented_at ?? null,
+          revokedAt: row?.revoked_at ?? null,
+        });
+      } catch (err) {
+        return res.status(500).json({ error: "consent_status_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── GET /organizations/:id/member-locations ─────────────────────
+  // Live-posisjoner for alle medlemmer som har samtykket og er aktive
+  // siste 15 min. Bruker viser disse som avatar-pins på Lead Map-kartet.
+  app.get(
+    "/api/admin-room/lead-map/organizations/:id/member-locations",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      // Caller må være medlem av org-en
+      const memRes = await pool.query(
+        `SELECT 1 FROM organization_members
+          WHERE organization_id = $1 AND user_id = $2 LIMIT 1`,
+        [req.params.id, session.userId],
+      );
+      if (memRes.rowCount === 0) {
+        return res.status(403).json({ error: "ikke_medlem" });
+      }
+      try {
+        const r = await pool.query<{
+          user_id: string;
+          lat: number; lng: number; accuracy_m: number | null;
+          activity: string;
+          current_lead_id: string | null;
+          current_visit_id: string | null;
+          updated_at: string;
+          display_name: string | null;
+          title: string | null;
+          avatar_url: string | null;
+          role: string;
+          team_name: string | null;
+        }>(
+          `SELECT ml.user_id,
+                  ml.lat, ml.lng, ml.accuracy_m,
+                  ml.activity,
+                  ml.current_lead_id, ml.current_visit_id,
+                  ml.updated_at::text,
+                  up.display_name, up.title, up.avatar_url,
+                  om.role,
+                  st.name AS team_name
+             FROM member_locations ml
+             JOIN organization_members om
+               ON om.organization_id = ml.organization_id
+              AND om.user_id = ml.user_id
+             LEFT JOIN user_profiles up
+               ON up.organization_id = ml.organization_id
+              AND up.user_id = ml.user_id
+             LEFT JOIN sales_teams st ON st.id = om.sales_team_id
+            WHERE ml.organization_id = $1
+              AND ml.is_sharing = TRUE
+              AND ml.updated_at > NOW() - INTERVAL '15 minutes'
+            ORDER BY ml.updated_at DESC`,
+          [req.params.id],
+        );
+        return res.json({ locations: r.rows });
+      } catch (err) {
+        return res.status(500).json({ error: "locations_failed", detail: String(err) });
+      }
+    },
+  );
+
   // ─── GET /organizations/:id/profile ──────────────────────────────
   app.get(
     "/api/admin-room/lead-map/organizations/:id/profile",
@@ -75,8 +283,12 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
       const role = await getMemberRole(pool, session.userId, req.params.id);
       if (!role) return res.status(403).json({ error: "ikke_medlem" });
       try {
-        const r = await pool.query(
-          `SELECT id::text, name, slug, plan, org_type,
+        const r = await pool.query<{
+          id: string; owner_user_id: string | null;
+          [k: string]: unknown;
+        }>(
+          `SELECT id::text, owner_user_id,
+                  name, slug, plan, org_type,
                   description, website, industry, org_number,
                   phone, contact_email, address_line,
                   postal_code, city, country,
@@ -86,7 +298,15 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
           [req.params.id],
         );
         if (r.rows.length === 0) return res.status(404).json({ error: "not_found" });
-        return res.json({ profile: r.rows[0], canEdit: ADMIN_LIKE.has(role) });
+        const row = r.rows[0];
+        const isOwner = row.owner_user_id === session.userId;
+        return res.json({
+          profile: row,
+          canEdit: ADMIN_LIKE.has(role),
+          isOwner,
+          // org_number + logo_url er låst til eier — frontend bruker dette
+          ownerOnlyFields: ["org_number", "logo_url"],
+        });
       } catch (err) {
         return res.status(500).json({ error: "profile_failed", detail: String(err) });
       }
@@ -103,12 +323,29 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
       if (!role || !ADMIN_LIKE.has(role)) {
         return res.status(403).json({ error: "kun_admin_kan_endre_profil" });
       }
+      // Sjekk eierskap — org_number + logo_url er låst til org-eier
+      const ownerRes = await pool.query<{ owner_user_id: string | null }>(
+        `SELECT owner_user_id FROM organizations WHERE id = $1`,
+        [req.params.id],
+      );
+      const isOwner = ownerRes.rows[0]?.owner_user_id === session.userId;
+      const OWNER_ONLY_FIELDS = new Set(["org_number", "logo_url"]);
       const allowed = [
         "name", "description", "website", "industry", "org_number",
         "phone", "contact_email", "address_line", "postal_code",
         "city", "country", "logo_url", "brand_color",
       ];
       const body = req.body as Record<string, unknown>;
+      // Avvis tidlig hvis ikke-eier forsøker å endre eier-feltene
+      for (const k of Object.keys(body)) {
+        if (OWNER_ONLY_FIELDS.has(k) && !isOwner) {
+          return res.status(403).json({
+            error: "kun_eier_kan_endre_dette_feltet",
+            field: k,
+            ownerOnlyFields: ["org_number", "logo_url"],
+          });
+        }
+      }
       const sets: string[] = [];
       const values: unknown[] = [req.params.id];
       let idx = 2;
@@ -145,6 +382,10 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
       try {
         const r = await pool.query(
           `SELECT om.user_id, om.role, om.sales_team_id::text,
+                  om.last_active_at::text AS last_active_at,
+                  -- Online = aktiv siste 5 min (samme heuristikk som Admin Room)
+                  (om.last_active_at IS NOT NULL
+                    AND om.last_active_at > NOW() - INTERVAL '5 minutes') AS is_online,
                   u.email AS user_email, u.name AS user_name,
                   up.display_name, up.title, up.bio, up.avatar_url,
                   up.phone, up.contact_email AS profile_contact_email,

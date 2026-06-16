@@ -619,6 +619,22 @@ function App() {
                   {/* Login route */}
                   <Route path="/login" component={LoginPageSimple} />
                   {/* Dans tester-invite landing */}
+                  <Route path="/lead-map/accept">
+                    {() => {
+                      const LeadMapAccept = React.lazy(() => import('./pages/LeadMapAccept'));
+                      return (
+                        <React.Suspense
+                          fallback={
+                            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                              <CircularProgress />
+                            </Box>
+                          }
+                        >
+                          <LeadMapAccept />
+                        </React.Suspense>
+                      );
+                    }}
+                  </Route>
                   <Route path="/invite/:token">
                     {(params: { token: string }) => {
                       const InviteLanding = React.lazy(() =>
