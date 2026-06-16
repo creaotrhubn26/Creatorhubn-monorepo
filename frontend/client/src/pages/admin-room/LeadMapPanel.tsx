@@ -29,6 +29,8 @@ import { Circle, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } 
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import LeadMapMemberPins from './LeadMapMemberPins';
+import { haversineKm, formatDistance, estimateDriveMinutes } from './lead-map-distance';
+import NavigationOutlinedIcon from '@mui/icons-material/NavigationOutlined';
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
 import ExploreOutlinedIcon from '@mui/icons-material/ExploreOutlined';
 import HistoryToggleOffOutlinedIcon from '@mui/icons-material/HistoryToggleOffOutlined';
@@ -94,6 +96,9 @@ interface MapLead {
   phone: string | null;
   email: string | null;
   websiteUrl: string | null;
+  /** Bedriftens logo — vises som pin hvis satt. Kan auto-fetches fra
+   *  websiteUrl via /leads/:id/fetch-logo. */
+  logoUrl?: string | null;
   instagramUrl: string | null;
   googleRating: number | null;
   aiOpportunityScore: number | null;
@@ -260,18 +265,36 @@ const PIN_ICON_SVG: Record<LeadStatus, string> = {
 
 // Lag droppin-formet pin med ikon inni. Cached så vi ikke re-genererer på hver render.
 const pinIconCache = new Map<string, L.DivIcon>();
-function makePinIcon(status: LeadStatus, selected: boolean): L.DivIcon {
+function makePinIcon(status: LeadStatus, selected: boolean, logoUrl?: string | null): L.DivIcon {
+  const meta = STATUS_META[status];
+  // Hvis bedriften har logo: render sirkulær pin med logo + status-ring
+  // (kan ikke cache fordi logo-URL varierer per lead)
+  if (logoUrl) {
+    const ringW = selected ? 4 : 3;
+    const size = selected ? 44 : 38;
+    const html = `
+      <div style="position:relative;width:${size}px;height:${size + 8}px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.7));">
+        <div style="position:absolute;top:0;left:0;width:${size}px;height:${size}px;border-radius:50%;border:${ringW}px solid ${meta.color};background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+          <img src="${logoUrl}" alt="" style="width:100%;height:100%;object-fit:contain;background:#fff" onerror="this.style.display='none'" />
+        </div>
+        <div style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid ${meta.color};"></div>
+        ${selected ? `<div style="position:absolute;inset:-3px;border-radius:50% 50% 50% 50% / 60% 60% 50% 50%;border:1.6px solid ${palette.amber};opacity:0.85;pointer-events:none;"></div>` : ''}
+      </div>
+    `;
+    return L.divIcon({
+      html, className: 'logo-pin', iconSize: [size, size + 8], iconAnchor: [size / 2, size + 8],
+    });
+  }
+  // Default: status-farget droppin (med cache)
   const key = `${status}-${selected ? 1 : 0}`;
   const cached = pinIconCache.get(key);
   if (cached) return cached;
-  const meta = STATUS_META[status];
   const iconSvg = PIN_ICON_SVG[status] ?? PIN_ICON_SVG.unvisited;
   const w = selected ? 34 : 28;
   const h = selected ? 44 : 36;
   const filter = selected
     ? `drop-shadow(0 0 10px ${palette.amber}cc) drop-shadow(0 2px 3px rgba(0,0,0,0.7))`
     : `drop-shadow(0 2px 3px rgba(0,0,0,0.6))`;
-  // viewBox 24x32: rundt hode 0..24 (sentrum 12,12), tail ender ved 12,32
   const selectedRing = selected
     ? `<circle cx="12" cy="12" r="13" fill="none" stroke="${palette.amber}" stroke-width="1.6" opacity="0.85"/>`
     : '';
@@ -447,6 +470,18 @@ export default function LeadMapPanel() {
     if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
     return (parts[0][0] + parts[1][0]).toUpperCase();
   })();
+
+  // Min posisjon — brukes til "distanse til lead"-visning i popup
+  const [myPosition, setMyPosition] = useState<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => setMyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => { /* nektet — distanse-visning skjules da */ },
+      { enableHighAccuracy: false, maximumAge: 60000, timeout: 30000 },
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
 
   const [leads, setLeads] = useState<MapLead[]>([]);
   const [competitors, setCompetitors] = useState<CompetitorPoint[]>([]);
@@ -2535,7 +2570,7 @@ export default function LeadMapPanel() {
                 <Marker
                   key={lead.id}
                   position={[lead.latitude, lead.longitude]}
-                  icon={makePinIcon(lead.status, selected?.id === lead.id)}
+                  icon={makePinIcon(lead.status, selected?.id === lead.id, lead.logoUrl)}
                   // WCAG 2.1.1 — Leaflet rendrer pin som <div role="button">
                   // når keyboard=true (default). title gir tooltip + ARIA-label.
                   // alt brukes av screen readers når pin er fokusert.
@@ -2563,9 +2598,49 @@ export default function LeadMapPanel() {
                 >
                   <Popup>
                     <div style={{ minWidth: 180 }}>
-                      <strong>{lead.name}</strong><br />
-                      {lead.category && <span>{lead.category}<br /></span>}
-                      {lead.address && <span style={{ color: '#666' }}>{lead.address}</span>}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        {lead.logoUrl && (
+                          <img src={lead.logoUrl} alt=""
+                            style={{ width: 36, height: 36, objectFit: 'contain', borderRadius: 4, background: '#fff', flexShrink: 0 }}
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        )}
+                        <div style={{ flexGrow: 1 }}>
+                          <strong>{lead.name}</strong><br />
+                          {lead.category && <span style={{ fontSize: 11, color: '#888' }}>{lead.category}</span>}
+                        </div>
+                      </div>
+                      {lead.address && <div style={{ color: '#666', fontSize: 12, marginTop: 4 }}>{lead.address}</div>}
+                      {/* Logo hentes automatisk i bakgrunnen ved kart-load.
+                          Vises ved neste refresh hvis bedriften har nettside. */}
+                      {myPosition && (() => {
+                        const km = haversineKm(myPosition, { lat: lead.latitude, lng: lead.longitude });
+                        const minutes = estimateDriveMinutes(km);
+                        const nav = `https://www.google.com/maps/dir/?api=1&origin=${myPosition.lat},${myPosition.lng}&destination=${lead.latitude},${lead.longitude}&travelmode=driving`;
+                        return (
+                          <div style={{
+                            marginTop: 8, padding: '6px 8px',
+                            background: 'rgba(192,132,252,0.12)',
+                            borderRadius: 4, display: 'flex',
+                            alignItems: 'center', gap: 8,
+                          }}>
+                            <NavigationOutlinedIcon style={{ fontSize: 16, color: '#c084fc' }} />
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#c084fc' }}>
+                              {formatDistance(km)}
+                            </span>
+                            <span style={{ fontSize: 11, color: '#666' }}>
+                              ≈ {minutes} min m/ bil
+                            </span>
+                            <a href={nav} target="_blank" rel="noopener noreferrer"
+                               style={{
+                                 marginLeft: 'auto', fontSize: 11, fontWeight: 700,
+                                 color: '#c084fc', textDecoration: 'underline',
+                               }}>
+                              Naviger
+                            </a>
+                          </div>
+                        );
+                      })()}
                       <Divider sx={{ my: 1 }} />
                       <div style={{ fontSize: 11, color: '#666', marginBottom: 6 }}>Endre status:</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>

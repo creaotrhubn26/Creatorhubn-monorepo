@@ -23,6 +23,47 @@ import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
 import { searchPlaces } from "./lead-map-service.js";
 import { assessCompetitorThreat } from "./competitor-threat-assessment.js";
+import { fetchBestLogo } from "./lead-logo-fetcher.js";
+
+/**
+ * Fire-and-forget: hent logo for opptil 10 leads som mangler logo_url
+ * men har website_url. Resultat lagres i crm_customers.logo_url slik
+ * at neste kart-load henter dem ut. Feiler stille per lead.
+ */
+async function autoFetchLeadLogos(
+  pool: Pool,
+  rows: Array<Record<string, unknown>>,
+): Promise<void> {
+  const candidates = rows
+    .filter((r) => !r.logo_url)
+    .slice(0, 10);
+  if (candidates.length === 0) return;
+  // Trenger website_url — hent fra DB siden market-points SELECT'en
+  // ikke inkluderer det.
+  const ids = candidates.map((r) => r.id as string);
+  const r = await pool.query<{ id: string; website_url: string | null }>(
+    `SELECT id::text, website_url
+       FROM crm_customers
+      WHERE id = ANY($1::text[])
+        AND website_url IS NOT NULL
+        AND (logo_url IS NULL OR logo_url = '')`,
+    [ids],
+  );
+  for (const lead of r.rows) {
+    if (!lead.website_url) continue;
+    try {
+      const logo = await fetchBestLogo(lead.website_url);
+      if (logo) {
+        await pool.query(
+          `UPDATE crm_customers SET logo_url = $2 WHERE id = $1`,
+          [lead.id, logo.url],
+        );
+      }
+    } catch {
+      // Stille feil — neste run prøver på nytt
+    }
+  }
+}
 import {
   generateCounterCampaign,
   saveCounterCampaignToWorkflow,
@@ -1126,6 +1167,13 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
                     ${claudeRankSelect.replace(/claude_recommendation_/g, 'c.claude_recommendation_')},
                     c.ai_opportunity_score, c.google_rating,
                     c.owner_user_id,
+                    -- logo_url er valgfri (lagt til av mig 288); kolonnen blir
+                    -- selectet defensivt via COALESCE for å overleve hvis
+                    -- migrasjonen ikke har kjørt ennå
+                    COALESCE(
+                      to_jsonb(c) ->> 'logo_url',
+                      NULL
+                    ) AS logo_url,
                     u.name AS assigned_user_name,
                     u.email AS assigned_user_email
                FROM crm_customers c
@@ -1145,6 +1193,7 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
             longitude: Number(r.longitude),
             address: r.address,
             city: r.city,
+            logoUrl: r.logo_url,
             recommendationRank: r.claude_recommendation_rank,
             recommendationReason: r.claude_recommendation_reason,
             aiOpportunityScore: r.ai_opportunity_score,
@@ -1153,6 +1202,12 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
             assignedUserName: r.assigned_user_name,
             assignedUserEmail: r.assigned_user_email,
           }));
+          // ── Auto-fetch logo i bakgrunnen for leads som mangler det ──
+          // Fire-and-forget: blokkerer ikke svaret. Neste kart-load ser
+          // den oppdaterte logoen. Max 10 per request for å unngå burst.
+          setImmediate(() => {
+            void autoFetchLeadLogos(pool, l.rows as Array<Record<string, unknown>>);
+          });
         } catch (err) {
           console.error("[market-points] leads-query failed", err);
           warnings.push(`leads_unavailable: ${(err as Error).message}`);
