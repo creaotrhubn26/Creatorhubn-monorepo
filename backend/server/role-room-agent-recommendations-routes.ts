@@ -8,7 +8,9 @@
  *   GET    /api/role-room/agent/recommendations?projectId=&status=
  *   PATCH  /api/role-room/agent/recommendations/:id   body: { status }
  *   POST   /api/role-room/agent/recommendations/generate  body: { projectId? }
- *     → seeder et kuratert sett anbefalinger (v1; ekte Claude-generering senere)
+ *     → henter ekte signaler (innlegg, engasjement, DM-er, budsjett …) og lar
+ *       Claude lage skreddersydde anbefalinger. Faller tilbake til en kuratert
+ *       katalog hvis Claude ikke er konfigurert eller kallet feiler.
  */
 
 import type express from "express";
@@ -95,6 +97,177 @@ const SEED_CATALOG: Array<Omit<RecommendationRow, "id" | "owner_user_id" | "proj
   { type: "gjenbruk", title: "Gjenbruk innhold", insight: "Et topp-innlegg kan gjenbrukes i nytt format for å nå flere uten ekstra arbeid.", stat_value: "3", stat_label: "format-ideer", cta_label: "Utfør · Gjenbruk", icon: "recycling" },
 ];
 
+// Tillatte MUI-ikon-navn Claude kan velge mellom (matcher AgentRecommendationCard).
+const ALLOWED_ICONS = new Set<string>([
+  ...SEED_CATALOG.map((c) => c.icon).filter((x): x is string => typeof x === "string"),
+  "auto_awesome", "lightbulb", "campaign", "favorite", "visibility", "share",
+  "people", "rocket_launch", "analytics", "edit_calendar", "celebration",
+]);
+
+type GeneratedRec = Pick<RecommendationRow, "type" | "title" | "insight" | "stat_value" | "stat_label" | "cta_label" | "icon">;
+
+/**
+ * Henter ekte signaler for en bruker (+ valgfritt prosjekt). Hver spørring er
+ * defensiv: feiler én (mangler tabell/kolonne) hoppes den bare over, slik at
+ * generering aldri kollapser på et enkelt signal.
+ */
+async function gatherSignals(pool: Pool, ownerUserId: string, projectId: string | null): Promise<Record<string, unknown>> {
+  const signals: Record<string, unknown> = {};
+  const safe = async (fn: () => Promise<void>): Promise<void> => { try { await fn(); } catch { /* signal utilgjengelig */ } };
+
+  // Innlegg + engasjement siste 60 dager
+  await safe(async () => {
+    const r = await pool.query(
+      `SELECT
+         count(*) FILTER (WHERE status = 'draft')                      AS drafts,
+         count(*) FILTER (WHERE status = 'scheduled')                  AS scheduled,
+         count(*) FILTER (WHERE status IN ('posted','published'))      AS posted,
+         count(*) FILTER (WHERE scheduled_for > now())                 AS upcoming,
+         coalesce(sum(likes),0)        AS likes,
+         coalesce(sum(comments),0)     AS comments,
+         coalesce(sum(shares),0)       AS shares,
+         coalesce(sum(impressions),0)  AS impressions,
+         coalesce(sum(engagements),0)  AS engagements,
+         max(coalesce(posted_at, scheduled_for, created_at)) AS last_activity
+       FROM social_media_posts
+       WHERE author_user_id = $1 AND coalesce(posted_at, created_at) > now() - interval '60 days'`,
+      [ownerUserId],
+    );
+    if (r.rows[0]) signals.posts = r.rows[0];
+  });
+
+  // Topp-innlegg etter engasjement
+  await safe(async () => {
+    const r = await pool.query(
+      `SELECT platform, left(coalesce(caption,''), 120) AS caption, likes, comments, shares, impressions, engagements
+         FROM social_media_posts
+        WHERE author_user_id = $1 AND status IN ('posted','published')
+        ORDER BY coalesce(engagements,0) DESC NULLS LAST LIMIT 1`,
+      [ownerUserId],
+    );
+    if (r.rows[0]) signals.topPost = r.rows[0];
+  });
+
+  // Uleste Instagram-DM-er
+  await safe(async () => {
+    const r = await pool.query(
+      `SELECT coalesce(sum(unread_count),0)::int AS unread, count(*)::int AS conversations
+         FROM role_room_instagram_conversations WHERE user_id = $1`,
+      [ownerUserId],
+    );
+    if (r.rows[0]) signals.instagramDms = r.rows[0];
+  });
+
+  // Leads (defensiv — kolonnenavn kan variere)
+  await safe(async () => {
+    const r = await pool.query(
+      `SELECT count(*)::int AS total, count(*) FILTER (WHERE status = 'new')::int AS new_leads
+         FROM leads WHERE user_id = $1`,
+      [ownerUserId],
+    );
+    if (r.rows[0]) signals.leads = r.rows[0];
+  });
+
+  // Annonsebudsjett for prosjektet (siste periode)
+  if (projectId) {
+    await safe(async () => {
+      const r = await pool.query(
+        `SELECT period, max_spend_nok FROM role_room_ads_budgets WHERE project_id = $1 ORDER BY period DESC LIMIT 1`,
+        [projectId],
+      );
+      if (r.rows[0]) signals.adsBudget = r.rows[0];
+    });
+  }
+
+  return signals;
+}
+
+/**
+ * Lar Claude lage skreddersydde anbefalinger ut fra signalene. Returnerer null
+ * hvis Claude ikke er konfigurert eller kallet/parsing feiler → caller faller
+ * tilbake til katalogen. Følger samme lazy-import-mønster som feed-strategy.
+ */
+async function generateWithClaude(signals: Record<string, unknown>): Promise<GeneratedRec[] | null> {
+  if (process.env.ROLE_ROOM_AGENT_CLAUDE_ENABLED !== "true" || !process.env.ANTHROPIC_API_KEY) {
+    return null;
+  }
+  let client: any;
+  try {
+    // @ts-ignore — optional SDK
+    const mod: any = await import("@anthropic-ai/sdk");
+    const AnthropicCtor = mod.default ?? mod.Anthropic;
+    client = new AnthropicCtor({ apiKey: process.env.ANTHROPIC_API_KEY });
+  } catch {
+    return null;
+  }
+
+  const iconList = Array.from(ALLOWED_ICONS).join(", ");
+  const prompt = `Du er The Role Room Agent — en norsk vekst- og innholdsstrateg for skapere og produksjoner.
+Under er EKTE signaler fra brukerens konto (JSON). Lag 5–7 konkrete, handlingsrettede anbefalinger basert på disse tallene.
+
+SIGNALER:
+${JSON.stringify(signals, null, 2)}
+
+Regler:
+- Forankre "stat_value" i ekte tall fra signalene der det er mulig (f.eks. faktisk antall uleste DM-er, faktisk engasjement). Ikke dikt opp tall som motsier signalene.
+- Hvis et signal mangler, gi en generell, fortsatt nyttig anbefaling — men ikke påstå falske tall.
+- "title": kort (1–4 ord). "insight": én konkret setning på norsk. "stat_label": kort enhet/kontekst.
+- "cta_label" skal starte med "Utfør" (f.eks. "Utfør · Svar nå").
+- "icon" MÅ være ett av: ${iconList}.
+- "type": kort snake_case-slug som beskriver anbefalingen.
+
+Svar KUN med gyldig JSON, ingen markdown:
+{"recommendations":[{"type":"...","title":"...","insight":"...","stat_value":"...","stat_label":"...","cta_label":"...","icon":"..."}]}`;
+
+  try {
+    const response = await client.messages.create({
+      model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || "claude-sonnet-4-5",
+      max_tokens: 2048,
+      messages: [{ role: "user", content: prompt }],
+    });
+    let text = "";
+    for (const block of response.content ?? []) {
+      if (block.type === "text" && typeof block.text === "string") text += block.text;
+    }
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end <= start) return null;
+    const parsed = JSON.parse(text.slice(start, end + 1));
+    const raw = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
+    const recs: GeneratedRec[] = raw
+      .filter((x: unknown): x is Record<string, unknown> => Boolean(x && typeof x === "object" && typeof (x as any).title === "string"))
+      .slice(0, 8)
+      .map((x: Record<string, unknown>) => {
+        const str = (v: unknown, max: number): string | null =>
+          typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
+        const icon = str(x.icon, 40);
+        return {
+          type: (str(x.type, 60) || "innsikt").replace(/[^a-z0-9_]/gi, "_").toLowerCase(),
+          title: str(x.title, 80) as string,
+          insight: str(x.insight, 280),
+          stat_value: str(x.stat_value, 40),
+          stat_label: str(x.stat_label, 60),
+          cta_label: str(x.cta_label, 60) || "Utfør",
+          icon: icon && ALLOWED_ICONS.has(icon) ? icon : "auto_awesome",
+        };
+      });
+    return recs.length ? recs : null;
+  } catch (err) {
+    console.error("[agent/recommendations Claude] failed", err);
+    return null;
+  }
+}
+
+// Plukk et pseudo-tilfeldig delsett av katalogen (fallback når Claude er av).
+function pickFromCatalog(n: number): GeneratedRec[] {
+  const pool = [...SEED_CATALOG];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, n);
+}
+
 export function setupRoleRoomAgentRecommendationsRoutes(
   deps: RoleRoomAgentRecommendationsRoutesDeps,
 ): void {
@@ -144,19 +317,32 @@ export function setupRoleRoomAgentRecommendationsRoutes(
     }
   });
 
-  // ── POST /generate — seed et kuratert sett (v1) ──────────────────────
+  // ── POST /generate — ekte Claude-generering m/ signaler (fallback: katalog) ──
   app.post("/api/role-room/agent/recommendations/generate", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const projectId = typeof (req.body || {}).projectId === "string" && req.body.projectId.trim() ? req.body.projectId.trim() : null;
     try {
+      // 1) Hent ekte signaler og la Claude lage skreddersydde anbefalinger.
+      const signals = await gatherSignals(pool, session.userId, projectId);
+      const claudeRecs = await generateWithClaude(signals);
+      const source = claudeRecs ? "claude" : "catalog";
+      const recs: GeneratedRec[] = claudeRecs ?? pickFromCatalog(6);
+
+      // 2) Rydd vekk eksisterende åpne anbefalinger i samme scope (unngå duplikater).
+      await pool.query(
+        `DELETE FROM role_room_agent_recommendation
+          WHERE owner_user_id = $1 AND status = 'new' AND project_id IS NOT DISTINCT FROM $2`,
+        [session.userId, projectId],
+      );
+
+      // 3) Sett inn de nye anbefalingene.
       const values: string[] = [];
       const params: unknown[] = [session.userId, projectId];
-      SEED_CATALOG.forEach((c, i) => {
+      recs.forEach((c) => {
         const base = params.length;
         params.push(crypto.randomUUID(), c.type, c.title, c.insight, c.stat_value, c.stat_label, c.cta_label, c.icon);
         values.push(`($${base + 1}, $1, $2, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, 'new')`);
-        void i;
       });
       const r = await pool.query(
         `INSERT INTO role_room_agent_recommendation
@@ -165,7 +351,7 @@ export function setupRoleRoomAgentRecommendationsRoutes(
          RETURNING *`,
         params,
       );
-      return res.json({ recommendations: r.rows.map(mapRow), created: r.rowCount });
+      return res.json({ recommendations: r.rows.map(mapRow), created: r.rowCount, source });
     } catch (err) {
       console.error("[agent/recommendations generate] failed", err);
       return res.status(500).json({ error: "Klarte ikke å generere anbefalinger" });
