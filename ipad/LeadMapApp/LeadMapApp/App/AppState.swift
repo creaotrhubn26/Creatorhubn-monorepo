@@ -89,6 +89,10 @@ final class AppState {
     // ── Live selger-pins (PR #612) ─────────────────────────────
     var memberLocations: [MemberLocation] = []
 
+    // ── Varsler (PR #622) ──────────────────────────────────────
+    var unreadNotificationsCount: Int = 0
+    private var notificationsPollTask: Task<Void, Never>?
+
     // ── Heartbeat-loop ─────────────────────────────────────────
     private var heartbeatController: HeartbeatController?
 
@@ -124,6 +128,7 @@ final class AppState {
             await loadOrganizations()
             await loadOrgContext()
             await startHeartbeatIfNeeded()
+            startNotificationsPolling()
         }
     }
 
@@ -203,6 +208,30 @@ final class AppState {
         self.heartbeatController = hb
     }
 
+    /// Poll unreadNotificationsCount hvert 30s — driver bell-badge på tab.
+    func startNotificationsPolling() {
+        notificationsPollTask?.cancel()
+        notificationsPollTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.refreshNotificationsCount()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                if Task.isCancelled { return }
+                await self.refreshNotificationsCount()
+            }
+        }
+    }
+
+    func refreshNotificationsCount() async {
+        guard let api else { return }
+        do {
+            let resp = try await api.fetchNotifications(unreadOnly: true, limit: 1)
+            self.unreadNotificationsCount = resp.unreadCount
+        } catch {
+            // Stille feil
+        }
+    }
+
     /// Toggle posisjons-deling. Bruker må eksplisitt slå PÅ.
     func setLocationConsent(_ on: Bool) async {
         guard let api, let orgId = activeOrganizationId else { return }
@@ -239,6 +268,9 @@ final class AppState {
     func signOut() {
         heartbeatController?.stop()
         heartbeatController = nil
+        notificationsPollTask?.cancel()
+        notificationsPollTask = nil
+        self.unreadNotificationsCount = 0
         AuthClient.clear()
         self.authToken = nil
         self.userEmail = nil
