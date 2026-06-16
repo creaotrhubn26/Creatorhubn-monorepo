@@ -835,6 +835,7 @@ export function registerLeadMapCompetitorRoutes({
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const body = req.body as {
+        projectId?: string | null;
         leads?: Array<{
           name?: string;
           address?: string;
@@ -856,6 +857,7 @@ export function registerLeadMapCompetitorRoutes({
       if (body.leads.length > 1000) {
         return res.status(400).json({ error: "max_1000_per_import" });
       }
+      const projectId = body.projectId ?? null;
       const skipped: Array<{ name: string; reason: string }> = [];
       let imported = 0;
       for (const lead of body.leads) {
@@ -869,11 +871,13 @@ export function registerLeadMapCompetitorRoutes({
                name, address, city, postal_code, country,
                phone, email, website_url, lead_category, notes,
                latitude, longitude,
-               lead_status, lead_source, owner_user_id, agent_config_id
+               lead_status, lead_source, owner_user_id, agent_config_id,
+               project_id
              ) VALUES (
                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                $11::numeric, $12::numeric,
-               'unvisited', 'csv_import', $13, NULL
+               'unvisited', 'csv_import', $13, NULL,
+               $14
              )`,
             [
               lead.name.trim(),
@@ -889,6 +893,7 @@ export function registerLeadMapCompetitorRoutes({
               lead.latitude ?? null,
               lead.longitude ?? null,
               session.userId,
+              projectId,
             ],
           );
           imported += 1;

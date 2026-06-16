@@ -79,6 +79,8 @@ export interface MapLead {
   /** Navn på eier-bruker (JOIN users.name). null hvis eier mangler eller eier ikke finnes lenger. */
   assignedUserName: string | null;
   assignedUserEmail: string | null;
+  /** Prosjekt-tilordning (mig 284). null = ikke tilordnet. */
+  projectId: string | null;
   latitude: number;
   longitude: number;
   phone: string | null;
@@ -157,6 +159,7 @@ function rowToLead(row: any): MapLead {
     assignedUserId: row.owner_user_id,
     assignedUserName: row.assigned_user_name ?? null,
     assignedUserEmail: row.assigned_user_email ?? null,
+    projectId: row.project_id ?? null,
     lastVisitAt: row.last_visit_at?.toISOString() ?? null,
     nextFollowUpAt: row.next_follow_up_at?.toISOString() ?? null,
     nextAction: row.next_action,
@@ -207,7 +210,8 @@ export async function listLeadsInBounds(
             c.ai_opportunity_score, c.estimated_value, c.lead_source, c.owner_user_id,
             c.last_visit_at, c.next_follow_up_at, c.next_action, c.tags, c.notes,
             c.created_at, c.updated_at,
-            u.name AS assigned_user_name, u.email AS assigned_user_email
+            u.name AS assigned_user_name, u.email AS assigned_user_email,
+            c.project_id
      FROM crm_customers c
      LEFT JOIN users u ON u.id = c.owner_user_id
      WHERE ${conditions.join(' AND ')}
@@ -230,7 +234,8 @@ export async function getLeadById(
             c.ai_opportunity_score, c.estimated_value, c.lead_source, c.owner_user_id,
             c.last_visit_at, c.next_follow_up_at, c.next_action, c.tags, c.notes,
             c.created_at, c.updated_at,
-            u.name AS assigned_user_name, u.email AS assigned_user_email
+            u.name AS assigned_user_name, u.email AS assigned_user_email,
+            c.project_id
      FROM crm_customers c
      LEFT JOIN users u ON u.id = c.owner_user_id
      WHERE id = $1::uuid AND ${tenantConds.join(' AND ')}`,
@@ -891,6 +896,9 @@ export async function importPlaceAsLead(
     agentConfigId?: string | null;
     place: PlaceResult;
     leadCategory?: string;
+    /** Auto-tildel prosjekt ved import — gjør at Places-discovery
+     *  hopper rett inn i aktivt prosjekt-filter. */
+    projectId?: string | null;
   },
 ): Promise<{ ok: true; leadId: string } | { ok: false; reason: string }> {
   // Sjekk om allerede importert (tenant-aware)
@@ -914,11 +922,13 @@ export async function importPlaceAsLead(
        id, name, phone, email, company, status, source, owner_user_id, agent_config_id,
        latitude, longitude, address, google_place_id, google_rating,
        website_url, lead_category, lead_status, lead_source,
+       project_id,
        created_at, updated_at
      ) VALUES (
        gen_random_uuid(), $1, $2, NULL, $3, 'lead', 'google_places', $4, $5::uuid,
        $6::numeric, $7::numeric, $8, $9, $10::numeric, $11, $12, 'unvisited',
-       'google_places', NOW(), NOW()
+       'google_places', $13,
+       NOW(), NOW()
      )
      RETURNING id::text`,
     [
@@ -928,6 +938,7 @@ export async function importPlaceAsLead(
       opts.place.placeId, opts.place.rating,
       opts.place.websiteUrl,
       opts.leadCategory ?? opts.place.category,
+      opts.projectId ?? null,
     ],
   );
   const leadId = r.rows[0].id;

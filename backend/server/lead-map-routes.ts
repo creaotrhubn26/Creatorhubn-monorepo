@@ -331,6 +331,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
     const body = (req.body ?? {}) as {
       place?: Parameters<typeof importPlaceAsLead>[1]['place'];
       leadCategory?: string;
+      projectId?: string | null;
     };
     if (!body.place?.placeId) return res.status(400).json({ error: "mangler_place" });
 
@@ -339,6 +340,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
         ownerUserId: session.userId,
         place: body.place,
         leadCategory: body.leadCategory,
+        projectId: body.projectId ?? null,
       });
       if (!r.ok) return res.status(r.reason === 'already_imported' ? 409 : 500).json(r);
       return res.json(r);

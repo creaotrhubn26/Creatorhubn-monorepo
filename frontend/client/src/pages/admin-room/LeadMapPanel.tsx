@@ -101,6 +101,7 @@ interface MapLead {
   tags: string[] | null;
   notes: string | null;
   updatedAt: string;
+  projectId?: string | null;
   // Role Room Agent Claude-rangering — "mest anbefalt å nå ut til"
   recommendationRank?: number | null;
   recommendationReason?: string | null;
@@ -1085,7 +1086,7 @@ export default function LeadMapPanel() {
       const r = await fetch('/api/admin-room/lead-map/leads/import-csv', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ leads }),
+        body: JSON.stringify({ leads, projectId: activeProjectId }),
       });
       if (r.ok) {
         const data = await r.json();
@@ -1330,6 +1331,48 @@ export default function LeadMapPanel() {
     fetchLeads(b);
   }, [fetchLeads]);
 
+  // Tilordne enkelt-lead til prosjekt (eller fjerne tilordning hvis null)
+  const assignLeadToProject = useCallback(async (leadId: string, projectId: string | null) => {
+    try {
+      const r = await fetch(`/api/admin-room/lead-map/leads/${leadId}/project`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ projectId }),
+      });
+      if (r.ok) {
+        await fetchLeads(boundsRef.current ?? undefined);
+        await fetchProjects();
+      }
+    } catch { /* noop */ }
+  }, [fetchLeads, fetchProjects]);
+
+  // Bulk-tildel valgte leads
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [bulkAssignTarget, setBulkAssignTarget] = useState<string>('');
+  const [bulkAssigning, setBulkAssigning] = useState(false);
+  const bulkAssignProject = useCallback(async () => {
+    if (selectedLeadIds.size === 0) return;
+    setBulkAssigning(true);
+    try {
+      const r = await fetch('/api/admin-room/lead-map/leads/bulk-assign-project', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          leadIds: Array.from(selectedLeadIds),
+          projectId: bulkAssignTarget || null,
+        }),
+      });
+      if (r.ok) {
+        setSelectedLeadIds(new Set());
+        setBulkAssignTarget('');
+        await fetchLeads(boundsRef.current ?? undefined);
+        await fetchProjects();
+      }
+    } finally {
+      setBulkAssigning(false);
+    }
+  }, [selectedLeadIds, bulkAssignTarget, fetchLeads, fetchProjects]);
+
   const updateStatusForLead = async (leadId: string, newStatus: LeadStatus) => {
     setUpdatingStatus(true);
     try {
@@ -1454,7 +1497,7 @@ export default function LeadMapPanel() {
       const r = await fetch('/api/admin-room/lead-map/places/import', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ place, leadCategory: place.category }),
+        body: JSON.stringify({ place, leadCategory: place.category, projectId: activeProjectId }),
       });
       if (r.ok) {
         setPlacesResults((prev) => prev.map((p) =>
@@ -3297,6 +3340,51 @@ export default function LeadMapPanel() {
                 Anbefal strategi
               </Button>
 
+              {/* Tilordne prosjekt — viser som info-strip + Select */}
+              <Box sx={{
+                mb: 2, p: 1.2, borderRadius: 1.2,
+                bgcolor: 'rgba(192,132,252,0.06)',
+                border: `1px solid ${palette.border}`,
+              }}>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Prosjekt
+                  </Typography>
+                  <Select
+                    size="small"
+                    value={selected.projectId ?? ''}
+                    displayEmpty
+                    onChange={(e) => {
+                      const v = e.target.value as string;
+                      void assignLeadToProject(selected.id, v || null);
+                    }}
+                    renderValue={(v) => {
+                      if (!v) return <Box component="span" sx={{ color: palette.textMuted, fontSize: '0.72rem' }}>Ikke tilordnet</Box>;
+                      const p = projects.find((x) => x.id === v);
+                      return <Box component="span" sx={{ fontSize: '0.74rem', fontWeight: 700, color: palette.accent }}>{p?.name ?? v}</Box>;
+                    }}
+                    sx={{
+                      flex: 1,
+                      bgcolor: 'rgba(168,85,247,0.06)',
+                      height: 30,
+                      borderRadius: 1,
+                      fontSize: '0.74rem',
+                      '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.border },
+                    }}
+                  >
+                    <MenuItem value=""><em>Ikke tilordnet</em></MenuItem>
+                    {projects.map((p) => (
+                      <MenuItem key={p.id} value={p.id}>
+                        <span style={{ fontWeight: 700 }}>{p.name}</span>
+                        {p.hasBrandKit && (
+                          <Box component="span" sx={{ ml: 1, color: palette.accent, fontSize: '0.62rem', fontWeight: 800 }}>· brand</Box>
+                        )}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </Stack>
+              </Box>
+
               {/* UPDATE STATUS — 6 store sirkel-knapper m/ ikon over label */}
               <Typography sx={{ fontSize: '0.66rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 1 }}>
                 Update Status
@@ -5064,6 +5152,190 @@ export default function LeadMapPanel() {
             </Box>
           </Box>
         )}
+
+        {/* Lead-liste — tabell-visning m/ checkbox + bulk-tildel */}
+        <Box sx={{ mt: 2.4, p: 2, borderRadius: 1.6, bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}` }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.4, flexWrap: 'wrap', gap: 1 }} useFlexGap>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: palette.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Alle leads
+              </Typography>
+              <Chip
+                label={filteredLeads.length}
+                size="small"
+                sx={{ bgcolor: 'rgba(251,191,36,0.12)', color: palette.amber, fontWeight: 800, fontSize: '0.66rem', height: 20 }}
+              />
+              {filteredLeads.filter((l) => !l.projectId).length > 0 && (
+                <Chip
+                  label={`${filteredLeads.filter((l) => !l.projectId).length} uten prosjekt`}
+                  size="small"
+                  sx={{ bgcolor: 'rgba(148,163,184,0.12)', color: '#94a3b8', fontWeight: 700, fontSize: '0.62rem', height: 20 }}
+                />
+              )}
+            </Stack>
+            {selectedLeadIds.size > 0 && (
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Typography sx={{ fontSize: '0.74rem', color: palette.amber, fontWeight: 700 }}>
+                  {selectedLeadIds.size} valgt →
+                </Typography>
+                <Select
+                  size="small"
+                  value={bulkAssignTarget}
+                  onChange={(e) => setBulkAssignTarget(e.target.value as string)}
+                  displayEmpty
+                  renderValue={(v) => v ? projects.find((p) => p.id === v)?.name ?? v : 'Velg prosjekt'}
+                  sx={{
+                    minWidth: 160,
+                    height: 30,
+                    bgcolor: 'rgba(192,132,252,0.08)',
+                    fontSize: '0.74rem',
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.borderStrong },
+                  }}
+                >
+                  <MenuItem value=""><em>Fjern tilordning</em></MenuItem>
+                  {projects.map((p) => (
+                    <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                  ))}
+                </Select>
+                <Button
+                  size="small" variant="contained"
+                  onClick={bulkAssignProject}
+                  disabled={bulkAssigning}
+                  startIcon={bulkAssigning ? <CircularProgress size={12} /> : null}
+                  sx={{ bgcolor: palette.accent, color: '#0a0a0f', fontWeight: 800, fontSize: '0.72rem', textTransform: 'none' }}
+                >
+                  {bulkAssigning ? 'Tildeler …' : 'Tildel'}
+                </Button>
+                <Button
+                  size="small" variant="text"
+                  onClick={() => setSelectedLeadIds(new Set())}
+                  sx={{ color: palette.textMuted, fontSize: '0.72rem', textTransform: 'none' }}
+                >
+                  Avbryt
+                </Button>
+              </Stack>
+            )}
+          </Stack>
+          {filteredLeads.length === 0 ? (
+            <Typography sx={{ fontSize: '0.76rem', color: palette.textMuted, fontStyle: 'italic' }}>
+              Ingen leads matcher gjeldende filtre.
+            </Typography>
+          ) : (
+            <Box sx={{ overflowX: 'auto', maxHeight: 420 }}>
+              <Box component="table" sx={{
+                width: '100%', borderCollapse: 'collapse',
+                '& th, & td': {
+                  textAlign: 'left',
+                  padding: '6px 10px',
+                  borderBottom: `1px solid ${palette.border}`,
+                  fontSize: '0.76rem',
+                  color: palette.textSecondary,
+                },
+                '& th': {
+                  fontSize: '0.64rem',
+                  color: palette.textMuted,
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  position: 'sticky',
+                  top: 0,
+                  bgcolor: palette.bgPanel,
+                  zIndex: 1,
+                },
+                '& tr:hover td': {
+                  bgcolor: 'rgba(168,85,247,0.05)',
+                },
+              }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 32 }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedLeadIds.size === filteredLeads.length && filteredLeads.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedLeadIds(new Set(filteredLeads.map((l) => l.id)));
+                          } else {
+                            setSelectedLeadIds(new Set());
+                          }
+                        }}
+                        style={{ accentColor: palette.amber, cursor: 'pointer' }}
+                      />
+                    </th>
+                    <th>Navn</th>
+                    <th>Status</th>
+                    <th>By</th>
+                    <th>Prosjekt</th>
+                    <th style={{ width: 80 }}>Sist</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLeads.slice(0, 200).map((l) => {
+                    const project = l.projectId ? projects.find((p) => p.id === l.projectId) : null;
+                    const isSelected = selectedLeadIds.has(l.id);
+                    return (
+                      <tr key={l.id} style={{ backgroundColor: isSelected ? 'rgba(251,191,36,0.06)' : undefined }}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              setSelectedLeadIds((prev) => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(l.id); else next.delete(l.id);
+                                return next;
+                              });
+                            }}
+                            style={{ accentColor: palette.amber, cursor: 'pointer' }}
+                          />
+                        </td>
+                        <td
+                          onClick={() => setSelected(l)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <Stack direction="row" alignItems="center" spacing={0.6}>
+                            <Box sx={{
+                              width: 8, height: 8, borderRadius: '50%',
+                              bgcolor: STATUS_META[l.status]?.color ?? '#94a3b8',
+                            }} />
+                            <span style={{ fontWeight: 700, color: palette.textPrimary }}>{l.name}</span>
+                          </Stack>
+                        </td>
+                        <td>
+                          <Chip
+                            label={STATUS_META[l.status]?.label ?? l.status}
+                            size="small"
+                            sx={{
+                              bgcolor: `${STATUS_META[l.status]?.color ?? '#94a3b8'}22`,
+                              color: STATUS_META[l.status]?.color ?? '#94a3b8',
+                              fontWeight: 800, fontSize: '0.62rem', height: 18,
+                            }}
+                          />
+                        </td>
+                        <td>{l.city ?? '—'}</td>
+                        <td>
+                          {project ? (
+                            <Chip
+                              label={project.name}
+                              size="small"
+                              sx={{ bgcolor: 'rgba(192,132,252,0.18)', color: palette.accent, fontWeight: 700, fontSize: '0.62rem', height: 18 }}
+                            />
+                          ) : (
+                            <span style={{ color: palette.textMuted, fontSize: '0.7rem' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ color: palette.textMuted, fontSize: '0.7rem' }}>
+                          {formatRelative(l.updatedAt)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Box>
+            </Box>
+          )}
+        </Box>
 
         {/* Recent Activity — horisontale kort */}
         <Box sx={{ mt: 2.4, p: 2, borderRadius: 1.6, bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}` }}>
