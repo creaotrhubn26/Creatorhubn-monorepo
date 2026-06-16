@@ -12,6 +12,7 @@ struct LeadDetailSheet: View {
     @State private var updating = false
     @State private var enrichment: EnrichmentModel?
     @State private var demographics: DemographicsModel?
+    @State private var visitLogShown = false
 
     var body: some View {
         NavigationStack {
@@ -39,6 +40,9 @@ struct LeadDetailSheet: View {
             }
             .task {
                 await loadEnrichment()
+            }
+            .sheet(isPresented: $visitLogShown) {
+                VisitLogModal(lead: lead)
             }
         }
         .presentationDetents([.medium, .large])
@@ -170,7 +174,7 @@ struct LeadDetailSheet: View {
 
     private var actionGrid: some View {
         LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: 8) {
-            Button { /* TODO: Visit log modal */ } label: {
+            Button { visitLogShown = true } label: {
                 Label("Log Visit", systemImage: "doc.text")
                     .frame(maxWidth: .infinity)
             }
