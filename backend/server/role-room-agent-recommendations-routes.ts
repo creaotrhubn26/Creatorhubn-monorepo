@@ -79,6 +79,10 @@ const SEED_CATALOG: Array<Omit<RecommendationRow, "id" | "owner_user_id" | "proj
   { type: "testimonial", title: "Kunde-testimonial", insight: "Del en kundeomtale — sosialt bevis konverterer bedre enn egen markedsføring.", stat_value: "+31%", stat_label: "konvertering", cta_label: "Utfør · Del", icon: "format_quote" },
   { type: "story_serie", title: "Story-serie", insight: "Lag en flerdelt Story-serie — sekvenser holder følgerne lenger i Story-ringen.", stat_value: "5 deler", stat_label: "anbefalt lengde", cta_label: "Utfør · Bygg serie", icon: "auto_stories" },
   { type: "beste_tid", title: "Beste-tid-skift", insight: "Publikum er mest aktivt på et nytt tidspunkt — flytt fast publisering dit.", stat_value: "07:30", stat_label: "ny topp-tid", cta_label: "Utfør", icon: "schedule" },
+  { type: "samarbeid_merke", title: "Merke-samarbeid", insight: "Et merke med overlappende publikum passer for et co-branding-samarbeid.", stat_value: "82%", stat_label: "publikum-overlapp", cta_label: "Utfør · Ta kontakt", icon: "handshake" },
+  { type: "partner", title: "Partner-mulighet", insight: "Agenten fant en relevant samarbeidspartner basert på din profil og marked.", stat_value: "1", stat_label: "foreslått partner", cta_label: "Utfør · Se partner", icon: "diversity_3" },
+  { type: "konkurrent", title: "Konkurrent-trekk", insight: "En konkurrent gjorde nylig et trekk verdt å reagere på i din strategi.", stat_value: "Nytt", stat_label: "oppdaget i dag", cta_label: "Utfør · Se analyse", icon: "insights" },
+  { type: "ny_pillar", title: "Ny content-pillar", insight: "Et tema mangler i planen — en ny pillar kan balansere innholdsmiksen.", stat_value: "+1", stat_label: "foreslått pillar", cta_label: "Utfør · Legg til", icon: "category" },
 ];
 
 export function setupRoleRoomAgentRecommendationsRoutes(
