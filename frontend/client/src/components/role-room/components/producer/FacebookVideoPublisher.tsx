@@ -16,6 +16,7 @@ import {
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import LaunchIcon from '@mui/icons-material/Launch';
 import { useAuth } from '@/hooks/useAuth';
+import PhoneFrame from './PhoneFrame';
 
 interface FbPage {
   id: string;
@@ -187,6 +188,26 @@ export function FacebookVideoPublisher() {
         </Box>
 
         <Divider />
+
+        {/* Telefon-preview (konsistent med TikTok-publisheren) */}
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <PhoneFrame width={220} screenBg="#000">
+            <Box sx={{ flex: 1, position: 'relative', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+              {videoDataUrl ? (
+                <Box component="video" src={videoDataUrl} muted loop autoPlay playsInline sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', px: 2 }}>Velg en video for å se previewet</Typography>
+              )}
+              <Box sx={{ position: 'absolute', top: 8, left: 10, px: 0.7, py: 0.2, borderRadius: 1, bgcolor: 'rgba(24,119,242,0.85)' }}>
+                <Typography sx={{ fontSize: 8.5, fontWeight: 800, color: '#fff' }}>Facebook · Reel</Typography>
+              </Box>
+              <Box sx={{ position: 'absolute', left: 0, right: 0, bottom: 0, p: 1, pt: 3, background: 'linear-gradient(transparent, rgba(0,0,0,0.75))' }}>
+                <Typography sx={{ fontSize: 10.5, fontWeight: 800, color: '#fff' }}>{pages.find((p) => p.id === selectedPageId)?.name || 'Facebook-side'}</Typography>
+                {description ? <Typography sx={{ fontSize: 9.5, color: 'rgba(255,255,255,0.85)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{description}</Typography> : null}
+              </Box>
+            </Box>
+          </PhoneFrame>
+        </Box>
 
         <Stack spacing={2}>
           <TextField
