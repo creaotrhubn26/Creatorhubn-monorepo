@@ -55,6 +55,7 @@ import DiscoveryPanel from './DiscoveryPanel';
 import EventsPanel from './EventsPanel';
 import SocialAnalyticsPanel from './SocialAnalyticsPanel';
 import MarketingReportPanel from './MarketingReportPanel';
+import SentimentDonutCard from './SentimentDonutCard';
 import RoleRoomAgentWorkflowStepper from './RoleRoomAgentWorkflowStepper';
 import RoleRoomAgentConnectionsBar from './RoleRoomAgentConnectionsBar';
 import SocialAccessRequestDialog from './SocialAccessRequestDialog';
@@ -1018,6 +1019,7 @@ export default function RoleRoomAgentDialog({
             {projectId ? (
               <Box sx={{ mb: 2 }}>
                 <MarketingReportPanel projectId={projectId} />
+                <SentimentDonutCard projectId={projectId} />
               </Box>
             ) : null}
             <SocialAnalyticsPanel />

@@ -1346,6 +1346,13 @@ export interface KpiReport {
 // ── Agent svarforslag på DM ───────────────────────────────────────────
 export interface DmReplySuggestion { tag: string; confidence: number; reply: string; tone: string }
 
+// ── Sentiment-fordeling (markedsplan + rapport) ───────────────────────
+export interface RoleRoomSentiment {
+  positive: number; neutral: number; negative: number; total: number;
+  positivePct: number; neutralPct: number; negativePct: number;
+  netSentiment: number; days: number;
+}
+
 // ── Pristilbud (mig 289) ──────────────────────────────────────────────
 export interface RoleRoomQuoteLineItem { label: string; detail: string | null; units: number; unitLabel: string | null; unitPriceKr: number }
 export interface RoleRoomQuote {
@@ -1563,6 +1570,20 @@ export const roleRoomAgentService = {
     if (!r.ok) return null;
     const body = await r.json().catch(() => null);
     return (body?.audience as RoleRoomAdAudience | null) ?? null;
+  },
+
+  // ── Sentiment-fordeling ─────────────────────────────────────────────
+  async fetchSentiment(days = 30): Promise<RoleRoomSentiment | null> {
+    const r = await fetch(`/api/role-room/sentiment?days=${days}`, { headers: readRoleRoomAgentHeaders() });
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.sentiment as RoleRoomSentiment | null) ?? null;
+  },
+  async fetchClientSentiment(token: string, days = 30): Promise<RoleRoomSentiment | null> {
+    const r = await fetch(`/api/client/portal/sentiment?token=${encodeURIComponent(token)}&days=${days}`);
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.sentiment as RoleRoomSentiment | null) ?? null;
   },
 
   // ── Agent svarforslag på DM ─────────────────────────────────────────

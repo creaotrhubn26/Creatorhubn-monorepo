@@ -17,6 +17,7 @@ import ClientPortalRequestsSection from '@/components/role-room/client-portal/Cl
 import ClientPortalRegisterCard from '@/components/role-room/client-portal/ClientPortalRegisterCard';
 import PostCommentLayer from '@/components/role-room/components/PostCommentLayer';
 import MarketingReportPanel from '@/components/role-room/components/producer/MarketingReportPanel';
+import SentimentDonutCard from '@/components/role-room/components/producer/SentimentDonutCard';
 import PostVideoPreview from '@/components/role-room/components/PostVideoPreview';
 import {
   Alert,
@@ -255,6 +256,7 @@ export default function ClientPortalMarketingPage() {
           {/* Periode-rapport (uke/måned/kvartal) per kanal — samme som
               produsenten ser i Agent-analytics. */}
           <MarketingReportPanel clientToken={token} />
+          <SentimentDonutCard clientToken={token} />
           <ConnectedPlatformsCard token={token} />
           <ClientMaterialUploadCard token={token} />
           <UpcomingSection upcoming={data.upcoming!} projectId={data.project?.id ?? null} clientToken={token} />

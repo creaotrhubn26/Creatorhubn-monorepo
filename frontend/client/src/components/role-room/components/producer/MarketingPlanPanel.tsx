@@ -87,6 +87,7 @@ import RoleRoomAgentApprovalsWidget from './RoleRoomAgentApprovalsWidget';
 import { MarketingGenerationProgress } from './MarketingGenerationProgress';
 import MarketingPlanDashboard from './MarketingPlanDashboard';
 import MarketingPlanReadinessCard from './MarketingPlanReadinessCard';
+import SentimentDonutCard from './SentimentDonutCard';
 
 interface MarketingPlanPanelProps {
   projectId: string;
@@ -456,6 +457,8 @@ export default function MarketingPlanPanel({
         <Stack spacing={1.4}>
           {/* mp-dashboard — «ved et blikk»-oversikt: KPI-er, mål, pillarer, kalender */}
           <MarketingPlanDashboard plan={plan} posts={posts} />
+          {/* mp-sentiment — stemningen rundt merkevaren */}
+          <SentimentDonutCard projectId={projectId} />
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between">
             <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" useFlexGap>
               <Chip
