@@ -85,6 +85,7 @@ import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRo
 import RoleRoomAgentInsightsBanner from './RoleRoomAgentInsightsBanner';
 import RoleRoomAgentApprovalsWidget from './RoleRoomAgentApprovalsWidget';
 import { MarketingGenerationProgress } from './MarketingGenerationProgress';
+import MarketingPlanDashboard from './MarketingPlanDashboard';
 
 interface MarketingPlanPanelProps {
   projectId: string;
@@ -450,6 +451,8 @@ export default function MarketingPlanPanel({
 
       {plan ? (
         <Stack spacing={1.4}>
+          {/* mp-dashboard — «ved et blikk»-oversikt: KPI-er, mål, pillarer, kalender */}
+          <MarketingPlanDashboard plan={plan} posts={posts} />
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between">
             <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" useFlexGap>
               <Chip
