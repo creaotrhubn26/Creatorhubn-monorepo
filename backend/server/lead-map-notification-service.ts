@@ -16,6 +16,7 @@
 
 import type { Pool } from "pg";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
+import { sendAPNs } from "./lead-map-apns-client.js";
 
 export type NotificationEventType =
   | "lead_assigned"
@@ -71,21 +72,21 @@ async function getPreference(
   };
 }
 
-/** Stub: APNs-leveranse. Krever APNS_KEY + APNS_TEAM_ID + APNS_KEY_ID.
- *  Hvis env mangler returnerer { sent: false, reason: 'apns_not_configured' }.
- *  Når Apple-secrets er rotert inn kan dette bli reell APNs JWT-call.
+/** Wrapper rundt sendAPNs (ekte ES256 JWT + HTTP/2). Returnerer
+ *  shouldDisable=true hvis Apple svarer 410/BadDeviceToken — kalleren
+ *  disabler token i db for å unngå framtidige forsøk på samme.
  */
 async function deliverAPNs(
-  _token: string,
-  _title: string,
-  _body: string,
-): Promise<{ sent: boolean; reason?: string }> {
-  if (!process.env.APNS_KEY || !process.env.APNS_TEAM_ID) {
-    return { sent: false, reason: "apns_not_configured" };
-  }
-  // TODO: bygg APNs JWT + POST til api.push.apple.com når secrets satt.
-  // For nå: pretender vi sender og logger.
-  return { sent: true };
+  token: string,
+  title: string,
+  body: string,
+): Promise<{ sent: boolean; reason?: string; shouldDisable?: boolean }> {
+  const r = await sendAPNs(token, title, body);
+  return {
+    sent: r.sent,
+    reason: r.reason,
+    shouldDisable: r.shouldDisableToken,
+  };
 }
 
 export async function dispatchNotification(
@@ -132,6 +133,18 @@ export async function dispatchNotification(
       if (r.sent) {
         apnsSent = true;
         break;
+      }
+      // Apple sa "BadDeviceToken"/"Unregistered" — token er død,
+      // disable den så vi ikke prøver igjen
+      if (r.shouldDisable) {
+        try {
+          await pool.query(
+            `UPDATE notification_device_tokens
+                SET enabled = FALSE
+              WHERE token = $1 AND user_id = $2`,
+            [t.token, recipientUserId],
+          );
+        } catch { /* noop */ }
       }
     }
   }
