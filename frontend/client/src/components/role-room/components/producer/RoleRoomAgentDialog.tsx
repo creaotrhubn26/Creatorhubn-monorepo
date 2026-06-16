@@ -41,6 +41,7 @@ import {
 } from '@mui/icons-material';
 import RoleRoomResearchCompleteOverlay from './RoleRoomResearchCompleteOverlay';
 import AgentThinkingProgress from './AgentThinkingProgress';
+import ResearchRefinePanel from './ResearchRefinePanel';
 import type { ResearchStage, ResearchProgressStatus } from '../../hooks/useResearchProgress';
 import MetaPagePublicMetadataInspector from './MetaPagePublicMetadataInspector';
 import ProfileSuggestionsPanel from './ProfileSuggestionsPanel';
@@ -910,6 +911,23 @@ export default function RoleRoomAgentDialog({
               />
             </Box>
           ) : null}
+
+        {/* Forbedre research på kunden (rs-refine) — vises når et resultat finnes */}
+        {activeTab === 'research' && result && progressStatus !== 'streaming' ? (
+          <Box sx={{ px: { xs: 1.4, md: 2 }, pt: { xs: 1.4, md: 2 } }}>
+            <ResearchRefinePanel
+              generating={generating}
+              onRefine={(instruction) => onGenerate({
+                projectId,
+                projectName,
+                websiteUrl,
+                organizationNumber,
+                companyName,
+                extraContext: [extraContext, `Forbedre: ${instruction}`].filter(Boolean).join('\n\n'),
+              })}
+            />
+          </Box>
+        ) : null}
 
         {activeTab === 'chat' && currentUserId ? (
           <Box
