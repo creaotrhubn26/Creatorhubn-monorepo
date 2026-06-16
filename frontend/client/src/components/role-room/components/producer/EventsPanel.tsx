@@ -4,6 +4,7 @@
 // approval; until then the panel explains the pending state.
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
+import EventCard from './EventCard';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, Stack, Typography, Button, TextField, CircularProgress, Alert, Divider, IconButton,
@@ -117,19 +118,9 @@ export default function EventsPanel() {
           ) : events.length === 0 ? (
             <Typography sx={{ p: 2, color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>Ingen kommende arrangement ennå.</Typography>
           ) : (
-            <Stack spacing={1}>
+            <Stack spacing={1.2}>
               {events.map((ev) => (
-                <Box key={ev.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.2, display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.9rem' }}>{ev.title || '(uten tittel)'}</Typography>
-                    <Typography sx={{ color: '#7dd3fc', fontSize: '0.78rem', mt: 0.2 }}>{fmt(ev.startTime)}{ev.endTime ? ` – ${fmt(ev.endTime)}` : ''}</Typography>
-                    {ev.venue ? <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.78rem' }}>{ev.venue}</Typography> : null}
-                    {ev.description ? <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', mt: 0.4, whiteSpace: 'pre-wrap' }}>{ev.description}</Typography> : null}
-                  </Box>
-                  <IconButton size="small" onClick={() => remove.mutate(ev.id)} disabled={remove.isPending} aria-label="Slett arrangement">
-                    <DeleteIcon fontSize="small" sx={{ color: '#fca5a5' }} />
-                  </IconButton>
-                </Box>
+                <EventCard key={ev.id} event={ev} onDelete={(id) => remove.mutate(id)} deleting={remove.isPending} />
               ))}
             </Stack>
           )}
