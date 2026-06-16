@@ -16,6 +16,7 @@
 
 import type express from "express";
 import type { Pool } from "pg";
+import { fetchPagePublicMetadata, getMetaAppAccessTokenConfig } from "./role-room-meta-pages";
 
 interface SessionLike {
   userId: string;
@@ -213,6 +214,25 @@ export function setupRoleRoomProfileSuggestionsRoutes(deps: RoleRoomProfileSugge
         followersCount: typeof body.followersCount === "number" ? body.followersCount : null,
         currentBio: typeof body.currentBio === "string" && body.currentBio.trim() ? body.currentBio.trim() : null,
       };
+
+      // Berik med ekte Meta-Graph-data (offentlig app-token) når mulig, så
+      // Claude får faktisk kategori, følgertall og eksisterende bio. Best-
+      // effort — feiler stille hvis META_APP_*-env mangler eller Meta nekter.
+      if (pageId && platform === "facebook") {
+        try {
+          const cfg = getMetaAppAccessTokenConfig();
+          if (cfg) {
+            const meta = await fetchPagePublicMetadata(pageId, cfg);
+            if (meta) {
+              ctx.pageName = ctx.pageName || meta.name || null;
+              ctx.category = ctx.category || meta.category || meta.categoryList[0] || null;
+              ctx.followersCount = ctx.followersCount ?? meta.followersCount ?? meta.fanCount ?? null;
+              ctx.currentBio = ctx.currentBio || meta.about || null;
+              pageName = ctx.pageName;
+            }
+          }
+        } catch { /* berikelse er best-effort */ }
+      }
 
       const claude = await generateWithClaude(ctx);
       const gen = claude ?? templateSuggestion(ctx);
