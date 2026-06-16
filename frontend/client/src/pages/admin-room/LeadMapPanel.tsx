@@ -2455,11 +2455,53 @@ export default function LeadMapPanel() {
         {/* Map + Detail-panel side-by-side */}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.4}>
           {/* Map */}
-          <Box sx={{
-            flex: 1, height: 540, borderRadius: 1.6, overflow: 'hidden',
-            border: `1px solid ${palette.border}`, position: 'relative',
-            bgcolor: palette.bg,
-          }}>
+          <Box
+            role="application"
+            aria-label={`Lead Map kart: ${filteredLeads.length} leads, ${filteredCompetitors.length} konkurrenter. Bruk pil-tastene for å navigere kartet, Tab for å gå til skip-link eller bruk lead-listen nedenfor.`}
+            sx={{
+              flex: 1, height: 540, borderRadius: 1.6, overflow: 'hidden',
+              border: `1px solid ${palette.border}`, position: 'relative',
+              bgcolor: palette.bg,
+            }}>
+            {/* WCAG 2.4.1 (Bypass Blocks) — skip-link til lead-list så
+                tastatur-brukere kan hoppe forbi kartet til en
+                tilgjengelig liste-visning av samme data. */}
+            <Box
+              component="a"
+              href="#lead-list-section"
+              sx={{
+                position: 'absolute',
+                top: 4, left: 4, zIndex: 2000,
+                p: '6px 12px',
+                bgcolor: palette.amber,
+                color: '#0a0a0f',
+                fontWeight: 800, fontSize: '0.78rem',
+                borderRadius: 1,
+                textDecoration: 'none',
+                // Default: skjult. Vises kun på keyboard-fokus.
+                clip: 'rect(0 0 0 0)',
+                clipPath: 'inset(50%)',
+                width: 1, height: 1, overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                '&:focus, &:focus-visible': {
+                  clip: 'auto',
+                  clipPath: 'none',
+                  width: 'auto', height: 'auto',
+                  outline: `2px solid #0a0a0f`,
+                },
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                const el = document.getElementById('lead-list-section');
+                if (el) {
+                  el.scrollIntoView({ behavior: 'smooth' });
+                  // Sett fokus på lead-list-tabellen
+                  el.querySelector<HTMLElement>('[role="button"]')?.focus();
+                }
+              }}
+            >
+              Hopp til lead-liste
+            </Box>
             {error && (
               <Alert severity="warning" sx={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 1000 }}>
                 {error}
@@ -2468,6 +2510,9 @@ export default function LeadMapPanel() {
             <MapContainer
               center={defaultCenter} zoom={11}
               style={{ height: '100%', width: '100%', background: palette.bg }}
+              // WCAG 2.1.1 — eksplisitt keyboard på MapContainer
+              keyboard={true}
+              keyboardPanDelta={80}
             >
               <TileLayer url={DARK_TILE_URL} attribution={DARK_TILE_ATTR} />
               <MapBoundsTracker onBoundsChange={handleBoundsChange} />
@@ -2490,11 +2535,24 @@ export default function LeadMapPanel() {
                   key={lead.id}
                   position={[lead.latitude, lead.longitude]}
                   icon={makePinIcon(lead.status, selected?.id === lead.id)}
+                  // WCAG 2.1.1 — Leaflet rendrer pin som <div role="button">
+                  // når keyboard=true (default). title gir tooltip + ARIA-label.
+                  // alt brukes av screen readers når pin er fokusert.
+                  keyboard={true}
+                  title={`${lead.name} — ${STATUS_META[lead.status]?.label ?? lead.status}${lead.city ? ', ' + lead.city : ''}. Trykk Enter for å åpne detalj.`}
+                  alt={`Lead pin: ${lead.name}, status ${STATUS_META[lead.status]?.label ?? lead.status}`}
                   eventHandlers={{
                     click: () => {
                       setSelected(lead);
                       setSelectedCompetitor(null);
                       setQuickStatusFor(lead);
+                    },
+                    keypress: (e: L.LeafletKeyboardEvent) => {
+                      if (e.originalEvent.key === 'Enter' || e.originalEvent.key === ' ') {
+                        e.originalEvent.preventDefault();
+                        setSelected(lead);
+                        setSelectedCompetitor(null);
+                      }
                     },
                     contextmenu: (e: L.LeafletMouseEvent) => {
                       e.originalEvent.preventDefault();
@@ -2541,8 +2599,18 @@ export default function LeadMapPanel() {
                   key={`comp-${comp.id}`}
                   position={[comp.latitude as number, comp.longitude as number]}
                   icon={makeCompetitorIcon(comp.threatLevel, selectedCompetitor?.id === comp.id)}
+                  keyboard={true}
+                  title={`Konkurrent: ${comp.name}${comp.threatLevel ? `, ${comp.threatLevel === 'near' ? 'nær trussel' : comp.threatLevel === 'medium' ? 'medium trussel' : 'fjern trussel'}` : ', ikke vurdert'}. Trykk Enter for detalj.`}
+                  alt={`Konkurrent-pin: ${comp.name}`}
                   eventHandlers={{
                     click: () => { setSelectedCompetitor(comp); setSelected(null); },
+                    keypress: (e: L.LeafletKeyboardEvent) => {
+                      if (e.originalEvent.key === 'Enter' || e.originalEvent.key === ' ') {
+                        e.originalEvent.preventDefault();
+                        setSelectedCompetitor(comp);
+                        setSelected(null);
+                      }
+                    },
                   }}
                 >
                   <Popup>
@@ -5283,7 +5351,9 @@ export default function LeadMapPanel() {
         )}
 
         {/* Lead-liste — tabell-visning m/ checkbox + bulk-tildel */}
-        <Box sx={{ mt: 2.4, p: 2, borderRadius: 1.6, bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}` }}>
+        <Box
+          id="lead-list-section"
+          sx={{ mt: 2.4, p: 2, borderRadius: 1.6, bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}`, scrollMarginTop: 80 }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.4, flexWrap: 'wrap', gap: 1 }} useFlexGap>
             <Stack direction="row" alignItems="center" spacing={1}>
               <Typography
