@@ -177,6 +177,7 @@ import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
 import SharedMaterialsCard from './SharedMaterialsCard';
 import ProjectMeetingsPanel from './ProjectMeetingsPanel';
+import ProjectBriefCard from './ProjectBriefCard';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
 import RoleRoomAgentDialog from './RoleRoomAgentDialog';
 import { RoleRoomAgentIcon } from './RoleRoomAgentIcon';
@@ -15730,6 +15731,8 @@ export default function ProducerMediaPanel({
                     p: { xs: 1.25, md: 1.5 },
                   }}
                 >
+                  {/* Prosjekt-brief (ws-brief) */}
+                  <ProjectBriefCard projectId={projectId} projectName={(project as { name?: string; title?: string })?.name ?? (project as { name?: string; title?: string })?.title} />
                   {/* Møtenotater (ws-meetings) */}
                   <ProjectMeetingsPanel projectId={projectId} readOnly={!canEditClientInput} />
                   {/* Polert «Delte filer»-oversikt (ws-materials) */}
