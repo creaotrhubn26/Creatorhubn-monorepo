@@ -1467,9 +1467,28 @@ type RoleRoomProjectWorkspaceState = {
     archiveNotification: archiveProducerInboxNotification,
     resolveNotification: resolveProducerInboxNotification,
   } = useProducerNotifications(currentProject?.id, producerInboxOpen ? 15000 : 30000);
+  // Innboks-scope: «alle» eller kun klient-handlinger (det klienten venter på
+  // / har gjort). Klient-handlinger kjennetegnes av at hendelsen kom fra
+  // klient-siden (event_type client_*, eller created_by_role client_reviewer).
+  const [producerInboxScope, setProducerInboxScope] = useState<'all' | 'client'>('all');
   const visibleProducerInboxItems = useMemo(
     () => producerInboxItems.filter((item) => !item.archived_at),
     [producerInboxItems],
+  );
+  const isClientActionInboxItem = useCallback(
+    (item: { event_type?: string | null; created_by_role?: string | null }) =>
+      Boolean(item.event_type?.startsWith('client_')) || item.created_by_role === 'client_reviewer',
+    [],
+  );
+  const clientActionInboxCount = useMemo(
+    () => visibleProducerInboxItems.filter(isClientActionInboxItem).length,
+    [visibleProducerInboxItems, isClientActionInboxItem],
+  );
+  const filteredProducerInboxItems = useMemo(
+    () => (producerInboxScope === 'client'
+      ? visibleProducerInboxItems.filter(isClientActionInboxItem)
+      : visibleProducerInboxItems),
+    [producerInboxScope, visibleProducerInboxItems, isClientActionInboxItem],
   );
   const openProducerInbox = useCallback(() => {
     if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
@@ -15500,9 +15519,9 @@ type RoleRoomProjectWorkspaceState = {
           <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ sm: 'center' }}>
               <Typography sx={{ color: 'rgba(226,232,240,0.68)', fontSize: '0.82rem' }}>
-                {visibleProducerInboxItems.length === 0
-                  ? 'Ingen aktive meldinger akkurat nå.'
-                  : `${visibleProducerInboxItems.length} aktive meldinger · ${producerInboxUnreadCount} uleste`}
+                {filteredProducerInboxItems.length === 0
+                  ? (producerInboxScope === 'client' ? 'Ingen klient-handlinger akkurat nå.' : 'Ingen aktive meldinger akkurat nå.')
+                  : `${filteredProducerInboxItems.length} ${producerInboxScope === 'client' ? 'klient-handlinger' : 'aktive meldinger'} · ${producerInboxUnreadCount} uleste`}
               </Typography>
               {producerInboxUnreadCount > 0 ? (
                 <Button
@@ -15515,22 +15534,54 @@ type RoleRoomProjectWorkspaceState = {
               ) : null}
             </Stack>
 
-            {producerInboxLoading && visibleProducerInboxItems.length === 0 ? (
+            {/* Scope-filter: fokuser på det klienten venter på / har gjort. */}
+            <Stack direction="row" spacing={0.75}>
+              <Chip
+                size="small"
+                label="Alle"
+                onClick={() => setProducerInboxScope('all')}
+                variant={producerInboxScope === 'all' ? 'filled' : 'outlined'}
+                sx={{
+                  fontWeight: 800, cursor: 'pointer',
+                  bgcolor: producerInboxScope === 'all' ? 'rgba(56,189,248,0.9)' : 'transparent',
+                  color: producerInboxScope === 'all' ? '#0b1220' : 'rgba(226,232,240,0.86)',
+                  borderColor: 'rgba(148,163,184,0.32)',
+                }}
+              />
+              <Chip
+                size="small"
+                label={clientActionInboxCount > 0 ? `Klient-handlinger (${clientActionInboxCount})` : 'Klient-handlinger'}
+                onClick={() => setProducerInboxScope('client')}
+                variant={producerInboxScope === 'client' ? 'filled' : 'outlined'}
+                sx={{
+                  fontWeight: 800, cursor: 'pointer',
+                  bgcolor: producerInboxScope === 'client' ? 'rgba(168,85,247,0.92)' : 'transparent',
+                  color: producerInboxScope === 'client' ? '#fff' : 'rgba(226,232,240,0.86)',
+                  borderColor: producerInboxScope === 'client' ? 'transparent' : 'rgba(168,85,247,0.45)',
+                }}
+              />
+            </Stack>
+
+            {producerInboxLoading && filteredProducerInboxItems.length === 0 ? (
               <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
                 <CircularProgress size={24} sx={{ color: '#38bdf8' }} />
               </Box>
             ) : null}
 
-            {!producerInboxLoading && visibleProducerInboxItems.length === 0 ? (
+            {!producerInboxLoading && filteredProducerInboxItems.length === 0 ? (
               <Box sx={{ p: 2.25, borderRadius: 2.4, border: '1px solid rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.04)' }}>
-                <Typography sx={{ color: '#fff', fontWeight: 800 }}>Innboksen er tom</Typography>
+                <Typography sx={{ color: '#fff', fontWeight: 800 }}>
+                  {producerInboxScope === 'client' ? 'Ingen klient-handlinger' : 'Innboksen er tom'}
+                </Typography>
                 <Typography sx={{ mt: 0.35, color: 'rgba(226,232,240,0.62)', fontSize: '0.82rem' }}>
-                  Klientbrief, godkjenninger, endringsønsker og leveransevarsler samles her når de oppstår.
+                  {producerInboxScope === 'client'
+                    ? 'Klient-svar, godkjenninger og endringsønsker dukker opp her når klienten handler.'
+                    : 'Klientbrief, godkjenninger, endringsønsker og leveransevarsler samles her når de oppstår.'}
                 </Typography>
               </Box>
             ) : null}
 
-            {visibleProducerInboxItems.map((item) => {
+            {filteredProducerInboxItems.map((item) => {
               const createdAtLabel = item.created_at
                 ? new Date(item.created_at).toLocaleString('nb-NO', {
                   day: '2-digit',
