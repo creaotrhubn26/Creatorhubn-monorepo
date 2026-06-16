@@ -1343,6 +1343,30 @@ export interface KpiReport {
   hasData: boolean;
 }
 
+// ── Annonse-målgruppe (mig 287) ───────────────────────────────────────
+export interface RoleRoomAdAudience {
+  id: string;
+  project_id: string;
+  platform: string;
+  audience_name: string | null;
+  estimated_reach: number | null;
+  ages: Array<{ lbl: string; pct: number }>;
+  female_pct: number | null;
+  locations: Array<{ name: string; pct: number }>;
+  interests: Array<{ t: string; hot: boolean }>;
+  source: string | null;
+  created_at: string;
+}
+
+export interface GenerateAdAudienceInput {
+  projectId: string;
+  platform?: string;
+  companyName?: string | null;
+  industry?: string | null;
+  targetAudience?: string | string[] | null;
+  location?: string | null;
+}
+
 export const roleRoomAgentService = {
   async getAccess(): Promise<RoleRoomAgentAccess> {
     const response = await fetch('/api/role-room/agent/access', {
@@ -1468,6 +1492,26 @@ export const roleRoomAgentService = {
     if (!r.ok) return null;
     const body = await r.json().catch(() => null);
     return (body?.report as KpiReport | null) ?? null;
+  },
+
+  // ── Annonse-målgruppe (mig 287) ─────────────────────────────────────
+  async getAdAudience(projectId: string, platform = 'meta'): Promise<RoleRoomAdAudience | null> {
+    const params = new URLSearchParams({ projectId, platform });
+    const r = await fetch(`/api/role-room/ad-audience?${params.toString()}`, { headers: readRoleRoomAgentHeaders() });
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.audience as RoleRoomAdAudience | null) ?? null;
+  },
+
+  async generateAdAudience(input: GenerateAdAudienceInput): Promise<RoleRoomAdAudience | null> {
+    const r = await fetch('/api/role-room/ad-audience/generate', {
+      method: 'POST',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.audience as RoleRoomAdAudience | null) ?? null;
   },
 
   async generateProducerBootstrap(
