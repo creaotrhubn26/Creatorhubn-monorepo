@@ -40,7 +40,7 @@ import {
   Rocket as RocketIcon,
 } from '@mui/icons-material';
 import RoleRoomResearchCompleteOverlay from './RoleRoomResearchCompleteOverlay';
-import ResearchProgressLive from './ResearchProgressLive';
+import AgentThinkingProgress from './AgentThinkingProgress';
 import type { ResearchStage, ResearchProgressStatus } from '../../hooks/useResearchProgress';
 import MetaPagePublicMetadataInspector from './MetaPagePublicMetadataInspector';
 import ProfileSuggestionsPanel from './ProfileSuggestionsPanel';
@@ -903,7 +903,7 @@ export default function RoleRoomAgentDialog({
           && progressStatus !== 'idle'
           && (progressStatus === 'streaming' || (progressStages && progressStages.length > 0)) ? (
             <Box sx={{ px: { xs: 1.4, md: 2 }, pt: { xs: 1.4, md: 2 } }}>
-              <ResearchProgressLive
+              <AgentThinkingProgress
                 status={progressStatus}
                 stages={progressStages ?? []}
                 error={progressError ?? null}
