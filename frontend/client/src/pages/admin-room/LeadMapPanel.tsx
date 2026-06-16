@@ -434,6 +434,7 @@ export default function LeadMapPanel() {
       tone: string | null;
       targetAudience: string | null;
       valueProposition: string | null;
+      logoUrl: string | null;
     } | null;
     marketScan: {
       id: string; name: string; marketQuery: string;
@@ -692,6 +693,9 @@ export default function LeadMapPanel() {
       if (statusFilter.length > 0) {
         params.set('status', statusFilter.join(','));
       }
+      if (activeProjectId) {
+        params.set('projectId', activeProjectId);
+      }
       const r = await fetch(`/api/admin-room/lead-map/leads?${params}`, {
         credentials: 'include', headers: authHeaders(),
       });
@@ -707,7 +711,7 @@ export default function LeadMapPanel() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, activeProjectId]);
 
   // Generer iPad pair-kode
   const generatePairToken = useCallback(async () => {
@@ -1214,8 +1218,9 @@ export default function LeadMapPanel() {
 
   const fetchMeta = useCallback(async () => {
     try {
+      const projParam = activeProjectId ? `?projectId=${encodeURIComponent(activeProjectId)}` : '';
       const [mRes, aRes] = await Promise.all([
-        fetch('/api/admin-room/lead-map/metrics', { credentials: 'include', headers: authHeaders() }),
+        fetch(`/api/admin-room/lead-map/metrics${projParam}`, { credentials: 'include', headers: authHeaders() }),
         fetch('/api/admin-room/lead-map/activities?limit=20', { credentials: 'include', headers: authHeaders() }),
       ]);
       if (mRes.ok) setMetrics(await mRes.json());
@@ -1224,7 +1229,7 @@ export default function LeadMapPanel() {
         setActivities(a.activities ?? []);
       }
     } catch { /* noop */ }
-  }, []);
+  }, [activeProjectId]);
 
   useEffect(() => {
     fetchLeads();
@@ -2000,15 +2005,50 @@ export default function LeadMapPanel() {
             border: `1px solid ${palette.borderStrong}`,
           }}>
             <Stack direction="row" alignItems="flex-start" spacing={2}>
-              <Box sx={{
-                width: 48, height: 48, borderRadius: 1.2, flexShrink: 0,
-                bgcolor: 'rgba(192,132,252,0.18)',
-                border: `1px solid ${palette.accent}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: palette.accent, fontWeight: 800, fontSize: '1.1rem',
-              }}>
-                {projectSummary.project.name.slice(0, 2).toUpperCase()}
-              </Box>
+              {projectSummary.brandKit?.logoUrl ? (
+                <Box sx={{
+                  width: 56, height: 56, borderRadius: 1.2, flexShrink: 0,
+                  bgcolor: '#fff',
+                  border: `1px solid ${palette.borderStrong}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  overflow: 'hidden',
+                  p: 0.6,
+                }}>
+                  <Box
+                    component="img"
+                    src={projectSummary.brandKit.logoUrl}
+                    alt={`${projectSummary.project.name} logo`}
+                    sx={{
+                      maxWidth: '100%', maxHeight: '100%',
+                      objectFit: 'contain',
+                      display: 'block',
+                    }}
+                    onError={(e) => {
+                      // Fallback: hvis bilde-load feiler, vis initialer
+                      const target = e.currentTarget as HTMLImageElement;
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent && !parent.querySelector('.logo-fallback')) {
+                        const fallback = document.createElement('div');
+                        fallback.className = 'logo-fallback';
+                        fallback.textContent = projectSummary.project.name.slice(0, 2).toUpperCase();
+                        fallback.style.cssText = `color:${palette.accent};font-weight:800;font-size:1.2rem;`;
+                        parent.appendChild(fallback);
+                      }
+                    }}
+                  />
+                </Box>
+              ) : (
+                <Box sx={{
+                  width: 56, height: 56, borderRadius: 1.2, flexShrink: 0,
+                  bgcolor: 'rgba(192,132,252,0.18)',
+                  border: `1px solid ${palette.accent}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: palette.accent, fontWeight: 800, fontSize: '1.2rem',
+                }}>
+                  {projectSummary.project.name.slice(0, 2).toUpperCase()}
+                </Box>
+              )}
               <Stack sx={{ flex: 1, minWidth: 0 }} spacing={0.6}>
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <Typography sx={{ fontSize: '1rem', fontWeight: 800, color: palette.textPrimary }}>

@@ -117,9 +117,12 @@ export function setupLeadMapRoutes(deps: Deps): void {
       ? req.query.category.split(',')
       : undefined;
 
+    const projectId = typeof req.query.projectId === 'string' && req.query.projectId.length > 0
+      ? req.query.projectId
+      : null;
     try {
       const leads = await listLeadsInBounds(pool, {
-        ownerUserId: session.userId, bounds, statusFilter, categoryFilter,
+        ownerUserId: session.userId, projectId, bounds, statusFilter, categoryFilter,
       });
       return res.json({ leads });
     } catch (err) {
@@ -267,7 +270,10 @@ export function setupLeadMapRoutes(deps: Deps): void {
     const session = getUser(req, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
-      const metrics = await getLeadMapMetrics(pool, { ownerUserId: session.userId });
+      const projectId = typeof req.query.projectId === 'string' && req.query.projectId.length > 0
+        ? req.query.projectId
+        : null;
+      const metrics = await getLeadMapMetrics(pool, { ownerUserId: session.userId, projectId });
       return res.json(metrics);
     } catch (err) {
       return res.status(500).json({ error: "metrics_failed", detail: String(err) });
