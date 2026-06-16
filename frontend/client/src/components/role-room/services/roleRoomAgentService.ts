@@ -1343,6 +1343,27 @@ export interface KpiReport {
   hasData: boolean;
 }
 
+// ── Prosjektrom-møter (mig 288) ───────────────────────────────────────
+export interface RoleRoomMeetingActionItem { text: string; owner: string | null; done: boolean }
+export interface RoleRoomProjectMeeting {
+  id: string;
+  project_id: string;
+  title: string;
+  meeting_date: string | null;
+  participants: string[];
+  agenda: string[];
+  action_items: RoleRoomMeetingActionItem[];
+  created_at: string;
+  updated_at: string;
+}
+export interface RoleRoomMeetingInput {
+  title: string;
+  meetingDate: string | null;
+  participants: string[];
+  agenda: string[];
+  actionItems: RoleRoomMeetingActionItem[];
+}
+
 // ── Annonse-målgruppe (mig 287) ───────────────────────────────────────
 export interface RoleRoomAdAudience {
   id: string;
@@ -1512,6 +1533,37 @@ export const roleRoomAgentService = {
     if (!r.ok) return null;
     const body = await r.json().catch(() => null);
     return (body?.audience as RoleRoomAdAudience | null) ?? null;
+  },
+
+  // ── Prosjektrom-møter (mig 288) ─────────────────────────────────────
+  async listProjectMeetings(projectId: string): Promise<RoleRoomProjectMeeting[]> {
+    const r = await fetch(`/api/role-room/projects/${encodeURIComponent(projectId)}/meetings`, { headers: readRoleRoomAgentHeaders() });
+    if (!r.ok) return [];
+    const body = await r.json().catch(() => null);
+    return Array.isArray(body?.meetings) ? body.meetings : [];
+  },
+
+  async createProjectMeeting(projectId: string, input: RoleRoomMeetingInput): Promise<RoleRoomProjectMeeting | null> {
+    const r = await fetch(`/api/role-room/projects/${encodeURIComponent(projectId)}/meetings`, {
+      method: 'POST', headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    });
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.meeting as RoleRoomProjectMeeting | null) ?? null;
+  },
+
+  async updateProjectMeeting(id: string, input: RoleRoomMeetingInput): Promise<RoleRoomProjectMeeting | null> {
+    const r = await fetch(`/api/role-room/meetings/${encodeURIComponent(id)}`, {
+      method: 'PATCH', headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    });
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.meeting as RoleRoomProjectMeeting | null) ?? null;
+  },
+
+  async deleteProjectMeeting(id: string): Promise<boolean> {
+    const r = await fetch(`/api/role-room/meetings/${encodeURIComponent(id)}`, { method: 'DELETE', headers: readRoleRoomAgentHeaders() });
+    return r.ok;
   },
 
   // ── Tapte leads — vinn-tilbake-analyse ──────────────────────────────

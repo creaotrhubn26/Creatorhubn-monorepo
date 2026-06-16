@@ -176,6 +176,7 @@ import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
 import SharedMaterialsCard from './SharedMaterialsCard';
+import ProjectMeetingsPanel from './ProjectMeetingsPanel';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
 import RoleRoomAgentDialog from './RoleRoomAgentDialog';
 import { RoleRoomAgentIcon } from './RoleRoomAgentIcon';
@@ -15729,6 +15730,8 @@ export default function ProducerMediaPanel({
                     p: { xs: 1.25, md: 1.5 },
                   }}
                 >
+                  {/* Møtenotater (ws-meetings) */}
+                  <ProjectMeetingsPanel projectId={projectId} readOnly={!canEditClientInput} />
                   {/* Polert «Delte filer»-oversikt (ws-materials) */}
                   <SharedMaterialsCard materials={sortedMaterials} />
                   <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
