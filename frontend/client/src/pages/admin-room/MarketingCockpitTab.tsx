@@ -33,6 +33,7 @@ import CustomerSuccessDashboard from './CustomerSuccessDashboard';
 import LeadMapPanel from './LeadMapPanel';
 import LeadMapMyDayPanel from './LeadMapMyDayPanel';
 import LeadMapLeaderboardPanel from './LeadMapLeaderboardPanel';
+import LeadMapNotificationBell from './LeadMapNotificationBell';
 import MarketIntelligenceSection from '../../components/admin-room/market-intelligence/MarketIntelligenceSection';
 import MarketingCockpitTiktokSection from '../../components/admin-room/marketing-cockpit/MarketingCockpitTiktokSection';
 import CompetitorReportPanel from './CompetitorReportPanel';
@@ -375,11 +376,14 @@ export default function MarketingCockpitTab() {
         >
           {loading ? 'Henter…' : 'Refresh'}
         </Button>
-        {data && (
-          <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.5)', ml: 'auto' }}>
-            Sist oppdatert {new Date(data.generatedAt).toLocaleTimeString('nb-NO')} ({data.durationMs}ms)
-          </Typography>
-        )}
+        <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+          {data && (
+            <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.5)' }}>
+              Sist oppdatert {new Date(data.generatedAt).toLocaleTimeString('nb-NO')} ({data.durationMs}ms)
+            </Typography>
+          )}
+          <LeadMapNotificationBell />
+        </Box>
       </Stack>
 
       {error && (

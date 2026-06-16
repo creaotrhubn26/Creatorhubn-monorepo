@@ -40,6 +40,7 @@ import {
   type VisitType,
 } from "./lead-map-service.js";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { notifyStatusChanged } from "./lead-map-notification-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -156,6 +157,13 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(400).json({ error: "ugyldig_status" });
     }
     try {
+      // Hent gammel status FØR oppdatering (for å varsle om endring)
+      const prev = await pool.query<{ lead_status: string | null }>(
+        `SELECT lead_status FROM crm_customers WHERE id = $1`,
+        [req.params.id],
+      );
+      const oldStatus = prev.rows[0]?.lead_status ?? null;
+
       const r = await updateLeadStatus(pool, {
         ownerUserId: session.userId,
         leadId: req.params.id,
@@ -163,6 +171,19 @@ export function setupLeadMapRoutes(deps: Deps): void {
         notes: body.notes,
       });
       if (!r.ok) return res.status(404).json({ error: "not_found" });
+
+      // Varsle eier hvis status faktisk endret seg + ikke samme bruker
+      if (oldStatus !== body.status) {
+        setImmediate(() => {
+          void notifyStatusChanged(pool, {
+            leadId: req.params.id,
+            oldStatus,
+            newStatus: body.status!,
+            triggeredByUserId: session.userId,
+          });
+        });
+      }
+
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "status_failed", detail: String(err) });
