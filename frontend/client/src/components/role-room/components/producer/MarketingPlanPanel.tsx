@@ -86,6 +86,7 @@ import RoleRoomAgentInsightsBanner from './RoleRoomAgentInsightsBanner';
 import RoleRoomAgentApprovalsWidget from './RoleRoomAgentApprovalsWidget';
 import { MarketingGenerationProgress } from './MarketingGenerationProgress';
 import MarketingPlanDashboard from './MarketingPlanDashboard';
+import MarketingPlanReadinessCard from './MarketingPlanReadinessCard';
 
 interface MarketingPlanPanelProps {
   projectId: string;
@@ -363,38 +364,38 @@ export default function MarketingPlanPanel({
             Jeg lager en komplett plan for kunden — temaer å poste om, hvilke kanaler, mål, og en 30-dagers plan — basert på det vi fant i Research.
           </Typography>
         </Box>
-        <Tooltip
-          title={
-            plan?.status === 'active'
-              ? 'Planen er aktivert og låst. Arkivér den først for å generere en ny.'
-              : !readiness?.ready
-                ? 'Fullfør Research først, så kan jeg lage planen.'
+        {/* Topp-knapp kun når en plan finnes (regenerer/låst). Når ingen plan
+            finnes bærer MarketingPlanReadinessCard selve Generer-CTA-en. */}
+        {plan ? (
+          <Tooltip
+            title={
+              plan.status === 'active'
+                ? 'Planen er aktivert og låst. Arkivér den først for å generere en ny.'
                 : ''
-          }
-        >
-          <span>
-            <Button
-              variant="contained"
-              startIcon={generating ? <CircularProgress size={16} color="inherit" /> : plan?.status === 'active' ? <LockIcon /> : <AutoAwesomeIcon />}
-              onClick={handleGenerate}
-              disabled={generating || !readiness?.ready || plan?.status === 'active'}
-              sx={{
-                textTransform: 'none',
-                fontWeight: 700,
-                background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
-                flexShrink: 0,
-              }}
-            >
-              {generating
-                ? 'Genererer…'
-                : plan?.status === 'active'
-                  ? 'Planen er låst'
-                  : plan
-                    ? 'Regenerer'
-                    : 'Generer plan'}
-            </Button>
-          </span>
-        </Tooltip>
+            }
+          >
+            <span>
+              <Button
+                variant="contained"
+                startIcon={generating ? <CircularProgress size={16} color="inherit" /> : plan.status === 'active' ? <LockIcon /> : <AutoAwesomeIcon />}
+                onClick={handleGenerate}
+                disabled={generating || !readiness?.ready || plan.status === 'active'}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+                  flexShrink: 0,
+                }}
+              >
+                {generating
+                  ? 'Genererer…'
+                  : plan.status === 'active'
+                    ? 'Planen er låst'
+                    : 'Regenerer'}
+              </Button>
+            </span>
+          </Tooltip>
+        ) : null}
       </Stack>
 
       {generating ? <MarketingGenerationProgress active mode="plan" /> : null}
@@ -405,7 +406,9 @@ export default function MarketingPlanPanel({
         </Alert>
       ) : null}
 
-      {gateMessage}
+      {/* Når en plan finnes vises evt. manglende-felt-varsel; uten plan
+          dekkes klar-sjekken av MarketingPlanReadinessCard under. */}
+      {plan ? gateMessage : null}
 
       {shareUrl ? (
         <Alert
@@ -656,14 +659,13 @@ export default function MarketingPlanPanel({
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.12)' }} />
           <ClientPortalSection projectId={projectId} onError={setError} />
         </Stack>
-      ) : !readiness?.ready ? null : (
-        <Alert
-          severity="info"
-          sx={{ bgcolor: 'rgba(34,211,238,0.06)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.2)' }}
-        >
-          Ingen markedsplan ennå. Klikk "Generer plan" — CI bruker research-outputen og
-          bygger 3–5 content pillars + kanalstrategi + KPI-mål.
-        </Alert>
+      ) : (
+        <MarketingPlanReadinessCard
+          bootstrap={bootstrap}
+          readiness={readiness}
+          generating={generating}
+          onGenerate={handleGenerate}
+        />
       )}
 
       {/* #127 — Sticky CTA-bar: kun synlig når header er ute av syne OG
