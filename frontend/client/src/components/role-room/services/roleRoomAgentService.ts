@@ -3251,6 +3251,28 @@ export const roleRoomAgentService = {
     return payload.post;
   },
 
+  /** Bulk-endre primary_platform for flere poster i én request. */
+  async bulkUpdateMarketingPlanPostPlatform(input: {
+    projectId: string;
+    postIds: string[];
+    primaryPlatform: NonNullable<MarketingPlanPost['primaryPlatform']>;
+  }): Promise<number> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/posts/platform`,
+      {
+        method: 'PATCH',
+        headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; updated?: number; error?: string } | null;
+    if (!response.ok || !payload?.success) {
+      throw new Error(payload?.error || `Kunne ikke endre plattform (HTTP ${response.status})`);
+    }
+    return payload.updated ?? 0;
+  },
+
   // ── Versjonering: research/intake ────────────────────────────────
   async listIntakeVersions(projectId: string): Promise<IntakeVersion[]> {
     const response = await fetch(

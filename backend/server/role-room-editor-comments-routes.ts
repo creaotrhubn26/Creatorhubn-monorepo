@@ -16,6 +16,10 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { resolveClientPortalSession } from "./role-room-client-portal.js";
+import {
+  upsertProducerProjectNotification,
+  notifyUsersByEmail,
+} from "./role-room-producer-notifications.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -138,15 +142,18 @@ function parseMentions(text: string): string[] {
 async function persistMentions(
   pool: Pool, commentId: string, projectId: string,
   mentionedIds: string[], byUserId: string,
+  context?: { byDisplayName?: string | null; commentText?: string; anchorType?: string; anchorRef?: string | null },
 ): Promise<void> {
   if (mentionedIds.length === 0) return;
   const values: string[] = [];
   const params: unknown[] = [];
+  const targets: string[] = [];
   for (const m of mentionedIds) {
     if (m === byUserId) continue; // skip self-mention
     const i = params.length / 4 + 1;
     values.push(`($${i}, $${i + 1}, $${i + 2}, $${i + 3})`);
     params.push(commentId, projectId, m, byUserId);
+    targets.push(m);
   }
   if (values.length === 0) return;
   await pool.query(
@@ -155,6 +162,47 @@ async function persistMentions(
      VALUES ${values.join(", ")}`,
     params,
   );
+
+  // Varsle de @nevnte — tidligere ble mentions lagret stille uten at den
+  // nevnte fikk beskjed (Creative Sync-audit #6). Inbox-rad (markert for de
+  // nevnte via mention_user_ids) + best-effort e-post. Aldri blokkerende.
+  const author = context?.byDisplayName?.trim() || "Et teammedlem";
+  const snippet = (context?.commentText ?? "").trim().slice(0, 280);
+  void upsertProducerProjectNotification(pool, {
+    projectId,
+    audience: "producer_team",
+    eventType: "editor_comment_mention",
+    title: `${author} nevnte deg i en kommentar`,
+    message: snippet || null,
+    linkedEntityType: context?.anchorType ?? "editor_comment",
+    linkedEntityId: context?.anchorRef ?? commentId,
+    createdByUserId: byUserId,
+    mentionUserIds: targets,
+    metadata: { commentId, inboxType: "mention" },
+  });
+  void notifyUsersByEmail(pool, {
+    projectId,
+    userIds: targets,
+    subject: `${author} nevnte deg i en kommentar`,
+    html: `<div style="font-family:system-ui,sans-serif;max-width:560px;line-height:1.6;color:#1a0f2e">
+        <h2 style="color:#6e3fc7;margin:0 0 16px">Du ble nevnt</h2>
+        <p><strong>${escapeHtmlComment(author)}</strong> nevnte deg i en kommentar:</p>
+        <blockquote style="border-left:3px solid #a030c0;margin:12px 0;padding:8px 12px;background:#f5f0fa;color:#3a2050">${escapeHtmlComment(snippet) || "(åpne for å se kommentaren)"}</blockquote>
+        <p style="color:#6b7280;font-size:13px;margin-top:24px">Åpne Creative Sync Workspace for å svare.</p>
+      </div>`,
+    text: `${author} nevnte deg i en kommentar:\n\n${snippet}\n\nÅpne Creative Sync Workspace for å svare.`,
+    kind: "editor_comment_mention",
+  });
+}
+
+/** Minimal HTML-escaping for kommentar-tekst i mention-e-post. */
+function escapeHtmlComment(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 export function registerRoleRoomEditorCommentsRoutes(
@@ -347,7 +395,12 @@ export function registerRoleRoomEditorCommentsRoutes(
         const mentions = actor.isClient ? [] : parseMentions(commentText);
         if (mentions.length > 0) {
           await persistMentions(pool, rows[0].id, projectId,
-                                 mentions, actor.userId);
+                                 mentions, actor.userId, {
+                                   byDisplayName: displayName,
+                                   commentText,
+                                   anchorType,
+                                   anchorRef: typeof body?.anchorRef === "string" ? body.anchorRef : null,
+                                 });
         }
         // Email-notify producer når klient kommenterer på en
         // marketing_plan_post — best-effort, ikke blokkerende.

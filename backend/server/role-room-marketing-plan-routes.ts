@@ -70,6 +70,7 @@ import {
 } from "./role-room-marketing-plan.js";
 import {
   acceptPlanPostIntoFeedPlanner,
+  bulkUpdatePlanPostsPlatform,
   generatePlanPosts,
   listPlanPosts,
   persistPlanPosts,
@@ -350,6 +351,31 @@ export function setupRoleRoomMarketingPlanRoutes(
       });
     }
     return res.json({ success: true, planPost: result.planPost, feedPlanPostId: result.feedPlanPostId });
+  });
+
+  // Bulk-endring av primary_platform for et utvalg poster (Creative Sync-audit
+  // #5 — UI-knappen fantes men endepunktet manglet).
+  app.patch("/api/role-room/marketing-plan/posts/platform", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+    const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+    const primaryPlatform = typeof body.primaryPlatform === "string" ? body.primaryPlatform.trim() : "";
+    const postIds = Array.isArray(body.postIds)
+      ? body.postIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+      : [];
+    if (!projectId || postIds.length === 0 || !primaryPlatform) {
+      return res.status(400).json({ success: false, error: "projectId, postIds og primaryPlatform er påkrevd." });
+    }
+    try {
+      const updated = await bulkUpdatePlanPostsPlatform(pool, { projectId, postIds, primaryPlatform });
+      return res.json({ success: true, updated });
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Bulk-plattform-oppdatering feilet.",
+      });
+    }
   });
 
   app.post("/api/role-room/marketing-plan/:planId/activate", async (req, res) => {
