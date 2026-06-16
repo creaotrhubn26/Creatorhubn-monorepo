@@ -259,4 +259,34 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
       }
     },
   );
+
+  // ─── POST /admin-room/lead-map/leads/bulk-assign-project ──
+  // Bulk-tildel flere leads til samme prosjekt. Body:
+  //   { leadIds: string[], projectId: string | null }
+  app.post(
+    "/api/admin-room/lead-map/leads/bulk-assign-project",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const body = req.body as { leadIds?: string[]; projectId?: string | null };
+      if (!Array.isArray(body.leadIds) || body.leadIds.length === 0) {
+        return res.status(400).json({ error: "leadIds_array_kreves" });
+      }
+      if (body.leadIds.length > 500) {
+        return res.status(400).json({ error: "max_500_per_bulk" });
+      }
+      try {
+        const r = await pool.query(
+          `UPDATE crm_customers
+              SET project_id = $2
+            WHERE id = ANY($3::uuid[])
+              AND owner_user_id = $1`,
+          [session.userId, body.projectId ?? null, body.leadIds],
+        );
+        return res.json({ ok: true, updated: r.rowCount ?? 0 });
+      } catch (err) {
+        return res.status(500).json({ error: "bulk_assign_failed", detail: String(err) });
+      }
+    },
+  );
 }
