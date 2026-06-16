@@ -319,6 +319,18 @@ function makeCompetitorIcon(threat: CompetitorPoint['threatLevel'], selected: bo
   return icon;
 }
 
+// WCAG 2.1.1 (Keyboard) — keyboard-aktivering for klikkbare elementer
+// som ikke er native <button>. Trykk Enter/Space → samme handler som
+// onClick.
+function activateOnKey(handler: () => void): (e: React.KeyboardEvent) => void {
+  return (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handler();
+    }
+  };
+}
+
 function authHeaders(): HeadersInit {
   const token = typeof window !== 'undefined' ? localStorage.getItem('rr_bearer') : null;
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -2324,12 +2336,19 @@ export default function LeadMapPanel() {
                   {m.icon}
                 </Box>
                 {m.trend != null && (
-                  <Stack direction="row" alignItems="center" spacing={0.2}>
-                    <TrendingUpIcon sx={{
-                      fontSize: 14,
-                      color: m.trend >= 0 ? '#34d399' : '#f87171',
-                      transform: m.trend >= 0 ? 'none' : 'rotate(180deg)',
-                    }} />
+                  <Stack
+                    direction="row" alignItems="center" spacing={0.2}
+                    role="img"
+                    aria-label={`Endring siste 7 dager: ${m.trend >= 0 ? 'opp' : 'ned'} ${Math.abs(m.trend)} prosent`}
+                  >
+                    <TrendingUpIcon
+                      aria-hidden="true"
+                      sx={{
+                        fontSize: 14,
+                        color: m.trend >= 0 ? '#34d399' : '#f87171',
+                        transform: m.trend >= 0 ? 'none' : 'rotate(180deg)',
+                      }}
+                    />
                     <Typography sx={{ fontSize: '0.74rem', color: m.trend >= 0 ? '#34d399' : '#f87171', fontWeight: 800 }}>
                       {m.trend >= 0 ? '+' : ''}{m.trend}%
                     </Typography>
@@ -4359,10 +4378,17 @@ export default function LeadMapPanel() {
                   return (
                     <Stack
                       key={sl.id} direction="row" spacing={1} alignItems="center"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${sl.name}, ${sl.daysSilent} dager uten aktivitet, status ${STATUS_META[sl.status as LeadStatus]?.label ?? sl.status}`}
                       onClick={() => {
                         const lead = leads.find((l) => l.id === sl.id);
                         if (lead) { setSelected(lead); setStaleListOpen(false); }
                       }}
+                      onKeyDown={activateOnKey(() => {
+                        const lead = leads.find((l) => l.id === sl.id);
+                        if (lead) { setSelected(lead); setStaleListOpen(false); }
+                      })}
                       sx={{
                         p: 1.2, borderRadius: 1.2,
                         bgcolor: 'rgba(10,10,15,0.4)',
@@ -4371,6 +4397,10 @@ export default function LeadMapPanel() {
                         cursor: 'pointer',
                         transition: 'border-color 140ms ease',
                         '&:hover': { borderColor: color },
+                        '&:focus-visible': {
+                          outline: `2px solid ${palette.amber}`,
+                          outlineOffset: 2,
+                        },
                       }}
                     >
                       <Stack sx={{ flex: 1, minWidth: 0 }}>
@@ -4895,12 +4925,24 @@ export default function LeadMapPanel() {
                       return (b.threatScore ?? 0) - (a.threatScore ?? 0);
                     })
                     .map((c) => (
-                      <tr key={c.id} onClick={() => {
-                        if (c.latitude != null && c.longitude != null) {
-                          setSelectedCompetitor(c);
-                          setSelected(null);
-                        }
-                      }}>
+                      <tr
+                        key={c.id}
+                        role="button"
+                        tabIndex={c.latitude != null && c.longitude != null ? 0 : -1}
+                        aria-label={`Konkurrent ${c.name}${c.threatLevel ? `, ${c.threatLevel === 'near' ? 'nær trussel' : c.threatLevel === 'medium' ? 'medium trussel' : 'fjern trussel'}` : ''}`}
+                        onClick={() => {
+                          if (c.latitude != null && c.longitude != null) {
+                            setSelectedCompetitor(c);
+                            setSelected(null);
+                          }
+                        }}
+                        onKeyDown={activateOnKey(() => {
+                          if (c.latitude != null && c.longitude != null) {
+                            setSelectedCompetitor(c);
+                            setSelected(null);
+                          }
+                        })}
+                      >
                         <td>
                           <Stack direction="row" alignItems="center" spacing={0.6}>
                             <Box sx={{
@@ -5036,10 +5078,17 @@ export default function LeadMapPanel() {
                 return (
                   <Stack
                     key={ev.id} direction="row" spacing={1.4} alignItems="center"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${isMeeting ? 'Møte' : 'Oppfølging'} med ${ev.leadName}${date ? ` ${dateLabel} ${timeLabel}` : ''}`}
                     onClick={() => {
                       const lead = leads.find((l) => l.id === ev.id);
                       if (lead) { setSelected(lead); setSelectedCompetitor(null); }
                     }}
+                    onKeyDown={activateOnKey(() => {
+                      const lead = leads.find((l) => l.id === ev.id);
+                      if (lead) { setSelected(lead); setSelectedCompetitor(null); }
+                    })}
                     sx={{
                       p: 1.2, borderRadius: 1.2,
                       bgcolor: 'rgba(10,10,15,0.4)',
@@ -5048,6 +5097,10 @@ export default function LeadMapPanel() {
                       cursor: 'pointer',
                       transition: 'border-color 140ms ease',
                       '&:hover': { borderColor: accent },
+                      '&:focus-visible': {
+                        outline: `2px solid ${palette.amber}`,
+                        outlineOffset: 2,
+                      },
                       opacity: isPast ? 0.65 : 1,
                     }}
                   >
@@ -5312,17 +5365,34 @@ export default function LeadMapPanel() {
                             style={{ accentColor: palette.amber, cursor: 'pointer' }}
                           />
                         </td>
-                        <td
-                          onClick={() => setSelected(l)}
-                          style={{ cursor: 'pointer' }}
-                        >
-                          <Stack direction="row" alignItems="center" spacing={0.6}>
-                            <Box sx={{
-                              width: 8, height: 8, borderRadius: '50%',
-                              bgcolor: STATUS_META[l.status]?.color ?? '#94a3b8',
-                            }} />
-                            <span style={{ fontWeight: 700, color: palette.textPrimary }}>{l.name}</span>
-                          </Stack>
+                        <td>
+                          <Box
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Vis detaljer for lead ${l.name}, status ${STATUS_META[l.status]?.label ?? l.status}`}
+                            onClick={() => setSelected(l)}
+                            onKeyDown={activateOnKey(() => setSelected(l))}
+                            sx={{
+                              cursor: 'pointer',
+                              display: 'inline-block',
+                              borderRadius: 0.6,
+                              '&:focus-visible': {
+                                outline: `2px solid ${palette.amber}`,
+                                outlineOffset: 2,
+                              },
+                            }}
+                          >
+                            <Stack direction="row" alignItems="center" spacing={0.6}>
+                              <Box
+                                aria-hidden="true"
+                                sx={{
+                                  width: 8, height: 8, borderRadius: '50%',
+                                  bgcolor: STATUS_META[l.status]?.color ?? '#94a3b8',
+                                }}
+                              />
+                              <span style={{ fontWeight: 700, color: palette.textPrimary }}>{l.name}</span>
+                            </Stack>
+                          </Box>
                         </td>
                         <td>
                           <Chip
