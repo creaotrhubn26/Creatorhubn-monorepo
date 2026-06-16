@@ -70,6 +70,7 @@ import { Menu, Slider } from '@mui/material';
 import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined';
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
+import { openLeadMapPdfReport } from './lead-map-pdf-export';
 import KeyboardOutlinedIcon from '@mui/icons-material/KeyboardOutlined';
 import TabletMacOutlinedIcon from '@mui/icons-material/TabletMacOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
@@ -2036,13 +2037,34 @@ export default function LeadMapPanel() {
             ))}
           </Select>
           {projectSummary && (
-            <Button
-              size="small" variant="text"
-              onClick={() => setProjectCardExpanded((v) => !v)}
-              sx={{ color: palette.textMuted, fontSize: '0.72rem', textTransform: 'none' }}
-            >
-              {projectCardExpanded ? 'Skjul kontekst' : 'Vis kontekst'}
-            </Button>
+            <>
+              <Button
+                size="small" variant="text"
+                onClick={() => setProjectCardExpanded((v) => !v)}
+                sx={{ color: palette.textMuted, fontSize: '0.72rem', textTransform: 'none' }}
+              >
+                {projectCardExpanded ? 'Skjul kontekst' : 'Vis kontekst'}
+              </Button>
+              <Button
+                size="small" variant="outlined"
+                startIcon={<FileDownloadOutlinedIcon sx={{ fontSize: 14 }} />}
+                onClick={() => {
+                  openLeadMapPdfReport({
+                    project: projectSummary.project,
+                    brandKit: projectSummary.brandKit,
+                    metrics: metrics ?? null,
+                    competitorCount: projectSummary.competitorCount,
+                    leaderboard: leaderboard ?? [],
+                    reminders: reminders ?? null,
+                    generatedAt: new Date(),
+                    ownerName: currentUser?.displayName ?? currentUser?.name ?? null,
+                  });
+                }}
+                sx={{ color: palette.accent, borderColor: palette.borderStrong, fontWeight: 700, fontSize: '0.72rem', textTransform: 'none' }}
+              >
+                PDF-rapport
+              </Button>
+            </>
           )}
         </Stack>
 
