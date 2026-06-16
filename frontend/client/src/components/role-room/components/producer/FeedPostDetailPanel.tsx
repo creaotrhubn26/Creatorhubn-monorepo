@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -25,10 +25,12 @@ import {
   Close as CloseIcon,
   Collections as CollectionsIcon,
   DeleteOutline as DeleteOutlineIcon,
+  GridView as GridViewIcon,
   LockOpen as LockOpenIcon,
   Lock as LockIcon,
   Movie as MovieIcon,
   Tag as TagIcon,
+  UploadFile as UploadFileIcon,
 } from '@mui/icons-material';
 import roleRoomAgentService, {
   RoleRoomFeedEntitlementError,
@@ -38,6 +40,7 @@ import type {
   RoleRoomAgentBrandColor,
   RoleRoomAgentProducerBootstrapResult,
   RoleRoomFeedBrandSnapshot,
+  RoleRoomFeedGridAspect,
   RoleRoomFeedLogoPlacement,
   RoleRoomFeedMediaType,
   RoleRoomFeedPlatform,
@@ -82,6 +85,16 @@ const MEDIA_TYPE_OPTIONS: { value: RoleRoomFeedMediaType; label: string }[] = [
   { value: 'carousel', label: 'Karusell' },
 ];
 
+const GRID_ASPECT_OPTIONS: { value: RoleRoomFeedGridAspect; label: string; hint: string }[] = [
+  { value: '1:1', label: '1:1', hint: 'Kvadrat' },
+  { value: '4:5', label: '4:5', hint: 'Portrett (anbefalt for feed)' },
+  { value: '16:9', label: '16:9', hint: 'Liggende / nettside' },
+];
+
+// Cover/thumbnail lagres som data: URL i samme JSONB-rad som posten.
+// 2 MB matcher backendens MAX_CUSTOM_IMAGE_LENGTH.
+const MAX_COVER_BYTES = 2_000_000;
+
 function formatScheduleInputValue(iso: string | null): string {
   if (!iso) return '';
   try {
@@ -110,6 +123,36 @@ export default function FeedPostDetailPanel({
 }: FeedPostDetailPanelProps) {
   const hashtagsText = useMemo(() => post.hashtags.join(' '), [post.hashtags]);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const [coverError, setCoverError] = useState<string | null>(null);
+
+  const gridAspect: RoleRoomFeedGridAspect = post.gridAspect ?? '4:5';
+
+  // Les en enhetsopplastet thumbnail som data: URL og lagre på posten.
+  // Auto-saven i FeedPlannerPanel persisterer den videre til backend.
+  const handleCoverFile = (file: File | null) => {
+    setCoverError(null);
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setCoverError('Coveret må være et bilde (JPG/PNG/WebP).');
+      return;
+    }
+    if (file.size > MAX_COVER_BYTES) {
+      setCoverError('Bildet er for stort — maks 2 MB. Komprimer og prøv igjen.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : null;
+      if (!dataUrl) {
+        setCoverError('Kunne ikke lese bildet. Prøv et annet.');
+        return;
+      }
+      onUpdate({ coverImageUrl: dataUrl, coverImageName: file.name });
+    };
+    reader.onerror = () => setCoverError('Kunne ikke lese bildet. Prøv et annet.');
+    reader.readAsDataURL(file);
+  };
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiNote, setAiNote] = useState<{ strategyNotes: string; bestTimeRationale: string; freshness: string } | null>(null);
@@ -269,6 +312,8 @@ export default function FeedPostDetailPanel({
           pageId: fbSelectedPageId,
           videoDataUrl: post.customVideoDataUrl,
           description: `${post.title}\n\n${post.caption}\n\n${post.callToAction}\n\n${post.hashtags.join(' ')}`.trim(),
+          // Egendefinert cover/thumbnail → Graph `thumb` på FB-videoen.
+          coverDataUrl: post.coverImageUrl ?? undefined,
           scheduledFor: post.scheduledFor,
         }),
       });
@@ -335,6 +380,9 @@ export default function FeedPostDetailPanel({
         imageDataUrl: post.mediaType === 'image' ? post.customImageUrl ?? undefined : undefined,
         imageDataUrls: post.mediaType === 'carousel' ? post.customImageUrls ?? undefined : undefined,
         videoDataUrl: post.mediaType === 'reel' ? post.customVideoDataUrl ?? undefined : undefined,
+        // Egendefinert cover/thumbnail → cover_url på reel-containeren.
+        coverDataUrl:
+          post.mediaType === 'reel' && post.coverImageUrl ? post.coverImageUrl : undefined,
         scheduledFor: post.scheduledFor,
       });
       if (result.rateLimited) {
@@ -789,6 +837,141 @@ export default function FeedPostDetailPanel({
           });
         }}
       />
+
+      {/* Cover & format i grid — styrer hvordan ruten ser ut i feed-grid,
+          nettside-portfolio, deling & link-preview. */}
+      <Stack
+        spacing={1}
+        sx={{
+          p: 1,
+          borderRadius: 1.8,
+          bgcolor: 'rgba(15,23,42,0.55)',
+          border: '1px solid rgba(148,163,184,0.16)',
+        }}
+      >
+        <Stack direction="row" spacing={0.8} alignItems="center">
+          <GridViewIcon sx={{ fontSize: 16, color: '#a78bfa' }} />
+          <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
+            Cover &amp; format i grid
+          </Typography>
+        </Stack>
+
+        {/* Format-velger */}
+        <Box>
+          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.7rem', mb: 0.6 }}>
+            Beskjæring i grid &amp; portfolio
+          </Typography>
+          <Stack direction="row" spacing={0.6}>
+            {GRID_ASPECT_OPTIONS.map((option) => {
+              const active = gridAspect === option.value;
+              return (
+                <Button
+                  key={option.value}
+                  size="small"
+                  onClick={() => onUpdate({ gridAspect: option.value })}
+                  title={option.hint}
+                  sx={{
+                    minWidth: 0,
+                    px: 1.2,
+                    py: 0.4,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    fontSize: '0.74rem',
+                    color: active ? '#0b1220' : 'rgba(226,232,240,0.82)',
+                    bgcolor: active ? '#a78bfa' : 'transparent',
+                    border: `1px solid ${active ? 'transparent' : 'rgba(148,163,184,0.3)'}`,
+                    '&:hover': { bgcolor: active ? '#a78bfa' : 'rgba(167,139,250,0.12)' },
+                  }}
+                >
+                  {option.label}
+                </Button>
+              );
+            })}
+          </Stack>
+        </Box>
+
+        {/* Cover/thumbnail-opplasting fra enhet */}
+        <Box>
+          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.7rem', mb: 0.6 }}>
+            Eget cover {post.mediaType === 'reel' ? '(poster-frame for reel)' : '(overstyrer grid-bildet)'}
+          </Typography>
+          <Stack direction="row" spacing={0.8} alignItems="center">
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography
+                sx={{
+                  color: post.coverImageUrl ? '#e2e8f0' : 'rgba(226,232,240,0.58)',
+                  fontSize: '0.74rem',
+                  fontWeight: post.coverImageUrl ? 700 : 400,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {post.coverImageUrl
+                  ? post.coverImageName || 'Eget cover lastet opp'
+                  : 'Last opp et eget cover fra enheten din.'}
+              </Typography>
+            </Box>
+            <input
+              ref={coverInputRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(event) => {
+                handleCoverFile(event.target.files?.[0] ?? null);
+                // Nullstill så samme fil kan velges igjen etter fjerning.
+                if (event.target) event.target.value = '';
+              }}
+            />
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<UploadFileIcon fontSize="small" />}
+              onClick={() => coverInputRef.current?.click()}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                color: '#a78bfa',
+                borderColor: 'rgba(167,139,250,0.5)',
+                '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(167,139,250,0.08)' },
+              }}
+            >
+              {post.coverImageUrl ? 'Bytt cover' : 'Last opp'}
+            </Button>
+            {post.coverImageUrl ? (
+              <Tooltip title="Fjern eget cover">
+                <IconButton
+                  size="small"
+                  onClick={() => onUpdate({ coverImageUrl: null, coverImageName: null })}
+                  sx={{ color: 'rgba(248,113,113,0.9)' }}
+                >
+                  <DeleteOutlineIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : null}
+          </Stack>
+          {coverError ? (
+            <Typography sx={{ color: '#fca5a5', fontSize: '0.7rem', mt: 0.5 }}>{coverError}</Typography>
+          ) : null}
+          {post.coverImageUrl ? (
+            <Box
+              component="img"
+              src={post.coverImageUrl}
+              alt={post.coverImageName ?? 'cover'}
+              sx={{
+                mt: 0.6,
+                width: '100%',
+                maxWidth: 220,
+                aspectRatio: gridAspect === '1:1' ? '1 / 1' : gridAspect === '16:9' ? '16 / 9' : '4 / 5',
+                objectFit: 'cover',
+                borderRadius: 1.4,
+                border: '1px solid rgba(148,163,184,0.18)',
+                display: 'block',
+              }}
+            />
+          ) : null}
+        </Box>
+      </Stack>
 
       {/* Brand-fargekontrollere — applied template-farger kan finjusteres her */}
       <Stack

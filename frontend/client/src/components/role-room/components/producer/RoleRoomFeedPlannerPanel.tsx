@@ -262,11 +262,14 @@ export default function RoleRoomFeedPlannerPanel({
         if (existing?.locked) {
           return existing;
         }
-        if (existing?.customImageUrl) {
+        if (existing?.customImageUrl || existing?.coverImageUrl || existing?.gridAspect) {
           return {
             ...next,
             customImageUrl: existing.customImageUrl,
             customImageName: existing.customImageName,
+            coverImageUrl: existing.coverImageUrl,
+            coverImageName: existing.coverImageName,
+            gridAspect: existing.gridAspect,
           };
         }
         return next;
@@ -299,6 +302,9 @@ export default function RoleRoomFeedPlannerPanel({
               ...rebuilt,
               customImageUrl: entry.customImageUrl ?? null,
               customImageName: entry.customImageName ?? null,
+              coverImageUrl: entry.coverImageUrl ?? null,
+              coverImageName: entry.coverImageName ?? null,
+              gridAspect: entry.gridAspect ?? null,
               scheduledFor: entry.scheduledFor,
             }
           : entry,

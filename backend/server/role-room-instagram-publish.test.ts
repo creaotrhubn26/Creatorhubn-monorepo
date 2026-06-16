@@ -45,7 +45,16 @@ type FetchRouter = (url: string, init?: RequestInit) => { status?: number; body:
 let fetchRouter: FetchRouter = () => ({ status: 500, body: { error: 'unmocked' } });
 const fetchCalls: { url: string; init?: RequestInit }[] = [];
 
+// Denne filen tester publiserings-mekanikken (R2-host, container-bygging,
+// polling, retry), ikke §5.1-godkjenningsgaten — den har egen dekning i
+// role-room-material-approval.test.ts. Gaten ble lagt til etter at disse
+// testene ble skrevet, så vi skrur den av per default og slår den eksplisitt
+// på igjen i den ene integrasjonstesten som verifiserer at den blokkerer.
+let prevApprovalGate: string | undefined;
+
 beforeEach(() => {
+  prevApprovalGate = process.env.MATERIAL_APPROVAL_GATE;
+  process.env.MATERIAL_APPROVAL_GATE = 'off';
   fetchCalls.length = 0;
   getConnection.mockReset();
   ensureFreshConnection.mockReset();
@@ -66,6 +75,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  if (prevApprovalGate === undefined) delete process.env.MATERIAL_APPROVAL_GATE;
+  else process.env.MATERIAL_APPROVAL_GATE = prevApprovalGate;
 });
 
 // ── Pool helpers ────────────────────────────────────────────────────────
@@ -414,6 +425,95 @@ describe('queueAndPublish — immediate reel publish', () => {
     const publishCall = fetchCalls.find((c) => c.url.includes('media_publish'));
     expect((publishCall!.init!.body as URLSearchParams).toString()).toContain('creation_id=reel-container-1');
   }, 15_000);
+
+  it('attaches a custom cover_url to the REELS container when a cover is uploaded', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      getConnection.mockResolvedValue(baseConnection());
+      ensureFreshConnection.mockResolvedValue(baseConnection());
+      // Først video-opplasting, så cover-opplasting.
+      uploadImageForInstagram
+        .mockResolvedValueOnce(hostedImage({
+          key: 'role-room/instagram-publish/u1/reel-1.mp4',
+          contentType: 'video/mp4',
+        }))
+        .mockResolvedValueOnce(hostedImage({
+          key: 'role-room/instagram-publish/u1/cover-1.jpg',
+        }));
+      // signInstagramHostedImageUrl kalles for video (parts) først, så cover.
+      signInstagramHostedImageUrl
+        .mockResolvedValueOnce('https://signed.example/reel')
+        .mockResolvedValueOnce('https://signed.example/cover');
+      const { pool } = makePool(async (sql) => {
+        if (sql.includes('role_room_instagram_publishes_last_24h')) return { rows: [{ published_count: 0 }] };
+        if (sql.startsWith('INSERT INTO role_room_instagram_publish_jobs')) {
+          return {
+            rows: [jobRow({
+              media_type: 'reel',
+              image_bucket: 'role-room-bucket',
+              image_key: 'role-room/instagram-publish/u1/reel-1.mp4',
+              image_parts: [{ bucket: 'role-room-bucket', key: 'role-room/instagram-publish/u1/reel-1.mp4' }],
+              cover_bucket: 'role-room-bucket',
+              cover_key: 'role-room/instagram-publish/u1/cover-1.jpg',
+            })],
+          };
+        }
+        return { rows: [], rowCount: 1 };
+      });
+
+      fetchRouter = (url) => {
+        if (url.includes('/ig-biz-1/media_publish')) return { body: { id: 'reel-media-id' } };
+        if (url.includes('/ig-biz-1/media')) return { body: { id: 'reel-container-1' } };
+        if (url.includes('?fields=status_code')) return { body: { status_code: 'FINISHED' } };
+        return { status: 404, body: {} };
+      };
+
+      const resultP = queueAndPublish(pool, {
+        connectionId: 'c', userId: 'u1', projectId: 'p', feedPlanPostId: 'f',
+        mediaType: 'reel', caption: 'my reel',
+        videoDataUrl: 'data:video/mp4;base64,AAAAAA',
+        coverDataUrl: 'data:image/jpeg;base64,/9j/AAAA',
+      });
+      await vi.advanceTimersByTimeAsync(30_000);
+      await resultP;
+      vi.useRealTimers();
+
+      const containerCall = fetchCalls.find(
+        (c) => c.url.includes('/ig-biz-1/media')
+          && !c.url.includes('media_publish')
+          && !c.url.includes('?fields=status_code'),
+      );
+      const body = (containerCall!.init!.body as URLSearchParams).toString();
+      expect(body).toContain('media_type=REELS');
+      expect(body).toContain('cover_url=' + encodeURIComponent('https://signed.example/cover'));
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 15_000);
+});
+
+// ── §5.1 approval-gate integration ───────────────────────────────────────
+
+describe('queueAndPublish — client-approval gate (§5.1)', () => {
+  it('blocks publishing material the client has not approved', async () => {
+    // Slå gaten eksplisitt PÅ for denne testen (beforeEach skrur den av).
+    process.env.MATERIAL_APPROVAL_GATE = 'on';
+    getConnection.mockResolvedValue(baseConnection());
+    ensureFreshConnection.mockResolvedValue(baseConnection());
+    // Mock-poolen returnerer ingen feed-plan → posten kan ikke bevises
+    // godkjent → gaten skal fail-close.
+    const { pool } = makePool(async () => ({ rows: [], rowCount: 0 }));
+
+    await expect(
+      queueAndPublish(pool, {
+        connectionId: 'c', userId: 'u1', projectId: 'p', feedPlanPostId: 'f',
+        mediaType: 'image', caption: 'x',
+        imageDataUrl: 'data:image/jpeg;base64,/9j/AAAA',
+      }),
+    ).rejects.toThrow(/ikke godkjent av kunden/);
+    // Gaten skal blokkere FØR vi laster opp noe til R2.
+    expect(uploadImageForInstagram).not.toHaveBeenCalled();
+  });
 });
 
 // ── End-to-end immediate carousel ────────────────────────────────────────
@@ -502,7 +602,7 @@ describe('processDuePublishJobs', () => {
   it('returns zero counts when nothing is due', async () => {
     const { pool } = makePoolWithConnect(async () => ({ rows: [] }));
     const stats = await processDuePublishJobs(pool, 5);
-    expect(stats).toEqual({ picked: 0, published: 0, failed: 0, rateLimited: 0 });
+    expect(stats).toEqual({ picked: 0, published: 0, failed: 0, rateLimited: 0, recovered: 0 });
   });
 
   it('marks a failed job when the connection is gone', async () => {

@@ -41,6 +41,43 @@ describe('normalizeFeedPostsPayload — approval-state preservation', () => {
     }
   });
 
+  it('preserves gridAspect + cover thumbnail through save roundtrip', () => {
+    const cover = `data:image/png;base64,${'A'.repeat(64)}`;
+    const [post] = normalizeFeedPostsPayload([
+      {
+        id: 'p',
+        concept: '',
+        title: '',
+        caption: '',
+        hashtags: [],
+        callToAction: '',
+        imageStyle: '',
+        gridAspect: '16:9',
+        coverImageUrl: cover,
+        coverImageName: 'cover.png',
+      },
+    ]);
+    expect(post.gridAspect).toBe('16:9');
+    expect(post.coverImageUrl).toBe(cover);
+    expect(post.coverImageName).toBe('cover.png');
+  });
+
+  it('drops invalid gridAspect to null', () => {
+    const [post] = normalizeFeedPostsPayload([
+      {
+        id: 'p',
+        concept: '',
+        title: '',
+        caption: '',
+        hashtags: [],
+        callToAction: '',
+        imageStyle: '',
+        gridAspect: '3:2',
+      },
+    ]);
+    expect(post.gridAspect).toBeNull();
+  });
+
   it('sanitizes invalid approvalState back to draft', () => {
     const [post] = normalizeFeedPostsPayload([
       {

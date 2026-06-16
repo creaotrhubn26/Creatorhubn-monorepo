@@ -52,6 +52,11 @@ export interface RoleRoomFeedPostInput {
   locked?: boolean;
   customImageUrl?: string | null;
   customImageName?: string | null;
+  // Grid-beskjæring + egendefinert cover/thumbnail (vises i feed-grid,
+  // nettside-portfolio, deling & link-preview). gridAspect default '4:5'.
+  gridAspect?: '1:1' | '4:5' | '16:9' | null;
+  coverImageUrl?: string | null;
+  coverImageName?: string | null;
   // Approval-flyt — bevarer state mellom save-rounds. Default 'draft'.
   approvalState?: RoleRoomFeedApprovalState;
   approvalChangedAt?: string | null;
@@ -126,6 +131,19 @@ function normalizePost(raw: unknown, fallbackIndex: number): RoleRoomFeedPostInp
       ? (record.approvalState as RoleRoomFeedApprovalState)
       : 'draft';
 
+  const gridAspect =
+    record.gridAspect === '1:1' || record.gridAspect === '4:5' || record.gridAspect === '16:9'
+      ? record.gridAspect
+      : null;
+  const coverImageUrl =
+    typeof record.coverImageUrl === 'string' && record.coverImageUrl.length > 0
+      ? clipString(record.coverImageUrl, MAX_CUSTOM_IMAGE_LENGTH)
+      : null;
+  const coverImageName =
+    typeof record.coverImageName === 'string' && record.coverImageName.length > 0
+      ? clipString(record.coverImageName, MAX_CUSTOM_IMAGE_NAME_LENGTH)
+      : null;
+
   return {
     id,
     concept: clipString(record.concept, 120),
@@ -143,6 +161,9 @@ function normalizePost(raw: unknown, fallbackIndex: number): RoleRoomFeedPostInp
     locked: Boolean(record.locked),
     customImageUrl,
     customImageName,
+    gridAspect,
+    coverImageUrl,
+    coverImageName,
     approvalState,
     approvalChangedAt:
       typeof record.approvalChangedAt === 'string' ? clipString(record.approvalChangedAt, 40) : null,
