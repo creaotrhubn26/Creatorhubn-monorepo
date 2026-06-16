@@ -516,6 +516,7 @@ import { registerLeadMapPermissionRoutes } from "./lead-map-permission-routes.js
 import { registerLeadMapLogoRoutes } from "./lead-map-logo-routes.js";
 import { registerMePermissionsRoute } from "./lead-map-rbac-helper.js";
 import { registerLeadMapWorkloadRoutes } from "./lead-map-workload-routes.js";
+import { registerLeadMapLeaderboardRoutes } from "./lead-map-leaderboard-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24246,6 +24247,9 @@ registerMePermissionsRoute(app, pool, activeSessions);
 // /me/workload + /me/quota + /leads/:id/assign + /leads/auto-assign
 // Salgskonsulentens daglige arbeidsliste + kvote-progresjon
 registerLeadMapWorkloadRoutes({ app, pool, activeSessions });
+// /organizations/:id/leaderboard + /leaderboard-summary
+// Team-leaderboard for Salgssjef/Teamleder
+registerLeadMapLeaderboardRoutes({ app, pool, activeSessions });
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,
