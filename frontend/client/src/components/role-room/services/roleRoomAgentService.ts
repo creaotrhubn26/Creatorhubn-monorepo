@@ -1251,6 +1251,19 @@ export class RoleRoomFeedEntitlementError extends Error {
   }
 }
 
+export interface RoleRoomAgentRecommendation {
+  id: string;
+  type: string;
+  title: string;
+  insight: string | null;
+  stat_value: string | null;
+  stat_label: string | null;
+  cta_label: string | null;
+  icon: string | null;
+  status: 'new' | 'done' | 'dismissed';
+  created_at: string;
+}
+
 export const roleRoomAgentService = {
   async getAccess(): Promise<RoleRoomAgentAccess> {
     const response = await fetch('/api/role-room/agent/access', {
@@ -1262,6 +1275,35 @@ export const roleRoomAgentService = {
     }
 
     return response.json() as Promise<RoleRoomAgentAccess>;
+  },
+
+  // ── Agent-anbefalinger (mig 284) ────────────────────────────────────
+  async getRecommendations(projectId?: string | null): Promise<RoleRoomAgentRecommendation[]> {
+    const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+    const r = await fetch(`/api/role-room/agent/recommendations${qs}`, { headers: readRoleRoomAgentHeaders() });
+    if (!r.ok) return [];
+    const body = await r.json().catch(() => null);
+    return Array.isArray(body?.recommendations) ? (body.recommendations as RoleRoomAgentRecommendation[]) : [];
+  },
+
+  async patchRecommendation(id: string, status: 'done' | 'dismissed' | 'new'): Promise<boolean> {
+    const r = await fetch(`/api/role-room/agent/recommendations/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return r.ok;
+  },
+
+  async generateRecommendations(projectId?: string | null): Promise<RoleRoomAgentRecommendation[]> {
+    const r = await fetch('/api/role-room/agent/recommendations/generate', {
+      method: 'POST',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: projectId ?? null }),
+    });
+    if (!r.ok) return [];
+    const body = await r.json().catch(() => null);
+    return Array.isArray(body?.recommendations) ? (body.recommendations as RoleRoomAgentRecommendation[]) : [];
   },
 
   async generateProducerBootstrap(

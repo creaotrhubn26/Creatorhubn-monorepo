@@ -63,6 +63,7 @@ import roleRoomAgentService, {
   type RoleRoomAgentProducerBootstrapResult,
 } from '../../services/roleRoomAgentService';
 import RoleRoomAgentChatPanel from '../ai/RoleRoomAgentChatPanel';
+import { AgentRecommendationsFeed } from '../AgentRecommendationsFeed';
 import RoleRoomFeedPlannerPanel from './RoleRoomFeedPlannerPanel';
 import MarketingPlanPanel from './MarketingPlanPanel';
 import ResearchVersionsPickerInline from './ResearchVersionsPickerInline';
@@ -257,7 +258,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'discovery' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'mentions' | 'leads' | 'events' | 'social-analytics'>(initialTab ?? 'research');
+  const [activeTab, setActiveTab] = useState<'research' | 'discovery' | 'chat' | 'recommendations' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'mentions' | 'leads' | 'events' | 'social-analytics'>(initialTab ?? 'research');
 
   // Synk hvis initialTab endrer seg etter mount (dialog gjenåpnes med
   // ny tab fra parent).
@@ -809,6 +810,7 @@ export default function RoleRoomAgentDialog({
         {currentUserId ? (
           <Tab value="chat" label="Chat" icon={<ChatIcon fontSize="small" />} iconPosition="start" />
         ) : null}
+        <Tab value="recommendations" label="Anbefalinger" icon={<AutoFixHighIcon fontSize="small" />} iconPosition="start" data-testid="agent-tab-recommendations" />
       </Tabs>
       ) : null}
       {hasUnsavedAgentWork ? (
@@ -928,6 +930,8 @@ export default function RoleRoomAgentDialog({
               }}
             />
           </Box>
+        ) : activeTab === 'recommendations' ? (
+          <AgentRecommendationsFeed projectId={projectId} />
         ) : activeTab === 'discovery' ? (
           <DiscoveryPanel />
         ) : activeTab === 'merch' ? (
