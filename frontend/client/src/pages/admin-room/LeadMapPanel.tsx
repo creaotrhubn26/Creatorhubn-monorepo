@@ -71,6 +71,8 @@ import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined';
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import KeyboardOutlinedIcon from '@mui/icons-material/KeyboardOutlined';
+import TabletMacOutlinedIcon from '@mui/icons-material/TabletMacOutlined';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
 type LeadStatus =
   | 'unvisited' | 'visited' | 'return' | 'not_present' | 'declined'
@@ -442,6 +444,17 @@ export default function LeadMapPanel() {
 
   // Hotkey-hjelp-overlay
   const [hotkeysOpen, setHotkeysOpen] = useState(false);
+
+  // iPad-paring
+  const [pairOpen, setPairOpen] = useState(false);
+  const [pairLoading, setPairLoading] = useState(false);
+  const [pairToken, setPairToken] = useState<{
+    shortCode: string;
+    expiresInSeconds: number;
+    expiresAt: number; // timestamp ms
+  } | null>(null);
+  const [pairStatus, setPairStatus] = useState<'pending' | 'claimed' | 'expired'>('pending');
+  const [pairCountdown, setPairCountdown] = useState(0);
   const boundsRef = useRef<L.LatLngBounds | null>(null);
 
   // View-toggles — bestemmer hvilke pins som vises på kartet
@@ -655,6 +668,60 @@ export default function LeadMapPanel() {
       setLoading(false);
     }
   }, [statusFilter]);
+
+  // Generer iPad pair-kode
+  const generatePairToken = useCallback(async () => {
+    setPairLoading(true);
+    setPairStatus('pending');
+    setPairToken(null);
+    try {
+      const r = await fetch('/api/admin-room/ipad-tokens/generate', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      });
+      if (r.ok) {
+        const data = await r.json();
+        const expiresAt = Date.now() + data.expiresInSeconds * 1000;
+        setPairToken({
+          shortCode: data.shortCode,
+          expiresInSeconds: data.expiresInSeconds,
+          expiresAt,
+        });
+        setPairCountdown(data.expiresInSeconds);
+      }
+    } finally {
+      setPairLoading(false);
+    }
+  }, []);
+
+  // Countdown + status-polling for aktiv pair-kode
+  useEffect(() => {
+    if (!pairToken || pairStatus !== 'pending') return;
+    const interval = setInterval(async () => {
+      const secs = Math.max(0, Math.floor((pairToken.expiresAt - Date.now()) / 1000));
+      setPairCountdown(secs);
+      if (secs <= 0) {
+        setPairStatus('expired');
+        clearInterval(interval);
+        return;
+      }
+      // Poll backend for status
+      try {
+        const r = await fetch('/api/admin-room/ipad-tokens/recent', {
+          credentials: 'include', headers: authHeaders(),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          const match = data.tokens?.find((t: { shortCode: string }) => t.shortCode === pairToken.shortCode);
+          if (match?.status === 'claimed') {
+            setPairStatus('claimed');
+            clearInterval(interval);
+          }
+        }
+      } catch { /* noop */ }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [pairToken, pairStatus]);
 
   const fetchReminders = useCallback(async () => {
     try {
@@ -1563,6 +1630,14 @@ export default function LeadMapPanel() {
             >
               Eksport
             </Button>
+            <Tooltip title="Koble iPad">
+              <IconButton onClick={() => {
+                setPairOpen(true);
+                void generatePairToken();
+              }} sx={{ color: palette.textMuted }}>
+                <TabletMacOutlinedIcon />
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Hurtigtaster (eller trykk ?)">
               <IconButton onClick={() => setHotkeysOpen(true)} sx={{ color: palette.textMuted }}>
                 <KeyboardOutlinedIcon />
@@ -4003,6 +4078,100 @@ export default function LeadMapPanel() {
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setHotkeysOpen(false)} sx={{ color: palette.textMuted }}>Lukk</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* iPad-paring */}
+        <Dialog
+          open={pairOpen}
+          onClose={() => setPairOpen(false)}
+          maxWidth="xs" fullWidth
+          PaperProps={{ sx: { bgcolor: palette.bgPanel, border: `1px solid ${palette.borderStrong}` } }}
+        >
+          <DialogTitle sx={{ color: palette.textPrimary }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <TabletMacOutlinedIcon sx={{ color: palette.amber }} />
+              <span>Koble iPad til Lead Map</span>
+            </Stack>
+          </DialogTitle>
+          <DialogContent>
+            {pairLoading && (
+              <Stack alignItems="center" spacing={1} sx={{ p: 3 }}>
+                <CircularProgress sx={{ color: palette.amber }} />
+                <Typography sx={{ color: palette.textMuted }}>Genererer kode …</Typography>
+              </Stack>
+            )}
+            {pairToken && pairStatus === 'pending' && (
+              <Stack spacing={2.4} alignItems="center" sx={{ py: 2 }}>
+                <Typography sx={{ fontSize: '0.86rem', color: palette.textSecondary, textAlign: 'center' }}>
+                  Åpne LeadMapApp på iPad-en din og skriv inn denne koden:
+                </Typography>
+                <Box sx={{
+                  p: 2, borderRadius: 1.6,
+                  bgcolor: 'rgba(251,191,36,0.08)',
+                  border: `2px solid ${palette.amber}`,
+                  letterSpacing: '0.18em',
+                  fontFamily: 'monospace',
+                  fontSize: '2.4rem',
+                  fontWeight: 800,
+                  color: palette.amber,
+                  textShadow: `0 0 12px ${palette.amber}66`,
+                }}>
+                  {pairToken.shortCode}
+                </Box>
+                <Stack direction="row" spacing={0.6} alignItems="center">
+                  <CircularProgress
+                    variant="determinate"
+                    value={Math.max(0, (pairCountdown / pairToken.expiresInSeconds) * 100)}
+                    size={18}
+                    sx={{ color: palette.amber }}
+                  />
+                  <Typography sx={{ fontSize: '0.76rem', color: palette.textMuted }}>
+                    Utløper om {Math.floor(pairCountdown / 60)}:{String(pairCountdown % 60).padStart(2, '0')}
+                  </Typography>
+                </Stack>
+                <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted, fontStyle: 'italic', textAlign: 'center' }}>
+                  iPad får et permanent token når koden bekreftes. Lagres i Keychain.
+                </Typography>
+              </Stack>
+            )}
+            {pairStatus === 'claimed' && (
+              <Stack alignItems="center" spacing={1.4} sx={{ py: 4 }}>
+                <Box sx={{
+                  width: 56, height: 56, borderRadius: '50%',
+                  bgcolor: 'rgba(52,211,153,0.18)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <CheckCircleOutlineIcon sx={{ color: '#34d399', fontSize: 32 }} />
+                </Box>
+                <Typography sx={{ fontSize: '1rem', fontWeight: 800, color: palette.textPrimary }}>
+                  iPad-en er koblet til
+                </Typography>
+                <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary, textAlign: 'center' }}>
+                  Du kan nå bruke LeadMapApp på iPad-en din.
+                </Typography>
+              </Stack>
+            )}
+            {pairStatus === 'expired' && pairToken && (
+              <Alert severity="warning">
+                Koden utløp. Generer en ny for å prøve igjen.
+              </Alert>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setPairOpen(false)} sx={{ color: palette.textMuted }}>
+              Lukk
+            </Button>
+            {(pairStatus === 'expired' || pairStatus === 'claimed') && (
+              <Button
+                onClick={() => void generatePairToken()}
+                variant="contained"
+                disabled={pairLoading}
+                sx={{ bgcolor: palette.amber, color: '#0a0a0f', fontWeight: 800 }}
+              >
+                Ny kode
+              </Button>
+            )}
           </DialogActions>
         </Dialog>
 
