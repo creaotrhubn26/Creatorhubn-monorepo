@@ -419,4 +419,40 @@ The Role Room Talents
       return res.status(500).json({ error: "Klarte ikke å avslå" });
     }
   });
+
+  // ── GET /talents/me/proposals — talent ser sine ventende forslag ─────
+  // Reverse-consent fra talent-siden: lister åpne forslag adressert til den
+  // innloggede brukerens e-post, med agency-info + token (for Godta/Avslå).
+  app.get("/api/role-room/talents/me/proposals", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      let email = session.email ?? null;
+      if (!email) {
+        const u = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [session.userId]);
+        email = u.rows[0]?.email ?? null;
+      }
+      if (!email) return res.json({ proposals: [] });
+
+      const r = await pool.query(
+        `SELECT p.id, p.token, p.proposed_email, p.proposed_display_name,
+                p.requested_scopes, p.status, p.personal_message, p.context_role,
+                p.created_at, p.expires_at,
+                a.name AS agency_name, a.type AS agency_type,
+                a.about AS agency_about, a.verified AS agency_verified
+           FROM agency_talent_proposals p
+           JOIN agency_orgs a ON a.id = p.agency_org_id
+          WHERE LOWER(p.proposed_email) = LOWER($1)
+            AND p.status = 'pending'
+            AND p.expires_at > now()
+          ORDER BY p.created_at DESC
+          LIMIT 50`,
+        [email],
+      );
+      return res.json({ proposals: r.rows });
+    } catch (err) {
+      console.error("[talents/me/proposals] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente forslag" });
+    }
+  });
 }

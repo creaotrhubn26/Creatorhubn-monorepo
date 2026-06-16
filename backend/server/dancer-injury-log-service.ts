@@ -11,6 +11,9 @@ import type { Pool } from 'pg';
 export type InjuryEntryStatus = 'active' | 'healing' | 'resolved';
 export type InjurySide = 'left' | 'right' | 'both';
 export type InjuryTrigger = 'rehearsal' | 'performance' | 'audition' | 'training' | 'other';
+// Rehab-steg (0152): Akutt → Behandling → Opptrening → Retur.
+export type InjuryStage = 'acute' | 'treatment' | 'retraining' | 'return';
+export const INJURY_STAGES = ['acute', 'treatment', 'retraining', 'return'] as const;
 
 export const INJURY_BODY_PARTS = [
   'ankle', 'knee', 'hip', 'lower_back', 'shoulder',
@@ -29,6 +32,8 @@ export interface InjuryLogEntryInput {
   resolvedDate?: string | null;
   triggeredBy?: InjuryTrigger | null;
   projectId?: string | null;
+  stage?: InjuryStage | null;
+  progressPercent?: number | null;
 }
 
 export interface InjuryLogEntryPatch extends Partial<InjuryLogEntryInput> {}
@@ -47,6 +52,8 @@ export interface InjuryLogEntry {
   resolvedDate: string | null;
   triggeredBy: InjuryTrigger | null;
   projectId: string | null;
+  stage: InjuryStage | null;
+  progressPercent: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -94,6 +101,17 @@ function isTrigger(value: unknown): value is InjuryTrigger {
     || value === 'training' || value === 'other';
 }
 
+function isStage(value: unknown): value is InjuryStage {
+  return (INJURY_STAGES as readonly string[]).includes(value as string);
+}
+
+function progressOrNull(value: unknown): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
 function mapRow(row: Record<string, unknown>): InjuryLogEntry {
   return {
     id: String(row.id),
@@ -109,6 +127,8 @@ function mapRow(row: Record<string, unknown>): InjuryLogEntry {
     resolvedDate: isoDateOrNull(row.resolved_date),
     triggeredBy: isTrigger(row.triggered_by) ? row.triggered_by : null,
     projectId: row.project_id == null ? null : String(row.project_id),
+    stage: isStage(row.stage) ? row.stage : null,
+    progressPercent: progressOrNull(row.progress_percent),
     createdAt: isoTimestamp(row.created_at),
     updatedAt: isoTimestamp(row.updated_at),
   };
@@ -191,9 +211,10 @@ export async function createInjury(
     `INSERT INTO dancer_injury_log (
        id, owner_user_id, dancer_id,
        entry_date, body_part, side, severity, note, status,
-       expected_return_date, resolved_date, triggered_by, project_id
+       expected_return_date, resolved_date, triggered_by, project_id,
+       stage, progress_percent
      )
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING *`,
     [
       id,
@@ -209,6 +230,8 @@ export async function createInjury(
       input.resolvedDate ?? null,
       input.triggeredBy ?? null,
       input.projectId ?? null,
+      input.stage ?? null,
+      input.progressPercent ?? null,
     ],
   );
   return mapRow(rows[0]);
@@ -238,6 +261,8 @@ export async function patchInjury(
   if (patch.resolvedDate !== undefined) push('resolved_date', patch.resolvedDate);
   if (patch.triggeredBy !== undefined) push('triggered_by', patch.triggeredBy);
   if (patch.projectId !== undefined) push('project_id', patch.projectId);
+  if (patch.stage !== undefined) push('stage', patch.stage);
+  if (patch.progressPercent !== undefined) push('progress_percent', patch.progressPercent);
 
   // Auto-set resolved_date when status flips to resolved and no date supplied.
   if (patch.status === 'resolved' && patch.resolvedDate === undefined) {

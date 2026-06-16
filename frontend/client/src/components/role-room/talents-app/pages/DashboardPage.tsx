@@ -32,8 +32,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import roleRoomTalentsService, {
   type PartnersOverview,
   type RoleRoomTalent,
+  type MyTalentProposal,
 } from '../../services/roleRoomTalentsService';
 import { palette, radius } from '../theme';
+import { TalentProposalCard } from '../components/TalentProposalCard';
 import type { TalentsAppPage } from '../TalentsAppShell';
 
 interface DashboardPageProps {
@@ -66,21 +68,28 @@ function calcProfileCompleteness(talent: RoleRoomTalent | null): { score: number
 export default function DashboardPage({ demoMode, onNavigate }: DashboardPageProps) {
   const [talent, setTalent] = useState<RoleRoomTalent | null>(null);
   const [overview, setOverview] = useState<PartnersOverview | null>(null);
+  const [proposals, setProposals] = useState<MyTalentProposal[]>([]);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [t, o] = await Promise.all([
+      const [t, o, p] = await Promise.all([
         demoMode ? Promise.resolve(null) : roleRoomTalentsService.fetchMyTalent(),
         roleRoomTalentsService.fetchPartnersOverview({ demo: demoMode }),
+        demoMode ? Promise.resolve([] as MyTalentProposal[]) : roleRoomTalentsService.fetchMyTalentProposals(),
       ]);
       setTalent(t);
       setOverview(o);
+      setProposals(p);
     } finally {
       setLoading(false);
     }
   }, [demoMode]);
+
+  const dismissProposal = useCallback((id: string) => {
+    setProposals((prev) => prev.filter((x) => x.id !== id));
+  }, []);
 
   useEffect(() => { void reload(); }, [reload]);
 
@@ -115,6 +124,19 @@ export default function DashboardPage({ demoMode, onNavigate }: DashboardPagePro
           </Typography>
         </Box>
       </Stack>
+
+      {/* Reverse-consent: ventende forslag fra agenturer (Godta/Avslå) */}
+      {proposals.length > 0 ? (
+        <Stack spacing={2} sx={{ mb: 3 }}>
+          {proposals.map((p) => (
+            <TalentProposalCard
+              key={p.id}
+              proposal={p}
+              onResolved={(id) => dismissProposal(id)}
+            />
+          ))}
+        </Stack>
+      ) : null}
 
       {demoMode ? (
         <Alert

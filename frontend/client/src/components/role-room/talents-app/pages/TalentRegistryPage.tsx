@@ -40,6 +40,7 @@ import {
 } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import BookmarkAddOutlinedIcon from '@mui/icons-material/BookmarkAddOutlined';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -71,6 +72,31 @@ const cardSx = {
   borderRadius: radius.lg,
   p: 2.4,
 };
+
+/**
+ * Klient-side relevans-score (0–100) for et treff mot aktive filtre. Gir et
+ * meningsfullt «MATCH %» uten backend-endring: base + poeng for kjønn/alder/
+ * lokasjon/ferdigheter som matcher, + showreel/tilgjengelig/headshot.
+ */
+function computeMatchScore(hit: TalentSearchHit, f: TalentSearchFilters): number {
+  let score = 72;
+  if (f.gender && hit.gender && hit.gender === f.gender) score += 9;
+  if ((f.age_min || f.age_max) && hit.playing_age_min != null && hit.playing_age_max != null) {
+    const lo = f.age_min ?? hit.playing_age_min;
+    const hi = f.age_max ?? hit.playing_age_max;
+    if (hit.playing_age_min <= hi && hit.playing_age_max >= lo) score += 8;
+  }
+  if (f.location && hit.city && hit.city.toLowerCase().includes(f.location.toLowerCase())) score += 7;
+  if (f.skills?.length && hit.skills?.length) {
+    const labels = hit.skills.map((s) => s.label.toLowerCase());
+    const overlap = f.skills.filter((s) => labels.includes(s.toLowerCase())).length;
+    score += Math.min(12, overlap * 4);
+  }
+  if (hit.has_showreel) score += 3;
+  if (hit.availability_status === 'open') score += 4;
+  if (hit.headshot_url) score += 2;
+  return Math.max(58, Math.min(99, score));
+}
 
 const fieldSx = {
   '& .MuiOutlinedInput-root': {
@@ -333,7 +359,10 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
           </Box>
         ) : (
           <Stack spacing={1}>
-            {allTalents.map((t) => <TalentListRow key={t.id} talent={t} />)}
+            {allTalents
+              .map((t) => ({ t, m: computeMatchScore(t, filters) }))
+              .sort((a, b) => b.m - a.m)
+              .map(({ t, m }) => <TalentListRow key={t.id} talent={t} match={m} />)}
           </Stack>
         )}
         </>)}
@@ -668,16 +697,29 @@ function TalentCard({ talent }: { talent: TalentSearchHit }) {
   );
 }
 
-function TalentListRow({ talent }: { talent: TalentSearchHit }) {
+function TalentListRow({ talent, match }: { talent: TalentSearchHit; match: number }) {
+  // Søket er allerede samtykke-filtrert → alle treff har gitt agentur-tilgang.
+  const consented = (talent.granted_scopes?.length ?? 0) > 0;
   return (
-    <Box sx={{ ...cardSx, p: 1.4, display: 'flex', gap: 1.4, alignItems: 'center' }}>
-      <Avatar src={talent.headshot_url ?? undefined} sx={{ width: 48, height: 48 }}>{!talent.headshot_url ? <PersonOutlineIcon /> : null}</Avatar>
-      <Stack spacing={0.2} sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.92rem' }}>{talent.display_name}</Typography>
-        <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>{talent.city || '—'} · {(talent.languages ?? []).map((l) => l.label).join(', ') || 'Ingen språk'}</Typography>
-      </Stack>
-      {talent.availability_status === 'open' ? <Chip label="Tilgjengelig" size="small" sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: palette.success }} /> : null}
-      <IconButton sx={{ color: palette.textMuted }}><VisibilityIcon fontSize="small" /></IconButton>
+    <Box sx={{ ...cardSx, p: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+      <Avatar variant="rounded" src={talent.headshot_url ?? undefined} sx={{ width: 56, height: 56, borderRadius: radius.md, bgcolor: 'rgba(168,85,247,0.12)' }}>
+        {!talent.headshot_url ? <PersonOutlineIcon sx={{ color: palette.textMuted }} /> : null}
+      </Avatar>
+      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
+          <Typography noWrap sx={{ color: palette.textPrimary, fontWeight: 800, fontSize: '1.05rem' }}>{talent.display_name}</Typography>
+          {consented ? <CheckCircleIcon sx={{ fontSize: 18, color: palette.success }} /> : null}
+        </Stack>
+        <Box sx={{ height: 8, borderRadius: 99, bgcolor: 'rgba(168,85,247,0.14)', width: '100%', maxWidth: 420, overflow: 'hidden' }}>
+          <Box sx={{ height: '100%', width: `${match}%`, borderRadius: 99, background: palette.accentGradient }} />
+        </Box>
+      </Box>
+      <Box sx={{ textAlign: 'right', flex: 'none' }}>
+        <Typography sx={{ fontSize: '1.7rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1 }}>
+          {match}<Box component="span" sx={{ fontSize: '0.9rem', color: palette.textMuted }}>%</Box>
+        </Typography>
+        <Typography sx={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.12em', color: palette.textMuted }}>MATCH</Typography>
+      </Box>
     </Box>
   );
 }

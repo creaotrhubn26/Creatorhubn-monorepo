@@ -60,6 +60,8 @@ export interface DanceClass {
   maxStudents: number | null;
   priceKr: number | null;
   description: string | null;
+  level: string | null;
+  enrollmentCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -89,6 +91,8 @@ function mapClassRow(row: Record<string, unknown>): DanceClass {
     maxStudents: asNumberOrNull(row.max_students),
     priceKr: asNumberOrNull(row.price_kr),
     description: row.description == null ? null : String(row.description),
+    level: row.level == null ? null : String(row.level),
+    enrollmentCount: asNumberOrNull(row.enrollment_count) ?? 0,
     createdAt: isoTs(row.created_at),
     updatedAt: isoTs(row.updated_at),
   };
@@ -118,6 +122,7 @@ export interface ClassInput {
   priceKr?: number | null;
   description?: string | null;
   projectId?: string | null;
+  level?: string | null;
 }
 
 export type ClassPatch = Partial<ClassInput>;
@@ -127,16 +132,18 @@ export async function listClasses(
   ownerUserId: string,
   projectId?: string | null,
 ): Promise<DanceClass[]> {
-  const conditions = ['owner_user_id = $1'];
+  const conditions = ['c.owner_user_id = $1'];
   const params: unknown[] = [ownerUserId];
   if (projectId) {
     params.push(projectId);
-    conditions.push(`(project_id = $${params.length} OR project_id IS NULL)`);
+    conditions.push(`(c.project_id = $${params.length} OR c.project_id IS NULL)`);
   }
   const { rows } = await pool.query(
-    `SELECT * FROM dance_class
-     WHERE ${conditions.join(' AND ')}
-     ORDER BY starts_at DESC NULLS LAST, created_at DESC LIMIT 500`,
+    `SELECT c.*,
+            (SELECT count(*) FROM dance_class_enrollment e WHERE e.class_id = c.id) AS enrollment_count
+       FROM dance_class c
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY c.starts_at DESC NULLS LAST, c.created_at DESC LIMIT 500`,
     params,
   );
   return rows.map((r) => mapClassRow(r));
@@ -151,14 +158,14 @@ export async function createClass(
   const { rows } = await pool.query(
     `INSERT INTO dance_class (
        id, owner_user_id, project_id, title, kind, schedule_pattern,
-       instructor_id, room_id, starts_at, ends_at, max_students, price_kr, description
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       instructor_id, room_id, starts_at, ends_at, max_students, price_kr, description, level
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
      RETURNING *`,
     [
       id, ownerUserId, input.projectId ?? null, input.title, input.kind ?? 'semester',
       input.schedulePattern ?? null, input.instructorId ?? null, input.roomId ?? null,
       input.startsAt ?? null, input.endsAt ?? null, input.maxStudents ?? null,
-      input.priceKr ?? null, input.description ?? null,
+      input.priceKr ?? null, input.description ?? null, input.level ?? null,
     ],
   );
   return mapClassRow(rows[0]);
@@ -187,6 +194,7 @@ export async function patchClass(
   if (patch.priceKr !== undefined) push('price_kr', patch.priceKr);
   if (patch.description !== undefined) push('description', patch.description);
   if (patch.projectId !== undefined) push('project_id', patch.projectId);
+  if (patch.level !== undefined) push('level', patch.level);
   if (sets.length === 0) {
     const { rows } = await pool.query(
       `SELECT * FROM dance_class WHERE owner_user_id = $1 AND id = $2`,
@@ -315,6 +323,11 @@ export interface DanceInstructor {
   styles: string[];
   hoursLogged: InstructorHoursEntry[];
   notes: string | null;
+  specialtyText: string | null;
+  avatarUrl: string | null;
+  ratingAvg: number | null;
+  ratingCount: number;
+  nextClassText: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -347,6 +360,11 @@ function mapInstructorRow(row: Record<string, unknown>): DanceInstructor {
     styles: asStringArray(row.styles),
     hoursLogged: asHoursLog(row.hours_logged),
     notes: row.notes == null ? null : String(row.notes),
+    specialtyText: row.specialty_text == null ? null : String(row.specialty_text),
+    avatarUrl: row.avatar_url == null ? null : String(row.avatar_url),
+    ratingAvg: asNumberOrNull(row.rating_avg),
+    ratingCount: asNumberOrNull(row.rating_count) ?? 0,
+    nextClassText: row.next_class_text == null ? null : String(row.next_class_text),
     createdAt: isoTs(row.created_at),
     updatedAt: isoTs(row.updated_at),
   };
@@ -362,6 +380,11 @@ export interface InstructorInput {
   hoursLogged?: InstructorHoursEntry[];
   notes?: string | null;
   projectId?: string | null;
+  specialtyText?: string | null;
+  avatarUrl?: string | null;
+  ratingAvg?: number | null;
+  ratingCount?: number;
+  nextClassText?: string | null;
 }
 
 export type InstructorPatch = Partial<InstructorInput>;
@@ -394,8 +417,9 @@ export async function createInstructor(
   const { rows } = await pool.query(
     `INSERT INTO dance_instructor (
        id, owner_user_id, project_id, display_name, email, phone,
-       contract_kind, hourly_rate_kr, styles, hours_logged, notes
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+       contract_kind, hourly_rate_kr, styles, hours_logged, notes,
+       specialty_text, avatar_url, rating_avg, rating_count, next_class_text
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
     [
       id, ownerUserId, input.projectId ?? null,
       input.displayName, input.email ?? null, input.phone ?? null,
@@ -403,6 +427,8 @@ export async function createInstructor(
       JSON.stringify(input.styles ?? []),
       JSON.stringify(input.hoursLogged ?? []),
       input.notes ?? null,
+      input.specialtyText ?? null, input.avatarUrl ?? null,
+      input.ratingAvg ?? null, input.ratingCount ?? 0, input.nextClassText ?? null,
     ],
   );
   return mapInstructorRow(rows[0]);
@@ -427,6 +453,11 @@ export async function patchInstructor(
   if (patch.styles !== undefined) push('styles', JSON.stringify(patch.styles));
   if (patch.hoursLogged !== undefined) push('hours_logged', JSON.stringify(patch.hoursLogged));
   if (patch.notes !== undefined) push('notes', patch.notes);
+  if (patch.specialtyText !== undefined) push('specialty_text', patch.specialtyText);
+  if (patch.avatarUrl !== undefined) push('avatar_url', patch.avatarUrl);
+  if (patch.ratingAvg !== undefined) push('rating_avg', patch.ratingAvg);
+  if (patch.ratingCount !== undefined) push('rating_count', patch.ratingCount);
+  if (patch.nextClassText !== undefined) push('next_class_text', patch.nextClassText);
   if (patch.projectId !== undefined) push('project_id', patch.projectId);
   if (sets.length === 0) {
     const { rows } = await pool.query(
@@ -866,4 +897,103 @@ export async function deleteVocab(
     [ownerUserId, id],
   );
   return (rowCount ?? 0) > 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Sesongplan (dance_season, mig 0155) — helårsplan med milepæl-tidslinje.
+// ═══════════════════════════════════════════════════════════════════════
+
+export type SeasonMilestoneStatus = 'done' | 'upcoming';
+
+export interface SeasonMilestone {
+  id: string;
+  title: string;
+  dateLabel: string;
+  status: SeasonMilestoneStatus;
+  icon?: string;
+}
+
+export interface DanceSeason {
+  id: string;
+  ownerUserId: string;
+  projectId: string | null;
+  label: string;
+  subtitle: string | null;
+  milestones: SeasonMilestone[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DanceSeasonInput {
+  label: string;
+  subtitle?: string | null;
+  milestones?: SeasonMilestone[];
+  projectId?: string | null;
+}
+
+function asMilestones(value: unknown): SeasonMilestone[] {
+  if (!Array.isArray(value)) return [];
+  const out: SeasonMilestone[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    if (typeof r.title !== 'string') continue;
+    out.push({
+      id: typeof r.id === 'string' ? r.id : generateId('msn'),
+      title: r.title,
+      dateLabel: typeof r.dateLabel === 'string' ? r.dateLabel : '',
+      status: r.status === 'done' ? 'done' : 'upcoming',
+      icon: typeof r.icon === 'string' ? r.icon : undefined,
+    });
+  }
+  return out;
+}
+
+function mapSeasonRow(row: Record<string, unknown>): DanceSeason {
+  return {
+    id: String(row.id),
+    ownerUserId: String(row.owner_user_id),
+    projectId: row.project_id == null ? null : String(row.project_id),
+    label: String(row.label),
+    subtitle: row.subtitle == null ? null : String(row.subtitle),
+    milestones: asMilestones(row.milestones),
+    createdAt: isoTs(row.created_at),
+    updatedAt: isoTs(row.updated_at),
+  };
+}
+
+export async function getSeason(
+  pool: Pool,
+  ownerUserId: string,
+  projectId?: string | null,
+): Promise<DanceSeason | null> {
+  const { rows } = await pool.query(
+    `SELECT * FROM dance_season
+      WHERE owner_user_id = $1 AND COALESCE(project_id, '') = COALESCE($2, '')
+      LIMIT 1`,
+    [ownerUserId, projectId ?? null],
+  );
+  return rows.length ? mapSeasonRow(rows[0]) : null;
+}
+
+/** Oppretter eller oppdaterer (upsert) sesongplanen for (owner, project). */
+export async function upsertSeason(
+  pool: Pool,
+  ownerUserId: string,
+  input: DanceSeasonInput,
+): Promise<DanceSeason> {
+  const milestones = asMilestones(input.milestones ?? []);
+  const { rows } = await pool.query(
+    `INSERT INTO dance_season (id, owner_user_id, project_id, label, subtitle, milestones)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+     ON CONFLICT (owner_user_id, COALESCE(project_id, ''))
+       DO UPDATE SET label = EXCLUDED.label, subtitle = EXCLUDED.subtitle,
+                     milestones = EXCLUDED.milestones, updated_at = now()
+     RETURNING *`,
+    [
+      generateId('sea'), ownerUserId, input.projectId ?? null,
+      input.label, input.subtitle ?? null, JSON.stringify(milestones),
+    ],
+  );
+  return mapSeasonRow(rows[0]);
 }

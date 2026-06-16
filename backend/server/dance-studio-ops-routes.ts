@@ -76,6 +76,7 @@ export function createDanceStudioOpsRouter(
     priceKr: z.number().int().min(0).nullable().optional(),
     description: z.string().max(2000).nullable().optional(),
     projectId: z.string().max(200).nullable().optional(),
+    level: z.enum(['nybegynner', 'mellomniva', 'viderekomne', 'alle']).nullable().optional(),
   });
 
   router.get('/classes', auth, async (req, res) => {
@@ -154,6 +155,11 @@ export function createDanceStudioOpsRouter(
     hoursLogged: z.array(hoursEntrySchema).max(1000).optional(),
     notes: z.string().max(2000).nullable().optional(),
     projectId: z.string().max(200).nullable().optional(),
+    specialtyText: z.string().max(200).nullable().optional(),
+    avatarUrl: z.string().max(2000).nullable().optional(),
+    ratingAvg: z.number().min(0).max(5).nullable().optional(),
+    ratingCount: z.number().int().min(0).optional(),
+    nextClassText: z.string().max(200).nullable().optional(),
   });
   router.get('/instructors', auth, async (req, res) => {
     const { userId } = req as AuthedRequest;
@@ -284,6 +290,32 @@ export function createDanceStudioOpsRouter(
     const { userId } = req as AuthedRequest;
     const ok = await svc.deleteVocab(pool, userId, req.params.id);
     res.status(ok ? 200 : 404).json(ok ? { success: true } : { error: 'not_found' });
+  });
+
+  // ─── Season plan (sesongplan med milepæl-tidslinje) ───────────────
+  const milestoneSchema = z.object({
+    id: z.string().max(200).optional(),
+    title: z.string().min(1).max(200),
+    dateLabel: z.string().max(80).optional().default(''),
+    status: z.enum(['done', 'upcoming']).optional().default('upcoming'),
+    icon: z.string().max(60).optional(),
+  });
+  const seasonBody = z.object({
+    label: z.string().min(1).max(200),
+    subtitle: z.string().max(300).nullable().optional(),
+    milestones: z.array(milestoneSchema).max(100).optional(),
+    projectId: z.string().max(200).nullable().optional(),
+  });
+  router.get('/season', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
+    res.json({ success: true, data: await svc.getSeason(pool, userId, projectIdQuery(req)) });
+  });
+  router.put('/season', auth, async (req, res) => {
+    const parsed = seasonBody.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_request', details: parsed.error.format() }); return; }
+    const { userId } = req as AuthedRequest;
+    const input = { ...parsed.data, projectId: parsed.data.projectId ?? projectIdQuery(req) };
+    res.json({ success: true, data: await svc.upsertSeason(pool, userId, input) });
   });
 
   return router;

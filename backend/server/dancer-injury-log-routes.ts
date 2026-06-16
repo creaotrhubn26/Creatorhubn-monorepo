@@ -84,6 +84,7 @@ const optionalIsoDateSchema = isoDateSchema.nullable().optional();
 const SIDE_VALUES = ['left', 'right', 'both'] as const;
 const STATUS_VALUES = ['active', 'healing', 'resolved'] as const;
 const TRIGGER_VALUES = ['rehearsal', 'performance', 'audition', 'training', 'other'] as const;
+const STAGE_VALUES = ['acute', 'treatment', 'retraining', 'return'] as const;
 
 const createBodySchema = z.object({
   dancerId: z.string().min(1).max(200),
@@ -97,6 +98,8 @@ const createBodySchema = z.object({
   resolvedDate: optionalIsoDateSchema,
   triggeredBy: z.enum(TRIGGER_VALUES).nullable().optional(),
   projectId: z.string().min(1).max(200).nullable().optional(),
+  stage: z.enum(STAGE_VALUES).nullable().optional(),
+  progressPercent: z.number().int().min(0).max(100).nullable().optional(),
 });
 
 const patchBodySchema = z.object({
@@ -110,6 +113,8 @@ const patchBodySchema = z.object({
   resolvedDate: optionalIsoDateSchema,
   triggeredBy: z.enum(TRIGGER_VALUES).nullable().optional(),
   projectId: z.string().min(1).max(200).nullable().optional(),
+  stage: z.enum(STAGE_VALUES).nullable().optional(),
+  progressPercent: z.number().int().min(0).max(100).nullable().optional(),
 });
 
 const idSchema = z.string().min(1).max(200);
@@ -185,6 +190,8 @@ export function createDancerInjuryLogRouter(
       resolvedDate: rest.resolvedDate ?? null,
       triggeredBy: rest.triggeredBy ?? null,
       projectId: rest.projectId ?? null,
+      stage: rest.stage ?? null,
+      progressPercent: rest.progressPercent ?? null,
     };
     const entry = await createInjury(pool, userId, dancerId, input);
     res.status(201).json({ success: true, data: entry });

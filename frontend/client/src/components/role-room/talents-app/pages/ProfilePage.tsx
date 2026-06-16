@@ -39,6 +39,7 @@ import roleRoomTalentsService, { type RoleRoomTalent } from '../../services/role
 import MediaUploader from '../components/MediaUploader';
 import { palette, radius } from '../theme';
 import SelfTapeSharedList from '../components/selftape/SelfTapeSharedList';
+import { AvailabilityCalendar } from '../components/AvailabilityCalendar';
 
 interface ProfilePageProps {
   demoMode: boolean;
@@ -240,6 +241,11 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
           </Typography>
         </Stack>
         <SelfTapeSharedList />
+      </Box>
+
+      {/* Tilgjengelighet (per-dag kalender) */}
+      <Box sx={{ mt: 2 }}>
+        <AvailabilityCalendar initialCalendar={talent.availability_calendar ?? {}} />
       </Box>
 
       {/* Rediger-dialog */}

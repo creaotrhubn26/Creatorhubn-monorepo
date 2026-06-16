@@ -51,6 +51,7 @@ import {
   listDancerProfiles,
   type DancerProfile,
 } from './dancerProfileService';
+import { InjuryRecoveryCard } from './InjuryRecoveryCard';
 
 const PURPLE = danceFlowColors.lavenderDark;
 const BG_DARK = danceFlowColors.bgBase;
@@ -416,22 +417,6 @@ export function DancerInjuryLogPanel({
                     {entry.note}
                   </Typography>
                 ) : null}
-                {entry.expectedReturnDate && entry.status !== 'resolved' ? (
-                  <Typography sx={{ fontSize: 12, color: danceFlowColors.lavender, mt: 0.5, fontWeight: 600 }}>
-                    Forventet retur:{' '}
-                    {new Date(entry.expectedReturnDate).toLocaleDateString('nb-NO', {
-                      day: 'numeric', month: 'long',
-                    })}
-                  </Typography>
-                ) : null}
-                {entry.resolvedDate && entry.status === 'resolved' ? (
-                  <Typography sx={{ fontSize: 12, color: STATUS_COLOR.resolved, mt: 0.5, fontWeight: 600 }}>
-                    Frisk fra:{' '}
-                    {new Date(entry.resolvedDate).toLocaleDateString('nb-NO', {
-                      day: 'numeric', month: 'long',
-                    })}
-                  </Typography>
-                ) : null}
               </Box>
               <Stack direction="row" spacing={1} alignItems="center">
                 {entry.status === 'active' ? (
@@ -469,6 +454,7 @@ export function DancerInjuryLogPanel({
                 </Tooltip>
               </Stack>
             </Stack>
+            <InjuryRecoveryCard entry={entry} />
           </Box>
         ))}
       </Stack>

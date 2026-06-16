@@ -9,6 +9,9 @@ import React from 'react';
 import { Box, Typography, Stack, Chip } from '@mui/material';
 import { EntityCrudPanel, type EntityField } from './EntityCrudPanel';
 import * as svc from './danceStudioOpsService';
+import { InstructorCard } from './InstructorCard';
+import { ClassesOverviewCard } from './ClassesOverviewCard';
+import { MovementVocabCard } from './MovementVocabCard';
 
 const PURPLE_LIGHT = danceFlowColors.lavender;
 
@@ -78,7 +81,18 @@ export const ClassesPanel: React.FC<StudioPanelProps> = ({ projectId }) => {
         ],
       },
     },
-    { key: 'schedulePattern', label: 'Skjema', type: { kind: 'text', placeholder: 'Mandag 18:00–19:30' } },
+    { key: 'schedulePattern', label: 'Skjema', type: { kind: 'text', placeholder: 'Man 18:00' } },
+    {
+      key: 'level', label: 'Nivå', type: {
+        kind: 'select',
+        options: [
+          { value: 'nybegynner', label: 'Nybegynner' },
+          { value: 'mellomniva', label: 'Mellomnivå' },
+          { value: 'viderekomne', label: 'Viderekomne' },
+          { value: 'alle', label: 'Alle nivå' },
+        ],
+      },
+    },
     { key: 'startsAt', label: 'Start', type: { kind: 'datetime' } },
     { key: 'endsAt', label: 'Slutt', type: { kind: 'datetime' } },
     { key: 'maxStudents', label: 'Maks elever', type: { kind: 'number', min: 0, max: 200 } },
@@ -88,6 +102,11 @@ export const ClassesPanel: React.FC<StudioPanelProps> = ({ projectId }) => {
   return (
     <Box data-testid="studio-ops-classes-shell">
       <ClassesStatStrip classes={classes} enrollmentsCount={enrollmentsCount} />
+      {classes.length > 0 ? (
+        <Box sx={{ mb: 2 }}>
+          <ClassesOverviewCard classes={classes} />
+        </Box>
+      ) : null}
       <EntityCrudPanel<svc.DanceClass>
         title="Klasser"
         description="Semester, drop-in og workshops. Påmeldinger åpnes ved å klikke en rad."
@@ -258,6 +277,10 @@ export const InstructorsPanel: React.FC<StudioPanelProps> = ({ projectId }) => {
     },
     { key: 'hourlyRateKr', label: 'Timepris (kr)', type: { kind: 'number', min: 0 } },
     { key: 'styles', label: 'Stiler', type: { kind: 'string-array', placeholder: 'jazz, kontemporær, hip-hop' } },
+    { key: 'specialtyText', label: 'Spesialitet', type: { kind: 'text', placeholder: 'Samtidsdans & koreografi' } },
+    { key: 'nextClassText', label: 'Neste klasse', type: { kind: 'text', placeholder: 'Tirsdag 18:30 · Sal A' } },
+    { key: 'avatarUrl', label: 'Avatar-URL', type: { kind: 'text' } },
+    { key: 'ratingAvg', label: 'Elevvurdering (0–5)', type: { kind: 'number', min: 0 } },
     { key: 'notes', label: 'Notater', type: { kind: 'text', multiline: true } },
     {
       key: 'hoursLogged', label: 'Timer denne måneden', type: { kind: 'text' }, listOnly: true,
@@ -275,6 +298,11 @@ export const InstructorsPanel: React.FC<StudioPanelProps> = ({ projectId }) => {
   return (
     <Box data-testid="studio-ops-instructors-shell">
       <InstructorsStatStrip list={instructors} />
+      {instructors.length > 0 ? (
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2, mb: 2 }}>
+          {instructors.map((ins) => <InstructorCard key={ins.id} instructor={ins} />)}
+        </Box>
+      ) : null}
       <EntityCrudPanel<svc.DanceInstructor>
         title="Instruktører"
         description="Roster med timer-logg. Frilansere ser timer levert per måned."
@@ -609,6 +637,11 @@ export const MovementVocabPanel: React.FC<StudioPanelProps> = ({ projectId }) =>
   return (
     <Box data-testid="studio-ops-movement-vocab-shell">
       <VocabStatStrip terms={terms} />
+      {terms.length > 0 ? (
+        <Box sx={{ mb: 2 }}>
+          <MovementVocabCard terms={terms} />
+        </Box>
+      ) : null}
       <EntityCrudPanel<svc.MovementVocabTerm>
         title="Bevegelses-vokabular"
         description="Standardisert terminologi som koreografer og instruktører kan referere konsistent."

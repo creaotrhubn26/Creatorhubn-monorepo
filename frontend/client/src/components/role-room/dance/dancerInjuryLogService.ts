@@ -11,6 +11,9 @@ export type InjuryEntryStatus = 'active' | 'healing' | 'resolved';
 export type InjurySide = 'left' | 'right' | 'both';
 export type InjuryTrigger =
   | 'rehearsal' | 'performance' | 'audition' | 'training' | 'other';
+// Rehab-steg (migrasjon 0152): Akutt → Behandling → Opptrening → Retur.
+export type InjuryStage = 'acute' | 'treatment' | 'retraining' | 'return';
+export const INJURY_STAGES = ['acute', 'treatment', 'retraining', 'return'] as const;
 
 export const INJURY_BODY_PARTS = [
   'ankle', 'knee', 'hip', 'lower_back', 'shoulder',
@@ -32,6 +35,8 @@ export interface InjuryLogEntry {
   resolvedDate: string | null;
   triggeredBy: InjuryTrigger | null;
   projectId: string | null;
+  stage: InjuryStage | null;
+  progressPercent: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +53,8 @@ export interface InjuryLogEntryInput {
   resolvedDate?: string | null;
   triggeredBy?: InjuryTrigger | null;
   projectId?: string | null;
+  stage?: InjuryStage | null;
+  progressPercent?: number | null;
 }
 
 export type InjuryLogEntryPatch = Partial<Omit<InjuryLogEntryInput, 'dancerId'>>;

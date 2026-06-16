@@ -42,6 +42,8 @@ export interface DanceClass {
   maxStudents: number | null;
   priceKr: number | null;
   description: string | null;
+  level: string | null;
+  enrollmentCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -75,6 +77,11 @@ export interface DanceInstructor {
   styles: string[];
   hoursLogged: InstructorHoursEntry[];
   notes: string | null;
+  specialtyText: string | null;
+  avatarUrl: string | null;
+  ratingAvg: number | null;
+  ratingCount: number;
+  nextClassText: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -228,3 +235,47 @@ export const createVocab = (input: Partial<MovementVocabTerm> & { term: string; 
 export const patchVocab = (id: string, patch: Partial<MovementVocabTerm>) =>
   patchJson<MovementVocabTerm>(`/movement-vocab/${encodeURIComponent(id)}`, patch);
 export const deleteVocab = (id: string) => deletePath(`/movement-vocab/${encodeURIComponent(id)}`);
+
+// ─── Season plan (sesongplan) ─────────────────────────────────────────────
+export type SeasonMilestoneStatus = 'done' | 'upcoming';
+export interface SeasonMilestone {
+  id: string;
+  title: string;
+  dateLabel: string;
+  status: SeasonMilestoneStatus;
+  icon?: string;
+}
+export interface DanceSeason {
+  id: string;
+  ownerUserId: string;
+  projectId: string | null;
+  label: string;
+  subtitle: string | null;
+  milestones: SeasonMilestone[];
+  createdAt: string;
+  updatedAt: string;
+}
+export interface DanceSeasonInput {
+  label: string;
+  subtitle?: string | null;
+  milestones?: SeasonMilestone[];
+  projectId?: string | null;
+}
+
+export const fetchSeason = async (projectId?: string | null): Promise<DanceSeason | null> => {
+  const res = await fetch(`${BASE}/season${qs({ projectId: projectId ?? undefined })}`, {
+    headers: danceAuthHeaders(), credentials: 'include',
+  });
+  const body = await readJson<{ success: boolean; data: DanceSeason | null }>(res);
+  return body.data;
+};
+export const saveSeason = async (input: DanceSeasonInput): Promise<DanceSeason> => {
+  const res = await fetch(`${BASE}/season`, {
+    method: 'PUT',
+    headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
+    credentials: 'include',
+    body: JSON.stringify(input),
+  });
+  const body = await readJson<{ success: boolean; data: DanceSeason }>(res);
+  return body.data;
+};

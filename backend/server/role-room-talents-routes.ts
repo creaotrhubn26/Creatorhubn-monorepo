@@ -60,6 +60,7 @@ const EDITABLE_FIELDS = [
   "dialects",
   "availability_status",
   "availability_notes",
+  "availability_calendar",
   "willing_to_travel",
   "external_links",
 ] as const;
@@ -177,7 +178,10 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
       const vals: unknown[] = [];
       let i = 1;
       for (const [k, v] of Object.entries(editable)) {
-        if (["headshot_alt_urls", "skills", "languages", "dialects", "external_links"].includes(k)) {
+        if (k === "availability_calendar") {
+          setClauses.push(`${k} = $${i}::jsonb`);
+          vals.push(v == null ? "{}" : JSON.stringify(v));
+        } else if (["headshot_alt_urls", "skills", "languages", "dialects", "external_links"].includes(k)) {
           setClauses.push(`${k} = $${i}::jsonb`);
           vals.push(v == null ? "[]" : JSON.stringify(v));
         } else {

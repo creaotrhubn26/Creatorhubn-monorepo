@@ -11,6 +11,7 @@ import { ContentCopy as CopyIcon, Public as PublicIcon, Warning as WarningIcon }
 import { EntityCrudPanel, type EntityField } from './EntityCrudPanel';
 import * as ops from './danceAdminOpsService';
 import { MusicWaveformTrack } from './MusicWaveformTrack';
+import { MusicArchiveCard } from './MusicArchiveCard';
 
 const PURPLE_LIGHT = danceFlowColors.lavender;
 
@@ -293,6 +294,12 @@ const MusicRowExpansion: React.FC<MusicRowExpansionProps> = ({ item }) => {
 };
 
 export const MusicArchivePanel: React.FC<AdminPanelProps> = ({ projectId }) => {
+  const [tracks, setTracks] = React.useState<ops.DanceMusicArchiveItem[]>([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    void ops.listMusicArchive(projectId).then((rows) => { if (!cancelled) setTracks(rows); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [projectId]);
   const fields: EntityField[] = [
     { key: 'title', label: 'Tittel', type: { kind: 'text', required: true } },
     { key: 'composer', label: 'Komponist', type: { kind: 'text' } },
@@ -325,7 +332,13 @@ export const MusicArchivePanel: React.FC<AdminPanelProps> = ({ projectId }) => {
     { key: 'notes', label: 'Notater', type: { kind: 'text', multiline: true } },
   ];
   return (
-    <EntityCrudPanel<ops.DanceMusicArchiveItem>
+    <Box>
+      {tracks.length > 0 ? (
+        <Box sx={{ mb: 2 }}>
+          <MusicArchiveCard tracks={tracks} />
+        </Box>
+      ) : null}
+      <EntityCrudPanel<ops.DanceMusicArchiveItem>
       title="Musikk-arkiv"
       description="Bibliotek av musikkstykker for koreografier — BPM-tagging og TONO-clearing-status."
       fields={fields}
@@ -339,7 +352,8 @@ export const MusicArchivePanel: React.FC<AdminPanelProps> = ({ projectId }) => {
       emptyText="Ingen musikk i arkivet ennå."
       panelTestId="admin-ops-music"
       rowExpansion={(row) => <MusicRowExpansion item={row} />}
-    />
+      />
+    </Box>
   );
 };
 

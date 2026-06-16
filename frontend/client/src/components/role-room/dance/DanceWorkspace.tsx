@@ -46,6 +46,7 @@ import { DanceDashboard } from './DanceDashboard';
 import { RehearsalPlannerConnected } from './RehearsalPlannerConnected';
 import { DancerProfileGridConnected } from './DancerProfileGridConnected';
 import { DancerInjuryLogPanel } from './DancerInjuryLogPanel';
+import { SeasonPlanCard } from './SeasonPlanCard';
 
 const DanceAnalysisPanel = React.lazy(() =>
   import('./DanceAnalysisPanel').then((m) => ({ default: m.DanceAnalysisPanel })),
@@ -802,6 +803,9 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
       case 'season':
         return (
           <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: danceFlowColors.bgBase, minHeight: '100%' }}>
+            <Box sx={{ mb: 3 }}>
+              <SeasonPlanCard projectId={projectId ?? null} />
+            </Box>
             <DanceProductionCalendar projectId={projectId ?? null} professionMode={mode} />
           </Box>
         );

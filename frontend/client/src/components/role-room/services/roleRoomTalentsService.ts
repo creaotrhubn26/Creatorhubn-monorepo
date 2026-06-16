@@ -36,6 +36,8 @@ export interface RoleRoomTalent {
   dialects: string[];
   availability_status: 'open' | 'limited' | 'unavailable';
   availability_notes: string | null;
+  // Per-dag tilgjengelighet (mig 0154): dato (YYYY-MM-DD) → { status, note? }.
+  availability_calendar: Record<string, { status: 'available' | 'busy'; note?: string }>;
   willing_to_travel: boolean;
   external_links: Array<{ label: string; url: string }>;
   profile_status: 'draft' | 'active' | 'pending_review' | 'archived';
@@ -371,6 +373,14 @@ const roleRoomTalentsService = {
       return { ok: false, error: payload?.error || 'Kunne ikke avslå' };
     }
     return { ok: true };
+  },
+
+  // Talent-siden: hent mine ventende forslag (reverse-consent inbox).
+  async fetchMyTalentProposals(): Promise<MyTalentProposal[]> {
+    const r = await authFetch(`${BASE}/me/proposals`);
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return [];
+    return Array.isArray(payload?.proposals) ? (payload.proposals as MyTalentProposal[]) : [];
   },
 
   async deleteSavedSearch(id: string): Promise<{ ok: boolean; error?: string }> {
@@ -743,6 +753,13 @@ export interface TalentProposalDetail {
   agency_type: RoleRoomTalentPartnerType;
   agency_about: string | null;
   agency_verified: boolean;
+}
+
+// Talent-siden av reverse-consent: et ventende forslag adressert til meg,
+// med token slik at Godta/Avslå kan kalles direkte fra kortet.
+export interface MyTalentProposal extends TalentProposalDetail {
+  token: string;
+  created_at: string;
 }
 
 export interface UploadConfig {
