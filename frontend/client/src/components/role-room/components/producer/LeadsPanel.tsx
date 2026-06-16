@@ -13,7 +13,9 @@ import {
 import {
   ContactPage as LeadsIcon, InstallMobile as FormIcon, BoltOutlined as FollowupIcon,
   CheckCircle as DoneIcon, Send as SendIcon, AutoAwesome as AiIcon,
+  Drafts as NurtureIcon,
 } from '@mui/icons-material';
+import NurtureSequenceDialog from './NurtureSequenceDialog';
 import CtaCard from './CtaCard';
 import InsightsCard from './InsightsCard';
 import ConnectionPicker from './ConnectionPicker';
@@ -193,6 +195,7 @@ export default function LeadsPanel() {
 
   // ── Fast follow-up: templates + seller notification + per-lead send ──────
   const [showFollowup, setShowFollowup] = useState(false);
+  const [nurtureLead, setNurtureLead] = useState<Lead | null>(null);
   const { data: followupData } = useQuery<{
     config: FollowupConfig; smsConfigured: boolean; emailConfigured: boolean; whatsappConfigured: boolean; success: boolean;
   }>({
@@ -728,6 +731,15 @@ export default function LeadsPanel() {
                                     Følg opp
                                   </Button>
                                 )}
+                                <Tooltip title="Nurture-sekvens (Agent)" arrow>
+                                  <Button
+                                    size="small" variant="text" startIcon={<NurtureIcon sx={{ fontSize: 15 }} />}
+                                    onClick={() => setNurtureLead(l)}
+                                    sx={{ fontSize: '0.72rem', py: 0.2, mt: 0.4, color: '#c084fc' }}
+                                  >
+                                    Nurture
+                                  </Button>
+                                </Tooltip>
                               </TableCell>
                               <TableCell>{fmt(l.createdTime)}</TableCell>
                             </TableRow>
@@ -742,6 +754,16 @@ export default function LeadsPanel() {
           </Box>
         </>
       )}
+
+      {/* Nurture-sekvens (Agent) — Claude-genererte 4-stegs e-poster per lead */}
+      {nurtureLead ? (
+        <NurtureSequenceDialog
+          open={!!nurtureLead}
+          onClose={() => setNurtureLead(null)}
+          lead={{ id: nurtureLead.id, name: nurtureLead.name, email: nurtureLead.email, segment: nurtureLead.segment }}
+          connectionId={connectionId}
+        />
+      ) : null}
     </Stack>
   );
 }

@@ -1293,6 +1293,43 @@ export interface GenerateProfileSuggestionInput {
   currentBio?: string | null;
 }
 
+// ── Nurture-sekvens (mig 286) ─────────────────────────────────────────
+export interface NurtureStep {
+  step: number;
+  emailKind: string;
+  label: string;
+  subject: string;
+  body: string;
+  insightHead?: string | null;
+  insightSub?: string | null;
+  insightStat?: string | null;
+  insightUnit?: string | null;
+  sendOffsetDays: number;
+}
+
+export interface RoleRoomLeadNurtureSequence {
+  id: string;
+  connection_id: string | null;
+  lead_external_id: string | null;
+  lead_name: string | null;
+  lead_email: string | null;
+  segment: string | null;
+  steps: NurtureStep[];
+  status: 'draft' | 'queued' | 'sent';
+  source: string | null;
+  created_at: string;
+}
+
+export interface GenerateNurtureInput {
+  connectionId?: string | null;
+  leadExternalId?: string | null;
+  leadName: string;
+  leadEmail?: string | null;
+  segment?: string | null;
+  company?: string | null;
+  platform?: string;
+}
+
 export const roleRoomAgentService = {
   async getAccess(): Promise<RoleRoomAgentAccess> {
     const response = await fetch('/api/role-room/agent/access', {
@@ -1366,6 +1403,35 @@ export const roleRoomAgentService = {
 
   async patchProfileSuggestion(id: string, status: 'applied' | 'dismissed' | 'new'): Promise<boolean> {
     const r = await fetch(`/api/role-room/profile-suggestions/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return r.ok;
+  },
+
+  // ── Nurture-sekvens (mig 286) ───────────────────────────────────────
+  async getNurtureSequence(leadExternalId?: string | null): Promise<RoleRoomLeadNurtureSequence | null> {
+    const qs = leadExternalId ? `?leadExternalId=${encodeURIComponent(leadExternalId)}` : '';
+    const r = await fetch(`/api/role-room/leads/nurture${qs}`, { headers: readRoleRoomAgentHeaders() });
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.sequence as RoleRoomLeadNurtureSequence | null) ?? null;
+  },
+
+  async generateNurtureSequence(input: GenerateNurtureInput): Promise<RoleRoomLeadNurtureSequence | null> {
+    const r = await fetch('/api/role-room/leads/nurture/generate', {
+      method: 'POST',
+      headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return (body?.sequence as RoleRoomLeadNurtureSequence | null) ?? null;
+  },
+
+  async patchNurtureSequence(id: string, status: 'draft' | 'queued' | 'sent'): Promise<boolean> {
+    const r = await fetch(`/api/role-room/leads/nurture/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
