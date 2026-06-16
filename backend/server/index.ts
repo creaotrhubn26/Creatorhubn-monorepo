@@ -509,6 +509,9 @@ import { setupLeadMapRoutes } from "./lead-map-routes.js";
 import { registerLeadMapCompetitorRoutes } from "./lead-map-competitor-routes.js";
 import { registerIpadPairRoutes } from "./ipad-pair-routes.js";
 import { registerLeadMapProjectRoutes } from "./lead-map-project-routes.js";
+import { registerLeadMapTeamRoutes } from "./lead-map-team-routes.js";
+import { registerLeadMapOrgRoutes } from "./lead-map-org-routes.js";
+import { registerLeadMapProfileRoutes } from "./lead-map-profile-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24223,6 +24226,12 @@ registerLeadMapCompetitorRoutes({ app, pool, activeSessions });
 registerIpadPairRoutes({ app, pool, activeSessions });
 // Lead Map ↔ Prosjekt-kobling (per-bedrift filtering + ProjectCard)
 registerLeadMapProjectRoutes({ app, pool, activeSessions });
+// Lead Map ↔ Team-invitasjoner per prosjekt (eier/medlem/lese + Resend)
+registerLeadMapTeamRoutes({ app, pool, activeSessions });
+// Lead Map ↔ Organisasjon (Creatorhub AS som første utvikler-org + org-invitasjoner)
+registerLeadMapOrgRoutes({ app, pool, activeSessions });
+// Lead Map ↔ Profil + Salgs-team (org-profil, user-profil, teamleder/konsulent/promotør)
+registerLeadMapProfileRoutes({ app, pool, activeSessions });
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,
