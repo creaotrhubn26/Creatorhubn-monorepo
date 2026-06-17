@@ -10,5 +10,8 @@ import WidgetKit
 struct LeadMapWidgetBundle: WidgetBundle {
     var body: some Widget {
         LeadMapWidget()
+        if #available(iOS 16.1, *) {
+            ActiveVisitLiveActivity()
+        }
     }
 }

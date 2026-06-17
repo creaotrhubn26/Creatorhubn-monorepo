@@ -40,6 +40,19 @@ import {
   type VisitType,
 } from "./lead-map-service.js";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+
+/** Bygger notes-feltet for crm_customers fra visittkort-payload */
+function buildNotes(body: {
+  title?: string;
+  raw_text?: string;
+}): string {
+  const parts: string[] = [];
+  if (body.title?.trim()) parts.push(`Tittel: ${body.title.trim()}`);
+  if (body.raw_text?.trim()) {
+    parts.push(`\n---\nOCR-tekst fra visittkort:\n${body.raw_text.trim()}`);
+  }
+  return parts.join("\n");
+}
 import { notifyStatusChanged } from "./lead-map-notification-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
@@ -352,6 +365,63 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(500).json({ error: "places_failed", detail: String(err) });
     }
   });
+
+  // POST /leads/from-card — opprett lead fra skannet visittkort (iPad #182)
+  app.post("/api/admin-room/lead-map/leads/from-card",
+    requireLeadMapPermission("leads.create", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+      const body = (req.body ?? {}) as {
+        name?: string;
+        title?: string;
+        company?: string;
+        email?: string;
+        phone?: string;
+        website?: string;
+        raw_text?: string;
+        project_id?: string | null;
+      };
+      if (!body.name?.trim()) {
+        return res.status(400).json({ error: "mangler_navn" });
+      }
+
+      try {
+        const r = await pool.query<{ id: string }>(
+          `INSERT INTO crm_customers (
+             id, name, company,
+             phone, email, website_url,
+             lead_status, lead_source,
+             owner_user_id, assigned_user_id,
+             assigned_at, assigned_by_user_id,
+             project_id, notes,
+             created_at, updated_at
+           ) VALUES (
+             gen_random_uuid()::text, $1, $2, $3, $4, $5,
+             'unvisited', 'business_card_scan',
+             $6, $6, NOW(), $6, $7, $8,
+             NOW(), NOW()
+           ) RETURNING id::text`,
+          [
+            body.name.trim(),
+            body.company?.trim() ?? null,
+            body.phone?.trim() ?? null,
+            body.email?.trim() ?? null,
+            body.website?.trim() ?? null,
+            session.userId,
+            body.project_id ?? null,
+            buildNotes(body),
+          ],
+        );
+        // Hvis title satt, lagre som notat (vi har ikke felt for kontakt-tittel
+        // separat — på crm_customers er notes-feltet tilstrekkelig)
+        return res.json({ ok: true, id: r.rows[0].id });
+      } catch (err) {
+        return res.status(500).json({ error: "create_failed", detail: String(err) });
+      }
+    },
+  );
 
   // POST /places/import — importer ett Places-resultat som lead
   app.post("/api/admin-room/lead-map/places/import", async (req: Request, res: Response) => {

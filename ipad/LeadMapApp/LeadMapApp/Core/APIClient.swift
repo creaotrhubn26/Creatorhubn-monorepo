@@ -275,6 +275,37 @@ actor APIClient {
         )
     }
 
+    // MARK: - Smart-transkript (PR #642 — Claude analyserer dikterings-notater)
+
+    func analyzeTranscript(leadId: String, transcript: String) async throws -> TranscriptAnalysis {
+        try await post(
+            "/api/admin-room/lead-map/visits/parse-transcript",
+            body: ["lead_id": leadId, "transcript": transcript]
+        )
+    }
+
+    // MARK: - Meeting-brief (PR #642 — Claude forbereder selger til besøk)
+
+    func fetchMeetingBrief(leadId: String) async throws -> MeetingBrief {
+        try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/meeting-brief",
+            body: [:]
+        )
+    }
+
+    // MARK: - Visittkort-skanner (PR #642)
+
+    func createLeadFromCard(extracted: ExtractedBusinessCard) async throws {
+        var body: [String: Any] = ["name": extracted.name]
+        if !extracted.company.isEmpty { body["company"] = extracted.company }
+        if !extracted.title.isEmpty { body["title"] = extracted.title }
+        if !extracted.email.isEmpty { body["email"] = extracted.email }
+        if !extracted.phone.isEmpty { body["phone"] = extracted.phone }
+        if !extracted.website.isEmpty { body["website"] = extracted.website }
+        if !extracted.raw.isEmpty { body["raw_text"] = extracted.raw }
+        try await post("/api/admin-room/lead-map/leads/from-card", body: body)
+    }
+
     // MARK: - Varsler (PR #622)
 
     func fetchNotifications(unreadOnly: Bool = false, limit: Int = 50) async throws -> NotificationFeedResponse {

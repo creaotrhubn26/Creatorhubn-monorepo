@@ -54,10 +54,16 @@ targets:
         NSLocationAlwaysAndWhenInUseUsageDescription: Lead Map varsler deg når du er innen 500m av en tildelt lead — også når app-en er lukket. Du kan skru dette av i Org-tab → Personvern.
         UIBackgroundModes:
           - location
-        # Skanner QR-koden i Admin Room for pairing.
-        NSCameraUsageDescription: Lead Map skanner QR-koden i Admin Room for å koble iPad til kontoen din.
+        # Kamera: QR-paring (Admin Room) + visittkort-skanner (VisionKit #182).
+        NSCameraUsageDescription: Lead Map bruker kameraet til å skanne visittkort (auto-fyll lead) og QR-koden i Admin Room for paring.
+        # Mikrofon: dikter visit-notater (#183).
+        NSMicrophoneUsageDescription: Lead Map bruker mikrofonen til å diktere visit-notater etter besøk.
+        # Tale-gjenkjenning: transkriber dikterte notater (#183).
+        NSSpeechRecognitionUsageDescription: Lead Map transkriberer din tale til tekst slik at du kan diktere visit-notater hands-free.
         # Apple Pencil til notater i visit-loggen.
         UIApplicationSupportsIndirectInputEvents: true
+        # Live Activities — 'Pågående besøk' på låseskjerm + Dynamic Island (#184).
+        NSSupportsLiveActivities: true
     entitlements:
       path: LeadMapApp/Generated/LeadMapApp.entitlements
       properties:
@@ -80,6 +86,8 @@ targets:
       - path: LeadMapWidget
       # Shared snapshot-modell — kompileres i begge targets.
       - path: LeadMapApp/Core/WidgetSnapshot.swift
+      # ActivityKit-attributter for Live Activity — delt med hovedapp.
+      - path: LeadMapApp/Core/ActiveVisitAttributes.swift
     info:
       path: LeadMapWidget/Generated/Info.plist
       properties:

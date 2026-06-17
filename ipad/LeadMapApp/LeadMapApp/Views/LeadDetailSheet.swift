@@ -14,6 +14,7 @@ struct LeadDetailSheet: View {
     @State private var demographics: DemographicsModel?
     @State private var visitLogShown = false
     @State private var strategyShown = false
+    @State private var briefShown = false
 
     var body: some View {
         NavigationStack {
@@ -48,6 +49,9 @@ struct LeadDetailSheet: View {
             }
             .sheet(isPresented: $strategyShown) {
                 StrategySheet(lead: lead)
+            }
+            .sheet(isPresented: $briefShown) {
+                MeetingBriefSheet(lead: lead)
             }
         }
         .presentationDetents([.medium, .large])
@@ -221,18 +225,24 @@ struct LeadDetailSheet: View {
 
     private var actionGrid: some View {
         LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: 8) {
-            Button { visitLogShown = true } label: {
-                Label("Log Visit", systemImage: "doc.text")
+            Button {
+                if #available(iOS 16.1, *) {
+                    ActiveVisitManager.shared.start(lead: lead)
+                }
+                visitLogShown = true
+            } label: {
+                Label("Start besøk", systemImage: "play.circle.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            Button { strategyShown = true } label: {
-                Label("Strategi", systemImage: "lightbulb")
+            Button { briefShown = true } label: {
+                Label("Forbered møte", systemImage: "sparkles")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            Button { /* TODO: Schedule meeting */ } label: {
-                Label("Møte", systemImage: "calendar.badge.plus")
+            .tint(Color(red: 0.98, green: 0.75, blue: 0.14))
+            Button { strategyShown = true } label: {
+                Label("Strategi", systemImage: "lightbulb")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)

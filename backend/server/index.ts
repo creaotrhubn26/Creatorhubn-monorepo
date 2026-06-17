@@ -522,6 +522,7 @@ import { registerLeadMapNotificationRoutes } from "./lead-map-notification-route
 import { registerLeadMapAnnotationRoutes } from "./lead-map-annotation-routes.js";
 import { registerLeadMapFollowupCronRoutes } from "./lead-map-followup-cron.js";
 import { registerLeadMapPromotionRoutes } from "./lead-map-promotion-routes.js";
+import { registerLeadMapTranscriptRoutes } from "./lead-map-transcript-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24264,6 +24265,8 @@ registerLeadMapAnnotationRoutes({ app, pool, activeSessions });
 registerLeadMapFollowupCronRoutes({ app, pool });
 // Forfremmelses-wizard (rolle + tittel + team + kvote i én tx + audit)
 registerLeadMapPromotionRoutes({ app, pool, activeSessions });
+// Smart visit-transkript-analyse (Claude erstatter 'kunden'+ finner datoer/actions)
+registerLeadMapTranscriptRoutes({ app, pool, activeSessions });
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,
