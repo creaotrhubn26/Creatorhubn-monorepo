@@ -29,6 +29,8 @@ import { Circle, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } 
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import LeadMapMemberPins from './LeadMapMemberPins';
+import { usePermissions } from './usePermissions';
+import LeadMapViewAsBanner from './LeadMapViewAsBanner';
 import { formatDistance, estimateDriveMinutes } from './lead-map-distance';
 import NavigationOutlinedIcon from '@mui/icons-material/NavigationOutlined';
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
@@ -456,6 +458,8 @@ function MapBoundsTracker({ onBoundsChange }: { onBoundsChange: (b: L.LatLngBoun
 }
 
 export default function LeadMapPanel() {
+  // RBAC — brukes til å gate farlige knapper (rank-all, delete, import)
+  const { can } = usePermissions();
   // Innlogget bruker — brukes som Assigned Rep når lead ikke har egen tildeling.
   const { user: currentUser } = useAuth();
   const repName =
@@ -1688,6 +1692,8 @@ export default function LeadMapPanel() {
   return (
     <Card sx={{ bgcolor: palette.bgPanel, border: `1px solid ${palette.border}`, borderRadius: 2 }}>
       <CardContent>
+        {/* View-as-banner for ledere (admin/salgssjef/teamleder) */}
+        <LeadMapViewAsBanner />
         {/* Header */}
         <Stack
           direction={{ xs: 'column', md: 'row' }}
@@ -2029,19 +2035,21 @@ export default function LeadMapPanel() {
             </>
           )}
           <Box sx={{ flex: 1 }} />
-          <Button
-            size="small" variant="outlined"
-            onClick={rankAllLeads}
-            disabled={rankingLeads}
-            startIcon={
-              rankingLeads
-                ? <CircularProgress size={12} sx={{ color: palette.accent }} />
-                : <AutoAwesomeOutlinedIcon sx={{ fontSize: 14 }} />
-            }
-            sx={{ color: palette.accent, borderColor: palette.borderStrong, fontWeight: 700, fontSize: '0.72rem', textTransform: 'none' }}
-          >
-            {rankingLeads ? 'Ranker …' : 'Ranger leads m/ Claude'}
-          </Button>
+          {can('ai.use_claude') && (
+            <Button
+              size="small" variant="outlined"
+              onClick={rankAllLeads}
+              disabled={rankingLeads}
+              startIcon={
+                rankingLeads
+                  ? <CircularProgress size={12} sx={{ color: palette.accent }} />
+                  : <AutoAwesomeOutlinedIcon sx={{ fontSize: 14 }} />
+              }
+              sx={{ color: palette.accent, borderColor: palette.borderStrong, fontWeight: 700, fontSize: '0.72rem', textTransform: 'none' }}
+            >
+              {rankingLeads ? 'Ranker …' : 'Ranger leads m/ Claude'}
+            </Button>
+          )}
         </Stack>
 
         {/* Søke-info-banner — vises kun når aktivt søk gir resultat-undermengde */}
@@ -2858,6 +2866,7 @@ export default function LeadMapPanel() {
                   )}
                 </Stack>
                 <Stack direction="row" spacing={0.4}>
+                  {can('competitors.delete') && (
                   <Tooltip title="Slett konkurrent">
                     <IconButton
                       size="small"
@@ -2870,6 +2879,7 @@ export default function LeadMapPanel() {
                         : <DeleteOutlineIcon fontSize="small" />}
                     </IconButton>
                   </Tooltip>
+                  )}
                   <IconButton size="small" onClick={() => setSelectedCompetitor(null)} sx={{ color: palette.textMuted }}>
                     <CloseIcon fontSize="small" />
                   </IconButton>
@@ -5226,6 +5236,7 @@ export default function LeadMapPanel() {
                               Re-vurder
                             </Button>
                           )}
+                          {can('competitors.delete') && (
                           <IconButton
                             size="small"
                             onClick={(e) => { e.stopPropagation(); deleteCompetitor(c.id); }}
@@ -5236,6 +5247,7 @@ export default function LeadMapPanel() {
                               ? <CircularProgress size={12} sx={{ color: '#ef4444' }} />
                               : <DeleteOutlineIcon sx={{ fontSize: 16 }} />}
                           </IconButton>
+                          )}
                         </td>
                       </tr>
                     ))}
