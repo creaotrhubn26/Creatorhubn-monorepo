@@ -63,7 +63,7 @@ async function resolveTalentId(
   if (isDemoRequest(req)) return DEMO_TALENT_ID;
   if (!session?.userId) return null;
   const r = await pool.query(
-    `SELECT id::text FROM talents WHERE user_id = $1 LIMIT 1`,
+    `SELECT id::text FROM talents WHERE owner_user_id = $1 AND COALESCE(is_demo, FALSE) = FALSE LIMIT 1`,
     [session.userId],
   );
   return r.rows[0]?.id ?? null;

@@ -1145,6 +1145,23 @@ export default function LeadMapPanel() {
     }
   }, []);
 
+  // Declared before submitCsvImport: referenced in submitCsvImport's deps array,
+  // so a later useCallback declaration would be a TDZ ReferenceError at render.
+  const fetchMeta = useCallback(async () => {
+    try {
+      const projParam = activeProjectId ? `?projectId=${encodeURIComponent(activeProjectId)}` : '';
+      const [mRes, aRes] = await Promise.all([
+        fetch(`/api/admin-room/lead-map/metrics${projParam}`, { credentials: 'include', headers: authHeaders() }),
+        fetch('/api/admin-room/lead-map/activities?limit=20', { credentials: 'include', headers: authHeaders() }),
+      ]);
+      if (mRes.ok) setMetrics(await mRes.json());
+      if (aRes.ok) {
+        const a = await aRes.json();
+        setActivities(a.activities ?? []);
+      }
+    } catch { /* noop */ }
+  }, [activeProjectId]);
+
   // Send parsed CSV til backend
   const submitCsvImport = useCallback(async () => {
     if (!csvPreview) return;
@@ -1309,21 +1326,6 @@ export default function LeadMapPanel() {
       setCounterCampaignSaving(false);
     }
   }, [counterCampaign, selectedCompetitor]);
-
-  const fetchMeta = useCallback(async () => {
-    try {
-      const projParam = activeProjectId ? `?projectId=${encodeURIComponent(activeProjectId)}` : '';
-      const [mRes, aRes] = await Promise.all([
-        fetch(`/api/admin-room/lead-map/metrics${projParam}`, { credentials: 'include', headers: authHeaders() }),
-        fetch('/api/admin-room/lead-map/activities?limit=20', { credentials: 'include', headers: authHeaders() }),
-      ]);
-      if (mRes.ok) setMetrics(await mRes.json());
-      if (aRes.ok) {
-        const a = await aRes.json();
-        setActivities(a.activities ?? []);
-      }
-    } catch { /* noop */ }
-  }, [activeProjectId]);
 
   useEffect(() => {
     fetchLeads();
