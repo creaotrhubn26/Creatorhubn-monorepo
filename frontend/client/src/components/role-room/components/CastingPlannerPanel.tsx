@@ -179,10 +179,8 @@ import { evaluateProjectOwnership } from '../utils/projectOwnership';
 import { CommandPalette, type CommandPaletteItem } from './CommandPalette';
 import { PlannerBreadcrumb, type PlannerBreadcrumbSegment } from './PlannerBreadcrumb';
 import { WorkspaceModeBadge, type WorkspaceMode } from './WorkspaceModeBadge';
-import PlannerProjectOverview from './PlannerProjectOverview';
 import PlannerMinDag from './PlannerMinDag';
 import PlannerDeliverablesBoard from './PlannerDeliverablesBoard';
-import PlannerTimelineGantt from './PlannerTimelineGantt';
 import PlannerProjectHealthBadge from './PlannerProjectHealthBadge';
 import {
   ContentProducerWorkflowStepper,
@@ -10013,22 +10011,6 @@ type RoleRoomProjectWorkspaceState = {
               onCreateProject={() => setProjectCreationModalOpen(true)}
             />
           ) : (
-          <>
-          {isContentProducerMode ? (
-            <>
-              <PlannerMinDag
-                projects={projects}
-                onOpenProject={handleSelectProjectFromSelector}
-              />
-              <PlannerProjectOverview
-                project={currentProject}
-                onNavigateToTab={(tabIndex) => navigateToTab(tabIndex)}
-                approvalTabIndex={PRODUCER_REVIEWS_TAB_INDEX}
-                calendarTabIndex={CALENDAR_TAB_INDEX}
-                deliveryTabIndex={PRODUCER_EXPORT_TAB_INDEX}
-              />
-            </>
-          ) : null}
           <DashboardPanel
             key={currentProject?.id ?? 'no-project'}
             project={currentProject}
@@ -10055,7 +10037,6 @@ type RoleRoomProjectWorkspaceState = {
             onCandidatesChange={loadProjects}
             profession={profession}
           />
-          </>
           )}
         </TabPanel>
 
@@ -12705,6 +12686,10 @@ type RoleRoomProjectWorkspaceState = {
               ) : (
                 <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', pt: 1 }}>
                   {plannerAudience !== 'content_producer' || contentProducerPlannerSurface === 'overview' ? (
+                    <Box sx={{ height: '100%', overflowY: plannerAudience === 'content_producer' ? 'auto' : 'hidden' }}>
+                    {plannerAudience === 'content_producer' ? (
+                      <PlannerMinDag projects={projects} onOpenProject={handleSelectProjectFromSelector} />
+                    ) : null}
                     <ProducerPlannerStudio
                       key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:planner-studio`}
                       project={currentProject}
@@ -12763,6 +12748,7 @@ type RoleRoomProjectWorkspaceState = {
                       resumeCard={plannerAudience === 'content_producer' ? contentProducerResumeCard : null}
                       onResumeWorkspace={plannerAudience === 'content_producer' ? handleResumeContentProducerWorkspace : undefined}
                     />
+                    </Box>
                   ) : null}
 
                   {plannerAudience === 'content_producer' && contentProducerPlannerSurface === 'project_room' ? (
@@ -12904,6 +12890,8 @@ type RoleRoomProjectWorkspaceState = {
                   ) : null}
 
                   {plannerAudience === 'content_producer' && contentProducerPlannerSurface === 'delivery' ? (
+                    <Box sx={{ height: '100%', overflowY: 'auto' }}>
+                    <PlannerDeliverablesBoard projectId={currentProject.id} />
                     <RoleRoomDiagnosticsProbe
                       name="ProducerExportHandoffPanel"
                       projectId={currentProject.id}
@@ -12936,6 +12924,7 @@ type RoleRoomProjectWorkspaceState = {
                         }}
                       />
                     </RoleRoomDiagnosticsProbe>
+                    </Box>
                   ) : null}
 
                   {plannerAudience === 'content_producer' && contentProducerPlannerSurface === 'economy' && canViewProducerEconomy ? (
@@ -13486,10 +13475,6 @@ type RoleRoomProjectWorkspaceState = {
               </Typography>
             </Box>
           ) : (
-            <>
-            {isContentProducerMode ? (
-              <PlannerTimelineGantt project={currentProject} />
-            ) : null}
             <RoleRoomDiagnosticsProbe
               name="ProducerTimelinePanel"
               projectId={currentProject.id}
@@ -13525,7 +13510,6 @@ type RoleRoomProjectWorkspaceState = {
               } : undefined}
               />
             </RoleRoomDiagnosticsProbe>
-            </>
           )}
         </TabPanel>
 
@@ -13599,10 +13583,6 @@ type RoleRoomProjectWorkspaceState = {
               </Typography>
             </Box>
           ) : (
-            <>
-            {isContentProducerMode ? (
-              <PlannerDeliverablesBoard projectId={currentProject.id} />
-            ) : null}
             <RoleRoomDiagnosticsProbe
               name="ProducerExportHandoffPanel"
               projectId={currentProject.id}
@@ -13633,7 +13613,6 @@ type RoleRoomProjectWorkspaceState = {
                 } : undefined}
               />
             </RoleRoomDiagnosticsProbe>
-            </>
           )}
         </TabPanel>
 
