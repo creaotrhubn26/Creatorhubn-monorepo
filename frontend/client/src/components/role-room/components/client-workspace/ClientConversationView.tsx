@@ -217,6 +217,37 @@ export default function ClientConversationView({ projectId }: { projectId: strin
     finally { setBusyAction(false); }
   }, [projectId, proposeTitle, proposeDate, proposeTime, load]);
 
+  // Send til godkjenning → ekte review i Godkjenning-flaten (begge sider) + chat-kort.
+  const sendToApproval = useCallback(async () => {
+    setBusyAction(true); setActionAnchor(null);
+    try {
+      const review = await producerWorkflowService.createReview(projectId, {
+        reviewType: 'client_approval',
+        title: 'Godkjenning forespurt i samtale',
+        description: 'Sendt til godkjenning fra Action i chatten.',
+      });
+      await sendMessage(projectId, {
+        body: 'Jeg sendte dette til godkjenning hos klienten.',
+        linkedEntityType: 'review', linkedEntityId: review.id,
+        metadata: { action: 'approval', refLabel: review.title },
+      });
+      setToast('Sendt til godkjenning — ligger nå i Godkjenning-flaten.');
+      await load();
+    } catch (e) { setToast(e instanceof Error ? e.message : 'Kunne ikke sende til godkjenning.'); }
+    finally { setBusyAction(false); }
+  }, [projectId, load]);
+
+  // Action-launcher (skråstrek + spotlight).
+  const [actionSpotlight, setActionSpotlight] = useState(false);
+  useEffect(() => {
+    try { if (!window.localStorage.getItem('rr_action_seen')) setActionSpotlight(true); } catch { /* ignore */ }
+  }, []);
+  const dismissSpotlight = useCallback(() => {
+    setActionSpotlight(false);
+    try { window.localStorage.setItem('rr_action_seen', '1'); } catch { /* ignore */ }
+  }, []);
+  const openActionLauncher = useCallback((anchor: HTMLElement) => { setActionAnchor(anchor); dismissSpotlight(); }, [dismissSpotlight]);
+
   // Grupper feed per dag.
   const grouped = useMemo(() => {
     const map = new Map<string, FeedItem[]>();
@@ -290,17 +321,36 @@ export default function ClientConversationView({ projectId }: { projectId: strin
             </Stack>
           </Box>
         ) : null}
+        {/* Første-gangs spotlight: «Prøv Action» */}
+        {actionSpotlight ? (
+          <Box sx={{ mb: 1, p: 1.25, borderRadius: 2, border: '1px solid rgba(168,85,247,0.45)', background: 'linear-gradient(135deg, rgba(124,58,237,0.22), rgba(168,85,247,0.1))', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <InstantMeetIcon sx={{ color: '#fcd34d', fontSize: 22 }} />
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ color: '#f5f3ff', fontWeight: 800, fontSize: '0.86rem' }}>Prøv Action</Typography>
+              <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.76rem' }}>
+                Gjør alt rett fra chatten — book Google Meet, be om opplasting, send til godkjenning. Trykk <strong>+</strong> eller skriv <strong>/</strong>.
+              </Typography>
+            </Box>
+            <Button onClick={dismissSpotlight} size="small" sx={{ textTransform: 'none', fontWeight: 700, minHeight: 36, color: 'rgba(226,232,240,0.8)' }}>Skjønner</Button>
+          </Box>
+        ) : null}
         <Stack direction="row" spacing={1} alignItems="flex-end">
           <IconButton
-            aria-label="Handlinger" onClick={(e) => setActionAnchor(e.currentTarget)} disabled={busyAction}
-            sx={{ width: 46, height: 46, color: '#c4b5fd', border: '1px solid rgba(148,163,184,0.25)', borderRadius: 2, '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
+            aria-label="Åpne Action" onClick={(e) => openActionLauncher(e.currentTarget)} disabled={busyAction}
+            sx={{ width: 46, height: 46, color: '#fff', borderRadius: 2, background: 'linear-gradient(135deg,#7c3aed,#a855f7)', boxShadow: actionSpotlight ? '0 0 0 3px rgba(168,85,247,0.4)' : 'none', '&:hover': { background: 'linear-gradient(135deg,#6d28d9,#9333ea)' }, '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
           >
-            {busyAction ? <CircularProgress size={18} sx={{ color: '#c4b5fd' }} /> : <ActionIcon />}
+            {busyAction ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <ActionIcon />}
           </IconButton>
           <TextField
-            value={draft} onChange={(e) => setDraft(e.target.value)}
+            value={draft}
+            onChange={(e) => {
+              const v = e.target.value;
+              // Skriv «/» i tomt felt → åpne Action-launcheren.
+              if (v === '/' && !draft) { const el = e.currentTarget.closest('.MuiBox-root') as HTMLElement | null; openActionLauncher((el ?? e.currentTarget) as HTMLElement); return; }
+              setDraft(v);
+            }}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleSend(); }}
-            placeholder={kind === 'request' ? 'Still klienten/produsenten et spørsmål…' : 'Skriv en melding…'}
+            placeholder={kind === 'request' ? 'Still et spørsmål … (eller / for Action)' : 'Skriv en melding … eller / for Action'}
             multiline maxRows={5} fullWidth size="small"
             sx={{ '& .MuiOutlinedInput-root': { color: '#f1f5f9', background: 'rgba(15,23,42,0.7)' } }}
           />
@@ -313,7 +363,13 @@ export default function ClientConversationView({ projectId }: { projectId: strin
           </Button>
         </Stack>
         <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={() => setActionAnchor(null)}
-          anchorOrigin={{ vertical: 'top', horizontal: 'left' }} transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
+          anchorOrigin={{ vertical: 'top', horizontal: 'left' }} transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+          slotProps={{ paper: { sx: { background: '#0c0a18', border: '1px solid rgba(168,85,247,0.3)', minWidth: 280 } } }}>
+          <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <InstantMeetIcon sx={{ color: '#fcd34d', fontSize: 18 }} />
+            <Typography sx={{ color: '#f5f3ff', fontWeight: 800, fontSize: '0.82rem' }}>Action</Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem', ml: 'auto' }}>gjør det fra chatten</Typography>
+          </Box>
           <MenuItem onClick={() => void startInstantMeet()}>
             <ListItemIcon><InstantMeetIcon sx={{ color: '#86efac' }} /></ListItemIcon>
             <ListItemText primary="Start Google Meet nå" secondary="Instant videomøte + del lenke" />
@@ -324,12 +380,27 @@ export default function ClientConversationView({ projectId }: { projectId: strin
           </MenuItem>
           <MenuItem onClick={() => void requestUpload('brand_logo')}>
             <ListItemIcon><UploadIcon sx={{ color: '#7dd3fc' }} /></ListItemIcon>
-            <ListItemText primary="Be om logo-opplasting" secondary="Klienten laster opp i chatten" />
+            <ListItemText primary="Be om logo-opplasting" secondary="Lander i Merkevare på begge flater" />
           </MenuItem>
           <MenuItem onClick={() => void requestUpload('other')}>
             <ListItemIcon><UploadIcon sx={{ color: '#7dd3fc' }} /></ListItemIcon>
-            <ListItemText primary="Be om fil-opplasting" secondary="Hvilken som helst fil" />
+            <ListItemText primary="Be om fil-opplasting" secondary="Hvilken som helst fil → Materiale" />
           </MenuItem>
+          <MenuItem onClick={() => void sendToApproval()}>
+            <ListItemIcon><ApprovalIcon sx={{ color: '#f0abfc' }} /></ListItemIcon>
+            <ListItemText primary="Send til godkjenning" secondary="Lander i Godkjenning-flaten" />
+          </MenuItem>
+          <Box sx={{ px: 2, pt: 0.75, pb: 0.25 }}>
+            <Typography sx={{ color: 'rgba(226,232,240,0.4)', fontSize: '0.64rem', fontWeight: 700, letterSpacing: 0.4 }}>KOMMER SNART</Typography>
+          </Box>
+          {[
+            'Legg i Content Planner', 'Referer til leveranse/fil', 'Del budsjett med klient', 'Be om brief-svar', 'Send faktura', 'AI-utkast & oppsummering',
+          ].map((label) => (
+            <MenuItem key={label} disabled>
+              <ListItemIcon><ActivityIcon sx={{ color: 'rgba(226,232,240,0.4)' }} /></ListItemIcon>
+              <ListItemText primary={label} />
+            </MenuItem>
+          ))}
         </Menu>
       </Box>
 
