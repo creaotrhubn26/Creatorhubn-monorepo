@@ -51,6 +51,7 @@ const ClientMarketingPlanView = lazy(() => import('./ClientMarketingPlanView'));
 const ClientMerkevareView = lazy(() => import('./ClientMerkevareView'));
 const ClientMeetingsView = lazy(() => import('./ClientMeetingsView'));
 const ClientConversationView = lazy(() => import('./ClientConversationView'));
+const RoleRoomChatBubble = lazy(() => import('./RoleRoomChatBubble'));
 
 type TabValue = 'economy' | 'approval' | 'brief' | 'merkevare' | 'meetings' | 'messages' | 'roles' | 'plan' | 'marketing-plan';
 
@@ -225,6 +226,13 @@ export default function ClientWorkspaceShell({
           {activeTab === 'marketing-plan' && <ClientMarketingPlanView projectId={projectId} />}
         </Suspense>
       </Container>
+
+      {/* Flytende chat-boble — tilgjengelig på alle faner unntatt selve Meldinger-fanen. */}
+      {activeTab !== 'messages' ? (
+        <Suspense fallback={null}>
+          <RoleRoomChatBubble projectId={projectId} onOpenFullTab={() => setActiveTab('messages')} />
+        </Suspense>
+      ) : null}
     </Box>
   );
 }
