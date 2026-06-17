@@ -133,7 +133,22 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
   sent: number;
   skipped: number;
   failed: number;
+  expired?: number;
 }> {
+  // LM-10: pre-expire events eldre enn LinkedIns vindu (~90d) FØR vi
+  // prøver send. Ellers ville stale rader fortsatt blitt retryet til
+  // attempts-cap → terminal-fail med ubrukelig error-melding. Eksplisitt
+  // 'expired' status gjør det observerbart.
+  const expiredRes = await pool.query(
+    `UPDATE linkedin_conversion_events
+        SET send_status = 'failed',
+            last_send_error = 'expired: occurred_at older than 90d'
+      WHERE send_status IN ('pending','retrying')
+        AND occurred_at < NOW() - INTERVAL '90 days'
+      RETURNING id`,
+  );
+  const expired = expiredRes.rowCount ?? 0;
+
   const due = await pool.query(
     `SELECT id::text, event_type, event_name, conversion_urn,
             user_email_hash, user_phone_hash,
@@ -227,7 +242,12 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
         sent++;
       } else {
         const errText = await resp.text().catch(() => "");
-        const isRetryable = resp.status >= 500 || resp.status === 429;
+        // LM-10: terminal-fail når denne attempten ville lande oss på
+        // attempts-cap (5). Tidligere lå rader fast i 'retrying' uten
+        // noen som dro dem ut → silent data loss.
+        const willExhaust = ((ev.send_attempts ?? 0) + 1) >= 5;
+        const isRetryable =
+          (resp.status >= 500 || resp.status === 429) && !willExhaust;
         await pool.query(
           `UPDATE linkedin_conversion_events
               SET send_status = $1,
@@ -244,20 +264,27 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
         failed++;
       }
     } catch (err) {
+      // LM-10: samme terminal-fail-på-cap-logikk for transport-feil
+      // (AbortError fra timeout, network drop, DNS failure).
+      const willExhaust = ((ev.send_attempts ?? 0) + 1) >= 5;
       await pool.query(
         `UPDATE linkedin_conversion_events
-            SET send_status = 'retrying',
+            SET send_status = $1,
                 send_attempts = send_attempts + 1,
                 last_send_at = now(),
-                last_send_error = $1
-          WHERE id = $2::uuid`,
-        [String(err).slice(0, 400), ev.id],
+                last_send_error = $2
+          WHERE id = $3::uuid`,
+        [
+          willExhaust ? "failed" : "retrying",
+          String(err).slice(0, 400),
+          ev.id,
+        ],
       );
       failed++;
     }
   }
 
-  return { attempted: due.rowCount, sent, skipped: 0, failed };
+  return { attempted: due.rowCount, sent, skipped: 0, failed, expired };
 }
 
 /**
