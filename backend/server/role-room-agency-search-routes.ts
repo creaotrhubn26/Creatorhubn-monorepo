@@ -238,11 +238,18 @@ function buildSearchSql(
                      ELSE 2 END) ASC, MAX(c.granted_at) DESC`;
   }
 
+  // Consent gate: a talent only appears in agency search if they explicitly
+  // granted basic_profile (or full_profile). Granting only a narrow scope
+  // (e.g. availability) must NOT expose their identity/bio. bool_or runs over
+  // the already-granted, non-expired consent rows for this partner.
+  const identityHaving =
+    "HAVING bool_or(c.scope IN ('basic_profile', 'full_profile'))";
   const baseFrom = `
     FROM talent_consent_registry c
     JOIN talents t ON t.id = c.talent_id
     WHERE ${where.join(" AND ")}
     GROUP BY t.id
+    ${identityHaving}
   `;
 
   params.push(filters.limit);
@@ -263,10 +270,15 @@ function buildSearchSql(
     LIMIT $${p} OFFSET $${p + 1}
   `;
 
-  // Count-query bruker samme WHERE-clause (men dropper GROUP+ORDER+LIMIT)
-  const countSql = `SELECT count(DISTINCT t.id)::int AS n FROM talent_consent_registry c
-                    JOIN talents t ON t.id = c.talent_id
-                    WHERE ${where.join(" AND ")}`;
+  // Count-query må bruke samme consent-gate (GROUP+HAVING) for å matche
+  // resultatsettet — ellers teller den talenter som ikke vises.
+  const countSql = `SELECT count(*)::int AS n FROM (
+                      SELECT t.id FROM talent_consent_registry c
+                      JOIN talents t ON t.id = c.talent_id
+                      WHERE ${where.join(" AND ")}
+                      GROUP BY t.id
+                      ${identityHaving}
+                    ) sub`;
   return { sql, params, countSql };
 }
 
@@ -275,17 +287,22 @@ function maskByScopes(row: Record<string, unknown>): Record<string, unknown> {
   const has = (s: string) => scopes.has("full_profile") || scopes.has(s);
   const masked: Record<string, unknown> = {
     id: row.id,
-    display_name: row.display_name,
-    city: row.city,
-    country: row.country,
-    bio: row.bio,
-    represented: row.represented,
-    skills: row.skills,
-    languages: row.languages,
-    dialects: row.dialects,
     granted_scopes: Array.from(scopes),
     last_consent_at: row.last_consent_at,
   };
+  // Identity + profile fields require basic_profile (or full_profile). The
+  // search query's HAVING already guarantees this for search results; this is
+  // defense-in-depth so any other caller can't leak identity on a narrow scope.
+  if (has("basic_profile")) {
+    masked.display_name = row.display_name;
+    masked.city = row.city;
+    masked.country = row.country;
+    masked.bio = row.bio;
+    masked.represented = row.represented;
+    masked.skills = row.skills;
+    masked.languages = row.languages;
+    masked.dialects = row.dialects;
+  }
   if (has("media_portfolio")) {
     masked.headshot_url = row.headshot_url;
     masked.showreel_url = row.showreel_url;
