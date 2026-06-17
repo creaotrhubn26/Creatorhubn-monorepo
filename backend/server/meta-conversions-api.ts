@@ -208,10 +208,13 @@ export async function sendMetaCapiEvent(
   };
 
   try {
+    // LM-4: 10s timeout (CAPI er tregere enn vanlige APIer). AbortError
+    // mappes til { success:false, error } i kallets eksisterende catch.
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10000),
     });
     const json = (await res.json()) as {
       events_received?: number;

@@ -197,6 +197,8 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
         };
       }
 
+      // LM-4: 10s timeout. AbortError treffer catch nedenfor og
+      // mapper til retryable (jf. isRetryable-logikk lengre ned)
       const resp = await fetch("https://api.linkedin.com/rest/conversionEvents", {
         method: "POST",
         headers: {
@@ -206,6 +208,7 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
           "LinkedIn-Version": "202410",
         },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10000),
       });
 
       if (resp.ok) {

@@ -825,6 +825,7 @@ export async function searchPlaces(
   }
 
   try {
+    // LM-4: 10s timeout — Google Places kan henge på obskure søk
     const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
       headers: {
@@ -833,6 +834,7 @@ export async function searchPlaces(
         'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.websiteUri,places.internationalPhoneNumber',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10000),
     });
     if (!r.ok) {
       const text = await r.text();

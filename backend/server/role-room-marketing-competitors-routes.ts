@@ -63,7 +63,10 @@ async function fetchInstagramSnapshot(
       fields: `business_discovery.username(${igUsername}){username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website,media.limit(50){id,timestamp}}`,
       access_token: accessToken,
     });
-    const r = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(callerIgUserId)}?${params.toString()}`);
+    // LM-4: 8s timeout. fetchInstagramSnapshot returnerer {fetchError}
+    // ved AbortError som flyter inn i eksisterende degradert-path.
+    const r = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(callerIgUserId)}?${params.toString()}`,
+      { signal: AbortSignal.timeout(8000) });
     const body = (await r.json().catch(() => ({}))) as Record<string, unknown>;
     if (!r.ok || !body.business_discovery) {
       const err = body.error as Record<string, unknown> | undefined;
@@ -113,7 +116,9 @@ async function fetchPageSnapshot(pageId: string, accessToken: string): Promise<S
       fields: 'id,name,fan_count,category,website,about,picture.type(large)',
       access_token: accessToken,
     });
-    const profileR = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(pageId)}?${profileParams}`);
+    // LM-4: 8s timeout
+    const profileR = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(pageId)}?${profileParams}`,
+      { signal: AbortSignal.timeout(8000) });
     const profile = (await profileR.json().catch(() => ({}))) as Record<string, unknown>;
     if (!profileR.ok) {
       const err = profile.error as Record<string, unknown> | undefined;
@@ -125,7 +130,9 @@ async function fetchPageSnapshot(pageId: string, accessToken: string): Promise<S
       limit: '100',
       access_token: accessToken,
     });
-    const postsR = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(pageId)}/posts?${postsParams}`);
+    // LM-4: 8s timeout
+    const postsR = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(pageId)}/posts?${postsParams}`,
+      { signal: AbortSignal.timeout(8000) });
     const posts = (await postsR.json().catch(() => ({}))) as Record<string, unknown>;
 
     // Count posts in last 7 days and last 30 days (best-effort — null if posts unavailable).

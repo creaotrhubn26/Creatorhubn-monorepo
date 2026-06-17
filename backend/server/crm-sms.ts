@@ -32,6 +32,9 @@ export async function sendSms(to: string, body: string): Promise<SmsResult> {
   if (messagingService) params.set("MessagingServiceSid", messagingService);
   else params.set("From", from as string);
 
+  // LM-4: 8s timeout slik at SMS-send ikke henger en CRM-trigger på
+  // Twilio som ikke svarer. AbortError treffer catch() i kaller og
+  // mappes til standard fail-rapport.
   const resp = await fetch(
     `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`,
     {
@@ -41,6 +44,7 @@ export async function sendSms(to: string, body: string): Promise<SmsResult> {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: params.toString(),
+      signal: AbortSignal.timeout(8000),
     },
   );
   const data = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
