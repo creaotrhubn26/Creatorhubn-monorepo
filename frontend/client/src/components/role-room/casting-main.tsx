@@ -6,6 +6,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CastingPlannerPanel } from './components/CastingPlannerPanel';
 import { CastingLandingPage } from './components/CastingLandingPage';
 import TheRoleRoomLanding from '@/pages/theroleroom-landing';
+import LeadgridLanding from '@/pages/leadgrid-landing';
+import LeadgridPersonvern from '@/pages/leadgrid-personvern';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
 import AgencyPortalView from './components/AgencyPortalView';
@@ -161,6 +163,16 @@ function CastingStandaloneAppContent() {
 
   if (isAdminRoomPath) {
     return <SuperAdminAdminRoomShell />;
+  }
+
+  // Leadgrid landing-side + personvern (offentlige sider — krever ikke auth).
+  // Personvern må komme før hoved-landing-en pga prefix-match.
+  if (localeCtx.pathname === '/leadgrid/personvern'
+      || localeCtx.pathname === '/leadgrid/personvern/') {
+    return <LeadgridPersonvern />;
+  }
+  if (localeCtx.pathname === '/leadgrid' || localeCtx.pathname === '/leadgrid/') {
+    return <LeadgridLanding />;
   }
 
   if (competitorKey) {
