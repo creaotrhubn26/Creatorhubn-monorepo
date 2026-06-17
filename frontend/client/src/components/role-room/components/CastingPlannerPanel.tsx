@@ -183,6 +183,7 @@ import PlannerProjectOverview from './PlannerProjectOverview';
 import PlannerMinDag from './PlannerMinDag';
 import PlannerDeliverablesBoard from './PlannerDeliverablesBoard';
 import PlannerTimelineGantt from './PlannerTimelineGantt';
+import PlannerProjectHealthBadge from './PlannerProjectHealthBadge';
 import {
   ContentProducerWorkflowStepper,
   type WorkflowStepKey,
@@ -17131,6 +17132,7 @@ type RoleRoomProjectWorkspaceState = {
                             Opprettet av {creatorLabel}
                           </Typography>
                         ) : null}
+                        <PlannerProjectHealthBadge project={project} />
                       </Box>
                       <Stack direction="row" spacing={0.65} alignItems="center" justifyContent={{ xs: 'flex-start', sm: 'flex-end' }} flexWrap="wrap" useFlexGap>
                         <Tooltip title={syncStatus.helper}>
