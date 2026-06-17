@@ -361,6 +361,111 @@ actor APIClient {
         )
     }
 
+    // MARK: - Pitch Deck Studio
+
+    /// Lett-vekts sjekk for prosjekt-kort: har org et klart deck?
+    /// Returnerer { available: false } hvis ingen ready-deck finnes.
+    /// 403 hvis kaller mangler pitch_deck.access.
+    func fetchPitchDeckAvailability(orgId: String) async throws -> PitchDeckAvailability {
+        return try await get(
+            "/api/admin-room/lead-map/pitch-deck/availability?organization_id=\(orgId)"
+        )
+    }
+
+    func listPitchDecks(orgId: String) async throws -> PitchDecksResponse {
+        return try await get(
+            "/api/admin-room/lead-map/pitch-deck/decks?organization_id=\(orgId)"
+        )
+    }
+
+    func loadPitchDeck(deckId: String) async throws -> PitchDeckBundle {
+        return try await get(
+            "/api/admin-room/lead-map/pitch-deck/decks/\(deckId)"
+        )
+    }
+
+    func onboardPitchDeck(payload: PitchOnboardingPayload) async throws -> PitchDeckBundle {
+        let body: [String: Any] = [
+            "organization_id": payload.organizationId,
+            "name": payload.name,
+            "industry": payload.industry,
+            "one_liner": payload.oneLiner,
+            "target_customer": payload.targetCustomer,
+            "pains": payload.pains,
+            "differentiators": payload.differentiators,
+            "proof_points": payload.proofPoints,
+            "locale": payload.locale,
+        ]
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/decks/onboard",
+            body: body
+        )
+    }
+
+    func updatePitchSlide(slideId: String, titleMd: String?, bodyMd: String?) async throws -> PitchSlideResponse {
+        var body: [String: Any] = [:]
+        if let t = titleMd { body["title_md"] = t }
+        if let b = bodyMd  { body["body_md"]  = b }
+        return try await patchReturning(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)",
+            body: body
+        )
+    }
+
+    func regeneratePitchSlide(slideId: String, instructions: String?) async throws -> PitchSlideResponse {
+        let body: [String: Any] = ["instructions": instructions ?? ""]
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)/regenerate",
+            body: body
+        )
+    }
+
+    func lockPitchSlide(slideId: String, locked: Bool) async throws {
+        try await post(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)/lock",
+            body: ["locked": locked]
+        )
+    }
+
+    func startPitchPresentation(deckId: String, leadId: String?) async throws -> PitchPresentationResponse {
+        var body: [String: Any] = ["deck_id": deckId]
+        if let l = leadId { body["lead_id"] = l }
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/presentations",
+            body: body
+        )
+    }
+
+    func updatePitchPresentation(
+        id: String,
+        slidesShown: [String]? = nil,
+        annotations: [String: Any]? = nil,
+        outcome: PitchOutcome? = nil,
+        outcomeNote: String? = nil,
+        end: Bool = false
+    ) async throws {
+        var body: [String: Any] = [:]
+        if let s = slidesShown   { body["slides_shown"] = s }
+        if let a = annotations   { body["annotations"]  = a }
+        if let o = outcome       { body["outcome"]      = o.rawValue }
+        if let n = outcomeNote   { body["outcome_note"] = n }
+        if end                   { body["end"] = true }
+        try await patch(
+            "/api/admin-room/lead-map/pitch-deck/presentations/\(id)",
+            body: body
+        )
+    }
+
+    /// Eksport — gated på pitch_deck.export. 403 om mangler.
+    func exportPitchDeck(deckId: String, leadId: String?) async throws -> PitchExportResponse {
+        var body: [String: Any] = ["deck_id": deckId]
+        if let l = leadId { body["lead_id"] = l }
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/exports",
+            body: body
+        )
+    }
+
     // MARK: - Internal
 
     private func makeRequest(_ path: String, method: String = "GET") -> URLRequest {
@@ -383,6 +488,14 @@ actor APIClient {
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (_, response) = try await session.data(for: req)
         try Self.validate(response)
+    }
+
+    private func patchReturning<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
+        var req = makeRequest(path, method: "PATCH")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: req)
+        try Self.validate(response)
+        return try Self.decoder.decode(T.self, from: data)
     }
 
     private func post<T: Decodable>(_ path: String, body: [String: Any]? = nil) async throws -> T {

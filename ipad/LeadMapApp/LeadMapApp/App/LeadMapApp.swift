@@ -103,7 +103,11 @@ struct RootView: View {
     }
 }
 
-/// Tabs: Min dag (default) + Kart + Team + Varsler + Org.
+/// Tabs: Min dag (default) + Kart + Team + Varsler + (Pitch hvis tillatt) + Org.
+/// Pitch Deck-fanen vises kun hvis innlogget bruker har
+/// "pitch_deck.access" i org'en — gjør at en org kan skru funksjonen
+/// av/på via per-role-defaults eller per-bruker overstyringer uten at
+/// vi trenger en feature-flag i Xcode-buildet.
 struct MainTabView: View {
     @Environment(AppState.self) private var state
 
@@ -120,6 +124,14 @@ struct MainTabView: View {
                     Label("Varsler", systemImage: "bell.fill")
                 }
                 .badge(state.unreadNotificationsCount)
+            if state.permissions.contains("pitch_deck.access"),
+               let orgId = state.activeOrganizationId {
+                PitchDeckStudioView(
+                    organizationId: orgId,
+                    permissions: state.permissions
+                )
+                .tabItem { Label("Pitch", systemImage: "rectangle.stack.fill") }
+            }
             OrgSettingsView()
                 .tabItem { Label("Org", systemImage: "building.2.fill") }
         }
