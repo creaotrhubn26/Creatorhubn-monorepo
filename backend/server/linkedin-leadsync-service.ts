@@ -85,6 +85,7 @@ export async function pollLeadFormsDue(pool: Pool): Promise<{
             "X-Restli-Protocol-Version": "2.0.0",
             "LinkedIn-Version": "202410",
           },
+          signal: AbortSignal.timeout(10_000),
         },
       );
 

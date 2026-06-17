@@ -9,6 +9,13 @@ on:
     - cron: "*/15 * * * *"   # hver 15. min
   workflow_dispatch:        # manuell trigger fra UI
 
+# Hindre at en treg kjøring (>15 min) eller en manuell workflow_dispatch
+# overlapper den planlagte — overlappende kjøringer kan ellers dobbelt-varsle.
+# Backend har i tillegg en pg advisory-lock som siste skanse.
+concurrency:
+  group: lead-map-followup-cron
+  cancel-in-progress: false
+
 jobs:
   notify:
     runs-on: ubuntu-latest

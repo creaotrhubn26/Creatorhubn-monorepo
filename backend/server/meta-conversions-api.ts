@@ -212,6 +212,7 @@ export async function sendMetaCapiEvent(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
     });
     const json = (await res.json()) as {
       events_received?: number;
