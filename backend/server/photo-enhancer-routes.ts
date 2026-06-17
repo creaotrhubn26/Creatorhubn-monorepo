@@ -345,6 +345,56 @@ const PHOTO_ENHANCER_BUILTIN_LUTS = [
   },
 ] as const;
 
+const PHOTO_ENHANCER_BUILTIN_LUT_SIZE = 17;
+const PHOTO_ENHANCER_BUILTIN_LUT_IDS = new Set(
+  PHOTO_ENHANCER_BUILTIN_LUTS.map((l) => l.id),
+);
+
+// Parabolic bump peaking at x=0.5, zero at the endpoints — keeps black at
+// black and white at white so the look never clips/lifts endpoints.
+function photoEnhancerMidtoneBump(x: number, amount: number): number {
+  return amount * 4.0 * x * (1.0 - x);
+}
+
+function clamp01(x: number): number {
+  return x < 0 ? 0 : x > 1 ? 1 : x;
+}
+
+// Built-in LUT table fallback. Exact TypeScript mirror of
+// backend/gfpgan-runner/lut_library.py (_identity/_warm_soft/_cool_soft):
+// r-fastest flat order, size**3 * 3 entries, domain [0,1]. Used when the
+// runner is absent or stale so the /luts catalog's fallback slugs always
+// have a matching /luts/:id/table — keeping the two endpoints consistent.
+function buildBuiltinLutTable(
+  lutId: string,
+  size = PHOTO_ENHANCER_BUILTIN_LUT_SIZE,
+): { size: number; table: number[] } | null {
+  if (!PHOTO_ENHANCER_BUILTIN_LUT_IDS.has(lutId as never)) return null;
+  const denom = size - 1;
+  const table: number[] = [];
+  for (let bi = 0; bi < size; bi++) {
+    for (let gi = 0; gi < size; gi++) {
+      for (let ri = 0; ri < size; ri++) {
+        let r = ri / denom;
+        let g = gi / denom;
+        let b = bi / denom;
+        if (lutId === "warm_soft") {
+          r = clamp01(r + photoEnhancerMidtoneBump(r, 0.06));
+          g = clamp01(g + photoEnhancerMidtoneBump(g, 0.01));
+          b = clamp01(b - photoEnhancerMidtoneBump(b, 0.05));
+        } else if (lutId === "cool_soft") {
+          r = clamp01(r - photoEnhancerMidtoneBump(r, 0.05));
+          g = clamp01(g + photoEnhancerMidtoneBump(g, 0.01));
+          b = clamp01(b + photoEnhancerMidtoneBump(b, 0.07));
+        }
+        // "neutral" is the identity LUT — no per-channel adjustment.
+        table.push(r, g, b);
+      }
+    }
+  }
+  return { size, table };
+}
+
 const HSL_IDENTITY: HslAdjustments = {
   red: { h: 0, s: 0, l: 0 },
   orange: { h: 0, s: 0, l: 0 },
@@ -5380,6 +5430,9 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
       }
     }
 
+    // Try the runner first when configured — it is the source of truth.
+    // A non-OK response or an unreachable/stale runner falls through to the
+    // built-in table below for known slugs rather than failing the request.
     const runnerEndpoint = resolvePhotoEnhancerRunnerEndpoint({
       runnerEnvKeys: ["PHOTO_ENHANCER_GFPGAN_URL", "GFPGAN_SERVICE_URL"],
       defaultRunnerUrl:
@@ -5387,31 +5440,47 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
           ? "https://creatorhub-gfpgan-runner.onrender.com/enhance"
           : null,
     });
-    if (!runnerEndpoint) {
-      return res.status(503).json({ success: false, error: "runner_not_configured" });
-    }
-    const url = new URL(runnerEndpoint);
-    url.pathname = url.pathname.replace(/\/(enhance|)$/, `/luts/${lutId}/table`);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
-    try {
-      const response = await fetch(url.toString(), {
-        method: "GET",
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        return res.status(response.status === 404 ? 404 : 502).json({
-          success: false,
-          error: response.status === 404 ? "lut_not_found" : "runner_error",
+    if (runnerEndpoint) {
+      const url = new URL(runnerEndpoint);
+      url.pathname = url.pathname.replace(/\/(enhance|)$/, `/luts/${lutId}/table`);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      try {
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          signal: controller.signal,
         });
+        if (response.ok) {
+          const payload = (await response.json()) as Record<string, unknown>;
+          return res.json(payload);
+        }
+        // Non-OK (e.g. a stale runner deploy lacking the LUT library, or a
+        // genuine 404 for a non-built-in slug) — fall through to fallback.
+      } catch {
+        // Runner unreachable/timeout — fall through to built-in fallback.
+      } finally {
+        clearTimeout(timer);
       }
-      const payload = (await response.json()) as Record<string, unknown>;
-      return res.json(payload);
-    } catch {
-      return res.status(504).json({ success: false, error: "runner_timeout" });
-    } finally {
-      clearTimeout(timer);
     }
+
+    // Built-in fallback keeps /luts/:id/table consistent with the /luts
+    // catalog's fallback slugs even when the runner is absent or stale.
+    const builtin = buildBuiltinLutTable(lutId);
+    if (builtin) {
+      return res.json({
+        success: true,
+        id: lutId,
+        size: builtin.size,
+        domainMin: [0, 0, 0],
+        domainMax: [1, 1, 1],
+        table: builtin.table,
+      });
+    }
+
+    return res.status(runnerEndpoint ? 404 : 503).json({
+      success: false,
+      error: runnerEndpoint ? "lut_not_found" : "runner_not_configured",
+    });
   });
 
   router.get("/improvements", (_req, res) => {
