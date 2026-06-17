@@ -385,6 +385,32 @@ struct PitchTrashResponse: Codable, Sendable {
     let slides: [PitchSlide]
 }
 
+// MARK: - Asset-upload (mockups)
+
+struct PitchAssetUpload: Codable, Sendable {
+    let id: String
+    let assetType: String
+    let mimeType: String
+    let sizeBytes: Int
+    let signedUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case assetType = "asset_type"
+        case mimeType = "mime_type"
+        case sizeBytes = "size_bytes"
+        case signedUrl = "signed_url"
+    }
+}
+
+struct PitchAssetUploadResponse: Codable, Sendable {
+    let asset: PitchAssetUpload
+}
+
+struct PitchAssetUrlsResponse: Codable, Sendable {
+    let urls: [String: String]   // asset_id → signed URL
+}
+
 /// Eksport-svaret (POST /exports).
 struct PitchExport: Codable, Sendable {
     let viewToken: String

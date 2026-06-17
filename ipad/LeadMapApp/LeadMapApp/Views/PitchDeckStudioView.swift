@@ -15,6 +15,7 @@
 // vanlige neste-skritt.
 
 import SwiftUI
+import PhotosUI
 
 struct PitchDeckStudioView: View {
     let organizationId: String
@@ -24,6 +25,7 @@ struct PitchDeckStudioView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var bundle: PitchDeckBundle?
+    @State private var assetUrls: [String: String] = [:]   // asset_id → signed URL
     @State private var isLoading = false
     @State private var error: String?
     @State private var showOnboarding = false
@@ -360,9 +362,16 @@ struct PitchDeckStudioView: View {
         do {
             let list = try await api.listPitchDecks(orgId: organizationId)
             if let first = list.decks.first {
-                self.bundle = try await api.loadPitchDeck(deckId: first.id)
+                let bundle = try await api.loadPitchDeck(deckId: first.id)
+                self.bundle = bundle
+                // Hent fresh signed URLs for alle mockups så AsyncImage
+                // i SlideRenderer kan vise dem.
+                if let urls = try? await api.fetchPitchAssetUrls(deckId: first.id) {
+                    self.assetUrls = urls.urls
+                }
             } else {
                 self.bundle = nil
+                self.assetUrls = [:]
             }
         } catch {
             self.error = String(describing: error)
@@ -507,6 +516,10 @@ private struct PitchSlideEditorSheet: View {
     @State private var bodyMd: String
     @State private var isSaving = false
     @State private var error: String?
+    // Mockup-upload
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var isUploading = false
+    @State private var uploadedThumbs: [String: UIImage] = [:] // asset_id → preview
 
     init(slide: PitchSlide, canEdit: Bool, onUpdate: @escaping (PitchSlide) -> Void) {
         self.slide = slide
@@ -514,6 +527,13 @@ private struct PitchSlideEditorSheet: View {
         self.onUpdate = onUpdate
         _titleMd = State(initialValue: slide.titleMd)
         _bodyMd = State(initialValue: slide.bodyMd)
+    }
+
+    /// Mockup-upload tilbys kun for visuelle slide-typer. Cover-logo
+    /// håndteres separat (auto-fetched fra website).
+    private var allowsMockup: Bool {
+        ["how_it_works", "solution", "demo", "core_features", "before_after"]
+            .contains(slide.slideType)
     }
 
     var body: some View {
@@ -528,6 +548,27 @@ private struct PitchSlideEditorSheet: View {
                     TextField("Brødtekst", text: $bodyMd, axis: .vertical)
                         .lineLimit(5...20)
                         .disabled(!canEdit)
+                }
+                if allowsMockup {
+                    Section("Mockup / skjermbilde") {
+                        mockupGrid
+                        if canEdit {
+                            PhotosPicker(
+                                selection: $pickerItem,
+                                matching: .images,
+                                photoLibrary: .shared()
+                            ) {
+                                Label(
+                                    isUploading ? "Laster opp …" : "Legg til bilde",
+                                    systemImage: "photo.badge.plus"
+                                )
+                            }
+                            .disabled(isUploading)
+                            Text("JPEG/PNG, maks 6 MB ferdig komprimert. Lagres i org'ens bucket-område.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 Section {
                     Label("Slide-type: \(slide.slideType)", systemImage: slide.iconName)
@@ -553,7 +594,142 @@ private struct PitchSlideEditorSheet: View {
             .alert("Lagring feilet", isPresented: errorBinding) {
                 Button("OK") { error = nil }
             } message: { Text(error ?? "") }
+            .onChange(of: pickerItem) { _, newItem in
+                guard let item = newItem else { return }
+                Task { await uploadPicked(item: item) }
+            }
         }
+    }
+
+    @ViewBuilder
+    private var mockupGrid: some View {
+        let mockups = slide.mockupUrls
+        if mockups.isEmpty {
+            Text("Ingen mockup ennå.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 120), spacing: 8)],
+                spacing: 8
+            ) {
+                ForEach(mockups, id: \.url) { mockup in
+                    mockupTile(mockup: mockup)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func mockupTile(mockup: PitchMockup) -> some View {
+        let assetId = mockup.url.hasPrefix("asset://")
+            ? String(mockup.url.dropFirst("asset://".count))
+            : nil
+        ZStack(alignment: .topTrailing) {
+            if let img = assetId.flatMap({ uploadedThumbs[$0] }) {
+                Image(uiImage: img).resizable().scaledToFill()
+                    .frame(height: 100)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.secondary.opacity(0.1))
+                    .frame(height: 100)
+                    .overlay(
+                        Image(systemName: "photo")
+                            .foregroundStyle(.secondary)
+                    )
+            }
+            if canEdit, let id = assetId {
+                Button {
+                    Task { await deleteMockup(assetId: id) }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.white, .black.opacity(0.6))
+                }
+                .padding(4)
+            }
+        }
+    }
+
+    private func uploadPicked(item: PhotosPickerItem) async {
+        guard let api = appState.api else { return }
+        isUploading = true
+        defer {
+            isUploading = false
+            pickerItem = nil
+        }
+        do {
+            // Last bilde-data fra Photos
+            guard let raw = try await item.loadTransferable(type: Data.self) else {
+                error = "Kunne ikke lese bilde"
+                return
+            }
+            // Komprimér til JPEG ≤ 6 MB
+            let (mime, data) = compressForUpload(raw: raw)
+            let resp = try await api.uploadPitchMockup(
+                slideId: slide.id, mimeType: mime, data: data
+            )
+            // Behold preview-bildet i memory så raden viser umiddelbart
+            if let ui = UIImage(data: raw) {
+                uploadedThumbs[resp.asset.id] = ui
+            }
+            // Slide.mockup_urls oppdateres på server-siden — re-last
+            // sliden via parent
+            let updated = try await api.loadPitchDeck(deckId: slide.deckId)
+            if let fresh = updated.slides.first(where: { $0.id == slide.id }) {
+                onUpdate(fresh)
+            }
+        } catch {
+            self.error = String(describing: error)
+        }
+    }
+
+    private func deleteMockup(assetId: String) async {
+        guard let api = appState.api else { return }
+        do {
+            try await api.deletePitchMockup(slideId: slide.id, assetId: assetId)
+            uploadedThumbs.removeValue(forKey: assetId)
+            // Reload slide
+            let updated = try await api.loadPitchDeck(deckId: slide.deckId)
+            if let fresh = updated.slides.first(where: { $0.id == slide.id }) {
+                onUpdate(fresh)
+            }
+        } catch {
+            self.error = String(describing: error)
+        }
+    }
+
+    /// Komprimér bilde til JPEG slik at base64-payload holder seg under
+    /// 6 MB. Vi prøver kvalitet 0.85 først, faller ned trinnvis.
+    private func compressForUpload(raw: Data) -> (mime: String, data: Data) {
+        guard let ui = UIImage(data: raw) else { return ("image/jpeg", raw) }
+        // Max base64-payload: 6 MB raw ≈ 8 MB base64. Vi sikter på 4 MB
+        // raw så vi har god margin.
+        let targetBytes = 4 * 1024 * 1024
+        for quality in stride(from: 0.85, through: 0.4, by: -0.15) {
+            if let jpeg = ui.jpegData(compressionQuality: quality),
+               jpeg.count <= targetBytes {
+                return ("image/jpeg", jpeg)
+            }
+        }
+        // Siste utvei: scale ned
+        let maxDim: CGFloat = 1600
+        let scale = min(maxDim / max(ui.size.width, ui.size.height), 1.0)
+        if scale < 1 {
+            let newSize = CGSize(
+                width: ui.size.width * scale,
+                height: ui.size.height * scale
+            )
+            let renderer = UIGraphicsImageRenderer(size: newSize)
+            let scaled = renderer.image { _ in
+                ui.draw(in: CGRect(origin: .zero, size: newSize))
+            }
+            if let jpeg = scaled.jpegData(compressionQuality: 0.7) {
+                return ("image/jpeg", jpeg)
+            }
+        }
+        return ("image/jpeg", ui.jpegData(compressionQuality: 0.6) ?? raw)
     }
 
     private var hasChanges: Bool {

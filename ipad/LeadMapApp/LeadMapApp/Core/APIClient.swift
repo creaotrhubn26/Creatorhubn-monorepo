@@ -433,6 +433,40 @@ actor APIClient {
         )
     }
 
+    // MARK: Mockup-upload
+
+    /// Last opp et bilde til en slide. Backend lagrer det under
+    /// pitch-decks/{org_id}/{deck_id}/{slide_id}/{uuid}.{ext} på B2.
+    /// data skal være JPEG eller PNG, maks 6 MB ferdig komprimert.
+    func uploadPitchMockup(
+        slideId: String, mimeType: String, data: Data
+    ) async throws -> PitchAssetUploadResponse {
+        let body: [String: Any] = [
+            "mime": mimeType,
+            "data_base64": data.base64EncodedString(),
+            "asset_type": "mockup",
+        ]
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)/mockup",
+            body: body
+        )
+    }
+
+    func deletePitchMockup(slideId: String, assetId: String) async throws {
+        try await delete(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)/mockups/\(assetId)"
+        )
+    }
+
+    /// Returnerer fresh signed URLs for alle assets i decket. iPad-en
+    /// erstatter `asset://<id>` i slide.mockup_urls m/ disse URL-ene
+    /// før AsyncImage tegner.
+    func fetchPitchAssetUrls(deckId: String) async throws -> PitchAssetUrlsResponse {
+        return try await get(
+            "/api/admin-room/lead-map/pitch-deck/decks/\(deckId)/asset-urls"
+        )
+    }
+
     func updatePitchSlide(slideId: String, titleMd: String?, bodyMd: String?) async throws -> PitchSlideResponse {
         var body: [String: Any] = [:]
         if let t = titleMd { body["title_md"] = t }

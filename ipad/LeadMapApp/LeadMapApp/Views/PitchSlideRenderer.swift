@@ -29,6 +29,25 @@ struct PitchSlideRenderer: View {
     let orgName: String
     /// Per-lead value-override (når valueRegen er kjørt for denne presentasjonen).
     let valueOverride: PitchValueOverride?
+    /// Map fra asset_id → fresh signed URL (fra GET /asset-urls). Vi bruker
+    /// denne til å bytte ut `asset://<id>` i slide.mockup_urls. Default tom.
+    var assetUrls: [String: String] = [:]
+
+    /// Returnér første mockup som faktisk har en hentbar URL. Bytter
+    /// `asset://<id>` mot signed URL hvis vi har den; ellers hopper.
+    private var firstMockupUrl: URL? {
+        for m in slide.mockupUrls {
+            if m.url.hasPrefix("asset://") {
+                let id = String(m.url.dropFirst("asset://".count))
+                if let signed = assetUrls[id], let url = URL(string: signed) {
+                    return url
+                }
+            } else if let url = URL(string: m.url) {
+                return url
+            }
+        }
+        return nil
+    }
 
     /// Warm-dark palett — speiler PDF-eksporten + matcher Daniels
     /// "mørkt/premium"-retningslinje.
@@ -231,8 +250,7 @@ struct PitchSlideRenderer: View {
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 32) {
-                if let firstMockup = slide.mockupUrls.first,
-                   let url = URL(string: firstMockup.url) {
+                if let url = firstMockupUrl {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let img):

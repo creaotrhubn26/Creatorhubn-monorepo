@@ -25,6 +25,8 @@ struct PitchDeckPresentView: View {
     var preMeetingBrief: PitchBrief? = nil
     /// Org-navn for cover-slide.
     var orgName: String = ""
+    /// Fresh signed URLs (asset_id → URL) hentes asynkront ved onAppear.
+    @State private var assetUrls: [String: String] = [:]
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -76,6 +78,16 @@ struct PitchDeckPresentView: View {
                 shownSlideIds.insert(slides[new].id)
             }
         }
+        .task {
+            // Hent fresh signed URLs for alle mockups. Hvis B2 ikke er
+            // konfigurert blir map'et tomt og AsyncImage hopper til
+            // placeholder.
+            if let api = appState.api {
+                if let urls = try? await api.fetchPitchAssetUrls(deckId: bundle.deck.id) {
+                    assetUrls = urls.urls
+                }
+            }
+        }
         .statusBarHidden()
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showOutcome) {
@@ -105,8 +117,8 @@ struct PitchDeckPresentView: View {
                 coverLogoUrl: bundle.deck.coverLogoUrl,
                 coverTagline: bundle.deck.coverTagline,
                 orgName: orgName,
-                // Bare Verdien-sliden får override
-                valueOverride: slide.slideType == "value" ? valueOverride : nil
+                valueOverride: slide.slideType == "value" ? valueOverride : nil,
+                assetUrls: assetUrls
             )
             .frame(maxWidth: 1100)
             if pencilActive {
