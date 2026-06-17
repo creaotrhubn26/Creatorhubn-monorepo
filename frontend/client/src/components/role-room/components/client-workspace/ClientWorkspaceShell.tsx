@@ -35,6 +35,7 @@ import {
   People as RolesIcon,
   CalendarMonth as PlanIcon,
   RocketLaunch as MarketingPlanIcon,
+  Palette as MerkevareIcon,
   ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
 
@@ -45,13 +46,15 @@ const ClientBriefView = lazy(() => import('./ClientBriefView'));
 const ClientRolesView = lazy(() => import('./ClientRolesView'));
 const ClientPlanView = lazy(() => import('./ClientPlanView'));
 const ClientMarketingPlanView = lazy(() => import('./ClientMarketingPlanView'));
+const ClientMerkevareView = lazy(() => import('./ClientMerkevareView'));
 
-type TabValue = 'economy' | 'approval' | 'brief' | 'roles' | 'plan' | 'marketing-plan';
+type TabValue = 'economy' | 'approval' | 'brief' | 'merkevare' | 'roles' | 'plan' | 'marketing-plan';
 
 const TABS: Array<{ value: TabValue; label: string; icon: React.ReactElement }> = [
   { value: 'economy', label: 'Økonomi', icon: <EconomyIcon /> },
   { value: 'approval', label: 'Godkjenning', icon: <ApprovalIcon /> },
   { value: 'brief', label: 'Brief', icon: <BriefIcon /> },
+  { value: 'merkevare', label: 'Merkevare', icon: <MerkevareIcon /> },
   { value: 'roles', label: 'Roller', icon: <RolesIcon /> },
   { value: 'plan', label: 'Plan', icon: <PlanIcon /> },
   { value: 'marketing-plan', label: 'Markedsplan', icon: <MarketingPlanIcon /> },
@@ -208,6 +211,7 @@ export default function ClientWorkspaceShell({
           )}
           {activeTab === 'approval' && <ClientApprovalView projectId={projectId} />}
           {activeTab === 'brief' && <ClientBriefView projectId={projectId} />}
+          {activeTab === 'merkevare' && <ClientMerkevareView projectId={projectId} />}
           {activeTab === 'roles' && <ClientRolesView projectId={projectId} />}
           {activeTab === 'plan' && <ClientPlanView projectId={projectId} />}
           {activeTab === 'marketing-plan' && <ClientMarketingPlanView projectId={projectId} />}
