@@ -40,7 +40,9 @@ import {
   Switch as MuiSwitch,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ArrowUpwardOutlinedIcon from '@mui/icons-material/ArrowUpwardOutlined';
 import LeadMapMyProfileCard from './LeadMapMyProfileCard';
+import LeadMapPromoteDialog from './LeadMapPromoteDialog';
 
 const ROLE_META: Record<string, {
   label: string;
@@ -243,6 +245,7 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Partial<SalesTeam> & { id?: string } | null>(null);
   const [editingMember, setEditingMember] = useState<MemberProfileRow | null>(null);
+  const [promotingMember, setPromotingMember] = useState<MemberProfileRow | null>(null);
 
   // Location-deling
   const [locationConsent, setLocationConsent] = useState<boolean | null>(null);
@@ -1123,6 +1126,15 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
                           <TableCell align="right">
                             <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                               {isAdmin && (
+                                <Tooltip title="Forfremmelse / endre rolle">
+                                  <IconButton size="small" aria-label="Forfremmelse"
+                                    onClick={() => setPromotingMember(m)}>
+                                    <ArrowUpwardOutlinedIcon fontSize="small"
+                                      sx={{ color: '#34d399' }} />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                              {isAdmin && (
                                 <Tooltip title="Tillatelser">
                                   <IconButton size="small" aria-label="Endre tillatelser"
                                     onClick={() => openPermissions(m)}>
@@ -1317,6 +1329,24 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
           <Button variant="contained" onClick={() => setPermDialog(null)}>Lukk</Button>
         </DialogActions>
       </Dialog>
+
+      {/* ─── Forfremmelses-wizard ─────────────────────────────── */}
+      <LeadMapPromoteDialog
+        open={Boolean(promotingMember)}
+        organizationId={activeOrgId}
+        member={promotingMember ? {
+          user_id: promotingMember.user_id,
+          role: promotingMember.role,
+          user_email: promotingMember.user_email,
+          display_name: promotingMember.display_name,
+          avatar_url: promotingMember.avatar_url,
+          title: promotingMember.title,
+          sales_team_id: promotingMember.sales_team_id,
+        } : null}
+        teams={teams.map((t) => ({ id: t.id, name: t.name }))}
+        onClose={() => setPromotingMember(null)}
+        onPromoted={() => { void loadOrgDetails(activeOrgId!); }}
+      />
 
       {/* ─── Medlem-profil-dialog ──────────────────────────────── */}
       <Dialog open={Boolean(editingMember)} onClose={() => setEditingMember(null)} fullWidth maxWidth="sm">

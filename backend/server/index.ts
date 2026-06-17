@@ -521,6 +521,7 @@ import { registerLeadMapLeaderboardRoutes } from "./lead-map-leaderboard-routes.
 import { registerLeadMapNotificationRoutes } from "./lead-map-notification-routes.js";
 import { registerLeadMapAnnotationRoutes } from "./lead-map-annotation-routes.js";
 import { registerLeadMapFollowupCronRoutes } from "./lead-map-followup-cron.js";
+import { registerLeadMapPromotionRoutes } from "./lead-map-promotion-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24261,6 +24262,8 @@ registerLeadMapNotificationRoutes({ app, pool, activeSessions });
 registerLeadMapAnnotationRoutes({ app, pool, activeSessions });
 // Follow-up cron (GitHub Actions hver 15. min → forfalt-varsler)
 registerLeadMapFollowupCronRoutes({ app, pool });
+// Forfremmelses-wizard (rolle + tittel + team + kvote i én tx + audit)
+registerLeadMapPromotionRoutes({ app, pool, activeSessions });
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,
