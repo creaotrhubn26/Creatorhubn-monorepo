@@ -179,6 +179,7 @@ import { evaluateProjectOwnership } from '../utils/projectOwnership';
 import { CommandPalette, type CommandPaletteItem } from './CommandPalette';
 import { PlannerBreadcrumb, type PlannerBreadcrumbSegment } from './PlannerBreadcrumb';
 import { WorkspaceModeBadge, type WorkspaceMode } from './WorkspaceModeBadge';
+import PlannerProjectOverview from './PlannerProjectOverview';
 import {
   ContentProducerWorkflowStepper,
   type WorkflowStepKey,
@@ -10008,6 +10009,15 @@ type RoleRoomProjectWorkspaceState = {
               onCreateProject={() => setProjectCreationModalOpen(true)}
             />
           ) : (
+          <>
+          {isContentProducerMode ? (
+            <PlannerProjectOverview
+              project={currentProject}
+              onNavigateToTab={(tabIndex) => navigateToTab(tabIndex)}
+              approvalTabIndex={PRODUCER_REVIEWS_TAB_INDEX}
+              calendarTabIndex={CALENDAR_TAB_INDEX}
+            />
+          ) : null}
           <DashboardPanel
             key={currentProject?.id ?? 'no-project'}
             project={currentProject}
@@ -10034,6 +10044,7 @@ type RoleRoomProjectWorkspaceState = {
             onCandidatesChange={loadProjects}
             profession={profession}
           />
+          </>
           )}
         </TabPanel>
 
