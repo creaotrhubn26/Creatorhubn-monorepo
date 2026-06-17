@@ -182,19 +182,27 @@ export async function runSmsInvoiceSweep(
           }
 
           const description = `Audition-SMS ${group.billingPeriod} (${group.smsCount} stk)`;
-          const invoiceItem = await deps.stripe.invoiceItems.create({
-            customer: stripeCustomerId,
-            amount: amountOre,
-            currency: "nok",
-            description,
-            metadata: {
-              runner: RUNNER_KEY,
-              billing_period: group.billingPeriod,
-              project_id: group.projectId,
-              sms_count: String(group.smsCount),
-              vat_rate: String(group.vatRate),
+          // Deterministic idempotency key: if the process dies between this
+          // create and markGroupBilled (which flips stripe_invoice_item_id),
+          // the next sweep re-selects the same group and would otherwise create
+          // a SECOND invoice item for the same usage = double-billing. Stripe
+          // collapses a re-used key (~24h) to the original item instead.
+          const invoiceItem = await deps.stripe.invoiceItems.create(
+            {
+              customer: stripeCustomerId,
+              amount: amountOre,
+              currency: "nok",
+              description,
+              metadata: {
+                runner: RUNNER_KEY,
+                billing_period: group.billingPeriod,
+                project_id: group.projectId,
+                sms_count: String(group.smsCount),
+                vat_rate: String(group.vatRate),
+              },
             },
-          });
+            { idempotencyKey: `casting-sms-invoice:${group.projectId}:${group.billingPeriod}` },
+          );
 
           await markGroupBilled(deps.pool, group.rowIds, invoiceItem.id);
           summary.invoiceItemsCreated += 1;
