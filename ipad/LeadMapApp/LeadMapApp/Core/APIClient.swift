@@ -467,6 +467,39 @@ actor APIClient {
         )
     }
 
+    // MARK: - Lead Research (gated på lead_research.run)
+
+    func startLeadResearch(
+        industry: String, region: String,
+        targetAudience: String?, goal: String?,
+        organizationId: String?
+    ) async throws -> LeadResearchStartResponse {
+        var body: [String: Any] = [
+            "industry": industry,
+            "region": region,
+        ]
+        if let t = targetAudience, !t.isEmpty { body["target_audience"] = t }
+        if let g = goal, !g.isEmpty           { body["goal"] = g }
+        if let o = organizationId             { body["organization_id"] = o }
+        return try await post(
+            "/api/admin-room/lead-map/research/start",
+            body: body
+        )
+    }
+
+    func runLeadResearch(researchId: String) async throws {
+        try await post(
+            "/api/admin-room/lead-map/research/\(researchId)/run",
+            body: [:]
+        )
+    }
+
+    func fetchLeadResearchStatus(researchId: String) async throws -> LeadResearchStatusResponse {
+        return try await get(
+            "/api/admin-room/lead-map/research/\(researchId)"
+        )
+    }
+
     func updatePitchSlide(slideId: String, titleMd: String?, bodyMd: String?) async throws -> PitchSlideResponse {
         var body: [String: Any] = [:]
         if let t = titleMd { body["title_md"] = t }

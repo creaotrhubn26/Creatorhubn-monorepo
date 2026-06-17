@@ -527,6 +527,7 @@ import { registerPitchDeckRoutes } from "./pitch-deck-routes.js";
 import { registerPitchDeckPdfRoutes } from "./pitch-deck-pdf-service.js";
 import { registerPitchDeckBriefRoutes } from "./pitch-deck-brief-routes.js";
 import { registerPitchDeckAssetRoutes } from "./pitch-deck-asset-service.js";
+import { registerLeadMapResearchRoutes } from "./lead-map-research-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24281,6 +24282,8 @@ registerPitchDeckPdfRoutes({ app, pool, activeSessions });
 registerPitchDeckBriefRoutes({ app, pool, activeSessions });
 // Mockup-upload → B2 m/ pitch-decks/{org_id}/... prefix
 registerPitchDeckAssetRoutes({ app, pool, activeSessions });
+// Research → Leads-orkestrator (gated på lead_research.run)
+registerLeadMapResearchRoutes({ app, pool, activeSessions });
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,

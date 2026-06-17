@@ -411,6 +411,52 @@ struct PitchAssetUrlsResponse: Codable, Sendable {
     let urls: [String: String]   // asset_id → signed URL
 }
 
+// MARK: - Lead Research
+
+struct LeadResearchStartResponse: Codable, Sendable {
+    let researchId: String
+    let scanId: String
+    let name: String
+
+    enum CodingKeys: String, CodingKey {
+        case researchId = "research_id"
+        case scanId = "scan_id"
+        case name
+    }
+}
+
+/// Live-status fra GET /research/:id. iPad-en poller hver 2-3 sek
+/// for å oppdatere ResearchProgressView mens fasene gjennomføres.
+struct LeadResearchStatus: Codable, Sendable {
+    let id: String
+    let name: String
+    let phase: String           // pending|brand_kit|claude_scan|geocode_competitors|creating_leads|done|failed
+    let phaseMessage: String?
+    let status: String          // draft|running|completed|failed
+    let totalCompetitors: Int
+    let leadsCreatedCount: Int
+    let startedAt: String?
+    let completedAt: String?
+    let errorMessage: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, phase
+        case phaseMessage = "phase_message"
+        case status
+        case totalCompetitors = "total_competitors"
+        case leadsCreatedCount = "leads_created_count"
+        case startedAt = "started_at"
+        case completedAt = "completed_at"
+        case errorMessage = "error_message"
+    }
+
+    var isTerminal: Bool { phase == "done" || phase == "failed" }
+}
+
+struct LeadResearchStatusResponse: Codable, Sendable {
+    let research: LeadResearchStatus
+}
+
 /// Eksport-svaret (POST /exports).
 struct PitchExport: Codable, Sendable {
     let viewToken: String
