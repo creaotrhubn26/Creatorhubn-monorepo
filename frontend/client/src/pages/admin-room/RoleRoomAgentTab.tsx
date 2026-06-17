@@ -28,6 +28,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import IgDmInbox from '../../components/crm/IgDmInbox';
 import AgentAdsPanel from '../../components/role-room/components/producer/AgentAdsPanel';
+import WelcomeWizard from '../../components/role-room/onboarding/WelcomeWizard';
 
 interface ProfileRecommendations {
   platforms: {
@@ -313,6 +314,10 @@ export default function RoleRoomAgentTab() {
 
   return (
     <Stack spacing={2} data-testid="role-room-agent-root">
+      {/* Velkomst-guide (7-stegs onboarding) — scoped til Role Room Agent.
+          Var tidligere mountet globalt i App.tsx og lekket inn på alle
+          CreatorHub-sider (bl.a. UniversalDashboard). */}
+      <WelcomeWizard />
       <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor="#a855f7" />
       <Stack direction="row" alignItems="center" spacing={2}>
         <Typography variant="h6" sx={{ color: '#e2e8f0' }}>🤖 Role Room Agent — Bio + Profil-pakke</Typography>
