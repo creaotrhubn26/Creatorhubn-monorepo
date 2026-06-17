@@ -1337,9 +1337,13 @@ export type ProducerClientMaterialType =
   | 'brief_note'
   | 'asset_link'
   | 'brand_asset'
+  | 'brand_logo'
+  | 'brand_colors'
+  | 'brand_fonts'
   | 'reference'
   | 'document'
-  | 'feedback';
+  | 'feedback'
+  | 'other';
 
 export interface ProducerClientMaterial {
   id: string;

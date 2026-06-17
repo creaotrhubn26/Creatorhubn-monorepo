@@ -399,9 +399,13 @@ const MATERIAL_TYPE_LABELS: Record<ProducerClientMaterialType, string> = {
   brief_note: 'Briefnotat',
   asset_link: 'Lenke til materiale',
   brand_asset: 'Merkevarefil',
+  brand_logo: 'Logo',
+  brand_colors: 'Farger / profil',
+  brand_fonts: 'Fonter',
   reference: 'Referanse',
   document: 'Dokument',
   feedback: 'Tilbakemelding',
+  other: 'Annet',
 };
 
 const MATERIAL_STATUS_LABELS: Record<string, string> = {
