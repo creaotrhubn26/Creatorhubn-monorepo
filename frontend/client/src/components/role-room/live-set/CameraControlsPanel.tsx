@@ -125,10 +125,16 @@ function PresetChip({
 
 /** Enkel mock-scope. Reel implementasjon krever HTML5 Canvas + decoded video-frames */
 function MockScope({ mode }: { mode: 'waveform' | 'vectorscope' }) {
-  // SVG-vis med litt bevegelse for liveness-følelse
+  // SVG-vis med litt bevegelse for liveness-følelse. Decorative only, so skip
+  // it entirely for prefers-reduced-motion users and tick at 200ms rather than
+  // ~16fps — two instances re-rendering 60 SVG nodes each is needless churn.
   const [phase, setPhase] = React.useState(0);
   React.useEffect(() => {
-    const t = setInterval(() => setPhase((p) => (p + 0.05) % (Math.PI * 2)), 60);
+    if (typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+    const t = setInterval(() => setPhase((p) => (p + 0.16) % (Math.PI * 2)), 200);
     return () => clearInterval(t);
   }, []);
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -73,6 +73,15 @@ const AD_GOALS = [
 ];
 
 export default function AdsManagementPanel({ projectId }: { projectId: string }) {
+  // OAuth popup poll lives in an event handler, not an effect — track it so we
+  // can clear it on unmount and never setState on a dead component.
+  const oauthPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => () => {
+    mountedRef.current = false;
+    if (oauthPollRef.current) clearInterval(oauthPollRef.current);
+  }, []);
+
   const [campaigns, setCampaigns] = useState<RoleRoomAdsCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -135,31 +144,41 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
         setOauthStarting(null);
         return;
       }
-      // Poll for at popup lukkes — da re-fetch kontolisten
+      // Poll for at popup lukkes — da re-fetch kontolisten. Capped so an
+      // orphaned/never-closed popup stops after ~15 min instead of polling
+      // forever; cleared on unmount via oauthPollRef.
+      if (oauthPollRef.current) clearInterval(oauthPollRef.current);
+      let pollAttempts = 0;
+      const maxPollAttempts = Math.ceil((15 * 60 * 1000) / 800);
       const pollInterval = setInterval(async () => {
-        if (popup.closed) {
-          clearInterval(pollInterval);
-          setOauthStarting(null);
-          // Re-fetch så den nye koblingen vises i dropdown
-          if (platform === 'google') {
-            const google = await roleRoomAgentService.listGoogleCustomers();
-            if (!('error' in google)) {
-              setGoogleCustomers(google.customers);
-              if (google.customers[0] && !form.customerId) {
-                setForm((f) => ({ ...f, customerId: google.customers[0] }));
-              }
+        pollAttempts += 1;
+        const expired = pollAttempts >= maxPollAttempts;
+        if (!popup.closed && !expired) return;
+        clearInterval(pollInterval);
+        oauthPollRef.current = null;
+        if (!mountedRef.current) return;
+        setOauthStarting(null);
+        if (expired && !popup.closed) return; // gave up; don't re-fetch
+        // Re-fetch så den nye koblingen vises i dropdown
+        if (platform === 'google') {
+          const google = await roleRoomAgentService.listGoogleCustomers();
+          if (mountedRef.current && !('error' in google)) {
+            setGoogleCustomers(google.customers);
+            if (google.customers[0] && !form.customerId) {
+              setForm((f) => ({ ...f, customerId: google.customers[0] }));
             }
-          } else if (platform === 'linkedin') {
-            const linkedin = await roleRoomAgentService.listLinkedInAccounts();
-            if (!('error' in linkedin)) {
-              setLinkedinAccounts(linkedin.accounts);
-              if (linkedin.accounts[0] && !form.linkedinAccountUrn) {
-                setForm((f) => ({ ...f, linkedinAccountUrn: linkedin.accounts[0].id }));
-              }
+          }
+        } else if (platform === 'linkedin') {
+          const linkedin = await roleRoomAgentService.listLinkedInAccounts();
+          if (mountedRef.current && !('error' in linkedin)) {
+            setLinkedinAccounts(linkedin.accounts);
+            if (linkedin.accounts[0] && !form.linkedinAccountUrn) {
+              setForm((f) => ({ ...f, linkedinAccountUrn: linkedin.accounts[0].id }));
             }
           }
         }
       }, 800);
+      oauthPollRef.current = pollInterval;
     } catch (err) {
       setAccountError(err instanceof Error ? err.message : 'Ukjent feil ved OAuth-start');
       setOauthStarting(null);
@@ -737,16 +756,18 @@ function MccInviteSection() {
   // Auto-polling: mens panelet er åpent OG vi har minst én PENDING-link,
   // poll hvert 30. sek for å fange status-endringer (klient godkjenner /
   // avviser invitasjon) uten at produsenten må klikke 'Oppdater' selv.
+  // Derive the boolean in render and depend on IT, not the whole links array —
+  // otherwise every poll result (setLinks) re-ran this effect and tore
+  // down/recreated the interval, so the 30s timer rarely elapsed cleanly.
+  const hasPendingLink = links.some((l) => l.status === 'PENDING');
   useEffect(() => {
-    if (!expanded) return;
-    const hasPending = links.some((l) => l.status === 'PENDING');
-    if (!hasPending) return;
+    if (!expanded || !hasPendingLink) return;
     const interval = setInterval(() => {
       void fetchLinks();
     }, 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expanded, links]);
+  }, [expanded, hasPendingLink]);
 
   const sendInvite = async () => {
     const digits = customerIdInput.replace(/[^0-9]/g, '');
