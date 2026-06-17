@@ -70,12 +70,19 @@ if [ -d "migrations" ]; then
           fi
           
           echo "  ➤ Applying $base_name..."
-          # ON_ERROR_STOP=1 + --single-transaction sikrer at psql exit'er
-          # m/ non-zero hvis SQL feiler inne i BEGIN/COMMIT. Uten dette
-          # returnerer psql exit 0 selv ved ROLLBACK, og vi ville feil-
-          # logge som "applied successfully" (skjedde 2026-06-17 for
-          # mig 285-298 — se 0000_zz_cleanup_failed_2026_06_17.sql).
-          if psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f "$migration_file"; then
+          # ON_ERROR_STOP=1 sikrer at psql exit'er m/ non-zero hvis SQL
+          # feiler. Uten dette returnerer psql exit 0 selv ved ROLLBACK,
+          # og vi ville feil-logge som "applied successfully" (skjedde
+          # 2026-06-17 for mig 285-298 — se 0000_zz_cleanup_failed_*.sql).
+          #
+          # IKKE bruk --single-transaction: mig-filer har egne
+          # BEGIN/COMMIT-blokker. --single-transaction wrap'er hele filen
+          # i ekstra outer-transaction som gir nested-warning, og hvis
+          # filen feiler så ruller outer-TX tilbake selv om inner COMMIT
+          # var passert. Da mister vi delvis-progress (skjedde 2026-06-18
+          # — mig 0285 skapte organizations + brakk på linje 230 →
+          # outer-TX rullet ALT tilbake → 286+ så ingen organizations).
+          if psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration_file"; then
             # Record successful migration
             psql "$DATABASE_URL" -c "INSERT INTO _migrations_applied (filename) VALUES ('$base_name') ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
             echo "  ✅ $base_name applied successfully"
