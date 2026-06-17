@@ -377,6 +377,33 @@ function readCookie(req: express.Request, name: string): string | undefined {
 export function setupMetaCapiRoutes(deps: MetaCapiDeps): void {
   const { app, getActiveSessionFromRequest } = deps;
 
+  // LM-7: in-memory state for rate-limit + eventId-dedup. Pr-process
+  // (per-replikat) — godt nok mot tilfeldig F5-pålegg og automated
+  // spam, men ikke distributert. For sterkere garantier ville Redis
+  // vært neste steg.
+  const RATE_WINDOW_MS = 60_000;
+  const RATE_LIMIT_PER_IP = 30;
+  const EVENT_ID_TTL_MS = 10 * 60_000;     // 10 min
+  const VALUE_CEILING = 1_000_000;          // NOK 1M sanity-cap
+
+  const ipHits = new Map<string, number[]>();
+  const seenEventIds = new Map<string, number>();   // eventId → expiry-ts
+
+  function pruneExpired(now: number): void {
+    if (ipHits.size > 5000) {
+      for (const [ip, hits] of ipHits) {
+        const fresh = hits.filter((t) => now - t < RATE_WINDOW_MS);
+        if (fresh.length === 0) ipHits.delete(ip);
+        else if (fresh.length < hits.length) ipHits.set(ip, fresh);
+      }
+    }
+    if (seenEventIds.size > 5000) {
+      for (const [id, expiry] of seenEventIds) {
+        if (expiry < now) seenEventIds.delete(id);
+      }
+    }
+  }
+
   app.post("/api/marketing/meta-capi-event", async (req, res) => {
     const body = (req.body ?? {}) as {
       eventName?: string;
@@ -396,6 +423,41 @@ export function setupMetaCapiRoutes(deps: MetaCapiDeps): void {
     if (!eventId || eventId.length < 8 || eventId.length > 128) {
       res.status(400).json({ error: "ugyldig_event_id" });
       return;
+    }
+
+    // LM-7: per-IP rate-limit (max 30 hendelser pr min)
+    const now = Date.now();
+    pruneExpired(now);
+    const clientIp = extractClientIp(req);
+    const recentHits = (ipHits.get(clientIp) ?? []).filter(
+      (t) => now - t < RATE_WINDOW_MS,
+    );
+    if (recentHits.length >= RATE_LIMIT_PER_IP) {
+      res.status(429).json({ error: "rate_limited" });
+      return;
+    }
+    recentHits.push(now);
+    ipHits.set(clientIp, recentHits);
+
+    // LM-7: kort-TTL eventId-cache — hopp over duplicate eventId-er
+    // som fyrer innen 10 min (typisk dobbeltklikk-symptom)
+    const eventIdExpiry = seenEventIds.get(eventId);
+    if (eventIdExpiry && eventIdExpiry > now) {
+      res.json({ duplicate: true, eventId });
+      return;
+    }
+    seenEventIds.set(eventId, now + EVENT_ID_TTL_MS);
+
+    // LM-7: bound custom_data.value mot vanvittige Purchase-verdier
+    // som ville skewet ad-spend-optimering
+    if (body.customData && "value" in body.customData) {
+      const raw = body.customData.value;
+      const num = typeof raw === "number" ? raw : Number(raw);
+      if (Number.isNaN(num) || num < 0 || num > VALUE_CEILING) {
+        res.status(400).json({ error: "ugyldig_value" });
+        return;
+      }
+      body.customData.value = num;
     }
 
     // Berikre user_data med ekte client-IP + UA + cookies fra request
