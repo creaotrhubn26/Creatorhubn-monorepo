@@ -84,3 +84,4 @@ DELETE FROM _migrations_applied WHERE filename IN (
   '297_pitch_slide_soft_delete.sql',
   '298_lead_research_orchestrator.sql'
 );
+-- retrigger m/ ny migrate.sh (0026) --
