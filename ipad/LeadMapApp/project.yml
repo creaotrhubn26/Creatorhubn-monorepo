@@ -69,6 +69,10 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.creatorhubn.LeadMapApp
+        # APNs (PR #622+627). 'development' = Sandbox (dev-bygg).
+        # App Store-bygging overskrives automatisk til 'production'
+        # av Apple ved arkiv-eksport — det skjer transparently.
+        aps-environment: development
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp
