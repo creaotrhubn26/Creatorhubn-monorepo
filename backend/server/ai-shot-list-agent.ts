@@ -232,7 +232,7 @@ export const shotListAgent: AIAgent = {
       const AnthropicCtor = mod.default ?? mod.Anthropic;
       const client: any = new AnthropicCtor({
         apiKey,
-        maxRetries: 1,
+        maxRetries: 3, // ride out 429/529 bursts during bulk generate
         timeout: 60_000,
       });
 
@@ -254,6 +254,10 @@ export const shotListAgent: AIAgent = {
         }],
       });
       logAIUsage(response as any, { feature: 'role-room/shot-list' }).catch(() => undefined);
+
+      if (response.stop_reason === "max_tokens") {
+        console.warn("[shot-list-agent] response truncated at max_tokens — shots may be incomplete");
+      }
 
       const toolBlock = (response.content ?? []).find(
         (b: any) => b?.type === "tool_use" && b?.name === SHOT_LIST_TOOL_SCHEMA.name,

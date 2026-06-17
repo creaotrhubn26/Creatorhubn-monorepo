@@ -176,15 +176,27 @@ function buildSystemPrompt(): string {
   ].join("\n");
 }
 
+// Bound the prompt so a pathological project (hundreds of scenes / huge
+// pasted text) can't build a multi-megabyte request that scales cost+latency
+// linearly and can hang to the 120s timeout. Generous enough for any real
+// feature-length script.
+const MAX_SCENES_IN_PROMPT = 200;
+const MAX_SCENE_CHARS = 6000;
+
 function buildUserPrompt(input: StoryLogicAgentInput): string {
   const existingRoles = input.existingRoles.length > 0
     ? input.existingRoles.map((r) => `- ${r.name}`).join("\n")
     : "(ingen)";
 
-  const scenes = input.scenes
+  const capped = input.scenes.slice(0, MAX_SCENES_IN_PROMPT);
+  const scenes = capped
     .map((s) => {
       const header = `### Scene ${s.sceneNumber ?? "?"} (id: ${s.id})${s.sceneHeading ? ` — ${s.sceneHeading}` : ""}`;
-      return `${header}\n${s.sceneText.trim()}`;
+      const text = s.sceneText.trim();
+      const bounded = text.length > MAX_SCENE_CHARS
+        ? `${text.slice(0, MAX_SCENE_CHARS)}\n…[avkortet]`
+        : text;
+      return `${header}\n${bounded}`;
     })
     .join("\n\n");
 
@@ -270,7 +282,10 @@ export const storyLogicAgent: AIAgent = {
       const AnthropicCtor = mod.default ?? mod.Anthropic;
       const client: any = new AnthropicCtor({
         apiKey,
-        maxRetries: 1,
+        // 3 retries (was 1) — these short idempotent calls run inside the
+        // bulk generate path; a single retry is often not enough to ride out
+        // a 429/529 overload burst, which otherwise drops all suggestions.
+        maxRetries: 3,
         // Lengre timeout enn de andre agentene — full manus-analyse tar tid
         timeout: 120_000,
       });
@@ -298,6 +313,13 @@ export const storyLogicAgent: AIAgent = {
         }],
       });
       logAIUsage(response as any, { feature: 'role-room/story-logic' }).catch(() => undefined);
+
+      // A tool_use cut off at max_tokens yields a partial/empty input object
+      // that still passes the typeof check below, silently dropping issues
+      // with no signal. Surface it so it's diagnosable in prod.
+      if (response.stop_reason === "max_tokens") {
+        console.warn("[story-logic-agent] response truncated at max_tokens — issues may be incomplete");
+      }
 
       const toolBlock = (response.content ?? []).find(
         (b: any) => b?.type === "tool_use" && b?.name === STORY_LOGIC_TOOL_SCHEMA.name,
