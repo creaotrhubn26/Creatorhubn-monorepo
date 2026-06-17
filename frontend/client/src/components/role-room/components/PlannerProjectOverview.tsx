@@ -15,7 +15,7 @@
  * urørt). Cross-prosjekt-kommandosenter hører hjemme i prosjekt-velgeren og
  * bygges separat.
  */
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Box, Stack, Typography, LinearProgress, Button } from '@mui/material';
 import {
   CheckCircleOutline as OnTrackIcon,
@@ -32,13 +32,19 @@ import type {
   ProducerPhasePlanItem,
   ProducerPlanningPhase,
 } from '../models/casting';
+import {
+  listDeliverables,
+  type RoleRoomDeliverable,
+} from '../services/roleRoomDeliverablesApi';
+import { LocalShippingOutlined as DeliveryIcon } from '@mui/icons-material';
 
 type PlannerProjectOverviewProps = {
   project: CastingProject | null;
   /** Naviger til en fane-indeks (gjenbruker panelets navigateToTab). */
   onNavigateToTab?: (tabIndex: number) => void;
-  /** Fane-indekser for CTA-er (Godkjenning, Kalender). */
+  /** Fane-indekser for CTA-er (Godkjenning, Kalender, Levering). */
   approvalTabIndex?: number;
+  deliveryTabIndex?: number;
   calendarTabIndex?: number;
 };
 
@@ -109,10 +115,40 @@ export default function PlannerProjectOverview({
   onNavigateToTab,
   approvalTabIndex,
   calendarTabIndex,
+  deliveryTabIndex,
 }: PlannerProjectOverviewProps) {
   // Én «nå» for hele komponenten → alle nedtellinger deler samme referanse
   // (unngår at ulike rader impliserer ulike «nå»-tider, jf. kritikken).
   const now = Date.now();
+
+  // Kommende leveranser fra den strukturerte leveranse-modellen (mig 291).
+  const [deliverables, setDeliverables] = useState<RoleRoomDeliverable[]>([]);
+  const projectId = project?.id;
+  useEffect(() => {
+    if (!projectId) { setDeliverables([]); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listDeliverables(projectId);
+        if (!cancelled) setDeliverables(list);
+      } catch {
+        if (!cancelled) setDeliverables([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  const upcomingDeliverables = useMemo(
+    () => deliverables
+      .filter((d) => d.status !== 'delivered')
+      .sort((a, b) => {
+        if (a.dueAt && b.dueAt) return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
+        if (a.dueAt) return -1;
+        if (b.dueAt) return 1;
+        return 0;
+      }),
+    [deliverables],
+  );
 
   const model = useMemo(() => {
     if (!project) return null;
@@ -278,11 +314,11 @@ export default function PlannerProjectOverview({
         })}
       </Box>
 
-      {/* ── Bunn-rad: neste milepæl · opptak denne uka · hva haster ── */}
+      {/* ── Bunn-rad: neste milepæl · opptak · leveranser · hva haster ── */}
       <Box
         sx={{
           mt: 2, display: 'grid', gap: 1.5,
-          gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
+          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' },
         }}
       >
         {/* Neste milepæl */}
@@ -342,6 +378,41 @@ export default function PlannerProjectOverview({
             </Typography>
           ) : (
             <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '12px' }}>Ingenting venter — alt er ajour</Typography>
+          )}
+        </InfoTile>
+
+        {/* Kommende leveranser (fra leveranse-modellen) */}
+        <InfoTile
+          icon={<DeliveryIcon sx={{ fontSize: 16, color: '#a855f7' }} />}
+          label="Kommende leveranser"
+          action={deliveryTabIndex !== undefined && onNavigateToTab
+            ? { label: 'Leveranser', onClick: () => onNavigateToTab(deliveryTabIndex) }
+            : undefined}
+        >
+          {upcomingDeliverables.length > 0 ? (
+            <Stack spacing={0.3}>
+              {upcomingDeliverables.slice(0, 2).map((d) => {
+                const dd = daysUntil(d.dueAt, now);
+                const overdue = dd !== null && dd < 0;
+                return (
+                  <Box key={d.id}>
+                    <Typography sx={{ color: '#f5f3ff', fontSize: '12.5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.title}>
+                      {d.title}
+                    </Typography>
+                    {d.dueAt ? (
+                      <Typography sx={{ color: overdue ? '#fca5a5' : 'rgba(226,232,240,0.78)', fontSize: '11px', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatDate(d.dueAt)} · {relativeDayLabel(d.dueAt, now)}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                );
+              })}
+              {upcomingDeliverables.length > 2 ? (
+                <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '11.5px' }}>+{upcomingDeliverables.length - 2} flere</Typography>
+              ) : null}
+            </Stack>
+          ) : (
+            <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '12px' }}>Ingen åpne leveranser</Typography>
           )}
         </InfoTile>
       </Box>
