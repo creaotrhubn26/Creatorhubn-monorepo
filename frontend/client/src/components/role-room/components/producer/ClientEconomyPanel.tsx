@@ -218,6 +218,46 @@ export default function ClientEconomyPanel({
 
   return (
     <Stack spacing={1.6} sx={{ p: { xs: 1, sm: 1.5 } }}>
+      {/* ── ROI-sammendrag (award-flate) — stor avkastning øverst, ikke-teknisk.
+          Data-drevet fra results.totals; vises kun når ROAS finnes. ── */}
+      {results?.totals?.roas != null ? (
+        <Box
+          sx={{
+            borderRadius: '16px',
+            border: '1px solid rgba(168,85,247,0.3)',
+            background: 'linear-gradient(135deg, rgba(124,58,237,0.18) 0%, rgba(217,70,239,0.1) 60%, rgba(10,10,20,0.6) 100%)',
+            p: { xs: 2, sm: 2.5 },
+            boxShadow: '0 14px 36px rgba(0,0,0,0.4)',
+          }}
+        >
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} justifyContent="space-between">
+            <Box>
+              <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Samlet avkastning (ROAS)
+              </Typography>
+              <Typography sx={{ fontSize: { xs: '40px', sm: '48px' }, fontWeight: 800, lineHeight: 1, background: 'linear-gradient(135deg,#c4b5fd,#f0abfc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontVariantNumeric: 'tabular-nums', mt: 0.4 }}>
+                {results.totals.roas.toLocaleString('nb-NO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}×
+              </Typography>
+              <Typography sx={{ color: 'rgba(226,232,240,0.86)', fontSize: '13px', mt: 0.6, maxWidth: 360 }}>
+                For hver krone investert fikk dere <Box component="span" sx={{ color: '#86efac', fontWeight: 700 }}>{results.totals.roas.toLocaleString('nb-NO', { maximumFractionDigits: 1 })} kroner</Box> tilbake i målbar omsetning.
+              </Typography>
+            </Box>
+            <Stack spacing={1} sx={{ minWidth: { sm: 200 } }}>
+              <Box sx={{ p: 1.2, borderRadius: '12px', border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(255,255,255,0.03)' }}>
+                <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Tilskrevet omsetning</Typography>
+                <Typography sx={{ color: '#f5f3ff', fontSize: '18px', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{nok(results.totals.conversionValueNok)}</Typography>
+              </Box>
+              {summary ? (
+                <Box sx={{ p: 1.2, borderRadius: '12px', border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(255,255,255,0.03)' }}>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Annonsekostnad</Typography>
+                  <Typography sx={{ color: '#f5f3ff', fontSize: '18px', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{nok(summary.spendNok)}</Typography>
+                </Box>
+              ) : null}
+            </Stack>
+          </Stack>
+        </Box>
+      ) : null}
+
       {/* ── Annonseforbruk + påslag (§5.3) ── */}
       <Stack spacing={1.2} sx={CARD_SX}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap' }}>
