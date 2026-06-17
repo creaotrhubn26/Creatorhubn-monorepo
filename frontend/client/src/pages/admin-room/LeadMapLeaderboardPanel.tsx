@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Avatar, Badge, Box, Button, Card, CardContent, Chip, CircularProgress,
-  Grid, LinearProgress, MenuItem, Select, Stack, Table, TableBody,
+  Grid2 as Grid, LinearProgress, MenuItem, Select, Stack, Table, TableBody,
   TableCell, TableHead, TableRow, ToggleButton, ToggleButtonGroup,
   Tooltip, Typography,
 } from '@mui/material';
