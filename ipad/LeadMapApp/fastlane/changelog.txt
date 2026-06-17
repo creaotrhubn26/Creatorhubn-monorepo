@@ -1,0 +1,19 @@
+Lead Map v0.1.0 — første TestFlight-bygg
+
+Feltsalg-app for The Role Room med 5 tabs:
+
+• Min dag — workload + kvote-progresjon + Claude-prioritert lead-liste
+• Kart — bedrifts-logo-pins + live selger-pins + GPS-distanse
+• Team — leaderboard (kun ledere) m/ gull/sølv/bronse for top 3
+• Varsler — push når lead-status endres, ny lead tildelt, du nær lead
+• Org — innstillinger + medlemmer + Mine tilganger
+
+Smart-funksjoner:
+• Visittkort-scanner (VisionKit) — peker kamera, oppretter lead
+• Voice-dikter visit-notater (Speech) — m/ Claude som finner datoer,
+  erstatter "kunden" med navn, og lager kalender-events
+• Forbered møte — Claude-brief m/ BRREG, kontrakt-anbefaling,
+  pitch-deck-forslag, og personlig tilnærming
+• Live Activity på låseskjerm — "Pågående besøk: X, 23 min"
+• Apple Pencil — tegn fokus-områder på kartet for selgerne
+• Nær-lead-varsel via geofence — push når innen 500m
