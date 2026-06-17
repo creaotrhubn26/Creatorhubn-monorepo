@@ -45,6 +45,7 @@ import {
   PushPin as PushPinIcon,
   PushPinOutlined as PushPinOutlinedIcon,
   SaveOutlined as SaveOutlinedIcon,
+  CloudUploadOutlined as CloudUploadOutlinedIcon,
   SpaceDashboardOutlined as SpaceDashboardOutlinedIcon,
   SubdirectoryArrowRight as SubdirectoryArrowRightIcon,
   CloudUpload as CloudUploadIcon,
@@ -2985,6 +2986,25 @@ export default function ProducerMediaPanel({
       setSavingIntake(false);
     }
   }, [intakeDraft, isBriefLockedByApproval, persistPlanningDraft, planningDraft, projectId, serializeIntakeSnapshot]);
+
+  const [publishingIntake, setPublishingIntake] = useState(false);
+  const handlePublishIntake = useCallback(async (shouldPublish: boolean) => {
+    setPublishingIntake(true);
+    setError(null);
+    try {
+      // Lagre eventuelle endringer først, så er det den ferske briefen som publiseres.
+      await producerWorkflowService.updateClientIntake(projectId, intakeDraft);
+      const saved = await producerWorkflowService.publishClientIntake(projectId, shouldPublish);
+      const nextDraft = { ...EMPTY_INTAKE, ...saved };
+      setIntakeDraft(nextDraft);
+      savedIntakeSnapshotRef.current = serializeIntakeSnapshot(nextDraft);
+    } catch (publishError) {
+      console.error('[ProducerMediaPanel] Failed to publish client intake', publishError);
+      setError('Kunne ikke publisere briefen til klienten.');
+    } finally {
+      setPublishingIntake(false);
+    }
+  }, [intakeDraft, projectId, serializeIntakeSnapshot]);
 
   const handleGenerateRoleRoomAgent = useCallback(async (input: {
     projectId: string;
@@ -9704,16 +9724,43 @@ export default function ProducerMediaPanel({
                       </Stack>
                       <Button
                         size="small"
-                        variant="contained"
+                        variant="outlined"
                         startIcon={<SaveOutlinedIcon />}
                         onClick={() => {
                           void handleSaveIntake();
                         }}
                         disabled={!canEditBriefInput || savingIntake}
-                        sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
+                        sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                       >
-                        {savingIntake ? 'Lagrer brief...' : 'Lagre brief'}
+                        {savingIntake ? 'Lagrer brief...' : 'Lagre utkast'}
                       </Button>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<CloudUploadOutlinedIcon />}
+                        onClick={() => {
+                          void handlePublishIntake(true);
+                        }}
+                        disabled={!canEditBriefInput || publishingIntake}
+                        sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, bgcolor: '#0f766e', color: '#fff', '&:hover': { bgcolor: '#0d655e' } }}
+                      >
+                        {publishingIntake
+                          ? 'Publiserer...'
+                          : intakeDraft.publishedAt
+                            ? 'Publiser oppdatering'
+                            : 'Publiser til klient'}
+                      </Button>
+                      {intakeDraft.publishedAt ? (
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => { void handlePublishIntake(false); }}
+                          disabled={publishingIntake}
+                          sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.7)' }}
+                        >
+                          Avpubliser
+                        </Button>
+                      ) : null}
                     </>
                   )}
                 </Stack>
