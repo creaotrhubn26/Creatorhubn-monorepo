@@ -180,6 +180,7 @@ import { CommandPalette, type CommandPaletteItem } from './CommandPalette';
 import { PlannerBreadcrumb, type PlannerBreadcrumbSegment } from './PlannerBreadcrumb';
 import { WorkspaceModeBadge, type WorkspaceMode } from './WorkspaceModeBadge';
 import PlannerProjectOverview from './PlannerProjectOverview';
+import PlannerMinDag from './PlannerMinDag';
 import {
   ContentProducerWorkflowStepper,
   type WorkflowStepKey,
@@ -10011,12 +10012,18 @@ type RoleRoomProjectWorkspaceState = {
           ) : (
           <>
           {isContentProducerMode ? (
-            <PlannerProjectOverview
-              project={currentProject}
-              onNavigateToTab={(tabIndex) => navigateToTab(tabIndex)}
-              approvalTabIndex={PRODUCER_REVIEWS_TAB_INDEX}
-              calendarTabIndex={CALENDAR_TAB_INDEX}
-            />
+            <>
+              <PlannerMinDag
+                projects={projects}
+                onOpenProject={handleSelectProjectFromSelector}
+              />
+              <PlannerProjectOverview
+                project={currentProject}
+                onNavigateToTab={(tabIndex) => navigateToTab(tabIndex)}
+                approvalTabIndex={PRODUCER_REVIEWS_TAB_INDEX}
+                calendarTabIndex={CALENDAR_TAB_INDEX}
+              />
+            </>
           ) : null}
           <DashboardPanel
             key={currentProject?.id ?? 'no-project'}
