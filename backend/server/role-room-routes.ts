@@ -15515,6 +15515,115 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   });
 
+  // Merkevare-/material-kategorier (entry_type). brand_* = logo/farger/fonter,
+  // reference = referanser, other = annet. Fri TEXT i DB; dette er whitelisten.
+  const ALLOWED_MATERIAL_ENTRY_TYPES = [
+    'brand_logo', 'brand_colors', 'brand_fonts', 'brand_asset',
+    'asset_link', 'reference', 'document', 'brief_note', 'feedback', 'other',
+  ];
+
+  // ── Autentisert filopplasting (merkevare-fane i klient-workspace + produsent)
+  // Speiler /client-portal/materials, men bruker innlogget sesjon i stedet for
+  // token, og varsler MOTPARTEN (klient laster opp → produsent, og omvendt).
+  router.post(
+    '/projects/:projectId/producer/client-materials/upload',
+    apiKeyAuth(pool, activeSessions),
+    roleRoomClientAssetUpload.single('file'),
+    async (req: Request, res: Response) => {
+      if (!(await ensureProducerWorkflowTables())) {
+        res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+        return;
+      }
+      const projectId = req.params.projectId;
+      const userId = getUserId(req);
+      const uploadedFile = (req as Request & { file?: Express.Multer.File }).file;
+      if (!uploadedFile) { res.status(400).json({ error: 'Mangler fil' }); return; }
+      try {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canWriteProducerClientInput(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler tilgang til å laste opp materiale' });
+          return;
+        }
+        const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+        const role = effectiveRoleRecord?.role ?? (requireScope(req, 'admin') ? 'admin' : 'unknown');
+        const uploadedByClient = isClientReviewerProjectRole(role);
+
+        const rawType = typeof req.body?.entryType === 'string' ? req.body.entryType.trim().toLowerCase() : '';
+        const entryType = ALLOWED_MATERIAL_ENTRY_TYPES.includes(rawType) ? rawType : 'other';
+        const titleRaw = typeof req.body?.title === 'string' && req.body.title.trim()
+          ? req.body.title.trim()
+          : (uploadedFile.originalname || 'Fil');
+        const description = typeof req.body?.description === 'string' && req.body.description.trim()
+          ? req.body.description.trim()
+          : null;
+
+        const materialId = crypto.randomUUID();
+        const safeOriginalName = sanitizeRoleRoomTalentFileSegment(uploadedFile.originalname || 'fil');
+        const extension = path.extname(safeOriginalName) || '.bin';
+        const fileName = `${materialId}${extension}`;
+        const storageDirectory = path.join(ROLE_ROOM_CLIENT_ASSET_UPLOAD_ROOT, sanitizeRoleRoomTalentFileSegment(projectId));
+        await fs.mkdir(storageDirectory, { recursive: true });
+        const storagePath = path.join(storageDirectory, fileName);
+        await fs.writeFile(storagePath, uploadedFile.buffer);
+        const sha256 = crypto.createHash('sha256').update(uploadedFile.buffer).digest('hex');
+
+        const metadata = {
+          file: {
+            fileName,
+            originalName: uploadedFile.originalname || fileName,
+            mimeType: uploadedFile.mimetype || 'application/octet-stream',
+            fileSize: uploadedFile.size,
+            sha256,
+            storagePath,
+          },
+          uploadedByClient,
+        };
+
+        const result = await pool.query(
+          `INSERT INTO role_room_client_materials (
+            id, project_id, entry_type, title, description, external_url, phase,
+            linked_shot_list_id, status, metadata, created_by_user_id, created_by_role, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, 'provided', $6::jsonb, $7, $8, NOW(), NOW())
+          RETURNING *`,
+          [materialId, projectId, entryType, titleRaw, description, JSON.stringify(metadata), userId, role],
+        );
+
+        try {
+          if (uploadedByClient) {
+            await notifyProducerTeamAboutClientMaterial(
+              projectId, result.rows[0] as ProducerClientMaterialRow, userId, role, 'created',
+            );
+          } else {
+            await upsertProducerProjectNotification({
+              projectId, audience: 'client', eventType: 'producer_material_shared',
+              title: 'Produsenten delte en fil',
+              message: `${titleRaw} er delt med deg.`,
+              linkedEntityType: 'client_material', linkedEntityId: materialId,
+              createdByUserId: userId, createdByRole: role,
+              metadata: { inboxType: 'material' },
+            });
+          }
+        } catch (notifyError) {
+          console.warn('[role-room] material upload notify failed', notifyError);
+        }
+
+        res.status(201).json({
+          item: {
+            ...result.rows[0],
+            file: {
+              originalName: metadata.file.originalName,
+              mimeType: metadata.file.mimeType,
+              fileSize: metadata.file.fileSize,
+            },
+          },
+        });
+      } catch (error) {
+        console.error('[role-room] authenticated material upload failed', error);
+        res.status(500).json({ error: 'Kunne ikke laste opp filen' });
+      }
+    },
+  );
+
   // ── Klient-filopplasting fra portalen ────────────────────────────────────
   // Klienten (Helene) laster opp logo/brand-filer/brief direkte fra portalen.
   // Filen lagres på disk + en role_room_client_materials-rad (created_by_role
@@ -15534,8 +15643,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     try {
       const projectId = session.projectId;
       const rawType = typeof req.body?.entryType === 'string' ? req.body.entryType.trim().toLowerCase() : '';
-      const allowedTypes = ['brand_asset', 'asset_link', 'reference', 'document', 'brief_note', 'feedback'];
-      const entryType = allowedTypes.includes(rawType) ? rawType : 'brand_asset';
+      const entryType = ALLOWED_MATERIAL_ENTRY_TYPES.includes(rawType) ? rawType : 'brand_asset';
       const titleRaw = typeof req.body?.title === 'string' && req.body.title.trim()
         ? req.body.title.trim()
         : (uploadedFile.originalname || 'Klientfil');
