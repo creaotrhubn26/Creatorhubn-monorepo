@@ -53,6 +53,7 @@ import { onProjectAgreementEvent } from '../services/projectAgreementEvents';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import { SimpleBudgetEstimator, computeSimpleBudgetEstimate } from './SimpleBudgetEstimator';
 import { ProducerTodoButton } from './ProducerTodoButton';
+import EconomyHealthHeader from './EconomyHealthHeader';
 import {
   buildProducerDeliveryManifest,
   getProducerWorkspaceLocationForSurface,
@@ -2330,6 +2331,13 @@ export default function ProjectEconomyHub({
 
         <Box sx={{ p: { xs: 1.25, md: 1.75 } }}>
           {activeView === 'overview' ? (
+            <>
+            <EconomyHealthHeader
+              budget={projectBudget}
+              spent={phaseTotals.preproduction.actual + phaseTotals.production.actual + phaseTotals.postproduction.actual}
+              approved={phaseTotals.preproduction.approved + phaseTotals.production.approved + phaseTotals.postproduction.approved}
+              currency={project.currency ?? 'NOK'}
+            />
             <Box
               sx={{
                 display: 'grid',
@@ -2807,6 +2815,7 @@ export default function ProjectEconomyHub({
                 </Stack>
               </Box>
             </Box>
+            </>
           ) : null}
           {activeView === 'budget' ? (
             <Stack spacing={2}>
