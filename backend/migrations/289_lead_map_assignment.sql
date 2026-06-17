@@ -39,9 +39,12 @@ CREATE INDEX IF NOT EXISTS idx_crm_customers_last_contacted
   WHERE assigned_user_id IS NOT NULL;
 
 -- Audit-spor
+-- NB: lead_id er UUID (matcher prod's crm_customers.id som er UUID).
+-- Tidligere versjon hadde VARCHAR(255) som ga FK-type-mismatch-feil
+-- 2026-06-18 ved første re-run.
 CREATE TABLE IF NOT EXISTS lead_assignment_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  lead_id VARCHAR(255) NOT NULL
+  lead_id UUID NOT NULL
     REFERENCES crm_customers(id) ON DELETE CASCADE,
   organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
   from_user_id VARCHAR(255) REFERENCES users(id) ON DELETE SET NULL,
