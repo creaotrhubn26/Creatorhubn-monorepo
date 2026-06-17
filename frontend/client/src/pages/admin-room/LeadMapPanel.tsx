@@ -80,7 +80,7 @@ import KeyboardOutlinedIcon from '@mui/icons-material/KeyboardOutlined';
 import TabletMacOutlinedIcon from '@mui/icons-material/TabletMacOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
-type LeadStatus =
+export type LeadStatus =
   | 'unvisited' | 'visited' | 'return' | 'not_present' | 'declined'
   | 'interested' | 'meeting_booked' | 'proposal_sent' | 'won' | 'lost'
   | 'do_not_contact';
