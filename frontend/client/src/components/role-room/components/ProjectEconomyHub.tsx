@@ -55,6 +55,7 @@ import { SimpleBudgetEstimator, computeSimpleBudgetEstimate } from './SimpleBudg
 import { ProducerTodoButton } from './ProducerTodoButton';
 import EconomyHealthHeader from './EconomyHealthHeader';
 import BudgetProgressBar from './BudgetProgressBar';
+import ClientPublishBanner from './ClientPublishBanner';
 import {
   buildProducerDeliveryManifest,
   getProducerWorkspaceLocationForSurface,
@@ -607,6 +608,7 @@ export default function ProjectEconomyHub({
     createItem,
     updateItem,
     removeItem,
+    publishItem,
   } = useProducerEconomy(project.id);
   const {
     items: reviewItems,
@@ -2338,6 +2340,29 @@ export default function ProjectEconomyHub({
               spent={phaseTotals.preproduction.actual + phaseTotals.production.actual + phaseTotals.postproduction.actual}
               approved={phaseTotals.preproduction.approved + phaseTotals.production.approved + phaseTotals.postproduction.approved}
               currency={project.currency ?? 'NOK'}
+            />
+            <ClientPublishBanner
+              noun="budsjettlinjer"
+              publishedCount={items.filter((i) => i.published_at).length}
+              draftCount={items.filter((i) => !i.published_at).length}
+              onPublishAll={async () => {
+                const drafts = items.filter((i) => !i.published_at);
+                let ok = 0;
+                for (const draft of drafts) {
+                  try {
+                    await publishItem(draft.id, true);
+                    ok += 1;
+                  } catch {
+                    /* fortsett med resten */
+                  }
+                }
+                enqueueSnackbar(
+                  ok > 0
+                    ? `Publiserte ${ok} budsjettlinje${ok === 1 ? '' : 'r'} til klienten.`
+                    : 'Kunne ikke publisere budsjettlinjene.',
+                  { variant: ok > 0 ? 'success' : 'error' },
+                );
+              }}
             />
             <Box
               sx={{

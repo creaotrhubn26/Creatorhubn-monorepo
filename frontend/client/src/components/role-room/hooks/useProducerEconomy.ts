@@ -85,6 +85,13 @@ export function useProducerEconomy(projectId?: string) {
     setItems((prev) => prev.filter((item) => item.id !== itemId));
   }, [projectId]);
 
+  const publishItem = useCallback(async (itemId: string, publish = true) => {
+    if (!projectId) throw new Error('Mangler projectId');
+    const updated = await producerWorkflowService.publishEconomyItem(projectId, itemId, publish);
+    setItems((prev) => prev.map((item) => (item.id === itemId ? updated : item)));
+    return updated;
+  }, [projectId]);
+
   const totals = useMemo(() => {
     const toNumber = (value: string | number): number => {
       if (typeof value === 'number') return value;
@@ -111,5 +118,6 @@ export function useProducerEconomy(projectId?: string) {
     createItem,
     updateItem,
     removeItem,
+    publishItem,
   };
 }
