@@ -616,15 +616,6 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
         ...getDefaultInterfacePreferences(),
         ...(preferences || {}),
       };
-      const existing = await pool.query<{ id: string }>(
-        `SELECT id
-         FROM user_preferences
-         WHERE user_id = $1
-         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-         LIMIT 1`,
-        [sessionId],
-      );
-
       const dashboardPayload = {
         layout: normalized.dashboardLayout,
       };
@@ -640,36 +631,25 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
         currency: normalized.currency,
       };
 
-      if (existing.rows.length > 0) {
-        // Update existing
-        await pool.query(
-          `UPDATE user_preferences
-           SET theme = $2,
-               language = $3,
-               timezone = $4,
-               notifications = $5::jsonb,
-               dashboard = $6::jsonb,
-               preferences = $7::jsonb,
-               updated_at = NOW()
-           WHERE id = $1`,
-          [
-            existing.rows[0].id,
-            normalized.theme,
-            normalized.language,
-            normalized.timezone,
-            JSON.stringify(notificationsPayload),
-            JSON.stringify(dashboardPayload),
-            JSON.stringify(preferencesPayload),
-          ],
-        );
-      } else {
-        // Insert new
+      try {
+        // Single atomic upsert — race-free under concurrency (the old
+        // SELECT-then-UPDATE/INSERT could double-insert or lose updates when
+        // several saves for the same user overlapped). Relies on the UNIQUE
+        // index user_preferences(user_id) from migration 004.
         await pool.query(
           `INSERT INTO user_preferences (
             id, user_id, preferences, theme, language, timezone, notifications, dashboard, created_at, updated_at
           ) VALUES (
             $1, $2, $3::jsonb, $4, $5, $6, $7::jsonb, $8::jsonb, NOW(), NOW()
-          )`,
+          )
+          ON CONFLICT (user_id) DO UPDATE SET
+            theme = EXCLUDED.theme,
+            language = EXCLUDED.language,
+            timezone = EXCLUDED.timezone,
+            notifications = EXCLUDED.notifications,
+            dashboard = EXCLUDED.dashboard,
+            preferences = EXCLUDED.preferences,
+            updated_at = NOW()`,
           [
             crypto.randomUUID(),
             sessionId,
@@ -681,6 +661,55 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
             JSON.stringify(dashboardPayload),
           ],
         );
+      } catch (upsertErr) {
+        // 42P10 = no unique/exclusion constraint matching ON CONFLICT. A few
+        // legacy envs never got migration 004's unique index, so fall back to
+        // the read-modify-write path there rather than dropping the DB write.
+        if ((upsertErr as { code?: string })?.code !== "42P10") throw upsertErr;
+        const existing = await pool.query<{ id: string }>(
+          `SELECT id
+             FROM user_preferences
+            WHERE user_id = $1
+            ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+            LIMIT 1`,
+          [sessionId],
+        );
+        if (existing.rows.length > 0) {
+          await pool.query(
+            `UPDATE user_preferences
+                SET theme = $2, language = $3, timezone = $4,
+                    notifications = $5::jsonb, dashboard = $6::jsonb,
+                    preferences = $7::jsonb, updated_at = NOW()
+              WHERE id = $1`,
+            [
+              existing.rows[0].id,
+              normalized.theme,
+              normalized.language,
+              normalized.timezone,
+              JSON.stringify(notificationsPayload),
+              JSON.stringify(dashboardPayload),
+              JSON.stringify(preferencesPayload),
+            ],
+          );
+        } else {
+          await pool.query(
+            `INSERT INTO user_preferences (
+              id, user_id, preferences, theme, language, timezone, notifications, dashboard, created_at, updated_at
+            ) VALUES (
+              $1, $2, $3::jsonb, $4, $5, $6, $7::jsonb, $8::jsonb, NOW(), NOW()
+            )`,
+            [
+              crypto.randomUUID(),
+              sessionId,
+              JSON.stringify(preferencesPayload),
+              normalized.theme,
+              normalized.language,
+              normalized.timezone,
+              JSON.stringify(notificationsPayload),
+              JSON.stringify(dashboardPayload),
+            ],
+          );
+        }
       }
 
       res.json({
