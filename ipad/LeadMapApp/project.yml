@@ -16,7 +16,7 @@ settings:
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     VERSIONING_SYSTEM: apple-generic
     CURRENT_PROJECT_VERSION: "1"
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.2.0"
 
 targets:
   LeadMapApp:
@@ -29,10 +29,10 @@ targets:
     info:
       path: LeadMapApp/Generated/Info.plist
       properties:
-        CFBundleDisplayName: Lead Map
+        CFBundleDisplayName: Leadgrid
+        CFBundleName: Leadgrid
         UILaunchScreen:
-          UIColorName: LaunchSplashBackground
-          UIImageName: LeadMapLogo
+          UIImageName: LeadgridLogo
           UIImageRespectsSafeAreaInsets: true
         UIRequiredDeviceCapabilities: [arm64]
         UISupportedInterfaceOrientations:
@@ -47,23 +47,29 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         # Bruker GPS til å auto-fylle visit_latitude/longitude ved fysiske besøk
         # + vise "leads i nærheten av meg"-sortering.
-        NSLocationWhenInUseUsageDescription: Lead Map bruker din posisjon til å vise leads i nærheten + auto-fylle koordinater når du logger fysiske besøk.
+        NSLocationWhenInUseUsageDescription: Leadgrid bruker din posisjon til å vise leads i nærheten + auto-fylle koordinater når du logger fysiske besøk.
         # 'Always' kreves for Nær-lead-varsel — CLCircularRegion-monitorering
         # i bakgrunn slik at selger får push når de er innen 500m av en tildelt
         # lead, selv om app-en er lukket.
-        NSLocationAlwaysAndWhenInUseUsageDescription: Lead Map varsler deg når du er innen 500m av en tildelt lead — også når app-en er lukket. Du kan skru dette av i Org-tab → Personvern.
+        NSLocationAlwaysAndWhenInUseUsageDescription: Leadgrid varsler deg når du er innen 500m av en tildelt lead — også når app-en er lukket. Du kan skru dette av i Org-tab → Personvern.
         UIBackgroundModes:
           - location
         # Kamera: QR-paring (Admin Room) + visittkort-skanner (VisionKit #182).
-        NSCameraUsageDescription: Lead Map bruker kameraet til å skanne visittkort (auto-fyll lead) og QR-koden i Admin Room for paring.
+        NSCameraUsageDescription: Leadgrid bruker kameraet til å skanne visittkort (auto-fyll lead) og QR-koden i Admin Room for paring.
         # Mikrofon: dikter visit-notater (#183).
-        NSMicrophoneUsageDescription: Lead Map bruker mikrofonen til å diktere visit-notater etter besøk.
+        NSMicrophoneUsageDescription: Leadgrid bruker mikrofonen til å diktere visit-notater etter besøk.
         # Tale-gjenkjenning: transkriber dikterte notater (#183).
-        NSSpeechRecognitionUsageDescription: Lead Map transkriberer din tale til tekst slik at du kan diktere visit-notater hands-free.
+        NSSpeechRecognitionUsageDescription: Leadgrid transkriberer din tale til tekst slik at du kan diktere visit-notater hands-free.
         # Apple Pencil til notater i visit-loggen.
         UIApplicationSupportsIndirectInputEvents: true
         # Live Activities — 'Pågående besøk' på låseskjerm + Dynamic Island (#184).
         NSSupportsLiveActivities: true
+        # Export Compliance — Leadgrid bruker kun HTTPS (URLSession) +
+        # iOS Data Protection. Ingen egen krypto-kode i appen. Flipp
+        # dette til true HVIS du innfører end-to-end-kryptering,
+        # importerer CryptoKit for egen AES/RSA-bruk, eller
+        # implementerer noe utover OS-innebygd kryptering.
+        ITSAppUsesNonExemptEncryption: false
     entitlements:
       path: LeadMapApp/Generated/LeadMapApp.entitlements
       properties:
@@ -79,6 +85,7 @@ targets:
         INFOPLIST_FILE: LeadMapApp/Generated/Info.plist
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   # Widget Extension: 'Møter i dag' + 'Stille leads' på homescreen.
   # Leser data fra delt App Group skrevet av hovedappen etter hver
@@ -95,7 +102,7 @@ targets:
     info:
       path: LeadMapWidget/Generated/Info.plist
       properties:
-        CFBundleDisplayName: Lead Map
+        CFBundleDisplayName: Leadgrid
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:

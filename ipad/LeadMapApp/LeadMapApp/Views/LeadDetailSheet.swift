@@ -15,6 +15,12 @@ struct LeadDetailSheet: View {
     @State private var visitLogShown = false
     @State private var strategyShown = false
     @State private var briefShown = false
+    // Pitch Deck Studio-integrasjon: hentes når sheet åpnes, vises som
+    // CTA i prosjekt-kortet KUN hvis backend bekrefter at orgen har et
+    // ready-deck OG kaller har pitch_deck.access (403 ellers).
+    @State private var pitchAvailability: PitchDeckAvailability?
+    @State private var pitchBriefShown = false
+    @State private var pitchBundleForBrief: PitchDeckBundle?
 
     var body: some View {
         NavigationStack {
@@ -22,6 +28,7 @@ struct LeadDetailSheet: View {
                 VStack(alignment: .leading, spacing: 20) {
                     headerSection
                     distanceBar
+                    pitchDeckCTA
                     metaSection
                     if let enrichment, enrichment.found, let company = enrichment.company {
                         brregSection(company: company, contacts: enrichment.contacts ?? [])
@@ -43,6 +50,16 @@ struct LeadDetailSheet: View {
             }
             .task {
                 await loadEnrichment()
+                await loadPitchAvailability()
+            }
+            .sheet(isPresented: $pitchBriefShown) {
+                if let bundle = pitchBundleForBrief {
+                    PitchPreMeetingBriefView(
+                        bundle: bundle,
+                        leadId: lead.id,
+                        leadName: lead.name
+                    )
+                }
             }
             .sheet(isPresented: $visitLogShown) {
                 VisitLogModal(lead: lead)
@@ -291,6 +308,68 @@ struct LeadDetailSheet: View {
         case .active: return .green
         case .inLiquidation: return .yellow
         case .bankrupt: return .red
+        }
+    }
+
+    // MARK: - Pitch Deck-CTA (vises kun hvis orgen har et ready-deck)
+
+    @ViewBuilder
+    private var pitchDeckCTA: some View {
+        if let avail = pitchAvailability, avail.available,
+           let deckName = avail.deckName, let deckId = avail.deckId {
+            Button {
+                Task { await startPitchPresentation(deckId: deckId) }
+            } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: "rectangle.stack.fill.badge.person.crop")
+                        .font(.title2)
+                        .foregroundStyle(Color(red: 0.83, green: 0.64, blue: 0.45))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Presenter pitch")
+                            .font(.headline)
+                        Text("\(deckName) · \(avail.slideCount ?? 9) slides")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "play.fill")
+                        .foregroundStyle(.tint)
+                }
+                .padding(12)
+                .background(
+                    Color(red: 0.83, green: 0.64, blue: 0.45).opacity(0.10),
+                    in: RoundedRectangle(cornerRadius: 10)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func loadPitchAvailability() async {
+        guard let api = appState.api,
+              let orgId = appState.activeOrganizationId else { return }
+        do {
+            // Trenger pitch_deck.access — backend 403'er ellers og vi
+            // bare skjuler CTA'en stille.
+            let avail = try await api.fetchPitchDeckAvailability(orgId: orgId)
+            pitchAvailability = avail
+        } catch {
+            pitchAvailability = nil
+        }
+    }
+
+    private func startPitchPresentation(deckId: String) async {
+        guard let api = appState.api else { return }
+        do {
+            // Pre-load deck slik at BriefView har bundle klart.
+            // BriefView kaller selv POST /presentations/brief +
+            // POST /presentations når selger trykker Start.
+            let bundle = try await api.loadPitchDeck(deckId: deckId)
+            pitchBundleForBrief = bundle
+            pitchBriefShown = true
+        } catch {
+            // Stille fallback — knappen vises ikke neste gang hvis
+            // backend mister access. Logger ikke til UI for å unngå støy.
         }
     }
 

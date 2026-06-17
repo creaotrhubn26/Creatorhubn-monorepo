@@ -31,6 +31,7 @@ struct MapHomeView: View {
     @Environment(AppState.self) private var appState
     @State private var showDrawingSheet = false
     @State private var showCardScanner = false
+    @State private var showResearchStart = false
     @State private var camera: MapCameraPosition = .region(
         MKCoordinateRegion(
             center: .init(latitude: 59.9139, longitude: 10.7522), // Oslo
@@ -128,6 +129,16 @@ struct MapHomeView: View {
                                 showDrawingSheet = true
                             }
                         }
+                        // Lead Research er en VALGFRI tilleggsfunksjon.
+                        // Vises kun hvis orgen har gitt brukeren
+                        // lead_research.run-permission. Resten av Lead Map
+                        // fungerer som vanlig uten denne — manuelle leads,
+                        // kart, status, pitch-presentasjoner.
+                        if appState.permissions.contains("lead_research.run") {
+                            Button("Finn nye leads", systemImage: "magnifyingglass.circle") {
+                                showResearchStart = true
+                            }
+                        }
                         if appState.pendingVisitsCount > 0 {
                             Button("Send \(appState.pendingVisitsCount) ventende", systemImage: "paperplane") {
                                 Task { await appState.refreshAll() }
@@ -150,6 +161,9 @@ struct MapHomeView: View {
                 if #available(iOS 16.0, *) {
                     BusinessCardScannerView()
                 }
+            }
+            .sheet(isPresented: $showResearchStart) {
+                LeadResearchStartView()
             }
         }
     }

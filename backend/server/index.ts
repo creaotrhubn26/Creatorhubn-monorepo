@@ -524,6 +524,11 @@ import { registerLeadMapAnnotationRoutes } from "./lead-map-annotation-routes.js
 import { registerLeadMapFollowupCronRoutes } from "./lead-map-followup-cron.js";
 import { registerLeadMapPromotionRoutes } from "./lead-map-promotion-routes.js";
 import { registerLeadMapTranscriptRoutes } from "./lead-map-transcript-routes.js";
+import { registerPitchDeckRoutes } from "./pitch-deck-routes.js";
+import { registerPitchDeckPdfRoutes } from "./pitch-deck-pdf-service.js";
+import { registerPitchDeckBriefRoutes } from "./pitch-deck-brief-routes.js";
+import { registerPitchDeckAssetRoutes } from "./pitch-deck-asset-service.js";
+import { registerLeadMapResearchRoutes } from "./lead-map-research-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24269,6 +24274,18 @@ registerLeadMapFollowupCronRoutes({ app, pool });
 registerLeadMapPromotionRoutes({ app, pool, activeSessions });
 // Smart visit-transkript-analyse (Claude erstatter 'kunden'+ finner datoer/actions)
 registerLeadMapTranscriptRoutes({ app, pool, activeSessions });
+// Pitch Deck Studio — per-org-decks (Claude-generert fra onboarding-svar),
+// presentasjons-loggen + Pencil-annotasjoner. Gated på 3 nye RBAC-keys
+// (pitch_deck.access / .edit / .export — fra migrasjon 0294).
+registerPitchDeckRoutes({ app, pool, activeSessions });
+registerPitchDeckPdfRoutes({ app, pool, activeSessions });
+// Pre-møte-brief + per-lead Value-tilpasning + post-møte-loop som
+// auto-setter follow-up-dato / lead-status basert på outcome.
+registerPitchDeckBriefRoutes({ app, pool, activeSessions });
+// Mockup-upload → B2 m/ pitch-decks/{org_id}/... prefix
+registerPitchDeckAssetRoutes({ app, pool, activeSessions });
+// Research → Leads-orkestrator (gated på lead_research.run)
+registerLeadMapResearchRoutes({ app, pool, activeSessions });
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,
