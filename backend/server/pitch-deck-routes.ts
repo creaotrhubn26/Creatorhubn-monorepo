@@ -131,6 +131,7 @@ interface SlideRow {
   bullets: unknown;        // JSONB
   before_after: unknown;   // JSONB
   mockup_urls: unknown;    // JSONB
+  is_included: boolean;    // org-styrt inkludering
   locked_by_user: string | null;
   locked_at: string | null;
   updated_at: string;
@@ -464,6 +465,7 @@ const DECK_SELECT = `
 const SLIDE_SELECT = `
   id::text, deck_id::text, position, slide_type, title_md, body_md,
   visual_url, one_idea, bullets, before_after, mockup_urls,
+  is_included,
   locked_by_user, locked_at::text, updated_at::text
 `;
 
@@ -476,9 +478,13 @@ async function loadDeck(pool: Pool, deckId: string): Promise<DeckRow | null> {
 }
 
 async function loadSlides(pool: Pool, deckId: string): Promise<SlideRow[]> {
+  // Bare aktive slides — slettede vises i /trash. Inkludert + skjult
+  // returnerer begge så Studio kan vise skjulte grået ut.
   const r = await pool.query<SlideRow>(
     `SELECT ${SLIDE_SELECT}
-       FROM pitch_slides WHERE deck_id = $1 ORDER BY position ASC`,
+       FROM pitch_slides
+      WHERE deck_id = $1 AND deleted_at IS NULL
+      ORDER BY position ASC`,
     [deckId],
   );
   return r.rows;
@@ -756,6 +762,10 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
         params.push(req.body.visual_url);
         updates.push(`visual_url = $${params.length}`);
       }
+      if (typeof req.body?.is_included === "boolean") {
+        params.push(req.body.is_included);
+        updates.push(`is_included = $${params.length}`);
+      }
       if (updates.length === 0) return res.status(400).json({ error: "no_changes" });
 
       // Manuell redigering låser sliden mot fremtidig auto-regen
@@ -780,6 +790,75 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
     },
   );
 
+  // ─── DELETE /slides/:id ────────────────────────────────────────
+  // SOFT-DELETE. Sliden bevares i tabellen m/ deleted_at = now() så
+  // brukeren kan angre dersom de slettet ved en feil. iPad viser
+  // "Slide slettet — Angre"-snackbar i 5 sek + en "Slettede slides"-
+  // seksjon i Studio som lar dem gjenopprette senere. Gated på
+  // pitch_deck.edit. Hard purge kjøres av cron etter 30 dager (legges
+  // til senere).
+  app.delete(
+    `${ROOT}/slides/:id`,
+    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      try {
+        const r = await pool.query(
+          `UPDATE pitch_slides SET deleted_at = now()
+            WHERE id = $1 AND deleted_at IS NULL
+            RETURNING id`,
+          [req.params.id],
+        );
+        if (r.rowCount === 0) return res.status(404).json({ error: "slide_not_found" });
+        return res.json({ ok: true, soft_deleted: true });
+      } catch (err) {
+        return res.status(500).json({ error: "delete_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── POST /slides/:id/restore ──────────────────────────────────
+  app.post(
+    `${ROOT}/slides/:id/restore`,
+    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      try {
+        const r = await pool.query<SlideRow>(
+          `UPDATE pitch_slides SET deleted_at = NULL
+            WHERE id = $1 AND deleted_at IS NOT NULL
+            RETURNING ${SLIDE_SELECT}`,
+          [req.params.id],
+        );
+        if (r.rowCount === 0) {
+          return res.status(404).json({ error: "slide_not_found_or_not_deleted" });
+        }
+        return res.json({ slide: r.rows[0] });
+      } catch (err) {
+        return res.status(500).json({ error: "restore_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── GET /decks/:id/trash ──────────────────────────────────────
+  // Slettede slides — vises i Studio som "Slettede slides"-fane.
+  app.get(
+    `${ROOT}/decks/:id/trash`,
+    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      try {
+        const r = await pool.query<SlideRow & { deleted_at: string }>(
+          `SELECT ${SLIDE_SELECT}, deleted_at::text
+             FROM pitch_slides
+            WHERE deck_id = $1 AND deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC`,
+          [req.params.id],
+        );
+        return res.json({ slides: r.rows });
+      } catch (err) {
+        return res.status(500).json({ error: "trash_failed", detail: String(err) });
+      }
+    },
+  );
+
   // ─── POST /slides/:id/regenerate ───────────────────────────────
   app.post(
     `${ROOT}/slides/:id/regenerate`,
@@ -791,11 +870,12 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
           `SELECT s.id::text, s.deck_id::text, s.position, s.slide_type,
                   s.title_md, s.body_md, s.visual_url,
                   s.one_idea, s.bullets, s.before_after, s.mockup_urls,
+                  s.is_included,
                   s.locked_by_user, s.locked_at::text, s.updated_at::text,
                   d.generated_from
              FROM pitch_slides s
              JOIN pitch_decks d ON d.id = s.deck_id
-            WHERE s.id = $1`,
+            WHERE s.id = $1 AND s.deleted_at IS NULL`,
           [req.params.id],
         );
         if (slideRes.rows.length === 0) {

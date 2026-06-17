@@ -207,7 +207,11 @@ export function registerPitchDeckPdfRoutes({
 
         const slideRes = await pool.query<SlidePayload>(
           `SELECT position, slide_type, title_md, body_md
-             FROM pitch_slides WHERE deck_id = $1 ORDER BY position ASC`,
+             FROM pitch_slides
+            WHERE deck_id = $1
+              AND deleted_at IS NULL
+              AND is_included = true
+            ORDER BY position ASC`,
           [deckId],
         );
 
@@ -326,7 +330,11 @@ export function registerPitchDeckPdfRoutes({
         );
         const slideRes = await pool.query<SlidePayload>(
           `SELECT position, slide_type, title_md, body_md
-             FROM pitch_slides WHERE deck_id = $1 ORDER BY position ASC`,
+             FROM pitch_slides
+            WHERE deck_id = $1
+              AND deleted_at IS NULL
+              AND is_included = true
+            ORDER BY position ASC`,
           [row.deck_id],
         );
         const html = renderDeckHtml({

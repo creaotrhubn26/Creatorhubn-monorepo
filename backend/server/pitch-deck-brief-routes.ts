@@ -380,9 +380,16 @@ export function registerPitchDeckBriefRoutes({ app, pool, activeSessions }: Deps
       try {
         const leadCtx = await loadLeadContext(pool, leadId);
         if (!leadCtx) return res.status(404).json({ error: "lead_not_found" });
+        // Bare aktive (ikke-slettet) + inkluderte slides — org har
+        // eksplisitt valgt vekk det som er is_included=false, og
+        // slettede slides skal aldri foreslås.
         const slidesRes = await pool.query<BriefSlideRef>(
           `SELECT id::text, position, slide_type, title_md, one_idea
-             FROM pitch_slides WHERE deck_id = $1 ORDER BY position`,
+             FROM pitch_slides
+            WHERE deck_id = $1
+              AND deleted_at IS NULL
+              AND is_included = true
+            ORDER BY position`,
           [deckId],
         );
         if (slidesRes.rows.length === 0) {
@@ -425,7 +432,9 @@ export function registerPitchDeckBriefRoutes({ app, pool, activeSessions }: Deps
 
         const valueRes = await pool.query<{ title_md: string; body_md: string }>(
           `SELECT title_md, body_md FROM pitch_slides
-            WHERE deck_id = $1 AND slide_type = 'value' LIMIT 1`,
+            WHERE deck_id = $1 AND slide_type = 'value'
+              AND deleted_at IS NULL
+            LIMIT 1`,
           [req.params.id],
         );
         if (valueRes.rows.length === 0) {

@@ -31,6 +31,15 @@ struct PitchDeckStudioView: View {
     @State private var startedPresentation: PitchPresentation?
     @State private var exportInProgress = false
     @State private var exportResult: PitchExport?
+    // Slett/angre/papirkurv
+    @State private var pendingUndo: UndoSnapshot?
+    @State private var trashShown = false
+    @State private var trashSlides: [PitchSlide] = []
+
+    private struct UndoSnapshot: Equatable {
+        let slide: PitchSlide
+        let expiresAt: Date
+    }
 
     private var canEdit: Bool { permissions.contains("pitch_deck.edit") }
     private var canExport: Bool { permissions.contains("pitch_deck.export") }
@@ -68,6 +77,48 @@ struct PitchDeckStudioView: View {
                 .sheet(item: $exportResult) { result in
                     PitchExportShareSheet(export: result)
                 }
+                .sheet(isPresented: $trashShown) {
+                    PitchTrashSheet(
+                        slides: trashSlides,
+                        onRestore: { slide in
+                            Task { await restoreSlide(slide) }
+                        }
+                    )
+                }
+                .overlay(alignment: .bottom) {
+                    if let snap = pendingUndo {
+                        undoSnackbar(snap: snap)
+                    }
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func undoSnackbar(snap: UndoSnapshot) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "trash")
+                .foregroundStyle(.white.opacity(0.8))
+            Text("Slide slettet")
+                .foregroundStyle(.white)
+                .font(.subheadline.weight(.semibold))
+            Spacer()
+            Button("Angre") {
+                Task { await restoreSlide(snap.slide); pendingUndo = nil }
+            }
+            .foregroundStyle(.yellow)
+            .font(.subheadline.weight(.bold))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Color.black.opacity(0.88),
+                    in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 20)
+        .padding(.bottom, 24)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .task {
+            // Auto-dismiss etter 5 sek
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if pendingUndo == snap { pendingUndo = nil }
         }
     }
 
@@ -99,7 +150,7 @@ struct PitchDeckStudioView: View {
                 Button {
                     showOnboarding = true
                 } label: {
-                    Label("Start oppsett", systemImage: "wand.and.stars")
+                    Label("Start oppsett", systemImage: "arrow.right.circle.fill")
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                 }
@@ -199,6 +250,15 @@ struct PitchDeckStudioView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
+                    if !slide.isIncluded {
+                        Text("SKJULT")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.15),
+                                        in: Capsule())
+                    }
                     Spacer()
                     if canEdit {
                         Menu {
@@ -210,7 +270,15 @@ struct PitchDeckStudioView: View {
                             Button {
                                 Task { await regenerate(slide: slide) }
                             } label: {
-                                Label("Regenerér med Claude", systemImage: "arrow.clockwise.circle")
+                                Label("Regenerér", systemImage: "arrow.clockwise.circle")
+                            }
+                            Button {
+                                Task { await toggleInclusion(slide: slide) }
+                            } label: {
+                                Label(
+                                    slide.isIncluded ? "Skjul fra presentasjon" : "Vis igjen",
+                                    systemImage: slide.isIncluded ? "eye.slash" : "eye"
+                                )
                             }
                             Button {
                                 Task { await toggleLock(slide: slide) }
@@ -219,6 +287,12 @@ struct PitchDeckStudioView: View {
                                     slide.isLocked ? "Lås opp" : "Lås mot regen",
                                     systemImage: slide.isLocked ? "lock.open" : "lock"
                                 )
+                            }
+                            Divider()
+                            Button(role: .destructive) {
+                                Task { await deleteSlide(slide) }
+                            } label: {
+                                Label("Slett", systemImage: "trash")
                             }
                         } label: {
                             Image(systemName: "ellipsis.circle")
@@ -240,6 +314,7 @@ struct PitchDeckStudioView: View {
                         in: RoundedRectangle(cornerRadius: 14))
         }
         .accessibilityElement(children: .combine)
+        .opacity(slide.isIncluded ? 1.0 : 0.55)
         .onTapGesture {
             if canEdit { editingSlide = slide }
         }
@@ -251,6 +326,16 @@ struct PitchDeckStudioView: View {
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
             Button("Lukk") { dismiss() }
+        }
+        if canEdit, let bundle, bundle.deck.status == "ready" {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    Task { await openTrash() }
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .accessibilityLabel("Slettede slides")
+            }
         }
         if let bundle, bundle.deck.status == "ready" {
             ToolbarItem(placement: .primaryAction) {
@@ -313,6 +398,71 @@ struct PitchDeckStudioView: View {
         do {
             try await api.lockPitchSlide(slideId: slide.id, locked: !slide.isLocked)
             await load()
+        } catch {
+            self.error = String(describing: error)
+        }
+    }
+
+    private func toggleInclusion(slide: PitchSlide) async {
+        guard let api = appState.api else { return }
+        do {
+            let resp = try await api.setPitchSlideInclusion(
+                slideId: slide.id, included: !slide.isIncluded
+            )
+            applyLocalSlide(resp.slide)
+        } catch {
+            self.error = String(describing: error)
+        }
+    }
+
+    private func deleteSlide(_ slide: PitchSlide) async {
+        guard let api = appState.api else { return }
+        do {
+            try await api.softDeletePitchSlide(slideId: slide.id)
+            // Fjern lokalt + vis angre-snackbar
+            if var b = bundle {
+                b = PitchDeckBundle(
+                    deck: b.deck,
+                    slides: b.slides.filter { $0.id != slide.id }
+                )
+                bundle = b
+            }
+            withAnimation {
+                pendingUndo = UndoSnapshot(
+                    slide: slide,
+                    expiresAt: Date().addingTimeInterval(5)
+                )
+            }
+        } catch {
+            self.error = String(describing: error)
+        }
+    }
+
+    private func restoreSlide(_ slide: PitchSlide) async {
+        guard let api = appState.api else { return }
+        do {
+            let resp = try await api.restorePitchSlide(slideId: slide.id)
+            // Sett slide tilbake i listen på rett position
+            if var b = bundle {
+                var newSlides = b.slides
+                newSlides.append(resp.slide)
+                newSlides.sort { $0.position < $1.position }
+                b = PitchDeckBundle(deck: b.deck, slides: newSlides)
+                bundle = b
+            }
+            // Fjern fra papirkurv-cachen hvis åpen
+            trashSlides.removeAll { $0.id == slide.id }
+        } catch {
+            self.error = String(describing: error)
+        }
+    }
+
+    private func openTrash() async {
+        guard let api = appState.api, let deckId = bundle?.deck.id else { return }
+        do {
+            let resp = try await api.fetchPitchTrash(deckId: deckId)
+            trashSlides = resp.slides
+            trashShown = true
         } catch {
             self.error = String(describing: error)
         }
@@ -474,4 +624,56 @@ private struct PitchExportShareSheet: View {
 // PitchExport må være Identifiable for sheet(item:)
 extension PitchExport: Identifiable {
     public var id: String { viewToken }
+}
+
+// MARK: - Slettede slides (papirkurv)
+
+private struct PitchTrashSheet: View {
+    let slides: [PitchSlide]
+    let onRestore: (PitchSlide) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if slides.isEmpty {
+                    ContentUnavailableView(
+                        "Ingen slettede slides",
+                        systemImage: "trash",
+                        description: Text("Slettede slides vises her i 30 dager før de purges permanent.")
+                    )
+                } else {
+                    List(slides, id: \.id) { slide in
+                        HStack(spacing: 12) {
+                            Image(systemName: slide.iconName)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 32)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(slide.slideType.uppercased())
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                                Text(slide.titleMd.isEmpty ? "(uten tittel)" : slide.titleMd)
+                                    .font(.subheadline.weight(.semibold))
+                                    .lineLimit(2)
+                            }
+                            Spacer()
+                            Button("Gjenopprett") {
+                                onRestore(slide)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .navigationTitle("Slettede slides")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Lukk") { dismiss() }
+                }
+            }
+        }
+    }
 }

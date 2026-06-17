@@ -385,7 +385,7 @@ actor APIClient {
     }
 
     func onboardPitchDeck(payload: PitchOnboardingPayload) async throws -> PitchDeckBundle {
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "organization_id": payload.organizationId,
             "name": payload.name,
             "industry": payload.industry,
@@ -395,10 +395,41 @@ actor APIClient {
             "differentiators": payload.differentiators,
             "proof_points": payload.proofPoints,
             "locale": payload.locale,
+            "format": payload.format,
         ]
+        if let url = payload.websiteUrl, !url.isEmpty {
+            body["website_url"] = url
+        }
         return try await post(
             "/api/admin-room/lead-map/pitch-deck/decks/onboard",
             body: body
+        )
+    }
+
+    // MARK: Brief + Value + Finalize
+
+    func fetchPitchBrief(deckId: String, leadId: String) async throws -> PitchBriefResponse {
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/presentations/brief",
+            body: ["deck_id": deckId, "lead_id": leadId]
+        )
+    }
+
+    func generateValueForLead(
+        deckId: String, leadId: String, presentationId: String?
+    ) async throws -> PitchValueOverrideResponse {
+        var body: [String: Any] = ["lead_id": leadId]
+        if let p = presentationId { body["presentation_id"] = p }
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/decks/\(deckId)/value-slide/for-lead",
+            body: body
+        )
+    }
+
+    func finalizePitchPresentation(id: String) async throws -> PitchFinalizeResponse {
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/presentations/\(id)/finalize",
+            body: [:]
         )
     }
 
@@ -424,6 +455,36 @@ actor APIClient {
         try await post(
             "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)/lock",
             body: ["locked": locked]
+        )
+    }
+
+    /// Org-styrt visibility-toggle. Sliden bevares i decket men
+    /// filtreres ut av PresentView + brief-anbefalinger.
+    func setPitchSlideInclusion(slideId: String, included: Bool) async throws -> PitchSlideResponse {
+        return try await patchReturning(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)",
+            body: ["is_included": included]
+        )
+    }
+
+    /// SOFT-DELETE. Sliden bevares i pitch_slides m/ deleted_at = now().
+    /// UI viser angre-snackbar i 5 sek + "Slettede slides"-fane.
+    func softDeletePitchSlide(slideId: String) async throws {
+        try await delete(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)"
+        )
+    }
+
+    func restorePitchSlide(slideId: String) async throws -> PitchSlideResponse {
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)/restore",
+            body: [:]
+        )
+    }
+
+    func fetchPitchTrash(deckId: String) async throws -> PitchTrashResponse {
+        return try await get(
+            "/api/admin-room/lead-map/pitch-deck/decks/\(deckId)/trash"
         )
     }
 

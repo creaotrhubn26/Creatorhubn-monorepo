@@ -37,6 +37,8 @@ struct PitchDeckOnboardingView: View {
     @State private var proofPoints: [String] = ["", "", ""]
     @State private var locale: String = "nb"
 
+    @State private var format: String = "long"   // "long" (11) | "short" (10)
+    @State private var websiteUrl: String = ""
     @State private var isGenerating = false
     @State private var error: String?
 
@@ -208,7 +210,7 @@ struct PitchDeckOnboardingView: View {
 
     private var whyItGetsBetter: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Dette gjør pitchen bedre over tid", systemImage: "sparkles")
+            Label("Dette gjør pitchen bedre over tid", systemImage: "arrow.up.right")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text("Hver gang du eller en kollega regenererer en slide, beholder vi konteksten du oppga her. Dere kan låse slides dere er fornøyde med — Claude rører dem ikke. Etter første presentasjonsrunde anbefaler vi å regenerere de slidene som ikke landet.")
@@ -246,7 +248,7 @@ struct PitchDeckOnboardingView: View {
                 Button {
                     Task { await onboard() }
                 } label: {
-                    Label("Generér med Claude", systemImage: "wand.and.stars")
+                    Label("Generér pitch", systemImage: "arrow.right.circle.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(!canAdvance || isGenerating)
@@ -309,7 +311,10 @@ struct PitchDeckOnboardingView: View {
             pains: pains.map { $0.trimmingCharacters(in: .whitespaces) },
             differentiators: differentiators.map { $0.trimmingCharacters(in: .whitespaces) },
             proofPoints: proofPoints.map { $0.trimmingCharacters(in: .whitespaces) },
-            locale: locale
+            locale: locale,
+            format: format,
+            websiteUrl: websiteUrl.trimmingCharacters(in: .whitespaces).isEmpty
+                ? nil : websiteUrl.trimmingCharacters(in: .whitespaces)
         )
         isGenerating = true
         defer { isGenerating = false }
