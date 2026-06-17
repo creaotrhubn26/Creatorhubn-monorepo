@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS notification_events (
   title TEXT NOT NULL,
   body TEXT NOT NULL,
   -- Relatert lead/visit/team — frontend kan dypelinke til disse
-  lead_id VARCHAR(255) REFERENCES crm_customers(id) ON DELETE CASCADE,
+  lead_id UUID REFERENCES crm_customers(id) ON DELETE CASCADE,
   visit_id UUID REFERENCES crm_visits(id) ON DELETE CASCADE,
   -- Avsender (hvis relevant — null for system-events som follow_up_due)
   triggered_by_user_id VARCHAR(255) REFERENCES users(id) ON DELETE SET NULL,
