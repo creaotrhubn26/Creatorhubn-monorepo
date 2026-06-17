@@ -14399,10 +14399,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const userId = getUserId(req);
     try {
       const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
+      // To-veis brief: både produsent og klient kan publisere sine innspill.
+      if (!canWriteProducerClientInput(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til å publisere brief' });
         return;
       }
+      const publishedByClient = isClientPublishViewer(req, roleRecord);
       const publish = req.body?.publish !== false;
       const updated = await pool.query(
         `UPDATE role_room_client_intake
@@ -14419,10 +14421,17 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
       if (publish) {
         try {
+          // Varsle MOTPARTEN: produsent publiserer → klient varsles, og omvendt.
           await upsertProducerProjectNotification({
-            projectId, audience: 'client', eventType: 'brief_published',
-            title: 'Brief publisert', message: 'Produsenten har publisert prosjektbriefen.',
+            projectId,
+            audience: publishedByClient ? 'producer_team' : 'client',
+            eventType: 'brief_published',
+            title: publishedByClient ? 'Klienten publiserte brief-innspill' : 'Brief publisert',
+            message: publishedByClient
+              ? 'Klienten har publisert oppdaterte brief-innspill.'
+              : 'Produsenten har publisert prosjektbriefen.',
             linkedEntityType: 'client_intake', linkedEntityId: projectId, createdByUserId: userId,
+            metadata: { inboxType: 'brief' },
           });
         } catch (notifyError) {
           console.error('[role-room] brief publish notify failed', notifyError);

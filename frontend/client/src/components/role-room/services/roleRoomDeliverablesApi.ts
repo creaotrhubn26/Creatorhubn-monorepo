@@ -32,6 +32,8 @@ export interface RoleRoomDeliverable {
   notes: string | null;
   sortOrder: number;
   deliveredAt: string | null;
+  /** NULL = draft/intern (privat), satt = publisert til klient (status client_review/delivered). */
+  publishedAt: string | null;
   createdByUserId: string | null;
   createdAt: string;
   updatedAt: string;

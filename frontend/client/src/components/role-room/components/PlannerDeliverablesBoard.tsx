@@ -18,6 +18,8 @@ import {
   ScheduleOutlined as DueSoonIcon,
   CheckCircleOutline as DeliveredIcon,
   HourglassEmptyOutlined as WaitingIcon,
+  VisibilityOutlined as ClientVisibleIcon,
+  CloudUploadOutlined as PublishIcon,
 } from '@mui/icons-material';
 import {
   listDeliverables,
@@ -283,6 +285,17 @@ function DeliverableCard({
   const due = dueLabel(item.dueAt, now);
   const DueIcon = item.status === 'delivered' ? DeliveredIcon : overdue ? OverdueIcon : dueSoon ? DueSoonIcon : WaitingIcon;
   const dueColor = item.status === 'delivered' ? '#86efac' : overdue ? '#fca5a5' : dueSoon ? '#fbbf24' : 'rgba(226,232,240,0.7)';
+  // Klient-synlighet styres av status: client_review/delivered = publisert.
+  const clientVisible = item.status === 'client_review' || item.status === 'delivered';
+  // Neste/forrige steg for kontekstuell publiser-/trekk-tilbake-tekst.
+  const idx = DELIVERABLE_STATUS_ORDER.indexOf(item.status);
+  const nextStatus = DELIVERABLE_STATUS_ORDER[idx + 1];
+  const prevStatus = DELIVERABLE_STATUS_ORDER[idx - 1];
+  const nextPublishes = nextStatus === 'client_review';
+  const prevRetracts = item.status === 'client_review';
+  const nextLabel = nextPublishes ? 'Publiser til klient' : nextStatus ? `Flytt til ${DELIVERABLE_STATUS_LABELS[nextStatus]}` : 'Flytt fremover';
+  const prevLabel = prevRetracts ? 'Trekk tilbake fra klient' : prevStatus ? `Flytt til ${DELIVERABLE_STATUS_LABELS[prevStatus]}` : 'Flytt tilbake';
+  const NextActionIcon = nextPublishes ? PublishIcon : NextIcon;
 
   return (
     <Box sx={{ borderRadius: '10px', border: '1px solid rgba(148,163,184,0.12)', borderLeft: `3px solid ${accent}`, background: 'rgba(2,6,23,0.4)', p: 1.1, opacity: busy ? 0.6 : 1 }}>
@@ -306,24 +319,35 @@ function DeliverableCard({
       {item.waitingOn ? (
         <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '11px', mt: 0.3 }}>Venter på: {item.waitingOn}</Typography>
       ) : null}
+      {clientVisible ? (
+        <Stack direction="row" spacing={0.4} alignItems="center" sx={{ mt: 0.4 }}>
+          <ClientVisibleIcon sx={{ fontSize: 13, color: '#6ee7b7' }} />
+          <Typography sx={{ color: '#6ee7b7', fontSize: '10.5px', fontWeight: 700 }}>Synlig for klient</Typography>
+        </Stack>
+      ) : (
+        <Stack direction="row" spacing={0.4} alignItems="center" sx={{ mt: 0.4 }}>
+          <PublishIcon sx={{ fontSize: 13, color: 'rgba(226,232,240,0.5)' }} />
+          <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '10.5px', fontWeight: 600 }}>Ikke publisert</Typography>
+        </Stack>
+      )}
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.6 }}>
         <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '10.5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 90 }}>
           {item.assigneeLabel ?? ''}
         </Typography>
         <Stack direction="row" spacing={0.2}>
-          <Tooltip title="Flytt tilbake">
+          <Tooltip title={prevLabel}>
             <span>
-              <IconButton size="small" disabled={!onPrev || busy} onClick={onPrev} aria-label="Flytt tilbake"
-                sx={{ width: 44, height: 44, color: 'rgba(226,232,240,0.7)', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}>
+              <IconButton size="small" disabled={!onPrev || busy} onClick={onPrev} aria-label={prevLabel}
+                sx={{ width: 44, height: 44, color: prevRetracts ? '#fbbf24' : 'rgba(226,232,240,0.7)', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}>
                 <PrevIcon sx={{ fontSize: 18 }} />
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title="Flytt fremover">
+          <Tooltip title={nextLabel}>
             <span>
-              <IconButton size="small" disabled={!onNext || busy} onClick={onNext} aria-label="Flytt fremover"
-                sx={{ width: 44, height: 44, color: '#c4b5fd', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}>
-                <NextIcon sx={{ fontSize: 18 }} />
+              <IconButton size="small" disabled={!onNext || busy} onClick={onNext} aria-label={nextLabel}
+                sx={{ width: 44, height: 44, color: nextPublishes ? '#6ee7b7' : '#c4b5fd', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}>
+                <NextActionIcon sx={{ fontSize: 18 }} />
               </IconButton>
             </span>
           </Tooltip>
