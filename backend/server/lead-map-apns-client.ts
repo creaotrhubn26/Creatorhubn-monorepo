@@ -16,7 +16,11 @@
  */
 
 import { createSign, randomBytes } from "node:crypto";
-import { connect as http2Connect, type ClientHttp2Session } from "node:http2";
+import {
+  connect as http2Connect,
+  constants as http2Constants,
+  type ClientHttp2Session,
+} from "node:http2";
 
 interface CachedJwt {
   token: string;
@@ -154,11 +158,23 @@ export async function sendAPNs(
   });
 
   return new Promise<APNsResult>((resolve) => {
+    // Settle-guard: APNs HTTP/2 stream har ingen default-timeout. Hvis
+    // serveren henger uten å sende :status/end/error, ble løftet aldri
+    // resolvet → fire-and-forget setImmediate-trigger fra
+    // dispatchNotification kunne kjøre til server-lukking. Gjør én
+    // resolve gjennom done() + 10s stream-cutoff.
+    let settled = false;
+    const done = (r: APNsResult): void => {
+      if (settled) return;
+      settled = true;
+      resolve(r);
+    };
+
     let session: ClientHttp2Session;
     try {
       session = getSession();
     } catch (err) {
-      return resolve({ sent: false, reason: `session_failed: ${String(err)}` });
+      return done({ sent: false, reason: `session_failed: ${String(err)}` });
     }
 
     const req = session.request({
@@ -174,14 +190,21 @@ export async function sendAPNs(
     let status = 0;
     const chunks: Buffer[] = [];
 
+    // 10s stream-timeout. NGHTTP2_CANCEL sender RST_STREAM så Apple
+    // ikke holder server-side state for en død klient.
+    req.setTimeout(10_000, () => {
+      try { req.close(http2Constants.NGHTTP2_CANCEL); } catch { /* noop */ }
+      done({ sent: false, reason: "apns_timeout" });
+    });
+
     req.on("response", (headers) => {
       status = Number(headers[":status"]);
     });
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
-      req.close();
+      try { req.close(); } catch { /* allerede lukket av timeout */ }
       if (status === 200) {
-        return resolve({ sent: true, apnsStatus: status });
+        return done({ sent: true, apnsStatus: status });
       }
       const bodyText = Buffer.concat(chunks).toString("utf8");
       let apnsReason: string | undefined;
@@ -193,7 +216,7 @@ export async function sendAPNs(
         status === 410 ||
         apnsReason === "BadDeviceToken" ||
         apnsReason === "Unregistered";
-      resolve({
+      done({
         sent: false,
         reason: `apns_${status}`,
         apnsStatus: status,
@@ -202,7 +225,7 @@ export async function sendAPNs(
       });
     });
     req.on("error", (err) => {
-      resolve({ sent: false, reason: `http2_error: ${err.message}` });
+      done({ sent: false, reason: `http2_error: ${err.message}` });
     });
 
     req.setEncoding("utf8");
