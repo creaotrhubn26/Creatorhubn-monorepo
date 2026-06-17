@@ -39,9 +39,16 @@ export interface RoleRoomDeliverable {
   notes: string | null;
   sortOrder: number;
   deliveredAt: string | null;
+  /** NULL = draft/intern (privat), satt = publisert til klient. Speiler klient-vendt status. */
+  publishedAt: string | null;
   createdByUserId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Klient-vendte statuser = synlig for klient = «publisert». */
+export function isClientFacingDeliverableStatus(status: DeliverableStatus): boolean {
+  return status === 'client_review' || status === 'delivered';
 }
 
 const MAX_TITLE = 200;
@@ -90,6 +97,7 @@ function mapRow(row: Record<string, unknown>): RoleRoomDeliverable {
     notes: (row.notes as string | null) ?? null,
     sortOrder: Number(row.sort_order ?? 0),
     deliveredAt: toIsoOut(row.delivered_at),
+    publishedAt: toIsoOut(row.published_at),
     createdByUserId: (row.created_by_user_id as string | null) ?? null,
     createdAt: toIsoOut(row.created_at) ?? new Date(0).toISOString(),
     updatedAt: toIsoOut(row.updated_at) ?? new Date(0).toISOString(),
@@ -129,12 +137,14 @@ export async function createDeliverable(
   if (!input.projectId || !title) return null;
   const status = normalizeStatus(input.status);
   const deliveredAt = status === 'delivered' ? new Date().toISOString() : null;
+  // Publisert ved opprettelse kun hvis status alt er klient-vendt.
+  const publishedAt = isClientFacingDeliverableStatus(status) ? new Date().toISOString() : null;
   const result = await pool.query(
     `INSERT INTO role_room_deliverables
        (id, project_id, title, format, phase, status, due_at, version,
         assignee_user_id, assignee_label, waiting_on, notes, sort_order,
-        delivered_at, created_by_user_id, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$9,$10,$11,$12,$13,$14, now(), now())
+        delivered_at, published_at, created_by_user_id, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$9,$10,$11,$12,$13,$14,$15, now(), now())
      RETURNING *`,
     [
       randomUUID(), input.projectId, title,
@@ -143,7 +153,7 @@ export async function createDeliverable(
       clip(input.assigneeUserId, MAX_TITLE), clip(input.assigneeLabel, MAX_TITLE),
       clip(input.waitingOn, MAX_TITLE), clip(input.notes, MAX_TEXT),
       Number.isFinite(input.sortOrder) ? Number(input.sortOrder) : 0,
-      deliveredAt, clip(input.createdByUserId, MAX_TITLE),
+      deliveredAt, publishedAt, clip(input.createdByUserId, MAX_TITLE),
     ],
   );
   return result.rows[0] ? mapRow(result.rows[0] as Record<string, unknown>) : null;
@@ -192,6 +202,9 @@ export async function updateDeliverable(
     push('status', status);
     // delivered_at speiler status-overgangen til/fra 'delivered'.
     push('delivered_at', status === 'delivered' ? new Date().toISOString() : null);
+    // published_at speiler klient-synlighet: settes når status blir klient-vendt
+    // (client_review/delivered), nullstilles når den trekkes tilbake til draft/intern.
+    push('published_at', isClientFacingDeliverableStatus(status) ? new Date().toISOString() : null);
   }
   if (patch.bumpVersion) {
     sets.push('version = version + 1');
