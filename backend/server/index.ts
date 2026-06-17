@@ -75,6 +75,7 @@ import { registerRoleRoomSocialCutsRoutes } from "./role-room-social-cuts-routes
 import { registerRoleRoomReviewRoutes } from "./role-room-review-routes.js";
 import { registerRoleRoomEditorCommentsRoutes } from "./role-room-editor-comments-routes.js";
 import { registerRoleRoomDeliverablesRoutes } from "./role-room-deliverables-routes.js";
+import { registerRoleRoomDeadlineReminderRoutes } from "./role-room-deadline-reminders-routes.js";
 import { registerRoleRoomMarketingPreviewVideoRoutes } from "./role-room-marketing-preview-video-routes.js";
 import { registerRoleRoomIntakeVersionsRoutes } from "./role-room-intake-versions-routes.js";
 import { registerRoleRoomPlanVersionsRoutes } from "./role-room-plan-versions-routes.js";
@@ -2042,6 +2043,7 @@ registerRoleRoomSocialCutsRoutes(app, { pool, activeSessions });
 registerRoleRoomReviewRoutes(app, { pool, activeSessions });
 registerRoleRoomEditorCommentsRoutes(app, { pool, activeSessions });
 registerRoleRoomDeliverablesRoutes(app, { pool, activeSessions });
+registerRoleRoomDeadlineReminderRoutes(app, { pool });
 registerRoleRoomMarketingPreviewVideoRoutes(app, { pool, activeSessions });
 registerRoleRoomIntakeVersionsRoutes(app, { pool, activeSessions });
 registerRoleRoomPlanVersionsRoutes(app, { pool, activeSessions });
