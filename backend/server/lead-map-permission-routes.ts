@@ -161,6 +161,22 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+      // RT-4: caller må enten lese seg selv ELLER ha permissions.manage
+      // i target-org. Søstre-write-routene (applyOverride) sjekker dette
+      // allerede; denne GET'en gjorde det ikke → cross-tenant info-
+      // disclosure av rolle/permissions/overrides for vilkårlig
+      // user_id i vilkårlig org_id. Read-only, ikke kreditt-/PII-leak,
+      // men fortsatt en authorization-gap.
+      const isSelf = session.userId === req.params.userId;
+      if (!isSelf) {
+        const callerPerm = await resolveEffectivePermissions(
+          pool, req.params.id, session.userId,
+        );
+        if (!callerPerm.permissions.has("permissions.manage")) {
+          return res.status(403).json({ error: "mangler_permissions_manage" });
+        }
+      }
       try {
         const { role, permissions } = await resolveEffectivePermissions(
           pool, req.params.id, req.params.userId,
