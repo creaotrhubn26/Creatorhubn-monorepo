@@ -109,7 +109,6 @@ import {
   Skeleton,
   ImageList,
   ImageListItem,
-  ImageListItemBar,
   SpeedDial,
   SpeedDialAction,
   SpeedDialIcon,
@@ -298,7 +297,7 @@ const VideographerVideoSuite = React.lazy(() => import('../videographer/Videogra
 const PhotographerPhotoSuite = React.lazy(() => import('../photographer/PhotographerPhotoSuite'));
 const VideoShowcaseEnhanced = React.lazy(() => import('./VideoShowcaseEnhanced'));
 import ShowcaseCard, { formatFileSize } from './ShowcaseCard';
-import { CINE, withAlpha, glassPanelSx, posterCardSx } from './showcaseCinematic';
+import { CINE, withAlpha, glassPanelSx, posterCardSx, scrimGradient, scrimGradientTop, metaLabelSx, CINE_MOTION, CINE_FONT } from './showcaseCinematic';
 
 
 // Helper functions for timecode conversion
@@ -8858,8 +8857,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               </Typography>
           </Box>
           
-          <Stack direction="row" spacing={2}>
-            {/* Autocomplete Search */}
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            {/* Autocomplete Search — CINE: frosted field, warm hairline, accent on focus */}
             <Autocomplete
               freeSolo
               options={items.map(item => item.title || '')}
@@ -8877,46 +8876,83 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   size="small"
                   sx={{
                     '& .MuiOutlinedInput-root': {
-                      color: textPrimary,
-                      borderColor: 'rgba(255, 107, 53, 0.3)',
-                      '&:hover': {
-                        borderColor: accentColor
-                      }
-                    }
+                      color: CINE.textPrimary,
+                      fontFamily: CINE_FONT,
+                      bgcolor: CINE.surface,
+                      backdropFilter: 'blur(12px)',
+                      borderRadius: '10px',
+                      transition: `border-color ${CINE_MOTION.fast} ${CINE_MOTION.ease}, box-shadow ${CINE_MOTION.fast} ${CINE_MOTION.ease}`,
+                      '& fieldset': { borderColor: CINE.border },
+                      '&:hover fieldset': { borderColor: CINE.borderStrong },
+                      '&.Mui-focused fieldset': {
+                        borderColor: withAlpha(CINE.accent, 0.55),
+                        boxShadow: `0 0 0 3px ${withAlpha(CINE.accent, 0.12)}`,
+                      },
+                    },
+                    '& .MuiInputBase-input::placeholder': { color: CINE.textMuted, opacity: 1 },
                   }}
                   InputProps={{
                     ...params.InputProps,
-                    startAdornment: <Search sx={{ color: textSecondary, mr: 1 }} />
+                    startAdornment: <Search sx={{ color: CINE.textMuted, mr: 1, fontSize: 18 }} />
                   }}
                 />
               )}
             />
-            
-            {/* Filter Button with Badge */}
+
+            {/* Filter Button with Badge — CINE: frosted square control */}
             <IconButton
               onClick={(e) => setSortMenuAnchorEl(e.currentTarget)}
               sx={{
-                color: textSecondary,
-                borderColor: 'rgba(255, 107, 53, 0.3)',
-                border: '1px solid',
+                color: CINE.textSecondary,
+                bgcolor: CINE.surface,
+                backdropFilter: 'blur(12px)',
+                border: `1px solid ${CINE.border}`,
+                borderRadius: '10px',
+                transition: `color ${CINE_MOTION.fast} ${CINE_MOTION.ease}, border-color ${CINE_MOTION.fast} ${CINE_MOTION.ease}, background-color ${CINE_MOTION.fast} ${CINE_MOTION.ease}`,
                 '&:hover': {
-                  borderColor: accentColor,
-                  bgcolor: 'rgba(255, 107, 53, 0.1)'
+                  color: CINE.textPrimary,
+                  borderColor: withAlpha(CINE.accent, 0.5),
+                  bgcolor: withAlpha(CINE.accent, 0.1)
                 }
               }}
             >
-              <Badge badgeContent={selectedItems.length} color="primary" max={99}>
-                <FilterList />
+              <Badge
+                badgeContent={selectedItems.length}
+                max={99}
+                sx={{ '& .MuiBadge-badge': { bgcolor: CINE.accent, color: '#0B0B0C', fontWeight: 700 } }}
+              >
+                <FilterList sx={{ fontSize: 18 }} />
               </Badge>
             </IconButton>
-            
-            {/* View Mode Toggle */}
+
+            {/* View Mode Toggle — CINE: frosted segmented control, accent on active */}
             <ToggleButtonGroup
               value={viewMode}
               exclusive
               onChange={(_, newMode) => newMode && setViewMode(newMode)}
               size="small"
-              sx={{ ml: 1 }}
+              sx={{
+                ml: 0.5,
+                bgcolor: CINE.surface,
+                backdropFilter: 'blur(12px)',
+                borderRadius: '10px',
+                p: '2px',
+                gap: '2px',
+                border: `1px solid ${CINE.border}`,
+                '& .MuiToggleButtonGroup-grouped': {
+                  border: 0,
+                  borderRadius: '8px !important',
+                  color: CINE.textMuted,
+                  px: 1.25,
+                  transition: `color ${CINE_MOTION.fast} ${CINE_MOTION.ease}, background-color ${CINE_MOTION.fast} ${CINE_MOTION.ease}`,
+                  '&:hover': { color: CINE.textPrimary, bgcolor: withAlpha(CINE.textPrimary, 0.06) },
+                  '&.Mui-selected': {
+                    color: CINE.accent,
+                    bgcolor: withAlpha(CINE.accent, 0.16),
+                    '&:hover': { bgcolor: withAlpha(CINE.accent, 0.22) },
+                  },
+                },
+              }}
             >
               {/* Slice 9X.81 — norske aria-labels + title for tooltip på desktop */}
               <ToggleButton value="grid" aria-label="Vis som rutenett" title="Rutenett">
@@ -8929,20 +8965,26 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 <PhotoLibrary sx={{ fontSize: 18 }} />
               </ToggleButton>
             </ToggleButtonGroup>
-            
-            {/* Filter Chips Display */}
+
+            {/* Filter Chips Display — CINE: subtle accent-tinted chips */}
             {filterChips.length > 0 && (
-              <Stack direction="row" spacing={1} sx={{ ml: 2 }}>
+              <Stack direction="row" spacing={1} sx={{ ml: 1.5 }}>
                 {filterChips.map((chip) => (
                   <Chip
                     key={chip.id}
                     label={chip.label}
                     size="small"
+                    variant="outlined"
                     onDelete={() => setFilterChips(prev => prev.filter(c => c.id !== chip.id))}
                     sx={{
-                      bgcolor: 'rgba(255, 107, 53, 0.1)',
-                      color: textPrimary,
-                      borderColor: accentColor
+                      bgcolor: withAlpha(CINE.accent, 0.1),
+                      color: CINE.textPrimary,
+                      fontFamily: CINE_FONT,
+                      border: `1px solid ${withAlpha(CINE.accent, 0.35)}`,
+                      '& .MuiChip-deleteIcon': {
+                        color: CINE.textMuted,
+                        '&:hover': { color: CINE.accent },
+                      },
                     }}
                   />
                 ))}
@@ -10243,53 +10285,104 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               </Box>
             </Fade>
           ) : viewMode === 'masonry' ? (
-            <ImageList variant="masonry" cols={showcaseSettings.gridColumns} gap={8}>
-              {filteredItems.slice(1, (showcaseSettings.maxItemsPerPage as number) === 999 ? filteredItems.length : (showcaseSettings.maxItemsPerPage as number)).map((item: ShowcaseItem) => (
-                <ImageListItem key={item.id} sx={{ cursor: 'pointer' }} onClick={() => openQuickPreview(item)}>
+            (() => {
+              // CINE: masonry-fliser deler poster-språket med ShowcaseCard —
+              // varm flate, hårfin kant, scrim-tittel, løft + aksent-glød på hover.
+              const reduced = showcaseSettings.animationSpeed === 'disabled';
+              return (
+            <ImageList variant="masonry" cols={showcaseSettings.gridColumns} gap={12}>
+              {filteredItems.slice(1, (showcaseSettings.maxItemsPerPage as number) === 999 ? filteredItems.length : (showcaseSettings.maxItemsPerPage as number)).map((item: ShowcaseItem) => {
+                const embed = detectStreamingEmbed(item.fileUrl || item.thumbnailUrl || '');
+                return (
+                <ImageListItem
+                  key={item.id}
+                  onClick={() => openQuickPreview(item)}
+                  sx={{
+                    position: 'relative',
+                    cursor: 'pointer',
+                    overflow: 'hidden',
+                    borderRadius: '14px',
+                    bgcolor: CINE.surfaceSolid,
+                    border: `1px solid ${CINE.border}`,
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.4)',
+                    transition: reduced ? 'none' : `transform ${CINE_MOTION.base} ${CINE_MOTION.ease}, box-shadow ${CINE_MOTION.base} ${CINE_MOTION.ease}, border-color ${CINE_MOTION.base} ${CINE_MOTION.ease}`,
+                    '& .cine-img': { transition: reduced ? 'none' : `transform ${CINE_MOTION.slow} ${CINE_MOTION.ease}`, display: 'block', width: '100%' },
+                    '& .cine-meta': { opacity: reduced ? 1 : 0, transform: reduced ? 'none' : 'translateY(8px)', transition: reduced ? 'none' : `opacity ${CINE_MOTION.base} ${CINE_MOTION.ease}, transform ${CINE_MOTION.base} ${CINE_MOTION.ease}` },
+                    '&:hover, &:focus-visible': reduced ? {
+                      borderColor: withAlpha(accentColor, 0.5),
+                      outline: 'none',
+                    } : {
+                      transform: 'translateY(-6px)',
+                      borderColor: withAlpha(accentColor, 0.5),
+                      boxShadow: `0 22px 48px rgba(0,0,0,0.6), 0 0 0 1px ${withAlpha(accentColor, 0.25)}, 0 0 40px ${withAlpha(accentColor, 0.18)}`,
+                      outline: 'none',
+                      '& .cine-img': { transform: `scale(${CINE_MOTION.hoverZoom})` },
+                      '& .cine-meta': { opacity: 1, transform: 'translateY(0)' },
+                    },
+                    '@media (hover: none)': { '& .cine-meta': { opacity: 1, transform: 'none' } },
+                  }}
+                >
                   {/* Slice 9X.81 — Spotify/SoundCloud/YouTube/Vimeo detekteres
                       automatisk fra fileUrl; render iframe-embed istedenfor
                       img/video når matchet. */}
-                  {(() => {
-                    const embed = detectStreamingEmbed(item.fileUrl || item.thumbnailUrl || '');
-                    if (embed) {
-                      return <StreamingEmbed url={item.fileUrl || item.thumbnailUrl || ''} title={item.title || ''} />;
-                    }
-                    if (item.type === 'image') {
-                      return (
-                        <img
-                          src={item.thumbnailUrl || ''}
-                          alt={item.title || ''}
-                          loading="lazy"
-                          width={400}
-                          height={400}
-                          style={{ borderRadius: 8, width: '100%', height: 'auto', display: 'block' }}
-                        />
-                      );
-                    }
-                    return (
-                      <Box sx={{ position: 'relative', bgcolor: 'rgba(0,0,0,0.8)', aspectRatio: '16/9', borderRadius: 2 }}>
-                        <video src={item.thumbnailUrl || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />
-                      </Box>
-                    );
-                  })()}
-                  <ImageListItemBar
-                    title={item.title || ''}
-                    subtitle={formatFileSize(item.fileSize || 0)}
-                    actionIcon={
-                      <IconButton
-                        sx={{ color: 'white' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleFavorite(item.id);
-                        }}
-                      >
-                        {favorites.has(item.id) ? <Favorite sx={{ color: accentColor }} /> : <FavoriteBorder />}
-                      </IconButton>
-                    }
-                  />
+                  {embed ? (
+                    <StreamingEmbed url={item.fileUrl || item.thumbnailUrl || ''} title={item.title || ''} />
+                  ) : item.type === 'image' ? (
+                    <img
+                      className="cine-img"
+                      src={item.thumbnailUrl || ''}
+                      alt={item.title || ''}
+                      loading="lazy"
+                      width={400}
+                      height={400}
+                      style={{ width: '100%', height: 'auto' }}
+                    />
+                  ) : (
+                    <Box sx={{ position: 'relative', bgcolor: CINE.bgDeep, aspectRatio: '16/9' }}>
+                      <video className="cine-img" src={item.thumbnailUrl || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </Box>
+                  )}
+
+                  {/* Warm bottom scrim so the title stays legible over any media */}
+                  {!embed && (
+                    <Box sx={{ position: 'absolute', inset: 0, background: scrimGradient, pointerEvents: 'none' }} />
+                  )}
+
+                  {/* Favorite — frosted accent control, top-right */}
+                  {!embed && (
+                    <IconButton
+                      size="small"
+                      aria-label={favorites.has(item.id) ? 'Fjern favoritt' : 'Marker som favoritt'}
+                      onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}
+                      sx={{
+                        position: 'absolute', top: 8, right: 8,
+                        bgcolor: 'rgba(6,8,13,0.55)', backdropFilter: 'blur(8px)',
+                        border: `1px solid ${withAlpha(accentColor, 0.4)}`,
+                        color: '#fff',
+                        '&:hover': { bgcolor: withAlpha(accentColor, 0.85) },
+                      }}
+                    >
+                      {favorites.has(item.id) ? <Favorite sx={{ fontSize: 16, color: accentColor }} /> : <FavoriteBorder sx={{ fontSize: 16 }} />}
+                    </IconButton>
+                  )}
+
+                  {/* Title + meta on the scrim */}
+                  {!embed && (
+                    <Box className="cine-meta" sx={{ position: 'absolute', left: 0, right: 0, bottom: 0, p: 1.25, pointerEvents: 'none' }}>
+                      <Typography noWrap sx={{ fontFamily: CINE_FONT, fontWeight: 700, color: '#fff', fontSize: '0.9rem', textShadow: '0 1px 8px rgba(0,0,0,0.6)' }}>
+                        {item.title || ''}
+                      </Typography>
+                      <Typography sx={{ ...metaLabelSx, color: 'rgba(255,255,255,0.78)', mt: 0.25 }}>
+                        {formatFileSize(item.fileSize || 0)}
+                      </Typography>
+                    </Box>
+                  )}
                 </ImageListItem>
-              ))}
+                );
+              })}
             </ImageList>
+              );
+            })()
           ) : (
             <Box sx={{
               display: 'grid',
