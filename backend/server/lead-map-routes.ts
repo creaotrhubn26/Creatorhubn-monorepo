@@ -40,6 +40,7 @@ import {
   type VisitType,
 } from "./lead-map-service.js";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { resolveLeadMapSession } from "./lead-map-session-helper.js";
 
 /** Bygger notes-feltet for crm_customers fra visittkort-payload */
 function buildNotes(body: {
@@ -63,13 +64,15 @@ interface Deps {
   activeSessions: Map<string, SessionData>;
 }
 
-function getUser(req: Request, activeSessions: Map<string, SessionData>): SessionData | null {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) {
-    const token = auth.slice(7).trim();
-    return activeSessions.get(token) ?? null;
-  }
-  return null;
+// RT-5: tynn wrapper rundt sentral resolveLeadMapSession (DB-fallback
+// ved cache-miss). Handler-call-sites kaller 'await getUser(req, pool,
+// activeSessions)'.
+async function getUser(
+  req: Request,
+  pool: Pool,
+  activeSessions: Map<string, SessionData>,
+): Promise<SessionData | null> {
+  return resolveLeadMapSession(req, pool, activeSessions);
 }
 
 const VALID_STATUSES: ReadonlySet<LeadStatus> = new Set([
@@ -113,7 +116,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // GET /leads — innenfor bounds + valgfrie filtre
   app.get("/api/admin-room/lead-map/leads", async (req: Request, res: Response) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
     let bounds: Parameters<typeof listLeadsInBounds>[1]['bounds'];
@@ -147,7 +150,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // GET /leads/:id
   app.get("/api/admin-room/lead-map/leads/:id", async (req: Request, res: Response) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
       const lead = await getLeadById(pool, { ownerUserId: session.userId }, req.params.id);
@@ -162,7 +165,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
   app.patch("/api/admin-room/lead-map/leads/:id/status",
     requireLeadMapPermission("leads.update", { pool, activeSessions }),
     async (req: Request, res: Response) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
     const body = (req.body ?? {}) as { status?: string; notes?: string };
@@ -207,7 +210,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
   app.patch("/api/admin-room/lead-map/leads/:id/geo",
     requireLeadMapPermission("leads.update", { pool, activeSessions }),
     async (req: Request, res: Response) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
     const body = (req.body ?? {}) as {
@@ -236,7 +239,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
   app.post("/api/admin-room/lead-map/leads/:id/visits",
     requireLeadMapPermission("visits.create", { pool, activeSessions }),
     async (req: Request, res: Response) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
     const body = (req.body ?? {}) as {
@@ -283,7 +286,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // GET /leads/:id/visits
   app.get("/api/admin-room/lead-map/leads/:id/visits", async (req: Request, res: Response) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
       const visits = await listVisits(pool, { ownerUserId: session.userId }, req.params.id, 50);
@@ -295,7 +298,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // GET /activities — feed
   app.get("/api/admin-room/lead-map/activities", async (req: Request, res: Response) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
     try {
@@ -308,7 +311,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // GET /metrics
   app.get("/api/admin-room/lead-map/metrics", async (req: Request, res: Response) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
       const projectId = typeof req.query.projectId === 'string' && req.query.projectId.length > 0
@@ -325,7 +328,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
   app.post("/api/admin-room/lead-map/leads/:id/generate-pitch",
     requireLeadMapPermission("ai.use_claude", { pool, activeSessions }),
     async (req: Request, res: Response) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const body = (req.body ?? {}) as { serviceFocus?: string };
     try {
@@ -342,7 +345,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // POST /places/search — Google Places search
   app.post("/api/admin-room/lead-map/places/search", async (req: Request, res: Response) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
     const body = (req.body ?? {}) as {
@@ -370,7 +373,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
   app.post("/api/admin-room/lead-map/leads/from-card",
     requireLeadMapPermission("leads.create", { pool, activeSessions }),
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
       const body = (req.body ?? {}) as {
@@ -425,7 +428,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // POST /places/import — importer ett Places-resultat som lead
   app.post("/api/admin-room/lead-map/places/import", async (req: Request, res: Response) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
     const body = (req.body ?? {}) as {
@@ -472,7 +475,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // GET /agent/configs/:configId/lead-map/leads
   app.get("/api/role-room/agent/configs/:configId/lead-map/leads", async (req, res) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
@@ -501,7 +504,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // GET /agent/configs/:configId/lead-map/leads/:id
   app.get("/api/role-room/agent/configs/:configId/lead-map/leads/:id", async (req, res) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
@@ -520,7 +523,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // PATCH /agent/configs/:configId/lead-map/leads/:id/status
   app.patch("/api/role-room/agent/configs/:configId/lead-map/leads/:id/status", async (req, res) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
@@ -546,7 +549,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // POST /agent/configs/:configId/lead-map/leads/:id/visits
   app.post("/api/role-room/agent/configs/:configId/lead-map/leads/:id/visits", async (req, res) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
@@ -585,7 +588,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // GET /agent/configs/:configId/lead-map/metrics
   app.get("/api/role-room/agent/configs/:configId/lead-map/metrics", async (req, res) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
@@ -602,7 +605,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // GET /agent/configs/:configId/lead-map/activities
   app.get("/api/role-room/agent/configs/:configId/lead-map/activities", async (req, res) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
@@ -620,7 +623,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // POST /agent/configs/:configId/lead-map/places/search
   app.post("/api/role-room/agent/configs/:configId/lead-map/places/search", async (req, res) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
@@ -648,7 +651,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // POST /agent/configs/:configId/lead-map/places/import
   app.post("/api/role-room/agent/configs/:configId/lead-map/places/import", async (req, res) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
@@ -674,7 +677,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // POST /agent/configs/:configId/lead-map/leads/:id/generate-pitch
   app.post("/api/role-room/agent/configs/:configId/lead-map/leads/:id/generate-pitch", async (req, res) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
@@ -700,7 +703,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // GET /agent/configs/:configId/lead-map/entitlement
   app.get("/api/role-room/agent/configs/:configId/lead-map/entitlement", async (req, res) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
@@ -725,7 +728,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // POST /agent/configs/:configId/lead-map/trial — start 14-dagers pro-trial
   app.post("/api/role-room/agent/configs/:configId/lead-map/trial", async (req, res) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
@@ -743,7 +746,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // POST /agent/configs/:configId/lead-map/auto-populate — Site Discovery → import lookalike-leads
   app.post("/api/role-room/agent/configs/:configId/lead-map/auto-populate", async (req, res) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
@@ -786,7 +789,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // POST /agent/configs/:configId/lead-map/checkout — opprett Stripe Checkout-session
   app.post("/api/role-room/agent/configs/:configId/lead-map/checkout", async (req, res) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });

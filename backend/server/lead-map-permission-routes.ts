@@ -21,6 +21,7 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { resolveLeadMapSession } from "./lead-map-session-helper.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -29,16 +30,14 @@ interface Deps {
   activeSessions: Map<string, SessionData>;
 }
 
-function getUser(
+// RT-5: tynn wrapper rundt sentral resolveLeadMapSession (DB-fallback
+// ved cache-miss).
+async function getUser(
   req: Request,
+  pool: Pool,
   activeSessions: Map<string, SessionData>,
-): SessionData | null {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) {
-    const s = activeSessions.get(auth.slice(7));
-    if (s) return s;
-  }
-  return null;
+): Promise<SessionData | null> {
+  return resolveLeadMapSession(req, pool, activeSessions);
 }
 
 /** Hent effektive permissions = rolle-defaults + overstyringer */
@@ -92,7 +91,7 @@ export function requirePermission(
   permissionKey: string,
 ) {
   return async (req: Request, res: Response, next: () => void) => {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) {
       res.status(401).json({ error: "Innlogging kreves" });
       return;
@@ -119,7 +118,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
   app.get(
     "/api/admin-room/lead-map/permissions/catalog",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
         const r = await pool.query(
@@ -137,7 +136,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
   app.get(
     "/api/admin-room/lead-map/organizations/:id/role-defaults",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
         const r = await pool.query<{ role: string; permission_key: string }>(
@@ -159,7 +158,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
   app.get(
     "/api/admin-room/lead-map/organizations/:id/permissions/:userId",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
       // RT-4: caller må enten lese seg selv ELLER ha permissions.manage
@@ -208,7 +207,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
     req: Request, res: Response,
     effect: "grant" | "revoke",
   ): Promise<void> {
-    const session = getUser(req, activeSessions);
+    const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) {
       res.status(401).json({ error: "Innlogging kreves" });
       return;
@@ -300,7 +299,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
   app.post(
     "/api/admin-room/lead-map/organizations/:id/permissions/:userId/reset",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const callerPerm = await resolveEffectivePermissions(pool, req.params.id, session.userId);
       if (!callerPerm.permissions.has("permissions.manage")) {
@@ -329,7 +328,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
   app.get(
     "/api/admin-room/lead-map/organizations/:id/permissions/audit",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const callerPerm = await resolveEffectivePermissions(pool, req.params.id, session.userId);
       if (!callerPerm.permissions.has("permissions.manage")) {

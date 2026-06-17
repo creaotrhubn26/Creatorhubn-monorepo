@@ -21,6 +21,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
+import { resolveLeadMapSession } from "./lead-map-session-helper.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -29,16 +30,14 @@ interface Deps {
   activeSessions: Map<string, SessionData>;
 }
 
-function getUser(
+// RT-5: tynn wrapper rundt sentral resolveLeadMapSession (DB-fallback
+// ved cache-miss).
+async function getUser(
   req: Request,
+  pool: Pool,
   activeSessions: Map<string, SessionData>,
-): SessionData | null {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) {
-    const s = activeSessions.get(auth.slice(7));
-    if (s) return s;
-  }
-  return null;
+): Promise<SessionData | null> {
+  return resolveLeadMapSession(req, pool, activeSessions);
 }
 
 async function requireOrgAdmin(
@@ -147,7 +146,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
   app.get(
     "/api/admin-room/lead-map/organizations",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
         const r = await pool.query<{
@@ -195,7 +194,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
   app.get(
     "/api/admin-room/lead-map/organizations/:id",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       if (!(await isOrgMember(pool, session.userId, req.params.id))) {
         return res.status(403).json({ error: "ikke_medlem" });
@@ -225,7 +224,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
   app.post(
     "/api/admin-room/lead-map/organizations",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const body = req.body as { name?: string; slug?: string };
       if (!body.name?.trim()) {
@@ -259,7 +258,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
   app.get(
     "/api/admin-room/lead-map/organizations/:id/members",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       if (!(await isOrgMember(pool, session.userId, req.params.id))) {
         return res.status(403).json({ error: "ikke_medlem" });
@@ -307,7 +306,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
   app.post(
     "/api/admin-room/lead-map/organizations/:id/invitations",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       if (!(await requireOrgAdmin(pool, session.userId, req.params.id))) {
         return res.status(403).json({ error: "kun_admin_kan_invitere" });
@@ -406,7 +405,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
   app.get(
     "/api/admin-room/lead-map/organizations/:id/invitations",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       if (!(await isOrgMember(pool, session.userId, req.params.id))) {
         return res.status(403).json({ error: "ikke_medlem" });
@@ -451,7 +450,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
   app.delete(
     "/api/admin-room/lead-map/organizations/:id/members/:userId",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       if (!(await requireOrgAdmin(pool, session.userId, req.params.id))) {
         return res.status(403).json({ error: "kun_admin_kan_fjerne" });
@@ -484,7 +483,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
   app.patch(
     "/api/admin-room/lead-map/organizations/:id/members/:userId",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       if (!(await requireOrgAdmin(pool, session.userId, req.params.id))) {
         return res.status(403).json({ error: "kun_admin_kan_endre" });
@@ -556,7 +555,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
   app.post(
     "/api/lead-map/invitations/:token/accept",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
         const invRes = await pool.query<{
