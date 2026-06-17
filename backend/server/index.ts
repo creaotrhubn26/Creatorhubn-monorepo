@@ -518,6 +518,7 @@ import { registerMePermissionsRoute } from "./lead-map-rbac-helper.js";
 import { registerLeadMapWorkloadRoutes } from "./lead-map-workload-routes.js";
 import { registerLeadMapLeaderboardRoutes } from "./lead-map-leaderboard-routes.js";
 import { registerLeadMapNotificationRoutes } from "./lead-map-notification-routes.js";
+import { registerLeadMapAnnotationRoutes } from "./lead-map-annotation-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24253,6 +24254,8 @@ registerLeadMapWorkloadRoutes({ app, pool, activeSessions });
 registerLeadMapLeaderboardRoutes({ app, pool, activeSessions });
 // Varsler ved lead-events (assign, status, follow-up, won-on-team)
 registerLeadMapNotificationRoutes({ app, pool, activeSessions });
+// Kart-annotasjoner (Apple Pencil tegn-modus + tildelte fokusområder)
+registerLeadMapAnnotationRoutes({ app, pool, activeSessions });
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,

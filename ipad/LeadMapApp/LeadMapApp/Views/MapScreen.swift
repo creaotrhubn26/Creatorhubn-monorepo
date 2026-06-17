@@ -29,6 +29,7 @@ struct MapScreen: View {
 /// Selve Map-tab'en — MapKit fullscreen + reminders-banner + toolbar.
 struct MapHomeView: View {
     @Environment(AppState.self) private var appState
+    @State private var showDrawingSheet = false
     @State private var camera: MapCameraPosition = .region(
         MKCoordinateRegion(
             center: .init(latitude: 59.9139, longitude: 10.7522), // Oslo
@@ -61,6 +62,10 @@ struct MapHomeView: View {
                                    coordinate: .init(latitude: m.lat, longitude: m.lng)) {
                             MemberPinView(member: m)
                         }
+                    }
+                    // Kart-annotasjoner (PR #629) — fokus-områder, ruter, callouts
+                    ForEach(appState.annotations) { annot in
+                        annotationOverlay(annot)
                     }
                 }
                 .mapStyle(.standard(elevation: .flat))
@@ -112,6 +117,11 @@ struct MapHomeView: View {
                         Button("Oppdater", systemImage: "arrow.clockwise") {
                             Task { await appState.refreshAll() }
                         }
+                        if appState.canCreateAnnotations {
+                            Button("Tegn på kart", systemImage: "pencil.tip.crop.circle") {
+                                showDrawingSheet = true
+                            }
+                        }
                         if appState.pendingVisitsCount > 0 {
                             Button("Send \(appState.pendingVisitsCount) ventende", systemImage: "paperplane") {
                                 Task { await appState.refreshAll() }
@@ -125,6 +135,76 @@ struct MapHomeView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showDrawingSheet) {
+                AnnotationDrawingView(
+                    initialRegion: camera.region
+                )
+            }
         }
+    }
+
+    /// Render én annotasjon som MapContent. Type-spesifikk: Polygon for
+    /// focus_area, Polyline for route/freehand, Marker for pin_callout.
+    @MapContentBuilder
+    private func annotationOverlay(_ annot: MapAnnotation) -> some MapContent {
+        let color = Color(hex: annot.color.trimmingCharacters(in: CharacterSet(charactersIn: "#")))
+        let coords = annot.coordinates
+        if let type = annot.typeEnum {
+            switch type {
+            case .focusArea where coords.count >= 3:
+                MapPolygon(coordinates: coords)
+                    .stroke(color, lineWidth: annot.strokeWidth)
+                    .foregroundStyle(color.opacity(0.18))
+            case .route, .freehand:
+                if coords.count >= 2 {
+                    MapPolyline(coordinates: coords)
+                        .stroke(color, lineWidth: annot.strokeWidth)
+                }
+            case .pinCallout:
+                if let p = coords.first {
+                    Annotation(annot.title ?? "Notat", coordinate: p) {
+                        AnnotationCalloutPin(annot: annot, color: color)
+                    }
+                }
+            default:
+                EmptyMapContent()
+            }
+        }
+    }
+}
+
+/// Liten "tekst-boble"-pin for pin_callout-annotasjoner.
+private struct AnnotationCalloutPin: View {
+    let annot: MapAnnotation
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 4) {
+                Image(systemName: "text.bubble.fill")
+                    .font(.caption)
+                Text(annot.title ?? "Notat")
+                    .font(.caption.bold())
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(color.opacity(0.85), in: Capsule())
+            .foregroundStyle(.white)
+            .shadow(radius: 2)
+        }
+        .accessibilityLabel(annot.title ?? "Annotasjon")
+    }
+}
+
+private extension Color {
+    init(hex: String) {
+        let s = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var rgb: UInt64 = 0
+        Scanner(string: s).scanHexInt64(&rgb)
+        self.init(
+            red: Double((rgb >> 16) & 0xFF) / 255,
+            green: Double((rgb >> 8) & 0xFF) / 255,
+            blue: Double(rgb & 0xFF) / 255
+        )
     }
 }
