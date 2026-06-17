@@ -64,6 +64,12 @@ targets:
         UIApplicationSupportsIndirectInputEvents: true
         # Live Activities — 'Pågående besøk' på låseskjerm + Dynamic Island (#184).
         NSSupportsLiveActivities: true
+        # Export Compliance — Leadgrid bruker kun HTTPS (URLSession) +
+        # iOS Data Protection. Ingen egen krypto-kode i appen. Flipp
+        # dette til true HVIS du innfører end-to-end-kryptering,
+        # importerer CryptoKit for egen AES/RSA-bruk, eller
+        # implementerer noe utover OS-innebygd kryptering.
+        ITSAppUsesNonExemptEncryption: false
     entitlements:
       path: LeadMapApp/Generated/LeadMapApp.entitlements
       properties:
