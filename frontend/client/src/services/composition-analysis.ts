@@ -58,7 +58,10 @@ export class CompositionAnalyzer {
 
   constructor() {
     this.canvas = document.createElement('canvas');
-    this.ctx = this.canvas.getContext('2d')!;
+    // willReadFrequently: this analyzer calls getImageData repeatedly
+    // (analyzeColorHarmony / composition passes), which is much faster on a
+    // CPU-backed canvas — and silences the Canvas2D readback warning.
+    this.ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
   }
 
   /**
