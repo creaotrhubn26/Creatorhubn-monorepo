@@ -54,6 +54,7 @@ import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import { SimpleBudgetEstimator, computeSimpleBudgetEstimate } from './SimpleBudgetEstimator';
 import { ProducerTodoButton } from './ProducerTodoButton';
 import EconomyHealthHeader from './EconomyHealthHeader';
+import BudgetProgressBar from './BudgetProgressBar';
 import {
   buildProducerDeliveryManifest,
   getProducerWorkspaceLocationForSurface,
@@ -2569,6 +2570,7 @@ export default function ProjectEconomyHub({
                           <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem', mt: 0.35 }}>
                             Godkjent {formatCurrency(phaseCard.approved, currency)} · Faktisk {formatCurrency(phaseCard.actual, currency)}
                           </Typography>
+                          <BudgetProgressBar approved={phaseCard.approved} actual={phaseCard.actual} />
                           <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.78rem', mt: 0.45 }}>
                             {phaseCard.syncedLineCount > 0
                               ? `${phaseCard.syncedLineCount} linjer kommer fra team/reise-synk`
