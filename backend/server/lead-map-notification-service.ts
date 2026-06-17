@@ -278,6 +278,15 @@ export async function notifyStatusChanged(
 
   // Hvis won: varsle også teamleder + salgssjef i samme org
   if (args.newStatus === "won" && lead.organization_id) {
+    // Dedupe: only fan out to team leads the first time this lead is won.
+    // Re-setting status to 'won' (toggle, or won→lost→won) would otherwise
+    // re-run this query and re-spam every salgssjef/teamleder each time.
+    const alreadyAnnounced = await pool.query(
+      `SELECT 1 FROM notification_events
+        WHERE lead_id = $1 AND event_type = 'lead_won_on_team' LIMIT 1`,
+      [args.leadId],
+    );
+    if (alreadyAnnounced.rowCount) return;
     const teamLeads = await pool.query<{ user_id: string }>(
       `SELECT om.user_id FROM organization_members om
          JOIN organization_members om_seller
