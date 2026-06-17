@@ -181,6 +181,7 @@ import { PlannerBreadcrumb, type PlannerBreadcrumbSegment } from './PlannerBread
 import { WorkspaceModeBadge, type WorkspaceMode } from './WorkspaceModeBadge';
 import PlannerProjectOverview from './PlannerProjectOverview';
 import PlannerMinDag from './PlannerMinDag';
+import PlannerDeliverablesBoard from './PlannerDeliverablesBoard';
 import {
   ContentProducerWorkflowStepper,
   type WorkflowStepKey,
@@ -13590,6 +13591,10 @@ type RoleRoomProjectWorkspaceState = {
               </Typography>
             </Box>
           ) : (
+            <>
+            {isContentProducerMode ? (
+              <PlannerDeliverablesBoard projectId={currentProject.id} />
+            ) : null}
             <RoleRoomDiagnosticsProbe
               name="ProducerExportHandoffPanel"
               projectId={currentProject.id}
@@ -13620,6 +13625,7 @@ type RoleRoomProjectWorkspaceState = {
                 } : undefined}
               />
             </RoleRoomDiagnosticsProbe>
+            </>
           )}
         </TabPanel>
 
