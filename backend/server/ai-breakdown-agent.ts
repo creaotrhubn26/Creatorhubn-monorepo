@@ -421,7 +421,7 @@ export const breakdownAgent: AIAgent = {
       const AnthropicCtor = mod.default ?? mod.Anthropic;
       const client: any = new AnthropicCtor({
         apiKey,
-        maxRetries: 1,
+        maxRetries: 3, // ride out 429/529 bursts during bulk generate
         timeout: 30_000,
       });
 
@@ -434,6 +434,10 @@ export const breakdownAgent: AIAgent = {
         messages: [{ role: "user", content: buildUserPrompt(breakdownInput) }],
       });
       logAIUsage(response as any, { feature: 'role-room/script-breakdown' }).catch(() => undefined);
+
+      if (response.stop_reason === "max_tokens") {
+        console.warn("[breakdown-agent] response truncated at max_tokens — breakdown may be incomplete");
+      }
 
       const toolBlock = (response.content ?? []).find(
         (b: any) => b?.type === "tool_use" && b?.name === BREAKDOWN_TOOL_SCHEMA.name,
