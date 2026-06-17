@@ -25,7 +25,11 @@ import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
 import MilitaryTechIcon from '@mui/icons-material/MilitaryTech';
+import AutoFixHighOutlinedIcon from '@mui/icons-material/AutoFixHighOutlined';
+import EmojiEventsOutlinedIcon from '@mui/icons-material/EmojiEventsOutlined';
 import { usePermissions } from './usePermissions';
+import LeadMapAutoAssignDialog from './LeadMapAutoAssignDialog';
+import LeadMapQuotaDialog from './LeadMapQuotaDialog';
 
 interface LeaderboardEntry {
   rank: number;
@@ -118,6 +122,8 @@ export default function LeadMapLeaderboardPanel() {
   const [summary, setSummary] = useState<LeaderboardSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoAssignOpen, setAutoAssignOpen] = useState(false);
+  const [quotaOpen, setQuotaOpen] = useState(false);
 
   const headers = useMemo<HeadersInit>(
     () => ({ Authorization: `Bearer ${getAuthToken()}` }),
@@ -195,12 +201,36 @@ export default function LeadMapLeaderboardPanel() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h5" component="h1" sx={{ mb: 0.5 }}>
-        Team-leaderboard
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Rangering av salgs-konsulenter etter periode + valgfritt team-filter
-      </Typography>
+      <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ mb: 1 }} flexWrap="wrap" gap={1}>
+        <Box>
+          <Typography variant="h5" component="h1" sx={{ mb: 0.5 }}>
+            Team-leaderboard
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Rangering av salgs-konsulenter etter periode + valgfritt team-filter
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={1}>
+          {myRole === 'admin' || myRole === 'salgssjef' ? (
+            <Button
+              variant="outlined"
+              startIcon={<AutoFixHighOutlinedIcon />}
+              onClick={() => setAutoAssignOpen(true)}
+            >
+              Auto-tildel
+            </Button>
+          ) : null}
+          {(['admin', 'salgssjef', 'teamleder'] as string[]).includes(myRole ?? '') && (
+            <Button
+              variant="outlined"
+              startIcon={<EmojiEventsOutlinedIcon />}
+              onClick={() => setQuotaOpen(true)}
+            >
+              Sett kvoter
+            </Button>
+          )}
+        </Stack>
+      </Stack>
 
       {error && (
         <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>
@@ -439,6 +469,19 @@ export default function LeadMapLeaderboardPanel() {
           )}
         </CardContent>
       </Card>
+
+      <LeadMapAutoAssignDialog
+        open={autoAssignOpen}
+        organizationId={orgId}
+        onClose={() => setAutoAssignOpen(false)}
+        onAssigned={() => { void load(); }}
+      />
+      <LeadMapQuotaDialog
+        open={quotaOpen}
+        organizationId={orgId}
+        onClose={() => setQuotaOpen(false)}
+        onSaved={() => { void load(); }}
+      />
     </Box>
   );
 }
