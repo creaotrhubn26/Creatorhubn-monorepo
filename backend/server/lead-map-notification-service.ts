@@ -278,6 +278,22 @@ export async function notifyStatusChanged(
 
   // Hvis won: varsle også teamleder + salgssjef i samme org
   if (args.newStatus === "won" && lead.organization_id) {
+    // LM-8: dedup mot tidligere won-fan-out. Toggle won→lost→won (eller
+    // status-rapport som re-trigger via PATCH) ville ellers spammet
+    // hele teamet med 🏆-varsler hver gang. Vi sjekker om noen tidligere
+    // lead_won_on_team-event eksisterer for dette leadet — i så fall
+    // hopper vi over fan-out entirely.
+    const previouslyWon = await pool.query<{ exists: boolean }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM notification_events
+          WHERE lead_id = $1
+            AND event_type = 'lead_won_on_team'
+       ) AS exists`,
+      [args.leadId],
+    );
+    if (previouslyWon.rows[0]?.exists) {
+      return;
+    }
     const teamLeads = await pool.query<{ user_id: string }>(
       `SELECT om.user_id FROM organization_members om
          JOIN organization_members om_seller
