@@ -73316,6 +73316,38 @@ createDanceRealtimeServer(httpServer);
 attachCaptureWebSocket(httpServer, pool, activeSessions);
 attachUserEventsWebSocket(httpServer, pool, activeSessions);
 
+// RT-1: Final fallback. Hver av de fire opcoderne over registrerer
+// sin egen 'upgrade'-listener for sin path. Et upgrade-request mot en
+// UKJENT path når slutten av kjeden uten å bli claimed — Node lukker
+// IKKE socketen automatisk, så den lekker en fd og en ESTABLISHED-
+// connection inntil OS TCP-timeout (mange minutter).
+// Denne reaper-listenern må registreres SIST og destroyer alle ikke-
+// claimed upgrade-paths.
+httpServer.on("upgrade", (req, socket) => {
+  try {
+    const p = new URL(
+      req.url ?? "/",
+      `http://${req.headers.host ?? "localhost"}`,
+    ).pathname;
+    const known =
+      p === "/ws" ||
+      p.startsWith("/ws/") ||
+      p === "/ws/dance/realtime" ||
+      /^\/api\/capture\/ws\/sessions\/[0-9a-f-]{36}$/.test(p) ||
+      p === "/api/ipad/ws/events";
+    if (!known && !socket.destroyed && socket.writable) {
+      socket.write(
+        "HTTP/1.1 404 Not Found\r\n" +
+          "Connection: close\r\n" +
+          "Content-Length: 0\r\n\r\n",
+      );
+      socket.destroy();
+    }
+  } catch {
+    try { socket.destroy(); } catch { /* noop */ }
+  }
+});
+
 // Drive batch upload worker: periodic sweep of ``queued`` +
 // ``running`` batches. Tick interval set conservatively so one
 // unresponsive OAuth refresh can't starve other workers. Skipped
