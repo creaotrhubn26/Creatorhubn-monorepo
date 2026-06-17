@@ -30,6 +30,7 @@ struct MapScreen: View {
 struct MapHomeView: View {
     @Environment(AppState.self) private var appState
     @State private var showDrawingSheet = false
+    @State private var showCardScanner = false
     @State private var camera: MapCameraPosition = .region(
         MKCoordinateRegion(
             center: .init(latitude: 59.9139, longitude: 10.7522), // Oslo
@@ -117,6 +118,11 @@ struct MapHomeView: View {
                         Button("Oppdater", systemImage: "arrow.clockwise") {
                             Task { await appState.refreshAll() }
                         }
+                        if #available(iOS 16.0, *) {
+                            Button("Skann visittkort", systemImage: "camera.viewfinder") {
+                                showCardScanner = true
+                            }
+                        }
                         if appState.canCreateAnnotations {
                             Button("Tegn på kart", systemImage: "pencil.tip.crop.circle") {
                                 showDrawingSheet = true
@@ -139,6 +145,11 @@ struct MapHomeView: View {
                 AnnotationDrawingView(
                     initialRegion: camera.region
                 )
+            }
+            .sheet(isPresented: $showCardScanner) {
+                if #available(iOS 16.0, *) {
+                    BusinessCardScannerView()
+                }
             }
         }
     }

@@ -129,14 +129,29 @@ struct VisitLogModal: View {
 
     private var conversationSection: some View {
         Section {
-            TextField("Hva ble sagt? Hva var stemningen?", text: $draft.conversationSummary, axis: .vertical)
-                .lineLimit(3...10)
+            VoiceTextField(
+                title: "Hva ble sagt? Hva var stemningen?",
+                text: $draft.conversationSummary,
+                lineLimit: 3...10,
+            )
             TextField("Innvending / avslag-grunn (valgfri)", text: $draft.objectionReason, axis: .vertical)
                 .lineLimit(1...3)
-            TextField("Interne notater", text: $draft.notes, axis: .vertical)
-                .lineLimit(1...4)
+            VoiceTextField(
+                title: "Interne notater",
+                text: $draft.notes,
+                lineLimit: 1...4,
+            )
         } header: {
-            Text("Samtale-sammendrag")
+            HStack {
+                Text("Samtale-sammendrag")
+                Spacer()
+                Image(systemName: "mic.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Trykk mikrofonen for å diktere")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -191,11 +206,17 @@ struct VisitLogModal: View {
         do {
             try await appState.enqueueOrSendVisit(leadId: lead.id, body: draft.toJSON())
             await appState.refreshAll()
+            // Stopp Live Activity hvis aktiv (PR #642 — #184)
+            if #available(iOS 16.1, *) {
+                await ActiveVisitManager.shared.stop()
+            }
             dismiss()
         } catch is OfflineEnqueuedError {
-            // Lagret offline — vis kort feedback før dismiss
             errorMessage = "✓ Lagret offline. Sendes når dekning er tilbake."
             try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if #available(iOS 16.1, *) {
+                await ActiveVisitManager.shared.stop()
+            }
             dismiss()
         } catch {
             errorMessage = "Klarte ikke lagre: \(error.localizedDescription)"
