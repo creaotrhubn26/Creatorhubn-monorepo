@@ -56,8 +56,19 @@ export function registerLeadMapFollowupCronRoutes({ app, pool }: Deps): void {
       }
 
       try {
+        const lockRes = await client.query<{ ok: boolean }>(
+          `SELECT pg_try_advisory_lock(hashtext('lead-map-followup-cron')) AS ok`,
+        );
+        lockHeld = lockRes.rows[0]?.ok === true;
+        if (!lockHeld) {
+          return res.json({
+            ok: true,
+            notifications_sent: 0,
+            skipped: "overlap_with_running_cron",
+          });
+        }
         // Finn forfalt follow-up som ikke har fått varsel siste 24t
-        const r = await pool.query<{
+        const r = await client.query<{
           lead_id: string;
           lead_name: string;
           address: string | null;
