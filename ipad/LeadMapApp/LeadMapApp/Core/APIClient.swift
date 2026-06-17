@@ -244,6 +244,37 @@ actor APIClient {
         )
     }
 
+    // MARK: - Kart-annotasjoner (PR #629)
+
+    func fetchAnnotations(
+        organizationId: String,
+        assignedToMeOnly: Bool = false
+    ) async throws -> AnnotationsResponse {
+        let qs = assignedToMeOnly ? "?assigned_to_me_only=true" : ""
+        return try await get(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/annotations\(qs)"
+        )
+    }
+
+    /// Opprett ny annotasjon. Returnerer ID.
+    func createAnnotation(
+        organizationId: String,
+        payload: AnnotationCreatePayload
+    ) async throws -> String {
+        let resp: CreateAnnotationResponse = try await post(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/annotations",
+            body: payload.jsonBody
+        )
+        return resp.id
+    }
+
+    func archiveAnnotation(_ id: String) async throws {
+        try await post(
+            "/api/admin-room/lead-map/annotations/\(id)/archive",
+            body: [:]
+        )
+    }
+
     // MARK: - Varsler (PR #622)
 
     func fetchNotifications(unreadOnly: Bool = false, limit: Int = 50) async throws -> NotificationFeedResponse {
@@ -373,6 +404,7 @@ private struct OrgProfilesResponse: Decodable { let profiles: [MemberProfile] }
 private struct TeamsResponse: Decodable { let teams: [SalesTeam] }
 private struct MemberLocationsResponse: Decodable { let locations: [MemberLocation] }
 private struct ConsentResponse: Decodable { let consented: Bool }
+private struct CreateAnnotationResponse: Decodable { let id: String }
 
 struct OrgProfileEnvelope: Decodable {
     let profile: OrganizationProfile

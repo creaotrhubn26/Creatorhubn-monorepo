@@ -93,6 +93,21 @@ final class AppState {
     var unreadNotificationsCount: Int = 0
     private var notificationsPollTask: Task<Void, Never>?
 
+    // ── Kart-annotasjoner (PR #629) ────────────────────────────
+    var annotations: [MapAnnotation] = []
+    var canCreateAnnotations: Bool = false
+
+    func refreshAnnotations() async {
+        guard let api, let orgId = activeOrganizationId else { return }
+        do {
+            let resp = try await api.fetchAnnotations(organizationId: orgId)
+            self.annotations = resp.annotations
+            self.canCreateAnnotations = resp.canCreate
+        } catch {
+            print("[AppState] annotations failed: \(error)")
+        }
+    }
+
     // ── Heartbeat-loop ─────────────────────────────────────────
     private var heartbeatController: HeartbeatController?
 
@@ -129,6 +144,7 @@ final class AppState {
             await loadOrgContext()
             await startHeartbeatIfNeeded()
             startNotificationsPolling()
+            await refreshAnnotations()
         }
     }
 
