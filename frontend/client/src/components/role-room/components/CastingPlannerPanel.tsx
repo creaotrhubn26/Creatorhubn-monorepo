@@ -182,6 +182,7 @@ import { WorkspaceModeBadge, type WorkspaceMode } from './WorkspaceModeBadge';
 import PlannerProjectOverview from './PlannerProjectOverview';
 import PlannerMinDag from './PlannerMinDag';
 import PlannerDeliverablesBoard from './PlannerDeliverablesBoard';
+import PlannerTimelineGantt from './PlannerTimelineGantt';
 import {
   ContentProducerWorkflowStepper,
   type WorkflowStepKey,
@@ -13484,6 +13485,10 @@ type RoleRoomProjectWorkspaceState = {
               </Typography>
             </Box>
           ) : (
+            <>
+            {isContentProducerMode ? (
+              <PlannerTimelineGantt project={currentProject} />
+            ) : null}
             <RoleRoomDiagnosticsProbe
               name="ProducerTimelinePanel"
               projectId={currentProject.id}
@@ -13519,6 +13524,7 @@ type RoleRoomProjectWorkspaceState = {
               } : undefined}
               />
             </RoleRoomDiagnosticsProbe>
+            </>
           )}
         </TabPanel>
 
