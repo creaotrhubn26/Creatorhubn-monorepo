@@ -19,9 +19,8 @@ struct LeadDetailSheet: View {
     // CTA i prosjekt-kortet KUN hvis backend bekrefter at orgen har et
     // ready-deck OG kaller har pitch_deck.access (403 ellers).
     @State private var pitchAvailability: PitchDeckAvailability?
-    @State private var startedPresentation: PitchPresentation?
-    @State private var pitchPermissions: Set<String> = []
-    @State private var pitchBundleForPresent: PitchDeckBundle?
+    @State private var pitchBriefShown = false
+    @State private var pitchBundleForBrief: PitchDeckBundle?
 
     var body: some View {
         NavigationStack {
@@ -53,9 +52,13 @@ struct LeadDetailSheet: View {
                 await loadEnrichment()
                 await loadPitchAvailability()
             }
-            .fullScreenCover(item: $startedPresentation) { pres in
-                if let bundle = pitchBundleForPresent {
-                    PitchDeckPresentView(bundle: bundle, presentation: pres)
+            .sheet(isPresented: $pitchBriefShown) {
+                if let bundle = pitchBundleForBrief {
+                    PitchPreMeetingBriefView(
+                        bundle: bundle,
+                        leadId: lead.id,
+                        leadName: lead.name
+                    )
                 }
             }
             .sheet(isPresented: $visitLogShown) {
@@ -358,14 +361,12 @@ struct LeadDetailSheet: View {
     private func startPitchPresentation(deckId: String) async {
         guard let api = appState.api else { return }
         do {
-            // Pre-load deck slik at PresentView har bundle klart
+            // Pre-load deck slik at BriefView har bundle klart.
+            // BriefView kaller selv POST /presentations/brief +
+            // POST /presentations når selger trykker Start.
             let bundle = try await api.loadPitchDeck(deckId: deckId)
-            let resp = try await api.startPitchPresentation(
-                deckId: deckId,
-                leadId: lead.id  // koble presentasjonen til denne leaden
-            )
-            pitchBundleForPresent = bundle
-            startedPresentation = resp.presentation
+            pitchBundleForBrief = bundle
+            pitchBriefShown = true
         } catch {
             // Stille fallback — knappen vises ikke neste gang hvis
             // backend mister access. Logger ikke til UI for å unngå støy.

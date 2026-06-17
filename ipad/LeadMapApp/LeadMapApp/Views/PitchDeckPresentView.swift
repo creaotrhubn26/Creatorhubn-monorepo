@@ -18,6 +18,13 @@ import PencilKit
 struct PitchDeckPresentView: View {
     let bundle: PitchDeckBundle
     let presentation: PitchPresentation
+    /// Per-lead Value-override fra POST /value-slide/for-lead. Renderes
+    /// kun på Verdien-sliden hvis satt.
+    var valueOverride: PitchValueOverride? = nil
+    /// Pre-møte-brief: hvis satt, presenter KUN anbefalte slides.
+    var preMeetingBrief: PitchBrief? = nil
+    /// Org-navn for cover-slide.
+    var orgName: String = ""
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -29,6 +36,18 @@ struct PitchDeckPresentView: View {
     @State private var pencilActive = false
     @State private var savingOutcome = false
 
+    /// Aktive slides — filtrerer is_included og respekterer brief-anbefalingen
+    /// hvis den er satt. Slettede slides er allerede filtrert av backend.
+    private var activeSlides: [PitchSlide] {
+        let included = bundle.slides.filter { $0.isIncluded }
+        guard let brief = preMeetingBrief, !brief.recommendedSlideIds.isEmpty else {
+            return included
+        }
+        let allowed = Set(brief.recommendedSlideIds)
+        let recommended = included.filter { allowed.contains($0.id) }
+        return recommended.isEmpty ? included : recommended
+    }
+
     var body: some View {
         ZStack {
             // Warm-dark bakgrunn — matcher PDF-eksporten
@@ -36,7 +55,7 @@ struct PitchDeckPresentView: View {
 
             // Sveipbar slide-stack
             TabView(selection: $currentIndex) {
-                ForEach(Array(bundle.slides.enumerated()), id: \.element.id) { idx, slide in
+                ForEach(Array(activeSlides.enumerated()), id: \.element.id) { idx, slide in
                     slideCanvas(slide: slide, idx: idx)
                         .tag(idx)
                 }
@@ -52,8 +71,9 @@ struct PitchDeckPresentView: View {
             }
         }
         .onChange(of: currentIndex, initial: true) { _, new in
-            if new < bundle.slides.count {
-                shownSlideIds.insert(bundle.slides[new].id)
+            let slides = activeSlides
+            if new < slides.count {
+                shownSlideIds.insert(slides[new].id)
             }
         }
         .statusBarHidden()
@@ -61,7 +81,7 @@ struct PitchDeckPresentView: View {
         .sheet(isPresented: $showOutcome) {
             PitchPresentationOutcomeSheet(
                 deck: bundle.deck,
-                slideCount: bundle.slides.count,
+                slideCount: activeSlides.count,
                 slidesShown: shownSlideIds.count,
                 annotationsCount: annotations.count,
                 onSubmit: { outcome, note in
@@ -78,41 +98,22 @@ struct PitchDeckPresentView: View {
 
     private func slideCanvas(slide: PitchSlide, idx: Int) -> some View {
         ZStack {
-            slideContent(slide: slide, idx: idx)
+            PitchSlideRenderer(
+                slide: slide,
+                position: idx + 1,
+                total: activeSlides.count,
+                coverLogoUrl: bundle.deck.coverLogoUrl,
+                coverTagline: bundle.deck.coverTagline,
+                orgName: orgName,
+                // Bare Verdien-sliden får override
+                valueOverride: slide.slideType == "value" ? valueOverride : nil
+            )
+            .frame(maxWidth: 1100)
             if pencilActive {
                 PencilCanvas(drawing: bindingForDrawing(slideId: slide.id))
                     .allowsHitTesting(true)
             }
         }
-    }
-
-    private func slideContent(slide: PitchSlide, idx: Int) -> some View {
-        VStack(alignment: .leading, spacing: 28) {
-            HStack {
-                Label(slide.slideType.uppercased(), systemImage: slide.iconName)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color(red: 0.83, green: 0.64, blue: 0.45))
-                Spacer()
-                Text("\(idx + 1) / \(bundle.slides.count)")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.5))
-            }
-
-            Text(slide.titleMd)
-                .font(.system(size: 56, weight: .semibold))
-                .foregroundStyle(.white)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text(slide.bodyMd)
-                .font(.system(size: 22, weight: .regular))
-                .foregroundStyle(.white.opacity(0.82))
-                .lineSpacing(6)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer()
-        }
-        .padding(.horizontal, 64)
-        .padding(.vertical, 80)
-        .frame(maxWidth: 1100, maxHeight: .infinity, alignment: .topLeading)
     }
 
     // MARK: - Bars
@@ -129,7 +130,7 @@ struct PitchDeckPresentView: View {
             Spacer()
             // Fremdrifts-streker
             HStack(spacing: 4) {
-                ForEach(0..<bundle.slides.count, id: \.self) { i in
+                ForEach(0..<activeSlides.count, id: \.self) { i in
                     Capsule()
                         .fill(i == currentIndex
                               ? Color.white
@@ -164,7 +165,7 @@ struct PitchDeckPresentView: View {
                 }
             }
             Spacer()
-            if currentIndex < bundle.slides.count - 1 {
+            if currentIndex < activeSlides.count - 1 {
                 Button {
                     withAnimation { currentIndex += 1 }
                 } label: {
@@ -231,6 +232,12 @@ struct PitchDeckPresentView: View {
                 outcomeNote: note,
                 end: true
             )
+            // Post-møte-loop: outcome → automatisk lead_status / next_
+            // follow_up_at / calendar-hint. Best-effort — vi blokker
+            // ikke dismiss på den.
+            if outcome != nil {
+                _ = try? await api.finalizePitchPresentation(id: presentation.id)
+            }
         } catch {
             // Sviss feilen — vi er på vei ut. PresentationDB-raden er
             // allerede opprettet, så vi mister bare outcome/annotations.

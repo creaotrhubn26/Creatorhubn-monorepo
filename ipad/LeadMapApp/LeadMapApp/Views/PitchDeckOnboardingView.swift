@@ -128,6 +128,37 @@ struct PitchDeckOnboardingView: View {
                            "Digital-byrå spesialisert på fashion",
                            "Helsetech for kommune-helsetjenester"]
             )
+            // Format-switcher + website (auto-cover-fetch). Plassert
+            // inline i steg 1 så de ikke tar et helt eget steg.
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Lengde")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Picker("Format", selection: $format) {
+                    Text("Master (11 slides)").tag("long")
+                    Text("Kort (10 slides)").tag("short")
+                }
+                .pickerStyle(.segmented)
+                Text(format == "short"
+                     ? "For salgsmøter. Drop core_features siden før/etter dekker det."
+                     : "Full fortelling. Bruk når du har 15+ min m/ kunden.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 8)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Bedriftens nettside (valgfritt)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                TextField("https://eksempel.no", text: $websiteUrl)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                Text("Vi henter logo + tagline til cover-sliden automatisk.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 8)
         }
     }
 
