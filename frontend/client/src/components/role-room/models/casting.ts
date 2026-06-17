@@ -1329,6 +1329,8 @@ export interface ProducerClientIntake {
   additionalNotes?: string;
   updatedAt?: string;
   updatedByRole?: string;
+  /** NULL/undefined = draft (privat), satt = publisert/synlig for klient. */
+  publishedAt?: string | null;
 }
 
 export type ProducerClientMaterialType =

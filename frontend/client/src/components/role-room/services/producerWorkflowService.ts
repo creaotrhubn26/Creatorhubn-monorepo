@@ -87,6 +87,9 @@ export interface ProducerTimelineItem {
   owner_user_id?: string | null;
   due_at?: string | null;
   status: string;
+  /** NULL = draft/privat, satt = publisert/synlig for klient. */
+  published_at?: string | null;
+  published_by_user_id?: string | null;
   linked_entity_type?: string | null;
   linked_entity_id?: string | null;
   sort_order: number;
@@ -395,6 +398,7 @@ function normalizeClientIntake(value: unknown): ProducerClientIntake {
     additionalNotes: readFirstNonEmptyString(record.additional_notes, record.additionalNotes) ?? '',
     updatedAt: readFirstNonEmptyString(record.updated_at, record.updatedAt) ?? undefined,
     updatedByRole: readFirstNonEmptyString(record.updated_by_role, record.updatedByRole) ?? undefined,
+    publishedAt: readFirstNonEmptyString(record.published_at, record.publishedAt) ?? null,
   };
 }
 
@@ -1154,6 +1158,8 @@ function normalizeTimelineItem(value: unknown, projectId: string, index = 0): Pr
     owner_user_id: readFirstNonEmptyString(record.owner_user_id, record.ownerUserId) ?? null,
     due_at: readFirstNonEmptyString(record.due_at, record.dueAt) ?? null,
     status: readFirstNonEmptyString(record.status) ?? 'planned',
+    published_at: readFirstNonEmptyString(record.published_at, record.publishedAt) ?? null,
+    published_by_user_id: readFirstNonEmptyString(record.published_by_user_id, record.publishedByUserId) ?? null,
     linked_entity_type: readFirstNonEmptyString(record.linked_entity_type, record.linkedEntityType) ?? null,
     linked_entity_id: readFirstNonEmptyString(record.linked_entity_id, record.linkedEntityId) ?? null,
     sort_order: normalizeNumber(record.sort_order ?? record.sortOrder, index),
@@ -3064,6 +3070,38 @@ export const producerWorkflowService = {
     return persisted;
   },
 
+  /** Publiser/avpubliser et tidslinjeelement til klienten. */
+  async publishTimelineItem(
+    projectId: string,
+    itemId: string,
+    publish = true,
+  ): Promise<ProducerTimelineItem> {
+    const persisted = await runProducerMutation<ProducerTimelineItem>({
+      projectId,
+      domain: 'timeline',
+      method: 'POST',
+      endpoint: `/projects/${projectId}/producer/timeline/${itemId}/publish`,
+      body: { publish },
+      parse: (response) => normalizeTimelineItem(asRecord(response).item, projectId),
+      optimistic: async () => {
+        const mirror = await readTimelineMirror(projectId);
+        const existing = mirror.find((i) => i.id === itemId);
+        const merged = normalizeTimelineItem(
+          { ...(existing ?? { id: itemId }), id: itemId, published_at: publish ? nowIso() : null, updated_at: nowIso() },
+          projectId,
+        );
+        await writeTimelineMirror(
+          projectId,
+          sortTimelineItems(existing ? mirror.map((i) => (i.id === itemId ? merged : i)) : [...mirror, merged]),
+        );
+        return merged;
+      },
+    });
+    clearProducerWorkflowReadCache(projectId, ['timeline']);
+    emitProducerWorkflowEvent({ projectId, domain: 'timeline', mutation: 'updated', entityId: persisted.id });
+    return persisted;
+  },
+
   async deleteTimelineItem(projectId: string, itemId: string): Promise<void> {
     try {
       await runProducerMutation<void>({
@@ -3179,6 +3217,20 @@ export const producerWorkflowService = {
       mutation: 'updated',
       entityId: projectId,
     });
+    return normalized;
+  },
+
+  /** Publiser/avpubliser briefen til klienten (varsler klient ved publisering). */
+  async publishClientIntake(projectId: string, publish = true): Promise<ProducerClientIntake> {
+    const response = await producerWorkflowRequest<{ intake?: unknown | null }>(
+      `/projects/${projectId}/producer/client-intake/publish`,
+      { method: 'POST', body: JSON.stringify({ publish }) },
+    );
+    const normalized = normalizeClientIntake(response.intake ?? {});
+    await writeClientIntakeToStorage(projectId, normalized);
+    clearClientInputReadCache(projectId);
+    clearProducerWorkflowReadCache(projectId);
+    emitProducerWorkflowEvent({ projectId, domain: 'project', mutation: 'updated', entityId: projectId });
     return normalized;
   },
 

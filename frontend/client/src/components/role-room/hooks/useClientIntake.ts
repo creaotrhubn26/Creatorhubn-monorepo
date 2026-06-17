@@ -13,12 +13,16 @@ export interface UseClientIntakeResult {
   reload: () => Promise<void>;
   /** Merge `patch` into the current intake and persist. Returns the saved intake. */
   save: (patch: Partial<ProducerClientIntake>) => Promise<ProducerClientIntake>;
+  /** Publiser/avpubliser briefen til klienten (draft→publiser→synk-grense). */
+  publish: (publish?: boolean) => Promise<ProducerClientIntake>;
+  publishing: boolean;
 }
 
 export function useClientIntake(projectId?: string): UseClientIntakeResult {
   const [intake, setIntake] = useState<ProducerClientIntake | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
@@ -79,5 +83,20 @@ export function useClientIntake(projectId?: string): UseClientIntakeResult {
     [projectId, intake],
   );
 
-  return { intake, loading, saving, error, saveError, reload: load, save };
+  const publish = useCallback(
+    async (shouldPublish = true): Promise<ProducerClientIntake> => {
+      if (!projectId) throw new Error('Mangler projectId');
+      setPublishing(true);
+      try {
+        const saved = await producerWorkflowService.publishClientIntake(projectId, shouldPublish);
+        setIntake(saved);
+        return saved;
+      } finally {
+        setPublishing(false);
+      }
+    },
+    [projectId],
+  );
+
+  return { intake, loading, saving, publishing, error, saveError, reload: load, save, publish };
 }
