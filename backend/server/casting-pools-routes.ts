@@ -76,29 +76,39 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
 
   // ── Candidate pool ─────────────────────────────────────────────────
 
-  app.get("/api/casting/candidate-pool", async (_req, res) => {
+  // The pool was a single global namespace served without auth — every
+  // tenant's candidate/role PII was listed to anyone. Require a session and
+  // scope to entries the caller owns (ownerUserId stamped on write). Entries
+  // with no owner (legacy global rows) are treated as not-yours and hidden.
+  app.get("/api/casting/candidate-pool", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const dbRows = await compatStoreListByPrefix<any>("casting:candidate-pool:");
     if (dbRows.length > 0) {
-      const candidates = dbRows
+      const all = dbRows
         .map((row) => row.value)
         .filter((candidate) => candidate && typeof candidate === "object");
       legacyCandidatePool.clear();
-      for (const candidate of candidates) {
+      for (const candidate of all) {
         const candidateId = typeof candidate.id === "string" ? candidate.id : "";
         if (!candidateId) continue;
         legacyCandidatePool.set(candidateId, candidate);
       }
+      const candidates = all.filter((c) => c.ownerUserId === session.userId);
       res.json({ success: true, candidates });
       return;
     }
     res.json({
       success: true,
-      candidates: Array.from(legacyCandidatePool.values()),
+      candidates: Array.from(legacyCandidatePool.values()).filter(
+        (c) => c.ownerUserId === session.userId,
+      ),
     });
   });
 
   app.post("/api/casting/candidate-pool", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const payload = req.body || {};
     const candidateId =
       typeof payload.id === "string" && payload.id.trim()
@@ -106,10 +116,16 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
         : newEntityId("pool-candidate");
     const now = new Date().toISOString();
     const current = legacyCandidatePool.get(candidateId) || {};
+    // Block editing another tenant's existing entry by supplying its id.
+    if (current.ownerUserId && current.ownerUserId !== session.userId) {
+      res.status(404).json({ success: false, error: "not_found" });
+      return;
+    }
     const candidate = {
       ...current,
       ...payload,
       id: candidateId,
+      ownerUserId: session.userId,
       createdAt: current.createdAt || now,
       updatedAt: now,
     };
@@ -119,15 +135,24 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
   });
 
   app.delete("/api/casting/candidate-pool/:candidateId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const candidateId = req.params.candidateId;
+    const existing =
+      legacyCandidatePool.get(candidateId) ||
+      (await compatStoreGet<any>(dbLegacyCandidatePoolKey(candidateId)));
+    if (existing && existing.ownerUserId && existing.ownerUserId !== session.userId) {
+      res.status(404).json({ success: false, error: "not_found" });
+      return;
+    }
     legacyCandidatePool.delete(candidateId);
     await compatStoreDelete(dbLegacyCandidatePoolKey(candidateId));
     res.json({ success: true });
   });
 
   app.post("/api/casting/candidate-pool/import-to-project", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const poolCandidateId =
       typeof req.body?.poolCandidateId === "string"
         ? req.body.poolCandidateId
@@ -143,6 +168,11 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
       res
         .status(400)
         .json({ success: false, error: "Invalid candidate or target project" });
+      return;
+    }
+    // Only the owner may import their pool candidate.
+    if (poolCandidate.ownerUserId && poolCandidate.ownerUserId !== session.userId) {
+      res.status(404).json({ success: false, error: "not_found" });
       return;
     }
     legacyCandidatePool.set(poolCandidateId, poolCandidate);
@@ -173,7 +203,8 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
   });
 
   app.post("/api/casting/candidates/save-to-pool", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const candidateId =
       typeof req.body?.candidateId === "string" ? req.body.candidateId : "";
     if (!candidateId) {
@@ -184,6 +215,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
     const now = new Date().toISOString();
     legacyCandidatePool.set(poolCandidateId, {
       id: poolCandidateId,
+      ownerUserId: session.userId,
       name: `Candidate ${candidateId}`,
       tags: ["imported"],
       photos: [],
@@ -200,26 +232,35 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
 
   // ── Role pool ──────────────────────────────────────────────────────
 
-  app.get("/api/casting/role-pool", async (_req, res) => {
+  app.get("/api/casting/role-pool", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const dbRows = await compatStoreListByPrefix<any>("casting:role-pool:");
     if (dbRows.length > 0) {
-      const roles = dbRows
+      const all = dbRows
         .map((row) => row.value)
         .filter((role) => role && typeof role === "object");
       legacyRolePool.clear();
-      for (const role of roles) {
+      for (const role of all) {
         const roleId = typeof role.id === "string" ? role.id : "";
         if (!roleId) continue;
         legacyRolePool.set(roleId, role);
       }
+      const roles = all.filter((r) => r.ownerUserId === session.userId);
       res.json({ success: true, roles });
       return;
     }
-    res.json({ success: true, roles: Array.from(legacyRolePool.values()) });
+    res.json({
+      success: true,
+      roles: Array.from(legacyRolePool.values()).filter(
+        (r) => r.ownerUserId === session.userId,
+      ),
+    });
   });
 
   app.post("/api/casting/role-pool", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const payload = req.body || {};
     const roleId =
       typeof payload.id === "string" && payload.id.trim()
@@ -227,10 +268,15 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
         : newEntityId("pool-role");
     const now = new Date().toISOString();
     const current = legacyRolePool.get(roleId) || {};
+    if (current.ownerUserId && current.ownerUserId !== session.userId) {
+      res.status(404).json({ success: false, error: "not_found" });
+      return;
+    }
     const role = {
       ...current,
       ...payload,
       id: roleId,
+      ownerUserId: session.userId,
       createdAt: current.createdAt || now,
       updatedAt: now,
     };
@@ -240,15 +286,24 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
   });
 
   app.delete("/api/casting/role-pool/:roleId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const roleId = req.params.roleId;
+    const existing =
+      legacyRolePool.get(roleId) ||
+      (await compatStoreGet<any>(dbLegacyRolePoolKey(roleId)));
+    if (existing && existing.ownerUserId && existing.ownerUserId !== session.userId) {
+      res.status(404).json({ success: false, error: "not_found" });
+      return;
+    }
     legacyRolePool.delete(roleId);
     await compatStoreDelete(dbLegacyRolePoolKey(roleId));
     res.json({ success: true });
   });
 
   app.post("/api/casting/role-pool/import-to-project", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const poolRoleId =
       typeof req.body?.poolRoleId === "string" ? req.body.poolRoleId : "";
     const targetProjectId =
@@ -264,12 +319,17 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
         .json({ success: false, error: "Invalid role or target project" });
       return;
     }
+    if (poolRole.ownerUserId && poolRole.ownerUserId !== session.userId) {
+      res.status(404).json({ success: false, error: "not_found" });
+      return;
+    }
     legacyRolePool.set(poolRoleId, poolRole);
     res.status(201).json({ success: true, roleId: newEntityId("role") });
   });
 
   app.post("/api/casting/roles/save-to-pool", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const roleId = typeof req.body?.roleId === "string" ? req.body.roleId : "";
     if (!roleId) {
       res.status(400).json({ success: false, error: "roleId is required" });
@@ -279,6 +339,7 @@ export function setupCastingPoolsRoutes(deps: CastingPoolsRoutesDeps): void {
     const now = new Date().toISOString();
     legacyRolePool.set(poolRoleId, {
       id: poolRoleId,
+      ownerUserId: session.userId,
       name: `Role ${roleId}`,
       requirements: {},
       tags: ["imported"],

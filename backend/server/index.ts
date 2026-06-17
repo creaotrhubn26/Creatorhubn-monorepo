@@ -30481,6 +30481,7 @@ setupCastingAgreementsRoutes({
 setupCastingManuscriptsRoutes({
   app,
   requireUserSession,
+  compatStoreGet,
   manuscriptsService,
   revisionsService: manuscriptRevisionsService,
 });

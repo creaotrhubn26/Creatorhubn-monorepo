@@ -27,6 +27,7 @@ import {
 import type { Pool } from 'pg';
 import { randomBytes } from 'node:crypto';
 import { loadPersistedAuthSession } from './auth-session-store.js';
+import { userOwnsCastingProject } from './casting-project-ownership.js';
 
 interface SessionData {
   userId: string;
@@ -154,10 +155,27 @@ export function createCastingProductionRouter(
   const router = Router();
   const auth = requireAuth(pool, deps.activeSessions);
 
+  // Gate every sub-resource on ownership of the parent project. Auth alone
+  // only proves *a* logged-in user; without this any tenant could read/write/
+  // delete another tenant's props and production days by id (cross-tenant IDOR).
+  async function ensureProjectOwner(
+    req: Request,
+    res: Response,
+    projectId: string | null | undefined,
+  ): Promise<boolean> {
+    const userId = (req as AuthedRequest).userId;
+    if (!projectId || !(await userOwnsCastingProject(pool, String(projectId), userId))) {
+      res.status(404).json({ error: 'not_found' });
+      return false;
+    }
+    return true;
+  }
+
   // ────────────── PROPS ──────────────
   router.get('/projects/:projectId/props', auth, async (req, res) => {
     try {
       await schemaReady(pool);
+      if (!(await ensureProjectOwner(req, res, req.params.projectId))) return;
       const result = await pool.query(
         'SELECT * FROM casting_props WHERE project_id = $1 ORDER BY created_at',
         [req.params.projectId],
@@ -174,6 +192,7 @@ export function createCastingProductionRouter(
       const b = (req.body ?? {}) as Record<string, any>;
       const projectId = b.projectId || b.project_id;
       if (!projectId) { res.status(400).json({ error: 'projectId er påkrevd' }); return; }
+      if (!(await ensureProjectOwner(req, res, projectId))) return;
       const id = String(b.id || genId('prop'));
       const images = JSON.stringify(asArray(b.images));
       const availability = typeof b.availability === 'string' ? b.availability : null;
@@ -199,6 +218,12 @@ export function createCastingProductionRouter(
   router.delete('/props/:propId', auth, async (req, res) => {
     try {
       await schemaReady(pool);
+      const owns = await pool.query<{ project_id: string }>(
+        'SELECT project_id FROM casting_props WHERE id = $1',
+        [req.params.propId],
+      );
+      if (owns.rowCount === 0) { res.status(404).json({ error: 'Prop ikke funnet' }); return; }
+      if (!(await ensureProjectOwner(req, res, owns.rows[0].project_id))) return;
       const result = await pool.query('DELETE FROM casting_props WHERE id = $1', [req.params.propId]);
       if (result.rowCount === 0) { res.status(404).json({ error: 'Prop ikke funnet' }); return; }
       res.json({ ok: true });
@@ -211,6 +236,7 @@ export function createCastingProductionRouter(
   router.get('/projects/:projectId/production-days', auth, async (req, res) => {
     try {
       await schemaReady(pool);
+      if (!(await ensureProjectOwner(req, res, req.params.projectId))) return;
       const result = await pool.query(
         'SELECT * FROM casting_production_days WHERE project_id = $1 ORDER BY date',
         [req.params.projectId],
@@ -227,6 +253,7 @@ export function createCastingProductionRouter(
       const b = (req.body ?? {}) as Record<string, any>;
       const projectId = b.projectId || b.project_id;
       if (!projectId) { res.status(400).json({ error: 'projectId er påkrevd' }); return; }
+      if (!(await ensureProjectOwner(req, res, projectId))) return;
       const id = String(b.id || genId('pday'));
       const result = await pool.query(
         `INSERT INTO casting_production_days
@@ -259,6 +286,12 @@ export function createCastingProductionRouter(
   router.delete('/production-days/:dayId', auth, async (req, res) => {
     try {
       await schemaReady(pool);
+      const owns = await pool.query<{ project_id: string }>(
+        'SELECT project_id FROM casting_production_days WHERE id = $1',
+        [req.params.dayId],
+      );
+      if (owns.rowCount === 0) { res.status(404).json({ error: 'Produksjonsdag ikke funnet' }); return; }
+      if (!(await ensureProjectOwner(req, res, owns.rows[0].project_id))) return;
       const result = await pool.query('DELETE FROM casting_production_days WHERE id = $1', [req.params.dayId]);
       if (result.rowCount === 0) { res.status(404).json({ error: 'Produksjonsdag ikke funnet' }); return; }
       res.json({ ok: true });
