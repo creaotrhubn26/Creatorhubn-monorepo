@@ -432,10 +432,13 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
     const updates: string[] = [];
     const params: unknown[] = [];
 
-    if (body.status && ALLOWED_STATUSES.has(body.status)) {
+    // LM-3: streng status-validering (portet fra død duplikat-handler)
+    if (body.status !== undefined) {
+      if (!ALLOWED_STATUSES.has(body.status)) {
+        return res.status(400).json({ error: `Ugyldig status` });
+      }
       params.push(body.status);
       updates.push(`status = $${params.length}`);
-      // Auto-fyll tidsstempler ved status-overgang
       if (body.status === 'contacted') updates.push(`contacted_at = COALESCE(contacted_at, NOW())`);
       if (body.status === 'trial') updates.push(`trial_started_at = COALESCE(trial_started_at, NOW())`);
       if (body.status === 'customer') updates.push(`customer_at = COALESCE(customer_at, NOW())`);
@@ -465,6 +468,23 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
         params,
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
+
+      // LM-3: audit-event (portet fra død duplikat-handler 660-731).
+      // Best-effort så hovedoppdateringen ikke feiler hvis audit-tabellen
+      // er midlertidig utilgjengelig.
+      try {
+        await pool.query(
+          `INSERT INTO agency_lead_events (lead_id, event_type, actor, details)
+           VALUES ($1::uuid, $2, $3, $4::jsonb)`,
+          [
+            id,
+            body.status ? `status_${body.status}` : "updated",
+            session.email ?? session.userId,
+            JSON.stringify(body),
+          ],
+        );
+      } catch { /* best-effort */ }
+
       return res.json({ ok: true, lead: r.rows[0] });
     } catch (err) {
       console.error("[agency-leads PATCH] failed", err);
@@ -656,78 +676,5 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
     }
   });
 
-  // ── PATCH /api/admin-room/agency-leads/:id — endre status/notes ──
-  app.patch("/api/admin-room/agency-leads/:id", async (req, res) => {
-    const session = getActiveSession(req);
-    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-    if (isAdminEmail && !isAdminEmail(session.email)) {
-      return res.status(403).json({ error: "Admin Room kreves" });
-    }
-
-    const body = (req.body ?? {}) as {
-      status?: string;
-      internal_notes?: string;
-      assigned_to_user_id?: string | null;
-    };
-
-    const sets: string[] = [];
-    const vals: unknown[] = [];
-    let p = 1;
-
-    if (body.status !== undefined) {
-      if (!ALLOWED_STATUSES.has(body.status)) {
-        return res.status(400).json({ error: `Ugyldig status` });
-      }
-      sets.push(`status = $${p++}`);
-      vals.push(body.status);
-      // Sett tilhørende tidsstempel
-      if (body.status === "contacted") {
-        sets.push(`contacted_at = COALESCE(contacted_at, now())`);
-      } else if (body.status === "trial") {
-        sets.push(`trial_started_at = COALESCE(trial_started_at, now())`);
-      } else if (body.status === "customer") {
-        sets.push(`customer_at = COALESCE(customer_at, now())`);
-      }
-    }
-    if (body.internal_notes !== undefined) {
-      sets.push(`internal_notes = $${p++}`);
-      vals.push(body.internal_notes);
-    }
-    if (body.assigned_to_user_id !== undefined) {
-      sets.push(`assigned_to_user_id = $${p++}`);
-      vals.push(body.assigned_to_user_id);
-    }
-
-    if (sets.length === 0) return res.status(400).json({ error: "Ingen felter å endre" });
-
-    vals.push(req.params.id);
-
-    try {
-      const r = await pool.query(
-        `UPDATE agency_leads SET ${sets.join(", ")} WHERE id = $${p}::uuid RETURNING *`,
-        vals,
-      );
-      if (!r.rowCount) return res.status(404).json({ error: "Lead ikke funnet" });
-
-      // Audit-event
-      try {
-        await pool.query(
-          `INSERT INTO agency_lead_events (lead_id, event_type, actor, details)
-           VALUES ($1::uuid, $2, $3, $4::jsonb)`,
-          [
-            req.params.id,
-            body.status ? `status_${body.status}` : "updated",
-            session.email ?? session.userId,
-            JSON.stringify(body),
-          ],
-        );
-      } catch { /* best-effort */ }
-
-      return res.json({ lead: r.rows[0] });
-    } catch (err) {
-      console.error("[agency-leads PATCH] failed", err);
-      return res.status(500).json({ error: "Oppdatering feilet" });
-    }
-  });
 }
 
