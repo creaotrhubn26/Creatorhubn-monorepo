@@ -5201,6 +5201,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     project_id: string;
     platform: ProducerAccountAccessPlatform;
     label?: string | null;
+    account_label?: string | null;
+    owner_side?: string | null;
+    rotated_at?: string | null;
+    reveal_ttl_seconds?: number | null;
     secret_type?: string | null;
     username_encrypted?: string | null;
     secret_encrypted?: string | null;
@@ -7016,6 +7020,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       projectId: row.project_id,
       platform: row.platform,
       label: readStringValue(row.label),
+      accountLabel: readStringValue(row.account_label) ?? '',
+      ownerSide: readStringValue(row.owner_side) === 'client' ? 'client' : 'producer',
+      rotatedAt: row.rotated_at ?? null,
+      revealTtlSeconds: typeof row.reveal_ttl_seconds === 'number' ? row.reveal_ttl_seconds : 300,
       secretType: readStringValue(row.secret_type),
       maskedReference: readStringValue(row.masked_reference),
       tier: readStringValue(row.tier),
@@ -7086,14 +7094,16 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   async function getRoleRoomAccessVaultSecretByPlatform(
     projectId: string,
     platform: ProducerAccountAccessPlatform,
+    accountLabel = '',
   ): Promise<RoleRoomAccessVaultSecretRow | null> {
     const result = await pool.query(
       `SELECT *
        FROM role_room_access_vault_secrets
        WHERE project_id = $1
          AND platform = $2
+         AND COALESCE(account_label, '') = $3
        LIMIT 1`,
-      [projectId, platform],
+      [projectId, platform, accountLabel],
     );
     return (result.rows[0] as RoleRoomAccessVaultSecretRow | undefined) ?? null;
   }
@@ -7675,10 +7685,32 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             last_revealed_at TIMESTAMPTZ,
             revoked_at TIMESTAMPTZ
           );
-          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_access_vault_secrets_platform
-            ON role_room_access_vault_secrets(project_id, platform);
+          -- Vault v2: multi-secret per plattform + eierskap + rotasjon/TTL.
+          ALTER TABLE role_room_access_vault_secrets
+            ADD COLUMN IF NOT EXISTS account_label VARCHAR(255) NOT NULL DEFAULT '',
+            ADD COLUMN IF NOT EXISTS owner_side VARCHAR(16) NOT NULL DEFAULT 'producer',
+            ADD COLUMN IF NOT EXISTS rotated_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS reveal_ttl_seconds INTEGER NOT NULL DEFAULT 300;
+          DROP INDEX IF EXISTS idx_rr_access_vault_secrets_platform;
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_access_vault_secrets_platform_label
+            ON role_room_access_vault_secrets(project_id, platform, account_label);
           CREATE INDEX IF NOT EXISTS idx_rr_access_vault_secrets_project
             ON role_room_access_vault_secrets(project_id, updated_at DESC);
+          CREATE TABLE IF NOT EXISTS role_room_access_vault_grants (
+            id UUID PRIMARY KEY,
+            secret_id UUID NOT NULL REFERENCES role_room_access_vault_secrets(id) ON DELETE CASCADE,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            grantee_user_id VARCHAR(255),
+            grantee_role VARCHAR(80),
+            granted_by_user_id VARCHAR(255),
+            granted_by_role VARCHAR(80),
+            granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            expires_at TIMESTAMPTZ,
+            revoked_at TIMESTAMPTZ,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_access_vault_grants_secret
+            ON role_room_access_vault_grants(secret_id) WHERE revoked_at IS NULL;
 
           CREATE TABLE IF NOT EXISTS role_room_access_vault_reveal_requests (
             id UUID PRIMARY KEY,
@@ -16139,13 +16171,32 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
     try {
       const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
-      if (!canManageProducerAccessVault(req, roleRecord)) {
+      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+      const isClientSelfService = isClientReviewerProjectRole(effectiveRoleRecord?.role);
+      // Trust-first: klienten kan selvbetjent legge inn/redigere EGNE credentials;
+      // produsent-roller forvalter resten.
+      if (!canManageProducerAccessVault(req, roleRecord) && !isClientSelfService) {
         res.status(403).json({ error: 'Mangler tilgang til å lagre sensitive secrets' });
         return;
       }
 
-      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
-      const existing = await getRoleRoomAccessVaultSecretByPlatform(projectId, platform);
+      const accountLabel = (readStringValue(req.body?.accountLabel) ?? '').slice(0, 255);
+      const existing = await getRoleRoomAccessVaultSecretByPlatform(projectId, platform, accountLabel);
+      // Klienten kan kun røre klient-eide secrets (ikke produsentens).
+      if (isClientSelfService && !canManageProducerAccessVault(req, roleRecord)
+          && existing && readStringValue(existing.owner_side) === 'producer') {
+        res.status(403).json({ error: 'Denne credentialen forvaltes av produsenten' });
+        return;
+      }
+      // Eierskap: klient-selvbetjening = client-eid; ellers behold/produsent.
+      const ownerSide = isClientSelfService && !canManageProducerAccessVault(req, roleRecord)
+        ? 'client'
+        : (readStringValue(req.body?.ownerSide)
+          ?? readStringValue(existing?.owner_side)
+          ?? 'producer');
+      const secretValueProvided = readStringValue(req.body?.secretValue);
+      // rotated_at oppdateres når en ny hemmelig verdi legges inn.
+      const rotatedAt = secretValueProvided ? new Date().toISOString() : (existing?.rotated_at ?? null);
       const label = readStringValue(req.body?.label) ?? readStringValue(existing?.label) ?? null;
       const secretType = readStringValue(req.body?.secretType) ?? readStringValue(existing?.secret_type) ?? null;
       const username = readStringValue(req.body?.username);
@@ -16170,15 +16221,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
       const result = await pool.query(
         `INSERT INTO role_room_access_vault_secrets (
-          id, project_id, platform, label, secret_type, username_encrypted, secret_encrypted,
+          id, project_id, platform, account_label, owner_side, rotated_at, label, secret_type,
+          username_encrypted, secret_encrypted,
           backup_code_encrypted, masked_reference, tier, risk_level, reveal_policy, status, owner_label,
           shared_with_roles, expires_at, metadata, created_by_user_id, created_by_role, created_at, updated_at, revoked_at
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7,
-          $8, $9, $10, $11, $12, $13, $14,
-          $15::jsonb, $16, $17::jsonb, $18, $19, NOW(), NOW(), NULL
+          $1, $2, $3, $4, $5, $6, $7, $8,
+          $9, $10,
+          $11, $12, $13, $14, $15, $16, $17,
+          $18::jsonb, $19, $20::jsonb, $21, $22, NOW(), NOW(), NULL
         )
-        ON CONFLICT (project_id, platform) DO UPDATE SET
+        ON CONFLICT (project_id, platform, account_label) DO UPDATE SET
+          owner_side = EXCLUDED.owner_side,
+          rotated_at = EXCLUDED.rotated_at,
           label = EXCLUDED.label,
           secret_type = EXCLUDED.secret_type,
           username_encrypted = COALESCE(EXCLUDED.username_encrypted, role_room_access_vault_secrets.username_encrypted),
@@ -16202,6 +16257,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           existing?.id ?? crypto.randomUUID(),
           projectId,
           platform,
+          accountLabel,
+          ownerSide,
+          rotatedAt,
           label,
           secretType,
           username ? encryptRoleRoomVaultSecret(username) : null,
