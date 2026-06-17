@@ -1,19 +1,31 @@
-Lead Map v0.1.0 — første TestFlight-bygg
+Lead Map v0.2.0 — Pitch Deck Studio + Research-orkestrator
 
-Feltsalg-app for The Role Room med 5 tabs:
+Hva som er nytt:
 
-• Min dag — workload + kvote-progresjon + Claude-prioritert lead-liste
-• Kart — bedrifts-logo-pins + live selger-pins + GPS-distanse
-• Team — leaderboard (kun ledere) m/ gull/sølv/bronse for top 3
-• Varsler — push når lead-status endres, ny lead tildelt, du nær lead
-• Org — innstillinger + medlemmer + Mine tilganger
+• Pitch Deck Studio inne i Lead Map
+  - Hver organisasjon har sin egen master-pitch (11-slide eller 10-slide kort)
+  - Claude genererer alle slides fra hva organisasjonen selger
+  - Cover-logo + tagline hentes automatisk fra bedriftens nettside
+  - Sveip-presentasjon m/ Apple Pencil-annotering på slide
+  - Pre-møte-brief: Claude pre-velger 5–7 relevante slides for denne leaden,
+    + talking points + forventede innvendinger med utkast til svar
+  - Per-lead tilpasset Verdien-slide
+  - PDF-eksport + tracking når kunden åpner
+  - Etter presentasjon: automatisk lead-status, follow-up-dato, kalender-hint
 
-Smart-funksjoner:
-• Visittkort-scanner (VisionKit) — peker kamera, oppretter lead
-• Voice-dikter visit-notater (Speech) — m/ Claude som finner datoer,
-  erstatter "kunden" med navn, og lager kalender-events
-• Forbered møte — Claude-brief m/ BRREG, kontrakt-anbefaling,
-  pitch-deck-forslag, og personlig tilnærming
-• Live Activity på låseskjerm — "Pågående besøk: X, 23 min"
-• Apple Pencil — tegn fokus-områder på kartet for selgerne
-• Nær-lead-varsel via geofence — push når innen 500m
+• Lead Research (valgfri tilleggsfunksjon, gated på lead_research.run)
+  - Salgssjef starter en research-økt med bransje + region
+  - Claude analyserer markedet, geokoder via Google Places, oppretter
+    leads på kartet automatisk
+
+• Mockup-upload til pitch-deck-slides
+  - PhotosPicker i slide-editor for skjermbilder / mockups
+  - Lagres org-scopet i B2: pitch-decks/{org_id}/{deck_id}/{slide_id}/
+
+• Soft-delete på slides m/ angre-snackbar (5 sek) + Slettede slides-fane
+
+Organisasjonen kontrollerer alt via RBAC:
+  pitch_deck.access / .edit / .export — pitch-funksjonalitet
+  lead_research.run                    — research-orkestrator
+
+Lead Map-en fungerer i sin helhet uten disse — alt er additivt.

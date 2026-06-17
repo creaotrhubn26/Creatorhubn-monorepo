@@ -16,14 +16,36 @@ struct PairingView: View {
     @State private var errorMessage: String?
 
     var body: some View {
+        ZStack {
+            // Branding-backdrop: vertikal scene som matcher onboarding-følelsen
+            Image("Backdrop3")
+                .resizable()
+                .scaledToFill()
+                .ignoresSafeArea()
+                .overlay(
+                    LinearGradient(
+                        colors: [.black.opacity(0.0), .black.opacity(0.55)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
+                )
+            paringContent
+        }
+    }
+
+    private var paringContent: some View {
         VStack(spacing: 24) {
-            Image(systemName: "map.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(.tint)
-            Text("Lead Map")
+            Image("LeadgridLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 96, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: 22))
+                .shadow(color: .black.opacity(0.5), radius: 20, x: 0, y: 8)
+            Text("Leadgrid")
                 .font(.largeTitle.bold())
-            Text("Koble iPad til Lead Map-kontoen din")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white)
+            Text("Koble iPaden din til Leadgrid-kontoen")
+                .foregroundStyle(.white.opacity(0.75))
                 .multilineTextAlignment(.center)
 
             instructionsCard
