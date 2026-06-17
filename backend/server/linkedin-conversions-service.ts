@@ -198,6 +198,7 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
           "LinkedIn-Version": "202410",
         },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (resp.ok) {
