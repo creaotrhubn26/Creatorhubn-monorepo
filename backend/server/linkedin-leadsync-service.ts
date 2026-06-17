@@ -77,6 +77,7 @@ export async function pollLeadFormsDue(pool: Pool): Promise<{
         q: "owner",
         leadGenForm: form.form_urn,
       });
+      // LM-4: 8s timeout — leadsync er cron-driven, ikke kritisk å henge
       const resp = await fetch(
         `https://api.linkedin.com/rest/leadFormResponses?${params}`,
         {
