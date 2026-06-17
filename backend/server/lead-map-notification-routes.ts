@@ -12,6 +12,7 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { notifyApproachingLead } from "./lead-map-notification-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -266,6 +267,31 @@ export function registerLeadMapNotificationRoutes({ app, pool, activeSessions }:
         return res.json({ ok: true });
       } catch (err) {
         return res.status(500).json({ error: "deregister_failed", detail: String(err) });
+      }
+    },
+  );
+
+  // ─── POST /me/approaching-lead ──────────────────────────────────
+  // Trigget av iPad-app når CLCircularRegion-monitorering oppdager at
+  // brukeren er innenfor 500m av en tildelt lead. Backend håndterer
+  // 4-timers throttling + sikkerhets-sjekk (lead må være tildelt
+  // kalleren).
+  app.post(
+    "/api/admin-room/lead-map/me/approaching-lead",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const body = req.body as { lead_id?: string; distance_m?: number };
+      if (!body.lead_id) return res.status(400).json({ error: "mangler_lead_id" });
+      try {
+        const result = await notifyApproachingLead(pool, {
+          leadId: body.lead_id,
+          userId: session.userId,
+          distanceMeters: body.distance_m,
+        });
+        return res.json(result);
+      } catch (err) {
+        return res.status(500).json({ error: "approaching_failed", detail: String(err) });
       }
     },
   );

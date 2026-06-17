@@ -48,6 +48,12 @@ targets:
         # Bruker GPS til å auto-fylle visit_latitude/longitude ved fysiske besøk
         # + vise "leads i nærheten av meg"-sortering.
         NSLocationWhenInUseUsageDescription: Lead Map bruker din posisjon til å vise leads i nærheten + auto-fylle koordinater når du logger fysiske besøk.
+        # 'Always' kreves for Nær-lead-varsel — CLCircularRegion-monitorering
+        # i bakgrunn slik at selger får push når de er innen 500m av en tildelt
+        # lead, selv om app-en er lukket.
+        NSLocationAlwaysAndWhenInUseUsageDescription: Lead Map varsler deg når du er innen 500m av en tildelt lead — også når app-en er lukket. Du kan skru dette av i Org-tab → Personvern.
+        UIBackgroundModes:
+          - location
         # Skanner QR-koden i Admin Room for pairing.
         NSCameraUsageDescription: Lead Map skanner QR-koden i Admin Room for å koble iPad til kontoen din.
         # Apple Pencil til notater i visit-loggen.

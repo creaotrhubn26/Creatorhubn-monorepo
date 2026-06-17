@@ -113,6 +113,31 @@ struct OrgSettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
+            // Approaching-lead i bakgrunn krever 'always' authorization
+            if !ProximityMonitor.shared.alwaysAuthorizationGranted {
+                Button {
+                    ProximityMonitor.shared.requestAlwaysAuthorization()
+                } label: {
+                    VStack(alignment: .leading) {
+                        Label("Aktivér Nær-lead-varsel", systemImage: "location.circle.fill")
+                            .font(.body)
+                        Text("Får varsel når du er innen 500m fra en tildelt lead — også når app-en er lukket")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                    }
+                }
+            } else {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    VStack(alignment: .leading) {
+                        Text("Nær-lead-varsel aktivt")
+                        Text("\(ProximityMonitor.shared.isMonitoring ? "Overvåker leads" : "Venter på tildelte leads")")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
         } header: {
             Text("Personvern")
         } footer: {

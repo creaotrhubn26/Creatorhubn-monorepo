@@ -305,6 +305,15 @@ actor APIClient {
         try await post("/api/admin-room/lead-map/me/notifications/device-token", body: body)
     }
 
+    /// Trigger fra CLCircularRegion didEnterRegion. Backend håndterer
+    /// 4-timers throttle + tildelt-sjekk. Returnerer void; server-side
+    /// suppressed-flagg er kun til logg.
+    func notifyApproachingLead(leadId: String, distanceM: Double? = nil) async throws {
+        var body: [String: Any] = ["lead_id": leadId]
+        if let d = distanceM { body["distance_m"] = d }
+        try await post("/api/admin-room/lead-map/me/approaching-lead", body: body)
+    }
+
     // MARK: - Lead-tildeling (PR #616)
 
     func assignLead(_ leadId: String, toUserId: String, reason: String = "manual") async throws {
