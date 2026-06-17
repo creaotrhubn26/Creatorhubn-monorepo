@@ -176,6 +176,7 @@ import type { StoryArcNavigationFocus } from '../../utils/storyArcFocus';
 import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
+import ProducerReceivedMaterialsPanel from './ProducerReceivedMaterialsPanel';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
 import RoleRoomAgentDialog from './RoleRoomAgentDialog';
 import { RoleRoomAgentIcon } from './RoleRoomAgentIcon';
@@ -15771,6 +15772,8 @@ export default function ProducerMediaPanel({
                 ) : null}
 
               {materialsMode === 'library' ? (
+                <>
+                <ProducerReceivedMaterialsPanel projectId={projectId} />
                 <Box
                   sx={{
                     borderRadius: 2,
@@ -15971,6 +15974,7 @@ export default function ProducerMediaPanel({
                   ) : null}
                 </Stack>
                 </Box>
+                </>
                 ) : null}
               </Box>
             </>
