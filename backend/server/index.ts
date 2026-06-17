@@ -21877,10 +21877,38 @@ async function readFfmpegHealth(): Promise<{ available: boolean; version: string
   return { available: Boolean(version), version };
 }
 
-app.get("/api/health", async (req, res) => {
+let ffmpegHealthRefreshing = false;
+
+// Non-blocking variant for the liveness probe. Returns the cached value
+// immediately (available:null when never sampled) and refreshes in the
+// background. The /api/health handler must NEVER await a subprocess spawn:
+// under event-loop saturation that can blow past Render's 5s health-check
+// timeout, get the instance evicted, and 502 every route until it recovers.
+function peekFfmpegHealth(): { available: boolean | null; version: string | null } {
+  const now = Date.now();
+  if (
+    (!ffmpegHealthCache || now - ffmpegHealthCache.at >= 60_000) &&
+    !ffmpegHealthRefreshing
+  ) {
+    ffmpegHealthRefreshing = true;
+    void ffmpegVersionLine()
+      .then((version) => {
+        ffmpegHealthCache = { at: Date.now(), available: Boolean(version), version };
+      })
+      .catch(() => {})
+      .finally(() => {
+        ffmpegHealthRefreshing = false;
+      });
+  }
+  return ffmpegHealthCache
+    ? { available: ffmpegHealthCache.available, version: ffmpegHealthCache.version }
+    : { available: null, version: null };
+}
+
+app.get("/api/health", (req, res) => {
   const isRenderRuntime =
     String(process.env.RENDER || "").toLowerCase() === "true";
-  const ffmpeg = await readFfmpegHealth();
+  const ffmpeg = peekFfmpegHealth();
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
