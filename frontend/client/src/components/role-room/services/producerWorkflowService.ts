@@ -3528,6 +3528,26 @@ export const producerWorkflowService = {
     let stopped = false;
     const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+    // RT-6: cap'd eksponensiell backoff m/ jitter. Tidligere flat 2 s
+    // (eller 5 s ved HTTP-feil) som ga klassisk thundering-herd ved
+    // backend-restart — hver klient retryer med samme cadence og
+    // hamrer på serveren før den rekker å åpne porten. Eksponensielt
+    // m/ ±30% jitter, capped på 30 s, og reset til 0 så snart vi har
+    // klart å lese minst én frame fra strømmen.
+    const BACKOFF_MIN_MS = 1_000;
+    const BACKOFF_MAX_MS = 30_000;
+    const BACKOFF_FACTOR = 2;
+    let attempt = 0;
+    const nextBackoff = (): number => {
+      const base = Math.min(
+        BACKOFF_MAX_MS,
+        BACKOFF_MIN_MS * BACKOFF_FACTOR ** attempt,
+      );
+      const jitter = base * 0.3 * (Math.random() * 2 - 1);
+      attempt = Math.min(attempt + 1, 10); // 2^10 = cap'et uansett
+      return Math.max(BACKOFF_MIN_MS, Math.round(base + jitter));
+    };
+
     void (async () => {
       while (!stopped) {
         try {
@@ -3536,12 +3556,13 @@ export const producerWorkflowService = {
             { headers: { ...buildAuthHeaders() }, signal: controller.signal },
           );
           if (!response.ok || !response.body) {
-            await delay(5000);
+            await delay(nextBackoff());
             continue;
           }
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
+          let framesSeen = 0;
           while (!stopped) {
             const { value, done } = await reader.read();
             if (done) break;
@@ -3551,6 +3572,11 @@ export const producerWorkflowService = {
               const frame = buffer.slice(0, sep);
               buffer = buffer.slice(sep + 2);
               if (!frame || frame.startsWith(':')) continue; // keepalive ping
+              framesSeen++;
+              // Reset backoff så snart første ekte frame kom gjennom —
+              // da vet vi at strømmen faktisk er åpen, ikke bare at
+              // HTTP-headerne kom frem før close.
+              if (framesSeen === 1) attempt = 0;
               let event = 'message';
               let data = '';
               for (const line of frame.split('\n')) {
@@ -3572,7 +3598,7 @@ export const producerWorkflowService = {
           // abort eller nettverksfeil — reopen med mindre vi er stoppet
         }
         if (stopped) break;
-        await delay(2000);
+        await delay(nextBackoff());
       }
     })();
 
