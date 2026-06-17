@@ -198,7 +198,8 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
                    AND agency_leads.status IN ('new', 'contacted')
                  THEN 'demo_booked' ELSE agency_leads.status END,
                updated_at = now()
-         RETURNING id::text, agency_name, contact_name, email, status, created_at, (xmax = 0) AS created`,
+         RETURNING id::text, agency_name, contact_name, email, status, created_at,
+                   (xmax = 0) AS created`,
         [
           agencyName, contactName, email, phone, rosterSize, segment,
           message, source,
@@ -262,7 +263,7 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
         }
       }
 
-      // Event — record only on first insert (gate fra #647 53ac9773)
+      // Event — record only on first insert (gate fra #647 53ac9773 + LM-2 #648)
       if (isNewLead) try {
         await pool.query(
           `INSERT INTO agency_lead_events (lead_id, event_type, actor, details)
@@ -277,7 +278,9 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
       } catch { /* best-effort */ }
 
       // Queue LinkedIn Conversion API event (Lead) — first insert only;
-      // cron drainer sender når godkjent.
+      // cron drainer sender når godkjent. Deterministisk event_id i
+      // fireAgencyLeadConversion (LM-2) gir ON CONFLICT-dedup som
+      // ekstra safety hvis en race likevel skulle slippe gjennom.
       if (isNewLead) try {
         const li_fat_id = (body as { li_fat_id?: string })?.li_fat_id ?? null;
         const firstWord = contactName.split(" ")[0];
