@@ -147,8 +147,13 @@ export function createDancerInjuryLogRouter(
       status = statusRaw as InjuryEntryStatus;
     }
 
-    const rows = await listInjuries(pool, userId, { projectId, dancerId, status, limit: limitRaw });
-    res.json({ success: true, data: rows });
+    try {
+      const rows = await listInjuries(pool, userId, { projectId, dancerId, status, limit: limitRaw });
+      res.json({ success: true, data: rows });
+    } catch (err) {
+      console.error('[dancer-injury-log] list failed', err);
+      res.status(500).json({ error: 'internal_error' });
+    }
   });
 
   router.get('/:id', auth, async (req: Request, res: Response): Promise<void> => {
@@ -158,12 +163,17 @@ export function createDancerInjuryLogRouter(
       return;
     }
     const { userId } = req as AuthedRequest;
-    const entry = await getInjury(pool, userId, idParsed.data);
-    if (!entry) {
-      res.status(404).json({ error: 'not_found' });
-      return;
+    try {
+      const entry = await getInjury(pool, userId, idParsed.data);
+      if (!entry) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      res.json({ success: true, data: entry });
+    } catch (err) {
+      console.error('[dancer-injury-log] get failed', err);
+      res.status(500).json({ error: 'internal_error' });
     }
-    res.json({ success: true, data: entry });
   });
 
   router.post('/', auth, async (req: Request, res: Response): Promise<void> => {
@@ -186,8 +196,13 @@ export function createDancerInjuryLogRouter(
       triggeredBy: rest.triggeredBy ?? null,
       projectId: rest.projectId ?? null,
     };
-    const entry = await createInjury(pool, userId, dancerId, input);
-    res.status(201).json({ success: true, data: entry });
+    try {
+      const entry = await createInjury(pool, userId, dancerId, input);
+      res.status(201).json({ success: true, data: entry });
+    } catch (err) {
+      console.error('[dancer-injury-log] create failed', err);
+      res.status(500).json({ error: 'internal_error' });
+    }
   });
 
   router.patch('/:id', auth, async (req: Request, res: Response): Promise<void> => {
@@ -203,12 +218,17 @@ export function createDancerInjuryLogRouter(
     }
     const { userId } = req as AuthedRequest;
     const patch = parsed.data as InjuryLogEntryPatch;
-    const entry = await patchInjury(pool, userId, idParsed.data, patch);
-    if (!entry) {
-      res.status(404).json({ error: 'not_found' });
-      return;
+    try {
+      const entry = await patchInjury(pool, userId, idParsed.data, patch);
+      if (!entry) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      res.json({ success: true, data: entry });
+    } catch (err) {
+      console.error('[dancer-injury-log] patch failed', err);
+      res.status(500).json({ error: 'internal_error' });
     }
-    res.json({ success: true, data: entry });
   });
 
   router.delete('/:id', auth, async (req: Request, res: Response): Promise<void> => {
@@ -218,12 +238,17 @@ export function createDancerInjuryLogRouter(
       return;
     }
     const { userId } = req as AuthedRequest;
-    const ok = await deleteInjury(pool, userId, idParsed.data);
-    if (!ok) {
-      res.status(404).json({ error: 'not_found' });
-      return;
+    try {
+      const ok = await deleteInjury(pool, userId, idParsed.data);
+      if (!ok) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[dancer-injury-log] delete failed', err);
+      res.status(500).json({ error: 'internal_error' });
     }
-    res.json({ success: true });
   });
 
   return router;

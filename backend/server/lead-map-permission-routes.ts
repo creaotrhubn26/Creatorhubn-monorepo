@@ -162,6 +162,18 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
+        // The caller must belong to this org; viewing ANOTHER user's
+        // permissions additionally requires permissions.manage. Without this,
+        // any logged-in user could enumerate any org's role assignments and
+        // effective permission set for any userId (cross-tenant disclosure).
+        const caller = await resolveEffectivePermissions(pool, req.params.id, session.userId);
+        if (!caller.role) return res.status(403).json({ error: "ikke_medlem_av_org" });
+        if (
+          req.params.userId !== session.userId &&
+          !caller.permissions.has("permissions.manage")
+        ) {
+          return res.status(403).json({ error: "mangler_permissions_manage" });
+        }
         const { role, permissions } = await resolveEffectivePermissions(
           pool, req.params.id, req.params.userId,
         );
