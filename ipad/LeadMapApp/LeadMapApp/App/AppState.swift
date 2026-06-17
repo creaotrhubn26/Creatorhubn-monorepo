@@ -145,6 +145,9 @@ final class AppState {
             await startHeartbeatIfNeeded()
             startNotificationsPolling()
             await refreshAnnotations()
+            if let api = self.api {
+                ProximityMonitor.shared.configure(api: api)
+            }
         }
     }
 
@@ -200,6 +203,8 @@ final class AppState {
         do {
             let resp = try await api.fetchWorkload(organizationId: orgId, location: loc)
             self.workloadLeads = resp.leads
+            // Re-konfigurer geofence-monitorering for de 20 nærmeste tildelte leads
+            ProximityMonitor.shared.updateAssignedLeads(resp.leads)
         } catch {
             print("[AppState] workload failed: \(error)")
         }
@@ -286,6 +291,7 @@ final class AppState {
         heartbeatController = nil
         notificationsPollTask?.cancel()
         notificationsPollTask = nil
+        ProximityMonitor.shared.stopAll()
         self.unreadNotificationsCount = 0
         AuthClient.clear()
         self.authToken = nil

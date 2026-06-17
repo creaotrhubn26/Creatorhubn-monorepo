@@ -304,3 +304,74 @@ export async function notifyStatusChanged(
     }
   }
 }
+
+/**
+ * Trigget av iPad når CLCircularRegion-monitorering detekterer at
+ * brukeren er innenfor 500m av en tildelt lead. Throttled til 1 varsel
+ * per (user, lead) per 4 timer for å unngå spam hvis brukeren står
+ * stille (eller går inn/ut av regionen flere ganger).
+ *
+ * Returnerer suppressed=true hvis varselet ble undertrykt av throttling.
+ */
+export async function notifyApproachingLead(
+  pool: Pool,
+  args: {
+    leadId: string;
+    userId: string;
+    distanceMeters?: number;
+  },
+): Promise<{ sent: boolean; suppressed: boolean; reason?: string }> {
+  // Throttle: ikke send hvis vi har sendt approaching_lead for samme
+  // (user, lead) siste 4 timer.
+  const throttleRes = await pool.query<{ n: number }>(
+    `SELECT COUNT(*)::int AS n
+       FROM notification_events
+      WHERE recipient_user_id = $1
+        AND lead_id = $2
+        AND event_type = 'approaching_lead'
+        AND created_at > NOW() - INTERVAL '4 hours'`,
+    [args.userId, args.leadId],
+  );
+  if ((throttleRes.rows[0]?.n ?? 0) > 0) {
+    return { sent: false, suppressed: true, reason: "throttled_4h" };
+  }
+
+  // Hent lead + org-id (lead må være assigned til brukeren — sikkerhet)
+  const r = await pool.query<{
+    name: string; address: string | null;
+    assigned_user_id: string | null;
+    organization_id: string | null;
+  }>(
+    `SELECT c.name, c.address, c.assigned_user_id,
+            cp.organization_id::text
+       FROM crm_customers c
+       LEFT JOIN casting_projects cp ON cp.id = c.project_id
+      WHERE c.id = $1 LIMIT 1`,
+    [args.leadId],
+  );
+  const lead = r.rows[0];
+  if (!lead) return { sent: false, suppressed: false, reason: "lead_not_found" };
+  if (lead.assigned_user_id !== args.userId) {
+    return { sent: false, suppressed: false, reason: "not_assigned_to_user" };
+  }
+
+  const distLabel = args.distanceMeters !== undefined
+    ? `${Math.round(args.distanceMeters)} m unna`
+    : "i nærheten";
+  const addr = lead.address ? ` (${lead.address})` : "";
+
+  await dispatchNotification({
+    pool,
+    recipientUserId: args.userId,
+    organizationId: lead.organization_id ?? null,
+    eventType: "approaching_lead",
+    title: `📍 Nær lead: ${lead.name}`,
+    body: `Du er ${distLabel} fra ${lead.name}${addr}. Stikk innom for et besøk?`,
+    leadId: args.leadId,
+    triggeredByUserId: args.userId,
+    deepLink: `https://theroleroom.com/admin-room?lead=${args.leadId}`,
+    meta: { distance_m: args.distanceMeters },
+  });
+
+  return { sent: true, suppressed: false };
+}
