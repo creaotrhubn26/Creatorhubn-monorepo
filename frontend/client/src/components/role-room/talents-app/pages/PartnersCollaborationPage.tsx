@@ -149,13 +149,23 @@ export default function PartnersCollaborationPage() {
 
   const reload = useCallback(async () => {
     setError(null);
-    const data = await roleRoomTalentsService.fetchPartnersOverview({ demo: demoMode });
-    setOverview(data);
-    setLoading(false);
-    if (data.partners.length > 0 && !selectedId) {
-      setSelectedId(data.partners[0].id);
+    try {
+      const data = await roleRoomTalentsService.fetchPartnersOverview({ demo: demoMode });
+      setOverview(data);
+      // Functional update so selectedId is NOT a dependency — otherwise reload
+      // was recreated on every partner selection, re-running the effect and
+      // re-fetching the whole overview on each click.
+      if (data.partners.length > 0) {
+        setSelectedId((cur) => cur || data.partners[0].id);
+      }
+    } catch (e) {
+      // Without this, a failed fetch left the spinner up forever and surfaced
+      // as an unhandled rejection.
+      setError(e instanceof Error ? e.message : 'Kunne ikke laste partnere');
+    } finally {
+      setLoading(false);
     }
-  }, [selectedId, demoMode]);
+  }, [demoMode]);
 
   useEffect(() => {
     void reload();

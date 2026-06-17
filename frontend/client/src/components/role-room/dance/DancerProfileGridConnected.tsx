@@ -55,11 +55,16 @@ export function DancerProfileGridConnected({
   const [creatingDancerId, setCreatingDancerId] = React.useState<string | null>(null);
   const [creatingName, setCreatingName] = React.useState<string>('');
 
+  // Epoch guard: a slow load (or its detached stats IIFE) for an old projectId
+  // must not setState after unmount or overwrite a newer load's results.
+  const epochRef = React.useRef(0);
   const refresh = React.useCallback(async (): Promise<void> => {
+    const myEpoch = ++epochRef.current;
     setLoading(true);
     setError(null);
     try {
       const profiles = await listDancerProfiles(projectId ?? undefined);
+      if (epochRef.current !== myEpoch) return;
       setDancers(profiles.map(profileToDancer));
 
       // F6-2: stats per danser (formasjons-count, rehearsal-count, annotation-count)
@@ -95,18 +100,22 @@ export function DancerProfileGridConnected({
               annotationsCount: annCount,
             });
           }
+          if (epochRef.current !== myEpoch) return;
           setStatsByDancerId(map);
         } catch { /* stats er best-effort — la kort stå uten chips ved feil */ }
       })();
     } catch (err) {
+      if (epochRef.current !== myEpoch) return;
       setError(err instanceof Error ? err.message : 'Kunne ikke laste dansere');
     } finally {
-      setLoading(false);
+      if (epochRef.current === myEpoch) setLoading(false);
     }
   }, [projectId]);
 
   React.useEffect(() => {
     void refresh();
+    // Invalidate any in-flight load when projectId changes or we unmount.
+    return () => { epochRef.current++; };
   }, [refresh]);
 
   const handleAdd = React.useCallback(() => {

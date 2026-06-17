@@ -150,6 +150,12 @@ export function FormationViewConnected({
   }, [saveStatus]);
 
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // "saved" → "idle" reset timer; tracked so it's cleared on unmount instead
+  // of firing setState on a dead component.
+  const saveStatusTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => () => {
+    if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
+  }, []);
   const isFirstChangeRef = React.useRef(true);
   // G_1: imperativ ref til FormationView for ID-reconcile post-save.
   const viewRef = React.useRef<FormationViewHandle | null>(null);
@@ -160,8 +166,12 @@ export function FormationViewConnected({
   // reconcile er identisk med backend, ingen ny save trengs.
   const skipNextChangeRef = React.useRef(false);
 
+  // Epoch guard: a slow load for an old projectId must not setState after
+  // unmount or overwrite a newer load.
+  const loadEpochRef = React.useRef(0);
   // Load profiles + formations + timeline-items i parallel.
   const refresh = React.useCallback(async (): Promise<void> => {
+    const myEpoch = ++loadEpochRef.current;
     setLoad({ phase: 'loading' });
     try {
       const [profiles, records, items] = await Promise.all([
@@ -169,6 +179,7 @@ export function FormationViewConnected({
         listFormations(projectId ?? undefined),
         listTimelineItems({ projectId: projectId ?? undefined }).catch(() => [] as TimelineItemRecord[]),
       ]);
+      if (loadEpochRef.current !== myEpoch) return;
       setDancers(profilesToDancers(profiles));
       const sorted = [...records].sort((a, b) => a.displayOrder - b.displayOrder);
       setInitialFormations(
@@ -179,6 +190,7 @@ export function FormationViewConnected({
       setTimelineItems(items);
       setLoad({ phase: 'ready' });
     } catch (err) {
+      if (loadEpochRef.current !== myEpoch) return;
       setLoad({
         phase: 'error',
         message: err instanceof Error ? err.message : 'Kunne ikke laste formasjoner',
@@ -188,6 +200,7 @@ export function FormationViewConnected({
 
   React.useEffect(() => {
     void refresh();
+    return () => { loadEpochRef.current++; };
   }, [refresh]);
 
   // G_1: utfør én save-runde. Track temp-IDs som ble sendt, og etter respons
@@ -236,7 +249,8 @@ export function FormationViewConnected({
       if (written.length > 0) {
         setSaveStatus('saved');
         setLastSavedAt(Date.now());
-        setTimeout(() => setSaveStatus('idle'), 1800);
+        if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
+        saveStatusTimerRef.current = setTimeout(() => setSaveStatus('idle'), 1800);
         // G_1: bygg mapping client-temp-id → server-assigned-id og bruk
         // applyIdMapping så vi ikke sender de samme f-tmp-* på neste tur.
         // A2: bumpede versions må også reflekteres lokalt — bygg version-map.
