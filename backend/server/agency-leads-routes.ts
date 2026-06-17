@@ -152,7 +152,8 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
                roster_size = COALESCE(EXCLUDED.roster_size, agency_leads.roster_size),
                message = COALESCE(EXCLUDED.message, agency_leads.message),
                updated_at = now()
-         RETURNING id::text, agency_name, contact_name, email, status, created_at`,
+         RETURNING id::text, agency_name, contact_name, email, status, created_at,
+                   (xmax = 0) AS created`,
         [
           agencyName, contactName, email, phone, rosterSize, segment,
           message, body.source ?? "agency_landing",
@@ -172,33 +173,42 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
       );
       const lead = r.rows[0];
 
-      // Event
-      try {
-        await pool.query(
-          `INSERT INTO agency_lead_events (lead_id, event_type, actor)
-           VALUES ($1::uuid, 'created', $2)`,
-          [lead.id, email],
-        );
-      } catch { /* best-effort */ }
+      // LM-2: ON CONFLICT (email, segment) DO UPDATE betyr at duplikat-
+      // submits returnerer en eksisterende rad (lead.created === false).
+      // Vi gate'r ALLE side-effekter (audit-event, LinkedIn CAPI, bekreftelses-
+      // og intern-e-post) på created-flag-et slik at duplicate ikke kjører
+      // dem på nytt. Re-submits returnerer fortsatt 201 m/ samme lead_id.
+      if (lead.created) {
+        // Event
+        try {
+          await pool.query(
+            `INSERT INTO agency_lead_events (lead_id, event_type, actor)
+             VALUES ($1::uuid, 'created', $2)`,
+            [lead.id, email],
+          );
+        } catch { /* best-effort */ }
 
-      // Queue LinkedIn Conversion API event (Lead) — fires regardless of
-      // whether LinkedIn approval is in yet; cron drainer sender når godkjent.
-      try {
-        const li_fat_id = (body as { li_fat_id?: string })?.li_fat_id ?? null;
-        const firstWord = contactName.split(" ")[0];
-        const lastWords = contactName.split(" ").slice(1).join(" ");
-        await fireAgencyLeadConversion(pool, {
-          leadId: lead.id,
-          email,
-          firstName: firstWord,
-          lastName: lastWords,
-          agencyName,
-          linkedinClickId: li_fat_id ?? undefined,
-        });
-      } catch { /* best-effort */ }
+        // Queue LinkedIn Conversion API event (Lead). Deterministisk
+        // event_id (lead-id) gir ON CONFLICT-dedup som ekstra safety
+        // hvis en race likevel skulle slippe gjennom.
+        try {
+          const li_fat_id = (body as { li_fat_id?: string })?.li_fat_id ?? null;
+          const firstWord = contactName.split(" ")[0];
+          const lastWords = contactName.split(" ").slice(1).join(" ");
+          await fireAgencyLeadConversion(pool, {
+            leadId: lead.id,
+            email,
+            firstName: firstWord,
+            lastName: lastWords,
+            agencyName,
+            linkedinClickId: li_fat_id ?? undefined,
+          });
+        } catch { /* best-effort */ }
+      }
 
       // Bekreftelses-mail til lead + intern notifikasjon (fire-and-forget)
-      void (async () => {
+      // — kun for nye leads (LM-2)
+      void (lead.created ? (async () => {
         try {
           const baseUrl = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
 
@@ -289,7 +299,7 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
         } catch (err) {
           console.warn("[agency-lead] mail-notification feilet", err);
         }
-      })();
+      })() : Promise.resolve());
 
       return res.status(201).json({
         ok: true,
