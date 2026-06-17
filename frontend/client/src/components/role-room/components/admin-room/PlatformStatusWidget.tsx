@@ -173,7 +173,7 @@ export function PlatformStatusWidget(): JSX.Element {
             ))}
           </Box>
 
-          <Stack direction="row" spacing={2} sx={{ pt: 0.5, borderTop: '1px solid rgba(148,163,184,0.10)', pt: 1 }}>
+          <Stack direction="row" spacing={2} sx={{ pt: 1, borderTop: '1px solid rgba(148,163,184,0.10)' }}>
             <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.78rem' }}>
               {status.summary.okCount} OK · {status.summary.warningCount} advarsler · {status.summary.errorCount} feil
               {status.summary.unconfiguredCount > 0 ? ` · ${status.summary.unconfiguredCount} ukonfigurert` : ''}
