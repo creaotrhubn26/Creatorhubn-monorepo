@@ -41,9 +41,26 @@ export function registerLeadMapFollowupCronRoutes({ app, pool }: Deps): void {
         return res.status(401).json({ error: "ugyldig_token" });
       }
 
+      // LM-5: pg_try_advisory_lock — defense-in-depth utover GitHub
+      // concurrency-gruppen. Render-cron / fremtidige triggere kan også
+      // overlappe (cron-konfigen gjelder kun GH Actions). Lock-nøkkelen
+      // er hashtext av rute-navnet — deterministisk pr cron-handler.
+      const client = await pool.connect();
+      let lockHeld = false;
       try {
+        const lockRes = await client.query<{ ok: boolean }>(
+          `SELECT pg_try_advisory_lock(hashtext('lead-map-followup-cron')) AS ok`,
+        );
+        lockHeld = lockRes.rows[0]?.ok === true;
+        if (!lockHeld) {
+          return res.json({
+            ok: true,
+            notifications_sent: 0,
+            skipped: "overlap_with_running_cron",
+          });
+        }
         // Finn forfalt follow-up som ikke har fått varsel siste 24t
-        const r = await pool.query<{
+        const r = await client.query<{
           lead_id: string;
           lead_name: string;
           address: string | null;
@@ -107,6 +124,19 @@ export function registerLeadMapFollowupCronRoutes({ app, pool }: Deps): void {
         });
       } catch (err) {
         return res.status(500).json({ error: "cron_failed", detail: String(err) });
+      } finally {
+        // LM-5: release advisory lock + client uansett om vi rotet i try-blokken.
+        // Advisory locks er session-scoped; release ikke strengt nødvendig
+        // siden client.release() også gir den fra seg, men eksplisitt er
+        // tydeligere og raskere når connection-poolen er presset.
+        if (lockHeld) {
+          try {
+            await client.query(
+              `SELECT pg_advisory_unlock(hashtext('lead-map-followup-cron'))`,
+            );
+          } catch { /* noop */ }
+        }
+        client.release();
       }
     },
   );

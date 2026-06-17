@@ -9,6 +9,13 @@ on:
     - cron: "*/15 * * * *"   # hver 15. min
   workflow_dispatch:        # manuell trigger fra UI
 
+# LM-5: én concurrency-gruppe for både schedule og manual — overlapp
+# mellom 15-minutts-skjøringer eller dispatch-trigger ville sendt
+# duplikat-follow_up_due varsler hvis selve cron-runneren tar > 15 min.
+concurrency:
+  group: lead-map-followup-cron
+  cancel-in-progress: false
+
 jobs:
   notify:
     runs-on: ubuntu-latest
