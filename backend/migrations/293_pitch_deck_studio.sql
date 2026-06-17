@@ -227,3 +227,4 @@ CREATE TRIGGER trg_pitch_slides_set_updated_at
   FOR EACH ROW EXECUTE FUNCTION pitch_decks_set_updated_at();
 
 COMMIT;
+-- re-trigger (2314) --
