@@ -4853,9 +4853,6 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 allowScrollButtonsMobile
                 sx={{
                   minHeight: 56,
-                  '& .MuiTabs-indicator': {
-                    bgcolor: professionAccent,
-                  },
                   '& .MuiTab-root': {
                     fontWeight: 600,
                     fontSize: { xs: '0.75rem', sm: '0.85rem', md: '0.9rem' },

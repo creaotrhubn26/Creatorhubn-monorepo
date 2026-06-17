@@ -26,7 +26,6 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
 import MilitaryTechIcon from '@mui/icons-material/MilitaryTech';
 import AutoFixHighOutlinedIcon from '@mui/icons-material/AutoFixHighOutlined';
-import EmojiEventsOutlinedIcon from '@mui/icons-material/EmojiEventsOutlined';
 import { usePermissions } from './usePermissions';
 import LeadMapAutoAssignDialog from './LeadMapAutoAssignDialog';
 import LeadMapQuotaDialog from './LeadMapQuotaDialog';
