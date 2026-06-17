@@ -40,6 +40,7 @@ import {
   Switch as MuiSwitch,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import LeadMapMyProfileCard from './LeadMapMyProfileCard';
 
 const ROLE_META: Record<string, {
   label: string;
@@ -717,6 +718,9 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
           {status}
         </Alert>
       )}
+
+      {/* ─── Min profil + Mine tilganger (for ALLE roller) ─────── */}
+      <LeadMapMyProfileCard />
 
       {/* ─── Org-velger + posisjonsdeling ───────────────────────── */}
       <Card sx={{ mb: 3 }}>
