@@ -5409,6 +5409,15 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return String(role ?? '').trim().toLowerCase() === 'client_reviewer';
   }
 
+  // Draft → publiser → synk-grense: en klient-rolle ser KUN publiserte rader
+  // (published_at IS NOT NULL). Produsent-roller ser alt (draft inkludert).
+  // Admin-scope teller som produsent (full innsikt).
+  function isClientPublishViewer(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (requireScope(req, 'admin')) return false;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    return isClientReviewerProjectRole(effectiveRoleRecord?.role);
+  }
+
   function getProducerNotificationAudiences(
     req: Request,
     roleRecord: ProjectRoleRecord | null,
@@ -7481,6 +7490,22 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           CREATE INDEX IF NOT EXISTS idx_rr_project_notifications_open
             ON role_room_project_notifications(project_id, updated_at DESC)
             WHERE archived_at IS NULL;
+
+          -- Draft → publiser → synk-grense (se migrasjon 293). NULL = draft/privat,
+          -- satt = publisert/synlig for motparten. ADD COLUMN IF NOT EXISTS gjør at
+          -- ferske DB-er får feltene selv uten migrasjon.
+          ALTER TABLE role_room_phase_timeline_items
+            ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS published_by_user_id VARCHAR(255);
+          ALTER TABLE role_room_budget_items
+            ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS published_by_user_id VARCHAR(255);
+          ALTER TABLE role_room_client_reviews
+            ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS published_by_user_id VARCHAR(255);
+          ALTER TABLE role_room_client_intake
+            ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS published_by_user_id VARCHAR(255);
 
           CREATE TABLE IF NOT EXISTS role_room_project_notification_reads (
             notification_id UUID NOT NULL REFERENCES role_room_project_notifications(id) ON DELETE CASCADE,
@@ -12649,9 +12674,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      // Klient ser kun publiserte elementer (draft = produsentens private utkast).
+      const clientOnlyPublished = isClientPublishViewer(req, roleRecord);
       const result = await pool.query(
         `SELECT * FROM role_room_phase_timeline_items
          WHERE project_id = $1
+           ${clientOnlyPublished ? 'AND published_at IS NOT NULL' : ''}
          ORDER BY
            CASE phase
              WHEN 'preproduction' THEN 1
@@ -14060,9 +14088,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      // Klient ser kun publiserte budsjettlinjer (draft = produsentens private utkast).
+      const clientOnlyPublished = isClientPublishViewer(req, roleRecord);
       const result = await pool.query(
         `SELECT * FROM role_room_budget_items
          WHERE project_id = $1
+           ${clientOnlyPublished ? 'AND published_at IS NOT NULL' : ''}
          ORDER BY
            CASE phase
              WHEN 'preproduction' THEN 1
@@ -14272,6 +14303,138 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   });
 
+  // ── Draft → publiser → synk-grense ──────────────────────────────────────
+  // Felles handler: setter/nullstiller published_at på en producer-workflow-rad
+  // og varsler klienten (inbox + e-post) ved publisering.
+  async function handlePublishToggle(args: {
+    req: Request;
+    res: Response;
+    table: 'role_room_phase_timeline_items' | 'role_room_budget_items';
+    idColumn: string;
+    idValue: string;
+    projectId: string;
+    publish: boolean;
+    entityKind: string; // for notification linkedEntityType
+    notifyTitle: (titleFromRow: string) => string;
+    titleColumn: string;
+  }): Promise<void> {
+    const { req, res, table, idColumn, idValue, projectId, publish, entityKind, notifyTitle, titleColumn } = args;
+    const userId = getUserId(req);
+    const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, roleRecord)) {
+      res.status(403).json({ error: 'Mangler tilgang til å publisere' });
+      return;
+    }
+    const updated = await pool.query(
+      `UPDATE ${table}
+         SET published_at = ${publish ? 'NOW()' : 'NULL'},
+             published_by_user_id = ${publish ? '$3' : 'NULL'},
+             updated_at = NOW()
+       WHERE project_id = $1 AND ${idColumn} = $2
+       RETURNING *`,
+      publish ? [projectId, idValue, userId] : [projectId, idValue],
+    );
+    if (updated.rowCount === 0) {
+      res.status(404).json({ error: 'Fant ikke elementet' });
+      return;
+    }
+    const row = updated.rows[0] as Record<string, unknown>;
+    if (publish) {
+      try {
+        await upsertProducerProjectNotification({
+          projectId,
+          audience: 'client',
+          eventType: `${entityKind}_published`,
+          title: notifyTitle(String(row[titleColumn] ?? '')),
+          message: 'Produsenten har publisert oppdatert informasjon i prosjektrommet.',
+          linkedEntityType: entityKind,
+          linkedEntityId: idValue,
+          createdByUserId: userId,
+          metadata: { dueAt: row.due_at ?? null },
+        });
+      } catch (notifyError) {
+        console.error('[role-room] publish notify failed', notifyError);
+      }
+    }
+    res.json({ item: row, published: publish });
+  }
+
+  router.post('/projects/:projectId/producer/timeline/:itemId/publish', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) { res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' }); return; }
+    try {
+      await handlePublishToggle({
+        req, res, table: 'role_room_phase_timeline_items', idColumn: 'id', idValue: req.params.itemId,
+        projectId: req.params.projectId, publish: req.body?.publish !== false, entityKind: 'timeline_item',
+        notifyTitle: (t) => `Tidslinje publisert: ${t || 'oppdatering'}`, titleColumn: 'title',
+      });
+    } catch (error) {
+      console.error('Producer timeline publish error:', error);
+      res.status(500).json({ error: 'Kunne ikke publisere tidslinjeelement' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/economy/items/:itemId/publish', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) { res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' }); return; }
+    try {
+      const publish = req.body?.publish !== false;
+      // Hold client_visible synkronisert med publiseringsstatus for budsjettlinjer.
+      await pool.query(
+        `UPDATE role_room_budget_items SET client_visible = $3 WHERE project_id = $1 AND id = $2`,
+        [req.params.projectId, req.params.itemId, publish],
+      );
+      await handlePublishToggle({
+        req, res, table: 'role_room_budget_items', idColumn: 'id', idValue: req.params.itemId,
+        projectId: req.params.projectId, publish, entityKind: 'budget_item',
+        notifyTitle: (t) => `Budsjett publisert: ${t || 'linje'}`, titleColumn: 'item_name',
+      });
+    } catch (error) {
+      console.error('Producer economy publish error:', error);
+      res.status(500).json({ error: 'Kunne ikke publisere økonomilinje' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/client-intake/publish', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) { res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' }); return; }
+    const projectId = req.params.projectId;
+    const userId = getUserId(req);
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å publisere brief' });
+        return;
+      }
+      const publish = req.body?.publish !== false;
+      const updated = await pool.query(
+        `UPDATE role_room_client_intake
+           SET published_at = ${publish ? 'NOW()' : 'NULL'},
+               published_by_user_id = ${publish ? '$2' : 'NULL'},
+               updated_at = NOW()
+         WHERE project_id = $1
+         RETURNING *`,
+        publish ? [projectId, userId] : [projectId],
+      );
+      if (updated.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke brief' });
+        return;
+      }
+      if (publish) {
+        try {
+          await upsertProducerProjectNotification({
+            projectId, audience: 'client', eventType: 'brief_published',
+            title: 'Brief publisert', message: 'Produsenten har publisert prosjektbriefen.',
+            linkedEntityType: 'client_intake', linkedEntityId: projectId, createdByUserId: userId,
+          });
+        } catch (notifyError) {
+          console.error('[role-room] brief publish notify failed', notifyError);
+        }
+      }
+      res.json({ intake: updated.rows[0], published: publish });
+    } catch (error) {
+      console.error('Producer client intake publish error:', error);
+      res.status(500).json({ error: 'Kunne ikke publisere brief' });
+    }
+  });
+
   // ── Budsjett-kategorier (system + per-prosjekt) ────────────────────
   router.get('/projects/:projectId/producer/economy/categories', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const projectId = req.params.projectId;
@@ -14458,10 +14621,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const result = await pool.query(
         `INSERT INTO role_room_client_reviews (
           id, project_id, review_type, title, description, target_entity_type, target_entity_id,
-          requested_by_user_id, requested_at, due_at, status, metadata, created_at, updated_at
+          requested_by_user_id, requested_at, due_at, status, metadata,
+          published_at, published_by_user_id, created_at, updated_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7,
-          $8, NOW(), $9, 'pending', $10::jsonb, NOW(), NOW()
+          $8, NOW(), $9, 'pending', $10::jsonb,
+          NOW(), $8, NOW(), NOW()
         )
         RETURNING *`,
         [
@@ -14794,7 +14959,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT * FROM role_room_client_intake WHERE project_id = $1 LIMIT 1`,
         [projectId],
       );
-      res.json({ intake: result.rows[0] ?? null });
+      // Klient ser kun publisert brief — produsentens upubliserte utkast holdes privat.
+      const intake = result.rows[0] ?? null;
+      if (intake && isClientPublishViewer(req, roleRecord) && intake.published_at == null) {
+        res.json({ intake: null });
+        return;
+      }
+      res.json({ intake });
     } catch (error) {
       console.error('Producer client intake fetch error:', error);
       res.status(500).json({ error: 'Kunne ikke hente klientbrief' });
