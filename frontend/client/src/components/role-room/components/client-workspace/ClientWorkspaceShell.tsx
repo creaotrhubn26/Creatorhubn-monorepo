@@ -37,6 +37,7 @@ import {
   RocketLaunch as MarketingPlanIcon,
   Palette as MerkevareIcon,
   Videocam as MeetingsIcon,
+  ForumOutlined as MessagesIcon,
   ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
 
@@ -49,12 +50,14 @@ const ClientPlanView = lazy(() => import('./ClientPlanView'));
 const ClientMarketingPlanView = lazy(() => import('./ClientMarketingPlanView'));
 const ClientMerkevareView = lazy(() => import('./ClientMerkevareView'));
 const ClientMeetingsView = lazy(() => import('./ClientMeetingsView'));
+const ClientConversationView = lazy(() => import('./ClientConversationView'));
 
-type TabValue = 'economy' | 'approval' | 'brief' | 'merkevare' | 'meetings' | 'roles' | 'plan' | 'marketing-plan';
+type TabValue = 'economy' | 'approval' | 'brief' | 'merkevare' | 'meetings' | 'messages' | 'roles' | 'plan' | 'marketing-plan';
 
 const TABS: Array<{ value: TabValue; label: string; icon: React.ReactElement }> = [
   { value: 'economy', label: 'Økonomi', icon: <EconomyIcon /> },
   { value: 'approval', label: 'Godkjenning', icon: <ApprovalIcon /> },
+  { value: 'messages', label: 'Meldinger', icon: <MessagesIcon /> },
   { value: 'brief', label: 'Brief', icon: <BriefIcon /> },
   { value: 'merkevare', label: 'Merkevare', icon: <MerkevareIcon /> },
   { value: 'meetings', label: 'Møter', icon: <MeetingsIcon /> },
@@ -216,6 +219,7 @@ export default function ClientWorkspaceShell({
           {activeTab === 'brief' && <ClientBriefView projectId={projectId} />}
           {activeTab === 'merkevare' && <ClientMerkevareView projectId={projectId} />}
           {activeTab === 'meetings' && <ClientMeetingsView projectId={projectId} />}
+          {activeTab === 'messages' && <ClientConversationView projectId={projectId} />}
           {activeTab === 'roles' && <ClientRolesView projectId={projectId} />}
           {activeTab === 'plan' && <ClientPlanView projectId={projectId} />}
           {activeTab === 'marketing-plan' && <ClientMarketingPlanView projectId={projectId} />}
