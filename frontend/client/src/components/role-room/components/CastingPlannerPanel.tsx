@@ -10023,6 +10023,7 @@ type RoleRoomProjectWorkspaceState = {
                 onNavigateToTab={(tabIndex) => navigateToTab(tabIndex)}
                 approvalTabIndex={PRODUCER_REVIEWS_TAB_INDEX}
                 calendarTabIndex={CALENDAR_TAB_INDEX}
+                deliveryTabIndex={PRODUCER_EXPORT_TAB_INDEX}
               />
             </>
           ) : null}
