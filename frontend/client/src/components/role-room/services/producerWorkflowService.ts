@@ -109,6 +109,9 @@ export interface ProducerEconomyItem {
   currency: string;
   status: string;
   client_visible: boolean;
+  /** NULL = draft/privat for produsent, satt = publisert/synlig for klient. */
+  published_at?: string | null;
+  published_by_user_id?: string | null;
   linked_entity_type?: string | null;
   linked_entity_id?: string | null;
   sort_order: number;
@@ -1179,6 +1182,8 @@ function normalizeEconomyItem(value: unknown, projectId: string, index = 0): Pro
     currency: readFirstNonEmptyString(record.currency) ?? 'NOK',
     status: readFirstNonEmptyString(record.status) ?? 'draft',
     client_visible: normalizeBoolean(record.client_visible ?? record.clientVisible, true),
+    published_at: readFirstNonEmptyString(record.published_at, record.publishedAt) ?? null,
+    published_by_user_id: readFirstNonEmptyString(record.published_by_user_id, record.publishedByUserId) ?? null,
     linked_entity_type: readFirstNonEmptyString(record.linked_entity_type, record.linkedEntityType) ?? null,
     linked_entity_id: readFirstNonEmptyString(record.linked_entity_id, record.linkedEntityId) ?? null,
     sort_order: normalizeNumber(record.sort_order ?? record.sortOrder, index),
@@ -3424,6 +3429,51 @@ export const producerWorkflowService = {
       mutation: 'deleted',
       entityId: itemId,
     });
+  },
+
+  /**
+   * Publiser/avpubliser en budsjettlinje til klienten. Setter published_at +
+   * client_visible på backend og varsler klienten (inbox + e-post).
+   */
+  async publishEconomyItem(
+    projectId: string,
+    itemId: string,
+    publish = true,
+  ): Promise<ProducerEconomyItem> {
+    const persisted = await runProducerMutation<ProducerEconomyItem>({
+      projectId,
+      domain: 'economy',
+      method: 'POST',
+      endpoint: `/projects/${projectId}/producer/economy/items/${itemId}/publish`,
+      body: { publish },
+      parse: (response) => normalizeEconomyItem(asRecord(response).item, projectId),
+      optimistic: async () => {
+        const mirror = await readEconomyMirror(projectId);
+        const existing = mirror.find((i) => i.id === itemId);
+        const merged = normalizeEconomyItem(
+          {
+            ...(existing ?? { id: itemId }),
+            id: itemId,
+            published_at: publish ? nowIso() : null,
+            client_visible: publish,
+            updated_at: nowIso(),
+          },
+          projectId,
+        );
+        await writeEconomyMirror(
+          projectId,
+          existing ? mirror.map((i) => (i.id === itemId ? merged : i)) : [...mirror, merged],
+        );
+        return merged;
+      },
+    });
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'economy',
+      mutation: 'updated',
+      entityId: persisted.id,
+    });
+    return persisted;
   },
 
   async getReviews(projectId: string): Promise<ProducerClientReview[]> {
