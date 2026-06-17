@@ -55,7 +55,6 @@ import ClientGallery from '@/pages/client-gallery';
 import ClientPortalMarketingPage from '@/pages/client-portal-marketing';
 import ResetPasswordPage from '@/pages/reset-passord';
 import SecuritySettingsPage from '@/pages/sikkerhet';
-import WelcomeWizard from '@/components/role-room/onboarding/WelcomeWizard';
 import CullingReviewPage from '@/pages/CullingReview';
 import ContractView from '@/pages/contract-view';
 import AdminNotificationDisplay from '@/components/notifications/AdminNotificationDisplay';
@@ -986,7 +985,6 @@ function App() {
           <BackgroundDownloadWidget profession="photographer" /> */}
                 <SmartFileManagerWidget />
                 <UniversalSessionManager />
-                <WelcomeWizard />
                 <Toaster />
                 <SpeedInsights />
                       </GlobalChatProvider>
