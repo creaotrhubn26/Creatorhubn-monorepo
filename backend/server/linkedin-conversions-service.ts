@@ -133,6 +133,7 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
   sent: number;
   skipped: number;
   failed: number;
+  expired?: number;
 }> {
   const MAX_SEND_ATTEMPTS = 5;
   const due = await pool.query(
@@ -261,7 +262,7 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
     }
   }
 
-  return { attempted: due.rowCount, sent, skipped: 0, failed };
+  return { attempted: due.rowCount, sent, skipped: 0, failed, expired };
 }
 
 /**
