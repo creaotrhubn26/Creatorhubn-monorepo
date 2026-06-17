@@ -50,19 +50,24 @@ function LandingFeaturesImpl({ introShowing }: LandingFeaturesProps) {
       setShowCursor(false);
       return;
     }
-    // WHY (1.4s) + HOW (1.4s) + buffer = trigger WHAT around t=3s
+    // WHY (1.4s) + HOW (1.4s) + buffer = trigger WHAT around t=3s.
+    // Track the inner typing/blink intervals so unmount (or a dep change)
+    // mid-animation clears them too — otherwise they keep firing setState on
+    // an unmounted component.
+    let typeIv: ReturnType<typeof setInterval> | undefined;
+    let blinkIv: ReturnType<typeof setInterval> | undefined;
     const startDelay = setTimeout(() => {
       let i = 0;
-      const iv = setInterval(() => {
+      typeIv = setInterval(() => {
         setTypedWhat(whatLabel.slice(0, ++i));
         if (i >= whatLabel.length) {
-          clearInterval(iv);
+          if (typeIv) clearInterval(typeIv);
           // Blink 6 times then hide
           let blinks = 0;
-          const blink = setInterval(() => {
+          blinkIv = setInterval(() => {
             setCursorVisible((v) => !v);
             if (++blinks >= 6) {
-              clearInterval(blink);
+              if (blinkIv) clearInterval(blinkIv);
               setCursorVisible(false);
               setShowCursor(false);
             }
@@ -70,7 +75,11 @@ function LandingFeaturesImpl({ introShowing }: LandingFeaturesProps) {
         }
       }, 25);
     }, 3000);
-    return () => clearTimeout(startDelay);
+    return () => {
+      clearTimeout(startDelay);
+      if (typeIv) clearInterval(typeIv);
+      if (blinkIv) clearInterval(blinkIv);
+    };
   }, [introShowing, shouldReduceMotion, whatLabel]);
 
   return (
