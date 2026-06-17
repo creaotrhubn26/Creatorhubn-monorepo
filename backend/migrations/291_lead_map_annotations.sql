@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS map_annotations (
   -- Hvilken selger skal "se" denne (NULL = hele org-en)
   assigned_to_user_id VARCHAR(255) REFERENCES users(id) ON DELETE SET NULL,
   -- Knytte til et spesifikt lead (pin_callout)
-  target_lead_id VARCHAR(255) REFERENCES crm_customers(id) ON DELETE SET NULL,
+  target_lead_id UUID REFERENCES crm_customers(id) ON DELETE SET NULL,
   -- Auto-skjul etter dato
   expires_at TIMESTAMPTZ,
   -- Skjul uten å slette
@@ -56,11 +56,13 @@ CREATE TABLE IF NOT EXISTS map_annotations (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Aktive annotasjoner per org (mest brukt — render på kart)
+-- Aktive annotasjoner per org (mest brukt — render på kart).
+-- NB: partial index kan IKKE ha NOW() i predicate (kun IMMUTABLE-
+-- funksjoner). Vi sjekker derfor bare archived_at — query-laget må
+-- også filtrere expires_at i WHERE-clausen.
 CREATE INDEX IF NOT EXISTS idx_map_annotations_org_active
   ON map_annotations (organization_id, created_at DESC)
-  WHERE archived_at IS NULL
-    AND (expires_at IS NULL OR expires_at > NOW());
+  WHERE archived_at IS NULL;
 
 -- Per-bruker tildelte (mine fokusområder)
 CREATE INDEX IF NOT EXISTS idx_map_annotations_assigned
