@@ -6,9 +6,10 @@
  * komposer, status-chips og forespørsel-håndtering. Delt produsent↔klient.
  * Responsiv (stables på mobil/iPad), WCAG, 44px touch.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box, Stack, Typography, Button, TextField, Chip, CircularProgress, Snackbar, ToggleButtonGroup, ToggleButton,
+  IconButton, Menu, MenuItem, ListItemIcon, ListItemText, Select, FormControl,
 } from '@mui/material';
 import {
   SendOutlined as SendIcon,
@@ -22,12 +23,18 @@ import {
   MarkChatUnreadOutlined as UnansweredIcon,
   HourglassEmptyOutlined as PendingIcon,
   CheckCircleOutline as DoneIcon,
+  AddCircleOutline as ActionIcon,
+  EventAvailableOutlined as ScheduleIcon,
+  BoltOutlined as InstantMeetIcon,
 } from '@mui/icons-material';
 import { listMessages, sendMessage, updateMessage, type RoleRoomMessage } from '../../services/roleRoomMessagesApi';
 import { producerWorkflowService, type ProducerProjectNotification } from '../../services/producerWorkflowService';
+import { createMeeting } from '../../services/roleRoomMeetingsApi';
+import { uploadMaterialFile, MATERIAL_CATEGORIES, type MaterialCategory } from '../../services/roleRoomMaterialsApi';
 
 type FeedItem = {
   id: string;
+  messageId?: string;
   ts: number;
   kind: 'message' | 'request' | 'activity';
   title: string;
@@ -36,6 +43,10 @@ type FeedItem = {
   authorRole: string | null;
   status?: string;
   icon: 'message' | 'request' | 'upload' | 'approval' | 'delivery' | 'meeting' | 'activity';
+  action?: string;
+  meta?: Record<string, unknown>;
+  linkedEntityType?: string | null;
+  linkedEntityId?: string | null;
 };
 
 function activityIcon(eventType: string, inboxType: string): FeedItem['icon'] {
@@ -89,12 +100,14 @@ export default function ClientConversationView({ projectId }: { projectId: strin
     const items: FeedItem[] = [];
     for (const m of messages) {
       const ts = m.createdAt ? new Date(m.createdAt).getTime() : 0;
+      const action = typeof m.metadata?.action === 'string' ? m.metadata.action : undefined;
       items.push({
-        id: `msg-${m.id}`, ts, kind: m.kind === 'request' ? 'request' : 'message',
+        id: `msg-${m.id}`, messageId: m.id, ts, kind: m.kind === 'request' ? 'request' : 'message',
         title: m.kind === 'request' ? 'Forespørsel' : (m.authorName || (m.authorRole === 'client_reviewer' ? 'Klient' : 'Produsent')),
         body: m.body, author: m.authorName, authorRole: m.authorRole,
         status: m.kind === 'request' ? m.status : undefined,
-        icon: m.kind === 'request' ? 'request' : 'message',
+        icon: action === 'request_upload' ? 'upload' : (m.linkedEntityType === 'meeting' || action === 'meeting') ? 'meeting' : m.kind === 'request' ? 'request' : 'message',
+        action, meta: m.metadata, linkedEntityType: m.linkedEntityType, linkedEntityId: m.linkedEntityId,
       });
     }
     for (const n of notifications) {
@@ -142,6 +155,68 @@ export default function ClientConversationView({ projectId }: { projectId: strin
     } catch { setToast('Kunne ikke lukke forespørselen.'); }
   }, [projectId, load]);
 
+  // ── Handlinger fra chatten ────────────────────────────────────────────────
+  const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null);
+  const [busyAction, setBusyAction] = useState(false);
+  const [proposeOpen, setProposeOpen] = useState(false);
+  const [proposeTitle, setProposeTitle] = useState('');
+  const [proposeDate, setProposeDate] = useState('');
+  const [proposeTime, setProposeTime] = useState('14:00');
+
+  const requestUpload = useCallback(async (category: MaterialCategory) => {
+    setBusyAction(true);
+    try {
+      const label = MATERIAL_CATEGORIES.find((c) => c.key === category)?.label ?? 'fil';
+      await sendMessage(projectId, {
+        body: `Du kan laste opp ${label.toLowerCase()} her:`,
+        metadata: { action: 'request_upload', uploadCategory: category },
+      });
+      await load();
+    } catch (e) { setToast(e instanceof Error ? e.message : 'Kunne ikke be om opplasting.'); }
+    finally { setBusyAction(false); setActionAnchor(null); }
+  }, [projectId, load]);
+
+  const startInstantMeet = useCallback(async () => {
+    setBusyAction(true); setActionAnchor(null);
+    try {
+      const now = new Date();
+      const end = new Date(now.getTime() + 30 * 60000);
+      const m = await createMeeting(projectId, {
+        title: 'Hurtigmøte', startsAt: now.toISOString(), endsAt: end.toISOString(), generateMeet: true,
+      });
+      await sendMessage(projectId, {
+        body: m.meetLink ? 'Jeg startet et Google Meet — bli med:' : 'Jeg startet et møte (Google Meet kunne ikke kobles — sjekk tilkobling).',
+        linkedEntityType: 'meeting', linkedEntityId: m.id,
+        metadata: { action: 'meeting', meetLink: m.meetLink, refLabel: 'Hurtigmøte' },
+      });
+      setToast('Google Meet startet og delt i chatten.');
+      await load();
+    } catch (e) { setToast(e instanceof Error ? e.message : 'Kunne ikke starte møte.'); }
+    finally { setBusyAction(false); }
+  }, [projectId, load]);
+
+  const bookProposedMeeting = useCallback(async () => {
+    if (!proposeDate) { setToast('Velg en dato.'); return; }
+    setBusyAction(true);
+    try {
+      const [h, mm] = proposeTime.split(':');
+      const start = new Date(`${proposeDate}T${(h || '14').padStart(2, '0')}:${(mm || '00').padStart(2, '0')}:00`);
+      const end = new Date(start.getTime() + 60 * 60000);
+      const m = await createMeeting(projectId, {
+        title: proposeTitle.trim() || 'Møte', startsAt: start.toISOString(), endsAt: end.toISOString(), generateMeet: true,
+      });
+      await sendMessage(projectId, {
+        body: `Jeg booket møtet «${m.title}» ${start.toLocaleString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`,
+        linkedEntityType: 'meeting', linkedEntityId: m.id,
+        metadata: { action: 'meeting', meetLink: m.meetLink, refLabel: m.title },
+      });
+      setProposeOpen(false); setProposeTitle(''); setProposeDate('');
+      setToast('Møte booket, Google Meet generert og delt.');
+      await load();
+    } catch (e) { setToast(e instanceof Error ? e.message : 'Kunne ikke booke møte.'); }
+    finally { setBusyAction(false); }
+  }, [projectId, proposeTitle, proposeDate, proposeTime, load]);
+
   // Grupper feed per dag.
   const grouped = useMemo(() => {
     const map = new Map<string, FeedItem[]>();
@@ -182,7 +257,7 @@ export default function ClientConversationView({ projectId }: { projectId: strin
             <Box key={day}>
               <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'capitalize', mb: 0.75, textAlign: 'center' }}>{day}</Typography>
               <Stack spacing={1}>
-                {dayItems.map((it) => <FeedRow key={it.id} it={it} onCloseRequest={closeRequest} />)}
+                {dayItems.map((it) => <FeedRow key={it.id} it={it} projectId={projectId} onCloseRequest={closeRequest} onChanged={load} />)}
               </Stack>
             </Box>
           ))}
@@ -199,7 +274,29 @@ export default function ClientConversationView({ projectId }: { projectId: strin
           <ToggleButton value="message">Melding</ToggleButton>
           <ToggleButton value="request">Forespørsel</ToggleButton>
         </ToggleButtonGroup>
+        {proposeOpen ? (
+          <Box sx={{ mb: 1, p: 1.25, borderRadius: 2, border: '1px solid rgba(168,85,247,0.3)', background: 'rgba(124,58,237,0.06)' }}>
+            <Typography sx={{ color: '#f5f3ff', fontWeight: 700, fontSize: '0.84rem', mb: 0.75 }}>Foreslå &amp; book møte</Typography>
+            <Stack spacing={0.75}>
+              <TextField placeholder="Tittel (f.eks. Konseptgjennomgang)" value={proposeTitle} onChange={(e) => setProposeTitle(e.target.value)} size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { color: '#f1f5f9', background: 'rgba(15,23,42,0.6)' } }} />
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.75}>
+                <TextField type="date" value={proposeDate} onChange={(e) => setProposeDate(e.target.value)} size="small" fullWidth InputLabelProps={{ shrink: true }} sx={{ '& .MuiOutlinedInput-root': { color: '#f1f5f9', background: 'rgba(15,23,42,0.6)' } }} />
+                <TextField type="time" value={proposeTime} onChange={(e) => setProposeTime(e.target.value)} size="small" fullWidth InputLabelProps={{ shrink: true }} sx={{ '& .MuiOutlinedInput-root': { color: '#f1f5f9', background: 'rgba(15,23,42,0.6)' } }} />
+              </Stack>
+              <Stack direction="row" spacing={0.75}>
+                <Button onClick={() => void bookProposedMeeting()} disabled={busyAction} startIcon={busyAction ? <CircularProgress size={14} color="inherit" /> : <ScheduleIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 40, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)' }}>Book &amp; del Google Meet</Button>
+                <Button onClick={() => setProposeOpen(false)} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 40, color: 'rgba(226,232,240,0.7)' }}>Avbryt</Button>
+              </Stack>
+            </Stack>
+          </Box>
+        ) : null}
         <Stack direction="row" spacing={1} alignItems="flex-end">
+          <IconButton
+            aria-label="Handlinger" onClick={(e) => setActionAnchor(e.currentTarget)} disabled={busyAction}
+            sx={{ width: 46, height: 46, color: '#c4b5fd', border: '1px solid rgba(148,163,184,0.25)', borderRadius: 2, '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
+          >
+            {busyAction ? <CircularProgress size={18} sx={{ color: '#c4b5fd' }} /> : <ActionIcon />}
+          </IconButton>
           <TextField
             value={draft} onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleSend(); }}
@@ -215,10 +312,74 @@ export default function ClientConversationView({ projectId }: { projectId: strin
             {sending ? <CircularProgress size={18} color="inherit" /> : <SendIcon sx={{ fontSize: 20 }} />}
           </Button>
         </Stack>
+        <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={() => setActionAnchor(null)}
+          anchorOrigin={{ vertical: 'top', horizontal: 'left' }} transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
+          <MenuItem onClick={() => void startInstantMeet()}>
+            <ListItemIcon><InstantMeetIcon sx={{ color: '#86efac' }} /></ListItemIcon>
+            <ListItemText primary="Start Google Meet nå" secondary="Instant videomøte + del lenke" />
+          </MenuItem>
+          <MenuItem onClick={() => { setActionAnchor(null); setProposeOpen(true); }}>
+            <ListItemIcon><ScheduleIcon sx={{ color: '#a5b4fc' }} /></ListItemIcon>
+            <ListItemText primary="Foreslå & book møte" secondary="Velg tid → Google Meet" />
+          </MenuItem>
+          <MenuItem onClick={() => void requestUpload('brand_logo')}>
+            <ListItemIcon><UploadIcon sx={{ color: '#7dd3fc' }} /></ListItemIcon>
+            <ListItemText primary="Be om logo-opplasting" secondary="Klienten laster opp i chatten" />
+          </MenuItem>
+          <MenuItem onClick={() => void requestUpload('other')}>
+            <ListItemIcon><UploadIcon sx={{ color: '#7dd3fc' }} /></ListItemIcon>
+            <ListItemText primary="Be om fil-opplasting" secondary="Hvilken som helst fil" />
+          </MenuItem>
+        </Menu>
       </Box>
 
       <Snackbar open={Boolean(toast)} autoHideDuration={3500} onClose={() => setToast(null)} message={toast ?? ''} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Stack>
+  );
+}
+
+function InlineUploadCard({ projectId, category, onUploaded }: { projectId: string; category: MaterialCategory; onUploaded: () => void }) {
+  const [cat, setCat] = useState<MaterialCategory>(category);
+  const [busy, setBusy] = useState(false);
+  const [pct, setPct] = useState(0);
+  const [done, setDone] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const onPick = useCallback(async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setBusy(true); setPct(0);
+    try {
+      await uploadMaterialFile(projectId, file, cat, { onProgress: setPct });
+      setDone(file.name);
+      onUploaded();
+    } catch { setDone(null); }
+    finally { setBusy(false); }
+  }, [projectId, cat, onUploaded]);
+
+  if (done) {
+    return (
+      <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.7, px: 1, py: 0.7, borderRadius: 1.5, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.28)' }}>
+        <DoneIcon sx={{ fontSize: 16, color: '#6ee7b7' }} />
+        <Typography sx={{ color: '#6ee7b7', fontSize: '0.78rem', fontWeight: 700 }}>{done} lastet opp — produsenten er varslet.</Typography>
+      </Stack>
+    );
+  }
+  return (
+    <Box sx={{ mt: 0.7, p: 1, borderRadius: 1.5, border: '1px dashed rgba(124,211,252,0.4)', background: 'rgba(56,189,248,0.06)' }}>
+      <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" rowGap={0.75}>
+        <FormControl size="small" sx={{ minWidth: 130 }}>
+          <Select value={cat} onChange={(e) => setCat(e.target.value as MaterialCategory)} sx={{ color: '#f1f5f9', fontSize: '0.78rem', background: 'rgba(15,23,42,0.6)', '& .MuiSvgIcon-root': { color: 'rgba(226,232,240,0.6)' } }}>
+            {MATERIAL_CATEGORIES.map((c) => <MenuItem key={c.key} value={c.key}>{c.label}</MenuItem>)}
+          </Select>
+        </FormControl>
+        <Button onClick={() => inputRef.current?.click()} disabled={busy} startIcon={busy ? <CircularProgress size={14} color="inherit" /> : <UploadIcon />}
+          sx={{ textTransform: 'none', fontWeight: 700, minHeight: 40, color: '#082f49', background: 'linear-gradient(135deg,#7dd3fc,#38bdf8)', '&:hover': { background: 'linear-gradient(135deg,#38bdf8,#0ea5e9)' } }}>
+          {busy ? `Laster opp ${pct}%` : 'Last opp her'}
+        </Button>
+        <input ref={inputRef} type="file" hidden onChange={(e) => { void onPick(e.target.files); e.target.value = ''; }} />
+      </Stack>
+    </Box>
   );
 }
 
@@ -231,10 +392,12 @@ function StatChip({ icon, label, tone }: { icon: React.ReactElement; label: stri
   );
 }
 
-function FeedRow({ it, onCloseRequest }: { it: FeedItem; onCloseRequest: (id: string) => void }) {
+function FeedRow({ it, projectId, onCloseRequest, onChanged }: { it: FeedItem; projectId: string; onCloseRequest: (id: string) => void; onChanged: () => void }) {
   const Icon = ICON_MAP[it.icon];
   const color = ICON_COLOR[it.icon];
   const isOpenRequest = it.kind === 'request' && it.status === 'open';
+  const meetLink = typeof it.meta?.meetLink === 'string' ? it.meta.meetLink : null;
+  const isMeeting = it.linkedEntityType === 'meeting' || it.action === 'meeting';
   return (
     <Box sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(2,6,23,0.4)', p: 1.1, display: 'flex', gap: 1 }}>
       <Box sx={{ width: 32, height: 32, flexShrink: 0, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${color}1a` }}>
@@ -251,6 +414,24 @@ function FeedRow({ it, onCloseRequest }: { it: FeedItem; onCloseRequest: (id: st
         {it.body ? (
           <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.82rem', mt: 0.3, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{it.body}</Typography>
         ) : null}
+
+        {/* Handlings-kort: opplastings-forespørsel med ekte inline opplasting */}
+        {it.action === 'request_upload' ? (
+          <InlineUploadCard
+            projectId={projectId}
+            category={(typeof it.meta?.uploadCategory === 'string' ? it.meta.uploadCategory : 'other') as MaterialCategory}
+            onUploaded={onChanged}
+          />
+        ) : null}
+
+        {/* Handlings-kort: Google Meet «Bli med» */}
+        {isMeeting && meetLink ? (
+          <Button href={meetLink} target="_blank" rel="noopener" startIcon={<MeetingIcon />} size="small"
+            sx={{ mt: 0.7, textTransform: 'none', fontWeight: 800, minHeight: 40, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)', '&:hover': { background: 'linear-gradient(135deg,#9333ea,#c026d3)' } }}>
+            Bli med (Google Meet)
+          </Button>
+        ) : null}
+
         {it.kind === 'request' ? (
           <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
             {isOpenRequest ? (

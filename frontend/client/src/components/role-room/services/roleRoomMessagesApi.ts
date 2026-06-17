@@ -16,6 +16,7 @@ export interface RoleRoomMessage {
   replyToId: string | null;
   linkedEntityType: string | null;
   linkedEntityId: string | null;
+  metadata: Record<string, unknown>;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -38,7 +39,7 @@ export async function listMessages(projectId: string): Promise<RoleRoomMessage[]
 
 export async function sendMessage(
   projectId: string,
-  input: { body: string; kind?: string; linkedEntityType?: string; linkedEntityId?: string; authorName?: string },
+  input: { body: string; kind?: string; linkedEntityType?: string; linkedEntityId?: string; authorName?: string; metadata?: Record<string, unknown> },
 ): Promise<RoleRoomMessage> {
   const res = await fetch(base(projectId), { method: 'POST', headers: headers(true), body: JSON.stringify(input) });
   const payload = (await res.json().catch(() => null)) as { message?: RoleRoomMessage; error?: string } | null;

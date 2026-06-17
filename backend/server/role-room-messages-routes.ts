@@ -56,6 +56,7 @@ function mapRow(row: Record<string, unknown>) {
     replyToId: (row.reply_to_id as string | null) ?? null,
     linkedEntityType: (row.linked_entity_type as string | null) ?? null,
     linkedEntityId: (row.linked_entity_id as string | null) ?? null,
+    metadata: (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<string, unknown>,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
   };
