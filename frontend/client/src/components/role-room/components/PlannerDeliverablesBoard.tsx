@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box, Stack, Typography, Button, TextField, CircularProgress, IconButton, Tooltip,
+  useMediaQuery, useTheme,
 } from '@mui/material';
 import {
   ChevronLeft as PrevIcon,
@@ -58,6 +59,10 @@ const COLUMN_ACCENT: Record<DeliverableStatus, string> = {
 
 export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverablesBoardProps) {
   const now = Date.now();
+  const theme = useTheme();
+  // På telefon blir 4 stablede kolonner én lang scroll — bytt til status-faner
+  // + én kolonne om gangen (ekte mobil-board-mønster).
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [items, setItems] = useState<RoleRoomDeliverable[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +70,7 @@ export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverab
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [creating, setCreating] = useState(false);
+  const [mobileStatus, setMobileStatus] = useState<DeliverableStatus>('draft');
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -130,6 +136,75 @@ export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverab
     }
   }, [projectId, newTitle]);
 
+  // Én kolonne — gjenbrukes av desktop-grid og mobil-fane-visning.
+  const renderColumn = (status: DeliverableStatus) => {
+    const col = byStatus[status];
+    const accent = COLUMN_ACCENT[status];
+    return (
+      <Box key={status} sx={{ borderRadius: '12px', border: '1px solid rgba(148,163,184,0.12)', background: 'rgba(255,255,255,0.02)', p: 1.2, minHeight: 120 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+          <Stack direction="row" spacing={0.6} alignItems="center">
+            <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: accent }} />
+            <Typography sx={{ color: 'rgba(226,232,240,0.86)', fontSize: '12px', fontWeight: 700 }}>
+              {DELIVERABLE_STATUS_LABELS[status]}
+            </Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '11px', fontVariantNumeric: 'tabular-nums' }}>{col.length}</Typography>
+          </Stack>
+          {status === 'draft' ? (
+            <Tooltip title="Ny leveranse">
+              <IconButton
+                size="small" onClick={() => setAdding((a) => !a)}
+                aria-label="Ny leveranse"
+                sx={{ width: 44, height: 44, color: '#c4b5fd', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
+              >
+                <AddIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          ) : null}
+        </Stack>
+
+        {status === 'draft' && adding ? (
+          <Stack spacing={0.8} sx={{ mb: 1 }}>
+            <TextField
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleCreate(); if (e.key === 'Escape') { setAdding(false); setNewTitle(''); } }}
+              placeholder="F.eks. Hovedfilm 30s"
+              size="small" autoFocus fullWidth
+              InputProps={{ sx: { fontSize: '13px', color: '#f5f3ff', background: 'rgba(15,23,42,0.55)' } }}
+            />
+            <Stack direction="row" spacing={0.8}>
+              <Button
+                onClick={() => void handleCreate()} disabled={creating || !newTitle.trim()}
+                size="small"
+                sx={{ textTransform: 'none', fontWeight: 700, fontSize: '12px', minHeight: 36, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 }, '&.Mui-disabled': { opacity: 0.5, color: '#fff' } }}
+              >
+                {creating ? 'Legger til…' : 'Legg til'}
+              </Button>
+              <Button onClick={() => { setAdding(false); setNewTitle(''); }} size="small" sx={{ textTransform: 'none', fontSize: '12px', minHeight: 36, color: 'rgba(226,232,240,0.7)' }}>Avbryt</Button>
+            </Stack>
+          </Stack>
+        ) : null}
+
+        <Stack spacing={0.8}>
+          {col.map((item) => (
+            <DeliverableCard
+              key={item.id} item={item} accent={accent} now={now}
+              busy={busyId === item.id}
+              onPrev={DELIVERABLE_STATUS_ORDER.indexOf(item.status) > 0 ? () => void moveStatus(item, -1) : undefined}
+              onNext={DELIVERABLE_STATUS_ORDER.indexOf(item.status) < DELIVERABLE_STATUS_ORDER.length - 1 ? () => void moveStatus(item, 1) : undefined}
+            />
+          ))}
+          {col.length === 0 && !(status === 'draft' && adding) ? (
+            <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '11.5px', py: 1, textAlign: 'center' }}>
+              {status === 'delivered' ? 'Ingen levert ennå' : 'Tom'}
+            </Typography>
+          ) : null}
+        </Stack>
+      </Box>
+    );
+  };
+
   return (
     <Box
       sx={{
@@ -156,76 +231,36 @@ export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverab
         <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
           <CircularProgress size={24} sx={{ color: '#a855f7' }} />
         </Box>
+      ) : isMobile ? (
+        // Mobil: status-faner (én kolonne om gangen) i stedet for 4 stablede.
+        <>
+          <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, overflowX: 'auto', pb: 0.5, '&::-webkit-scrollbar': { display: 'none' } }}>
+            {DELIVERABLE_STATUS_ORDER.map((status) => {
+              const active = status === mobileStatus;
+              return (
+                <Button
+                  key={status}
+                  onClick={() => setMobileStatus(status)}
+                  aria-pressed={active}
+                  sx={{
+                    flexShrink: 0, textTransform: 'none', fontWeight: 700, fontSize: '12px',
+                    minHeight: 44, px: 1.3, borderRadius: '999px',
+                    color: active ? '#0b1220' : 'rgba(226,232,240,0.86)',
+                    background: active ? COLUMN_ACCENT[status] : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${active ? 'transparent' : 'rgba(148,163,184,0.2)'}`,
+                    '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 },
+                  }}
+                >
+                  {DELIVERABLE_STATUS_LABELS[status]} ({byStatus[status].length})
+                </Button>
+              );
+            })}
+          </Stack>
+          {renderColumn(mobileStatus)}
+        </>
       ) : (
-        <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' } }}>
-          {DELIVERABLE_STATUS_ORDER.map((status) => {
-            const col = byStatus[status];
-            const accent = COLUMN_ACCENT[status];
-            return (
-              <Box key={status} sx={{ borderRadius: '12px', border: '1px solid rgba(148,163,184,0.12)', background: 'rgba(255,255,255,0.02)', p: 1.2, minHeight: 120 }}>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                  <Stack direction="row" spacing={0.6} alignItems="center">
-                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: accent }} />
-                    <Typography sx={{ color: 'rgba(226,232,240,0.86)', fontSize: '12px', fontWeight: 700 }}>
-                      {DELIVERABLE_STATUS_LABELS[status]}
-                    </Typography>
-                    <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '11px', fontVariantNumeric: 'tabular-nums' }}>{col.length}</Typography>
-                  </Stack>
-                  {status === 'draft' ? (
-                    <Tooltip title="Ny leveranse">
-                      <IconButton
-                        size="small" onClick={() => setAdding((a) => !a)}
-                        aria-label="Ny leveranse"
-                        sx={{ width: 44, height: 44, color: '#c4b5fd', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
-                      >
-                        <AddIcon sx={{ fontSize: 18 }} />
-                      </IconButton>
-                    </Tooltip>
-                  ) : null}
-                </Stack>
-
-                {/* Inline opprett (kun Utkast-kolonnen) */}
-                {status === 'draft' && adding ? (
-                  <Stack spacing={0.8} sx={{ mb: 1 }}>
-                    <TextField
-                      value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') void handleCreate(); if (e.key === 'Escape') { setAdding(false); setNewTitle(''); } }}
-                      placeholder="F.eks. Hovedfilm 30s"
-                      size="small" autoFocus fullWidth
-                      InputProps={{ sx: { fontSize: '13px', color: '#f5f3ff', background: 'rgba(15,23,42,0.55)' } }}
-                    />
-                    <Stack direction="row" spacing={0.8}>
-                      <Button
-                        onClick={() => void handleCreate()} disabled={creating || !newTitle.trim()}
-                        size="small"
-                        sx={{ textTransform: 'none', fontWeight: 700, fontSize: '12px', minHeight: 36, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 }, '&.Mui-disabled': { opacity: 0.5, color: '#fff' } }}
-                      >
-                        {creating ? 'Legger til…' : 'Legg til'}
-                      </Button>
-                      <Button onClick={() => { setAdding(false); setNewTitle(''); }} size="small" sx={{ textTransform: 'none', fontSize: '12px', minHeight: 36, color: 'rgba(226,232,240,0.7)' }}>Avbryt</Button>
-                    </Stack>
-                  </Stack>
-                ) : null}
-
-                <Stack spacing={0.8}>
-                  {col.map((item) => (
-                    <DeliverableCard
-                      key={item.id} item={item} accent={accent} now={now}
-                      busy={busyId === item.id}
-                      onPrev={DELIVERABLE_STATUS_ORDER.indexOf(item.status) > 0 ? () => void moveStatus(item, -1) : undefined}
-                      onNext={DELIVERABLE_STATUS_ORDER.indexOf(item.status) < DELIVERABLE_STATUS_ORDER.length - 1 ? () => void moveStatus(item, 1) : undefined}
-                    />
-                  ))}
-                  {col.length === 0 && !(status === 'draft' && adding) ? (
-                    <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '11.5px', py: 1, textAlign: 'center' }}>
-                      {status === 'delivered' ? 'Ingen levert ennå' : 'Tom'}
-                    </Typography>
-                  ) : null}
-                </Stack>
-              </Box>
-            );
-          })}
+        <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' } }}>
+          {DELIVERABLE_STATUS_ORDER.map((status) => renderColumn(status))}
         </Box>
       )}
     </Box>

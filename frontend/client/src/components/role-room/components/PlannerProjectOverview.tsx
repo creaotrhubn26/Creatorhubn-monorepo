@@ -260,11 +260,16 @@ export default function PlannerProjectOverview({
         </Stack>
       </Stack>
 
-      {/* ── Fase-fremdrift ───────────────────────────────────────── */}
+      {/* ── Fase-fremdrift (horisontal scroll-snap på telefon) ────── */}
       <Box
         sx={{
-          mt: 2, display: 'grid', gap: 1.5,
-          gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
+          mt: 2, gap: 1.5,
+          display: { xs: 'flex', sm: 'grid' },
+          gridTemplateColumns: { sm: 'repeat(3, 1fr)' },
+          overflowX: { xs: 'auto', sm: 'visible' },
+          scrollSnapType: { xs: 'x mandatory', sm: 'none' },
+          pb: { xs: 0.5, sm: 0 },
+          '&::-webkit-scrollbar': { display: 'none' },
         }}
       >
         {model.phases.map(({ phase, item }) => {
@@ -283,6 +288,8 @@ export default function PlannerProjectOverview({
                 p: 1.4, borderRadius: '12px',
                 border: '1px solid rgba(148,163,184,0.12)',
                 background: 'rgba(255,255,255,0.02)',
+                minWidth: { xs: 232, sm: 'auto' },
+                scrollSnapAlign: { xs: 'start', sm: 'none' },
               }}
             >
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.8 }}>
