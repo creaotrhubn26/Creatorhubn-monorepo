@@ -126,6 +126,7 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
   skipped: number;
   failed: number;
 }> {
+  const MAX_SEND_ATTEMPTS = 5;
   const due = await pool.query(
     `SELECT id::text, event_type, event_name, conversion_urn,
             user_email_hash, user_phone_hash,
@@ -136,7 +137,7 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
             send_attempts
        FROM linkedin_conversion_events
       WHERE send_status IN ('pending','retrying')
-        AND send_attempts < 5
+        AND send_attempts < ${MAX_SEND_ATTEMPTS}
       ORDER BY created_at
       LIMIT 50`,
   );
@@ -218,6 +219,10 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
       } else {
         const errText = await resp.text().catch(() => "");
         const isRetryable = resp.status >= 500 || resp.status === 429;
+        // On the final allowed attempt, transition to a terminal 'failed' even
+        // for retryable errors — otherwise the row stays 'retrying' with
+        // attempts === max and is excluded by the drain filter forever.
+        const isFinalAttempt = ev.send_attempts + 1 >= MAX_SEND_ATTEMPTS;
         await pool.query(
           `UPDATE linkedin_conversion_events
               SET send_status = $1,
@@ -226,7 +231,7 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
                   last_send_error = $2
             WHERE id = $3::uuid`,
           [
-            isRetryable ? "retrying" : "failed",
+            isRetryable && !isFinalAttempt ? "retrying" : "failed",
             `${resp.status} ${errText.slice(0, 400)}`,
             ev.id,
           ],
@@ -234,14 +239,15 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
         failed++;
       }
     } catch (err) {
+      const isFinalAttempt = ev.send_attempts + 1 >= MAX_SEND_ATTEMPTS;
       await pool.query(
         `UPDATE linkedin_conversion_events
-            SET send_status = 'retrying',
+            SET send_status = $1,
                 send_attempts = send_attempts + 1,
                 last_send_at = now(),
-                last_send_error = $1
-          WHERE id = $2::uuid`,
-        [String(err).slice(0, 400), ev.id],
+                last_send_error = $2
+          WHERE id = $3::uuid`,
+        [isFinalAttempt ? "failed" : "retrying", String(err).slice(0, 400), ev.id],
       );
       failed++;
     }
