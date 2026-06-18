@@ -14,6 +14,7 @@ import { randomUUID } from 'crypto';
 import type { Express, Request, Response } from 'express';
 import type { Pool } from 'pg';
 import { upsertProducerProjectNotification } from './role-room-producer-notifications.js';
+import { getAssistantAreas } from './role-room-assistant-access.js';
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -109,7 +110,9 @@ export function registerRoleRoomMessagesRoutes(app: Express, deps: Deps): void {
       if (!session) return;
       const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
       // «Rom & roller»: klient ser KUN delte meldinger; produsent-team ser alt.
-      const clientOnlyShared = isClientRole(session.role);
+      // Assistent uten internal_chat-tilgang behandles som klient (kun delt).
+      const asst = await getAssistantAreas(pool, String(req.params.projectId).trim(), { userId: session.userId, email: session.email });
+      const clientOnlyShared = isClientRole(session.role) || (asst != null && asst.areas.internal_chat !== true);
       const result = await pool.query(
         `SELECT * FROM role_room_messages
           WHERE project_id = $1
@@ -134,9 +137,11 @@ export function registerRoleRoomMessagesRoutes(app: Express, deps: Deps): void {
       const text = typeof body.body === 'string' ? body.body.trim() : '';
       if (!text) { res.status(400).json({ error: 'tom_melding' }); return; }
       const kind = ['message', 'request', 'answer'].includes(String(body.kind)) ? String(body.kind) : 'message';
-      // Synlighet: klient kan aldri sende internt. Internt = kun produsent-team.
-      const fromClient = isClientRole(session.role);
-      const visibility = (!fromClient && body.visibility === 'internal') ? 'internal' : 'shared';
+      // Synlighet: klient kan aldri sende internt. Assistent uten internal_chat
+      // heller ikke. Internt = kun produsent-team (+ assistenter med tilgang).
+      const asstScope = await getAssistantAreas(pool, projectId, { userId: session.userId, email: session.email });
+      const blockedFromInternal = isClientRole(session.role) || (asstScope != null && asstScope.areas.internal_chat !== true);
+      const visibility = (!blockedFromInternal && body.visibility === 'internal') ? 'internal' : 'shared';
 
       const id = randomUUID();
       const result = await pool.query(
@@ -170,7 +175,7 @@ export function registerRoleRoomMessagesRoutes(app: Express, deps: Deps): void {
         } else {
           await upsertProducerProjectNotification(pool, {
             projectId,
-            audience: fromClient ? 'producer_team' : 'client',
+            audience: isClientRole(session.role) ? 'producer_team' : 'client',
             eventType: kind === 'request' ? 'message_request' : 'message_sent',
             title: kind === 'request' ? 'Ny forespørsel i samtalen' : 'Ny melding',
             message: text.slice(0, 160),

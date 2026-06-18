@@ -18,6 +18,7 @@ import {
   updateDeliverable,
   deleteDeliverable,
 } from './role-room-deliverables.js';
+import { getAssistantAreas } from './role-room-assistant-access.js';
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -68,6 +69,9 @@ export function registerRoleRoomDeliverablesRoutes(app: Express, deps: Deps): vo
     try {
       const viewerId = await authorize(req, res);
       if (!viewerId) return;
+      // Assistent uten leveranse-tilgang ser ingenting.
+      const asst = await getAssistantAreas(pool, String(req.params.projectId).trim(), { userId: viewerId });
+      if (asst && asst.areas.deliverables !== true) { res.json({ success: true, items: [] }); return; }
       const items = await listDeliverables(pool, String(req.params.projectId).trim());
       res.json({ success: true, items });
     } catch (error) {

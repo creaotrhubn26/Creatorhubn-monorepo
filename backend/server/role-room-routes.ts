@@ -22,6 +22,7 @@ import {
   deleteOauthTransfer,
 } from './role-room-oauth-store.js';
 import { resolveClientPortalSession } from './role-room-client-portal.js';
+import { getAssistantAreas } from './role-room-assistant-access.js';
 import {
   getProjectProducerUserId,
   loadProjectProducerInfo,
@@ -14116,6 +14117,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     try {
       const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
       if (!canReadProducerEconomy(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til økonomi' });
+        return;
+      }
+      // Assistent-scoping: økonomi er sensitivt — nekt hvis assistent uten flagg.
+      const economyEmail = (req as Request & { apiKeyUser?: { email?: string } }).apiKeyUser?.email;
+      const economyAssistant = await getAssistantAreas(pool, projectId, { userId, email: economyEmail });
+      if (economyAssistant && economyAssistant.areas.economy !== true) {
         res.status(403).json({ error: 'Mangler tilgang til økonomi' });
         return;
       }
