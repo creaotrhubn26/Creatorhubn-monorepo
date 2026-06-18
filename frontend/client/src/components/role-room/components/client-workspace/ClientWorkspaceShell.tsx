@@ -39,6 +39,7 @@ import {
   Videocam as MeetingsIcon,
   ForumOutlined as MessagesIcon,
   ShieldOutlined as VaultIcon,
+  GroupsOutlined as TeamIcon,
   ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
 
@@ -53,11 +54,12 @@ const ClientMerkevareView = lazy(() => import('./ClientMerkevareView'));
 const ClientMeetingsView = lazy(() => import('./ClientMeetingsView'));
 const ClientConversationView = lazy(() => import('./ClientConversationView'));
 const ClientVaultView = lazy(() => import('./ClientVaultView'));
+const ProducerAssistantsPanel = lazy(() => import('./ProducerAssistantsPanel'));
 const RoleRoomChatBubble = lazy(() => import('./RoleRoomChatBubble'));
 
-type TabValue = 'economy' | 'approval' | 'brief' | 'merkevare' | 'meetings' | 'messages' | 'vault' | 'roles' | 'plan' | 'marketing-plan';
+type TabValue = 'economy' | 'approval' | 'brief' | 'merkevare' | 'meetings' | 'messages' | 'vault' | 'team' | 'roles' | 'plan' | 'marketing-plan';
 
-const TABS: Array<{ value: TabValue; label: string; icon: React.ReactElement }> = [
+const TABS: Array<{ value: TabValue; label: string; icon: React.ReactElement; producerOnly?: boolean }> = [
   { value: 'economy', label: 'Økonomi', icon: <EconomyIcon /> },
   { value: 'approval', label: 'Godkjenning', icon: <ApprovalIcon /> },
   { value: 'messages', label: 'Meldinger', icon: <MessagesIcon /> },
@@ -65,6 +67,7 @@ const TABS: Array<{ value: TabValue; label: string; icon: React.ReactElement }> 
   { value: 'merkevare', label: 'Merkevare', icon: <MerkevareIcon /> },
   { value: 'meetings', label: 'Møter', icon: <MeetingsIcon /> },
   { value: 'vault', label: 'Tilganger', icon: <VaultIcon /> },
+  { value: 'team', label: 'Team', icon: <TeamIcon />, producerOnly: true },
   { value: 'roles', label: 'Roller', icon: <RolesIcon /> },
   { value: 'plan', label: 'Plan', icon: <PlanIcon /> },
   { value: 'marketing-plan', label: 'Markedsplan', icon: <MarketingPlanIcon /> },
@@ -200,7 +203,7 @@ export default function ClientWorkspaceShell({
               '& .MuiTabs-indicator': { backgroundColor: '#22d3ee', height: 3 },
             }}
           >
-            {TABS.map((t) => (
+            {TABS.filter((t) => !t.producerOnly || isPreviewMode).map((t) => (
               <Tab key={t.value} value={t.value} label={t.label} icon={t.icon} iconPosition="start" />
             ))}
           </Tabs>
@@ -224,6 +227,7 @@ export default function ClientWorkspaceShell({
           {activeTab === 'merkevare' && <ClientMerkevareView projectId={projectId} />}
           {activeTab === 'meetings' && <ClientMeetingsView projectId={projectId} />}
           {activeTab === 'vault' && <ClientVaultView projectId={projectId} />}
+          {activeTab === 'team' && isPreviewMode && <ProducerAssistantsPanel projectId={projectId} />}
           {activeTab === 'messages' && <ClientConversationView projectId={projectId} canUseInternal={isPreviewMode} />}
           {activeTab === 'roles' && <ClientRolesView projectId={projectId} />}
           {activeTab === 'plan' && <ClientPlanView projectId={projectId} />}
