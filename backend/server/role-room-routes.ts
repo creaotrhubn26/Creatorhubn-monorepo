@@ -5423,6 +5423,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return isClientReviewerProjectRole(effectiveRoleRecord?.role);
   }
 
+  // Assistent-scoping: true hvis innlogget bruker er en scopet assistent UTEN
+  // tilgang til området. Returnerer false for produsent/klient/eier.
+  async function assistantAreaBlocked(req: Request, projectId: string, area: string): Promise<boolean> {
+    const email = (req as Request & { apiKeyUser?: { email?: string } }).apiKeyUser?.email;
+    const scope = await getAssistantAreas(pool, projectId, { userId: getUserId(req), email });
+    return scope != null && scope.areas[area] !== true;
+  }
+
   function getProducerNotificationAudiences(
     req: Request,
     roleRecord: ProjectRoleRecord | null,
@@ -12706,6 +12714,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(403).json({ error: 'Mangler tilgang til tidslinje' });
         return;
       }
+      if (await assistantAreaBlocked(req, projectId, 'plan')) { res.json({ items: [] }); return; }
 
       // Klient ser kun publiserte elementer (draft = produsentens private utkast).
       const clientOnlyPublished = isClientPublishViewer(req, roleRecord);
@@ -15003,6 +15012,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(403).json({ error: 'Mangler tilgang til klientbrief' });
         return;
       }
+      // Assistent uten brief-tilgang ser ikke briefen. (Klient-kontaktinfo ligger
+      // i briefen, så client_info-gating dekkes også her.)
+      if (await assistantAreaBlocked(req, projectId, 'brief')) { res.json({ intake: null }); return; }
 
       const result = await pool.query(
         `SELECT * FROM role_room_client_intake WHERE project_id = $1 LIMIT 1`,
@@ -15463,6 +15475,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(403).json({ error: 'Mangler tilgang til klientmateriale' });
         return;
       }
+      if (await assistantAreaBlocked(req, projectId, 'materials')) { res.json({ items: [] }); return; }
 
       const result = await pool.query(
         `SELECT * FROM role_room_client_materials
