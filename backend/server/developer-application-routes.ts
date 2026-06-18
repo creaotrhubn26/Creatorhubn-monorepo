@@ -92,9 +92,9 @@ export function registerDeveloperApplicationRoutes({ app, pool }: Deps): void {
         const placeholderPassword = crypto.randomBytes(32).toString("hex");
         await client.query(
           `INSERT INTO users (id, email, username, password, role, first_name, last_name, created_at)
-           VALUES ($1, $2, $2, $3, 'member', $4, $5, now())`,
+           VALUES ($1, $2, $3, $4, 'member', $5, $6, now())`,
           [
-            userId, email, placeholderPassword,
+            userId, email, email, placeholderPassword,
             parts[0] ?? null,
             parts.slice(1).join(" ") || null,
           ],
