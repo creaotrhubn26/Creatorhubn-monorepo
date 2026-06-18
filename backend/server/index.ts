@@ -554,6 +554,7 @@ import { registerPartnerApplicationsRoutes } from "./partner-applications-routes
 import { registerPartnerIntentRoutes } from "./partner-intent-routes.js";
 import { registerTestflightTestersRoutes } from "./testflight-testers-routes.js";
 import { registerLeadgridGoogleAuthRoutes } from "./leadgrid-google-auth-routes.js";
+import { registerUserOrgRoutes } from "./user-org-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24361,6 +24362,8 @@ registerPartnerIntentRoutes({ app, pool, activeSessions });
 registerTestflightTestersRoutes({ app, pool, activeSessions });
 // Google Sign-In for Leadgrid (web + iOS native), oppretter Solo Free
 registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions });
+// OrgSwitcher endepunkter (alle medlemskap + sett aktiv)
+registerUserOrgRoutes({ app, pool, activeSessions });
 // Håndhev org-status (paused/suspended) på alle Leadgrid-rutene.
 // Bypass for super_admin er ON som default.
 app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));
