@@ -24,6 +24,7 @@ import {
   VerifiedUserOutlined as MfaIcon,
 } from '@mui/icons-material';
 import { roleRoomAccessVaultApi } from '../../services/castingApiService';
+import VaultTrustCeremony from './VaultTrustCeremony';
 import type {
   RoleRoomAccessVaultState, RoleRoomAccessVaultSecretSummary, ProducerAccountAccessPlatform,
 } from '../../models/casting';
@@ -61,6 +62,11 @@ export default function ClientVaultView({ projectId }: { projectId: string }) {
   const [secretValue, setSecretValue] = useState('');
   const [revealPolicy, setRevealPolicy] = useState('mfa_required');
   const [expiresAt, setExpiresAt] = useState('');
+
+  const [ceremonyOpen, setCeremonyOpen] = useState(false);
+  useEffect(() => {
+    try { if (!window.localStorage.getItem('rr_vault_ceremony_seen')) setCeremonyOpen(true); } catch { /* ignore */ }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -189,6 +195,8 @@ export default function ClientVaultView({ projectId }: { projectId: string }) {
           </Stack>
         </Box>
       ) : null}
+
+      <VaultTrustCeremony open={ceremonyOpen} onClose={() => { setCeremonyOpen(false); setAdding(true); }} />
 
       <Snackbar open={Boolean(toast)} autoHideDuration={4500} onClose={() => setToast(null)} message={toast ?? ''} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Stack>
