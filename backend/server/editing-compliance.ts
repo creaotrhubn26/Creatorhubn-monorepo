@@ -129,6 +129,7 @@ export function requiredAcceptances(isForeign: boolean, isEea: boolean): string[
     "storage",
     "gdpr",
     "delivery",
+    "payment",
     "dpa",
     "nda",
     "no_subcontractors",

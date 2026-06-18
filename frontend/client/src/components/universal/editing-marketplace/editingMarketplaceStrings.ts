@@ -177,6 +177,10 @@ const STRINGS: Dict = {
     no: "Leveranse: alt går tilbake til Creatorhub Showcase — jeg leverer aldri direkte til sluttkunden.",
     en: "Delivery: everything goes back to Creatorhub Showcase — I never deliver directly to the end client.",
   },
+  "req.payment": {
+    no: "Betaling: utbetaling skjer via Creatorhub (Stripe Connect, eller PayPal for utenlandske vendors) og frigis FØRST når fotografen har godkjent leveransen. Creatorhub tar et plattformgebyr av oppdraget. Vendor-gebyr kan være redusert/utsatt under prototype-testing.",
+    en: "Payment: payout is made through Creatorhub (Stripe Connect, or PayPal for international vendors) and is released ONLY after the photographer approves the delivery. Creatorhub takes a platform fee on the job. The vendor fee may be reduced/deferred during prototype testing.",
+  },
   "req.dpa": { no: "Jeg signerer databehandleravtale (DPA).", en: "I sign the Data Processing Agreement (DPA)." },
   "req.nda": { no: "Jeg signerer konfidensialitetsavtale (NDA).", en: "I sign the confidentiality agreement (NDA)." },
   "req.scc": { no: "Jeg signerer Standard Contractual Clauses (SCC).", en: "I sign the Standard Contractual Clauses (SCC)." },
@@ -195,6 +199,28 @@ const STRINGS: Dict = {
     no: "Kommunikasjon med fotograf åpnes når et oppdrag er akseptert.",
     en: "Communication with the photographer opens once a job is accepted.",
   },
+
+  // ── Request dialog (fotograf bestiller) ──
+  rq_title: { no: "Send forespørsel", en: "Send request" },
+  rq_services: { no: "Velg tjenester", en: "Select services" },
+  rq_brief: { no: "Brief / instruksjoner", en: "Brief / instructions" },
+  rq_project: { no: "Prosjekt (valgfritt)", en: "Project (optional)" },
+  rq_max_revisions: { no: "Maks revisjoner", en: "Max revisions" },
+  rq_total: { no: "Sum", en: "Total" },
+  rq_payment_method: { no: "Betalingsmåte", en: "Payment method" },
+  rq_pay_stripe: { no: "Stripe (kort)", en: "Stripe (card)" },
+  rq_pay_invoice: { no: "Faktura", en: "Invoice" },
+  rq_cost_model: { no: "Kalkyle", en: "Calculation" },
+  rq_fixed_fee: { no: "Fast honorar (kostnad av-toppen)", en: "Fixed fee (cost off-the-top)" },
+  rq_revenue_share: { no: "Prosentandel av inntekt", en: "Revenue share (%)" },
+  rq_share_pct: { no: "Andel %", en: "Share %" },
+  rq_send: { no: "Send forespørsel", en: "Send request" },
+  rq_sending: { no: "Sender…", en: "Sending…" },
+  rq_escrow_note: {
+    no: "Betaling holdes sikkert og frigis til vendor først når du har godkjent leveransen.",
+    en: "Payment is held securely and released to the vendor only after you approve the delivery.",
+  },
+  rq_select_at_least_one: { no: "Velg minst én tjeneste.", en: "Select at least one service." },
 };
 
 export function t(key: string, locale: Locale = "no"): string {

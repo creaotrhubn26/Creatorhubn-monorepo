@@ -74,7 +74,7 @@ interface Props {
 }
 
 function requiredFor(isForeign: boolean, requiresExtraGdpr: boolean): string[] {
-  const base = ["standard", "quality", "storage", "gdpr", "delivery", "dpa", "nda", "no_subcontractors", "no_portfolio_use"];
+  const base = ["standard", "quality", "storage", "gdpr", "delivery", "payment", "dpa", "nda", "no_subcontractors", "no_portfolio_use"];
   if (isForeign && requiresExtraGdpr) base.push("scc", "tia");
   return base;
 }

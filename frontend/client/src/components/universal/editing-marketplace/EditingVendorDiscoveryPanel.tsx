@@ -44,6 +44,7 @@ import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import GroupsIcon from "@mui/icons-material/Groups";
 import { apiRequest } from "@/lib/queryClient";
 import { t, badgeLabel, type Locale } from "./editingMarketplaceStrings";
+import EditingRequestDialog from "./EditingRequestDialog";
 
 interface EditingVendorService {
   category: string;
@@ -123,27 +124,13 @@ export default function EditingVendorDiscoveryPanel({
 
   const qc = useQueryClient();
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [requestVendorId, setRequestVendorId] = useState<string | null>(null);
   const [snack, setSnack] = useState<{ msg: string; sev: "success" | "error" } | null>(null);
 
   const profileQuery = useQuery<EditingVendor & { country?: string }>({
     queryKey: ["/api/editing/vendors", profileId],
     queryFn: () => apiRequest(`/api/editing/vendors/${profileId}`),
     enabled: !!profileId,
-  });
-
-  const sendRequestMutation = useMutation({
-    mutationFn: (vendorUserId: string) =>
-      apiRequest("/api/editing/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vendorId: vendorUserId }),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/editing/jobs"] });
-      setProfileId(null);
-      setSnack({ msg: t("send_request", locale), sev: "success" });
-    },
-    onError: () => setSnack({ msg: "Feil", sev: "error" }),
   });
 
   const approveMutation = useMutation({
@@ -157,7 +144,12 @@ export default function EditingVendorDiscoveryPanel({
   });
 
   const handleSeeProfile = onSeeProfile ?? ((id: string) => setProfileId(id));
-  const handleSendRequest = onSendRequest ?? ((id: string) => sendRequestMutation.mutate(id));
+  const handleSendRequest =
+    onSendRequest ??
+    ((id: string) => {
+      setProfileId(null);
+      setRequestVendorId(id);
+    });
   const handleApprove = onApproveJob ?? ((id: string) => approveMutation.mutate(id));
   const profile = profileQuery.data;
 
@@ -445,7 +437,6 @@ export default function EditingVendorDiscoveryPanel({
           <Button
             variant="contained"
             startIcon={<SendIcon />}
-            disabled={sendRequestMutation.isPending}
             onClick={() => profileId && handleSendRequest(profileId)}
             sx={{ bgcolor: accent, "&:hover": { bgcolor: "#e67e00" } }}
           >
@@ -453,6 +444,17 @@ export default function EditingVendorDiscoveryPanel({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <EditingRequestDialog
+        vendorUserId={requestVendorId}
+        open={!!requestVendorId}
+        onClose={() => setRequestVendorId(null)}
+        onCreated={() => {
+          qc.invalidateQueries({ queryKey: ["/api/editing/jobs"] });
+          setSnack({ msg: t("send_request", locale), sev: "success" });
+        }}
+        locale={locale}
+      />
 
       <Snackbar open={!!snack} autoHideDuration={3000} onClose={() => setSnack(null)}>
         {snack ? (
