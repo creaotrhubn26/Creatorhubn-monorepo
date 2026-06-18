@@ -1,0 +1,45 @@
+name: Leadgrid e-post-drypp
+
+# Kjører hver time. POST /api/leadgrid/drips/run leser onboarding_drips
+# og sender alle forfalte dryp (dag 1, 3, 7, 14).
+#
+# Krever GitHub secret LEADGRID_CRON_TRIGGER_TOKEN (samme verdi som
+# Render env-var med samme navn).
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # hver hele time
+  workflow_dispatch:        # manuelt fra UI
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leadgrid-drips
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Trigger drip-batch
+        env:
+          TOKEN: ${{ secrets.LEADGRID_CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::LEADGRID_CRON_TRIGGER_TOKEN secret er ikke satt"
+            exit 1
+          fi
+          RESP=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "x-cron-trigger-token: $TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://creatorhub-backend-rtbl.onrender.com/api/leadgrid/drips/run")
+          BODY=$(echo "$RESP" | head -n -1)
+          CODE=$(echo "$RESP" | tail -n 1)
+          echo "HTTP $CODE"
+          echo "$BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Drip-run feilet (HTTP $CODE)"
+            exit 1
+          fi
