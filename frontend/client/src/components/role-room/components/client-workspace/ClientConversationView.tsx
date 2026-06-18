@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box, Stack, Typography, Button, TextField, Chip, CircularProgress, Snackbar, ToggleButtonGroup, ToggleButton,
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText, Select, FormControl,
+  Dialog, DialogTitle, DialogContent, Tabs, Tab, ListItemButton,
 } from '@mui/material';
 import {
   SendOutlined as SendIcon,
@@ -26,11 +27,15 @@ import {
   AddCircleOutline as ActionIcon,
   EventAvailableOutlined as ScheduleIcon,
   BoltOutlined as InstantMeetIcon,
+  LinkOutlined as ReferenceIcon,
+  DownloadOutlined as DownloadIcon,
+  InsertDriveFileOutlined as FileIcon,
 } from '@mui/icons-material';
 import { listMessages, sendMessage, updateMessage, type RoleRoomMessage } from '../../services/roleRoomMessagesApi';
 import { producerWorkflowService, type ProducerProjectNotification } from '../../services/producerWorkflowService';
-import { createMeeting } from '../../services/roleRoomMeetingsApi';
-import { uploadMaterialFile, MATERIAL_CATEGORIES, type MaterialCategory } from '../../services/roleRoomMaterialsApi';
+import { createMeeting, listMeetings, type RoleRoomMeeting } from '../../services/roleRoomMeetingsApi';
+import { uploadMaterialFile, MATERIAL_CATEGORIES, listMaterials, downloadMaterialFile, type MaterialCategory, type RoleRoomMaterial } from '../../services/roleRoomMaterialsApi';
+import { listDeliverables, updateDeliverable, type RoleRoomDeliverable } from '../../services/roleRoomDeliverablesApi';
 
 type FeedItem = {
   id: string;
@@ -237,6 +242,40 @@ export default function ClientConversationView({ projectId }: { projectId: strin
     finally { setBusyAction(false); }
   }, [projectId, load]);
 
+  // Referer til hva som helst (leveranse/fil/møte) → referanse-kort i tråden.
+  const [refOpen, setRefOpen] = useState(false);
+  const [refTab, setRefTab] = useState(0);
+  const [refLoading, setRefLoading] = useState(false);
+  const [refDeliverables, setRefDeliverables] = useState<RoleRoomDeliverable[]>([]);
+  const [refMaterials, setRefMaterials] = useState<RoleRoomMaterial[]>([]);
+  const [refMeetings, setRefMeetings] = useState<RoleRoomMeeting[]>([]);
+
+  const openReferencePicker = useCallback(async () => {
+    setActionAnchor(null); setRefOpen(true); setRefLoading(true);
+    const [d, m, mt] = await Promise.allSettled([
+      listDeliverables(projectId), listMaterials(projectId), listMeetings(projectId),
+    ]);
+    if (d.status === 'fulfilled') setRefDeliverables(d.value);
+    if (m.status === 'fulfilled') setRefMaterials(m.value);
+    if (mt.status === 'fulfilled') setRefMeetings(mt.value);
+    setRefLoading(false);
+  }, [projectId]);
+
+  const pickReference = useCallback(async (
+    entityType: 'deliverable' | 'material' | 'meeting', entityId: string, label: string, extra?: Record<string, unknown>,
+  ) => {
+    setRefOpen(false); setBusyAction(true);
+    try {
+      await sendMessage(projectId, {
+        body: `Referer til: ${label}`,
+        linkedEntityType: entityType, linkedEntityId: entityId,
+        metadata: { action: 'reference', refKind: entityType, refLabel: label, ...(extra ?? {}) },
+      });
+      await load();
+    } catch (e) { setToast(e instanceof Error ? e.message : 'Kunne ikke referere.'); }
+    finally { setBusyAction(false); }
+  }, [projectId, load]);
+
   // Action-launcher (skråstrek + spotlight).
   const [actionSpotlight, setActionSpotlight] = useState(false);
   useEffect(() => {
@@ -419,6 +458,7 @@ export default function ClientConversationView({ projectId }: { projectId: strin
             { q: 'be om logo opplasting merkevare', icon: <UploadIcon sx={{ color: '#7dd3fc' }} />, primary: 'Be om logo-opplasting', secondary: 'Lander i Merkevare på begge flater', run: () => void requestUpload('brand_logo') },
             { q: 'be om fil opplasting materiale', icon: <UploadIcon sx={{ color: '#7dd3fc' }} />, primary: 'Be om fil-opplasting', secondary: 'Hvilken som helst fil → Materiale', run: () => void requestUpload('other') },
             { q: 'send til godkjenning approval review', icon: <ApprovalIcon sx={{ color: '#f0abfc' }} />, primary: 'Send til godkjenning', secondary: 'Lander i Godkjenning-flaten', run: () => void sendToApproval() },
+            { q: 'referer til leveranse fil møte video godkjenn', icon: <ReferenceIcon sx={{ color: '#fcd34d' }} />, primary: 'Referer til …', secondary: 'Leveranse, fil eller møte → klikkbart kort', run: () => void openReferencePicker() },
           ].filter((a) => !actionQuery || `${a.primary} ${a.q}`.toLowerCase().includes(actionQuery.toLowerCase())).map((a) => (
             <MenuItem key={a.primary} onClick={a.run}>
               <ListItemIcon>{a.icon}</ListItemIcon>
@@ -429,7 +469,7 @@ export default function ClientConversationView({ projectId }: { projectId: strin
             <Typography sx={{ color: 'rgba(226,232,240,0.4)', fontSize: '0.64rem', fontWeight: 700, letterSpacing: 0.4 }}>KOMMER SNART</Typography>
           </Box>
           {[
-            'Legg i Content Planner', 'Referer til leveranse/fil', 'Del budsjett med klient', 'Be om brief-svar', 'Send faktura', 'AI-utkast & oppsummering',
+            'Legg i Content Planner', 'Del budsjett med klient', 'Be om brief-svar', 'Send faktura', 'AI-utkast & oppsummering',
           ].map((label) => (
             <MenuItem key={label} disabled>
               <ListItemIcon><ActivityIcon sx={{ color: 'rgba(226,232,240,0.4)' }} /></ListItemIcon>
@@ -439,8 +479,74 @@ export default function ClientConversationView({ projectId }: { projectId: strin
         </Menu>
       </Box>
 
+      {/* Referanse-picker */}
+      <Dialog open={refOpen} onClose={() => setRefOpen(false)} fullWidth maxWidth="sm"
+        slotProps={{ paper: { sx: { background: '#0c0a18', border: '1px solid rgba(168,85,247,0.3)', color: '#e2e8f0' } } }}>
+        <DialogTitle sx={{ color: '#f5f3ff', fontWeight: 800, fontSize: '1rem' }}>Referer til …</DialogTitle>
+        <DialogContent>
+          <Tabs value={refTab} onChange={(_, v) => setRefTab(v)} variant="fullWidth"
+            sx={{ mb: 1, '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, color: 'rgba(226,232,240,0.6)' }, '& .Mui-selected': { color: '#c4b5fd !important' }, '& .MuiTabs-indicator': { background: '#a855f7' } }}>
+            <Tab label={`Leveranser (${refDeliverables.length})`} />
+            <Tab label={`Filer (${refMaterials.length})`} />
+            <Tab label={`Møter (${refMeetings.length})`} />
+          </Tabs>
+          {refLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#a855f7' }} /></Box>
+          ) : (
+            <Stack spacing={0.5} sx={{ maxHeight: 320, overflowY: 'auto' }}>
+              {refTab === 0 && refDeliverables.map((d) => (
+                <ListItemButton key={d.id} onClick={() => void pickReference('deliverable', d.id, d.title, { status: d.status })} sx={{ borderRadius: 1.5 }}>
+                  <ListItemIcon><DeliveryIcon sx={{ color: '#f0abfc' }} /></ListItemIcon>
+                  <ListItemText primary={d.title} secondary={d.format ?? d.status} />
+                </ListItemButton>
+              ))}
+              {refTab === 1 && refMaterials.map((m) => (
+                <ListItemButton key={m.id} onClick={() => void pickReference('material', m.id, m.originalName ?? m.title, { originalName: m.originalName })} sx={{ borderRadius: 1.5 }}>
+                  <ListItemIcon><FileIcon sx={{ color: '#7dd3fc' }} /></ListItemIcon>
+                  <ListItemText primary={m.originalName ?? m.title} secondary={m.entryType} />
+                </ListItemButton>
+              ))}
+              {refTab === 2 && refMeetings.map((mt) => (
+                <ListItemButton key={mt.id} onClick={() => void pickReference('meeting', mt.id, mt.title, { meetLink: mt.meetLink })} sx={{ borderRadius: 1.5 }}>
+                  <ListItemIcon><MeetingIcon sx={{ color: '#a5b4fc' }} /></ListItemIcon>
+                  <ListItemText primary={mt.title} secondary={mt.startsAt ? new Date(mt.startsAt).toLocaleString('nb-NO') : 'Ikke planlagt'} />
+                </ListItemButton>
+              ))}
+              {((refTab === 0 && refDeliverables.length === 0) || (refTab === 1 && refMaterials.length === 0) || (refTab === 2 && refMeetings.length === 0)) ? (
+                <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.82rem', py: 2, textAlign: 'center' }}>Ingenting her ennå.</Typography>
+              ) : null}
+            </Stack>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Snackbar open={Boolean(toast)} autoHideDuration={3500} onClose={() => setToast(null)} message={toast ?? ''} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Stack>
+  );
+}
+
+function ReferenceDeliverableCard({ projectId, id, label, onChanged }: { projectId: string; id: string; label: string; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [approved, setApproved] = useState(false);
+  const approve = useCallback(async () => {
+    setBusy(true);
+    try { await updateDeliverable(projectId, id, { status: 'delivered' }); setApproved(true); onChanged(); }
+    catch { /* ignore */ }
+    finally { setBusy(false); }
+  }, [projectId, id, onChanged]);
+  return (
+    <Box sx={{ mt: 0.7, p: 1, borderRadius: 1.5, border: '1px solid rgba(240,171,252,0.3)', background: 'rgba(240,171,252,0.06)', display: 'flex', alignItems: 'center', gap: 1 }}>
+      <DeliveryIcon sx={{ fontSize: 18, color: '#f0abfc', flexShrink: 0 }} />
+      <Typography sx={{ color: '#f1f5f9', fontSize: '0.82rem', fontWeight: 700, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</Typography>
+      {approved ? (
+        <Stack direction="row" spacing={0.4} alignItems="center"><DoneIcon sx={{ fontSize: 15, color: '#6ee7b7' }} /><Typography sx={{ color: '#6ee7b7', fontSize: '0.74rem', fontWeight: 700 }}>Godkjent</Typography></Stack>
+      ) : (
+        <Button onClick={() => void approve()} disabled={busy} startIcon={busy ? <CircularProgress size={13} color="inherit" /> : <ApprovalIcon sx={{ fontSize: 16 }} />} size="small"
+          sx={{ flexShrink: 0, textTransform: 'none', fontWeight: 700, fontSize: '0.76rem', minHeight: 38, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)' }}>
+          Godkjenn
+        </Button>
+      )}
+    </Box>
   );
 }
 
@@ -535,6 +641,19 @@ function FeedRow({ it, projectId, onCloseRequest, onChanged }: { it: FeedItem; p
           <Button href={meetLink} target="_blank" rel="noopener" startIcon={<MeetingIcon />} size="small"
             sx={{ mt: 0.7, textTransform: 'none', fontWeight: 800, minHeight: 40, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)', '&:hover': { background: 'linear-gradient(135deg,#9333ea,#c026d3)' } }}>
             Bli med (Google Meet)
+          </Button>
+        ) : null}
+
+        {/* Referanse-kort: leveranse → Godkjenn, fil → Last ned */}
+        {it.linkedEntityType === 'deliverable' && it.linkedEntityId ? (
+          <ReferenceDeliverableCard projectId={projectId} id={it.linkedEntityId} label={String(it.meta?.refLabel ?? 'Leveranse')} onChanged={onChanged} />
+        ) : null}
+        {it.linkedEntityType === 'material' && it.linkedEntityId ? (
+          <Button
+            onClick={() => void downloadMaterialFile({ id: it.linkedEntityId, projectId, originalName: String(it.meta?.originalName ?? it.meta?.refLabel ?? 'fil'), title: String(it.meta?.refLabel ?? 'fil') } as RoleRoomMaterial)}
+            startIcon={<DownloadIcon />} size="small"
+            sx={{ mt: 0.7, textTransform: 'none', fontWeight: 700, minHeight: 40, color: '#082f49', background: 'linear-gradient(135deg,#7dd3fc,#38bdf8)' }}>
+            Last ned fil
           </Button>
         ) : null}
 
