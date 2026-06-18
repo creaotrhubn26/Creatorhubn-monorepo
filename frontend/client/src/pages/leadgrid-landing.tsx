@@ -28,10 +28,12 @@
  * backdrop-overlay som placeholder.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Box, Container, Typography, Button, Grid, Stack, Chip,
   Card, CardContent, Divider, Avatar,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, CircularProgress, Alert,
 } from '@mui/material';
 import {
   TravelExploreOutlined,
@@ -92,10 +94,10 @@ const STEPS = [
   },
 ];
 
-const TRUST_LOGOS = [
-  'ElektroPartner', 'Fixit', 'Kaffebrenneriet',
-  'Renholdspartner', 'ByggTeam', 'Blomsterpikene',
-];
+// Partner-strip hentes utelukkende dynamisk fra DB-tabellen
+// leadgrid_partners (mig 0316). Vi har INGEN hardkodet fallback —
+// hvis vi ikke har ekte samarbeidspartnere, skjuler vi striper helt.
+// Super-admin legger til reelle partnere via /superadmin Partnere-tab.
 
 const ECOSYSTEM = [
   { Icon: TravelExploreOutlined,    title: 'Oppdag',       desc: 'Finn leads fra flere kilder.' },
@@ -106,20 +108,10 @@ const ECOSYSTEM = [
   { Icon: HubOutlined,              title: 'Analyser',     desc: 'Se hva som fungerer og forbedre.' },
 ];
 
-const TESTIMONIALS = [
-  {
-    quote: 'Leadgrid har gjort oss mye mer strukturerte. Vi ser flere muligheter og følger opp raskere enn før.',
-    name: 'Martin Ødegaard', role: 'Daglig leder, ElektroPartner',
-  },
-  {
-    quote: 'Kartvisningen gir oss en helt ny forståelse av markedet. Vi har økt antall møter med 40%.',
-    name: 'Kari Nordmann', role: 'Salgsleder, Fixit AS',
-  },
-  {
-    quote: 'Enkelt å bruke, kraftfullt i hverdagen. Leadgrid er blitt en uunnværlig del av vår salgsprosess.',
-    name: 'Thomas Hølland', role: 'CEO, Renholdspartner',
-  },
-];
+// Testimonials hentes også dynamisk fra DB (TBD: leadgrid_testimonials-
+// tabell). Inntil videre — siden vi ikke har ekte testimonials —
+// rendres seksjonen ikke i det hele tatt. Vi vil ikke ha falske sitater.
+const TESTIMONIALS: { quote: string; name: string; role: string }[] = [];
 
 const PRICING = [
   {
@@ -269,6 +261,7 @@ function StickyHeader() {
 // ────────────────────────────────────────────────────────────
 
 function HeroSection() {
+  const [startOpen, setStartOpen] = useState(false);
   return (
     <Box
       sx={{
@@ -359,10 +352,11 @@ function HeroSection() {
                   fontSize: 16,
                   '&:hover': { bgcolor: PALETTE.accentBright },
                 }}
-                href="/"
+                onClick={() => setStartOpen(true)}
               >
                 Start gratis
               </Button>
+              <StartFreeDialog open={startOpen} onClose={() => setStartOpen(false)} />
               <Button
                 variant="outlined"
                 size="large"
@@ -409,6 +403,165 @@ function HeroSection() {
         </Grid>
       </Container>
     </Box>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
+// Start gratis dialog — kobles direkte til Stripe Checkout
+// ────────────────────────────────────────────────────────────
+
+function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [email, setEmail] = useState('');
+  const [orgName, setOrgName] = useState('');
+  const [website, setWebsite] = useState('');
+  const [contactName, setContactName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canStart = email.includes('@') && email.includes('.') && orgName.trim().length > 1;
+
+  async function submit() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/leadgrid/self-onboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          orgName: orgName.trim(),
+          templateKey: 'solo',
+          website: website.trim() || undefined,
+          contactName: contactName.trim() || undefined,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setError(data.error ?? 'Noe gikk galt');
+        setSubmitting(false);
+        return;
+      }
+      // Hvis Stripe Checkout-URL kom tilbake — redirect dit. Hvis ikke,
+      // vis fallback-melding.
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+        return;
+      }
+      // Ingen checkout-url — fortell brukeren sjekk e-post for magic link
+      setError(null);
+      alert(
+        data.magic_link_sent
+          ? 'Sjekk e-posten din — vi sendte deg en magic link til Leadgrid.'
+          : 'Klar! Gå til /leadgrid/welcome for å komme i gang.',
+      );
+      onClose();
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    }
+    setSubmitting(false);
+  }
+
+  return (
+    <Dialog
+      open={open} onClose={onClose} maxWidth="sm" fullWidth
+      PaperProps={{
+        sx: {
+          bgcolor: '#0a0512',
+          color: '#fff',
+          border: '1px solid rgba(167, 139, 250, 0.20)',
+          borderRadius: 3,
+        },
+      }}
+    >
+      <DialogTitle sx={{ pb: 1 }}>
+        <Typography variant="overline" sx={{ color: PALETTE.accent, letterSpacing: 2 }}>
+          Solo Free
+        </Typography>
+        <Typography variant="h5" fontWeight={700}>Start gratis</Typography>
+        <Typography variant="body2" sx={{ color: PALETTE.textMuted, mt: 1 }}>
+          1 kunde · 3 auto-onboards/mnd · Klient-portal · Ingen forpliktelse
+        </Typography>
+      </DialogTitle>
+      <DialogContent>
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          <TextField
+            fullWidth required label="E-post"
+            type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            placeholder="ola@bedrift.no"
+            InputLabelProps={{ sx: { color: PALETTE.textMuted } }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                color: '#fff',
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
+                '&:hover fieldset': { borderColor: PALETTE.accent },
+                '&.Mui-focused fieldset': { borderColor: PALETTE.accent },
+              },
+            }}
+          />
+          <TextField
+            fullWidth required label="Navn på din organisasjon"
+            value={orgName} onChange={(e) => setOrgName(e.target.value)}
+            placeholder="F.eks. Ola Markedsføring"
+            InputLabelProps={{ sx: { color: PALETTE.textMuted } }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                color: '#fff',
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
+                '&:hover fieldset': { borderColor: PALETTE.accent },
+                '&.Mui-focused fieldset': { borderColor: PALETTE.accent },
+              },
+            }}
+          />
+          <TextField
+            fullWidth label="Ditt navn (valgfritt)"
+            value={contactName} onChange={(e) => setContactName(e.target.value)}
+            InputLabelProps={{ sx: { color: PALETTE.textMuted } }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                color: '#fff',
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
+                '&:hover fieldset': { borderColor: PALETTE.accent },
+                '&.Mui-focused fieldset': { borderColor: PALETTE.accent },
+              },
+            }}
+          />
+          <TextField
+            fullWidth label="Website (valgfritt)"
+            value={website} onChange={(e) => setWebsite(e.target.value)}
+            placeholder="https://dinbedrift.no"
+            InputLabelProps={{ sx: { color: PALETTE.textMuted } }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                color: '#fff',
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
+                '&:hover fieldset': { borderColor: PALETTE.accent },
+                '&.Mui-focused fieldset': { borderColor: PALETTE.accent },
+              },
+            }}
+          />
+          <Typography variant="caption" sx={{ color: PALETTE.textFaint }}>
+            Vi tar betalingskortet ditt i neste steg via Stripe. Du blir
+            ikke belastet før du oppgraderer. Avslutt når som helst.
+          </Typography>
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ p: 3, pt: 1 }}>
+        <Button onClick={onClose} sx={{ color: PALETTE.textMuted }}>Avbryt</Button>
+        <Button
+          variant="contained"
+          disabled={!canStart || submitting}
+          onClick={submit}
+          sx={{
+            bgcolor: PALETTE.accent, color: '#1a0535', fontWeight: 700,
+            px: 3, borderRadius: 999,
+            '&:hover': { bgcolor: PALETTE.accentBright },
+          }}
+        >
+          {submitting ? <CircularProgress size={20} sx={{ color: '#1a0535' }} /> : 'Fortsett til Stripe'}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -626,7 +779,33 @@ function MockupPhone() {
 // Trust-strip
 // ────────────────────────────────────────────────────────────
 
+interface LandingPartner {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  website: string | null;
+  tagline: string | null;
+  partner_type: string;
+}
+
 function TrustStrip() {
+  const [partners, setPartners] = useState<LandingPartner[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/leadgrid/partners')
+      .then((r) => (r.ok ? r.json() : { partners: [] }))
+      .then((d) => { if (!cancelled) setPartners(d.partners ?? []); })
+      .catch(() => { if (!cancelled) setPartners([]); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Vises ikke før vi vet om vi har partnere eller fallback
+  if (partners === null) return null;
+  // Skjul hele striper hvis vi ikke har noen ekte partnere — vi vil
+  // ikke lyve på landingssiden.
+  if (partners.length === 0) return null;
+
   return (
     <Container maxWidth="lg" sx={{ py: 5 }}>
       <Typography
@@ -645,19 +824,47 @@ function TrustStrip() {
         spacing={{ xs: 2, sm: 4, md: 6 }}
         rowGap={2}
       >
-        {TRUST_LOGOS.map((label) => (
-          <Typography
-            key={label}
-            sx={{
-              color: PALETTE.textMuted,
-              fontWeight: 600,
-              fontSize: { xs: 16, md: 18 },
-              letterSpacing: '-0.01em',
-              opacity: 0.7,
-            }}
-          >
-            {label}
-          </Typography>
+        {partners.map((p) => (
+          p.logo_url ? (
+            <Box
+              key={p.id}
+              component={p.website ? 'a' : 'div'}
+              href={p.website ?? undefined}
+              target={p.website ? '_blank' : undefined}
+              rel={p.website ? 'noopener noreferrer' : undefined}
+              sx={{
+                display: 'block',
+                opacity: 0.7,
+                transition: 'opacity 0.2s',
+                '&:hover': { opacity: 1 },
+              }}
+            >
+              <Box
+                component="img"
+                src={p.logo_url}
+                alt={p.name}
+                sx={{
+                  maxHeight: 36,
+                  maxWidth: 140,
+                  objectFit: 'contain',
+                  filter: 'grayscale(0.3) brightness(1.2)',
+                }}
+              />
+            </Box>
+          ) : (
+            <Typography
+              key={p.id}
+              sx={{
+                color: PALETTE.textMuted,
+                fontWeight: 600,
+                fontSize: { xs: 16, md: 18 },
+                letterSpacing: '-0.01em',
+                opacity: 0.7,
+              }}
+            >
+              {p.name}
+            </Typography>
+          )
         ))}
       </Stack>
     </Container>
@@ -883,6 +1090,8 @@ function EcosystemSection() {
 // ────────────────────────────────────────────────────────────
 
 function TestimonialsSection() {
+  // Ingen ekte testimonials ennå → render ikke seksjonen i det hele tatt
+  if (TESTIMONIALS.length === 0) return null;
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 8, md: 12 } }}>
       <Grid container spacing={3}>
