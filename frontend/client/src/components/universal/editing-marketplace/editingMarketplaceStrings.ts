@@ -246,6 +246,14 @@ const STRINGS: Dict = {
   ext_enable: { no: "Aktiver ekstern redigering", en: "Enable external editing" },
   ext_pick_vendor: { no: "Velg redigeringsbedrift", en: "Choose editing company" },
   ext_pick_later: { no: "Velg senere", en: "Choose later" },
+
+  // ── Kalkyle: eksterne redigeringskostnader (av-toppen) ──
+  cost_title: { no: "Eksterne redigeringskostnader (av-toppen)", en: "External editing costs (off-the-top)" },
+  cost_note: {
+    no: "Trekkes fra inntekten før den fordeles mellom bidragsyterne.",
+    en: "Deducted from revenue before it is split among contributors.",
+  },
+  cost_total: { no: "Sum kostnader", en: "Total costs" },
 };
 
 export function t(key: string, locale: Locale = "no"): string {
