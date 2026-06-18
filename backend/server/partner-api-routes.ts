@@ -145,9 +145,19 @@ export function registerPartnerApiRoutes({ app, pool }: Deps): void {
   const ROOT = "/api/v1/partner";
 
   // ---- GET /me -----------------------------------------------------------
-  app.get(`${ROOT}/me`, requireApiKey(pool, "*"), async (req, res) => {
-    const ctx = getCtx(req);
-    const r = await pool.query(
+  // Spesial-route: ingen scope-sjekk, alle valide keys får se sin egen info.
+  app.get(`${ROOT}/me`, async (req, res) => {
+    const start = Date.now();
+    const ctx = await authenticateApiKey(req, pool);
+    if (!ctx) {
+      await logApiCall(pool, null, req, 401, Date.now() - start);
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    (req as any).apiKey = ctx;
+    (req as any)._startTime = start;
+    // Fall-through til same handler som før
+    const meCtx = getCtx(req);
+    const meR = await pool.query(
       `SELECT k.id::text, k.name, k.scopes, k.last_used_at, k.expires_at,
               p.name AS partner_name, p.partner_type,
               o.name AS organization_name
@@ -155,11 +165,11 @@ export function registerPartnerApiRoutes({ app, pool }: Deps): void {
          LEFT JOIN leadgrid_partners p ON p.id = k.partner_id
          LEFT JOIN organizations o ON o.id = k.organization_id
         WHERE k.id::text = $1`,
-      [ctx.api_key_id],
+      [meCtx.api_key_id],
     );
-    const dur = Date.now() - (req as any)._startTime;
-    await logApiCall(pool, ctx, req, 200, dur);
-    res.json({ api_key: r.rows[0], api_version: "v1" });
+    const meDur = Date.now() - (req as any)._startTime;
+    await logApiCall(pool, meCtx, req, 200, meDur);
+    res.json({ api_key: meR.rows[0], api_version: "v1" });
   });
 
   // ---- GET /customers ----------------------------------------------------
@@ -169,12 +179,14 @@ export function registerPartnerApiRoutes({ app, pool }: Deps): void {
       return res.status(400).json({ error: "api_key_not_org_scoped" });
     }
     const limit = Math.min(Number(req.query.limit ?? 50), 200);
+    // crm_customers er knyttet til organization via project_id → casting_projects.organization_id
     const r = await pool.query(
-      `SELECT id::text, name, website_url, email, phone, status, lead_status,
-              lead_category, ai_opportunity_score, tags, created_at::text
-         FROM crm_customers
-        WHERE organization_id = $1
-        ORDER BY created_at DESC LIMIT $2`,
+      `SELECT c.id::text, c.name, c.website_url, c.email, c.phone, c.status, c.lead_status,
+              c.lead_category, c.ai_opportunity_score, c.tags, c.created_at::text
+         FROM crm_customers c
+         JOIN casting_projects p ON p.id = c.project_id
+        WHERE p.organization_id = $1
+        ORDER BY c.created_at DESC LIMIT $2`,
       [ctx.organization_id, limit],
     );
     const dur = Date.now() - (req as any)._startTime;
@@ -186,11 +198,12 @@ export function registerPartnerApiRoutes({ app, pool }: Deps): void {
   app.get(`${ROOT}/customers/:id`, requireApiKey(pool, "customers.read"), async (req, res) => {
     const ctx = getCtx(req);
     const r = await pool.query(
-      `SELECT id::text, name, website_url, email, phone, status, lead_status,
-              lead_category, ai_opportunity_score, tags, custom_fields,
-              created_at::text, updated_at::text
-         FROM crm_customers
-        WHERE id::text = $1 AND organization_id = $2`,
+      `SELECT c.id::text, c.name, c.website_url, c.email, c.phone, c.status, c.lead_status,
+              c.lead_category, c.ai_opportunity_score, c.tags, c.custom_fields,
+              c.created_at::text, c.updated_at::text
+         FROM crm_customers c
+         JOIN casting_projects p ON p.id = c.project_id
+        WHERE c.id::text = $1 AND p.organization_id = $2`,
       [req.params.id, ctx.organization_id],
     );
     const dur = Date.now() - (req as any)._startTime;
@@ -205,9 +218,11 @@ export function registerPartnerApiRoutes({ app, pool }: Deps): void {
   // ---- GET /customers/:id/needs ------------------------------------------
   app.get(`${ROOT}/customers/:id/needs`, requireApiKey(pool, "needs.read"), async (req, res) => {
     const ctx = getCtx(req);
-    // Bekreft tilgang via org-eierskap
+    // Bekreft tilgang via org-eierskap (via casting_projects.organization_id)
     const own = await pool.query(
-      `SELECT 1 FROM crm_customers WHERE id::text = $1 AND organization_id = $2`,
+      `SELECT 1 FROM crm_customers c
+        JOIN casting_projects p ON p.id = c.project_id
+        WHERE c.id::text = $1 AND p.organization_id = $2`,
       [req.params.id, ctx.organization_id],
     );
     if (own.rows.length === 0) {
@@ -251,10 +266,11 @@ export function registerPartnerApiRoutes({ app, pool }: Deps): void {
   // ---- GET /customers/:id/deliverables -----------------------------------
   app.get(`${ROOT}/customers/:id/deliverables`, requireApiKey(pool, "deliverables.read"), async (req, res) => {
     const ctx = getCtx(req);
-    // Hent via project_id
+    // Hent via project_id (verifiser org-tilhørighet via casting_projects)
     const projR = await pool.query(
-      `SELECT project_id FROM crm_customers
-        WHERE id::text = $1 AND organization_id = $2`,
+      `SELECT c.project_id FROM crm_customers c
+        JOIN casting_projects p ON p.id = c.project_id
+        WHERE c.id::text = $1 AND p.organization_id = $2`,
       [req.params.id, ctx.organization_id],
     );
     if (projR.rows.length === 0 || !projR.rows[0].project_id) {
@@ -284,17 +300,42 @@ export function registerPartnerApiRoutes({ app, pool }: Deps): void {
     if (!name) return res.status(400).json({ error: "name_required" });
 
     try {
+      // Sikre at det finnes et "API Customers"-default-prosjekt for org'en.
+      // crm_customers er knyttet til org via casting_projects.organization_id.
+      let projectId: string;
+      const existR = await pool.query<{ id: string }>(
+        `SELECT id FROM casting_projects
+          WHERE organization_id = $1
+            AND (meta->>'api_default')::boolean IS TRUE
+          LIMIT 1`,
+        [ctx.organization_id],
+      );
+      if (existR.rows.length > 0) {
+        projectId = existR.rows[0].id;
+      } else {
+        const newProjR = await pool.query<{ id: string }>(
+          `INSERT INTO casting_projects
+            (id, name, organization_id, project_type, status, meta)
+           VALUES ('apidef-' || encode(gen_random_bytes(8), 'hex'),
+                   'API Customers', $1, 'crm', 'active',
+                   '{"api_default": true}'::jsonb)
+           RETURNING id`,
+          [ctx.organization_id],
+        );
+        projectId = newProjR.rows[0].id;
+      }
+
       const r = await pool.query(
         `INSERT INTO crm_customers
           (id, name, website_url, email, phone, lead_category, tags,
-           status, lead_status, organization_id, custom_fields)
+           status, lead_status, project_id, custom_fields)
          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::text[],
                  'lead', 'unvisited', $7, '{}'::jsonb)
          RETURNING id::text, name, website_url, status, created_at::text`,
         [
           name, website_url ?? null, email ?? null, phone ?? null,
           lead_category ?? null, tags ?? [],
-          ctx.organization_id,
+          projectId,
         ],
       );
       const dur = Date.now() - (req as any)._startTime;
