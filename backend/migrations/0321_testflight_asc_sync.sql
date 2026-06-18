@@ -1,0 +1,5 @@
+-- 0321_testflight_asc_sync.sql
+-- App Store Connect-sync for TestFlight-testere:
+-- ALTER testflight_testers m/ asc_beta_tester_id, asc_state, asc_invite_type,
+-- asc_synced_at, asc_sync_error + asc_app_mapping + asc_sync_log.
+-- Body applied via psql.

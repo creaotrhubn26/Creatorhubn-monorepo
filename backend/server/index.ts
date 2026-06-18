@@ -539,6 +539,20 @@ import { registerLeadPortfolioRoutes } from "./lead-portfolio-routes.js";
 import { registerCustomerAutoOnboardRoutes } from "./customer-auto-onboard-routes.js";
 import { registerClientPortalRoutes } from "./leadgrid-client-portal-routes.js";
 import { registerDeliveryPlaybookRoutes } from "./delivery-playbook-routes.js";
+import { registerSuperadminRoutes } from "./superadmin-routes.js";
+import { registerOrgSelfOnboardRoutes } from "./org-self-onboard-routes.js";
+import { registerPlanRoutes } from "./plan-routes.js";
+import {
+  registerLeadgridBillingRoutes,
+  isLeadgridInvoice,
+  handleLeadgridInvoicePaid,
+} from "./leadgrid-billing-routes.js";
+import { enforceOrgStatus } from "./org-status-enforcement.js";
+import { registerLeadgridPartnersRoutes } from "./leadgrid-partners-routes.js";
+import { registerPartnerApplicationsRoutes } from "./partner-applications-routes.js";
+import { registerPartnerIntentRoutes } from "./partner-intent-routes.js";
+import { registerTestflightTestersRoutes } from "./testflight-testers-routes.js";
+import { registerLeadgridGoogleAuthRoutes } from "./leadgrid-google-auth-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -1409,6 +1423,19 @@ app.post(
         case "invoice.paid": {
           const invoice = event.data.object as Stripe.Invoice;
           await syncCreatorHubStripeInvoice(invoice);
+          // Leadgrid-spesifikk håndtering: oppdater org.plan + lokal kopi
+          // i org_invoices + send Leadgrid-branded mail.
+          try {
+            const stripeClient = getCreatorHubStripeClient();
+            if (stripeClient) {
+              const lg = await isLeadgridInvoice(stripeClient, invoice);
+              if (lg.isLeadgrid) {
+                await handleLeadgridInvoicePaid(pool, stripeClient, invoice, lg.planKey);
+              }
+            }
+          } catch (e) {
+            console.error("[webhook leadgrid invoice.paid]", e);
+          }
           // Stripe v19: invoice.subscription er fjernet — slå opp via
           // invoice.parent.subscription_details.subscription (samme mønster
           // som dance-billing-service.ts:688-700).
@@ -24314,6 +24341,28 @@ registerCustomerAutoOnboardRoutes({ app, pool, activeSessions });
 registerClientPortalRoutes({ app, pool });
 // Delivery playbooks — markedsføreren's oppsett-system m/ steg-for-steg
 registerDeliveryPlaybookRoutes({ app, pool, activeSessions });
+// Super-admin governance: org-registry + impersonation + audit
+registerSuperadminRoutes({ app, pool, activeSessions });
+// Selv-onboard for Solo-planen (åpen registrering uten super-admin)
+registerOrgSelfOnboardRoutes({ app, pool });
+// Plan-grenser/usage/upgrade for PlanUsageBar + pricing-page
+registerPlanRoutes({ app, pool, activeSessions });
+// Leadgrid billing: Customer Portal-link, invoice-liste, superadmin payments-overview
+registerLeadgridBillingRoutes({ app, pool, activeSessions, stripe: getCreatorHubStripeClient() });
+// Leadgrid partners (dynamisk landing-strip + superadmin CRUD)
+registerLeadgridPartnersRoutes({ app, pool, activeSessions });
+// Partner-søknader: bruker-initiert + superadmin-invitasjon m/ samtykke
+registerPartnerApplicationsRoutes({ app, pool, activeSessions });
+// Intensjonsavtale-flyt: superadmin sender, partner e-signerer m/ IP+UA-logg
+registerPartnerIntentRoutes({ app, pool, activeSessions });
+// TestFlight-testere: legg til, send NDA + intent, graduate til ekte org
+registerTestflightTestersRoutes({ app, pool, activeSessions });
+// Google Sign-In for Leadgrid (web + iOS native), oppretter Solo Free
+registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions });
+// Håndhev org-status (paused/suspended) på alle Leadgrid-rutene.
+// Bypass for super_admin er ON som default.
+app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));
+app.use("/api/leadgrid", enforceOrgStatus(pool, activeSessions));
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,

@@ -286,6 +286,15 @@ final class AppState {
         await refreshAll()
     }
 
+    /// Brukes etter en vellykket pairing-kode-bytte eller Google Sign-In.
+    /// Setter token + last alt frem.
+    func completePairing(token: String, userId: String) {
+        AuthClient.saveToken(token, email: nil)
+        self.authToken = token
+        self.api = APIClient(token: token)
+        Task { await refreshAll() }
+    }
+
     func signOut() {
         heartbeatController?.stop()
         heartbeatController = nil

@@ -8,6 +8,7 @@ import { CastingLandingPage } from './components/CastingLandingPage';
 import TheRoleRoomLanding from '@/pages/theroleroom-landing';
 import LeadgridLanding from '@/pages/leadgrid-landing';
 import LeadgridPersonvern from '@/pages/leadgrid-personvern';
+import LeadgridSuperadminPage from '@/pages/leadgrid-superadmin';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
 import AgencyPortalView from './components/AgencyPortalView';
@@ -173,6 +174,9 @@ function CastingStandaloneAppContent() {
   }
   if (localeCtx.pathname === '/leadgrid' || localeCtx.pathname === '/leadgrid/') {
     return <LeadgridLanding />;
+  }
+  if (localeCtx.pathname === '/superadmin' || localeCtx.pathname === '/superadmin/') {
+    return <LeadgridSuperadminPage />;
   }
 
   if (competitorKey) {
