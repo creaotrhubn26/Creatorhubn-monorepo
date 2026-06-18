@@ -116,6 +116,7 @@ import {
   type ProjectAgreement,
 } from '../../services/castingApiService';
 import VaultRevealMfaPrompt from './VaultRevealMfaPrompt';
+import VaultRevealCountdown from './VaultRevealCountdown';
 import VaultSecurityGuide from './VaultSecurityGuide';
 import {
   applyProducerDeliveryWorkflowPreset,
@@ -13467,9 +13468,18 @@ export default function ProducerMediaPanel({
                                   <TextField label="Secret" value={revealed.secretValue ?? ''} fullWidth InputProps={{ readOnly: true }} />
                                   <TextField label="Backup-kode" value={revealed.backupCode ?? ''} fullWidth InputProps={{ readOnly: true }} />
                                 </Box>
-                                <Typography sx={{ color: 'rgba(254,240,138,0.84)', fontSize: '0.73rem', lineHeight: 1.45, mt: 0.55 }}>
-                                  Åpnet {formatTimestamp(revealed.revealedAt ?? '')}. Behandle dette som midlertidig innsyn og roter tilgangen ved behov.
-                                </Typography>
+                                <VaultRevealCountdown
+                                  revealedAt={revealed.revealedAt}
+                                  ttlSeconds={entry.revealTtlSeconds}
+                                  onLock={() => {
+                                    if (!activeRevealRequest) return;
+                                    setRevealedVaultSecrets((prev) => {
+                                      const next = { ...prev };
+                                      delete next[activeRevealRequest.id];
+                                      return next;
+                                    });
+                                  }}
+                                />
                               </Box>
                             ) : null}
 
