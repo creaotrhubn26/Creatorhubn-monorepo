@@ -220,7 +220,13 @@ export function registerDeveloperApplicationRoutes({ app, pool }: Deps): void {
     } catch (e: any) {
       await client.query("ROLLBACK");
       console.error("[developer-application]", e);
-      res.status(500).json({ error: "Kunne ikke registrere søknaden" });
+      // Expose detail i 500 så vi kan diagnose i utviklingsfasen
+      res.status(500).json({
+        error: "Kunne ikke registrere søknaden",
+        detail: process.env.NODE_ENV === "production"
+          ? (e.message ?? String(e)).slice(0, 200)
+          : String(e),
+      });
     } finally {
       client.release();
     }
