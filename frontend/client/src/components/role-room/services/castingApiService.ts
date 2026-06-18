@@ -2878,6 +2878,8 @@ export const roleRoomAccessVaultApi = {
     platform: ProducerAccountAccessPlatform,
     payload: {
       label?: string;
+      accountLabel?: string;
+      ownerSide?: 'client' | 'producer';
       secretType?: string;
       username?: string;
       secretValue?: string;

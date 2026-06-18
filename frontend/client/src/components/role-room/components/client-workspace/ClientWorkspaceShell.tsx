@@ -38,6 +38,7 @@ import {
   Palette as MerkevareIcon,
   Videocam as MeetingsIcon,
   ForumOutlined as MessagesIcon,
+  ShieldOutlined as VaultIcon,
   ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
 
@@ -51,9 +52,10 @@ const ClientMarketingPlanView = lazy(() => import('./ClientMarketingPlanView'));
 const ClientMerkevareView = lazy(() => import('./ClientMerkevareView'));
 const ClientMeetingsView = lazy(() => import('./ClientMeetingsView'));
 const ClientConversationView = lazy(() => import('./ClientConversationView'));
+const ClientVaultView = lazy(() => import('./ClientVaultView'));
 const RoleRoomChatBubble = lazy(() => import('./RoleRoomChatBubble'));
 
-type TabValue = 'economy' | 'approval' | 'brief' | 'merkevare' | 'meetings' | 'messages' | 'roles' | 'plan' | 'marketing-plan';
+type TabValue = 'economy' | 'approval' | 'brief' | 'merkevare' | 'meetings' | 'messages' | 'vault' | 'roles' | 'plan' | 'marketing-plan';
 
 const TABS: Array<{ value: TabValue; label: string; icon: React.ReactElement }> = [
   { value: 'economy', label: 'Økonomi', icon: <EconomyIcon /> },
@@ -62,6 +64,7 @@ const TABS: Array<{ value: TabValue; label: string; icon: React.ReactElement }> 
   { value: 'brief', label: 'Brief', icon: <BriefIcon /> },
   { value: 'merkevare', label: 'Merkevare', icon: <MerkevareIcon /> },
   { value: 'meetings', label: 'Møter', icon: <MeetingsIcon /> },
+  { value: 'vault', label: 'Tilganger', icon: <VaultIcon /> },
   { value: 'roles', label: 'Roller', icon: <RolesIcon /> },
   { value: 'plan', label: 'Plan', icon: <PlanIcon /> },
   { value: 'marketing-plan', label: 'Markedsplan', icon: <MarketingPlanIcon /> },
@@ -220,6 +223,7 @@ export default function ClientWorkspaceShell({
           {activeTab === 'brief' && <ClientBriefView projectId={projectId} />}
           {activeTab === 'merkevare' && <ClientMerkevareView projectId={projectId} />}
           {activeTab === 'meetings' && <ClientMeetingsView projectId={projectId} />}
+          {activeTab === 'vault' && <ClientVaultView projectId={projectId} />}
           {activeTab === 'messages' && <ClientConversationView projectId={projectId} canUseInternal={isPreviewMode} />}
           {activeTab === 'roles' && <ClientRolesView projectId={projectId} />}
           {activeTab === 'plan' && <ClientPlanView projectId={projectId} />}
