@@ -161,12 +161,25 @@ def run(params: dict, dry_run: bool) -> None:
         if not sid or bar == 0:
             plan.append((cstart + 0.1, color, label)); continue
         bp = os.path.join(songs_dir, f"{sid}.beats.json")
-        beats = json.load(open(bp)).get("beats", []) if os.path.isfile(bp) else []
+        data = json.load(open(bp)) if os.path.isfile(bp) else {}
         dur = cend - cstart
-        n = 1
-        for k in range(0, len(beats), bar):
-            if beats[k] >= dur: break
-            plan.append((cstart + beats[k], color, f"{label} · takt {n}")); n += 1
+        tempo = float(data.get("tempo") or 0)
+        # Uniform bar-grid anchored at the cue START (where the section's clips
+        # begin). Using BPM (not absolute detected beats) avoids the song-intro
+        # offset, so the grid lines up with the clips instead of starting mid-song.
+        if tempo > 0:
+            interval = (60.0 / tempo) * bar
+            n, t = 1, 0.0
+            while interval > 0 and t < dur:
+                plan.append((cstart + t, color, f"{label} · takt {n}")); n += 1; t += interval
+        else:
+            beats = data.get("beats", [])
+            base = beats[0] if beats else 0.0
+            n = 1
+            for k in range(0, len(beats), bar):
+                tt = beats[k] - base
+                if tt >= dur: break
+                plan.append((cstart + tt, color, f"{label} · takt {n}")); n += 1
 
     added = skipped = 0
     for sec, color, label in plan:
