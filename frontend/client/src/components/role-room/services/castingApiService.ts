@@ -2925,6 +2925,8 @@ export const roleRoomAccessVaultApi = {
     payload?: {
       requestReason?: string;
       expiresAt?: string | null;
+      /** Multi-secret: target spesifikk konto (default '' = enkelt-secret). */
+      accountLabel?: string;
       /** TOTP-kode fra Authenticator-app — sendes med hvis backend har
        *  returnert mfa_required tidligere og bruker har TOTP aktivert. */
       totpCode?: string;

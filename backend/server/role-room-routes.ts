@@ -16383,7 +16383,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
-      const secret = await getRoleRoomAccessVaultSecretByPlatform(projectId, platform);
+      // Multi-secret: target en spesifikk konto via accountLabel (default '' =
+      // enkelt-secret, bakoverkompatibelt).
+      const requestAccountLabel = (readStringValue(req.body?.accountLabel) ?? '').slice(0, 255);
+      const secret = await getRoleRoomAccessVaultSecretByPlatform(projectId, platform, requestAccountLabel);
       if (!secret || secret.revoked_at) {
         res.status(404).json({ error: 'Fant ikke aktiv secret for plattformen' });
         return;

@@ -1968,6 +1968,7 @@ export default function ProducerMediaPanel({
   // platform + tilgjengelige metoder så modalen kan vises og retry'e.
   const [vaultMfaPrompt, setVaultMfaPrompt] = useState<{
     platform: ProducerAccountAccessPlatform;
+    accountLabel?: string;
     availableMethods: { totp: boolean; emailCode: boolean };
     policy: string;
     message: string;
@@ -3660,13 +3661,15 @@ export default function ProducerMediaPanel({
   // krever step-up. Brukes både fra direkte CTA og fra retry i modalen.
   const submitRevealRequest = useCallback(async (
     platform: ProducerAccountAccessPlatform,
-    extraPayload: { totpCode?: string; emailCode?: string } = {},
+    extraPayload: { totpCode?: string; emailCode?: string; accountLabel?: string } = {},
   ): Promise<{ ok: boolean; needsMfa?: { availableMethods: { totp: boolean; emailCode: boolean }; policy: string; message: string }; errorMessage?: string }> => {
     const draft = accessVaultDrafts[platform] ?? EMPTY_VAULT_SECRET_DRAFT;
+    const { accountLabel, ...mfaPayload } = extraPayload;
     try {
       await roleRoomAccessVaultApi.requestReveal(projectId, platform, {
         requestReason: draft.requestReason.trim() || undefined,
-        ...extraPayload,
+        accountLabel: accountLabel || undefined,
+        ...mfaPayload,
       });
       return { ok: true };
     } catch (err) {
@@ -3690,11 +3693,11 @@ export default function ProducerMediaPanel({
     }
   }, [accessVaultDrafts, projectId]);
 
-  const handleRequestAccessVaultReveal = useCallback(async (platform: ProducerAccountAccessPlatform) => {
-    setAccessVaultActionKey(`${platform}:request`);
+  const handleRequestAccessVaultReveal = useCallback(async (platform: ProducerAccountAccessPlatform, accountLabel = '') => {
+    setAccessVaultActionKey(`${platform}:${accountLabel}:request`);
     setAccessVaultError(null);
     try {
-      const result = await submitRevealRequest(platform);
+      const result = await submitRevealRequest(platform, { accountLabel });
       if (result.ok) {
         setAccessVaultDrafts((previous) => ({
           ...previous,
@@ -3707,6 +3710,7 @@ export default function ProducerMediaPanel({
       } else if (result.needsMfa) {
         setVaultMfaPrompt({
           platform,
+          accountLabel,
           availableMethods: result.needsMfa.availableMethods,
           policy: result.needsMfa.policy,
           message: result.needsMfa.message,
@@ -3726,7 +3730,7 @@ export default function ProducerMediaPanel({
     input: { totpCode?: string; emailCode?: string },
   ): Promise<{ ok: boolean; errorMessage?: string }> => {
     if (!vaultMfaPrompt) return { ok: false };
-    const result = await submitRevealRequest(vaultMfaPrompt.platform, input);
+    const result = await submitRevealRequest(vaultMfaPrompt.platform, { ...input, accountLabel: vaultMfaPrompt.accountLabel });
     if (result.ok) {
       setAccessVaultDrafts((previous) => ({
         ...previous,
@@ -4382,8 +4386,13 @@ export default function ProducerMediaPanel({
   );
   const accessVaultSecretsByPlatform = useMemo(() => {
     const lookup = new Map<ProducerAccountAccessPlatform, RoleRoomAccessVaultSecretSummary>();
+    // Primær per plattform = enkelt-secret (account_label tom), ellers første.
     accessVaultState.secrets.forEach((entry) => {
-      lookup.set(entry.platform, entry);
+      const existing = lookup.get(entry.platform);
+      if (!existing) { lookup.set(entry.platform, entry); return; }
+      if (!((entry.accountLabel ?? '').trim()) && (existing.accountLabel ?? '').trim()) {
+        lookup.set(entry.platform, entry);
+      }
     });
     return lookup;
   }, [accessVaultState.secrets]);
@@ -4393,6 +4402,26 @@ export default function ProducerMediaPanel({
       const current = lookup.get(request.platform) ?? [];
       current.push(request);
       lookup.set(request.platform, current);
+    });
+    return lookup;
+  }, [accessVaultState.requests]);
+  // Multi-secret: ekstra kontoer per plattform (utover primær-secret).
+  const extraVaultSecretsByPlatform = useMemo(() => {
+    const lookup = new Map<ProducerAccountAccessPlatform, RoleRoomAccessVaultSecretSummary[]>();
+    accessVaultState.secrets.forEach((entry) => {
+      const primary = accessVaultSecretsByPlatform.get(entry.platform);
+      if (primary && primary.id === entry.id) return;
+      const list = lookup.get(entry.platform) ?? [];
+      list.push(entry);
+      lookup.set(entry.platform, list);
+    });
+    return lookup;
+  }, [accessVaultState.secrets, accessVaultSecretsByPlatform]);
+  // Aktiv reveal-forespørsel per secretId (for ekstra-kontoer).
+  const activeVaultRequestBySecretId = useMemo(() => {
+    const lookup = new Map<string, RoleRoomAccessVaultRevealRequest>();
+    accessVaultState.requests.forEach((r) => {
+      if (r.status === 'pending' || r.status === 'approved') lookup.set(r.secretId, r);
     });
     return lookup;
   }, [accessVaultState.requests]);
@@ -13507,7 +13536,7 @@ export default function ProducerMediaPanel({
                                   disabled={Boolean(accessVaultActionKey)}
                                   sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, borderColor: 'rgba(125,211,252,0.28)', color: '#e0f2fe' }}
                                 >
-                                  {accessVaultActionKey === `${entry.platform}:request` ? 'Ber om innsyn...' : 'Be om innsyn'}
+                                  {accessVaultActionKey === `${entry.platform}::request` ? 'Ber om innsyn...' : 'Be om innsyn'}
                                 </Button>
                               ) : null}
                               {canRevealApprovedSecret && activeRevealRequest ? (
@@ -13563,6 +13592,69 @@ export default function ProducerMediaPanel({
                                   ? 'Innsyn er godkjent. Åpne det her eller fra Tilgangsforespørsler.'
                                   : `Innsyn venter allerede på behandling for ${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}.`}
                               </Alert>
+                            ) : null}
+
+                            {/* Multi-secret: flere kontoer på samme plattform */}
+                            {(extraVaultSecretsByPlatform.get(entry.platform) ?? []).length > 0 ? (
+                              <Box sx={{ mt: 0.6, pt: 0.6, borderTop: '1px dashed rgba(148,163,184,0.18)' }}>
+                                <Typography sx={{ color: 'rgba(196,181,253,0.92)', fontSize: '0.72rem', fontWeight: 700, mb: 0.5 }}>
+                                  Flere kontoer på denne plattformen
+                                </Typography>
+                                <Stack spacing={0.6}>
+                                  {(extraVaultSecretsByPlatform.get(entry.platform) ?? []).map((extra) => {
+                                    const exReq = activeVaultRequestBySecretId.get(extra.id);
+                                    const exRevealed = exReq ? revealedVaultSecrets[exReq.id] : null;
+                                    const exBusy = accessVaultActionKey === `${entry.platform}:${extra.accountLabel ?? ''}:request`;
+                                    return (
+                                      <Box key={`extra-${extra.id}`} sx={{ p: 0.8, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', bgcolor: 'rgba(15,23,42,0.45)' }}>
+                                        <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" rowGap={0.4}>
+                                          <Typography sx={{ color: '#fff', fontSize: '0.82rem', fontWeight: 700 }}>
+                                            {extra.accountLabel || extra.label || 'Konto'}
+                                          </Typography>
+                                          <Chip size="small" label={extra.ownerSide === 'client' ? 'Klient-eid' : 'Produsent'} sx={{ height: 17, fontSize: '0.58rem', fontWeight: 700, color: extra.ownerSide === 'client' ? '#6ee7b7' : '#c4b5fd', bgcolor: extra.ownerSide === 'client' ? 'rgba(16,185,129,0.12)' : 'rgba(168,85,247,0.14)' }} />
+                                          {extra.maskedReference ? <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem', fontFamily: 'monospace' }}>{extra.maskedReference}</Typography> : null}
+                                        </Stack>
+                                        <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap" rowGap={0.4}>
+                                          {canRequestAccessVaultReveal && extra.hasStoredSecret && !exReq ? (
+                                            <Button size="small" variant="outlined" disabled={exBusy} onClick={() => { void handleRequestAccessVaultReveal(entry.platform, extra.accountLabel ?? ''); }}
+                                              sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 34 }}>
+                                              {exBusy ? 'Ber om…' : 'Be om innsyn'}
+                                            </Button>
+                                          ) : null}
+                                          {exReq && exReq.status === 'pending' && canDecideAccessVaultReveal ? (
+                                            <>
+                                              <Button size="small" variant="contained" onClick={() => { void handleDecideAccessVaultReveal(exReq, 'approve'); }} sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 34, bgcolor: '#0f766e' }}>Godkjenn</Button>
+                                              <Button size="small" variant="text" onClick={() => { void handleDecideAccessVaultReveal(exReq, 'reject'); }} sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.74rem', minHeight: 34, color: 'rgba(252,165,165,0.9)' }}>Avslå</Button>
+                                            </>
+                                          ) : null}
+                                          {exReq && exReq.status === 'pending' && !canDecideAccessVaultReveal ? (
+                                            <Typography sx={{ color: 'rgba(251,191,36,0.9)', fontSize: '0.74rem', fontWeight: 600, alignSelf: 'center' }}>Venter på godkjenning</Typography>
+                                          ) : null}
+                                          {canRevealApprovedSecret && exReq && exReq.status === 'approved' && !exRevealed ? (
+                                            <Button size="small" variant="contained" onClick={() => { void handleRevealAccessVaultSecret(exReq); }} sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 34, bgcolor: '#7c3aed' }}>
+                                              {accessVaultActionKey === `${exReq.id}:reveal` ? 'Åpner…' : 'Åpne godkjent innsyn'}
+                                            </Button>
+                                          ) : null}
+                                        </Stack>
+                                        {exRevealed && exReq ? (
+                                          <Box sx={{ mt: 0.6, p: 0.7, borderRadius: 1.5, bgcolor: 'rgba(120,53,15,0.28)', border: '1px solid rgba(245,158,11,0.35)' }}>
+                                            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0,1fr))' }, gap: 0.6 }}>
+                                              <TextField label="Brukernavn" value={exRevealed.username ?? ''} fullWidth size="small" InputProps={{ readOnly: true }} />
+                                              <TextField label="Secret" value={exRevealed.secretValue ?? ''} fullWidth size="small" InputProps={{ readOnly: true }} />
+                                              <TextField label="Backup-kode" value={exRevealed.backupCode ?? ''} fullWidth size="small" InputProps={{ readOnly: true }} />
+                                            </Box>
+                                            <VaultRevealCountdown
+                                              revealedAt={exRevealed.revealedAt}
+                                              ttlSeconds={extra.revealTtlSeconds}
+                                              onLock={() => setRevealedVaultSecrets((prev) => { const next = { ...prev }; delete next[exReq.id]; return next; })}
+                                            />
+                                          </Box>
+                                        ) : null}
+                                      </Box>
+                                    );
+                                  })}
+                                </Stack>
+                              </Box>
                             ) : null}
                           </Stack>
                         </Box>
