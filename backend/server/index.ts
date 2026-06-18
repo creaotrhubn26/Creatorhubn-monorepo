@@ -24290,6 +24290,9 @@ registerPitchDeckBriefRoutes({ app, pool, activeSessions });
 registerPitchDeckAssetRoutes({ app, pool, activeSessions });
 // Research → Leads-orkestrator (gated på lead_research.run)
 registerLeadMapResearchRoutes({ app, pool, activeSessions });
+// Lead Scout — crawl + Claude needs/signals/scoring
+// Gated på marketing.scout.run / marketing.needs.view / marketing.needs.edit
+registerLeadScoutRoutes({ app, pool, activeSessions });
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,
