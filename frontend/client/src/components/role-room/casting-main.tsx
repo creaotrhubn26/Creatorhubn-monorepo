@@ -12,6 +12,7 @@ import LeadgridSuperadminPage from '@/pages/leadgrid-superadmin';
 import LeadgridClientPortalPage from '@/pages/leadgrid-client-portal';
 import LeadgridPartnerApplicationPage from '@/pages/leadgrid-partner-application';
 import LeadgridDevelopersPage from '@/pages/leadgrid-developers';
+import LeadgridDeveloperApplicationPage from '@/pages/leadgrid-developer-application';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
 import AgencyPortalView from './components/AgencyPortalView';
@@ -194,6 +195,11 @@ function CastingStandaloneAppContent() {
   if (localeCtx.pathname === '/leadgrid/utviklere' ||
       localeCtx.pathname === '/leadgrid/utviklere/') {
     return <LeadgridDevelopersPage />;
+  }
+  // Utvikler-søknadsskjema (public)
+  if (localeCtx.pathname === '/leadgrid/utviklere/soknad' ||
+      localeCtx.pathname === '/leadgrid/utviklere/soknad/') {
+    return <LeadgridDeveloperApplicationPage />;
   }
 
   if (competitorKey) {

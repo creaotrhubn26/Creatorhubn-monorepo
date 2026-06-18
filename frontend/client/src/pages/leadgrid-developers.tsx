@@ -11,7 +11,7 @@
  */
 
 import React, { useEffect } from "react";
-import { Box, Container, Typography, Card, CardContent, Chip, Stack, Divider } from "@mui/material";
+import { Box, Container, Typography, Card, CardContent, Chip, Stack, Divider, Button } from "@mui/material";
 
 const PALETTE = {
   bg: "#0a0512",
@@ -128,10 +128,23 @@ export default function LeadgridDevelopersPage() {
         <Typography variant="h2" sx={{ fontWeight: 800, mb: 2 }}>
           Partners API & Webhooks
         </Typography>
-        <Typography variant="h6" sx={{ color: PALETTE.textMuted, mb: 6 }}>
+        <Typography variant="h6" sx={{ color: PALETTE.textMuted, mb: 3 }}>
           Integrer ditt system med Leadgrid. Hent kunder, opprett leads,
           ta imot real-time events.
         </Typography>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} mb={6}>
+          <Button variant="contained" size="large" href="/leadgrid/utviklere/soknad"
+                  sx={{ bgcolor: PALETTE.accent, color: "#0a0512", fontWeight: 700,
+                        px: 4, borderRadius: 999,
+                        "&:hover": { bgcolor: "#9171e6" } }}>
+            Søk om API-tilgang
+          </Button>
+          <Button variant="outlined" size="large" href="#endpoints"
+                  sx={{ color: PALETTE.text, borderColor: "rgba(255,255,255,0.2)",
+                        px: 4, borderRadius: 999 }}>
+            Se dokumentasjonen
+          </Button>
+        </Stack>
 
         {/* Auth */}
         <Section title="Autentisering">
