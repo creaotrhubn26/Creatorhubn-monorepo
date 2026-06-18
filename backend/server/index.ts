@@ -64833,7 +64833,16 @@ setupVendorTypesRoutes({
 setupEditingJobsRoutes({
   app,
   pool,
-  requireUserSession,
+  // Async: løs også persisterte sesjoner (robust mot backend-restart der
+  // in-memory activeSessions tømmes). Sender 401 selv ved manglende sesjon.
+  requireUserSession: async (req, res) => {
+    const session = await resolveActiveSessionFromRequest(req);
+    if (!session) {
+      res.status(401).json({ error: "auth_required" });
+      return null;
+    }
+    return session;
+  },
 });
 
 // /api/meeting-notes/* — 7 endpoints (AI-process, writing-assist, CRUD,

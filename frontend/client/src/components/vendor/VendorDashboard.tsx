@@ -196,6 +196,14 @@ export default function VendorDashboard({
     queryFn: () => apiRequest(`/api/vendor/plugin-metrics/${userId}`)
 });
 
+  // #15: utenlandsk redigeringsvendor får HELE dashboardet på engelsk =
+  // det allerede-engelske arbeidsområdet (vi skipper den norske chromen).
+  const { data: editingMe } = useQuery({
+    queryKey: ['/api/editing/vendor/me'],
+    queryFn: () => apiRequest('/api/editing/vendor/me'),
+  });
+  const foreignEditingVendor = Boolean(editingMe?.isEditingVendor && editingMe?.isForeign);
+
   // Get active vendor operations
   const activeOperations = vendorOperationService.getActiveOperations();
 
@@ -260,6 +268,19 @@ export default function VendorDashboard({
       icon: <Assessment sx={{ color: '#e74c3c'}} />
   }
   ];
+
+  // #15: utenlandske redigeringsvendors ser KUN det engelske arbeidsområdet
+  // (hele dashboardet på engelsk — ingen norsk generisk vendor-chrome).
+  if (foreignEditingVendor) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h4" sx={{ fontWeight: 700, color: '#27ae60', mb: 2, display: 'flex', alignItems: 'center' }}>
+          <Store sx={{ mr: 2, fontSize: 40 }} /> Vendor Dashboard
+        </Typography>
+        <EditingVendorWorkspace userId={userId} />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p:  3 }}>
