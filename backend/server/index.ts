@@ -78,6 +78,7 @@ import { registerRoleRoomDeliverablesRoutes } from "./role-room-deliverables-rou
 import { registerRoleRoomMeetingsRoutes } from "./role-room-meetings-routes.js";
 import { registerRoleRoomMessagesRoutes } from "./role-room-messages-routes.js";
 import { registerRoleRoomAssistantAccessRoutes } from "./role-room-assistant-access-routes.js";
+import { registerRoleRoomContentPlanRoutes } from "./role-room-content-plan-routes.js";
 import { registerRoleRoomDeadlineReminderRoutes } from "./role-room-deadline-reminders-routes.js";
 import { registerRoleRoomMarketingPreviewVideoRoutes } from "./role-room-marketing-preview-video-routes.js";
 import { registerRoleRoomIntakeVersionsRoutes } from "./role-room-intake-versions-routes.js";
@@ -2088,6 +2089,7 @@ registerRoleRoomDeliverablesRoutes(app, { pool, activeSessions });
 registerRoleRoomMeetingsRoutes(app, { pool, activeSessions });
 registerRoleRoomMessagesRoutes(app, { pool, activeSessions });
 registerRoleRoomAssistantAccessRoutes(app, { pool, activeSessions });
+registerRoleRoomContentPlanRoutes(app, { pool, activeSessions });
 registerRoleRoomDeadlineReminderRoutes(app, { pool });
 registerRoleRoomMarketingPreviewVideoRoutes(app, { pool, activeSessions });
 registerRoleRoomIntakeVersionsRoutes(app, { pool, activeSessions });
