@@ -215,4 +215,55 @@ export function registerRoleRoomMessagesRoutes(app: Express, deps: Deps): void {
       res.status(500).json({ error: 'Kunne ikke oppdatere melding' });
     }
   });
+
+  // AI-utkast / oppsummering: leser de siste meldingene og kaller Claude for å
+  // (a) foreslå et profesjonelt svar, eller (b) oppsummere «hva venter på meg».
+  // Returnerer kun tekst — frontend fyller komposeren (ingenting sendes auto).
+  app.post('/api/role-room/projects/:projectId/messages/ai', async (req, res) => {
+    try {
+      const session = await authorize(req, res);
+      if (!session) return;
+      const projectId = String(req.params.projectId).trim();
+      const mode = String((req.body ?? {}).mode) === 'summary' ? 'summary' : 'draft';
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) { res.status(503).json({ error: 'AI er ikke tilgjengelig (mangler nøkkel).' }); return; }
+
+      const rows = await pool.query(
+        `SELECT author_role, kind, body, created_at FROM role_room_messages
+          WHERE project_id = $1 ORDER BY created_at DESC LIMIT 40`,
+        [projectId],
+      );
+      const transcript = rows.rows.reverse().map((r: Record<string, unknown>) => {
+        const who = String(r.author_role ?? '') === 'client_reviewer' ? 'Klient' : 'Produsent';
+        const tag = String(r.kind ?? '') === 'request' ? ' [forespørsel]' : '';
+        return `${who}${tag}: ${String(r.body ?? '')}`;
+      }).join('\n');
+
+      const system = mode === 'summary'
+        ? 'Du er assistent for en innholdsprodusent i The Role Room. Oppsummer samtalen kort på norsk: hva er status, og hva venter på produsenten nå (punktliste med konkrete neste steg). Maks 8 linjer.'
+        : 'Du er assistent for en innholdsprodusent i The Role Room. Foreslå ÉT profesjonelt, vennlig norsk svar til klienten basert på samtalen. Kun selve svarteksten, ingen forklaring.';
+
+      let text = '';
+      try {
+        const mod: any = await import('@anthropic-ai/sdk');
+        const AnthropicCtor = mod.default ?? mod.Anthropic;
+        const client: any = new AnthropicCtor({ apiKey, maxRetries: 1, timeout: 30_000 });
+        const response = await client.messages.create({
+          model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-6',
+          max_tokens: 700,
+          system,
+          messages: [{ role: 'user', content: `Samtale så langt:\n${transcript || '(tom)'}\n\n${mode === 'summary' ? 'Oppsummer.' : 'Foreslå svar.'}` }],
+        });
+        text = (response.content ?? []).filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('\n').trim();
+      } catch (aiErr) {
+        console.error('[messages] AI-kall feilet', aiErr);
+        res.status(502).json({ error: 'AI-kallet feilet. Prøv igjen.' });
+        return;
+      }
+      res.json({ success: true, text });
+    } catch (error) {
+      console.error('[messages] ai failed', error);
+      res.status(500).json({ error: 'Kunne ikke generere AI-tekst' });
+    }
+  });
 }

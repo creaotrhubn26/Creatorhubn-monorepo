@@ -32,8 +32,10 @@ import {
   InsertDriveFileOutlined as FileIcon,
   PaidOutlined as BudgetIcon,
   AssignmentOutlined as BriefIcon,
+  AutoAwesomeOutlined as AiIcon,
+  SummarizeOutlined as SummaryIcon,
 } from '@mui/icons-material';
-import { listMessages, sendMessage, updateMessage, type RoleRoomMessage } from '../../services/roleRoomMessagesApi';
+import { listMessages, sendMessage, updateMessage, aiAssist, type RoleRoomMessage } from '../../services/roleRoomMessagesApi';
 import { producerWorkflowService, type ProducerProjectNotification } from '../../services/producerWorkflowService';
 import { createMeeting, listMeetings, type RoleRoomMeeting } from '../../services/roleRoomMeetingsApi';
 import { uploadMaterialFile, MATERIAL_CATEGORIES, listMaterials, downloadMaterialFile, type MaterialCategory, type RoleRoomMaterial } from '../../services/roleRoomMaterialsApi';
@@ -288,6 +290,17 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
     finally { setBusyAction(false); }
   }, [projectId, load]);
 
+  // AI-utkast / oppsummering → fyller komposeren (ingenting sendes auto).
+  const runAiAssist = useCallback(async (mode: 'draft' | 'summary') => {
+    setBusyAction(true); setActionAnchor(null);
+    try {
+      const text = await aiAssist(projectId, mode);
+      setDraft(mode === 'summary' ? `Oppsummering:\n${text}` : text);
+      setToast('AI-forslag lagt i meldingsfeltet — rediger og send.');
+    } catch (e) { setToast(e instanceof Error ? e.message : 'AI er ikke tilgjengelig akkurat nå.'); }
+    finally { setBusyAction(false); }
+  }, [projectId]);
+
   // Referer til hva som helst (leveranse/fil/møte) → referanse-kort i tråden.
   const [refOpen, setRefOpen] = useState(false);
   const [refTab, setRefTab] = useState(0);
@@ -529,6 +542,9 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
             { q: 'send til godkjenning approval review', icon: <ApprovalIcon sx={{ color: '#f0abfc' }} />, primary: 'Send til godkjenning', secondary: 'Lander i Godkjenning-flaten', run: () => void sendToApproval() },
             { q: 'referer til leveranse fil møte video godkjenn', icon: <ReferenceIcon sx={{ color: '#fcd34d' }} />, primary: 'Referer til …', secondary: 'Leveranse, fil eller møte → klikkbart kort', run: () => void openReferencePicker() },
             // Produsent-only handlinger (vises kun når canUseInternal).
+            { q: 'ai utkast svar forslag claude', icon: <AiIcon sx={{ color: '#22d3ee' }} />, primary: 'AI: foreslå svar', secondary: 'Claude skriver et utkast i feltet', run: () => void runAiAssist('draft') },
+            { q: 'ai oppsummer sammendrag hva venter', icon: <SummaryIcon sx={{ color: '#22d3ee' }} />, primary: 'AI: oppsummer samtalen', secondary: 'Hva er status / hva venter på meg', run: () => void runAiAssist('summary') },
+            // Produsent-only handlinger (vises kun når canUseInternal).
             ...(canUseInternal ? [
               { q: 'del budsjett økonomi publiser klient', icon: <BudgetIcon sx={{ color: '#86efac' }} />, primary: 'Del budsjett med klient', secondary: 'Publiser budsjettlinjer → klientens Økonomi', run: () => void shareBudget() },
               { q: 'be om brief svar intake', icon: <BriefIcon sx={{ color: '#a5b4fc' }} />, primary: 'Be om brief-svar', secondary: 'Forespørsel → klientens Brief-fane', run: () => void requestBriefInput() },
@@ -543,7 +559,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
             <Typography sx={{ color: 'rgba(226,232,240,0.4)', fontSize: '0.64rem', fontWeight: 700, letterSpacing: 0.4 }}>KOMMER SNART</Typography>
           </Box>
           {[
-            'Legg i Content Planner', 'Send faktura', 'AI-utkast & oppsummering',
+            'Legg i Content Planner', 'Send faktura',
           ].map((label) => (
             <MenuItem key={label} disabled>
               <ListItemIcon><ActivityIcon sx={{ color: 'rgba(226,232,240,0.4)' }} /></ListItemIcon>
