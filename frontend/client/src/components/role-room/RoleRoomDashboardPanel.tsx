@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import RoleRoomChatBubble from './components/client-workspace/RoleRoomChatBubble';
 import '../../styles/role-room-mobile.css';
 import { useAuth } from '../../hooks/useAuth';
 import { useRoleRoomViewportMode } from './hooks/useRoleRoomViewportMode';
@@ -768,6 +769,13 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           : undefined,
       }}
     >
+      {/* Produsentens flytende chat-boble — Meldinger + Action + rom-chat
+          (intern vs delt) i hele dashbordet, ikke bare via klient-preview.
+          canUseInternal=true siden dette er produsentens eget arbeidsrom. */}
+      {selectedProjectId ? (
+        <RoleRoomChatBubble projectId={selectedProjectId} canUseInternal />
+      ) : null}
+
       {/* ── Mobile/iPad topbar (items 026-050) ─────────── */}
       {!viewport.isDesktop ? (
         <>
