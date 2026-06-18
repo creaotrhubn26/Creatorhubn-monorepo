@@ -39,6 +39,7 @@ import MusicNoteIcon from "@mui/icons-material/MusicNote";
 import BusinessCenterIcon from "@mui/icons-material/BusinessCenter";
 import ScreenShareIcon from "@mui/icons-material/ScreenShare";
 import DevicesIcon from "@mui/icons-material/Devices";
+import InsightsIcon from "@mui/icons-material/Insights";
 import EventIcon from "@mui/icons-material/Event";
 import LocalMoviesIcon from "@mui/icons-material/LocalMovies";
 import PodcastsIcon from "@mui/icons-material/Podcasts";
@@ -101,6 +102,7 @@ interface Props {
   onOpenPodcastAgent: () => void;
   onOpenShortFilmAgent: () => void;
   onOpenDemoStudio: () => void;
+  onOpenInfographicStudio: () => void;
   onOpenQcVideo: () => void;
   onOpenSavedProject: (picksPath: string) => void;
   signedIn: boolean;
@@ -182,6 +184,7 @@ export function HomeView({
   onOpenPodcastAgent,
   onOpenShortFilmAgent,
   onOpenDemoStudio,
+  onOpenInfographicStudio,
   onOpenQcVideo,
   onOpenSavedProject,
   signedIn,
@@ -475,6 +478,26 @@ export function HomeView({
               — scener, manus, teleprompter og guided opptak
             </div>
             <div className="home-action-tag">Abonnement · 199 kr/mnd</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenInfographicStudio}
+          disabled={!signedIn}
+          title={signedIn ? "Egen løsning: lag branded infographics, charts, lower-thirds, callouts og UI-grafikk fra 500+ maler — bind data, animer og send rett til Resolve. Også tilgjengelig som add-on inne i Product Demo. Del av Demo Studio-abonnementet." : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #2dd4bf, #3b82f6)" }}>
+            <InsightsIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Infographic Studio</div>
+            <div className="home-action-desc">
+              Branded infographics, charts, lower-thirds og callouts fra 500+
+              maler — bind egne data, animer og send rett til Resolve
+            </div>
+            <div className="home-action-tag">Inkludert i Demo Studio · add-on i Product Demo</div>
           </div>
           <IconArrowRight />
         </button>
