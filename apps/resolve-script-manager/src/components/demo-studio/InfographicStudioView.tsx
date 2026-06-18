@@ -247,7 +247,10 @@ async function dominantColor(dataUrl: string): Promise<string> {
   });
 }
 
-export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }) {
+export function InfographicStudioView(
+  { onNav, standalone = false, onOpenDemoStudio }:
+  { onNav: (id: string) => void; standalone?: boolean; onOpenDemoStudio?: () => void },
+) {
   const project = useDemoStudio((s) => s.project);
   const [scenes, setScenes] = useState<Scene[]>([newScene(INFOGRAPHIC_TEMPLATES[0].id, 0)]);
   const [sel, setSel] = useState(0);
@@ -377,10 +380,14 @@ export function InfographicStudioView({ onNav }: { onNav: (id: string) => void }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: D.bg, color: D.ink, fontFamily: 'Inter, system-ui, sans-serif' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: `1px solid ${D.line}`, background: D.panel }}>
-        <button style={{ ...topBtn, border: 'none', background: 'transparent', color: D.soft }} onClick={() => onNav('flow')}>←</button>
+        <button style={{ ...topBtn, border: 'none', background: 'transparent', color: D.soft }} title={standalone ? 'Tilbake til Home' : 'Tilbake til Flow Builder'} onClick={() => onNav('flow')}>←</button>
         <div style={{ fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ color: D.accent }}>▥</span> Infographic Studio</div>
+        {standalone && <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: D.teal, border: `1px solid ${D.line}`, borderRadius: 999, padding: '2px 8px' }}>Egen løsning</span>}
         <div style={{ flex: 1 }} />
-        <div style={{ fontSize: 12, color: D.soft }}>{project?.name || 'Uten navn'} · {scenes.length} scene(r)</div>
+        <div style={{ fontSize: 12, color: D.soft }}>{project?.name || (standalone ? 'Frittstående' : 'Uten navn')} · {scenes.length} scene(r)</div>
+        {standalone && onOpenDemoStudio && (
+          <button style={topBtn} title="Åpne Product Demo Studio — Infographic Studio er også en add-on der" onClick={onOpenDemoStudio}>⧉ Product Demo</button>
+        )}
         <button style={topBtn} onClick={play}>▶ Preview</button>
         <button style={topBtn} onClick={addScene}>＋ New Scene</button>
         <button style={{ ...topBtn, background: D.accent, border: 'none', opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={() => void sendToResolve()}>✦ {busy ? 'Sender …' : 'Send to Resolve'}</button>

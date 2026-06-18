@@ -38,6 +38,7 @@ import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
 import { DemoStudioShell } from "./components/demo-studio/DemoStudioShell";
+import { InfographicStudioView } from "./components/demo-studio/InfographicStudioView";
 import { ModuleGate } from "./components/ModuleGate";
 import {
   getEntitledModules,
@@ -127,7 +128,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [pendingDialog, setPendingDialog] = useState<{ script: ScriptMeta; dryRun: boolean } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo">("pipeline");
+  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo" | "infographic">("pipeline");
   const [showSetup, setShowSetup] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [runningScripts, setRunningScripts] = useState<Record<string, RunningScript>>({});
@@ -779,6 +780,7 @@ export default function App() {
           onOpenPodcastAgent={() => void openAgent(PODCAST_AGENT_CONFIG)}
           onOpenShortFilmAgent={() => void openAgent(SHORT_FILM_AGENT_CONFIG)}
           onOpenDemoStudio={() => setView("demo")}
+          onOpenInfographicStudio={() => setView("infographic")}
           onOpenQcVideo={() => setShowQcVideo(true)}
           onOpenSavedProject={(picksPath) => setCreativeEditorPath(picksPath)}
           signedIn={authStatus === "ok"}
@@ -813,6 +815,25 @@ export default function App() {
       {view === "demo" &&
         (authStatus === "ok" && entitledModules.includes("demo_studio") ? (
           <DemoStudioShell onClose={() => setView("pipeline")} />
+        ) : (
+          <ModuleGate
+            module="demo_studio"
+            signedIn={authStatus === "ok"}
+            onClose={() => setView("pipeline")}
+            onSignIn={() => setShowSignIn(true)}
+          />
+        ))}
+
+      {/* Infographic Studio som EGEN løsning (samme modul/abonnement som Demo Studio).
+          Add-on-koblingen begge veier: Product Demo har «Infographic Studio»-fanen,
+          og standalone-studioet har «Åpne i Product Demo» via onOpenDemoStudio. */}
+      {view === "infographic" &&
+        (authStatus === "ok" && entitledModules.includes("demo_studio") ? (
+          <InfographicStudioView
+            standalone
+            onNav={() => setView("pipeline")}
+            onOpenDemoStudio={() => setView("demo")}
+          />
         ) : (
           <ModuleGate
             module="demo_studio"
@@ -944,6 +965,9 @@ export default function App() {
           { id: "view_audio", title: "View: Audio",
             subtitle: "audio QC + sync tools",
             handler: () => setView("audio") },
+          { id: "open_infographic_studio", title: "Åpne Infographic Studio",
+            subtitle: "Egen løsning: branded infographics, charts, lower-thirds → Resolve",
+            handler: () => setView("infographic") },
           { id: "creative_editor", title: "Åpne Creative Editor",
             subtitle: "Pixel-perfect editor med segments + timeline + Claude assistent",
             handler: () => setCreativeEditorPath(
