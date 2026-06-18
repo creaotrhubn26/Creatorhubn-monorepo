@@ -46,6 +46,7 @@ import GroupsIcon from "@mui/icons-material/Groups";
 import { apiRequest } from "@/lib/queryClient";
 import { t, badgeLabel, type Locale } from "./editingMarketplaceStrings";
 import EditingRequestDialog from "./EditingRequestDialog";
+import EditingJobChat from "./EditingJobChat";
 
 interface EditingVendorService {
   category: string;
@@ -119,14 +120,23 @@ export default function EditingVendorDiscoveryPanel({
     queryFn: () => apiRequest("/api/editing/jobs?status=delivered"),
   });
 
+  const myJobsQuery = useQuery<{ jobs: Array<{ id: string; project_title: string | null; vendor_name: string | null; status: string }> }>({
+    queryKey: ["/api/editing/jobs"],
+    queryFn: () => apiRequest("/api/editing/jobs"),
+  });
+
   const vendors = vendorsQuery.data?.vendors ?? [];
   const shown = showAll ? vendors : vendors.slice(0, 4);
   const readyJobs = readyQuery.data?.jobs ?? [];
+  const myActiveJobs = (myJobsQuery.data?.jobs ?? []).filter((j) =>
+    ["in_progress", "delivered", "approved", "delivered_to_client"].includes(j.status),
+  );
 
   const qc = useQueryClient();
   const [profileId, setProfileId] = useState<string | null>(null);
   const [requestVendorId, setRequestVendorId] = useState<string | null>(null);
   const [deliverJobId, setDeliverJobId] = useState<string | null>(null);
+  const [chatJobId, setChatJobId] = useState<string | null>(null);
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [shareUrl, setShareUrl] = useState<string | null>(null);
@@ -418,7 +428,50 @@ export default function EditingVendorDiscoveryPanel({
             )}
           </CardContent>
         </Card>
+
+        {/* Mine oppdrag + chat med vendor (#14) */}
+        <Card sx={cardSx}>
+          <CardContent sx={{ p: 3 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+              {t("myjobs_title", locale)}
+            </Typography>
+            {myActiveJobs.length === 0 ? (
+              <Typography variant="caption" color="text.secondary">
+                {t("myjobs_none", locale)}
+              </Typography>
+            ) : (
+              <Stack spacing={1.5}>
+                {myActiveJobs.map((j) => (
+                  <Box key={j.id} sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1 }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
+                        {j.project_title || "—"}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" noWrap>
+                        {j.vendor_name} · {t(`jobstatus.${j.status}`, locale)}
+                      </Typography>
+                    </Box>
+                    <Button size="small" variant="outlined" onClick={() => setChatJobId(j.id)}>
+                      {t("myjobs_chat", locale)}
+                    </Button>
+                  </Box>
+                ))}
+              </Stack>
+            )}
+          </CardContent>
+        </Card>
       </Box>
+
+      {/* Chat med vendor pr oppdrag */}
+      <Dialog open={!!chatJobId} onClose={() => setChatJobId(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>{t("myjobs_chat", locale)}</DialogTitle>
+        <DialogContent dividers>
+          {chatJobId && <EditingJobChat jobId={chatJobId} selfRole="photographer" locale={locale} />}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setChatJobId(null)}>{locale === "no" ? "Lukk" : "Close"}</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Vendor-profil-dialog (Se profil) */}
       <Dialog open={!!profileId} onClose={() => setProfileId(null)} maxWidth="sm" fullWidth>

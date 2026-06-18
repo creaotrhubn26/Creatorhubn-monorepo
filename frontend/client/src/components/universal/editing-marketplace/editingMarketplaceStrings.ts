@@ -254,6 +254,11 @@ const STRINGS: Dict = {
     en: "Deducted from revenue before it is split among contributors.",
   },
   cost_total: { no: "Sum kostnader", en: "Total costs" },
+
+  // ── Fotografens «mine oppdrag» + chat ──
+  myjobs_title: { no: "Mine redigeringsoppdrag", en: "My editing jobs" },
+  myjobs_none: { no: "Ingen aktive redigeringsoppdrag.", en: "No active editing jobs." },
+  myjobs_chat: { no: "Chat med vendor", en: "Chat with vendor" },
 };
 
 export function t(key: string, locale: Locale = "no"): string {
