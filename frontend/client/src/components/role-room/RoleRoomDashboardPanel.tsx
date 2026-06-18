@@ -140,6 +140,8 @@ import {
 import RoleRoomBrandMark from './components/shared/RoleRoomBrandMark';
 import { YouTubeIntegration, type YouTubePublishingSuggestion } from '../youtube/YouTubeIntegration';
 import GoogleWorkspaceSessionBadge from '../universal/GoogleWorkspaceSessionBadge';
+import { OrgSwitcher } from '../leadgrid/OrgSwitcher';
+import { PlanUsageBar } from '../leadgrid/PlanUsageBar';
 import {
   roleRoomAgentService,
   type RoleRoomAgentAccess,
@@ -872,6 +874,23 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           </Box>
         </Box>
         <Stack direction="row" spacing={1} alignItems="center">
+          {/* Leadgrid: plan-bruk-indikator (skjules hvis ingen Leadgrid-org) */}
+          {auth.user?.id && (auth.user as any).activeOrgId && (
+            <PlanUsageBar
+              orgId={(auth.user as any).activeOrgId as string}
+              variant="compact"
+              onUpgradeClick={() => { window.location.href = '/leadgrid'; }}
+            />
+          )}
+          {/* Leadgrid: org-bytte (super-admin + multi-org) */}
+          {auth.user?.id && (
+            <OrgSwitcher
+              currentUserId={auth.user.id}
+              currentRole={auth.user?.role ?? 'member'}
+              activeOrgId={(auth.user as any).activeOrgId ?? null}
+              activeOrgName={(auth.user as any).activeOrgName ?? undefined}
+            />
+          )}
           <Tooltip title="Oppdater">
             <IconButton onClick={() => refetchProjects()}>
               <RefreshIcon />

@@ -1,55 +1,46 @@
-Leadgrid v0.3.0 — Behov, signaler og en stemme av sin egen
+Leadgrid v0.4.0 (build 4) — Selv-onboard, klient-portal og Google Sign-In
 
 NYTT I DENNE BUILDEN:
 
-• Trålеr for mangler (Lead Scout)
-  - Trykk «Trål etter mangler» på en lead → Leadgrid crawler websitet,
-    finner manglende GA4/GTM/Meta pixel/Google Ads/LinkedIn Insight,
-    sjekker SEO-strukturen, identifiserer SPA-risiko, og leverer
-    en strukturert behovs-liste + signaler + score-dimensjoner.
-  - Testet live på medside.no — den fant 10 needs, 7 signals, score 76.
+• Google Sign-In som primær innlogging
+  - Trykk «Fortsett med Google» — ingen pairing-kode nødvendig.
+  - Pairing-kode er fortsatt der som backup (Jeg har en pairing-kode).
+  - Nye brukere får automatisk Solo Free-org opprettet ved første login.
 
-• Markedsavdelingen har fått 6 nye roller
-  Markedssjef, Markedskoordinator, SEO-spesialist, Content-ansvarlig,
-  Performance-marketer, Markedsanalytiker — hver med sine egne
-  permissions.
+• AddCustomerView — super-enkel «+» på Prosjekter-fanen
+  - To felter: nettside + e-post → Leadgrid gjør resten.
+  - BRREG-oppslag, logo-fetch, websitet-crawl, behovs-analyse, klient-
+    portal-lenke sendes — alt på 30 sekunder, med live progress.
+  - Backdrop7 (selger med pin-rute) som hero.
 
-• Parameter-presets pr bransje
-  Organisasjonen kan lage maler. Velg «Helsetech B2B SaaS» når du
-  oppretter en lead → behovene fylles automatisk inn.
+• MarketingInboxView — innboks for markedsfører-roller
+  - Vises hvis du har marketing.deliveries.execute.
+  - Hver focus-request fra klient dukker opp her med kunde-logo,
+    behov-tag og klient-notat.
+  - Filter: åpne / pågår / ferdig.
 
-• Custom fields styres av orgen
-  Eks: «Har markedsbudsjett?» (Unknown/Low/Medium/High) med
-  permission-gating på hvem som ser og redigerer.
+• DeliveryPlaybookView — steg-for-steg-utførelse
+  - Tap på en focus-request → start playbook.
+  - Header med kunde-logo, behov-tittel og fremdrifts-bar.
+  - «Vi trenger fra kunden» med huk-av-checkboxes.
+  - Steg-for-steg med markér-ferdig + blokkert.
+  - «Slik verifiserer du» til slutt.
+  - Innebygde playbooks: Meta Pixel, GA4, Google Ads, GTM, JSON-LD,
+    video-strategi, +14 andre.
 
-• IF/THEN automation-regler
-  - status = Interested + ingen follow-up → prompt selger
-  - score > 80 + ikke besøkt → høy prioritet
-  - tilbud sendt + 5d stille → automatisk reminder
-  - do_not_contact → outreach slås av
+• ProjectsPortfolioView utvidet
+  - Sortér på score / nylig / navn.
+  - Auto-logo-fetch fra crawl.
+  - Per-prosjekt-gating m/ projects.view_all-permission.
 
-• Research kjører med scout sekvensielt
-  Når en research-økt har plottet pins, tråler Leadgrid automatisk
-  hver website og fyller behov + signaler — gated til markedsroller.
-  Research markeres aldri som «feilet» pga scout-problemer.
+• Innstillinger-instruksjoner ryddet
+  - Gamle «theroleroom.com → Admin Room → Lead Map» er erstattet
+    med «theroleroom.com/leadgrid → Innstillinger → Mine enheter».
 
-VISUELLE OPPGRADERINGER:
+KJENT:
+- Klient-portalen lever live på web (theroleroom.com/c/{token}) men
+  iPad-app åpner fortsatt bare som-deg-portal — del lenken direkte
+  med klient.
 
-• Backdrops på MyDay, Research, Pitch Deck, Brief og Studio
-  Premium lilla scener med gradient-overlay — matcher landing-siden.
-
-• En egen stemme: Leadgrid-vokabular
-  - «Lytter til markedet», «Setter koordinater», «Tegner pins på
-    gridden», «Tråler websitene», «Gridden er klar»
-  - Pulserende prikk viser at appen jobber
-  - ETA-hint per fase ("typisk 30–60 sekunder")
-
-• Total ProgressView m/ fargeskifte (accent → grønn ved 'ferdig')
-
-FOKUSER PÅ Å TESTE:
-1. Opprett en lead med eller uten preset → se at behov fylles inn
-2. Trykk «Trål etter mangler» → følg progress
-3. Start en research → se den 5-fase-flyten med Leadgrid-stemme
-4. Endre en lead-status → sjekk om automation-regelen treffer
-5. Logg deg som rolle uten marketing-permission → bekreft at scout
-   ikke vises (men leadene fortsatt finnes)
+Krever iOS 17.0+. Glade for tilbakemeldinger på Slack eller
+daniel@creatorhubn.com.
