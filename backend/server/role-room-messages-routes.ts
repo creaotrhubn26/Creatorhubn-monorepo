@@ -66,11 +66,37 @@ function mapRow(row: Record<string, unknown>) {
 export function registerRoleRoomMessagesRoutes(app: Express, deps: Deps): void {
   const { pool, activeSessions } = deps;
 
+  // Selv-helende backstop: garanterer tabell + visibility-kolonnen selv om en
+  // migrasjon (fire-and-forget) ikke har truffet. Kjøres én gang per prosess.
+  let ensureReady: Promise<void> | null = null;
+  function ensureMessagesTable(): Promise<void> {
+    if (!ensureReady) {
+      ensureReady = pool.query(`
+        CREATE TABLE IF NOT EXISTS role_room_messages (
+          id UUID PRIMARY KEY,
+          project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+          author_user_id VARCHAR(255), author_role VARCHAR(80), author_name VARCHAR(255),
+          body TEXT NOT NULL,
+          kind VARCHAR(32) NOT NULL DEFAULT 'message',
+          status VARCHAR(24) NOT NULL DEFAULT 'open',
+          reply_to_id UUID, linked_entity_type VARCHAR(100), linked_entity_id VARCHAR(255),
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        ALTER TABLE role_room_messages ADD COLUMN IF NOT EXISTS visibility VARCHAR(16) NOT NULL DEFAULT 'shared';
+        CREATE INDEX IF NOT EXISTS idx_rr_messages_project_created ON role_room_messages (project_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rr_messages_project_visibility ON role_room_messages (project_id, visibility, created_at DESC);
+      `).then(() => undefined).catch((e) => { ensureReady = null; throw e; });
+    }
+    return ensureReady;
+  }
+
   async function authorize(req: Request, res: Response): Promise<SessionData | null> {
     const session = getSession(req, activeSessions);
     if (!session) { res.status(401).json({ error: 'krever_innlogging' }); return null; }
     const projectId = String(req.params.projectId || '').trim();
     if (!projectId) { res.status(400).json({ error: 'projectId mangler' }); return null; }
+    try { await ensureMessagesTable(); } catch { /* fortsetter — feiler i query om noe er galt */ }
     if (!(await viewerCanAccessProject(pool, projectId, session.userId))) {
       res.status(403).json({ error: 'ingen_tilgang' }); return null;
     }

@@ -74,11 +74,41 @@ function mapRow(row: Record<string, unknown>) {
 export function registerRoleRoomMeetingsRoutes(app: Express, deps: Deps): void {
   const { pool, activeSessions } = deps;
 
+  // Selv-helende backstop: garanterer tabellen + kolonnene selv om en migrasjon
+  // (auto-migrate er fire-and-forget) ikke har truffet. Kjøres én gang per prosess.
+  let ensureReady: Promise<void> | null = null;
+  function ensureMeetingsTable(): Promise<void> {
+    if (!ensureReady) {
+      ensureReady = pool.query(`
+        CREATE TABLE IF NOT EXISTS role_room_meetings (
+          id UUID PRIMARY KEY,
+          project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+          title VARCHAR(255) NOT NULL,
+          starts_at TIMESTAMPTZ, ends_at TIMESTAMPTZ,
+          time_zone VARCHAR(64) NOT NULL DEFAULT 'Europe/Oslo',
+          participants JSONB NOT NULL DEFAULT '[]'::jsonb,
+          meet_link TEXT, calendar_event_id TEXT, location TEXT,
+          status VARCHAR(24) NOT NULL DEFAULT 'upcoming',
+          notes TEXT, notes_status VARCHAR(24) NOT NULL DEFAULT 'pending',
+          agenda JSONB NOT NULL DEFAULT '[]'::jsonb,
+          action_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+          client_visible BOOLEAN NOT NULL DEFAULT TRUE,
+          created_by_user_id VARCHAR(255), created_by_role VARCHAR(80),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_rr_meetings_project_start
+          ON role_room_meetings (project_id, starts_at DESC NULLS LAST, created_at DESC);
+      `).then(() => undefined).catch((e) => { ensureReady = null; throw e; });
+    }
+    return ensureReady;
+  }
+
   async function authorize(req: Request, res: Response): Promise<SessionData | null> {
     const session = getSession(req, activeSessions);
     if (!session) { res.status(401).json({ error: 'krever_innlogging' }); return null; }
     const projectId = String(req.params.projectId || '').trim();
     if (!projectId) { res.status(400).json({ error: 'projectId mangler' }); return null; }
+    try { await ensureMeetingsTable(); } catch { /* fortsetter — feiler i query om noe er galt */ }
     if (!(await viewerCanAccessProject(pool, projectId, session.userId))) {
       res.status(403).json({ error: 'ingen_tilgang' }); return null;
     }
