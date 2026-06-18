@@ -34,6 +34,7 @@ struct LeadResearchStartView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // Scroll-shy backdrop via clear-form + background-modifier
                 Section {
                     Text("Vi bygger en liste av relevante bedrifter du kan oppsøke, basert på bransje og område. Når du starter, går Claude gjennom markedet og opprettet leads dukker opp på kartet.")
                         .font(.callout)
@@ -73,6 +74,11 @@ struct LeadResearchStartView: View {
                     .foregroundStyle(.secondary)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(
+                BrandedHeroBackground(.backdrop4, darkenFrom: 0.55, darkenTo: 0.95)
+                    .ignoresSafeArea()
+            )
             .navigationTitle("Finn nye leads")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -36,6 +36,11 @@ struct PitchPreMeetingBriefView: View {
     var body: some View {
         NavigationStack {
             content
+                .background(
+                    BrandedHeroBackground(.backdrop3, darkenFrom: 0.55, darkenTo: 0.97)
+                        .ignoresSafeArea()
+                )
+                .scrollContentBackground(.hidden)
                 .navigationTitle("Forbered møte")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbar }
