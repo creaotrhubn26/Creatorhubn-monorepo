@@ -88,7 +88,7 @@ export default function ProducerAssistantsPanel({ projectId }: { projectId: stri
     <Stack spacing={1.75}>
       <Box>
         <Typography sx={{ fontSize: '1.3rem', fontWeight: 800, color: '#f8fafc' }}>Team &amp; assistenter</Typography>
-        <Typography sx={{ fontSize: '0.85rem', color: 'rgba(226,232,240,0.66)', mt: 0.3 }}>
+        <Typography sx={{ fontSize: '0.85rem', color: 'rgba(226,232,240,0.8)', mt: 0.3 }}>
           Inviter assistenter med akkurat den tilgangen de trenger. Sensitive områder er av som standard.
         </Typography>
       </Box>
@@ -109,12 +109,12 @@ export default function ProducerAssistantsPanel({ projectId }: { projectId: stri
                 {ROLE_PRESETS.map((p) => <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>)}
               </Select>
             </FormControl>
-            <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.74rem', mt: -0.5 }}>
+            <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.74rem', mt: -0.5 }}>
               Rollen setter fornuftig tilgang automatisk — du finjusterer etterpå. Sensitive områder forblir av.
             </Typography>
             <Stack direction="row" spacing={1}>
               <Button onClick={() => void invite()} disabled={busyId === 'invite'} startIcon={busyId === 'invite' ? <CircularProgress size={15} color="inherit" /> : <InviteIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)' }}>Send invitasjon</Button>
-              <Button onClick={() => setAdding(false)} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.7)' }}>Avbryt</Button>
+              <Button onClick={() => setAdding(false)} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.8)' }}>Avbryt</Button>
             </Stack>
           </Stack>
         </Box>
@@ -127,7 +127,7 @@ export default function ProducerAssistantsPanel({ projectId }: { projectId: stri
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#a855f7' }} /></Box>
         ) : items.length === 0 ? (
-          <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.82rem', py: 2, textAlign: 'center' }}>Ingen assistenter ennå.</Typography>
+          <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.82rem', py: 2, textAlign: 'center' }}>Ingen assistenter ennå.</Typography>
         ) : (
           <Stack spacing={1.25}>{items.map((a) => (
             <AssistantCard key={a.id} a={a} busy={busyId === a.id} onToggle={toggleArea} onRevoke={revoke} />
@@ -149,7 +149,7 @@ export default function ProducerAssistantsPanel({ projectId }: { projectId: stri
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirm(null)} sx={{ textTransform: 'none', color: 'rgba(226,232,240,0.7)' }}>Avbryt</Button>
+          <Button onClick={() => setConfirm(null)} sx={{ textTransform: 'none', color: 'rgba(226,232,240,0.8)' }}>Avbryt</Button>
           <Button onClick={() => { if (confirm) { void applyAreas(confirm.a, { [confirm.area]: true }); setConfirm(null); } }}
             variant="contained" sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#b45309', '&:hover': { bgcolor: '#92400e' } }}>
             Ja, gi tilgang
@@ -162,7 +162,7 @@ export default function ProducerAssistantsPanel({ projectId }: { projectId: stri
   );
 }
 
-const fieldSx = { '& .MuiOutlinedInput-root': { color: '#f1f5f9', background: 'rgba(15,23,42,0.6)' }, '& .MuiInputLabel-root': { color: 'rgba(226,232,240,0.7)' } };
+const fieldSx = { '& .MuiOutlinedInput-root': { color: '#f1f5f9', background: 'rgba(15,23,42,0.6)' }, '& .MuiInputLabel-root': { color: 'rgba(226,232,240,0.8)' } };
 
 function AssistantCard({ a, busy, onToggle, onRevoke }: {
   a: RoleRoomAssistant; busy: boolean; onToggle: (a: RoleRoomAssistant, area: AssistantArea) => void; onRevoke: (a: RoleRoomAssistant) => void;
@@ -178,7 +178,7 @@ function AssistantCard({ a, busy, onToggle, onRevoke }: {
           <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.2 }}>
             <Chip label={PRESET_LABEL[a.rolePreset] ?? a.rolePreset} size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: '#c4b5fd', bgcolor: 'rgba(168,85,247,0.14)' }} />
             <Chip label={a.status === 'active' ? 'Aktiv' : 'Invitert'} size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: a.status === 'active' ? '#6ee7b7' : '#fcd34d', bgcolor: a.status === 'active' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)' }} />
-            {a.assistantName ? <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem' }}>{a.assistantEmail}</Typography> : null}
+            {a.assistantName ? <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.72rem' }}>{a.assistantEmail}</Typography> : null}
           </Stack>
         </Box>
         <Button onClick={() => onRevoke(a)} size="small" startIcon={<RevokeIcon sx={{ fontSize: 16 }} />} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 36, color: 'rgba(252,165,165,0.9)' }}>Fjern</Button>
@@ -189,7 +189,7 @@ function AssistantCard({ a, busy, onToggle, onRevoke }: {
         <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mb: 0.5 }}>
           <ShieldIcon sx={{ fontSize: 14, color: '#6ee7b7' }} />
           <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.72rem', fontWeight: 700 }}>Får se:</Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.72rem' }}>
+          <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.72rem' }}>
             {granted.length === 0 ? 'ingenting ennå' : granted.map((g) => AREA_LABELS[g]).join(', ')}
           </Typography>
         </Stack>
@@ -213,10 +213,10 @@ function AssistantCard({ a, busy, onToggle, onRevoke }: {
           return (
             <Stack key={area} direction="row" alignItems="center" spacing={0.75} sx={{ py: 0.35 }}>
               {on ? <OnIcon sx={{ fontSize: 16, color: sensitive ? '#fbbf24' : '#6ee7b7' }} /> : <OffIcon sx={{ fontSize: 16, color: 'rgba(226,232,240,0.4)' }} />}
-              <Typography sx={{ flex: 1, color: on ? '#f1f5f9' : 'rgba(226,232,240,0.7)', fontSize: '0.82rem', fontWeight: on ? 700 : 500 }}>
+              <Typography sx={{ flex: 1, color: on ? '#f1f5f9' : 'rgba(226,232,240,0.8)', fontSize: '0.82rem', fontWeight: on ? 700 : 500 }}>
                 {AREA_LABELS[area]}
               </Typography>
-              {sensitive ? <Chip icon={<SensitiveIcon sx={{ fontSize: 12, color: '#fbbf24 !important' }} />} label="Sensitivt" size="small" sx={{ height: 18, fontSize: '0.58rem', fontWeight: 700, color: '#fcd34d', bgcolor: 'rgba(245,158,11,0.1)' }} /> : null}
+              {sensitive ? <Chip icon={<SensitiveIcon sx={{ fontSize: 12, color: '#fbbf24 !important' }} />} label="Sensitivt" size="small" sx={{ height: 18, fontSize: '0.66rem', fontWeight: 700, color: '#fcd34d', bgcolor: 'rgba(245,158,11,0.1)' }} /> : null}
               <Switch checked={on} disabled={busy} onChange={() => onToggle(a, area)} size="small"
                 sx={{ '& .Mui-checked': { color: sensitive ? '#fbbf24' : '#6ee7b7' }, '& .Mui-checked + .MuiSwitch-track': { backgroundColor: sensitive ? '#b45309' : '#0f766e' } }} />
             </Stack>

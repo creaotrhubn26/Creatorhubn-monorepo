@@ -16,7 +16,7 @@
 
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
-import { getMyAccess, AREA_LABELS, type MyAssistantAccess, type AssistantArea } from '../../services/roleRoomAssistantsApi';
+import { getMyAccess, acceptInvite, AREA_LABELS, type MyAssistantAccess, type AssistantArea } from '../../services/roleRoomAssistantsApi';
 import {
   Alert,
   Box,
@@ -161,15 +161,29 @@ export default function ClientWorkspaceShell({
 
       {/* «Din tilgang» — vises kun for scopede assistenter */}
       {isAssistant && (
-        <Alert severity="info" icon={false} sx={{ borderRadius: 0, bgcolor: 'rgba(124,58,237,0.12)', color: '#e2e8f0', '& .MuiAlert-message': { width: '100%' } }}>
-          <Typography component="span" sx={{ fontWeight: 700 }}>Din tilgang som assistent: </Typography>
+        <Alert
+          severity="info" icon={false}
+          action={myAccess?.status === 'invited' ? (
+            <Typography
+              component="a"
+              onClick={async (e) => { e.preventDefault(); try { setMyAccess(await acceptInvite(projectId)); } catch { /* vis ingen feil */ } }}
+              sx={{ cursor: 'pointer', fontWeight: 800, textDecoration: 'underline', color: '#fff', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}
+            >
+              Godta invitasjon
+            </Typography>
+          ) : undefined}
+          sx={{ borderRadius: 0, bgcolor: 'rgba(124,58,237,0.16)', color: '#e2e8f0', '& .MuiAlert-message': { width: '100%' } }}
+        >
+          <Typography component="span" sx={{ fontWeight: 700 }}>
+            {myAccess?.status === 'invited' ? 'Du er invitert som assistent. Tilgang: ' : 'Din tilgang som assistent: '}
+          </Typography>
           {(() => {
             const granted = (Object.keys(myAccess?.areas ?? {}) as AssistantArea[]).filter((a) => myAccess?.areas?.[a]);
             return granted.length > 0
               ? granted.map((a) => AREA_LABELS[a]).join(', ')
               : 'ingen områder ennå — be produsenten om tilgang.';
           })()}
-          <Typography component="span" sx={{ color: 'rgba(226,232,240,0.6)' }}> · Andre områder er skjult for deg.</Typography>
+          <Typography component="span" sx={{ color: 'rgba(226,232,240,0.82)' }}> · Andre områder er skjult for deg.</Typography>
         </Alert>
       )}
 

@@ -70,6 +70,7 @@ export async function inviteAssistant(
 
 export interface MyAssistantAccess {
   isAssistant: boolean;
+  status?: string;
   rolePreset?: string;
   areas: Partial<Record<AssistantArea, boolean>>;
 }
@@ -79,6 +80,15 @@ export async function getMyAccess(projectId: string): Promise<MyAssistantAccess>
   const url = `/api/role-room/projects/${encodeURIComponent(projectId)}/my-assistant-access`;
   const res = await fetch(url, { headers: headers() });
   if (!res.ok) return { isAssistant: false, areas: {} };
+  const payload = (await res.json().catch(() => null)) as MyAssistantAccess | null;
+  return payload ?? { isAssistant: false, areas: {} };
+}
+
+/** Godta assistent-invitasjon (setter assistant_user_id + status=active). */
+export async function acceptInvite(projectId: string): Promise<MyAssistantAccess> {
+  const url = `/api/role-room/projects/${encodeURIComponent(projectId)}/my-assistant-access/accept`;
+  const res = await fetch(url, { method: 'POST', headers: headers(true) });
+  if (!res.ok) throw new Error(`Kunne ikke godta (HTTP ${res.status})`);
   const payload = (await res.json().catch(() => null)) as MyAssistantAccess | null;
   return payload ?? { isAssistant: false, areas: {} };
 }

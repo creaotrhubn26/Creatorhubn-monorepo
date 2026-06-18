@@ -147,12 +147,43 @@ export function registerRoleRoomAssistantAccessRoutes(app: Express, deps: Deps):
       if (!rows[0]) { res.json({ isAssistant: false, areas: {} }); return; }
       res.json({
         isAssistant: true,
+        status: String(rows[0].status ?? 'invited'),
         rolePreset: String(rows[0].role_preset ?? 'editor'),
         areas: (rows[0].areas && typeof rows[0].areas === 'object' ? rows[0].areas : {}),
       });
     } catch (error) {
       console.error('[assistant-access] my-access failed', error);
       res.status(500).json({ error: 'Kunne ikke hente tilgang' });
+    }
+  });
+
+  // Godta invitasjon: setter assistant_user_id = innlogget bruker + status=active
+  // (eksplisitt accept; matcher invited-rad på e-post).
+  app.post('/api/role-room/projects/:projectId/my-assistant-access/accept', async (req, res) => {
+    try {
+      const session = getSession(req, activeSessions);
+      if (!session) { res.status(401).json({ error: 'krever_innlogging' }); return; }
+      const projectId = String(req.params.projectId || '').trim();
+      const email = (session.email ?? '').toLowerCase();
+      try { await ensureTable(); } catch { /* fortsetter */ }
+      const result = await pool.query(
+        `UPDATE role_room_assistant_access
+           SET assistant_user_id = $2, status = 'active', updated_at = NOW()
+         WHERE project_id = $1 AND status = 'invited'
+           AND ( (assistant_user_id IS NOT NULL AND assistant_user_id = $2)
+                 OR ($3 <> '' AND lower(assistant_email) = $3) )
+         RETURNING role_preset, areas, status`,
+        [projectId, session.userId, email],
+      );
+      if (result.rowCount === 0) { res.json({ isAssistant: false, areas: {} }); return; }
+      res.json({
+        isAssistant: true, status: 'active',
+        rolePreset: String(result.rows[0].role_preset ?? 'editor'),
+        areas: (result.rows[0].areas && typeof result.rows[0].areas === 'object' ? result.rows[0].areas : {}),
+      });
+    } catch (error) {
+      console.error('[assistant-access] accept failed', error);
+      res.status(500).json({ error: 'Kunne ikke godta invitasjon' });
     }
   });
 
