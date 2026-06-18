@@ -54,10 +54,12 @@ import {
 export interface EditingJobsRoutesDeps {
   app: express.Application;
   pool: Pool;
+  // Async: løser også PERSISTERTE sesjoner (creatorhub_auth_sessions), ikke bare
+  // in-memory. Robust mot backend-restart (in-memory activeSessions tømmes da).
   requireUserSession: (
     req: express.Request,
     res: express.Response,
-  ) => { userId: string; email: string; name: string; role: string } | null;
+  ) => Promise<{ userId: string; email: string; name: string; role: string } | null>;
 }
 
 // Plattform-cut. Under prototype-testing kan vendor-fee være betinget/null
@@ -81,7 +83,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Discovery: liste over godkjente, compliance-klare redigeringsvendors ──
   app.get("/api/editing/vendors", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const r = await pool.query(
@@ -131,7 +133,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Vendor-profil + full priskatalog + compliance-status-tabell ──
   app.get("/api/editing/vendors/:vendorUserId", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const r = await pool.query(
@@ -182,7 +184,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Opprett oppdrag (forespørsel) ──
   app.post("/api/editing/jobs", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     const b = req.body || {};
     const amountCents = Math.max(0, Math.round(Number(b.amountCents) || 0));
@@ -281,7 +283,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Fotografens egne oppdrag ──
   app.get("/api/editing/jobs", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const status = typeof req.query.status === "string" ? req.query.status : null;
@@ -313,7 +315,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Oppdrags-detalj (+ filer + events) ──
   app.get("/api/editing/jobs/:id", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
@@ -339,7 +341,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Meldinger pr oppdrag (fotograf <-> vendor, kun når avtale inngått) ──
   app.get("/api/editing/jobs/:id/messages", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
@@ -363,7 +365,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
   });
 
   app.post("/api/editing/jobs/:id/messages", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
@@ -387,7 +389,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Tildel vendor til et draft-oppdrag ──
   app.post("/api/editing/jobs/:id/assign-vendor", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
@@ -419,7 +421,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Vendorens innkommende oppdrag ──
   app.get("/api/editing/vendor/jobs", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const r = await pool.query(
@@ -435,7 +437,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Vendor aksepterer (krever compliance) -> mint opplastings-token ──
   app.post("/api/editing/jobs/:id/accept", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
@@ -468,7 +470,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Vendor avslår ──
   app.post("/api/editing/jobs/:id/decline", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
@@ -503,7 +505,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
         authed = true;
         actor = "vendor_token";
       } else {
-        const session = requireUserSession(req, res);
+        const session = await requireUserSession(req, res);
         if (!session) return; // requireUserSession sendte 401
         const auth = await loadAuthorizedJob(jobId, session.userId);
         if (!auth || auth.role !== "vendor") return res.status(403).json({ error: "ikke_tillatt" });
@@ -536,7 +538,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Vendor leverer -> server-side overføring staging -> fotografens B2 ──
   app.post("/api/editing/jobs/:id/deliver", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
@@ -567,7 +569,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Fotograf godkjenner levering (Showcase-godkjent flyt) ──
   app.post("/api/editing/jobs/:id/approve", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
@@ -596,7 +598,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Fotograf starter betaling (Stripe checkout ELLER faktura) ──
   app.post("/api/editing/jobs/:id/pay", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
@@ -631,7 +633,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Bekreft Stripe-betaling (success-redirect) -> escrow «held» ──
   app.post("/api/editing/jobs/:id/payment/confirm", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
@@ -651,7 +653,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Lever til kunde: opprett Showcase/klient-galleri fra godkjent leveranse ──
   app.post("/api/editing/jobs/:id/deliver-to-client", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
@@ -689,7 +691,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Be om revisjon (innenfor maks-grense) ──
   app.post("/api/editing/jobs/:id/request-revision", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
@@ -719,7 +721,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Avbryt oppdrag ──
   app.post("/api/editing/jobs/:id/cancel", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
@@ -739,7 +741,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Vendorens egen profil + compliance-status (for vendor-workspace) ──
   app.get("/api/editing/vendor/me", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const r = await pool.query(
@@ -766,7 +768,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // ── Vendor aksepterer Creatorhub Vendor Standard (compliance) ──
   app.post("/api/editing/vendor/compliance/accept", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const b = req.body || {};
