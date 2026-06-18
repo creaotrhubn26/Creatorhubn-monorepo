@@ -558,6 +558,7 @@ import { registerUserOrgRoutes } from "./user-org-routes.js";
 import { registerLeadgridDripsRoutes } from "./leadgrid-drips-routes.js";
 import { registerPartnerApiRoutes } from "./partner-api-routes.js";
 import { registerPartnerApiManagementRoutes } from "./partner-api-management-routes.js";
+import { registerDeveloperApplicationRoutes } from "./developer-application-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24374,6 +24375,8 @@ registerLeadgridDripsRoutes({ app, pool, activeSessions });
 registerPartnerApiRoutes({ app, pool });
 // Superadmin CRUD for API-keys + webhook-endpoints + delivery-log
 registerPartnerApiManagementRoutes({ app, pool, activeSessions });
+// Selv-betjent utvikler-søknad på /leadgrid/utviklere/soknad (public)
+registerDeveloperApplicationRoutes({ app, pool });
 // Håndhev org-status (paused/suspended) på alle Leadgrid-rutene.
 // Bypass for super_admin er ON som default.
 app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));

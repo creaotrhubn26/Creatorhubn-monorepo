@@ -50,6 +50,51 @@ async function requireSuperAdmin(
   return s;
 }
 
+// Default scopes per partner-type ved auto-key-generering
+const DEFAULT_SCOPES_BY_PARTNER_TYPE: Record<string, string[]> = {
+  integration: [
+    "customers.read", "customers.write", "needs.read", "signals.read",
+    "deliverables.read", "organizations.read", "webhooks.read",
+  ],
+  reseller: ["organizations.read", "customers.read"],
+  strategic: [
+    "customers.read", "customers.write", "needs.read", "signals.read",
+    "deliverables.read", "organizations.read", "webhooks.read",
+  ],
+  customer: [],  // kunder får ikke API-tilgang som default
+};
+
+async function autoGenerateApiKey(
+  pool: Pool,
+  opts: {
+    organizationId: string;
+    partnerType: string;
+    partnerName: string;
+    createdBy: string;
+  },
+): Promise<{ raw_key: string; key_id: string } | null> {
+  const scopes = DEFAULT_SCOPES_BY_PARTNER_TYPE[opts.partnerType] ?? [];
+  if (scopes.length === 0) return null;
+
+  const env = process.env.NODE_ENV === "production" ? "live" : "test";
+  const rawKey = `lg_${env}_${crypto.randomBytes(24).toString("hex")}`;
+  const keyPrefix = rawKey.substring(0, 12);
+  const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+
+  const r = await pool.query<{ id: string }>(
+    `INSERT INTO partner_api_keys
+      (organization_id, key_prefix, key_hash, name, scopes, created_by)
+     VALUES ($1, $2, $3, $4, $5::text[], $6)
+     RETURNING id::text`,
+    [
+      opts.organizationId, keyPrefix, keyHash,
+      `${opts.partnerName} (auto-generated)`,
+      scopes, opts.createdBy,
+    ],
+  );
+  return { raw_key: rawKey, key_id: r.rows[0].id };
+}
+
 async function applyPartnerBenefits(
   pool: Pool, organizationId: string, partnerType: string,
 ): Promise<{ plan_upgraded: boolean; api_access: boolean }> {
@@ -412,8 +457,36 @@ export function registerPartnerApplicationsRoutes({
       // 3) Anvend benefits (utenfor TX — plan-update er idempotent)
       const benefits = await applyPartnerBenefits(pool, a.organization_id, a.partner_type);
 
-      // 4) Bekreftelses-mail
+      // 3b) Auto-generere API-key hvis partner-type gir API-tilgang
+      let apiKeyResult: { raw_key: string; key_id: string } | null = null;
+      if (benefits.api_access) {
+        try {
+          apiKeyResult = await autoGenerateApiKey(pool, {
+            organizationId: a.organization_id,
+            partnerType: a.partner_type,
+            partnerName: org.name,
+            createdBy: s.userId,
+          });
+        } catch (e) {
+          console.error("[partner-approve auto-key]", e);
+        }
+      }
+
+      // 4) Bekreftelses-mail (inkl raw API-key hvis generert)
       if (org.contact_email) {
+        const apiKeySection = apiKeyResult ? `
+          <hr style="margin:24px 0;border:none;border-top:1px solid #ddd;" />
+          <h3 style="color:#7c3aed;">Deres API-key</h3>
+          <p>Her er nøkkelen — kopier den nå, vi sender den ikke igjen:</p>
+          <pre style="background:#0a0512;color:#9be15d;padding:16px;border-radius:8px;
+                       font-family:monospace;font-size:13px;overflow-wrap:break-word;
+                       word-break:break-all;white-space:pre-wrap;">${apiKeyResult.raw_key}</pre>
+          <p>Bruk den i <code>Authorization: Bearer ...</code>-headeren.
+          Full dokumentasjon: <a href="${PUBLIC_BASE}/leadgrid/utviklere">${PUBLIC_BASE}/leadgrid/utviklere</a></p>
+          <p style="color:#888;font-size:13px;">
+          Trenger du en ny nøkkel? Be om det på e-post — vi genererer en ny og tilbakekaller den gamle.
+          </p>` : "";
+
         try {
           await sendTransactionalEmail({
             to: org.contact_email,
@@ -422,10 +495,10 @@ export function registerPartnerApplicationsRoutes({
                    <p>Vi har godkjent partnerskaps-søknaden fra <strong>${org.name}</strong>.
                    Dere er nå offisielt en <strong>${a.partner_type}</strong>-partner.</p>
                    ${benefits.plan_upgraded ? "<p>Plan-oppgraderingen er aktivert automatisk.</p>" : ""}
-                   ${benefits.api_access ? "<p>API-tilgang er klargjort — vi sender API-keys i en egen e-post.</p>" : ""}
                    <p>Logoen deres vises nå på <a href="${PUBLIC_BASE}/leadgrid">theroleroom.com/leadgrid</a>.</p>
+                   ${apiKeySection}
                    <p>Velkommen ombord!</p>`,
-            text: `Vi har godkjent partnerskaps-søknaden fra ${org.name}. Velkommen som ${a.partner_type}-partner.`,
+            text: `Vi har godkjent partnerskaps-søknaden fra ${org.name}. Velkommen som ${a.partner_type}-partner.${apiKeyResult ? `\n\nDeres API-key: ${apiKeyResult.raw_key}\nDokumentasjon: ${PUBLIC_BASE}/leadgrid/utviklere` : ""}`,
             kind: "partner_application_approved",
             sentByUserId: s.userId,
             pool,
@@ -438,6 +511,8 @@ export function registerPartnerApplicationsRoutes({
         partner_id: partnerId,
         plan_upgraded: benefits.plan_upgraded,
         api_access_granted: benefits.api_access,
+        api_key_generated: !!apiKeyResult,
+        api_key_preview: apiKeyResult ? apiKeyResult.raw_key.substring(0, 16) + "…" : null,
       });
     } catch (e) {
       await client.query("ROLLBACK");
