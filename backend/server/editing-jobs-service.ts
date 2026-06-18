@@ -264,6 +264,117 @@ export async function transferStagingToPhotographer(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Showcase-levering: lag klient-galleri fra leverte filer (i fotografens B2)
+// ─────────────────────────────────────────────────────────────────────
+const GALLERY_URL_TTL = 7 * 24 * 60 * 60; // B2/S3 SigV4-maks (presignert)
+
+export interface GalleryResult {
+  ok: boolean;
+  galleryId?: string;
+  accessToken?: string;
+  imageCount?: number;
+  error?: string;
+}
+
+/**
+ * Oppretter et photographer_client_galleries + client_gallery_images fra de
+ * leverte redigerings-filene (som ligger i fotografens egen B2 etter overføring).
+ * Bilde-URL-er presigneres fra fotografens BYO-B2; key lagres i metadata for
+ * senere re-signering (presignert maks 7 dager). Knytter gallery_id på jobben.
+ */
+export async function createClientGalleryFromJob(
+  pool: Pool,
+  jobId: string,
+  clientName: string,
+  clientEmail: string,
+): Promise<GalleryResult> {
+  const jr = await pool.query<{ photographer_id: string; project_title: string | null; gallery_id: string | null }>(
+    `SELECT photographer_id, project_title, gallery_id FROM editing_jobs WHERE id = $1`,
+    [jobId],
+  );
+  const job = jr.rows[0];
+  if (!job) return { ok: false, error: "ikke_funnet" };
+
+  const byo = await getByoCreds(pool, job.photographer_id);
+  if (!byo) return { ok: false, error: "photographer_b2_not_connected" };
+  const client = new S3Client({
+    region: byo.region,
+    endpoint: byo.endpointUrl || `https://s3.${byo.region}.backblazeb2.com`,
+    credentials: { accessKeyId: byo.keyId, secretAccessKey: byo.applicationKey },
+    forcePathStyle: true,
+  });
+
+  const files = await pool.query<{ file_name: string; destination_key: string | null; content_type: string | null }>(
+    `SELECT file_name, destination_key, content_type FROM editing_job_files
+      WHERE job_id = $1 AND destination_key IS NOT NULL
+      ORDER BY created_at ASC`,
+    [jobId],
+  );
+  if (files.rows.length === 0) return { ok: false, error: "ingen_leverte_filer" };
+
+  // Gjenbruk galleri hvis jobben allerede har ett, ellers opprett nytt
+  let galleryId = job.gallery_id || "";
+  let accessToken = "";
+  if (galleryId) {
+    const g = await pool.query<{ access_token: string }>(
+      `SELECT access_token FROM photographer_client_galleries WHERE id = $1`,
+      [galleryId],
+    );
+    accessToken = g.rows[0]?.access_token || "";
+  }
+  if (!galleryId || !accessToken) {
+    accessToken = randomBytes(24).toString("base64url");
+    const ins = await pool.query<{ id: string }>(
+      `INSERT INTO photographer_client_galleries
+         (photographer_id, client_name, client_email, project_title, access_token, gallery_settings, status)
+       VALUES ($1,$2,$3,$4,$5,$6,'active')
+       RETURNING id`,
+      [
+        job.photographer_id,
+        clientName,
+        clientEmail.toLowerCase().trim(),
+        job.project_title || "Redigert leveranse",
+        accessToken,
+        JSON.stringify({ source: "editing_job", editingJobId: jobId }),
+      ],
+    );
+    galleryId = ins.rows[0].id;
+  }
+
+  let sortOrder = 0;
+  for (const f of files.rows) {
+    if (!f.destination_key) continue;
+    let signed = "";
+    try {
+      signed = await getSignedUrl(
+        client,
+        new GetObjectCommand({ Bucket: byo.bucketName, Key: f.destination_key }),
+        { expiresIn: GALLERY_URL_TTL },
+      );
+    } catch {
+      continue;
+    }
+    await pool.query(
+      `INSERT INTO client_gallery_images
+         (gallery_id, photographer_id, image_title, thumbnail_url, full_size_url, image_metadata, sort_order)
+       VALUES ($1,$2,$3,$4,$4,$5,$6)`,
+      [
+        galleryId,
+        job.photographer_id,
+        f.file_name,
+        signed,
+        // Lagre key+bucket for senere re-signering (presignert URL utløper)
+        JSON.stringify({ b2Key: f.destination_key, bucket: byo.bucketName, source: "editing_job" }),
+        sortOrder++,
+      ],
+    );
+  }
+
+  await pool.query(`UPDATE editing_jobs SET gallery_id = $2, updated_at = NOW() WHERE id = $1`, [jobId, galleryId]);
+  return { ok: true, galleryId, accessToken, imageCount: sortOrder };
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Audit-logg
 // ─────────────────────────────────────────────────────────────────────
 export async function logJobEvent(

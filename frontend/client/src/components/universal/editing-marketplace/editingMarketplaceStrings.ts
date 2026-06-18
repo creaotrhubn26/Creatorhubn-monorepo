@@ -221,6 +221,15 @@ const STRINGS: Dict = {
     en: "Payment is held securely and released to the vendor only after you approve the delivery.",
   },
   rq_select_at_least_one: { no: "Velg minst én tjeneste.", en: "Select at least one service." },
+
+  // ── Lever til kunde ──
+  dlv_title: { no: "Godkjenn og lever til kunde", en: "Approve and deliver to client" },
+  dlv_client_name: { no: "Kundenavn", en: "Client name" },
+  dlv_client_email: { no: "Kunde e-post", en: "Client email" },
+  dlv_deliver: { no: "Lever til kunde", en: "Deliver to client" },
+  dlv_delivering: { no: "Leverer…", en: "Delivering…" },
+  dlv_share_url: { no: "Delingslenke til kunde:", en: "Client share link:" },
+  dlv_done: { no: "Levert til kunde", en: "Delivered to client" },
 };
 
 export function t(key: string, locale: Locale = "no"): string {

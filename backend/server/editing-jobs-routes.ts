@@ -34,6 +34,7 @@ import {
   revokeUploadToken,
   presignStagingUpload,
   transferStagingToPhotographer,
+  createClientGalleryFromJob,
   stagingPrefix,
   logJobEvent,
 } from "./editing-jobs-service";
@@ -595,6 +596,44 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
     } catch (err) {
       console.error("[editing/jobs:payment-confirm] error", err);
       res.status(500).json({ error: "kunne_ikke_bekrefte_betaling" });
+    }
+  });
+
+  // ── Lever til kunde: opprett Showcase/klient-galleri fra godkjent leveranse ──
+  app.post("/api/editing/jobs/:id/deliver-to-client", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const auth = await loadAuthorizedJob(req.params.id, session.userId);
+      if (!auth || auth.role !== "photographer") return res.status(404).json({ error: "ikke_funnet" });
+      if (!["approved", "delivered_to_client"].includes(auth.job.status)) {
+        return res.status(400).json({ error: "ikke_godkjent" });
+      }
+      const clientName = (req.body?.clientName || "").trim();
+      const clientEmail = (req.body?.clientEmail || "").trim();
+      if (!clientName || !clientEmail) return res.status(400).json({ error: "mangler_klientinfo" });
+
+      const result = await createClientGalleryFromJob(pool, req.params.id, clientName, clientEmail);
+      if (!result.ok) return res.status(502).json({ error: result.error });
+
+      await pool.query(
+        `UPDATE editing_jobs SET status = 'delivered_to_client', delivered_to_client_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [req.params.id],
+      );
+      await logJobEvent(pool, req.params.id, "delivered_to_client", session.userId, "photographer", {
+        galleryId: result.galleryId,
+        imageCount: result.imageCount,
+      });
+      const origin = req.headers.origin || process.env.PUBLIC_APP_URL || "";
+      res.json({
+        ok: true,
+        galleryId: result.galleryId,
+        imageCount: result.imageCount,
+        shareUrl: result.accessToken ? `${origin}/client/gallery/${result.accessToken}` : null,
+      });
+    } catch (err) {
+      console.error("[editing/jobs:deliver-to-client] error", err);
+      res.status(500).json({ error: "kunne_ikke_levere_til_kunde" });
     }
   });
 

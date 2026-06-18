@@ -26,6 +26,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  TextField,
   Snackbar,
   Alert,
   useTheme,
@@ -125,6 +126,10 @@ export default function EditingVendorDiscoveryPanel({
   const qc = useQueryClient();
   const [profileId, setProfileId] = useState<string | null>(null);
   const [requestVendorId, setRequestVendorId] = useState<string | null>(null);
+  const [deliverJobId, setDeliverJobId] = useState<string | null>(null);
+  const [clientName, setClientName] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [snack, setSnack] = useState<{ msg: string; sev: "success" | "error" } | null>(null);
 
   const profileQuery = useQuery<EditingVendor & { country?: string }>({
@@ -136,9 +141,24 @@ export default function EditingVendorDiscoveryPanel({
   const approveMutation = useMutation({
     mutationFn: (jobId: string) =>
       apiRequest(`/api/editing/jobs/${jobId}/approve`, { method: "POST" }),
-    onSuccess: () => {
+    onSuccess: (_d, jobId) => {
       qc.invalidateQueries({ queryKey: ["/api/editing/jobs", "delivered"] });
-      setSnack({ msg: t("approve_and_deliver", locale), sev: "success" });
+      setDeliverJobId(jobId);
+    },
+    onError: () => setSnack({ msg: "Feil", sev: "error" }),
+  });
+
+  const deliverMutation = useMutation({
+    mutationFn: (vars: { jobId: string; clientName: string; clientEmail: string }) =>
+      apiRequest(`/api/editing/jobs/${vars.jobId}/deliver-to-client`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientName: vars.clientName, clientEmail: vars.clientEmail }),
+      }),
+    onSuccess: (r: { shareUrl?: string }) => {
+      setShareUrl(r.shareUrl || null);
+      qc.invalidateQueries({ queryKey: ["/api/editing/jobs", "delivered"] });
+      setSnack({ msg: t("dlv_done", locale), sev: "success" });
     },
     onError: () => setSnack({ msg: "Feil", sev: "error" }),
   });
@@ -151,6 +171,12 @@ export default function EditingVendorDiscoveryPanel({
       setRequestVendorId(id);
     });
   const handleApprove = onApproveJob ?? ((id: string) => approveMutation.mutate(id));
+  const closeDeliver = () => {
+    setDeliverJobId(null);
+    setClientName("");
+    setClientEmail("");
+    setShareUrl(null);
+  };
   const profile = profileQuery.data;
 
   const cardSx = {
@@ -455,6 +481,55 @@ export default function EditingVendorDiscoveryPanel({
         }}
         locale={locale}
       />
+
+      {/* Godkjenn og lever til kunde */}
+      <Dialog open={!!deliverJobId} onClose={closeDeliver} maxWidth="xs" fullWidth>
+        <DialogTitle>{t("dlv_title", locale)}</DialogTitle>
+        <DialogContent dividers>
+          {shareUrl ? (
+            <Stack spacing={1}>
+              <Alert severity="success">{t("dlv_done", locale)}</Alert>
+              <Typography variant="caption" color="text.secondary">
+                {t("dlv_share_url", locale)}
+              </Typography>
+              <TextField value={shareUrl} size="small" fullWidth InputProps={{ readOnly: true }} />
+            </Stack>
+          ) : (
+            <Stack spacing={2} sx={{ mt: 0.5 }}>
+              <TextField
+                label={t("dlv_client_name", locale)}
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                size="small"
+                fullWidth
+              />
+              <TextField
+                label={t("dlv_client_email", locale)}
+                type="email"
+                value={clientEmail}
+                onChange={(e) => setClientEmail(e.target.value)}
+                size="small"
+                fullWidth
+              />
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDeliver}>{locale === "no" ? "Lukk" : "Close"}</Button>
+          {!shareUrl && (
+            <Button
+              variant="contained"
+              disabled={!clientName || !clientEmail || deliverMutation.isPending}
+              onClick={() =>
+                deliverJobId && deliverMutation.mutate({ jobId: deliverJobId, clientName, clientEmail })
+              }
+              sx={{ bgcolor: accent, "&:hover": { bgcolor: "#e67e00" } }}
+            >
+              {deliverMutation.isPending ? t("dlv_delivering", locale) : t("dlv_deliver", locale)}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
 
       <Snackbar open={!!snack} autoHideDuration={3000} onClose={() => setSnack(null)}>
         {snack ? (
