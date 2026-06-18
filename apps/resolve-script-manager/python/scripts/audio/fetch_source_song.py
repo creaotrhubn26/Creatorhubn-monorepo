@@ -118,7 +118,7 @@ def detect_beats_librosa(audio_path: str) -> dict:
         "    best = (f'{key_names[shift]} minor', min_corr)\n"
         "print(json.dumps({\n"
         "  'beats': times,\n"
-        "  'tempo': float(tempo),\n"
+        "  'tempo': float(tempo[0] if hasattr(tempo, '__len__') else tempo),\n"
         "  'duration': duration,\n"
         "  'key': best[0],\n"
         "  'keyConfidence': round(float(best[1]), 3),\n"

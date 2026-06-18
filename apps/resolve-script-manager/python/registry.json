@@ -480,6 +480,33 @@
       "requiresTimeline": true
     },
     {
+      "id": "refresh_beat_markers",
+      "name": "Re-kjør beat-markører",
+      "category": "markers",
+      "scriptPath": "scripts/markers/refresh_beat_markers.py",
+      "description": "Legger (på nytt) en musikk-beat-grid på aktiv timeline, forankret til nåværende edit via kilde-tid. Idempotent: sletter egne 'beatgrid:'-markører først, så den kan re-kjøres når som helst uten dobbel-stabling. Leser beat-grids fra staging/<projectId>/source_songs.",
+      "requiredInputs": [
+        {
+          "key": "projectId",
+          "label": "Staging-prosjekt (auto-detekteres hvis blank)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "timelineName",
+          "label": "Timeline-navn (aktiv timeline hvis blank)",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "resolvePageDependency": "edit",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "generate_marker_report",
       "name": "Generate Marker Report",
       "category": "markers",
