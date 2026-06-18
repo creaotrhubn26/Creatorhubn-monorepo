@@ -49,6 +49,11 @@ struct PitchDeckStudioView: View {
     var body: some View {
         NavigationStack {
             content
+                .background(
+                    BrandedHeroBackground(.backdrop2, darkenFrom: 0.55, darkenTo: 0.97)
+                        .ignoresSafeArea()
+                )
+                .scrollContentBackground(.hidden)
                 .navigationTitle(bundle?.deck.name ?? "Pitch Deck Studio")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbar }

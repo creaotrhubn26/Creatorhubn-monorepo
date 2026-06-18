@@ -60,6 +60,10 @@ struct PitchDeckOnboardingView: View {
                 }
                 navigation
             }
+            .background(
+                BrandedHeroBackground(.backdrop3, darkenFrom: 0.55, darkenTo: 0.97)
+                    .ignoresSafeArea()
+            )
             .navigationTitle("Nytt pitch deck")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

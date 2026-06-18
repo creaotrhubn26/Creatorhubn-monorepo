@@ -19,8 +19,14 @@ struct MyDayView: View {
                     leadsList
                 }
                 .padding(.horizontal)
+                .padding(.top, 12)
                 .padding(.bottom, 32)
             }
+            .background(
+                BrandedHeroBackground(.backdrop1, darkenFrom: 0.45, darkenTo: 0.95)
+                    .ignoresSafeArea()
+            )
+            .scrollContentBackground(.hidden)
             .navigationTitle("Min dag")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
