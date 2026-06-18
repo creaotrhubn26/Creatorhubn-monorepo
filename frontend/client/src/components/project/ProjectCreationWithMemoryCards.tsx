@@ -146,6 +146,7 @@ import { useLeadImport } from '@/hooks/useLeadImport';
 import ProjectHealthCheck from './ProjectHealthCheck';
 import ProjectCollaborators from './ProjectCollaborators';
 import CloudDestinationActivator from '@/components/storage/CloudDestinationActivator';
+import ExternalEditingOption from '@/components/universal/editing-marketplace/ExternalEditingOption';
 import CloudErasePanel from '@/components/storage/CloudErasePanel';
 import DeliverFromArchiveDialog from '@/components/storage/DeliverFromArchiveDialog';
 import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
@@ -4520,6 +4521,12 @@ useEffect(() => {
               onActivated={() => {
                 showSuccessToast?.('Offsite-backup aktivert — den nye destinasjonen vises i One Desk neste gang du starter en backup.', 5000);
               }}
+            />
+            {/* Hyr inn eksternt redigeringsteam for dette prosjektet (#6) */}
+            <ExternalEditingOption
+              projectId={String(currentProject.id)}
+              projectTitle={projectData.projectName || String(currentProject.id)}
+              locale="no"
             />
             <Box sx={{ mt: 2 }}>
               <Button

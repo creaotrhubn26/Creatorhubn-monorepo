@@ -236,6 +236,16 @@ const STRINGS: Dict = {
   dlv_delivering: { no: "Leverer…", en: "Delivering…" },
   dlv_share_url: { no: "Delingslenke til kunde:", en: "Client share link:" },
   dlv_done: { no: "Levert til kunde", en: "Delivered to client" },
+
+  // ── Ekstern redigerer-valg ved prosjektopprettelse ──
+  ext_title: { no: "La et eksternt firma redigere", en: "Let an external company edit" },
+  ext_desc: {
+    no: "Hyr inn et godkjent Creatorhub-redigeringsteam for dette prosjektet. Filer overføres sikkert via B2; du godkjenner før kunden ser resultatet.",
+    en: "Hire an approved Creatorhub editing team for this project. Files transfer securely via B2; you approve before the client sees the result.",
+  },
+  ext_enable: { no: "Aktiver ekstern redigering", en: "Enable external editing" },
+  ext_pick_vendor: { no: "Velg redigeringsbedrift", en: "Choose editing company" },
+  ext_pick_later: { no: "Velg senere", en: "Choose later" },
 };
 
 export function t(key: string, locale: Locale = "no"): string {
