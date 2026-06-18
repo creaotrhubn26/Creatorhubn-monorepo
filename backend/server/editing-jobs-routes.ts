@@ -200,12 +200,21 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
       }
 
       const status = vendorId ? "requested" : "draft";
+      // Kalkyle-modell (velges pr oppdrag): fixed_fee (kostnad av-toppen) | revenue_share (% av inntekt)
+      const costModel = b.costModel === "revenue_share" ? "revenue_share" : "fixed_fee";
+      const revenueSharePct =
+        costModel === "revenue_share" && Number.isFinite(Number(b.revenueSharePct))
+          ? Number(b.revenueSharePct)
+          : null;
+      const splitSheetId: string | null = b.splitSheetId || null;
+
       const ins = await pool.query(
         `INSERT INTO editing_jobs
            (project_id, project_title, photographer_id, photographer_email, vendor_id, vendor_name,
             status, requested_services, brief, amount_cents, currency, platform_fee_cents,
-            max_revisions, quality_spec, confidentiality_ack, staging_prefix, requested_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'NOK',$11,$12,$13,$14,$15,$16)
+            max_revisions, quality_spec, confidentiality_ack, staging_prefix, requested_at,
+            cost_model, revenue_share_pct, split_sheet_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'NOK',$11,$12,$13,$14,$15,$16,$17,$18,$19)
          RETURNING id`,
         [
           b.projectId || null,
@@ -224,6 +233,9 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
           !!b.confidentialityAck,
           null,
           vendorId ? new Date() : null,
+          costModel,
+          revenueSharePct,
+          splitSheetId,
         ],
       );
       const jobId = ins.rows[0].id;
@@ -232,6 +244,24 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
         jobId,
         stagingPrefix(jobId),
       ]);
+
+      // Revenue-share -> legg vendor inn i split-sheet-kalkylen som bidragsyter
+      if (costModel === "revenue_share" && splitSheetId && revenueSharePct != null) {
+        try {
+          const contrib = await pool.query(
+            `INSERT INTO split_sheet_contributors (split_sheet_id, name, role, percentage, user_id, notes)
+             VALUES ($1, $2, 'collaborator', $3, $4, 'Ekstern redigering (Creatorhub vendor)')
+             RETURNING id`,
+            [splitSheetId, vendorName || "Redigering", revenueSharePct, vendorId],
+          );
+          await pool.query(`UPDATE editing_jobs SET split_sheet_contributor_id = $2 WHERE id = $1`, [
+            jobId,
+            contrib.rows[0].id,
+          ]);
+        } catch (e) {
+          console.warn("[editing/jobs] split-sheet contributor-kobling feilet", (e as Error).message);
+        }
+      }
       await logJobEvent(pool, jobId, vendorId ? "requested" : "created", session.userId, "photographer", {
         vendorId,
         amountCents,
