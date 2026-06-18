@@ -750,6 +750,7 @@ import { setupGoogleWalletRoutes } from "./google-wallet-routes";
 import { setupUniversalVendorShowcaseRoutes } from "./universal-vendor-showcase-routes";
 import { setupBrandingRoutes } from "./branding-routes";
 import { setupVendorTypesRoutes } from "./vendor-types-routes";
+import { setupEditingJobsRoutes } from "./editing-jobs-routes";
 import { setupMeetingNotesRoutes } from "./meeting-notes-routes";
 import { setupDavinciResolveRoutes } from "./davinci-resolve-routes";
 import { setupSeoBotRoutes } from "./seo-bot-routes";
@@ -64810,6 +64811,14 @@ setupVendorTypesRoutes({
   compatStoreSet,
   dbCompatVendorOverrideKey,
   requireAdminSession,
+});
+
+// /api/editing/* — Foto & Video redigerings-marketplace (fotograf hyrer
+// ekstern redigeringsvendor; sikker B2-filflyt + Creatorhub Vendor Standard).
+setupEditingJobsRoutes({
+  app,
+  pool,
+  requireUserSession,
 });
 
 // /api/meeting-notes/* — 7 endpoints (AI-process, writing-assist, CRUD,

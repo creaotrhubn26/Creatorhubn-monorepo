@@ -592,6 +592,49 @@ export const coreVendorTypes: Record<string, VendorTypeConfig> = {
 
 // Expandable vendor types - can be added dynamically
 export const expandableVendorTypes: Record<string, VendorTypeConfig> = {
+  editing: {
+    id: 'editing',
+    name: 'Foto & Video Redigering',
+    nameEnglish: 'Photo & Video Editing',
+    color: '#ff6b35',
+    icon: Videocam,
+    category: 'creative',
+    primaryActions: [
+      { label: 'Innkommende forespørsler', icon: Store, action: 'manage_editing_requests' },
+      { label: 'Ny tjeneste', icon: Settings, action: 'create_service' },
+      { label: 'Last opp leveranse', icon: PhotoCamera, action: 'upload_delivery' },
+    ],
+    quickStats: [
+      { label: 'Forespørsler', key: 'editing_requests', icon: Store },
+      { label: 'Aktive oppdrag', key: 'active_jobs', icon: Videocam },
+      { label: 'Leveranser', key: 'deliveries', icon: PhotoCamera },
+      { label: 'Anmeldelser', key: 'reviews', icon: Store },
+    ],
+    supportedFeatures: {
+      showcase: true,
+      pricing: true,
+      inventory: false,
+      bookings: true,
+      subscriptions: false,
+      downloads: true,
+      physical_shipping: false,
+      digital_delivery: true,
+    },
+    marketplaceCategory: ['editing', 'photography', 'video', 'post-production'],
+    targetCustomers: ['photographers', 'videographers', 'content_creators'],
+    productCategories: [
+      { id: 'photo-editing', label: 'Fotoredigering', color: '#ff6b35' },
+      { id: 'retouch', label: 'Retusj', color: '#ff8e72' },
+      { id: 'culling', label: 'Culling', color: '#ffa94d' },
+      { id: 'video-editing', label: 'Videoredigering', color: '#e74c3c' },
+      { id: 'color-grading', label: 'Color grading', color: '#9b59b6' },
+      { id: 'motion-graphics', label: 'Motion graphics', color: '#3498db' },
+      { id: 'text-animation', label: 'Tekstanimasjon', color: '#1abc9c' },
+      { id: 'sound-mix', label: 'Lydmiks', color: '#16a085' },
+      { id: 'look-dev', label: 'Look dev', color: '#f39c12' },
+    ],
+  },
+
   video: {
     id: 'video',
     name: 'Video & Film',
