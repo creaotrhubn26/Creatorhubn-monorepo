@@ -534,6 +534,55 @@
       "requiresTimeline": true
     },
     {
+      "id": "generate_contact_sheets",
+      "name": "Generate Contact Sheets (analyse)",
+      "category": "vision",
+      "scriptPath": "scripts/analysis/generate_contact_sheets.py",
+      "description": "Frame-uttrekk hvert N sek + Pillow-montasjer med tidskode-labels fra en kilde-video. Grunnlaget for frame-for-frame-analyse (forstå historien før klipp velges). Krever ikke Resolve.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "Sti til kilde-video", "type": "text", "required": true },
+        { "key": "intervalSec", "label": "Sekunder mellom frames (default 10)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "audio_energy_map",
+      "name": "Audio Energy Map",
+      "category": "audio",
+      "scriptPath": "scripts/analysis/audio_energy_map.py",
+      "description": "RMS-loudness per sekund over hele filmen → topper (jubel/dhol/applaus) + stille partier (intimt/seremoni), som JSON + 30s-kurve. Finn emosjonelle/høye øyeblikk. Krever ikke Resolve.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "Sti til kilde-video", "type": "text", "required": true }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "fetch_cue_songs",
+      "name": "Fetch Cue Songs (batch)",
+      "category": "audio",
+      "scriptPath": "scripts/audio/fetch_cue_songs.py",
+      "description": "Leser staging/<projectId>/cue_map.json og laster ned ALLE sanger (yt-dlp) + beat-grids i ett kall, i stedet for én og én. Privat bryllups-bruk.",
+      "requiredInputs": [
+        { "key": "projectId", "label": "Staging-prosjekt", "type": "text", "required": true }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "generate_marker_report",
       "name": "Generate Marker Report",
       "category": "markers",
