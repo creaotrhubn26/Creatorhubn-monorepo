@@ -182,9 +182,13 @@ def run(params: dict, dry_run: bool) -> None:
                 plan.append((cstart + tt, color, f"{label} · takt {n}")); n += 1
 
     added = skipped = 0
+    tl_len = ef - sf
     for sec, color, label in plan:
-        frame = sf + int(round(sec * fps))
-        if frame >= ef: frame = ef - 1
+        # AddMarker expects a 0-based frame relative to the timeline start —
+        # do NOT add start_frame (that pushed the whole grid ~1h to the right).
+        frame = int(round(sec * fps))
+        if frame < 0: frame = 0
+        if frame >= tl_len: frame = tl_len - 1
         if frame in existing:
             skipped += 1; continue
         try:
