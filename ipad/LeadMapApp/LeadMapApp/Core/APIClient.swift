@@ -10,6 +10,9 @@ import Foundation
 import CoreLocation
 
 actor APIClient {
+    /// Statisk base-URL for kall som ikke trenger token (Google OAuth).
+    static let baseURL = "https://creatorhub-backend-rtbl.onrender.com"
+
     private let token: String
     private let baseURL: URL
     private let session: URLSession

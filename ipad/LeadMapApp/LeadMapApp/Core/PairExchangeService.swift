@@ -60,6 +60,29 @@ actor PairExchangeService {
         ])
     }
 
+    /// Bytter et Google id_token mot et Leadgrid bearer-token.
+    /// Backend (/api/leadgrid/auth/google/exchange) verifiserer JWT mot
+    /// Google, oppretter Solo Free-org hvis ny bruker, og returnerer
+    /// samme PairExchangeResponse-format som koden-flyt.
+    func exchangeGoogleToken(idToken: String) async throws -> PairExchangeResponse {
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/leadgrid/auth/google/exchange"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "id_token": idToken,
+            "deviceInfo": Self.deviceInfo(),
+            "platform": "ios_native_app",
+        ])
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw PairExchangeError(code: "network_error")
+        }
+        if (200..<300).contains(http.statusCode) {
+            return try JSONDecoder().decode(PairExchangeResponse.self, from: data)
+        }
+        throw PairExchangeError(code: "google_auth_failed")
+    }
+
     func exchange(qrPayload: String) async throws -> PairExchangeResponse {
         // QR-payload-format: ROLE-ROOM-PAIR:<token>
         let prefix = "ROLE-ROOM-PAIR:"

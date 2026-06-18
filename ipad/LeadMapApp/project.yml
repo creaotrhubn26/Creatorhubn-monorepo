@@ -54,8 +54,8 @@ targets:
         NSLocationAlwaysAndWhenInUseUsageDescription: Leadgrid varsler deg når du er innen 500m av en tildelt lead — også når app-en er lukket. Du kan skru dette av i Org-tab → Personvern.
         UIBackgroundModes:
           - location
-        # Kamera: QR-paring (Admin Room) + visittkort-skanner (VisionKit #182).
-        NSCameraUsageDescription: Leadgrid bruker kameraet til å skanne visittkort (auto-fyll lead) og QR-koden i Admin Room for paring.
+        # Kamera: QR-paring + visittkort-skanner (VisionKit #182).
+        NSCameraUsageDescription: Leadgrid bruker kameraet til å skanne visittkort (auto-fyll lead) og QR-koden i nettleseren for paring.
         # Mikrofon: dikter visit-notater (#183).
         NSMicrophoneUsageDescription: Leadgrid bruker mikrofonen til å diktere visit-notater etter besøk.
         # Tale-gjenkjenning: transkriber dikterte notater (#183).
@@ -64,6 +64,12 @@ targets:
         UIApplicationSupportsIndirectInputEvents: true
         # Live Activities — 'Pågående besøk' på låseskjerm + Dynamic Island (#184).
         NSSupportsLiveActivities: true
+        # URL Schemes for Google Sign-In OAuth callback.
+        # 'leadgrid://oauth?code=…' fanges av ASWebAuthenticationSession.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.creatorhubn.LeadMapApp.oauth
+            CFBundleURLSchemes:
+              - leadgrid
         # Export Compliance — Leadgrid bruker kun HTTPS (URLSession) +
         # iOS Data Protection. Ingen egen krypto-kode i appen. Flipp
         # dette til true HVIS du innfører end-to-end-kryptering,
