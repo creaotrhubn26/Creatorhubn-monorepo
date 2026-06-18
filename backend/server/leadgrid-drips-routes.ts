@@ -205,7 +205,8 @@ export function registerLeadgridDripsRoutes({ app, pool, activeSessions }: Deps)
       }>(
         `SELECT d.id, d.user_id, d.organization_id, d.trigger_event, d.triggered_at,
                 d.day1_sent_at, d.day3_sent_at, d.day7_sent_at, d.day14_sent_at,
-                u.email AS user_email, u.full_name AS user_name,
+                u.email AS user_email,
+                COALESCE(NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''), u.first_name, u.username) AS user_name,
                 o.name AS org_name
            FROM onboarding_drips d
            JOIN users u ON u.id = d.user_id
