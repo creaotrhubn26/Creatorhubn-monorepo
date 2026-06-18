@@ -36,6 +36,7 @@ import {
   People as RolesIcon,
   CalendarMonth as PlanIcon,
   RocketLaunch as MarketingPlanIcon,
+  EditCalendarOutlined as ContentPlanIcon,
   Palette as MerkevareIcon,
   Videocam as MeetingsIcon,
   ForumOutlined as MessagesIcon,
@@ -56,9 +57,10 @@ const ClientMeetingsView = lazy(() => import('./ClientMeetingsView'));
 const ClientConversationView = lazy(() => import('./ClientConversationView'));
 const ClientVaultView = lazy(() => import('./ClientVaultView'));
 const ProducerAssistantsPanel = lazy(() => import('./ProducerAssistantsPanel'));
+const ClientContentPlannerView = lazy(() => import('./ClientContentPlannerView'));
 const RoleRoomChatBubble = lazy(() => import('./RoleRoomChatBubble'));
 
-type TabValue = 'economy' | 'approval' | 'brief' | 'merkevare' | 'meetings' | 'messages' | 'vault' | 'team' | 'roles' | 'plan' | 'marketing-plan';
+type TabValue = 'economy' | 'approval' | 'brief' | 'merkevare' | 'meetings' | 'messages' | 'vault' | 'team' | 'content' | 'roles' | 'plan' | 'marketing-plan';
 
 const TABS: Array<{ value: TabValue; label: string; icon: React.ReactElement; producerOnly?: boolean }> = [
   { value: 'economy', label: 'Økonomi', icon: <EconomyIcon /> },
@@ -67,6 +69,7 @@ const TABS: Array<{ value: TabValue; label: string; icon: React.ReactElement; pr
   { value: 'brief', label: 'Brief', icon: <BriefIcon /> },
   { value: 'merkevare', label: 'Merkevare', icon: <MerkevareIcon /> },
   { value: 'meetings', label: 'Møter', icon: <MeetingsIcon /> },
+  { value: 'content', label: 'Content Planner', icon: <ContentPlanIcon /> },
   { value: 'vault', label: 'Tilganger', icon: <VaultIcon /> },
   { value: 'team', label: 'Team', icon: <TeamIcon />, producerOnly: true },
   { value: 'roles', label: 'Roller', icon: <RolesIcon /> },
@@ -277,6 +280,7 @@ export default function ClientWorkspaceShell({
           {activeTab === 'brief' && <ClientBriefView projectId={projectId} />}
           {activeTab === 'merkevare' && <ClientMerkevareView projectId={projectId} />}
           {activeTab === 'meetings' && <ClientMeetingsView projectId={projectId} />}
+          {activeTab === 'content' && <ClientContentPlannerView projectId={projectId} />}
           {activeTab === 'vault' && <ClientVaultView projectId={projectId} />}
           {activeTab === 'team' && isPreviewMode && <ProducerAssistantsPanel projectId={projectId} />}
           {activeTab === 'messages' && <ClientConversationView projectId={projectId} canUseInternal={isPreviewMode} />}

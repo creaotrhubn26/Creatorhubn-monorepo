@@ -34,10 +34,12 @@ import {
   AssignmentOutlined as BriefIcon,
   AutoAwesomeOutlined as AiIcon,
   SummarizeOutlined as SummaryIcon,
+  EditCalendarOutlined as ContentPlanActionIcon,
 } from '@mui/icons-material';
 import { listMessages, sendMessage, updateMessage, aiAssist, type RoleRoomMessage } from '../../services/roleRoomMessagesApi';
 import { producerWorkflowService, type ProducerProjectNotification } from '../../services/producerWorkflowService';
 import { createMeeting, listMeetings, type RoleRoomMeeting } from '../../services/roleRoomMeetingsApi';
+import { createContentPlanItem } from '../../services/roleRoomContentPlanApi';
 import { uploadMaterialFile, MATERIAL_CATEGORIES, listMaterials, downloadMaterialFile, type MaterialCategory, type RoleRoomMaterial } from '../../services/roleRoomMaterialsApi';
 import { listDeliverables, updateDeliverable, type RoleRoomDeliverable } from '../../services/roleRoomDeliverablesApi';
 
@@ -289,6 +291,24 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
     } catch (e) { setToast(e instanceof Error ? e.message : 'Kunne ikke be om brief-svar.'); }
     finally { setBusyAction(false); }
   }, [projectId, load]);
+
+  // Legg i Content Planner: gjør samtale-tekst/idé til en planlagt post.
+  const addToContentPlanner = useCallback(async () => {
+    setBusyAction(true); setActionAnchor(null);
+    try {
+      const title = draft.trim() || 'Post fra samtale';
+      const item = await createContentPlanItem(projectId, { title, source: 'chat' });
+      await sendMessage(projectId, {
+        body: `La «${title}» i Content Planner.`,
+        linkedEntityType: 'content_plan', linkedEntityId: item.id,
+        metadata: { action: 'content_plan', refLabel: title },
+      });
+      setDraft('');
+      setToast('Lagt i Content Planner — sett dato/plattform der.');
+      await load();
+    } catch (e) { setToast(e instanceof Error ? e.message : 'Kunne ikke legge i Content Planner.'); }
+    finally { setBusyAction(false); }
+  }, [projectId, draft, load]);
 
   // AI-utkast / oppsummering → fyller komposeren (ingenting sendes auto).
   const runAiAssist = useCallback(async (mode: 'draft' | 'summary') => {
@@ -548,6 +568,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
             ...(canUseInternal ? [
               { q: 'del budsjett økonomi publiser klient', icon: <BudgetIcon sx={{ color: '#86efac' }} />, primary: 'Del budsjett med klient', secondary: 'Publiser budsjettlinjer → klientens Økonomi', run: () => void shareBudget() },
               { q: 'be om brief svar intake', icon: <BriefIcon sx={{ color: '#a5b4fc' }} />, primary: 'Be om brief-svar', secondary: 'Forespørsel → klientens Brief-fane', run: () => void requestBriefInput() },
+              { q: 'legg i content planner post planlegg publiser', icon: <ContentPlanActionIcon sx={{ color: '#f0abfc' }} />, primary: 'Legg i Content Planner', secondary: 'Gjør idé → planlagt post (sett dato der)', run: () => void addToContentPlanner() },
             ] : []),
           ].filter((a) => !actionQuery || `${a.primary} ${a.q}`.toLowerCase().includes(actionQuery.toLowerCase())).map((a) => (
             <MenuItem key={a.primary} onClick={a.run}>
@@ -559,7 +580,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
             <Typography sx={{ color: 'rgba(226,232,240,0.4)', fontSize: '0.64rem', fontWeight: 700, letterSpacing: 0.4 }}>KOMMER SNART</Typography>
           </Box>
           {[
-            'Legg i Content Planner', 'Send faktura',
+            'Send faktura',
           ].map((label) => (
             <MenuItem key={label} disabled>
               <ListItemIcon><ActivityIcon sx={{ color: 'rgba(226,232,240,0.4)' }} /></ListItemIcon>
