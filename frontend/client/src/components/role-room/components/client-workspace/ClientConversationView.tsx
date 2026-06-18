@@ -246,7 +246,24 @@ export default function ClientConversationView({ projectId }: { projectId: strin
     setActionSpotlight(false);
     try { window.localStorage.setItem('rr_action_seen', '1'); } catch { /* ignore */ }
   }, []);
-  const openActionLauncher = useCallback((anchor: HTMLElement) => { setActionAnchor(anchor); dismissSpotlight(); }, [dismissSpotlight]);
+  const openActionLauncher = useCallback((anchor: HTMLElement) => { setActionAnchor(anchor); dismissSpotlight(); setActionQuery(''); }, [dismissSpotlight]);
+
+  // Cmd/Ctrl+K åpner Action hvor som helst i samtalen.
+  const actionBtnRef = useRef<HTMLButtonElement | null>(null);
+  const [actionQuery, setActionQuery] = useState('');
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (actionBtnRef.current) { setActionAnchor(actionBtnRef.current); setActionQuery(''); dismissSpotlight(); }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dismissSpotlight]);
+
+  // Intent-deteksjon: foreslå «book møte» når brukeren snakker om møte.
+  const meetingIntent = useMemo(() => /\bmøte\b|\bmøtes\b|\bta en prat\b|\bvideo\b|\bringe?\b|\bcall\b/i.test(draft) && draft.trim().length > 6, [draft]);
 
   // Grupper feed per dag.
   const grouped = useMemo(() => {
@@ -279,9 +296,16 @@ export default function ClientConversationView({ projectId }: { projectId: strin
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={24} sx={{ color: '#a855f7' }} /></Box>
       ) : feed.length === 0 ? (
-        <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.85rem', py: 3, textAlign: 'center' }}>
-          Ingen aktivitet ennå. Send den første meldingen nedenfor.
-        </Typography>
+        <Stack spacing={1.5} alignItems="center" sx={{ py: 3 }}>
+          <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.85rem', textAlign: 'center' }}>
+            Ingen aktivitet ennå. Skriv en melding, eller prøv en <strong style={{ color: '#c4b5fd' }}>Action</strong>:
+          </Typography>
+          <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75, justifyContent: 'center' }}>
+            <Chip clickable onClick={() => { setProposeOpen(true); }} icon={<ScheduleIcon sx={{ fontSize: 15, color: '#a5b4fc !important' }} />} label="Book møte" sx={{ height: 32, fontWeight: 700, color: '#e2e8f0', background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(168,85,247,0.35)' }} />
+            <Chip clickable onClick={() => void requestUpload('brand_logo')} icon={<UploadIcon sx={{ fontSize: 15, color: '#7dd3fc !important' }} />} label="Be om logo" sx={{ height: 32, fontWeight: 700, color: '#e2e8f0', background: 'rgba(56,189,248,0.14)', border: '1px solid rgba(56,189,248,0.32)' }} />
+            <Chip clickable onClick={() => void sendToApproval()} icon={<ApprovalIcon sx={{ fontSize: 15, color: '#f0abfc !important' }} />} label="Send til godkjenning" sx={{ height: 32, fontWeight: 700, color: '#e2e8f0', background: 'rgba(240,171,252,0.14)', border: '1px solid rgba(240,171,252,0.32)' }} />
+          </Stack>
+        </Stack>
       ) : (
         <Stack spacing={1.5}>
           {grouped.map(([day, dayItems]) => (
@@ -334,9 +358,21 @@ export default function ClientConversationView({ projectId }: { projectId: strin
             <Button onClick={dismissSpotlight} size="small" sx={{ textTransform: 'none', fontWeight: 700, minHeight: 36, color: 'rgba(226,232,240,0.8)' }}>Skjønner</Button>
           </Box>
         ) : null}
+        {meetingIntent && !proposeOpen ? (
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.75 }}>
+            <Chip
+              clickable onClick={() => setProposeOpen(true)}
+              icon={<InstantMeetIcon sx={{ fontSize: 15, color: '#fcd34d !important' }} />}
+              label="Book møte?"
+              sx={{ height: 30, fontWeight: 700, color: '#fcd34d', background: 'rgba(245,158,11,0.14)', border: '1px solid rgba(245,158,11,0.4)' }}
+            />
+            <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem' }}>Action foreslår: planlegg et Google Meet</Typography>
+          </Stack>
+        ) : null}
         <Stack direction="row" spacing={1} alignItems="flex-end">
           <IconButton
-            aria-label="Åpne Action" onClick={(e) => openActionLauncher(e.currentTarget)} disabled={busyAction}
+            ref={actionBtnRef}
+            aria-label="Åpne Action (Cmd+K)" onClick={(e) => openActionLauncher(e.currentTarget)} disabled={busyAction}
             sx={{ width: 46, height: 46, color: '#fff', borderRadius: 2, background: 'linear-gradient(135deg,#7c3aed,#a855f7)', boxShadow: actionSpotlight ? '0 0 0 3px rgba(168,85,247,0.4)' : 'none', '&:hover': { background: 'linear-gradient(135deg,#6d28d9,#9333ea)' }, '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
           >
             {busyAction ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <ActionIcon />}
@@ -368,28 +404,27 @@ export default function ClientConversationView({ projectId }: { projectId: strin
           <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
             <InstantMeetIcon sx={{ color: '#fcd34d', fontSize: 18 }} />
             <Typography sx={{ color: '#f5f3ff', fontWeight: 800, fontSize: '0.82rem' }}>Action</Typography>
-            <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem', ml: 'auto' }}>gjør det fra chatten</Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem', ml: 'auto' }}>⌘K · gjør det fra chatten</Typography>
           </Box>
-          <MenuItem onClick={() => void startInstantMeet()}>
-            <ListItemIcon><InstantMeetIcon sx={{ color: '#86efac' }} /></ListItemIcon>
-            <ListItemText primary="Start Google Meet nå" secondary="Instant videomøte + del lenke" />
-          </MenuItem>
-          <MenuItem onClick={() => { setActionAnchor(null); setProposeOpen(true); }}>
-            <ListItemIcon><ScheduleIcon sx={{ color: '#a5b4fc' }} /></ListItemIcon>
-            <ListItemText primary="Foreslå & book møte" secondary="Velg tid → Google Meet" />
-          </MenuItem>
-          <MenuItem onClick={() => void requestUpload('brand_logo')}>
-            <ListItemIcon><UploadIcon sx={{ color: '#7dd3fc' }} /></ListItemIcon>
-            <ListItemText primary="Be om logo-opplasting" secondary="Lander i Merkevare på begge flater" />
-          </MenuItem>
-          <MenuItem onClick={() => void requestUpload('other')}>
-            <ListItemIcon><UploadIcon sx={{ color: '#7dd3fc' }} /></ListItemIcon>
-            <ListItemText primary="Be om fil-opplasting" secondary="Hvilken som helst fil → Materiale" />
-          </MenuItem>
-          <MenuItem onClick={() => void sendToApproval()}>
-            <ListItemIcon><ApprovalIcon sx={{ color: '#f0abfc' }} /></ListItemIcon>
-            <ListItemText primary="Send til godkjenning" secondary="Lander i Godkjenning-flaten" />
-          </MenuItem>
+          <Box sx={{ px: 1.5, pb: 0.75 }}>
+            <TextField
+              autoFocus value={actionQuery} onChange={(e) => setActionQuery(e.target.value)}
+              placeholder="Søk handling …" size="small" fullWidth
+              sx={{ '& .MuiOutlinedInput-root': { color: '#f1f5f9', background: 'rgba(15,23,42,0.6)', fontSize: '0.82rem' } }}
+            />
+          </Box>
+          {[
+            { q: 'start google meet nå instant video', icon: <InstantMeetIcon sx={{ color: '#86efac' }} />, primary: 'Start Google Meet nå', secondary: 'Instant videomøte + del lenke', run: () => void startInstantMeet() },
+            { q: 'foreslå book møte tid kalender', icon: <ScheduleIcon sx={{ color: '#a5b4fc' }} />, primary: 'Foreslå & book møte', secondary: 'Velg tid → Google Meet', run: () => { setActionAnchor(null); setProposeOpen(true); } },
+            { q: 'be om logo opplasting merkevare', icon: <UploadIcon sx={{ color: '#7dd3fc' }} />, primary: 'Be om logo-opplasting', secondary: 'Lander i Merkevare på begge flater', run: () => void requestUpload('brand_logo') },
+            { q: 'be om fil opplasting materiale', icon: <UploadIcon sx={{ color: '#7dd3fc' }} />, primary: 'Be om fil-opplasting', secondary: 'Hvilken som helst fil → Materiale', run: () => void requestUpload('other') },
+            { q: 'send til godkjenning approval review', icon: <ApprovalIcon sx={{ color: '#f0abfc' }} />, primary: 'Send til godkjenning', secondary: 'Lander i Godkjenning-flaten', run: () => void sendToApproval() },
+          ].filter((a) => !actionQuery || `${a.primary} ${a.q}`.toLowerCase().includes(actionQuery.toLowerCase())).map((a) => (
+            <MenuItem key={a.primary} onClick={a.run}>
+              <ListItemIcon>{a.icon}</ListItemIcon>
+              <ListItemText primary={a.primary} secondary={a.secondary} />
+            </MenuItem>
+          ))}
           <Box sx={{ px: 2, pt: 0.75, pb: 0.25 }}>
             <Typography sx={{ color: 'rgba(226,232,240,0.4)', fontSize: '0.64rem', fontWeight: 700, letterSpacing: 0.4 }}>KOMMER SNART</Typography>
           </Box>
