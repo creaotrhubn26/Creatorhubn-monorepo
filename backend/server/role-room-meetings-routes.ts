@@ -17,6 +17,7 @@ import type { Express, Request, Response } from 'express';
 import type { Pool } from 'pg';
 import { createGoogleMeetLink } from './google-meet.js';
 import { upsertProducerProjectNotification } from './role-room-producer-notifications.js';
+import { getAssistantAreas } from './role-room-assistant-access.js';
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -120,6 +121,9 @@ export function registerRoleRoomMeetingsRoutes(app: Express, deps: Deps): void {
       const session = await authorize(req, res);
       if (!session) return;
       const projectId = String(req.params.projectId).trim();
+      // Assistent uten møte-tilgang ser ingen møter.
+      const asst = await getAssistantAreas(pool, projectId, { userId: session.userId, email: session.email });
+      if (asst && asst.areas.meetings !== true) { res.json({ success: true, items: [] }); return; }
       const result = await pool.query(
         `SELECT * FROM role_room_meetings
           WHERE project_id = $1 ${isClientRole(session.role) ? 'AND client_visible = TRUE' : ''}
