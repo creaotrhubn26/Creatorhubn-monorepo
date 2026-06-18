@@ -13,6 +13,7 @@ export interface RoleRoomMessage {
   body: string;
   kind: string; // message | request | answer
   status: string; // open | closed
+  visibility: string; // shared | internal
   replyToId: string | null;
   linkedEntityType: string | null;
   linkedEntityId: string | null;
@@ -39,7 +40,7 @@ export async function listMessages(projectId: string): Promise<RoleRoomMessage[]
 
 export async function sendMessage(
   projectId: string,
-  input: { body: string; kind?: string; linkedEntityType?: string; linkedEntityId?: string; authorName?: string; metadata?: Record<string, unknown> },
+  input: { body: string; kind?: string; visibility?: 'shared' | 'internal'; linkedEntityType?: string; linkedEntityId?: string; authorName?: string; metadata?: Record<string, unknown> },
 ): Promise<RoleRoomMessage> {
   const res = await fetch(base(projectId), { method: 'POST', headers: headers(true), body: JSON.stringify(input) });
   const payload = (await res.json().catch(() => null)) as { message?: RoleRoomMessage; error?: string } | null;

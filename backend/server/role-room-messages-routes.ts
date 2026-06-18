@@ -53,6 +53,7 @@ function mapRow(row: Record<string, unknown>) {
     body: String(row.body ?? ''),
     kind: String(row.kind ?? 'message'),
     status: String(row.status ?? 'open'),
+    visibility: String(row.visibility ?? 'shared'),
     replyToId: (row.reply_to_id as string | null) ?? null,
     linkedEntityType: (row.linked_entity_type as string | null) ?? null,
     linkedEntityId: (row.linked_entity_id as string | null) ?? null,
@@ -81,9 +82,12 @@ export function registerRoleRoomMessagesRoutes(app: Express, deps: Deps): void {
       const session = await authorize(req, res);
       if (!session) return;
       const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
+      // «Rom & roller»: klient ser KUN delte meldinger; produsent-team ser alt.
+      const clientOnlyShared = isClientRole(session.role);
       const result = await pool.query(
         `SELECT * FROM role_room_messages
           WHERE project_id = $1
+            ${clientOnlyShared ? "AND visibility = 'shared'" : ''}
           ORDER BY created_at ASC
           LIMIT $2`,
         [String(req.params.projectId).trim(), limit],
@@ -104,18 +108,21 @@ export function registerRoleRoomMessagesRoutes(app: Express, deps: Deps): void {
       const text = typeof body.body === 'string' ? body.body.trim() : '';
       if (!text) { res.status(400).json({ error: 'tom_melding' }); return; }
       const kind = ['message', 'request', 'answer'].includes(String(body.kind)) ? String(body.kind) : 'message';
+      // Synlighet: klient kan aldri sende internt. Internt = kun produsent-team.
+      const fromClient = isClientRole(session.role);
+      const visibility = (!fromClient && body.visibility === 'internal') ? 'internal' : 'shared';
 
       const id = randomUUID();
       const result = await pool.query(
         `INSERT INTO role_room_messages (
-           id, project_id, author_user_id, author_role, author_name, body, kind, status,
+           id, project_id, author_user_id, author_role, author_name, body, kind, status, visibility,
            reply_to_id, linked_entity_type, linked_entity_id, metadata, created_at, updated_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb, NOW(), NOW())
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb, NOW(), NOW())
          RETURNING *`,
         [
           id, projectId, session.userId, session.role ?? null,
           typeof body.authorName === 'string' ? body.authorName : null,
-          text, kind, kind === 'request' ? 'open' : 'open',
+          text, kind, kind === 'request' ? 'open' : 'open', visibility,
           typeof body.replyToId === 'string' ? body.replyToId : null,
           typeof body.linkedEntityType === 'string' ? body.linkedEntityType : null,
           typeof body.linkedEntityId === 'string' ? body.linkedEntityId : null,
@@ -123,19 +130,29 @@ export function registerRoleRoomMessagesRoutes(app: Express, deps: Deps): void {
         ],
       );
 
-      // Varsle motparten (produsent↔klient).
+      // Varsle motparten — MEN aldri klienten om interne meldinger.
       try {
-        const fromClient = isClientRole(session.role);
-        await upsertProducerProjectNotification(pool, {
-          projectId,
-          audience: fromClient ? 'producer_team' : 'client',
-          eventType: kind === 'request' ? 'message_request' : 'message_sent',
-          title: kind === 'request' ? 'Ny forespørsel i samtalen' : 'Ny melding',
-          message: text.slice(0, 160),
-          linkedEntityType: 'message', linkedEntityId: id,
-          createdByUserId: session.userId, createdByRole: session.role ?? null,
-          metadata: { inboxType: kind === 'request' ? 'request' : 'workspace' },
-        });
+        if (visibility === 'internal') {
+          await upsertProducerProjectNotification(pool, {
+            projectId, audience: 'producer_team',
+            eventType: 'message_internal',
+            title: 'Ny intern melding', message: text.slice(0, 160),
+            linkedEntityType: 'message', linkedEntityId: id,
+            createdByUserId: session.userId, createdByRole: session.role ?? null,
+            metadata: { inboxType: 'workspace' },
+          });
+        } else {
+          await upsertProducerProjectNotification(pool, {
+            projectId,
+            audience: fromClient ? 'producer_team' : 'client',
+            eventType: kind === 'request' ? 'message_request' : 'message_sent',
+            title: kind === 'request' ? 'Ny forespørsel i samtalen' : 'Ny melding',
+            message: text.slice(0, 160),
+            linkedEntityType: 'message', linkedEntityId: id,
+            createdByUserId: session.userId, createdByRole: session.role ?? null,
+            metadata: { inboxType: kind === 'request' ? 'request' : 'workspace' },
+          });
+        }
       } catch (notifyError) {
         console.warn('[messages] varsel feilet', notifyError);
       }

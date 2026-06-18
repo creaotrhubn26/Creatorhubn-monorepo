@@ -220,7 +220,7 @@ export default function ClientWorkspaceShell({
           {activeTab === 'brief' && <ClientBriefView projectId={projectId} />}
           {activeTab === 'merkevare' && <ClientMerkevareView projectId={projectId} />}
           {activeTab === 'meetings' && <ClientMeetingsView projectId={projectId} />}
-          {activeTab === 'messages' && <ClientConversationView projectId={projectId} />}
+          {activeTab === 'messages' && <ClientConversationView projectId={projectId} canUseInternal={isPreviewMode} />}
           {activeTab === 'roles' && <ClientRolesView projectId={projectId} />}
           {activeTab === 'plan' && <ClientPlanView projectId={projectId} />}
           {activeTab === 'marketing-plan' && <ClientMarketingPlanView projectId={projectId} />}
@@ -230,7 +230,7 @@ export default function ClientWorkspaceShell({
       {/* Flytende chat-boble — tilgjengelig på alle faner unntatt selve Meldinger-fanen. */}
       {activeTab !== 'messages' ? (
         <Suspense fallback={null}>
-          <RoleRoomChatBubble projectId={projectId} onOpenFullTab={() => setActiveTab('messages')} />
+          <RoleRoomChatBubble projectId={projectId} canUseInternal={isPreviewMode} onOpenFullTab={() => setActiveTab('messages')} />
         </Suspense>
       ) : null}
     </Box>
