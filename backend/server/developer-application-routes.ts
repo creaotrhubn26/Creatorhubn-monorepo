@@ -86,11 +86,15 @@ export function registerDeveloperApplicationRoutes({ app, pool }: Deps): void {
       } else {
         userId = crypto.randomUUID();
         const parts = fullName.trim().split(/\s+/);
+        // password er NOT NULL i users. Sett random placeholder — brukeren
+        // logger inn via magic-link senere, password-feltet brukes ikke
+        // direkte. Hvis de vil sette ekte passord går de via reset-flow.
+        const placeholderPassword = crypto.randomBytes(32).toString("hex");
         await client.query(
-          `INSERT INTO users (id, email, username, role, first_name, last_name, created_at)
-           VALUES ($1, $2, $2, 'member', $3, $4, now())`,
+          `INSERT INTO users (id, email, username, password, role, first_name, last_name, created_at)
+           VALUES ($1, $2, $2, $3, 'member', $4, $5, now())`,
           [
-            userId, email,
+            userId, email, placeholderPassword,
             parts[0] ?? null,
             parts.slice(1).join(" ") || null,
           ],
