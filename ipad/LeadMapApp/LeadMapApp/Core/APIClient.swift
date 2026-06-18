@@ -500,6 +500,21 @@ actor APIClient {
         )
     }
 
+    // MARK: - Lead Scout (needs/signals/scores)
+
+    func fetchLeadNeedsOverview(leadId: String) async throws -> LeadNeedsOverviewResponse {
+        return try await get(
+            "/api/admin-room/lead-map/leads/\(leadId)/needs-overview"
+        )
+    }
+
+    func runScoutForLead(leadId: String) async throws -> LeadScoutResult {
+        return try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/scout",
+            body: [:]
+        )
+    }
+
     func updatePitchSlide(slideId: String, titleMd: String?, bodyMd: String?) async throws -> PitchSlideResponse {
         var body: [String: Any] = [:]
         if let t = titleMd { body["title_md"] = t }
