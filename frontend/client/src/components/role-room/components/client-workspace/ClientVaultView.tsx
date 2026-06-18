@@ -100,13 +100,13 @@ export default function ClientVaultView({ projectId }: { projectId: string }) {
     finally { setSaving(false); }
   }, [projectId, platform, accountLabel, username, secretValue, revealPolicy, expiresAt, load]);
 
-  const fieldSx = { '& .MuiOutlinedInput-root': { color: '#f1f5f9', background: 'rgba(15,23,42,0.6)' }, '& .MuiInputLabel-root': { color: 'rgba(226,232,240,0.7)' } };
+  const fieldSx = { '& .MuiOutlinedInput-root': { color: '#f1f5f9', background: 'rgba(15,23,42,0.6)' }, '& .MuiInputLabel-root': { color: 'rgba(226,232,240,0.8)' } };
 
   return (
     <Stack spacing={1.75}>
       <Box>
         <Typography sx={{ fontSize: '1.3rem', fontWeight: 800, color: '#f8fafc' }}>Tilganger &amp; vault</Typography>
-        <Typography sx={{ fontSize: '0.85rem', color: 'rgba(226,232,240,0.66)', mt: 0.3 }}>
+        <Typography sx={{ fontSize: '0.85rem', color: 'rgba(226,232,240,0.8)', mt: 0.3 }}>
           Del plattform-tilganger (f.eks. Google Ads) trygt — uten å sende passord på e-post. Du eier nøklene.
         </Typography>
       </Box>
@@ -150,7 +150,7 @@ export default function ClientVaultView({ projectId }: { projectId: string }) {
                 {POLICIES.map((p) => <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>)}
               </Select>
             </FormControl>
-            <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.74rem', mt: -0.5 }}>
+            <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.74rem', mt: -0.5 }}>
               {POLICIES.find((p) => p.value === revealPolicy)?.hint}
             </Typography>
             <TextField label="Tilgang utløper (valgfritt tidsvindu)" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} size="small" fullWidth InputLabelProps={{ shrink: true }} sx={fieldSx} />
@@ -158,7 +158,7 @@ export default function ClientVaultView({ projectId }: { projectId: string }) {
               <Button onClick={() => void handleAdd()} disabled={saving} startIcon={saving ? <CircularProgress size={15} color="inherit" /> : <LockIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)' }}>
                 {saving ? 'Lagrer …' : 'Lagre kryptert'}
               </Button>
-              <Button onClick={() => setAdding(false)} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.7)' }}>Avbryt</Button>
+              <Button onClick={() => setAdding(false)} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.8)' }}>Avbryt</Button>
             </Stack>
           </Stack>
         </Box>
@@ -172,7 +172,7 @@ export default function ClientVaultView({ projectId }: { projectId: string }) {
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#a855f7' }} /></Box>
         ) : secrets.length === 0 ? (
-          <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.82rem', py: 2, textAlign: 'center' }}>Ingen tilganger lagt inn ennå.</Typography>
+          <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.82rem', py: 2, textAlign: 'center' }}>Ingen tilganger lagt inn ennå.</Typography>
         ) : (
           <Stack spacing={1}>{secrets.map((s) => <SecretRow key={s.id} s={s} />)}</Stack>
         )}
@@ -181,12 +181,12 @@ export default function ClientVaultView({ projectId }: { projectId: string }) {
       {/* Hvem så hva (audit) */}
       {myAudit.length > 0 ? (
         <Box>
-          <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.78rem', fontWeight: 700, mb: 0.75 }}>Hvem så hva</Typography>
+          <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.78rem', fontWeight: 700, mb: 0.75 }}>Hvem så hva</Typography>
           <Stack spacing={0.5}>
             {myAudit.map((a) => (
               <Stack key={a.id} direction="row" spacing={0.75} alignItems="center" sx={{ px: 1, py: 0.6, borderRadius: 1, background: 'rgba(255,255,255,0.02)' }}>
-                <AuditIcon sx={{ fontSize: 14, color: 'rgba(226,232,240,0.5)' }} />
-                <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.74rem', flex: 1 }}>
+                <AuditIcon sx={{ fontSize: 14, color: 'rgba(226,232,240,0.8)' }} />
+                <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.74rem', flex: 1 }}>
                   {String(a.action ?? 'hendelse').replace(/_/g, ' ')}{a.actorRole ? ` · ${a.actorRole}` : ''}
                 </Typography>
                 <Typography sx={{ color: 'rgba(226,232,240,0.45)', fontSize: '0.7rem' }}>{fmtDate(a.createdAt)}</Typography>
@@ -227,11 +227,11 @@ function SecretRow({ s }: { s: RoleRoomAccessVaultSecretSummary }) {
           <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.2, flexWrap: 'wrap', rowGap: 0.3 }}>
             <Chip size="small" icon={clientOwned ? <ClientOwnedIcon sx={{ fontSize: 12, color: '#6ee7b7 !important' }} /> : <ProducerOwnedIcon sx={{ fontSize: 12, color: '#c4b5fd !important' }} />}
               label={clientOwned ? 'Du eier' : 'Produsent'} sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: clientOwned ? '#6ee7b7' : '#c4b5fd', background: clientOwned ? 'rgba(16,185,129,0.12)' : 'rgba(168,85,247,0.14)' }} />
-            <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem' }}>{PLATFORM_LABEL[s.platform] ?? s.platform}</Typography>
-            {s.maskedReference ? <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem', fontFamily: 'monospace' }}>{s.maskedReference}</Typography> : null}
+            <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.7rem' }}>{PLATFORM_LABEL[s.platform] ?? s.platform}</Typography>
+            {s.maskedReference ? <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.7rem', fontFamily: 'monospace' }}>{s.maskedReference}</Typography> : null}
           </Stack>
         </Box>
-        <Button size="small" onClick={() => setShowInfo((v) => !v)} startIcon={<RevealIcon sx={{ fontSize: 15 }} />} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 36, color: 'rgba(226,232,240,0.65)' }}>Detaljer</Button>
+        <Button size="small" onClick={() => setShowInfo((v) => !v)} startIcon={<RevealIcon sx={{ fontSize: 15 }} />} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 36, color: 'rgba(226,232,240,0.8)' }}>Detaljer</Button>
       </Stack>
       <Collapse in={showInfo}>
         <Stack spacing={0.4} sx={{ mt: 0.8, pl: 3.5 }}>
@@ -249,7 +249,7 @@ function SecretRow({ s }: { s: RoleRoomAccessVaultSecretSummary }) {
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <Stack direction="row" spacing={1}>
-      <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem', minWidth: 96 }}>{label}</Typography>
+      <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.72rem', minWidth: 96 }}>{label}</Typography>
       <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.72rem', fontWeight: 600 }}>{value}</Typography>
     </Stack>
   );

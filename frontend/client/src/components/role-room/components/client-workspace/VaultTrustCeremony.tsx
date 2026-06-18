@@ -62,7 +62,7 @@ export default function VaultTrustCeremony({ open, onClose }: { open: boolean; o
       <Box sx={{ p: 3, textAlign: 'center' }}>
         <Stack spacing={0.5} alignItems="center" sx={{ mb: 1 }}>
           <KeyIcon sx={{ fontSize: 18, color: '#a855f7' }} />
-          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.7rem', fontWeight: 700, letterSpacing: 1 }}>ACCESS VAULT</Typography>
+          <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.7rem', fontWeight: 700, letterSpacing: 1 }}>ACCESS VAULT</Typography>
         </Stack>
         <Box sx={{ my: 2.5, display: 'flex', justifyContent: 'center' }}>
           <Box sx={{ width: 80, height: 80, borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.25)' }}>
@@ -80,9 +80,9 @@ export default function VaultTrustCeremony({ open, onClose }: { open: boolean; o
 
         <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
           {step > 0 ? (
-            <Button onClick={() => setStep((v) => v - 1)} startIcon={<PrevIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: 'rgba(226,232,240,0.7)' }}>Tilbake</Button>
+            <Button onClick={() => setStep((v) => v - 1)} startIcon={<PrevIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: 'rgba(226,232,240,0.8)' }}>Tilbake</Button>
           ) : (
-            <Button onClick={finish} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.55)' }}>Hopp over</Button>
+            <Button onClick={finish} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.8)' }}>Hopp over</Button>
           )}
           <Box sx={{ flex: 1 }} />
           {last ? (
