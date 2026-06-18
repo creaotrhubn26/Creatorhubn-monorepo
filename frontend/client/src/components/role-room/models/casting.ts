@@ -1491,6 +1491,10 @@ export interface RoleRoomAccessVaultSecretSummary {
   projectId: string;
   platform: ProducerAccountAccessPlatform;
   label?: string | null;
+  accountLabel?: string | null;
+  ownerSide?: 'client' | 'producer' | string | null;
+  rotatedAt?: string | null;
+  revealTtlSeconds?: number | null;
   secretType?: string | null;
   maskedReference?: string | null;
   tier?: ProducerAccountAccessTier | string | null;
