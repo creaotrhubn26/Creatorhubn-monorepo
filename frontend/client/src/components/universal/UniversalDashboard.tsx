@@ -235,6 +235,9 @@ import WeddingTimelineChangesOverview from '../wedding/WeddingTimelineChangesOve
 // Import Client Activity Panel for dashboard integration
 import ClientActivityPanel from './showcase/ClientActivityPanel';
 
+// Import redigerings-marketplace discovery-panel (hyr eksternt redigeringsteam)
+import EditingVendorDiscoveryPanel from './editing-marketplace/EditingVendorDiscoveryPanel';
+
 // Import Story Arc Studio for Pro Editor Mode
 import StoryArcStudio from '../StoryArcStudio';
 
@@ -343,6 +346,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'academy', label: 'Academy', icon: <School /> },
       { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
+      { id: 'editing-studio', label: 'Redigeringsteam', icon: <Group /> },
       { id: 'file-upload', label: 'Filsystem', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'AI Forbedring', icon: <AutoFixHigh /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
@@ -375,6 +379,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'academy', label: 'Academy', icon: <School /> },
       { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
+      { id: 'editing-studio', label: 'Redigeringsteam', icon: <Group /> },
       { id: 'file-upload', label: 'Filsystem', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'Video AI', icon: <MovieCreation /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
@@ -1071,6 +1076,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         // installert betalt-modulen skal ikke se denne fanen.
         'wedding-timeline': evendiInstalled,
         'showcase-admin': true, // Always available
+        // Redigerings-marketplace: hyr eksternt redigeringsteam (foto/video)
+        'editing-studio': profession === 'photographer' || profession === 'videographer',
         'publishing': true,
         'showcase-viewer': true, // Available for professions without Showcase Admin tab
         'file-upload': true,
@@ -6513,6 +6520,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   />
                 </Box>
 
+              </TabPanel>
+
+              {/* Tab: Redigeringsteam (ekstern redigerings-marketplace) */}
+              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'editing-studio')}>
+                <Box sx={{ p: { xs: 1, md: 2 } }}>
+                  <EditingVendorDiscoveryPanel locale="no" busyCount={Array.isArray(projects) ? projects.length : 0} />
+                </Box>
               </TabPanel>
 
               {/* Tab 4b: Publishing */}
