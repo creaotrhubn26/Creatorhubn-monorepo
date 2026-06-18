@@ -110,6 +110,91 @@ const STRINGS: Dict = {
     no: "Denne vendoren følger Creatorhub sine krav til kvalitet, lagring, GDPR og leveranse.",
     en: "This vendor follows Creatorhub's requirements for quality, storage, GDPR and delivery.",
   },
+
+  // ── Vendor workspace ──
+  ws_title: { no: "Redigeringsoppdrag", en: "Editing jobs" },
+  ws_tab_jobs: { no: "Oppdrag", en: "Jobs" },
+  ws_tab_compliance: { no: "Compliance", en: "Compliance" },
+  ws_tab_catalog: { no: "Priskatalog", en: "Price catalog" },
+  ws_tab_communication: { no: "Kommunikasjon", en: "Communication" },
+  ws_no_jobs: { no: "Ingen oppdrag ennå.", en: "No jobs yet." },
+  ws_incoming: { no: "Innkommende oppdrag", en: "Incoming jobs" },
+  ws_brief: { no: "Brief", en: "Brief" },
+  ws_amount: { no: "Beløp", en: "Amount" },
+  ws_files: { no: "Filer", en: "Files" },
+  ws_accept: { no: "Aksepter", en: "Accept" },
+  ws_decline: { no: "Avslå", en: "Decline" },
+  ws_upload_files: { no: "Last opp filer", en: "Upload files" },
+  ws_uploading: { no: "Laster opp…", en: "Uploading…" },
+  ws_mark_delivered: { no: "Marker som levert", en: "Mark as delivered" },
+  ws_transferring: { no: "Overfører til fotograf…", en: "Transferring to photographer…" },
+  ws_upload_hint: {
+    no: "Filer lastes opp sikkert til Creatorhub og overføres til fotografens B2 ved levering.",
+    en: "Files upload securely to Creatorhub and transfer to the photographer's B2 on delivery.",
+  },
+
+  // Job statuses
+  "jobstatus.draft": { no: "Utkast", en: "Draft" },
+  "jobstatus.requested": { no: "Forespurt", en: "Requested" },
+  "jobstatus.accepted": { no: "Akseptert", en: "Accepted" },
+  "jobstatus.in_progress": { no: "Under arbeid", en: "In progress" },
+  "jobstatus.delivered": { no: "Levert", en: "Delivered" },
+  "jobstatus.approved": { no: "Godkjent", en: "Approved" },
+  "jobstatus.declined": { no: "Avslått", en: "Declined" },
+  "jobstatus.cancelled": { no: "Avbrutt", en: "Cancelled" },
+  "jobstatus.delivered_to_client": { no: "Levert til kunde", en: "Delivered to client" },
+
+  // Compliance acceptance
+  comp_title: { no: "Creatorhub Vendor Standard", en: "Creatorhub Vendor Standard" },
+  comp_intro: {
+    no: "For å tilby redigeringstjenester gjennom Creatorhub må du godkjenne og følge kravene til kvalitet, lagring, GDPR og leveranse.",
+    en: "To offer editing services through Creatorhub you must accept and follow the requirements for quality, storage, GDPR and delivery.",
+  },
+  comp_non_eea_notice: {
+    no: "Bedriften din er utenfor EØS. Ekstra GDPR-kontroll kreves: Standard Contractual Clauses (SCC) og Transfer Impact Assessment (TIA).",
+    en: "Your company is outside the EEA. Extra GDPR controls are required: Standard Contractual Clauses (SCC) and a Transfer Impact Assessment (TIA).",
+  },
+  comp_accept_all: { no: "Aksepter og fortsett", en: "Accept and continue" },
+  comp_must_accept: { no: "Du må huke av alle kravene for å fortsette.", en: "You must check all requirements to continue." },
+  comp_cleared: { no: "Du oppfyller alle Creatorhub sine krav.", en: "You meet all of Creatorhub's requirements." },
+  comp_missing_title: { no: "Mangler:", en: "Missing:" },
+
+  // Requirement labels + descriptions
+  "req.standard": { no: "Jeg godtar Creatorhub Vendor Standard", en: "I accept the Creatorhub Vendor Standard" },
+  "req.quality": {
+    no: "Kvalitet: leverer etter Creatorhubs kvalitetsstandard, maks revisjoner pr oppdrag, fotograf godkjenner før kunde.",
+    en: "Quality: deliver to Creatorhub's quality standard, max revisions per job, photographer approves before the client.",
+  },
+  "req.storage": {
+    no: "Lagring: kun B2-godkjent overføring, tilgang kun til oppdragets filer, ingen Drive/Dropbox/WeTransfer, sletting etter levering.",
+    en: "Storage: only B2-approved transfer, access limited to the job's files, no Drive/Dropbox/WeTransfer, deletion after delivery.",
+  },
+  "req.gdpr": {
+    no: "GDPR: konfidensiell behandling, kun til redigering, logging av tilgang, avviksrutine.",
+    en: "GDPR: confidential handling, editing purpose only, access logging, breach procedure.",
+  },
+  "req.delivery": {
+    no: "Leveranse: alt går tilbake til Creatorhub Showcase — jeg leverer aldri direkte til sluttkunden.",
+    en: "Delivery: everything goes back to Creatorhub Showcase — I never deliver directly to the end client.",
+  },
+  "req.dpa": { no: "Jeg signerer databehandleravtale (DPA).", en: "I sign the Data Processing Agreement (DPA)." },
+  "req.nda": { no: "Jeg signerer konfidensialitetsavtale (NDA).", en: "I sign the confidentiality agreement (NDA)." },
+  "req.scc": { no: "Jeg signerer Standard Contractual Clauses (SCC).", en: "I sign the Standard Contractual Clauses (SCC)." },
+  "req.tia": { no: "Jeg bekrefter fullført Transfer Impact Assessment (TIA).", en: "I confirm a completed Transfer Impact Assessment (TIA)." },
+  "req.no_subcontractors": {
+    no: "Ingen underleverandører uten skriftlig godkjenning.",
+    en: "No subcontractors without written approval.",
+  },
+  "req.no_portfolio_use": {
+    no: "Innholdet brukes ikke i egen portefølje, markedsføring, opplæring eller AI-trening uten skriftlig samtykke.",
+    en: "Content is not used in my own portfolio, marketing, training or AI training without written consent.",
+  },
+
+  // Communication tab
+  comm_placeholder: {
+    no: "Kommunikasjon med fotograf åpnes når et oppdrag er akseptert.",
+    en: "Communication with the photographer opens once a job is accepted.",
+  },
 };
 
 export function t(key: string, locale: Locale = "no"): string {

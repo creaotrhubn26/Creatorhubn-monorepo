@@ -580,6 +580,33 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
     }
   });
 
+  // ── Vendorens egen profil + compliance-status (for vendor-workspace) ──
+  app.get("/api/editing/vendor/me", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const r = await pool.query(
+        `SELECT ${VENDOR_PROFILE_COLS} FROM vendor_onboarding_profiles WHERE user_id = $1 LIMIT 1`,
+        [session.userId],
+      );
+      const row = r.rows[0];
+      const isEditingVendor = !!row && row.vendor_type === "editing";
+      const compliance = buildComplianceSummary((row || {}) as ComplianceProfile);
+      res.json({
+        hasProfile: !!row,
+        isEditingVendor,
+        vendorName: row?.vendor_name || session.name || null,
+        approvalStatus: row?.approval_status || "pending",
+        country: row?.country || "NO",
+        isForeign: !!row?.is_foreign,
+        compliance,
+      });
+    } catch (err) {
+      console.error("[editing/vendor/me] error", err);
+      res.status(500).json({ error: "kunne_ikke_hente_profil" });
+    }
+  });
+
   // ── Vendor aksepterer Creatorhub Vendor Standard (compliance) ──
   app.post("/api/editing/vendor/compliance/accept", async (req, res) => {
     const session = requireUserSession(req, res);

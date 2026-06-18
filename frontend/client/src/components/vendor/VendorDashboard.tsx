@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
+import EditingVendorWorkspace from '../universal/editing-marketplace/EditingVendorWorkspace';
 import {
   Box,
   Typography,
@@ -262,6 +263,9 @@ export default function VendorDashboard({
 
   return (
     <Box sx={{ p:  3 }}>
+      {/* Redigeringsvendor-arbeidsområde (self-gating: vises kun for vendor_type='editing') */}
+      <EditingVendorWorkspace userId={userId} />
+
       {/* Vendor Header */}
       <Box sx={{ mb:  4 }}>
         <Typography variant="h4" sx={{  
