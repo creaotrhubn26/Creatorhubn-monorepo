@@ -16694,6 +16694,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(409).json({ error: 'Denne secret-en kan ikke vises direkte. Bruk manuell handoff.' });
         return;
       }
+      // Vault v2: håndhev secretets eget tidsvindu + tilbaketrekking på reveal.
+      // (Tidligere ble kun reveal-forespørselens utløp sjekket.)
+      if (secretRow.revoked_at) {
+        res.status(409).json({ error: 'Tilgangen er trukket tilbake og kan ikke vises.' });
+        return;
+      }
+      if (secretRow.expires_at) {
+        const expiresMs = Date.parse(String(secretRow.expires_at));
+        if (Number.isFinite(expiresMs) && expiresMs < Date.now()) {
+          res.status(409).json({ error: 'Tilgangens tidsvindu er utløpt — be klienten rotere/forlenge.' });
+          return;
+        }
+      }
 
       const secretValue = decryptRoleRoomVaultSecret(secretRow.secret_encrypted);
       const username = decryptRoleRoomVaultSecret(secretRow.username_encrypted);
