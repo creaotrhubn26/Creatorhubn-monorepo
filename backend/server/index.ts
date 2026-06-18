@@ -535,6 +535,9 @@ import { registerLeadScoutRoutes } from "./lead-scout-routes.js";
 import { registerLeadPresetRoutes } from "./lead-preset-routes.js";
 import { registerLeadRulesRoutes } from "./lead-rules-routes.js";
 import { registerLeadPortfolioRoutes } from "./lead-portfolio-routes.js";
+import { registerCustomerAutoOnboardRoutes } from "./customer-auto-onboard-routes.js";
+import { registerClientPortalRoutes } from "./leadgrid-client-portal-routes.js";
+import { registerDeliveryPlaybookRoutes } from "./delivery-playbook-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24303,6 +24306,12 @@ registerLeadPresetRoutes({ app, pool, activeSessions });
 registerLeadRulesRoutes({ app, pool, activeSessions });
 // Prosjekt-portefølje (alle kundeprosjekter for én org m/ score+needs)
 registerLeadPortfolioRoutes({ app, pool, activeSessions });
+// Selv-onboarding (BRREG + crawl + scout + invite til klient-portal)
+registerCustomerAutoOnboardRoutes({ app, pool, activeSessions });
+// Klient-portal — public token-basert visning av needs/deliverables
+registerClientPortalRoutes({ app, pool });
+// Delivery playbooks — markedsføreren's oppsett-system m/ steg-for-steg
+registerDeliveryPlaybookRoutes({ app, pool, activeSessions });
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,
