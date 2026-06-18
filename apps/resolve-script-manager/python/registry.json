@@ -507,6 +507,33 @@
       "requiresTimeline": true
     },
     {
+      "id": "relength_from_timeline",
+      "name": "Re-length fra gjeldende timeline",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/relength_from_timeline.py",
+      "description": "Tar GJELDENDE Resolve-timeline som utgangspunkt (klippene som ligger der nå, med kilde inn/ut) og skalerer den til ny lengde med bevart kapittel-vekting. Bygger en NY timeline (ikke-destruktivt). Forkort hardt → dropper korteste klipp først. Bruk når du vil forlenge/forkorte etter manuell redigering.",
+      "requiredInputs": [
+        {
+          "key": "targetSec",
+          "label": "Ønsket lengde i sekunder (360=6min, 720=12min, 900=15min)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "projectId",
+          "label": "Staging-prosjekt for cue_map (valgfritt — uniform skalering uten)",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "resolvePageDependency": "edit",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "generate_marker_report",
       "name": "Generate Marker Report",
       "category": "markers",
