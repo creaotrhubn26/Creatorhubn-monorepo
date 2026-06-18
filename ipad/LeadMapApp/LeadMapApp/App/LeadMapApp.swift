@@ -117,6 +117,12 @@ struct MainTabView: View {
                 .tabItem { Label("Min dag", systemImage: "sun.max.fill") }
             MapScreen()
                 .tabItem { Label("Kart", systemImage: "map.fill") }
+            // Portefølje — alle kundeprosjekter med logo, Leadgrid-score,
+            // needs/signals-aggregat. Vises hvis bruker har leads.view.
+            if state.permissions.contains("leads.view") {
+                ProjectsPortfolioView()
+                    .tabItem { Label("Prosjekter", systemImage: "rectangle.stack.fill") }
+            }
             LeaderboardView()
                 .tabItem { Label("Team", systemImage: "trophy.fill") }
             NotificationsView()
