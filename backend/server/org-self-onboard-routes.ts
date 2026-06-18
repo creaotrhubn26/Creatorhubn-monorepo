@@ -20,12 +20,20 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
+import Stripe from "stripe";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 
 interface Deps {
   app: Express;
   pool: Pool;
 }
+
+function getStripe(): Stripe | null {
+  const key = process.env.CREATORHUB_STRIPE_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY;
+  return key ? new Stripe(key) : null;
+}
+
+const PUBLIC_BASE = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
 
 export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
   app.post("/api/leadgrid/self-onboard", async (req, res) => {
@@ -153,6 +161,85 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
 
       await client.query("COMMIT");
 
+      // 6.5) Opprett Stripe Customer + Checkout Session (mode='setup'
+      //      for Free, 'subscription' for paid). Returnerer URL til
+      //      Stripe-hosted checkout. Ved suksess kommer brukeren
+      //      tilbake til /leadgrid/welcome med magic-token.
+      let checkoutUrl: string | null = null;
+      const stripe = getStripe();
+      if (stripe) {
+        try {
+          const customer = await stripe.customers.create({
+            email,
+            name: orgName,
+            metadata: {
+              organization_id: orgId,
+              user_id: userId,
+              plan_key: tmpl.template_key,
+            },
+          });
+          await pool.query(
+            `UPDATE organizations SET stripe_customer_id = $1 WHERE id = $2`,
+            [customer.id, orgId],
+          );
+
+          const successUrl =
+            magicToken
+              ? `${PUBLIC_BASE}/leadgrid/welcome?token=${magicToken}&checkout=success`
+              : `${PUBLIC_BASE}/leadgrid?checkout=success`;
+          const cancelUrl = `${PUBLIC_BASE}/leadgrid?checkout=cancelled`;
+
+          // Sjekk om planen er Free (gratis = setup intent) eller paid (subscription)
+          const priceR = await pool.query<{ stripe_price_id_monthly: string | null }>(
+            `SELECT pl.stripe_price_id_monthly
+               FROM plan_limits pl WHERE pl.plan_key = $1`,
+            [tmpl.default_plan],
+          );
+          const priceId = priceR.rows[0]?.stripe_price_id_monthly;
+
+          if (priceId) {
+            // Paid plan — subscription checkout
+            const session = await stripe.checkout.sessions.create({
+              mode: "subscription",
+              customer: customer.id,
+              line_items: [{ price: priceId, quantity: 1 }],
+              success_url: successUrl,
+              cancel_url: cancelUrl,
+              allow_promotion_codes: true,
+              metadata: {
+                organization_id: orgId,
+                plan_key: tmpl.default_plan,
+                product_family: "leadgrid",
+              },
+              subscription_data: {
+                metadata: {
+                  organization_id: orgId,
+                  plan_key: tmpl.default_plan,
+                  product_family: "leadgrid",
+                },
+              },
+            });
+            checkoutUrl = session.url;
+          } else {
+            // Free plan — kun lagre kort (Setup Intent) for senere oppgrade
+            const session = await stripe.checkout.sessions.create({
+              mode: "setup",
+              customer: customer.id,
+              success_url: successUrl,
+              cancel_url: cancelUrl,
+              metadata: {
+                organization_id: orgId,
+                plan_key: tmpl.default_plan,
+                product_family: "leadgrid",
+              },
+            });
+            checkoutUrl = session.url;
+          }
+        } catch (e) {
+          console.error("[self-onboard] stripe checkout failed", e);
+        }
+      }
+
       // 7) Velkomst-e-post (utenfor TX)
       {
         const url = magicToken
@@ -182,6 +269,7 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
         },
         user_id: userId,
         magic_link_sent: isNewUser,
+        checkout_url: checkoutUrl,
       });
     } catch (e) {
       await client.query("ROLLBACK");

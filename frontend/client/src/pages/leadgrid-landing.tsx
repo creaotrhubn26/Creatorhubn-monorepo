@@ -45,7 +45,13 @@ import {
   HubOutlined,
   CheckCircleOutlineOutlined,
   StarRounded,
+  MapOutlined,
+  AutoFixHighOutlined,
+  ViewKanbanOutlined,
+  InsightsOutlined,
+  WorkspacesOutlined,
 } from '@mui/icons-material';
+import type { SvgIconComponent } from '@mui/icons-material';
 
 const PALETTE = {
   bg: '#0b0518',
@@ -269,15 +275,30 @@ function HeroSection() {
         position: 'relative',
         pt: { xs: 8, md: 12 },
         pb: { xs: 6, md: 10 },
-        backgroundImage: 'url(/leadgrid/backdrop3.png)',
+        // Ren mørk bakgrunn med subtil radial glow + grid-pattern.
+        // Erstatter tidligere /leadgrid/backdrop3.png som rotet med
+        // gjennomskinnelig tekst/ikoner og hvite mockup-border.
+        bgcolor: PALETTE.bg,
+        backgroundImage: `
+          radial-gradient(ellipse 80% 60% at 50% 10%, rgba(167, 139, 250, 0.18) 0%, transparent 70%),
+          radial-gradient(ellipse 60% 50% at 85% 70%, rgba(124, 58, 237, 0.12) 0%, transparent 65%),
+          linear-gradient(180deg, ${PALETTE.bg} 0%, #050211 100%)
+        `,
         backgroundSize: 'cover',
-        backgroundPosition: 'center right',
+        backgroundPosition: 'center',
+        overflow: 'hidden',
         '&::before': {
+          // Subtil grid-pattern for tekstur uten støy
           content: '""',
           position: 'absolute',
           inset: 0,
-          background:
-            'linear-gradient(180deg, rgba(11,5,24,0.65) 0%, rgba(11,5,24,0.85) 100%)',
+          backgroundImage: `
+            linear-gradient(rgba(167, 139, 250, 0.04) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(167, 139, 250, 0.04) 1px, transparent 1px)
+          `,
+          backgroundSize: '50px 50px',
+          maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 80%)',
+          WebkitMaskImage: 'radial-gradient(ellipse at center, black 30%, transparent 80%)',
         },
       }}
     >
@@ -392,67 +413,211 @@ function HeroSection() {
 }
 
 /**
- * Device-mockup-komposisjon: MacBook bak, iPad foran-venstre, iPhone
- * foran-høyre. Ekte UI-skjermbilder fylles inn senere — for nå er
- * device-rammene synlig med en lett purple glow på bakgrunnen.
+ * Device-mockup-komposisjon: CSS-baserte device-frames — INGEN PNG-er
+ * med hvite border. iPad foran-venstre, iPhone foran-høyre, og en
+ * stilisert browser-window i midten som viser Leadgrid Lead Map.
+ *
+ * Hvert device har:
+ *  - Avrundet mørk skall (ingen hvit kant)
+ *  - Tynn lys border (rgba — smelter med bg)
+ *  - Skjerm-innhold rendert i CSS (kart-pins, lead-cards)
+ *  - Drop-shadow for dybde
  */
 function DeviceComposition() {
   return (
     <Box
       sx={{
         position: 'relative',
-        height: { xs: 280, sm: 360, md: 440 },
+        height: { xs: 320, sm: 380, md: 480 },
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-      }}
-    >
-      <Box
-        sx={{
+        // Subtil glow bak komposisjonen
+        '&::before': {
+          content: '""',
           position: 'absolute',
           inset: 0,
           background:
-            'radial-gradient(ellipse at center, rgba(167, 139, 250, 0.25) 0%, transparent 70%)',
-          filter: 'blur(20px)',
-        }}
-      />
-      <Box
-        component="img"
-        src="/leadgrid/device-macbook.png"
-        alt=""
-        sx={{
-          position: 'relative',
-          width: '95%',
-          maxWidth: 540,
-          filter: 'drop-shadow(0 30px 60px rgba(0,0,0,0.6))',
-        }}
-      />
-      <Box
-        component="img"
-        src="/leadgrid/device-ipad.png"
-        alt=""
-        sx={{
+            'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(167, 139, 250, 0.20) 0%, transparent 70%)',
+          filter: 'blur(30px)',
+        },
+      }}
+    >
+      {/* Hovedskjerm: stylized browser/desktop view av Lead Map */}
+      <MockupBrowser />
+      {/* iPad foran-venstre */}
+      <MockupTablet />
+      {/* iPhone foran-høyre */}
+      <MockupPhone />
+    </Box>
+  );
+}
+
+/** Browser-window (sentral): Leadgrid Lead Map med kart-pins */
+function MockupBrowser() {
+  return (
+    <Box
+      sx={{
+        position: 'relative',
+        width: { xs: '90%', md: '85%' },
+        maxWidth: 560,
+        aspectRatio: '16 / 10',
+        borderRadius: 3,
+        bgcolor: '#0a0512',
+        border: '1px solid rgba(167, 139, 250, 0.20)',
+        boxShadow: '0 30px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04) inset',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Window-bar */}
+      <Box sx={{
+        height: 28, display: 'flex', alignItems: 'center', px: 1.5, gap: 0.8,
+        bgcolor: 'rgba(0,0,0,0.4)', borderBottom: '1px solid rgba(255,255,255,0.04)',
+      }}>
+        {['#ff6058', '#febc2e', '#28c941'].map((c) => (
+          <Box key={c} sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c }} />
+        ))}
+      </Box>
+      {/* Map-area med "kart"-gradient + pins */}
+      <Box sx={{
+        position: 'relative', height: 'calc(100% - 28px)',
+        background: `
+          radial-gradient(ellipse 40% 30% at 30% 40%, rgba(167, 139, 250, 0.12) 0%, transparent 60%),
+          radial-gradient(ellipse 30% 25% at 70% 60%, rgba(124, 58, 237, 0.10) 0%, transparent 60%),
+          linear-gradient(135deg, #0d0719 0%, #1a0a2e 100%)
+        `,
+      }}>
+        {/* Grid-lines for "kart"-følelse */}
+        <Box sx={{
+          position: 'absolute', inset: 0,
+          backgroundImage: `
+            linear-gradient(rgba(167, 139, 250, 0.06) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(167, 139, 250, 0.06) 1px, transparent 1px)
+          `,
+          backgroundSize: '30px 30px',
+        }} />
+        {/* Pins */}
+        {[
+          { x: '20%', y: '30%', color: PALETTE.accent },
+          { x: '45%', y: '55%', color: PALETTE.accentBright },
+          { x: '65%', y: '35%', color: PALETTE.accent },
+          { x: '78%', y: '70%', color: '#9be15d' },
+          { x: '35%', y: '78%', color: PALETTE.accentBright },
+        ].map((p, i) => (
+          <Box key={i} sx={{
+            position: 'absolute', left: p.x, top: p.y,
+            width: 14, height: 14, borderRadius: '50% 50% 50% 0',
+            bgcolor: p.color, transform: 'rotate(-45deg)',
+            boxShadow: `0 0 16px ${p.color}aa, 0 0 0 3px ${p.color}33`,
+          }} />
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+/** iPad — foran-venstre, lett vippet */
+function MockupTablet() {
+  return (
+    <Box
+      sx={{
+        position: 'absolute',
+        left: { xs: '0%', md: '-6%' },
+        top: { xs: '8%', md: '10%' },
+        width: { xs: '30%', md: '28%' },
+        aspectRatio: '3 / 4',
+        borderRadius: 2.5,
+        bgcolor: '#0a0512',
+        border: '1px solid rgba(167, 139, 250, 0.18)',
+        boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
+        transform: 'rotate(-4deg)',
+        overflow: 'hidden',
+        p: 0.5,
+      }}
+    >
+      <Box sx={{
+        width: '100%', height: '100%',
+        borderRadius: 1.5,
+        background: `
+          radial-gradient(circle at 30% 25%, rgba(167, 139, 250, 0.18) 0%, transparent 50%),
+          linear-gradient(180deg, #0d0719 0%, #050211 100%)
+        `,
+        display: 'flex', flexDirection: 'column', p: 1, gap: 0.6,
+      }}>
+        {/* Stilisert "Min dag"-header */}
+        <Box sx={{ height: 6, width: '40%', bgcolor: PALETTE.accent, borderRadius: 2, opacity: 0.8 }} />
+        <Box sx={{ height: 4, width: '70%', bgcolor: 'rgba(255,255,255,0.08)', borderRadius: 2 }} />
+        {/* Lead-cards */}
+        {[1, 2, 3].map((i) => (
+          <Box key={i} sx={{
+            mt: 0.4, p: 0.6, borderRadius: 0.8,
+            bgcolor: 'rgba(167, 139, 250, 0.08)',
+            border: '1px solid rgba(167, 139, 250, 0.10)',
+            display: 'flex', gap: 0.5,
+          }}>
+            <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: PALETTE.accent, opacity: 0.7 }} />
+            <Box sx={{ flex: 1 }}>
+              <Box sx={{ height: 3, width: '60%', bgcolor: 'rgba(255,255,255,0.14)', borderRadius: 1 }} />
+              <Box sx={{ mt: 0.3, height: 2, width: '40%', bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 1 }} />
+            </Box>
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+/** iPhone — foran-høyre, lett vippet motsatt */
+function MockupPhone() {
+  return (
+    <Box
+      sx={{
+        position: 'absolute',
+        right: { xs: '0%', md: '-4%' },
+        bottom: { xs: '5%', md: '8%' },
+        width: { xs: '22%', md: '20%' },
+        aspectRatio: '1 / 2.05',
+        borderRadius: 3,
+        bgcolor: '#0a0512',
+        border: '1px solid rgba(167, 139, 250, 0.18)',
+        boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
+        transform: 'rotate(6deg)',
+        overflow: 'hidden',
+        p: 0.4,
+        // Notch
+        '&::before': {
+          content: '""',
           position: 'absolute',
-          left: { xs: '-2%', md: '-8%' },
-          top: { xs: '5%', md: '8%' },
-          width: { xs: '32%', md: '34%' },
-          filter: 'drop-shadow(0 25px 50px rgba(0,0,0,0.6))',
-          transform: 'rotate(-3deg)',
-        }}
-      />
-      <Box
-        component="img"
-        src="/leadgrid/device-iphone.png"
-        alt=""
-        sx={{
-          position: 'absolute',
-          right: { xs: '-5%', md: '-10%' },
-          bottom: { xs: '0%', md: '5%' },
-          width: { xs: '24%', md: '26%' },
-          filter: 'drop-shadow(0 25px 50px rgba(0,0,0,0.6))',
-          transform: 'rotate(4deg)',
-        }}
-      />
+          top: 6, left: '50%', transform: 'translateX(-50%)',
+          width: '40%', height: 10, borderRadius: 6, bgcolor: '#000', zIndex: 2,
+        },
+      }}
+    >
+      <Box sx={{
+        width: '100%', height: '100%',
+        borderRadius: 2,
+        background: 'linear-gradient(180deg, #0d0719 0%, #050211 100%)',
+        display: 'flex', flexDirection: 'column', p: 0.8, gap: 0.5, pt: 2,
+      }}>
+        {/* Lead-list */}
+        {[1, 2, 3, 4].map((i) => (
+          <Box key={i} sx={{
+            p: 0.4, borderRadius: 0.6,
+            bgcolor: 'rgba(167, 139, 250, 0.08)',
+            display: 'flex', gap: 0.4, alignItems: 'center',
+          }}>
+            <Box sx={{
+              width: 8, height: 8, borderRadius: '50% 50% 50% 0',
+              bgcolor: i === 1 ? '#9be15d' : PALETTE.accent,
+              transform: 'rotate(-45deg)',
+            }} />
+            <Box sx={{ flex: 1 }}>
+              <Box sx={{ height: 2.5, width: '70%', bgcolor: 'rgba(255,255,255,0.16)', borderRadius: 1 }} />
+              <Box sx={{ mt: 0.2, height: 1.8, width: '45%', bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 1 }} />
+            </Box>
+          </Box>
+        ))}
+      </Box>
     </Box>
   );
 }
@@ -560,32 +725,38 @@ function FeatureGridSection() {
         <FeatureCard
           title="Kartbasert oversikt"
           desc="Se alle muligheter på kartet. Få umiddelbar visuell oversikt over områder med størst potensial."
-          backdrop="/leadgrid/backdrop1.png"
+          Icon={MapOutlined}
+          accent="#a78bfa"
         />
         <FeatureCard
           title="Smarte filtre"
           desc="Filtrér på bransje, størrelse, rating, omsetning og mer for å finne de riktige leadsene, raskere."
-          backdrop="/leadgrid/backdrop4.png"
+          Icon={FilterAltOutlined}
+          accent="#7ab8ff"
         />
         <FeatureCard
           title="AI-pitch og oppfølging"
           desc="Få hjelp til å skrive personlige, førsteinntrykk og oppfølgings-e-poster som faktisk får svar."
-          backdrop="/leadgrid/backdrop2.png"
+          Icon={AutoFixHighOutlined}
+          accent="#9be15d"
         />
         <FeatureCard
           title="Pipeline og aktiviteter"
           desc="Få full kontroll på fremdriften med en drag-and-drop pipeline og automatiske påminnelser."
-          backdrop="/leadgrid/backdrop8.png"
+          Icon={ViewKanbanOutlined}
+          accent="#ffb86b"
         />
         <FeatureCard
           title="Rapporter og innsikt"
           desc="Se hva som fungerer. Spor teamets resultater og ta datadrevne beslutninger som gir vekst."
-          backdrop="/leadgrid/backdrop6.png"
+          Icon={InsightsOutlined}
+          accent="#f472b6"
         />
         <FeatureCard
           title="Alt du trenger — samlet på ett sted"
           desc="Leadgrid samler kart, data, kommunikasjon og pipeline i én plattform som hjelper teamet ditt å jobbe smartere og vinne flere kunder."
-          backdrop="/leadgrid/backdrop5.png"
+          Icon={WorkspacesOutlined}
+          accent="#a78bfa"
           highlight
         />
       </Grid>
@@ -593,38 +764,68 @@ function FeatureGridSection() {
   );
 }
 
+/**
+ * CSS-basert feature-card. Ingen backdrop-bilder (de hadde innfelt
+ * tekst som lekket gjennom overlay og rotet til UI-en). I stedet:
+ *   - Mørk gradient bakgrunn
+ *   - Stor dekorativ ikon i nedre høyre, lav opasitet
+ *   - Radial glow i ikon-fargen for "tema" per kort
+ *   - Lite ikon-chip i topp som signaliserer hva kortet er
+ */
 function FeatureCard({
-  title, desc, backdrop, highlight = false,
-}: { title: string; desc: string; backdrop: string; highlight?: boolean }) {
+  title, desc, Icon, accent, highlight = false,
+}: {
+  title: string; desc: string;
+  Icon: SvgIconComponent; accent: string; highlight?: boolean;
+}) {
   return (
     <Grid item xs={12} md={6}>
       <Card
         sx={{
           position: 'relative',
           minHeight: 220,
-          bgcolor: highlight
-            ? 'rgba(167, 139, 250, 0.12)'
-            : PALETTE.card,
-          border: `1px solid ${highlight ? PALETTE.accent : PALETTE.cardBorder}`,
+          bgcolor: highlight ? `${accent}1f` : PALETTE.card,
+          border: `1px solid ${highlight ? accent : PALETTE.cardBorder}`,
           borderRadius: 3,
-          boxShadow: 'none',
+          boxShadow: highlight ? `0 0 40px ${accent}22` : 'none',
           overflow: 'hidden',
+          transition: 'border-color 0.3s, box-shadow 0.3s',
+          '&:hover': {
+            borderColor: accent,
+            boxShadow: `0 0 30px ${accent}22`,
+          },
         }}
       >
-        <Box
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            backgroundImage: `url(${backdrop})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            opacity: 0.25,
-            transition: 'opacity 0.3s',
-            '.MuiCard-root:hover &': { opacity: 0.4 },
-          }}
-        />
+        {/* Radial glow bak ikonet */}
+        <Box sx={{
+          position: 'absolute',
+          right: -40, bottom: -40,
+          width: 240, height: 240,
+          background: `radial-gradient(circle, ${accent}22 0%, transparent 70%)`,
+          filter: 'blur(20px)',
+          pointerEvents: 'none',
+        }} />
+        {/* Stor dekorativ ikon i bakgrunnen */}
+        <Icon sx={{
+          position: 'absolute',
+          right: -20, bottom: -20,
+          fontSize: 180,
+          color: accent,
+          opacity: 0.10,
+          pointerEvents: 'none',
+        }} />
         <CardContent sx={{ position: 'relative', p: 4 }}>
-          <Typography sx={{ fontWeight: 600, fontSize: 22, mb: 1.5 }}>
+          {/* Lite ikon-chip i topp */}
+          <Box sx={{
+            width: 44, height: 44, borderRadius: 2,
+            bgcolor: `${accent}22`,
+            border: `1px solid ${accent}40`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            mb: 2,
+          }}>
+            <Icon sx={{ fontSize: 24, color: accent }} />
+          </Box>
+          <Typography sx={{ fontWeight: 600, fontSize: 22, mb: 1.5, color: PALETTE.text }}>
             {title}
           </Typography>
           <Typography sx={{ color: PALETTE.textMuted, fontSize: 15, lineHeight: 1.6, maxWidth: 440 }}>
@@ -848,13 +1049,24 @@ function FinalCtaSection() {
         py: { xs: 6, md: 8 },
         px: { xs: 4, md: 6 },
         textAlign: 'center',
-        backgroundImage: 'url(/leadgrid/backdrop2.png)',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
+        // CSS-basert hero-bakgrunn (ingen backdrop med innfelt tekst)
+        bgcolor: '#0d0719',
+        backgroundImage: `
+          radial-gradient(ellipse 80% 60% at 50% 30%, rgba(167, 139, 250, 0.22) 0%, transparent 70%),
+          radial-gradient(ellipse 60% 50% at 30% 80%, rgba(124, 58, 237, 0.18) 0%, transparent 60%),
+          linear-gradient(135deg, #0d0719 0%, #1a0a2e 50%, #0d0719 100%)
+        `,
         '&::before': {
+          // Grid-pattern for dybde
           content: '""',
           position: 'absolute', inset: 0,
-          background: 'linear-gradient(180deg, rgba(11,5,24,0.65) 0%, rgba(11,5,24,0.85) 100%)',
+          backgroundImage: `
+            linear-gradient(rgba(167, 139, 250, 0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(167, 139, 250, 0.05) 1px, transparent 1px)
+          `,
+          backgroundSize: '40px 40px',
+          maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 80%)',
+          WebkitMaskImage: 'radial-gradient(ellipse at center, black 30%, transparent 80%)',
         },
       }}>
         <Box sx={{ position: 'relative' }}>

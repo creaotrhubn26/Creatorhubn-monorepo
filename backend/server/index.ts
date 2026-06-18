@@ -548,6 +548,7 @@ import {
   handleLeadgridInvoicePaid,
 } from "./leadgrid-billing-routes.js";
 import { enforceOrgStatus } from "./org-status-enforcement.js";
+import { registerLeadgridPartnersRoutes } from "./leadgrid-partners-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24344,6 +24345,8 @@ registerOrgSelfOnboardRoutes({ app, pool });
 registerPlanRoutes({ app, pool, activeSessions });
 // Leadgrid billing: Customer Portal-link, invoice-liste, superadmin payments-overview
 registerLeadgridBillingRoutes({ app, pool, activeSessions, stripe: getCreatorHubStripeClient() });
+// Leadgrid partners (dynamisk landing-strip + superadmin CRUD)
+registerLeadgridPartnersRoutes({ app, pool, activeSessions });
 // Håndhev org-status (paused/suspended) på alle Leadgrid-rutene.
 // Bypass for super_admin er ON som default.
 app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));
