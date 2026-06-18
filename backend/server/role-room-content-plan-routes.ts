@@ -15,6 +15,7 @@ import { randomUUID } from 'crypto';
 import type { Express, Request, Response } from 'express';
 import type { Pool } from 'pg';
 import { upsertProducerProjectNotification } from './role-room-producer-notifications.js';
+import { loadFeedPlan, saveFeedPlan, isSupportedPlatform, type RoleRoomFeedPostInput } from './role-room-feed-plan.js';
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -184,6 +185,57 @@ export function registerRoleRoomContentPlanRoutes(app: Express, deps: Deps): voi
     } catch (error) {
       console.error('[content-plan] update failed', error);
       res.status(500).json({ error: 'Kunne ikke oppdatere post' });
+    }
+  });
+
+  // Push til feed-planner: legg posten faktisk inn i role_room_feed_plans.posts
+  // for plattformen (kun instagram/tiktok/linkedin), og marker som pushet.
+  app.post('/api/role-room/projects/:projectId/content-plan/:id/push-to-feed', async (req, res) => {
+    try {
+      const session = await authorize(req, res);
+      if (!session) return;
+      const projectId = String(req.params.projectId).trim();
+      const id = String(req.params.id).trim();
+      const itemRes = await pool.query(
+        `SELECT * FROM role_room_content_plan WHERE id = $1 AND project_id = $2`, [id, projectId],
+      );
+      if (itemRes.rowCount === 0) { res.status(404).json({ error: 'fant_ikke' }); return; }
+      const item = itemRes.rows[0] as Record<string, unknown>;
+      const platform = String(item.platform ?? '');
+      if (!isSupportedPlatform(platform)) {
+        res.status(400).json({ error: 'Feed-planneren støtter kun Instagram, TikTok og LinkedIn. Velg en av dem på posten.' });
+        return;
+      }
+      const existing = await loadFeedPlan(pool, projectId, platform);
+      const newPost: RoleRoomFeedPostInput = {
+        id: randomUUID(),
+        concept: String(item.title ?? 'Post'),
+        title: String(item.title ?? 'Post'),
+        caption: typeof item.caption === 'string' ? item.caption : '',
+        hashtags: [],
+        callToAction: '',
+        imageStyle: '',
+        scheduledFor: item.scheduled_at ? new Date(String(item.scheduled_at)).toISOString() : null,
+        mediaType: platform === 'tiktok' ? 'reel' : 'image',
+      };
+      const nextPosts = [...(existing?.posts ?? []), newPost];
+      // Bevar eksisterende brand_snapshot (saveFeedPlan ville ellers nulle det).
+      await saveFeedPlan(pool, projectId, platform, nextPosts, {
+        brandSnapshot: existing?.brandSnapshot ?? undefined,
+        updatedBy: session.userId,
+      });
+      const upd = await pool.query(
+        `UPDATE role_room_content_plan
+           SET feed_plan_pushed = TRUE,
+               status = CASE WHEN status = 'draft' THEN 'scheduled' ELSE status END,
+               updated_at = NOW()
+         WHERE id = $1 AND project_id = $2 RETURNING *`,
+        [id, projectId],
+      );
+      res.json({ success: true, item: mapRow(upd.rows[0] as Record<string, unknown>), feedPostId: newPost.id });
+    } catch (error) {
+      console.error('[content-plan] push-to-feed failed', error);
+      res.status(500).json({ error: 'Kunne ikke pushe til feed-planner' });
     }
   });
 
