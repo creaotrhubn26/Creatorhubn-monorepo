@@ -18,7 +18,7 @@ import {
   DeleteOutline as DeleteIcon,
 } from '@mui/icons-material';
 import {
-  listContentPlan, createContentPlanItem, updateContentPlanItem, deleteContentPlanItem,
+  listContentPlan, createContentPlanItem, deleteContentPlanItem, pushToFeedPlan,
   CONTENT_PLATFORMS, PLATFORM_LABEL, type ContentPlanItem,
 } from '../../services/roleRoomContentPlanApi';
 
@@ -84,12 +84,16 @@ export default function ClientContentPlannerView({ projectId }: { projectId: str
   }, [projectId, title, platform, caption, date, load]);
 
   const pushToFeed = useCallback(async (it: ContentPlanItem) => {
+    if (!it.platform || !['instagram', 'tiktok', 'linkedin'].includes(it.platform)) {
+      setToast('Feed-planneren støtter kun Instagram, TikTok og LinkedIn — velg en av dem på posten.');
+      return;
+    }
     setBusyId(it.id);
     try {
-      await updateContentPlanItem(projectId, it.id, { feedPlanPushed: true, status: it.status === 'draft' ? 'scheduled' : it.status });
-      setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, feedPlanPushed: true } : x)));
-      setToast('Pushet til feed-planneren.');
-    } catch { setToast('Kunne ikke pushe.'); }
+      const updated = await pushToFeedPlan(projectId, it.id);
+      setItems((prev) => prev.map((x) => (x.id === it.id ? updated : x)));
+      setToast('Lagt inn i feed-planneren for ' + (PLATFORM_LABEL[it.platform] ?? it.platform) + '.');
+    } catch (e) { setToast(e instanceof Error ? e.message : 'Kunne ikke pushe.'); }
     finally { setBusyId(null); }
   }, [projectId]);
 

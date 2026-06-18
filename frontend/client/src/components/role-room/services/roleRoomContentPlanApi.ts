@@ -60,6 +60,14 @@ export async function updateContentPlanItem(
   return payload.item;
 }
 
+/** Push posten faktisk inn i feed-planneren (role_room_feed_plans). */
+export async function pushToFeedPlan(projectId: string, id: string): Promise<ContentPlanItem> {
+  const res = await fetch(`${base(projectId)}/${encodeURIComponent(id)}/push-to-feed`, { method: 'POST', headers: headers(true) });
+  const payload = (await res.json().catch(() => null)) as { item?: ContentPlanItem; error?: string } | null;
+  if (!res.ok || !payload?.item) throw new Error(payload?.error || `Kunne ikke pushe til feed-planner (HTTP ${res.status})`);
+  return payload.item;
+}
+
 export async function deleteContentPlanItem(projectId: string, id: string): Promise<void> {
   const res = await fetch(`${base(projectId)}/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() });
   if (!res.ok) throw new Error(`Kunne ikke slette (HTTP ${res.status})`);
