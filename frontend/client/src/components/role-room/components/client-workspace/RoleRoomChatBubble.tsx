@@ -18,10 +18,13 @@ const ClientConversationView = lazy(() => import('./ClientConversationView'));
 export default function RoleRoomChatBubble({
   projectId,
   onOpenFullTab,
+  canUseInternal = false,
 }: {
   projectId: string;
   /** Valgfri: hopp til full Meldinger-fane. */
   onOpenFullTab?: () => void;
+  /** Produsent: vis intern/delt rom-toggle. */
+  canUseInternal?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -84,7 +87,7 @@ export default function RoleRoomChatBubble({
           </Stack>
           <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', p: 1.5 }}>
             <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={22} sx={{ color: '#a855f7' }} /></Box>}>
-              <ClientConversationView projectId={projectId} />
+              <ClientConversationView projectId={projectId} canUseInternal={canUseInternal} />
             </Suspense>
           </Box>
         </Paper>
