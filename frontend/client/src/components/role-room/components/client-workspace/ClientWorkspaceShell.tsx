@@ -14,8 +14,9 @@
  * ?preview=true (vises da med banner "Du ser dette som klient").
  */
 
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
+import { getMyAccess, AREA_LABELS, type MyAssistantAccess, type AssistantArea } from '../../services/roleRoomAssistantsApi';
 import {
   Alert,
   Box,
@@ -97,6 +98,21 @@ export default function ClientWorkspaceShell({
     return params.get('preview') === 'true';
   }, []);
 
+  // Assistent-scoping: hent egen tilgang. Hvis bruker er scopet assistent,
+  // vis «din tilgang»-banner + skjul faner de ikke har tilgang til.
+  const [myAccess, setMyAccess] = useState<MyAssistantAccess | null>(null);
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    void getMyAccess(projectId).then((a) => { if (!cancelled) setMyAccess(a); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [projectId]);
+  const isAssistant = myAccess?.isAssistant === true;
+  // Fane → assistent-område (kun mappede faner skjules; resten vises som før).
+  const TAB_AREA: Partial<Record<TabValue, AssistantArea>> = {
+    economy: 'economy', brief: 'brief', meetings: 'meetings', merkevare: 'materials', plan: 'plan',
+  };
+
   const handleTabChange = (_e: React.SyntheticEvent, next: TabValue) => {
     setActiveTab(next);
     // Behold tab i URL så reload + deep-link funker
@@ -140,6 +156,20 @@ export default function ClientWorkspaceShell({
           sx={{ borderRadius: 0 }}
         >
           Du ser dette som klient (forhåndsvisning). Klienten ser de samme tallene + kan ikke endre kampanjer.
+        </Alert>
+      )}
+
+      {/* «Din tilgang» — vises kun for scopede assistenter */}
+      {isAssistant && (
+        <Alert severity="info" icon={false} sx={{ borderRadius: 0, bgcolor: 'rgba(124,58,237,0.12)', color: '#e2e8f0', '& .MuiAlert-message': { width: '100%' } }}>
+          <Typography component="span" sx={{ fontWeight: 700 }}>Din tilgang som assistent: </Typography>
+          {(() => {
+            const granted = (Object.keys(myAccess?.areas ?? {}) as AssistantArea[]).filter((a) => myAccess?.areas?.[a]);
+            return granted.length > 0
+              ? granted.map((a) => AREA_LABELS[a]).join(', ')
+              : 'ingen områder ennå — be produsenten om tilgang.';
+          })()}
+          <Typography component="span" sx={{ color: 'rgba(226,232,240,0.6)' }}> · Andre områder er skjult for deg.</Typography>
         </Alert>
       )}
 
@@ -203,9 +233,16 @@ export default function ClientWorkspaceShell({
               '& .MuiTabs-indicator': { backgroundColor: '#22d3ee', height: 3 },
             }}
           >
-            {TABS.filter((t) => !t.producerOnly || isPreviewMode).map((t) => (
-              <Tab key={t.value} value={t.value} label={t.label} icon={t.icon} iconPosition="start" />
-            ))}
+            {TABS
+              .filter((t) => !t.producerOnly || isPreviewMode)
+              .filter((t) => {
+                if (!isAssistant) return true;
+                const area = TAB_AREA[t.value];
+                return area ? myAccess?.areas?.[area] === true : true;
+              })
+              .map((t) => (
+                <Tab key={t.value} value={t.value} label={t.label} icon={t.icon} iconPosition="start" />
+              ))}
           </Tabs>
         </Container>
       </Box>

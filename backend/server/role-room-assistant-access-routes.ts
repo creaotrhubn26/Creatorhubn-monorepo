@@ -128,6 +128,34 @@ export function registerRoleRoomAssistantAccessRoutes(app: Express, deps: Deps):
     return session;
   }
 
+  // Self: assistentens egen tilgang («din tilgang»-visning). Alle innloggede
+  // prosjekt-medlemmer kan kalle; returnerer isAssistant=false for ikke-assistenter.
+  app.get('/api/role-room/projects/:projectId/my-assistant-access', async (req, res) => {
+    try {
+      const session = getSession(req, activeSessions);
+      if (!session) { res.status(401).json({ error: 'krever_innlogging' }); return; }
+      const projectId = String(req.params.projectId || '').trim();
+      try { await ensureTable(); } catch { /* fortsetter */ }
+      const { rows } = await pool.query(
+        `SELECT areas, role_preset, status FROM role_room_assistant_access
+          WHERE project_id = $1 AND status IN ('invited','active')
+            AND ( (assistant_user_id IS NOT NULL AND assistant_user_id = $2)
+                  OR ($3 <> '' AND lower(assistant_email) = $3) )
+          LIMIT 1`,
+        [projectId, session.userId, (session.email ?? '').toLowerCase()],
+      );
+      if (!rows[0]) { res.json({ isAssistant: false, areas: {} }); return; }
+      res.json({
+        isAssistant: true,
+        rolePreset: String(rows[0].role_preset ?? 'editor'),
+        areas: (rows[0].areas && typeof rows[0].areas === 'object' ? rows[0].areas : {}),
+      });
+    } catch (error) {
+      console.error('[assistant-access] my-access failed', error);
+      res.status(500).json({ error: 'Kunne ikke hente tilgang' });
+    }
+  });
+
   app.get('/api/role-room/projects/:projectId/assistants', async (req, res) => {
     try {
       const session = await authorizeProducer(req, res);

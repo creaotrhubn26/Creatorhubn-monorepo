@@ -68,6 +68,21 @@ export async function inviteAssistant(
   return payload.assistant;
 }
 
+export interface MyAssistantAccess {
+  isAssistant: boolean;
+  rolePreset?: string;
+  areas: Partial<Record<AssistantArea, boolean>>;
+}
+
+/** Assistentens egen tilgang («din tilgang»-visning). */
+export async function getMyAccess(projectId: string): Promise<MyAssistantAccess> {
+  const url = `/api/role-room/projects/${encodeURIComponent(projectId)}/my-assistant-access`;
+  const res = await fetch(url, { headers: headers() });
+  if (!res.ok) return { isAssistant: false, areas: {} };
+  const payload = (await res.json().catch(() => null)) as MyAssistantAccess | null;
+  return payload ?? { isAssistant: false, areas: {} };
+}
+
 export async function updateAssistant(
   projectId: string, id: string, patch: { rolePreset?: string; areas?: Partial<Record<AssistantArea, boolean>>; status?: string },
 ): Promise<RoleRoomAssistant> {
