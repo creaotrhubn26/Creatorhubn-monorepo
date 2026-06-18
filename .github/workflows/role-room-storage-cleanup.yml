@@ -1,0 +1,45 @@
+name: Role Room storage cleanup
+
+on:
+  schedule:
+    # Hver time, klokken 17 min over (sprer last fra andre cron-jobber)
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry-run (logger uten å slette)'
+        required: false
+        default: 'false'
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call cleanup-endpoint
+        env:
+          ROLE_ROOM_STORAGE_CLEANUP_TOKEN: ${{ secrets.ROLE_ROOM_STORAGE_CLEANUP_TOKEN }}
+          BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL || 'https://creatorhub-backend-rtbl.onrender.com' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          if [ -z "$ROLE_ROOM_STORAGE_CLEANUP_TOKEN" ]; then
+            echo "::error::ROLE_ROOM_STORAGE_CLEANUP_TOKEN secret er ikke satt"
+            exit 1
+          fi
+
+          URL="$BACKEND_BASE_URL/api/role-room/storage/admin/cleanup-soft-deleted?batchSize=200&dryRun=$DRY_RUN"
+          echo "Calling: $URL"
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$URL" \
+            -H "x-cron-trigger-token: $ROLE_ROOM_STORAGE_CLEANUP_TOKEN" \
+            -H "Content-Type: application/json")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+
+          echo "HTTP $HTTP_CODE"
+          echo "$BODY" | jq . || echo "$BODY"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Cleanup feilet med HTTP $HTTP_CODE"
+            exit 1
+          fi

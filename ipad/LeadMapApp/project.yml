@@ -1,0 +1,123 @@
+name: LeadMapApp
+options:
+  bundleIdPrefix: com.creatorhubn
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+
+settings:
+  base:
+    # Swift 6 + complete strict concurrency — samme policy som CaptureApp.
+    SWIFT_VERSION: "6"
+    SWIFT_STRICT_CONCURRENCY: complete
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: "9TAUZCPK95"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    VERSIONING_SYSTEM: apple-generic
+    CURRENT_PROJECT_VERSION: "4"
+    MARKETING_VERSION: "0.4.0"
+
+targets:
+  LeadMapApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: LeadMapApp
+    dependencies:
+      - target: LeadMapWidget
+    info:
+      path: LeadMapApp/Generated/Info.plist
+      properties:
+        CFBundleDisplayName: Leadgrid
+        CFBundleName: Leadgrid
+        UILaunchScreen:
+          UIImageName: LeadgridLogo
+          UIImageRespectsSafeAreaInsets: true
+        UIRequiredDeviceCapabilities: [arm64]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # Bruker GPS til å auto-fylle visit_latitude/longitude ved fysiske besøk
+        # + vise "leads i nærheten av meg"-sortering.
+        NSLocationWhenInUseUsageDescription: Leadgrid bruker din posisjon til å vise leads i nærheten + auto-fylle koordinater når du logger fysiske besøk.
+        # 'Always' kreves for Nær-lead-varsel — CLCircularRegion-monitorering
+        # i bakgrunn slik at selger får push når de er innen 500m av en tildelt
+        # lead, selv om app-en er lukket.
+        NSLocationAlwaysAndWhenInUseUsageDescription: Leadgrid varsler deg når du er innen 500m av en tildelt lead — også når app-en er lukket. Du kan skru dette av i Org-tab → Personvern.
+        UIBackgroundModes:
+          - location
+        # Kamera: QR-paring + visittkort-skanner (VisionKit #182).
+        NSCameraUsageDescription: Leadgrid bruker kameraet til å skanne visittkort (auto-fyll lead) og QR-koden i nettleseren for paring.
+        # Mikrofon: dikter visit-notater (#183).
+        NSMicrophoneUsageDescription: Leadgrid bruker mikrofonen til å diktere visit-notater etter besøk.
+        # Tale-gjenkjenning: transkriber dikterte notater (#183).
+        NSSpeechRecognitionUsageDescription: Leadgrid transkriberer din tale til tekst slik at du kan diktere visit-notater hands-free.
+        # Apple Pencil til notater i visit-loggen.
+        UIApplicationSupportsIndirectInputEvents: true
+        # Live Activities — 'Pågående besøk' på låseskjerm + Dynamic Island (#184).
+        NSSupportsLiveActivities: true
+        # URL Schemes for Google Sign-In OAuth callback.
+        # 'leadgrid://oauth?code=…' fanges av ASWebAuthenticationSession.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.creatorhubn.LeadMapApp.oauth
+            CFBundleURLSchemes:
+              - leadgrid
+        # Export Compliance — Leadgrid bruker kun HTTPS (URLSession) +
+        # iOS Data Protection. Ingen egen krypto-kode i appen. Flipp
+        # dette til true HVIS du innfører end-to-end-kryptering,
+        # importerer CryptoKit for egen AES/RSA-bruk, eller
+        # implementerer noe utover OS-innebygd kryptering.
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: LeadMapApp/Generated/LeadMapApp.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.creatorhubn.LeadMapApp
+        # APNs (PR #622+627). 'development' = Sandbox (dev-bygg).
+        # App Store-bygging overskrives automatisk til 'production'
+        # av Apple ved arkiv-eksport — det skjer transparently.
+        aps-environment: development
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp
+        INFOPLIST_FILE: LeadMapApp/Generated/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  # Widget Extension: 'Møter i dag' + 'Stille leads' på homescreen.
+  # Leser data fra delt App Group skrevet av hovedappen etter hver
+  # refreshAll.
+  LeadMapWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: LeadMapWidget
+      # Shared snapshot-modell — kompileres i begge targets.
+      - path: LeadMapApp/Core/WidgetSnapshot.swift
+      # ActivityKit-attributter for Live Activity — delt med hovedapp.
+      - path: LeadMapApp/Core/ActiveVisitAttributes.swift
+    info:
+      path: LeadMapWidget/Generated/Info.plist
+      properties:
+        CFBundleDisplayName: Leadgrid
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: LeadMapWidget/Generated/LeadMapWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.creatorhubn.LeadMapApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp.LeadMapWidget
+        INFOPLIST_FILE: LeadMapWidget/Generated/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"

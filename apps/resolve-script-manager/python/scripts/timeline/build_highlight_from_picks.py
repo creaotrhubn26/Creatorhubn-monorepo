@@ -22,6 +22,13 @@ from typing import Any
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import bridge
 
+# Trygt valgfri import av brand-vignett-helper. Hvis fila flyttes/mangler skal
+# IKKE highlight-bygget knekke — auto-apply hopper bare over.
+try:
+    from scripts.media.apply_brand_vignette import apply_vignette_to_timeline  # type: ignore
+except Exception:  # noqa: BLE001
+    apply_vignette_to_timeline = None  # type: ignore
+
 
 def _load_cached_picks() -> dict:
     path = os.path.expanduser(
@@ -191,6 +198,16 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     placed = media_pool.AppendToTimeline(append_specs)
     placed_count = len(placed) if isinstance(placed, list) else 0
 
+    # Auto-apply brand-vignett (intro+outro) hvis konfigurert i Settings.
+    # Kjøres FØR audio/track-mute så vignetten sitter på et ferskt over-spor.
+    vignette_result = None
+    _vignette_path = (os.environ.get("BRAND_VIGNETTE_PATH") or "").strip()
+    if _vignette_path and apply_vignette_to_timeline is not None:
+        try:
+            vignette_result = apply_vignette_to_timeline(conn, timeline, _vignette_path)
+        except Exception as exc:  # noqa: BLE001
+            bridge.warn(f"Brand-vignett auto-apply feilet (hopper over): {exc}")
+
     # Place identified source songs on a separate audio track if available.
     # Each song's startSec on the timeline = where its section landed in the
     # rebuilt highlight (we map original-video-timecode → highlight-timecode).
@@ -330,6 +347,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         "shotsPlaced": placed_count,
         "totalDurationSec": round(total, 1),
         "songsPlaced": songs_placed,
+        "brandVignette": vignette_result,
     })
 
 

@@ -230,7 +230,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
             # BPM
             tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr, units="frames")
-            bpm = float(tempo)
+            bpm = float(tempo[0]) if hasattr(tempo, "__len__") else float(tempo)
             beat_times = librosa.frames_to_time(beat_frames, sr=sr)
 
             # Tempo-confidence

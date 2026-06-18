@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { executeScript, onScriptEvent, updateAppSettings } from "../api";
 import { loadSettings, settingsToEnvVars } from "./SettingsModal";
 import {
@@ -33,6 +34,7 @@ type Stage =
   | "brewTools"
   | "pythonTools"
   | "anthropicKey"
+  | "brandVignette"
   | "resolve"
   | "complete";
 
@@ -166,7 +168,7 @@ export function FirstRunSetupWizard({ onClose }: Props) {
 
   const saveAnthropicKey = useCallback(async () => {
     if (!anthropicKey.trim()) {
-      setStage("resolve");
+      setStage("brandVignette");
       return;
     }
     const settings = { ...loadSettings(), ANTHROPIC_API_KEY: anthropicKey.trim() };
@@ -177,8 +179,43 @@ export function FirstRunSetupWizard({ onClose }: Props) {
     } catch (e) {
       setError(String(e));
     }
-    setStage("resolve");
+    setStage("brandVignette");
   }, [anthropicKey, updateStep]);
+
+  // Persist a brand asset path into settings localStorage (key not in Settings
+  // interface — round-trips via loadSettings()'s {...DEFAULT_SETTINGS, ...parsed} spread).
+  const saveBrandPath = useCallback(
+    async (key: "BRAND_VIGNETTE_PATH" | "BRAND_LOGO_PATH", path: string) => {
+      const settings = { ...loadSettings(), [key]: path };
+      try {
+        localStorage.setItem("trrpa.settings", JSON.stringify(settings));
+        await updateAppSettings(settingsToEnvVars(settings));
+        updateStep("brandVignette", "ok", `${key === "BRAND_VIGNETTE_PATH" ? "Vignett" : "Logo"} lagret`);
+      } catch (e) {
+        setError(String(e));
+      }
+      setStage("resolve");
+    },
+    [updateStep],
+  );
+
+  const pickBrandVignette = useCallback(async () => {
+    const picked = await openDialog({
+      multiple: false,
+      filters: [{ name: "Video", extensions: ["mov", "mp4", "m4v", "prores"] }],
+    });
+    if (typeof picked !== "string") return; // cancelled -> stay
+    await saveBrandPath("BRAND_VIGNETTE_PATH", picked);
+  }, [saveBrandPath]);
+
+  const pickBrandLogo = useCallback(async () => {
+    const picked = await openDialog({
+      multiple: false,
+      filters: [{ name: "Bilde", extensions: ["png", "jpg", "jpeg", "svg", "webp"] }],
+    });
+    if (typeof picked !== "string") return; // cancelled -> stay
+    await saveBrandPath("BRAND_LOGO_PATH", picked);
+  }, [saveBrandPath]);
 
   const finishWizard = useCallback(() => {
     localStorage.setItem(COMPLETED_KEY, new Date().toISOString());
@@ -200,11 +237,12 @@ export function FirstRunSetupWizard({ onClose }: Props) {
       case "brewTools": return 4;
       case "pythonTools": return 5;
       case "anthropicKey": return 6;
-      case "resolve": return 7;
-      case "complete": return 8;
+      case "brandVignette": return 7;
+      case "resolve": return 8;
+      case "complete": return 9;
     }
   };
-  const totalStages = 7;
+  const totalStages = 8;
   const currentNumber = Math.min(stageNumber(stage), totalStages);
 
   return (
@@ -408,6 +446,42 @@ export function FirstRunSetupWizard({ onClose }: Props) {
               <button className="primary" onClick={saveAnthropicKey}>
                 Lagre + fortsett <IconArrowRight />
               </button>
+            </div>
+          </>
+        )}
+
+        {/* BRAND VIGNETTE */}
+        {stage === "brandVignette" && (
+          <>
+            <h2>Merkevare-vignett (valgfritt)</h2>
+            <div className="desc">
+              Har du en intro/outro-vignett (logo-animasjon) du vil at appen skal legge på timelinen automatisk?
+            </div>
+            {steps.brandVignette && steps.brandVignette.status === "ok" && (
+              <div className="dialog-warning" style={{ borderColor: "var(--success)", color: "var(--success)" }}>
+                <IconCheck /> {steps.brandVignette.detail}
+              </div>
+            )}
+            <div className="first-run-tool-list">
+              <div className="first-run-tool">
+                <strong>Ja, velg fil</strong>
+                <span className="card-chip-meta">En ferdig vignett-video (.mov/.mp4) brukes som intro/outro</span>
+                <button className="primary" style={{ marginTop: 8 }} onClick={pickBrandVignette}>
+                  Velg vignett-fil <IconArrowRight />
+                </button>
+              </div>
+              <div className="first-run-tool">
+                <strong>Jeg har bare en logo</strong>
+                <span className="card-chip-meta">
+                  Velg en logo-fil (.png/.svg) — appen kan generere en animert vignett fra logoen din senere.
+                </span>
+                <button className="primary" style={{ marginTop: 8 }} onClick={pickBrandLogo}>
+                  Velg logo-fil <IconArrowRight />
+                </button>
+              </div>
+            </div>
+            <div className="first-run-actions">
+              <button onClick={() => setStage("resolve")}>Hopp over</button>
             </div>
           </>
         )}

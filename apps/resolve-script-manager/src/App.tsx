@@ -66,6 +66,9 @@ import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSe
 import { UpdaterDialog } from "./components/UpdaterDialog";
 import { WatchFolderModal } from "./components/WatchFolderModal";
 import { PhotoshopBridgeDialog } from "./components/PhotoshopBridgeDialog";
+import AudioMixPanel from "./components/AudioMixPanel";
+import QcPreflightPanel from "./components/QcPreflightPanel";
+import ColorAutopilotPanel from "./components/ColorAutopilotPanel";
 import { FireflyPromptDialog } from "./components/FireflyPromptDialog";
 import { PhotoshopWorkspaceDialog } from "./components/PhotoshopWorkspaceDialog";
 import { MultiAgentDirectorDialog } from "./components/MultiAgentDirectorDialog";
@@ -180,6 +183,9 @@ export default function App() {
   const [showFirstRun, setShowFirstRun] = useState(() => shouldShowFirstRun());
   const [showWatch, setShowWatch] = useState(false);
   const [showPhotoshopBridge, setShowPhotoshopBridge] = useState(false);
+  const [showAudioMixPanel, setShowAudioMixPanel] = useState(false);
+  const [showQcPreflight, setShowQcPreflight] = useState(false);
+  const [showColorAutopilot, setShowColorAutopilot] = useState(false);
   const [showFireflyPrompt, setShowFireflyPrompt] = useState(false);
   const [showPhotoshopWorkspace, setShowPhotoshopWorkspace] = useState(false);
   const [showMultiAgent, setShowMultiAgent] = useState(false);
@@ -904,6 +910,35 @@ export default function App() {
           { id: "open_settings", title: "Open Settings",
             subtitle: "API keys, paths, preferences",
             handler: () => setShowSettings(true) },
+          { id: "open_audio_mix", title: "Åpne Audio Mix-panel",
+            subtitle: "VO analyze + repair + mix/master (ducking, LUFS)",
+            handler: () => setShowAudioMixPanel(true) },
+          { id: "open_qc_preflight", title: "QC Preflight",
+            subtitle: "samlet pre-render QC: gaps + uhørbar tale + media + loudness",
+            handler: () => setShowQcPreflight(true) },
+          { id: "open_color_autopilot", title: "Color Autopilot",
+            subtitle: "analyser timeline-scopes + auto-grade alle klipp",
+            handler: () => setShowColorAutopilot(true) },
+          { id: "apply_powergrade_all", title: "Legg PowerGrade på alle klipp",
+            subtitle: "propagér merkevare-.drx (BRAND_GRADE_DRX) til alle V1-klipp",
+            handler: () => {
+              const drxPath = loadSettings().BRAND_GRADE_DRX?.trim();
+              if (!drxPath) { setShowSettings(true); return; }
+              void executeScript("apply_powergrade_all", { drxPath }, false);
+            } },
+          { id: "find_jump_cuts", title: "Finn jump cuts",
+            subtitle: "skann gjeldende timeline for flash cuts + jump-cut-risiko",
+            handler: () => { void executeScript("find_jump_cuts", {}, false); } },
+          { id: "generate_brand_vignette", title: "Generer brand-vignett fra logo",
+            subtitle: "lag gjennomsiktig brand-bug fra logo (BRAND_LOGO_PATH i Settings)",
+            handler: () => {
+              const logoPath = loadSettings().BRAND_LOGO_PATH?.trim();
+              if (!logoPath) { setShowSettings(true); return; }
+              void executeScript("generate_brand_vignette", { logoPath }, false);
+            } },
+          { id: "apply_brand_vignette", title: "Legg på brand-vignett",
+            subtitle: "legg brand-vignetten på et overlay-spor i aktiv timeline",
+            handler: () => { void executeScript("apply_brand_vignette", {}, false); } },
           { id: "open_learning", title: "Vis hva systemet har lært",
             subtitle: "per-project + global læringsprofil + sist 10 økter",
             handler: () => setShowLearning(true) },
@@ -1060,6 +1095,15 @@ export default function App() {
       {showWatch && <WatchFolderModal onClose={() => setShowWatch(false)} />}
       {showPhotoshopBridge && (
         <PhotoshopBridgeDialog onClose={() => setShowPhotoshopBridge(false)} />
+      )}
+      {showAudioMixPanel && (
+        <AudioMixPanel onClose={() => setShowAudioMixPanel(false)} />
+      )}
+      {showQcPreflight && (
+        <QcPreflightPanel onClose={() => setShowQcPreflight(false)} />
+      )}
+      {showColorAutopilot && (
+        <ColorAutopilotPanel onClose={() => setShowColorAutopilot(false)} />
       )}
 
       <FireflyPromptDialog

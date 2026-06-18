@@ -1,0 +1,46 @@
+name: Audio Showcase Google Calendar-synk
+
+# Polling-fallback for automatisk toveis-synk: henter endringer fra Google for
+# alle produsenter med auto-synk på, og fornyer watch-kanaler nær utløp. Webhook
+# gir umiddelbar synk når aktiv; denne sikrer synk uansett (kanal utløpt / domene
+# ikke verifisert ennå). Token-gated via CRON_TRIGGER_TOKEN. Idempotent.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # hvert 15. minutt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audio-gcal-sync
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  run-sync:
+    name: Kjør kalender-synk
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Trigger sync-cron
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN secret er ikke satt"
+            exit 1
+          fi
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-trigger-token: $CRON_TRIGGER_TOKEN" \
+            -d '{}' \
+            "$BACKEND_URL/api/audio-showcase/google-calendar/sync-cron")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "HTTP $HTTP_CODE — $BODY"
+          [ "$HTTP_CODE" = "200" ] || exit 1
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { updateAppSettings } from "../api";
 import { IconCheck, IconWarning } from "./Icons";
 import { RoleRoomSignInDialog } from "./RoleRoomSignInDialog";
@@ -25,6 +26,11 @@ interface Settings {
   R2_SECRET_ACCESS_KEY: string;
   R2_MODELS_BUCKET: string;
   POST_AGENT_DISABLED_SIGNALS: string;
+  // Merkevare / Branding — intro/outro-vignett + logo-fallback for eksport
+  BRAND_VIGNETTE_PATH: string;
+  BRAND_LOGO_PATH: string;
+  // PowerGrade (.drx) som legges på alle klipp som merkevare-default
+  BRAND_GRADE_DRX: string;
   defaultDeliveryTarget: string;
   defaultOutputFolder: string;
   defaultWhisperModel: string;
@@ -53,6 +59,9 @@ const DEFAULT_SETTINGS: Settings = {
   R2_SECRET_ACCESS_KEY: "",
   R2_MODELS_BUCKET: "ml-models",
   POST_AGENT_DISABLED_SIGNALS: "",
+  BRAND_VIGNETTE_PATH: "",
+  BRAND_LOGO_PATH: "",
+  BRAND_GRADE_DRX: "",
   defaultDeliveryTarget: "wedding",
   defaultOutputFolder: "",
   defaultWhisperModel: "base",
@@ -86,6 +95,9 @@ export function settingsToEnvVars(settings: Settings): Record<string, string> {
     R2_SECRET_ACCESS_KEY: settings.R2_SECRET_ACCESS_KEY,
     R2_MODELS_BUCKET: settings.R2_MODELS_BUCKET,
     POST_AGENT_DISABLED_SIGNALS: settings.POST_AGENT_DISABLED_SIGNALS,
+    BRAND_VIGNETTE_PATH: settings.BRAND_VIGNETTE_PATH,
+    BRAND_LOGO_PATH: settings.BRAND_LOGO_PATH,
+    BRAND_GRADE_DRX: settings.BRAND_GRADE_DRX,
   };
 }
 
@@ -160,6 +172,33 @@ export function SettingsModal({ onClose }: Props) {
   const update = useCallback(<K extends keyof Settings>(key: K, value: Settings[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
   }, []);
+
+  const pickVignette = useCallback(async () => {
+    const picked = await openDialog({
+      multiple: false,
+      filters: [{ name: "Video", extensions: ["mov", "mp4", "m4v"] }],
+    });
+    if (typeof picked !== "string") return;
+    update("BRAND_VIGNETTE_PATH", picked);
+  }, [update]);
+
+  const pickLogo = useCallback(async () => {
+    const picked = await openDialog({
+      multiple: false,
+      filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "svg"] }],
+    });
+    if (typeof picked !== "string") return;
+    update("BRAND_LOGO_PATH", picked);
+  }, [update]);
+
+  const pickGradeDrx = useCallback(async () => {
+    const picked = await openDialog({
+      multiple: false,
+      filters: [{ name: "DaVinci PowerGrade", extensions: ["drx"] }],
+    });
+    if (typeof picked !== "string") return;
+    update("BRAND_GRADE_DRX", picked);
+  }, [update]);
 
   const save = useCallback(async () => {
     setSaving(true);
@@ -271,6 +310,66 @@ export function SettingsModal({ onClose }: Props) {
               <option value="medium">medium</option>
               <option value="large-v3">large-v3 (best, treg)</option>
             </select>
+          </div>
+        </div>
+
+        {/* MERKEVARE / BRANDING */}
+        <div className="settings-section">
+          <div className="section-title">Merkevare / Branding</div>
+          <div className="field">
+            <label>Intro/outro-vignett (video)</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text"
+                placeholder="~/Brand/vignette.mov"
+                value={settings.BRAND_VIGNETTE_PATH}
+                onChange={(e) => update("BRAND_VIGNETTE_PATH", e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button className="small" onClick={pickVignette}>
+                Velg fil…
+              </button>
+            </div>
+            <div className="settings-help">
+              Vignett-video som legges som intro/outro i eksport. .mov / .mp4 / .m4v.
+            </div>
+          </div>
+          <div className="field">
+            <label>Logo (bilde, fallback)</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text"
+                placeholder="~/Brand/logo.png"
+                value={settings.BRAND_LOGO_PATH}
+                onChange={(e) => update("BRAND_LOGO_PATH", e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button className="small" onClick={pickLogo}>
+                Velg fil…
+              </button>
+            </div>
+            <div className="settings-help">
+              Brukes som fallback når vignett mangler. .png / .jpg / .webp / .svg.
+            </div>
+          </div>
+          <div className="field">
+            <label>PowerGrade (.drx) — merkevare-grade</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text"
+                placeholder="~/Post-agent-Nodetree-CG_1.drx"
+                value={settings.BRAND_GRADE_DRX}
+                onChange={(e) => update("BRAND_GRADE_DRX", e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button className="small" onClick={pickGradeDrx}>
+                Velg fil…
+              </button>
+            </div>
+            <div className="settings-help">
+              Node-tre lagret som .drx i Color-siden. Legges automatisk på alle klipp via
+              «Legg PowerGrade på alle klipp». Eksporter med høyreklikk i Gallery → Export.
+            </div>
           </div>
         </div>
 

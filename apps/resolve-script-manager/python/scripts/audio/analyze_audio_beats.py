@@ -96,7 +96,7 @@ def _analyze_with_librosa(wav_path: str) -> dict[str, Any] | None:
         std = float(np.std(tempogram)) + 1e-6
         confidence = min(1.0, peak / (std * 4))
 
-        bpm = float(tempo)
+        bpm = float(tempo[0]) if hasattr(tempo, "__len__") else float(tempo)
         beats_per_bar = 4
         # Downbeats: hver 4. beat (4/4 antakelse — kan utvides)
         downbeat_times = beat_times[::beats_per_bar]
