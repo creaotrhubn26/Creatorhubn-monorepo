@@ -31,16 +31,19 @@ struct LeadResearchProgressView: View {
 
     private let steps: [PhaseStep] = [
         .init(id: "claude_scan",
-              title: "Claude analyserer markedet",
-              detail: "Finner relevante aktører i bransjen og regionen."),
+              title: "Lytter til markedet",
+              detail: "Leadgrid scanner bransjen og finner aktørene som er verdt å plotte."),
         .init(id: "geocode_competitors",
-              title: "Henter geo-data",
-              detail: "Google Places gir oss adresse, telefon og kart-koordinater."),
+              title: "Setter koordinater",
+              detail: "Google Places gir oss adresse, telefon og pin-posisjon."),
         .init(id: "creating_leads",
-              title: "Oppretter leads på kartet",
+              title: "Tegner pins på gridden",
               detail: "Hver bedrift blir en pin du kan oppsøke."),
+        .init(id: "scout_leads",
+              title: "Tråler websitene",
+              detail: "Identifiserer behov, mangler og styrker per pin (krever markedstilgang)."),
         .init(id: "done",
-              title: "Ferdig",
+              title: "Gridden er klar",
               detail: nil),
     ]
 
@@ -73,15 +76,69 @@ struct LeadResearchProgressView: View {
     // MARK: - Sections
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 12) {
             Text(displayName).font(.title3.weight(.semibold))
-            if let s = status, let msg = s.phaseMessage {
-                Text(msg).font(.caption).foregroundStyle(.secondary)
-            } else {
-                Text("Starter …").font(.caption).foregroundStyle(.secondary)
+
+            // Total progress-bar
+            ProgressView(value: totalProgress)
+                .tint(progressTint)
+                .scaleEffect(x: 1, y: 1.5, anchor: .center)
+
+            // Live status-melding m/ pulserende indicator
+            HStack(spacing: 8) {
+                if status?.isTerminal == false {
+                    PulsingDot().frame(width: 8, height: 8)
+                }
+                if let s = status, let msg = s.phaseMessage {
+                    Text(msg)
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .id(msg)
+                        .transition(.opacity)
+                } else if status?.isTerminal == false {
+                    Text("Varmer opp gridden …")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            // Subtle ETA-hint per fase
+            if let s = status, !s.isTerminal {
+                Text(etaHint(for: s.phase))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.easeInOut(duration: 0.3), value: status?.phaseMessage)
+    }
+
+    private var totalProgress: Double {
+        guard let s = status else { return 0.05 }
+        if s.phase == "failed" { return 0 }
+        // 5 sammenlignbare faser (claude_scan → done); pending = 0.05
+        let curIdx = phaseIndex(s.phase)
+        return Double(curIdx) / 5.0
+    }
+
+    private var progressTint: Color {
+        guard let s = status else { return .accentColor }
+        if s.phase == "failed" { return .orange }
+        if s.phase == "done"   { return .green }
+        return .accentColor
+    }
+
+    private func etaHint(for phase: String) -> String {
+        switch phase {
+        case "pending":              return "Strømmer på gridden …"
+        case "claude_scan":          return "Leadgrid lytter til markedet — typisk 30–60 sekunder"
+        case "geocode_competitors":  return "Setter koordinater for hver pin — ~1–2 sek per stk"
+        case "creating_leads":       return "Plotter inn pins på gridden"
+        case "scout_leads":          return "Tråler hver site — Leadgrid trenger ~10–20 sek per pin"
+        default:                     return "Jobber …"
+        }
     }
 
     private var progressList: some View {
@@ -111,6 +168,22 @@ struct LeadResearchProgressView: View {
 
     private enum StepState { case pending, active, done, failed }
 
+    /// Pulserende indikator (8×8 lilla prikk) — viser "jeg jobber" i header.
+    private struct PulsingDot: View {
+        @State private var scale: CGFloat = 1.0
+        var body: some View {
+            Circle()
+                .fill(Color.accentColor)
+                .scaleEffect(scale)
+                .opacity(2 - scale)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                        scale = 1.8
+                    }
+                }
+        }
+    }
+
     private func stateFor(step: PhaseStep) -> StepState {
         guard let s = status else { return .pending }
         if s.phase == "failed" {
@@ -130,7 +203,8 @@ struct LeadResearchProgressView: View {
         case "claude_scan":               return 1
         case "geocode_competitors":       return 2
         case "creating_leads":            return 3
-        case "done":                      return 4
+        case "scout_leads":               return 4
+        case "done":                      return 5
         case "failed":                    return -1
         default:                          return 0
         }
@@ -159,7 +233,7 @@ struct LeadResearchProgressView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("\(s.leadsCreatedCount) nye leads")
                     .font(.title2.weight(.semibold))
-                Text("Vises som nye pins på kartet ditt.")
+                Text("Nye pins er plottet — gå og besøk dem.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Button {
@@ -168,7 +242,7 @@ struct LeadResearchProgressView: View {
                         dismiss()
                     }
                 } label: {
-                    Label("Vis på kartet", systemImage: "map")
+                    Label("Vis gridden", systemImage: "map")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                 }
@@ -177,7 +251,7 @@ struct LeadResearchProgressView: View {
             .padding(.bottom, 8)
         } else if let s = status, s.phase == "failed" {
             VStack(alignment: .leading, spacing: 8) {
-                Label("Research feilet", systemImage: "exclamationmark.triangle.fill")
+                Label("Gridden falt ut", systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                 if let msg = s.errorMessage ?? s.phaseMessage {
                     Text(msg).font(.caption).foregroundStyle(.secondary)

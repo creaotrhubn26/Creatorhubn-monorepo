@@ -36,7 +36,7 @@ struct LeadResearchStartView: View {
             Form {
                 // Scroll-shy backdrop via clear-form + background-modifier
                 Section {
-                    Text("Vi bygger en liste av relevante bedrifter du kan oppsøke, basert på bransje og område. Når du starter, går Claude gjennom markedet og opprettet leads dukker opp på kartet.")
+                    Text("Leadgrid plotter nye pins ut fra hva du selger og hvor du leter. Når du starter går vi gjennom markedet og setter pins du kan trålе.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -67,7 +67,7 @@ struct LeadResearchStartView: View {
 
                 Section {
                     Label(
-                        "Lead Map-en din fungerer som vanlig uten dette — research er en valgfri tilleggsfunksjon.",
+                        "Gridden fungerer som vanlig uten dette — research er en valgfri pin-fabrikk.",
                         systemImage: "info.circle"
                     )
                     .font(.caption)
@@ -92,7 +92,7 @@ struct LeadResearchStartView: View {
                         if isStarting {
                             ProgressView()
                         } else {
-                            Text("Start research")
+                            Text("Plott gridden")
                         }
                     }
                     .disabled(!canStart || isStarting)

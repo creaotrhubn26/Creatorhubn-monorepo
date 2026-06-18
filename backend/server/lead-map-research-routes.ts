@@ -35,6 +35,8 @@ import type { Pool } from "pg";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { createMarketScan, runMarketScan, getMarketScan, getScanCompetitors } from "./market-intelligence/market-scan-service.js";
 import { searchPlaces } from "./lead-map-service.js";
+import { runScoutForLead } from "./lead-scout-service.js";
+import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -239,7 +241,7 @@ async function runResearchOrchestrator(
     //    industry + region. (Brand Kit kan kobles på senere som
     //    ekstra steg når org-profil har website.)
     await setPhase(pool, scanId, "claude_scan",
-      "Claude analyserer markedet …");
+      "Leadgrid lytter til markedet …");
 
     // 2. Market Scan — Claude finner konkurrenter
     try {
@@ -275,7 +277,7 @@ async function runResearchOrchestrator(
       }));
 
       await setPhase(pool, scanId, "geocode_competitors",
-        `Geokoder ${eligible.length} konkurrenter …`);
+        `Setter koordinater for ${eligible.length} pins …`);
 
       const created = await geocodeAndCreateLeads(
         pool, scanId,
@@ -290,10 +292,78 @@ async function runResearchOrchestrator(
         [scanId, created.length],
       );
       await setPhase(pool, scanId, "creating_leads",
-        `Opprettet ${created.length} leads`);
+        `Plottet ${created.length} pins på gridden`);
+
+      // 4. Scout-fase — KOMPLETT ISOLERT fra research-flyten:
+      //    - Bare hvis caller har 'marketing.scout.run' i target-orgen
+      //    - Hvis permission-sjekken kaster: skip stille
+      //    - Hvis hele scout-løkken kaster: skip stille
+      //    - Hvis enkelt-scout kaster: fortsett med neste lead
+      // Research markeres ALDRI som 'failed' pga scout-feil. Lead-
+      // opprettelse er hovedflowen og skal alltid lykkes uavhengig.
+      try {
+        const targetOrgId = scanRow.rows[0].target_org_id;
+        let canScout = false;
+        if (targetOrgId) {
+          try {
+            const { permissions } = await resolveEffectivePermissions(
+              pool, targetOrgId, scanRow.rows[0].workspace_owner_user_id,
+            );
+            canScout = permissions.has("marketing.scout.run");
+          } catch {
+            canScout = false; // permission-feil → hopp over scout
+          }
+        }
+
+        if (canScout && created.length > 0) {
+          await setPhase(pool, scanId, "scout_leads",
+            `Tråler ${created.length} sites etter mangler …`);
+
+          let scoutedOk = 0;
+          for (let i = 0; i < created.length; i++) {
+            const lead = created[i];
+            await setPhase(pool, scanId, "scout_leads",
+              `Tråler pin ${i + 1} av ${created.length}: ${lead.name}`);
+
+            // Hent website-URL — kan være null hvis Google Places ikke fant
+            const leadRow = await pool.query<{ website_url: string | null }>(
+              `SELECT website_url FROM crm_customers
+                WHERE id::text = $1 LIMIT 1`,
+              [lead.customerId],
+            );
+            const url = leadRow.rows[0]?.website_url;
+            if (!url) continue;
+
+            try {
+              await runScoutForLead(pool, {
+                customerId: lead.customerId,
+                leadName: lead.name,
+                websiteUrl: url,
+                industry: scan.industry ?? null,
+                triggeredBy: scanRow.rows[0].workspace_owner_user_id,
+              });
+              scoutedOk++;
+            } catch {
+              // Per-lead-feil avbryter ikke; finnes i
+              // crm_customer_scout_runs som status='failed'.
+            }
+          }
+
+          try {
+            await pool.query(
+              `UPDATE market_scans SET leads_scouted_count = $2
+                WHERE id = $1::uuid`,
+              [scanId, scoutedOk],
+            );
+          } catch { /* tystefall */ }
+        }
+      } catch (err) {
+        // Hele scout-fasen feilet — research fortsetter likevel
+        console.warn("[research] scout-fase feilet stille:", String(err).slice(0, 200));
+      }
     }
 
-    // 4. Ferdig
+    // 5. Ferdig
     await setPhase(pool, scanId, "done", undefined);
   } catch (err) {
     await setPhase(pool, scanId, "failed", String(err).slice(0, 500));
