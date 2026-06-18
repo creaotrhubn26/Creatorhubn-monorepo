@@ -213,6 +213,9 @@ export default function UniversalVendorOnboarding({
   onNotificationCreate
 }: UniversalVendorOnboardingProps) {
   const [activeStep, setActiveStep] = useState(0);
+  // Utenlandsk bedrift (External company outside of Norway): egen engelsk flyt
+  // uten brreg org.nr. Norsk flyt er default.
+  const [foreign, setForeign] = useState(false);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -302,51 +305,70 @@ export default function UniversalVendorOnboarding({
 
   // Get vendor-specific onboarding steps
   const getOnboardingSteps = (): OnboardingStep[] => {
+    // Tospråklig hjelper: utenlandsk bedrift -> engelsk, ellers norsk.
+    const L = (no: string, en: string): string => (foreign ? en : no);
+
+    const validationStep: OnboardingStep = foreign
+      ? {
+          // External company outside of Norway — engelsk, uten brreg org.nr
+          label: 'Company details',
+          description: 'Register your company (outside Norway — no Brønnøysund org. number required)',
+          icon: VerifiedUser,
+          required: true,
+          fields: [
+            { name: 'businessName', label: 'Company name', type: 'text', required: true },
+            { name: 'country', label: 'Country', type: 'text', required: true },
+            { name: 'foreignRegistrationNumber', label: 'Company registration number', type: 'text', required: true },
+            { name: 'vatNumber', label: 'VAT number (if applicable)', type: 'text' },
+          ],
+        }
+      : {
+          label: 'Virksomhetsvalidering',
+          description: 'Valider organisasjonsnummer fra landing-mobile invite request',
+          icon: VerifiedUser,
+          required: true,
+          fields: [
+            { name: 'organizationNumber', label: 'Organisasjonsnummer', type: 'text', required: true },
+            { name: 'businessName', label: 'Firmanavn (fra Brønnøysundregistrene)', type: 'text', required: true },
+            { name: 'verifyBrreg', label: 'Verifiser mot Brønnøysundregistrene', type: 'checkbox', required: true },
+          ],
+        };
+
     const baseSteps: OnboardingStep[] = [
+      validationStep,
       {
-        label: 'Virksomhetsvalidering',
-        description: 'Valider organisasjonsnummer fra landing-mobile invite request',
-        icon: VerifiedUser,
-        required: true,
-        fields: [
-          { name: 'organizationNumber', label: 'Organisasjonsnummer', type: 'text', required: true },
-          { name: 'businessName', label: 'Firmanavn (fra Brønnøysundregistrene)', type: 'text', required: true },
-          { name: 'verifyBrreg', label: 'Verifiser mot Brønnøysundregistrene', type: 'checkbox', required: true }
-        ]
-    },
-      {
-        label: 'Logo & Profil',
-        description: 'Last opp bedriftslogo og kontaktinformasjon',
+        label: L('Logo & Profil', 'Logo & Profile'),
+        description: L('Last opp bedriftslogo og kontaktinformasjon', 'Upload your company logo and contact information'),
         icon: Image,
         required: true,
         fields: [
-          { name: 'logo', label: 'Bedriftslogo', type: 'file', required: true },
-          { name: 'contactEmail', label: 'Kontakt E-post', type: 'email', required: true },
-          { name: 'website', label: 'Nettside', type: 'url',},
-          { name: 'description', label: 'Beskrivelse', type: 'textarea', required: true },
-          { name: 'phone', label: 'Telefon', type: 'text',}
+          { name: 'logo', label: L('Bedriftslogo', 'Company logo'), type: 'file', required: true },
+          { name: 'contactEmail', label: L('Kontakt E-post', 'Contact email'), type: 'email', required: true },
+          { name: 'website', label: L('Nettside', 'Website'), type: 'url',},
+          { name: 'description', label: L('Beskrivelse', 'Description'), type: 'textarea', required: true },
+          { name: 'phone', label: L('Telefon', 'Phone'), type: 'text',}
         ]
     },
       {
-        label: 'Hvorfor, Hvordan, Hva',
-        description: 'Forklar formål, prosess og hva du leverer',
+        label: L('Hvorfor, Hvordan, Hva', 'Why, How, What'),
+        description: L('Forklar formål, prosess og hva du leverer', 'Explain your purpose, process and what you deliver'),
         icon: AutoAwesome,
         required: true,
         fields: [
-          { name: 'whyStatement', label: 'Hvorfor (formål)', type: 'textarea', required: true },
-          { name: 'howStatement', label: 'Hvordan (prosess)', type: 'textarea', required: true },
-          { name: 'whatStatement', label: 'Hva (produkt)', type: 'textarea', required: true }
+          { name: 'whyStatement', label: L('Hvorfor (formål)', 'Why (purpose)'), type: 'textarea', required: true },
+          { name: 'howStatement', label: L('Hvordan (prosess)', 'How (process)'), type: 'textarea', required: true },
+          { name: 'whatStatement', label: L('Hva (produkt)', 'What (product)'), type: 'textarea', required: true }
         ]
       },
       {
-        label: 'Produktkategorier',
-        description: `Velg hvilke ${vendorConfig?.name.toLowerCase()} kategorier du tilbyr`,
+        label: L('Produktkategorier', 'Service categories'),
+        description: L(`Velg hvilke ${vendorConfig?.name.toLowerCase()} kategorier du tilbyr`, 'Select which categories you offer'),
         icon: Category,
         required: true,
         fields: [
           {
             name: 'categories',
-            label: 'Produktkategorier',
+            label: L('Produktkategorier', 'Service categories'),
             type: 'category-select',
             required: true,
             // Use dynamic categories from registry with full config (id, label, color)
@@ -490,43 +512,45 @@ export default function UniversalVendorOnboarding({
       });
   }
 
-    // Add Fiken integration step (optional but recommended)
-    baseSteps.push({
-      label: 'Fiken Integrasjon',
-      description: 'Koble til Fiken for automatisk fakturering og regnskap',
-      icon: AccountBalance,
-      required: false,
-      fields: [
-        {
-          name: 'fikenIntegration',
-          label: 'Fiken Regnskapsintegrasjon',
-          type: 'integration',
-          required: false
-        }
-      ]
-    });
+    // Add Fiken integration step (optional but recommended) — kun norske bedrifter
+    if (!foreign) {
+      baseSteps.push({
+        label: 'Fiken Integrasjon',
+        description: 'Koble til Fiken for automatisk fakturering og regnskap',
+        icon: AccountBalance,
+        required: false,
+        fields: [
+          {
+            name: 'fikenIntegration',
+            label: 'Fiken Regnskapsintegrasjon',
+            type: 'integration',
+            required: false
+          }
+        ]
+      });
+    }
 
     // Always add payment and launch steps
     baseSteps.push(
       {
-        label: 'Betalingsoppsett',
-        description: 'Konfigurer betalingsmetoder og priser',
+        label: L('Betalingsoppsett', 'Payment setup'),
+        description: L('Konfigurer betalingsmetoder og priser', 'Configure payment methods and pricing'),
         icon: Payment,
         required: true,
         fields: [
-          { name: 'paymentMethods', label: 'Betalingsmetoder', type: 'select', options: ['Stripe','PayPal','Bankoverføring'], required: true },
-          { name: 'currency', label: 'Valuta', type: 'select', options: ['NOK','EUR','USD'], required: true },
-          { name: 'taxId', label: 'MVA Nummer', type: 'text' }
+          { name: 'paymentMethods', label: L('Betalingsmetoder', 'Payment methods'), type: 'select', options: ['Stripe','PayPal','Bankoverføring'], required: true },
+          { name: 'currency', label: L('Valuta', 'Currency'), type: 'select', options: ['NOK','EUR','USD'], required: true },
+          { name: 'taxId', label: L('MVA Nummer', 'VAT number'), type: 'text' }
         ]
     },
       {
-        label: 'Lansering',
-        description: 'Aktiver din vendor profil og gå live',
+        label: L('Lansering', 'Launch'),
+        description: L('Aktiver din vendor profil og gå live', 'Activate your vendor profile and go live'),
         icon: Launch,
         required: true,
         fields: [
-          { name: 'termsAccepted', label: 'Jeg aksepterer vilkårene', type: 'checkbox', required: true },
-          { name: 'readyToLaunch', label: 'Klar for lansering', type: 'checkbox', required: true }
+          { name: 'termsAccepted', label: L('Jeg aksepterer vilkårene', 'I accept the terms'), type: 'checkbox', required: true },
+          { name: 'readyToLaunch', label: L('Klar for lansering', 'Ready to launch'), type: 'checkbox', required: true }
         ]
     }
     );
@@ -721,8 +745,12 @@ export default function UniversalVendorOnboarding({
   };
 
   const handleCompleteOnboarding = async () => {
-    const finalFormData: Record<string, unknown> = { ...formData };
-    
+    const finalFormData: Record<string, unknown> = {
+      ...formData,
+      isForeign: foreign,
+      country: foreign ? (formData.country as string) || '' : 'NO',
+    };
+
     // Upload logo if present
     if (logoFile) {
       try {
@@ -802,10 +830,10 @@ export default function UniversalVendorOnboarding({
 
           <Box sx={{ flex: 1 }}>
             <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
-              Velkommen til {vendorConfig.name}
+              {foreign ? `Welcome to ${vendorConfig.name}` : `Velkommen til ${vendorConfig.name}`}
             </Typography>
             <Typography variant="h6" sx={{ color: 'text.secondary', mb: 2 }}>
-              Universal Vendor Onboarding for {vendorName}
+              {foreign ? 'Vendor onboarding for' : 'Universal Vendor Onboarding for'} {vendorName}
               {inviteRequestId && (
                 <Chip
                   label={`Invite: ${inviteRequestId.slice(0, 8)}`}
@@ -871,6 +899,30 @@ export default function UniversalVendorOnboarding({
           />
         </Paper>
       )}
+
+      {/* External company toggle — switches to English flow without brreg org. number */}
+      <Box sx={{ mb: 2 }}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={foreign}
+              onChange={(e) => {
+                setForeign(e.target.checked);
+                setActiveStep(0);
+                setCompletedSteps(new Set());
+              }}
+            />
+          }
+          label="External company outside of Norway"
+        />
+        {foreign && (
+          <Alert severity="info" sx={{ mt: 1 }}>
+            You are registering as an international vendor. This form is in English and does not require a
+            Norwegian Brønnøysund organisation number. Companies outside the EEA will be asked to accept extra
+            GDPR controls (SCC + Transfer Impact Assessment) before accepting jobs.
+          </Alert>
+        )}
+      </Box>
 
       {/* Onboarding Steps */}
       <Grid container spacing={3}>
