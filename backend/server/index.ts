@@ -541,6 +541,13 @@ import { registerClientPortalRoutes } from "./leadgrid-client-portal-routes.js";
 import { registerDeliveryPlaybookRoutes } from "./delivery-playbook-routes.js";
 import { registerSuperadminRoutes } from "./superadmin-routes.js";
 import { registerOrgSelfOnboardRoutes } from "./org-self-onboard-routes.js";
+import { registerPlanRoutes } from "./plan-routes.js";
+import {
+  registerLeadgridBillingRoutes,
+  isLeadgridInvoice,
+  handleLeadgridInvoicePaid,
+} from "./leadgrid-billing-routes.js";
+import { enforceOrgStatus } from "./org-status-enforcement.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -1411,6 +1418,19 @@ app.post(
         case "invoice.paid": {
           const invoice = event.data.object as Stripe.Invoice;
           await syncCreatorHubStripeInvoice(invoice);
+          // Leadgrid-spesifikk håndtering: oppdater org.plan + lokal kopi
+          // i org_invoices + send Leadgrid-branded mail.
+          try {
+            const stripeClient = getCreatorHubStripeClient();
+            if (stripeClient) {
+              const lg = await isLeadgridInvoice(stripeClient, invoice);
+              if (lg.isLeadgrid) {
+                await handleLeadgridInvoicePaid(pool, stripeClient, invoice, lg.planKey);
+              }
+            }
+          } catch (e) {
+            console.error("[webhook leadgrid invoice.paid]", e);
+          }
           // Stripe v19: invoice.subscription er fjernet — slå opp via
           // invoice.parent.subscription_details.subscription (samme mønster
           // som dance-billing-service.ts:688-700).
@@ -24320,6 +24340,14 @@ registerDeliveryPlaybookRoutes({ app, pool, activeSessions });
 registerSuperadminRoutes({ app, pool, activeSessions });
 // Selv-onboard for Solo-planen (åpen registrering uten super-admin)
 registerOrgSelfOnboardRoutes({ app, pool });
+// Plan-grenser/usage/upgrade for PlanUsageBar + pricing-page
+registerPlanRoutes({ app, pool, activeSessions });
+// Leadgrid billing: Customer Portal-link, invoice-liste, superadmin payments-overview
+registerLeadgridBillingRoutes({ app, pool, activeSessions, stripe: getCreatorHubStripeClient() });
+// Håndhev org-status (paused/suspended) på alle Leadgrid-rutene.
+// Bypass for super_admin er ON som default.
+app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));
+app.use("/api/leadgrid", enforceOrgStatus(pool, activeSessions));
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,

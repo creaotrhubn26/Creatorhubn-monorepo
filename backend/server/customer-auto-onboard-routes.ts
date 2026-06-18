@@ -223,6 +223,14 @@ async function runOnboarding(args: OnboardArgs): Promise<void> {
     );
     const customerId = customerRes.rows[0].id;
 
+    // Tell customer-create i usage-bucket (for max_active_customers-grense)
+    try {
+      const { incrementUsage: incUsage } = await import("./plan-limits-service.js");
+      await incUsage(pool, args.organizationId, "customers_created");
+    } catch (e) {
+      console.error("[auto-onboard] usage-increment failed", e);
+    }
+
     // 6. Pre-fyll needs fra preset
     for (const need of presetData.default_needs) {
       await pool.query(
@@ -366,6 +374,26 @@ export function registerCustomerAutoOnboardRoutes({
         return res.status(400).json({ error: "organization_id påkrevd" });
       }
 
+      // Plan-gating: sjekk auto-onboard-grense + kunde-grense før vi starter
+      const { canAutoOnboard, canCreateCustomer, incrementUsage } =
+        await import("./plan-limits-service.js");
+      const gateA = await canAutoOnboard(pool, b.organization_id);
+      if (!gateA.allowed) {
+        return res.status(402).json({
+          error: "plan_limit_reached",
+          gate: gateA,
+          message: `Du har brukt ${gateA.current_usage}/${gateA.limit} auto-onboards denne måneden på ${gateA.current_plan}-planen.`,
+        });
+      }
+      const gateB = await canCreateCustomer(pool, b.organization_id);
+      if (!gateB.allowed) {
+        return res.status(402).json({
+          error: "plan_limit_reached",
+          gate: gateB,
+          message: `Du har ${gateB.current_usage}/${gateB.limit} aktive kunder på ${gateB.current_plan}-planen.`,
+        });
+      }
+
       try {
         const auditRes = await pool.query<{ id: string }>(
           `INSERT INTO customer_auto_onboards
@@ -384,6 +412,11 @@ export function registerCustomerAutoOnboardRoutes({
 
         // Fire-and-forget — Leadgrid gjør jobben i bakgrunn, klient
         // poller GET /auto-onboard/:auditId for status.
+        // Tell usage med én gang vi starter — selv om jobben feiler er
+        // det riktig (vi har brukt Claude/API-tid). Hvis kunden allerede
+        // fantes (duplikat) refunderer vi senere i runOnboarding.
+        await incrementUsage(pool, b.organization_id, "auto_onboards");
+
         void runOnboarding({
           pool, auditId,
           organizationId: b.organization_id,

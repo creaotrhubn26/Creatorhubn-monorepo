@@ -436,6 +436,176 @@ export function registerSuperadminRoutes({
     res.json({ entries: r.rows });
   });
 
+  // ---------- Token-usage per organisasjon ----------
+  // GET /api/superadmin/org-token-usage?period=30d&groupBy=org|feature
+  app.get(`${ROOT}/org-token-usage`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    const periodDays = Math.min(Number(req.query.period ?? 30), 365);
+    const groupBy = (req.query.groupBy as string) ?? "org";
+
+    try {
+      const since = new Date(Date.now() - periodDays * 24 * 3600 * 1000);
+
+      if (groupBy === "feature") {
+        // Aggregat per feature på tvers av alle orgs
+        const r = await pool.query(
+          `SELECT feature,
+                  COUNT(*) AS calls,
+                  COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                  COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                  COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+                  COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
+                  COALESCE(SUM(cost_usd), 0)::numeric(12,4) AS cost_usd
+             FROM ai_usage_log
+            WHERE created_at >= $1
+            GROUP BY feature
+            ORDER BY cost_usd DESC NULLS LAST`,
+          [since],
+        );
+        return res.json({ period_days: periodDays, by_feature: r.rows });
+      }
+
+      // Per-org aggregat (default)
+      const r = await pool.query(
+        `SELECT a.organization_id,
+                o.name AS org_name,
+                o.org_type,
+                o.plan,
+                COUNT(*) AS calls,
+                COALESCE(SUM(a.input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(a.output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(a.cache_read_tokens), 0) AS cache_read_tokens,
+                COALESCE(SUM(a.cache_write_tokens), 0) AS cache_write_tokens,
+                COALESCE(SUM(a.cost_usd), 0)::numeric(12,4) AS cost_usd,
+                MAX(a.created_at) AS last_call_at
+           FROM ai_usage_log a
+           LEFT JOIN organizations o ON o.id = a.organization_id
+          WHERE a.created_at >= $1
+          GROUP BY a.organization_id, o.name, o.org_type, o.plan
+          ORDER BY cost_usd DESC NULLS LAST`,
+        [since],
+      );
+      // Total + ukjent (organization_id IS NULL)
+      const totalR = await pool.query(
+        `SELECT COUNT(*) AS calls,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+                COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
+                COALESCE(SUM(cost_usd), 0)::numeric(12,4) AS cost_usd
+           FROM ai_usage_log
+          WHERE created_at >= $1`,
+        [since],
+      );
+      res.json({
+        period_days: periodDays,
+        total: totalR.rows[0],
+        by_org: r.rows,
+      });
+    } catch (e) {
+      console.error("[superadmin] org-token-usage failed", e);
+      res.status(500).json({ error: "Kunne ikke hente token-usage" });
+    }
+  });
+
+  // ---------- Pause / Resume / Suspend organisasjon ----------
+  // POST body: { status: 'paused'|'read_only'|'suspended'|'active', reason: string, resumeAt?: ISO-date }
+  app.post(`${ROOT}/organizations/:id/set-status`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    const { status, reason, resumeAt } = req.body ?? {};
+    const ALLOWED = ["active", "paused", "read_only", "suspended", "closed"];
+    if (!ALLOWED.includes(status)) {
+      return res.status(400).json({ error: "Ugyldig status" });
+    }
+    if (status !== "active" && (!reason || !reason.trim())) {
+      return res.status(400).json({ error: "reason påkrevd ved ikke-active" });
+    }
+
+    const orgR = await pool.query<{ name: string; stripe_subscription_id: string | null }>(
+      `SELECT name, stripe_subscription_id FROM organizations WHERE id = $1`,
+      [req.params.id],
+    );
+    if (orgR.rows.length === 0) return res.status(404).json({ error: "Org finnes ikke" });
+
+    if (status === "active") {
+      await pool.query(
+        `UPDATE organizations
+            SET status = 'active', paused_at = NULL, paused_by = NULL,
+                pause_reason = NULL, pause_resume_at = NULL
+          WHERE id = $1`,
+        [req.params.id],
+      );
+      // Reactivate Stripe pause hvis sub finnes
+      if (orgR.rows[0].stripe_subscription_id) {
+        try {
+          const Stripe = (await import("stripe")).default;
+          const stripeKey = process.env.CREATORHUB_STRIPE_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY;
+          if (stripeKey) {
+            const stripe = new Stripe(stripeKey);
+            await stripe.subscriptions.update(orgR.rows[0].stripe_subscription_id, {
+              pause_collection: null,
+            } as any);
+          }
+        } catch (e) { console.error("[stripe resume]", e); }
+      }
+    } else {
+      await pool.query(
+        `UPDATE organizations
+            SET status = $1, paused_at = now(), paused_by = $2,
+                pause_reason = $3, pause_resume_at = $4
+          WHERE id = $5`,
+        [status, session.userId, reason, resumeAt || null, req.params.id],
+      );
+      // Pause Stripe-subscription hvis 'paused'
+      if (status === "paused" && orgR.rows[0].stripe_subscription_id) {
+        try {
+          const Stripe = (await import("stripe")).default;
+          const stripeKey = process.env.CREATORHUB_STRIPE_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY;
+          if (stripeKey) {
+            const stripe = new Stripe(stripeKey);
+            await stripe.subscriptions.update(orgR.rows[0].stripe_subscription_id, {
+              pause_collection: { behavior: "keep_as_draft" },
+            } as any);
+          }
+        } catch (e) { console.error("[stripe pause]", e); }
+      }
+    }
+
+    await logAudit(pool, session.userId, "set_org_status", {
+      org_id: req.params.id, org_name: orgR.rows[0].name,
+      new_status: status, reason, resume_at: resumeAt || null,
+    }, {
+      targetOrgId: req.params.id, ipAddress: req.ip,
+      userAgent: req.headers["user-agent"] as string,
+    });
+
+    res.json({
+      ok: true, organization_id: req.params.id, status,
+      paused_until: resumeAt || null,
+    });
+  });
+
+  // ---------- Drill-down: én org's siste calls ----------
+  app.get(`${ROOT}/organizations/:id/recent-ai-calls`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    const limit = Math.min(Number(req.query.limit ?? 50), 500);
+    const r = await pool.query(
+      `SELECT model, feature, route, input_tokens, output_tokens,
+              cache_read_tokens, cache_write_tokens,
+              cost_usd::numeric(10,6) AS cost_usd,
+              duration_ms, success, error_code, created_at, user_id
+         FROM ai_usage_log
+        WHERE organization_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2`,
+      [req.params.id, limit],
+    );
+    res.json({ calls: r.rows });
+  });
+
   // ---------- Hent aktiv impersonation ----------
   app.get(`${ROOT}/active-impersonation`, async (req, res) => {
     const session = await requireSuperAdmin(req, res, pool, activeSessions);
