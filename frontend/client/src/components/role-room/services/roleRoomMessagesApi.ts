@@ -48,6 +48,13 @@ export async function sendMessage(
   return payload.message;
 }
 
+export async function aiAssist(projectId: string, mode: 'draft' | 'summary'): Promise<string> {
+  const res = await fetch(`${base(projectId)}/ai`, { method: 'POST', headers: headers(true), body: JSON.stringify({ mode }) });
+  const payload = (await res.json().catch(() => null)) as { text?: string; error?: string } | null;
+  if (!res.ok || typeof payload?.text !== 'string') throw new Error(payload?.error || `AI feilet (HTTP ${res.status})`);
+  return payload.text;
+}
+
 export async function updateMessage(
   projectId: string, id: string, patch: { status?: string; body?: string },
 ): Promise<RoleRoomMessage> {
