@@ -306,7 +306,7 @@ export function registerPartnerApiRoutes({ app, pool }: Deps): void {
       const existR = await pool.query<{ id: string }>(
         `SELECT id FROM casting_projects
           WHERE organization_id = $1
-            AND (meta->>'api_default')::boolean IS TRUE
+            AND (metadata->>'api_default')::boolean IS TRUE
           LIMIT 1`,
         [ctx.organization_id],
       );
@@ -315,7 +315,7 @@ export function registerPartnerApiRoutes({ app, pool }: Deps): void {
       } else {
         const newProjR = await pool.query<{ id: string }>(
           `INSERT INTO casting_projects
-            (id, name, organization_id, project_type, status, meta)
+            (id, name, organization_id, project_type, status, metadata)
            VALUES ('apidef-' || encode(gen_random_bytes(8), 'hex'),
                    'API Customers', $1, 'crm', 'active',
                    '{"api_default": true}'::jsonb)
