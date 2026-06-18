@@ -52,6 +52,7 @@ type FeedItem = {
   meta?: Record<string, unknown>;
   linkedEntityType?: string | null;
   linkedEntityId?: string | null;
+  visibility?: 'shared' | 'internal';
 };
 
 function activityIcon(eventType: string, inboxType: string): FeedItem['icon'] {
@@ -80,10 +81,11 @@ function fmtDay(ts: number): string {
   return new Date(ts).toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-export default function ClientConversationView({ projectId }: { projectId: string }) {
+export default function ClientConversationView({ projectId, canUseInternal = false }: { projectId: string; canUseInternal?: boolean }) {
   const [messages, setMessages] = useState<RoleRoomMessage[]>([]);
   const [notifications, setNotifications] = useState<ProducerProjectNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [room, setRoom] = useState<'shared' | 'internal'>('shared');
   const [draft, setDraft] = useState('');
   const [kind, setKind] = useState<'message' | 'request'>('message');
   const [sending, setSending] = useState(false);
@@ -104,6 +106,9 @@ export default function ClientConversationView({ projectId }: { projectId: strin
   const feed = useMemo<FeedItem[]>(() => {
     const items: FeedItem[] = [];
     for (const m of messages) {
+      // Rom-filter: vis meldinger som hører til valgt rom (delt vs internt).
+      const mv = m.visibility === 'internal' ? 'internal' : 'shared';
+      if (mv !== room) continue;
       const ts = m.createdAt ? new Date(m.createdAt).getTime() : 0;
       const action = typeof m.metadata?.action === 'string' ? m.metadata.action : undefined;
       items.push({
@@ -113,9 +118,11 @@ export default function ClientConversationView({ projectId }: { projectId: strin
         status: m.kind === 'request' ? m.status : undefined,
         icon: action === 'request_upload' ? 'upload' : (m.linkedEntityType === 'meeting' || action === 'meeting') ? 'meeting' : m.kind === 'request' ? 'request' : 'message',
         action, meta: m.metadata, linkedEntityType: m.linkedEntityType, linkedEntityId: m.linkedEntityId,
+        visibility: mv,
       });
     }
-    for (const n of notifications) {
+    // Aktivitet (opplastinger/godkjenninger osv.) hører til det delte rommet.
+    if (room === 'shared') for (const n of notifications) {
       // Hopp over meldings-speil (de er allerede med som ekte meldinger).
       if (n.event_type?.startsWith('message')) continue;
       if (n.archived_at) continue;
@@ -127,7 +134,7 @@ export default function ClientConversationView({ projectId }: { projectId: strin
       });
     }
     return items.sort((a, b) => a.ts - b.ts);
-  }, [messages, notifications]);
+  }, [messages, notifications, room]);
 
   // Status-chips (mockup): ubesvarte forespørsler / venter godkjenning / nye opplastinger.
   const stats = useMemo(() => {
@@ -142,16 +149,16 @@ export default function ClientConversationView({ projectId }: { projectId: strin
     if (!body) return;
     setSending(true);
     try {
-      await sendMessage(projectId, { body, kind });
+      await sendMessage(projectId, { body, kind, visibility: room });
       setDraft('');
-      setToast(kind === 'request' ? 'Forespørsel sendt — motparten varslet.' : 'Melding sendt.');
+      setToast(room === 'internal' ? 'Intern melding sendt (klienten ser den ikke).' : kind === 'request' ? 'Forespørsel sendt — motparten varslet.' : 'Melding sendt.');
       await load();
     } catch (e) {
       setToast(e instanceof Error ? e.message : 'Kunne ikke sende.');
     } finally {
       setSending(false);
     }
-  }, [projectId, draft, kind, load]);
+  }, [projectId, draft, kind, room, load]);
 
   const closeRequest = useCallback(async (id: string) => {
     try {
@@ -323,6 +330,29 @@ export default function ClientConversationView({ projectId }: { projectId: strin
           Alt mellom dere på ett sted — meldinger, forespørsler, opplastinger, godkjenninger og leveranser.
         </Typography>
       </Box>
+
+      {/* Rom-velger (kun produsent): Med klient vs Internt team */}
+      {canUseInternal ? (
+        <ToggleButtonGroup
+          value={room} exclusive size="small"
+          onChange={(_, v) => { if (v) setRoom(v); }}
+          sx={{ '& .MuiToggleButton-root': { textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', minHeight: 38, px: 1.5, color: 'rgba(226,232,240,0.7)', borderColor: 'rgba(148,163,184,0.25)' },
+            '& .MuiToggleButton-root.Mui-selected': { color: '#fff' },
+            '& [value=shared].Mui-selected': { background: 'rgba(16,185,129,0.22)' },
+            '& [value=internal].Mui-selected': { background: 'rgba(245,158,11,0.22)' } }}
+        >
+          <ToggleButton value="shared"><ApprovalIcon sx={{ fontSize: 15, mr: 0.5 }} />Med klient</ToggleButton>
+          <ToggleButton value="internal"><PendingIcon sx={{ fontSize: 15, mr: 0.5 }} />Internt team</ToggleButton>
+        </ToggleButtonGroup>
+      ) : null}
+
+      {/* Internt-banner — umiskjennelig at klienten ikke ser dette */}
+      {canUseInternal && room === 'internal' ? (
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ px: 1.25, py: 0.9, borderRadius: 1.5, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)' }}>
+          <PendingIcon sx={{ fontSize: 17, color: '#fbbf24' }} />
+          <Typography sx={{ color: '#fcd34d', fontSize: '0.8rem', fontWeight: 700 }}>Internt team — klienten ser ikke dette rommet.</Typography>
+        </Stack>
+      ) : null}
 
       {/* Status-chips */}
       <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75 }}>

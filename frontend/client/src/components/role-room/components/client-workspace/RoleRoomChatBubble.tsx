@@ -18,10 +18,13 @@ const ClientConversationView = lazy(() => import('./ClientConversationView'));
 export default function RoleRoomChatBubble({
   projectId,
   onOpenFullTab,
+  canUseInternal = false,
 }: {
   projectId: string;
   /** Valgfri: hopp til full Meldinger-fane. */
   onOpenFullTab?: () => void;
+  /** Produsent: vis intern/delt rom-toggle. */
+  canUseInternal?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -84,7 +87,7 @@ export default function RoleRoomChatBubble({
           </Stack>
           <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', p: 1.5 }}>
             <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={22} sx={{ color: '#a855f7' }} /></Box>}>
-              <ClientConversationView projectId={projectId} />
+              <ClientConversationView projectId={projectId} canUseInternal={canUseInternal} />
             </Suspense>
           </Box>
         </Paper>
@@ -103,14 +106,20 @@ export default function RoleRoomChatBubble({
             aria-label={open ? 'Lukk samtale' : `Åpne samtale${unread > 0 ? ` (${unread} ulest)` : ''}`}
             onClick={() => (open ? handleClose() : setOpen(true))}
             sx={{
-              width: 60, height: 60,
-              background: 'linear-gradient(135deg,#7c3aed,#a855f7)',
+              width: 64, height: 64, p: 0,
+              background: open ? 'linear-gradient(135deg,#7c3aed,#a855f7)' : '#140a2e',
               color: '#fff', boxShadow: '0 10px 30px rgba(124,58,237,0.5)',
-              '&:hover': { background: 'linear-gradient(135deg,#6d28d9,#9333ea)' },
+              border: open ? 'none' : '1px solid rgba(168,85,247,0.45)',
+              '&:hover': { background: open ? 'linear-gradient(135deg,#6d28d9,#9333ea)' : '#1c1040' },
               '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 3 },
             }}
           >
-            {open ? <CloseIcon sx={{ fontSize: 26 }} /> : <ChatIcon sx={{ fontSize: 24 }} />}
+            {open ? (
+              <CloseIcon sx={{ fontSize: 26 }} />
+            ) : (
+              <Box component="img" src="/RoleRoom_Chat_Icon.png" alt=""
+                sx={{ width: 46, height: 46, objectFit: 'contain', display: 'block' }} />
+            )}
           </Fab>
         </Badge>
       </Box>
