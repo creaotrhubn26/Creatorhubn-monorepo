@@ -28,6 +28,7 @@ import StarIcon from "@mui/icons-material/Star";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import { apiFetch } from "@/lib/queryClient";
+import AdminPartnerReviewModal from "./AdminPartnerReviewModal";
 
 interface Partner {
   id: string;
@@ -351,6 +352,7 @@ function ApplicationsList({
   onSendIntent: (a: Application) => void;
 }) {
   const [reviewing, setReviewing] = useState<Application | null>(null);
+  const [deepReviewId, setDeepReviewId] = useState<string | null>(null);
   const [action, setAction] = useState<"approve" | "reject">("approve");
   const [notes, setNotes] = useState("");
 
@@ -400,10 +402,15 @@ function ApplicationsList({
                     )}
                   </Box>
                   <Stack direction="column" spacing={1}>
-                    <Button size="small" variant="contained" startIcon={<CheckIcon />}
+                    <Button size="small" variant="contained"
+                            onClick={() => setDeepReviewId(a.id)}
+                            sx={{ bgcolor: "#a78bfa", color: "#0a0e1a", "&:hover": { bgcolor: "#9171e6" } }}>
+                      Deep review
+                    </Button>
+                    <Button size="small" variant="outlined" startIcon={<CheckIcon />}
                             onClick={() => { setReviewing(a); setAction("approve"); setNotes(""); }}
-                            sx={{ bgcolor: "#9be15d", color: "#0a0e1a", "&:hover": { bgcolor: "#7fb849" } }}>
-                      Godkjenn
+                            sx={{ color: "#9be15d", borderColor: "rgba(155,225,93,0.4)" }}>
+                      Quick godkjenn
                     </Button>
                     <Button size="small" variant="outlined" startIcon={<GavelIcon />}
                             onClick={() => onSendIntent(a)}
@@ -466,6 +473,14 @@ function ApplicationsList({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {deepReviewId && (
+        <AdminPartnerReviewModal
+          applicationId={deepReviewId}
+          onClose={() => setDeepReviewId(null)}
+          onUpdated={() => { /* PartnersTab re-loader på neste interaksjon */ }}
+        />
+      )}
     </>
   );
 }
