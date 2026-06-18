@@ -556,6 +556,8 @@ import { registerTestflightTestersRoutes } from "./testflight-testers-routes.js"
 import { registerLeadgridGoogleAuthRoutes } from "./leadgrid-google-auth-routes.js";
 import { registerUserOrgRoutes } from "./user-org-routes.js";
 import { registerLeadgridDripsRoutes } from "./leadgrid-drips-routes.js";
+import { registerPartnerApiRoutes } from "./partner-api-routes.js";
+import { registerPartnerApiManagementRoutes } from "./partner-api-management-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24367,6 +24369,10 @@ registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions });
 registerUserOrgRoutes({ app, pool, activeSessions });
 // E-post-drypp (dag 1/3/7/14) + grace-period-håndhevelse (cron-trigget)
 registerLeadgridDripsRoutes({ app, pool, activeSessions });
+// Partner-API på /api/v1/partner/* (Bearer lg_live_<key>)
+registerPartnerApiRoutes({ app, pool });
+// Superadmin CRUD for API-keys + webhook-endpoints + delivery-log
+registerPartnerApiManagementRoutes({ app, pool, activeSessions });
 // Håndhev org-status (paused/suspended) på alle Leadgrid-rutene.
 // Bypass for super_admin er ON som default.
 app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));
