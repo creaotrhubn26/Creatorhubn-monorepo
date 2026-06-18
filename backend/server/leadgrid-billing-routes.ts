@@ -126,6 +126,15 @@ export async function handleLeadgridInvoicePaid(
     await pool.query(`DELETE FROM plan_grace WHERE organization_id = $1`, [org.id]);
   }
 
+  // Marker drypp som konvertert — stopper videre drypp-mails
+  try {
+    await pool.query(
+      `UPDATE onboarding_drips SET converted_at = now()
+        WHERE converted_at IS NULL AND organization_id = $1`,
+      [org.id],
+    );
+  } catch (e) { console.error("[drip-convert]", e); }
+
   // Lagre i org_invoices (UPSERT på stripe_invoice_id)
   const periodStart = (invoice as any).period_start
                   ?? (invoice.lines?.data?.[0] as any)?.period?.start;

@@ -417,6 +417,18 @@ export function registerCustomerAutoOnboardRoutes({
         // fantes (duplikat) refunderer vi senere i runOnboarding.
         await incrementUsage(pool, b.organization_id, "auto_onboards");
 
+        // Trigger e-post-drypp ved første aha-moment (idempotent via
+        // ON CONFLICT — kjøres bare første gang per (user, trigger))
+        try {
+          const { triggerOnboardingDrip } = await import("./leadgrid-drips-routes.js");
+          await triggerOnboardingDrip(pool, {
+            userId, organizationId: b.organization_id,
+            triggerEvent: "first_auto_onboard",
+          });
+        } catch (e) {
+          console.error("[auto-onboard drip-trigger]", e);
+        }
+
         void runOnboarding({
           pool, auditId,
           organizationId: b.organization_id,
