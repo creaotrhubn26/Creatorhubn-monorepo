@@ -523,6 +523,74 @@ actor APIClient {
         )
     }
 
+    // MARK: - Selv-onboarding + Focus requests + Playbooks
+
+    func autoOnboardCustomer(
+        websiteUrl: String, contactEmail: String,
+        contactName: String?, contactPhone: String?,
+        organizationId: String, presetId: String?
+    ) async throws -> AutoOnboardResponse {
+        var body: [String: Any] = [
+            "website_url": websiteUrl,
+            "contact_email": contactEmail,
+            "organization_id": organizationId,
+        ]
+        if let n = contactName  { body["contact_name"] = n }
+        if let p = contactPhone { body["contact_phone"] = p }
+        if let id = presetId    { body["preset_id"] = id }
+        return try await post(
+            "/api/admin-room/lead-map/customers/auto-onboard", body: body
+        )
+    }
+
+    func fetchAutoOnboardStatus(auditId: String) async throws -> AutoOnboardStatusResponse {
+        return try await get(
+            "/api/admin-room/lead-map/customers/auto-onboard/\(auditId)"
+        )
+    }
+
+    func fetchFocusRequests(orgId: String, status: String?) async throws -> FocusRequestsResponse {
+        var path = "/api/admin-room/lead-map/focus-requests?organization_id=\(orgId)"
+        if let s = status { path += "&status=\(s)" }
+        return try await get(path)
+    }
+
+    func startDeliveryFromFocusRequest(focusRequestId: String) async throws -> StartDeliveryResponse {
+        return try await post(
+            "/api/admin-room/lead-map/focus-requests/\(focusRequestId)/start-delivery",
+            body: [:]
+        )
+    }
+
+    func fetchDeliverable(deliverableId: String) async throws -> DeliverableResponse {
+        return try await get(
+            "/api/admin-room/lead-map/deliverables/\(deliverableId)"
+        )
+    }
+
+    func updateDeliverableStep(
+        deliverableId: String, stepNumber: Int, status: String, notes: String?
+    ) async throws -> DeliverableResponse {
+        var body: [String: Any] = [
+            "step_number": stepNumber,
+            "status": status,
+        ]
+        if let n = notes { body["notes"] = n }
+        return try await patchReturning(
+            "/api/admin-room/lead-map/deliverables/\(deliverableId)/step",
+            body: body
+        )
+    }
+
+    func toggleDeliverableRequirement(
+        deliverableId: String, requirementIndex: Int, received: Bool
+    ) async throws -> DeliverableResponse {
+        return try await patchReturning(
+            "/api/admin-room/lead-map/deliverables/\(deliverableId)/step",
+            body: ["requirement_index": requirementIndex, "received": received]
+        )
+    }
+
     func updatePitchSlide(slideId: String, titleMd: String?, bodyMd: String?) async throws -> PitchSlideResponse {
         var body: [String: Any] = [:]
         if let t = titleMd { body["title_md"] = t }

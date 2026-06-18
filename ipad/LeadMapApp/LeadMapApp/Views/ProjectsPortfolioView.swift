@@ -19,6 +19,7 @@ struct ProjectsPortfolioView: View {
     @State private var error: String?
     @State private var sortMode: SortMode = .score
     @State private var selectedProject: PortfolioProject?
+    @State private var showAddCustomer = false
 
     enum SortMode: String, CaseIterable {
         case score = "score"
@@ -47,6 +48,10 @@ struct ProjectsPortfolioView: View {
                 .toolbar { toolbar }
                 .task { await load() }
                 .refreshable { await load() }
+                .sheet(isPresented: $showAddCustomer) {
+                    AddCustomerView()
+                        .onDisappear { Task { await load() } }
+                }
                 .sheet(item: $selectedProject) { project in
                     if let customerId = project.customerId {
                         // Bygg en minimal LeadModel for sheet — alle felter er
@@ -329,6 +334,16 @@ struct ProjectsPortfolioView: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        if appState.permissions.contains("leads.create") {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showAddCustomer = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                }
+                .accessibilityLabel("Ny kunde")
+            }
+        }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 ForEach(SortMode.allCases, id: \.self) { mode in

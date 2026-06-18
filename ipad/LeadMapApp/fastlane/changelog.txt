@@ -1,31 +1,55 @@
-Lead Map v0.2.0 — Pitch Deck Studio + Research-orkestrator
+Leadgrid v0.3.0 — Behov, signaler og en stemme av sin egen
 
-Hva som er nytt:
+NYTT I DENNE BUILDEN:
 
-• Pitch Deck Studio inne i Lead Map
-  - Hver organisasjon har sin egen master-pitch (11-slide eller 10-slide kort)
-  - Claude genererer alle slides fra hva organisasjonen selger
-  - Cover-logo + tagline hentes automatisk fra bedriftens nettside
-  - Sveip-presentasjon m/ Apple Pencil-annotering på slide
-  - Pre-møte-brief: Claude pre-velger 5–7 relevante slides for denne leaden,
-    + talking points + forventede innvendinger med utkast til svar
-  - Per-lead tilpasset Verdien-slide
-  - PDF-eksport + tracking når kunden åpner
-  - Etter presentasjon: automatisk lead-status, follow-up-dato, kalender-hint
+• Trålеr for mangler (Lead Scout)
+  - Trykk «Trål etter mangler» på en lead → Leadgrid crawler websitet,
+    finner manglende GA4/GTM/Meta pixel/Google Ads/LinkedIn Insight,
+    sjekker SEO-strukturen, identifiserer SPA-risiko, og leverer
+    en strukturert behovs-liste + signaler + score-dimensjoner.
+  - Testet live på medside.no — den fant 10 needs, 7 signals, score 76.
 
-• Lead Research (valgfri tilleggsfunksjon, gated på lead_research.run)
-  - Salgssjef starter en research-økt med bransje + region
-  - Claude analyserer markedet, geokoder via Google Places, oppretter
-    leads på kartet automatisk
+• Markedsavdelingen har fått 6 nye roller
+  Markedssjef, Markedskoordinator, SEO-spesialist, Content-ansvarlig,
+  Performance-marketer, Markedsanalytiker — hver med sine egne
+  permissions.
 
-• Mockup-upload til pitch-deck-slides
-  - PhotosPicker i slide-editor for skjermbilder / mockups
-  - Lagres org-scopet i B2: pitch-decks/{org_id}/{deck_id}/{slide_id}/
+• Parameter-presets pr bransje
+  Organisasjonen kan lage maler. Velg «Helsetech B2B SaaS» når du
+  oppretter en lead → behovene fylles automatisk inn.
 
-• Soft-delete på slides m/ angre-snackbar (5 sek) + Slettede slides-fane
+• Custom fields styres av orgen
+  Eks: «Har markedsbudsjett?» (Unknown/Low/Medium/High) med
+  permission-gating på hvem som ser og redigerer.
 
-Organisasjonen kontrollerer alt via RBAC:
-  pitch_deck.access / .edit / .export — pitch-funksjonalitet
-  lead_research.run                    — research-orkestrator
+• IF/THEN automation-regler
+  - status = Interested + ingen follow-up → prompt selger
+  - score > 80 + ikke besøkt → høy prioritet
+  - tilbud sendt + 5d stille → automatisk reminder
+  - do_not_contact → outreach slås av
 
-Lead Map-en fungerer i sin helhet uten disse — alt er additivt.
+• Research kjører med scout sekvensielt
+  Når en research-økt har plottet pins, tråler Leadgrid automatisk
+  hver website og fyller behov + signaler — gated til markedsroller.
+  Research markeres aldri som «feilet» pga scout-problemer.
+
+VISUELLE OPPGRADERINGER:
+
+• Backdrops på MyDay, Research, Pitch Deck, Brief og Studio
+  Premium lilla scener med gradient-overlay — matcher landing-siden.
+
+• En egen stemme: Leadgrid-vokabular
+  - «Lytter til markedet», «Setter koordinater», «Tegner pins på
+    gridden», «Tråler websitene», «Gridden er klar»
+  - Pulserende prikk viser at appen jobber
+  - ETA-hint per fase ("typisk 30–60 sekunder")
+
+• Total ProgressView m/ fargeskifte (accent → grønn ved 'ferdig')
+
+FOKUSER PÅ Å TESTE:
+1. Opprett en lead med eller uten preset → se at behov fylles inn
+2. Trykk «Trål etter mangler» → følg progress
+3. Start en research → se den 5-fase-flyten med Leadgrid-stemme
+4. Endre en lead-status → sjekk om automation-regelen treffer
+5. Logg deg som rolle uten marketing-permission → bekreft at scout
+   ikke vises (men leadene fortsatt finnes)

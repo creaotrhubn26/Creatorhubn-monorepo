@@ -539,6 +539,8 @@ import { registerLeadPortfolioRoutes } from "./lead-portfolio-routes.js";
 import { registerCustomerAutoOnboardRoutes } from "./customer-auto-onboard-routes.js";
 import { registerClientPortalRoutes } from "./leadgrid-client-portal-routes.js";
 import { registerDeliveryPlaybookRoutes } from "./delivery-playbook-routes.js";
+import { registerSuperadminRoutes } from "./superadmin-routes.js";
+import { registerOrgSelfOnboardRoutes } from "./org-self-onboard-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24314,6 +24316,10 @@ registerCustomerAutoOnboardRoutes({ app, pool, activeSessions });
 registerClientPortalRoutes({ app, pool });
 // Delivery playbooks — markedsføreren's oppsett-system m/ steg-for-steg
 registerDeliveryPlaybookRoutes({ app, pool, activeSessions });
+// Super-admin governance: org-registry + impersonation + audit
+registerSuperadminRoutes({ app, pool, activeSessions });
+// Selv-onboard for Solo-planen (åpen registrering uten super-admin)
+registerOrgSelfOnboardRoutes({ app, pool });
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,

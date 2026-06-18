@@ -123,6 +123,11 @@ struct MainTabView: View {
                 ProjectsPortfolioView()
                     .tabItem { Label("Prosjekter", systemImage: "rectangle.stack.fill") }
             }
+            // Markedsfører-innboks — focus_requests fra klient
+            if state.permissions.contains("marketing.deliveries.execute") {
+                MarketingInboxView()
+                    .tabItem { Label("Innboks", systemImage: "tray.fill") }
+            }
             LeaderboardView()
                 .tabItem { Label("Team", systemImage: "trophy.fill") }
             NotificationsView()
