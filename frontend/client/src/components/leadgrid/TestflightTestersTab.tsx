@@ -25,6 +25,10 @@ import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import RemoveCircleOutlineIcon from "@mui/icons-material/RemoveCircleOutline";
 import PhoneIphoneIcon from "@mui/icons-material/PhoneIphone";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import CloudSyncIcon from "@mui/icons-material/CloudSync";
+import CloudDoneIcon from "@mui/icons-material/CloudDone";
+import CloudOffIcon from "@mui/icons-material/CloudOff";
+import AppleIcon from "@mui/icons-material/Apple";
 import { apiFetch } from "@/lib/queryClient";
 
 interface Tester {
@@ -54,6 +58,12 @@ interface Tester {
   nda_sign_token: string | null;
   intent_sign_token: string | null;
   notes: string | null;
+  // ASC-sync (mig 0321)
+  asc_beta_tester_id: string | null;
+  asc_state: string | null;
+  asc_invite_type: string | null;
+  asc_synced_at: string | null;
+  asc_sync_error: string | null;
 }
 
 export default function TestflightTestersTab() {
@@ -64,6 +74,8 @@ export default function TestflightTestersTab() {
   const [selectedTester, setSelectedTester] = useState<Tester | null>(null);
   const [graduateOpen, setGraduateOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<{ msg: string; severity: "success" | "error" } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [ascHealth, setAscHealth] = useState<{ ok: boolean; error?: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,6 +90,34 @@ export default function TestflightTestersTab() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    apiFetch("/api/superadmin/testflight-testers/asc-health")
+      .then((r) => r.ok ? r.json() : { ok: false })
+      .then((d) => setAscHealth(d))
+      .catch(() => setAscHealth({ ok: false }));
+  }, []);
+
+  const syncWithApple = async (appBundleId: string) => {
+    setSyncing(true);
+    try {
+      const r = await apiFetch("/api/superadmin/testflight-testers/sync-asc", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appBundleId }),
+      });
+      const d = await r.json();
+      if (r.ok) {
+        setSnackbar({
+          msg: `Synket m/ Apple: ${d.pulled} testere (${d.updated} oppdatert, ${d.added_locally} nye lokalt) på ${d.duration_ms}ms`,
+          severity: "success",
+        });
+        load();
+      } else {
+        setSnackbar({ msg: d.error ?? "Sync feilet", severity: "error" });
+      }
+    } catch (e: any) { setSnackbar({ msg: String(e), severity: "error" }); }
+    setSyncing(false);
+  };
 
   const filtered = filter === "all" ? testers : testers.filter((t) => t.status === filter);
 
@@ -142,6 +182,31 @@ export default function TestflightTestersTab() {
           </Card>
         ))}
       </Stack>
+
+      {/* Apple ASC sync-status */}
+      {ascHealth && (
+        <Alert
+          severity={ascHealth.ok ? "success" : "warning"}
+          icon={ascHealth.ok ? <CloudDoneIcon /> : <CloudOffIcon />}
+          sx={{ mb: 2 }}
+          action={
+            <Stack direction="row" spacing={1}>
+              {["com.creatorhubn.LeadMapApp", "com.theroleroom.app"].map((bundle) => (
+                <Button key={bundle} size="small" disabled={syncing || !ascHealth.ok}
+                        startIcon={<CloudSyncIcon />}
+                        onClick={() => syncWithApple(bundle)}
+                        sx={{ color: "inherit" }}>
+                  Sync {bundle.split(".").pop()}
+                </Button>
+              ))}
+            </Stack>
+          }
+        >
+          {ascHealth.ok
+            ? "App Store Connect-API tilgjengelig. Klikk for å pulle siste status fra Apple."
+            : `App Store Connect ikke nådd: ${ascHealth.error ?? "ukjent"}. Sjekk ASC_ISSUER_ID, ASC_KEY_ID og .p8-fil.`}
+        </Alert>
+      )}
 
       {/* Header */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
@@ -269,6 +334,26 @@ function TesterCard({
               {tester.email} · {tester.org_name}
               {tester.invited_at && ` · invitert ${new Date(tester.invited_at).toLocaleDateString("no-NO")}`}
             </Typography>
+
+            {/* ASC-sync-status */}
+            {tester.asc_beta_tester_id && (
+              <Stack direction="row" spacing={0.5} mt={0.8} alignItems="center">
+                <AppleIcon sx={{ fontSize: 14, color: "rgba(255,255,255,0.5)" }} />
+                <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.6)" }}>
+                  Apple: {tester.asc_state ?? "?"}
+                  {tester.asc_invite_type && ` · ${tester.asc_invite_type}`}
+                  {tester.asc_synced_at && ` · synket ${new Date(tester.asc_synced_at).toLocaleString("no-NO")}`}
+                </Typography>
+              </Stack>
+            )}
+            {tester.asc_sync_error && (
+              <Stack direction="row" spacing={0.5} mt={0.4} alignItems="center">
+                <CloudOffIcon sx={{ fontSize: 14, color: "#ff6b6b" }} />
+                <Typography variant="caption" sx={{ color: "#ff6b6b" }}>
+                  Apple-sync feilet: {tester.asc_sync_error.substring(0, 80)}
+                </Typography>
+              </Stack>
+            )}
 
             {/* Signering-checkliste */}
             <Stack direction="row" spacing={3} mt={1.5}>

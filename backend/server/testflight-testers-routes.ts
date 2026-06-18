@@ -29,6 +29,10 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
+import {
+  ascCreateBetaTester, ascDeleteBetaTester, ascListBetaTestersForApp,
+  ascFindAppByBundleId, ascHealthCheck,
+} from "./app-store-connect-client.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -195,10 +199,60 @@ export function registerTestflightTestersRoutes({ app, pool, activeSessions }: D
       );
 
       await client.query("COMMIT");
+
+      // Push til Apple App Store Connect (fire-and-forget)
+      const testerId = testerR.rows[0].id;
+      let ascResult: { id?: string; error?: string } = {};
+      try {
+        const parts = (fullName ?? "").trim().split(" ");
+        const firstName = parts[0] ?? "";
+        const lastName = parts.length > 1 ? parts.slice(1).join(" ") : "";
+        const tester = await ascCreateBetaTester({
+          email,
+          firstName: firstName || undefined,
+          lastName: lastName || undefined,
+          appBundleId: appBundleId ?? undefined,
+        });
+        if (tester) {
+          ascResult.id = tester.id;
+          await pool.query(
+            `UPDATE testflight_testers
+                SET asc_beta_tester_id = $1,
+                    asc_first_name = $2, asc_last_name = $3,
+                    asc_state = $4, asc_invite_type = $5,
+                    asc_invited_at = COALESCE($6::timestamptz, asc_invited_at),
+                    asc_last_modified_at = COALESCE($7::timestamptz, asc_last_modified_at),
+                    asc_synced_at = now(),
+                    asc_sync_error = NULL
+              WHERE id = $8`,
+            [
+              tester.id, tester.attributes.firstName ?? null,
+              tester.attributes.lastName ?? null,
+              tester.attributes.state ?? "INVITED",
+              tester.attributes.inviteType ?? "EMAIL",
+              tester.attributes.inviteDate ?? null,
+              tester.attributes.lastModifiedDate ?? null,
+              testerId,
+            ],
+          );
+        }
+      } catch (e: any) {
+        console.error("[ASC push-tester]", e);
+        const errMsg = e?.message ?? String(e);
+        ascResult.error = errMsg;
+        await pool.query(
+          `UPDATE testflight_testers SET asc_sync_error = $1, asc_synced_at = now() WHERE id = $2`,
+          [errMsg.slice(0, 500), testerId],
+        );
+      }
+
       res.status(201).json({
-        tester_id: testerR.rows[0].id,
+        tester_id: testerId,
         organization_id: orgId,
         organization_name: effectiveOrgName,
+        asc_pushed: !!ascResult.id,
+        asc_beta_tester_id: ascResult.id,
+        asc_error: ascResult.error,
       });
     } catch (e) {
       await client.query("ROLLBACK");
@@ -443,6 +497,15 @@ export function registerTestflightTestersRoutes({ app, pool, activeSessions }: D
     const s = await requireSuperAdmin(req, res, pool, activeSessions);
     if (!s) return;
     const { reason } = req.body ?? {};
+    // Slett også fra Apple ASC hvis koblet
+    const ascR = await pool.query<{ asc_beta_tester_id: string | null }>(
+      `SELECT asc_beta_tester_id FROM testflight_testers WHERE id = $1`,
+      [req.params.id],
+    );
+    if (ascR.rows[0]?.asc_beta_tester_id) {
+      try { await ascDeleteBetaTester(ascR.rows[0].asc_beta_tester_id); }
+      catch (e) { console.error("[ASC delete-tester]", e); }
+    }
     await pool.query(
       `UPDATE testflight_testers
           SET status = 'removed', removed_at = now(), removal_reason = $1, updated_at = now()
@@ -450,5 +513,148 @@ export function registerTestflightTestersRoutes({ app, pool, activeSessions }: D
       [reason ?? null, req.params.id],
     );
     res.json({ ok: true });
+  });
+
+  // ---------- Manuell ASC-sync (pull fra Apple) ----------
+  app.post("/api/superadmin/testflight-testers/sync-asc", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const { appBundleId } = req.body ?? {};
+    if (!appBundleId) return res.status(400).json({ error: "appBundleId påkrevd" });
+
+    const start = Date.now();
+    try {
+      const app = await ascFindAppByBundleId(appBundleId);
+      if (!app) return res.status(404).json({ error: `App ikke funnet i ASC: ${appBundleId}` });
+
+      // Lagre app-mapping for fremtidig bruk
+      await pool.query(
+        `INSERT INTO asc_app_mapping (app_bundle_id, asc_app_id, app_name)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (app_bundle_id) DO UPDATE
+           SET asc_app_id = EXCLUDED.asc_app_id, app_name = EXCLUDED.app_name`,
+        [appBundleId, app.id, app.attributes.name],
+      );
+
+      const ascTesters = await ascListBetaTestersForApp(app.id);
+      let updated = 0;
+      let addedLocally = 0;
+
+      for (const t of ascTesters) {
+        const r = await pool.query<{ id: string }>(
+          `UPDATE testflight_testers
+              SET asc_beta_tester_id = $1,
+                  asc_app_id = $2,
+                  asc_first_name = $3, asc_last_name = $4,
+                  asc_state = $5, asc_invite_type = $6,
+                  asc_invited_at = COALESCE($7::timestamptz, asc_invited_at),
+                  asc_last_modified_at = COALESCE($8::timestamptz, asc_last_modified_at),
+                  asc_synced_at = now(), asc_sync_error = NULL,
+                  -- Map Apple-state til vår status
+                  accepted_invite_at = CASE
+                    WHEN $5 IN ('ACCEPTED', 'INSTALLED') AND accepted_invite_at IS NULL
+                      THEN COALESCE($8::timestamptz, now())
+                    ELSE accepted_invite_at
+                  END,
+                  status = CASE
+                    WHEN $5 = 'INSTALLED' AND status NOT IN ('graduated','removed') THEN 'active'
+                    WHEN $5 = 'REVOKED' THEN 'removed'
+                    WHEN $5 = 'EXPIRED' THEN 'expired'
+                    ELSE status
+                  END,
+                  updated_at = now()
+            WHERE LOWER(email) = LOWER($9)
+              AND COALESCE(app_bundle_id, '') IN ($10, '')
+            RETURNING id`,
+          [
+            t.id, app.id,
+            t.attributes.firstName ?? null, t.attributes.lastName ?? null,
+            t.attributes.state ?? null, t.attributes.inviteType ?? null,
+            t.attributes.inviteDate ?? null, t.attributes.lastModifiedDate ?? null,
+            t.attributes.email, appBundleId,
+          ],
+        );
+        if (r.rowCount && r.rowCount > 0) {
+          updated++;
+        } else {
+          // Tester finnes i Apple men ikke lokalt — opprett lokal stub
+          const orgName = `${t.attributes.email} (Apple-synket)`;
+          const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+                     + "-" + crypto.randomBytes(3).toString("hex");
+          const orgR = await pool.query<{ id: string }>(
+            `INSERT INTO organizations (name, slug, org_type, plan, contact_email, meta)
+             VALUES ($1, $2, 'beta_tester', 'solo_pro', $3, $4)
+             RETURNING id`,
+            [
+              orgName, slug, t.attributes.email,
+              JSON.stringify({ beta_tester: true, from_asc_sync: true }),
+            ],
+          );
+          await pool.query(
+            `INSERT INTO testflight_testers
+              (email, full_name, organization_id, app_bundle_id, status,
+               asc_beta_tester_id, asc_app_id, asc_first_name, asc_last_name,
+               asc_state, asc_invite_type, asc_invited_at, asc_last_modified_at,
+               asc_synced_at, accepted_invite_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), $14)`,
+            [
+              t.attributes.email,
+              [t.attributes.firstName, t.attributes.lastName].filter(Boolean).join(" ") || null,
+              orgR.rows[0].id, appBundleId,
+              t.attributes.state === "INSTALLED" ? "active" : "invited",
+              t.id, app.id,
+              t.attributes.firstName ?? null, t.attributes.lastName ?? null,
+              t.attributes.state ?? "INVITED", t.attributes.inviteType ?? "EMAIL",
+              t.attributes.inviteDate ?? null, t.attributes.lastModifiedDate ?? null,
+              t.attributes.state === "ACCEPTED" || t.attributes.state === "INSTALLED"
+                ? (t.attributes.lastModifiedDate ?? new Date().toISOString())
+                : null,
+            ],
+          );
+          addedLocally++;
+        }
+      }
+
+      const durationMs = Date.now() - start;
+      await pool.query(
+        `INSERT INTO asc_sync_log (app_id, testers_pulled, testers_updated, testers_added_locally, duration_ms)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [app.id, ascTesters.length, updated, addedLocally, durationMs],
+      );
+
+      res.json({
+        ok: true, app_id: app.id, app_name: app.attributes.name,
+        pulled: ascTesters.length, updated, added_locally: addedLocally,
+        duration_ms: durationMs,
+      });
+    } catch (e: any) {
+      const durationMs = Date.now() - start;
+      await pool.query(
+        `INSERT INTO asc_sync_log (testers_pulled, duration_ms, error) VALUES (0, $1, $2)`,
+        [durationMs, (e.message ?? String(e)).slice(0, 500)],
+      );
+      console.error("[ASC sync]", e);
+      res.status(500).json({ error: e.message ?? "Sync feilet" });
+    }
+  });
+
+  // ---------- ASC helsesjekk ----------
+  app.get("/api/superadmin/testflight-testers/asc-health", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const h = await ascHealthCheck();
+    res.json(h);
+  });
+
+  // ---------- Sync-log ----------
+  app.get("/api/superadmin/testflight-testers/asc-sync-log", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const r = await pool.query(
+      `SELECT id, ran_at, app_id, testers_pulled, testers_updated,
+              testers_added_locally, duration_ms, error
+         FROM asc_sync_log ORDER BY ran_at DESC LIMIT 20`,
+    );
+    res.json({ entries: r.rows });
   });
 }
