@@ -30,6 +30,8 @@ import {
   LinkOutlined as ReferenceIcon,
   DownloadOutlined as DownloadIcon,
   InsertDriveFileOutlined as FileIcon,
+  PaidOutlined as BudgetIcon,
+  AssignmentOutlined as BriefIcon,
 } from '@mui/icons-material';
 import { listMessages, sendMessage, updateMessage, type RoleRoomMessage } from '../../services/roleRoomMessagesApi';
 import { producerWorkflowService, type ProducerProjectNotification } from '../../services/producerWorkflowService';
@@ -246,6 +248,43 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
       setToast('Sendt til godkjenning — ligger nå i Godkjenning-flaten.');
       await load();
     } catch (e) { setToast(e instanceof Error ? e.message : 'Kunne ikke sende til godkjenning.'); }
+    finally { setBusyAction(false); }
+  }, [projectId, load]);
+
+  // Del budsjett: publiser alle upubliserte budsjettlinjer til klienten (bygger
+  // på publiser-synken) + post melding. Produsent-only.
+  const shareBudget = useCallback(async () => {
+    setBusyAction(true); setActionAnchor(null);
+    try {
+      const items = await producerWorkflowService.getEconomyItems(projectId);
+      const drafts = items.filter((i) => !i.published_at);
+      let ok = 0;
+      for (const d of drafts) {
+        try { await producerWorkflowService.publishEconomyItem(projectId, d.id, true); ok += 1; } catch { /* fortsett */ }
+      }
+      await sendMessage(projectId, {
+        body: ok > 0 ? `Jeg delte budsjettet med deg (${ok} ${ok === 1 ? 'linje' : 'linjer'} publisert).` : 'Budsjettet er delt med deg.',
+        metadata: { action: 'budget_shared' },
+      });
+      setToast(ok > 0 ? `Publiserte ${ok} budsjettlinje${ok === 1 ? '' : 'r'} til klienten.` : 'Budsjettet er allerede delt.');
+      await load();
+    } catch (e) { setToast(e instanceof Error ? e.message : 'Kunne ikke dele budsjett.'); }
+    finally { setBusyAction(false); }
+  }, [projectId, load]);
+
+  // Be om brief-svar: forespørsel-melding som peker klienten til Brief-fanen.
+  const requestBriefInput = useCallback(async () => {
+    setBusyAction(true); setActionAnchor(null);
+    try {
+      await sendMessage(projectId, {
+        body: 'Kan du fylle ut / svare på prosjektbriefen? Du finner den under «Brief».',
+        kind: 'request',
+        linkedEntityType: 'client_intake',
+        metadata: { action: 'brief_request', refKind: 'brief', refLabel: 'Brief' },
+      });
+      setToast('Brief-forespørsel sendt til klienten.');
+      await load();
+    } catch (e) { setToast(e instanceof Error ? e.message : 'Kunne ikke be om brief-svar.'); }
     finally { setBusyAction(false); }
   }, [projectId, load]);
 
@@ -489,6 +528,11 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
             { q: 'be om fil opplasting materiale', icon: <UploadIcon sx={{ color: '#7dd3fc' }} />, primary: 'Be om fil-opplasting', secondary: 'Hvilken som helst fil → Materiale', run: () => void requestUpload('other') },
             { q: 'send til godkjenning approval review', icon: <ApprovalIcon sx={{ color: '#f0abfc' }} />, primary: 'Send til godkjenning', secondary: 'Lander i Godkjenning-flaten', run: () => void sendToApproval() },
             { q: 'referer til leveranse fil møte video godkjenn', icon: <ReferenceIcon sx={{ color: '#fcd34d' }} />, primary: 'Referer til …', secondary: 'Leveranse, fil eller møte → klikkbart kort', run: () => void openReferencePicker() },
+            // Produsent-only handlinger (vises kun når canUseInternal).
+            ...(canUseInternal ? [
+              { q: 'del budsjett økonomi publiser klient', icon: <BudgetIcon sx={{ color: '#86efac' }} />, primary: 'Del budsjett med klient', secondary: 'Publiser budsjettlinjer → klientens Økonomi', run: () => void shareBudget() },
+              { q: 'be om brief svar intake', icon: <BriefIcon sx={{ color: '#a5b4fc' }} />, primary: 'Be om brief-svar', secondary: 'Forespørsel → klientens Brief-fane', run: () => void requestBriefInput() },
+            ] : []),
           ].filter((a) => !actionQuery || `${a.primary} ${a.q}`.toLowerCase().includes(actionQuery.toLowerCase())).map((a) => (
             <MenuItem key={a.primary} onClick={a.run}>
               <ListItemIcon>{a.icon}</ListItemIcon>
@@ -499,7 +543,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
             <Typography sx={{ color: 'rgba(226,232,240,0.4)', fontSize: '0.64rem', fontWeight: 700, letterSpacing: 0.4 }}>KOMMER SNART</Typography>
           </Box>
           {[
-            'Legg i Content Planner', 'Del budsjett med klient', 'Be om brief-svar', 'Send faktura', 'AI-utkast & oppsummering',
+            'Legg i Content Planner', 'Send faktura', 'AI-utkast & oppsummering',
           ].map((label) => (
             <MenuItem key={label} disabled>
               <ListItemIcon><ActivityIcon sx={{ color: 'rgba(226,232,240,0.4)' }} /></ListItemIcon>
