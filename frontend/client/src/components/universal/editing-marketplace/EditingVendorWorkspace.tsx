@@ -35,6 +35,7 @@ import SendIcon from "@mui/icons-material/Send";
 import VerifiedUserIcon from "@mui/icons-material/VerifiedUser";
 import { apiRequest } from "@/lib/queryClient";
 import VendorProductManager from "../../vendor/VendorProductManager";
+import EditingJobChat from "./EditingJobChat";
 import {
   t,
   pillarLabel,
@@ -85,6 +86,7 @@ export default function EditingVendorWorkspace({ userId }: Props) {
   const [snack, setSnack] = useState<{ msg: string; sev: "success" | "error" } | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [uploadingJob, setUploadingJob] = useState<string | null>(null);
+  const [commJobId, setCommJobId] = useState<string | null>(null);
 
   const meQuery = useQuery<MeResponse>({
     queryKey: ["/api/editing/vendor/me"],
@@ -370,10 +372,35 @@ export default function EditingVendorWorkspace({ userId }: Props) {
         </Box>
       )}
 
-      {/* ── Kommunikasjon (placeholder, task #14) ── */}
-      {tab === 3 && (
-        <Alert severity="info">{t("comm_placeholder", locale)}</Alert>
-      )}
+      {/* ── Kommunikasjon ── */}
+      {tab === 3 && (() => {
+        const commJobs = jobs.filter((j) =>
+          ["in_progress", "delivered", "approved", "delivered_to_client"].includes(j.status),
+        );
+        if (commJobs.length === 0) {
+          return <Alert severity="info">{t("comm_placeholder", locale)}</Alert>;
+        }
+        const active = commJobId || commJobs[0].id;
+        return (
+          <Box>
+            <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: "wrap" }}>
+              {commJobs.map((j) => (
+                <Chip
+                  key={j.id}
+                  label={j.project_title || j.id.slice(0, 6)}
+                  color={active === j.id ? "primary" : "default"}
+                  onClick={() => setCommJobId(j.id)}
+                />
+              ))}
+            </Stack>
+            <Card variant="outlined">
+              <CardContent>
+                <EditingJobChat jobId={active} selfRole="vendor" locale={locale} />
+              </CardContent>
+            </Card>
+          </Box>
+        );
+      })()}
 
       <Snackbar open={!!snack} autoHideDuration={3000} onClose={() => setSnack(null)}>
         {snack ? (

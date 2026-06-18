@@ -199,6 +199,12 @@ const STRINGS: Dict = {
     no: "Kommunikasjon med fotograf åpnes når et oppdrag er akseptert.",
     en: "Communication with the photographer opens once a job is accepted.",
   },
+  chat_select_job: { no: "Velg et oppdrag", en: "Select a job" },
+  chat_no_threads: { no: "Ingen aktive oppdrag å kommunisere om ennå.", en: "No active jobs to communicate about yet." },
+  chat_input: { no: "Skriv en melding…", en: "Write a message…" },
+  chat_send: { no: "Send", en: "Send" },
+  chat_closed: { no: "Kommunikasjon er ikke åpen for dette oppdraget.", en: "Communication is not open for this job." },
+  chat_empty: { no: "Ingen meldinger ennå.", en: "No messages yet." },
 
   // ── Request dialog (fotograf bestiller) ──
   rq_title: { no: "Send forespørsel", en: "Send request" },

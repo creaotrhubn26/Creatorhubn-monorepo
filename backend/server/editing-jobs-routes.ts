@@ -335,6 +335,56 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
     }
   });
 
+  const MESSAGING_STATUSES = ["in_progress", "delivered", "approved", "delivered_to_client"];
+
+  // ── Meldinger pr oppdrag (fotograf <-> vendor, kun når avtale inngått) ──
+  app.get("/api/editing/jobs/:id/messages", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const auth = await loadAuthorizedJob(req.params.id, session.userId);
+      if (!auth) return res.status(404).json({ error: "ikke_funnet" });
+      const r = await pool.query(
+        `SELECT id, sender_id, sender_role, body, created_at
+           FROM editing_job_messages WHERE job_id = $1 ORDER BY created_at ASC`,
+        [req.params.id],
+      );
+      // Marker motpartens meldinger som lest
+      await pool.query(
+        `UPDATE editing_job_messages SET read_at = NOW()
+          WHERE job_id = $1 AND sender_role <> $2 AND read_at IS NULL`,
+        [req.params.id, auth.role],
+      );
+      res.json({ messages: r.rows, canMessage: MESSAGING_STATUSES.includes(auth.job.status) });
+    } catch (err) {
+      console.error("[editing/jobs:messages:list] error", err);
+      res.status(500).json({ error: "kunne_ikke_hente_meldinger" });
+    }
+  });
+
+  app.post("/api/editing/jobs/:id/messages", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const auth = await loadAuthorizedJob(req.params.id, session.userId);
+      if (!auth) return res.status(404).json({ error: "ikke_funnet" });
+      if (!MESSAGING_STATUSES.includes(auth.job.status)) {
+        return res.status(400).json({ error: "kommunikasjon_ikke_apen" });
+      }
+      const body = (req.body?.body || "").trim();
+      if (!body) return res.status(400).json({ error: "tom_melding" });
+      const ins = await pool.query(
+        `INSERT INTO editing_job_messages (job_id, sender_id, sender_role, body)
+         VALUES ($1, $2, $3, $4) RETURNING id, sender_id, sender_role, body, created_at`,
+        [req.params.id, session.userId, auth.role, body],
+      );
+      res.json({ ok: true, message: ins.rows[0] });
+    } catch (err) {
+      console.error("[editing/jobs:messages:post] error", err);
+      res.status(500).json({ error: "kunne_ikke_sende_melding" });
+    }
+  });
+
   // ── Tildel vendor til et draft-oppdrag ──
   app.post("/api/editing/jobs/:id/assign-vendor", async (req, res) => {
     const session = requireUserSession(req, res);
