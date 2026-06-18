@@ -515,6 +515,14 @@ actor APIClient {
         )
     }
 
+    // MARK: - Portefølje
+
+    func fetchPortfolio(orgId: String, sort: String) async throws -> PortfolioResponse {
+        return try await get(
+            "/api/admin-room/lead-map/organizations/\(orgId)/portfolio?sort=\(sort)"
+        )
+    }
+
     func updatePitchSlide(slideId: String, titleMd: String?, bodyMd: String?) async throws -> PitchSlideResponse {
         var body: [String: Any] = [:]
         if let t = titleMd { body["title_md"] = t }

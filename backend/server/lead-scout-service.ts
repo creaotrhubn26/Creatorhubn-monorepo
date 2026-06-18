@@ -21,6 +21,7 @@
 
 import type { Pool } from "pg";
 import { callClaudeForJson, ClaudeJsonParseError } from "./claude-json-helper.js";
+import { fetchBestLogo } from "./lead-logo-fetcher.js";
 
 // ─────────────────────────────────────────────────────────────────
 // Typer
@@ -563,12 +564,30 @@ export async function runScoutForLead(
       [args.customerId],
     );
     const compositeNum = Math.round(Number(composite.rows[0]?.score ?? 0));
+
+    // Logo-fetch — sjekk om lead allerede har logo. Hvis ikke, prøv
+    // å hente fra websiten (apple-touch → og:image → favicon → Google s2).
+    // Dette gjør at research-orkestratoren automatisk fyller logoer på
+    // hver lead som passerer scout-fasen.
+    let fetchedLogoUrl: string | null = null;
+    try {
+      const existing = await pool.query<{ logo_url: string | null }>(
+        `SELECT logo_url FROM crm_customers WHERE id::text = $1`,
+        [args.customerId],
+      );
+      if (!existing.rows[0]?.logo_url) {
+        const logo = await fetchBestLogo(args.websiteUrl);
+        if (logo?.url) fetchedLogoUrl = logo.url;
+      }
+    } catch { /* tystefall — logo er nice-to-have, ikke kritisk */ }
+
     await pool.query(
       `UPDATE crm_customers
           SET ai_opportunity_score = $2,
-              claude_ranked_at = now()
+              claude_ranked_at = now(),
+              logo_url = COALESCE(logo_url, $3)
         WHERE id::text = $1`,
-      [args.customerId, compositeNum],
+      [args.customerId, compositeNum, fetchedLogoUrl],
     );
 
     await pool.query(
