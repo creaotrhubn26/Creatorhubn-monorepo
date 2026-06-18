@@ -29,6 +29,8 @@
  */
 
 import { useEffect, useState } from 'react';
+import { fireGoogleAdsConversion } from '@/utils/google-ads-conversions';
+import { trackEvent, trackPageView } from '@/utils/ga4-client-tracking';
 import {
   Box, Container, Typography, Button, Grid, Stack, Chip,
   Card, CardContent, Divider, Avatar,
@@ -134,9 +136,46 @@ const PRICING = [
 // ────────────────────────────────────────────────────────────
 // Komponent
 // ────────────────────────────────────────────────────────────
+// SEO/JSON-LD helpers
+// ────────────────────────────────────────────────────────────
+
+function setMetaTagByAttr(
+  tagName: 'meta' | 'link',
+  attrName: 'property' | 'name' | 'rel',
+  attrValue: string,
+  setAttrs: Record<string, string>,
+) {
+  let el = document.querySelector(`${tagName}[${attrName}="${attrValue}"]`) as HTMLElement | null;
+  if (!el) {
+    el = document.createElement(tagName);
+    el.setAttribute(attrName, attrValue);
+    document.head.appendChild(el);
+  }
+  Object.entries(setAttrs).forEach(([k, v]) => el!.setAttribute(k, v));
+}
+
+function injectJsonLd(id: string, schema: Record<string, unknown>) {
+  let s = document.querySelector(`script[data-jsonld-id="${id}"]`) as HTMLScriptElement | null;
+  if (!s) {
+    s = document.createElement('script');
+    s.type = 'application/ld+json';
+    s.setAttribute('data-jsonld-id', id);
+    document.head.appendChild(s);
+  }
+  s.textContent = JSON.stringify(schema);
+}
+
+// ────────────────────────────────────────────────────────────
 
 export default function LeadgridLanding() {
   useEffect(() => {
+    // GA4 page view (ekspl. tracket fordi SPA-routing ikke fyrer auto)
+    trackPageView('/leadgrid', 'Leadgrid — Gjør kartet om til kunder');
+    trackEvent('leadgrid_landing_view', {
+      referrer: document.referrer || 'direct',
+      utm_source: new URLSearchParams(window.location.search).get('utm_source') ?? null,
+      utm_campaign: new URLSearchParams(window.location.search).get('utm_campaign') ?? null,
+    });
     // Side-tittel + meta beskrivelse for SEO
     document.title = 'Leadgrid — Gjør kartet om til kunder';
     const desc = document.querySelector('meta[name="description"]');
@@ -148,6 +187,93 @@ export default function LeadgridLanding() {
       m.content = content;
       document.head.appendChild(m);
     }
+    // Canonical
+    setMetaTagByAttr('link', 'rel', 'canonical', { href: 'https://theroleroom.com/leadgrid' });
+    // Open Graph
+    setMetaTagByAttr('meta', 'property', 'og:title', { content: 'Leadgrid — Gjør kartet om til kunder' });
+    setMetaTagByAttr('meta', 'property', 'og:description', { content });
+    setMetaTagByAttr('meta', 'property', 'og:type', { content: 'website' });
+    setMetaTagByAttr('meta', 'property', 'og:url', { content: 'https://theroleroom.com/leadgrid' });
+    setMetaTagByAttr('meta', 'property', 'og:image', { content: 'https://theroleroom.com/leadgrid/og-image.png' });
+    setMetaTagByAttr('meta', 'property', 'og:site_name', { content: 'Leadgrid' });
+    setMetaTagByAttr('meta', 'property', 'og:locale', { content: 'nb_NO' });
+    // Twitter Cards
+    setMetaTagByAttr('meta', 'name', 'twitter:card', { content: 'summary_large_image' });
+    setMetaTagByAttr('meta', 'name', 'twitter:title', { content: 'Leadgrid — Gjør kartet om til kunder' });
+    setMetaTagByAttr('meta', 'name', 'twitter:description', { content });
+    setMetaTagByAttr('meta', 'name', 'twitter:image', { content: 'https://theroleroom.com/leadgrid/og-image.png' });
+
+    // JSON-LD: SoftwareApplication + Organization + FAQPage
+    injectJsonLd('leadgrid-software-app', {
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: 'Leadgrid',
+      applicationCategory: 'BusinessApplication',
+      applicationSubCategory: 'CRM',
+      operatingSystem: 'Web, iOS',
+      description: content,
+      url: 'https://theroleroom.com/leadgrid',
+      offers: [
+        { '@type': 'Offer', name: 'Solo (gratis)', price: '0', priceCurrency: 'NOK' },
+        { '@type': 'Offer', name: 'Solo Pro', price: '199', priceCurrency: 'NOK' },
+        { '@type': 'Offer', name: 'Agency', price: '990', priceCurrency: 'NOK' },
+      ],
+      provider: {
+        '@type': 'Organization',
+        name: 'Creatorhub AS',
+        url: 'https://creatorhubn.com',
+      },
+      featureList: [
+        'Kartbasert leads-oversikt',
+        'Auto-onboarding av kunder med BRREG-oppslag',
+        'AI-skåring av behov og signaler',
+        'Klient-portal (white-label på Agency)',
+        'Steg-for-steg playbooks for Meta Pixel, GA4, Google Ads',
+      ],
+      inLanguage: 'nb-NO',
+    });
+    injectJsonLd('leadgrid-organization', {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      name: 'Creatorhub AS',
+      legalName: 'Creatorhub AS',
+      url: 'https://creatorhubn.com',
+      logo: 'https://theroleroom.com/leadgrid/logo.png',
+      foundingDate: '2024',
+      address: { '@type': 'PostalAddress', addressCountry: 'NO' },
+      sameAs: ['https://theroleroom.com', 'https://theroleroom.com/leadgrid'],
+    });
+    injectJsonLd('leadgrid-faq', {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: 'Hva er Leadgrid?',
+          acceptedAnswer: { '@type': 'Answer', text: 'Leadgrid er et kartbasert CRM-system for team som vil ha bedre oversikt over lokale leads, organisere oppfølging og levere målbare resultater til kundene sine.' },
+        },
+        {
+          '@type': 'Question',
+          name: 'Hvor mye koster Leadgrid?',
+          acceptedAnswer: { '@type': 'Answer', text: 'Solo er gratis (1 kunde, 3 auto-onboards/mnd). Solo Pro er 199 kr/mnd (10 kunder, 30 auto-onboards). Agency er 990 kr/mnd med ubegrensede kunder og white-label klient-portal.' },
+        },
+        {
+          '@type': 'Question',
+          name: 'Hvordan kommer jeg i gang?',
+          acceptedAnswer: { '@type': 'Answer', text: 'Trykk Start gratis — du oppgir bare e-post og bedriftsnavn. Vi setter opp alt og du legger til din første kunde innen 2 minutter.' },
+        },
+        {
+          '@type': 'Question',
+          name: 'Trenger kunden min konto for å se sin portal?',
+          acceptedAnswer: { '@type': 'Answer', text: 'Nei. Hver kunde får en unik lenke (/c/{token}) som åpner portal-en direkte. Ingen registrering, ingen passord — bare klikke på lenken i e-posten.' },
+        },
+        {
+          '@type': 'Question',
+          name: 'Kan jeg avslutte når som helst?',
+          acceptedAnswer: { '@type': 'Answer', text: 'Ja. Alle planer kan kanselleres umiddelbart via Stripe Customer Portal. Data eksporteres på forespørsel.' },
+        },
+      ],
+    });
   }, []);
 
   return (
@@ -352,7 +478,10 @@ function HeroSection() {
                   fontSize: 16,
                   '&:hover': { bgcolor: PALETTE.accentBright },
                 }}
-                onClick={() => setStartOpen(true)}
+                onClick={() => {
+                  trackEvent('leadgrid_start_free_clicked', { cta_location: 'hero' });
+                  setStartOpen(true);
+                }}
               >
                 Start gratis
               </Button>
@@ -441,6 +570,24 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
         setSubmitting(false);
         return;
       }
+      // Fyre Google Ads conversion + GA4 event for Leadgrid-signup.
+      // value=0 for Free-tier — ekte MRR-verdi kommer ved oppgradering.
+      try {
+        await fireGoogleAdsConversion('signup', {
+          value: 0,
+          currency: 'NOK',
+          transactionId: data.organization?.id,
+        });
+        trackEvent('leadgrid_signup_completed', {
+          plan: 'solo_free',
+          template: 'solo',
+          organization_id: data.organization?.id,
+          has_checkout_url: !!data.checkout_url,
+          value: 0,
+          currency: 'NOK',
+        });
+      } catch { /* swallow */ }
+
       // Hvis Stripe Checkout-URL kom tilbake — redirect dit. Hvis ikke,
       // vis fallback-melding.
       if (data.checkout_url) {
@@ -1308,6 +1455,7 @@ function FinalCtaSection() {
               fontSize: 16,
               '&:hover': { bgcolor: PALETTE.accentBright },
             }}
+            onClick={() => trackEvent('leadgrid_book_demo_clicked', { cta_location: 'final' })}
             href="/"
           >
             Book demo
