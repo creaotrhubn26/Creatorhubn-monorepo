@@ -16,6 +16,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import CloseIcon from "@mui/icons-material/Close";
 import AddIcon from "@mui/icons-material/Add";
+import GraphicEqIcon from "@mui/icons-material/GraphicEq";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -60,6 +61,32 @@ export function MusicLibrary({ open, onClose, projectId, agentContext }: Props) 
   );
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
+  const [markerBusy, setMarkerBusy] = useState(false);
+  const [markerMsg, setMarkerMsg] = useState<string | null>(null);
+
+  // Re-kjør beat-grid på aktiv Resolve-timeline. Idempotent script (rydder egne
+  // markører først), forankret til nåværende edit via kilde-tid.
+  const handleRefreshMarkers = async () => {
+    setMarkerBusy(true);
+    setMarkerMsg(null);
+    try {
+      const res = await executeScript(
+        "refresh_beat_markers",
+        projectId ? { projectId } : {},
+        false,
+      );
+      const v = res.events.find(e => e.type === "result")?.value as
+        { markersAdded?: number; timeline?: string } | undefined;
+      const err = res.events.find(e => e.type === "error")?.value as
+        { message?: string } | undefined;
+      if (err) setMarkerMsg(`Feil: ${err.message ?? "ukjent"}`);
+      else setMarkerMsg(v ? `✓ ${v.markersAdded ?? 0} markører på «${v.timeline ?? "timeline"}»` : "Ferdig");
+    } catch (e) {
+      setMarkerMsg("Feil: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setMarkerBusy(false);
+    }
+  };
 
   // Context-tags set
   const contextTagSet = new Set(
@@ -309,6 +336,25 @@ export function MusicLibrary({ open, onClose, projectId, agentContext }: Props) 
             <AddIcon sx={{ fontSize: 13 }} />
             {uploading ? `Analyserer … ${uploadProgress}` : "Legg til tracks"}
           </button>
+          <button onClick={() => void handleRefreshMarkers()}
+                  disabled={markerBusy}
+                  title="Legg (på nytt) beat-markører på aktiv Resolve-timeline, forankret til nåværende edit. Trygt å re-kjøre."
+                  style={{
+                    background: "transparent",
+                    border: `1px solid ${ROLE_ROOM_BRAND.primaryLila}`,
+                    color: ROLE_ROOM_BRAND.textSecondary,
+                    padding: "7px 12px", fontSize: 12, fontWeight: 600,
+                    borderRadius: 4, cursor: markerBusy ? "wait" : "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                  }}>
+            <GraphicEqIcon sx={{ fontSize: 13 }} />
+            {markerBusy ? "Re-kjører …" : "Re-kjør beat-markører"}
+          </button>
+          {markerMsg && (
+            <span style={{ fontSize: 11, color: ROLE_ROOM_BRAND.textTertiary, maxWidth: 220 }}>
+              {markerMsg}
+            </span>
+          )}
           <button onClick={onClose}
                   style={{ background: "transparent", border: 0,
                             color: ROLE_ROOM_BRAND.textSecondary,

@@ -178,7 +178,7 @@ for i, seg in enumerate(segments):
 
 print(json.dumps({
   'duration': duration,
-  'tempo': float(tempo),
+  'tempo': float(tempo[0] if hasattr(tempo, '__len__') else tempo),
   'segments': segments,
   'beatCount': len(beat_times),
   'sectionCount': len(segments),
