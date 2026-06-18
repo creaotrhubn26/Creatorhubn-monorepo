@@ -61,13 +61,322 @@ export function registerPartnerIntentRoutes({ app, pool, activeSessions }: Deps)
   app.get("/api/superadmin/partner-intent-templates", async (req, res) => {
     const s = await requireSuperAdmin(req, res, pool, activeSessions);
     if (!s) return;
+    const includeInactive = req.query.includeInactive === "true";
     const r = await pool.query(
-      `SELECT id, template_key, partner_type, title, body_md,
-              default_notice_days, default_commission_pct, default_discount_pct
-         FROM partner_intent_templates WHERE is_active = TRUE
-         ORDER BY partner_type ASC, template_key ASC`,
+      `SELECT t.id, t.template_key, t.partner_type, t.title, t.body_md,
+              t.default_notice_days, t.default_commission_pct, t.default_discount_pct,
+              t.is_active, t.prior_version_key, t.signed_uses_count,
+              t.created_at, t.updated_at,
+              cu.email AS created_by_email, uu.email AS updated_by_email,
+              (SELECT COUNT(*) FROM partner_intent_agreements pia
+                 WHERE pia.template_version = t.template_key) AS used_in_agreements
+         FROM partner_intent_templates t
+         LEFT JOIN users cu ON cu.id = t.created_by
+         LEFT JOIN users uu ON uu.id = t.updated_by
+        WHERE ($1 = TRUE OR t.is_active = TRUE)
+        ORDER BY t.partner_type ASC, t.template_key ASC`,
+      [includeInactive],
     );
     res.json({ templates: r.rows });
+  });
+
+  // ---------- Superadmin: opprett ny template ----------
+  // POST { templateKey, partnerType, title, body_md,
+  //        defaultNoticeDays?, defaultCommissionPct?, defaultDiscountPct? }
+  app.post("/api/superadmin/partner-intent-templates", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const {
+      templateKey, partnerType, title, body_md,
+      defaultNoticeDays, defaultCommissionPct, defaultDiscountPct,
+    } = req.body ?? {};
+    if (!templateKey || !partnerType || !title || !body_md) {
+      return res.status(400).json({ error: "templateKey, partnerType, title, body_md påkrevd" });
+    }
+    if (!["customer", "integration", "reseller", "strategic"].includes(partnerType)) {
+      return res.status(400).json({ error: "Ugyldig partnerType" });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const r = await client.query<{ id: string }>(
+        `INSERT INTO partner_intent_templates
+          (template_key, partner_type, title, body_md,
+           default_notice_days, default_commission_pct, default_discount_pct,
+           is_active, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $8)
+         RETURNING id`,
+        [
+          templateKey, partnerType, title, body_md,
+          defaultNoticeDays ?? null, defaultCommissionPct ?? null, defaultDiscountPct ?? null,
+          s.userId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO partner_intent_template_history
+          (template_id, template_key, title, body_md,
+           default_notice_days, default_commission_pct, default_discount_pct,
+           edited_by, change_type, change_summary)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'created', 'Opprettet ny template')`,
+        [
+          r.rows[0].id, templateKey, title, body_md,
+          defaultNoticeDays ?? null, defaultCommissionPct ?? null, defaultDiscountPct ?? null,
+          s.userId,
+        ],
+      );
+      await client.query("COMMIT");
+      res.status(201).json({ template_id: r.rows[0].id });
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      console.error("[template create]", e);
+      const isUniqueErr = String(e).includes("unique");
+      res.status(isUniqueErr ? 409 : 500).json({
+        error: isUniqueErr ? `templateKey '${templateKey}' finnes allerede` : "Kunne ikke opprette",
+      });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ---------- Superadmin: oppdater (in-place, minor edit) ----------
+  // PATCH body: { title?, body_md?, defaultNoticeDays?, ..., changeSummary }
+  // Gjelder kun hvis template ikke er brukt i SIGNERTE avtaler — da må
+  // den bli en ny versjon via POST .../new-version i stedet.
+  app.patch("/api/superadmin/partner-intent-templates/:id", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const {
+      title, body_md, defaultNoticeDays, defaultCommissionPct,
+      defaultDiscountPct, partnerType, changeSummary,
+    } = req.body ?? {};
+
+    // Sjekk om template er brukt i signerte avtaler
+    const usageR = await pool.query<{ signed_count: string }>(
+      `SELECT COUNT(*)::text AS signed_count FROM partner_intent_agreements pia
+        WHERE pia.template_version = (SELECT template_key FROM partner_intent_templates WHERE id = $1)
+          AND pia.status = 'signed'`,
+      [req.params.id],
+    );
+    const signedCount = parseInt(usageR.rows[0]?.signed_count ?? "0", 10);
+    if (signedCount > 0) {
+      return res.status(409).json({
+        error: "template_already_used",
+        signed_count: signedCount,
+        message: "Denne malen er brukt i signerte avtaler. Lag en ny versjon i stedet (POST .../new-version).",
+      });
+    }
+
+    const updates: string[] = [];
+    const values: any[] = [];
+    let i = 1;
+    if (title !== undefined) { updates.push(`title = $${i++}`); values.push(title); }
+    if (body_md !== undefined) { updates.push(`body_md = $${i++}`); values.push(body_md); }
+    if (partnerType !== undefined) { updates.push(`partner_type = $${i++}`); values.push(partnerType); }
+    if (defaultNoticeDays !== undefined) { updates.push(`default_notice_days = $${i++}`); values.push(defaultNoticeDays); }
+    if (defaultCommissionPct !== undefined) { updates.push(`default_commission_pct = $${i++}`); values.push(defaultCommissionPct); }
+    if (defaultDiscountPct !== undefined) { updates.push(`default_discount_pct = $${i++}`); values.push(defaultDiscountPct); }
+    if (updates.length === 0) return res.status(400).json({ error: "Ingen endringer" });
+    updates.push(`updated_at = now()`, `updated_by = $${i++}`);
+    values.push(s.userId);
+    values.push(req.params.id);
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const r = await client.query<{
+        template_key: string; title: string; body_md: string;
+        default_notice_days: number | null; default_commission_pct: number | null;
+        default_discount_pct: number | null;
+      }>(
+        `UPDATE partner_intent_templates SET ${updates.join(", ")}
+          WHERE id = $${i}
+         RETURNING template_key, title, body_md,
+                   default_notice_days, default_commission_pct, default_discount_pct`,
+        values,
+      );
+      if (r.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Ikke funnet" });
+      }
+      const t = r.rows[0];
+      await client.query(
+        `INSERT INTO partner_intent_template_history
+          (template_id, template_key, title, body_md,
+           default_notice_days, default_commission_pct, default_discount_pct,
+           edited_by, change_type, change_summary)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'minor_edit', $9)`,
+        [
+          req.params.id, t.template_key, t.title, t.body_md,
+          t.default_notice_days, t.default_commission_pct, t.default_discount_pct,
+          s.userId, changeSummary ?? null,
+        ],
+      );
+      await client.query("COMMIT");
+      res.json({ ok: true, template_key: t.template_key });
+    } catch (e) {
+      await client.query("ROLLBACK");
+      console.error("[template patch]", e);
+      res.status(500).json({ error: "Kunne ikke oppdatere" });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ---------- Superadmin: ny versjon (bumper key v1 → v2) ----------
+  // POST body: { newTemplateKey?, title, body_md, defaultsetc, changeSummary }
+  // Lager NY rad m/ prior_version_key satt + deaktiverer gammel
+  app.post("/api/superadmin/partner-intent-templates/:id/new-version", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const oldR = await pool.query<{
+      template_key: string; partner_type: string; title: string; body_md: string;
+      default_notice_days: number | null;
+      default_commission_pct: number | null; default_discount_pct: number | null;
+    }>(
+      `SELECT template_key, partner_type, title, body_md, default_notice_days,
+              default_commission_pct, default_discount_pct
+         FROM partner_intent_templates WHERE id = $1`,
+      [req.params.id],
+    );
+    if (oldR.rows.length === 0) return res.status(404).json({ error: "Ikke funnet" });
+    const old = oldR.rows[0];
+
+    // Bumpe key: 'nda_v1' → 'nda_v2'. Hvis ikke v\d, append _v2.
+    const newKey = req.body?.newTemplateKey ?? (() => {
+      const m = old.template_key.match(/^(.*?_v)(\d+)$/);
+      return m ? `${m[1]}${parseInt(m[2], 10) + 1}` : `${old.template_key}_v2`;
+    })();
+
+    const payload = {
+      title: req.body?.title ?? old.title,
+      body_md: req.body?.body_md ?? old.body_md,
+      default_notice_days: req.body?.defaultNoticeDays ?? old.default_notice_days,
+      default_commission_pct: req.body?.defaultCommissionPct ?? old.default_commission_pct,
+      default_discount_pct: req.body?.defaultDiscountPct ?? old.default_discount_pct,
+      change_summary: req.body?.changeSummary ?? "Ny versjon",
+    };
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Opprett ny
+      const newR = await client.query<{ id: string }>(
+        `INSERT INTO partner_intent_templates
+          (template_key, partner_type, title, body_md,
+           default_notice_days, default_commission_pct, default_discount_pct,
+           is_active, prior_version_key, supersedes_template_id,
+           created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9, $10, $10)
+         RETURNING id`,
+        [
+          newKey, old.partner_type, payload.title, payload.body_md,
+          payload.default_notice_days, payload.default_commission_pct, payload.default_discount_pct,
+          old.template_key, req.params.id, s.userId,
+        ],
+      );
+      // Deaktiver gammel
+      await client.query(
+        `UPDATE partner_intent_templates SET is_active = FALSE, updated_at = now(), updated_by = $1
+          WHERE id = $2`,
+        [s.userId, req.params.id],
+      );
+      // History på begge
+      await client.query(
+        `INSERT INTO partner_intent_template_history
+          (template_id, template_key, title, body_md,
+           default_notice_days, default_commission_pct, default_discount_pct,
+           edited_by, change_type, change_summary)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'new_version', $9)`,
+        [
+          newR.rows[0].id, newKey, payload.title, payload.body_md,
+          payload.default_notice_days, payload.default_commission_pct, payload.default_discount_pct,
+          s.userId, payload.change_summary,
+        ],
+      );
+      await client.query(
+        `INSERT INTO partner_intent_template_history
+          (template_id, template_key, title, body_md, edited_by, change_type, change_summary)
+         VALUES ($1, $2, $3, $4, $5, 'deactivated', $6)`,
+        [req.params.id, old.template_key, old.title, old.body_md, s.userId,
+         `Erstattet av ${newKey}`],
+      );
+      await client.query("COMMIT");
+      res.status(201).json({ template_id: newR.rows[0].id, template_key: newKey });
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      console.error("[template new-version]", e);
+      res.status(String(e).includes("unique") ? 409 : 500).json({
+        error: String(e).includes("unique") ? `templateKey '${newKey}' finnes allerede` : "Kunne ikke opprette ny versjon",
+      });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ---------- Superadmin: deaktiver/aktiver ----------
+  app.post("/api/superadmin/partner-intent-templates/:id/set-active", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const { isActive, reason } = req.body ?? {};
+    if (typeof isActive !== "boolean") return res.status(400).json({ error: "isActive må være boolean" });
+    const r = await pool.query<{ template_key: string; title: string; body_md: string }>(
+      `UPDATE partner_intent_templates
+          SET is_active = $1, updated_at = now(), updated_by = $2
+        WHERE id = $3
+        RETURNING template_key, title, body_md`,
+      [isActive, s.userId, req.params.id],
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Ikke funnet" });
+    await pool.query(
+      `INSERT INTO partner_intent_template_history
+        (template_id, template_key, title, body_md, edited_by, change_type, change_summary)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        req.params.id, r.rows[0].template_key, r.rows[0].title, r.rows[0].body_md,
+        s.userId, isActive ? "activated" : "deactivated", reason ?? null,
+      ],
+    );
+    res.json({ ok: true });
+  });
+
+  // ---------- Superadmin: history for én template ----------
+  app.get("/api/superadmin/partner-intent-templates/:id/history", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const r = await pool.query(
+      `SELECT h.id, h.template_key, h.title, h.body_md,
+              h.default_notice_days, h.default_commission_pct, h.default_discount_pct,
+              h.edited_at, h.change_type, h.change_summary,
+              u.email AS edited_by_email
+         FROM partner_intent_template_history h
+         LEFT JOIN users u ON u.id = h.edited_by
+        WHERE h.template_id = $1
+        ORDER BY h.edited_at DESC`,
+      [req.params.id],
+    );
+    res.json({ history: r.rows });
+  });
+
+  // ---------- Superadmin: hent én template (inkl deaktivert) ----------
+  app.get("/api/superadmin/partner-intent-templates/:id", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const r = await pool.query(
+      `SELECT t.*, cu.email AS created_by_email, uu.email AS updated_by_email,
+              (SELECT COUNT(*) FROM partner_intent_agreements pia
+                 WHERE pia.template_version = t.template_key
+                   AND pia.status = 'signed') AS signed_count,
+              (SELECT COUNT(*) FROM partner_intent_agreements pia
+                 WHERE pia.template_version = t.template_key) AS total_uses
+         FROM partner_intent_templates t
+         LEFT JOIN users cu ON cu.id = t.created_by
+         LEFT JOIN users uu ON uu.id = t.updated_by
+        WHERE t.id = $1`,
+      [req.params.id],
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Ikke funnet" });
+    res.json({ template: r.rows[0] });
   });
 
   // ---------- Superadmin: preview merge ----------
@@ -273,7 +582,10 @@ Lenken er gyldig i 30 dager.`,
       return res.status(400).json({ error: "Du må bekrefte at du har myndighet" });
     }
 
-    const r = await pool.query<{ organization_id: string; sent_by: string; title: string }>(
+    const r = await pool.query<{
+      id: string; organization_id: string; sent_by: string; title: string;
+      agreement_class: string;
+    }>(
       `UPDATE partner_intent_agreements
           SET status = 'signed', signed_at = now(),
               signed_name_typed = $1, signed_ip = $2, signed_user_agent = $3,
@@ -281,7 +593,7 @@ Lenken er gyldig i 30 dager.`,
         WHERE sign_token = $4
           AND status IN ('sent', 'viewed')
           AND sign_token_expires_at > now()
-        RETURNING organization_id, sent_by, title`,
+        RETURNING id, organization_id, sent_by, title, agreement_class`,
       [
         signedNameTyped.trim(),
         req.ip ?? null,
@@ -293,6 +605,29 @@ Lenken er gyldig i 30 dager.`,
       return res.status(409).json({ error: "Allerede signert, avslått eller utløpt" });
     }
     const result = r.rows[0];
+
+    // Auto-synk testflight_testers hvis denne avtalen er knyttet til en tester
+    try {
+      if (result.agreement_class === "nda") {
+        await pool.query(
+          `UPDATE testflight_testers
+              SET nda_signed_at = now(),
+                  status = CASE WHEN intent_signed_at IS NOT NULL THEN 'active' ELSE status END,
+                  updated_at = now()
+            WHERE nda_agreement_id = $1`,
+          [result.id],
+        );
+      } else if (result.agreement_class === "beta_tester_terms") {
+        await pool.query(
+          `UPDATE testflight_testers
+              SET intent_signed_at = now(),
+                  status = CASE WHEN nda_signed_at IS NOT NULL THEN 'active' ELSE status END,
+                  updated_at = now()
+            WHERE intent_agreement_id = $1`,
+          [result.id],
+        );
+      }
+    } catch (e) { console.error("[intent-sign sync tester]", e); }
 
     // Varsel til superadmin som sendte den
     const sentByR = await pool.query<{ email: string }>(`SELECT email FROM users WHERE id = $1`, [result.sent_by]);

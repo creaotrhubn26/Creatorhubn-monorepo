@@ -551,6 +551,7 @@ import { enforceOrgStatus } from "./org-status-enforcement.js";
 import { registerLeadgridPartnersRoutes } from "./leadgrid-partners-routes.js";
 import { registerPartnerApplicationsRoutes } from "./partner-applications-routes.js";
 import { registerPartnerIntentRoutes } from "./partner-intent-routes.js";
+import { registerTestflightTestersRoutes } from "./testflight-testers-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24353,6 +24354,8 @@ registerLeadgridPartnersRoutes({ app, pool, activeSessions });
 registerPartnerApplicationsRoutes({ app, pool, activeSessions });
 // Intensjonsavtale-flyt: superadmin sender, partner e-signerer m/ IP+UA-logg
 registerPartnerIntentRoutes({ app, pool, activeSessions });
+// TestFlight-testere: legg til, send NDA + intent, graduate til ekte org
+registerTestflightTestersRoutes({ app, pool, activeSessions });
 // Håndhev org-status (paused/suspended) på alle Leadgrid-rutene.
 // Bypass for super_admin er ON som default.
 app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));

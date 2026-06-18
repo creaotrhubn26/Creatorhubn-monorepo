@@ -29,6 +29,8 @@ import HistoryIcon from "@mui/icons-material/History";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PaymentIcon from "@mui/icons-material/Payment";
 import BoltIcon from "@mui/icons-material/Bolt";
+import GavelIcon from "@mui/icons-material/Gavel";
+import SuperadminTemplatesEditor from "@/components/leadgrid/SuperadminTemplatesEditor";
 import PauseCircleIcon from "@mui/icons-material/PauseCircle";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import BlockIcon from "@mui/icons-material/Block";
@@ -116,7 +118,7 @@ interface ActiveImpersonation {
 }
 
 export default function LeadgridSuperadminPage() {
-  const [tab, setTab] = useState<"orgs" | "payments" | "tokens" | "audit">("orgs");
+  const [tab, setTab] = useState<"orgs" | "payments" | "tokens" | "templates" | "audit">("orgs");
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [templates, setTemplates] = useState<SetupTemplate[]>([]);
@@ -235,6 +237,7 @@ export default function LeadgridSuperadminPage() {
             label={`Tokens${tokens ? ` ($${parseFloat(tokens.total.cost_usd).toFixed(2)})` : ""}`}
             value="tokens" icon={<BoltIcon />} iconPosition="start"
           />
+          <Tab label="Avtaler" value="templates" icon={<GavelIcon />} iconPosition="start" />
           <Tab label={`Audit-log (${audit.length})`} value="audit" icon={<HistoryIcon />} iconPosition="start" />
         </Tabs>
 
@@ -299,6 +302,8 @@ export default function LeadgridSuperadminPage() {
             period={tokenPeriod}
             onPeriodChange={setTokenPeriod}
           />
+        ) : tab === "templates" ? (
+          <SuperadminTemplatesEditor />
         ) : (
           <AuditTab entries={audit} />
         )}
