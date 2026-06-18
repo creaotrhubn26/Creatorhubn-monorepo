@@ -15,6 +15,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -58,10 +59,27 @@ export function registerLeadPortfolioRoutes({ app, pool, activeSessions }: Deps)
     `${ROOT}/organizations/:id/portfolio`,
     requireLeadMapPermission("leads.view", { pool, activeSessions }),
     async (req: Request, res: Response) => {
+      const session = activeSessions.get(
+        (req.headers.authorization ?? "").replace("Bearer ", ""),
+      );
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
       const orgId = req.params.id;
       const sort = typeof req.query.sort === "string" ? req.query.sort : "score";
       const statusFilter = typeof req.query.status === "string"
         ? req.query.status : null;
+
+      // Per-prosjekt-tilgang: Hvis bruker har 'projects.view_all' →
+      // ser alle. Ellers begrenset til prosjekter de er medlem av
+      // via project_members. Organisasjonen styrer selv hvem som
+      // får view_all via RBAC (mig 0307 + per-bruker overstyringer).
+      let canViewAll = false;
+      try {
+        const { permissions } = await resolveEffectivePermissions(
+          pool, orgId, session.userId,
+        );
+        canViewAll = permissions.has("projects.view_all");
+      } catch { canViewAll = false; }
 
       const orderBy = sort === "recent"
         ? "cp.created_at DESC NULLS LAST"
@@ -77,6 +95,13 @@ export function registerLeadPortfolioRoutes({ app, pool, activeSessions }: Deps)
       if (statusFilter) {
         params.push(statusFilter);
         conditions.push(`cp.status = $${params.length}`);
+      }
+      // Hvis bruker IKKE har view_all → filter på project_members
+      if (!canViewAll) {
+        params.push(session.userId);
+        conditions.push(`cp.id IN (
+          SELECT project_id FROM project_members WHERE user_id = $${params.length}
+        )`);
       }
 
       try {
@@ -167,6 +192,10 @@ export function registerLeadPortfolioRoutes({ app, pool, activeSessions }: Deps)
             total_projects: Number(stats.rows[0]?.total ?? 0),
             avg_score: Number(stats.rows[0]?.avg_score ?? 0),
             total_needs: Number(stats.rows[0]?.total_needs ?? 0),
+          },
+          access: {
+            view_all: canViewAll,
+            scope: canViewAll ? "alle_organisasjons_prosjekter" : "kun_mine_prosjekter",
           },
         });
       } catch (err) {

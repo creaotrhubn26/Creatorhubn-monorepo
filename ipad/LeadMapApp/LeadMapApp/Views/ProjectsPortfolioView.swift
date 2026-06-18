@@ -70,6 +70,19 @@ struct ProjectsPortfolioView: View {
                 if let s = response?.summary {
                     summaryHeader(s)
                 }
+                if let access = response?.access, !access.viewAll {
+                    HStack(spacing: 8) {
+                        Image(systemName: "lock.circle.fill")
+                            .foregroundStyle(.orange)
+                        Text("Du ser kun prosjekter du er invitert til. Organisasjonen styrer tilgang via projects.view_all.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    .padding(10)
+                    .background(Color.orange.opacity(0.10),
+                                in: RoundedRectangle(cornerRadius: 8))
+                }
                 if isLoading && response == nil {
                     ProgressView().padding(.top, 60)
                 } else if let projects = response?.projects {

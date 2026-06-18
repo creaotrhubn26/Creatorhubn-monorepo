@@ -64,7 +64,18 @@ struct PortfolioSummary: Codable, Sendable {
     }
 }
 
+struct PortfolioAccess: Codable, Sendable {
+    let viewAll: Bool
+    let scope: String
+
+    enum CodingKeys: String, CodingKey {
+        case viewAll = "view_all"
+        case scope
+    }
+}
+
 struct PortfolioResponse: Codable, Sendable {
     let projects: [PortfolioProject]
     let summary: PortfolioSummary
+    let access: PortfolioAccess?
 }
