@@ -197,9 +197,14 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
       } else {
         userId = crypto.randomUUID();
         await client.query(
-          `INSERT INTO users (id, email, role, full_name, created_at)
-           VALUES ($1, $2, 'member', $3, now())`,
-          [userId, verified.email, verified.name ?? null],
+          // users-tabellen har first_name + last_name + username, ikke full_name
+          `INSERT INTO users (id, email, username, role, first_name, last_name, created_at)
+           VALUES ($1, $2, $3, 'member', $4, $5, now())`,
+          [
+            userId, verified.email, verified.email,
+            verified.name?.split(" ")[0] ?? null,
+            verified.name?.split(" ").slice(1).join(" ") ?? null,
+          ],
         );
         isNew = true;
       }
