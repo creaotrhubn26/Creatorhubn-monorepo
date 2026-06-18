@@ -44,6 +44,11 @@ import {
   COMPLIANCE_VERSION,
   type ComplianceProfile,
 } from "./editing-compliance";
+import {
+  createCheckoutForJob,
+  isCheckoutPaid,
+  releasePayoutForJob,
+} from "./editing-payments-service";
 
 export interface EditingJobsRoutesDeps {
   app: express.Application;
@@ -522,11 +527,74 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
         [req.params.id],
       );
       await logJobEvent(pool, req.params.id, "approved", session.userId, "photographer", {});
-      // TODO(#9/#10): frigi Stripe-utbetaling til vendor + opprett Showcase-galleri
-      res.json({ ok: true });
+      // Escrow: frigi utbetaling til vendor (Stripe Connect / PayPal) ved godkjenning
+      const payout = await releasePayoutForJob(pool, req.params.id);
+      await logJobEvent(pool, req.params.id, "payment_released", "system", "system", {
+        status: payout.status,
+        method: payout.method,
+        reference: payout.reference,
+        error: payout.error,
+      });
+      // TODO(#10): opprett Showcase-galleri fra leverte filer
+      res.json({ ok: true, payout });
     } catch (err) {
       console.error("[editing/jobs:approve] error", err);
       res.status(500).json({ error: "kunne_ikke_godkjenne" });
+    }
+  });
+
+  // ── Fotograf starter betaling (Stripe checkout ELLER faktura) ──
+  app.post("/api/editing/jobs/:id/pay", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const auth = await loadAuthorizedJob(req.params.id, session.userId);
+      if (!auth || auth.role !== "photographer") return res.status(404).json({ error: "ikke_funnet" });
+      const method = req.body?.paymentMethod === "invoice" ? "invoice" : "stripe";
+      await pool.query(`UPDATE editing_jobs SET payment_method = $2, updated_at = NOW() WHERE id = $1`, [
+        req.params.id,
+        method,
+      ]);
+
+      if (method === "invoice") {
+        // Faktura-flyt: marker som «held» (escrow) i påvente av fakturabetaling.
+        await pool.query(`UPDATE editing_jobs SET payment_status = 'held' WHERE id = $1`, [req.params.id]);
+        await logJobEvent(pool, req.params.id, "payment_held", session.userId, "photographer", { method });
+        return res.json({ ok: true, method, status: "held" });
+      }
+
+      const successUrl = req.body?.successUrl || `${req.headers.origin || ""}/?editing_pay=success&job=${req.params.id}`;
+      const cancelUrl = req.body?.cancelUrl || `${req.headers.origin || ""}/?editing_pay=cancel&job=${req.params.id}`;
+      const out = await createCheckoutForJob(auth.job, successUrl, cancelUrl);
+      if (!out.ok) return res.status(503).json({ error: out.error });
+      await pool.query(`UPDATE editing_jobs SET stripe_checkout_session_id = $2 WHERE id = $1`, [
+        req.params.id,
+        out.sessionId || null,
+      ]);
+      res.json({ ok: true, method, checkoutUrl: out.url });
+    } catch (err) {
+      console.error("[editing/jobs:pay] error", err);
+      res.status(500).json({ error: "kunne_ikke_starte_betaling" });
+    }
+  });
+
+  // ── Bekreft Stripe-betaling (success-redirect) -> escrow «held» ──
+  app.post("/api/editing/jobs/:id/payment/confirm", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const auth = await loadAuthorizedJob(req.params.id, session.userId);
+      if (!auth || auth.role !== "photographer") return res.status(404).json({ error: "ikke_funnet" });
+      const sid = auth.job.stripe_checkout_session_id;
+      if (!sid) return res.status(400).json({ error: "ingen_session" });
+      const paid = await isCheckoutPaid(sid);
+      if (!paid) return res.json({ ok: false, status: auth.job.payment_status });
+      await pool.query(`UPDATE editing_jobs SET payment_status = 'held' WHERE id = $1`, [req.params.id]);
+      await logJobEvent(pool, req.params.id, "payment_held", session.userId, "photographer", { method: "stripe" });
+      res.json({ ok: true, status: "held" });
+    } catch (err) {
+      console.error("[editing/jobs:payment-confirm] error", err);
+      res.status(500).json({ error: "kunne_ikke_bekrefte_betaling" });
     }
   });
 
