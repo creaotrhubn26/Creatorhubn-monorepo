@@ -9,6 +9,8 @@ import TheRoleRoomLanding from '@/pages/theroleroom-landing';
 import LeadgridLanding from '@/pages/leadgrid-landing';
 import LeadgridPersonvern from '@/pages/leadgrid-personvern';
 import LeadgridSuperadminPage from '@/pages/leadgrid-superadmin';
+import LeadgridClientPortalPage from '@/pages/leadgrid-client-portal';
+import LeadgridPartnerApplicationPage from '@/pages/leadgrid-partner-application';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
 import AgencyPortalView from './components/AgencyPortalView';
@@ -177,6 +179,15 @@ function CastingStandaloneAppContent() {
   }
   if (localeCtx.pathname === '/superadmin' || localeCtx.pathname === '/superadmin/') {
     return <LeadgridSuperadminPage />;
+  }
+  // Leadgrid klient-portal: /c/{token} (offentlig, ingen TRR-konto kreves)
+  if (/^\/c\/[A-Za-z0-9_-]+\/?$/.test(localeCtx.pathname)) {
+    return <LeadgridClientPortalPage />;
+  }
+  // Org-side partnerskap (org-admin søker)
+  if (localeCtx.pathname === '/leadgrid/innstillinger/partnerskap' ||
+      localeCtx.pathname === '/leadgrid/innstillinger/partnerskap/') {
+    return <LeadgridPartnerApplicationPage />;
   }
 
   if (competitorKey) {

@@ -340,6 +340,81 @@ export function registerPartnerIntentRoutes({ app, pool, activeSessions }: Deps)
     res.json({ ok: true });
   });
 
+  // ---------- Superadmin: test-send template til egen e-post ----------
+  // POST { email, organizationId? } — substituerer sample-data eller
+  // ekte org-data hvis organizationId gis. Bruker Resend.
+  app.post("/api/superadmin/partner-intent-templates/:id/test-send", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const { email, organizationId } = req.body ?? {};
+    if (!email) return res.status(400).json({ error: "email påkrevd" });
+
+    const tmplR = await pool.query<{ template_key: string; title: string; body_md: string;
+      default_notice_days: number | null; default_commission_pct: number | null;
+      default_discount_pct: number | null; }>(
+      `SELECT template_key, title, body_md, default_notice_days,
+              default_commission_pct, default_discount_pct
+         FROM partner_intent_templates WHERE id = $1`,
+      [req.params.id],
+    );
+    if (tmplR.rows.length === 0) return res.status(404).json({ error: "Template ikke funnet" });
+    const t = tmplR.rows[0];
+
+    let vars: Record<string, any> = {
+      ORG_NAME: "Eksempel AS",
+      ORG_NUMBER: "987 654 321",
+      SIGNER_NAME: "Ola Eksempel",
+      COMMISSION_PCT: t.default_commission_pct ?? 10,
+      DISCOUNT_PCT: t.default_discount_pct ?? 20,
+      NOTICE_DAYS: t.default_notice_days ?? 30,
+    };
+
+    if (organizationId) {
+      const orgR = await pool.query<{ name: string; org_number: string | null }>(
+        `SELECT name, org_number FROM organizations WHERE id = $1`,
+        [organizationId],
+      );
+      if (orgR.rows[0]) {
+        vars.ORG_NAME = orgR.rows[0].name;
+        vars.ORG_NUMBER = orgR.rows[0].org_number ?? vars.ORG_NUMBER;
+      }
+    }
+
+    const merged = mergeTemplate(t.body_md, vars);
+    // Konverter markdown til enkel HTML (samme renderer som frontend)
+    const html = merged
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/^### (.*)$/gm, '<h3 style="color:#a78bfa;">$1</h3>')
+      .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+      .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/^- (.*)$/gm, '<li>$1</li>')
+      .replace(/^---$/gm, '<hr />')
+      .replace(/\n\n/g, '<br/><br/>')
+      .replace(/\n/g, '<br/>');
+
+    try {
+      await sendTransactionalEmail({
+        to: email,
+        subject: `[TEST] ${t.title}`,
+        html: `<div style="max-width:600px;margin:0 auto;padding:24px;font-family:system-ui,sans-serif;background:#0a0512;color:#fff;">
+                 <div style="background:#ffb86b;color:#0a0512;padding:8px 12px;border-radius:6px;margin-bottom:20px;font-weight:600;font-size:13px;">
+                   ⚠ TEST-SENDING — denne avtalen er ikke ekte
+                 </div>
+                 ${html}
+               </div>`,
+        text: `[TEST] ${t.title}\n\n${merged}`,
+        kind: "partner_intent_test_send",
+        sentByUserId: s.userId,
+        pool,
+      });
+      res.json({ ok: true, sent_to: email, template_key: t.template_key });
+    } catch (e: any) {
+      console.error("[intent test-send]", e);
+      res.status(500).json({ error: e.message ?? "Kunne ikke sende" });
+    }
+  });
+
   // ---------- Superadmin: history for én template ----------
   app.get("/api/superadmin/partner-intent-templates/:id/history", async (req, res) => {
     const s = await requireSuperAdmin(req, res, pool, activeSessions);
