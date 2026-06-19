@@ -19,6 +19,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CloseIcon from "@mui/icons-material/Close";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import VerifiedUserIcon from "@mui/icons-material/VerifiedUser";
 
 interface Lead {
   id: string;
@@ -30,6 +31,7 @@ interface Lead {
   org_number: string | null;
   source: string;
   created_at: string;
+  consent_research_given: boolean;
   research_status: string | null;
   research_completed_at: string | null;
   claude_summary: string | null;
@@ -130,12 +132,20 @@ export function LeadInboxCard() {
                 <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
                   {/* Hovedinfo */}
                   <Box sx={{ flex: 1 }}>
-                    <Stack direction="row" spacing={1.5} alignItems="center" mb={1.5}>
+                    <Stack direction="row" spacing={1} alignItems="center" mb={1.5} flexWrap="wrap" rowGap={0.5}>
                       <Chip size="small" color={t.color} icon={t.icon as any}
                             label={t.label}
                             sx={{ fontWeight: 700 }} />
                       {lead.source === "book_demo" && (
                         <Chip size="small" label="Demo booket" color="primary" />
+                      )}
+                      {lead.consent_research_given && (
+                        <Tooltip title="Lead har eksplisitt samtykket til automatisk Brreg-/web-research">
+                          <Chip size="small" color="success"
+                                icon={<VerifiedUserIcon sx={{ fontSize: 14 }} />}
+                                label="GDPR-consent gitt"
+                                sx={{ fontWeight: 600, fontSize: 10 }} />
+                        </Tooltip>
                       )}
                       {isResearching && (
                         <Chip size="small" label="Research pågår…"

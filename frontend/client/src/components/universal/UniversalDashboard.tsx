@@ -2371,6 +2371,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const _userVendorType = vendorProfile?.vendorType || 'print';
   const shouldLoadEvendi = !!userId && userId !== 'guest' && profession === 'vendor';
 
+  // #15: utenlandsk redigeringsvendor → HELE dashboardet på engelsk = kun det
+  // engelske EditingVendorWorkspace (ingen norsk generisk vendor-chrome).
+  const { data: editingMe } = useQuery<{ isEditingVendor?: boolean; isForeign?: boolean }>({
+    queryKey: ['/api/editing/vendor/me'],
+    queryFn: () => apiRequest('/api/editing/vendor/me'),
+    enabled: profession === 'vendor',
+  });
+  const foreignEditingVendor = Boolean(editingMe?.isEditingVendor && editingMe?.isForeign);
+
   // Fetch Evendi bookings & analytics (wired via evendi-api.ts)
   const { data: evendiBookings = [] } = useQuery<EvendiBooking[]>({
     queryKey: evendiQueryKeys.bookings(),
@@ -3065,6 +3074,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   // vendor grønn, enterprise lilla. Alle på samme dark navy base så
   // CreatorHub-identitet er konsistent men hver fag har egen "lyd".
   const professionAccent = customBranding.color || '#ffba6c';
+
+  // #15: utenlandsk redigeringsvendor ser KUN det engelske arbeidsområdet
+  // (hele dashboardet på engelsk — ingen norsk generisk vendor-chrome).
+  if (foreignEditingVendor) {
+    return (
+      <Box sx={{ minHeight: '100vh', background: '#05060a', color: '#f6f2ea', py: { xs: 2, md: 4 }, px: { xs: 1, sm: 2 } }}>
+        <Box sx={{ maxWidth: 1100, mx: 'auto' }}>
+          <EditingVendorWorkspace userId={userId} />
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box
       sx={{
@@ -7887,7 +7909,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             // MUI-standard (hvite) Paper/Card/inputs i underkomponenter ble hvite.
             // Kaskade dark-tema her dekker hele modal-innholdet (memory/pris/shot osv.).
             '& .MuiPaper-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7' },
-            '& .MuiCard-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7', borderColor: `${customBranding.color}26` },
+            '& .MuiCard-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7', borderColor: `${customBranding.color}33`, borderRadius: 2.5, transition: 'border-color .2s ease, box-shadow .2s ease', '&:hover': { borderColor: `${customBranding.color}5c`, boxShadow: `0 4px 18px ${customBranding.color}1f` } },
             '& .MuiAccordion-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7' },
             '& .MuiTypography-colorTextSecondary, & .MuiTypography-body2': { color: 'rgba(237,240,247,0.66)' },
             '& .MuiOutlinedInput-root': { color: '#edf0f7', backgroundColor: 'rgba(255,255,255,0.04)', '& fieldset': { borderColor: `${customBranding.color}3d` }, '&:hover fieldset': { borderColor: `${customBranding.color}66` } },
