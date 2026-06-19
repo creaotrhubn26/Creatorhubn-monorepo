@@ -4530,6 +4530,12 @@ useEffect(() => {
             er redigert eller levert til kunde.
           </Typography>
           <OneDeskDownloadCard />
+          <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Typography variant="body2" color="text.secondary">
+              iPad Capture-app — backup og monitorering rett fra settet.
+            </Typography>
+            <Chip size="small" label="Kommer snart (TestFlight)" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#f6f2ea', fontWeight: 600 }} />
+          </Box>
         </CardContent>
       </Card>
 
