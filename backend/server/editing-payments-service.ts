@@ -112,6 +112,7 @@ async function getPaypalAccessToken(): Promise<string | null> {
 }
 
 async function paypalPayout(
+  jobId: string,
   email: string,
   amount: number,
   currency: string,
@@ -119,18 +120,29 @@ async function paypalPayout(
 ): Promise<{ ok: boolean; batchId?: string; error?: string }> {
   const token = await getPaypalAccessToken();
   if (!token) return { ok: false, error: "paypal_not_configured" };
+  // Stabil per oppdrag -> idempotent: PayPal avviser duplikat sender_batch_id,
+  // så retry/dobbel-godkjenning betaler IKKE vendoren to ganger.
+  const batchId = `editing-${jobId}`;
   try {
     const resp = await fetch(`${paypalBase()}/v1/payments/payouts`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "PayPal-Request-Id": batchId,
+      },
       body: JSON.stringify({
-        sender_batch_header: { email_subject: "Creatorhub – utbetaling for redigeringsoppdrag" },
+        sender_batch_header: {
+          sender_batch_id: batchId,
+          email_subject: "Creatorhub – utbetaling for redigeringsoppdrag",
+        },
         items: [
           {
             recipient_type: "EMAIL",
             amount: { value: (amount / 100).toFixed(2), currency },
             receiver: email,
             note,
+            sender_item_id: jobId,
           },
         ],
       }),
@@ -197,7 +209,7 @@ export async function releasePayoutForJob(pool: Pool, jobId: string): Promise<Pa
   }
 
   if (method === "paypal" && v?.paypal_payout_email) {
-    const r = await paypalPayout(v.paypal_payout_email, vendorAmount, currency, `Editing job ${jobId}`);
+    const r = await paypalPayout(jobId, v.paypal_payout_email, vendorAmount, currency, `Editing job ${jobId}`);
     if (!r.ok) return await fail(pool, jobId, r.error);
     await pool.query(`UPDATE editing_jobs SET paypal_payout_batch_id = $2 WHERE id = $1`, [jobId, r.batchId || null]);
     await markPaid(pool, jobId, "paid", method, r.batchId || null);
