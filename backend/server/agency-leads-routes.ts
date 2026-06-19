@@ -105,6 +105,15 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
       utm_source?: string;
       utm_medium?: string;
       utm_campaign?: string;
+      // B2B-intake (fra "Book demo"-modalen) — all bedrifts-info en demo trenger.
+      org_number?: string | null;
+      website?: string | null;
+      contact_title?: string | null;
+      team_size?: string | null;
+      current_tools?: string | null;
+      use_case?: string | null;
+      preferred_demo_time?: string | null;
+      demo_language?: string | null;
       // Klient-sendt attribusjons-kontekst (UTM-term/content, gclid, fbclid,
       // li_fat_id, referrer, landing_page, screen, locale). Merges med
       // server-side referer + received_at.
@@ -134,16 +143,35 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
     const rosterSize = body.roster_size?.trim().slice(0, 60) || null;
     const message = body.message?.trim().slice(0, 4000) || null;
 
+    // B2B-intake fra "Book demo"-modalen.
+    const source = (body.source ?? "agency_landing").slice(0, 60);
+    const isBookDemo = source === "book_demo";
+    const orgNumber = body.org_number?.trim().slice(0, 40) || null;
+    const website = body.website?.trim().slice(0, 255) || null;
+    const contactTitle = body.contact_title?.trim().slice(0, 120) || null;
+    const teamSize = body.team_size?.trim().slice(0, 60) || null;
+    const currentTools = body.current_tools?.trim().slice(0, 2000) || null;
+    const useCase = body.use_case?.trim().slice(0, 2000) || null;
+    const preferredDemoTime = body.preferred_demo_time?.trim().slice(0, 120) || null;
+    const demoLanguage = body.demo_language === "en" ? "en" : "nb";
+    // "Book demo" registreres direkte som demo_booked (en aktiv booking),
+    // ordinære landing-leads starter som 'new'.
+    const initialStatus = isBookDemo ? "demo_booked" : "new";
+
     try {
       const r = await pool.query(
         `INSERT INTO agency_leads (
            agency_name, contact_name, email, phone, roster_size, segment,
            message, source, utm_source, utm_medium, utm_campaign,
-           ip_address, user_agent, request_context
+           ip_address, user_agent, request_context,
+           org_number, website, contact_title, team_size, current_tools,
+           use_case, preferred_demo_time, demo_language, status
          ) VALUES (
            $1, $2, $3, $4, $5, $6,
            $7, $8, $9, $10, $11,
-           $12, $13, $14::jsonb
+           $12, $13, $14::jsonb,
+           $15, $16, $17, $18, $19,
+           $20, $21, $22, $23
          )
          ON CONFLICT (email, segment) DO UPDATE
            SET agency_name = EXCLUDED.agency_name,
@@ -151,11 +179,25 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
                phone = COALESCE(EXCLUDED.phone, agency_leads.phone),
                roster_size = COALESCE(EXCLUDED.roster_size, agency_leads.roster_size),
                message = COALESCE(EXCLUDED.message, agency_leads.message),
+               org_number = COALESCE(EXCLUDED.org_number, agency_leads.org_number),
+               website = COALESCE(EXCLUDED.website, agency_leads.website),
+               contact_title = COALESCE(EXCLUDED.contact_title, agency_leads.contact_title),
+               team_size = COALESCE(EXCLUDED.team_size, agency_leads.team_size),
+               current_tools = COALESCE(EXCLUDED.current_tools, agency_leads.current_tools),
+               use_case = COALESCE(EXCLUDED.use_case, agency_leads.use_case),
+               preferred_demo_time = COALESCE(EXCLUDED.preferred_demo_time, agency_leads.preferred_demo_time),
+               demo_language = EXCLUDED.demo_language,
+               -- En ny "Book demo" på en eksisterende lead løfter den til demo_booked,
+               -- men nedgraderer aldri en lead som alt er trial/customer.
+               status = CASE
+                 WHEN EXCLUDED.status = 'demo_booked'
+                   AND agency_leads.status IN ('new', 'contacted')
+                 THEN 'demo_booked' ELSE agency_leads.status END,
                updated_at = now()
          RETURNING id::text, agency_name, contact_name, email, status, created_at`,
         [
           agencyName, contactName, email, phone, rosterSize, segment,
-          message, body.source ?? "agency_landing",
+          message, source,
           body.utm_source?.slice(0, 120) ?? null,
           body.utm_medium?.slice(0, 120) ?? null,
           body.utm_campaign?.slice(0, 120) ?? null,
@@ -168,16 +210,35 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
             referer: req.headers.referer ?? null,
             received_at: new Date().toISOString(),
           }),
+          orgNumber, website, contactTitle, teamSize, currentTools,
+          useCase, preferredDemoTime, demoLanguage, initialStatus,
         ],
       );
       const lead = r.rows[0];
 
+      // "Book demo" = en aktiv booking — sett demo_booked-tidsstempel ved opprettelse.
+      if (isBookDemo) {
+        try {
+          await pool.query(
+            `UPDATE agency_leads
+               SET contacted_at = COALESCE(contacted_at, now())
+             WHERE id = $1::uuid`,
+            [lead.id],
+          );
+        } catch { /* best-effort */ }
+      }
+
       // Event
       try {
         await pool.query(
-          `INSERT INTO agency_lead_events (lead_id, event_type, actor)
-           VALUES ($1::uuid, 'created', $2)`,
-          [lead.id, email],
+          `INSERT INTO agency_lead_events (lead_id, event_type, actor, details)
+           VALUES ($1::uuid, $2, $3, $4::jsonb)`,
+          [
+            lead.id,
+            isBookDemo ? "demo_booked" : "created",
+            email,
+            JSON.stringify({ source, preferred_demo_time: preferredDemoTime, demo_language: demoLanguage }),
+          ],
         );
       } catch { /* best-effort */ }
 
@@ -259,16 +320,29 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
 
           const internalComposed = composeEmail({
             category: "lead_internal",
-            subject: `Ny byrå-lead: ${agencyName}`,
+            subject: isBookDemo
+              ? `Demo booket: ${agencyName}`
+              : `Ny byrå-lead: ${agencyName}`,
             preheader: `${contactName} fra ${agencyName} — ${segment}`,
-            headline: `Ny lead fra ${agencyName}`,
-            subhead: `${contactName} kommer fra ${segment}-segmentet og venter på svar innen 24 timer.`,
+            headline: isBookDemo
+              ? `Demo-forespørsel fra ${agencyName}`
+              : `Ny lead fra ${agencyName}`,
+            subhead: isBookDemo
+              ? `${contactName} (${contactTitle ?? segment}) har booket en demo${preferredDemoTime ? ` — ønsket tid: ${preferredDemoTime}` : ''}.`
+              : `${contactName} kommer fra ${segment}-segmentet og venter på svar innen 24 timer.`,
             table: [
-              { label: 'Byrå', value: agencyName },
+              { label: 'Bedrift', value: agencyName },
               { label: 'Kontakt', value: `${contactName} <${email}>` },
+              ...(contactTitle ? [{ label: 'Tittel', value: contactTitle }] : []),
               { label: 'Telefon', value: phone ?? '—' },
-              { label: 'Antall talents', value: rosterSize ?? '—' },
+              ...(orgNumber ? [{ label: 'Org.nr', value: orgNumber }] : []),
+              ...(website ? [{ label: 'Nettside', value: website }] : []),
+              { label: 'Team-størrelse', value: teamSize ?? rosterSize ?? '—' },
               { label: 'Segment', value: segment },
+              ...(useCase ? [{ label: 'Bruksområde', value: useCase, pre: true }] : []),
+              ...(currentTools ? [{ label: 'Dagens verktøy', value: currentTools }] : []),
+              ...(preferredDemoTime ? [{ label: 'Ønsket demo-tid', value: preferredDemoTime }] : []),
+              { label: 'Demo-språk', value: demoLanguage === 'en' ? 'Engelsk' : 'Norsk' },
               ...(message ? [{ label: 'Melding', value: message, pre: true }] : []),
             ],
             cta: { label: 'Åpne Admin Room CRM', href: `${baseUrl}/admin-room#crm` },
@@ -279,7 +353,9 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
 
           await sendTransactionalEmail({
             to: internalEmail,
-            subject: `Ny byrå-lead: ${agencyName}`,
+            subject: isBookDemo
+              ? `Demo booket: ${agencyName}`
+              : `Ny byrå-lead: ${agencyName}`,
             kind: "agency_lead_internal",
             fromLabel: "The Role Room — Leads",
             pool,
@@ -331,6 +407,11 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
         `SELECT id::text, agency_name, contact_name, email, phone, roster_size,
                 segment, message, status, source, utm_source, utm_medium,
                 utm_campaign, assigned_to_user_id, internal_notes, request_context,
+                org_number, website, contact_title, team_size, current_tools,
+                use_case, preferred_demo_time, demo_language,
+                converted_user_id, conversion_persona, stripe_customer_id,
+                stripe_subscription_id, conversion_checkout_session_id,
+                conversion_initiated_at,
                 created_at, updated_at, contacted_at, trial_started_at, customer_at
            FROM agency_leads
            ${where}
