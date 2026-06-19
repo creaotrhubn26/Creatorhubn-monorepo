@@ -434,9 +434,33 @@ export default function SplitSheetBillingPanel({
               <Typography variant="body2" sx={{ mb: 1 }}>
                 <strong>Split Sheet:</strong> {selectedInvoice.splitSheetTitle}
               </Typography>
-              <Typography variant="body2" sx={{ mb: 2 }}>
-                <strong>Beløp:</strong> {selectedInvoice.amount.toLocaleString('nb-NO')} {selectedInvoice.currency}
-              </Typography>
+              {/* MVA-oppdeling (samme modell som editing-marketplace + Fiken).
+                  Beløp behandles som netto (eks. MVA). Innenlands: +25% MVA.
+                  Grensekryssende mottaker: snudd avregning (mottaker selv-avregner). */}
+              {(() => {
+                const net = selectedInvoice.amount;
+                const cur = selectedInvoice.currency;
+                const vat = Math.round(net * 0.25);
+                return (
+                  <Box sx={{ mb: 2, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2"><strong>Beløp (netto):</strong></Typography>
+                      <Typography variant="body2">{net.toLocaleString('nb-NO')} {cur}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">+ 25 % MVA:</Typography>
+                      <Typography variant="body2" color="text.secondary">{vat.toLocaleString('nb-NO')} {cur}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid', borderColor: 'divider', mt: 0.5, pt: 0.5 }}>
+                      <Typography variant="body2"><strong>Totalt inkl. MVA:</strong></Typography>
+                      <Typography variant="body2"><strong>{(net + vat).toLocaleString('nb-NO')} {cur}</strong></Typography>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      Grensekryssende mottaker (utenfor Norge): snudd avregning — mottaker selv-avregner MVA; ingen norsk MVA legges på. Registreres i Fiken deretter.
+                    </Typography>
+                  </Box>
+                );
+              })()}
             </Box>
           )}
         </DialogContent>
