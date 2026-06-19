@@ -84,6 +84,78 @@ interface SummaryData {
   funnel: any;
 }
 
+// ============================================================
+// Lead-liste til CSV (for 'leads_list' og 'both')
+// ============================================================
+async function buildLeadsCsv(
+  pool: Pool, orgId: string, periodDays: number, statusFilter: string,
+): Promise<string> {
+  let statusClause = "";
+  if (statusFilter === "won") statusClause = " AND c.status = 'won'";
+  else if (statusFilter === "lost") statusClause = " AND c.status = 'lost'";
+  else if (statusFilter === "in_pipeline") {
+    statusClause = " AND c.status IN ('contacted','meeting_booked','proposal_sent','negotiating')";
+  } else if (statusFilter === "active") {
+    statusClause = " AND c.status NOT IN ('archived')";
+  }
+
+  const r = await pool.query(
+    `SELECT c.name, c.email, c.phone, c.website_url,
+            c.status, c.lead_category, c.ai_opportunity_score,
+            (tl.first_name || ' ' || tl.last_name) AS tl_name,
+            (rep.first_name || ' ' || rep.last_name) AS rep_name,
+            c.assignment_note,
+            c.contacted_at::text, c.meeting_booked_at::text,
+            c.proposal_sent_at::text,
+            c.won_at::text, c.won_amount_oere, c.won_recurring_oere,
+            c.lost_at::text, c.lost_reason, c.lost_reason_detail,
+            c.created_at::text
+       FROM crm_customers c
+       JOIN casting_projects p ON p.id = c.project_id
+       LEFT JOIN users tl  ON tl.id = c.assigned_team_leader_id
+       LEFT JOIN users rep ON rep.id = c.assigned_user_id
+      WHERE p.organization_id::text = $1
+        AND COALESCE(c.won_at, c.lost_at, c.status_changed_at, c.created_at)
+            > now() - ($2::int * INTERVAL '1 day')
+        ${statusClause}
+      ORDER BY c.created_at DESC LIMIT 2000`,
+    [orgId, periodDays],
+  );
+
+  const escape = (v: any): string => {
+    if (v === null || v === undefined) return "";
+    const s = String(v);
+    if (s.includes(";") || s.includes('"') || s.includes("\n")) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  };
+  const headers = [
+    "Bedrift", "E-post", "Telefon", "Nettside",
+    "Status", "Tier", "Score",
+    "Teamleder", "Rep", "Notat",
+    "Kontaktet", "Møte booket", "Forslag sendt",
+    "Vunnet", "Vunnet kr", "Vunnet kr/mnd",
+    "Tapt", "Tapt-årsak", "Tapt-detalj",
+    "Opprettet",
+  ];
+  const lines = ["﻿" + headers.join(";")]; // UTF-8 BOM
+  for (const row of r.rows) {
+    lines.push([
+      row.name, row.email, row.phone, row.website_url,
+      row.status, row.lead_category, row.ai_opportunity_score,
+      row.tl_name, row.rep_name, row.assignment_note,
+      row.contacted_at, row.meeting_booked_at, row.proposal_sent_at,
+      row.won_at,
+      row.won_amount_oere ? (row.won_amount_oere / 100) : null,
+      row.won_recurring_oere ? (row.won_recurring_oere / 100) : null,
+      row.lost_at, row.lost_reason, row.lost_reason_detail,
+      row.created_at,
+    ].map(escape).join(";"));
+  }
+  return lines.join("\r\n");
+}
+
 async function buildSummary(pool: Pool, orgId: string, periodDays: number): Promise<SummaryData> {
   const statsR = await pool.query<any>(
     `WITH base AS (
@@ -276,10 +348,11 @@ async function renderSummaryPdfToBuffer(
   });
 }
 
-/** Send PDF som vedlegg via Resend. */
+/** Send rapport m/ 1..N vedlegg via Resend. */
 async function sendReportEmail(params: {
   to: string; orgName: string; subject: string;
-  bodyHtml: string; pdfBuffer: Buffer; pdfFilename: string;
+  bodyHtml: string;
+  attachments: Array<{ filename: string; content: Buffer | string; contentType?: string }>;
   brandPrimaryColor: string; fromName: string;
 }): Promise<{ ok: boolean; messageId?: string; error?: string }> {
   const apiKey = process.env.ROLE_ROOM_RESEND_API_KEY
@@ -301,10 +374,12 @@ async function sendReportEmail(params: {
         to: [params.to],
         subject: params.subject,
         html: params.bodyHtml,
-        attachments: [{
-          filename: params.pdfFilename,
-          content: params.pdfBuffer.toString("base64"),
-        }],
+        attachments: params.attachments.map((a) => ({
+          filename: a.filename,
+          content: (a.content instanceof Buffer ? a.content : Buffer.from(a.content))
+                    .toString("base64"),
+          ...(a.contentType ? { content_type: a.contentType } : {}),
+        })),
       }),
     });
     const j: any = await r.json();
@@ -528,17 +603,50 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
       for (const sub of dueR.rows) {
         try {
           const branding = await getOrgBranding(pool, sub.organization_id);
-          const summary = await buildSummary(pool, sub.organization_id, sub.period_days);
           const periodLabel = `Periode: siste ${sub.period_days} dager`;
-          const pdf = await renderSummaryPdfToBuffer(summary, branding, periodLabel);
-          const pdfFilename = `salgs-rapport-${new Date().toISOString().slice(0, 10)}.pdf`;
+          const datedSuffix = new Date().toISOString().slice(0, 10);
+
+          // Bygg vedlegg avhengig av report_type
+          const attachments: Array<{ filename: string; content: Buffer | string;
+                                       contentType?: string }> = [];
+          let summary: SummaryData | null = null;
+
+          if (sub.report_type === "summary" || sub.report_type === "both") {
+            summary = await buildSummary(pool, sub.organization_id, sub.period_days);
+            const pdf = await renderSummaryPdfToBuffer(summary, branding, periodLabel);
+            attachments.push({
+              filename: `salgs-rapport-${datedSuffix}.pdf`,
+              content: pdf,
+            });
+          }
+
+          if (sub.report_type === "leads_list" || sub.report_type === "both") {
+            const csv = await buildLeadsCsv(
+              pool, sub.organization_id, sub.period_days,
+              sub.status_filter ?? "all",
+            );
+            attachments.push({
+              filename: `leads-${datedSuffix}.csv`,
+              content: Buffer.from("﻿" + csv, "utf8"),
+              contentType: "text/csv; charset=utf-8",
+            });
+          }
+
+          // Hvis summary mangler (kun leads_list), bygg én for e-post-preview
+          if (!summary) {
+            summary = await buildSummary(pool, sub.organization_id, sub.period_days);
+          }
+
           const totalWonKr = `${(Number(summary.total_won_oere) / 100).toLocaleString("no-NO")} kr`;
           const winRatePct = `${Math.round(summary.win_rate * 100)} %`;
+          const filenameLabel = attachments.length === 1
+            ? attachments[0].filename
+            : `${attachments.length} vedlegg`;
           const html = buildReportEmailHtml({
             orgName: branding.name, periodLabel,
             primaryColor: branding.primary_color,
             wonCount: summary.won_count, lostCount: summary.lost_count,
-            totalWonKr, winRatePct, filename: pdfFilename,
+            totalWonKr, winRatePct, filename: filenameLabel,
           });
 
           // Hent e-poster: brukere + ekstra
@@ -556,11 +664,14 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
 
           let anySuccess = false;
           let lastErr: string | null = null;
+          const totalSize = attachments.reduce(
+            (s, a) => s + (a.content instanceof Buffer ? a.content.length : a.content.length), 0,
+          );
           for (const to of recipientEmails) {
             const res2 = await sendReportEmail({
               to, orgName: branding.name,
               subject: `${branding.name} — Salgs-rapport (${sub.frequency === "weekly" ? "ukentlig" : sub.frequency === "monthly" ? "månedlig" : "daglig"})`,
-              bodyHtml: html, pdfBuffer: pdf, pdfFilename,
+              bodyHtml: html, attachments,
               brandPrimaryColor: branding.primary_color,
               fromName: branding.from_name ?? "Leadgrid",
             });
@@ -570,7 +681,7 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
                   pdf_size_bytes, delivery_status, external_message_id, error_message)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
               [sub.id, sub.organization_id, to, sub.report_type,
-               pdf.length, res2.ok ? "sent" : "failed",
+               totalSize, res2.ok ? "sent" : "failed",
                res2.messageId ?? null, res2.ok ? null : res2.error],
             );
             if (res2.ok) anySuccess = true;
