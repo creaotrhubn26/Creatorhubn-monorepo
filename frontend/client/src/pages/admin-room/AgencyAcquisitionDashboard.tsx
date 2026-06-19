@@ -21,8 +21,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
-  IconButton, LinearProgress, Stack, TextField, Tooltip, Typography,
+  IconButton, LinearProgress, Menu, MenuItem, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
+import PersonAddAltOutlinedIcon from '@mui/icons-material/PersonAddAltOutlined';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
 import LocalFireDepartmentOutlinedIcon from '@mui/icons-material/LocalFireDepartmentOutlined';
@@ -61,6 +62,7 @@ interface DashboardData {
   hotLeads: Array<{
     id: string; agency_name: string; contact_name: string; email: string;
     status: string; segment: string; roster_size: string | null;
+    conversion_persona?: string | null;
     created_at: string; days_old: number;
   }>;
   generatedAt: string;
@@ -134,6 +136,32 @@ export default function AgencyAcquisitionDashboard() {
         body: JSON.stringify({ status: nextStatus }),
       });
       if (r.ok) await fetchDashboard();
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  // Konverter til kunde — sender kontakten den persona-forhåndsutfylte
+  // selvbetjente onboarding-/checkout-lenken. Webhook flipper til 'customer'
+  // når betalingen fullføres.
+  const [convertMenu, setConvertMenu] = useState<{ anchor: HTMLElement; leadId: string } | null>(null);
+  const [convertResult, setConvertResult] = useState<{ leadId: string; url: string } | null>(null);
+
+  const convertLead = async (leadId: string, persona: 'production_team' | 'content_producer') => {
+    setConvertMenu(null);
+    setUpdating(leadId);
+    try {
+      const r = await fetch(`/api/admin-room/agency-leads/${leadId}/convert-to-customer`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ persona }),
+      });
+      if (r.ok) {
+        const d = await r.json().catch(() => ({}));
+        if (d?.onboardingUrl) setConvertResult({ leadId, url: d.onboardingUrl });
+        await fetchDashboard();
+      }
     } finally {
       setUpdating(null);
     }
@@ -435,27 +463,86 @@ export default function AgencyAcquisitionDashboard() {
                         {lead.contact_name} · {lead.email} · {Math.round(lead.days_old)} dager
                       </Typography>
                     </Stack>
-                    {nextStatus && (
-                      <Button
-                        size="small" variant="contained"
-                        onClick={() => advanceLead(lead.id, lead.status)}
-                        disabled={updating === lead.id}
-                        startIcon={updating === lead.id ? <CircularProgress size={12} /> : <CheckCircleOutlineIcon sx={{ fontSize: 14 }} />}
-                        sx={{
-                          bgcolor: stageMeta.color, color: '#160a24',
-                          fontWeight: 700, fontSize: '0.72rem',
-                          '&:hover': { bgcolor: stageMeta.color, filter: 'brightness(0.9)' },
-                        }}
-                      >
-                        → {STAGE_LABELS[nextStatus === 'demo_booked' ? 'demo' : nextStatus]?.label ?? nextStatus}
-                      </Button>
-                    )}
+                    <Stack direction="row" spacing={0.8} alignItems="center">
+                      {(lead.status === 'demo_booked' || lead.status === 'trial') && (
+                        <Button
+                          size="small" variant="outlined"
+                          onClick={(e) => setConvertMenu({ anchor: e.currentTarget, leadId: lead.id })}
+                          disabled={updating === lead.id}
+                          startIcon={updating === lead.id ? <CircularProgress size={12} /> : <PersonAddAltOutlinedIcon sx={{ fontSize: 14 }} />}
+                          sx={{
+                            color: '#34d399', borderColor: 'rgba(52,211,153,0.5)',
+                            fontWeight: 700, fontSize: '0.72rem', textTransform: 'none',
+                            '&:hover': { borderColor: '#34d399', bgcolor: 'rgba(52,211,153,0.08)' },
+                          }}
+                        >
+                          Konverter
+                        </Button>
+                      )}
+                      {nextStatus && (
+                        <Button
+                          size="small" variant="contained"
+                          onClick={() => advanceLead(lead.id, lead.status)}
+                          disabled={updating === lead.id}
+                          startIcon={updating === lead.id ? <CircularProgress size={12} /> : <CheckCircleOutlineIcon sx={{ fontSize: 14 }} />}
+                          sx={{
+                            bgcolor: stageMeta.color, color: '#160a24',
+                            fontWeight: 700, fontSize: '0.72rem',
+                            '&:hover': { bgcolor: stageMeta.color, filter: 'brightness(0.9)' },
+                          }}
+                        >
+                          → {STAGE_LABELS[nextStatus === 'demo_booked' ? 'demo' : nextStatus]?.label ?? nextStatus}
+                        </Button>
+                      )}
+                    </Stack>
                   </Box>
                 );
               })}
             </Stack>
           )}
+
+          {convertResult && (
+            <Alert
+              severity="success"
+              onClose={() => setConvertResult(null)}
+              sx={{ mt: 1.4, bgcolor: 'rgba(52,211,153,0.1)', color: '#86efac', border: '1px solid rgba(52,211,153,0.3)' }}
+            >
+              Onboarding-lenke sendt til kontakten på e-post. Direktelenke:{' '}
+              <Box
+                component="a"
+                href={convertResult.url}
+                target="_blank"
+                rel="noreferrer"
+                sx={{ color: '#34d399', wordBreak: 'break-all' }}
+              >
+                {convertResult.url}
+              </Box>
+            </Alert>
+          )}
         </Box>
+
+        <Menu
+          anchorEl={convertMenu?.anchor ?? null}
+          open={Boolean(convertMenu)}
+          onClose={() => setConvertMenu(null)}
+          PaperProps={{ sx: { bgcolor: '#1a0f3a', color: '#f5f3ff', border: '1px solid rgba(168,85,247,0.3)' } }}
+        >
+          <Typography sx={{ px: 2, py: 0.8, fontSize: '0.7rem', color: '#8b7ec4', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Send onboarding-lenke som…
+          </Typography>
+          <MenuItem
+            onClick={() => convertMenu && convertLead(convertMenu.leadId, 'content_producer')}
+            sx={{ fontSize: '0.84rem' }}
+          >
+            Innholdsprodusent · fra 495 kr/sete
+          </MenuItem>
+          <MenuItem
+            onClick={() => convertMenu && convertLead(convertMenu.leadId, 'production_team')}
+            sx={{ fontSize: '0.84rem' }}
+          >
+            Produksjonsteam · fra 795 kr/sete (min. 3)
+          </MenuItem>
+        </Menu>
 
         {/* Top sources */}
         <Box sx={{ p: 2, borderRadius: 1.6, bgcolor: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.18)' }}>
