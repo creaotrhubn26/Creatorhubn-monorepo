@@ -141,8 +141,10 @@ export function ScheduledReportsPanel() {
                                              : sub.frequency === "monthly" ? "Månedlig"
                                              : "Daglig"}
                             sx={{ fontSize: 10, height: 18 }} />
-                      <Chip size="small" label={sub.report_type === "summary" ? "KPI-rapport"
-                                             : "Lead-liste"}
+                      <Chip size="small"
+                            label={sub.report_type === "summary" ? "KPI-rapport"
+                                  : sub.report_type === "leads_list" ? "Lead-liste (CSV)"
+                                  : "KPI + Lead-liste"}
                             color="primary" sx={{ fontSize: 10, height: 18 }} />
                       {sub.last_send_status === "success" && (
                         <Chip size="small" color="success" icon={<CheckCircleIcon sx={{ fontSize: 12 }} />}
@@ -281,8 +283,9 @@ function SubscriptionDialog({ sub, onClose, onSaved }: {
             <TextField select label="Type" value={form.report_type}
                        onChange={(e) => upd("report_type", e.target.value)}
                        size="small" sx={{ flex: 1 }}>
-              <MenuItem value="summary">KPI-sammendrag</MenuItem>
-              <MenuItem value="leads_list">Lead-liste (kommer)</MenuItem>
+              <MenuItem value="summary">KPI-sammendrag (PDF)</MenuItem>
+              <MenuItem value="leads_list">Lead-liste (CSV)</MenuItem>
+              <MenuItem value="both">Begge — sammendrag + lead-liste</MenuItem>
             </TextField>
             <TextField select label="Periode" value={form.period_days}
                        onChange={(e) => upd("period_days", Number(e.target.value))}
