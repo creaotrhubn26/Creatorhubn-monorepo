@@ -255,8 +255,24 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
         [t.id],
       );
 
-      const orgRes = await pool.query<{ name: string; description: string | null }>(
-        `SELECT name, description FROM organizations WHERE id = $1`,
+      // Hent org-data + email-branding for å gjøre portalen tydelig "levert av Org X"
+      const orgRes = await pool.query<{
+        name: string; description: string | null;
+        logo_url: string | null; brand_color: string | null;
+        website: string | null; org_number: string | null;
+        sender_full_name: string | null; sender_title: string | null;
+        sender_phone: string | null; sender_email: string | null;
+        brand_primary_color: string | null; brand_accent_color: string | null;
+      }>(
+        `SELECT o.name, o.description, o.logo_url, o.brand_color,
+                o.website, o.org_number,
+                eb.sender_full_name, eb.sender_title,
+                eb.sender_phone, eb.sender_email,
+                eb.brand_primary_color, eb.brand_accent_color
+           FROM organizations o
+           LEFT JOIN leadgrid_email_branding_config eb
+                  ON eb.org_key = o.id::text
+          WHERE o.id = $1`,
         [t.organization_id],
       );
 
@@ -328,6 +344,16 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
         organization: {
           name: orgRes.rows[0]?.name ?? "Creatorhub",
           description: orgRes.rows[0]?.description ?? null,
+          logo_url: orgRes.rows[0]?.logo_url ?? null,
+          brand_color: orgRes.rows[0]?.brand_primary_color
+                      ?? orgRes.rows[0]?.brand_color ?? null,
+          brand_accent_color: orgRes.rows[0]?.brand_accent_color ?? null,
+          website: orgRes.rows[0]?.website ?? null,
+          org_number: orgRes.rows[0]?.org_number ?? null,
+          sender_full_name: orgRes.rows[0]?.sender_full_name ?? null,
+          sender_title: orgRes.rows[0]?.sender_title ?? null,
+          sender_phone: orgRes.rows[0]?.sender_phone ?? null,
+          sender_email: orgRes.rows[0]?.sender_email ?? null,
         },
         customer: {
           name: custRes.rows[0]?.name ?? null,
