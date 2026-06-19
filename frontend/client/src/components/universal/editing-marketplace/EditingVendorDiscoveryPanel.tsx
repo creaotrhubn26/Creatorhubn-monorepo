@@ -66,8 +66,18 @@ interface EditingVendor {
   isInternational: boolean;
   requiresExtraGdpr: boolean;
   badges: string[];
+  tier?: string;
+  verificationPercent?: number;
   services: EditingVendorService[];
 }
+
+// Tier-visning (paritet med partnerportalen).
+const TIER_META: Record<string, { label: string; color: string }> = {
+  registered: { label: "Registered", color: "#9aa0ab" },
+  verified: { label: "Verified Vendor", color: "#43c96b" },
+  certified: { label: "Certified Partner", color: "#f5a623" },
+  premium: { label: "Premium Partner", color: "#b06bff" },
+};
 
 interface Props {
   /** Antall kommende oppdrag e.l. — driver «du har mye å gjøre»-signalet. */
@@ -270,7 +280,21 @@ export default function EditingVendorDiscoveryPanel({
                       {initials(v.vendorName)}
                     </Avatar>
                     <Box sx={{ flex: 1, minWidth: 200 }}>
-                      <Typography sx={{ fontWeight: 700 }}>{v.vendorName}</Typography>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                        <Typography sx={{ fontWeight: 700 }}>{v.vendorName}</Typography>
+                        {v.tier && TIER_META[v.tier] && (
+                          <Chip
+                            size="small"
+                            label={TIER_META[v.tier].label}
+                            sx={{ height: 20, fontSize: 11, fontWeight: 700, color: "#fff", bgcolor: TIER_META[v.tier].color }}
+                          />
+                        )}
+                        {typeof v.verificationPercent === "number" && v.verificationPercent < 100 && (
+                          <Typography variant="caption" color="text.secondary">
+                            {v.verificationPercent}% {locale === "en" ? "verified" : "verifisert"}
+                          </Typography>
+                        )}
+                      </Box>
                       {v.tagline && (
                         <Typography variant="body2" color="text.secondary">
                           {v.tagline}
