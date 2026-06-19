@@ -17,6 +17,8 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import CloseIcon from "@mui/icons-material/Close";
 import AddIcon from "@mui/icons-material/Add";
 import GraphicEqIcon from "@mui/icons-material/GraphicEq";
+import DownloadIcon from "@mui/icons-material/Download";
+import ContentCutIcon from "@mui/icons-material/ContentCut";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -85,6 +87,47 @@ export function MusicLibrary({ open, onClose, projectId, agentContext }: Props) 
       setMarkerMsg("Feil: " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setMarkerBusy(false);
+    }
+  };
+
+  // Batch-hent alle sanger i prosjektets cue_map.json (yt-dlp + beat-grids).
+  const [cueBusy, setCueBusy] = useState(false);
+  const handleFetchCueSongs = async () => {
+    setCueBusy(true);
+    setMarkerMsg(null);
+    try {
+      const res = await executeScript("fetch_cue_songs", projectId ? { projectId } : {}, false);
+      const v = res.events.find(e => e.type === "result")?.value as
+        { downloaded?: string[]; skipped?: string[]; failed?: unknown[] } | undefined;
+      const err = res.events.find(e => e.type === "error")?.value as { message?: string } | undefined;
+      if (err) setMarkerMsg(`Feil: ${err.message ?? "ukjent"}`);
+      else if (v) setMarkerMsg(`✓ ${v.downloaded?.length ?? 0} hentet, ${v.skipped?.length ?? 0} fantes, ${v.failed?.length ?? 0} feilet`);
+    } catch (e) {
+      setMarkerMsg("Feil: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setCueBusy(false);
+    }
+  };
+
+  // Re-length gjeldende timeline → ny lengde (ikke-destruktivt, bygger ny timeline).
+  const [relenBusy, setRelenBusy] = useState(false);
+  const [relenTarget, setRelenTarget] = useState(720); // sekunder
+  const handleRelength = async () => {
+    setRelenBusy(true);
+    setMarkerMsg(null);
+    try {
+      const params: Record<string, unknown> = { targetSec: relenTarget };
+      if (projectId) params.projectId = projectId;
+      const res = await executeScript("relength_from_timeline", params, false);
+      const v = res.events.find(e => e.type === "result")?.value as
+        { newTimeline?: string; actualSec?: number } | undefined;
+      const err = res.events.find(e => e.type === "error")?.value as { message?: string } | undefined;
+      if (err) setMarkerMsg(`Feil: ${err.message ?? "ukjent"}`);
+      else if (v) setMarkerMsg(`✓ ny timeline «${v.newTimeline}» (${Math.round((v.actualSec ?? 0) / 60)} min)`);
+    } catch (e) {
+      setMarkerMsg("Feil: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setRelenBusy(false);
     }
   };
 
@@ -350,6 +393,46 @@ export function MusicLibrary({ open, onClose, projectId, agentContext }: Props) 
             <GraphicEqIcon sx={{ fontSize: 13 }} />
             {markerBusy ? "Re-kjører …" : "Re-kjør beat-markører"}
           </button>
+          <button onClick={() => void handleFetchCueSongs()}
+                  disabled={cueBusy}
+                  title="Batch-last ned alle sangene i prosjektets cue_map.json (yt-dlp + beat-grids)."
+                  style={{
+                    background: "transparent",
+                    border: `1px solid ${ROLE_ROOM_BRAND.primaryLila}`,
+                    color: ROLE_ROOM_BRAND.textSecondary,
+                    padding: "7px 12px", fontSize: 12, fontWeight: 600,
+                    borderRadius: 4, cursor: cueBusy ? "wait" : "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                  }}>
+            <DownloadIcon sx={{ fontSize: 13 }} />
+            {cueBusy ? "Henter …" : "Hent cue-sanger"}
+          </button>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <select value={relenTarget} onChange={e => setRelenTarget(Number(e.target.value))}
+                    title="Mål-lengde for re-length av gjeldende timeline"
+                    style={{ background: "transparent", color: ROLE_ROOM_BRAND.textSecondary,
+                             border: `1px solid ${ROLE_ROOM_BRAND.primaryLila}`, borderRadius: 4,
+                             padding: "6px 6px", fontSize: 12, cursor: "pointer", colorScheme: "dark" }}>
+              <option value={360}>6 min</option>
+              <option value={540}>9 min</option>
+              <option value={720}>12 min</option>
+              <option value={900}>15 min</option>
+            </select>
+            <button onClick={() => void handleRelength()}
+                    disabled={relenBusy}
+                    title="Bygg en NY timeline fra gjeldende edit, skalert til valgt lengde (kapittel-vekting bevart, ikke-destruktivt)."
+                    style={{
+                      background: "transparent",
+                      border: `1px solid ${ROLE_ROOM_BRAND.primaryLila}`,
+                      color: ROLE_ROOM_BRAND.textSecondary,
+                      padding: "7px 12px", fontSize: 12, fontWeight: 600,
+                      borderRadius: 4, cursor: relenBusy ? "wait" : "pointer",
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                    }}>
+              <ContentCutIcon sx={{ fontSize: 13 }} />
+              {relenBusy ? "Bygger …" : "Re-length"}
+            </button>
+          </span>
           {markerMsg && (
             <span style={{ fontSize: 11, color: ROLE_ROOM_BRAND.textTertiary, maxWidth: 220 }}>
               {markerMsg}
