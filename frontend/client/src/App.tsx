@@ -229,6 +229,8 @@ const DemoAnimaticPage = React.lazy(() => import('@/components/role-room/demo/De
 const PostAgentLinkPage = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
 const MockupVideoStudioPage = React.lazy(() => import('@/components/role-room/post-agent/mockup-video/MockupVideoStudio'));
 const AudioShowcasePage = React.lazy(() => import('@/pages/audio-showcase'));
+const PartnerApplicationForm = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerApplicationForm'));
+const PartnerPortalPage = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerPortalPage'));
 const AudioReviewInvitePage = React.lazy(() => import('@/pages/audio-review-invite'));
 const AudioReviewSharedPage = React.lazy(() => import('@/pages/audio-review-shared'));
 // Wrapper components for route compatibility
@@ -771,6 +773,10 @@ function App() {
                     path="/vendor-dashboard-material"
                     component={() => <SmartDashboardRoute profession="vendor" />}
                   />
+                  {/* Partner Program — offentlig søknad + gated portal (selv-gater via magic-link/session) */}
+                  <Route path="/partner/apply" component={PartnerApplicationForm as React.ComponentType<any>} />
+                  <Route path="/partner-portal" component={PartnerPortalPage as React.ComponentType<any>} />
+                  <Route path="/partner-portal/guide" component={() => { window.location.replace("/partner-guide/index.html"); return null; }} />
                   <Route path="/showcase/photographer" component={PhotoShowcaseRouteWrapper as React.ComponentType<any>} />
                   <Route path="/showcase/videographer" component={VideoShowcaseRouteWrapper as React.ComponentType<any>} />
                   <Route path="/photo-showcase" component={PhotoShowcaseRouteWrapper as React.ComponentType<any>} />

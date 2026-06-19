@@ -163,7 +163,7 @@ const STR = {
 type MeLike = {
   vendorName?: string | null;
   country?: string | null;
-  compliance?: { pillars?: Record<string, { status: string }>; cleared?: boolean };
+  compliance?: { pillars?: Record<string, { status: string }>; cleared?: boolean; verificationPercent?: number; tier?: string };
 } | null | undefined;
 
 interface Props {
@@ -259,7 +259,9 @@ export default function PartnerProgramDashboard({ me, locale = "no", onStartVeri
   const tierNames = ["Registered Vendor", "Verified Vendor", "Certified Partner", "Premium Partner"];
   const whyIcons = [<EventAvailableIcon />, <CloudUploadIcon />, <CollectionsIcon />, <StarIcon />];
 
-  const PROGRESS = 71;
+  const TIER_IDX: Record<string, number> = { registered: 0, verified: 1, certified: 2, premium: 3 };
+  const activeTierIdx = me?.compliance?.tier != null ? (TIER_IDX[me.compliance.tier] ?? 1) : 1;
+  const PROGRESS = me?.compliance?.verificationPercent != null ? me.compliance.verificationPercent : 71;
   const ring = `conic-gradient(${C.accent} ${PROGRESS * 3.6}deg, rgba(255,255,255,0.08) 0deg)`;
 
   return (
@@ -516,7 +518,7 @@ export default function PartnerProgramDashboard({ me, locale = "no", onStartVeri
             <SectionLabel action={<GhostBtn>{s.seeBenefits}</GhostBtn>}>{s.lblTiers}</SectionLabel>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {tierNames.map((name, i) => {
-                const active = i === 1;
+                const active = i === activeTierIdx;
                 return (
                   <Box key={name} sx={{ display: "flex", alignItems: "center", gap: 1.2, p: 1, borderRadius: "10px",
                     background: active ? "linear-gradient(180deg, rgba(245,166,35,0.12), transparent)" : "transparent",
