@@ -81,6 +81,23 @@ const VENDOR_PROFILE_COLS = `
 export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
   const { app, pool, requireUserSession } = deps;
 
+  // ── iPad Capture-app beta-påmelding (offentlig, ingen auth) ──
+  app.post("/api/capture-beta/signup", async (req, res) => {
+    try {
+      const b = req.body || {};
+      const email = String(b.email || "").trim();
+      if (!email || !email.includes("@")) return res.status(400).json({ error: "ugyldig_epost" });
+      await pool.query(
+        `INSERT INTO capture_beta_signups (name, email, device, note, user_id) VALUES ($1, $2, $3, $4, $5)`,
+        [b.name || null, email, b.device || null, b.note || null, b.userId || null],
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[capture-beta:signup] error", err);
+      res.status(500).json({ error: "kunne_ikke_melde_pa" });
+    }
+  });
+
   // ── Discovery: liste over godkjente, compliance-klare redigeringsvendors ──
   app.get("/api/editing/vendors", async (req, res) => {
     const session = await requireUserSession(req, res);

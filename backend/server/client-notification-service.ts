@@ -269,6 +269,28 @@ async function getEmailBranding(pool: Pool, customerId: string): Promise<EmailBr
     footer_html: null, footer_address: null,
     custom_variables: {},
   };
+
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${config.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      return { ok: false, templateName: tmpl.fullName,
+                error: `HTTP ${r.status}: ${txt.slice(0, 200)}` };
+    }
+    const j: any = await r.json().catch(() => ({}));
+    const messageId = j?.messages?.[0]?.id;
+    return { ok: true, messageId, templateName: tmpl.fullName };
+  } catch (e: any) {
+    return { ok: false, templateName: tmpl.fullName,
+              error: e?.message ?? String(e) };
+  }
 }
 
 async function sendEmail(

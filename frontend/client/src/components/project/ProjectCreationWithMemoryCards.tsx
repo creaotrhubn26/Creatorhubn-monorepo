@@ -150,6 +150,7 @@ import ExternalEditingOption from '@/components/universal/editing-marketplace/Ex
 import CloudErasePanel from '@/components/storage/CloudErasePanel';
 import DeliverFromArchiveDialog from '@/components/storage/DeliverFromArchiveDialog';
 import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
+import CaptureBetaSignupDialog from '@/components/project/CaptureBetaSignupDialog';
 import { getCamerasByProfession, getLogFormatsByCamera, getCameraBrand } from '../../data/video-camera-database';
 import { getPhotoCamerasByProfession, getPhotoCameraBrand } from '../../data/photo-camera-database';
 import { MemoryCardRecommendationEngine, getMemoryCardTypesByProfession, formatCurrency } from '../../data/memory-card-database';
@@ -1440,6 +1441,7 @@ export default function ProjectCreationWithMemoryCards({
   }, [showToast]);
   
   const [activeStep, setActiveStep] = useState(0);
+  const [captureBetaOpen, setCaptureBetaOpen] = useState(false);
   const [showHealthCheck, setShowHealthCheck] = useState(false);
   const [healthCheckPassed, setHealthCheckPassed] = useState(false);
   const [cultureDayDialog, setCultureDayDialog] = useState({
@@ -3264,9 +3266,9 @@ useEffect(() => {
         mt: 0, 
         mb: 3,
         borderRadius: 3,
-        border: '1px solid #e0e0e0',
+        border: '1px solid rgba(255,255,255,0.12)',
         boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-        background: '#fafbfc',
+        background: 'rgba(20,22,30,0.92)',
         transition: 'box-shadow 0.2s ease-in-out',
         '&:hover': {
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -3393,9 +3395,9 @@ useEffect(() => {
           mt: 0, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -3498,9 +3500,9 @@ useEffect(() => {
           mt: 3, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -3563,9 +3565,9 @@ useEffect(() => {
           mt: 3, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -3985,9 +3987,9 @@ useEffect(() => {
           mt: 3, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -4117,9 +4119,9 @@ useEffect(() => {
         <Box sx={{ 
           mt: 4, 
           p: 2.5, 
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           borderRadius: 3, 
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)'
         }}>
           <FormControlLabel
@@ -4143,9 +4145,9 @@ useEffect(() => {
           mt: 3, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -4197,7 +4199,7 @@ useEffect(() => {
       {/* ==========================================
          PROJECT MANAGEMENT TOOLBAR
          ========================================== */}
-      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
           <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
             <Settings sx={{ fontSize: 28 }} /> Prosjektverktøy
@@ -4295,7 +4297,7 @@ useEffect(() => {
       {/* ==========================================
          PROJECT PHASE STEPPER
          ========================================== */}
-      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
           <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
             <Timeline sx={{ fontSize: 28 }} /> Prosjektfaser
@@ -4335,7 +4337,7 @@ useEffect(() => {
       {/* ==========================================
          LOCATION INTELLIGENCE
          ========================================== */}
-      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid #e0e0e0', '&:before': { display: 'none' } }}>
+      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', '&:before': { display: 'none' } }}>
         <AccordionSummary expandIcon={<ExpandMore />}>
           <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
             <LocationOn sx={{ fontSize: 28 }} /> Lokasjonsintelligens
@@ -4398,67 +4400,10 @@ useEffect(() => {
       {/* ==========================================
          SHOT LIST MANAGER
          ========================================== */}
-      <Collapse in={projectData.projectType === 'wedding' || projectData.projectType === 'event' || projectData.projectType === 'portrait'}>
-        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
-              <CameraAlt sx={{ fontSize: 28 }} /> Shot List & Minnekort
-            </Typography>
-            <ShotListManager
-              projectType={projectData.projectType}
-              culture={projectData.weddingCulture}
-              totalDays={projectData.totalDays}
-              onShotUpdate={(shot: ShotListItem) => setProjectData(prev => ({ ...prev, shotList: prev.shotList.map((s) => s.id === shot.id ? shot : s) }))}
-              onShotDelete={(shotId: string) => setProjectData(prev => ({ ...prev, shotList: prev.shotList.filter((s) => s.id !== shotId) }))}
-            />
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <MemoryCardIcon letter="A" type="SD" capacity="64GB" size="small" /> Minnekort-konfigurasjon
-            </Typography>
-            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-              {Object.keys(LABELING_SCHEMES).map(scheme => (
-                <Chip
-                  key={scheme}
-                  label={scheme}
-                  size="small"
-                  variant={memoryCardLabeling === scheme ? 'filled' : 'outlined'}
-                  onClick={() => handleLabelingChange(scheme as LabelingKey)}
-                  icon={<Memory />}
-                />
-              ))}
-            </Stack>
-            <MemoryCardSelector
-              profession={memoryCardProfession}
-              onCardsSelected={(cards) => {
-                const mapped: SelectedMemoryCard[] = cards.map(c => ({ type: 'SD', capacity: c.capacity, count: c.count, estimatedPhotos: c.estimatedPhotos.raw + c.estimatedPhotos.craw }));
-                setProjectData(prev => ({ ...prev, selectedMemoryCards: mapped }));
-              }}
-            />
-            <Box sx={{ mt: 2 }}>
-              <EnhancedMemoryCardSelector
-                selectedCameras={projectData.selectedCameras || []}
-                projectType={projectData.projectType}
-                profession={enhancedProfession}
-                totalDays={projectData.totalDays}
-                budget={projectData.memoryCardBudget}
-                onSelectionChange={(selection) => setProjectData(prev => ({ ...prev, enhancedMemoryCardSelection: { ...selection } }))}
-              />
-            </Box>
-            {memoryCardRecommendation.totalCost > 0 && (
-              <Typography variant="body2" sx={{ mt: 1 }}>
-                <AttachMoney sx={{ fontSize: 16, mr: 0.5 }} />
-                Estimert totalkost minnekort: {memoryCardRecommendation.totalCost.toFixed(0)} NOK
-                ({memoryCardRecommendation.cardTypes?.length || 0} typer tilgjengelig)
-              </Typography>
-            )}
-          </CardContent>
-        </Card>
-      </Collapse>
-
       {/* ==========================================
-         CAMERA DETECTION SECTION
+         CAMERA DETECTION SECTION (før Shot List — velg utstyr først)
          ========================================== */}
-      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
           <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
             <Videocam sx={{ fontSize: 28 }} /> Kamera & Utstyr
@@ -4502,11 +4447,108 @@ useEffect(() => {
         </CardContent>
       </Card>
 
+      <Collapse in={projectData.projectType === 'wedding' || projectData.projectType === 'event' || projectData.projectType === 'portrait'}>
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+              <CameraAlt sx={{ fontSize: 28 }} /> Shot List & Minnekort
+            </Typography>
+            <ShotListManager
+              projectType={projectData.projectType}
+              culture={projectData.weddingCulture}
+              totalDays={projectData.totalDays}
+              shots={projectData.shotList as unknown as any}
+              onShotCreate={(shot: any) => setProjectData(prev => ({ ...prev, shotList: [...prev.shotList, shot] }))}
+              onShotUpdate={(shot: ShotListItem) => setProjectData(prev => ({ ...prev, shotList: prev.shotList.map((s) => s.id === shot.id ? shot : s) }))}
+              onShotDelete={(shotId: string) => setProjectData(prev => ({ ...prev, shotList: prev.shotList.filter((s) => s.id !== shotId) }))}
+            />
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <MemoryCardIcon letter="A" type="SD" capacity="64GB" size="small" /> Minnekort-konfigurasjon
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+              {Object.keys(LABELING_SCHEMES).map(scheme => {
+                const active = memoryCardLabeling === scheme;
+                return (
+                  <Chip
+                    key={scheme}
+                    label={scheme}
+                    size="small"
+                    variant={active ? 'filled' : 'outlined'}
+                    onClick={() => handleLabelingChange(scheme as LabelingKey)}
+                    icon={<Memory />}
+                    sx={{
+                      fontWeight: 600,
+                      color: active ? '#0b0c10' : '#f6f2ea',
+                      bgcolor: active ? theming.colors.primary : 'rgba(255,255,255,0.06)',
+                      borderColor: 'rgba(255,255,255,0.35)',
+                      '& .MuiChip-icon': { color: active ? '#0b0c10' : theming.colors.primary },
+                      '&:hover': { bgcolor: active ? theming.colors.primary : 'rgba(255,255,255,0.12)' },
+                    }}
+                  />
+                );
+              })}
+            </Stack>
+            <MemoryCardSelector
+              profession={memoryCardProfession}
+              onCardsSelected={(cards) => {
+                const mapped: SelectedMemoryCard[] = cards.map(c => ({ type: 'SD', capacity: c.capacity, count: c.count, estimatedPhotos: c.estimatedPhotos.raw + c.estimatedPhotos.craw }));
+                setProjectData(prev => ({ ...prev, selectedMemoryCards: mapped }));
+              }}
+            />
+            <Box sx={{ mt: 2 }}>
+              <EnhancedMemoryCardSelector
+                selectedCameras={projectData.selectedCameras || []}
+                projectType={projectData.projectType}
+                profession={enhancedProfession}
+                totalDays={projectData.totalDays}
+                budget={projectData.memoryCardBudget}
+                onSelectionChange={(selection) => setProjectData(prev => ({ ...prev, enhancedMemoryCardSelection: { ...selection } }))}
+              />
+            </Box>
+            {memoryCardRecommendation.totalCost > 0 && (
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                <AttachMoney sx={{ fontSize: 16, mr: 0.5 }} />
+                Estimert totalkost minnekort: {memoryCardRecommendation.totalCost.toFixed(0)} NOK
+                ({memoryCardRecommendation.cardTypes?.length || 0} typer tilgjengelig)
+              </Typography>
+            )}
+          </CardContent>
+        </Card>
+      </Collapse>
+
+      {/* ==========================================
+         BACKUP-STRATEGI: Creatorhub One (alltid synlig — forklarer hvorfor)
+         ========================================== */}
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 1 }}>
+            <img src="/creatorhub-one-logo.svg" alt="Creatorhub One" style={{ width: 30, height: 30, objectFit: 'contain' }} /> Backup-strategi: Creatorhub One
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Creatorhub One er desktop-appen (Mac) som tar offsite-backup direkte fra minnekortene
+            under opptaket — til din egen Backblaze B2, ende-til-ende-verifisert (xxHash64). Vi ser
+            aldri filene. Dette sikrer råmaterialet mot kortfeil og tyveri allerede på sett, før noe
+            er redigert eller levert til kunde.
+          </Typography>
+          <OneDeskDownloadCard />
+          <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Typography variant="body2" color="text.secondary">
+              iPad Capture-app — backup og monitorering rett fra settet.
+            </Typography>
+            <Chip size="small" label="Kommer snart (TestFlight)" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#f6f2ea', fontWeight: 600 }} />
+            <Button size="small" variant="outlined" onClick={() => setCaptureBetaOpen(true)}>
+              Ønsker du å teste? Meld deg på
+            </Button>
+          </Box>
+        </CardContent>
+      </Card>
+
       {/* ==========================================
          OFFSITE BACKUP (B2)
          ========================================== */}
       {currentProject?.id && (
-        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 1 }}>
               Ekstern backup (offsite)
@@ -4535,7 +4577,7 @@ useEffect(() => {
                 onClick={() => setDeliverDialogOpen(true)}
                 sx={{ borderRadius: 2 }}
               >
-                📤 Lever til klient fra arkiv
+                Lever til klient fra arkiv
               </Button>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                 Velg filer som er backup'et til Backblaze og send som tilgangs-galleri. Klienten ser filene direkte fra B2 via Cloudflare-cache (ingen ekstra lagring eller egress-kost).
@@ -4564,7 +4606,7 @@ useEffect(() => {
          PROJECT COLLABORATORS
          ========================================== */}
       {currentProject?.id && (
-        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
               <Groups sx={{ fontSize: 28 }} /> Samarbeidspartnere
@@ -4590,7 +4632,7 @@ useEffect(() => {
       {/* ==========================================
          WORKLOG & CULTURAL PLANNING
          ========================================== */}
-      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid #e0e0e0', '&:before': { display: 'none' } }}>
+      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', '&:before': { display: 'none' } }}>
         <AccordionSummary expandIcon={<ExpandMore />}>
           <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
             <AccessTime sx={{ fontSize: 28 }} /> Arbeidstid & Planlegging
@@ -4652,7 +4694,7 @@ useEffect(() => {
          PROJECT PREVIEW PANEL
          ========================================== */}
       <Collapse in={showPreview}>
-        <Paper sx={{ mt: 3, p: 3, borderRadius: 3, border: '1px solid #e0e0e0', background: '#f8f9fa' }}>
+        <Paper sx={{ mt: 3, p: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(20,22,30,0.92)' }}>
           <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
             <Visibility sx={{ fontSize: 28 }} /> Prosjekt-forhåndsvisning
           </Typography>
@@ -4691,6 +4733,9 @@ useEffect(() => {
          DIALOGS: Health Check, Cultural Day, Worklog Tips, Lead Import, Version History, Script Manager, Comparison
          ========================================== */}
       
+      {/* iPad Capture beta-påmelding */}
+      <CaptureBetaSignupDialog open={captureBetaOpen} onClose={() => setCaptureBetaOpen(false)} />
+
       {/* Health Check Dialog */}
       <Dialog open={showHealthCheck} onClose={() => setShowHealthCheck(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -4932,7 +4977,7 @@ useEffect(() => {
 
       {/* Cultural day buttons for wedding projects */}
       {projectData.projectType === 'wedding' && projectData.weddingCulture !== 'norsk' && (
-        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
               <Info sx={{ fontSize: 28 }} /> Kulturelle seremonidager
