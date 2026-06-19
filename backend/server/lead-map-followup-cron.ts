@@ -56,6 +56,7 @@ export function registerLeadMapFollowupCronRoutes({ app, pool }: Deps): void {
       }
 
       try {
+        // (LM-5 advisory-lock allerede satt via pool ovenfor med FOLLOWUP_CRON_LOCK.)
         // Finn forfalt follow-up som ikke har fått varsel siste 24t
         const r = await pool.query<{
           lead_id: string;

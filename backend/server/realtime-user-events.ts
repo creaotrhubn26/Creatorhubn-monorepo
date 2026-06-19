@@ -246,6 +246,24 @@ export function attachUserEventsWebSocket(
 ): void {
   const wss = new WebSocketServer({ noServer: true });
 
+  // RT-3: 30s heartbeat sweep. Samme mønster som capture-websocket.
+  // Halv-åpen TCP rapporterer fortsatt OPEN — uten denne ville zombie-
+  // sockets akkumulere i userClients-Map'et per-bruker over tid.
+  const heartbeatInterval = setInterval(() => {
+    for (const set of userClients.values()) {
+      for (const ws of set) {
+        const tagged = ws as WebSocket & { isAlive?: boolean };
+        if (tagged.isAlive === false) {
+          try { ws.terminate(); } catch { /* noop */ }
+          continue;
+        }
+        tagged.isAlive = false;
+        try { ws.ping(); } catch { /* noop */ }
+      }
+    }
+  }, 30_000);
+  wss.on("close", () => clearInterval(heartbeatInterval));
+
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     if (url.pathname !== USER_EVENTS_WS_PATH) return;
@@ -298,6 +316,9 @@ function registerClient(userId: string, ws: WebSocket): () => void {
     (ws as LiveWebSocket).isAlive = true;
   });
 
+  // RT-3: marker alive ved connect + pong
+  (ws as WebSocket & { isAlive?: boolean }).isAlive = true;
+
   try {
     ws.send(
       JSON.stringify({
@@ -314,8 +335,15 @@ function registerClient(userId: string, ws: WebSocket): () => void {
     }
   };
 
+  ws.on("pong", () => {
+    (ws as WebSocket & { isAlive?: boolean }).isAlive = true;
+  });
   ws.on("close", cleanup);
   ws.on("error", () => {
+    // RT-3: kall cleanup() eksplisitt før terminate slik at Map-entry
+    // fjernes selv om 'close' skulle forsinkes (terminate's close-
+    // event er da idempotent — set.delete er no-op andre gang).
+    cleanup();
     try {
       ws.terminate();
     } catch { /* ignore */ }

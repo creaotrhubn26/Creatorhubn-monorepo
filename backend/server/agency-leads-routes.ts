@@ -198,7 +198,8 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
                    AND agency_leads.status IN ('new', 'contacted')
                  THEN 'demo_booked' ELSE agency_leads.status END,
                updated_at = now()
-         RETURNING id::text, agency_name, contact_name, email, status, created_at, (xmax = 0) AS created`,
+         RETURNING id::text, agency_name, contact_name, email, status, created_at,
+                   (xmax = 0) AS created`,
         [
           agencyName, contactName, email, phone, rosterSize, segment,
           message, source,
@@ -262,7 +263,7 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
         }
       }
 
-      // Event — record only on first insert (gate fra #647 53ac9773)
+      // Event — record only on first insert (gate fra #647 53ac9773 + LM-2 #648)
       if (isNewLead) try {
         await pool.query(
           `INSERT INTO agency_lead_events (lead_id, event_type, actor, details)
@@ -277,7 +278,9 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
       } catch { /* best-effort */ }
 
       // Queue LinkedIn Conversion API event (Lead) — first insert only;
-      // cron drainer sender når godkjent.
+      // cron drainer sender når godkjent. Deterministisk event_id i
+      // fireAgencyLeadConversion (LM-2) gir ON CONFLICT-dedup som
+      // ekstra safety hvis en race likevel skulle slippe gjennom.
       if (isNewLead) try {
         const li_fat_id = (body as { li_fat_id?: string })?.li_fat_id ?? null;
         const firstWord = contactName.split(" ")[0];
@@ -538,10 +541,13 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
     const updates: string[] = [];
     const params: unknown[] = [];
 
-    if (body.status && ALLOWED_STATUSES.has(body.status)) {
+    // LM-3: streng status-validering (portet fra død duplikat-handler)
+    if (body.status !== undefined) {
+      if (!ALLOWED_STATUSES.has(body.status)) {
+        return res.status(400).json({ error: `Ugyldig status` });
+      }
       params.push(body.status);
       updates.push(`status = $${params.length}`);
-      // Auto-fyll tidsstempler ved status-overgang
       if (body.status === 'contacted') updates.push(`contacted_at = COALESCE(contacted_at, NOW())`);
       if (body.status === 'trial') updates.push(`trial_started_at = COALESCE(trial_started_at, NOW())`);
       if (body.status === 'customer') updates.push(`customer_at = COALESCE(customer_at, NOW())`);
@@ -571,6 +577,23 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
         params,
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
+
+      // LM-3: audit-event (portet fra død duplikat-handler 660-731).
+      // Best-effort så hovedoppdateringen ikke feiler hvis audit-tabellen
+      // er midlertidig utilgjengelig.
+      try {
+        await pool.query(
+          `INSERT INTO agency_lead_events (lead_id, event_type, actor, details)
+           VALUES ($1::uuid, $2, $3, $4::jsonb)`,
+          [
+            id,
+            body.status ? `status_${body.status}` : "updated",
+            session.email ?? session.userId,
+            JSON.stringify(body),
+          ],
+        );
+      } catch { /* best-effort */ }
+
       return res.json({ ok: true, lead: r.rows[0] });
     } catch (err) {
       console.error("[agency-leads PATCH] failed", err);

@@ -208,6 +208,8 @@ export async function sendMetaCapiEvent(
   };
 
   try {
+    // LM-4: 10s timeout (CAPI er tregere enn vanlige APIer). AbortError
+    // mappes til { success:false, error } i kallets eksisterende catch.
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -411,6 +413,33 @@ function readCookie(req: express.Request, name: string): string | undefined {
 
 export function setupMetaCapiRoutes(deps: MetaCapiDeps): void {
   const { app, getActiveSessionFromRequest } = deps;
+
+  // LM-7: in-memory state for rate-limit + eventId-dedup. Pr-process
+  // (per-replikat) — godt nok mot tilfeldig F5-pålegg og automated
+  // spam, men ikke distributert. For sterkere garantier ville Redis
+  // vært neste steg.
+  const RATE_WINDOW_MS = 60_000;
+  const RATE_LIMIT_PER_IP = 30;
+  const EVENT_ID_TTL_MS = 10 * 60_000;     // 10 min
+  const VALUE_CEILING = 1_000_000;          // NOK 1M sanity-cap
+
+  const ipHits = new Map<string, number[]>();
+  const seenEventIds = new Map<string, number>();   // eventId → expiry-ts
+
+  function pruneExpired(now: number): void {
+    if (ipHits.size > 5000) {
+      for (const [ip, hits] of ipHits) {
+        const fresh = hits.filter((t) => now - t < RATE_WINDOW_MS);
+        if (fresh.length === 0) ipHits.delete(ip);
+        else if (fresh.length < hits.length) ipHits.set(ip, fresh);
+      }
+    }
+    if (seenEventIds.size > 5000) {
+      for (const [id, expiry] of seenEventIds) {
+        if (expiry < now) seenEventIds.delete(id);
+      }
+    }
+  }
 
   app.post("/api/marketing/meta-capi-event", async (req, res) => {
     const body = (req.body ?? {}) as {
