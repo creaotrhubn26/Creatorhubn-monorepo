@@ -570,6 +570,7 @@ import { registerLeadAcceptanceRoutes } from "./lead-acceptance-routes.js";
 import { registerLeadAssignmentRoutes } from "./lead-assignment-routes.js";
 import { registerLeadStatusRoutes } from "./lead-status-routes.js";
 import { registerLeadExportRoutes } from "./lead-export-routes.js";
+import { registerLeadgridScheduledReportsRoutes } from "./leadgrid-scheduled-reports-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24411,6 +24412,8 @@ registerLeadAssignmentRoutes({ app, pool, activeSessions });
 registerLeadStatusRoutes({ app, pool, activeSessions });
 // Lead-eksport (CSV + PDF rapport m/ org-branding)
 registerLeadExportRoutes({ app, pool, activeSessions });
+// Schedulerte rapporter (ukentlig PDF på e-post til markedssjefer)
+registerLeadgridScheduledReportsRoutes({ app, pool, activeSessions });
 // Håndhev org-status (paused/suspended) på alle Leadgrid-rutene.
 // Bypass for super_admin er ON som default.
 app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));
