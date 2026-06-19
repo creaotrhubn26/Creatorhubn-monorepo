@@ -218,16 +218,93 @@ async function sendWhatsApp(
   }
 }
 
+interface EmailBranding {
+  from_name: string;
+  from_email: string | null;
+  reply_to_email: string | null;
+  sender_full_name: string | null;
+  sender_title: string | null;
+  sender_phone: string | null;
+  sender_email: string | null;
+  brand_name: string;
+  brand_logo_url: string | null;
+  brand_primary_color: string;
+  brand_accent_color: string;
+  footer_html: string | null;
+  footer_address: string | null;
+  custom_variables: Record<string, string>;
+}
+
+/** Hent branding-config for kundens org, fall til global default. */
+async function getEmailBranding(pool: Pool, customerId: string): Promise<EmailBranding> {
+  const r = await pool.query<EmailBranding>(
+    `SELECT eb.from_name, eb.from_email, eb.reply_to_email,
+            eb.sender_full_name, eb.sender_title, eb.sender_phone, eb.sender_email,
+            eb.brand_name, eb.brand_logo_url, eb.brand_primary_color,
+            eb.brand_accent_color, eb.footer_html, eb.footer_address,
+            eb.custom_variables
+       FROM crm_customers c
+       JOIN casting_projects p ON p.id = c.project_id
+       LEFT JOIN leadgrid_email_branding_config eb
+              ON eb.org_key = p.organization_id::text
+      WHERE c.id::text = $1
+      LIMIT 1`,
+    [customerId],
+  );
+  if (r.rows[0]?.brand_name) return r.rows[0];
+
+  // Global default
+  const g = await pool.query<EmailBranding>(
+    `SELECT from_name, from_email, reply_to_email,
+            sender_full_name, sender_title, sender_phone, sender_email,
+            brand_name, brand_logo_url, brand_primary_color,
+            brand_accent_color, footer_html, footer_address, custom_variables
+       FROM leadgrid_email_branding_config WHERE org_key IS NULL LIMIT 1`,
+  );
+  return g.rows[0] ?? {
+    from_name: "Leadgrid", from_email: null, reply_to_email: null,
+    sender_full_name: null, sender_title: null, sender_phone: null, sender_email: null,
+    brand_name: "Leadgrid", brand_logo_url: null,
+    brand_primary_color: "#a78bfa", brand_accent_color: "#9be15d",
+    footer_html: null, footer_address: null,
+    custom_variables: {},
+  };
+
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${config.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      return { ok: false, templateName: tmpl.fullName,
+                error: `HTTP ${r.status}: ${txt.slice(0, 200)}` };
+    }
+    const j: any = await r.json().catch(() => ({}));
+    const messageId = j?.messages?.[0]?.id;
+    return { ok: true, messageId, templateName: tmpl.fullName };
+  } catch (e: any) {
+    return { ok: false, templateName: tmpl.fullName,
+              error: e?.message ?? String(e) };
+  }
+}
+
 async function sendEmail(
   to: string, subject: string, html: string,
+  branding: EmailBranding,
 ): Promise<{ ok: boolean; id?: string; error?: string }> {
   try {
-    // Dynamisk import for å unngå sirkulær import
     const { sendTransactionalEmail } = await import("./transactional-email-service.js");
     const r = await sendTransactionalEmail({
       to, subject, html,
       text: html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
-      fromLabel: "Leadgrid",
+      fromLabel: branding.from_name,
+      fromAddress: branding.from_email,
+      replyTo: branding.reply_to_email,
       kind: "leadgrid_client_notification",
     });
     if (r.sent) return { ok: true, id: r.messageId ?? undefined };
@@ -237,24 +314,57 @@ async function sendEmail(
   }
 }
 
-function htmlBody(data: NotificationData, body: string): string {
+function htmlBody(data: NotificationData, body: string, brand: EmailBranding): string {
   const portal = data.portalToken
-    ? `${PORTAL_BASE}/portal/${data.portalToken}` : null;
+    ? `${PORTAL_BASE}/c/${data.portalToken}` : null;
+
+  const logoBlock = brand.brand_logo_url
+    ? `<img src="${brand.brand_logo_url}" alt="${brand.brand_name}"
+            style="max-height:48px; margin-bottom:16px;" />`
+    : `<div style="font-weight:700; font-size:18px; color:${brand.brand_primary_color};
+                    margin-bottom:16px;">${brand.brand_name}</div>`;
+
+  const signature = brand.sender_full_name ? `
+    <div style="margin-top:24px; padding-top:16px;
+                border-top:1px solid #eee; color:#444; font-size:13px;">
+      Mvh,<br/>
+      <strong>${brand.sender_full_name}</strong>
+      ${brand.sender_title ? `<br/>${brand.sender_title}` : ""}
+      ${brand.sender_email ? `<br/><a href="mailto:${brand.sender_email}"
+                                    style="color:${brand.brand_primary_color};">${brand.sender_email}</a>` : ""}
+      ${brand.sender_phone ? `<br/>${brand.sender_phone}` : ""}
+      <br/><strong style="color:${brand.brand_primary_color};">${brand.brand_name}</strong>
+    </div>` : "";
+
+  const customFooter = brand.footer_html ?? "";
+  const address = brand.footer_address
+    ? `<div style="margin-top:8px;">${brand.footer_address}</div>` : "";
+
   return `
-<div style="font-family: -apple-system,BlinkMacSystemFont,sans-serif; max-width:560px; margin:0 auto; padding:24px;">
-  <h2 style="color:#0a0512; margin-bottom:12px;">${SUBJECT_PER_EVENT[data.event](data)}</h2>
-  <p style="color:#444; line-height:1.55;">${body}</p>
+<div style="font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+            max-width:560px; margin:0 auto; padding:24px; background:#fff;">
+  ${logoBlock}
+  <h2 style="color:#0a0512; margin-bottom:12px; font-size:20px;">
+    ${SUBJECT_PER_EVENT[data.event](data)}
+  </h2>
+  <p style="color:#333; line-height:1.55; font-size:15px;">${body}</p>
   ${portal ? `
   <div style="margin:24px 0;">
-    <a href="${portal}" style="display:inline-block; background:#a78bfa; color:#0a0512;
-        padding:12px 24px; border-radius:8px; text-decoration:none; font-weight:700;">
+    <a href="${portal}" style="display:inline-block; background:${brand.brand_primary_color};
+        color:#0a0512; padding:12px 24px; border-radius:8px;
+        text-decoration:none; font-weight:700;">
       Åpne klient-portalen
     </a>
   </div>` : ""}
-  <p style="color:#888; font-size:12px; margin-top:32px;">
-    Dette er en automatisk melding fra Leadgrid.
-    ${portal ? `<br/><a href="${portal}/notifications" style="color:#888;">Endre varsels-innstillingene</a>` : ""}
-  </p>
+  ${signature}
+  <div style="margin-top:32px; padding-top:16px; border-top:1px solid #eee;
+              color:#888; font-size:11px; line-height:1.5;">
+    ${customFooter}
+    ${address}
+    ${portal ? `<div style="margin-top:8px;">
+      <a href="${portal}/notifications" style="color:#888;">Endre varsels-innstillingene</a>
+    </div>` : ""}
+  </div>
 </div>`.trim();
 }
 
@@ -311,10 +421,12 @@ export async function notifyClient(
   let attempted = 0;
   let sent = 0;
 
-  // 2. E-post
+  // 2. E-post (m/ org-branding)
   if (prefs.notify_email && prefs.contact_email) {
     attempted++;
-    const res = await sendEmail(prefs.contact_email, subject, htmlBody(data, body));
+    const branding = await getEmailBranding(pool, data.customerId);
+    const res = await sendEmail(prefs.contact_email, subject,
+                                  htmlBody(data, body, branding), branding);
     if (res.ok) { sent++; channels.push("email"); }
     await logSend(pool, data.customerId, "email", data.event,
                    prefs.contact_email, subject, body,

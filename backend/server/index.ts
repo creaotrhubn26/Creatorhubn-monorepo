@@ -563,6 +563,8 @@ import { registerPartnerVerificationRoutes } from "./partner-verification-routes
 import { registerLeadgridOnboardingRoutes } from "./leadgrid-onboarding-routes.js";
 import { registerLeadgridOverageBillingRoutes } from "./leadgrid-overage-billing.js";
 import { registerClientNotificationPrefsRoutes } from "./client-notification-prefs-routes.js";
+import { registerWaTemplatesAdminRoutes } from "./wa-templates-admin-routes.js";
+import { registerLeadgridEmailBrandingRoutes } from "./leadgrid-email-branding-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24390,6 +24392,10 @@ registerLeadgridOnboardingRoutes({ app, pool, activeSessions });
 registerLeadgridOverageBillingRoutes({ app, pool, activeSessions });
 // Leadgrid klient-varsels-prefs (e-post/SMS/WhatsApp via Twilio)
 registerClientNotificationPrefsRoutes({ app, pool, activeSessions });
+// Super-admin: administrere WhatsApp-templates direkte fra appen
+registerWaTemplatesAdminRoutes({ app, pool, activeSessions });
+// Super-admin: e-post-branding per org (signatur, logo, farger, footer)
+registerLeadgridEmailBrandingRoutes({ app, pool, activeSessions });
 // Håndhev org-status (paused/suspended) på alle Leadgrid-rutene.
 // Bypass for super_admin er ON som default.
 app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));
