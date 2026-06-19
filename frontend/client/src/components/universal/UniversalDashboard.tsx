@@ -7886,14 +7886,25 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       }
     }}
       >
-        <DialogTitle sx={{ 
-          textAlign: 'center', 
+        <DialogTitle sx={{
+          textAlign: 'center',
           pb: 1,
+          position: 'relative',
           background: `linear-gradient(135deg, ${customBranding.color}15 0%, ${customBranding.color}05 100%)`
     }}>
           <Typography variant="h5" component="div" sx={{ fontWeight: 600, color: theming.colors.primary }}>
             Opprett nytt prosjekt
           </Typography>
+          <IconButton
+            aria-label="Lukk"
+            onClick={() => {
+              setShowProjectCreation(false);
+              setShowProjectModal(false);
+            }}
+            sx={{ position: 'absolute', right: 8, top: 8, color: 'rgba(246,242,234,0.7)' }}
+          >
+            <Close />
+          </IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           {(showProjectCreation || showProjectModal) && (
