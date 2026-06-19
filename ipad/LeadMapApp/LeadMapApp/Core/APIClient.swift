@@ -364,6 +364,22 @@ actor APIClient {
         )
     }
 
+    // MARK: - Min profil (PR #761+)
+
+    /// Hent min egen profil (de 4 påkrevde feltene: avatar/e-post/telefon/profesjon).
+    func fetchMyProfile() async throws -> MyProfileResponse {
+        try await get("/api/admin-room/lead-map/me/profile")
+    }
+
+    /// Patch én eller flere profil-felter.
+    func patchMyProfile(_ updates: [String: String?]) async throws -> MyProfileResponse {
+        var body: [String: Any] = [:]
+        for (k, v) in updates {
+            body[k] = v ?? NSNull()
+        }
+        return try await patchReturning("/api/admin-room/lead-map/me/profile", body: body)
+    }
+
     // MARK: - Pitch Deck Studio
 
     /// Lett-vekts sjekk for prosjekt-kort: har org et klart deck?
@@ -688,6 +704,192 @@ actor APIClient {
         )
     }
 
+    // ============================================================
+    // MARK: - Leadgrid v2 (web Leadgrid-paritet)
+    //
+    // Disse går mot /api/leadgrid/* endepunkter, som er det nyere
+    // Leadgrid-system m/ hierarkisk tildeling, won/lost m/ detaljer,
+    // sett-tracking, scheduled reports og notification-prefs.
+    // ============================================================
+
+    // -- Status-flow ----------------------------------------------
+
+    /// Endre status. For won må man sende beløp; for lost må man sende reason.
+    func updateLeadgridStatus(
+        customerId: String, toStatus: String, note: String? = nil,
+        wonAmountOere: Int? = nil, wonRecurringOere: Int? = nil, wonNote: String? = nil,
+        lostReason: String? = nil, lostReasonDetail: String? = nil
+    ) async throws {
+        var body: [String: Any] = ["to_status": toStatus]
+        if let n = note { body["note"] = n }
+        if let v = wonAmountOere { body["won_amount_oere"] = v }
+        if let v = wonRecurringOere { body["won_recurring_oere"] = v }
+        if let v = wonNote { body["won_note"] = v }
+        if let v = lostReason { body["lost_reason"] = v }
+        if let v = lostReasonDetail { body["lost_reason_detail"] = v }
+        try await put("/api/leadgrid/customers/\(customerId)/status", body: body)
+    }
+
+    func fetchLeadgridStatusHistory(customerId: String) async throws -> StatusHistoryResponse {
+        try await get("/api/leadgrid/customers/\(customerId)/status-history")
+    }
+
+    // -- Hierarkisk tildeling -------------------------------------
+
+    /// Henter tildelbare brukere med workload-info.
+    /// role-parameter: "team_leader" | "rep" | "all"
+    func fetchAssignableUsers(role: String = "all") async throws -> AssignableUsersResponse {
+        try await get("/api/leadgrid/assignable-users?role=\(role)")
+    }
+
+    func assignTeamLeader(
+        customerId: String, teamLeaderUserId: String, note: String? = nil
+    ) async throws {
+        var body: [String: Any] = ["team_leader_user_id": teamLeaderUserId]
+        if let n = note { body["note"] = n }
+        try await post("/api/leadgrid/customers/\(customerId)/assign-team-leader", body: body)
+    }
+
+    func assignRep(
+        customerId: String, repUserId: String, note: String? = nil
+    ) async throws {
+        var body: [String: Any] = ["rep_user_id": repUserId]
+        if let n = note { body["note"] = n }
+        try await post("/api/leadgrid/customers/\(customerId)/assign-rep", body: body)
+    }
+
+    func unassign(customerId: String, unassignType: String = "rep") async throws {
+        try await post("/api/leadgrid/customers/\(customerId)/unassign",
+                        body: ["unassign_type": unassignType])
+    }
+
+    // -- Sett-tracking --------------------------------------------
+
+    /// Marker en lead som sett (kalles automatisk når selger åpner LeadDetailView).
+    func markLeadSeen(customerId: String) async throws {
+        try await post("/api/leadgrid/customers/\(customerId)/mark-seen", body: [:])
+    }
+
+    func fetchAssignmentStatus(customerId: String) async throws -> AssignmentStatusResponse {
+        try await get("/api/leadgrid/customers/\(customerId)/assignment-status")
+    }
+
+    // -- Mine tildelinger -----------------------------------------
+
+    func fetchMyAssignments() async throws -> MyAssignmentsResponse {
+        try await get("/api/leadgrid/my-assignments")
+    }
+
+    // -- Lead-detail ----------------------------------------------
+
+    func fetchLeadgridCustomer(customerId: String) async throws -> LeadgridCustomerDetail {
+        try await get("/api/leadgrid/customers/\(customerId)")
+    }
+
+    // -- Won/Lost-stats -------------------------------------------
+
+    /// period: "7d" | "30d" | "90d"
+    func fetchWonLostStats(period: String = "30d") async throws -> WonLostStatsResponse {
+        try await get("/api/leadgrid/won-lost-stats?period=\(period)")
+    }
+
+    // -- Notification-prefs (intern) ------------------------------
+
+    func fetchMyLeadgridNotificationPrefs() async throws -> LeadgridNotificationPrefs {
+        try await get("/api/leadgrid/my-notification-prefs")
+    }
+
+    func updateMyLeadgridNotificationPrefs(_ prefs: [String: Any]) async throws {
+        try await put("/api/leadgrid/my-notification-prefs", body: prefs)
+    }
+
+    // -- In-app notifications -------------------------------------
+
+    func fetchMyLeadgridNotifications() async throws -> LeadgridNotificationsResponse {
+        try await get("/api/leadgrid/my-notifications")
+    }
+
+    func markLeadgridNotificationsRead(ids: [String] = []) async throws {
+        try await post("/api/leadgrid/my-notifications/mark-read",
+                        body: ["ids": ids])
+    }
+
+    // -- Schedulerte rapporter ------------------------------------
+
+    func fetchScheduledReports() async throws -> ScheduledReportsResponse {
+        try await get("/api/leadgrid/scheduled-reports")
+    }
+
+    func createScheduledReport(_ payload: [String: Any]) async throws {
+        try await post("/api/leadgrid/scheduled-reports", body: payload)
+    }
+
+    func updateScheduledReport(id: String, payload: [String: Any]) async throws {
+        try await put("/api/leadgrid/scheduled-reports/\(id)", body: payload)
+    }
+
+    func deleteScheduledReport(id: String) async throws {
+        try await delete("/api/leadgrid/scheduled-reports/\(id)")
+    }
+
+    func sendScheduledReportNow(id: String) async throws {
+        try await post("/api/leadgrid/scheduled-reports/\(id)/send-now", body: [:])
+    }
+
+    func autoCreateReportsPerPerson() async throws -> AutoCreateReportsResponse {
+        try await post(
+            "/api/leadgrid/scheduled-reports/auto-create-for-team",
+            body: ["frequency": "weekly", "day_of_week": 1, "time_of_day": "08:00",
+                    "period_days": 7, "report_type": "summary",
+                    "include_reps": true, "include_team_leaders": true]
+        )
+    }
+
+    // -- Klient-onboarding for varslings-kanaler (PR #737) --------
+
+    func fetchOnboardingChannelState() async throws -> ChannelOnboardingStateResponse {
+        try await get("/api/leadgrid/onboarding/channels/state")
+    }
+
+    func selectOnboardingModel(_ model: String) async throws {
+        try await put("/api/leadgrid/onboarding/channels/model",
+                       body: ["model": model])
+    }
+
+    func advanceOnboardingStep(fromStep: String) async throws -> AdvanceOnboardingResponse {
+        try await post("/api/leadgrid/onboarding/channels/advance",
+                        body: ["from_step": fromStep])
+    }
+
+    /// Send test-melding (e-post + WA) til en gitt mottaker via notifyClient.
+    func sendOnboardingTest(
+        phone: String?, email: String?, name: String?
+    ) async throws -> OnboardingTestResponse {
+        var body: [String: Any] = [:]
+        if let phone { body["phone"] = phone }
+        if let email { body["email"] = email }
+        if let name { body["name"] = name }
+        return try await post("/api/leadgrid/onboarding/channels/test-send",
+                                body: body)
+    }
+
+    func activateOnboarding() async throws {
+        try await post("/api/leadgrid/onboarding/channels/activate", body: [:])
+    }
+
+    // -- CSV-eksport (returnerer rådata) ---------------------------
+
+    /// Returnerer CSV-data klar for å vises i UIActivityViewController/iOS Share.
+    func exportLeadsCsv(period: String = "30d", status: String = "all") async throws -> Data {
+        var req = makeRequest(
+            "/api/leadgrid/leads/export?format=csv&period=\(period)&status=\(status)",
+            method: "GET",
+        )
+        let (data, response) = try await session.data(for: req)
+        try Self.validate(response)
+        return data
+    }
+
     // MARK: - Internal
 
     private func makeRequest(_ path: String, method: String = "GET") -> URLRequest {
@@ -741,6 +943,21 @@ actor APIClient {
         let req = makeRequest(path, method: "DELETE")
         let (_, response) = try await session.data(for: req)
         try Self.validate(response)
+    }
+
+    private func put(_ path: String, body: [String: Any]) async throws {
+        var req = makeRequest(path, method: "PUT")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, response) = try await session.data(for: req)
+        try Self.validate(response)
+    }
+
+    private func put<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
+        var req = makeRequest(path, method: "PUT")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: req)
+        try Self.validate(response)
+        return try Self.decoder.decode(T.self, from: data)
     }
 
     private static func validate(_ response: URLResponse) throws {

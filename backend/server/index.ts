@@ -519,6 +519,7 @@ import { registerLeadMapTeamRoutes } from "./lead-map-team-routes.js";
 import { registerLeadMapOrgRoutes } from "./lead-map-org-routes.js";
 import { registerLeadMapProfileRoutes } from "./lead-map-profile-routes.js";
 import { registerLeadMapPermissionRoutes } from "./lead-map-permission-routes.js";
+import { registerLeadMapMeProfileRoutes } from "./lead-map-me-profile-routes.js";
 import { registerLeadMapLogoRoutes } from "./lead-map-logo-routes.js";
 import { registerMePermissionsRoute } from "./lead-map-rbac-helper.js";
 import { registerLeadMapWorkloadRoutes } from "./lead-map-workload-routes.js";
@@ -24313,6 +24314,7 @@ registerLeadMapOrgRoutes({ app, pool, activeSessions });
 registerLeadMapProfileRoutes({ app, pool, activeSessions });
 // Lead Map ↔ Granulær tillatelses-styring (RBAC + per-bruker overstyringer)
 registerLeadMapPermissionRoutes({ app, pool, activeSessions });
+registerLeadMapMeProfileRoutes({ app, pool, activeSessions });
 // Lead Map ↔ Logo-fetch fra bedrifts-website (favicon/og-image/apple-touch)
 registerLeadMapLogoRoutes({ app, pool, activeSessions });
 // /me/permissions — effektive tillatelser for innlogget bruker i org

@@ -93,6 +93,85 @@ final class AppState {
     var unreadNotificationsCount: Int = 0
     private var notificationsPollTask: Task<Void, Never>?
 
+    // ── Leadgrid v2 (PR #730+) ─────────────────────────────────
+    /// Uleste in-app Leadgrid-varsler. Polles parallelt m/ lead-map-varsler.
+    var leadgridUnreadCount: Int = 0
+    /// Siste 50 Leadgrid-varsler. Caches for inbox-dropdown.
+    var leadgridNotifications: [LeadgridNotification] = []
+    private var leadgridPollTask: Task<Void, Never>?
+
+    /// Sheet-presentation-state for Leadgrid-flater.
+    var presentingLeadgridInbox = false
+    var presentingLeadgridDashboard = false
+    var presentingLeadgridReports = false
+    var presentingLeadgridNotifications = false
+    var presentingLeadgridPrefs = false
+    var presentingLeadgridExport = false
+
+    /// Refresh in-app Leadgrid-varsler. Kalles av poll-task + manuelt
+    /// fra bell-pull-down.
+    func refreshLeadgridNotifications() async {
+        guard let api else { return }
+        do {
+            let resp = try await api.fetchMyLeadgridNotifications()
+            self.leadgridNotifications = resp.items
+            self.leadgridUnreadCount = resp.unreadCount
+        } catch {
+            // Stille — endepunktet kan returnere 401 hvis brukeren ikke har
+            // Leadgrid-konto enda; det er forventet.
+            print("[AppState] leadgrid notifications fetch failed: \(error)")
+        }
+    }
+
+    /// Marker varsler som lest. Tom liste = alle.
+    func markLeadgridNotificationsRead(ids: [String] = []) async {
+        guard let api else { return }
+        do {
+            try await api.markLeadgridNotificationsRead(ids: ids)
+            await refreshLeadgridNotifications()
+        } catch {
+            print("[AppState] mark-read failed: \(error)")
+        }
+    }
+
+    /// Start polling for Leadgrid-varsler hvert 60s. Stoppes ved logout.
+    func startLeadgridPolling() {
+        leadgridPollTask?.cancel()
+        leadgridPollTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                await self?.refreshLeadgridNotifications()
+                try? await Task.sleep(nanoseconds: 60 * 1_000_000_000)
+            }
+        }
+    }
+
+    func stopLeadgridPolling() {
+        leadgridPollTask?.cancel()
+        leadgridPollTask = nil
+    }
+
+    /// Håndter et APNS-varsel som ble tap-pet. Backend sender 'event_type'
+    /// + valgfri 'lead_id' / 'deep_link'. Vi setter relevant presentation-
+    /// flag så LeadgridHubView (eller fallback i RootView) viser sheet.
+    func handleLeadgridNotificationTap(_ payload: [String: String]) {
+        // Trig refresh av notifikasjons-listen så badge-counter er aktuell.
+        Task { await refreshLeadgridNotifications() }
+
+        let eventType = payload["event_type"] ?? ""
+        switch eventType {
+        case "lead_assigned_as_team_leader",
+              "lead_assigned_as_rep",
+              "lead_assigned_on_accept":
+            // Vis innboks slik at brukeren ser den nye tildelingen.
+            presentingLeadgridNotifications = true
+        case "lead_won", "lead_lost", "lead_status_change":
+            // Lås på dashboard så de ser overordnet status.
+            presentingLeadgridDashboard = true
+        default:
+            presentingLeadgridNotifications = true
+        }
+    }
+
     // ── Kart-annotasjoner (PR #629) ────────────────────────────
     var annotations: [MapAnnotation] = []
     var canCreateAnnotations: Bool = false

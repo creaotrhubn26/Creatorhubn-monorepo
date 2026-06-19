@@ -25,7 +25,6 @@ import PercentIcon from "@mui/icons-material/Percent";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import IconButton from "@mui/material/IconButton";
-import Tooltip from "@mui/material/Tooltip";
 import { LeadExportDialog } from "./LeadExportDialog";
 
 interface Stats {
