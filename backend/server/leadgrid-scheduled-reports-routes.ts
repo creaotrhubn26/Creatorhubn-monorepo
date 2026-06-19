@@ -85,10 +85,36 @@ interface SummaryData {
 }
 
 // ============================================================
+// Scope-filter (org / team / individual)
+// ============================================================
+interface ScopeFilter {
+  scope: "org" | "team" | "individual";
+  targetTeamLeaderId?: string | null;
+  targetUserId?: string | null;
+}
+
+function buildScopeClause(scope: ScopeFilter, paramStart: number): {
+  clause: string; params: any[];
+} {
+  if (scope.scope === "individual" && scope.targetUserId) {
+    return { clause: ` AND c.assigned_user_id = $${paramStart}`,
+              params: [scope.targetUserId] };
+  }
+  if (scope.scope === "team" && scope.targetTeamLeaderId) {
+    // Team-scope: leads hvor TL er teamlederen, ELLER rep er noen som
+    // TL har tildelt på tidligere leads
+    return { clause: ` AND c.assigned_team_leader_id = $${paramStart}`,
+              params: [scope.targetTeamLeaderId] };
+  }
+  return { clause: "", params: [] };
+}
+
+// ============================================================
 // Lead-liste til CSV (for 'leads_list' og 'both')
 // ============================================================
 async function buildLeadsCsv(
   pool: Pool, orgId: string, periodDays: number, statusFilter: string,
+  scopeFilter: ScopeFilter = { scope: "org" },
 ): Promise<string> {
   let statusClause = "";
   if (statusFilter === "won") statusClause = " AND c.status = 'won'";
@@ -98,6 +124,8 @@ async function buildLeadsCsv(
   } else if (statusFilter === "active") {
     statusClause = " AND c.status NOT IN ('archived')";
   }
+  const scopeBuilt = buildScopeClause(scopeFilter, 3);
+  statusClause += scopeBuilt.clause;
 
   const r = await pool.query(
     `SELECT c.name, c.email, c.phone, c.website_url,
@@ -119,7 +147,7 @@ async function buildLeadsCsv(
             > now() - ($2::int * INTERVAL '1 day')
         ${statusClause}
       ORDER BY c.created_at DESC LIMIT 2000`,
-    [orgId, periodDays],
+    [orgId, periodDays, ...scopeBuilt.params],
   );
 
   const escape = (v: any): string => {
@@ -156,7 +184,11 @@ async function buildLeadsCsv(
   return lines.join("\r\n");
 }
 
-async function buildSummary(pool: Pool, orgId: string, periodDays: number): Promise<SummaryData> {
+async function buildSummary(
+  pool: Pool, orgId: string, periodDays: number,
+  scopeFilter: ScopeFilter = { scope: "org" },
+): Promise<SummaryData> {
+  const scope = buildScopeClause(scopeFilter, 3);
   const statsR = await pool.query<any>(
     `WITH base AS (
        SELECT c.* FROM crm_customers c
@@ -164,6 +196,7 @@ async function buildSummary(pool: Pool, orgId: string, periodDays: number): Prom
        WHERE p.organization_id::text = $1
          AND COALESCE(c.won_at, c.lost_at, c.status_changed_at)
              > now() - ($2::int * INTERVAL '1 day')
+         ${scope.clause}
      )
      SELECT
        COUNT(*) FILTER (WHERE status='won') AS won_count,
@@ -171,7 +204,7 @@ async function buildSummary(pool: Pool, orgId: string, periodDays: number): Prom
        COALESCE(SUM(won_amount_oere) FILTER (WHERE status='won'), 0) AS total_won_oere,
        COALESCE(SUM(won_recurring_oere) FILTER (WHERE status='won'), 0) AS total_recurring_oere
       FROM base`,
-    [orgId, periodDays],
+    [orgId, periodDays, ...scope.params],
   );
   const stats = statsR.rows[0];
   const winRate = Number(stats.won_count)
@@ -182,8 +215,9 @@ async function buildSummary(pool: Pool, orgId: string, periodDays: number): Prom
      JOIN casting_projects p ON p.id = c.project_id
      WHERE p.organization_id::text = $1 AND status='lost'
        AND lost_at > now() - ($2::int * INTERVAL '1 day')
+       ${scope.clause}
      GROUP BY lost_reason ORDER BY n DESC LIMIT 5`,
-    [orgId, periodDays],
+    [orgId, periodDays, ...scope.params],
   );
 
   const repR = await pool.query(
@@ -196,10 +230,11 @@ async function buildSummary(pool: Pool, orgId: string, periodDays: number): Prom
       WHERE p.organization_id::text = $1
         AND c.assigned_user_id IS NOT NULL
         AND COALESCE(c.won_at, c.lost_at) > now() - ($2::int * INTERVAL '1 day')
+        ${scope.clause}
       GROUP BY u.first_name, u.last_name
       HAVING COUNT(*) FILTER (WHERE c.status='won') > 0
       ORDER BY won_amount_oere DESC LIMIT 5`,
-    [orgId, periodDays],
+    [orgId, periodDays, ...scope.params],
   );
 
   const funnelR = await pool.query(
@@ -214,8 +249,9 @@ async function buildSummary(pool: Pool, orgId: string, periodDays: number): Prom
       FROM crm_customers c
       JOIN casting_projects p ON p.id = c.project_id
      WHERE p.organization_id::text = $1
-       AND c.created_at > now() - ($2::int * INTERVAL '1 day')`,
-    [orgId, periodDays],
+       AND c.created_at > now() - ($2::int * INTERVAL '1 day')
+       ${scope.clause}`,
+    [orgId, periodDays, ...scope.params],
   );
 
   return {
@@ -467,7 +503,8 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
               frequency, day_of_week, day_of_month, time_of_day, timezone,
               is_active, last_sent_at::text, last_send_status, last_send_error,
               next_send_at::text, created_at::text, updated_at::text,
-              created_by_user_id
+              created_by_user_id,
+              scope, target_team_leader_id, target_user_id, auto_send_to_target
          FROM leadgrid_scheduled_reports
         WHERE organization_id::text = $1
         ORDER BY is_active DESC, name`,
@@ -496,17 +533,108 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
          (organization_id, created_by_user_id, name, report_type, period_days,
           status_filter, recipient_user_ids, recipient_emails,
           frequency, day_of_week, day_of_month, time_of_day, timezone,
-          is_active, next_send_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::text[], $8::text[], $9, $10, $11, $12, $13, $14, $15)
+          is_active, next_send_at,
+          scope, target_team_leader_id, target_user_id, auto_send_to_target)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::text[], $8::text[], $9, $10, $11, $12, $13, $14, $15,
+               $16, $17, $18, $19)
        RETURNING id::text`,
       [orgId, s.userId, b.name, b.report_type ?? "summary", b.period_days ?? 7,
        b.status_filter ?? "all",
        b.recipient_user_ids ?? [], b.recipient_emails ?? [],
        b.frequency ?? "weekly", b.day_of_week ?? 1, b.day_of_month ?? null,
        b.time_of_day ?? "08:00", b.timezone ?? "Europe/Oslo",
-       b.is_active !== false, nextSendAt],
+       b.is_active !== false, nextSendAt,
+       b.scope ?? "org", b.target_team_leader_id ?? null, b.target_user_id ?? null,
+       b.auto_send_to_target !== false],
     );
     res.json({ ok: true, id: r.rows[0].id });
+  });
+
+  // ============================================================
+  // AUTO-CREATE: én subscription per rep + per teamleder i org
+  // ============================================================
+  app.post("/api/leadgrid/scheduled-reports/auto-create-for-team", async (req, res) => {
+    const s = getSession(req, activeSessions);
+    if (!s) return res.status(401).json({ error: "Ikke innlogget" });
+    const orgId = await getOrgId(pool, s.userId);
+    if (!orgId) return res.status(403).json({ error: "Ikke i noen org" });
+
+    // Sjekk at brukeren er markedssjef+
+    const roleR = await pool.query<{ role: string }>(
+      `SELECT role FROM organization_members
+        WHERE user_id = $1 AND organization_id = $2`,
+      [s.userId, orgId],
+    );
+    if (!["owner","admin","markedssjef","salgssjef"].includes(roleR.rows[0]?.role ?? "")) {
+      return res.status(403).json({ error: "Krever markedssjef-rolle eller høyere" });
+    }
+
+    const b = req.body ?? {};
+    const frequency = b.frequency ?? "weekly";
+    const dayOfWeek = b.day_of_week ?? 1; // Mandag
+    const timeOfDay = b.time_of_day ?? "08:00";
+    const periodDays = b.period_days ?? 7;
+    const reportType = b.report_type ?? "summary";
+    const includeReps = b.include_reps !== false;
+    const includeTeamLeaders = b.include_team_leaders !== false;
+
+    const result = { created: 0, skipped: 0, errors: [] as string[] };
+    const computeNext = computeNextSendAt({ frequency, day_of_week: dayOfWeek,
+                                             day_of_month: null, time_of_day: timeOfDay });
+
+    // Hent alle reps + teamledere i org-en
+    const usersR = await pool.query<{
+      user_id: string; role: string; first_name: string | null; last_name: string | null;
+    }>(
+      `SELECT om.user_id, om.role, u.first_name, u.last_name
+         FROM organization_members om
+         JOIN users u ON u.id = om.user_id
+        WHERE om.organization_id = $1
+          AND om.role = ANY($2::text[])`,
+      [orgId,
+       [...(includeReps ? ["salgskonsulent", "promotor"] : []),
+        ...(includeTeamLeaders ? ["teamleder"] : [])]],
+    );
+
+    for (const user of usersR.rows) {
+      try {
+        const name = user.role === "teamleder"
+          ? `Team-rapport: ${[user.first_name, user.last_name].filter(Boolean).join(" ")}`
+          : `Min rapport: ${[user.first_name, user.last_name].filter(Boolean).join(" ")}`;
+        const scope = user.role === "teamleder" ? "team" : "individual";
+
+        // Idempotent: hopp over hvis finnes
+        const exists = await pool.query<{ id: string }>(
+          `SELECT id::text FROM leadgrid_scheduled_reports
+            WHERE organization_id = $1
+              AND scope = $2
+              AND ${scope === "team" ? "target_team_leader_id" : "target_user_id"} = $3`,
+          [orgId, scope, user.user_id],
+        );
+        if (exists.rows.length > 0) { result.skipped++; continue; }
+
+        await pool.query(
+          `INSERT INTO leadgrid_scheduled_reports
+             (organization_id, created_by_user_id, name, report_type, period_days,
+              status_filter, recipient_user_ids, recipient_emails,
+              frequency, day_of_week, time_of_day,
+              is_active, next_send_at,
+              scope, target_team_leader_id, target_user_id, auto_send_to_target)
+           VALUES ($1, $2, $3, $4, $5, 'all', $6::text[], '{}', $7, $8, $9,
+                   TRUE, $10, $11, $12, $13, TRUE)`,
+          [orgId, s.userId, name, reportType, periodDays,
+           [user.user_id],
+           frequency, dayOfWeek, timeOfDay, computeNext,
+           scope,
+           scope === "team" ? user.user_id : null,
+           scope === "individual" ? user.user_id : null],
+        );
+        result.created++;
+      } catch (e: any) {
+        result.errors.push(`${user.user_id}: ${e?.message ?? e}`);
+      }
+    }
+    res.json({ ok: true, ...result });
   });
 
   app.put("/api/leadgrid/scheduled-reports/:id", async (req, res) => {
@@ -594,17 +722,30 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
 
     try {
       const dueR = await pool.query<any>(
-        `SELECT * FROM leadgrid_scheduled_reports
-          WHERE is_active = TRUE AND next_send_at <= now()
-          ORDER BY next_send_at LIMIT 50`,
+        `SELECT s.*,
+                tu.email AS target_user_email,
+                tl.email AS target_team_leader_email
+           FROM leadgrid_scheduled_reports s
+           LEFT JOIN users tu ON tu.id = s.target_user_id
+           LEFT JOIN users tl ON tl.id = s.target_team_leader_id
+          WHERE s.is_active = TRUE AND s.next_send_at <= now()
+          ORDER BY s.next_send_at LIMIT 50`,
       );
       results.due = dueR.rows.length;
 
       for (const sub of dueR.rows) {
         try {
           const branding = await getOrgBranding(pool, sub.organization_id);
-          const periodLabel = `Periode: siste ${sub.period_days} dager`;
+          const scopeLabel = sub.scope === "individual" ? "Min rapport"
+                           : sub.scope === "team" ? "Team-rapport"
+                           : "Org-rapport";
+          const periodLabel = `${scopeLabel} · Periode: siste ${sub.period_days} dager`;
           const datedSuffix = new Date().toISOString().slice(0, 10);
+          const scopeFilter: ScopeFilter = {
+            scope: sub.scope ?? "org",
+            targetTeamLeaderId: sub.target_team_leader_id,
+            targetUserId: sub.target_user_id,
+          };
 
           // Bygg vedlegg avhengig av report_type
           const attachments: Array<{ filename: string; content: Buffer | string;
@@ -612,7 +753,7 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
           let summary: SummaryData | null = null;
 
           if (sub.report_type === "summary" || sub.report_type === "both") {
-            summary = await buildSummary(pool, sub.organization_id, sub.period_days);
+            summary = await buildSummary(pool, sub.organization_id, sub.period_days, scopeFilter);
             const pdf = await renderSummaryPdfToBuffer(summary, branding, periodLabel);
             attachments.push({
               filename: `salgs-rapport-${datedSuffix}.pdf`,
@@ -623,7 +764,7 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
           if (sub.report_type === "leads_list" || sub.report_type === "both") {
             const csv = await buildLeadsCsv(
               pool, sub.organization_id, sub.period_days,
-              sub.status_filter ?? "all",
+              sub.status_filter ?? "all", scopeFilter,
             );
             attachments.push({
               filename: `leads-${datedSuffix}.csv`,
@@ -634,7 +775,7 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
 
           // Hvis summary mangler (kun leads_list), bygg én for e-post-preview
           if (!summary) {
-            summary = await buildSummary(pool, sub.organization_id, sub.period_days);
+            summary = await buildSummary(pool, sub.organization_id, sub.period_days, scopeFilter);
           }
 
           const totalWonKr = `${(Number(summary.total_won_oere) / 100).toLocaleString("no-NO")} kr`;
@@ -649,7 +790,7 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
             totalWonKr, winRatePct, filename: filenameLabel,
           });
 
-          // Hent e-poster: brukere + ekstra
+          // Hent e-poster: brukere + ekstra + auto-send-to-target
           const recipientEmails = new Set<string>();
           for (const e of (sub.recipient_emails ?? [])) {
             if (e) recipientEmails.add(e);
@@ -660,6 +801,15 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
               [sub.recipient_user_ids],
             );
             for (const u of usersR.rows) if (u.email) recipientEmails.add(u.email);
+          }
+          // Auto-send til target hvis flagget er på (individual → target_user,
+          //                                          team → target_team_leader)
+          if (sub.auto_send_to_target) {
+            if (sub.scope === "individual" && sub.target_user_email) {
+              recipientEmails.add(sub.target_user_email);
+            } else if (sub.scope === "team" && sub.target_team_leader_email) {
+              recipientEmails.add(sub.target_team_leader_email);
+            }
           }
 
           let anySuccess = false;
