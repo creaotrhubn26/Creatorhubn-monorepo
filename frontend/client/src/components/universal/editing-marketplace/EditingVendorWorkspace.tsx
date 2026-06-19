@@ -36,6 +36,7 @@ import VerifiedUserIcon from "@mui/icons-material/VerifiedUser";
 import { apiRequest } from "@/lib/queryClient";
 import VendorProductManager from "../../vendor/VendorProductManager";
 import EditingJobChat from "./EditingJobChat";
+import PartnerProgramDashboard from "./PartnerProgramDashboard";
 import {
   t,
   pillarLabel,
@@ -187,6 +188,9 @@ export default function EditingVendorWorkspace({ userId }: Props) {
 
   return (
     <Box>
+      {/* Partnerprogram-/verifiserings-dashboard — alltid øverst */}
+      <PartnerProgramDashboard me={me} locale={locale} onStartVerification={() => setTab(1)} />
+
       <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
         {t("ws_title", locale)}
       </Typography>
