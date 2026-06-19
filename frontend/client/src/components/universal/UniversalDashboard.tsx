@@ -7909,7 +7909,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             // MUI-standard (hvite) Paper/Card/inputs i underkomponenter ble hvite.
             // Kaskade dark-tema her dekker hele modal-innholdet (memory/pris/shot osv.).
             '& .MuiPaper-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7' },
-            '& .MuiCard-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7', borderColor: `${customBranding.color}26` },
+            '& .MuiCard-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7', borderColor: `${customBranding.color}33`, borderRadius: 2.5, transition: 'border-color .2s ease, box-shadow .2s ease', '&:hover': { borderColor: `${customBranding.color}5c`, boxShadow: `0 4px 18px ${customBranding.color}1f` } },
             '& .MuiAccordion-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7' },
             '& .MuiTypography-colorTextSecondary, & .MuiTypography-body2': { color: 'rgba(237,240,247,0.66)' },
             '& .MuiOutlinedInput-root': { color: '#edf0f7', backgroundColor: 'rgba(255,255,255,0.04)', '& fieldset': { borderColor: `${customBranding.color}3d` }, '&:hover fieldset': { borderColor: `${customBranding.color}66` } },
