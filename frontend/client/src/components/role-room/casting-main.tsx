@@ -16,6 +16,11 @@ import LeadgridDeveloperApplicationPage from '@/pages/leadgrid-developer-applica
 import LeadgridPartnerWizardPage from '@/pages/leadgrid-partner-wizard';
 import LeadgridPartnerDashboardPage from '@/pages/leadgrid-partner-dashboard';
 import LeadgridMarketplacePage from '@/pages/leadgrid-marketplace';
+import BlogIndexPage from '@/pages/blog-index';
+import BlogPostPage from '@/pages/blog-post';
+import AgencyLandingPage from '@/pages/agency-landing';
+import AgencyFAQPage from '@/pages/agency-faq';
+import PitchDeckPage from '@/pages/pitch-deck';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
 import AgencyPortalView from './components/AgencyPortalView';
@@ -243,6 +248,29 @@ function CastingStandaloneAppContent() {
 
   if (isEducationPath) {
     return <RoleRoomEducationPartnershipPage locale={localeCtx.locale} />;
+  }
+
+  // Public marketing/SEO landing pages (agency, FAQ, pitch, blog). These live in
+  // pages/ but were only routed in App.tsx — which never loads on dedicated
+  // Role Room hosts (theroleroom.com) — so the footer/nav links were dead.
+  // Route them here, before the auth-gated fallback.
+  {
+    const publicPath = localeCtx.pathname.replace(/\/+$/, '') || '/';
+    if (publicPath === '/for-byraer' || publicPath === '/for-byråer' || publicPath === '/agencies') {
+      return <AgencyLandingPage />;
+    }
+    if (publicPath === '/faq') {
+      return <AgencyFAQPage />;
+    }
+    if (publicPath === '/pitch') {
+      return <PitchDeckPage />;
+    }
+    if (publicPath === '/blog') {
+      return <BlogIndexPage />;
+    }
+    if (/^\/blog\/[^/]+$/.test(publicPath)) {
+      return <BlogPostPage />;
+    }
   }
 
   return <CastingStandaloneRuntimeContent />;

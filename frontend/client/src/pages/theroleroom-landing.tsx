@@ -32,6 +32,7 @@ import MusicNoteOutlinedIcon from '@mui/icons-material/MusicNoteOutlined';
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
 import { useEffect, useState } from 'react';
 import LoginDialog from '@/components/role-room/components/LoginDialog';
+import BookDemoModal from '@/components/role-room/BookDemoModal';
 import {
   trackPageView,
   trackModalOpen,
@@ -239,6 +240,36 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
     });
   };
   const closeLogin = () => setLoginOpen(false);
+
+  // Book demo-modal — dedikert B2B-intake (erstatter /for-byraer#book-demo-anker).
+  const [bookDemoOpen, setBookDemoOpen] = useState(false);
+  const [bookDemoTrigger, setBookDemoTrigger] = useState('book_demo');
+  const openBookDemo = (trigger = 'book_demo') => {
+    setBookDemoTrigger(trigger);
+    setBookDemoOpen(true);
+    trackModalOpen({ modalName: 'book_demo', trigger });
+  };
+  const closeBookDemo = () => setBookDemoOpen(false);
+
+  // Dyplenking: ?signup=<persona> åpner commercial-onboarding (brukt av demo-
+  // konverterings-lenken fra Admin Room CRM), ?book_demo=1 åpner Book demo-modalen.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const signup = params.get('signup');
+      const validPersonas: LoginPersonaPrefill[] = [
+        'production_team', 'content_producer', 'education_institution', 'dance_studio', 'talents',
+      ];
+      if (signup && (validPersonas as string[]).includes(signup)) {
+        openLogin('landing', signup as LoginPersonaPrefill);
+      } else if (params.get('book_demo') || params.has('demo')) {
+        openBookDemo('deep_link');
+      }
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const handleLoginSuccess = () => {
     trackEvent('login_success', {
       login_variant: loginVariant,
@@ -339,14 +370,21 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
         onLogin={() => openLogin('landing')}
         onTalentsLogin={() => openLogin('landing', 'talents')}
       />
-      <Hero isMobile={isMobile} onLogin={() => openLogin('landing')} />
+      <Hero
+        isMobile={isMobile}
+        onLogin={() => openLogin('landing')}
+        onBookDemo={() => openBookDemo('hero')}
+      />
       <ManifestoStrip />
       <FlowSection />
       <VerticalsSection onLogin={(persona) => openLogin('landing', persona)} />
       <PillarsSection />
       <TrustStripFull />
       <BlogTeaserSection />
-      <FinalCTASection onLogin={() => openLogin('landing')} />
+      <FinalCTASection
+        onLogin={() => openLogin('landing')}
+        onBookDemo={() => openBookDemo('final_cta')}
+      />
       <Footer onAdminLogin={() => openLogin('admin')} />
       <LoginDialog
         open={loginOpen}
@@ -355,6 +393,7 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
         isLandingPage={loginVariant === 'landing'}
         initialPersona={loginPersona}
       />
+      <BookDemoModal open={bookDemoOpen} onClose={closeBookDemo} trigger={bookDemoTrigger} />
     </Box>
   );
 }
@@ -382,7 +421,12 @@ function TopNav({ onLogin, onTalentsLogin }: { onLogin: () => void; onTalentsLog
             href="/"
             sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, color: palette.textPrimary, textDecoration: 'none' }}
           >
-            <Box sx={{ width: 28, height: 28, borderRadius: 1.2, background: palette.accentGradient }} />
+            <Box
+              component="img"
+              src="/role-room-assets/TheRoleRoom_Logo.webp"
+              alt="The Role Room"
+              sx={{ height: 32, width: 'auto', objectFit: 'contain', display: 'block' }}
+            />
             <Typography sx={{ fontWeight: 800, fontSize: '1.04rem', letterSpacing: -0.3 }}>
               The Role Room
             </Typography>
@@ -454,7 +498,7 @@ function TopNav({ onLogin, onTalentsLogin }: { onLogin: () => void; onTalentsLog
 // ──────────────────────────────────────────────────────────────────
 // Hero — positioneringen dok seksjon 1.1 + 1.2
 // ──────────────────────────────────────────────────────────────────
-function Hero({ isMobile, onLogin }: { isMobile: boolean; onLogin: () => void }) {
+function Hero({ isMobile, onLogin, onBookDemo }: { isMobile: boolean; onLogin: () => void; onBookDemo: () => void }) {
   return (
     <Box
       sx={{
@@ -537,7 +581,7 @@ function Hero({ isMobile, onLogin }: { isMobile: boolean; onLogin: () => void })
                 Se hele flyten
               </Button>
               <Button
-                href="/for-byraer#book-demo"
+                onClick={onBookDemo}
                 sx={{
                   bgcolor: 'transparent',
                   color: palette.textPrimary,
@@ -1100,7 +1144,7 @@ function BlogTeaserSection() {
 // ──────────────────────────────────────────────────────────────────
 // FinalCTASection
 // ──────────────────────────────────────────────────────────────────
-function FinalCTASection({ onLogin }: { onLogin: () => void }) {
+function FinalCTASection({ onLogin, onBookDemo }: { onLogin: () => void; onBookDemo: () => void }) {
   return (
     <Container maxWidth="md" sx={{ py: { xs: 6, md: 10 } }}>
       <Box
@@ -1120,7 +1164,7 @@ function FinalCTASection({ onLogin }: { onLogin: () => void }) {
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.6} justifyContent="center">
           <Button
-            href="/for-byraer#book-demo"
+            onClick={onBookDemo}
             endIcon={<ArrowForwardIcon />}
             sx={{
               background: palette.accentGradient,
@@ -1173,9 +1217,12 @@ function Footer({ onAdminLogin }: { onAdminLogin: () => void }) {
           spacing={3}
         >
           <Box>
-            <Typography sx={{ fontWeight: 800, fontSize: '1rem', color: palette.textPrimary, mb: 0.4 }}>
-              The Role Room
-            </Typography>
+            <Box
+              component="img"
+              src="/role-room-assets/TheRoleRoom_Logo_Tagline.webp"
+              alt="The Role Room — Casting. Roles. Together."
+              sx={{ height: 44, width: 'auto', objectFit: 'contain', display: 'block', mb: 1 }}
+            />
             <Typography sx={{ color: palette.textMuted, fontSize: '0.84rem' }}>
               Operativsystemet for film- og innholdsproduksjon · Et produkt fra Creatorhub AS · Oslo, Norge
             </Typography>
