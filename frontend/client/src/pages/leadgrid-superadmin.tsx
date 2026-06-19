@@ -42,6 +42,7 @@ import AlertsInboxTab from "@/components/leadgrid/AlertsInboxTab";
 import { SuperadminNotificationLog } from "@/components/leadgrid/SuperadminNotificationLog";
 import { WhatsAppTemplatesTab } from "@/components/leadgrid/WhatsAppTemplatesTab";
 import { EmailBrandingTab } from "@/components/leadgrid/EmailBrandingTab";
+import { LeadInboxCard } from "@/components/leadgrid/LeadInboxCard";
 import PauseCircleIcon from "@mui/icons-material/PauseCircle";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import BlockIcon from "@mui/icons-material/Block";
@@ -129,7 +130,7 @@ interface ActiveImpersonation {
 }
 
 export default function LeadgridSuperadminPage() {
-  const [tab, setTab] = useState<"orgs" | "payments" | "tokens" | "partners" | "testflight" | "templates" | "api" | "alerts" | "notif" | "wa" | "email" | "audit">("orgs");
+  const [tab, setTab] = useState<"orgs" | "payments" | "tokens" | "partners" | "testflight" | "templates" | "api" | "alerts" | "notif" | "wa" | "email" | "inbox" | "audit">("inbox");
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [templates, setTemplates] = useState<SetupTemplate[]>([]);
@@ -256,6 +257,7 @@ export default function LeadgridSuperadminPage() {
           <Tab label="Klient-varsler" value="notif" icon={<NotificationsActiveIcon />} iconPosition="start" />
           <Tab label="WhatsApp" value="wa" icon={<NotificationsActiveIcon />} iconPosition="start" />
           <Tab label="E-post-branding" value="email" icon={<NotificationsActiveIcon />} iconPosition="start" />
+          <Tab label="📥 Lead-inbox" value="inbox" icon={<NotificationsActiveIcon />} iconPosition="start" />
           <Tab label={`Audit-log (${audit.length})`} value="audit" icon={<HistoryIcon />} iconPosition="start" />
         </Tabs>
 
@@ -336,6 +338,8 @@ export default function LeadgridSuperadminPage() {
           <WhatsAppTemplatesTab />
         ) : tab === "email" ? (
           <EmailBrandingTab />
+        ) : tab === "inbox" ? (
+          <LeadInboxCard />
         ) : (
           <AuditTab entries={audit} />
         )}

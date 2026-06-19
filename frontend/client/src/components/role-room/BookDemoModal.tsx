@@ -111,6 +111,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
     demo_language: 'nb',
     message: '',
   });
+  const [consentResearch, setConsentResearch] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -172,6 +173,8 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
           utm_campaign: utmParam('utm_campaign'),
           li_fat_id: utmParam('li_fat_id'),
           request_context: { ...collectAttribution(trigger), business_type: form.business_type },
+          consent_research: consentResearch,
+          consent_text_version: "v1",
         }),
       });
       if (!res.ok) {
@@ -422,6 +425,45 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                 <MenuItem value="nb">Norsk</MenuItem>
                 <MenuItem value="en">Engelsk</MenuItem>
               </TextField>
+
+              {/* Consent: auto-research */}
+              <Box sx={{
+                mt: 0.5, p: 2, borderRadius: 2,
+                border: `1px solid ${consentResearch ? palette.accent : 'rgba(245,243,255,0.15)'}`,
+                bgcolor: consentResearch ? 'rgba(168,85,247,0.06)' : 'rgba(255,255,255,0.02)',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }} onClick={() => setConsentResearch((v) => !v)}>
+                <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                  <Box sx={{
+                    width: 20, height: 20, mt: 0.3,
+                    borderRadius: 0.5,
+                    border: `2px solid ${consentResearch ? palette.accent : 'rgba(245,243,255,0.30)'}`,
+                    bgcolor: consentResearch ? palette.accent : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    {consentResearch && (
+                      <Box sx={{ color: '#fff', fontSize: 14, lineHeight: 1, fontWeight: 800 }}>✓</Box>
+                    )}
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography sx={{ color: palette.textPrimary, fontWeight: 600, fontSize: '0.9rem' }}>
+                      Ja, dere kan automatisk hente offentlig bedriftsinformasjon før møtet
+                    </Typography>
+                    <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.5 }}>
+                      Vi sjekker Brønnøysundregistrene + hjemmesiden deres, og Claude lager
+                      et kort sammendrag — slik at samtalen blir mer relevant fra første sekund.{' '}
+                      <Box component="a" href="/personvern/automatisk-research"
+                           target="_blank" rel="noopener noreferrer"
+                           onClick={(e) => e.stopPropagation()}
+                           sx={{ color: palette.accent, textDecoration: 'underline' }}>
+                        Les mer →
+                      </Box>
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Box>
 
               <Button
                 onClick={submit}
