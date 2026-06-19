@@ -491,3 +491,156 @@ extension LeadgridNotification {
         LeadgridDate.relativeAgo(createdAt)
     }
 }
+
+// ============================================================
+// MARK: - Fase 16: Plan-quota (PlanUsageBar)
+// ============================================================
+
+struct LeadgridPlanLimits: Codable, Hashable {
+    let displayName: String?
+    let maxCustomers: Int?
+    let maxAutoOnboardsPerMonth: Int?
+    let maxTeamLeaders: Int?
+    let maxReps: Int?
+}
+
+struct LeadgridPlanUsage: Codable, Hashable {
+    let customersActive: Int
+    let autoOnboardsThisMonth: Int
+}
+
+struct LeadgridPlanPct: Codable, Hashable {
+    let customers: Int      // 0-100
+    let autoOnboards: Int   // 0-100
+}
+
+struct LeadgridPlanSummary: Codable, Hashable {
+    let planKey: String
+    let displayName: String
+    let inGrace: Bool
+    let graceExpiresAt: String?
+    let limits: LeadgridPlanLimits
+    let usage: LeadgridPlanUsage
+    let pct: LeadgridPlanPct
+
+    /// Worst-case prosent (det som bør vises i kompakt bar).
+    var worstPct: Int {
+        max(pct.customers, pct.autoOnboards)
+    }
+
+    /// Hovedmetrikk-label for kompakt visning.
+    var primaryLabel: String {
+        if let max = limits.maxCustomers {
+            return "\(usage.customersActive) / \(max) leads"
+        }
+        return "\(usage.customersActive) leads"
+    }
+}
+
+// ============================================================
+// MARK: - Fase 16: Assignment-historikk per lead
+// ============================================================
+
+struct AssignmentHistoryItem: Codable, Hashable, Identifiable {
+    let id: String
+    let fromUserId: String?
+    let toUserId: String?
+    let assignedByUserId: String?
+    let reason: String?
+    let assignedAt: String?
+
+    var formattedAssignedAt: String {
+        LeadgridDate.formatNo(assignedAt)
+    }
+}
+
+struct AssignmentHistoryResponse: Codable {
+    let history: [AssignmentHistoryItem]
+}
+
+// ============================================================
+// MARK: - Fase 16: Export-summary (KPI før eksport)
+// ============================================================
+
+struct LeadsExportSummary: Codable, Hashable {
+    let totalLeads: Int
+    let period: String
+    let estimatedSizeKb: Int?
+}
+
+// ============================================================
+// MARK: - Fase 16: Onboarding-state (org-overordnet wizard)
+// ============================================================
+
+struct LeadgridOnboardingState: Codable, Hashable {
+    let completed: Bool
+    let currentStep: String?
+    let stepsCompleted: [String]?
+    let stepsRemaining: [String]?
+    let skippedAt: String?
+}
+
+// ============================================================
+// MARK: - Fase 16: Billing (faktura + Stripe portal)
+// ============================================================
+
+struct LeadgridBillingInvoice: Codable, Hashable, Identifiable {
+    let id: String
+    let stripeInvoiceId: String?
+    let number: String?
+    let status: String                // 'paid' | 'open' | 'void' | 'uncollectible'
+    let amountOere: Int
+    let currency: String
+    let periodStart: String?
+    let periodEnd: String?
+    let createdAt: String?
+    let invoicePdfUrl: String?
+    let hostedInvoiceUrl: String?
+
+    var amountKr: Double { Double(amountOere) / 100 }
+    var formattedAmount: String {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = currency.uppercased()
+        f.locale = Locale(identifier: "nb_NO")
+        return f.string(from: NSNumber(value: amountKr)) ?? "\(amountKr) \(currency)"
+    }
+}
+
+struct LeadgridBillingInvoicesResponse: Codable {
+    let invoices: [LeadgridBillingInvoice]
+}
+
+struct BillingPortalSessionResponse: Codable {
+    let url: String
+}
+
+// ============================================================
+// MARK: - Fase 16: Partners (Partner-program-landing)
+// ============================================================
+
+struct LeadgridPartner: Codable, Hashable, Identifiable {
+    let id: String
+    let name: String
+    let logoUrl: String?
+    let website: String?
+    let tagline: String?
+    let partnerType: String?
+}
+
+struct LeadgridPartnersResponse: Codable {
+    let partners: [LeadgridPartner]
+}
+
+// ============================================================
+// MARK: - Fase 17: Klient-portal-varsler
+// ============================================================
+
+struct ClientPortalNotificationPrefs: Codable, Hashable {
+    let email: Bool
+    let sms: Bool
+    let whatsapp: Bool
+    let push: Bool?
+    let weeklyDigest: Bool?
+    let language: String?    // 'nb' | 'en'
+}
