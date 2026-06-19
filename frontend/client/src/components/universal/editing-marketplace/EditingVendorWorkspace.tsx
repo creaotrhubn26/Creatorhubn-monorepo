@@ -34,9 +34,9 @@ import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import SendIcon from "@mui/icons-material/Send";
 import VerifiedUserIcon from "@mui/icons-material/VerifiedUser";
 import { apiRequest } from "@/lib/queryClient";
-import VendorProductManager from "../../vendor/VendorProductManager";
 import EditingJobChat from "./EditingJobChat";
 import PartnerProgramDashboard from "./PartnerProgramDashboard";
+import EditingVendorCatalog from "./EditingVendorCatalog";
 import {
   t,
   pillarLabel,
@@ -372,7 +372,7 @@ export default function EditingVendorWorkspace({ userId }: Props) {
       {/* ── Priskatalog ── */}
       {tab === 2 && (
         <Box>
-          <VendorProductManager userId={userId} vendorType="editing" locale={locale === "en" ? "en" : "no"} />
+          <EditingVendorCatalog locale={locale === "en" ? "en" : "no"} country={me?.country} />
         </Box>
       )}
 
