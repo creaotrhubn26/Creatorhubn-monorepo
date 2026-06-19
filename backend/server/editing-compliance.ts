@@ -38,7 +38,16 @@ export interface ComplianceProfile {
   tia_completed?: boolean | null;
   subcontractors_allowed?: boolean | null;
   portfolio_use_allowed?: boolean | null;
+  // Partnerprogram-felt (samme kilde for BÅDE /me og discovery — ingen proxy-divergens)
+  portfolio_submitted?: boolean | null;
+  payment_connected?: boolean | null;
+  rating?: number | null;
+  review_count?: number | null;
+  turnaround_days?: number | null;
 }
+
+/** Partnernivå — auto-derivert fra compliance + omdømme. */
+export type VendorTier = "registered" | "verified" | "certified" | "premium";
 
 export interface ComplianceSummary {
   isForeign: boolean;
@@ -46,6 +55,10 @@ export interface ComplianceSummary {
   isInternational: boolean; // utenlandsk
   requiresExtraGdpr: boolean; // utenfor EØS
   cleared: boolean; // alle obligatoriske krav oppfylt -> kan vises/akseptere oppdrag
+  tier: VendorTier; // partnernivå (auto)
+  verificationPercent: number; // 0-100, andel oppfylte krav (samme på /me og portal)
+  satisfiedCount: number;
+  requiredCount: number;
   // Pilar-statuser. Etiketter lokaliseres på frontend fra pilar-nøkkelen
   // (no for fotograf-siden, en for utenlandske vendors).
   pillars: {
@@ -62,6 +75,40 @@ export interface ComplianceSummary {
 
 function ok(v: unknown): boolean {
   return v === true || v === "approved";
+}
+
+/** Er ett enkelt krav (fra requiredAcceptances) oppfylt for profilen? */
+function acceptanceSatisfied(key: string, p: ComplianceProfile): boolean {
+  switch (key) {
+    case "standard": return !!p.compliance_accepted;
+    case "quality": return ok(p.compliance_quality_status);
+    case "storage": return ok(p.compliance_storage_status);
+    case "gdpr": return ok(p.compliance_gdpr_status);
+    case "delivery": return ok(p.compliance_delivery_status);
+    case "payment": return !!p.payment_connected;
+    case "dpa": return !!p.dpa_signed;
+    case "nda": return !!p.nda_signed;
+    case "no_subcontractors": return !!p.compliance_accepted; // del av standarden
+    case "no_portfolio_use": return !!p.compliance_accepted; // del av standarden
+    case "scc": return !!p.scc_signed;
+    case "tia": return !!p.tia_completed;
+    default: return false;
+  }
+}
+
+/** Auto-derivert partnernivå. cleared kreves for Verified+; omdømme løfter videre. */
+function deriveTier(x: {
+  cleared: boolean;
+  portfolioApproved: boolean;
+  rating: number;
+  reviews: number;
+  turnaround: number;
+}): VendorTier {
+  if (!x.cleared) return "registered";
+  let tier: VendorTier = "verified";
+  if (x.portfolioApproved && x.rating >= 4.3 && x.reviews >= 3) tier = "certified";
+  if (x.portfolioApproved && x.rating >= 4.7 && x.reviews >= 10 && x.turnaround <= 3) tier = "premium";
+  return tier;
 }
 
 /**
@@ -81,6 +128,20 @@ export function buildComplianceSummary(p: ComplianceProfile): ComplianceSummary 
 
   const cleared =
     !!p.compliance_accepted && quality && storage && gdpr && delivery && extraGdprOk;
+
+  // Verifiserings-% + tier — SAMME beregning på /me og discovery (én sannhetskilde).
+  const required = requiredAcceptances(isForeign, isEea);
+  const satisfiedCount = required.filter((k) => acceptanceSatisfied(k, p)).length;
+  const verificationPercent = required.length
+    ? Math.round((satisfiedCount / required.length) * 100)
+    : 0;
+  const tier = deriveTier({
+    cleared,
+    portfolioApproved: !!p.portfolio_submitted,
+    rating: p.rating != null ? Number(p.rating) : 0,
+    reviews: p.review_count != null ? Number(p.review_count) : 0,
+    turnaround: p.turnaround_days != null ? Number(p.turnaround_days) : 99,
+  });
 
   const missing: string[] = [];
   if (!p.compliance_accepted) missing.push("accept_standard");
@@ -108,6 +169,10 @@ export function buildComplianceSummary(p: ComplianceProfile): ComplianceSummary 
     isInternational: isForeign,
     requiresExtraGdpr,
     cleared,
+    tier,
+    verificationPercent,
+    satisfiedCount,
+    requiredCount: required.length,
     pillars: {
       quality: { status: quality ? "approved" : "pending" },
       storage: { status: storage ? "approved" : "pending" },
