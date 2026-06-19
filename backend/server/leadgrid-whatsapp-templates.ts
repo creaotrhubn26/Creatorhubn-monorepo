@@ -43,9 +43,9 @@ const NB: LeadgridWaTemplateMeta[] = [
     fullName: "leadgrid_deliverable_completed_nb",
     headerText: "✓ Leveranse klar",
     bodyTemplate:
-      "Hei {{1}}!\n\nLeveransen \"{{2}}\" er nå klar i klient-portalen din.\n\nDu kan se den, gi tilbakemelding eller be om fokus på neste steg når som helst.\n\n— {{3}}",
+      "Hei {{1}}!\n\nLeveransen \"{{2}}\" er nå klar i klient-portalen din.\n\nDu kan se den, gi tilbakemelding eller be om fokus på neste steg når som helst.\n\nMvh {{3}}\nLeadgrid",
     bodyParamCount: 3,
-    paramLabels: ["Kundens navn", "Leveransens tittel", "Avsenders navn (Leadgrid eller org-navn)"],
+    paramLabels: ["Kundens navn", "Leveransens tittel", "Avsenders fornavn"],
     hasUrlButton: true,
   },
   {
@@ -55,9 +55,9 @@ const NB: LeadgridWaTemplateMeta[] = [
     fullName: "leadgrid_focus_request_received_nb",
     headerText: "Vi har mottatt fokus-ønsket ditt",
     bodyTemplate:
-      "Hei {{1}}!\n\nVi har mottatt fokus-ønsket ditt på {{2}}.\n\nRådgiveren din tar kontakt innen 1 virkedag for å sette i gang. Du kan følge fremdriften i portalen.\n\n— {{3}}",
+      "Hei {{1}}!\n\nVi har mottatt fokus-ønsket ditt på {{2}}.\n\nRådgiveren din tar kontakt innen 1 virkedag for å sette i gang. Du kan følge fremdriften i portalen.\n\nMvh {{3}}\nLeadgrid",
     bodyParamCount: 3,
-    paramLabels: ["Kundens navn", "Fokus-områder (komma-separert)", "Avsenders navn"],
+    paramLabels: ["Kundens navn", "Fokus-områder (komma-separert)", "Avsenders fornavn"],
     hasUrlButton: true,
   },
   {
@@ -106,9 +106,9 @@ const EN: LeadgridWaTemplateMeta[] = [
     fullName: "leadgrid_deliverable_completed_en",
     headerText: "✓ Delivery ready",
     bodyTemplate:
-      "Hi {{1}}!\n\nYour delivery \"{{2}}\" is now ready in your client portal.\n\nYou can view it, leave feedback or request focus on next steps anytime.\n\n— {{3}}",
+      "Hi {{1}}!\n\nYour delivery \"{{2}}\" is now ready in your client portal.\n\nYou can view it, leave feedback or request focus on next steps anytime.\n\nRegards {{3}}\nLeadgrid",
     bodyParamCount: 3,
-    paramLabels: ["Customer name", "Delivery title", "Sender name"],
+    paramLabels: ["Customer name", "Delivery title", "Sender first name"],
     hasUrlButton: true,
   },
   {
@@ -116,11 +116,11 @@ const EN: LeadgridWaTemplateMeta[] = [
     category: "UTILITY",
     language: "en",
     fullName: "leadgrid_focus_request_received_en",
-    headerText: "We've received your focus request",
+    headerText: "We have received your focus request",
     bodyTemplate:
-      "Hi {{1}}!\n\nWe've received your focus request on {{2}}.\n\nYour advisor will be in touch within 1 business day. You can track progress in the portal.\n\n— {{3}}",
+      "Hi {{1}}!\n\nWe've received your focus request on {{2}}.\n\nYour advisor will be in touch within 1 business day. You can track progress in the portal.\n\nRegards {{3}}\nLeadgrid",
     bodyParamCount: 3,
-    paramLabels: ["Customer name", "Focus areas (comma-separated)", "Sender name"],
+    paramLabels: ["Customer name", "Focus areas (comma-separated)", "Sender first name"],
     hasUrlButton: true,
   },
   {
