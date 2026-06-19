@@ -250,6 +250,26 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
     trackModalOpen({ modalName: 'book_demo', trigger });
   };
   const closeBookDemo = () => setBookDemoOpen(false);
+
+  // Dyplenking: ?signup=<persona> åpner commercial-onboarding (brukt av demo-
+  // konverterings-lenken fra Admin Room CRM), ?book_demo=1 åpner Book demo-modalen.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const signup = params.get('signup');
+      const validPersonas: LoginPersonaPrefill[] = [
+        'production_team', 'content_producer', 'education_institution', 'dance_studio', 'talents',
+      ];
+      if (signup && (validPersonas as string[]).includes(signup)) {
+        openLogin('landing', signup as LoginPersonaPrefill);
+      } else if (params.get('book_demo') || params.has('demo')) {
+        openBookDemo('deep_link');
+      }
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const handleLoginSuccess = () => {
     trackEvent('login_success', {
       login_variant: loginVariant,

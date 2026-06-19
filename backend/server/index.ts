@@ -26968,6 +26968,43 @@ async function markRoleRoomCommercialCheckoutRecordPaid(
     updatedAt: new Date().toISOString(),
   };
   await writeRoleRoomCommercialCheckoutSessionRecord(nextRecord);
+
+  // Best-effort: hvis en booket demo i agency_leads-CRM-en konverterte til et
+  // betalt commercial-abonnement, flipp leaden til 'customer'. Matcher på e-post
+  // (team-lead eller medlem) — den selvbetjente konverterings-lenken sender
+  // kontakten gjennom den ordinære checkout-flyten, så vi har ikke lead-id i
+  // metadataen, men e-posten er stabil. Additivt; rører ikke provisjoneringen.
+  try {
+    const leadEmails = Array.from(
+      new Set(
+        [nextRecord.teamLeadEmail, ...nextRecord.memberEmails]
+          .filter(Boolean)
+          .map((value) => value.toLowerCase()),
+      ),
+    );
+    if (leadEmails.length > 0 && (await hasTable("agency_leads"))) {
+      await pool.query(
+        `UPDATE agency_leads
+           SET status = 'customer',
+               customer_at = COALESCE(customer_at, now()),
+               stripe_subscription_id = COALESCE($2, stripe_subscription_id),
+               stripe_customer_id = COALESCE($3, stripe_customer_id),
+               conversion_persona = COALESCE(conversion_persona, $4),
+               updated_at = now()
+         WHERE LOWER(email) = ANY($1::text[])
+           AND status NOT IN ('customer', 'archived', 'disqualified')`,
+        [
+          leadEmails,
+          nextRecord.stripeSubscriptionId || null,
+          nextRecord.stripeCustomerId || null,
+          nextRecord.persona || null,
+        ],
+      );
+    }
+  } catch (error) {
+    console.warn("[agency-lead] commercial-payment customer-flip feilet", error);
+  }
+
   if (record.checkoutStatus === "payment_failed") {
     await sendRoleRoomCommercialPaymentRecoveryEmail({
       companyName: record.companyName,
