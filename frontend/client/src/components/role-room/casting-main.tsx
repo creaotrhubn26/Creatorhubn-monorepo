@@ -13,6 +13,9 @@ import LeadgridClientPortalPage from '@/pages/leadgrid-client-portal';
 import LeadgridPartnerApplicationPage from '@/pages/leadgrid-partner-application';
 import LeadgridDevelopersPage from '@/pages/leadgrid-developers';
 import LeadgridDeveloperApplicationPage from '@/pages/leadgrid-developer-application';
+import LeadgridPartnerWizardPage from '@/pages/leadgrid-partner-wizard';
+import LeadgridPartnerDashboardPage from '@/pages/leadgrid-partner-dashboard';
+import LeadgridMarketplacePage from '@/pages/leadgrid-marketplace';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
 import AgencyPortalView from './components/AgencyPortalView';
@@ -186,10 +189,20 @@ function CastingStandaloneAppContent() {
   if (/^\/c\/[A-Za-z0-9_-]+\/?$/.test(localeCtx.pathname)) {
     return <LeadgridClientPortalPage />;
   }
-  // Org-side partnerskap (org-admin søker)
+  // Org-side partnerskap — multi-step wizard (krever innlogget org-admin)
   if (localeCtx.pathname === '/leadgrid/innstillinger/partnerskap' ||
       localeCtx.pathname === '/leadgrid/innstillinger/partnerskap/') {
-    return <LeadgridPartnerApplicationPage />;
+    return <LeadgridPartnerWizardPage />;
+  }
+  // Partner-dashboard (etter submit)
+  if (localeCtx.pathname === '/leadgrid/partner-dashboard' ||
+      localeCtx.pathname === '/leadgrid/partner-dashboard/') {
+    return <LeadgridPartnerDashboardPage />;
+  }
+  // Public marketplace
+  if (localeCtx.pathname === '/leadgrid/marketplace' ||
+      localeCtx.pathname === '/leadgrid/marketplace/') {
+    return <LeadgridMarketplacePage />;
   }
   // Developer-docs (public)
   if (localeCtx.pathname === '/leadgrid/utviklere' ||

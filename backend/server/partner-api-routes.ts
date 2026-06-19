@@ -31,6 +31,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
+import { rateLimit } from "./partner-api-rate-limiter.js";
 
 interface Deps {
   app: Express;
@@ -42,6 +43,7 @@ interface ApiKeyContext {
   partner_id: string | null;
   organization_id: string | null;
   scopes: string[];
+  environment?: string | null;
 }
 
 function hashApiKey(rawKey: string): string {
@@ -63,7 +65,7 @@ async function authenticateApiKey(
     `SELECT id::text AS api_key_id,
             partner_id::text AS partner_id,
             organization_id::text AS organization_id,
-            scopes
+            scopes, environment
        FROM partner_api_keys
       WHERE key_prefix = $1
         AND key_hash = $2
@@ -143,6 +145,18 @@ function getCtx(req: Request): ApiKeyContext {
 
 export function registerPartnerApiRoutes({ app, pool }: Deps): void {
   const ROOT = "/api/v1/partner";
+
+  // Rate-limit middleware mountes på alle ROOT-rutene.
+  // Den må kjøre ETTER requireApiKey (som setter req.apiKey).
+  // Vi mountes på ROOT så den treffer alle /v1/partner/*.
+  app.use(ROOT, async (req, res, next) => {
+    // Tom forhåndsauth — sett apiKey-context for rate-limiter
+    if (req.method === "OPTIONS") return next();
+    const ctx = await authenticateApiKey(req, pool);
+    if (ctx) (req as any).apiKey = ctx;
+    next();
+  });
+  app.use(ROOT, rateLimit(pool));
 
   // ---- GET /me -----------------------------------------------------------
   // Spesial-route: ingen scope-sjekk, alle valide keys får se sin egen info.

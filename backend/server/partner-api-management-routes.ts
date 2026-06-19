@@ -172,10 +172,60 @@ export function registerPartnerApiManagementRoutes({ app, pool, activeSessions }
           description ?? null, events ?? [], s.userId,
         ],
       );
+      // Auto-test webhook umiddelbart hvis URL svarer 2xx → aktivér
+      // Hvis ikke → sett is_active=false og krev manuell aktivering
+      let autoTestPassed = false;
+      let autoTestStatus = 0;
+      try {
+        const eventId = crypto.randomUUID();
+        const timestamp = Math.floor(Date.now() / 1000);
+        const testPayload = JSON.stringify({
+          test: true, event_type: "test.endpoint_created",
+          message: "Auto-test ved create",
+        });
+        const sig = crypto.createHmac("sha256", signingSecret)
+          .update(`${timestamp}.${testPayload}`).digest("hex");
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 8000);
+        const testRes = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Leadgrid-Signature": `sha256=${sig}`,
+            "X-Leadgrid-Event": "test.endpoint_created",
+            "X-Leadgrid-Delivery": eventId,
+            "X-Leadgrid-Timestamp": String(timestamp),
+          },
+          body: testPayload,
+          signal: controller.signal,
+        });
+        clearTimeout(t);
+        autoTestStatus = testRes.status;
+        autoTestPassed = autoTestStatus >= 200 && autoTestStatus < 300;
+      } catch (e) {
+        console.error("[webhook auto-test on create]", e);
+      }
+
+      await pool.query(
+        `UPDATE partner_webhook_endpoints
+            SET auto_test_passed_at = CASE WHEN $1 THEN now() ELSE NULL END,
+                auto_test_last_status = $2,
+                is_active = $1
+          WHERE id = $3`,
+        [autoTestPassed, autoTestStatus, r.rows[0].id],
+      );
+
       res.status(201).json({
         data: r.rows[0],
         signing_secret: signingSecret,
-        warning: "Kopier secret NÅ — vises ikke igjen. Bruk i HMAC-signering.",
+        auto_test: {
+          passed: autoTestPassed,
+          status: autoTestStatus,
+          activated: autoTestPassed,
+        },
+        warning: autoTestPassed
+          ? "Kopier secret NÅ — vises ikke igjen. Bruk i HMAC-signering. Endpoint er auto-aktivert (test OK)."
+          : `Kopier secret NÅ. Endpoint er DEAKTIVERT — auto-test feilet (status ${autoTestStatus || 'timeout'}). Manuell aktivering kreves.`,
       });
     } catch (e: any) {
       console.error("[webhook-endpoints create]", e);

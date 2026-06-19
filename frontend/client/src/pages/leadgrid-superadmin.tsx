@@ -33,10 +33,13 @@ import GavelIcon from "@mui/icons-material/Gavel";
 import HandshakeIcon from "@mui/icons-material/Handshake";
 import PhoneIphoneIcon from "@mui/icons-material/PhoneIphone";
 import CodeIcon from "@mui/icons-material/Code";
+import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import SuperadminTemplatesEditor from "@/components/leadgrid/SuperadminTemplatesEditor";
 import PartnersTab from "@/components/leadgrid/PartnersTab";
 import TestflightTestersTab from "@/components/leadgrid/TestflightTestersTab";
 import ApiAndWebhooksTab from "@/components/leadgrid/ApiAndWebhooksTab";
+import AlertsInboxTab from "@/components/leadgrid/AlertsInboxTab";
+import { SuperadminNotificationLog } from "@/components/leadgrid/SuperadminNotificationLog";
 import PauseCircleIcon from "@mui/icons-material/PauseCircle";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import BlockIcon from "@mui/icons-material/Block";
@@ -124,7 +127,7 @@ interface ActiveImpersonation {
 }
 
 export default function LeadgridSuperadminPage() {
-  const [tab, setTab] = useState<"orgs" | "payments" | "tokens" | "partners" | "testflight" | "templates" | "api" | "audit">("orgs");
+  const [tab, setTab] = useState<"orgs" | "payments" | "tokens" | "partners" | "testflight" | "templates" | "api" | "alerts" | "notif" | "audit">("orgs");
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [templates, setTemplates] = useState<SetupTemplate[]>([]);
@@ -247,6 +250,8 @@ export default function LeadgridSuperadminPage() {
           <Tab label="TestFlight" value="testflight" icon={<PhoneIphoneIcon />} iconPosition="start" />
           <Tab label="Avtaler" value="templates" icon={<GavelIcon />} iconPosition="start" />
           <Tab label="API & Webhooks" value="api" icon={<CodeIcon />} iconPosition="start" />
+          <Tab label="Alerts" value="alerts" icon={<NotificationsActiveIcon />} iconPosition="start" />
+          <Tab label="Klient-varsler" value="notif" icon={<NotificationsActiveIcon />} iconPosition="start" />
           <Tab label={`Audit-log (${audit.length})`} value="audit" icon={<HistoryIcon />} iconPosition="start" />
         </Tabs>
 
@@ -319,6 +324,10 @@ export default function LeadgridSuperadminPage() {
           <SuperadminTemplatesEditor />
         ) : tab === "api" ? (
           <ApiAndWebhooksTab />
+        ) : tab === "alerts" ? (
+          <AlertsInboxTab />
+        ) : tab === "notif" ? (
+          <SuperadminNotificationLog />
         ) : (
           <AuditTab entries={audit} />
         )}

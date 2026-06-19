@@ -1,0 +1,41 @@
+name: Leadgrid API overage billing
+
+# Kjører daglig 05:00 UTC. Beregner gårsdagens API-overage per partner og
+# sender Stripe meter-events for billing. Markerer rader som billed=true.
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leadgrid-overage-billing
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Process daily overage
+        env:
+          TOKEN: ${{ secrets.LEADGRID_CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::LEADGRID_CRON_TRIGGER_TOKEN secret er ikke satt"
+            exit 1
+          fi
+          RESP=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "x-cron-trigger-token: $TOKEN" \
+            "https://creatorhub-backend-rtbl.onrender.com/api/leadgrid/api-overage/process")
+          BODY=$(echo "$RESP" | head -n -1)
+          CODE=$(echo "$RESP" | tail -n 1)
+          echo "HTTP $CODE"
+          echo "$BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Overage-billing feilet (HTTP $CODE)"
+            exit 1
+          fi

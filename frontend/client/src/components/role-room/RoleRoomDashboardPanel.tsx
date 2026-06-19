@@ -771,6 +771,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           : undefined,
       }}
     >
+      {/* Leadgrid onboarding-tour — floating card i nedre høyre */}
+      <OnboardingTour />
       {/* Produsentens flytende chat-boble — Meldinger + Action + rom-chat
           (intern vs delt) i hele dashbordet, ikke bare via klient-preview.
           canUseInternal=true siden dette er produsentens eget arbeidsrom. */}
