@@ -21,8 +21,9 @@
 import type { Pool } from "pg";
 import {
   readEnvFallbackConfig, normalizePhoneE164, type WhatsAppSenderConfig,
-  sendWhatsAppLeadFollowup,
 } from "./casting-whatsapp-sender.js";
+
+const META_GRAPH_VERSION = "v22.0";
 import {
   getLeadgridWaTemplate, type LeadgridWaTemplate,
 } from "./leadgrid-whatsapp-templates.js";
@@ -159,10 +160,14 @@ async function getWhatsAppConfigForCustomer(
   return readEnvFallbackConfig();
 }
 
-/** Send WhatsApp via Meta Cloud API + en av Leadgrid-templatene. */
+/** Send WhatsApp via Meta Cloud API + en av Leadgrid-templatene.
+ *
+ *  Inkluderer URL-button-parameteren (portal-token) som Meta krever
+ *  for hver template som har dynamisk URL-button. */
 async function sendWhatsApp(
   pool: Pool, customerId: string, to: string,
   event: LeadgridWaTemplate, params: string[],
+  buttonParam: string,
   language: "nb" | "en" = "nb",
 ): Promise<{ ok: boolean; messageId?: string; templateName?: string; error?: string }> {
   const config = await getWhatsAppConfigForCustomer(pool, customerId);
@@ -172,20 +177,45 @@ async function sendWhatsApp(
   if (!normalized) return { ok: false, error: "Ugyldig telefonnummer (forventet E.164)" };
 
   const tmpl = getLeadgridWaTemplate(event, language);
-
-  const res = await sendWhatsAppLeadFollowup({
-    config: { ...config, templateLanguage: tmpl.language === "nb" ? "nb" : "en" },
-    to: normalized,
-    templateName: tmpl.fullName,
-    bodyParams: params,
-  });
-  if (res.success) {
-    return { ok: true, messageId: res.messageId, templateName: tmpl.fullName };
-  }
-  return {
-    ok: false, templateName: tmpl.fullName,
-    error: res.error ?? "ukjent_feil",
+  const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${config.phoneNumberId}/messages`;
+  const body = {
+    messaging_product: "whatsapp",
+    to: normalized.replace(/^\+/, ""),
+    type: "template",
+    template: {
+      name: tmpl.fullName,
+      language: { code: tmpl.language },
+      components: [
+        { type: "body", parameters: params.map((text) => ({ type: "text", text })) },
+        ...(tmpl.hasUrlButton ? [{
+          type: "button", sub_type: "url", index: "0",
+          parameters: [{ type: "text", text: buttonParam }],
+        }] : []),
+      ],
+    },
   };
+
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${config.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      return { ok: false, templateName: tmpl.fullName,
+                error: `HTTP ${r.status}: ${txt.slice(0, 200)}` };
+    }
+    const j: any = await r.json().catch(() => ({}));
+    const messageId = j?.messages?.[0]?.id;
+    return { ok: true, messageId, templateName: tmpl.fullName };
+  } catch (e: any) {
+    return { ok: false, templateName: tmpl.fullName,
+              error: e?.message ?? String(e) };
+  }
 }
 
 async function sendEmail(
@@ -297,8 +327,9 @@ export async function notifyClient(
     const senderName = data.customerName ?? "Leadgrid";
     const params = buildWaParamsForEvent(data, prefs, senderName);
     const waEvent: LeadgridWaTemplate = `leadgrid_${data.event}` as LeadgridWaTemplate;
+    const buttonParam = data.portalToken ?? "portal";
     const res = await sendWhatsApp(
-      pool, data.customerId, prefs.contact_phone, waEvent, params,
+      pool, data.customerId, prefs.contact_phone, waEvent, params, buttonParam,
     );
     if (res.ok) { sent++; channels.push("whatsapp"); }
     await logSend(pool, data.customerId, "whatsapp", data.event,
