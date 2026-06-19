@@ -567,6 +567,7 @@ import { registerWaTemplatesAdminRoutes } from "./wa-templates-admin-routes.js";
 import { registerLeadgridEmailBrandingRoutes } from "./leadgrid-email-branding-routes.js";
 import { registerLeadgridChannelOnboardingRoutes } from "./leadgrid-channel-onboarding-routes.js";
 import { registerLeadAcceptanceRoutes } from "./lead-acceptance-routes.js";
+import { registerLeadAssignmentRoutes } from "./lead-assignment-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -24402,6 +24403,8 @@ registerLeadgridEmailBrandingRoutes({ app, pool, activeSessions });
 registerLeadgridChannelOnboardingRoutes({ app, pool, activeSessions });
 // Lead-inbox + accept-as-project + auto-research-trigger
 registerLeadAcceptanceRoutes({ app, pool, activeSessions });
+// Hierarkisk lead-tildeling (markedssjef → teamleder → rep)
+registerLeadAssignmentRoutes({ app, pool, activeSessions });
 // Håndhev org-status (paused/suspended) på alle Leadgrid-rutene.
 // Bypass for super_admin er ON som default.
 app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));
