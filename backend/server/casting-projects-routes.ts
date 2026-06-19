@@ -198,6 +198,19 @@ export function setupCastingProjectsRoutes(
     return legacyCastingProjects.get(projectId) || null;
   }
 
+  // Ownership gate for project sub-resources located by a global child id
+  // (calendar events, etc.) — mirrors the created_by check on GET /projects/:id.
+  async function callerOwnsProject(
+    projectId: string,
+    userId: string,
+  ): Promise<boolean> {
+    if (!projectId || !userId) return false;
+    const project: any = await getLegacyCastingProject(projectId);
+    const createdBy =
+      typeof project?.created_by === "string" ? project.created_by : null;
+    return Boolean(createdBy) && createdBy !== "demo-user" && createdBy === userId;
+  }
+
   async function getLegacyShotLists(projectId: string): Promise<any[]> {
     const dbShotLists = await compatStoreGet<any[]>(
       dbLegacyShotListsKey(projectId),
@@ -1081,7 +1094,8 @@ export function setupCastingProjectsRoutes(
   });
 
   app.put("/api/casting/calendar-events/:eventId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const eventId = req.params.eventId;
       let location = findByIdInProjectMap(
@@ -1107,6 +1121,13 @@ export function setupCastingProjectsRoutes(
       }
 
       if (!location) {
+        res.status(404).json({ error: "Calendar event not found" });
+        return;
+      }
+
+      // The event is located by a global id; verify the caller owns the
+      // project it belongs to before mutating (cross-tenant IDOR).
+      if (!(await callerOwnsProject(location.projectId, session.userId))) {
         res.status(404).json({ error: "Calendar event not found" });
         return;
       }
@@ -1140,7 +1161,8 @@ export function setupCastingProjectsRoutes(
   });
 
   app.delete("/api/casting/calendar-events/:eventId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const eventId = req.params.eventId;
       let location = findByIdInProjectMap(
@@ -1166,6 +1188,11 @@ export function setupCastingProjectsRoutes(
       }
 
       if (!location) {
+        res.status(404).json({ error: "Calendar event not found" });
+        return;
+      }
+
+      if (!(await callerOwnsProject(location.projectId, session.userId))) {
         res.status(404).json({ error: "Calendar event not found" });
         return;
       }

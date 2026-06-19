@@ -36,8 +36,8 @@ export default function AudioReviewInvitePage() {
   const [hp, setHp] = React.useState(''); // honeypot (skjult) — bot-beskyttelse
   const setLink = (k: string, v: string) => setForm((f: any) => ({ ...f, links: { ...f.links, [k]: v } }));
   const [copied, setCopied] = React.useState(false);
-  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  const setV = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f: any) => ({ ...f, [k]: e.target.value }));
+  const setV = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
   const isVocalist = /vokal/i.test(form.role);
   const boothUrl = invite?.external_track_id ? `https://easeverse.vercel.app/booth/${invite.external_track_id}` : '';
 
@@ -83,7 +83,7 @@ export default function AudioReviewInvitePage() {
             <Typography sx={{ color: MUTED, mb: 2.5 }}>til å samarbeide på <strong style={{ color: TEXT }}>«{invite.project_title}»</strong>{invite.band_name ? ` (${invite.band_name})` : ''}. Fyll ut profilen din så alle vet hvem som bidrar.</Typography>
 
             <Stack alignItems="center" sx={{ mb: 2 }}>
-              <ImageDrop variant="circle" size={88} value={form.avatarUrl} onChange={(url) => setForm((f) => ({ ...f, avatarUrl: url }))} label="Profilbilde — slipp eller velg bilde" />
+              <ImageDrop variant="circle" size={88} value={form.avatarUrl} onChange={(url) => setForm((f: any) => ({ ...f, avatarUrl: url }))} label="Profilbilde — slipp eller velg bilde" />
             </Stack>
 
             <Stack spacing={1.5}>

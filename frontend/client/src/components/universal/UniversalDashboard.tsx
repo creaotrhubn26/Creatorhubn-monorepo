@@ -1377,7 +1377,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     }, 1000); // Wait 1 second before saving to reduce API calls
 
     return () => clearTimeout(timeoutId);
-  }, [interfacePrefs, sessionId, savePreferencesMutation]);
+    // NOTE: savePreferencesMutation is intentionally NOT a dependency. The
+    // react-query mutation object gets a new identity on every status change
+    // (idle→pending→success), so including it made this effect re-run after
+    // each save, re-scheduling another save — a self-perpetuating ~1/s storm
+    // of PUT /api/user/interface-preferences that saturated the backend. The
+    // .mutate function reference is stable, so capturing it here is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interfacePrefs, sessionId]);
 
   const updateInterfacePref = (key: string, value: any) => {
     setInterfacePrefs((prev: any) => ({ ...prev, [key]: value }));

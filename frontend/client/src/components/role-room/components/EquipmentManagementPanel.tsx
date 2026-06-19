@@ -1019,6 +1019,11 @@ export function EquipmentManagementPanel({
   const [cameraCatalogUnavailable, setCameraCatalogUnavailable] = useState(false);
   const [memoryCardsUnavailable, setMemoryCardsUnavailable] = useState(false);
   const [equipmentPollPauseUntil, setEquipmentPollPauseUntil] = useState(0);
+  // Read inside the 30s poll closure via a ref so the poll effect doesn't list
+  // it as a dependency — otherwise pausing the poll (which sets this) tore down
+  // and recreated the interval + re-bound the online/offline listeners.
+  const equipmentPollPauseUntilRef = useRef(equipmentPollPauseUntil);
+  equipmentPollPauseUntilRef.current = equipmentPollPauseUntil;
   const lastTransportErrorToastAtRef = useRef(0);
   const [cameraSyncing, setCameraSyncing] = useState(false);
   const [catalogBridgeOpen, setCatalogBridgeOpen] = useState(false);
@@ -1886,7 +1891,7 @@ export function EquipmentManagementPanel({
         isAuthenticated &&
         !authLoading &&
         !roleRoomApiUnavailable &&
-        Date.now() >= equipmentPollPauseUntil
+        Date.now() >= equipmentPollPauseUntilRef.current
       ) {
         loadEquipment();
       }
@@ -1896,7 +1901,9 @@ export function EquipmentManagementPanel({
       window.removeEventListener('offline', onOffline);
       clearInterval(timer);
     };
-  }, [projectId, isAuthenticated, authLoading, roleRoomApiUnavailable, equipmentPollPauseUntil]);
+    // equipmentPollPauseUntil intentionally excluded — read via ref above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, isAuthenticated, authLoading, roleRoomApiUnavailable]);
 
   // Offline outbox: restore queue from localStorage on mount / project change
   useEffect(() => {

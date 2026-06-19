@@ -58,6 +58,7 @@ export function setupLeadsRetrievalRoutes(deps: SetupLeadsRetrievalRoutesDeps): 
     try {
       const upstream = await fetch(
         `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}/leadgen_forms?${params.toString()}`,
+        { signal: AbortSignal.timeout(10_000) },
       );
       const body = await upstream.json().catch(() => ({}));
       if (!upstream.ok) {
@@ -111,6 +112,7 @@ export function setupLeadsRetrievalRoutes(deps: SetupLeadsRetrievalRoutesDeps): 
     try {
       const upstream = await fetch(
         `https://graph.facebook.com/v21.0/${encodeURIComponent(formId)}/leads?${params.toString()}`,
+        { signal: AbortSignal.timeout(10_000) },
       );
       const body = await upstream.json().catch(() => ({}));
       if (!upstream.ok) {

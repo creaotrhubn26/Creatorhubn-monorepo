@@ -190,7 +190,8 @@ type PriceManagementSection =
   | 'subscriptions'
   | 'email-templates'
   | 'analytics'
-  | 'enterprise';
+  | 'enterprise'
+  | 'lead-map';
 
 // Error Boundary to prevent child component crashes from killing the whole dashboard
 class AdminErrorBoundary extends React.Component<

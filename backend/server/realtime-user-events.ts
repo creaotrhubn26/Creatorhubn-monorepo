@@ -265,12 +265,38 @@ export function attachUserEventsWebSocket(
       socket.destroy();
     });
   });
+
+  // Keep-alive sweep — the iPad keeps this socket open across app launches, so
+  // half-open connections are likely; without it userClients grows unbounded
+  // and broadcastUserEvent fans out to dead sockets. Terminate any that missed
+  // the previous ping.
+  const heartbeat = setInterval(() => {
+    for (const set of userClients.values()) {
+      for (const ws of set) {
+        const live = ws as LiveWebSocket;
+        if (live.isAlive === false) {
+          try { ws.terminate(); } catch { /* ignore */ }
+          continue;
+        }
+        live.isAlive = false;
+        try { ws.ping(); } catch { /* ignore */ }
+      }
+    }
+  }, 30000);
+  heartbeat.unref?.();
+  wss.on("close", () => clearInterval(heartbeat));
 }
+
+type LiveWebSocket = WebSocket & { isAlive?: boolean };
 
 function registerClient(userId: string, ws: WebSocket): () => void {
   const set = userClients.get(userId) ?? new Set<WebSocket>();
   set.add(ws);
   userClients.set(userId, set);
+  (ws as LiveWebSocket).isAlive = true;
+  ws.on("pong", () => {
+    (ws as LiveWebSocket).isAlive = true;
+  });
 
   try {
     ws.send(

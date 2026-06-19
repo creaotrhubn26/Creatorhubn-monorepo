@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Avatar, Box, Button, Card, CardContent, Chip, CircularProgress,
-  Grid, IconButton, LinearProgress, Stack, Tooltip, Typography,
+  Grid2 as Grid, IconButton, LinearProgress, Stack, Tooltip, Typography,
 } from '@mui/material';
 import EmojiEventsOutlinedIcon from '@mui/icons-material/EmojiEventsOutlined';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
