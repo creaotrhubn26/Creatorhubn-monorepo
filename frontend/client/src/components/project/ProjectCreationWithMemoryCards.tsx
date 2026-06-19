@@ -4447,7 +4447,7 @@ useEffect(() => {
         </CardContent>
       </Card>
 
-      <Collapse in={projectData.projectType === 'wedding' || projectData.projectType === 'event' || projectData.projectType === 'portrait'}>
+      <Collapse in={!!projectData.projectType}>
         <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>

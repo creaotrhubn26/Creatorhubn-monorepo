@@ -68,6 +68,11 @@ interface Shot {
   completedAt?: Date
 }
 
+// Norsk visning av enum-verdier (verdiene forblir engelske i data/logikk).
+const STATUS_NO: Record<Shot['status'], string> = { 'Planned': 'Planlagt', 'In Progress': 'Pågår', 'Completed': 'Fullført', 'Review': 'Gjennomgang' };
+const PRIORITY_NO: Record<Shot['priority'], string> = { 'Low': 'Lav', 'Medium': 'Middels', 'High': 'Høy', 'Critical': 'Kritisk' };
+const SHOTTYPE_NO: Record<Shot['shotType'], string> = { 'Wide': 'Vidvinkel', 'Medium': 'Halvnær', 'Close-up': 'Nærbilde', 'Detail': 'Detalj', 'Establishing': 'Etablering' };
+
 interface ShotListManagerProps {
   projectId?: string;
   // Lokal-modus (opprettelse-modal uten projectId): kontrollert liste + callbacks
@@ -655,10 +660,10 @@ export default function ShotListManager({
                   onChange={(e) => setFilterStatus(e.target.value)}
                 >
                   <MenuItem value="All">Alle statuser</MenuItem>
-                  <MenuItem value="Planned">Planned</MenuItem>
-                  <MenuItem value="In Progress">In Progress</MenuItem>
-                  <MenuItem value="Review">Review</MenuItem>
-                  <MenuItem value="Completed">Completed</MenuItem>
+                  <MenuItem value="Planned">Planlagt</MenuItem>
+                  <MenuItem value="In Progress">Pågår</MenuItem>
+                  <MenuItem value="Review">Gjennomgang</MenuItem>
+                  <MenuItem value="Completed">Fullført</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -866,12 +871,12 @@ export default function ShotListManager({
                     <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
                       <Typography variant="h6" sx={{ color: theming.colors.primary }}>{shot.title}</Typography>
                       <Chip
-                        label={shot.status}
+                        label={STATUS_NO[shot.status]}
                         color={getStatusColor(shot.status)}
                         size="small"
                       />
                       <Chip
-                        label={shot.priority}
+                        label={PRIORITY_NO[shot.priority]}
                         color={getPriorityColor(shot.priority)}
                         size="small"
                         variant="outlined"
@@ -886,7 +891,7 @@ export default function ShotListManager({
                       <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
                         <Chip 
                           icon={<CameraAlt />} 
-                          label={shot.shotType} 
+                          label={SHOTTYPE_NO[shot.shotType]} 
                           size="small" 
                           variant="outlined"
                         />
@@ -987,11 +992,11 @@ export default function ShotListManager({
                   value={shotForm.shotType || 'Wide'}
                   onChange={(e) => setShotForm((prev) => ({ ...prev, shotType: e.target.value as Shot['shotType'] }))}
                 >
-                  <MenuItem value="Wide">Wide Shot</MenuItem>
-                  <MenuItem value="Medium">Medium Shot</MenuItem>
-                  <MenuItem value="Close-up">Close-up</MenuItem>
-                  <MenuItem value="Detail">Detail Shot</MenuItem>
-                  <MenuItem value="Establishing">Establishing Shot</MenuItem>
+                  <MenuItem value="Wide">Vidvinkel</MenuItem>
+                  <MenuItem value="Medium">Halvnær</MenuItem>
+                  <MenuItem value="Close-up">Nærbilde</MenuItem>
+                  <MenuItem value="Detail">Detalj</MenuItem>
+                  <MenuItem value="Establishing">Etablering</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -1011,10 +1016,10 @@ export default function ShotListManager({
                   value={shotForm.priority || 'Medium'}
                   onChange={(e) => setShotForm((prev) => ({ ...prev, priority: e.target.value as Shot['priority'] }))}
                 >
-                  <MenuItem value="Low">Low</MenuItem>
-                  <MenuItem value="Medium">Medium</MenuItem>
-                  <MenuItem value="High">High</MenuItem>
-                  <MenuItem value="Critical">Critical</MenuItem>
+                  <MenuItem value="Low">Lav</MenuItem>
+                  <MenuItem value="Medium">Middels</MenuItem>
+                  <MenuItem value="High">Høy</MenuItem>
+                  <MenuItem value="Critical">Kritisk</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -1109,8 +1114,8 @@ export default function ShotListManager({
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                 <Chip label={selectedShot.scene} size="small" variant="outlined" />
                 <Chip label={selectedShot.shotType} size="small" variant="outlined" />
-                <Chip label={selectedShot.priority} size="small" color={getPriorityColor(selectedShot.priority)} />
-                <Chip label={selectedShot.status} size="small" color={getStatusColor(selectedShot.status)} />
+                <Chip label={PRIORITY_NO[selectedShot.priority]} size="small" color={getPriorityColor(selectedShot.priority)} />
+                <Chip label={STATUS_NO[selectedShot.status]} size="small" color={getStatusColor(selectedShot.status)} />
               </Stack>
               <Typography variant="body2" color="text.secondary">
                 Duration: {formatDuration(selectedShot.duration)}

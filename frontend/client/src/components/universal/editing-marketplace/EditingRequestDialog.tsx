@@ -233,7 +233,7 @@ export default function EditingRequestDialog({ vendorUserId, open, onClose, onCr
                 {t("rq_total", locale)}
               </Typography>
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                {total.toFixed(0)} NOK
+                {total.toFixed(0)} {services[0]?.currency || "NOK"}
               </Typography>
             </Box>
             <Alert severity="info">{t("rq_escrow_note", locale)}</Alert>
