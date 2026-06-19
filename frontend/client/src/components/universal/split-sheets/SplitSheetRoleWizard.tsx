@@ -37,7 +37,12 @@ import {
   InputAdornment,
   Divider,
   alpha,
+  Switch,
+  Select,
+  MenuItem,
 } from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import {
   Close as CloseIcon,
   Group as TeamIcon,
@@ -119,12 +124,38 @@ const CATEGORY_COLORS = {
 
 type SplitModel = 'equal' | 'weighted' | 'manual' | 'hybrid';
 
+interface ExternalLine {
+  serviceName: string;
+  pricePerImage: number; // fra vendorens katalog
+  currency: string;
+  qty: number; // antall bilder
+}
 interface Participant {
   id: string; // local id
   name: string;
   email?: string;
   roleId: string;
   manualPct?: number; // brukes i manual + hybrid
+  // Eksternt firma (kostnad av-toppen, hentet fra vendorens katalog):
+  isExternal?: boolean;
+  vendorUserId?: string;
+  vendorName?: string;
+  vendorIsForeign?: boolean;
+  vendorCurrency?: string;
+  externalLines?: ExternalLine[];
+}
+
+// Sum av en ekstern deltakers katalog-linjer (pris/bilde × antall).
+function externalCostOf(p: Participant): number {
+  if (!p.isExternal || !p.externalLines) return 0;
+  return p.externalLines.reduce((s, l) => s + (Number(l.pricePerImage) || 0) * (Number(l.qty) || 0), 0);
+}
+
+interface VendorCatalog {
+  vendorUserId: string;
+  vendorName: string;
+  isInternational: boolean;
+  services: Array<{ name: string | null; price: number | null; currency: string }>;
 }
 
 interface Props {
@@ -226,71 +257,47 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
     if (open) splitSheetEvents.modelSelected(model);
   }, [model, open]);
 
-  // ─── Beregn shares ─────────────────────────────────────────────
+  // Vendor-katalog (samme kilde som discovery) — for eksterne deltakere.
+  const { data: vendorsData } = useQuery<{ vendors: VendorCatalog[] }>({
+    queryKey: ["/api/editing/vendors"],
+    queryFn: () => apiRequest("/api/editing/vendors"),
+    enabled: open,
+  });
+  const vendorCatalog: VendorCatalog[] = vendorsData?.vendors ?? [];
+
+  // ─── Beregn shares (ekstern vendor-kostnad av-toppen, så splitt resten) ──
+  const externalTotal = participants.reduce((s, p) => s + externalCostOf(p), 0);
+  const splittable = Math.max(0, projectAmount - externalTotal);
+
   const computedSplits = useMemo(() => {
     if (participants.length === 0) return [];
-
-    if (model === 'equal') {
-      const pct = 100 / participants.length;
-      return participants.map((p) => {
-        const role = activeRoleCatalog.find((r) => r.id === p.roleId);
-        return {
-          ...p,
-          sharePct: pct,
-          shareKr: (pct / 100) * projectAmount,
-          roleLabel: role?.label || '—',
-        };
-      });
-    }
-
-    if (model === 'weighted') {
-      const totalWeight = participants.reduce((sum, p) => {
-        const role = activeRoleCatalog.find((r) => r.id === p.roleId);
-        return sum + (role?.weight || 1);
-      }, 0);
-      return participants.map((p) => {
-        const role = activeRoleCatalog.find((r) => r.id === p.roleId);
-        const pct = totalWeight > 0 ? ((role?.weight || 1) / totalWeight) * 100 : 0;
-        return {
-          ...p,
-          sharePct: pct,
-          shareKr: (pct / 100) * projectAmount,
-          roleLabel: role?.label || '—',
-        };
-      });
-    }
-
-    if (model === 'manual') {
-      return participants.map((p) => {
-        const role = activeRoleCatalog.find((r) => r.id === p.roleId);
-        const pct = p.manualPct ?? (100 / participants.length);
-        return {
-          ...p,
-          sharePct: pct,
-          shareKr: (pct / 100) * projectAmount,
-          roleLabel: role?.label || '—',
-        };
-      });
-    }
-
-    // hybrid: base + vekt på resten
-    const remainingPct = Math.max(0, 100 - hybridBasePct * participants.length);
-    const totalWeight = participants.reduce((sum, p) => {
-      const role = activeRoleCatalog.find((r) => r.id === p.roleId);
-      return sum + (role?.weight || 1);
-    }, 0);
+    const internals = participants.filter((p) => !p.isExternal);
+    const n = internals.length;
+    const totalWeight = internals.reduce(
+      (sum, q) => sum + (activeRoleCatalog.find((r) => r.id === q.roleId)?.weight || 1), 0,
+    );
+    // Intern andel (% av splittable) per intern deltaker, basert på modell.
+    const internalPct = (p: Participant): number => {
+      if (n === 0) return 0;
+      const w = activeRoleCatalog.find((r) => r.id === p.roleId)?.weight || 1;
+      if (model === 'equal') return 100 / n;
+      if (model === 'manual') return p.manualPct ?? 100 / n;
+      if (model === 'weighted') return totalWeight > 0 ? (w / totalWeight) * 100 : 0;
+      // hybrid: base + vekt på resten
+      const remainingPct = Math.max(0, 100 - hybridBasePct * n);
+      return hybridBasePct + (totalWeight > 0 ? (w / totalWeight) * remainingPct : 0);
+    };
+    const pctOfTotal = (kr: number) => (projectAmount > 0 ? (kr / projectAmount) * 100 : 0);
     return participants.map((p) => {
+      if (p.isExternal) {
+        const cost = externalCostOf(p);
+        return { ...p, sharePct: pctOfTotal(cost), shareKr: cost, roleLabel: p.vendorName || 'Eksternt firma' };
+      }
       const role = activeRoleCatalog.find((r) => r.id === p.roleId);
-      const bonus = totalWeight > 0 ? ((role?.weight || 1) / totalWeight) * remainingPct : 0;
-      const pct = hybridBasePct + bonus;
-      return {
-        ...p,
-        sharePct: pct,
-        shareKr: (pct / 100) * projectAmount,
-        roleLabel: role?.label || '—',
-      };
+      const kr = (internalPct(p) / 100) * splittable;
+      return { ...p, sharePct: pctOfTotal(kr), shareKr: kr, roleLabel: role?.label || '—' };
     });
-  }, [participants, model, projectAmount, hybridBasePct, activeRoleCatalog]);
+  }, [participants, model, projectAmount, splittable, hybridBasePct, activeRoleCatalog]);
 
   const totalPct = computedSplits.reduce((s, p) => s + p.sharePct, 0);
 
@@ -574,6 +581,111 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Stack>
+
+                      {/* Eksternt firma: velg vendor + flere produkter fra katalogen × antall (kostnad av-toppen). */}
+                      <FormControlLabel
+                        sx={{ mt: 1 }}
+                        control={
+                          <Switch
+                            size="small"
+                            checked={!!p.isExternal}
+                            onChange={(e) =>
+                              updateParticipant(p.id, e.target.checked
+                                ? { isExternal: true }
+                                : { isExternal: false, vendorUserId: undefined, externalLines: [] })}
+                          />
+                        }
+                        label={<Typography variant="caption">Eksternt firma (kostnad av-toppen)</Typography>}
+                      />
+                      {p.isExternal && (
+                        <Stack spacing={1} sx={{ mt: 0.5, pl: 1 }}>
+                          <Select
+                            size="small"
+                            displayEmpty
+                            value={p.vendorUserId || ''}
+                            onChange={(e) => {
+                              const v = vendorCatalog.find((x) => x.vendorUserId === e.target.value);
+                              updateParticipant(p.id, {
+                                vendorUserId: v?.vendorUserId,
+                                vendorName: v?.vendorName,
+                                name: p.name || v?.vendorName || '',
+                                vendorIsForeign: !!v?.isInternational,
+                                vendorCurrency: v?.services?.[0]?.currency || 'NOK',
+                                externalLines: [],
+                              });
+                            }}
+                          >
+                            <MenuItem value=""><em>Velg leverandør…</em></MenuItem>
+                            {vendorCatalog.map((v) => (
+                              <MenuItem key={v.vendorUserId} value={v.vendorUserId}>
+                                {v.vendorName}{v.isInternational ? ' (utland)' : ''}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                          {p.vendorUserId && (() => {
+                            const v = vendorCatalog.find((x) => x.vendorUserId === p.vendorUserId);
+                            const services = v?.services || [];
+                            const lines = p.externalLines || [];
+                            return (
+                              <>
+                                {lines.map((l, li) => (
+                                  <Stack key={li} direction="row" spacing={1} alignItems="center">
+                                    <Select
+                                      size="small"
+                                      value={l.serviceName}
+                                      sx={{ flex: 1 }}
+                                      onChange={(e) => {
+                                        const svc = services.find((s) => (s.name || '') === e.target.value);
+                                        const next = [...lines];
+                                        next[li] = { ...l, serviceName: String(e.target.value), pricePerImage: svc?.price || 0, currency: svc?.currency || p.vendorCurrency || 'NOK' };
+                                        updateParticipant(p.id, { externalLines: next });
+                                      }}
+                                    >
+                                      {services.map((s, si) => (
+                                        <MenuItem key={si} value={s.name || ''}>
+                                          {s.name} ({s.price ?? '—'} {s.currency}/bilde)
+                                        </MenuItem>
+                                      ))}
+                                    </Select>
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      placeholder="Antall"
+                                      value={l.qty || ''}
+                                      sx={{ width: 90 }}
+                                      InputProps={{ endAdornment: <InputAdornment position="end">stk</InputAdornment> }}
+                                      onChange={(e) => {
+                                        const next = [...lines];
+                                        next[li] = { ...l, qty: Number(e.target.value) || 0 };
+                                        updateParticipant(p.id, { externalLines: next });
+                                      }}
+                                    />
+                                    <Typography variant="caption" sx={{ minWidth: 84, textAlign: 'right' }}>
+                                      {((l.pricePerImage || 0) * (l.qty || 0)).toLocaleString('nb-NO')} {l.currency}
+                                    </Typography>
+                                    <IconButton size="small" onClick={() => updateParticipant(p.id, { externalLines: lines.filter((_, i) => i !== li) })}>
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Stack>
+                                ))}
+                                <Button
+                                  size="small"
+                                  startIcon={<AddIcon />}
+                                  onClick={() => updateParticipant(p.id, {
+                                    externalLines: [...lines, { serviceName: services[0]?.name || '', pricePerImage: services[0]?.price || 0, currency: services[0]?.currency || 'NOK', qty: 1 }],
+                                  })}
+                                  sx={{ alignSelf: 'flex-start' }}
+                                >
+                                  Legg til produkt
+                                </Button>
+                                <Typography variant="caption" sx={{ color: p.vendorIsForeign ? '#ffb74d' : 'rgba(246,242,234,0.6)' }}>
+                                  Kostnad: {externalCostOf(p).toLocaleString('nb-NO')} {p.vendorCurrency} · {p.vendorIsForeign ? 'utland → snudd avregning (ingen norsk MVA på andelen)' : 'innenlands → 25 % MVA'}
+                                </Typography>
+                              </>
+                            );
+                          })()}
+                        </Stack>
+                      )}
                     </Card>
                   ))}
                 </Stack>
@@ -790,17 +902,27 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
               </Stack>
               {/* MVA-oppdeling (samme modell som editing-marketplace + Fiken). */}
               {(() => {
-                const mva = Math.round(projectAmount * 0.25);
+                // Utenlandske eksterne andeler = snudd avregning (ingen norsk MVA).
+                const foreignExternal = participants
+                  .filter((p) => p.isExternal && p.vendorIsForeign)
+                  .reduce((s, p) => s + externalCostOf(p), 0);
+                const mvaBase = Math.max(0, projectAmount - foreignExternal);
+                const mva = Math.round(mvaBase * 0.25);
                 return (
                   <Box sx={{ mt: 1, mb: 1, color: 'rgba(246,242,234,0.82)' }}>
+                    {foreignExternal > 0 && (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                        <span>Snudd avregning (utland)</span><span>{foreignExternal.toLocaleString('nb-NO')} kr</span>
+                      </Box>
+                    )}
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                      <span>+ 25 % MVA</span><span>{mva.toLocaleString('nb-NO')} kr</span>
+                      <span>+ 25 % MVA (MVA-grunnlag {mvaBase.toLocaleString('nb-NO')})</span><span>{mva.toLocaleString('nb-NO')} kr</span>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, borderTop: '1px solid rgba(255,255,255,0.12)', mt: 0.5, pt: 0.5 }}>
                       <span>Totalt inkl. MVA</span><span>{(projectAmount + mva).toLocaleString('nb-NO')} kr</span>
                     </Box>
                     <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: 'rgba(246,242,234,0.55)' }}>
-                      Eksternt firma utenfor Norge: snudd avregning — andelen utbetales uten norsk MVA; mottaker selv-avregner. Innenlands: 25 % MVA på andelen.
+                      Utenlandsk eksternt firma: snudd avregning — andelen utbetales uten norsk MVA; mottaker selv-avregner. Innenlands andel + provisjon: 25 % MVA.
                     </Typography>
                   </Box>
                 );
