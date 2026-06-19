@@ -296,54 +296,197 @@ function htmlBody(data: NotificationData, body: string, brand: EmailBranding): s
   const portal = data.portalToken
     ? `${PORTAL_BASE}/c/${data.portalToken}` : null;
 
-  const logoBlock = brand.brand_logo_url
-    ? `<img src="${brand.brand_logo_url}" alt="${brand.brand_name}"
-            style="max-height:48px; margin-bottom:16px;" />`
-    : `<div style="font-weight:700; font-size:18px; color:${brand.brand_primary_color};
-                    margin-bottom:16px;">${brand.brand_name}</div>`;
+  const brandColor = brand.brand_primary_color || "#a78bfa";
+  const subject = SUBJECT_PER_EVENT[data.event](data);
+  const initials = (brand.sender_full_name ?? brand.brand_name)
+    .split(/\s+/).map((s) => s[0]).slice(0, 2).join("").toUpperCase();
 
-  const signature = brand.sender_full_name ? `
-    <div style="margin-top:24px; padding-top:16px;
-                border-top:1px solid #eee; color:#444; font-size:13px;">
-      Mvh,<br/>
-      <strong>${brand.sender_full_name}</strong>
-      ${brand.sender_title ? `<br/>${brand.sender_title}` : ""}
-      ${brand.sender_email ? `<br/><a href="mailto:${brand.sender_email}"
-                                    style="color:${brand.brand_primary_color};">${brand.sender_email}</a>` : ""}
-      ${brand.sender_phone ? `<br/>${brand.sender_phone}` : ""}
-      <br/><strong style="color:${brand.brand_primary_color};">${brand.brand_name}</strong>
-    </div>` : "";
+  // Org-leverandør header-bar (matchet klient-portal-design)
+  const orgHeader = `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"
+           width="100%" style="background:#0a0512; padding:16px 24px;">
+      <tr>
+        <td style="vertical-align:middle;">
+          ${brand.brand_logo_url ? `
+          <img src="${brand.brand_logo_url}" alt="${escapeHtml(brand.brand_name)}"
+               width="36" height="36"
+               style="display:inline-block; vertical-align:middle;
+                      max-height:36px; border-radius:4px;" />` : `
+          <span style="display:inline-block; vertical-align:middle;
+                       width:36px; height:36px; line-height:36px;
+                       background:${brandColor}; color:#0a0512;
+                       font-weight:800; font-size:16px;
+                       border-radius:4px; text-align:center;
+                       font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+            ${escapeHtml(brand.brand_name.charAt(0).toUpperCase())}
+          </span>`}
+        </td>
+        <td style="vertical-align:middle; padding-left:12px; width:100%;">
+          <div style="color:rgba(255,255,255,0.5); font-size:10px;
+                       letter-spacing:1px; text-transform:uppercase;
+                       font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+            Levert av
+          </div>
+          <div style="color:${brandColor}; font-weight:700; font-size:15px;
+                       font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+                       margin-top:2px;">
+            ${escapeHtml(brand.brand_name)}
+          </div>
+        </td>
+      </tr>
+    </table>`;
 
-  const customFooter = brand.footer_html ?? "";
-  const address = brand.footer_address
-    ? `<div style="margin-top:8px;">${brand.footer_address}</div>` : "";
+  // Rådgiver-kontaktkort (matchet klient-portal-design)
+  const advisorCard = brand.sender_full_name ? `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"
+           width="100%" style="margin:24px 0; background:#fafaff;
+                                border:1px solid ${brandColor}33;
+                                border-radius:8px;">
+      <tr>
+        <td style="padding:20px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+            <tr>
+              <td width="56" style="vertical-align:middle;">
+                <div style="width:48px; height:48px; line-height:48px;
+                             background:${brandColor}; color:#0a0512;
+                             font-weight:800; font-size:18px;
+                             border-radius:50%; text-align:center;
+                             font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+                  ${escapeHtml(initials)}
+                </div>
+              </td>
+              <td style="vertical-align:middle; padding-left:14px;">
+                <div style="color:#888; font-size:10px;
+                             letter-spacing:1px; text-transform:uppercase;
+                             font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+                  Din rådgiver hos ${escapeHtml(brand.brand_name)}
+                </div>
+                <div style="color:#0a0512; font-weight:700; font-size:16px;
+                             margin-top:2px;
+                             font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+                  ${escapeHtml(brand.sender_full_name)}
+                </div>
+                ${brand.sender_title ? `
+                <div style="color:#666; font-size:13px;
+                             font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+                  ${escapeHtml(brand.sender_title)}
+                </div>` : ""}
+                <div style="margin-top:8px; font-size:13px;
+                             font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+                  ${brand.sender_email ? `
+                  <a href="mailto:${brand.sender_email}"
+                     style="color:${brandColor}; text-decoration:none;
+                             margin-right:14px;">
+                    ✉ ${escapeHtml(brand.sender_email)}
+                  </a>` : ""}
+                  ${brand.sender_phone ? `
+                  <a href="tel:${brand.sender_phone}"
+                     style="color:${brandColor}; text-decoration:none;">
+                    ☎ ${escapeHtml(brand.sender_phone)}
+                  </a>` : ""}
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>` : "";
 
-  return `
-<div style="font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-            max-width:560px; margin:0 auto; padding:24px; background:#fff;">
-  ${logoBlock}
-  <h2 style="color:#0a0512; margin-bottom:12px; font-size:20px;">
-    ${SUBJECT_PER_EVENT[data.event](data)}
-  </h2>
-  <p style="color:#333; line-height:1.55; font-size:15px;">${body}</p>
-  ${portal ? `
-  <div style="margin:24px 0;">
-    <a href="${portal}" style="display:inline-block; background:${brand.brand_primary_color};
-        color:#0a0512; padding:12px 24px; border-radius:8px;
-        text-decoration:none; font-weight:700;">
-      Åpne klient-portalen
-    </a>
-  </div>` : ""}
-  ${signature}
-  <div style="margin-top:32px; padding-top:16px; border-top:1px solid #eee;
-              color:#888; font-size:11px; line-height:1.5;">
-    ${customFooter}
-    ${address}
-    ${portal ? `<div style="margin-top:8px;">
+  const footerLines: string[] = [];
+  if (brand.footer_html) footerLines.push(brand.footer_html);
+  if (brand.footer_address) footerLines.push(`<div style="margin-top:8px;">${escapeHtml(brand.footer_address)}</div>`);
+  if (portal) footerLines.push(`
+    <div style="margin-top:8px;">
       <a href="${portal}/notifications" style="color:#888;">Endre varsels-innstillingene</a>
-    </div>` : ""}
-  </div>
-</div>`.trim();
+    </div>`);
+
+  return `<!DOCTYPE html>
+<html lang="nb"><head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin:0; padding:0; background:#f4f4f8;
+              font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+
+  <!-- Outer wrapper -->
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+         style="background:#f4f4f8;">
+    <tr>
+      <td style="padding:24px 16px;">
+
+        <!-- Email container -->
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"
+               width="100%" style="max-width:600px; margin:0 auto;
+                                    background:#fff; border-radius:8px;
+                                    overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.06);">
+
+          <!-- Org-leverandør header -->
+          <tr><td style="padding:0;">${orgHeader}</td></tr>
+
+          <!-- Hero — markedsanalyse for kunden -->
+          <tr><td style="padding:28px 24px 8px 24px;">
+            <div style="color:#888; font-size:11px; letter-spacing:1px;
+                         text-transform:uppercase;">
+              Markedsanalyse-oppdatering
+            </div>
+            <h1 style="color:#0a0512; margin:8px 0 0 0;
+                        font-size:22px; line-height:1.3; font-weight:700;">
+              ${escapeHtml(subject)}
+            </h1>
+          </td></tr>
+
+          <!-- Body -->
+          <tr><td style="padding:16px 24px 8px 24px;">
+            <p style="color:#333; line-height:1.55; font-size:15px; margin:0;">
+              ${body}
+            </p>
+          </td></tr>
+
+          ${portal ? `
+          <!-- CTA -->
+          <tr><td align="center" style="padding:24px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="background:${brandColor}; border-radius:8px;">
+                <a href="${portal}"
+                   style="display:inline-block; padding:14px 28px;
+                          color:#0a0512; text-decoration:none;
+                          font-weight:700; font-size:15px;
+                          font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+                  Åpne klient-portalen →
+                </a>
+              </td></tr>
+            </table>
+          </td></tr>` : ""}
+
+          <!-- Rådgiver-kontaktkort -->
+          ${advisorCard ? `<tr><td style="padding:0 24px;">${advisorCard}</td></tr>` : ""}
+
+          <!-- Footer -->
+          <tr><td style="padding:16px 24px 24px 24px; border-top:1px solid #eee;">
+            <div style="color:#888; font-size:11px; line-height:1.55;
+                         font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+              ${footerLines.join("")}
+              <div style="margin-top:8px; color:#aaa; font-size:10px;">
+                Sendt av ${escapeHtml(brand.brand_name)} via Leadgrid.
+              </div>
+            </div>
+          </td></tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body></html>`.trim();
+}
+
+function escapeHtml(s: string): string {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 /**
