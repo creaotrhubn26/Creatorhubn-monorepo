@@ -33,10 +33,12 @@ interface AssignmentStatus {
   tl_last: string | null;
   tl_avatar: string | null;
   tl_last_online: string | null;
+  tl_current_route: string | null;
   rep_first: string | null;
   rep_last: string | null;
   rep_avatar: string | null;
   rep_last_online: string | null;
+  rep_current_route: string | null;
 }
 
 interface Props {
@@ -93,7 +95,9 @@ export function AssignmentStatusChip({ customerId, canReassign, onReassignClick,
         <AssigneeRow
           name={[status.tl_first, status.tl_last].filter(Boolean).join(" ") || "Teamleder"}
           avatar={status.tl_avatar}
-          isOnline={isOnline(status.tl_last_online)}
+          isOnlineNow={isOnline(status.tl_last_online)}
+          lastOnlineAt={status.tl_last_online}
+          currentRoute={status.tl_current_route}
           role="Teamleder"
           firstOpenedAt={status.team_leader_first_opened_at}
           lastSeenAt={status.team_leader_last_seen_at}
@@ -107,7 +111,9 @@ export function AssignmentStatusChip({ customerId, canReassign, onReassignClick,
         <AssigneeRow
           name={[status.rep_first, status.rep_last].filter(Boolean).join(" ") || "Salgskonsulent"}
           avatar={status.rep_avatar}
-          isOnline={isOnline(status.rep_last_online)}
+          isOnlineNow={isOnline(status.rep_last_online)}
+          lastOnlineAt={status.rep_last_online}
+          currentRoute={status.rep_current_route}
           role="Rep"
           firstOpenedAt={status.rep_first_opened_at}
           lastSeenAt={status.rep_last_seen_at}
@@ -122,10 +128,13 @@ export function AssignmentStatusChip({ customerId, canReassign, onReassignClick,
 }
 
 function AssigneeRow({
-  name, avatar, isOnline, role, firstOpenedAt, lastSeenAt, assignedAt,
+  name, avatar, isOnlineNow, lastOnlineAt, currentRoute,
+  role, firstOpenedAt, lastSeenAt, assignedAt,
   canReassign, onReassign, compact,
 }: {
-  name: string; avatar: string | null; isOnline: boolean; role: string;
+  name: string; avatar: string | null;
+  isOnlineNow: boolean; lastOnlineAt: string | null; currentRoute: string | null;
+  role: string;
   firstOpenedAt: string | null; lastSeenAt: string | null; assignedAt: string | null;
   canReassign?: boolean; onReassign?: () => void; compact?: boolean;
 }) {
@@ -134,12 +143,12 @@ function AssigneeRow({
     ? Math.floor((Date.now() - new Date(assignedAt).getTime()) / 60000) : null;
 
   return (
-    <Stack direction="row" spacing={1} alignItems="center">
+    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" rowGap={0.5}>
       <Box sx={{ position: "relative" }}>
         <Avatar src={avatar ?? undefined} sx={{ width: 24, height: 24, fontSize: 11 }}>
           {name.split(" ").map((s) => s[0]).slice(0, 2).join("")}
         </Avatar>
-        {isOnline && (
+        {isOnlineNow && (
           <FiberManualRecordIcon sx={{
             position: "absolute", bottom: -2, right: -2, fontSize: 8,
             color: "#9be15d", bgcolor: "background.paper", borderRadius: "50%",
@@ -159,8 +168,31 @@ function AssigneeRow({
           </Typography>
         )}
       </Box>
+
+      {/* Online-status */}
+      {isOnlineNow ? (
+        <Tooltip title={currentRoute
+          ? `Online nå · er på ${currentRoute}`
+          : "Online akkurat nå"}>
+          <Chip size="small" color="success"
+                icon={<FiberManualRecordIcon sx={{ fontSize: 10 }} />}
+                label="Online"
+                sx={{ fontSize: 10, height: 20, fontWeight: 600 }} />
+        </Tooltip>
+      ) : lastOnlineAt ? (
+        <Tooltip title={`Var online ${new Date(lastOnlineAt).toLocaleString("no-NO")}`}>
+          <Chip size="small" variant="outlined"
+                label={`Sist online ${formatTimeAgo(lastOnlineAt)}`}
+                sx={{ fontSize: 10, height: 20, color: "rgba(255,255,255,0.6)" }} />
+        </Tooltip>
+      ) : (
+        <Chip size="small" variant="outlined" label="Aldri online"
+              sx={{ fontSize: 10, height: 20, color: "rgba(255,255,255,0.4)" }} />
+      )}
+
+      {/* Sett-status */}
       {hasSeen ? (
-        <Tooltip title={`Sist sett ${formatTimeAgo(lastSeenAt)}`}>
+        <Tooltip title={`Først åpnet ${formatTimeAgo(firstOpenedAt)} · Sist sett ${formatTimeAgo(lastSeenAt)}`}>
           <Chip size="small" color="success" icon={<VisibilityIcon sx={{ fontSize: 12 }} />}
                 label={`Sett ${formatTimeAgo(firstOpenedAt)}`}
                 sx={{ fontSize: 10, height: 20 }} />
@@ -168,8 +200,8 @@ function AssigneeRow({
       ) : (
         <Tooltip title={
           minutesSinceAssign !== null && minutesSinceAssign > 60
-            ? `Tildelt ${minutesSinceAssign / 60 | 0}t siden men ikke sett enda`
-            : "Mottakeren har ikke åpnet leaden enda"
+            ? `Tildelt ${minutesSinceAssign / 60 | 0}t siden men ikke åpnet ennå`
+            : "Mottakeren har ikke åpnet leaden ennå"
         }>
           <Chip size="small"
                 color={minutesSinceAssign !== null && minutesSinceAssign > 240 ? "error" : "warning"}
@@ -178,6 +210,7 @@ function AssigneeRow({
                 sx={{ fontSize: 10, height: 20 }} />
         </Tooltip>
       )}
+
       {canReassign && onReassign && (
         <Tooltip title="Re-tildel">
           <IconButton size="small" onClick={onReassign}>

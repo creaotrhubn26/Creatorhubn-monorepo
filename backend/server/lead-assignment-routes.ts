@@ -20,6 +20,7 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { notifyAssignment } from "./lead-assignment-notification-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { app: Express; pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -112,10 +113,11 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
               (SELECT COUNT(*) FROM crm_customers c
                 WHERE c.assigned_team_leader_id = om.user_id::text
                   AND c.status NOT IN ('won', 'lost', 'archived')) AS team_leader_leads,
-              -- Sist heartbeat (online-status)
-              u.last_seen_at::text
+              -- Sist heartbeat (online-status) — fra user_presence
+              up.last_seen_at::text
          FROM organization_members om
          JOIN users u ON u.id = om.user_id
+         LEFT JOIN user_presence up ON up.user_id = u.id
         WHERE om.organization_id = $1
           AND om.role = ANY($2::text[])
         ORDER BY u.first_name, u.last_name`,
@@ -198,19 +200,23 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
       meta: { type: "team_leader" },
     });
 
-    // Intern notifikasjon
+    // Multi-kanal notifikasjon
     try {
-      const lead = await pool.query<{ name: string }>(
-        `SELECT name FROM crm_customers WHERE id = $1`,
+      const lead = await pool.query<{ name: string; lead_category: string | null }>(
+        `SELECT name, lead_category FROM crm_customers WHERE id = $1`,
         [req.params.id],
       );
-      await pool.query(
-        `INSERT INTO notification_events (user_id, event_type, lead_id, message, created_at)
-         VALUES ($1, 'lead_assigned_as_team_leader', $2::uuid, $3, now())`,
-        [team_leader_user_id, req.params.id,
-         `Du er nå teamleder for ${lead.rows[0]?.name ?? "en ny lead"}`],
-      );
-    } catch (e) { /* schema-variansjon — ikke avbryt */ }
+      await notifyAssignment(pool, {
+        recipientUserId: team_leader_user_id,
+        organizationId: orgId!,
+        eventType: "lead_assigned_as_team_leader",
+        customerId: req.params.id,
+        customerName: lead.rows[0]?.name ?? "Ny lead",
+        customerTier: lead.rows[0]?.lead_category ?? null,
+        triggeredByUserId: s.userId,
+        note: note ?? null,
+      });
+    } catch (e) { console.warn("[assign-tl] notify feilet", e); }
 
     res.json({ ok: true });
   });
@@ -285,17 +291,21 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     });
 
     try {
-      const lead = await pool.query<{ name: string }>(
-        `SELECT name FROM crm_customers WHERE id = $1`,
+      const lead = await pool.query<{ name: string; lead_category: string | null }>(
+        `SELECT name, lead_category FROM crm_customers WHERE id = $1`,
         [req.params.id],
       );
-      await pool.query(
-        `INSERT INTO notification_events (user_id, event_type, lead_id, message, created_at)
-         VALUES ($1, 'lead_assigned_as_rep', $2::uuid, $3, now())`,
-        [rep_user_id, req.params.id,
-         `Du har fått tildelt en ny lead: ${lead.rows[0]?.name ?? "(uten navn)"}`],
-      );
-    } catch (e) { /* skip */ }
+      await notifyAssignment(pool, {
+        recipientUserId: rep_user_id,
+        organizationId: orgId!,
+        eventType: "lead_assigned_as_rep",
+        customerId: req.params.id,
+        customerName: lead.rows[0]?.name ?? "(uten navn)",
+        customerTier: lead.rows[0]?.lead_category ?? null,
+        triggeredByUserId: s.userId,
+        note: note ?? null,
+      });
+    } catch (e) { console.warn("[assign-rep] notify feilet", e); }
 
     res.json({ ok: true });
   });
@@ -500,6 +510,108 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
   });
 
   // ============================================================
+  // GET/PUT NOTIFICATION-PREFS
+  // ============================================================
+  app.get("/api/leadgrid/my-notification-prefs", async (req, res) => {
+    const s = getSession(req, activeSessions);
+    if (!s) return res.status(401).json({ error: "Ikke innlogget" });
+    const r = await pool.query(
+      `SELECT * FROM user_lead_notification_prefs WHERE user_id = $1`,
+      [s.userId],
+    );
+    res.json(r.rows[0] ?? {
+      notify_email: true, notify_whatsapp: false, notify_sms: false, notify_in_app: true,
+      notify_on_assigned_team_leader: true, notify_on_assigned_as_rep: true,
+      notify_on_lead_status_change: true, notify_on_lead_won: true, notify_on_lead_lost: false,
+    });
+  });
+  app.put("/api/leadgrid/my-notification-prefs", async (req, res) => {
+    const s = getSession(req, activeSessions);
+    if (!s) return res.status(401).json({ error: "Ikke innlogget" });
+    const b = req.body ?? {};
+    await pool.query(
+      `INSERT INTO user_lead_notification_prefs
+         (user_id, notify_email, notify_whatsapp, notify_sms, notify_in_app,
+          notify_on_assigned_team_leader, notify_on_assigned_as_rep,
+          notify_on_lead_status_change, notify_on_lead_won, notify_on_lead_lost,
+          notify_on_assignment_seen_status,
+          quiet_hours_start, quiet_hours_end, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
+       ON CONFLICT (user_id) DO UPDATE SET
+         notify_email = EXCLUDED.notify_email,
+         notify_whatsapp = EXCLUDED.notify_whatsapp,
+         notify_sms = EXCLUDED.notify_sms,
+         notify_in_app = EXCLUDED.notify_in_app,
+         notify_on_assigned_team_leader = EXCLUDED.notify_on_assigned_team_leader,
+         notify_on_assigned_as_rep = EXCLUDED.notify_on_assigned_as_rep,
+         notify_on_lead_status_change = EXCLUDED.notify_on_lead_status_change,
+         notify_on_lead_won = EXCLUDED.notify_on_lead_won,
+         notify_on_lead_lost = EXCLUDED.notify_on_lead_lost,
+         notify_on_assignment_seen_status = EXCLUDED.notify_on_assignment_seen_status,
+         quiet_hours_start = EXCLUDED.quiet_hours_start,
+         quiet_hours_end = EXCLUDED.quiet_hours_end,
+         updated_at = now()`,
+      [s.userId,
+       b.notify_email !== false, !!b.notify_whatsapp, !!b.notify_sms,
+       b.notify_in_app !== false,
+       b.notify_on_assigned_team_leader !== false,
+       b.notify_on_assigned_as_rep !== false,
+       b.notify_on_lead_status_change !== false,
+       b.notify_on_lead_won !== false,
+       !!b.notify_on_lead_lost,
+       !!b.notify_on_assignment_seen_status,
+       b.quiet_hours_start ?? null, b.quiet_hours_end ?? null],
+    );
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // GET/POST INBOX (in-app notifications)
+  // ============================================================
+  app.get("/api/leadgrid/my-notifications", async (req, res) => {
+    const s = getSession(req, activeSessions);
+    if (!s) return res.status(401).json({ error: "Ikke innlogget" });
+    const r = await pool.query(
+      `SELECT id, event_type, title, body, lead_id, deep_link,
+              meta, read_at::text, created_at::text,
+              triggered_by_user_id,
+              tb.first_name AS by_first, tb.last_name AS by_last
+         FROM notification_events n
+         LEFT JOIN users tb ON tb.id = n.triggered_by_user_id
+        WHERE n.recipient_user_id = $1
+        ORDER BY n.created_at DESC LIMIT 50`,
+      [s.userId],
+    );
+    const unread = await pool.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM notification_events
+        WHERE recipient_user_id = $1 AND read_at IS NULL`,
+      [s.userId],
+    );
+    res.json({ items: r.rows, unread_count: Number(unread.rows[0]?.n ?? 0) });
+  });
+
+  app.post("/api/leadgrid/my-notifications/mark-read", async (req, res) => {
+    const s = getSession(req, activeSessions);
+    if (!s) return res.status(401).json({ error: "Ikke innlogget" });
+    const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    if (ids.length === 0) {
+      // Mark all
+      await pool.query(
+        `UPDATE notification_events SET read_at = now()
+          WHERE recipient_user_id = $1 AND read_at IS NULL`,
+        [s.userId],
+      );
+    } else {
+      await pool.query(
+        `UPDATE notification_events SET read_at = now()
+          WHERE recipient_user_id = $1 AND id = ANY($2::uuid[])`,
+        [s.userId, ids],
+      );
+    }
+    res.json({ ok: true });
+  });
+
+  // ============================================================
   // ASSIGNMENT STATUS — markedssjef vil se om mottakeren har sett
   // ============================================================
   app.get("/api/leadgrid/customers/:id/assignment-status", async (req, res) => {
@@ -516,12 +628,18 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
               c.assigned_at::text,
               c.last_action_at::text, c.last_action_type,
               tl.first_name AS tl_first, tl.last_name AS tl_last,
-              tl.profile_image_url AS tl_avatar, tl.last_seen_at::text AS tl_last_online,
+              tl.profile_image_url AS tl_avatar,
+              tl_up.last_seen_at::text AS tl_last_online,
+              tl_up.current_route AS tl_current_route,
               rep.first_name AS rep_first, rep.last_name AS rep_last,
-              rep.profile_image_url AS rep_avatar, rep.last_seen_at::text AS rep_last_online
+              rep.profile_image_url AS rep_avatar,
+              rep_up.last_seen_at::text AS rep_last_online,
+              rep_up.current_route AS rep_current_route
          FROM crm_customers c
          LEFT JOIN users tl  ON tl.id = c.assigned_team_leader_id
          LEFT JOIN users rep ON rep.id = c.assigned_user_id
+         LEFT JOIN user_presence tl_up  ON tl_up.user_id = tl.id
+         LEFT JOIN user_presence rep_up ON rep_up.user_id = rep.id
         WHERE c.id = $1`,
       [req.params.id],
     );
