@@ -4465,16 +4465,27 @@ useEffect(() => {
               <MemoryCardIcon letter="A" type="SD" capacity="64GB" size="small" /> Minnekort-konfigurasjon
             </Typography>
             <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-              {Object.keys(LABELING_SCHEMES).map(scheme => (
-                <Chip
-                  key={scheme}
-                  label={scheme}
-                  size="small"
-                  variant={memoryCardLabeling === scheme ? 'filled' : 'outlined'}
-                  onClick={() => handleLabelingChange(scheme as LabelingKey)}
-                  icon={<Memory />}
-                />
-              ))}
+              {Object.keys(LABELING_SCHEMES).map(scheme => {
+                const active = memoryCardLabeling === scheme;
+                return (
+                  <Chip
+                    key={scheme}
+                    label={scheme}
+                    size="small"
+                    variant={active ? 'filled' : 'outlined'}
+                    onClick={() => handleLabelingChange(scheme as LabelingKey)}
+                    icon={<Memory />}
+                    sx={{
+                      fontWeight: 600,
+                      color: active ? '#0b0c10' : '#f6f2ea',
+                      bgcolor: active ? theming.colors.primary : 'rgba(255,255,255,0.06)',
+                      borderColor: 'rgba(255,255,255,0.35)',
+                      '& .MuiChip-icon': { color: active ? '#0b0c10' : theming.colors.primary },
+                      '&:hover': { bgcolor: active ? theming.colors.primary : 'rgba(255,255,255,0.12)' },
+                    }}
+                  />
+                );
+              })}
             </Stack>
             <MemoryCardSelector
               profession={memoryCardProfession}
