@@ -788,6 +788,23 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                 </Typography>
                 <Typography variant="h6" sx={{ color: 'rgba(246,242,234,0.62)' }}>kr</Typography>
               </Stack>
+              {/* MVA-oppdeling (samme modell som editing-marketplace + Fiken). */}
+              {(() => {
+                const mva = Math.round(projectAmount * 0.25);
+                return (
+                  <Box sx={{ mt: 1, mb: 1, color: 'rgba(246,242,234,0.82)' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                      <span>+ 25 % MVA</span><span>{mva.toLocaleString('nb-NO')} kr</span>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, borderTop: '1px solid rgba(255,255,255,0.12)', mt: 0.5, pt: 0.5 }}>
+                      <span>Totalt inkl. MVA</span><span>{(projectAmount + mva).toLocaleString('nb-NO')} kr</span>
+                    </Box>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: 'rgba(246,242,234,0.55)' }}>
+                      Eksternt firma utenfor Norge: snudd avregning — andelen utbetales uten norsk MVA; mottaker selv-avregner. Innenlands: 25 % MVA på andelen.
+                    </Typography>
+                  </Box>
+                );
+              })()}
               <Typography variant="body2" sx={{ color: 'rgba(246,242,234,0.72)' }}>
                 {projectName || 'Uten prosjektnavn'} · {participants.length} personer · {model === 'weighted' ? 'Vekt-basert' : model === 'equal' ? 'Lik splitt' : model === 'hybrid' ? 'Hybrid' : 'Manuelt'}
               </Typography>
