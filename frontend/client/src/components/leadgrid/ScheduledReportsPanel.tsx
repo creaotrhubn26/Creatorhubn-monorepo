@@ -38,6 +38,10 @@ interface ReportSub {
   last_send_status: string | null;
   last_send_error: string | null;
   next_send_at: string;
+  scope: "org" | "team" | "individual";
+  target_team_leader_id: string | null;
+  target_user_id: string | null;
+  auto_send_to_target: boolean;
 }
 
 const DAYS = ["Søn", "Man", "Tir", "Ons", "Tor", "Fre", "Lør"];
@@ -94,6 +98,26 @@ export function ScheduledReportsPanel() {
     if (r.ok) { setSnack({ kind: "ok", msg: sub.is_active ? "Pauset" : "Aktivert" }); load(); }
   };
 
+  const bulkAutoCreate = async () => {
+    if (!confirm("Opprett rapport-abonnement for hver selger + teamleder i organisasjonen? Idempotent — eksisterende hoppes over.")) return;
+    const r = await fetch("/api/leadgrid/scheduled-reports/auto-create-for-team", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        frequency: "weekly", day_of_week: 1, time_of_day: "08:00",
+        period_days: 7, report_type: "summary",
+        include_reps: true, include_team_leaders: true,
+      }),
+    });
+    if (r.ok) {
+      const j = await r.json();
+      setSnack({ kind: "ok", msg: `${j.created} opprettet, ${j.skipped} fantes fra før.` });
+      load();
+    } else {
+      setSnack({ kind: "err", msg: "Bulk-opprett feilet" });
+    }
+  };
+
   return (
     <Card sx={{ bgcolor: "rgba(167,139,250,0.04)",
                  border: "1px solid rgba(167,139,250,0.20)" }}>
@@ -107,13 +131,18 @@ export function ScheduledReportsPanel() {
               </Typography>
             </Stack>
             <Typography variant="caption" color="text.secondary">
-              Ukentlig / månedlig PDF på e-post til markedssjefer
+              Selgere får sin egen, teamledere får team-rapport, markedssjef får org
             </Typography>
           </Box>
-          <Button variant="contained" size="small" startIcon={<AddIcon />}
-                  onClick={() => setCreating(true)}>
-            Nytt abonnement
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button variant="outlined" size="small" onClick={bulkAutoCreate}>
+              Auto-aktiver per person
+            </Button>
+            <Button variant="contained" size="small" startIcon={<AddIcon />}
+                    onClick={() => setCreating(true)}>
+              Nytt abonnement
+            </Button>
+          </Stack>
         </Stack>
 
         {items.length === 0 && !loading ? (
@@ -133,10 +162,20 @@ export function ScheduledReportsPanel() {
               }}>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="flex-start">
                   <Box sx={{ flex: 1 }}>
-                    <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                    <Stack direction="row" spacing={1} alignItems="center" mb={1} flexWrap="wrap" rowGap={0.5}>
                       <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                         {sub.name}
                       </Typography>
+                      <Chip size="small"
+                            label={sub.scope === "individual" ? "Personlig"
+                                  : sub.scope === "team" ? "Team" : "Org"}
+                            sx={{ fontSize: 10, height: 18, fontWeight: 700,
+                                  bgcolor: sub.scope === "individual" ? "rgba(155,225,93,0.20)"
+                                         : sub.scope === "team" ? "rgba(255,184,107,0.20)"
+                                         : "rgba(167,139,250,0.20)",
+                                  color: sub.scope === "individual" ? "#9be15d"
+                                       : sub.scope === "team" ? "#ffb86b"
+                                       : "#a78bfa" }} />
                       <Chip size="small" label={sub.frequency === "weekly" ? "Ukentlig"
                                              : sub.frequency === "monthly" ? "Månedlig"
                                              : "Daglig"}
@@ -235,6 +274,10 @@ function SubscriptionDialog({ sub, onClose, onSaved }: {
     day_of_month: sub?.day_of_month ?? 1,
     time_of_day: sub?.time_of_day ?? "08:00",
     is_active: sub?.is_active ?? true,
+    scope: (sub?.scope ?? "org") as "org" | "team" | "individual",
+    target_team_leader_id: sub?.target_team_leader_id ?? null as string | null,
+    target_user_id: sub?.target_user_id ?? null as string | null,
+    auto_send_to_target: sub?.auto_send_to_target ?? true,
   });
   const [emailInput, setEmailInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -278,6 +321,46 @@ function SubscriptionDialog({ sub, onClose, onSaved }: {
           <TextField label="Navn" value={form.name}
                      onChange={(e) => upd("name", e.target.value)}
                      fullWidth size="small" />
+
+          {/* Scope: hvilke leads inkluderes */}
+          <Box sx={{ p: 1.5, border: "1px dashed",
+                      borderColor: "divider", borderRadius: 1 }}>
+            <Typography variant="caption" sx={{ fontWeight: 700, mb: 1, display: "block" }}>
+              Hvilke leads inkluderes?
+            </Typography>
+            <Stack direction="row" spacing={2}>
+              <TextField select label="Scope" value={form.scope}
+                         onChange={(e) => upd("scope", e.target.value)}
+                         size="small" sx={{ flex: 1 }}>
+                <MenuItem value="org">Hele org (alle leads)</MenuItem>
+                <MenuItem value="team">Ett team (én teamleder)</MenuItem>
+                <MenuItem value="individual">Én person (én selger)</MenuItem>
+              </TextField>
+              {form.scope === "team" && (
+                <Autocomplete
+                  options={assignableUsers.filter((u) => u.role === "teamleder")}
+                  getOptionLabel={(o) => o.full_name || o.email}
+                  value={assignableUsers.find((u) => u.user_id === form.target_team_leader_id) ?? null}
+                  onChange={(_, v) => upd("target_team_leader_id", v?.user_id ?? null)}
+                  renderInput={(p) => <TextField {...p} label="Velg teamleder" size="small" />}
+                  sx={{ flex: 1 }} />
+              )}
+              {form.scope === "individual" && (
+                <Autocomplete options={assignableUsers}
+                  getOptionLabel={(o) => o.full_name || o.email}
+                  value={assignableUsers.find((u) => u.user_id === form.target_user_id) ?? null}
+                  onChange={(_, v) => upd("target_user_id", v?.user_id ?? null)}
+                  renderInput={(p) => <TextField {...p} label="Velg person" size="small" />}
+                  sx={{ flex: 1 }} />
+              )}
+            </Stack>
+            {form.scope !== "org" && (
+              <FormControlLabel sx={{ mt: 1 }}
+                control={<Switch checked={form.auto_send_to_target}
+                                  onChange={(e) => upd("auto_send_to_target", e.target.checked)} />}
+                label={`Send automatisk til ${form.scope === "team" ? "teamlederen" : "personen"}`} />
+            )}
+          </Box>
 
           <Stack direction="row" spacing={2}>
             <TextField select label="Type" value={form.report_type}
