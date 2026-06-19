@@ -1,5 +1,5 @@
 /**
- * CreatorHub Norge - Update Frequency Recommendations
+ * CreatorHub Norge - Anbefalt oppdateringsfrekvens
  * Guidelines for memory card price update frequencies
  */
 
@@ -65,9 +65,9 @@ interface UpdateFrequency {
 const UPDATE_FREQUENCIES: UpdateFrequency[] = [
   {
     id: 'real-time',
-    name: 'Real-time (1-5 min, )',
+    name: 'Sanntid (1–5 min)',
     interval:  5,
-    description: 'Continuous price monitoring with immediate updates',
+    description: 'Kontinuerlig prisovervåking med umiddelbare oppdateringer',
     useCase: 'High-frequency trading, critical business decisions',
     pros: [
       'Immediate price change detection','Best for time-sensitive decisions','Maximum accuracy for current prices','Real-time market analysis'
@@ -82,9 +82,9 @@ const UPDATE_FREQUENCIES: UpdateFrequency[] = [
 ,},
   {
     id: 'frequent',
-    name: 'Frequent (15-30 min, )',
+    name: 'Hyppig (15–30 min)',
     interval:  30,
-    description: 'Regular updates throughout business hours',
+    description: 'Jevnlige oppdateringer gjennom arbeidsdagen',
     useCase: 'Active project planning, client consultations',
     pros: [
       'Good balance of accuracy and efficiency','Suitable for most business needs','Reasonable server load','Quick response to significant changes'
@@ -99,9 +99,9 @@ const UPDATE_FREQUENCIES: UpdateFrequency[] = [
 ,},
   {
     id: 'standard',
-    name: 'Standard (1-2 hours, )',
+    name: 'Standard (1–2 timer)',
     interval: 10,
-    description: 'Regular updates during business hours',
+    description: 'Jevnlige oppdateringer i arbeidstiden',
     useCase: 'General project planning, cost estimation',
     pros: [
       'Low server load and costs','Reliable and stable','Good for general planning','Minimal API rate limit issues'
@@ -116,9 +116,9 @@ const UPDATE_FREQUENCIES: UpdateFrequency[] = [
 ,},
   {
     id: 'daily',
-    name: 'Daily (24 hours, )',
+    name: 'Daglig (24 timer)',
     interval: 140,
-    description: 'Once daily price updates',
+    description: 'Prisoppdatering én gang daglig',
     useCase: 'Long-term planning, budget estimation',
     pros: [
       'Very low costs','Minimal server load','Good for trend analysis','Stable and predictable'
@@ -133,9 +133,9 @@ const UPDATE_FREQUENCIES: UpdateFrequency[] = [
 ,},
   {
     id: 'weekly',
-    name: 'Weekly (7 days, )',
+    name: 'Ukentlig (7 dager)',
     interval: 1000,
-    description: 'Weekly price updates for trend analysis',
+    description: 'Ukentlige prisoppdateringer for trendanalyse',
     useCase: 'Market research, trend analysis',
     pros: [
       'Minimal costs and server load','Good for trend analysis','Very stable','Suitable for research purposes'
@@ -154,17 +154,17 @@ const PRICE_SOURCE_RECOMMENDATIONS = {
   'high-frequency': {
     sources: ['amazon-com','bhphoto-com','adorama-com'],
     interval:  15,
-    description: 'For sources with real-time pricing APIs'
+    description: 'For kilder med sanntids-pris-API-er'
   },
   'standard': {
     sources: ['komplett-no','elkjop-no','power-no','webhallen-se'],
     interval:  60,
-    description: 'For major retailers with daily price updates'
+    description: 'For store forhandlere med daglige prisoppdateringer'
   },
   'specialized': {
     sources: ['foto-video-no','fotokilden-no', 'sandisk-com','lexar-com'],
     interval: 10,
-    description: 'For specialized retailers and manufacturers'
+    description: 'For spesialforhandlere og produsenter'
   }
 };
 
@@ -215,7 +215,7 @@ const UpdateFrequencyRecommendations: React.FC<UpdateFrequencyRecommendationsPro
     <Box sx={{ p:  2 }}>
       <Typography variant="h5" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
         <Memory />
-        Update Frequency Recommendations
+        Anbefalt oppdateringsfrekvens
       </Typography>
 
       <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
@@ -261,18 +261,18 @@ const UpdateFrequencyRecommendations: React.FC<UpdateFrequencyRecommendationsPro
       <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
           <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            Available Update Frequencies
+            Tilgjengelige frekvenser
           </Typography>
           <TableContainer component={Paper}>
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Frequency</TableCell>
-                  <TableCell>Interval</TableCell>
-                  <TableCell>Use Case</TableCell>
-                  <TableCell>Cost</TableCell>
-                  <TableCell>Reliability</TableCell>
-                  <TableCell>Recommended For</TableCell>
+                  <TableCell>Frekvens</TableCell>
+                  <TableCell>Intervall</TableCell>
+                  <TableCell>Bruksområde</TableCell>
+                  <TableCell>Kostnad</TableCell>
+                  <TableCell>Pålitelighet</TableCell>
+                  <TableCell>Anbefalt for</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -385,7 +385,7 @@ const UpdateFrequencyRecommendations: React.FC<UpdateFrequencyRecommendationsPro
                 <Divider sx={{ my:  2 }} />
 
                 <Typography variant="subtitle2" gutterBottom>
-                  Recommended For: </Typography>
+                  Anbefalt for: </Typography>
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
                   {frequency.recommendedFor.map((recommendation, index) => (
                     <Chip
@@ -407,7 +407,7 @@ const UpdateFrequencyRecommendations: React.FC<UpdateFrequencyRecommendationsPro
         <CardContent sx={theming.getThemedCardSx()}>
           <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
             {theming.getThemedIcon('assessment')}
-            Price Source Update Recommendations
+            Anbefalte pris-kilder
           </Typography>
           <Grid container spacing={2}>
             {Object.entries(PRICE_SOURCE_RECOMMENDATIONS).map(([type, config]) => (
