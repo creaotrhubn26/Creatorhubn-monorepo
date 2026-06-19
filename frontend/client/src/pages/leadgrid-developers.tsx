@@ -243,6 +243,55 @@ X-Leadgrid-Timestamp: <unix-seconds>`}</CodeBlock>
           <CodeBlock>{CODE_PYTHON}</CodeBlock>
         </Section>
 
+        {/* Rate limiting */}
+        <Section title="Rate limiting">
+          <Typography sx={{ mb: 2, color: PALETTE.textMuted }}>
+            Vi enforcer rate limits per API-key. Hver respons har headere:
+          </Typography>
+          <CodeBlock>{`X-RateLimit-Limit: <calls per hour for your tier>
+X-RateLimit-Remaining: <how many calls left this hour>
+X-RateLimit-Reset: <unix-second when bucket resets>
+X-RateLimit-Tier: <your tier-key>
+X-RateLimit-Burst: <max calls per minute>`}</CodeBlock>
+          <Typography sx={{ mt: 3, mb: 2, color: PALETTE.textMuted }}>
+            <strong>Tier-grenser:</strong>
+          </Typography>
+          <Box sx={{ overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", color: PALETTE.text }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.15)" }}>
+                  {["Tier", "Calls/time", "Calls/dag", "Burst/min", "Overage"].map((h) => (
+                    <th key={h} style={{ textAlign: "left", padding: "8px",
+                                         color: PALETTE.accent, fontWeight: 700 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ["Sandbox",              "100",   "500",    "20",   "—"],
+                  ["Listed Partner",       "10",    "100",    "5",    "—"],
+                  ["Certified Partner",    "100",   "1 000",  "20",   "—"],
+                  ["Integration Partner",  "1 000", "10 000", "60",   "0.10 kr/call"],
+                  ["Verified Integration", "5 000", "50 000", "200",  "0.05 kr/call"],
+                  ["Strategic Partner",    "50 000","500 000","1 000","0.01 kr/call"],
+                ].map((r) => (
+                  <tr key={r[0]} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                    {r.map((c, i) => (
+                      <td key={i} style={{ padding: "8px",
+                                            color: i === 0 ? "#fff" : PALETTE.textMuted,
+                                            fontWeight: i === 0 ? 600 : 400 }}>{c}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Box>
+          <Typography sx={{ mt: 3, color: PALETTE.textMuted }}>
+            Ved overskridelse: <strong>HTTP 429 Too Many Requests</strong> m/
+            <code>Retry-After</code>-header (sekunder).
+          </Typography>
+        </Section>
+
         {/* Retry-logikk */}
         <Section title="Retry-logikk">
           <Typography sx={{ mb: 2, color: PALETTE.textMuted }}>
