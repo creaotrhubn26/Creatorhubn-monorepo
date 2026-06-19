@@ -114,6 +114,10 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
       use_case?: string | null;
       preferred_demo_time?: string | null;
       demo_language?: string | null;
+      // GDPR-consent: kunden samtykker til at vi automatisk gjør Brreg-oppslag,
+      // web-scrape og Claude-analyse. KREVES for at auto-research skal trigge.
+      consent_research?: boolean;
+      consent_text_version?: string;
       // Klient-sendt attribusjons-kontekst (UTM-term/content, gclid, fbclid,
       // li_fat_id, referrer, landing_page, screen, locale). Merges med
       // server-side referer + received_at.
@@ -226,6 +230,31 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
             [lead.id],
           );
         } catch { /* best-effort */ }
+      }
+
+      // GDPR-consent: hvis kunden samtykker, lagre + trigge auto-research
+      const consentGiven = body.consent_research === true;
+      if (consentGiven) {
+        try {
+          await pool.query(
+            `UPDATE agency_leads SET
+               consent_research_given = TRUE,
+               consent_research_given_at = now(),
+               consent_research_ip = $1,
+               consent_research_user_agent = $2,
+               consent_text_version = $3
+             WHERE id = $4::uuid`,
+            [ip?.slice(0, 80) ?? null,
+             req.headers["user-agent"]?.toString().slice(0, 1000) ?? null,
+             body.consent_text_version ?? "v1",
+             lead.id],
+          );
+          // Fire-and-forget auto-research — kjører i bakgrunnen
+          const { triggerAutoResearchAsync } = await import("./lead-auto-research-service.js");
+          triggerAutoResearchAsync(pool, lead.id);
+        } catch (e) {
+          console.error("[agency-leads] consent/research-trigger feilet:", e);
+        }
       }
 
       // Event

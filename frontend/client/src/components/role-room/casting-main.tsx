@@ -184,6 +184,17 @@ function CastingStandaloneAppContent() {
       || localeCtx.pathname === '/leadgrid/personvern/') {
     return <LeadgridPersonvern />;
   }
+  if (localeCtx.pathname === '/personvern/automatisk-research'
+      || localeCtx.pathname === '/personvern/automatisk-research/') {
+    const LeadgridResearchConsent = React.lazy(
+      () => import('@/pages/leadgrid-research-consent')
+    );
+    return (
+      <React.Suspense fallback={null}>
+        <LeadgridResearchConsent />
+      </React.Suspense>
+    );
+  }
   if (localeCtx.pathname === '/leadgrid' || localeCtx.pathname === '/leadgrid/') {
     return <LeadgridLanding />;
   }
