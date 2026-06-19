@@ -136,26 +136,81 @@ export function registerLeadAcceptanceRoutes({ app, pool, activeSessions }: Deps
          })],
       );
 
-      // 2. Opprett crm_customer
+      // 2. Opprett crm_customer (med ev. tildelt teamleder/rep allerede)
       const customerId = (await pool.query<{ id: string }>(
         `SELECT gen_random_uuid() AS id`,
       )).rows[0].id;
       const logoUrl = lead.website_scrape_data?.og_image
                    ?? lead.website_scrape_data?.favicon_url
                    ?? null;
+
+      const assignedTeamLeader = req.body?.assigned_team_leader_id ?? null;
+      const assignedRep = req.body?.assigned_rep_id ?? null;
+      const assignmentNote = req.body?.assignment_note ?? null;
+
       await pool.query(
         `INSERT INTO crm_customers
           (id, project_id, name, email, phone, website_url, logo_url,
-           status, lead_category, ai_opportunity_score, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())`,
+           status, lead_category, ai_opportunity_score,
+           assigned_team_leader_id, assigned_user_id, assigned_by_user_id,
+           assigned_at, assignment_note,
+           assignment_chain, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                 $11, $12, $13,
+                 CASE WHEN $11 IS NOT NULL OR $12 IS NOT NULL THEN now() END,
+                 $14, $15::jsonb, now())`,
         [customerId, projectId, lead.agency_name, lead.email, lead.phone,
          lead.website, logoUrl,
          "active",
          lead.claude_temperature,
          lead.claude_temperature === "hot" ? 95
            : lead.claude_temperature === "warm" ? 75
-           : lead.claude_temperature === "cool" ? 55 : 35],
+           : lead.claude_temperature === "cool" ? 55 : 35,
+         assignedTeamLeader, assignedRep,
+         (assignedTeamLeader || assignedRep) ? s.userId : null,
+         assignmentNote,
+         JSON.stringify([
+           ...(assignedTeamLeader ? [{
+             type: "team_leader", user_id: assignedTeamLeader,
+             by_user_id: s.userId, at: new Date().toISOString(),
+             note: assignmentNote, on_accept: true,
+           }] : []),
+           ...(assignedRep ? [{
+             type: "rep", user_id: assignedRep,
+             by_user_id: s.userId, at: new Date().toISOString(),
+             note: assignmentNote, on_accept: true,
+           }] : []),
+         ]),
+        ],
       );
+
+      // Logg + notification for ev. tildelinger på accept-tidspunktet
+      if (assignedTeamLeader || assignedRep) {
+        try {
+          await pool.query(
+            `INSERT INTO lead_assignment_log
+               (lead_id, organization_id, from_user_id, to_user_id,
+                assigned_by_user_id, reason, meta)
+             SELECT $1, $2, NULL, unnest($3::text[]),
+                    $4, 'accept_as_project', $5::jsonb`,
+            [customerId, orgId,
+             [assignedTeamLeader, assignedRep].filter(Boolean),
+             s.userId,
+             JSON.stringify({ from_lead_id: lead.id })],
+          );
+          for (const uid of [assignedTeamLeader, assignedRep].filter(Boolean)) {
+            await pool.query(
+              `INSERT INTO notification_events
+                 (user_id, event_type, lead_id, message, created_at)
+               VALUES ($1, 'lead_assigned_on_accept', $2::uuid, $3, now())`,
+              [uid, customerId,
+               `Du har fått tildelt: ${lead.agency_name}`],
+            ).catch(() => {});
+          }
+        } catch (e) {
+          console.warn("[accept] assignment-log feilet", e);
+        }
+      }
 
       // 3. Opprett portal-token
       const tokenR = await pool.query<{ token: string }>(

@@ -20,6 +20,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import VerifiedUserIcon from "@mui/icons-material/VerifiedUser";
+import { AssignLeadDialog } from "./AssignLeadDialog";
 
 interface Lead {
   id: string;
@@ -53,6 +54,7 @@ export function LeadInboxCard() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Lead | null>(null);
+  const [assigningLead, setAssigningLead] = useState<Lead | null>(null);
   const [snack, setSnack] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
 
   const load = async () => {
@@ -65,15 +67,25 @@ export function LeadInboxCard() {
 
   useEffect(() => { load(); }, []);
 
-  const accept = async (lead: Lead) => {
+  const accept = async (lead: Lead, assignment?: {
+    assigned_team_leader_id: string | null;
+    assigned_rep_id: string | null;
+    assignment_note: string | null;
+  }) => {
+    const body = assignment ?? {};
     const r = await fetch(`/api/superadmin/leads/${lead.id}/accept-as-project`, {
       method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json" }, body: "{}",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     });
     const j = await r.json();
     if (r.ok) {
-      setSnack({ kind: "ok", msg: `${lead.agency_name} lagt til som prosjekt!` });
+      const msg = assignment?.assigned_team_leader_id
+        ? `${lead.agency_name} lagt til + tildelt!`
+        : `${lead.agency_name} lagt til som prosjekt!`;
+      setSnack({ kind: "ok", msg });
       setSelected(null);
+      setAssigningLead(null);
       await load();
     } else {
       setSnack({ kind: "err", msg: j?.details ?? "Feilet" });
@@ -191,9 +203,15 @@ export function LeadInboxCard() {
                   {/* Handlinger */}
                   <Stack spacing={1} sx={{ minWidth: { md: 200 } }}>
                     <Button variant="contained" color="success"
-                            startIcon={<CheckCircleIcon />} onClick={() => accept(lead)}
+                            startIcon={<CheckCircleIcon />}
+                            onClick={() => setAssigningLead(lead)}
                             disabled={isResearching}>
-                      Godta som prosjekt
+                      Godta + tildel
+                    </Button>
+                    <Button variant="outlined" size="small"
+                            onClick={() => accept(lead)}
+                            disabled={isResearching}>
+                      Godta uten tildeling
                     </Button>
                     <Button variant="outlined" size="small"
                             onClick={() => setSelected(lead)}>
@@ -223,6 +241,19 @@ export function LeadInboxCard() {
         <LeadDetailsDialog lead={selected} onClose={() => setSelected(null)}
                             onAccept={() => accept(selected)}
                             onReject={() => reject(selected)} />
+      )}
+
+      {assigningLead && (
+        <AssignLeadDialog open
+          onClose={() => setAssigningLead(null)}
+          customerId={assigningLead.id}
+          lead={{
+            agency_name: assigningLead.agency_name,
+            contact_name: assigningLead.contact_name,
+            claude_temperature: assigningLead.claude_temperature ?? undefined,
+          }}
+          mode="accept" level="both"
+          onSubmit={async (data) => { await accept(assigningLead, data); }} />
       )}
 
       <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack(null)}>
