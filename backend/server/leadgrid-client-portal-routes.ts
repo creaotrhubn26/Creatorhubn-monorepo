@@ -26,6 +26,7 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { notifyClient } from "./client-notification-service.js";
 
 interface Deps {
   app: Express;
@@ -468,6 +469,18 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
           [t.organization_id, t.customer_id, msg],
         );
       } catch { /* schema-variansjon — ikke avbryt */ }
+
+      // Send bekreftelse til klienten (e-post + ev. SMS/WhatsApp etter prefs)
+      try {
+        await notifyClient(pool, {
+          customerId: t.customer_id,
+          event: "focus_request_received",
+          focusArea: needs.slice(0, 3).join(", "),
+          portalToken: req.params.token,
+        });
+      } catch (e) {
+        console.error("[client-portal-focus] notifyClient feilet", e);
+      }
 
       return res.status(201).json({
         created_count: created.length,
