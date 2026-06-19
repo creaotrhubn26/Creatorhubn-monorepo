@@ -211,22 +211,25 @@ struct TopRepStat: Codable, Hashable, Identifiable {
 }
 
 struct ConversionFunnel: Codable {
-    let newLeads: String
-    let contacted: String
-    let meetingBooked: String
-    let proposalSent: String
-    let negotiating: String
-    let won: String
-    let lost: String
+    // Alle Optional fordi backend returnerer `{}` hvis ingen data i
+    // perioden — Swift Codable ville ellers throw'e og dashboard
+    // ville krasje uten leads i org-en (typisk for nye orgs).
+    let newLeads: String?
+    let contacted: String?
+    let meetingBooked: String?
+    let proposalSent: String?
+    let negotiating: String?
+    let won: String?
+    let lost: String?
 
     var stages: [(label: String, count: Int)] {
         [
-            ("Nye leads", Int(newLeads) ?? 0),
-            ("Kontaktet", Int(contacted) ?? 0),
-            ("Møte booket", Int(meetingBooked) ?? 0),
-            ("Forslag sendt", Int(proposalSent) ?? 0),
-            ("I forhandling", Int(negotiating) ?? 0),
-            ("Vunnet", Int(won) ?? 0),
+            ("Nye leads", Int(newLeads ?? "0") ?? 0),
+            ("Kontaktet", Int(contacted ?? "0") ?? 0),
+            ("Møte booket", Int(meetingBooked ?? "0") ?? 0),
+            ("Forslag sendt", Int(proposalSent ?? "0") ?? 0),
+            ("I forhandling", Int(negotiating ?? "0") ?? 0),
+            ("Vunnet", Int(won ?? "0") ?? 0),
         ]
     }
 }
@@ -394,16 +397,76 @@ struct MyProfileResponse: Codable {
 }
 
 // ============================================================
-// MARK: - Helpers — formatering
+// MARK: - Robust date-parsing
 // ============================================================
+//
+// KRITISK: PostgreSQL ::text-cast returnerer datoer i formatet
+// "2026-06-19 18:42:09.317304+00" (mellomrom-separator + microsec)
+// — IKKE ISO8601 ("2026-06-19T18:42:09.317Z").
+//
+// ISO8601DateFormatter parser ikke PG-formatet. Vi trenger en parser
+// som håndterer BEGGE — fordi noen endpoints caster .text mens andre
+// returnerer Date-objekter som blir ISO via JSON.stringify.
+//
+// Brukes overalt i Leadgrid-views der vi formaterer relative tider.
 
-extension LeadgridStatusHistoryItem {
-    /// Norsk-lokal lest-tid (eks: "19. juni 14:32")
-    var formattedChangedAt: String {
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let d = iso.date(from: changedAt) ?? ISO8601DateFormatter().date(from: changedAt)
-        else { return changedAt }
+enum LeadgridDate {
+    /// Parse fra Leadgrid backend. Returnerer nil hvis strenger ikke
+    /// matcher noen kjente format.
+    static func parse(_ s: String?) -> Date? {
+        guard let s, !s.isEmpty else { return nil }
+
+        // 1. ISO8601 m/ fraksjons-sekunder (typisk fra res.json av Date-obj)
+        let isoFrac = ISO8601DateFormatter()
+        isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = isoFrac.date(from: s) { return d }
+
+        // 2. ISO8601 uten fraksjons-sekunder
+        if let d = ISO8601DateFormatter().date(from: s) { return d }
+
+        // 3. PostgreSQL-format: "YYYY-MM-DD HH:MM:SS[.MICROS]+TZ"
+        //    Backend ::text returnerer typisk +00 (kun timezone-timer).
+        //    `x` matcher +00, `xx` matcher +0000, `xxx` matcher +00:00.
+        let pgFormats = [
+            "yyyy-MM-dd HH:mm:ss.SSSSSSx",   // 2026-06-19 18:42:09.317304+00
+            "yyyy-MM-dd HH:mm:ss.SSSSSSxx",  // 2026-06-19 18:42:09.317304+0000
+            "yyyy-MM-dd HH:mm:ss.SSSSSSxxx", // 2026-06-19 18:42:09.317304+00:00
+            "yyyy-MM-dd HH:mm:ss.SSSx",      // millisek + kort TZ
+            "yyyy-MM-dd HH:mm:ss.SSSxxx",    // millisek + lang TZ
+            "yyyy-MM-dd HH:mm:ssx",          // ingen brøkdel + kort TZ
+            "yyyy-MM-dd HH:mm:ssxxx",        // ingen brøkdel + lang TZ
+            "yyyy-MM-dd HH:mm:ss",           // fallback uten TZ
+        ]
+        for fmt in pgFormats {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = TimeZone(identifier: "UTC")
+            f.dateFormat = fmt
+            if let d = f.date(from: s) { return d }
+        }
+        return nil
+    }
+
+    /// Relativ tid: "5 min siden", "2 t siden", "3d siden", "nå"
+    static func relativeAgo(_ s: String?) -> String {
+        guard let d = parse(s) else { return s ?? "—" }
+        let mins = Int(Date().timeIntervalSince(d) / 60)
+        if mins < 1 { return "nå" }
+        if mins < 60 { return "\(mins) min siden" }
+        let hours = mins / 60
+        if hours < 24 { return "\(hours) t siden" }
+        return "\(hours / 24)d siden"
+    }
+
+    /// Online hvis siste-sett er nyere enn 90 sek.
+    static func isOnline(_ s: String?) -> Bool {
+        guard let d = parse(s) else { return false }
+        return Date().timeIntervalSince(d) < 90
+    }
+
+    /// Norsk-lokal formatert tid (eks: "19. juni 14:32")
+    static func formatNo(_ s: String?) -> String {
+        guard let d = parse(s) else { return s ?? "—" }
         let f = DateFormatter()
         f.locale = Locale(identifier: "nb_NO")
         f.dateFormat = "d. MMM HH:mm"
@@ -411,17 +474,20 @@ extension LeadgridStatusHistoryItem {
     }
 }
 
+// ============================================================
+// MARK: - Helpers — formatering
+// ============================================================
+
+extension LeadgridStatusHistoryItem {
+    /// Norsk-lokal lest-tid (eks: "19. juni 14:32"). Bruker robust
+    /// PG-format-tolerant parser.
+    var formattedChangedAt: String {
+        LeadgridDate.formatNo(changedAt)
+    }
+}
+
 extension LeadgridNotification {
     var timeAgo: String {
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let d = iso.date(from: createdAt) ?? ISO8601DateFormatter().date(from: createdAt)
-        else { return "" }
-        let mins = Int(Date().timeIntervalSince(d) / 60)
-        if mins < 1 { return "nå" }
-        if mins < 60 { return "\(mins) min siden" }
-        let hours = mins / 60
-        if hours < 24 { return "\(hours) t siden" }
-        return "\(hours / 24)d siden"
+        LeadgridDate.relativeAgo(createdAt)
     }
 }
