@@ -112,10 +112,11 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
               (SELECT COUNT(*) FROM crm_customers c
                 WHERE c.assigned_team_leader_id = om.user_id::text
                   AND c.status NOT IN ('won', 'lost', 'archived')) AS team_leader_leads,
-              -- Sist heartbeat (online-status)
-              u.last_seen_at::text
+              -- Sist heartbeat (online-status) — fra user_presence
+              up.last_seen_at::text
          FROM organization_members om
          JOIN users u ON u.id = om.user_id
+         LEFT JOIN user_presence up ON up.user_id = u.id
         WHERE om.organization_id = $1
           AND om.role = ANY($2::text[])
         ORDER BY u.first_name, u.last_name`,
@@ -516,12 +517,18 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
               c.assigned_at::text,
               c.last_action_at::text, c.last_action_type,
               tl.first_name AS tl_first, tl.last_name AS tl_last,
-              tl.profile_image_url AS tl_avatar, tl.last_seen_at::text AS tl_last_online,
+              tl.profile_image_url AS tl_avatar,
+              tl_up.last_seen_at::text AS tl_last_online,
+              tl_up.current_route AS tl_current_route,
               rep.first_name AS rep_first, rep.last_name AS rep_last,
-              rep.profile_image_url AS rep_avatar, rep.last_seen_at::text AS rep_last_online
+              rep.profile_image_url AS rep_avatar,
+              rep_up.last_seen_at::text AS rep_last_online,
+              rep_up.current_route AS rep_current_route
          FROM crm_customers c
          LEFT JOIN users tl  ON tl.id = c.assigned_team_leader_id
          LEFT JOIN users rep ON rep.id = c.assigned_user_id
+         LEFT JOIN user_presence tl_up  ON tl_up.user_id = tl.id
+         LEFT JOIN user_presence rep_up ON rep_up.user_id = rep.id
         WHERE c.id = $1`,
       [req.params.id],
     );
