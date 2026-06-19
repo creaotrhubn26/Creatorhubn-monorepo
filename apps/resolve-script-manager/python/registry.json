@@ -1372,6 +1372,23 @@
       "requiresTimeline": false
     },
     {
+      "id": "storyarc_select",
+      "name": "Story-arc pick-velger (smart)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/storyarc_select.py",
+      "description": "Tar AI-signal-dumpen (last_all_shots.json fra extract_highlight_from_film --useSignals) og velger picks med BRYLLUPS-DRAMATURGI: per-kapittel tidsbudsjett (seremoni størst), kapittel-spesifikke signal-vekter (rolige kapitler belønner ansikter/emosjon/estetikk; energi-kapitler belønner action/lyd), og temporal dedup. Fikser auto-pickerens blindsone (den dropper den stille seremonien). Output: picks.json klar for build_highlight_from_picks.",
+      "requiredInputs": [
+        { "key": "targetSec", "label": "Mål-lengde i sekunder (720=12min)", "type": "number", "required": false },
+        { "key": "cueMapPath", "label": "cue_map.json med kapittel-kilderanges (valgfritt — wedding-default ellers)", "type": "text", "required": false }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": false,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
       "id": "export_edl_from_picks",
       "name": "Export EDL from approved picks",
       "category": "timeline",
