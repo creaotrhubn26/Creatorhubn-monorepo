@@ -14,6 +14,7 @@ import MarketIntelligenceOverviewPanel from "./MarketIntelligenceOverviewPanel";
 import MarketScanDetailPanel from "./MarketScanDetailPanel";
 import AgentContextPreviewPanel from "./AgentContextPreviewPanel";
 import LeadMapCampaignsPanel from "./LeadMapCampaignsPanel";
+import { LeadInboxSection } from "@/components/leadgrid/LeadInboxSection";
 
 interface Props {
   /** Aktivt prosjekt — brukes til Brand Kit + scans-isolering. */
@@ -53,6 +54,9 @@ export default function MarketIntelligenceSection({
         />
       ) : (
         <Stack spacing={3}>
+          {/* Innkommende Leadgrid-leads — øverst, høyest urgency */}
+          <LeadInboxSection />
+
           <BrandKitPanel
             projectId={projectId}
             defaultScanUrl={defaultBrandScanUrl}
