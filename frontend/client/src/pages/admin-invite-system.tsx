@@ -387,7 +387,7 @@ export default function AdminInviteSystem() {
 
     if (request.selectedPlan || request.planName) {
       const normalizedJourneyStatus = String(request.userJourneyStatus || '').trim().toLowerCase();
-      const paymentCaption = request.paymentCompleted ? '✓ Betalt' : 'Venter betaling';
+      const paymentCaption = request.paymentCompleted ? 'Betalt' : 'Venter betaling';
       const activationCaption =
         normalizedJourneyStatus === 'role_room_activation_required'
           ? 'Venter kontogodkjenning'
@@ -1031,7 +1031,7 @@ export default function AdminInviteSystem() {
                     <Grid item xs={6}>
                       <Typography variant="subtitle2">Betalingsstatus</Typography>
                       <Chip
-                        label={selectedRequest.paymentCompleted ? "✓ Betalt" : "Venter betaling"}
+                        label={selectedRequest.paymentCompleted ? "Betalt" : "Venter betaling"}
                         size="small"
                         color={selectedRequest.paymentCompleted ? "success" : "warning"}
                         icon={<PaymentIcon />}

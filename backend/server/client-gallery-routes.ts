@@ -78,6 +78,65 @@ export interface ClientGalleryRoutesDeps {
   getActiveSessionFromRequest: (req: express.Request) => any;
 }
 
+/// Sender bekreftelses-e-post til KLIENT etter at de har submittet
+/// utvalg. Tidligere fikk kun fotografen mail — klient satt igjen
+/// uten kvittering, undret om submit faktisk gikk gjennom, og hadde
+/// ingen lenke å gå tilbake til.
+///
+/// Best-effort: e-post-feil aborter ikke submit-flowen, vi bare
+/// console.warn'er. SMTP-konfigurasjon brukes via samme dynamiske
+/// import som photographer-notify (casting-reminder-sender).
+async function sendClientSelectionReceivedMail(opts: {
+  clientEmail: string;
+  clientName: string;
+  projectTitle: string;
+  favCount: number;
+  galleryUrl: string;
+  totalAmountText?: string | null;
+}): Promise<void> {
+  try {
+    const { sendEmail } = await import('./casting-reminder-sender.js').catch(() => ({ sendEmail: null as any }));
+    if (!sendEmail) return;
+    const greeting = opts.clientName.trim() || 'Hei';
+    const itemWord = opts.favCount === 1 ? 'bilde' : 'bilder';
+    const subject = `Vi har mottatt valget ditt fra "${opts.projectTitle}"`;
+    const extraLine = opts.totalAmountText
+      ? `<p style="margin: 12px 0; font-size: 14px;">${opts.totalAmountText}</p>`
+      : '';
+    const html = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
+        <h2 style="color: #1a1a1a; margin: 0 0 16px;">${greeting},</h2>
+        <p style="font-size: 15px; line-height: 1.6; color: #333;">
+          Vi har mottatt valget ditt på <strong>${opts.favCount} ${itemWord}</strong>
+          fra galleriet "<strong>${opts.projectTitle}</strong>". Fotografen får
+          beskjed automatisk og kommer tilbake til deg innen kort tid.
+        </p>
+        ${extraLine}
+        <p style="font-size: 14px; color: #555; line-height: 1.6;">
+          Du kan fortsatt åpne galleriet og endre valget ditt så lenge fotografen
+          ikke har låst utvalget. Lenken er den samme:
+        </p>
+        <div style="margin: 24px 0; text-align: center;">
+          <a href="${opts.galleryUrl}" style="display: inline-block; background: #1976d2; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Åpne galleriet</a>
+        </div>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0 16px;">
+        <p style="font-size: 13px; color: #999;">
+          Hilsen Creatorhub Norge
+        </p>
+      </div>
+    `;
+    const text = `${greeting},\n\nVi har mottatt valget ditt på ${opts.favCount} ${itemWord} fra "${opts.projectTitle}". Fotografen får beskjed og kommer tilbake til deg.\n\nÅpne galleriet: ${opts.galleryUrl}`;
+    await sendEmail({
+      to: opts.clientEmail,
+      subject,
+      html,
+      text,
+    });
+  } catch (err) {
+    console.warn('[client-gallery] client-confirmation send failed:', err);
+  }
+}
+
 export function setupClientGalleryRoutes(
   deps: ClientGalleryRoutesDeps,
 ): void {
@@ -1246,6 +1305,16 @@ export function setupClientGalleryRoutes(
         });
       } catch { /* best-effort */ }
 
+      // Send bekreftelses-mail til klient (gap-analyse: tidligere fikk
+      // kun fotograf mail, klient satt igjen uten kvittering).
+      void sendClientSelectionReceivedMail({
+        clientEmail,
+        clientName,
+        projectTitle: gallery.projectTitle || 'galleriet',
+        favCount,
+        galleryUrl: buildGalleryShareUrl(accessToken),
+      });
+
       res.json({ success: true, favoriteCount: favCount, submittedAt: new Date().toISOString() });
     } catch (error) {
       console.error("[client-gallery] selection submit failed", error);
@@ -2022,6 +2091,19 @@ export function setupClientGalleryRoutes(
               currency: pricing.currency,
               requiresPayment: pricing.totalAmount > 0,
             },
+          });
+          // Bekreftelses-mail til klient — parallell med fotograf-notify
+          // (gap-analyse: klient hadde ingen kvittering før).
+          const totalAmountText = pricing.totalAmount > 0
+            ? `Sum å betale for ekstra bilder: ${pricing.totalAmount} ${pricing.currency}.`
+            : null;
+          void sendClientSelectionReceivedMail({
+            clientEmail: effectiveEmail,
+            clientName: row.client_name || '',
+            projectTitle: row.project_title || 'galleriet',
+            favCount: selectedImageIds.length,
+            galleryUrl: buildGalleryShareUrl(accessToken),
+            totalAmountText,
           });
         } catch (err) {
           console.warn('[gallery-notify] selection_submitted dispatch failed:', err);
