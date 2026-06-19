@@ -50,8 +50,19 @@ export default function GlobalChatProvider({ children }: GlobalChatProviderProps
     [theming, userProfession]
   );
 
+  // Creatorhub-support-chatten skal KUN vises på Creatorhubs egne flater for
+  // innloggede Creatorhub-brukere (auth-gaten under). Den skal ALDRI dukke opp på:
+  //  - forsiden / offentlige markedsførings-/partner-/leads-sider
+  //  - andre produkter: The Role Room (theroleroom/role-room/casting/talents),
+  //    LeadGrid, NextRole
+  //  - klient-vendte flater: showcase-gallerier + audio-review (kunder er ikke
+  //    Creatorhub-brukere)
+  //  - dashboards (de har egen innebygd chat)
+  // Academy VISES for innloggede Creatorhub-brukere (Academy er en Creatorhub-flate),
+  // og er derfor IKKE i skjul-listen — den offentlige Academy-landingen dekkes av auth-gaten.
   const shouldHideGlobalChat = useMemo(() => {
-    return /^\/(?:dashboard|photographer-dashboard-material|videographer-dashboard(?:-material)?|music(?:_|-)producer-dashboard(?:-material)?|vendor-dashboard(?:-material)?)(?:\/|$)/.test(location);
+    if (location === '/') return true;
+    return /^\/(?:dashboard|photographer-dashboard-material|videographer-dashboard(?:-material)?|music(?:_|-)producer-dashboard(?:-material)?|vendor-dashboard(?:-material)?|partner|partner-portal|for-byr|privacy-policy|terms-and-conditions|creatorhub-innovasjon|pitch|faq|community|leadgrid|nextrole|showcase|photo-showcase|video-showcase|audio-review|role-room|casting|talents|theroleroom)(?:\/|$)/.test(location);
   }, [location]);
 
   // Don't render chat widget if user is not authenticated

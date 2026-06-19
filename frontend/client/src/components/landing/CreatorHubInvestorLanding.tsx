@@ -2139,6 +2139,19 @@ export default function CreatorHubInvestorLanding({
                 </Box>
                 <Box
                   component="a"
+                  href="/partner/apply"
+                  sx={{
+                    color: '#fff5e8',
+                    textDecoration: 'underline',
+                    textUnderlineOffset: '0.18em',
+                    fontSize: '0.82rem',
+                    '&:hover': { color: '#ffcb91' },
+                  }}
+                >
+                  Bli redigeringspartner
+                </Box>
+                <Box
+                  component="a"
                   href="/privacy-policy"
                   sx={{
                     color: '#fff5e8',
