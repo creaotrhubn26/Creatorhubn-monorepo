@@ -981,6 +981,39 @@
       "requiresTimeline": true
     },
     {
+      "id": "analyze_color_state",
+      "name": "Analyser farge-tilstand (gradet/log/HDR)",
+      "category": "color",
+      "scriptPath": "scripts/color/analyze_color_state.py",
+      "description": "Avgjør om kilden er ALLEREDE GRADET (Rec709) eller LOG/HDR via metadata + luma/sat-statistikk. Gradet → kun justeringer. Log/HDR → anbefaler CST-input (log→Rec709) før justering. Hindrer dobbel-grading av ferdig film.",
+      "requiredInputs": [
+        { "key": "videoPath", "label": "Sti til kilde-video", "type": "text", "required": true }
+      ],
+      "resolvePageDependency": null,
+      "riskLevel": "none",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": false,
+      "requiresTimeline": false
+    },
+    {
+      "id": "fix_underexposed_clips",
+      "name": "Korriger undereksponerte klipp (justering)",
+      "category": "color",
+      "scriptPath": "scripts/color/fix_underexposed_clips.py",
+      "description": "KORRIGERENDE (ikke look): måler luma per timeline-klipp (signalstats) og løfter KUN de undereksponerte via nøytral CDL (gain+lift, NodeIndex 1) skalert til underskuddet. For allerede-gradet film. NB: API kan ikke opprette node-tre — kun node 1; fullt node-tre krever ApplyGradeFromDRX-mal.",
+      "requiredInputs": [
+        { "key": "thresholdIRE", "label": "Under denne IRE = undereksponert (default 35)", "type": "number", "required": false },
+        { "key": "targetIRE", "label": "Mål-midtone IRE (default 42)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": "color",
+      "riskLevel": "low",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "flag_mixed_white_balance",
       "name": "Flag Mixed White Balance",
       "category": "color",
