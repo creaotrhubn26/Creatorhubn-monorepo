@@ -46,6 +46,7 @@ import GroupsIcon from "@mui/icons-material/Groups";
 import { apiRequest } from "@/lib/queryClient";
 import { t, badgeLabel, type Locale } from "./editingMarketplaceStrings";
 import EditingRequestDialog from "./EditingRequestDialog";
+import EditingJobReviewDialog from "./EditingJobReviewDialog";
 import EditingJobChat from "./EditingJobChat";
 
 interface EditingVendorService {
@@ -145,6 +146,7 @@ export default function EditingVendorDiscoveryPanel({
   const qc = useQueryClient();
   const [profileId, setProfileId] = useState<string | null>(null);
   const [requestVendorId, setRequestVendorId] = useState<string | null>(null);
+  const [reviewJobId, setReviewJobId] = useState<string | null>(null);
   const [deliverJobId, setDeliverJobId] = useState<string | null>(null);
   const [chatJobId, setChatJobId] = useState<string | null>(null);
   const [clientName, setClientName] = useState("");
@@ -250,6 +252,33 @@ export default function EditingVendorDiscoveryPanel({
                 sx={{ mt: 1.5, bgcolor: `${accent}22`, color: accent }}
               />
             )}
+          </CardContent>
+        </Card>
+
+        {/* Tillits-/kvalitets-banner — selger at vi tar kvalitet på alvor */}
+        <Card sx={{ ...cardSx, borderLeft: `3px solid ${accent}` }}>
+          <CardContent sx={{ p: 2.5 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+              <VerifiedUserIcon sx={{ fontSize: 20, color: accent }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                {locale === "en" ? "Vetted for quality — backed by reviews" : "Kvalitetssikret — bygget på anmeldelser"}
+              </Typography>
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              {locale === "en"
+                ? "Every editing partner is verified (compliance, secure storage, GDPR) before they appear here. You rate every delivery, and partners with repeated delivery complaints are flagged and removed from the network. Your files only ever flow through Creatorhub's secure pipeline."
+                : "Hver redigeringspartner er verifisert (compliance, sikker lagring, GDPR) før de vises her. Du vurderer hver leveranse, og partnere med gjentatte leverings-klager flagges og fjernes fra nettverket. Filene dine flyter kun gjennom Creatorhubs sikre rørledning."}
+            </Typography>
+            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+              {[
+                locale === "en" ? "Verified partners only" : "Kun verifiserte partnere",
+                locale === "en" ? "Rated every delivery" : "Vurdert hver leveranse",
+                locale === "en" ? "Removed on quality issues" : "Fjernes ved kvalitetssvikt",
+                locale === "en" ? "Secure file pipeline" : "Sikker filflyt",
+              ].map((chip) => (
+                <Chip key={chip} size="small" variant="outlined" icon={<VerifiedUserIcon sx={{ fontSize: 14 }} />} label={chip} />
+              ))}
+            </Box>
           </CardContent>
         </Card>
 
@@ -438,14 +467,24 @@ export default function EditingVendorDiscoveryPanel({
                         {j.vendor_name}
                       </Typography>
                     </Box>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      onClick={() => handleApprove(j.id)}
-                      sx={{ bgcolor: accent, "&:hover": { bgcolor: "#e67e00" }, whiteSpace: "nowrap" }}
-                    >
-                      {t("approve_and_deliver", locale)}
-                    </Button>
+                    <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => setReviewJobId(j.id)}
+                        sx={{ whiteSpace: "nowrap" }}
+                      >
+                        {locale === "en" ? "Rate / report" : "Vurder / meld"}
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() => handleApprove(j.id)}
+                        sx={{ bgcolor: accent, "&:hover": { bgcolor: "#e67e00" }, whiteSpace: "nowrap" }}
+                      >
+                        {t("approve_and_deliver", locale)}
+                      </Button>
+                    </Stack>
                   </Box>
                 ))}
               </Stack>
@@ -556,6 +595,13 @@ export default function EditingVendorDiscoveryPanel({
           qc.invalidateQueries({ queryKey: ["/api/editing/jobs"] });
           setSnack({ msg: t("send_request", locale), sev: "success" });
         }}
+        locale={locale}
+      />
+
+      <EditingJobReviewDialog
+        jobId={reviewJobId || ""}
+        open={!!reviewJobId}
+        onClose={() => setReviewJobId(null)}
         locale={locale}
       />
 
