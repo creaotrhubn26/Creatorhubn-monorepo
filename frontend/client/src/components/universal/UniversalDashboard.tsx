@@ -7882,7 +7882,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             borderRadius: 3,
             border: `2px solid ${customBranding.color}40`,
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.45)',
-            color: '#edf0f7'
+            color: '#edf0f7',
+            // Dialogen er portalert utenfor dashboardets dark-tema-kaskade, så
+            // MUI-standard (hvite) Paper/Card/inputs i underkomponenter ble hvite.
+            // Kaskade dark-tema her dekker hele modal-innholdet (memory/pris/shot osv.).
+            '& .MuiPaper-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7' },
+            '& .MuiCard-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7', borderColor: `${customBranding.color}26` },
+            '& .MuiAccordion-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7' },
+            '& .MuiTypography-colorTextSecondary, & .MuiTypography-body2': { color: 'rgba(237,240,247,0.66)' },
+            '& .MuiOutlinedInput-root': { color: '#edf0f7', backgroundColor: 'rgba(255,255,255,0.04)', '& fieldset': { borderColor: `${customBranding.color}3d` }, '&:hover fieldset': { borderColor: `${customBranding.color}66` } },
+            '& .MuiInputLabel-root': { color: 'rgba(237,240,247,0.66)' },
+            '& .MuiInputBase-input': { color: '#edf0f7' },
+            '& .MuiSvgIcon-root': { color: 'rgba(237,240,247,0.8)' },
+            '& .MuiDivider-root': { borderColor: 'rgba(255,255,255,0.12)' },
       }
     }}
       >
