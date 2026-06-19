@@ -3264,9 +3264,9 @@ useEffect(() => {
         mt: 0, 
         mb: 3,
         borderRadius: 3,
-        border: '1px solid #e0e0e0',
+        border: '1px solid rgba(255,255,255,0.12)',
         boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-        background: '#fafbfc',
+        background: 'rgba(20,22,30,0.92)',
         transition: 'box-shadow 0.2s ease-in-out',
         '&:hover': {
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -3393,9 +3393,9 @@ useEffect(() => {
           mt: 0, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -3498,9 +3498,9 @@ useEffect(() => {
           mt: 3, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -3563,9 +3563,9 @@ useEffect(() => {
           mt: 3, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -3985,9 +3985,9 @@ useEffect(() => {
           mt: 3, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -4117,9 +4117,9 @@ useEffect(() => {
         <Box sx={{ 
           mt: 4, 
           p: 2.5, 
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           borderRadius: 3, 
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)'
         }}>
           <FormControlLabel
@@ -4143,9 +4143,9 @@ useEffect(() => {
           mt: 3, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -4197,7 +4197,7 @@ useEffect(() => {
       {/* ==========================================
          PROJECT MANAGEMENT TOOLBAR
          ========================================== */}
-      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
           <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
             <Settings sx={{ fontSize: 28 }} /> Prosjektverktøy
@@ -4295,7 +4295,7 @@ useEffect(() => {
       {/* ==========================================
          PROJECT PHASE STEPPER
          ========================================== */}
-      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
           <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
             <Timeline sx={{ fontSize: 28 }} /> Prosjektfaser
@@ -4335,7 +4335,7 @@ useEffect(() => {
       {/* ==========================================
          LOCATION INTELLIGENCE
          ========================================== */}
-      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid #e0e0e0', '&:before': { display: 'none' } }}>
+      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', '&:before': { display: 'none' } }}>
         <AccordionSummary expandIcon={<ExpandMore />}>
           <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
             <LocationOn sx={{ fontSize: 28 }} /> Lokasjonsintelligens
@@ -4399,7 +4399,7 @@ useEffect(() => {
          SHOT LIST MANAGER
          ========================================== */}
       <Collapse in={projectData.projectType === 'wedding' || projectData.projectType === 'event' || projectData.projectType === 'portrait'}>
-        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
               <CameraAlt sx={{ fontSize: 28 }} /> Shot List & Minnekort
@@ -4458,7 +4458,7 @@ useEffect(() => {
       {/* ==========================================
          CAMERA DETECTION SECTION
          ========================================== */}
-      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
           <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
             <Videocam sx={{ fontSize: 28 }} /> Kamera & Utstyr
@@ -4506,7 +4506,7 @@ useEffect(() => {
          OFFSITE BACKUP (B2)
          ========================================== */}
       {currentProject?.id && (
-        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 1 }}>
               Ekstern backup (offsite)
@@ -4564,7 +4564,7 @@ useEffect(() => {
          PROJECT COLLABORATORS
          ========================================== */}
       {currentProject?.id && (
-        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
               <Groups sx={{ fontSize: 28 }} /> Samarbeidspartnere
@@ -4590,7 +4590,7 @@ useEffect(() => {
       {/* ==========================================
          WORKLOG & CULTURAL PLANNING
          ========================================== */}
-      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid #e0e0e0', '&:before': { display: 'none' } }}>
+      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', '&:before': { display: 'none' } }}>
         <AccordionSummary expandIcon={<ExpandMore />}>
           <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
             <AccessTime sx={{ fontSize: 28 }} /> Arbeidstid & Planlegging
@@ -4652,7 +4652,7 @@ useEffect(() => {
          PROJECT PREVIEW PANEL
          ========================================== */}
       <Collapse in={showPreview}>
-        <Paper sx={{ mt: 3, p: 3, borderRadius: 3, border: '1px solid #e0e0e0', background: '#f8f9fa' }}>
+        <Paper sx={{ mt: 3, p: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(20,22,30,0.92)' }}>
           <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
             <Visibility sx={{ fontSize: 28 }} /> Prosjekt-forhåndsvisning
           </Typography>
@@ -4932,7 +4932,7 @@ useEffect(() => {
 
       {/* Cultural day buttons for wedding projects */}
       {projectData.projectType === 'wedding' && projectData.weddingCulture !== 'norsk' && (
-        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
               <Info sx={{ fontSize: 28 }} /> Kulturelle seremonidager
