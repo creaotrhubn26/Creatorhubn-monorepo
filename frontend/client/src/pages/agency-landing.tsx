@@ -196,17 +196,13 @@ function TopNav() {
           justifyContent="space-between"
           sx={{ py: { xs: 1.4, md: 2 } }}
         >
-          <Stack direction="row" alignItems="center" spacing={1}>
+          <Stack component="a" href="/" direction="row" alignItems="center" spacing={1} sx={{ textDecoration: 'none', color: 'inherit' }}>
             <Box
-              sx={{
-                width: 28, height: 28, borderRadius: 1,
-                background: palette.accentGradient,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 800, color: '#fff', fontSize: '0.92rem',
-              }}
-            >
-              RR
-            </Box>
+              component="img"
+              src="/role-room-assets/TheRoleRoom_Logo.webp"
+              alt="The Role Room"
+              sx={{ height: 30, width: 'auto', objectFit: 'contain', display: 'block' }}
+            />
             <Typography sx={{ fontWeight: 800, fontSize: '1rem' }}>
               The Role Room
             </Typography>
