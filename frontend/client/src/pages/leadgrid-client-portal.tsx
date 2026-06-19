@@ -36,7 +36,19 @@ interface PortalData {
     invited_name: string | null;
     invited_email: string | null;
   };
-  organization: { name: string; description: string | null };
+  organization: {
+    name: string;
+    description: string | null;
+    logo_url: string | null;
+    brand_color: string | null;
+    brand_accent_color: string | null;
+    website: string | null;
+    org_number: string | null;
+    sender_full_name: string | null;
+    sender_title: string | null;
+    sender_phone: string | null;
+    sender_email: string | null;
+  };
   customer: {
     name: string | null;
     website_url: string | null;
@@ -188,6 +200,55 @@ export default function LeadgridClientPortalPage() {
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "#0a0512", color: "#fff" }}>
+      {/* Org-leverandørs branding-bar — tydelig "levert av" */}
+      <Box sx={{
+        bgcolor: "rgba(255,255,255,0.04)",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        py: 2,
+      }}>
+        <Container maxWidth="md">
+          <Stack direction="row" alignItems="center" spacing={2}>
+            {data.organization.logo_url ? (
+              <Box component="img" src={data.organization.logo_url}
+                   alt={data.organization.name}
+                   sx={{ height: 36, objectFit: "contain" }} />
+            ) : (
+              <Box sx={{
+                width: 36, height: 36, borderRadius: 1,
+                bgcolor: data.organization.brand_color ?? "#a78bfa",
+                color: "#0a0512", display: "flex",
+                alignItems: "center", justifyContent: "center",
+                fontWeight: 800, fontSize: 18,
+              }}>
+                {data.organization.name.charAt(0).toUpperCase()}
+              </Box>
+            )}
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="caption" sx={{
+                color: "rgba(255,255,255,0.5)", display: "block",
+                fontSize: 11, letterSpacing: 1, textTransform: "uppercase",
+              }}>
+                Levert av
+              </Typography>
+              <Typography variant="body1" sx={{ fontWeight: 700,
+                color: data.organization.brand_color ?? "#a78bfa" }}>
+                {data.organization.name}
+              </Typography>
+            </Box>
+            {data.organization.website && (
+              <Typography variant="caption" component="a"
+                          href={data.organization.website} target="_blank"
+                          rel="noopener noreferrer"
+                          sx={{ color: "rgba(255,255,255,0.5)",
+                                textDecoration: "none",
+                                "&:hover": { color: data.organization.brand_color ?? "#a78bfa" } }}>
+                {data.organization.website.replace(/^https?:\/\//, "")}
+              </Typography>
+            )}
+          </Stack>
+        </Container>
+      </Box>
+
       {/* Hero med Backdrop7 + customer-info */}
       <Box sx={{
         position: "relative",
@@ -197,7 +258,7 @@ export default function LeadgridClientPortalPage() {
           url('/leadgrid/backdrop7.png') center/cover
         `,
         backgroundColor: "#0a0512",
-        pt: 8, pb: 6,
+        pt: 6, pb: 6,
       }}>
         <Container maxWidth="md">
           <Stack alignItems="center" spacing={3}>
@@ -206,8 +267,10 @@ export default function LeadgridClientPortalPage() {
                    sx={{ width: 80, height: 80, borderRadius: 2, objectFit: "contain", bgcolor: "#fff", p: 1 }} />
             )}
             <Stack alignItems="center" spacing={1}>
-              <Typography variant="overline" sx={{ color: "#a78bfa", letterSpacing: 2 }}>
-                {data.organization.name}
+              <Typography variant="overline" sx={{
+                color: "rgba(255,255,255,0.5)", letterSpacing: 2,
+              }}>
+                Markedsanalyse for
               </Typography>
               <Typography variant="h3" textAlign="center" sx={{ fontWeight: 800 }}>
                 {data.customer.name ?? "Din Leadgrid-portal"}
@@ -465,6 +528,62 @@ export default function LeadgridClientPortalPage() {
                     </Box>
                   );
                 })}
+              </Stack>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Din rådgiver hos org-en — sender-kontaktkort */}
+        {data.organization.sender_full_name && (
+          <Card sx={{ mt: 4, bgcolor: "rgba(255,255,255,0.04)",
+                       border: `1px solid ${data.organization.brand_color ?? "#a78bfa"}33` }}>
+            <CardContent sx={{ p: 3 }}>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems="center">
+                <Box sx={{
+                  width: 56, height: 56, borderRadius: "50%",
+                  bgcolor: data.organization.brand_color ?? "#a78bfa",
+                  color: "#0a0512", display: "flex",
+                  alignItems: "center", justifyContent: "center",
+                  fontWeight: 800, fontSize: 22, flexShrink: 0,
+                }}>
+                  {data.organization.sender_full_name.split(" ")
+                    .map((s) => s[0]).slice(0, 2).join("")}
+                </Box>
+                <Box sx={{ flex: 1, textAlign: { xs: "center", sm: "left" } }}>
+                  <Typography variant="caption" sx={{
+                    color: "rgba(255,255,255,0.5)", letterSpacing: 1,
+                    textTransform: "uppercase", fontSize: 11,
+                  }}>
+                    Din rådgiver hos {data.organization.name}
+                  </Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700, mt: 0.5 }}>
+                    {data.organization.sender_full_name}
+                  </Typography>
+                  {data.organization.sender_title && (
+                    <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.6)" }}>
+                      {data.organization.sender_title}
+                    </Typography>
+                  )}
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}
+                         mt={1} alignItems={{ xs: "center", sm: "flex-start" }}>
+                    {data.organization.sender_email && (
+                      <Typography variant="caption" component="a"
+                                  href={`mailto:${data.organization.sender_email}`}
+                                  sx={{ color: data.organization.brand_color ?? "#a78bfa",
+                                        textDecoration: "none", fontSize: 13 }}>
+                        ✉ {data.organization.sender_email}
+                      </Typography>
+                    )}
+                    {data.organization.sender_phone && (
+                      <Typography variant="caption" component="a"
+                                  href={`tel:${data.organization.sender_phone}`}
+                                  sx={{ color: data.organization.brand_color ?? "#a78bfa",
+                                        textDecoration: "none", fontSize: 13 }}>
+                        ☎ {data.organization.sender_phone}
+                      </Typography>
+                    )}
+                  </Stack>
+                </Box>
               </Stack>
             </CardContent>
           </Card>
