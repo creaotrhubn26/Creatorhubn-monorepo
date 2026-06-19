@@ -3389,110 +3389,7 @@ useEffect(() => {
         </CardContent>
       </Card>
 
-      {/* Wedding Timeline Status */}
-      {projectData.projectType === 'wedding' && (
-        <Card sx={{ 
-          mt: 0, 
-          mb: 3,
-          borderRadius: 3,
-          border: '1px solid rgba(255,255,255,0.12)',
-          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: 'rgba(20,22,30,0.92)',
-          transition: 'box-shadow 0.2s ease-in-out',
-          '&:hover': {
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
-          }
-        }}>
-          <CardContent>
-            <Typography 
-              variant="h6" 
-              gutterBottom 
-              sx={{ 
-                fontWeight: 700, 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 1,
-                color: theming.colors.primary,
-                mb: 2
-              }}
-            >
-              <Favorite sx={{ fontSize: 28, color: '#e91e63' }} /> Bryllupstidslinje
-            </Typography>
-            {projectData.createWeddingTimeline ? (
-              projectData.weddingTimelineShared ? (
-                <Box>
-                  <Typography variant="body2">
-                    Tidslinje delt til {projectData.clientEmail || 'kunde'}
-                  </Typography>
-                  {projectData.weddingTimelineUrl && (
-                    <Typography variant="caption" color="primary" display="block">
-                      URL: {projectData.weddingTimelineUrl}
-                    </Typography>
-                  )}
-                </Box>
-              ) : (
-                <Box>
-                  <Typography variant="body2" sx={{ mb: 1 }}>
-                    Tidslinje er opprettet, men ikke delt til kunde.
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    onClick={() => {
-                      setProjectData(prev => ({ ...prev, weddingTimelineShared: true }));
-                      showSuccessToast(`Tidslinje delt til ${projectData.clientEmail || 'kunde'}`);
-                    }}
-                  >
-                    Del med kunde ({projectData.clientEmail || '—'})
-                  </Button>
-                </Box>
-              )
-            ) : (
-              <Box>
-                <Typography variant="body2" sx={{ mb: 1, color: 'rgba(255,255,255,0.95)', fontWeight: 500 }}>
-                  Ingen bryllupstidslinje. Opprett i Wedding Timeline Administration.
-                </Typography>
-                <Stack direction="row" spacing={1}>
-                  <Button
-                    variant="outlined"
-                    onClick={() => {
-                      setProjectData(prev => ({ ...prev, createWeddingTimeline: true }));
-                      showInfoToast('Bryllupstidslinje markert for opprettelse');
-                    }}
-                  >
-                    Marker for opprettelse
-                  </Button>
-                  <Button
-                    variant="contained"
-                    onClick={() => {
-                      try {
-                        communication.sendMessage({
-                          from: 'project-creation',
-                          to: 'all',
-                          type: 'navigate:wedding-timeline',
-                          data: {
-                            projectName: projectData.projectName,
-                            clientEmail: projectData.clientEmail,
-                            eventDate: projectData.eventDate,
-                            eventDates: projectData.eventDates,
-                            location: projectData.location,
-                            guestCount: projectData.guestCount,
-                          },
-                          priority: 'medium'
-                        });
-                      } catch (commErr) {
-                        console.debug('Communication message skipped:', commErr);
-                      }
-                      showInfoToast('Åpner Wedding Timeline Admin (via dashboard)');
-                    }}
-                  >
-                    Åpne Wedding Timeline Admin
-                  </Button>
-                </Stack>
-              </Box>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Wedding Timeline Status — flyttet til etter Prosjekttype (vises kun for wedding) */}
 
       {/* Event Timeline (for non-wedding events) */}
       {projectData.projectType === 'event' && (
@@ -4191,6 +4088,111 @@ useEffect(() => {
                 En split sheet vil automatisk bli opprettet med {projectData.collaborators.length} bidragsytere når prosjektet er opprettet.
                 Du kan justere prosentandeler i Split Sheets-fanen etter opprettelse.
               </Alert>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Wedding Timeline Status — etter Prosjekttype (vises kun for wedding) */}
+      {projectData.projectType === 'wedding' && (
+        <Card sx={{
+          mt: 0,
+          mb: 3,
+          borderRadius: 3,
+          border: '1px solid rgba(255,255,255,0.12)',
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          background: 'rgba(20,22,30,0.92)',
+          transition: 'box-shadow 0.2s ease-in-out',
+          '&:hover': {
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
+          }
+        }}>
+          <CardContent>
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                color: theming.colors.primary,
+                mb: 2
+              }}
+            >
+              <Favorite sx={{ fontSize: 28, color: '#e91e63' }} /> Bryllupstidslinje
+            </Typography>
+            {projectData.createWeddingTimeline ? (
+              projectData.weddingTimelineShared ? (
+                <Box>
+                  <Typography variant="body2">
+                    Tidslinje delt til {projectData.clientEmail || 'kunde'}
+                  </Typography>
+                  {projectData.weddingTimelineUrl && (
+                    <Typography variant="caption" color="primary" display="block">
+                      URL: {projectData.weddingTimelineUrl}
+                    </Typography>
+                  )}
+                </Box>
+              ) : (
+                <Box>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    Tidslinje er opprettet, men ikke delt til kunde.
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    onClick={() => {
+                      setProjectData(prev => ({ ...prev, weddingTimelineShared: true }));
+                      showSuccessToast(`Tidslinje delt til ${projectData.clientEmail || 'kunde'}`);
+                    }}
+                  >
+                    Del med kunde ({projectData.clientEmail || '—'})
+                  </Button>
+                </Box>
+              )
+            ) : (
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1, color: 'rgba(255,255,255,0.95)', fontWeight: 500 }}>
+                  Ingen bryllupstidslinje. Opprett i Wedding Timeline Administration.
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      setProjectData(prev => ({ ...prev, createWeddingTimeline: true }));
+                      showInfoToast('Bryllupstidslinje markert for opprettelse');
+                    }}
+                  >
+                    Marker for opprettelse
+                  </Button>
+                  <Button
+                    variant="contained"
+                    onClick={() => {
+                      try {
+                        communication.sendMessage({
+                          from: 'project-creation',
+                          to: 'all',
+                          type: 'navigate:wedding-timeline',
+                          data: {
+                            projectName: projectData.projectName,
+                            clientEmail: projectData.clientEmail,
+                            eventDate: projectData.eventDate,
+                            eventDates: projectData.eventDates,
+                            location: projectData.location,
+                            guestCount: projectData.guestCount,
+                          },
+                          priority: 'medium'
+                        });
+                      } catch (commErr) {
+                        console.debug('Communication message skipped:', commErr);
+                      }
+                      showInfoToast('Åpner Wedding Timeline Admin (via dashboard)');
+                    }}
+                  >
+                    Åpne Wedding Timeline Admin
+                  </Button>
+                </Stack>
+              </Box>
             )}
           </CardContent>
         </Card>
