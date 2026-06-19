@@ -85,13 +85,30 @@ function platformFeeInfo(): { pct: number; prototype: boolean } {
   return { pct: Math.round(pct * 10) / 10, prototype };
 }
 
+// MVA-beregning (formidler-modell), jf. norsk snudd avregning for fjernleverbare
+// tjenester kjøpt fra utlandet:
+//  - utenlandsk vendor → reverse charge: vendor fakturerer uten MVA, norsk kjøper
+//    selv-avregner 25% (netto-null v/ fradrag). Ingen MVA legges på beløpet til vendor.
+//  - innenlands norsk vendor → 25% MVA på tjenesten.
+//  - plattform-provisjon → 25% MVA (faktureres norsk fotograf).
+function computeJobVat(amountCents: number, feeCents: number, vendorIsForeign: boolean): {
+  reverseCharge: boolean; vatRate: number; serviceVatCents: number; commissionVatCents: number;
+} {
+  const vatRate = 0.25;
+  const reverseCharge = vendorIsForeign;
+  const serviceVatCents = reverseCharge ? 0 : Math.round(amountCents * vatRate);
+  const commissionVatCents = Math.round(feeCents * vatRate);
+  return { reverseCharge, vatRate, serviceVatCents, commissionVatCents };
+}
+
 const VENDOR_PROFILE_COLS = `
   user_id, vendor_name, vendor_type, business_info, logo_url, tagline, rating, review_count,
   turnaround_days, availability_status, approval_status, is_foreign, country, is_eea,
   compliance_accepted, compliance_quality_status, compliance_storage_status,
   compliance_gdpr_status, compliance_delivery_status, dpa_signed, nda_signed,
   scc_signed, tia_completed, subcontractors_allowed, portfolio_use_allowed,
-  portfolio_submitted, payment_connected
+  portfolio_submitted, payment_connected, dpa_document_key,
+  vendor_nda_governing_law, vendor_nda_url, vendor_nda_uploaded_at
 `;
 
 export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
@@ -361,13 +378,25 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
           : null;
       const splitSheetId: string | null = b.splitSheetId || null;
 
+      // MVA: slå opp vendorens utenlandsk-status → reverse charge for utenlandske.
+      let vendorIsForeign = false;
+      if (vendorId) {
+        const vf = await pool.query<{ is_foreign: boolean }>(
+          `SELECT is_foreign FROM vendor_onboarding_profiles WHERE user_id = $1 LIMIT 1`, [vendorId],
+        );
+        vendorIsForeign = !!vf.rows[0]?.is_foreign;
+      }
+      const feeCents = platformFeeCents(amountCents);
+      const vat = computeJobVat(amountCents, feeCents, vendorIsForeign);
+
       const ins = await pool.query(
         `INSERT INTO editing_jobs
            (project_id, project_title, photographer_id, photographer_email, vendor_id, vendor_name,
             status, requested_services, brief, amount_cents, currency, platform_fee_cents,
             max_revisions, quality_spec, confidentiality_ack, staging_prefix, requested_at,
-            cost_model, revenue_share_pct, split_sheet_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'NOK',$11,$12,$13,$14,$15,$16,$17,$18,$19)
+            cost_model, revenue_share_pct, split_sheet_id,
+            vat_reverse_charge, vat_rate, service_vat_cents, commission_vat_cents)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'NOK',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
          RETURNING id`,
         [
           b.projectId || null,
@@ -380,7 +409,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
           JSON.stringify(Array.isArray(b.requestedServices) ? b.requestedServices : []),
           b.brief || null,
           amountCents,
-          platformFeeCents(amountCents),
+          feeCents,
           Number.isFinite(Number(b.maxRevisions)) ? Number(b.maxRevisions) : 2,
           b.qualitySpec ? JSON.stringify(b.qualitySpec) : null,
           !!b.confidentialityAck,
@@ -389,6 +418,10 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
           costModel,
           revenueSharePct,
           splitSheetId,
+          vat.reverseCharge,
+          vat.vatRate,
+          vat.serviceVatCents,
+          vat.commissionVatCents,
         ],
       );
       const jobId = ins.rows[0].id;
@@ -708,6 +741,28 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
     } catch (err) {
       console.error("[editing/vendor/products] status", err);
       res.status(500).json({ error: "kunne_ikke_endre_status" });
+    }
+  });
+
+  // Vendor registrerer sin EGEN NDA (f.eks. utenlandsk vendor med egen lov-valgt NDA).
+  // Spores som motpart-dokument; vår DPA er fortsatt gjeldende avtale.
+  app.post("/api/editing/vendor/nda", async (req, res) => {
+    const session = await requireUserSession(req, res);
+    if (!session) return;
+    const b = req.body || {};
+    const url = b.url ? String(b.url).slice(0, 500) : null;
+    if (url && !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "ugyldig_url" });
+    try {
+      await pool.query(
+        `UPDATE vendor_onboarding_profiles
+            SET vendor_nda_governing_law = $2, vendor_nda_url = $3, vendor_nda_uploaded_at = now(), updated_at = now()
+          WHERE user_id = $1`,
+        [session.userId, b.governingLaw ? String(b.governingLaw).slice(0, 120) : null, url],
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[editing/vendor/nda] error", err);
+      res.status(500).json({ error: "kunne_ikke_lagre_nda" });
     }
   });
 

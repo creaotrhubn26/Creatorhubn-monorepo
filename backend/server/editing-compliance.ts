@@ -38,6 +38,7 @@ export interface ComplianceProfile {
   tia_completed?: boolean | null;
   subcontractors_allowed?: boolean | null;
   portfolio_use_allowed?: boolean | null;
+  dpa_document_key?: string | null; // ekte DPA-artefakt — dpa_signed-badge gates på denne
   // Partnerprogram-felt (samme kilde for BÅDE /me og discovery — ingen proxy-divergens)
   portfolio_submitted?: boolean | null;
   payment_connected?: boolean | null;
@@ -157,7 +158,8 @@ export function buildComplianceSummary(p: ComplianceProfile): ComplianceSummary 
   const badges: string[] = [];
   if (quality) badges.push("quality_verified");
   if (storage) badges.push("secure_storage_b2");
-  if (gdpr) badges.push("dpa_signed");
+  // DPA-badge KUN ved ekte artefakt (ingen compliance-fiksjon for selv-attestert boolean).
+  if (gdpr && !!p.dpa_document_key) badges.push("dpa_signed");
   if (delivery) badges.push("showcase_flow");
   if (isForeign) {
     badges.push(requiresExtraGdpr ? "international_extra_gdpr" : "international_eea");
