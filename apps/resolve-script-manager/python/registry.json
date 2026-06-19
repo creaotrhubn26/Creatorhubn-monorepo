@@ -1381,6 +1381,8 @@
         { "key": "targetSec", "label": "Mål-lengde i sekunder (360=6min, 720=12min)", "type": "number", "required": false },
         { "key": "pacing", "label": "Flyt/pacing: smooth (mykest, færrest kutt) | balanced | punchy", "type": "text", "required": false },
         { "key": "coupleHoldSec", "label": "Min hold på brudeparet på location, sek (f.eks. 6.5)", "type": "number", "required": false },
+        { "key": "excludeChapters", "label": "Ekskluder kapitler (CSV, f.eks. 'speeches' for tale-fri highlight)", "type": "text", "required": false },
+        { "key": "videoOnly", "label": "Video-only (ingen original-lyd, musikk-klar)? true/false (default true ved bygg)", "type": "text", "required": false },
         { "key": "buildInResolve", "label": "Bygg rett i Resolve (ny timeline, ikke-destruktivt)? true/false", "type": "text", "required": false },
         { "key": "cueMapPath", "label": "cue_map.json med kapittel-kilderanges (valgfritt — wedding-default ellers)", "type": "text", "required": false }
       ],

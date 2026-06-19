@@ -107,10 +107,15 @@ def weighted(shot, mood):
     return sc
 
 
-def select(all_shots, target, ranges, cfg=None, couple_hold=None):
+def select(all_shots, target, ranges, cfg=None, couple_hold=None, exclude=None):
     cfg = cfg or PACING["smooth"]
     SPREAD = cfg["spread"]; LEN = cfg["len"]; HERO_LEN = cfg["hero_len"]
     COUPLE_HOLD = couple_hold if couple_hold is not None else cfg["couple_hold"]
+    exclude = {c.strip().lower() for c in (exclude or [])}
+    # Ekskluderte kapitler tas helt ut → budsjettet omfordeles til resten
+    # (slik at f.eks. «tale-fri» highlight fortsatt treffer mål-lengden).
+    active = [r for r in ranges if r[0].lower() not in exclude]
+    kept_budget = sum(BUDGET.get(n, 0.1) for n, _, _ in active) or 1.0
     shots = all_shots["shots"]
     by_ch = {}
     for sh in shots:
@@ -119,11 +124,13 @@ def select(all_shots, target, ranges, cfg=None, couple_hold=None):
     picks = []
     per_ch = {}
     for name, lo, hi in ranges:
+        if name.lower() in exclude:
+            continue
         cs = by_ch.get(name, [])
         if not cs:
             continue
         mood = CH_MOOD.get(name, "energy")
-        budget = BUDGET.get(name, 0.1) * target
+        budget = (BUDGET.get(name, 0.1) / kept_budget) * target  # omfordelt v/eksklusjon
         lo_len, hi_len = HERO_LEN.get(name, LEN[mood]); gap = SPREAD[mood]
         ranked = sorted(cs, key=lambda s: -weighted(s, mood))
         chosen, used = [], 0.0
@@ -164,11 +171,13 @@ def main():
     ap.add_argument("--cueMapPath", default="")
     ap.add_argument("--pacing", default="smooth", choices=list(PACING))
     ap.add_argument("--coupleHoldSec", type=float, default=None)
+    ap.add_argument("--excludeChapters", default="", help="CSV, f.eks. 'speeches' for tale-fri")
     ap.add_argument("--outPath", default=os.path.join(CACHE, "storyarc_picks.json"))
     a = ap.parse_args()
     data = json.load(open(a.allShotsPath))
     ranges = ranges_from(a.cueMapPath)
-    picks, total, per_ch = select(data, a.targetSec, ranges, PACING[a.pacing], a.coupleHoldSec)
+    picks, total, per_ch = select(data, a.targetSec, ranges, PACING[a.pacing], a.coupleHoldSec,
+                                  a.excludeChapters.split(",") if a.excludeChapters else None)
     out = {"sourceVideo": data.get("sourceVideo"), "timelineName": f"Story-arc {int(round(total/60))}min",
            "minDurationSec": a.targetSec - 30, "maxDurationSec": a.targetSec + 30, "picks": picks}
     json.dump(out, open(a.outPath, "w"), indent=1, ensure_ascii=False)
@@ -177,8 +186,10 @@ def main():
     print("wrote", a.outPath)
 
 
-def build_in_resolve(source_video, picks, timeline_name, src_fps):
-    """Bygg picks rett inn i en NY Resolve-timeline (ikke-destruktivt). Source-frames."""
+def build_in_resolve(source_video, picks, timeline_name, src_fps, video_only=True):
+    """Bygg picks rett inn i en NY Resolve-timeline (ikke-destruktivt). Source-frames.
+    video_only=True (default): legg KUN video (ingen original-lyd) → musikk-drevet
+    highlight uten tale/ambient. Sett False for å ta med original-lyd."""
     if bridge is None:
         return None
     conn = bridge.ResolveConnection()
@@ -202,9 +213,13 @@ def build_in_resolve(source_video, picks, timeline_name, src_fps):
     for p in picks:
         sf = int(round(p["startSec"] * src_fps)); ef = int(round(p["endSec"] * src_fps)) - 1
         if ef > sf:
-            specs.append({"mediaPoolItem": src, "startFrame": sf, "endFrame": ef})
+            spec = {"mediaPoolItem": src, "startFrame": sf, "endFrame": ef}
+            if video_only:
+                spec["mediaType"] = 1  # 1 = video only (ingen original-lyd)
+            specs.append(spec)
     placed = mp.AppendToTimeline(specs)
-    return {"timeline": name, "placed": len(placed) if isinstance(placed, list) else 0}
+    return {"timeline": name, "placed": len(placed) if isinstance(placed, list) else 0,
+            "videoOnly": video_only}
 
 
 def run(params: dict, dry_run: bool) -> None:
@@ -219,9 +234,11 @@ def run(params: dict, dry_run: bool) -> None:
     cfg = PACING.get(pacing, PACING["smooth"])
     couple_hold = params.get("coupleHoldSec")
     couple_hold = float(couple_hold) if couple_hold not in (None, "") else None
+    exraw = params.get("excludeChapters") or ""
+    exclude = exraw.split(",") if isinstance(exraw, str) else list(exraw)
     ranges = ranges_from((params.get("cueMapPath") or "").strip())
     data = json.load(open(all_path))
-    picks, total, per_ch = select(data, target, ranges, cfg, couple_hold)
+    picks, total, per_ch = select(data, target, ranges, cfg, couple_hold, exclude)
     out_path = (params.get("outPath") or os.path.join(CACHE, "storyarc_picks.json")).strip()
     tl_name = params.get("timelineName") or f"Story-arc {pacing} {int(round(total/60))}min"
     out = {"sourceVideo": data.get("sourceVideo"), "timelineName": tl_name,
@@ -232,8 +249,9 @@ def run(params: dict, dry_run: bool) -> None:
     # Valgfritt: bygg rett i Resolve (ellers bare picks-fil for review/senere build).
     if bool(params.get("buildInResolve")) and not dry_run:
         bridge.progress(85, 100, "Bygger i Resolve…")
+        video_only = str(params.get("videoOnly", "true")).lower() not in ("false", "0", "no")
         built = build_in_resolve(data.get("sourceVideo"), picks, tl_name,
-                                 float(data.get("fps") or 25))
+                                 float(data.get("fps") or 25), video_only)
         if built:
             result["builtTimeline"] = built["timeline"]; result["placed"] = built["placed"]
     bridge.result(result)
