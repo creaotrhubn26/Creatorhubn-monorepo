@@ -24,7 +24,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: cockpit-cron-${{ github.event.schedule || 'manual' }}
+  # LM-5: dropp '${{ github.event.schedule || 'manual' }}'-suffix
+  # slik at manual og scheduled deler én gruppe — ellers kunne
+  # workflow_dispatch overlappe en pågående schedule-kjøring og
+  # dobbel-fire CAPI-events.
+  group: cockpit-cron
   cancel-in-progress: false
 
 env:

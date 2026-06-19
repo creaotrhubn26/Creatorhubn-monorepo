@@ -77,6 +77,7 @@ export async function pollLeadFormsDue(pool: Pool): Promise<{
         q: "owner",
         leadGenForm: form.form_urn,
       });
+      // LM-4: 8s timeout — leadsync er cron-driven, ikke kritisk å henge
       const resp = await fetch(
         `https://api.linkedin.com/rest/leadFormResponses?${params}`,
         {
@@ -106,6 +107,10 @@ export async function pollLeadFormsDue(pool: Pool): Promise<{
       const elements = data.elements ?? [];
 
       let newCount = 0;
+      // LM-6: per-form counter — den globale `leadsCreated` ble brukt
+      // som UPDATE-param og inflaterte stats for hver påfølgende form
+      // i samme batch ($3 = leadsCreated, men $2 = newCount per-form).
+      let formLeadsCreated = 0;
       let maxId = form.last_response_id ?? "";
 
       for (const r of elements) {
@@ -132,7 +137,10 @@ export async function pollLeadFormsDue(pool: Pool): Promise<{
               r.submittedAt ? new Date(r.submittedAt).toISOString() : null,
             ],
           );
-          if (lead.created) leadsCreated++;
+          if (lead.created) {
+            leadsCreated++;       // global batch-total (returneres)
+            formLeadsCreated++;   // per-form (UPDATE)
+          }
         } catch (mapErr) {
           await pool.query(
             `INSERT INTO linkedin_lead_responses (
@@ -160,7 +168,7 @@ export async function pollLeadFormsDue(pool: Pool): Promise<{
                 total_responses_fetched = total_responses_fetched + $2,
                 total_leads_created = total_leads_created + $3
           WHERE id = $4::uuid`,
-        [maxId, newCount, leadsCreated, form.id],
+        [maxId, newCount, formLeadsCreated, form.id],
       );
     } catch (err) {
       await pool.query(

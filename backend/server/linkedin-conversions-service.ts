@@ -46,6 +46,12 @@ export interface ConversionEventInput {
 
   // Tid
   occurredAt?: Date;
+
+  // Idempotens — caller kan sende deterministisk event_id (f.eks.
+  // "agency-lead:<leadId>:<eventName>") for å la ON CONFLICT
+  // (event_id) DO NOTHING faktisk dedupe. Hvis ikke satt: random UUID
+  // (og DO NOTHING er da effektivt død).
+  eventId?: string;
 }
 
 /** SHA-256-hash lowercase-trimmet streng (LinkedIn-krav for PII). */
@@ -66,7 +72,9 @@ export async function queueConversionEvent(
   pool: Pool,
   input: ConversionEventInput,
 ): Promise<string> {
-  const eventId = crypto.randomUUID();
+  // Deterministisk event-ID hvis caller sender det → ON CONFLICT dedupes.
+  // Ellers random UUID (legacy-oppførsel, fallback).
+  const eventId = input.eventId ?? crypto.randomUUID();
   const occurredAt = input.occurredAt ?? new Date();
 
   await pool.query(
@@ -125,8 +133,24 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
   sent: number;
   skipped: number;
   failed: number;
+  expired?: number;
 }> {
   const MAX_SEND_ATTEMPTS = 5;
+
+  // LM-10: pre-expire events eldre enn LinkedIns vindu (~90d) FØR vi
+  // prøver send. Ellers ville stale rader fortsatt blitt retryet til
+  // attempts-cap → terminal-fail med ubrukelig error-melding. Eksplisitt
+  // 'expired' status gjør det observerbart.
+  const expiredRes = await pool.query(
+    `UPDATE linkedin_conversion_events
+        SET send_status = 'failed',
+            last_send_error = 'expired: occurred_at older than 90d'
+      WHERE send_status IN ('pending','retrying')
+        AND occurred_at < NOW() - INTERVAL '90 days'
+      RETURNING id`,
+  );
+  const expired = expiredRes.rowCount ?? 0;
+
   const due = await pool.query(
     `SELECT id::text, event_type, event_name, conversion_urn,
             user_email_hash, user_phone_hash,
@@ -143,7 +167,7 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
   );
 
   if (!due.rowCount) {
-    return { attempted: 0, sent: 0, skipped: 0, failed: 0 };
+    return { attempted: 0, sent: 0, skipped: 0, failed: 0, expired };
   }
 
   const resolved = await resolveDefaultLinkedInOrg(pool);
@@ -253,7 +277,7 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
     }
   }
 
-  return { attempted: due.rowCount, sent, skipped: 0, failed };
+  return { attempted: due.rowCount, sent, skipped: 0, failed, expired };
 }
 
 /**
@@ -283,6 +307,9 @@ export async function fireAgencyLeadConversion(
     sourceKind: "agency_lead",
     sourceAgencyLeadId: args.leadId,
     sourceMetadata: { agency_name: args.agencyName },
+    // Deterministisk event-id slik at LM-2-gate (lead.created) + ON
+    // CONFLICT-dedup gjør re-fire idempotent på alle defense-lag.
+    eventId: `agency-lead:${args.leadId}:agency_lead_received`,
   });
 }
 
