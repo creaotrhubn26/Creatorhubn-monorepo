@@ -11,7 +11,6 @@ import {
   FormControlLabel, Button, Divider, Snackbar, Alert, Chip,
 } from "@mui/material";
 import EmailIcon from "@mui/icons-material/Email";
-import SmsIcon from "@mui/icons-material/Sms";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
 
@@ -116,26 +115,18 @@ export function ClientPortalNotificationPrefs({ portalToken }: Props) {
           </Box>
 
           <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <SmsIcon sx={{ color: "#9be15d" }} />
+            <WhatsAppIcon sx={{ color: "#25D366" }} />
             <Box sx={{ flex: 1 }}>
-              <Typography variant="body1" sx={{ fontWeight: 600 }}>SMS</Typography>
+              <Typography variant="body1" sx={{ fontWeight: 600 }}>WhatsApp</Typography>
               <TextField fullWidth size="small" sx={{ mt: 1,
                 "& .MuiOutlinedInput-root": { color: "#fff",
                   "& fieldset": { borderColor: "rgba(255,255,255,0.20)" } } }}
                 value={prefs.contact_phone ?? ""}
                 onChange={(e) => upd("contact_phone", e.target.value)}
                 placeholder="+47 …" />
-            </Box>
-            <Switch checked={prefs.notify_sms}
-                    onChange={(e) => upd("notify_sms", e.target.checked)} />
-          </Box>
-
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <WhatsAppIcon sx={{ color: "#25D366" }} />
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="body1" sx={{ fontWeight: 600 }}>WhatsApp</Typography>
-              <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.5)" }}>
-                Bruker samme telefonnummer som SMS over
+              <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.5)", mt: 0.5,
+                                                   display: "block" }}>
+                Vi sender via WhatsApp Business — opt-in via denne togglen.
               </Typography>
             </Box>
             <Switch checked={prefs.notify_whatsapp}
@@ -180,7 +171,7 @@ export function ClientPortalNotificationPrefs({ portalToken }: Props) {
 
         <Typography variant="caption" sx={{ display: "block", mt: 2,
                     color: "rgba(255,255,255,0.40)", textAlign: "center" }}>
-          Vi sender kun varsler du har takket ja til. SMS/WhatsApp via Twilio.
+          Vi sender kun varsler du har takket ja til. WhatsApp via Meta Business.
         </Typography>
       </CardContent>
 

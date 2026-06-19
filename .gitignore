@@ -87,6 +87,8 @@ docs/
 !docs/security/*.md
 !docs/post-agent/
 !docs/post-agent/*.md
+!docs/leadgrid/
+!docs/leadgrid/*.md
 !docs/dance/
 !docs/dance/*.md
 !docs/specs/

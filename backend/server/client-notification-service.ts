@@ -3,8 +3,8 @@
  *
  * Multi-kanal varsels-service for Leadgrid klient-portal:
  *   - E-post via Resend (transactional-email-service)
- *   - SMS via Twilio
- *   - WhatsApp via Twilio (Business)
+ *   - WhatsApp via Meta Cloud API (eksisterende casting-whatsapp-sender-stack)
+ *   - SMS: TODO (Twilio droppet — vurder Sinch eller behold WhatsApp-only)
  *
  * Bruker client_notification_prefs til å filtrere kanaler per event-type
  * og logger alt til client_notification_log (audit + dedup).
@@ -12,15 +12,21 @@
  * Event-typer:
  *   deliverable_completed | focus_request_received |
  *   score_changed | new_finding | monthly_report
+ *
+ * Multi-tenant: henter WA-config fra role_room_org_whatsapp_config via
+ * kundens organisasjon. Faller tilbake til env-config (The Role Room's
+ * delte WABA) hvis org-en ikke har egen WA-bedrift.
  */
 
 import type { Pool } from "pg";
+import {
+  readEnvFallbackConfig, normalizePhoneE164, type WhatsAppSenderConfig,
+  sendWhatsAppLeadFollowup,
+} from "./casting-whatsapp-sender.js";
+import {
+  getLeadgridWaTemplate, type LeadgridWaTemplate,
+} from "./leadgrid-whatsapp-templates.js";
 
-const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID ?? "";
-const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN ?? "";
-const TWILIO_SMS_FROM = process.env.TWILIO_SMS_FROM ?? "";
-const TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM
-  ?? "whatsapp:+14155238886"; // sandbox-default
 const PORTAL_BASE = process.env.LEADGRID_PORTAL_BASE_URL
   ?? "https://leadgrid.theroleroom.com";
 
@@ -115,40 +121,71 @@ async function logSend(
   }
 }
 
-async function sendTwilio(
-  channel: "sms" | "whatsapp", to: string, body: string,
-): Promise<{ ok: boolean; sid?: string; error?: string }> {
-  if (!TWILIO_SID || !TWILIO_TOKEN) {
-    return { ok: false, error: "Twilio ikke konfigurert" };
-  }
-  const from = channel === "whatsapp" ? TWILIO_WHATSAPP_FROM : TWILIO_SMS_FROM;
-  if (!from) return { ok: false, error: `Twilio ${channel} from-nummer mangler` };
-  const toFormatted = channel === "whatsapp" && !to.startsWith("whatsapp:")
-    ? `whatsapp:${to}` : to;
-
+/** Hent WhatsApp Cloud API-config for kunden:
+ *  per-org først (role_room_org_whatsapp_config), så env-fallback. */
+async function getWhatsAppConfigForCustomer(
+  pool: Pool, customerId: string,
+): Promise<WhatsAppSenderConfig | null> {
   try {
-    const auth = Buffer.from(`${TWILIO_SID}:${TWILIO_TOKEN}`).toString("base64");
-    const form = new URLSearchParams();
-    form.set("From", from);
-    form.set("To", toFormatted);
-    form.set("Body", body);
-    const r = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`,
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Basic ${auth}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: form.toString(),
-      },
+    const r = await pool.query<{
+      access_token_encrypted: string | null;
+      phone_number_id: string | null;
+      display_name: string | null;
+      template_language: string | null;
+    }>(
+      `SELECT w.access_token_encrypted, w.phone_number_id,
+              w.display_name, w.template_language
+         FROM role_room_org_whatsapp_config w
+         JOIN casting_projects p ON p.organization_id::text = w.org_key
+         JOIN crm_customers c ON c.project_id = p.id
+        WHERE c.id::text = $1
+        LIMIT 1`,
+      [customerId],
     );
-    const data: any = await r.json();
-    if (r.ok && data.sid) return { ok: true, sid: data.sid };
-    return { ok: false, error: data.message ?? `HTTP ${r.status}` };
-  } catch (e: any) {
-    return { ok: false, error: e.message ?? String(e) };
+    if (r.rows[0]?.access_token_encrypted && r.rows[0]?.phone_number_id) {
+      const row = r.rows[0];
+      return {
+        accessToken: row.access_token_encrypted!,
+        phoneNumberId: row.phone_number_id!,
+        displayName: row.display_name ?? "Leadgrid",
+        templateLanguage: row.template_language ?? "nb",
+        template24hName: "", // ikke brukt her
+        template1hName: "",
+      };
+    }
+  } catch (e) {
+    console.warn("[client-notif] org-WA-config lookup feilet", e);
   }
+  return readEnvFallbackConfig();
+}
+
+/** Send WhatsApp via Meta Cloud API + en av Leadgrid-templatene. */
+async function sendWhatsApp(
+  pool: Pool, customerId: string, to: string,
+  event: LeadgridWaTemplate, params: string[],
+  language: "nb" | "en" = "nb",
+): Promise<{ ok: boolean; messageId?: string; templateName?: string; error?: string }> {
+  const config = await getWhatsAppConfigForCustomer(pool, customerId);
+  if (!config) return { ok: false, error: "WhatsApp Cloud API ikke konfigurert" };
+
+  const normalized = normalizePhoneE164(to);
+  if (!normalized) return { ok: false, error: "Ugyldig telefonnummer (forventet E.164)" };
+
+  const tmpl = getLeadgridWaTemplate(event, language);
+
+  const res = await sendWhatsAppLeadFollowup({
+    config: { ...config, templateLanguage: tmpl.language === "nb" ? "nb" : "en" },
+    to: normalized,
+    templateName: tmpl.fullName,
+    bodyParams: params,
+  });
+  if (res.success) {
+    return { ok: true, messageId: res.messageId, templateName: tmpl.fullName };
+  }
+  return {
+    ok: false, templateName: tmpl.fullName,
+    error: res.error ?? "ukjent_feil",
+  };
 }
 
 async function sendEmail(
@@ -254,27 +291,54 @@ export async function notifyClient(
                    res.ok ? "sent" : "failed", res.id, res.error);
   }
 
-  // 3. SMS
-  if (prefs.notify_sms && prefs.contact_phone) {
-    attempted++;
-    const smsBody = `${subject} – ${body}`.slice(0, 320);
-    const res = await sendTwilio("sms", prefs.contact_phone, smsBody);
-    if (res.ok) { sent++; channels.push("sms"); }
-    await logSend(pool, data.customerId, "sms", data.event,
-                   prefs.contact_phone, subject, smsBody,
-                   res.ok ? "sent" : "failed", res.sid, res.error);
-  }
-
-  // 4. WhatsApp
+  // 3. WhatsApp via Meta Cloud API
   if (prefs.notify_whatsapp && prefs.contact_phone) {
     attempted++;
-    const waBody = `*${subject}*\n\n${body}`;
-    const res = await sendTwilio("whatsapp", prefs.contact_phone, waBody);
+    const senderName = data.customerName ?? "Leadgrid";
+    const params = buildWaParamsForEvent(data, prefs, senderName);
+    const waEvent: LeadgridWaTemplate = `leadgrid_${data.event}` as LeadgridWaTemplate;
+    const res = await sendWhatsApp(
+      pool, data.customerId, prefs.contact_phone, waEvent, params,
+    );
     if (res.ok) { sent++; channels.push("whatsapp"); }
     await logSend(pool, data.customerId, "whatsapp", data.event,
-                   prefs.contact_phone, subject, waBody,
-                   res.ok ? "sent" : "failed", res.sid, res.error);
+                   prefs.contact_phone, subject,
+                   `template=${res.templateName} params=${JSON.stringify(params)}`,
+                   res.ok ? "sent" : "failed", res.messageId, res.error);
   }
 
+  // SMS-kanal er midlertidig deaktivert (Twilio droppet).
+  // Beholdt schema-feltet `notify_sms` for fremtidig Sinch-integrasjon.
+
   return { attempted, sent, channels };
+}
+
+/** Bygg WA-template-body-parametere per event-type.
+ *  Rekkefølgen MÅ matche bodyTemplate-stringen ({{1}}, {{2}}, ...). */
+function buildWaParamsForEvent(
+  data: NotificationData, prefs: Prefs, senderName: string,
+): string[] {
+  const customerName = prefs.contact_name ?? data.customerName ?? "der";
+  switch (data.event) {
+    case "deliverable_completed":
+      return [customerName, data.deliverableTitle ?? "Ny leveranse", senderName];
+    case "focus_request_received":
+      return [customerName, data.focusArea ?? "valgt område", senderName];
+    case "score_changed": {
+      const delta = (data.scoreNew ?? 0) - (data.scoreOld ?? 0);
+      const explain = delta > 0
+        ? `Det er en økning på ${delta} poeng — godt jobbet!`
+        : delta < 0
+          ? `Det er en nedgang på ${Math.abs(delta)} poeng. Vi følger opp.`
+          : "Det er en endring vi vil at du skal være klar over.";
+      return [customerName, String(data.scoreOld ?? "-"),
+               String(data.scoreNew ?? "-"), explain];
+    }
+    case "new_finding":
+      return [customerName, data.findingTitle ?? "Nytt funn",
+               "Vi har lagt en anbefaling i portalen din."];
+    case "monthly_report":
+      return [customerName, data.monthLabel ?? "denne perioden",
+               "Se hele rapporten i portalen."];
+  }
 }
