@@ -364,6 +364,22 @@ actor APIClient {
         )
     }
 
+    // MARK: - Min profil (PR #761+)
+
+    /// Hent min egen profil (de 4 påkrevde feltene: avatar/e-post/telefon/profesjon).
+    func fetchMyProfile() async throws -> MyProfileResponse {
+        try await get("/api/admin-room/lead-map/me/profile")
+    }
+
+    /// Patch én eller flere profil-felter.
+    func patchMyProfile(_ updates: [String: String?]) async throws -> MyProfileResponse {
+        var body: [String: Any] = [:]
+        for (k, v) in updates {
+            body[k] = v ?? NSNull()
+        }
+        return try await patchReturning("/api/admin-room/lead-map/me/profile", body: body)
+    }
+
     // MARK: - Pitch Deck Studio
 
     /// Lett-vekts sjekk for prosjekt-kort: har org et klart deck?
