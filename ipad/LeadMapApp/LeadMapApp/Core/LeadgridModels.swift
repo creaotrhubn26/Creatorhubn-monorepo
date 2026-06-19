@@ -368,6 +368,32 @@ struct OnboardingTestResponse: Codable {
 }
 
 // ============================================================
+// MARK: - Min profil (lead-map-me-profile-routes)
+// ============================================================
+
+struct MyProfile: Codable, Identifiable {
+    let userId: String
+    let firstName: String?
+    let lastName: String?
+    let email: String?
+    let phone: String?
+    let profession: String?
+    let profileImageUrl: String?
+    let profileComplete: Bool
+    let profileCompletedCount: Int
+    let profileTotalRequired: Int
+
+    var id: String { userId }
+    var fullName: String {
+        [firstName, lastName].compactMap { $0 }.joined(separator: " ")
+    }
+}
+
+struct MyProfileResponse: Codable {
+    let profile: MyProfile
+}
+
+// ============================================================
 // MARK: - Helpers — formatering
 // ============================================================
 
