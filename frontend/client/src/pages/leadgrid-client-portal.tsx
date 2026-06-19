@@ -27,6 +27,7 @@ import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import LockClockIcon from "@mui/icons-material/LockClock";
 import VerifiedIcon from "@mui/icons-material/Verified";
 import { PoweredByLeadgridBanner } from "@/components/leadgrid/PoweredByLeadgridBanner";
+import { ClientPortalNotificationPrefs } from "@/components/leadgrid/ClientPortalNotificationPrefs";
 
 interface PortalData {
   token_meta: {
@@ -468,6 +469,11 @@ export default function LeadgridClientPortalPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Varsels-innstillinger (e-post/SMS/WhatsApp) */}
+        <Box sx={{ mt: 4 }}>
+          <ClientPortalNotificationPrefs portalToken={token} />
+        </Box>
 
         {/* Powered by Leadgrid */}
         <PoweredByLeadgridBanner orgPlan={data.org_plan} variant="footer" />

@@ -35,6 +35,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { notifyClient } from "./client-notification-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -429,7 +430,8 @@ export function registerDeliveryPlaybookRoutes({
           [req.params.id, JSON.stringify(progress), allDone],
         );
 
-        // Hvis completed → marker tilhørende focus_request som completed
+        // Hvis completed → marker tilhørende focus_request som completed +
+        //                  send klient-varsel (e-post/SMS/WhatsApp etter prefs)
         if (allDone) {
           await pool.query(
             `UPDATE client_focus_requests
@@ -437,6 +439,32 @@ export function registerDeliveryPlaybookRoutes({
               WHERE id = (SELECT focus_request_id FROM project_deliverables WHERE id = $1)`,
             [req.params.id],
           );
+
+          try {
+            const dr = await pool.query<{
+              customer_id: string | null; title: string;
+              portal_token: string | null;
+            }>(
+              `SELECT pd.customer_id::text, pd.title,
+                       (SELECT token FROM client_portal_tokens
+                         WHERE customer_id = pd.customer_id
+                           AND revoked_at IS NULL
+                         ORDER BY created_at DESC LIMIT 1) AS portal_token
+                  FROM project_deliverables pd WHERE pd.id = $1`,
+              [req.params.id],
+            );
+            const row = dr.rows[0];
+            if (row?.customer_id) {
+              await notifyClient(pool, {
+                customerId: row.customer_id,
+                event: "deliverable_completed",
+                deliverableTitle: row.title,
+                portalToken: row.portal_token ?? undefined,
+              });
+            }
+          } catch (e) {
+            console.error("[delivery-playbook] notifyClient feilet", e);
+          }
         }
 
         return res.json({ deliverable: upd.rows[0] });
