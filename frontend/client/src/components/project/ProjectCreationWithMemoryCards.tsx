@@ -150,6 +150,7 @@ import ExternalEditingOption from '@/components/universal/editing-marketplace/Ex
 import CloudErasePanel from '@/components/storage/CloudErasePanel';
 import DeliverFromArchiveDialog from '@/components/storage/DeliverFromArchiveDialog';
 import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
+import CaptureBetaSignupDialog from '@/components/project/CaptureBetaSignupDialog';
 import { getCamerasByProfession, getLogFormatsByCamera, getCameraBrand } from '../../data/video-camera-database';
 import { getPhotoCamerasByProfession, getPhotoCameraBrand } from '../../data/photo-camera-database';
 import { MemoryCardRecommendationEngine, getMemoryCardTypesByProfession, formatCurrency } from '../../data/memory-card-database';
@@ -1440,6 +1441,7 @@ export default function ProjectCreationWithMemoryCards({
   }, [showToast]);
   
   const [activeStep, setActiveStep] = useState(0);
+  const [captureBetaOpen, setCaptureBetaOpen] = useState(false);
   const [showHealthCheck, setShowHealthCheck] = useState(false);
   const [healthCheckPassed, setHealthCheckPassed] = useState(false);
   const [cultureDayDialog, setCultureDayDialog] = useState({
@@ -4535,6 +4537,9 @@ useEffect(() => {
               iPad Capture-app — backup og monitorering rett fra settet.
             </Typography>
             <Chip size="small" label="Kommer snart (TestFlight)" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#f6f2ea', fontWeight: 600 }} />
+            <Button size="small" variant="outlined" onClick={() => setCaptureBetaOpen(true)}>
+              Ønsker du å teste? Meld deg på
+            </Button>
           </Box>
         </CardContent>
       </Card>
@@ -4728,6 +4733,9 @@ useEffect(() => {
          DIALOGS: Health Check, Cultural Day, Worklog Tips, Lead Import, Version History, Script Manager, Comparison
          ========================================== */}
       
+      {/* iPad Capture beta-påmelding */}
+      <CaptureBetaSignupDialog open={captureBetaOpen} onClose={() => setCaptureBetaOpen(false)} />
+
       {/* Health Check Dialog */}
       <Dialog open={showHealthCheck} onClose={() => setShowHealthCheck(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
