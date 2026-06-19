@@ -11,6 +11,16 @@ struct LeadgridHubView: View {
     var body: some View {
         NavigationStack {
             List {
+                // Plan-quota øverst (fase 16) — viser kun hvis api + orgId klar.
+                if let api = appState.api, let orgId = appState.activeOrganizationId {
+                    Section {
+                        LeadgridPlanUsageBar(api: api, orgId: orgId)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                    }
+                }
+
                 Section("CRM") {
                     if let api = appState.api {
                         NavigationLink {
@@ -72,6 +82,22 @@ struct LeadgridHubView: View {
                     } label: {
                         Label("Eksporter leads (CSV)", systemImage: "square.and.arrow.up.fill")
                             .foregroundStyle(.primary)
+                    }
+                }
+
+                // Fase 16: Partner-program + Billing
+                Section("Partnere & faktura") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridPartnersView(api: api)
+                        } label: {
+                            Label("Partner-program", systemImage: "person.2.circle.fill")
+                        }
+                        NavigationLink {
+                            LeadgridBillingView(api: api)
+                        } label: {
+                            Label("Faktura & abonnement", systemImage: "creditcard.fill")
+                        }
                     }
                 }
             }

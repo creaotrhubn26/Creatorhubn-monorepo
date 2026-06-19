@@ -890,6 +890,85 @@ actor APIClient {
         return data
     }
 
+    /// KPI-summary for export-knapp (antall + period). Brukes for å vise
+    /// "Eksporterer 142 leads fra siste 30 dager" før shareSheet.
+    func fetchLeadsExportSummary(period: String = "30d", status: String = "all") async throws -> LeadsExportSummary {
+        try await get("/api/leadgrid/leads/export-summary?period=\(period)&status=\(status)")
+    }
+
+    // -- Plan-quota (Fase 16: PlanUsageBar i HubView) ---------------
+
+    /// Henter plan-summary for org-en: nåværende plan + grace + limits +
+    /// usage (customers_active, auto_onboards_this_month) + pct (0-100).
+    /// Brukes for å vise plan-bar øverst i HubView.
+    func fetchLeadgridPlanSummary(orgId: String) async throws -> LeadgridPlanSummary {
+        try await get("/api/leadgrid/plan/summary?orgId=\(orgId)")
+    }
+
+    // -- Assignment-historikk (Fase 16: vis hvem som har eid leaden) -
+
+    /// Liste over tildelinger på en lead: hvem tildelte hvem, når, hvorfor.
+    /// Brukes i CustomerDetail som tilleggsfane ved siden av status-history.
+    func fetchAssignmentHistory(customerId: String) async throws -> AssignmentHistoryResponse {
+        try await get("/api/leadgrid/customers/\(customerId)/assignment-history")
+    }
+
+    // -- Onboarding-state (Fase 16: org-overordnet wizard) -----------
+
+    /// Hent org-overordnet onboarding-state (har de fullført wizard?).
+    func fetchOnboardingState() async throws -> LeadgridOnboardingState {
+        try await get("/api/leadgrid/onboarding/state")
+    }
+
+    /// Avansere onboarding-wizard fra steg X → Y.
+    func advanceOnboarding(fromStep: String) async throws {
+        try await post("/api/leadgrid/onboarding/advance",
+                       body: ["from_step": fromStep])
+    }
+
+    /// Skip wizard (markerer den som fullført uten å fullføre alle steg).
+    func skipOnboarding() async throws {
+        try await post("/api/leadgrid/onboarding/skip", body: [:])
+    }
+
+    // -- Billing (Fase 16: faktura-historikk + Stripe portal) --------
+
+    /// Liste over fakturaer for org-en (fra Stripe). Markedssjef kan se
+    /// status + beløp i felt før møte.
+    func fetchLeadgridBillingInvoices() async throws -> LeadgridBillingInvoicesResponse {
+        try await get("/api/leadgrid/billing/invoices")
+    }
+
+    /// Generer Stripe billing-portal-session — returnerer URL som åpnes
+    /// i Safari for å oppdatere betalingsmetode/se historikk.
+    func createBillingPortalSession() async throws -> BillingPortalSessionResponse {
+        try await post("/api/leadgrid/billing/portal-session", body: [:])
+    }
+
+    // -- Partners (Fase 16: Partner-program landing-strip) -----------
+
+    /// Liste over godkjente partnere (offentlig endepunkt). Brukes for å
+    /// vise "Powered by"-strip + Partners-fane.
+    func fetchLeadgridPartners(type: String? = nil) async throws -> LeadgridPartnersResponse {
+        let qs = type.map { "?type=\($0)" } ?? ""
+        return try await get("/api/leadgrid/partners\(qs)")
+    }
+
+    // -- Klient-portal-varsler (Fase 17: klient-side notif-prefs) ----
+
+    /// Klient-portal notification-prefs (per portalToken, ikke session).
+    func fetchClientPortalNotificationPrefs(portalToken: String) async throws -> ClientPortalNotificationPrefs {
+        try await get("/api/leadgrid/portal/\(portalToken)/notification-prefs")
+    }
+
+    /// Oppdater klient-portal notification-prefs.
+    func updateClientPortalNotificationPrefs(
+        portalToken: String,
+        payload: [String: Any],
+    ) async throws {
+        try await patch("/api/leadgrid/portal/\(portalToken)/notification-prefs", body: payload)
+    }
+
     // MARK: - Internal
 
     private func makeRequest(_ path: String, method: String = "GET") -> URLRequest {
