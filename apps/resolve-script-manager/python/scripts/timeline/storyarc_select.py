@@ -38,17 +38,22 @@ DEFAULT_RANGES = [
     ("portraits", 1700, 2090), ("reception", 2090, 2395), ("firstdance", 2395, 2610),
     ("speeches", 2610, 3000), ("party", 3000, 3954), ("outro", 3954, 10**9),
 ]
-# story-arc time budget (share of total) — seremoni størst
-BUDGET = {"prelude": .08, "arrival": .12, "ceremony": .20, "portraits": .12,
-          "reception": .11, "firstdance": .10, "speeches": .07, "party": .16, "outro": .04}
+# story-arc time budget (share of total) — seremoni størst.
+# Talene har sin EGEN video (egen timeline) → highlighten skal ikke hakke dem;
+# speeches får lite budsjett og kun REAKSJONER (ikke snakkende hoder).
+BUDGET = {"prelude": .08, "arrival": .12, "ceremony": .21, "portraits": .13,
+          "reception": .11, "firstdance": .10, "speeches": .03, "party": .18, "outro": .04}
 # per-shot signal weighting per chapter "mood"
 PROFILES = {
     "quiet":  {"faces":1.5,"emotional_peak":1.5,"aesthetic":1.3,"bokeh":1.2,"slowmo":1.0,
                "wedding_events":1.2,"color_grade":.8,"speech":.5,"audio":.4,"motion":.2,"action":.1,"audio_events":.3},
     "energy": {"action":1.5,"audio_events":1.3,"motion":1.2,"wedding_events":1.3,"faces":1.0,
                "aesthetic":.8,"emotional_peak":.8,"audio":1.0,"slowmo":.5,"bokeh":.6,"speech":.3,"color_grade":.6},
-    "speech": {"emotional_peak":1.5,"faces":1.3,"audio_events":1.3,"aesthetic":1.0,"speech":.8,
-               "audio":.8,"wedding_events":.6,"motion":.2,"action":.2,"bokeh":.5,"slowmo":.4},
+    # "speech" i highlighten = REAKSJONER (applaus/latter/rørte ansikter), IKKE snakkende
+    # hoder (talen lever i egen tale-video). Derfor: høy emotional/faces/audio_events,
+    # LAV speech-vekt så vi unngår oppkuttede talking-head-fragmenter.
+    "speech": {"emotional_peak":1.6,"faces":1.4,"audio_events":1.6,"aesthetic":1.0,"speech":.1,
+               "audio":.6,"wedding_events":.6,"motion":.3,"action":.4,"bokeh":.6,"slowmo":.5},
 }
 CH_MOOD = {"prelude":"quiet","arrival":"energy","ceremony":"quiet","portraits":"quiet",
            "reception":"energy","firstdance":"quiet","speeches":"speech","party":"energy","outro":"quiet"}
