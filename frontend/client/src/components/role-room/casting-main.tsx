@@ -15,6 +15,7 @@ import LeadgridDevelopersPage from '@/pages/leadgrid-developers';
 import LeadgridDeveloperApplicationPage from '@/pages/leadgrid-developer-application';
 import LeadgridPartnerWizardPage from '@/pages/leadgrid-partner-wizard';
 import LeadgridPartnerDashboardPage from '@/pages/leadgrid-partner-dashboard';
+import LeadgridMarketplacePage from '@/pages/leadgrid-marketplace';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
 import AgencyPortalView from './components/AgencyPortalView';
@@ -197,6 +198,11 @@ function CastingStandaloneAppContent() {
   if (localeCtx.pathname === '/leadgrid/partner-dashboard' ||
       localeCtx.pathname === '/leadgrid/partner-dashboard/') {
     return <LeadgridPartnerDashboardPage />;
+  }
+  // Public marketplace
+  if (localeCtx.pathname === '/leadgrid/marketplace' ||
+      localeCtx.pathname === '/leadgrid/marketplace/') {
+    return <LeadgridMarketplacePage />;
   }
   // Developer-docs (public)
   if (localeCtx.pathname === '/leadgrid/utviklere' ||

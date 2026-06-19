@@ -67,6 +67,9 @@ const STATIC_URLS: Array<{ loc: string; priority: number; changefreq: string }> 
   // Leadgrid (kartbasert CRM)
   { loc: "/leadgrid", priority: 0.95, changefreq: "weekly" },
   { loc: "/leadgrid/personvern", priority: 0.3, changefreq: "yearly" },
+  { loc: "/leadgrid/utviklere", priority: 0.85, changefreq: "monthly" },
+  { loc: "/leadgrid/utviklere/soknad", priority: 0.7, changefreq: "monthly" },
+  { loc: "/leadgrid/marketplace", priority: 0.85, changefreq: "weekly" },
 ];
 
 function xmlEscape(text: string): string {

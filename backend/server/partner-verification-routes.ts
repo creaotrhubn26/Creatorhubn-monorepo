@@ -28,7 +28,23 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
+import multer from "multer";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
+import {
+  uploadPartnerDocument, presignPartnerDocument, deletePartnerDocument,
+} from "./partner-documents-service.js";
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
+const CRON_TOKEN = process.env.LEADGRID_CRON_TRIGGER_TOKEN ?? "";
+
+function isCronAuthorized(req: Request): boolean {
+  const t = req.headers["x-cron-trigger-token"] as string | undefined;
+  return !!t && !!CRON_TOKEN && t === CRON_TOKEN;
+}
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -498,6 +514,178 @@ export function registerPartnerVerificationRoutes({ app, pool, activeSessions }:
       [s.userId, req.params.id],
     );
     res.json({ ok: true });
+  });
+
+  // ---------- Public: upload document for partner application ----------
+  app.post(
+    "/api/leadgrid/partner-application/upload-document",
+    upload.single("file"),
+    async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session) return res.status(401).json({ error: "Ikke innlogget" });
+      const file = (req as any).file;
+      const { applicationId, documentType } = req.body ?? {};
+      if (!file) return res.status(400).json({ error: "Ingen fil mottatt" });
+      if (!applicationId || !documentType) {
+        return res.status(400).json({ error: "applicationId og documentType påkrevd" });
+      }
+
+      // Bekreft eierskap
+      const own = await pool.query(
+        `SELECT 1 FROM partner_applications WHERE id = $1 AND applicant_user_id = $2`,
+        [applicationId, session.userId],
+      );
+      if (own.rows.length === 0) return res.status(403).json({ error: "Ikke din søknad" });
+
+      const r = await uploadPartnerDocument(pool, {
+        applicationId, documentType,
+        filename: file.originalname,
+        mimeType: file.mimetype,
+        fileBuffer: file.buffer,
+        uploadedBy: session.userId,
+      });
+      if (!r.ok) return res.status(400).json({ error: r.error });
+      res.status(201).json({ ok: true, document_id: r.document_id });
+    },
+  );
+
+  // ---------- Public: liste egne dokumenter ----------
+  app.get("/api/leadgrid/partner-application/:appId/documents", async (req, res) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "Ikke innlogget" });
+    const own = await pool.query(
+      `SELECT 1 FROM partner_applications WHERE id = $1 AND applicant_user_id = $2`,
+      [req.params.appId, session.userId],
+    );
+    if (own.rows.length === 0) return res.status(403).json({ error: "Ikke din søknad" });
+    const r = await pool.query(
+      `SELECT id::text, document_type, filename, file_size_bytes, mime_type,
+              uploaded_at::text, verified_at::text, verification_notes
+         FROM partner_application_documents
+        WHERE application_id = $1
+        ORDER BY uploaded_at DESC`,
+      [req.params.appId],
+    );
+    res.json({ documents: r.rows });
+  });
+
+  // ---------- Public: slett eget dokument ----------
+  app.delete("/api/leadgrid/partner-application/document/:docId", async (req, res) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "Ikke innlogget" });
+    const own = await pool.query(
+      `SELECT 1 FROM partner_application_documents d
+         JOIN partner_applications pa ON pa.id = d.application_id
+        WHERE d.id = $1 AND pa.applicant_user_id = $2`,
+      [req.params.docId, session.userId],
+    );
+    if (own.rows.length === 0) return res.status(403).json({ error: "Ikke din fil" });
+    await deletePartnerDocument(pool, req.params.docId);
+    res.json({ ok: true });
+  });
+
+  // ---------- Superadmin: hent presigned download-URL ----------
+  app.get("/api/superadmin/partner-documents/:id/url", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    const r = await pool.query<{ storage_url: string; filename: string }>(
+      `SELECT storage_url, filename FROM partner_application_documents WHERE id = $1`,
+      [req.params.id],
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Ikke funnet" });
+    const url = await presignPartnerDocument(r.rows[0].storage_url, 600);
+    if (!url) return res.status(500).json({ error: "Kunne ikke generere URL" });
+    res.json({ url, filename: r.rows[0].filename });
+  });
+
+  // ---------- Public marketplace ----------
+  app.get("/api/leadgrid/marketplace", async (req, res) => {
+    const partnerType = req.query.type as string | undefined;
+    const tier = req.query.tier as string | undefined;
+    const r = await pool.query(
+      `SELECT id::text, name, slug, logo_url, website, tagline,
+              partner_type, tier
+         FROM leadgrid_partners
+        WHERE is_active = TRUE
+          AND status = 'approved'
+          AND show_on_landing = TRUE
+          ${partnerType ? "AND partner_type = $1" : ""}
+          ${tier ? `AND tier = $${partnerType ? 2 : 1}` : ""}
+        ORDER BY
+          CASE tier
+            WHEN 'strategic' THEN 1
+            WHEN 'verified_integration' THEN 2
+            WHEN 'integration' THEN 3
+            WHEN 'certified' THEN 4
+            WHEN 'listed' THEN 5
+            ELSE 6 END,
+          name ASC`,
+      [partnerType, tier].filter(Boolean) as string[],
+    );
+    res.json({ partners: r.rows });
+  });
+
+  // ---------- Cron: re-verification check ----------
+  app.post("/api/leadgrid/reverifications/check", async (req, res) => {
+    if (!isCronAuthorized(req)) {
+      const s = await requireSuperAdmin(req, res, pool, activeSessions);
+      if (!s) return;
+    }
+
+    // Initialiser re-verifisering for nye partnere som mangler rad
+    await pool.query(
+      `INSERT INTO partner_re_verifications (partner_id, last_verified_at, next_verification_due, frequency_months)
+       SELECT p.id, p.approved_at,
+              CASE
+                WHEN p.partner_type IN ('integration', 'verified_integration', 'strategic') THEN
+                  p.approved_at + interval '12 months'
+                ELSE p.approved_at + interval '24 months'
+              END,
+              CASE
+                WHEN p.partner_type IN ('integration', 'verified_integration', 'strategic') THEN 12
+                ELSE 24
+              END
+         FROM leadgrid_partners p
+        WHERE p.status = 'approved'
+          AND p.approved_at IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM partner_re_verifications r WHERE r.partner_id = p.id)`,
+    );
+
+    // Send admin-alert for partnere som har <30 dager til due
+    const dueR = await pool.query<{ partner_id: string; partner_name: string; due_in_days: number }>(
+      `SELECT r.partner_id::text, p.name AS partner_name,
+              EXTRACT(EPOCH FROM (r.next_verification_due - now())) / 86400 AS due_in_days
+         FROM partner_re_verifications r
+         JOIN leadgrid_partners p ON p.id = r.partner_id
+        WHERE r.next_verification_due <= now() + interval '30 days'
+          AND (r.last_warning_sent_at IS NULL
+            OR r.last_warning_sent_at < now() - interval '7 days')`,
+    );
+
+    let alerted = 0;
+    for (const row of dueR.rows) {
+      await pool.query(
+        `INSERT INTO partner_admin_alerts
+          (partner_id, alert_type, severity, message, meta)
+         VALUES ($1, 'reverification_due_soon',
+                 CASE WHEN $2 < 0 THEN 'critical'
+                      WHEN $2 < 7 THEN 'warning'
+                      ELSE 'info' END,
+                 $3, $4::jsonb)`,
+        [
+          row.partner_id, row.due_in_days,
+          `Re-verification due in ${Math.round(row.due_in_days)} days for ${row.partner_name}`,
+          JSON.stringify({ partner_name: row.partner_name, due_in_days: row.due_in_days }),
+        ],
+      );
+      await pool.query(
+        `UPDATE partner_re_verifications SET last_warning_sent_at = now() WHERE partner_id = $1`,
+        [row.partner_id],
+      );
+      alerted++;
+    }
+
+    res.json({ ok: true, alerted });
   });
 
   // ---------- Superadmin: auto-test webhook ----------
