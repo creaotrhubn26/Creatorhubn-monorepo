@@ -10,6 +10,7 @@ mod capture_mirror;
 mod capture_subscriber;
 mod copy_engine;
 mod copy_session;
+mod desk_identity;
 mod device_auth;
 mod dit_reporter;
 mod helper_client;
