@@ -59,10 +59,26 @@ def stats(video):
     return f(ymins), f(ymaxs), f(ys), f(sats)
 
 
+def _current_timeline_source() -> str | None:
+    """Fallback: hent kilde-filsti fra første klipp på aktiv Resolve-timeline."""
+    try:
+        conn = bridge.ResolveConnection()
+        if not conn.connect() or not conn.require_project():
+            return None
+        tl = conn.project.GetCurrentTimeline()
+        items = tl.GetItemListInTrack("video", 1) or []
+        return items[0].GetMediaPoolItem().GetClipProperty("File Path")
+    except Exception:
+        return None
+
+
 def run(params: dict, dry_run: bool) -> None:
     video = (params.get("videoPath") or "").strip()
     if not video or not os.path.isfile(video):
-        bridge.error(f"videoPath finnes ikke: {video}"); sys.exit(1)
+        # ingen sti → prøv aktiv timeline (veiviseren kaller uten path)
+        video = _current_timeline_source() or ""
+    if not video or not os.path.isfile(video):
+        bridge.error("Fant ingen video — gi videoPath eller ha en aktiv timeline."); sys.exit(1)
     meta, raw = probe(video)
     transfer = meta.get("color_transfer", "unknown")
     cspace = meta.get("color_space", "unknown")

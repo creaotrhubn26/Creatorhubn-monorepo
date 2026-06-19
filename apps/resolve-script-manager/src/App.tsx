@@ -39,6 +39,7 @@ import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
 import { DemoStudioShell } from "./components/demo-studio/DemoStudioShell";
 import { InfographicStudioView } from "./components/demo-studio/InfographicStudioView";
+import { ColorNodeTreeWizard } from "./components/ColorNodeTreeWizard";
 import { ModuleGate } from "./components/ModuleGate";
 import {
   getEntitledModules,
@@ -181,6 +182,7 @@ export default function App() {
   }, []);
   const [showNewProject, setShowNewProject] = useState(false);
   const [showWeddingWizard, setShowWeddingWizard] = useState(false);
+  const [showColorWizard, setShowColorWizard] = useState(false);
   const [showQcVideo, setShowQcVideo] = useState(false);
   // Listen for cross-component requests to open the deps modal
   // (dispatched from e.g. RoleRoomProjectSync when ffprobe is missing).
@@ -968,6 +970,9 @@ export default function App() {
           { id: "open_infographic_studio", title: "Åpne Infographic Studio",
             subtitle: "Egen løsning: branded infographics, charts, lower-thirds → Resolve",
             handler: () => setView("infographic") },
+          { id: "color_node_wizard", title: "Åpne Farge-node-veiviser",
+            subtitle: "Bygg fargekorreksjons-node-tre (gradet/log) + propager til alle klipp",
+            handler: () => setShowColorWizard(true) },
           { id: "creative_editor", title: "Åpne Creative Editor",
             subtitle: "Pixel-perfect editor med segments + timeline + Claude assistent",
             handler: () => setCreativeEditorPath(
@@ -1081,6 +1086,10 @@ export default function App() {
             setAgentSourcePath("");
           }}
         />
+      )}
+
+      {showColorWizard && (
+        <ColorNodeTreeWizard onClose={() => setShowColorWizard(false)} />
       )}
 
       {showWeddingWizard && (
