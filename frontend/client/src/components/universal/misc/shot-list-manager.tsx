@@ -654,7 +654,7 @@ export default function ShotListManager({
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
                 >
-                  <MenuItem value="All">All Status</MenuItem>
+                  <MenuItem value="All">Alle statuser</MenuItem>
                   <MenuItem value="Planned">Planned</MenuItem>
                   <MenuItem value="In Progress">In Progress</MenuItem>
                   <MenuItem value="Review">Review</MenuItem>
@@ -669,7 +669,7 @@ export default function ShotListManager({
                   value={filterScene}
                   onChange={(e) => setFilterScene(e.target.value)}
                 >
-                  <MenuItem value="All">All Scenes</MenuItem>
+                  <MenuItem value="All">Alle scener</MenuItem>
                   {scenes.map(scene => (
                     <MenuItem key={scene} value={scene}>{scene}</MenuItem>
                   ))}
@@ -805,12 +805,12 @@ export default function ShotListManager({
                                 {shot.shotType} • {formatDuration(shot.duration)}
                               </Typography>
                               <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                                <Tooltip title="Edit">
+                                <Tooltip title="Rediger">
                                   <IconButton size="small" onClick={() => openEditDialog(shot)}>
                                     <Edit fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
-                                <Tooltip title="Delete">
+                                <Tooltip title="Slett">
                                   <IconButton
                                     size="small"
                                     color="error"
@@ -822,7 +822,7 @@ export default function ShotListManager({
                                     <Delete fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
-                                <Tooltip title="Details">
+                                <Tooltip title="Detaljer">
                                   <IconButton size="small" onClick={() => openDetailsDialog(shot)}>
                                     <MoreVert fontSize="small" />
                                   </IconButton>
@@ -907,12 +907,12 @@ export default function ShotListManager({
                 />
                 <ListItemSecondaryAction>
                   <Box sx={{ display: 'flex', gap:  1 }}>
-                    <Tooltip title="Edit Shot">
+                    <Tooltip title="Rediger shot">
                       <IconButton onClick={() => openEditDialog(shot)}>
                         <Edit />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Delete Shot">
+                    <Tooltip title="Slett shot">
                       <IconButton
                         onClick={() => {
                           setSelectedShot(shot);
@@ -923,7 +923,7 @@ export default function ShotListManager({
                         <Delete />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Details">
+                    <Tooltip title="Detaljer">
                       <IconButton onClick={() => openDetailsDialog(shot)}>
                         <MoreVert />
                       </IconButton>
@@ -948,14 +948,14 @@ export default function ShotListManager({
         fullWidth
       >
         <DialogTitle>
-          {editingShot ? 'Edit Shot' : 'Add New Shot'}
+          {editingShot ? 'Rediger shot' : 'Nytt shot'}
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt:  1 }}>
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Shot Title"
+                label="Tittel"
                 value={shotForm.title || ''}
                 onChange={(e) => setShotForm((prev) => ({ ...prev, title: e.target.value }))}
                 required
@@ -964,7 +964,7 @@ export default function ShotListManager({
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Description"
+                label="Beskrivelse"
                 multiline
                 rows={3}
                 value={shotForm.description || ''}
@@ -982,7 +982,7 @@ export default function ShotListManager({
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>Shot Type</InputLabel>
+                <InputLabel>Type</InputLabel>
                 <Select
                   value={shotForm.shotType || 'Wide'}
                   onChange={(e) => setShotForm((prev) => ({ ...prev, shotType: e.target.value as Shot['shotType'] }))}
@@ -998,7 +998,7 @@ export default function ShotListManager({
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Duration (seconds)"
+                label="Varighet (sekunder)"
                 type="number"
                 value={shotForm.duration ?? 0}
                 onChange={(e) => setShotForm((prev) => ({ ...prev, duration: Number(e.target.value) }))}
@@ -1006,7 +1006,7 @@ export default function ShotListManager({
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>Priority</InputLabel>
+                <InputLabel>Prioritet</InputLabel>
                 <Select
                   value={shotForm.priority || 'Medium'}
                   onChange={(e) => setShotForm((prev) => ({ ...prev, priority: e.target.value as Shot['priority'] }))}
@@ -1021,7 +1021,7 @@ export default function ShotListManager({
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Camera Settings"
+                label="Kamerainnstillinger"
                 value={shotForm.cameraSettings || ''}
                 onChange={(e) => setShotForm((prev) => ({ ...prev, cameraSettings: e.target.value }))}
               />
@@ -1029,7 +1029,7 @@ export default function ShotListManager({
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Equipment Needed"
+                label="Utstyr"
                 value={equipmentInput}
                 onChange={(e) => setEquipmentInput(e.target.value)}
                 helperText="Separate multiple items with commas"
@@ -1038,7 +1038,7 @@ export default function ShotListManager({
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Notes"
+                label="Notater"
                 multiline
                 rows={2}
                 value={shotForm.notes || ''}
@@ -1084,7 +1084,7 @@ export default function ShotListManager({
               setEditingShot(null);
           }}
           >
-            {editingShot ? 'Update Shot' : 'Create Shot'}
+            {editingShot ? 'Oppdater shot' : 'Opprett shot'}
           </Button>
         </DialogActions>
       </Dialog>
