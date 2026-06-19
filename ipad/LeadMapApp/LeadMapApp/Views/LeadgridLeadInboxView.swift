@@ -10,6 +10,7 @@ struct LeadgridLeadInboxView: View {
     @State private var assignments: [MyAssignmentItem] = []
     @State private var loading = true
     @State private var errorText: String?
+    @State private var selectedCustomerId: String?
 
     var body: some View {
         List {
@@ -25,7 +26,12 @@ struct LeadgridLeadInboxView: View {
             } else {
                 Section("Mine tildelte leads (\(assignments.count))") {
                     ForEach(assignments) { item in
-                        assignmentRow(item)
+                        Button {
+                            selectedCustomerId = item.id
+                        } label: {
+                            assignmentRow(item)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -36,6 +42,16 @@ struct LeadgridLeadInboxView: View {
         .navigationTitle("Lead-inbox")
         .task { await load() }
         .refreshable { await load() }
+        .sheet(item: Binding(
+            get: { selectedCustomerId.map { CustomerIdWrapper(id: $0) } },
+            set: { selectedCustomerId = $0?.id }
+        )) { wrapper in
+            LeadgridCustomerDetailView(customerId: wrapper.id, api: api)
+        }
+    }
+
+    private struct CustomerIdWrapper: Identifiable {
+        let id: String
     }
 
     private func load() async {

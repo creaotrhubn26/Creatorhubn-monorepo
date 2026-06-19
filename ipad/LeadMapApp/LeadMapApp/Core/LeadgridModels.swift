@@ -333,6 +333,41 @@ struct AutoCreateReportsResponse: Codable {
 }
 
 // ============================================================
+// MARK: - Klient-onboarding wizard (PR #737)
+// ============================================================
+
+struct ChannelOnboardingState: Codable {
+    let deliveryModel: String?  // "shared" | "own_waba" | nil
+    let currentStep: String
+    let stepsCompleted: [String]
+    let activated: Bool
+    let lastTestPhone: String?
+    let lastTestError: String?
+}
+
+struct ChannelOnboardingStateResponse: Codable {
+    let state: ChannelOnboardingState
+    let orgKey: String
+    let emailBrandingExists: Bool
+    let emailBrandingHasSender: Bool
+    let wabaConfigExists: Bool
+    let wabaValidated: Bool
+    let wabaValidationError: String?
+}
+
+struct AdvanceOnboardingResponse: Codable {
+    let ok: Bool
+    let nextStep: String
+}
+
+struct OnboardingTestResponse: Codable {
+    let ok: Bool
+    let attempted: Int
+    let sent: Int
+    let channels: [String]
+}
+
+// ============================================================
 // MARK: - Helpers — formatering
 // ============================================================
 
