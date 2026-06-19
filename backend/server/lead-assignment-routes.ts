@@ -392,16 +392,22 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
   });
 
   // ============================================================
-  // MINE ASSIGNMENTS
+  // MINE ASSIGNMENTS — markerer også som "sett" når man åpner sin egen
   // ============================================================
   app.get("/api/leadgrid/my-assignments", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
+    const { orgRole } = await getUserRole(pool, s.userId);
 
     const r = await pool.query(
       `SELECT c.id::text, c.name, c.email, c.phone, c.status,
               c.ai_opportunity_score, c.lead_category,
               c.assigned_at::text, c.assignment_note,
+              c.team_leader_first_opened_at::text,
+              c.team_leader_last_seen_at::text,
+              c.rep_first_opened_at::text,
+              c.rep_last_seen_at::text,
+              c.last_action_at::text, c.last_action_type,
               p.name AS project_name
          FROM crm_customers c
          LEFT JOIN casting_projects p ON p.id = c.project_id
@@ -414,6 +420,112 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
         LIMIT 100`,
       [s.userId],
     );
+
+    // Marker leads som "sett" når brukeren åpner sin liste —
+    // setter team_leader_first_opened_at / rep_first_opened_at + sist sett.
+    // Best-effort, ikke avbryt om noe feiler.
+    try {
+      const isTeamLeader = TEAM_LEADER_ROLES.includes(orgRole ?? "");
+      const isRep = REP_ROLES.includes(orgRole ?? "");
+      if (isTeamLeader) {
+        await pool.query(
+          `UPDATE crm_customers SET
+             team_leader_first_opened_at = COALESCE(team_leader_first_opened_at, now()),
+             team_leader_last_seen_at = now()
+           WHERE assigned_team_leader_id = $1`,
+          [s.userId],
+        );
+      }
+      if (isRep) {
+        await pool.query(
+          `UPDATE crm_customers SET
+             rep_first_opened_at = COALESCE(rep_first_opened_at, now()),
+             rep_last_seen_at = now()
+           WHERE assigned_user_id = $1`,
+          [s.userId],
+        );
+      }
+    } catch (e) { console.warn("[my-assignments] sett-tracking feilet", e); }
+
     res.json({ items: r.rows });
+  });
+
+  // ============================================================
+  // MARK SEEN — eksplisitt registrering av at en lead ble åpnet
+  // ============================================================
+  app.post("/api/leadgrid/customers/:id/mark-seen", async (req, res) => {
+    const s = getSession(req, activeSessions);
+    if (!s) return res.status(401).json({ error: "Ikke innlogget" });
+    const { orgRole } = await getUserRole(pool, s.userId);
+
+    const isTeamLeader = TEAM_LEADER_ROLES.includes(orgRole ?? "");
+    const isRep = REP_ROLES.includes(orgRole ?? "");
+
+    // Sjekk at brukeren faktisk er tildelt
+    const r = await pool.query<{
+      assigned_team_leader_id: string | null; assigned_user_id: string | null;
+    }>(
+      `SELECT assigned_team_leader_id, assigned_user_id FROM crm_customers WHERE id = $1`,
+      [req.params.id],
+    );
+    const row = r.rows[0];
+    if (!row) return res.status(404).json({ error: "Ikke funnet" });
+
+    if (isTeamLeader && row.assigned_team_leader_id === s.userId) {
+      await pool.query(
+        `UPDATE crm_customers SET
+           team_leader_first_opened_at = COALESCE(team_leader_first_opened_at, now()),
+           team_leader_last_seen_at = now()
+         WHERE id = $1`,
+        [req.params.id],
+      );
+    }
+    if (isRep && row.assigned_user_id === s.userId) {
+      await pool.query(
+        `UPDATE crm_customers SET
+           rep_first_opened_at = COALESCE(rep_first_opened_at, now()),
+           rep_last_seen_at = now()
+         WHERE id = $1`,
+        [req.params.id],
+      );
+    }
+
+    await pool.query(
+      `INSERT INTO crm_customer_view_log (customer_id, viewer_user_id, viewer_role)
+       VALUES ($1, $2, $3)`,
+      [req.params.id, s.userId, orgRole ?? null],
+    );
+
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // ASSIGNMENT STATUS — markedssjef vil se om mottakeren har sett
+  // ============================================================
+  app.get("/api/leadgrid/customers/:id/assignment-status", async (req, res) => {
+    const s = getSession(req, activeSessions);
+    if (!s) return res.status(401).json({ error: "Ikke innlogget" });
+
+    const r = await pool.query(
+      `SELECT c.id::text,
+              c.assigned_team_leader_id, c.assigned_user_id,
+              c.team_leader_first_opened_at::text,
+              c.team_leader_last_seen_at::text,
+              c.rep_first_opened_at::text,
+              c.rep_last_seen_at::text,
+              c.assigned_at::text,
+              c.last_action_at::text, c.last_action_type,
+              tl.first_name AS tl_first, tl.last_name AS tl_last,
+              tl.profile_image_url AS tl_avatar, tl.last_seen_at::text AS tl_last_online,
+              rep.first_name AS rep_first, rep.last_name AS rep_last,
+              rep.profile_image_url AS rep_avatar, rep.last_seen_at::text AS rep_last_online
+         FROM crm_customers c
+         LEFT JOIN users tl  ON tl.id = c.assigned_team_leader_id
+         LEFT JOIN users rep ON rep.id = c.assigned_user_id
+        WHERE c.id = $1`,
+      [req.params.id],
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Ikke funnet" });
+    res.json(r.rows[0]);
   });
 }
