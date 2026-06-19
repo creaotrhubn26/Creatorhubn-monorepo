@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Creatorhub — International Editing Partner Guide</title>
+<style>
+  :root{
+    --accent:#ff8c00; --accent2:#ff6b35;
+    --bg:#05060a; --panel:#12151c; --panel2:#171b24;
+    --border:rgba(255,255,255,.10); --border2:rgba(255,140,0,.35);
+    --ink:#f6f2ea; --muted:rgba(246,242,234,.62);
+    --ok:#34c759;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(circle at 85% -10%, rgba(255,140,0,.16), transparent 38%),
+      radial-gradient(circle at 0% 30%, rgba(255,140,0,.08), transparent 40%),
+      var(--bg);
+    color:var(--ink); -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 60px}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+  .logo{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#0b0c10;font-weight:800;font-size:20px}
+  h1{font-size:23px;margin:0;font-weight:750;letter-spacing:.2px}
+  .sub{color:var(--muted);font-size:14px;margin:2px 0 0}
+  .layout{display:grid;grid-template-columns:264px 1fr;gap:22px;margin-top:24px}
+  @media(max-width:820px){.layout{grid-template-columns:1fr}}
+  /* progress + steplist */
+  .rail{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;height:fit-content;position:sticky;top:18px}
+  .bar{height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;margin:4px 6px 14px}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .3s}
+  .step{display:flex;gap:11px;align-items:center;padding:9px 10px;border-radius:11px;cursor:pointer;color:var(--muted);transition:.15s}
+  .step:hover{background:rgba(255,255,255,.04);color:var(--ink)}
+  .step.active{background:rgba(255,140,0,.12);color:var(--ink)}
+  .step .n{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;
+    border:1px solid var(--border);flex:none;background:var(--panel2)}
+  .step.active .n{background:var(--accent);color:#0b0c10;border-color:transparent}
+  .step.done .n{background:rgba(52,199,89,.18);color:var(--ok);border-color:transparent}
+  .step .t{font-size:13.5px;font-weight:600}
+  /* card */
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:26px 28px;min-height:420px;
+    transition:border-color .2s, box-shadow .2s}
+  .card:hover{border-color:var(--border2);box-shadow:0 8px 30px rgba(255,140,0,.06)}
+  .eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;letter-spacing:.6px;
+    text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+  .card h2{font-size:24px;margin:0 0 12px;font-weight:740}
+  .card p{font-size:15.5px;line-height:1.62;color:var(--ink);margin:0 0 14px;max-width:62ch}
+  .points{list-style:none;padding:0;margin:6px 0 18px}
+  .points li{position:relative;padding:7px 0 7px 28px;font-size:14.5px;color:var(--ink);line-height:1.5}
+  .points li::before{content:"";position:absolute;left:4px;top:13px;width:8px;height:8px;border-radius:50%;
+    background:linear-gradient(135deg,var(--accent),var(--accent2))}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 16px}
+  .pill{font-size:12px;font-weight:600;padding:5px 11px;border-radius:99px;background:rgba(255,255,255,.05);
+    border:1px solid var(--border);color:var(--ink)}
+  .pill.ok{background:rgba(52,199,89,.12);border-color:rgba(52,199,89,.3);color:#8fe6a6}
+  .pill.intl{background:rgba(255,140,0,.13);border-color:var(--border2);color:#ffc081}
+  .shot{margin:14px 0 4px;border-radius:13px;overflow:hidden;border:1px solid var(--border);background:#000}
+  .shot img{display:block;width:100%}
+  .shot .cap{font-size:12px;color:var(--muted);padding:8px 12px;background:var(--panel2);border-top:1px solid var(--border)}
+  .illus{margin:10px 0;border-radius:13px;border:1px dashed var(--border2);background:
+    linear-gradient(135deg,rgba(255,140,0,.06),rgba(255,140,0,.02));padding:30px;text-align:center}
+  .illus .big{line-height:1}
+  .illus .big svg{width:44px;height:44px;fill:var(--accent)}
+  .illus .lbl{color:var(--muted);font-size:13px;margin-top:8px}
+  .nav{display:flex;justify-content:space-between;align-items:center;margin-top:22px}
+  button.nv{font:inherit;font-weight:650;font-size:14px;padding:11px 20px;border-radius:11px;cursor:pointer;border:1px solid var(--border);
+    background:var(--panel2);color:var(--ink);transition:.15s}
+  button.nv:hover:not(:disabled){border-color:var(--border2)}
+  button.nv.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#0b0c10;border:none;box-shadow:0 4px 14px rgba(255,140,0,.3)}
+  button.nv:disabled{opacity:.35;cursor:default}
+  .counter{font-size:13px;color:var(--muted)}
+  .note{margin-top:18px;font-size:13px;color:var(--muted);text-align:center}
+  .perk{margin-top:8px;padding:14px 16px;border-radius:12px;background:rgba(52,199,89,.10);border:1px solid rgba(52,199,89,.28);
+    font-size:14.5px}
+  .perk b{color:#8fe6a6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">C</div>
+    <div>
+      <h1>Creatorhub — International Editing Partner Guide</h1>
+      <p class="sub">How an editing studio outside Norway joins, works, and gets paid — step by step.</p>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="rail">
+      <div class="bar"><i id="bar"></i></div>
+      <div id="steplist"></div>
+    </aside>
+
+    <main>
+      <section class="card" id="card"></section>
+      <div class="nav">
+        <button class="nv" id="prev">← Back</button>
+        <div class="counter" id="counter"></div>
+        <button class="nv primary" id="next">Next →</button>
+      </div>
+      <p class="note">Tip: use the ← / → arrow keys to move between steps.</p>
+    </main>
+  </div>
+</div>
+
+<script>
+const STEPS = [
+  {
+    nav:"Apply", eyebrow:"Step 1 · Sign up",
+    title:"Apply as an international company",
+    body:"Register as a vendor and tick <b>“External company outside of Norway.”</b> You get a short English sign-up — no Norwegian business registration needed.",
+    points:["Company name, country, company registration number","VAT number (if applicable)","No Brønnøysund / Norwegian org. number required"],
+    illus:{icon:'<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.94-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>', lbl:"English application — “External company outside of Norway”"}
+  },
+  {
+    nav:"Approval", eyebrow:"Step 2 · Review",
+    title:"Get approved",
+    body:"Our team reviews your application. Once approved, you're set up as a Creatorhub editing partner and your <b>entire dashboard runs in English</b>.",
+    points:["Reviewed by the Creatorhub team","Approved partners are activated immediately","Your dashboard auto-switches to English"],
+    shot:{src:"img/vendor-dashboard-full.png", cap:"Your dashboard, fully in English (Jobs · Compliance · Price catalog · Communication)"}
+  },
+  {
+    nav:"Vendor Standard", eyebrow:"Step 3 · Commit",
+    title:"Accept the Creatorhub Vendor Standard",
+    body:"Every partner commits to four standards that protect photographers, their clients, and you:",
+    points:[
+      "<b>Quality</b> — deliver to a clear standard; the photographer approves before the client sees it",
+      "<b>Storage</b> — secure transfer only (Backblaze B2); job-scoped access; temp files auto-deleted; no Drive/Dropbox/WeTransfer",
+      "<b>GDPR</b> — you sign a Data Processing Agreement + NDA; files used only for the edit, never your portfolio / AI training / third parties",
+      "<b>Delivery</b> — everything goes back through Creatorhub Showcase; you never deliver directly to the end client"
+    ],
+    badges:[["intl","International vendor — extra GDPR controls"],["ok","SCC signed"],["ok","Transfer Impact Assessment"]],
+    bodyAfter:"Because you're <b>outside the EEA</b>, we add the required safeguards for international transfers — Standard Contractual Clauses (SCC) and a Transfer Impact Assessment (TIA).",
+    shot:{src:"img/vendor-workspace-english.png", cap:"Your English workspace — Jobs, Compliance, Price catalog and Communication tabs"}
+  },
+  {
+    nav:"List services", eyebrow:"Step 4 · Catalog",
+    title:"List your services & prices",
+    body:"Add your services and prices <b>in your own currency</b> (e.g. GBP). This is exactly what photographers see and choose from.",
+    points:["Photo editing, retouch, culling, video edit, color grading…","Your own currency — no forced NOK","Turnaround time and availability shown to photographers"],
+    illus:{icon:'<svg viewBox="0 0 24 24"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>', lbl:"Your price list — in your currency"}
+  },
+  {
+    nav:"Get discovered", eyebrow:"Step 5 · Visibility",
+    title:"Photographers find you",
+    body:"Approved partners appear in the photographer's “Editing team” area with verified badges — so they can hire with confidence.",
+    badges:[["ok","Quality Verified"],["ok","Secure B2 storage"],["ok","Data Processing Agreement"],["ok","Showcase-approved flow"],["intl","International (extra GDPR)"]],
+    shot:{src:"img/discovery-marketplace.png", cap:"How photographers discover and choose editing partners (photographer's view)"}
+  },
+  {
+    nav:"Receive a job", eyebrow:"Step 6 · Request",
+    title:"Receive a job — securely",
+    body:"A photographer sends a request with the chosen services and brief, and pays into <b>secure escrow</b>. You accept, and we issue a short-lived, job-scoped upload link.",
+    points:["You never touch the client's storage credentials","The upload link is scoped to that one job and expires","Chat with the photographer directly inside the job"],
+    illus:{icon:'<svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>', lbl:"Secure, job-scoped upload link"}
+  },
+  {
+    nav:"Edit & deliver", eyebrow:"Step 7 · Delivery",
+    title:"Edit and deliver",
+    body:"Upload the finished material through the secure link. When you mark it delivered, Creatorhub transfers the files into the photographer's <b>own Backblaze B2</b> and clears the temporary copies — fully GDPR-clean.",
+    points:["Server-side transfer to the photographer's storage","Temporary working files deleted automatically","Full access/activity log on every job"],
+    illus:{icon:'<svg viewBox="0 0 24 24"><path d="M20 2H4c-1 0-2 .9-2 2v3.01c0 .72.43 1.34 1 1.69V20c0 1.1 1.1 2 2 2h14c.9 0 2-.9 2-2V8.7c.57-.35 1-.97 1-1.69V4c0-1.1-1-2-2-2zm-5 12H9v-2h6v2zm5-7H4V4l16-.02V7z"/></svg>', lbl:"Secure handover → photographer&#39;s B2 → Showcase"}
+  },
+  {
+    nav:"Get paid", eyebrow:"Step 8 · Payment",
+    title:"Get paid",
+    body:"Once the photographer approves your delivery in Showcase, your payment is released automatically to your <b>PayPal</b> account.",
+    points:["Payment held safely in escrow until approval","Released automatically on approval","Paid via PayPal (built for international payouts)"],
+    perk:"As an early <b>prototype partner</b>, Creatorhub takes <b>0% platform fee</b> during the prototype period — you keep the full amount for every job.",
+    illus:{icon:'<svg viewBox="0 0 24 24"><path d="M19 14V6c0-1.1-.9-2-2-2H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zm-9-1c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm13-6v11c0 1.1-.9 2-2 2H4v-2h17V7h2z"/></svg>', lbl:"Approved → released → paid via PayPal"}
+  }
+];
+
+let i = 0;
+const card = document.getElementById('card');
+const list = document.getElementById('steplist');
+const bar = document.getElementById('bar');
+const counter = document.getElementById('counter');
+const prev = document.getElementById('prev');
+const next = document.getElementById('next');
+
+function renderList(){
+  list.innerHTML = STEPS.map((s,idx)=>`
+    <div class="step ${idx===i?'active':''} ${idx<i?'done':''}" data-i="${idx}">
+      <div class="n">${idx<i?'✓':idx+1}</div><div class="t">${s.nav}</div>
+    </div>`).join('');
+  [...list.children].forEach(el=>el.onclick=()=>{i=+el.dataset.i;render();});
+}
+function render(){
+  const s = STEPS[i];
+  let html = `<span class="eyebrow">${s.eyebrow}</span><h2>${s.title}</h2><p>${s.body}</p>`;
+  if(s.badges) html += `<div class="badges">${s.badges.map(b=>`<span class="pill ${b[0]}">${b[1]}</span>`).join('')}</div>`;
+  if(s.points) html += `<ul class="points">${s.points.map(p=>`<li>${p}</li>`).join('')}</ul>`;
+  if(s.bodyAfter) html += `<p>${s.bodyAfter}</p>`;
+  if(s.shot) html += `<div class="shot"><img src="${s.shot.src}" alt=""><div class="cap">${s.shot.cap}</div></div>`;
+  else if(s.illus) html += `<div class="illus"><div class="big">${s.illus.icon}</div><div class="lbl">${s.illus.lbl}</div></div>`;
+  if(s.perk) html += `<div class="perk">${s.perk}</div>`;
+  card.innerHTML = html;
+  bar.style.width = ((i+1)/STEPS.length*100)+'%';
+  counter.textContent = `Step ${i+1} of ${STEPS.length}`;
+  prev.disabled = i===0;
+  next.textContent = i===STEPS.length-1 ? 'Done ✓' : 'Next →';
+  renderList();
+  card.scrollIntoView({block:'nearest'});
+}
+prev.onclick=()=>{if(i>0){i--;render();}};
+next.onclick=()=>{if(i<STEPS.length-1){i++;render();}};
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'&&i<STEPS.length-1){i++;render();}
+  if(e.key==='ArrowLeft'&&i>0){i--;render();}
+});
+render();
+</script>
+</body>
+</html>
