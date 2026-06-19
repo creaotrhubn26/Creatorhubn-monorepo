@@ -19,6 +19,8 @@ import { useProducerNotifications } from './hooks/useProducerNotifications';
 import { useProducerReviews } from './hooks/useProducerReviews';
 import { useProducerTimeline } from './hooks/useProducerTimeline';
 import RoleRoomMobileTopBar, { MobileSyncStatus } from './components/RoleRoomMobileTopBar';
+import { LeadgridNotificationBell } from '@/components/leadgrid/LeadgridNotificationBell';
+import { LeadgridNotificationPrefsDialog } from '@/components/leadgrid/LeadgridNotificationPrefsDialog';
 import RoleRoomTabRail, { type TabRailItem } from './components/ipad/RoleRoomTabRail';
 import RoleRoomBottomNav, {
   type BottomNavItem,
@@ -312,6 +314,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileAnchor, setProfileAnchor] = useState<HTMLElement | null>(null);
   const [showIgInbox, setShowIgInbox] = useState(false);
+  const [leadgridPrefsOpen, setLeadgridPrefsOpen] = useState(false);
   const [recentProjectIds, setRecentProjectIds] = useState<string[]>(() => readRecentProjects());
   const [restoredFromSession, setRestoredFromSession] = useState(false);
   const restoreAttemptedRef = useRef(false);
@@ -906,6 +909,10 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           >
             Nytt prosjekt
           </Button>
+          {/* Leadgrid-varsler (tildelinger, status, vunnet/tapt) */}
+          <LeadgridNotificationBell
+            onOpenPrefs={() => setLeadgridPrefsOpen(true)}
+          />
           <Tooltip title="Profil">
             <IconButton
               onClick={(event) => handleOpenProfile(event.currentTarget)}
@@ -925,6 +932,11 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           </Tooltip>
         </Stack>
       </Box>
+
+      <LeadgridNotificationPrefsDialog
+        open={leadgridPrefsOpen}
+        onClose={() => setLeadgridPrefsOpen(false)}
+      />
 
       <PostAgentErrorBoundary label="Velkomst-banner">
         <PostAgentCrewWelcomeBanner />
