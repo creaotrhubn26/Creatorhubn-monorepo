@@ -10,7 +10,7 @@ import {
   buildErrorLogMiddleware,
   installProcessErrorHandlers,
 } from "./error-log-routes.js";
-import { hydrateSessionsFromDb } from "./persistent-session-store.js";
+import { hydrateSessionsFromDb, persistSession } from "./persistent-session-store.js";
 
 import express from "express";
 import cors from "cors";
@@ -769,6 +769,7 @@ import { setupUniversalVendorShowcaseRoutes } from "./universal-vendor-showcase-
 import { setupBrandingRoutes } from "./branding-routes";
 import { setupVendorTypesRoutes } from "./vendor-types-routes";
 import { setupEditingJobsRoutes } from "./editing-jobs-routes";
+import { setupEditingPartnerApplicationsAdminRoutes } from "./editing-partner-applications-admin-routes";
 import { setupMeetingNotesRoutes } from "./meeting-notes-routes";
 import { setupDavinciResolveRoutes } from "./davinci-resolve-routes";
 import { setupSeoBotRoutes } from "./seo-bot-routes";
@@ -64919,7 +64920,13 @@ setupEditingJobsRoutes({
     }
     return session;
   },
+  activeSessions,
+  persistSession,
 });
+
+// Partner Program — superadmin søknads-/godkjennings-ruter (godkjenning oppretter
+// users-rad + vendor-profil + magic-link portal-tilgang).
+setupEditingPartnerApplicationsAdminRoutes({ app, pool, activeSessions });
 
 // /api/meeting-notes/* — 7 endpoints (AI-process, writing-assist, CRUD,
 // google-backup). Helpers dep-injiseres siden mapMeetingNotesRecord +

@@ -45,6 +45,8 @@ import {
   COMPLIANCE_VERSION,
   type ComplianceProfile,
 } from "./editing-compliance";
+import { redeemPortalToken } from "./editing-partner-portal-service";
+import crypto from "crypto";
 import {
   createCheckoutForJob,
   isCheckoutPaid,
@@ -60,6 +62,12 @@ export interface EditingJobsRoutesDeps {
     req: express.Request,
     res: express.Response,
   ) => Promise<{ userId: string; email: string; name: string; role: string } | null>;
+  // For magic-link portal-innløsning: mint en ekte session. Valgfri (graceful om mangler).
+  activeSessions?: Map<string, { userId: string; role?: string; email?: string }>;
+  persistSession?: (
+    pool: Pool,
+    args: { token: string; session: { userId: string; role?: string; email?: string }; source?: string; ttlDays?: number; ip?: string; userAgent?: string },
+  ) => Promise<void>;
 }
 
 // Plattform-cut. Under prototype-testing kan vendor-fee være betinget/null
@@ -75,11 +83,22 @@ const VENDOR_PROFILE_COLS = `
   turnaround_days, availability_status, approval_status, is_foreign, country, is_eea,
   compliance_accepted, compliance_quality_status, compliance_storage_status,
   compliance_gdpr_status, compliance_delivery_status, dpa_signed, nda_signed,
-  scc_signed, tia_completed, subcontractors_allowed, portfolio_use_allowed
+  scc_signed, tia_completed, subcontractors_allowed, portfolio_use_allowed,
+  portfolio_submitted, payment_connected
 `;
 
 export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
-  const { app, pool, requireUserSession } = deps;
+  const { app, pool, requireUserSession, activeSessions, persistSession } = deps;
+
+  // Lett in-memory rate-limit for offentlige endepunkter (best-effort pr IP+e-post).
+  const _appRate = new Map<string, { n: number; reset: number }>();
+  const rateLimited = (key: string, max: number, windowMs: number): boolean => {
+    const now = Date.now();
+    const e = _appRate.get(key);
+    if (!e || now > e.reset) { _appRate.set(key, { n: 1, reset: now + windowMs }); return false; }
+    e.n += 1;
+    return e.n > max;
+  };
 
   // ── iPad Capture-app beta-påmelding (offentlig, ingen auth) ──
   app.post("/api/capture-beta/signup", async (req, res) => {
@@ -95,6 +114,104 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
     } catch (err) {
       console.error("[capture-beta:signup] error", err);
       res.status(500).json({ error: "kunne_ikke_melde_pa" });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // Partner Program — OFFENTLIG søknad fra ekstern redigerings-studio.
+  // is_foreign/is_eea ALLTID server-derivert (aldri fra body). Samtykke påkrevd.
+  // ════════════════════════════════════════════════════════════════════
+  app.post("/api/editing/partner-applications", async (req, res) => {
+    try {
+      const ip = String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim();
+      if (rateLimited(`epa:${ip}`, 5, 10 * 60 * 1000)) {
+        return res.status(429).json({ error: "for_mange_forsok" });
+      }
+      const b = req.body || {};
+      const cap = (v: unknown, n: number) => (v == null ? null : String(v).slice(0, n));
+      const companyName = cap(b.companyName, 300);
+      const contactName = cap(b.contactName, 200);
+      const email = String(b.contactEmail || b.email || "").trim().slice(0, 255);
+      const country = String(b.country || "NO").trim().toUpperCase().slice(0, 2);
+      if (!companyName || !contactName || !email.includes("@")) {
+        return res.status(400).json({ error: "mangler_pakrevde_felt" });
+      }
+      if (b.consentPrivacy !== true) {
+        return res.status(400).json({ error: "samtykke_pakrevd" });
+      }
+      const urlOk = (u: unknown) => !u || /^https?:\/\//i.test(String(u));
+      if (!urlOk(b.website) || !urlOk(b.portfolioUrl)) {
+        return res.status(400).json({ error: "ugyldig_url" });
+      }
+      // ALLTID server-derivert — ignorer evt. client-sendt is_foreign/is_eea.
+      const isForeign = country !== "NO";
+      const isEea = isEeaCountry(country);
+      const services = Array.isArray(b.services) ? b.services.slice(0, 40).map((s: unknown) => String(s).slice(0, 80)) : [];
+      try {
+        const r = await pool.query<{ id: string }>(
+          `INSERT INTO editing_partner_applications
+             (company_name, country, is_foreign, is_eea, registration_number, vat_number,
+              contact_name, contact_email, phone, website, team_size, services, pricing_model,
+              currency, price_range, portfolio_url, notes, consent_contact, consent_privacy,
+              privacy_policy_version, consent_text_hash, consent_ip, consent_user_agent, consent_at,
+              locale, source)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,
+                   $20,$21,$22,$23, now(), $24, 'public_form')
+           RETURNING id`,
+          [
+            companyName, country, isForeign, isEea, cap(b.registrationNumber, 120), cap(b.vatNumber, 120),
+            contactName, email, cap(b.phone, 60), cap(b.website, 500),
+            b.teamSize != null ? Number(b.teamSize) : null, JSON.stringify(services), cap(b.pricingModel, 40),
+            cap(b.currency, 8), cap(b.priceRange, 120), cap(b.portfolioUrl, 500), cap(b.notes, 4000),
+            b.consentContact === true, true,
+            cap(b.privacyPolicyVersion || COMPLIANCE_VERSION, 40),
+            crypto.createHash("sha256").update(String(b.consentText || "creatorhub-partner-standard")).digest("hex"),
+            ip || null, cap(req.headers["user-agent"], 500),
+            isForeign ? "en" : "no",
+          ],
+        );
+        return res.json({ ok: true, applicationId: r.rows[0].id });
+      } catch (e: unknown) {
+        // Myk dedupe: aktiv søknad finnes allerede → vennlig svar, ikke 500.
+        if ((e as { code?: string })?.code === "23505") {
+          return res.json({ ok: true, alreadyReceived: true });
+        }
+        throw e;
+      }
+    } catch (err) {
+      console.error("[editing/partner-applications] error", err);
+      res.status(500).json({ error: "kunne_ikke_sende_soknad" });
+    }
+  });
+
+  // Partner Program — OFFENTLIG innløsning av magic-link → mint kort session.
+  app.post("/api/editing/partner/portal/redeem", async (req, res) => {
+    try {
+      const jti = String(req.body?.jti || "").trim();
+      const t = String(req.body?.t || "").trim();
+      if (!jti || !t) return res.status(400).json({ error: "mangler_token" });
+      const ua = String(req.headers["user-agent"] || "").slice(0, 500);
+      const ip = String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim();
+      const redeemed = await redeemPortalToken(pool, { jti, rawToken: t, ip, userAgent: ua });
+      if (!redeemed) return res.status(400).json({ error: "ugyldig_eller_brukt_lenke" });
+      // Hent rolle/e-post for session
+      const ur = await pool.query<{ role: string; email: string }>(
+        `SELECT role, email FROM users WHERE id = $1 LIMIT 1`,
+        [redeemed.vendorUserId],
+      );
+      const role = ur.rows[0]?.role || "editing_vendor";
+      const email = ur.rows[0]?.email || redeemed.email;
+      const sessionToken = crypto.randomBytes(32).toString("base64url");
+      const session = { userId: redeemed.vendorUserId, role, email };
+      // Dokumentert rekkefølge: activeSessions.set FØR persistSession.
+      if (activeSessions) activeSessions.set(sessionToken, session);
+      if (persistSession) {
+        await persistSession(pool, { token: sessionToken, session, source: "partner_portal_magic_link", ttlDays: 7, ip, userAgent: ua });
+      }
+      res.json({ ok: true, sessionToken, user: { id: redeemed.vendorUserId, email, role } });
+    } catch (err) {
+      console.error("[editing/partner/portal/redeem] error", err);
+      res.status(500).json({ error: "kunne_ikke_lose_inn" });
     }
   });
 
@@ -133,6 +250,10 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
           isInternational: summary.isInternational,
           requiresExtraGdpr: summary.requiresExtraGdpr,
           badges: summary.badges,
+          // Paritet med partnerportalen — samme tier/verifiserings-%/pilarer.
+          tier: summary.tier,
+          verificationPercent: summary.verificationPercent,
+          pillars: summary.pillars,
           services: prods.rows.map((p) => ({
             category: p.category,
             name: p.name || p.product_name,
