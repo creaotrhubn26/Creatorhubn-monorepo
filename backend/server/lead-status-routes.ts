@@ -90,6 +90,23 @@ async function getOrgManagerUserIds(pool: Pool, orgId: string): Promise<string[]
 export function registerLeadStatusRoutes({ app, pool, activeSessions }: Deps): void {
 
   // ============================================================
+  // GET /customers/:id — basis kunde-info for detail-drawer
+  // ============================================================
+  app.get("/api/leadgrid/customers/:id", async (req, res) => {
+    const s = getSession(req, activeSessions);
+    if (!s) return res.status(401).json({ error: "Ikke innlogget" });
+    const r = await pool.query(
+      `SELECT id::text, name, email, phone, website_url, logo_url,
+              status, lead_category, ai_opportunity_score, assignment_note,
+              assigned_team_leader_id, assigned_user_id
+         FROM crm_customers WHERE id = $1`,
+      [req.params.id],
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Ikke funnet" });
+    res.json(r.rows[0]);
+  });
+
+  // ============================================================
   // PUT /status — endre status + audit + notify
   // ============================================================
   app.put("/api/leadgrid/customers/:id/status", async (req, res) => {
@@ -290,12 +307,75 @@ export function registerLeadStatusRoutes({ app, pool, activeSessions }: Deps): v
       [orgId, days],
     );
 
+    // Month-over-month: siste 6 mnd
+    const momR = await pool.query(
+      `WITH months AS (
+         SELECT date_trunc('month', generate_series(
+           now() - INTERVAL '5 months', now(), INTERVAL '1 month'
+         )) AS m
+       )
+       SELECT
+         to_char(months.m, 'YYYY-MM') AS month,
+         COUNT(c.id) FILTER (WHERE c.status = 'won'
+                              AND date_trunc('month', c.won_at) = months.m) AS won,
+         COUNT(c.id) FILTER (WHERE c.status = 'lost'
+                              AND date_trunc('month', c.lost_at) = months.m) AS lost,
+         COALESCE(SUM(c.won_amount_oere) FILTER (WHERE c.status = 'won'
+                       AND date_trunc('month', c.won_at) = months.m), 0) AS won_amount_oere,
+         COALESCE(SUM(c.won_recurring_oere) FILTER (WHERE c.status = 'won'
+                       AND date_trunc('month', c.won_at) = months.m), 0) AS won_recurring_oere
+        FROM months
+        LEFT JOIN casting_projects p ON p.organization_id::text = $1
+        LEFT JOIN crm_customers c ON c.project_id = p.id
+       GROUP BY months.m
+       ORDER BY months.m`,
+      [orgId],
+    );
+
+    // Top performers: rep + teamleder
+    const topRepR = await pool.query(
+      `SELECT c.assigned_user_id, u.first_name, u.last_name, u.profile_image_url,
+              COUNT(*) FILTER (WHERE c.status = 'won') AS won_count,
+              COALESCE(SUM(c.won_amount_oere) FILTER (WHERE c.status = 'won'), 0) AS won_amount_oere
+         FROM crm_customers c
+         JOIN casting_projects p ON p.id = c.project_id
+         LEFT JOIN users u ON u.id = c.assigned_user_id
+        WHERE p.organization_id::text = $1
+          AND c.assigned_user_id IS NOT NULL
+          AND COALESCE(c.won_at, c.lost_at, c.status_changed_at)
+              > now() - ($2::int * INTERVAL '1 day')
+        GROUP BY c.assigned_user_id, u.first_name, u.last_name, u.profile_image_url
+        HAVING COUNT(*) FILTER (WHERE c.status = 'won') > 0
+        ORDER BY won_amount_oere DESC LIMIT 5`,
+      [orgId, days],
+    );
+
+    // Conversion-funnel: alle leads i org siste period, telle per status
+    const funnelR = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE c.status IN ('new', 'lead', 'active')) AS new_leads,
+         COUNT(*) FILTER (WHERE c.status = 'contacted') AS contacted,
+         COUNT(*) FILTER (WHERE c.status = 'meeting_booked') AS meeting_booked,
+         COUNT(*) FILTER (WHERE c.status = 'proposal_sent') AS proposal_sent,
+         COUNT(*) FILTER (WHERE c.status = 'negotiating') AS negotiating,
+         COUNT(*) FILTER (WHERE c.status = 'won') AS won,
+         COUNT(*) FILTER (WHERE c.status = 'lost') AS lost
+        FROM crm_customers c
+        JOIN casting_projects p ON p.id = c.project_id
+       WHERE p.organization_id::text = $1
+         AND c.created_at > now() - ($2::int * INTERVAL '1 day')`,
+      [orgId, days],
+    );
+
     res.json({
       period_days: days,
       ...r.rows[0],
       top_lost_reasons: lostR.rows,
       win_rate: Number(r.rows[0].won_count) /
                 Math.max(1, Number(r.rows[0].won_count) + Number(r.rows[0].lost_count)),
+      month_over_month: momR.rows,
+      top_reps: topRepR.rows,
+      funnel: funnelR.rows[0] ?? {},
     });
   });
 }
