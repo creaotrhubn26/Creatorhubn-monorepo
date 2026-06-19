@@ -23,6 +23,10 @@ import CancelIcon from "@mui/icons-material/Cancel";
 import PaidIcon from "@mui/icons-material/Paid";
 import PercentIcon from "@mui/icons-material/Percent";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
+import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
+import { LeadExportDialog } from "./LeadExportDialog";
 
 interface Stats {
   period_days: number;
@@ -67,6 +71,7 @@ export function WonLostDashboard() {
   const [period, setPeriod] = useState<"7d" | "30d" | "90d">("30d");
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -94,6 +99,11 @@ export function WonLostDashboard() {
               Salgsresultat for hele organisasjonen
             </Typography>
           </Box>
+          <Tooltip title="Eksporter (CSV / PDF-rapport)">
+            <IconButton size="small" onClick={() => setExportOpen(true)}>
+              <FileDownloadIcon />
+            </IconButton>
+          </Tooltip>
           <ToggleButtonGroup size="small" value={period}
                               exclusive onChange={(_, v) => v && setPeriod(v)}>
             <ToggleButton value="7d">7d</ToggleButton>
@@ -101,6 +111,8 @@ export function WonLostDashboard() {
             <ToggleButton value="90d">90d</ToggleButton>
           </ToggleButtonGroup>
         </Stack>
+
+        <LeadExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
 
         {loading ? (
           <Box sx={{ p: 4, textAlign: "center" }}><CircularProgress /></Box>
