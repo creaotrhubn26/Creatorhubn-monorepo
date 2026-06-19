@@ -372,7 +372,7 @@ export default function EditingVendorWorkspace({ userId }: Props) {
       {/* ── Priskatalog ── */}
       {tab === 2 && (
         <Box>
-          <VendorProductManager userId={userId} vendorType="editing" />
+          <VendorProductManager userId={userId} vendorType="editing" locale={locale === "en" ? "en" : "no"} />
         </Box>
       )}
 
