@@ -829,6 +829,38 @@ actor APIClient {
         )
     }
 
+    // -- Klient-onboarding for varslings-kanaler (PR #737) --------
+
+    func fetchOnboardingChannelState() async throws -> ChannelOnboardingStateResponse {
+        try await get("/api/leadgrid/onboarding/channels/state")
+    }
+
+    func selectOnboardingModel(_ model: String) async throws {
+        try await put("/api/leadgrid/onboarding/channels/model",
+                       body: ["model": model])
+    }
+
+    func advanceOnboardingStep(fromStep: String) async throws -> AdvanceOnboardingResponse {
+        try await post("/api/leadgrid/onboarding/channels/advance",
+                        body: ["from_step": fromStep])
+    }
+
+    /// Send test-melding (e-post + WA) til en gitt mottaker via notifyClient.
+    func sendOnboardingTest(
+        phone: String?, email: String?, name: String?
+    ) async throws -> OnboardingTestResponse {
+        var body: [String: Any] = [:]
+        if let phone { body["phone"] = phone }
+        if let email { body["email"] = email }
+        if let name { body["name"] = name }
+        return try await post("/api/leadgrid/onboarding/channels/test-send",
+                                body: body)
+    }
+
+    func activateOnboarding() async throws {
+        try await post("/api/leadgrid/onboarding/channels/activate", body: [:])
+    }
+
     // -- CSV-eksport (returnerer rådata) ---------------------------
 
     /// Returnerer CSV-data klar for å vises i UIActivityViewController/iOS Share.

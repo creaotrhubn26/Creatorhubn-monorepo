@@ -50,6 +50,15 @@ struct LeadgridHubView: View {
                             .foregroundStyle(.primary)
                     }
                 }
+                Section("Klient-onboarding") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridChannelOnboardingWizardView(api: api)
+                        } label: {
+                            Label("Sett opp varslings-kanaler", systemImage: "checkmark.shield.fill")
+                        }
+                    }
+                }
                 Section("Rapporter & eksport") {
                     if let api = appState.api {
                         NavigationLink {
