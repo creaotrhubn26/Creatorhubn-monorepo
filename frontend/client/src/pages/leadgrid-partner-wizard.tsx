@@ -597,29 +597,96 @@ function Step5GDPR({ formData, update }: any) {
 }
 
 function Step6Documents({ applicationId }: { applicationId: string | null }) {
+  const [docs, setDocs] = useState<any[]>([]);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [snack, setSnack] = useState<string | null>(null);
+
+  const docTypes = [
+    { type: "privacy_policy", label: "Personvernerklæring", required: false },
+    { type: "dpa", label: "Databehandleravtale (DPA)", required: false },
+    { type: "security_doc", label: "Sikkerhetsdokumentasjon", required: false },
+    { type: "portfolio", label: "Case-studier / portefølje", required: false },
+    { type: "reference", label: "Referanser", required: false },
+  ];
+
+  const loadDocs = async () => {
+    if (!applicationId) return;
+    const r = await fetch(`/api/leadgrid/partner-application/${applicationId}/documents`,
+                          { credentials: "include" });
+    if (r.ok) setDocs((await r.json()).documents ?? []);
+  };
+
+  useEffect(() => { loadDocs(); }, [applicationId]);
+
+  const uploadFile = async (docType: string, file: File) => {
+    if (!applicationId) { setSnack("Lagre søknad først"); return; }
+    setUploading(docType);
+    const form = new FormData();
+    form.append("file", file);
+    form.append("applicationId", applicationId);
+    form.append("documentType", docType);
+    try {
+      const r = await fetch("/api/leadgrid/partner-application/upload-document", {
+        method: "POST", credentials: "include", body: form,
+      });
+      const d = await r.json();
+      if (r.ok) { setSnack("Opplastet"); loadDocs(); }
+      else setSnack(d.error ?? "Feil");
+    } catch (e: any) { setSnack(String(e?.message ?? e)); }
+    setUploading(null);
+  };
+
+  const removeDoc = async (id: string) => {
+    if (!window.confirm("Slette dokumentet?")) return;
+    const r = await fetch(`/api/leadgrid/partner-application/document/${id}`,
+                          { method: "DELETE", credentials: "include" });
+    if (r.ok) { setSnack("Slettet"); loadDocs(); }
+  };
+
   return (
     <Stack spacing={3}>
       <Typography variant="h5" sx={{ fontWeight: 700 }}>Dokumenter</Typography>
       <Alert severity="info">
-        Dokument-upload kommer i neste versjon. Pr nå kan dere sende dokumenter
-        på e-post til <a href="mailto:daniel@creatorhubn.com" style={{ color: PALETTE.accent }}>
-        daniel@creatorhubn.com</a> med søknads-ID som referanse.
+        Last opp dokumentene som er relevante for søknaden. Maks 25 MB per fil.
+        Tillatt: PDF, DOCX, PNG, JPEG, TXT.
       </Alert>
-      {applicationId && (
-        <Box sx={{ p: 2, bgcolor: "rgba(167,139,250,0.06)", borderRadius: 2 }}>
-          <Typography variant="caption" sx={{ color: PALETTE.textFaint }}>Søknads-ID</Typography>
-          <Typography sx={{ fontFamily: "monospace", color: "#fff" }}>{applicationId}</Typography>
-        </Box>
-      )}
-      <Typography variant="overline" sx={{ color: PALETTE.textMuted }}>Anbefalt opplastning</Typography>
-      <Stack spacing={1}>
-        {["Personvernerklæring", "Databehandleravtale (DPA)",
-          "Sikkerhetsdokumentasjon", "Case-studier / portefølje", "Referanser"].map((d) => (
-          <Box key={d} sx={{ p: 2, bgcolor: "rgba(255,255,255,0.03)", borderRadius: 2 }}>
-            <Typography variant="body2">{d}</Typography>
-          </Box>
-        ))}
+      <Stack spacing={2}>
+        {docTypes.map((d) => {
+          const uploaded = docs.filter((x: any) => x.document_type === d.type);
+          const isUploading = uploading === d.type;
+          return (
+            <Box key={d.type} sx={{ p: 2, bgcolor: "rgba(255,255,255,0.03)", borderRadius: 2 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                <Typography>{d.label}</Typography>
+                <Button component="label" size="small" variant="outlined"
+                        disabled={isUploading}
+                        sx={{ color: PALETTE.accent, borderColor: "rgba(167,139,250,0.4)" }}>
+                  {isUploading ? <CircularProgress size={16} sx={{ color: PALETTE.accent }} /> : "Velg fil"}
+                  <input type="file" hidden accept=".pdf,.docx,.png,.jpg,.jpeg,.txt"
+                         onChange={(e) => {
+                           const f = e.target.files?.[0];
+                           if (f) uploadFile(d.type, f);
+                         }} />
+                </Button>
+              </Stack>
+              {uploaded.map((u: any) => (
+                <Stack key={u.id} direction="row" alignItems="center" spacing={1}
+                       sx={{ pl: 1, py: 0.5 }}>
+                  <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.7)", flex: 1 }}>
+                    📄 {u.filename} ({Math.round(u.file_size_bytes / 1024)} KB)
+                  </Typography>
+                  <Button size="small" onClick={() => removeDoc(u.id)}
+                          sx={{ color: "#ff6b6b", fontSize: 11 }}>
+                    Slett
+                  </Button>
+                </Stack>
+              ))}
+            </Box>
+          );
+        })}
       </Stack>
+      <Snackbar open={!!snack} autoHideDuration={3000} onClose={() => setSnack(null)}
+                message={snack} />
     </Stack>
   );
 }
