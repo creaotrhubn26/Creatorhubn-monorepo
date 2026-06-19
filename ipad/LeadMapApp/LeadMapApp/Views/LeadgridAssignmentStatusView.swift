@@ -140,13 +140,11 @@ struct LeadgridAssignmentStatusView: View {
         }
     }
 
-    private func isOnline(_ iso: String?) -> Bool {
-        guard let s = iso, let d = parseISODate(s) else { return false }
-        return Date().timeIntervalSince(d) < 90
-    }
+    private func isOnline(_ iso: String?) -> Bool { LeadgridDate.isOnline(iso) }
 
     private func timeAgo(_ iso: String) -> String {
-        guard let d = parseISODate(iso) else { return iso }
+        // Kort-form for chip-bruk
+        guard let d = LeadgridDate.parse(iso) else { return iso }
         let mins = Int(Date().timeIntervalSince(d) / 60)
         if mins < 1 { return "nå" }
         if mins < 60 { return "\(mins)m" }
@@ -156,14 +154,8 @@ struct LeadgridAssignmentStatusView: View {
     }
 
     private func minutes(since iso: String?) -> Int? {
-        guard let s = iso, let d = parseISODate(s) else { return nil }
+        guard let d = LeadgridDate.parse(iso) else { return nil }
         return Int(Date().timeIntervalSince(d) / 60)
-    }
-
-    private func parseISODate(_ s: String) -> Date? {
-        let f1 = ISO8601DateFormatter()
-        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f1.date(from: s) ?? ISO8601DateFormatter().date(from: s)
     }
 
     private func load() async {
