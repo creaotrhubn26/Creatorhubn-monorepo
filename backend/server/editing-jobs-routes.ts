@@ -239,6 +239,71 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
     }
   });
 
+  // ════════════════════════════════════════════════════════════════════
+  // Valutakurs → NOK. Primær: Norges Bank (offisiell daglig referansekurs,
+  // mest pålitelig for norsk regnskap). Fallback: open.er-api.com. Cache 1t.
+  // Returnerer NOK-per-1-enhet (håndterer Norges Banks unit-multiplikator,
+  // f.eks. SEK/DKK quotes per 100).
+  // ════════════════════════════════════════════════════════════════════
+  let _fxCache: { at: number; data: { rates: Record<string, number>; source: string; asOf: string | null } } | null = null;
+  app.get("/api/fx/nok", async (req, res) => {
+    const wanted = String(req.query.currencies || "USD,GBP,EUR,SEK,DKK")
+      .toUpperCase().split(",").map((s) => s.trim()).filter(Boolean);
+    try {
+      if (_fxCache && Date.now() - _fxCache.at < 60 * 60 * 1000) return res.json(_fxCache.data);
+
+      // 1) Norges Bank (SDMX-JSON)
+      try {
+        const url = `https://data.norges-bank.no/api/data/EXR/B.${wanted.join("+")}.NOK.SP?lastNObservations=1&format=sdmx-json&locale=en`;
+        const r = await fetch(url);
+        if (r.ok) {
+          const j = (await r.json()) as any;
+          const dims = j.data.structure.dimensions.series;
+          const baseDim = dims.findIndex((d: any) => d.id === "BASE_CUR");
+          const baseVals = dims[baseDim].values;
+          const attrs = j.data.structure.attributes?.series || [];
+          const umIdx = attrs.findIndex((a: any) => a.id === "UNIT_MULT");
+          const umVals = umIdx >= 0 ? attrs[umIdx].values : [];
+          const series = j.data.dataSets[0].series;
+          const rates: Record<string, number> = {};
+          for (const key of Object.keys(series)) {
+            const idxs = key.split(":").map(Number);
+            const cur = baseVals[idxs[baseDim]]?.id;
+            const obs = series[key].observations?.["0"];
+            const val = obs ? Number(obs[0]) : NaN;
+            if (cur && Number.isFinite(val)) {
+              const sAttrs = series[key].attributes || [];
+              let mult = 0;
+              if (umIdx >= 0 && sAttrs[umIdx] != null) mult = Number(umVals[sAttrs[umIdx]]?.id ?? 0) || 0;
+              rates[cur] = val / Math.pow(10, mult); // NOK per 1 enhet
+            }
+          }
+          if (Object.keys(rates).length) {
+            const asOf = j.data.structure.dimensions.observation?.[0]?.values?.[0]?.id || null;
+            _fxCache = { at: Date.now(), data: { rates, source: "norges-bank", asOf } };
+            return res.json(_fxCache.data);
+          }
+        }
+      } catch (e) {
+        console.warn("[fx] Norges Bank feilet, faller tilbake til er-api", e);
+      }
+
+      // 2) Fallback: open.er-api.com (base NOK → invertér)
+      const r2 = await fetch("https://open.er-api.com/v6/latest/NOK");
+      const j2 = (await r2.json()) as any;
+      const rates: Record<string, number> = {};
+      for (const c of wanted) {
+        const v = j2.rates?.[c];
+        if (v && v > 0) rates[c] = 1 / v;
+      }
+      _fxCache = { at: Date.now(), data: { rates, source: "open.er-api.com (fallback)", asOf: j2.time_last_update_utc || null } };
+      res.json(_fxCache.data);
+    } catch (err) {
+      console.error("[fx/nok] error", err);
+      res.status(500).json({ error: "kunne_ikke_hente_kurs", rates: {}, source: "feil", asOf: null });
+    }
+  });
+
   // ── Discovery: liste over godkjente, compliance-klare redigeringsvendors ──
   app.get("/api/editing/vendors", async (req, res) => {
     const session = await requireUserSession(req, res);
