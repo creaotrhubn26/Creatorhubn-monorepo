@@ -1014,6 +1014,23 @@
       "requiresTimeline": true
     },
     {
+      "id": "apply_grade_template",
+      "name": "Propager node-tre-mal (.drx)",
+      "category": "color",
+      "scriptPath": "scripts/color/apply_grade_template.py",
+      "description": "Anvender et ferdig node-tre (.drx-mal laget i Farge-node-veiviseren) på ALLE klipp på aktiv timeline via ApplyGradeFromDRX, og setter per-klipp eksponering på Eksponering-noden for de undereksponerte. Brukes etter at node-treet er bygget én gang i UI.",
+      "requiredInputs": [
+        { "key": "drxPath", "label": "Sti til node-tre-mal (.drx)", "type": "text", "required": true },
+        { "key": "exposureNode", "label": "Node-indeks for Eksponering (2 gradet / 3 log)", "type": "number", "required": false }
+      ],
+      "resolvePageDependency": "color",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
       "id": "flag_mixed_white_balance",
       "name": "Flag Mixed White Balance",
       "category": "color",
