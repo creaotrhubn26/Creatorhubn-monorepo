@@ -22,6 +22,15 @@ struct LeadDetailSheet: View {
     @State private var pitchBriefShown = false
     @State private var pitchBundleForBrief: PitchDeckBundle?
 
+    // ── Leadgrid v2 (PR #730+) ─────────────────────────────────
+    /// Backing-state for status-bytte fra Leadgrid-flow. Initialiseres
+    /// fra lead.status; sync-er tilbake til appState etter endring.
+    @State private var leadgridStatus: String = ""
+    @State private var showLeadgridStatusChanger = false
+    @State private var showLeadgridAssign = false
+    @State private var showLeadgridHistory = false
+    @State private var leadgridAssignLevel: AssignLevel = .both
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -37,6 +46,7 @@ struct LeadDetailSheet: View {
                         ssbSection(demo: demographics)
                     }
                     statusButtons
+                    leadgridSection
                     actionGrid
                 }
                 .padding()
@@ -51,6 +61,39 @@ struct LeadDetailSheet: View {
             .task {
                 await loadEnrichment()
                 await loadPitchAvailability()
+                await markSeenIfAssigned()
+            }
+            .sheet(isPresented: $showLeadgridStatusChanger) {
+                if let api = appState.api {
+                    LeadgridStatusChangerView(
+                        customerId: lead.id,
+                        customerName: lead.name,
+                        currentStatus: $leadgridStatus,
+                        api: api,
+                    )
+                }
+            }
+            .sheet(isPresented: $showLeadgridAssign) {
+                if let api = appState.api {
+                    LeadgridAssignSheet(
+                        customerId: lead.id,
+                        customerName: lead.name,
+                        level: leadgridAssignLevel,
+                        api: api,
+                    )
+                }
+            }
+            .sheet(isPresented: $showLeadgridHistory) {
+                if let api = appState.api {
+                    NavigationStack {
+                        ScrollView {
+                            LeadgridStatusHistoryView(customerId: lead.id, api: api)
+                                .padding()
+                        }
+                        .navigationTitle("Status-historikk")
+                        .navigationBarTitleDisplayMode(.inline)
+                    }
+                }
             }
             .sheet(isPresented: $pitchBriefShown) {
                 if let bundle = pitchBundleForBrief {
@@ -240,6 +283,66 @@ struct LeadDetailSheet: View {
         }
     }
 
+    // ── Leadgrid v2-seksjon — CRM-utvidelse ─────────────────────
+    @ViewBuilder
+    private var leadgridSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Leadgrid CRM", systemImage: "person.crop.rectangle.stack.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(.purple)
+                Spacer()
+                if let api = appState.api {
+                    NavigationLink {
+                        ScrollView {
+                            LeadgridStatusHistoryView(customerId: lead.id, api: api)
+                                .padding()
+                        }
+                        .navigationTitle("Status-historikk")
+                    } label: {
+                        Label("Historikk", systemImage: "clock.arrow.circlepath")
+                            .font(.caption)
+                    }
+                }
+            }
+            if appState.api != nil {
+                // Tildelt-status — hvem er TL/rep + sett-tracking
+                LeadgridAssignmentStatusView(
+                    customerId: lead.id,
+                    api: appState.api!,
+                    canReassign: true,
+                    onReassign: { level in
+                        leadgridAssignLevel = level
+                        showLeadgridAssign = true
+                    },
+                )
+            }
+            HStack(spacing: 8) {
+                Button {
+                    showLeadgridStatusChanger = true
+                } label: {
+                    Label(LeadgridCrmStatus(rawValue: leadgridStatus)?.label ?? "Endre status",
+                           systemImage: "arrow.triangle.swap")
+                        .font(.caption.bold())
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
+
+                Button {
+                    leadgridAssignLevel = .both
+                    showLeadgridAssign = true
+                } label: {
+                    Label("Tildel", systemImage: "person.fill.badge.plus")
+                        .font(.caption.bold())
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(12)
+        .background(Color.purple.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.purple.opacity(0.20)))
+    }
+
     private var actionGrid: some View {
         LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: 8) {
             Button {
@@ -279,6 +382,15 @@ struct LeadDetailSheet: View {
         async let d = try? await api.fetchDemographics(leadId: lead.id)
         self.enrichment = await e
         self.demographics = await d
+    }
+
+    /// Leadgrid-paritets: marker som sett når brukeren åpner detail-sheet'et.
+    /// Best-effort — feiler stille hvis brukeren ikke er tildelt.
+    /// Setter også `leadgridStatus` til lead's nåværende status.
+    private func markSeenIfAssigned() async {
+        leadgridStatus = lead.status.rawValue
+        guard let api = appState.api else { return }
+        try? await api.markLeadSeen(customerId: lead.id)
     }
 
     private func update(to newStatus: LeadStatus) async {
