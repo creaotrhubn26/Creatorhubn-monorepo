@@ -41,6 +41,20 @@ export function registerLeadMapFollowupCronRoutes({ app, pool }: Deps): void {
         return res.status(401).json({ error: "ugyldig_token" });
       }
 
+      // Single-flight guard. This run sends APNs notifications, which are NOT
+      // idempotent — an overlapping run (a slow run exceeding the 15-min cron
+      // interval, or a manual workflow_dispatch / admin poll-now racing the
+      // schedule) would double-notify. A pg advisory lock makes overlap a
+      // no-op skip rather than a duplicate dispatch.
+      const FOLLOWUP_CRON_LOCK = 910_001;
+      const lk = await pool.query<{ locked: boolean }>(
+        "SELECT pg_try_advisory_lock($1) AS locked",
+        [FOLLOWUP_CRON_LOCK],
+      );
+      if (!lk.rows[0]?.locked) {
+        return res.json({ ok: true, skipped: true, reason: "another_run_in_progress" });
+      }
+
       try {
         // Finn forfalt follow-up som ikke har fått varsel siste 24t
         const r = await pool.query<{
@@ -107,6 +121,10 @@ export function registerLeadMapFollowupCronRoutes({ app, pool }: Deps): void {
         });
       } catch (err) {
         return res.status(500).json({ error: "cron_failed", detail: String(err) });
+      } finally {
+        await pool
+          .query("SELECT pg_advisory_unlock($1)", [FOLLOWUP_CRON_LOCK])
+          .catch(() => undefined);
       }
     },
   );

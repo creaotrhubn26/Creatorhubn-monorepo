@@ -13,6 +13,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import * as svc from './casting-video-service.js';
+import { userOwnsCastingProject } from './casting-project-ownership.js';
 
 interface SessionData { userId: string; email: string; name: string; role: string; loginAt: string; [key: string]: unknown; }
 type AuthedRequest = Request & { userId: string; userEmail: string; userName: string };
@@ -74,14 +75,56 @@ export function createCastingVideoRouter(
   const router = Router();
   const auth = requireAuth(pool, deps.activeSessions);
 
-  // Liste videoer per kandidat
+  // Audition videos are sensitive personal media. Auth proves a logged-in
+  // user; these guards prove the caller owns the project the video belongs to,
+  // closing the cross-tenant IDOR (download via presigned URLs / delete).
+  async function ensureProjectOwner(
+    req: Request,
+    res: Response,
+    projectId: string | null | undefined,
+  ): Promise<boolean> {
+    const userId = (req as AuthedRequest).userId;
+    if (!projectId || !(await userOwnsCastingProject(pool, String(projectId), userId))) {
+      res.status(404).json({ error: 'not_found' });
+      return false;
+    }
+    return true;
+  }
+
+  async function ensureOwnerByVideo(
+    req: Request,
+    res: Response,
+    videoId: string,
+  ): Promise<boolean> {
+    const r = await pool.query<{ project_id: string }>(
+      'SELECT project_id FROM casting_candidate_videos WHERE id = $1',
+      [videoId],
+    );
+    if (r.rowCount === 0) { res.status(404).json({ error: 'not_found' }); return false; }
+    return ensureProjectOwner(req, res, r.rows[0].project_id);
+  }
+
+  // Liste videoer per kandidat — filtreres til prosjekter kalleren eier
+  // (en kandidat kan ha videoer på tvers av prosjekter).
   router.get('/candidates/:candidateId/videos', auth, async (req, res) => {
     const videos = await svc.listVideosForCandidate(pool, String(req.params.candidateId));
-    res.json({ success: true, data: videos });
+    const userId = (req as AuthedRequest).userId;
+    const ownsByProject = new Map<string, boolean>();
+    const owned = [];
+    for (const v of videos) {
+      let ok = ownsByProject.get(v.projectId);
+      if (ok === undefined) {
+        ok = await userOwnsCastingProject(pool, v.projectId, userId);
+        ownsByProject.set(v.projectId, ok);
+      }
+      if (ok) owned.push(v);
+    }
+    res.json({ success: true, data: owned });
   });
 
   // Liste videoer per prosjekt (for compare-mode)
   router.get('/projects/:projectId/videos', auth, async (req, res) => {
+    if (!(await ensureProjectOwner(req, res, req.params.projectId))) return;
     const videos = await svc.listVideosForProject(pool, String(req.params.projectId));
     res.json({ success: true, data: videos });
   });
@@ -90,6 +133,7 @@ export function createCastingVideoRouter(
   router.post('/upload-url', auth, async (req, res) => {
     const parsed = uploadUrlBody.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_request', details: parsed.error.format() }); return; }
+    if (!(await ensureProjectOwner(req, res, parsed.data.projectId))) return;
     try {
       const { userId } = req as AuthedRequest;
       const result = await svc.createVideoUploadUrl(pool, { ...parsed.data, uploadedBy: userId });
@@ -103,6 +147,7 @@ export function createCastingVideoRouter(
   router.post('/videos/:videoId/confirm', auth, async (req, res) => {
     const parsed = confirmBody.safeParse(req.body ?? {});
     if (!parsed.success) { res.status(400).json({ error: 'invalid_request' }); return; }
+    if (!(await ensureOwnerByVideo(req, res, String(req.params.videoId)))) return;
     const updated = await svc.confirmVideoUpload(pool, String(req.params.videoId), parsed.data);
     if (!updated) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: updated });
@@ -112,6 +157,7 @@ export function createCastingVideoRouter(
   router.patch('/videos/:videoId', auth, async (req, res) => {
     const parsed = updateBody.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_request' }); return; }
+    if (!(await ensureOwnerByVideo(req, res, String(req.params.videoId)))) return;
     const updated = await svc.updateVideo(pool, String(req.params.videoId), parsed.data);
     if (!updated) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: updated });
@@ -119,6 +165,7 @@ export function createCastingVideoRouter(
 
   // Slett video
   router.delete('/videos/:videoId', auth, async (req, res) => {
+    if (!(await ensureOwnerByVideo(req, res, String(req.params.videoId)))) return;
     const ok = await svc.deleteVideo(pool, String(req.params.videoId));
     if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true });
@@ -126,6 +173,7 @@ export function createCastingVideoRouter(
 
   // Annotations CRUD
   router.get('/videos/:videoId/annotations', auth, async (req, res) => {
+    if (!(await ensureOwnerByVideo(req, res, String(req.params.videoId)))) return;
     const items = await svc.listAnnotations(pool, String(req.params.videoId));
     res.json({ success: true, data: items });
   });
@@ -133,6 +181,7 @@ export function createCastingVideoRouter(
   router.post('/videos/:videoId/annotations', auth, async (req, res) => {
     const parsed = annotationBody.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_request' }); return; }
+    if (!(await ensureOwnerByVideo(req, res, String(req.params.videoId)))) return;
     const { userId, userName } = req as AuthedRequest;
     const created = await svc.createAnnotation(pool, String(req.params.videoId), {
       ...parsed.data,
@@ -143,6 +192,15 @@ export function createCastingVideoRouter(
   });
 
   router.delete('/annotations/:annotationId', auth, async (req, res) => {
+    const owns = await pool.query<{ project_id: string }>(
+      `SELECT v.project_id
+         FROM casting_video_annotations a
+         JOIN casting_candidate_videos v ON v.id = a.video_id
+        WHERE a.id = $1`,
+      [String(req.params.annotationId)],
+    );
+    if (owns.rowCount === 0) { res.status(404).json({ error: 'not_found' }); return; }
+    if (!(await ensureProjectOwner(req, res, owns.rows[0].project_id))) return;
     const ok = await svc.deleteAnnotation(pool, String(req.params.annotationId));
     if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true });

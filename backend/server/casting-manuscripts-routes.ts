@@ -94,10 +94,14 @@ import {
   type ParsedScreenplay,
 } from "./casting-screenplay-formats.js";
 import { newEntityId } from "./_shared-ids.js";
+import { userOwnsCastingProjectViaStore } from "./casting-project-ownership.js";
 
 export interface CastingManuscriptsRoutesDeps {
   app: express.Application;
   requireUserSession: (req: any, res: any) => any;
+  /** Compat-store accessor — used to verify project ownership before
+   *  serving/mutating manuscript content (cross-tenant scoping). */
+  compatStoreGet: <T>(storeKey: string) => Promise<T | null>;
   manuscriptsService: CastingManuscriptsService;
   /**
    * Service for revisjons-historikk (diff/restore-API). Trenger
@@ -185,16 +189,68 @@ function listManuscriptPresence(
 export function setupCastingManuscriptsRoutes(
   deps: CastingManuscriptsRoutesDeps,
 ): void {
-  const { app, requireUserSession, manuscriptsService, revisionsService } = deps;
+  const { app, requireUserSession, compatStoreGet, manuscriptsService, revisionsService } = deps;
+
+  // Manuscript content (full screenplay text, dialogue, revisions) is
+  // tenant-private. These read endpoints were unauthenticated — anyone who
+  // knew/guessed a manuscriptId could read another production's script. Gate
+  // on a session AND ownership of the manuscript's project.
+  async function readProjectIdOfManuscript(
+    manuscriptId: string,
+  ): Promise<string | null> {
+    const m = (await manuscriptsService.getManuscript(manuscriptId)) as
+      | Record<string, unknown>
+      | null;
+    if (!m) return null;
+    const pid =
+      typeof m.projectId === "string"
+        ? m.projectId
+        : typeof m.project_id === "string"
+          ? m.project_id
+          : null;
+    return pid;
+  }
+
+  async function ensureManuscriptOwner(
+    req: any,
+    res: any,
+    manuscriptId: string,
+  ): Promise<boolean> {
+    const session = requireUserSession(req, res);
+    if (!session) return false;
+    const projectId = await readProjectIdOfManuscript(manuscriptId);
+    if (
+      !projectId ||
+      !(await userOwnsCastingProjectViaStore(compatStoreGet, projectId, session.userId))
+    ) {
+      res.status(404).json({ error: "not_found" });
+      return false;
+    }
+    return true;
+  }
 
   // ── Manuscripts ────────────────────────────────────────────────────
 
   app.get("/api/casting/manuscripts", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const projectId =
         typeof req.query.projectId === "string" && req.query.projectId.trim()
           ? req.query.projectId.trim()
           : undefined;
+      // Require a project scope and verify ownership — an unscoped list would
+      // return every tenant's manuscripts.
+      if (!projectId) {
+        res.status(400).json({ error: "projectId_required" });
+        return;
+      }
+      if (
+        !(await userOwnsCastingProjectViaStore(compatStoreGet, projectId, session.userId))
+      ) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
       const manuscripts = await manuscriptsService.listManuscripts(projectId);
       res.json(manuscripts);
     } catch (error) {
@@ -240,6 +296,7 @@ export function setupCastingManuscriptsRoutes(
 
   app.get("/api/casting/manuscripts/:manuscriptId", async (req, res) => {
     try {
+      if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
       const manuscript = await manuscriptsService.getManuscript(
         req.params.manuscriptId,
       );
@@ -455,6 +512,7 @@ export function setupCastingManuscriptsRoutes(
 
   app.get("/api/casting/manuscripts/:manuscriptId/scenes", async (req, res) => {
     try {
+      if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
       const scenes = await manuscriptsService.getScenes(req.params.manuscriptId);
       res.json(scenes);
     } catch (error) {
@@ -508,6 +566,7 @@ export function setupCastingManuscriptsRoutes(
 
   app.get("/api/casting/manuscripts/:manuscriptId/dialogue", async (req, res) => {
     try {
+      if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
       const dialogue = await manuscriptsService.getDialogue(
         req.params.manuscriptId,
       );
@@ -896,6 +955,7 @@ export function setupCastingManuscriptsRoutes(
 
   app.get("/api/casting/manuscripts/:manuscriptId/acts", async (req, res) => {
     try {
+      if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
       const acts = await manuscriptsService.getActs(req.params.manuscriptId);
       res.json(acts);
     } catch (error) {
@@ -953,6 +1013,7 @@ export function setupCastingManuscriptsRoutes(
         res.json(null);
         return;
       }
+      if (!(await ensureManuscriptOwner(req, res, location.manuscriptId))) return;
       const acts = await manuscriptsService.getActs(location.manuscriptId);
       res.json(acts[location.index] || null);
     } catch (error) {

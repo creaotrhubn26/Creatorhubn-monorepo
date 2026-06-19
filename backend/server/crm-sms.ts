@@ -41,6 +41,9 @@ export async function sendSms(to: string, body: string): Promise<SmsResult> {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: params.toString(),
+      // A hung Twilio socket would otherwise block the caller until the OS TCP
+      // timeout (minutes). Fail fast so the request/cron slot is freed.
+      signal: AbortSignal.timeout(10_000),
     },
   );
   const data = (await resp.json().catch(() => ({}))) as Record<string, unknown>;

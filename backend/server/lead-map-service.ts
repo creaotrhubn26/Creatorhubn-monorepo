@@ -833,6 +833,7 @@ export async function searchPlaces(
         'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.websiteUri,places.internationalPhoneNumber',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!r.ok) {
       const text = await r.text();

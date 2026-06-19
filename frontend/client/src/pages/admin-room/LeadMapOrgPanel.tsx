@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Avatar, Box, Button, Card, CardContent, Chip, CircularProgress,
-  Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid,
+  Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid2 as Grid,
   IconButton, MenuItem, Select, Stack, Table, TableBody, TableCell,
   TableHead, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material';

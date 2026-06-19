@@ -60,6 +60,7 @@ import {
   setProjectItems,
 } from "./_shared";
 import { newEntityId } from "./_shared-ids.js";
+import { userOwnsCastingProjectViaStore } from "./casting-project-ownership.js";
 
 export interface CastingAgreementsRoutesDeps {
   app: express.Application;
@@ -102,6 +103,17 @@ export function setupCastingAgreementsRoutes(
     createProjectAgreementRecord,
     normalizeProjectAgreementStatus,
   } = deps;
+
+  // Offers/contracts/agreements carry compensation, terms and legal state.
+  // They were located by a global child id and mutated with no project-owner
+  // check — any tenant could accept offers, sign contracts or change agreement
+  // status across tenants. Gate every read/mutation on project ownership.
+  async function callerOwnsProject(
+    projectId: string | null | undefined,
+    userId: string | null | undefined,
+  ): Promise<boolean> {
+    return userOwnsCastingProjectViaStore(compatStoreGet, projectId, userId);
+  }
 
   // ── GET-list endpoints (project-skopede) ──────────────────────────
 
@@ -154,7 +166,8 @@ export function setupCastingAgreementsRoutes(
   // ── Offers ─────────────────────────────────────────────────────────
 
   app.post("/api/casting/offers", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const payload = req.body || {};
     const projectId =
       typeof payload.projectId === "string" ? payload.projectId : "";
@@ -162,6 +175,10 @@ export function setupCastingAgreementsRoutes(
       typeof payload.candidateId === "string" ? payload.candidateId : "";
     if (!projectId || !candidateId) {
       res.status(400).json({ error: "projectId and candidateId are required" });
+      return;
+    }
+    if (!(await callerOwnsProject(projectId, session.userId))) {
+      res.status(404).json({ error: "not_found" });
       return;
     }
     const offerId = newEntityId("offer");
@@ -185,7 +202,8 @@ export function setupCastingAgreementsRoutes(
   });
 
   app.put("/api/casting/offers/:offerId/respond", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     let location = findByIdInProjectMap(
       legacyOffersByProject,
       req.params.offerId,
@@ -208,6 +226,10 @@ export function setupCastingAgreementsRoutes(
       res.status(404).json({ error: "Offer not found" });
       return;
     }
+    if (!(await callerOwnsProject(location.projectId, session.userId))) {
+      res.status(404).json({ error: "Offer not found" });
+      return;
+    }
     const current = getProjectItems(legacyOffersByProject, location.projectId);
     const status = req.body?.status === "declined" ? "declined" : "accepted";
     current[location.index] = {
@@ -223,7 +245,8 @@ export function setupCastingAgreementsRoutes(
   // ── Contracts ──────────────────────────────────────────────────────
 
   app.post("/api/casting/contracts", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const payload = req.body || {};
     const projectId =
       typeof payload.projectId === "string" ? payload.projectId : "";
@@ -231,6 +254,10 @@ export function setupCastingAgreementsRoutes(
       typeof payload.candidateId === "string" ? payload.candidateId : "";
     if (!projectId || !candidateId) {
       res.status(400).json({ error: "projectId and candidateId are required" });
+      return;
+    }
+    if (!(await callerOwnsProject(projectId, session.userId))) {
+      res.status(404).json({ error: "not_found" });
       return;
     }
     const contractId = newEntityId("contract");
@@ -256,7 +283,8 @@ export function setupCastingAgreementsRoutes(
   });
 
   app.put("/api/casting/contracts/:contractId/sign", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     let location = findByIdInProjectMap(
       legacyContractsByProject,
       req.params.contractId,
@@ -279,6 +307,10 @@ export function setupCastingAgreementsRoutes(
       res.status(404).json({ error: "Contract not found" });
       return;
     }
+    if (!(await callerOwnsProject(location.projectId, session.userId))) {
+      res.status(404).json({ error: "Contract not found" });
+      return;
+    }
     const current = getProjectItems(legacyContractsByProject, location.projectId);
     current[location.index] = {
       ...current[location.index],
@@ -293,7 +325,8 @@ export function setupCastingAgreementsRoutes(
   // ── Project-agreements ─────────────────────────────────────────────
 
   app.post("/api/casting/project-agreements", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const agreement = createProjectAgreementRecord(req.body || {});
     if (!agreement) {
       res
@@ -302,6 +335,10 @@ export function setupCastingAgreementsRoutes(
           error:
             "projectId, title, counterpartyType and counterpartyName are required",
         });
+      return;
+    }
+    if (!(await callerOwnsProject(agreement.project_id, session.userId))) {
+      res.status(404).json({ error: "not_found" });
       return;
     }
     const current = getProjectItems(
@@ -320,7 +357,8 @@ export function setupCastingAgreementsRoutes(
   app.put(
     "/api/casting/project-agreements/:agreementId/status",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       let location = findByIdInProjectMap(
         legacyProjectAgreementsByProject,
         req.params.agreementId,
@@ -340,6 +378,10 @@ export function setupCastingAgreementsRoutes(
         }
       }
       if (!location) {
+        res.status(404).json({ error: "Agreement not found" });
+        return;
+      }
+      if (!(await callerOwnsProject(location.projectId, session.userId))) {
         res.status(404).json({ error: "Agreement not found" });
         return;
       }

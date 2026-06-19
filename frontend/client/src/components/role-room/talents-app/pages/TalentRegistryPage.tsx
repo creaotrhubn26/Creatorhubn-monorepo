@@ -52,7 +52,7 @@ import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 import SearchIcon from '@mui/icons-material/Search';
 import VisibilityIcon from '@mui/icons-material/VisibilityOutlined';
 import ViewListIcon from '@mui/icons-material/ViewList';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import roleRoomTalentsService, {
   type RegistryOverview,
@@ -129,16 +129,22 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
     [agencyContext, demoMode],
   );
 
+  // Monotonic search sequence — a slow response for an old filter set must not
+  // overwrite the results of a newer search that already resolved.
+  const searchSeqRef = useRef(0);
   const runSearch = useCallback(async (f: TalentSearchFilters) => {
+    const seq = ++searchSeqRef.current;
     setLoading(true);
     setError(null);
     try {
       const result = await roleRoomTalentsService.searchTalents(f, serviceOpts);
+      if (seq !== searchSeqRef.current) return; // superseded by a newer search
       setSearchResult({ total: result.total, talents: result.talents });
     } catch (err) {
+      if (seq !== searchSeqRef.current) return;
       setError(`Søk feilet: ${err instanceof Error ? err.message : 'ukjent'}`);
     } finally {
-      setLoading(false);
+      if (seq === searchSeqRef.current) setLoading(false);
     }
   }, [serviceOpts]);
 
@@ -154,9 +160,17 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
   }, []);
 
   useEffect(() => {
-    void roleRoomTalentsService.fetchSavedSearches().then(setSavedSearches);
-    void roleRoomTalentsService.fetchRegistryOverview(serviceOpts).then(setOverview);
+    // .catch + cancelled guard: these had neither, so a failed fetch was an
+    // unhandled rejection and a slow one resolved setState after unmount.
+    let cancelled = false;
+    roleRoomTalentsService.fetchSavedSearches()
+      .then((s) => { if (!cancelled) setSavedSearches(s); })
+      .catch(() => undefined);
+    roleRoomTalentsService.fetchRegistryOverview(serviceOpts)
+      .then((o) => { if (!cancelled) setOverview(o); })
+      .catch(() => undefined);
     void reloadProposals();
+    return () => { cancelled = true; };
   }, [reloadProposals, serviceOpts]);
 
   const pendingProposalsCount = proposals.filter((p) => p.status === 'pending').length;

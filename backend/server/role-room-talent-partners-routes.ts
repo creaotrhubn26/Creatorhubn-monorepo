@@ -757,55 +757,72 @@ The Role Room Talents
         return res.status(410).json({ error: "Invite er utløpt" });
       }
 
-      // Slå opp eller opprett agency_org basert på partner_email
       const emailLower = invite.partner_email.toLowerCase();
-      let agency = await pool.query(
-        `SELECT id FROM agency_orgs WHERE contact_email = $1 LIMIT 1`,
-        [emailLower],
-      );
-      let agencyId: string;
-      if (agency.rowCount) {
-        agencyId = agency.rows[0].id;
-      } else {
-        const slug = emailLower.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 100);
-        const newAgency = await pool.query(
-          `INSERT INTO agency_orgs (type, name, slug, contact_email, status)
-           VALUES ($1, $2, $3, $4, 'active')
-           ON CONFLICT (slug) DO UPDATE SET contact_email = EXCLUDED.contact_email
-           RETURNING id`,
-          [invite.partner_type, invite.partner_display_name || emailLower, `${slug}-${crypto.randomBytes(3).toString("hex")}`, emailLower],
-        );
-        agencyId = newAgency.rows[0].id;
-      }
-
-      // Koble accepting user til agency
-      await pool.query(
-        `UPDATE users SET agency_org_id = $1, agency_role = COALESCE(agency_role, 'admin') WHERE id = $2`,
-        [agencyId, session.userId],
-      );
-
-      // Grant consents på alle scopes i invite
       const scopesArr: string[] = Array.isArray(invite.scopes) ? invite.scopes : JSON.parse(invite.scopes);
-      for (const scope of scopesArr) {
-        await pool.query(
-          `INSERT INTO talent_consent_registry
-             (talent_id, partner_type, partner_ref, partner_display_name, scope, status, granted_at, granted_by)
-           VALUES ($1, $2, $3, $4, $5, 'granted', now(), $6)
-           ON CONFLICT (talent_id, partner_type, partner_ref, scope) DO UPDATE SET
-             status = 'granted', granted_at = now(),
-             granted_by = EXCLUDED.granted_by, revoked_at = NULL, revoked_by = NULL,
-             updated_at = now()`,
-          [invite.talent_id, invite.partner_type, agencyId, invite.partner_display_name, scope, session.userId],
-        );
-      }
 
-      // Marker invite som akseptert
-      await pool.query(
-        `UPDATE talent_partner_invites
-            SET status = 'accepted', accepted_at = now(), accepted_by = $2, resolved_agency_org_id = $3
-          WHERE id = $1`,
-        [invite.id, session.userId, agencyId],
-      );
+      // Accept = agency upsert + user link + per-scope consents + invite
+      // status, all in one transaction. Previously these ran as independent
+      // queries, so a mid-flow failure left inconsistent state (user linked
+      // but invite still pending, or only some scopes granted).
+      const client = await pool.connect();
+      let agencyId: string;
+      try {
+        await client.query("BEGIN");
+
+        // Slå opp eller opprett agency_org basert på partner_email
+        const agency = await client.query(
+          `SELECT id FROM agency_orgs WHERE contact_email = $1 LIMIT 1`,
+          [emailLower],
+        );
+        if (agency.rowCount) {
+          agencyId = agency.rows[0].id;
+        } else {
+          const slug = emailLower.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 100);
+          const newAgency = await client.query(
+            `INSERT INTO agency_orgs (type, name, slug, contact_email, status)
+             VALUES ($1, $2, $3, $4, 'active')
+             ON CONFLICT (slug) DO UPDATE SET contact_email = EXCLUDED.contact_email
+             RETURNING id`,
+            [invite.partner_type, invite.partner_display_name || emailLower, `${slug}-${crypto.randomBytes(3).toString("hex")}`, emailLower],
+          );
+          agencyId = newAgency.rows[0].id;
+        }
+
+        // Koble accepting user til agency
+        await client.query(
+          `UPDATE users SET agency_org_id = $1, agency_role = COALESCE(agency_role, 'admin') WHERE id = $2`,
+          [agencyId, session.userId],
+        );
+
+        // Grant consents på alle scopes i invite
+        for (const scope of scopesArr) {
+          await client.query(
+            `INSERT INTO talent_consent_registry
+               (talent_id, partner_type, partner_ref, partner_display_name, scope, status, granted_at, granted_by)
+             VALUES ($1, $2, $3, $4, $5, 'granted', now(), $6)
+             ON CONFLICT (talent_id, partner_type, partner_ref, scope) DO UPDATE SET
+               status = 'granted', granted_at = now(),
+               granted_by = EXCLUDED.granted_by, revoked_at = NULL, revoked_by = NULL,
+               updated_at = now()`,
+            [invite.talent_id, invite.partner_type, agencyId, invite.partner_display_name, scope, session.userId],
+          );
+        }
+
+        // Marker invite som akseptert
+        await client.query(
+          `UPDATE talent_partner_invites
+              SET status = 'accepted', accepted_at = now(), accepted_by = $2, resolved_agency_org_id = $3
+            WHERE id = $1`,
+          [invite.id, session.userId, agencyId],
+        );
+
+        await client.query("COMMIT");
+      } catch (txErr) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw txErr;
+      } finally {
+        client.release();
+      }
 
       return res.json({ ok: true, agencyId, scopes: scopesArr });
     } catch (err) {

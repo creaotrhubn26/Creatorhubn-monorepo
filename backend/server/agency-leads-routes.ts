@@ -198,7 +198,7 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
                    AND agency_leads.status IN ('new', 'contacted')
                  THEN 'demo_booked' ELSE agency_leads.status END,
                updated_at = now()
-         RETURNING id::text, agency_name, contact_name, email, status, created_at`,
+         RETURNING id::text, agency_name, contact_name, email, status, created_at, (xmax = 0) AS created`,
         [
           agencyName, contactName, email, phone, rosterSize, segment,
           message, source,
@@ -219,6 +219,11 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
         ],
       );
       const lead = r.rows[0];
+      // (xmax = 0) is true only when this row was INSERTed, false on the
+      // ON CONFLICT update path. A duplicate (email, segment) re-submit must
+      // NOT re-fire the LinkedIn conversion (skews attribution + spends the
+      // Graph rate budget) or re-email the lead. Gate all side effects on it.
+      const isNewLead = lead.created === true;
 
       // "Book demo" = en aktiv booking — sett demo_booked-tidsstempel ved opprettelse.
       if (isBookDemo) {
@@ -257,8 +262,8 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
         }
       }
 
-      // Event
-      try {
+      // Event — record only on first insert (gate fra #647 53ac9773)
+      if (isNewLead) try {
         await pool.query(
           `INSERT INTO agency_lead_events (lead_id, event_type, actor, details)
            VALUES ($1::uuid, $2, $3, $4::jsonb)`,
@@ -271,9 +276,9 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
         );
       } catch { /* best-effort */ }
 
-      // Queue LinkedIn Conversion API event (Lead) — fires regardless of
-      // whether LinkedIn approval is in yet; cron drainer sender når godkjent.
-      try {
+      // Queue LinkedIn Conversion API event (Lead) — first insert only;
+      // cron drainer sender når godkjent.
+      if (isNewLead) try {
         const li_fat_id = (body as { li_fat_id?: string })?.li_fat_id ?? null;
         const firstWord = contactName.split(" ")[0];
         const lastWords = contactName.split(" ").slice(1).join(" ");
@@ -287,8 +292,9 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
         });
       } catch { /* best-effort */ }
 
-      // Bekreftelses-mail til lead + intern notifikasjon (fire-and-forget)
-      void (async () => {
+      // Bekreftelses-mail til lead + intern notifikasjon (fire-and-forget) —
+      // kun ved første innsending, ikke på re-submit av samme (email, segment).
+      if (isNewLead) void (async () => {
         try {
           const baseUrl = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
 

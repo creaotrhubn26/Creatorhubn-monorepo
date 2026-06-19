@@ -154,11 +154,20 @@ export async function sendAPNs(
   });
 
   return new Promise<APNsResult>((resolve) => {
+    // Single-settle guard: the HTTP/2 stream can fire end/error/timeout in
+    // racey combinations; only the first result wins.
+    let settled = false;
+    const settle = (r: APNsResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(r);
+    };
+
     let session: ClientHttp2Session;
     try {
       session = getSession();
     } catch (err) {
-      return resolve({ sent: false, reason: `session_failed: ${String(err)}` });
+      return settle({ sent: false, reason: `session_failed: ${String(err)}` });
     }
 
     const req = session.request({
@@ -171,6 +180,15 @@ export async function sendAPNs(
       "content-length": Buffer.byteLength(payload).toString(),
     });
 
+    // Node http2 imposes no per-stream inactivity timeout. A stalled Apple
+    // stream would otherwise never settle, so the per-row `await deliverAPNs`
+    // in the followup cron blocks forever, the job hits its 5-min ceiling and
+    // the next */15 run overlaps. Bound the stream and fail soft.
+    req.setTimeout(10_000, () => {
+      req.close();
+      settle({ sent: false, reason: "apns_timeout" });
+    });
+
     let status = 0;
     const chunks: Buffer[] = [];
 
@@ -181,7 +199,7 @@ export async function sendAPNs(
     req.on("end", () => {
       req.close();
       if (status === 200) {
-        return resolve({ sent: true, apnsStatus: status });
+        return settle({ sent: true, apnsStatus: status });
       }
       const bodyText = Buffer.concat(chunks).toString("utf8");
       let apnsReason: string | undefined;
@@ -193,7 +211,7 @@ export async function sendAPNs(
         status === 410 ||
         apnsReason === "BadDeviceToken" ||
         apnsReason === "Unregistered";
-      resolve({
+      settle({
         sent: false,
         reason: `apns_${status}`,
         apnsStatus: status,
@@ -202,7 +220,7 @@ export async function sendAPNs(
       });
     });
     req.on("error", (err) => {
-      resolve({ sent: false, reason: `http2_error: ${err.message}` });
+      settle({ sent: false, reason: `http2_error: ${err.message}` });
     });
 
     req.setEncoding("utf8");

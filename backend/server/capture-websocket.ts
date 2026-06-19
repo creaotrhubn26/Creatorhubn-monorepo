@@ -158,12 +158,35 @@ export function attachCaptureWebSocket(
       socket.destroy();
     });
   });
+
+  // Keep-alive sweep — without it half-open sockets (laptop sleep, iPad
+  // backgrounded, NAT timeout) linger in sessionClients forever and
+  // broadcastToSession keeps writing to dead connections. Terminate any that
+  // missed the previous ping.
+  const heartbeat = setInterval(() => {
+    for (const set of sessionClients.values()) {
+      for (const ws of set) {
+        const live = ws as LiveWebSocket;
+        if (live.isAlive === false) {
+          try { ws.terminate(); } catch { /* ignore */ }
+          continue;
+        }
+        live.isAlive = false;
+        try { ws.ping(); } catch { /* ignore */ }
+      }
+    }
+  }, 30000);
+  heartbeat.unref?.();
+  wss.on('close', () => clearInterval(heartbeat));
 }
+
+type LiveWebSocket = WebSocket & { isAlive?: boolean };
 
 function registerClient(sessionId: string, ws: WebSocket): void {
   const set = sessionClients.get(sessionId) ?? new Set<WebSocket>();
   set.add(ws);
   sessionClients.set(sessionId, set);
+  (ws as LiveWebSocket).isAlive = true;
 
   ws.send(
     JSON.stringify({
@@ -174,7 +197,7 @@ function registerClient(sessionId: string, ws: WebSocket): void {
   );
 
   ws.on('pong', () => {
-    // heartbeat: node ws emits this on incoming pongs; no-op handler keeps socket alive
+    (ws as LiveWebSocket).isAlive = true;
   });
 
   ws.on('close', () => {

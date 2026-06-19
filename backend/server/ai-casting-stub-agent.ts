@@ -248,7 +248,7 @@ export const castingStubAgent: AIAgent = {
       const AnthropicCtor = mod.default ?? mod.Anthropic;
       const client: any = new AnthropicCtor({
         apiKey,
-        maxRetries: 1,
+        maxRetries: 3, // ride out 429/529 bursts during bulk generate
         timeout: 60_000,
       });
 
@@ -267,6 +267,10 @@ export const castingStubAgent: AIAgent = {
         }],
       });
       logAIUsage(response as any, { feature: 'role-room/casting-suggest' }).catch(() => undefined);
+
+      if (response.stop_reason === "max_tokens") {
+        console.warn("[casting-stub-agent] response truncated at max_tokens — role stubs may be incomplete");
+      }
 
       const toolBlock = (response.content ?? []).find(
         (b: any) => b?.type === "tool_use" && b?.name === ROLE_STUB_TOOL_SCHEMA.name,
