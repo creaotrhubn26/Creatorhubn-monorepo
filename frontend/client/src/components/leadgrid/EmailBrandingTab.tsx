@@ -318,57 +318,129 @@ export function EmailBrandingTab() {
 }
 
 function BrandingPreview({ branding, large }: { branding: Branding; large?: boolean }) {
+  const brandColor = branding.brand_primary_color || "#a78bfa";
+  const initials = (branding.sender_full_name ?? branding.brand_name)
+    .split(/\s+/).map((s) => s[0]).slice(0, 2).join("").toUpperCase();
   return (
     <Box sx={{
-      bgcolor: "#fff", color: "#333",
-      p: large ? 4 : 2, borderRadius: 1,
-      border: "1px solid #ddd",
-      fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
-      maxWidth: large ? 560 : "100%",
-      maxHeight: large ? "70vh" : 480,
-      overflow: "auto",
+      bgcolor: "#f4f4f8", p: large ? 3 : 1.5,
+      maxHeight: large ? "70vh" : 580, overflow: "auto",
     }}>
-      {branding.brand_logo_url ? (
-        <img src={branding.brand_logo_url} alt={branding.brand_name}
-             style={{ maxHeight: 48, marginBottom: 16 }} />
-      ) : (
-        <Box sx={{ fontWeight: 700, fontSize: 18, color: branding.brand_primary_color, mb: 2 }}>
-          {branding.brand_name}
-        </Box>
-      )}
-      <Box sx={{ fontSize: 20, fontWeight: 700, mb: 1.5, color: "#0a0512" }}>
-        Eksempel: Nytt funn i markedsanalysen
-      </Box>
-      <Box sx={{ fontSize: 15, lineHeight: 1.55, mb: 2 }}>
-        Hei Daniel! Vi har et nytt funn i markedsanalysen din: Konkurrenten din har lagt til
-        en ny Meta Ads-kampanje. Vi har lagt en anbefaling i portalen din.
-      </Box>
-      <Box sx={{ my: 3 }}>
-        <Box component="span" sx={{
-          display: "inline-block", background: branding.brand_primary_color,
-          color: "#0a0512", padding: "12px 24px", borderRadius: 1,
-          fontWeight: 700, fontSize: 14,
-        }}>
-          Åpne klient-portalen
-        </Box>
-      </Box>
-      {branding.sender_full_name && (
-        <Box sx={{ mt: 3, pt: 2, borderTop: "1px solid #eee", color: "#444", fontSize: 13 }}>
-          Mvh,<br/>
-          <strong>{branding.sender_full_name}</strong>
-          {branding.sender_title && <><br/>{branding.sender_title}</>}
-          {branding.sender_email && (
-            <><br/><Box component="a" sx={{ color: branding.brand_primary_color }} href={`mailto:${branding.sender_email}`}>
-              {branding.sender_email}
-            </Box></>
+      <Box sx={{
+        bgcolor: "#fff", borderRadius: 1, overflow: "hidden",
+        boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+        maxWidth: large ? 600 : "100%", mx: "auto",
+        fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+      }}>
+        {/* Org-leverandør header */}
+        <Box sx={{ bgcolor: "#0a0512", color: "#fff",
+                    px: 2.5, py: 1.5, display: "flex", alignItems: "center", gap: 1.5 }}>
+          {branding.brand_logo_url ? (
+            <Box component="img" src={branding.brand_logo_url}
+                 alt={branding.brand_name}
+                 sx={{ height: 36, borderRadius: 0.5 }} />
+          ) : (
+            <Box sx={{
+              width: 36, height: 36, borderRadius: 0.5,
+              bgcolor: brandColor, color: "#0a0512",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontWeight: 800, fontSize: 16,
+            }}>{branding.brand_name.charAt(0).toUpperCase()}</Box>
           )}
-          {branding.sender_phone && <><br/>{branding.sender_phone}</>}
-          <br/><strong style={{ color: branding.brand_primary_color }}>{branding.brand_name}</strong>
+          <Box sx={{ flex: 1 }}>
+            <Box sx={{ fontSize: 10, letterSpacing: 1,
+                        color: "rgba(255,255,255,0.5)",
+                        textTransform: "uppercase" }}>
+              Levert av
+            </Box>
+            <Box sx={{ fontWeight: 700, fontSize: 14, color: brandColor }}>
+              {branding.brand_name}
+            </Box>
+          </Box>
         </Box>
-      )}
-      <Box sx={{ mt: 4, pt: 2, borderTop: "1px solid #eee", color: "#888", fontSize: 11 }}>
-        {branding.footer_html && <Box dangerouslySetInnerHTML={{ __html: branding.footer_html }} />}
-        {branding.footer_address && <Box sx={{ mt: 1 }}>{branding.footer_address}</Box>}
+
+        {/* Hero */}
+        <Box sx={{ px: 3, pt: 3 }}>
+          <Box sx={{ color: "#888", fontSize: 10, letterSpacing: 1,
+                      textTransform: "uppercase" }}>
+            Markedsanalyse-oppdatering
+          </Box>
+          <Box sx={{ fontSize: 19, fontWeight: 700, mt: 0.5,
+                      color: "#0a0512" }}>
+            Nytt funn: Konkurrenten din kjører Meta-annonser
+          </Box>
+        </Box>
+
+        {/* Body */}
+        <Box sx={{ px: 3, py: 2, color: "#333",
+                    lineHeight: 1.55, fontSize: 14 }}>
+          Hei Daniel! Vi har et nytt funn i markedsanalysen din.
+          Konkurrenten din har lagt til en ny Meta Ads-kampanje.
+          Vi har lagt en anbefaling i portalen din.
+        </Box>
+
+        {/* CTA */}
+        <Box sx={{ p: 3, textAlign: "center" }}>
+          <Box component="span" sx={{
+            display: "inline-block", bgcolor: brandColor,
+            color: "#0a0512", px: 3.5, py: 1.5,
+            borderRadius: 1, fontWeight: 700, fontSize: 14,
+          }}>
+            Åpne klient-portalen →
+          </Box>
+        </Box>
+
+        {/* Rådgiver-kontaktkort */}
+        {branding.sender_full_name && (
+          <Box sx={{ mx: 3, mb: 2, p: 2.5,
+                      bgcolor: "#fafaff",
+                      border: `1px solid ${brandColor}33`,
+                      borderRadius: 1,
+                      display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box sx={{
+              width: 48, height: 48, borderRadius: "50%",
+              bgcolor: brandColor, color: "#0a0512",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontWeight: 800, fontSize: 18, flexShrink: 0,
+            }}>{initials}</Box>
+            <Box sx={{ flex: 1 }}>
+              <Box sx={{ fontSize: 10, letterSpacing: 1, color: "#888",
+                          textTransform: "uppercase" }}>
+                Din rådgiver hos {branding.brand_name}
+              </Box>
+              <Box sx={{ fontWeight: 700, fontSize: 15, color: "#0a0512", mt: 0.3 }}>
+                {branding.sender_full_name}
+              </Box>
+              {branding.sender_title && (
+                <Box sx={{ color: "#666", fontSize: 12 }}>{branding.sender_title}</Box>
+              )}
+              <Box sx={{ mt: 0.8, fontSize: 12 }}>
+                {branding.sender_email && (
+                  <Box component="a" href={`mailto:${branding.sender_email}`}
+                       sx={{ color: brandColor, textDecoration: "none", mr: 1.5 }}>
+                    ✉ {branding.sender_email}
+                  </Box>
+                )}
+                {branding.sender_phone && (
+                  <Box component="a" href={`tel:${branding.sender_phone}`}
+                       sx={{ color: brandColor, textDecoration: "none" }}>
+                    ☎ {branding.sender_phone}
+                  </Box>
+                )}
+              </Box>
+            </Box>
+          </Box>
+        )}
+
+        {/* Footer */}
+        <Box sx={{ px: 3, py: 2, borderTop: "1px solid #eee",
+                    color: "#888", fontSize: 11, lineHeight: 1.55 }}>
+          {branding.footer_html && <Box dangerouslySetInnerHTML={{ __html: branding.footer_html }} />}
+          {branding.footer_address && <Box sx={{ mt: 0.5 }}>{branding.footer_address}</Box>}
+          <Box sx={{ mt: 1, color: "#aaa", fontSize: 10 }}>
+            Sendt av {branding.brand_name} via Leadgrid.
+          </Box>
+        </Box>
       </Box>
     </Box>
   );
