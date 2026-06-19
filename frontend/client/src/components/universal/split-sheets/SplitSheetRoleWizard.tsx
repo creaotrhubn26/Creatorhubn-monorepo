@@ -265,8 +265,34 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
   });
   const vendorCatalog: VendorCatalog[] = vendorsData?.vendors ?? [];
 
-  // ─── Beregn shares (ekstern vendor-kostnad av-toppen, så splitt resten) ──
-  const externalTotal = participants.reduce((s, p) => s + externalCostOf(p), 0);
+  // Valutakurser (base NOK) for å konvertere utenlandsk vendor-kostnad → NOK.
+  // open.er-api.com: gratis, ingen nøkkel. rates[X] = X per 1 NOK → 1 X = 1/rates[X] NOK.
+  const { data: fxData, dataUpdatedAt: fxFetchedAt, isFetching: fxFetching, refetch: refetchFx } = useQuery<{
+    rates?: Record<string, number>;
+    time_last_update_utc?: string;
+    time_next_update_utc?: string;
+  }>({
+    queryKey: ["fx-base-nok"],
+    queryFn: () => fetch("https://open.er-api.com/v6/latest/NOK").then((r) => r.json()),
+    enabled: open,
+    staleTime: 60 * 60 * 1000, // 1t: kursen refetches automatisk når den blir stale
+    refetchOnWindowFocus: true,
+  });
+  const fxRates = fxData?.rates || {};
+  const fxLastUpdated = fxData?.time_last_update_utc || (fxFetchedAt ? new Date(fxFetchedAt).toUTCString() : null);
+  const toNok = (amount: number, currency: string): number => {
+    if (!currency || currency === "NOK") return amount;
+    const r = fxRates[currency.toUpperCase()];
+    return r && r > 0 ? amount / r : amount; // fallback: anta NOK om kurs mangler
+  };
+  // Ekstern deltakers kostnad i NOK (konvertert fra katalog-valuta).
+  const costNok = (p: Participant): number => {
+    if (!p.isExternal || !p.externalLines) return 0;
+    return p.externalLines.reduce((s, l) => s + toNok((Number(l.pricePerImage) || 0) * (Number(l.qty) || 0), l.currency), 0);
+  };
+
+  // ─── Beregn shares (ekstern vendor-kostnad av-toppen i NOK, så splitt resten) ──
+  const externalTotal = participants.reduce((s, p) => s + costNok(p), 0);
   const splittable = Math.max(0, projectAmount - externalTotal);
 
   const computedSplits = useMemo(() => {
@@ -290,14 +316,15 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
     const pctOfTotal = (kr: number) => (projectAmount > 0 ? (kr / projectAmount) * 100 : 0);
     return participants.map((p) => {
       if (p.isExternal) {
-        const cost = externalCostOf(p);
+        const cost = costNok(p); // i NOK (konvertert fra katalog-valuta)
         return { ...p, sharePct: pctOfTotal(cost), shareKr: cost, roleLabel: p.vendorName || 'Eksternt firma' };
       }
       const role = activeRoleCatalog.find((r) => r.id === p.roleId);
       const kr = (internalPct(p) / 100) * splittable;
       return { ...p, sharePct: pctOfTotal(kr), shareKr: kr, roleLabel: role?.label || '—' };
     });
-  }, [participants, model, projectAmount, splittable, hybridBasePct, activeRoleCatalog]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [participants, model, projectAmount, splittable, hybridBasePct, activeRoleCatalog, fxData]);
 
   const totalPct = computedSplits.reduce((s, p) => s + p.sharePct, 0);
 
@@ -679,7 +706,11 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                                   Legg til produkt
                                 </Button>
                                 <Typography variant="caption" sx={{ color: p.vendorIsForeign ? '#ffb74d' : 'rgba(246,242,234,0.6)' }}>
-                                  Kostnad: {externalCostOf(p).toLocaleString('nb-NO')} {p.vendorCurrency} · {p.vendorIsForeign ? 'utland → snudd avregning (ingen norsk MVA på andelen)' : 'innenlands → 25 % MVA'}
+                                  Kostnad: {externalCostOf(p).toLocaleString('nb-NO')} {p.vendorCurrency}
+                                  {p.vendorCurrency && p.vendorCurrency !== 'NOK' && (
+                                    <> · ≈ {Math.round(costNok(p)).toLocaleString('nb-NO')} kr (1 {p.vendorCurrency} = {fxRates[p.vendorCurrency.toUpperCase()] ? (1 / fxRates[p.vendorCurrency.toUpperCase()]).toFixed(2) : '—'} kr)</>
+                                  )}
+                                  {' · '}{p.vendorIsForeign ? 'utland → snudd avregning (ingen norsk MVA på andelen)' : 'innenlands → 25 % MVA'}
                                 </Typography>
                               </>
                             );
@@ -930,6 +961,18 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
               <Typography variant="body2" sx={{ color: 'rgba(246,242,234,0.72)' }}>
                 {projectName || 'Uten prosjektnavn'} · {participants.length} personer · {model === 'weighted' ? 'Vekt-basert' : model === 'equal' ? 'Lik splitt' : model === 'hybrid' ? 'Hybrid' : 'Manuelt'}
               </Typography>
+              {/* Valutakurs-info — vises når en ekstern vendor har annen valuta enn NOK. */}
+              {participants.some((p) => p.isExternal && p.vendorCurrency && p.vendorCurrency !== 'NOK') && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  onClick={() => refetchFx()}
+                  label={fxFetching
+                    ? 'Henter kurs…'
+                    : `Kurs sist oppdatert: ${fxLastUpdated ? new Date(fxLastUpdated).toLocaleString('nb-NO') : '—'} · open.er-api.com · trykk for å oppdatere`}
+                  sx={{ mt: 1, height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.5, fontSize: 11 } }}
+                />
+              )}
             </Card>
 
             {/* Pie chart visualisering */}
