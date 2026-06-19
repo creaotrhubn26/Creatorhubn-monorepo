@@ -16,6 +16,7 @@ import AgentContextPreviewPanel from "./AgentContextPreviewPanel";
 import LeadMapCampaignsPanel from "./LeadMapCampaignsPanel";
 import { LeadInboxSection } from "@/components/leadgrid/LeadInboxSection";
 import { WonLostDashboard } from "@/components/leadgrid/WonLostDashboard";
+import { ScheduledReportsPanel } from "@/components/leadgrid/ScheduledReportsPanel";
 
 interface Props {
   /** Aktivt prosjekt — brukes til Brand Kit + scans-isolering. */
@@ -60,6 +61,9 @@ export default function MarketIntelligenceSection({
 
           {/* Won/Lost-dashboard — KPI + MoM + funnel */}
           <WonLostDashboard />
+
+          {/* Schedulerte rapporter — ukentlig PDF på e-post */}
+          <ScheduledReportsPanel />
 
           <BrandKitPanel
             projectId={projectId}

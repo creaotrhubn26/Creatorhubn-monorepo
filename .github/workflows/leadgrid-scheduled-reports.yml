@@ -1,0 +1,42 @@
+name: Leadgrid scheduled reports
+
+# Kjører hver time. Endepunktet sjekker hvilke abonnement som er due
+# (next_send_at <= now()) og sender PDF-rapport på e-post + oppdaterer
+# next_send_at.
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leadgrid-scheduled-reports
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Trigger scheduled-reports run
+        env:
+          TOKEN: ${{ secrets.LEADGRID_CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::LEADGRID_CRON_TRIGGER_TOKEN secret er ikke satt"
+            exit 1
+          fi
+          RESP=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "x-cron-trigger-token: $TOKEN" \
+            "https://creatorhub-backend-rtbl.onrender.com/api/leadgrid/scheduled-reports/run")
+          BODY=$(echo "$RESP" | head -n -1)
+          CODE=$(echo "$RESP" | tail -n 1)
+          echo "HTTP $CODE"
+          echo "$BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Scheduled-reports run feilet (HTTP $CODE)"
+            exit 1
+          fi
