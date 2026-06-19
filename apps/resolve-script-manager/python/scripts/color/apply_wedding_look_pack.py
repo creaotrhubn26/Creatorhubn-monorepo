@@ -54,11 +54,15 @@ def apply_look_to_item(item, look: dict, node_index: int = 2) -> dict:
     cdl = components.get("cdl")
     if cdl and hasattr(item, "SetCDL"):
         try:
+            # Resolve SetCDL krever STRENGER (mellomrom-separert) + NodeIndex —
+            # lister gir «SetCDL returned false». (Verifisert på Studio 21.)
+            sp = " ".join(str(x) for x in cdl["slope"])
+            of = " ".join(str(x) for x in cdl["offset"])
+            pw = " ".join(str(x) for x in cdl["power"])
             ok = item.SetCDL({
-                "Slope": list(cdl["slope"]),
-                "Offset": list(cdl["offset"]),
-                "Power": list(cdl["power"]),
-                "Saturation": cdl["saturation"],
+                "NodeIndex": str(node_index),
+                "Slope": sp, "Offset": of, "Power": pw,
+                "Saturation": str(cdl["saturation"]),
             })
             if ok:
                 result["cdlApplied"] = True
