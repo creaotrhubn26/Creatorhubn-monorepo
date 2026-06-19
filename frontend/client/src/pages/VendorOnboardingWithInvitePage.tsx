@@ -12,7 +12,9 @@ import {
   Card,
   CardContent,
   Chip,
+  Stack,
 } from '@mui/material';
+import GpsFixed from '@mui/icons-material/GpsFixed';
 import { VerifiedPerson, CorporateIcon, Warning } from '../shared/CreatorHubIcons';
 import UniversalVendorOnboarding from '@/components/vendor/UniversalVendorOnboarding';
 import { useQuery } from '@tanstack/react-query';
@@ -61,9 +63,12 @@ const VendorOnboardingWithInvitePage: React.FC = () => {
           color: 'white',
       }}
        sx={theming.getThemedCardSx()}>
-        <Typography variant="h3" sx={{ fontWeight: 700, mb: 2 }}>
-          🎯 Vendor Onboarding med Landing-Mobile Integrasjon
-        </Typography>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
+          <GpsFixed sx={{ fontSize: 36 }} />
+          <Typography variant="h3" sx={{ fontWeight: 700 }}>
+            Vendor Onboarding med Landing-Mobile Integrasjon
+          </Typography>
+        </Stack>
         <Typography variant="h6" sx={{ opacity: 0.7, mb: 2, color: theming.colors.primary }}>
           Test vendor onboarding med organisasjonsnummer validering og logo upload
         </Typography>

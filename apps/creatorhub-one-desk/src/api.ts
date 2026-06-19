@@ -537,3 +537,21 @@ export async function disableMirrorForSession(sessionId: string): Promise<boolea
 export async function enabledMirrorSessions(): Promise<string[]> {
   return invoke<string[]>("enabled_mirror_sessions");
 }
+
+// ─── Desk identity + auto-pair result (F5c) ────────────────────────
+
+export interface DeskIdentity {
+  desk_id: string;
+  desk_name: string;
+}
+
+export interface PairResultEvent {
+  fullname: string;
+  success: boolean;
+  ipad_device_id: string | null;
+  error: string | null;
+}
+
+export async function currentDeskIdentity(): Promise<DeskIdentity> {
+  return invoke<DeskIdentity>("current_desk_identity");
+}
