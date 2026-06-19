@@ -115,6 +115,9 @@ struct MapHomeView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    LeadgridNotificationBellView()
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("Oppdater", systemImage: "arrow.clockwise") {
                             Task { await appState.refreshAll() }

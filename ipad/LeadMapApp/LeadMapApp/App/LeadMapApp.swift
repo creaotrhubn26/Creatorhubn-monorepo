@@ -83,6 +83,55 @@ extension NotificationAppDelegate: UNUserNotificationCenterDelegate {
     ) {
         completionHandler([.banner, .sound, .badge])
     }
+
+    /// Brukeren tap-pet et varsel. Route deep-link basert på event_type.
+    /// Leadgrid v2-events (PR #748): lead_assigned_as_team_leader,
+    ///   lead_assigned_as_rep, lead_assigned_on_accept, lead_won,
+    ///   lead_lost, lead_status_change.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping @Sendable () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        let eventType = userInfo["event_type"] as? String ?? ""
+
+        // Leadgrid v2-events → presenter Leadgrid-inbox eller refresh state
+        let isLeadgridEvent = eventType.hasPrefix("lead_assigned")
+                            || eventType == "lead_won"
+                            || eventType == "lead_lost"
+                            || eventType == "lead_status_change"
+
+        if isLeadgridEvent {
+            // Snap ut Sendable-felter FØR task-grensen (Swift 6 strict).
+            // userInfo som dictionary er ikke Sendable, men individuelle
+            // String-felter er det.
+            let leadId = userInfo["lead_id"] as? String
+            let deepLink = userInfo["deep_link"] as? String
+            let safeEventType = eventType
+            Task { @MainActor in
+                var payload: [String: String] = ["event_type": safeEventType]
+                if let leadId { payload["lead_id"] = leadId }
+                if let deepLink { payload["deep_link"] = deepLink }
+                NotificationCenter.default.post(
+                    name: .leadgridNotificationTapped,
+                    object: nil,
+                    userInfo: payload,
+                )
+            }
+        }
+        completionHandler()
+    }
+}
+
+/// NotificationCenter-events som broadcastes når APNS-varsel tap-pes.
+/// Aktive SwiftUI-views (typisk LeadgridHubView) lytter på dette og
+/// presenter relevant sheet.
+extension Notification.Name {
+    /// Brukeren tap-pet et Leadgrid-varsel. userInfo har 'event_type' og
+    /// muligens 'lead_id' / 'deep_link'.
+    static let leadgridNotificationTapped =
+        Notification.Name("LeadMapApp.leadgridNotificationTapped")
 }
 
 /// Rotvisning bestemmer hvilken skjerm som rendres basert på auth-state.
@@ -99,6 +148,17 @@ struct RootView: View {
         }
         .task {
             await appState.bootstrap()
+            // Start Leadgrid-polling så snart auth er på plass.
+            if appState.api != nil {
+                appState.startLeadgridPolling()
+            }
+        }
+        .onChange(of: appState.authToken) { _, newValue in
+            if newValue != nil {
+                appState.startLeadgridPolling()
+            } else {
+                appState.stopLeadgridPolling()
+            }
         }
     }
 }
@@ -135,6 +195,10 @@ struct MainTabView: View {
                     Label("Varsler", systemImage: "bell.fill")
                 }
                 .badge(state.unreadNotificationsCount)
+            // Leadgrid CRM-hub (PR #760+) — paritet m/ web /api/leadgrid/*
+            LeadgridHubView()
+                .tabItem { Label("Leadgrid", systemImage: "person.crop.rectangle.stack.fill") }
+                .badge(state.leadgridUnreadCount > 0 ? state.leadgridUnreadCount : 0)
             if state.permissions.contains("pitch_deck.access"),
                let orgId = state.activeOrganizationId {
                 PitchDeckStudioView(
