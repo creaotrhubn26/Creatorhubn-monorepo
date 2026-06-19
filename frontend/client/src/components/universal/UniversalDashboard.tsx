@@ -2378,7 +2378,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     queryFn: () => apiRequest('/api/editing/vendor/me'),
     enabled: profession === 'vendor',
   });
-  const foreignEditingVendor = Boolean(editingMe?.isEditingVendor && editingMe?.isForeign);
+  const isEditingVendor = Boolean(editingMe?.isEditingVendor);
 
   // Fetch Evendi bookings & analytics (wired via evendi-api.ts)
   const { data: evendiBookings = [] } = useQuery<EvendiBooking[]>({
@@ -3075,9 +3075,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   // CreatorHub-identitet er konsistent men hver fag har egen "lyd".
   const professionAccent = customBranding.color || '#ffba6c';
 
-  // #15: utenlandsk redigeringsvendor ser KUN det engelske arbeidsområdet
-  // (hele dashboardet på engelsk — ingen norsk generisk vendor-chrome).
-  if (foreignEditingVendor) {
+  // Redigeringsvendors (foto/video) ser KUN redigerings-arbeidsområdet
+  // (Partner-dashboard + oppdrag/compliance/katalog/chat) — ALDRI den generiske
+  // plugin-/produkt-vendor-chromen. Workspace self-lokaliserer (norsk/engelsk
+  // ut fra vendorens land), så utenlandske får engelsk ved default.
+  if (isEditingVendor) {
     return (
       <Box sx={{ minHeight: '100vh', background: '#05060a', color: '#f6f2ea', py: { xs: 2, md: 4 }, px: { xs: 1, sm: 2 } }}>
         <Box sx={{ maxWidth: 1100, mx: 'auto' }}>
