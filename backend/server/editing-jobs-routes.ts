@@ -452,6 +452,137 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
     }
   });
 
+  // ════════════════════════════════════════════════════════════════════
+  // Editing-vendorens EGEN priskatalog — SAMME kilde (vendor_showcase_products)
+  // som discovery + forespørsel leser fra, slik at det vendoren legger inn er
+  // nøyaktig det fotografen ser og hyrer fra. Scoped til session.userId.
+  // ════════════════════════════════════════════════════════════════════
+  app.get("/api/editing/vendor/products", async (req, res) => {
+    const session = await requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const r = await pool.query(
+        `SELECT id, category, name, product_name, price, currency, description, image_url, status
+           FROM vendor_showcase_products WHERE vendor_id = $1
+          ORDER BY category ASC, price ASC NULLS LAST`,
+        [session.userId],
+      );
+      res.json({
+        products: r.rows.map((p) => ({
+          id: p.id,
+          category: p.category,
+          name: p.name || p.product_name,
+          price: p.price != null ? Number(p.price) : null,
+          currency: p.currency || "NOK",
+          description: p.description,
+          imageUrl: p.image_url,
+          status: p.status || "active",
+        })),
+      });
+    } catch (err) {
+      console.error("[editing/vendor/products] list", err);
+      res.status(500).json({ error: "kunne_ikke_hente_produkter" });
+    }
+  });
+
+  app.post("/api/editing/vendor/products", async (req, res) => {
+    const session = await requireUserSession(req, res);
+    if (!session) return;
+    const { name, category, price, currency, description, imageUrl } = req.body || {};
+    if (!name) return res.status(400).json({ error: "navn_pakrevd" });
+    try {
+      const r = await pool.query(
+        `INSERT INTO vendor_showcase_products
+           (vendor_id, product_type, name, product_name, category, price, currency, description, image_url, status)
+         VALUES ($1, 'editing', $2, $2, $3, $4, $5, $6, $7, 'active')
+         RETURNING id`,
+        [
+          session.userId,
+          name,
+          category || "all",
+          price != null ? Number(price) : null,
+          currency || "NOK",
+          description || null,
+          imageUrl || null,
+        ],
+      );
+      res.json({ ok: true, id: r.rows[0].id });
+    } catch (err) {
+      console.error("[editing/vendor/products] create", err);
+      res.status(500).json({ error: "kunne_ikke_opprette_produkt" });
+    }
+  });
+
+  app.put("/api/editing/vendor/products/:id", async (req, res) => {
+    const session = await requireUserSession(req, res);
+    if (!session) return;
+    const { name, category, price, currency, description, imageUrl } = req.body || {};
+    try {
+      const r = await pool.query(
+        `UPDATE vendor_showcase_products
+            SET name = COALESCE($3, name),
+                product_name = COALESCE($3, product_name),
+                category = COALESCE($4, category),
+                price = $5,
+                currency = COALESCE($6, currency),
+                description = COALESCE($7, description),
+                image_url = COALESCE($8, image_url),
+                updated_at = NOW()
+          WHERE id = $1 AND vendor_id = $2
+          RETURNING id`,
+        [
+          req.params.id,
+          session.userId,
+          name ?? null,
+          category ?? null,
+          price != null ? Number(price) : null,
+          currency ?? null,
+          description ?? null,
+          imageUrl ?? null,
+        ],
+      );
+      if (!r.rows[0]) return res.status(404).json({ error: "ikke_funnet" });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[editing/vendor/products] update", err);
+      res.status(500).json({ error: "kunne_ikke_oppdatere_produkt" });
+    }
+  });
+
+  app.delete("/api/editing/vendor/products/:id", async (req, res) => {
+    const session = await requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const r = await pool.query(
+        `DELETE FROM vendor_showcase_products WHERE id = $1 AND vendor_id = $2 RETURNING id`,
+        [req.params.id, session.userId],
+      );
+      if (!r.rows[0]) return res.status(404).json({ error: "ikke_funnet" });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[editing/vendor/products] delete", err);
+      res.status(500).json({ error: "kunne_ikke_slette_produkt" });
+    }
+  });
+
+  app.post("/api/editing/vendor/products/:id/status", async (req, res) => {
+    const session = await requireUserSession(req, res);
+    if (!session) return;
+    const status = req.body?.status === "inactive" ? "inactive" : "active";
+    try {
+      const r = await pool.query(
+        `UPDATE vendor_showcase_products SET status = $3, updated_at = NOW()
+          WHERE id = $1 AND vendor_id = $2 RETURNING id`,
+        [req.params.id, session.userId, status],
+      );
+      if (!r.rows[0]) return res.status(404).json({ error: "ikke_funnet" });
+      res.json({ ok: true, status });
+    } catch (err) {
+      console.error("[editing/vendor/products] status", err);
+      res.status(500).json({ error: "kunne_ikke_endre_status" });
+    }
+  });
+
   // ── Vendor aksepterer (krever compliance) -> mint opplastings-token ──
   app.post("/api/editing/jobs/:id/accept", async (req, res) => {
     const session = await requireUserSession(req, res);
