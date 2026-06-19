@@ -108,7 +108,7 @@ const VENDOR_PROFILE_COLS = `
   compliance_gdpr_status, compliance_delivery_status, dpa_signed, nda_signed,
   scc_signed, tia_completed, subcontractors_allowed, portfolio_use_allowed,
   portfolio_submitted, payment_connected, dpa_document_key,
-  vendor_nda_governing_law, vendor_nda_url, vendor_nda_uploaded_at
+  vendor_nda_governing_law, vendor_nda_url, vendor_nda_uploaded_at, quality_flagged
 `;
 
 export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
@@ -255,6 +255,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
       for (const row of r.rows) {
         const summary = buildComplianceSummary(row as ComplianceProfile);
         if (!summary.cleared) continue; // kun vendors som oppfyller alle krav
+        if (row.quality_flagged) continue; // kvalitets-flaggede skjules til opprydding
         const prods = await pool.query(
           `SELECT category, name, product_name, price, currency
              FROM vendor_showcase_products
@@ -763,6 +764,104 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
     } catch (err) {
       console.error("[editing/vendor/nda] error", err);
       res.status(500).json({ error: "kunne_ikke_lagre_nda" });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // Kvalitet/tillit: fotograf-anmeldelser + leverings-klager.
+  // Mange klager → vendor flagges (skjules fra discovery) → kan avsluttes.
+  // ════════════════════════════════════════════════════════════════════
+  const QUALITY_FLAG_THRESHOLD = 3; // antall åpne klager før auto-flagg
+
+  // Fotograf anmelder vendor (etter levering/godkjenning).
+  app.post("/api/editing/jobs/:id/review", async (req, res) => {
+    const session = await requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const auth = await loadAuthorizedJob(req.params.id, session.userId);
+      if (!auth || auth.role !== "photographer") return res.status(404).json({ error: "ikke_funnet" });
+      if (!["delivered", "approved", "delivered_to_client"].includes(auth.job.status)) {
+        return res.status(400).json({ error: "kan_anmelde_kun_etter_levering" });
+      }
+      const rating = Math.max(1, Math.min(5, Number(req.body?.rating) || 0));
+      if (!rating) return res.status(400).json({ error: "rating_pakrevd" });
+      const vendorUserId = auth.job.vendor_id;
+      await pool.query(
+        `INSERT INTO editing_vendor_reviews (job_id, vendor_user_id, photographer_id, rating, aspects, comment)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6)
+         ON CONFLICT (job_id, photographer_id) WHERE job_id IS NOT NULL
+         DO UPDATE SET rating = EXCLUDED.rating, aspects = EXCLUDED.aspects, comment = EXCLUDED.comment, created_at = now()`,
+        [req.params.id, vendorUserId, session.userId, rating,
+         JSON.stringify(req.body?.aspects || {}), req.body?.comment ? String(req.body.comment).slice(0, 2000) : null],
+      );
+      // Recompute aggregat → vendor_onboarding_profiles (discovery + tier leser disse).
+      await pool.query(
+        `UPDATE vendor_onboarding_profiles p SET
+            rating = sub.avg_rating, review_count = sub.cnt, updated_at = now()
+           FROM (SELECT AVG(rating)::numeric(3,2) AS avg_rating, COUNT(*) AS cnt
+                   FROM editing_vendor_reviews WHERE vendor_user_id = $1) sub
+          WHERE p.user_id = $1`,
+        [vendorUserId],
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[editing/jobs/review] error", err);
+      res.status(500).json({ error: "kunne_ikke_anmelde" });
+    }
+  });
+
+  // Fotograf melder inn leverings-klage.
+  app.post("/api/editing/jobs/:id/complaint", async (req, res) => {
+    const session = await requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const auth = await loadAuthorizedJob(req.params.id, session.userId);
+      if (!auth || auth.role !== "photographer") return res.status(404).json({ error: "ikke_funnet" });
+      const category = ["quality", "deadline", "scope", "communication", "other"].includes(req.body?.category)
+        ? req.body.category : "other";
+      const vendorUserId = auth.job.vendor_id;
+      await pool.query(
+        `INSERT INTO editing_vendor_complaints (job_id, vendor_user_id, photographer_id, category, detail)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [req.params.id, vendorUserId, session.userId, category, req.body?.detail ? String(req.body.detail).slice(0, 4000) : null],
+      );
+      // Tell åpne klager + auto-flagg ved terskel.
+      const cnt = (await pool.query<{ open: string; total: string }>(
+        `SELECT COUNT(*) FILTER (WHERE status='open') AS open, COUNT(*) AS total
+           FROM editing_vendor_complaints WHERE vendor_user_id = $1`, [vendorUserId],
+      )).rows[0];
+      const openCount = Number(cnt?.open || 0);
+      const flagged = openCount >= QUALITY_FLAG_THRESHOLD;
+      await pool.query(
+        `UPDATE vendor_onboarding_profiles
+            SET open_complaint_count = $2, complaint_total = $3,
+                quality_flagged = quality_flagged OR $4,
+                quality_flagged_at = CASE WHEN $4 AND NOT quality_flagged THEN now() ELSE quality_flagged_at END,
+                updated_at = now()
+          WHERE user_id = $1`,
+        [vendorUserId, openCount, Number(cnt?.total || 0), flagged],
+      );
+      res.json({ ok: true, flagged });
+    } catch (err) {
+      console.error("[editing/jobs/complaint] error", err);
+      res.status(500).json({ error: "kunne_ikke_melde_klage" });
+    }
+  });
+
+  // Offentlig (innlogget) liste over en vendors anmeldelser — for discovery-profil.
+  app.get("/api/editing/vendors/:vendorUserId/reviews", async (req, res) => {
+    const session = await requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const r = await pool.query(
+        `SELECT rating, aspects, comment, created_at FROM editing_vendor_reviews
+          WHERE vendor_user_id = $1 ORDER BY created_at DESC LIMIT 50`,
+        [req.params.vendorUserId],
+      );
+      res.json({ reviews: r.rows });
+    } catch (err) {
+      console.error("[editing/vendor/reviews] error", err);
+      res.status(500).json({ error: "kunne_ikke_hente_anmeldelser" });
     }
   });
 
