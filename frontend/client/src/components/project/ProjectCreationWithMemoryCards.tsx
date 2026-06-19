@@ -4398,6 +4398,53 @@ useEffect(() => {
       {/* ==========================================
          SHOT LIST MANAGER
          ========================================== */}
+      {/* ==========================================
+         CAMERA DETECTION SECTION (før Shot List — velg utstyr først)
+         ========================================== */}
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+            <Videocam sx={{ fontSize: 28 }} /> Kamera & Utstyr
+          </Typography>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+            <TextField
+              label="Hovedkamera"
+              value={projectData.primaryCamera}
+              onChange={(e) => {
+                setProjectData(prev => ({ ...prev, primaryCamera: e.target.value }));
+                detectCameraInfo(e.target.value);
+              }}
+              size="small"
+              fullWidth
+              placeholder="f.eks. Sony A7S III"
+            />
+            <TextField
+              label="Backup-kamera"
+              value={projectData.backupCamera}
+              onChange={(e) => setProjectData(prev => ({ ...prev, backupCamera: e.target.value }))}
+              size="small"
+              fullWidth
+            />
+          </Stack>
+          {projectData.detectedLogFormats?.length > 0 && (
+            <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+              <Storage fontSize="small" color="primary" />
+              <Typography variant="body2">LOG formater: {projectData.detectedLogFormats?.join(', ')}</Typography>
+            </Stack>
+          )}
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<Movie />}
+            onClick={openDavinciScriptManager}
+            sx={{ mt: 2 }}
+            disabled={!projectData.davinciIntegrationEnabled}
+          >
+            Åpne DaVinci Script Manager
+          </Button>
+        </CardContent>
+      </Card>
+
       <Collapse in={projectData.projectType === 'wedding' || projectData.projectType === 'event' || projectData.projectType === 'portrait'}>
         <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
@@ -4458,49 +4505,20 @@ useEffect(() => {
       </Collapse>
 
       {/* ==========================================
-         CAMERA DETECTION SECTION
+         BACKUP-STRATEGI: Creatorhub One (alltid synlig — forklarer hvorfor)
          ========================================== */}
       <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
-            <Videocam sx={{ fontSize: 28 }} /> Kamera & Utstyr
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 1 }}>
+            <img src="/creatorhub-one-logo.svg" alt="Creatorhub One" style={{ width: 30, height: 30, objectFit: 'contain' }} /> Backup-strategi: Creatorhub One
           </Typography>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-            <TextField
-              label="Hovedkamera"
-              value={projectData.primaryCamera}
-              onChange={(e) => {
-                setProjectData(prev => ({ ...prev, primaryCamera: e.target.value }));
-                detectCameraInfo(e.target.value);
-              }}
-              size="small"
-              fullWidth
-              placeholder="f.eks. Sony A7S III"
-            />
-            <TextField
-              label="Backup-kamera"
-              value={projectData.backupCamera}
-              onChange={(e) => setProjectData(prev => ({ ...prev, backupCamera: e.target.value }))}
-              size="small"
-              fullWidth
-            />
-          </Stack>
-          {projectData.detectedLogFormats?.length > 0 && (
-            <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
-              <Storage fontSize="small" color="primary" />
-              <Typography variant="body2">LOG formater: {projectData.detectedLogFormats?.join(', ')}</Typography>
-            </Stack>
-          )}
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<Movie />}
-            onClick={openDavinciScriptManager}
-            sx={{ mt: 2 }}
-            disabled={!projectData.davinciIntegrationEnabled}
-          >
-            Åpne DaVinci Script Manager
-          </Button>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Creatorhub One er desktop-appen (Mac) som tar offsite-backup direkte fra minnekortene
+            under opptaket — til din egen Backblaze B2, ende-til-ende-verifisert (xxHash64). Vi ser
+            aldri filene. Dette sikrer råmaterialet mot kortfeil og tyveri allerede på sett, før noe
+            er redigert eller levert til kunde.
+          </Typography>
+          <OneDeskDownloadCard />
         </CardContent>
       </Card>
 
@@ -4537,7 +4555,7 @@ useEffect(() => {
                 onClick={() => setDeliverDialogOpen(true)}
                 sx={{ borderRadius: 2 }}
               >
-                📤 Lever til klient fra arkiv
+                Lever til klient fra arkiv
               </Button>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                 Velg filer som er backup'et til Backblaze og send som tilgangs-galleri. Klienten ser filene direkte fra B2 via Cloudflare-cache (ingen ekstra lagring eller egress-kost).
