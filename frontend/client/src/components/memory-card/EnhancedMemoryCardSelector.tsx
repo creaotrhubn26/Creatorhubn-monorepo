@@ -545,7 +545,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
     <Box sx={{ p: 2 }}>
       <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
         <MemoryCardIcon sx={{ color: theming.colors.primary }} />
-        Intelligent Memory Card Selection
+        Intelligent minnekort-anbefaling
       </Typography>
       
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>

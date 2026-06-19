@@ -237,6 +237,7 @@ import ClientActivityPanel from './showcase/ClientActivityPanel';
 
 // Import redigerings-marketplace discovery-panel (hyr eksternt redigeringsteam)
 import EditingVendorDiscoveryPanel from './editing-marketplace/EditingVendorDiscoveryPanel';
+import EditingVendorWorkspace from './editing-marketplace/EditingVendorWorkspace';
 
 // Import Story Arc Studio for Pro Editor Mode
 import StoryArcStudio from '../StoryArcStudio';
@@ -3181,9 +3182,17 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         role="main"
         aria-label="Dashboard hovedinnhold"
       >
+        {/* Redigeringsvendor-arbeidsområde — vises øverst for vendors (self-gating
+            til vendor_type='editing'; self-lokaliserer til engelsk for utenlandske). */}
+        {profession === 'vendor' && (
+          <Box sx={{ mb: 3 }}>
+            <EditingVendorWorkspace userId={userId} />
+          </Box>
+        )}
+
         {/* Admin Indicator - only shown when admin is logged in */}
         {isAdmin && (
-          <AdminIndicator 
+          <AdminIndicator
             userEmail={userEmail}
             profession={profession}
             variant="full"
@@ -7873,18 +7882,41 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             borderRadius: 3,
             border: `2px solid ${customBranding.color}40`,
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.45)',
-            color: '#edf0f7'
+            color: '#edf0f7',
+            // Dialogen er portalert utenfor dashboardets dark-tema-kaskade, så
+            // MUI-standard (hvite) Paper/Card/inputs i underkomponenter ble hvite.
+            // Kaskade dark-tema her dekker hele modal-innholdet (memory/pris/shot osv.).
+            '& .MuiPaper-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7' },
+            '& .MuiCard-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7', borderColor: `${customBranding.color}26` },
+            '& .MuiAccordion-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7' },
+            '& .MuiTypography-colorTextSecondary, & .MuiTypography-body2': { color: 'rgba(237,240,247,0.66)' },
+            '& .MuiOutlinedInput-root': { color: '#edf0f7', backgroundColor: 'rgba(255,255,255,0.04)', '& fieldset': { borderColor: `${customBranding.color}3d` }, '&:hover fieldset': { borderColor: `${customBranding.color}66` } },
+            '& .MuiInputLabel-root': { color: 'rgba(237,240,247,0.66)' },
+            '& .MuiInputBase-input': { color: '#edf0f7' },
+            '& .MuiSvgIcon-root': { color: 'rgba(237,240,247,0.8)' },
+            '& .MuiDivider-root': { borderColor: 'rgba(255,255,255,0.12)' },
       }
     }}
       >
-        <DialogTitle sx={{ 
-          textAlign: 'center', 
+        <DialogTitle sx={{
+          textAlign: 'center',
           pb: 1,
+          position: 'relative',
           background: `linear-gradient(135deg, ${customBranding.color}15 0%, ${customBranding.color}05 100%)`
     }}>
           <Typography variant="h5" component="div" sx={{ fontWeight: 600, color: theming.colors.primary }}>
             Opprett nytt prosjekt
           </Typography>
+          <IconButton
+            aria-label="Lukk"
+            onClick={() => {
+              setShowProjectCreation(false);
+              setShowProjectModal(false);
+            }}
+            sx={{ position: 'absolute', right: 8, top: 8, color: 'rgba(246,242,234,0.7)' }}
+          >
+            <Close />
+          </IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           {(showProjectCreation || showProjectModal) && (
