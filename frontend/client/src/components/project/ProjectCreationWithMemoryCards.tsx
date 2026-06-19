@@ -4408,6 +4408,8 @@ useEffect(() => {
               projectType={projectData.projectType}
               culture={projectData.weddingCulture}
               totalDays={projectData.totalDays}
+              shots={projectData.shotList as unknown as any}
+              onShotCreate={(shot: any) => setProjectData(prev => ({ ...prev, shotList: [...prev.shotList, shot] }))}
               onShotUpdate={(shot: ShotListItem) => setProjectData(prev => ({ ...prev, shotList: prev.shotList.map((s) => s.id === shot.id ? shot : s) }))}
               onShotDelete={(shotId: string) => setProjectData(prev => ({ ...prev, shotList: prev.shotList.filter((s) => s.id !== shotId) }))}
             />

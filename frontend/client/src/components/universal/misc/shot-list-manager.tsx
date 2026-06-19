@@ -70,6 +70,10 @@ interface Shot {
 
 interface ShotListManagerProps {
   projectId?: string;
+  // Lokal-modus (opprettelse-modal uten projectId): kontrollert liste + callbacks
+  // i stedet for API. Lagres når prosjektet opprettes.
+  shots?: Shot[];
+  onShotCreate?: (shot: Shot) => void;
   onShotUpdate?: (shot: Shot) => void;
   onShotDelete?: (shotId: string) => void;
   projectType?: string;
@@ -111,9 +115,11 @@ const normalizeShotListResponse = (response: unknown): Shot[] => {
   return [];
 };
 
-export default function ShotListManager({ 
-  projectId, 
-  onShotUpdate, 
+export default function ShotListManager({
+  projectId,
+  shots: controlledShots,
+  onShotCreate,
+  onShotUpdate,
   onShotDelete,
   projectType = 'general',
   culture = 'norsk',
@@ -194,7 +200,9 @@ export default function ShotListManager({
     queryFn: () => apiRequest(`/api/shot-list/${projectId || 'default'}`),
     retry: false,
   });
-  const shots = normalizeShotListResponse(shotListResponse);
+  // Lokal-modus når ingen projectId (opprettelse-modal): bruk kontrollert liste.
+  const isLocalMode = !projectId;
+  const shots = isLocalMode ? (controlledShots ?? []) : normalizeShotListResponse(shotListResponse);
 
   // Mutation for updating shot data
   const updateShotListManager = useMutation({
@@ -234,17 +242,36 @@ export default function ShotListManager({
     }
   });
 
+  // Persist-wrappere: lokal-modus bruker parent-callbacks, ellers API-mutasjoner.
+  const persistCreate = useCallback((payload: Omit<Shot, 'id'>) => {
+    if (isLocalMode) {
+      const newShot = { ...payload, id: `local-${Date.now()}-${Math.round(Math.random() * 1e6)}` } as Shot;
+      onShotCreate?.(newShot);
+    } else {
+      createShot.mutate(payload);
+    }
+  }, [isLocalMode, onShotCreate, createShot]);
+
+  const persistUpdate = useCallback((shot: Shot) => {
+    if (isLocalMode) onShotUpdate?.(shot);
+    else { updateShotListManager.mutate(shot); onShotUpdate?.(shot); }
+  }, [isLocalMode, onShotUpdate, updateShotListManager]);
+
+  const persistDelete = useCallback((shotId: string) => {
+    if (isLocalMode) onShotDelete?.(shotId);
+    else deleteShot.mutate(shotId);
+  }, [isLocalMode, onShotDelete, deleteShot]);
+
   // Handle shot status change (with notification on complete)
   const handleStatusChange = useCallback((shotId: string, newStatus: Shot['status']) => {
     const shot = shots.find(s => s.id === shotId);
     if (shot) {
-      const updatedShot = { 
-        ...shot, 
+      const updatedShot = {
+        ...shot,
         status: newStatus,
         completedAt: newStatus === 'Completed' ? new Date() : undefined
   };
-      updateShotListManager.mutate(updatedShot);
-      onShotUpdate?.(updatedShot);
+      persistUpdate(updatedShot);
       
       // Mobile notification when shot completed (inspired by Day of Timeline)
       if (newStatus === 'Completed' && isMobile) {
@@ -339,72 +366,112 @@ export default function ShotListManager({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
-  // Generate template-based shot suggestions
-  const generateTemplateShots = (template: string, projectType: string, culture: string, hours: number) => {
+  // Generate template-based shot suggestions — nøklet på PROSJEKTTYPE
+  // (bryllup er kultur-bevisst). Dekker alle prosjekttyper.
+  const generateTemplateShots = (_template: string, projectType: string, culture: string, hours: number) => {
     const baseShots: Shot[] = [];
-    
-    if (template === 'wedding' && projectType === 'wedding') {
-      // Wedding-specific shots based on culture
-      const weddingShots = {
+    type Mini = { title: string; scene: string; shotType: Shot['shotType']; duration: number; priority: Shot['priority'] };
+    const toShots = (prefix: string, list: Mini[], note: string, equipment: string[] = ['Kamera', 'Objektiv']): Shot[] =>
+      list.map((s, i) => ({
+        id: `${prefix}-${i}`,
+        title: s.title,
+        scene: s.scene,
+        shotType: s.shotType,
+        duration: s.duration,
+        priority: s.priority,
+        description: s.title,
+        status: 'Planned' as const,
+        equipment,
+        notes: note,
+      }));
+
+    if (projectType === 'wedding') {
+      // Bryllup: kultur-bevisste maler
+      const weddingShots: Record<string, Mini[]> = {
         norsk: [
-          { title: 'Bridal Preparation', scene: 'Getting Ready', shotType: 'Close-up' as const, duration: 30, priority: 'High' as const },
-          { title: 'Groom Preparation', scene: 'Getting Ready', shotType: 'Medium' as const, duration: 10, priority: 'Medium' as const },
-          { title: 'First Look', scene: 'Pre-Ceremony', shotType: 'Wide' as const, duration: 10, priority: 'Critical' as const },
-          { title: 'Ceremony Processional', scene: 'Ceremony', shotType: 'Wide' as const, duration: 10, priority: 'Critical' as const },
-          { title: 'Ring Exchange', scene: 'Ceremony', shotType: 'Close-up' as const, duration:  60, priority: 'Critical' as const },
-          { title: 'First Kiss', scene: 'Ceremony', shotType: 'Wide' as const, duration:  30, priority: 'Critical' as const },
-          { title: 'Recessional', scene: 'Ceremony', shotType: 'Wide' as const, duration: 10, priority: 'High' as const },
-          { title: 'Family Photos', scene: 'Post-Ceremony', shotType: 'Medium' as const, duration: 60, priority: 'High' as const },
-          { title: 'Reception Entrance', scene: 'Reception', shotType: 'Wide' as const, duration: 10, priority: 'High' as const },
-          { title: 'First Dance', scene: 'Reception', shotType: 'Wide' as const, duration: 20, priority: 'Critical' as const },
-          { title: 'Cake Cutting', scene: 'Reception', shotType: 'Close-up' as const, duration:  90, priority: 'High' as const },
-          { title: 'Bouquet Toss', scene: 'Reception', shotType: 'Wide' as const, duration:  60, priority: 'Medium' as const }
+          { title: 'Forberedelser brud', scene: 'Getting Ready', shotType: 'Close-up', duration: 30, priority: 'High' },
+          { title: 'Forberedelser brudgom', scene: 'Getting Ready', shotType: 'Medium', duration: 10, priority: 'Medium' },
+          { title: 'First Look', scene: 'Pre-Ceremony', shotType: 'Wide', duration: 10, priority: 'Critical' },
+          { title: 'Inntog seremoni', scene: 'Ceremony', shotType: 'Wide', duration: 10, priority: 'Critical' },
+          { title: 'Ringutveksling', scene: 'Ceremony', shotType: 'Close-up', duration: 60, priority: 'Critical' },
+          { title: 'Første kyss', scene: 'Ceremony', shotType: 'Wide', duration: 30, priority: 'Critical' },
+          { title: 'Familiebilder', scene: 'Post-Ceremony', shotType: 'Medium', duration: 60, priority: 'High' },
+          { title: 'Første dans', scene: 'Reception', shotType: 'Wide', duration: 20, priority: 'Critical' },
+          { title: 'Kakeskjæring', scene: 'Reception', shotType: 'Close-up', duration: 90, priority: 'High' },
         ],
         indisk: [
-          { title: 'Mehndi Ceremony', scene: 'Pre-Wedding', shotType: 'Close-up' as const, duration: 30, priority: 'High' as const },
-          { title: 'Sangam Ceremony', scene: 'Pre-Wedding', shotType: 'Wide' as const, duration: 10, priority: 'High' as const },
-          { title: 'Baraat Procession', scene: 'Wedding Day', shotType: 'Wide' as const, duration: 60, priority: 'Critical' as const },
-          { title: 'Jaimala Exchange', scene: 'Wedding Day', shotType: 'Close-up' as const, duration: 10, priority: 'Critical' as const },
-          { title: 'Kanyadaan', scene: 'Wedding Day', shotType: 'Wide' as const, duration: 10, priority: 'Critical' as const },
-          { title: 'Pheras', scene: 'Wedding Day', shotType: 'Wide' as const, duration: 90, priority: 'Critical' as const },
-          { title: 'Sindoor Ceremony', scene: 'Wedding Day', shotType: 'Close-up' as const, duration:  60, priority: 'High' as const },
-          { title: 'Reception Grand Entrance', scene: 'Reception', shotType: 'Wide' as const, duration: 30, priority: 'High' as const }
+          { title: 'Mehndi-seremoni', scene: 'Pre-Wedding', shotType: 'Close-up', duration: 30, priority: 'High' },
+          { title: 'Baraat-prosesjon', scene: 'Wedding Day', shotType: 'Wide', duration: 60, priority: 'Critical' },
+          { title: 'Jaimala', scene: 'Wedding Day', shotType: 'Close-up', duration: 10, priority: 'Critical' },
+          { title: 'Kanyadaan', scene: 'Wedding Day', shotType: 'Wide', duration: 10, priority: 'Critical' },
+          { title: 'Pheras', scene: 'Wedding Day', shotType: 'Wide', duration: 90, priority: 'Critical' },
+          { title: 'Reception grand entrance', scene: 'Reception', shotType: 'Wide', duration: 30, priority: 'High' },
         ],
         arabisk: [
-          { title: 'Henna Night', scene: 'Pre-Wedding', shotType: 'Close-up' as const, duration: 20, priority: 'High' as const },
-          { title: 'Zaffa Procession', scene: 'Wedding Day', shotType: 'Wide' as const, duration: 30, priority: 'Critical' as const },
-          { title: 'Katb Al-Kitab', scene: 'Wedding Day', shotType: 'Wide' as const, duration: 10, priority: 'Critical' as const },
-          { title: 'Ring Exchange', scene: 'Wedding Day', shotType: 'Close-up' as const, duration:  60, priority: 'Critical' as const },
-          { title: 'Reception Entrance', scene: 'Reception', shotType: 'Wide' as const, duration: 10, priority: 'High' as const },
-          { title: 'Dabke Dance', scene: 'Reception', shotType: 'Wide' as const, duration: 30, priority: 'High' as const }
-        ]
-    };
-      
-      const cultureShots = weddingShots[culture as keyof typeof weddingShots] || weddingShots.norsk;
-      baseShots.push(...cultureShots.map((shot, index) => ({
-        id: `wedding-${culture}-${index}`,
-        ...shot,
-        description: `${shot.title} - ${culture} wedding tradition`,
-        status: 'Planned' as const,
-        equipment: ['Camera','Lens','Tripod'],
-        notes: `Important moment in ${culture} wedding tradition`
-    })));
-  } else if (template === 'corporate') {
-      baseShots.push(
-        { id: 'corp-', title: 'Company Overview', scene: 'Introduction', shotType: 'Wide', duration:  60, priority: 'High', description: 'Company building exterior', status: 'Planned', equipment: ['Camera','Wide Lens'] },
-        { id: 'corp-', title: 'CEO Interview', scene: 'Interview', shotType: 'Close-up', duration: 30, priority: 'Critical', description: 'CEO speaking about company vision', status: 'Planned', equipment: ['Camera','Microphone','Lighting'] },
-        { id: 'corp-', title: 'Team Working', scene: 'Office', shotType: 'Medium', duration: 10, priority: 'Medium', description: 'Employees working in office', status: 'Planned', equipment: ['Camera','Tripod'] },
-        { id: 'corp-', title: 'Product Showcase', scene: 'Product', shotType: 'Detail', duration: 10, priority: 'High', description: 'Product close-up shots', status: 'Planned', equipment: ['Camera','Macro Lens','Lighting'] }
-      );
-  } else if (template === 'event') {
-      baseShots.push(
-        { id: 'event-', title: 'Venue Setup', scene: 'Pre-Event', shotType: 'Wide', duration:  60, priority: 'Medium', description: 'Empty venue before setup', status: 'Planned', equipment: ['Camera','Wide Lens'] },
-        { id: 'event-', title: 'Guest Arrival', scene: 'Arrival', shotType: 'Medium', duration: 10, priority: 'High', description: 'Guests arriving and mingling', status: 'Planned', equipment: ['Camera','Telephoto Lens'] },
-        { id: 'event-', title: 'Main Event', scene: 'Event', shotType: 'Wide', duration: 60, priority: 'Critical', description: 'Main event activities', status: 'Planned', equipment: ['Camera', 'Tripod','Audio'] },
-        { id: 'event-', title: 'Networking', scene: 'Networking', shotType: 'Medium', duration: 20, priority: 'Medium', description: 'People networking and socializing', status: 'Planned', equipment: ['Camera','Telephoto Lens'] }
-      );
-  }
-    
+          { title: 'Henna-kveld', scene: 'Pre-Wedding', shotType: 'Close-up', duration: 20, priority: 'High' },
+          { title: 'Zaffa-prosesjon', scene: 'Wedding Day', shotType: 'Wide', duration: 30, priority: 'Critical' },
+          { title: 'Katb Al-Kitab', scene: 'Wedding Day', shotType: 'Wide', duration: 10, priority: 'Critical' },
+          { title: 'Ringutveksling', scene: 'Wedding Day', shotType: 'Close-up', duration: 60, priority: 'Critical' },
+          { title: 'Dabke-dans', scene: 'Reception', shotType: 'Wide', duration: 30, priority: 'High' },
+        ],
+      };
+      const key = (culture || 'norsk') as keyof typeof weddingShots;
+      const cultureShots = weddingShots[key] || weddingShots.norsk;
+      baseShots.push(...toShots(`wedding-${key}`, cultureShots, `Viktig øyeblikk – ${key} bryllupstradisjon`, ['Kamera', 'Objektiv', 'Stativ']));
+    } else {
+      // Øvrige prosjekttyper
+      const byType: Record<string, Mini[]> = {
+        portrait: [
+          { title: 'Headshot', scene: 'Portrett', shotType: 'Close-up', duration: 20, priority: 'Critical' },
+          { title: 'Halvfigur', scene: 'Portrett', shotType: 'Medium', duration: 15, priority: 'High' },
+          { title: 'Helfigur', scene: 'Portrett', shotType: 'Wide', duration: 15, priority: 'High' },
+          { title: 'Miljøportrett', scene: 'Lokasjon', shotType: 'Wide', duration: 20, priority: 'Medium' },
+          { title: 'Detalj / rekvisitter', scene: 'Detaljer', shotType: 'Detail', duration: 10, priority: 'Low' },
+        ],
+        event: [
+          { title: 'Venue / oppsett', scene: 'Pre-Event', shotType: 'Wide', duration: 30, priority: 'Medium' },
+          { title: 'Gjester ankommer', scene: 'Ankomst', shotType: 'Medium', duration: 20, priority: 'High' },
+          { title: 'Hovedprogram', scene: 'Event', shotType: 'Wide', duration: 60, priority: 'Critical' },
+          { title: 'Taler', scene: 'Event', shotType: 'Close-up', duration: 30, priority: 'High' },
+          { title: 'Mingling / nettverk', scene: 'Networking', shotType: 'Medium', duration: 20, priority: 'Medium' },
+        ],
+        commercial: [
+          { title: 'Hero-produkt', scene: 'Produkt', shotType: 'Detail', duration: 30, priority: 'Critical' },
+          { title: 'Produkt i bruk', scene: 'Lifestyle', shotType: 'Medium', duration: 30, priority: 'High' },
+          { title: 'Merkevare / logo', scene: 'Branding', shotType: 'Detail', duration: 15, priority: 'High' },
+          { title: 'B-roll', scene: 'Coverage', shotType: 'Wide', duration: 20, priority: 'Medium' },
+        ],
+        video: [
+          { title: 'Etablerings-shot', scene: 'Intro', shotType: 'Wide', duration: 20, priority: 'High' },
+          { title: 'Intervju', scene: 'Interview', shotType: 'Close-up', duration: 45, priority: 'Critical' },
+          { title: 'B-roll', scene: 'Coverage', shotType: 'Medium', duration: 30, priority: 'High' },
+          { title: 'Cutaways / detaljer', scene: 'Detaljer', shotType: 'Detail', duration: 15, priority: 'Medium' },
+          { title: 'Avslutning', scene: 'Outro', shotType: 'Wide', duration: 15, priority: 'Medium' },
+        ],
+        music: [
+          { title: 'Opptreden vidvinkel', scene: 'Performance', shotType: 'Wide', duration: 60, priority: 'Critical' },
+          { title: 'Instrument nærbilde', scene: 'Performance', shotType: 'Close-up', duration: 30, priority: 'High' },
+          { title: 'Artist-portrett', scene: 'Portrett', shotType: 'Medium', duration: 20, priority: 'High' },
+          { title: 'Publikum', scene: 'Crowd', shotType: 'Wide', duration: 20, priority: 'Medium' },
+        ],
+        family: [
+          { title: 'Gruppebilde', scene: 'Familie', shotType: 'Wide', duration: 20, priority: 'Critical' },
+          { title: 'Candid barn', scene: 'Candid', shotType: 'Medium', duration: 20, priority: 'High' },
+          { title: 'Individuelle portretter', scene: 'Portrett', shotType: 'Close-up', duration: 20, priority: 'High' },
+          { title: 'Lifestyle / hjemme', scene: 'Lifestyle', shotType: 'Wide', duration: 20, priority: 'Medium' },
+        ],
+        product: [
+          { title: 'Hero-shot', scene: 'Produkt', shotType: 'Detail', duration: 30, priority: 'Critical' },
+          { title: 'Vinkler / 360', scene: 'Produkt', shotType: 'Medium', duration: 30, priority: 'High' },
+          { title: 'Makro / detalj', scene: 'Detaljer', shotType: 'Detail', duration: 20, priority: 'High' },
+          { title: 'Kontekst / skala', scene: 'Lifestyle', shotType: 'Wide', duration: 15, priority: 'Medium' },
+          { title: 'Emballasje', scene: 'Produkt', shotType: 'Detail', duration: 10, priority: 'Low' },
+        ],
+      };
+      const list = byType[projectType] || byType.portrait;
+      baseShots.push(...toShots(projectType || 'shot', list, `${projectType || 'Generell'}-dekning`));
+    }
+
     const priorityWeight: Record<Shot['priority'], number> = {
       Critical: 4,
       High: 3,
@@ -445,9 +512,9 @@ export default function ShotListManager({
     // Add shots to the existing shots array
     suggestedShots.forEach((shot) => {
       const { id: _ignored, ...payload } = shot;
-      createShot.mutate(payload);
+      persistCreate(payload);
   });
-}, [template, projectType, culture, estimatedHours, createShot]);
+}, [template, projectType, culture, estimatedHours, persistCreate]);
 
   return (
     <Box sx={{ p: isMobile ? 1 : 2 }}>
@@ -460,7 +527,7 @@ export default function ShotListManager({
         flexDirection: isMobile ? 'column' : 'row',
         gap: isMobile ? 1 : 0 }}>
         <Typography variant={isMobile ? "h5" : "h4"} component="h1" sx={{ color: theming.colors.primary }}>
-          {isMobile ? '🎯 Shot List' : 'Shot List Manager'}
+          {isMobile ? 'Shot-liste' : 'Shot-liste'}
         </Typography>
         
         {/* Completion Progress (Mobile-First) */}
@@ -523,11 +590,11 @@ export default function ShotListManager({
               disabled={shots.length > 0}
               size={isMobile ? 'small' : 'medium'}
             >
-              {isMobile ? 'Template' : 'Generate from Template'}
+              {isMobile ? 'Mal' : 'Generer fra mal'}
             </Button>
           )}
           {!isMobile && (
-            <Tooltip title="Quick add">
+            <Tooltip title="Hurtig-legg til">
               <IconButton
                 onClick={openCreateDialog}
                 sx={{ border: `1px solid ${theming.colors.primary}30` }}
@@ -536,7 +603,7 @@ export default function ShotListManager({
               </IconButton>
             </Tooltip>
           )}
-          <Button 
+          <Button
             variant="contained"
             startIcon={theming.getThemedIcon('add')}
             onClick={openCreateDialog}
@@ -544,7 +611,7 @@ export default function ShotListManager({
             size={isMobile ? 'small' : 'medium'}
             sx={theming.getThemedButtonSx()}
           >
-            {isMobile ? 'Add' : 'Add Shot'}
+            {isMobile ? 'Legg til' : 'Legg til shot'}
           </Button>
         </Box>
       </Box>
@@ -749,7 +816,7 @@ export default function ShotListManager({
                                     color="error"
                                     onClick={() => {
                                       setSelectedShot(shot);
-                                      deleteShot.mutate(shot.id);
+                                      persistDelete(shot.id);
                                     }}
                                   >
                                     <Delete fontSize="small" />
@@ -849,7 +916,7 @@ export default function ShotListManager({
                       <IconButton
                         onClick={() => {
                           setSelectedShot(shot);
-                          deleteShot.mutate(shot.id);
+                          persistDelete(shot.id);
                       }}
                         color="error"
                       >
@@ -1009,12 +1076,9 @@ export default function ShotListManager({
               };
 
               if (editingShot) {
-                updateShotListManager.mutate({
-                  ...editingShot,
-                  ...basePayload
-                });
+                persistUpdate({ ...editingShot, ...basePayload });
               } else {
-                createShot.mutate(basePayload);
+                persistCreate(basePayload);
               }
               setShowDialog(false);
               setEditingShot(null);
@@ -1088,7 +1152,7 @@ export default function ShotListManager({
             <Button
               color="error"
               onClick={() => {
-                deleteShot.mutate(selectedShot.id);
+                persistDelete(selectedShot.id);
                 setShowDetailsDialog(false);
               }}
               startIcon={<Delete />}
