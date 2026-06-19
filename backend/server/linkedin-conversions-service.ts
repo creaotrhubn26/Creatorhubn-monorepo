@@ -136,6 +136,21 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
   expired?: number;
 }> {
   const MAX_SEND_ATTEMPTS = 5;
+
+  // LM-10: pre-expire events eldre enn LinkedIns vindu (~90d) FØR vi
+  // prøver send. Ellers ville stale rader fortsatt blitt retryet til
+  // attempts-cap → terminal-fail med ubrukelig error-melding. Eksplisitt
+  // 'expired' status gjør det observerbart.
+  const expiredRes = await pool.query(
+    `UPDATE linkedin_conversion_events
+        SET send_status = 'failed',
+            last_send_error = 'expired: occurred_at older than 90d'
+      WHERE send_status IN ('pending','retrying')
+        AND occurred_at < NOW() - INTERVAL '90 days'
+      RETURNING id`,
+  );
+  const expired = expiredRes.rowCount ?? 0;
+
   const due = await pool.query(
     `SELECT id::text, event_type, event_name, conversion_urn,
             user_email_hash, user_phone_hash,
@@ -152,7 +167,7 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
   );
 
   if (!due.rowCount) {
-    return { attempted: 0, sent: 0, skipped: 0, failed: 0 };
+    return { attempted: 0, sent: 0, skipped: 0, failed: 0, expired };
   }
 
   const resolved = await resolveDefaultLinkedInOrg(pool);
