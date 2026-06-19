@@ -41,6 +41,8 @@ interface VendorProfile {
   vendorUserId: string;
   vendorName: string;
   services: Service[];
+  compliance?: { isInternational?: boolean };
+  country?: string;
 }
 
 interface Props {
@@ -236,6 +238,19 @@ export default function EditingRequestDialog({ vendorUserId, open, onClose, onCr
                 {total.toFixed(0)} {services[0]?.currency || "NOK"}
               </Typography>
             </Box>
+            {/* MVA (formidler-modell). Utenlandsk vendor → snudd avregning hos kjøper. */}
+            {profileQuery.data?.compliance?.isInternational ? (
+              <Alert severity="info" sx={{ "& .MuiAlert-message": { fontSize: 12.5 } }}>
+                {locale === "en"
+                  ? "Cross-border service: you self-account 25% MVA (reverse charge) in your VAT return — no VAT is added to what you pay the vendor. Creatorhub's platform fee is billed separately + 25% MVA."
+                  : "Tjeneste fra utlandet: du selv-avregner 25 % MVA (snudd avregning) i MVA-meldingen din — ingen MVA legges på det du betaler vendoren. Creatorhubs plattformgebyr faktureres separat + 25 % MVA."}
+              </Alert>
+            ) : (
+              <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "text.secondary" }}>
+                <span>{locale === "en" ? "+ 25% MVA" : "+ 25 % MVA"}</span>
+                <span>{(total * 0.25).toFixed(0)} {services[0]?.currency || "NOK"} ({locale === "en" ? "incl. " : "inkl. "}{(total * 1.25).toFixed(0)})</span>
+              </Box>
+            )}
             <Alert severity="info">{t("rq_escrow_note", locale)}</Alert>
             {error && <Alert severity="error">{error}</Alert>}
           </Stack>

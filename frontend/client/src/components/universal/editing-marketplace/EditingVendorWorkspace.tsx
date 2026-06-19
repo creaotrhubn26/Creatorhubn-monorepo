@@ -37,6 +37,7 @@ import { apiRequest } from "@/lib/queryClient";
 import EditingJobChat from "./EditingJobChat";
 import PartnerProgramDashboard from "./PartnerProgramDashboard";
 import EditingVendorCatalog from "./EditingVendorCatalog";
+import VendorNdaCard from "./VendorNdaCard";
 import {
   t,
   pillarLabel,
@@ -366,6 +367,7 @@ export default function EditingVendorWorkspace({ userId }: Props) {
               </CardContent>
             </Card>
           )}
+          <VendorNdaCard locale={locale === "en" ? "en" : "no"} />
         </Box>
       )}
 
