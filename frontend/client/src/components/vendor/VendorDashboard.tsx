@@ -55,6 +55,38 @@ import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 
+// Tospråklig innhold — utenlandske vendors ser engelsk ved default.
+const STR = {
+  no: {
+    title: 'Leverandør Dashboard', subtitle: 'Plugin-leverandør og produkthåndtering',
+    pushSettings: 'Push-varsler innstillinger', close: 'Lukk',
+    stats: ['Totale Produkter', 'Aktive Bestillinger', 'Plugin Downloads', 'Månedlig Omsetning'],
+    activeOps: 'Aktive Vendor-operasjoner', complete: 'fullført',
+    pluginPerf: 'Plugin Ytelse', noPluginData: 'Ingen plugin-data tilgjengelig', recentActivity: 'Nylig Aktivitet',
+    uploadPlugin: 'Last opp Plugin', syncLicenses: 'Synkroniser Lisenser', genReport: 'Generer Rapport',
+    acts: [
+      ['Native Instruments Kontakt 7 oppdatert', 'Ny versjon 7.8.1 tilgjengelig for nedlasting', '2 timer siden'],
+      ['Bestilling #128470 fullført', 'Komplete 14 Ultimate levert til kunde', '4 timer siden'],
+      ['Lisenser synkronisert', '156 aktive lisenser oppdatert i systemet', '6 timer siden'],
+      ['Månedlig rapport generert', 'August 2025 salgsrapport er klar', '1 dag siden'],
+    ],
+  },
+  en: {
+    title: 'Vendor Dashboard', subtitle: 'Plugin vendor & product management',
+    pushSettings: 'Push notification settings', close: 'Close',
+    stats: ['Total products', 'Active orders', 'Plugin downloads', 'Monthly revenue'],
+    activeOps: 'Active vendor operations', complete: 'complete',
+    pluginPerf: 'Plugin performance', noPluginData: 'No plugin data available', recentActivity: 'Recent activity',
+    uploadPlugin: 'Upload plugin', syncLicenses: 'Sync licenses', genReport: 'Generate report',
+    acts: [
+      ['Native Instruments Kontakt 7 updated', 'New version 7.8.1 available for download', '2 hours ago'],
+      ['Order #128470 completed', 'Komplete 14 Ultimate delivered to customer', '4 hours ago'],
+      ['Licenses synced', '156 active licenses updated in the system', '6 hours ago'],
+      ['Monthly report generated', 'August 2025 sales report is ready', '1 day ago'],
+    ],
+  },
+};
+
 interface VendorDashboardProps {
   profession: 'vendor';
   userId: string;
@@ -202,91 +234,42 @@ export default function VendorDashboard({
     queryKey: ['/api/editing/vendor/me'],
     queryFn: () => apiRequest('/api/editing/vendor/me'),
   });
-  const foreignEditingVendor = Boolean(editingMe?.isEditingVendor && editingMe?.isForeign);
+  const isEditingVendor = Boolean(editingMe?.isEditingVendor);
+  // Utenlandsk vendor → engelsk ved default (gjelder generisk plugin-/produkt-vendor).
+  const locale = editingMe?.isForeign ? 'en' : 'no';
+  const L = STR[locale];
 
   // Get active vendor operations
   const activeOperations = vendorOperationService.getActiveOperations();
 
   const vendorStatsCards = [
-    {
-      title: 'Totale Produkter',
-      value: vendorStats?.totalProducts || 0,
-      icon: <Inventory />,
-      color: '#e74c30',
-      trend: '+12%'
-},
-    {
-      title: 'Aktive Bestillinger', 
-      value: vendorStats?.activeOrders || 0,
-      icon: <ShoppingCart />,
-      color: '#3498db',
-      trend: '+8%'
-},
-    {
-      title: 'Plugin Downloads',
-      value: vendorStats?.pluginDownloads || 0,
-      icon: <CloudDownload />,
-      color: '#9b59b0',
-      trend: '+25%'
-},
-    {
-      title: 'Månedlig Omsetning',
-      value: `${vendorStats?.monthlyRevenue || 0} NOK`,
-      icon: <AttachMoney />,
-      color: '#27ae60',
-      trend: '+15%'
-}
+    { title: L.stats[0], value: vendorStats?.totalProducts || 0, icon: <Inventory />, color: '#e74c30', trend: '+12%' },
+    { title: L.stats[1], value: vendorStats?.activeOrders || 0, icon: <ShoppingCart />, color: '#3498db', trend: '+8%' },
+    { title: L.stats[2], value: vendorStats?.pluginDownloads || 0, icon: <CloudDownload />, color: '#9b59b0', trend: '+25%' },
+    { title: L.stats[3], value: `${vendorStats?.monthlyRevenue || 0} NOK`, icon: <AttachMoney />, color: '#27ae60', trend: '+15%' },
   ];
 
   const recentVendorActivities = [
-    {
-      type: 'plugin_upload',
-      title: 'Native Instruments Kontakt 7 oppdatert',
-      description: 'Ny versjon 7.8.1 tilgjengelig for nedlasting',
-      time: '2 timer siden',
-      icon: <CloudUpload sx={{ color: '#9b59b6'}} />
-  },
-    {
-      type: 'order_completed',
-      title: 'Bestilling #128470 fullført',
-      description: 'Komplete 14 Ultimate levert til kunde',
-      time: '4 timer siden', 
-      icon: <Assignment sx={{ color: '#27ae60'}} />
-  },
-    {
-      type: 'license_sync',
-      title: 'Lisenser synkronisert',
-      description: '156 aktive lisenser oppdatert i systemet',
-      time: '6 timer siden',
-      icon: <Sync sx={{ color: '#3498db'}} />
-  },
-    {
-      type: 'analytics_generated',
-      title: 'Månedlig rapport generert',
-      description: 'August 2025 salgsrapport er klar',
-      time: '1 dag siden',
-      icon: <Assessment sx={{ color: '#e74c3c'}} />
-  }
+    { type: 'plugin_upload', title: L.acts[0][0], description: L.acts[0][1], time: L.acts[0][2], icon: <CloudUpload sx={{ color: '#9b59b6'}} /> },
+    { type: 'order_completed', title: L.acts[1][0], description: L.acts[1][1], time: L.acts[1][2], icon: <Assignment sx={{ color: '#27ae60'}} /> },
+    { type: 'license_sync', title: L.acts[2][0], description: L.acts[2][1], time: L.acts[2][2], icon: <Sync sx={{ color: '#3498db'}} /> },
+    { type: 'analytics_generated', title: L.acts[3][0], description: L.acts[3][1], time: L.acts[3][2], icon: <Assessment sx={{ color: '#e74c3c'}} /> },
   ];
 
-  // #15: utenlandske redigeringsvendors ser KUN det engelske arbeidsområdet
-  // (hele dashboardet på engelsk — ingen norsk generisk vendor-chrome).
-  if (foreignEditingVendor) {
+  // Redigeringsvendors (foto/video) ser KUN redigerings-arbeidsområdet:
+  // Partner-dashboard + oppdrag/compliance/katalog/chat — IKKE den generiske
+  // plugin-/produkt-vendor-chromen. Workspace self-lokaliserer (no/en) ut fra land.
+  if (isEditingVendor) {
     return (
-      <Box sx={{ p: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, color: '#27ae60', mb: 2, display: 'flex', alignItems: 'center' }}>
-          <Store sx={{ mr: 2, fontSize: 40 }} /> Vendor Dashboard
-        </Typography>
+      <Box sx={{ p: { xs: 1.5, md: 3 } }}>
         <EditingVendorWorkspace userId={userId} />
       </Box>
     );
   }
 
+  // Generisk plugin-/produkt-vendor-dashboard (kun ikke-redigeringsvendors).
   return (
     <Box sx={{ p:  3 }}>
-      {/* Redigeringsvendor-arbeidsområde (self-gating: vises kun for vendor_type='editing') */}
-      <EditingVendorWorkspace userId={userId} />
-
       {/* Vendor Header */}
       <Box sx={{ mb:  4 }}>
         <Typography variant="h4" sx={{  
@@ -296,10 +279,10 @@ export default function VendorDashboard({
           alignItems: 'center',
           mb: 1  }}>
           <Store sx={{ mr: 2, fontSize: 40}} />
-          Leverandør Dashboard
+          {L.title}
         </Typography>
         <Typography variant="h6" sx={{  color: 'text.secondary' }}>
-          Plugin-leverandør og produkthåndtering
+          {L.subtitle}
         </Typography>
         
         {/* Feature Analytics Display */}
@@ -320,7 +303,7 @@ export default function VendorDashboard({
             />
           </Box>
           {isSupported && (
-            <Tooltip title="Push-varsler innstillinger">
+            <Tooltip title={L.pushSettings}>
               <IconButton onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
                 {pushEnabled ? <NotificationsActive /> : <Notifications />}
               </IconButton>
@@ -383,7 +366,7 @@ export default function VendorDashboard({
               alignItems: 'center',
               mb: 2  }}>
               <CloudUpload sx={{ mr:  2 }} />
-              Aktive Vendor-operasjoner
+              {L.activeOps}
             </Typography>
             <List>
               {activeOperations.map((operation) => (
@@ -415,7 +398,7 @@ export default function VendorDashboard({
                           sx={{ mb:  1 }}
                         />
                         <Typography variant="caption" sx={{ color: 'text.secondary'}}>
-                          {operation.progress}% fullført
+                          {operation.progress}% {L.complete}
                         </Typography>
                       </Box>
                   }
@@ -440,7 +423,7 @@ export default function VendorDashboard({
                 alignItems: 'center',
                 mb: 3  }}>
                 <Extension sx={{ mr:  2 }} />
-                Plugin Ytelse
+                {L.pluginPerf}
               </Typography>
               
               {pluginMetrics?.topPlugins?.map((plugin: any, index: number) => (
@@ -467,7 +450,7 @@ export default function VendorDashboard({
                 </Box>
               )) || (
                 <Typography variant="body2" sx={{ color: 'text.secondary', textAlign: 'center', py:  3 }}>
-                  Ingen plugin-data tilgjengelig
+                  {L.noPluginData}
                 </Typography>
               )}
             </CardContent>
@@ -485,7 +468,7 @@ export default function VendorDashboard({
                 alignItems: 'center',
                 mb: 3  }}>
                 <TrendingUp sx={{ mr:  2 }} />
-                Nylig Aktivitet
+                {L.recentActivity}
               </Typography>
               
               <List sx={{ p:  0 }}>
@@ -531,7 +514,7 @@ export default function VendorDashboard({
             bgcolor: '#9b59b0', '&:hover': { bgcolor: '#8e44ad',}
         }}
         >
-          Last opp Plugin
+          {L.uploadPlugin}
         </Button>
         
         <Button
@@ -546,7 +529,7 @@ export default function VendorDashboard({
             color: '#3498db','&:hover': { borderColor: '#2980b0', bgcolor: '#3498db10',}
         }}
         >
-          Synkroniser Lisenser
+          {L.syncLicenses}
         </Button>
         
         <Button
@@ -561,21 +544,21 @@ export default function VendorDashboard({
             color: '#e74c30', '&:hover': { borderColor: '#c03920', bgcolor: '#e74c3c10',}
         }}
         >
-          Generer Rapport
+          {L.genReport}
         </Button>
       </Box>
 
       {/* Push Notification Settings Dialog */}
       {isSupported && (
         <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Push-varsler innstillinger</DialogTitle>
+          <DialogTitle>{L.pushSettings}</DialogTitle>
           <DialogContent>
             <Box sx={{ mt: 2 }}>
               <PushNotificationSettings userId={userId} showDescription={false} />
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+            <Button onClick={() => setPushSettingsOpen(false)}>{L.close}</Button>
           </DialogActions>
         </Dialog>
       )}
