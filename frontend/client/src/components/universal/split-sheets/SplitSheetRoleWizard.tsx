@@ -265,25 +265,26 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
   });
   const vendorCatalog: VendorCatalog[] = vendorsData?.vendors ?? [];
 
-  // Valutakurser (base NOK) for å konvertere utenlandsk vendor-kostnad → NOK.
-  // open.er-api.com: gratis, ingen nøkkel. rates[X] = X per 1 NOK → 1 X = 1/rates[X] NOK.
+  // Valutakurs → NOK. Backend /api/fx/nok: Norges Bank offisiell daglig referansekurs
+  // (primær), open.er-api.com (fallback). rates[X] = NOK per 1 enhet av X.
   const { data: fxData, dataUpdatedAt: fxFetchedAt, isFetching: fxFetching, refetch: refetchFx } = useQuery<{
     rates?: Record<string, number>;
-    time_last_update_utc?: string;
-    time_next_update_utc?: string;
+    source?: string;
+    asOf?: string | null;
   }>({
-    queryKey: ["fx-base-nok"],
-    queryFn: () => fetch("https://open.er-api.com/v6/latest/NOK").then((r) => r.json()),
+    queryKey: ["fx-nok"],
+    queryFn: () => apiRequest("/api/fx/nok"),
     enabled: open,
     staleTime: 60 * 60 * 1000, // 1t: kursen refetches automatisk når den blir stale
     refetchOnWindowFocus: true,
   });
   const fxRates = fxData?.rates || {};
-  const fxLastUpdated = fxData?.time_last_update_utc || (fxFetchedAt ? new Date(fxFetchedAt).toUTCString() : null);
+  const fxSource = fxData?.source || "";
+  const fxAsOf = fxData?.asOf || (fxFetchedAt ? new Date(fxFetchedAt).toISOString().slice(0, 10) : null);
   const toNok = (amount: number, currency: string): number => {
     if (!currency || currency === "NOK") return amount;
-    const r = fxRates[currency.toUpperCase()];
-    return r && r > 0 ? amount / r : amount; // fallback: anta NOK om kurs mangler
+    const r = fxRates[currency.toUpperCase()]; // NOK per enhet
+    return r && r > 0 ? amount * r : amount; // fallback: anta NOK om kurs mangler
   };
   // Ekstern deltakers kostnad i NOK (konvertert fra katalog-valuta).
   const costNok = (p: Participant): number => {
@@ -708,7 +709,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                                 <Typography variant="caption" sx={{ color: p.vendorIsForeign ? '#ffb74d' : 'rgba(246,242,234,0.6)' }}>
                                   Kostnad: {externalCostOf(p).toLocaleString('nb-NO')} {p.vendorCurrency}
                                   {p.vendorCurrency && p.vendorCurrency !== 'NOK' && (
-                                    <> · ≈ {Math.round(costNok(p)).toLocaleString('nb-NO')} kr (1 {p.vendorCurrency} = {fxRates[p.vendorCurrency.toUpperCase()] ? (1 / fxRates[p.vendorCurrency.toUpperCase()]).toFixed(2) : '—'} kr)</>
+                                    <> · ≈ {Math.round(costNok(p)).toLocaleString('nb-NO')} kr (1 {p.vendorCurrency} = {fxRates[p.vendorCurrency.toUpperCase()] ? fxRates[p.vendorCurrency.toUpperCase()].toFixed(2) : '—'} kr)</>
                                   )}
                                   {' · '}{p.vendorIsForeign ? 'utland → snudd avregning (ingen norsk MVA på andelen)' : 'innenlands → 25 % MVA'}
                                 </Typography>
@@ -969,7 +970,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                   onClick={() => refetchFx()}
                   label={fxFetching
                     ? 'Henter kurs…'
-                    : `Kurs sist oppdatert: ${fxLastUpdated ? new Date(fxLastUpdated).toLocaleString('nb-NO') : '—'} · open.er-api.com · trykk for å oppdatere`}
+                    : `Kurs: ${fxSource === 'norges-bank' ? 'Norges Bank' : (fxSource || '—')} · ${fxAsOf || '—'} · trykk for å oppdatere`}
                   sx={{ mt: 1, height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.5, fontSize: 11 } }}
                 />
               )}
