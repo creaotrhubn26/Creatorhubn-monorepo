@@ -158,11 +158,7 @@ struct LeadgridLeadInboxView: View {
     }
 
     private func formatRelative(_ iso: String) -> String {
-        let f1 = ISO8601DateFormatter()
-        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let d = f1.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else {
-            return iso
-        }
+        guard let d = LeadgridDate.parse(iso) else { return iso }
         let mins = Int(Date().timeIntervalSince(d) / 60)
         if mins < 60 { return "\(mins)m" }
         if mins < 24 * 60 { return "\(mins / 60)t" }
