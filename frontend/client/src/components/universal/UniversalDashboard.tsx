@@ -237,6 +237,7 @@ import ClientActivityPanel from './showcase/ClientActivityPanel';
 
 // Import redigerings-marketplace discovery-panel (hyr eksternt redigeringsteam)
 import EditingVendorDiscoveryPanel from './editing-marketplace/EditingVendorDiscoveryPanel';
+import EditingVendorWorkspace from './editing-marketplace/EditingVendorWorkspace';
 
 // Import Story Arc Studio for Pro Editor Mode
 import StoryArcStudio from '../StoryArcStudio';
@@ -3181,9 +3182,17 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         role="main"
         aria-label="Dashboard hovedinnhold"
       >
+        {/* Redigeringsvendor-arbeidsområde — vises øverst for vendors (self-gating
+            til vendor_type='editing'; self-lokaliserer til engelsk for utenlandske). */}
+        {profession === 'vendor' && (
+          <Box sx={{ mb: 3 }}>
+            <EditingVendorWorkspace userId={userId} />
+          </Box>
+        )}
+
         {/* Admin Indicator - only shown when admin is logged in */}
         {isAdmin && (
-          <AdminIndicator 
+          <AdminIndicator
             userEmail={userEmail}
             profession={profession}
             variant="full"
