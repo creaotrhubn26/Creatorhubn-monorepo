@@ -78,6 +78,13 @@ function platformFeeCents(amountCents: number): number {
   return Math.max(0, Math.round(amountCents * pct));
 }
 
+// ÉN sannhetskilde for plattform-gebyret som VISES — leser samme env som charges.
+function platformFeeInfo(): { pct: number; prototype: boolean } {
+  const prototype = process.env.EDITING_PROTOTYPE_NO_FEE === "1";
+  const pct = prototype ? 0 : Number(process.env.EDITING_PLATFORM_FEE_PCT || "0.15") * 100;
+  return { pct: Math.round(pct * 10) / 10, prototype };
+}
+
 const VENDOR_PROFILE_COLS = `
   user_id, vendor_name, vendor_type, business_info, logo_url, tagline, rating, review_count,
   turnaround_days, availability_status, approval_status, is_foreign, country, is_eea,
@@ -1028,6 +1035,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
         country: row?.country || "NO",
         isForeign: !!row?.is_foreign,
         compliance,
+        platformFee: platformFeeInfo(),
       });
     } catch (err) {
       console.error("[editing/vendor/me] error", err);

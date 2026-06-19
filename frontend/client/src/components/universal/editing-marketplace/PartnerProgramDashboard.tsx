@@ -164,6 +164,7 @@ type MeLike = {
   vendorName?: string | null;
   country?: string | null;
   compliance?: { pillars?: Record<string, { status: string }>; cleared?: boolean; verificationPercent?: number; tier?: string };
+  platformFee?: { pct?: number; prototype?: boolean };
 } | null | undefined;
 
 interface Props {
@@ -262,6 +263,12 @@ export default function PartnerProgramDashboard({ me, locale = "no", onStartVeri
   const TIER_IDX: Record<string, number> = { registered: 0, verified: 1, certified: 2, premium: 3 };
   const activeTierIdx = me?.compliance?.tier != null ? (TIER_IDX[me.compliance.tier] ?? 1) : 1;
   const PROGRESS = me?.compliance?.verificationPercent != null ? me.compliance.verificationPercent : 71;
+  // ÉN sannhetskilde for plattform-gebyr (samme env backend charges).
+  const feeLabel = me?.platformFee
+    ? (me.platformFee.prototype
+        ? (locale === "en" ? "0% (prototype)" : "0 % (prototype)")
+        : `${me.platformFee.pct ?? 0}%${locale === "en" ? " + VAT" : " + MVA"}`)
+    : (locale === "en" ? "10% + VAT" : "10 % + MVA");
   const ring = `conic-gradient(${C.accent} ${PROGRESS * 3.6}deg, rgba(255,255,255,0.08) 0deg)`;
 
   return (
@@ -458,7 +465,7 @@ export default function PartnerProgramDashboard({ me, locale = "no", onStartVeri
                 <Box key={r[0]} sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", py: 0.6, fontSize: 13, borderBottom: `1px solid ${C.border}` }}>
                   <Box sx={{ color: C.sub }}>{r[0]}</Box>
                   <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, fontWeight: 600 }}>
-                    {r[1]}
+                    {i === 2 ? feeLabel : r[1]}
                     {i < 2 && <CheckCircleIcon sx={{ fontSize: 15, color: C.green }} />}
                   </Box>
                 </Box>
