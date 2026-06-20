@@ -188,6 +188,14 @@ export default function PartnerApplicationForm() {
       const draft = JSON.parse(localStorage.getItem("partner_application_draft") || "null");
       if (draft && typeof draft === "object" && draft.companyName !== undefined) { setF((p) => ({ ...p, ...draft })); return; }
     } catch { /* ignore */ }
+    // Forhåndsutfyll fra invitasjons-lenke (?email=&company=&name=).
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const qEmail = q.get("email"); const qCompany = q.get("company"); const qName = q.get("name");
+      if (qEmail || qCompany || qName) {
+        setF((p) => ({ ...p, contactEmail: qEmail || p.contactEmail, companyName: qCompany || p.companyName, contactName: qName || p.contactName }));
+      }
+    } catch { /* ignore */ }
     const region = (navigator.language || "").split("-")[1]?.toUpperCase();
     if (region && DIAL[region]) onCountryChange(region);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -214,10 +222,14 @@ export default function PartnerApplicationForm() {
           services: selectedServices,
           consentContact, consentPrivacy: true, locale,
         }),
-      })) as { ok?: boolean; alreadyReceived?: boolean };
-      setDupMsg(resp?.alreadyReceived
-        ? (locale === "en" ? "We already have an active application from this email — we'll be in touch." : "Vi har allerede en aktiv søknad fra denne e-posten — vi tar kontakt.")
-        : "");
+      })) as { ok?: boolean; alreadyReceived?: boolean; alreadyApproved?: boolean; reopened?: boolean };
+      setDupMsg(
+        resp?.alreadyApproved
+          ? (locale === "en" ? "You're already an approved Creatorhub partner — check your inbox for your portal link (we can resend it on request)." : "Du er allerede godkjent Creatorhub-partner — sjekk innboksen for portal-lenken (vi kan sende den på nytt ved behov).")
+          : resp?.alreadyReceived
+            ? (locale === "en" ? "We already have an active application from this email — we'll be in touch." : "Vi har allerede en aktiv søknad fra denne e-posten — vi tar kontakt.")
+            : "",
+      );
       try { localStorage.removeItem("partner_application_draft"); } catch { /* */ }
       setState("done");
     } catch {
