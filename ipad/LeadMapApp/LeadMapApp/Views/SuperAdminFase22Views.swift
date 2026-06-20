@@ -114,6 +114,7 @@ struct SuperAdminObservabilityView: View {
             }
         }
         .navigationTitle("Observability")
+        .superAdminBackdrop(.platform)
         .task { await load() }
         .refreshable { await load() }
         .overlay(alignment: .bottom) {

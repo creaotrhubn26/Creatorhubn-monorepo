@@ -76,6 +76,7 @@ struct SuperAdminLeadsGrowthView: View {
             }
         }
         .navigationTitle("Leads-vekst")
+        .superAdminBackdrop(.b2bFunnel)
         .task { await load() }
         .refreshable { await load() }
     }
@@ -428,6 +429,7 @@ struct SuperAdminResendStatusView: View {
             }
         }
         .navigationTitle("Resend")
+        .superAdminBackdrop(.platform)
         .task { await load() }
         .refreshable { await load() }
     }
@@ -796,6 +798,7 @@ struct SuperAdminB2ArchiveView: View {
             }
         }
         .navigationTitle("B2 Archive")
+        .superAdminBackdrop(.platform)
         .task { await load() }
         .refreshable { await load() }
     }
@@ -926,6 +929,7 @@ struct SuperAdminMigrationsStatusView: View {
             }
         }
         .navigationTitle("Migrasjoner")
+        .superAdminBackdrop(.platform)
         .task { await load() }
         .refreshable { await load() }
         .overlay(alignment: .bottom) {

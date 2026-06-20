@@ -83,6 +83,7 @@ struct SuperAdminAgencyLeadsView: View {
             }
         }
         .navigationTitle("Markedssjef-leads")
+        .superAdminBackdrop(.b2bFunnel)
         .task { await load() }
         .refreshable { await load() }
         .sheet(item: Binding(

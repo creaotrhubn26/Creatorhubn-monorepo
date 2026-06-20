@@ -48,6 +48,7 @@ struct SuperAdminAdsConfigsView: View {
             }
         }
         .navigationTitle("Ads-configs")
+        .superAdminBackdrop(.adTech)
         .task { await load() }
         .refreshable { await load() }
         .sheet(item: $selectedConfig) { cfg in
@@ -600,6 +601,7 @@ struct SuperAdminAdsApprovalsView: View {
             }
         }
         .navigationTitle("Ads-godkjenninger")
+        .superAdminBackdrop(.adTech)
         .task { await load() }
         .refreshable { await load() }
         .overlay(alignment: .bottom) {

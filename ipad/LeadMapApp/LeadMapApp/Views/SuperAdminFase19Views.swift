@@ -388,6 +388,7 @@ struct SuperAdminCustomerSuccessView: View {
             }
         }
         .navigationTitle("Customer Success")
+        .superAdminBackdrop(.b2bFunnel)
         .task { await load() }
         .refreshable { await load() }
     }
@@ -520,6 +521,7 @@ struct SuperAdminB2BCockpitView: View {
             }
         }
         .navigationTitle("B2B-funnel")
+        .superAdminBackdrop(.b2bFunnel)
         .task { await load() }
         .refreshable { await load() }
     }
@@ -631,6 +633,7 @@ struct SuperAdminLinkedInCockpitView: View {
             }
         }
         .navigationTitle("LinkedIn Cockpit")
+        .superAdminBackdrop(.marketing)
         .task { await load() }
         .refreshable { await load() }
         .overlay(alignment: .bottom) {
@@ -769,6 +772,7 @@ struct SuperAdminCaseStudiesView: View {
             }
         }
         .navigationTitle("Case Studies")
+        .superAdminBackdrop(.marketing)
         .task { await load() }
         .refreshable { await load() }
     }
