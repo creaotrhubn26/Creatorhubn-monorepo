@@ -76,6 +76,10 @@ docker/
 # Whitelistet 2026-06-07 — disse er kilden til sannhet for produkt-positionering og
 # må følges med i versjonkontroll for å holde landing-/pitch-/blog-arbeid i sync.
 !THE-ROLE-ROOM-*.md
+# LEADGRID-strategi-dokumenter (produktdok, content-plan, outreach-plan)
+# Whitelistet 2026-06-20 — Leadgrid har samme rolle som flaggskip nr. 2 under CreatorHub;
+# disse må følges med i versjonkontroll for å holde landing-/pitch-/byrå-akkvisisjon i sync.
+!LEADGRID-*.md
 docs/
 !docs/
 !docs/role-room/
