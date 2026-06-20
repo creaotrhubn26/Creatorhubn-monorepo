@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CastingPlannerPanel } from './components/CastingPlannerPanel';
 import { CastingLandingPage } from './components/CastingLandingPage';
 import TheRoleRoomLanding from '@/pages/theroleroom-landing';
+import RoleRoomGdprNotice from '@/components/role-room/RoleRoomGdprNotice';
 import LeadgridLanding from '@/pages/leadgrid-landing';
 import LeadgridPersonvern from '@/pages/leadgrid-personvern';
 import LeadgridSuperadminPage from '@/pages/leadgrid-superadmin';
@@ -749,6 +750,7 @@ export default function CastingStandaloneApp() {
     <QueryClientProvider client={castingQueryClient}>
       <MuiThemeProvider theme={muiTheme}>
         <CssBaseline />
+        <RoleRoomGdprNotice />
         <AuthProvider>
           <EnhancedMasterIntegrationProvider>
             <CastingStandaloneAppContent />
