@@ -9,7 +9,7 @@
 import React, { useMemo, useState } from "react";
 import {
   Box, Card, CardContent, Typography, TextField, MenuItem, Button, Stack,
-  FormControlLabel, Checkbox, Alert, CircularProgress, Chip, ThemeProvider, createTheme,
+  FormControlLabel, Checkbox, Alert, CircularProgress, Chip, ThemeProvider, createTheme, Autocomplete,
 } from "@mui/material";
 import VerifiedUserIcon from "@mui/icons-material/VerifiedUser";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
@@ -79,6 +79,14 @@ const STR = {
 };
 const WHY_ICONS = [EventAvailableIcon, CloudUploadIcon, PaymentsIcon, StarIcon];
 
+// Landskode (dial code) per land — settes automatisk på telefon ved landsvalg.
+const DIAL: Record<string, string> = {
+  NO: "+47", GB: "+44", US: "+1", BD: "+880", IN: "+91", DE: "+49", SE: "+46",
+  DK: "+45", PL: "+48", PH: "+63", PK: "+92", ES: "+34", FR: "+33", NL: "+31",
+};
+
+interface BrregCompany { navn: string; organisasjonsnummer: string; }
+
 export default function PartnerApplicationForm() {
   const [locale, setLocale] = useState<Locale>("en");
   const s = STR[locale];
@@ -99,7 +107,7 @@ export default function PartnerApplicationForm() {
   }), []);
 
   const [f, setF] = useState({
-    companyName: "", country: "GB", contactName: "", contactEmail: "", phone: "", website: "",
+    companyName: "", country: "GB", contactName: "", contactEmail: "", phone: "+44", website: "",
     registrationNumber: "", vatNumber: "", teamSize: "", services: "", pricingModel: "per_image",
     currency: "USD", priceRange: "", portfolioUrl: "", notes: "",
   });
@@ -111,6 +119,35 @@ export default function PartnerApplicationForm() {
   const isForeign = f.country !== "NO";
   const nonEea = f.country !== "__other" && !EEA.has(f.country);
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
+
+  // Brreg-søk (kun Norge): søk på bedriftsnavn → autofyll navn + org.nr.
+  const [brregOptions, setBrregOptions] = useState<BrregCompany[]>([]);
+  const [brregLoading, setBrregLoading] = useState(false);
+  const brregTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchBrreg = (term: string) => {
+    if (brregTimer.current) clearTimeout(brregTimer.current);
+    if (!term || term.trim().length < 2) { setBrregOptions([]); return; }
+    brregTimer.current = setTimeout(async () => {
+      setBrregLoading(true);
+      try {
+        const r = await fetch(`https://data.brreg.no/enhetsregisteret/api/enheter?navn=${encodeURIComponent(term.trim())}*&size=10`);
+        const j = await r.json();
+        const list = j?._embedded?.enheter || [];
+        setBrregOptions(list.map((e: { navn: string; organisasjonsnummer: string }) => ({ navn: e.navn, organisasjonsnummer: e.organisasjonsnummer })));
+      } catch { setBrregOptions([]); } finally { setBrregLoading(false); }
+    }, 300);
+  };
+
+  // Landsvalg: sett landskode på telefon automatisk + nullstill org.nr for ikke-Norge.
+  const onCountryChange = (cc: string) => {
+    setF((p) => {
+      const prevDial = DIAL[p.country] || "";
+      const dial = DIAL[cc] || "";
+      const phone = !p.phone.trim() || p.phone.trim() === prevDial ? dial : p.phone;
+      return { ...p, country: cc, phone, registrationNumber: cc === "NO" ? p.registrationNumber : "" };
+    });
+    setBrregOptions([]);
+  };
 
   async function submit() {
     if (!f.companyName.trim() || !f.contactName.trim() || !f.contactEmail.includes("@") || !consentPrivacy) {
@@ -192,9 +229,32 @@ export default function PartnerApplicationForm() {
               <Card sx={{ bgcolor: BRAND.card, border: `1px solid ${BRAND.border}`, backdropFilter: "blur(6px)" }}>
                 <CardContent sx={{ p: { xs: 2, md: 3 } }}>
                   <Stack spacing={2}>
-                    <TextField label={s.company} value={f.companyName} onChange={(e) => set("companyName", e.target.value)} required fullWidth />
+                    {f.country === "NO" ? (
+                      <Autocomplete
+                        freeSolo
+                        options={brregOptions}
+                        loading={brregLoading}
+                        filterOptions={(x) => x}
+                        getOptionLabel={(o) => (typeof o === "string" ? o : o.navn)}
+                        inputValue={f.companyName}
+                        onInputChange={(_, v, reason) => { if (reason === "input") { set("companyName", v); searchBrreg(v); } }}
+                        onChange={(_, val) => { if (val && typeof val !== "string") setF((p) => ({ ...p, companyName: val.navn, registrationNumber: val.organisasjonsnummer })); }}
+                        renderOption={(props, o) => (
+                          <li {...props} key={o.organisasjonsnummer}>
+                            {o.navn} <span style={{ opacity: 0.55, marginLeft: 6, fontSize: 12 }}>· {o.organisasjonsnummer}</span>
+                          </li>
+                        )}
+                        renderInput={(params) => (
+                          <TextField {...params} label={locale === "en" ? "Company name (search Brønnøysund)" : "Firmanavn (søk i Brønnøysund)"} required
+                            InputProps={{ ...params.InputProps, endAdornment: <>{brregLoading ? <CircularProgress size={18} /> : null}{params.InputProps.endAdornment}</> }} />
+                        )}
+                        fullWidth
+                      />
+                    ) : (
+                      <TextField label={s.company} value={f.companyName} onChange={(e) => set("companyName", e.target.value)} required fullWidth />
+                    )}
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                      <TextField select label={s.country} value={f.country} onChange={(e) => set("country", e.target.value)} sx={{ flex: 1 }}>
+                      <TextField select label={s.country} value={f.country} onChange={(e) => onCountryChange(e.target.value)} sx={{ flex: 1 }}>
                         {COUNTRIES.map(([c, label]) => <MenuItem key={c} value={c}>{label}</MenuItem>)}
                       </TextField>
                       <TextField label={s.team} type="number" value={f.teamSize} onChange={(e) => set("teamSize", e.target.value)} sx={{ width: 140 }} />
