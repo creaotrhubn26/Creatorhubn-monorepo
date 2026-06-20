@@ -82,6 +82,13 @@ final class AppState {
     var roleInOrg: String?
     var locationConsentGranted: Bool = false
 
+    // ── Super-admin (fase 18) ──────────────────────────────────
+    /// User-level role fra /api/auth/user (uavhengig av active org).
+    /// 'super_admin' låser opp SuperAdminHub for Daniel's B2B-pipeline.
+    var userRole: String?
+    /// True hvis user.role == 'super_admin' eller user.isPlatformAdmin.
+    var isSuperAdmin: Bool { userRole == "super_admin" }
+
     // ── Min dag (PR #616) ───────────────────────────────────────
     var workloadLeads: [WorkloadLead] = []
     var quota: QuotaProgress?
@@ -221,6 +228,7 @@ final class AppState {
             }
             await loadOrganizations()
             await loadOrgContext()
+            await loadUserRole()
             await startHeartbeatIfNeeded()
             startNotificationsPolling()
             await refreshAnnotations()
@@ -241,6 +249,20 @@ final class AppState {
             }
         } catch {
             print("[AppState] loadOrganizations failed: \(error)")
+        }
+    }
+
+    /// Last user-level role fra /api/auth/user (fase 18: super-admin-deteksjon).
+    /// Setter `userRole` slik at `isSuperAdmin` kan styre tilgang til SuperAdminHub.
+    func loadUserRole() async {
+        guard let api else { return }
+        do {
+            let resp = try await api.fetchAuthUser()
+            if let user = resp.user {
+                self.userRole = user.role
+            }
+        } catch {
+            print("[AppState] loadUserRole failed: \(error)")
         }
     }
 
