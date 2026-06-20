@@ -460,6 +460,10 @@ import { setupTheRoleRoomSitemapRoutes } from "./theroleroom-sitemap-routes";
 import { setupAdminRoleRoomEconomyRoutes } from "./admin-room-role-room-economy-routes";
 import { setupAdminPlatformCostSyncRoutes } from "./admin-room-platform-cost-sync-routes";
 import { setupAdminPlatformStatusRoutes } from "./admin-room-platform-status-routes";
+import { setupAdminLeadsGrowthRoutes } from "./admin-leads-growth-routes";
+import { setupAdminSocialConnectionsStatusRoutes } from "./admin-social-connections-status-routes";
+import { setupAdminCompetitorReportRoutes } from "./admin-competitor-report-routes";
+import { setupAdminResendStatusRoutes } from "./admin-resend-status-routes";
 import { setupAdminMigrationsRoutes } from "./admin-room-migrations-routes";
 import { setupPresenceHeartbeatRoutes } from "./presence-heartbeat-routes";
 import { setupAdminPartnersRoutes } from "./admin-room-partners-routes";
@@ -16630,6 +16634,26 @@ setupAdminPlatformStatusRoutes({
   requireAdminRoomAccess,
   logAdminActivity,
   getRoleRoomStripeClient,
+});
+
+// ── Fase 21: Leads-growth (B2B + per-org)
+setupAdminLeadsGrowthRoutes({
+  app, pool, getActiveSessionFromRequest, requireAdminRoomAccess, logAdminActivity,
+});
+
+// ── Fase 21: Social-connections-status (Facebook/IG/LinkedIn/TikTok/YouTube)
+setupAdminSocialConnectionsStatusRoutes({
+  app, pool, getActiveSessionFromRequest, requireAdminRoomAccess, logAdminActivity,
+});
+
+// ── Fase 21: Competitor-rapport (Claude-generert SWOT per konkurrent)
+setupAdminCompetitorReportRoutes({
+  app, pool, getActiveSessionFromRequest, requireAdminRoomAccess, logAdminActivity,
+});
+
+// ── Fase 21: Resend-status (transactional email health)
+setupAdminResendStatusRoutes({
+  app, pool, getActiveSessionFromRequest, requireAdminRoomAccess, logAdminActivity,
 });
 
 // ── Migrations — admin-trigger av migrate.sh fra Admin Room

@@ -1387,6 +1387,93 @@ extension APIClient {
     }
 }
 
+// MARK: - Fase 21: Resterende admin-room-paritet
+
+extension APIClient {
+
+    // -- Leads growth (B2B + per-org månedlig vekst) ---------------
+
+    func fetchLeadsGrowth(period: String = "12m", scope: String = "b2b") async throws -> LeadsGrowthResponse {
+        try await get("/api/admin-room/leads-growth?period=\(period)&scope=\(scope)")
+    }
+
+    // -- Social connections status ---------------------------------
+
+    func fetchSocialConnectionsStatus(orgId: String? = nil) async throws -> SocialConnectionsStatusResponse {
+        let qs = orgId.map { "?orgId=\($0)" } ?? ""
+        return try await get("/api/admin-room/social-connections/status\(qs)")
+    }
+
+    // -- Competitor report (Claude SWOT per konkurrent) ------------
+
+    func fetchCompetitorReport(competitorId: String) async throws -> CompetitorReportResponse {
+        try await get("/api/admin-room/lead-map/leads/\(competitorId)/competitor-report")
+    }
+
+    // -- Resend status ---------------------------------------------
+
+    func fetchResendStatus() async throws -> ResendStatusResponse {
+        try await get("/api/admin-room/resend/status")
+    }
+
+    // -- Post drafts (eksisterende endpoint) -----------------------
+
+    func fetchPostDrafts(status: String? = nil, platform: String? = nil) async throws -> MarketingPostDraftsResponse {
+        var qs: [String] = []
+        if let status { qs.append("status=\(status)") }
+        if let platform { qs.append("platform=\(platform)") }
+        let q = qs.isEmpty ? "" : "?" + qs.joined(separator: "&")
+        return try await get("/api/role-room/agent/post-drafts\(q)")
+    }
+
+    func deletePostDraft(id: String) async throws {
+        try await delete("/api/role-room/agent/post-drafts/\(id)")
+    }
+
+    func publishPostDraft(id: String) async throws {
+        try await post("/api/role-room/agent/post-drafts/\(id)/publish", body: [:])
+    }
+
+    // -- Content calendar (eksisterende endpoint) ------------------
+
+    func fetchContentCalendar(brandKey: String? = nil) async throws -> ContentCalendarResponse {
+        let qs = brandKey.map { "?brandKey=\($0)" } ?? ""
+        return try await get("/api/role-room/marketing-cockpit/content-calendar\(qs)")
+    }
+
+    // -- What's new (eksisterende endpoint) ------------------------
+
+    func fetchWhatsNew() async throws -> WhatsNewResponse {
+        try await get("/api/admin-room/whats-new")
+    }
+
+    func fetchPublicWhatsNew() async throws -> WhatsNewResponse {
+        try await get("/api/whats-new")
+    }
+
+    // -- B2 Archive (eksisterende endpoint) ------------------------
+
+    func fetchB2ArchiveUsage(roleRoom: Bool = false) async throws -> B2ArchiveUsage {
+        let path = roleRoom ? "/api/role-room/admin/b2-archive/usage" : "/api/admin/b2-archive/usage"
+        return try await get(path)
+    }
+
+    func fetchB2ArchiveFiles(roleRoom: Bool = false) async throws -> B2ArchiveFilesResponse {
+        let path = roleRoom ? "/api/role-room/admin/b2-archive/files" : "/api/admin/b2-archive/files"
+        return try await get(path)
+    }
+
+    // -- Migrations status (eksisterende endpoint) -----------------
+
+    func fetchMigrationsStatus() async throws -> MigrationsStatus {
+        try await get("/api/admin-room/migrations/status")
+    }
+
+    func runMigrations() async throws {
+        try await post("/api/admin-room/migrations/run", body: [:])
+    }
+}
+
 enum APIError: Error {
     case invalidResponse
     case statusCode(Int)

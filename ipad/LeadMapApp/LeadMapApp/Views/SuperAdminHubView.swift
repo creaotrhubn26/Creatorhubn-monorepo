@@ -169,6 +169,50 @@ struct SuperAdminHubView: View {
                         } label: {
                             Label("API-helse (24t)", systemImage: "waveform.path.ecg")
                         }
+                        NavigationLink {
+                            SuperAdminResendStatusView(api: api)
+                        } label: {
+                            Label("Resend (email)", systemImage: "envelope.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminMigrationsStatusView(api: api)
+                        } label: {
+                            Label("Migrasjoner", systemImage: "arrow.triangle.swap")
+                        }
+                        NavigationLink {
+                            SuperAdminB2ArchiveView(api: api)
+                        } label: {
+                            Label("B2 Archive", systemImage: "externaldrive.connected.to.line.below")
+                        }
+                    }
+
+                    // Fase 21: Vekst + Sosial + Innhold
+                    Section("Vekst & innhold") {
+                        NavigationLink {
+                            SuperAdminLeadsGrowthView(api: api)
+                        } label: {
+                            Label("Leads-vekst (B2B)", systemImage: "chart.bar.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminSocialConnectionsView(api: api)
+                        } label: {
+                            Label("Sosiale koblinger", systemImage: "link.circle.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminPostDraftsView(api: api)
+                        } label: {
+                            Label("Post-drafts", systemImage: "doc.text.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminContentCalendarView(api: api)
+                        } label: {
+                            Label("Content-kalender", systemImage: "calendar")
+                        }
+                        NavigationLink {
+                            SuperAdminWhatsNewView(api: api)
+                        } label: {
+                            Label("What's New", systemImage: "sparkles.rectangle.stack.fill")
+                        }
                     }
                 }
             }
