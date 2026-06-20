@@ -2034,6 +2034,13 @@ export default function ProducerMediaPanel({
     || sessionRoleForVault === 'admin'
     || sessionRoleForVault === 'super_admin'
   );
+  // Godkjenningsmyndighet for innsyns-forespørsler (admin/super_admin/director).
+  const canDecideAccessVaultReveal = !isClientReviewerMode && (
+    sessionRoleForVault === 'admin'
+    || sessionRoleForVault === 'super_admin'
+    || sessionRoleForVault === 'director'
+    || sessionRoleForVault === 'production_manager'
+  );
   const isBriefLockedByApproval = project.producerWorkflowStatus === 'approved';
   const canEditBriefInput = canEditClientInput && !isBriefLockedByApproval;
   const workspaceNavigation = useMemo(

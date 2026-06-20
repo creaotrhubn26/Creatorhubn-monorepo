@@ -33,7 +33,7 @@ const PARTNER_TYPE_COLORS: Record<string, { color: string; label: string }> = {
   reseller:             { color: "#7ab8ff", label: "Reseller" },
 };
 
-const TIER_BADGES: Record<string, { color: string; icon: React.ReactNode }> = {
+const TIER_BADGES: Record<string, { color: string; icon: React.ReactElement }> = {
   strategic:            { color: "#a78bfa", icon: <StarIcon fontSize="small" /> },
   verified_integration: { color: "#9be15d", icon: <VerifiedIcon fontSize="small" /> },
   integration:          { color: "#9be15d", icon: <VerifiedIcon fontSize="small" /> },

@@ -109,9 +109,13 @@ const MATERIAL_TYPE_LABELS: Record<ProducerClientMaterialType, string> = {
   brief_note: 'Briefnotat',
   asset_link: 'Lenke',
   brand_asset: 'Merkevarefil',
+  brand_logo: 'Merkelogo',
+  brand_colors: 'Merkefarger',
+  brand_fonts: 'Merkefonter',
   reference: 'Referanse',
   document: 'Dokument',
   feedback: 'Tilbakemelding',
+  other: 'Annet',
 };
 
 const MATERIAL_PRIORITY_LABELS: Record<'critical' | 'important' | 'reference', string> = {
