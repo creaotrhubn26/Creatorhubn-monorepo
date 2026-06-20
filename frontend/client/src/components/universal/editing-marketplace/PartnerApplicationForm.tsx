@@ -86,11 +86,16 @@ export default function PartnerApplicationForm() {
     palette: {
       mode: "dark",
       primary: { main: BRAND.accent },
-      background: { default: BRAND.bg, paper: "rgba(255,255,255,0.05)" },
+      background: { default: BRAND.bg, paper: "#101218" },
       text: { primary: BRAND.ink, secondary: BRAND.muted },
     },
     typography: { fontFamily: '"Manrope", -apple-system, BlinkMacSystemFont, sans-serif' },
     shape: { borderRadius: 12 },
+    components: {
+      // Select-/meny-dropdowns MÅ være ugjennomsiktige (ellers ser man feltene bak).
+      MuiMenu: { styleOverrides: { paper: { backgroundColor: "#101218", backgroundImage: "none", border: "1px solid rgba(255,255,255,0.14)" } } },
+      MuiPopover: { styleOverrides: { paper: { backgroundColor: "#101218", backgroundImage: "none" } } },
+    },
   }), []);
 
   const [f, setF] = useState({
@@ -225,7 +230,14 @@ export default function PartnerApplicationForm() {
                     <TextField label={s.portfolio} value={f.portfolioUrl} onChange={(e) => set("portfolioUrl", e.target.value)} fullWidth placeholder="https://" />
                     <TextField label={s.notes} value={f.notes} onChange={(e) => set("notes", e.target.value)} multiline minRows={2} fullWidth />
                     <FormControlLabel control={<Checkbox checked={consentContact} onChange={(e) => setConsentContact(e.target.checked)} />} label={<Typography variant="body2" sx={{ color: BRAND.muted }}>{s.consentContact}</Typography>} />
-                    <FormControlLabel control={<Checkbox checked={consentPrivacy} onChange={(e) => setConsentPrivacy(e.target.checked)} />} label={<Typography variant="body2" sx={{ color: BRAND.muted }}>{s.consentPrivacy} *</Typography>} />
+                    <FormControlLabel control={<Checkbox checked={consentPrivacy} onChange={(e) => setConsentPrivacy(e.target.checked)} />} label={
+                      <Typography variant="body2" sx={{ color: BRAND.muted }}>
+                        {s.consentPrivacy}{" "}
+                        <Box component="a" href="/partner/terms" target="_blank" rel="noopener" sx={{ color: BRAND.accent, textDecoration: "underline" }}>
+                          {locale === "en" ? "Read terms & privacy" : "Les vilkår og personvern"}
+                        </Box> *
+                      </Typography>
+                    } />
                     {state === "error" && <Alert severity="error">{errMsg}</Alert>}
                     <Button variant="contained" size="large" onClick={submit} disabled={state === "sending"}
                       startIcon={state === "sending" ? <CircularProgress size={18} color="inherit" /> : undefined}
