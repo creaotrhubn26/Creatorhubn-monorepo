@@ -139,6 +139,10 @@ describe('exchangeGoogleIdToken', () => {
     expect(upsertCall?.params[0]).toBe('daniel@creatorhubn.com');
     expect(upsertCall?.params[1]).toBe('Daniel');
     expect(upsertCall?.params[2]).toBe('Q');
+    // Regression: `username` is NOT NULL on users — a first-time sign-in
+    // INSERT that omits it 500s the whole login. It must be in the column
+    // list and populated from the email ($1).
+    expect(upsertCall?.sql).toContain('username');
   });
 
   it('falls back to email when name is missing', async () => {
