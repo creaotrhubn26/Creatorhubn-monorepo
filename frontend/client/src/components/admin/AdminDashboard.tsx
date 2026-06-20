@@ -146,6 +146,7 @@ import PlaceholderTextScanner from '../development/PlaceholderTextScanner';
 import CentralizedMonitoringConsole from './CentralizedMonitoringConsole';
 import AdminDashboardIntegrationTest from './AdminDashboardIntegrationTest';
 import PaymentSystemsIntegrationTest from './PaymentSystemsIntegrationTest';
+import EditingPaymentTestPanel from './EditingPaymentTestPanel';
 import GoogleWalletMembershipManager from './GoogleWalletMembershipManager';
 import GoogleWalletIntegrationTest from './GoogleWalletIntegrationTest';
 import GooglePaymentsConfiguration from './GooglePaymentsConfiguration';
@@ -3421,7 +3422,12 @@ export default function AdminDashboard({
       case 'integration-test':
         return <AdminDashboardIntegrationTest />;
       case 'payment-integration-test':
-        return <PaymentSystemsIntegrationTest />;
+        return (
+          <>
+            <EditingPaymentTestPanel />
+            <PaymentSystemsIntegrationTest />
+          </>
+        );
       case 'google-wallet-membership':
         return <GoogleWalletMembershipManager />;
       case 'google-wallet-integration-test':

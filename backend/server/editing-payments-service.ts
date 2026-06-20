@@ -156,6 +156,22 @@ async function paypalPayout(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Test/diagnostikk (admin-panel)
+// ─────────────────────────────────────────────────────────────────────
+export async function paypalHealthCheck(): Promise<{ ok: boolean; env: string; configured: boolean; error?: string }> {
+  const env = process.env.PAYPAL_ENV === "live" ? "live" : "sandbox";
+  const configured = !!(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET);
+  if (!configured) return { ok: false, env, configured: false, error: "PAYPAL_CLIENT_ID/SECRET ikke satt" };
+  const token = await getPaypalAccessToken();
+  return token ? { ok: true, env, configured: true } : { ok: false, env, configured: true, error: "OAuth feilet (ugyldige creds?)" };
+}
+
+export async function paypalTestPayout(email: string, amountCents: number): Promise<{ ok: boolean; batchId?: string; error?: string }> {
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false, error: "ugyldig_epost" };
+  return paypalPayout(`test-${Date.now()}`, email, Math.max(1, amountCents), "USD", "Creatorhub payout test");
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Utbetaling til vendor (kalles ved fotograf-godkjenning). Escrow frigis her.
 // ─────────────────────────────────────────────────────────────────────
 export interface PayoutResult {
