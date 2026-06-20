@@ -232,6 +232,7 @@ const AudioShowcasePage = React.lazy(() => import('@/pages/audio-showcase'));
 const PartnerApplicationForm = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerApplicationForm'));
 const PartnerPortalPage = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerPortalPage'));
 const PartnerTerms = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerTerms'));
+const PartnerLanding = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerLanding'));
 const AudioReviewInvitePage = React.lazy(() => import('@/pages/audio-review-invite'));
 const AudioReviewSharedPage = React.lazy(() => import('@/pages/audio-review-shared'));
 // Wrapper components for route compatibility
@@ -775,6 +776,7 @@ function App() {
                     component={() => <SmartDashboardRoute profession="vendor" />}
                   />
                   {/* Partner Program — offentlig søknad + gated portal (selv-gater via magic-link/session) */}
+                  <Route path="/partner" component={PartnerLanding as React.ComponentType<any>} />
                   <Route path="/partner/apply" component={PartnerApplicationForm as React.ComponentType<any>} />
                   <Route path="/partner/terms" component={PartnerTerms as React.ComponentType<any>} />
                   <Route path="/partner-portal" component={PartnerPortalPage as React.ComponentType<any>} />
