@@ -18,9 +18,19 @@ import { useCallback, useEffect, useState } from 'react';
 type Status = 'idle' | 'pairing' | 'paired' | 'error' | 'unauthorized';
 
 function getBearerFromStorage(): string | null {
-  // Mirrors the existing app's session-token storage. Adjust if your project
-  // uses a different key (e.g. wouter-router auth or react-query cache).
-  for (const key of ['authToken', 'sessionToken', 'rr_session', 'auth_session']) {
+  // MÅ speile queryClient.ts: appen lagrer bearer-token under
+  // 'creatorhub_auth_token' / 'role_room_auth_token'. De gamle placeholder-
+  // nøklene (authToken osv.) fantes aldri → redeem ble sendt uten Bearer →
+  // 401 → Post Agent fikk aldri token (paring «hang»). Riktige nøkler først.
+  for (const key of [
+    'creatorhub_auth_token',
+    'role_room_auth_token',
+    'auth_token',
+    'authToken',
+    'sessionToken',
+    'rr_session',
+    'auth_session',
+  ]) {
     const v = window.localStorage.getItem(key);
     if (v) return v;
   }
