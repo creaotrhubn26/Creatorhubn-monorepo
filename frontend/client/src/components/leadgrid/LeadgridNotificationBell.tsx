@@ -165,7 +165,7 @@ export function LeadgridNotificationBell({ onOpenPrefs }: { onOpenPrefs?: () => 
                     </Typography>
                     {n.body && (
                       <Typography variant="caption" sx={{ color: "text.secondary",
-                                                            display: "block", mt: 0.3,
+                                                            mt: 0.3,
                                                             whiteSpace: "normal",
                                                             overflow: "hidden",
                                                             textOverflow: "ellipsis",

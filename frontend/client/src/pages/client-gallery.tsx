@@ -64,6 +64,10 @@ import {
   AccessTime,
   GridView,
   PlayArrow,
+  Visibility,
+  VisibilityOff,
+  RemoveDone as RemoveDoneIcon,
+  PlaylistAddCheck,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useClientSession } from '@/contexts/ClientSessionContext';

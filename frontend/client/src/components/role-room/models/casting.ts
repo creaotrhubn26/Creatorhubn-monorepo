@@ -1585,6 +1585,8 @@ export interface ProducerAccountAccessEntry {
   notes?: string;
   twoFactorRequired?: boolean;
   lastUpdatedAt?: string;
+  /** TTL i sekunder for reveal-vinduet (vault v2). */
+  revealTtlSeconds?: number;
 }
 
 export interface ProducerAccountAccessWorkspace {
