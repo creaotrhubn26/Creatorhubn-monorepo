@@ -59,6 +59,7 @@ struct LeadResearchProgressView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
             .navigationTitle("Research")
+        .salesHierarchyBackdrop(.research)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

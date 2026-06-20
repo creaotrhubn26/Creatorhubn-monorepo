@@ -80,6 +80,7 @@ struct LeadResearchStartView: View {
                     .ignoresSafeArea()
             )
             .navigationTitle("Finn nye leads")
+        .salesHierarchyBackdrop(.research)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

@@ -38,6 +38,7 @@ struct CompetitorDetailSheet: View {
                 .padding(16)
             }
             .navigationTitle("Konkurrent")
+        .salesHierarchyBackdrop(.research)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

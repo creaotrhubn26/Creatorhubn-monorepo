@@ -29,6 +29,7 @@ struct LeadNeedsView: View {
         NavigationStack {
             content
                 .navigationTitle("Behov & signaler")
+        .salesHierarchyBackdrop(.research)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbar }
                 .task { await load() }
