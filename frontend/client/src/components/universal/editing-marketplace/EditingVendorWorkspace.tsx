@@ -38,6 +38,7 @@ import EditingJobChat from "./EditingJobChat";
 import PartnerProgramDashboard from "./PartnerProgramDashboard";
 import EditingVendorCatalog from "./EditingVendorCatalog";
 import VendorNdaCard from "./VendorNdaCard";
+import VendorPayoutCard from "./VendorPayoutCard";
 import VendorPrototypeFeedbackTool from "./VendorPrototypeFeedbackTool";
 import {
   t,
@@ -371,6 +372,7 @@ export default function EditingVendorWorkspace({ userId }: Props) {
               </CardContent>
             </Card>
           )}
+          <VendorPayoutCard locale={locale === "en" ? "en" : "no"} />
           <VendorNdaCard locale={locale === "en" ? "en" : "no"} />
         </Box>
       )}

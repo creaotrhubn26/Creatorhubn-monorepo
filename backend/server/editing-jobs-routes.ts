@@ -51,6 +51,12 @@ import {
   createCheckoutForJob,
   isCheckoutPaid,
   releasePayoutForJob,
+  getVendorPayout,
+  saveVendorPaypal,
+  saveVendorBank,
+  startStripeConnect,
+  syncStripeConnect,
+  reconcilePaypalPayout,
 } from "./editing-payments-service";
 
 export interface EditingJobsRoutesDeps {
@@ -918,6 +924,75 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
 
   // Vendor registrerer sin EGEN NDA (f.eks. utenlandsk vendor med egen lov-valgt NDA).
   // Spores som motpart-dokument; vår DPA er fortsatt gjeldende avtale.
+  // ── Payout-oppsett: vendor registrerer hvordan de skal få betalt ──
+  app.get("/api/editing/vendor/payout", async (req, res) => {
+    const session = await requireUserSession(req, res);
+    if (!session) return;
+    try {
+      res.json(await getVendorPayout(pool, session.userId));
+    } catch (err) {
+      console.error("[editing/vendor/payout:get]", err);
+      res.status(500).json({ error: "kunne_ikke_hente" });
+    }
+  });
+
+  app.post("/api/editing/vendor/payout", async (req, res) => {
+    const session = await requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const method = req.body?.method;
+      if (method === "paypal") {
+        const r = await saveVendorPaypal(pool, session.userId, String(req.body?.paypalEmail || ""));
+        if (!r.ok) return res.status(400).json({ error: r.error });
+        return res.json({ ok: true, paymentConnected: true });
+      }
+      if (method === "bank") {
+        await saveVendorBank(pool, session.userId);
+        return res.json({ ok: true, paymentConnected: true });
+      }
+      if (method === "stripe_connect") {
+        const origin = String(req.body?.origin || req.headers.origin || "https://creatorhubn.com").replace(/\/$/, "");
+        const r = await startStripeConnect(pool, session.userId, session.email || null, origin);
+        if (!r.ok) return res.status(400).json({ error: r.error });
+        return res.json({ ok: true, url: r.url });
+      }
+      res.status(400).json({ error: "ugyldig_metode" });
+    } catch (err) {
+      console.error("[editing/vendor/payout:post]", err);
+      res.status(500).json({ error: "kunne_ikke_lagre" });
+    }
+  });
+
+  // Sjekk Stripe Connect-status etter onboarding-retur.
+  app.post("/api/editing/vendor/payout/sync-stripe", async (req, res) => {
+    const session = await requireUserSession(req, res);
+    if (!session) return;
+    try {
+      res.json(await syncStripeConnect(pool, session.userId));
+    } catch (err) {
+      console.error("[editing/vendor/payout:sync]", err);
+      res.status(500).json({ error: "kunne_ikke_synke" });
+    }
+  });
+
+  // PayPal payout-webhook (offentlig) — reconciler oppdragets payout_status.
+  // Sikkerhet: lett verifisering via PAYPAL_WEBHOOK_ID (full signatur-verifisering anbefalt for prod).
+  app.post("/api/editing/paypal/webhook", async (req, res) => {
+    try {
+      const evt = req.body || {};
+      const type = String(evt.event_type || "");
+      if (type.startsWith("PAYMENT.PAYOUTS-ITEM")) {
+        const jobId = evt?.resource?.payout_item?.sender_item_id;
+        const status = evt?.resource?.transaction_status || "";
+        if (jobId) await reconcilePaypalPayout(pool, String(jobId), String(status));
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[editing/paypal/webhook]", err);
+      res.status(200).json({ ok: true }); // svar 200 så PayPal ikke spammer retries
+    }
+  });
+
   app.post("/api/editing/vendor/nda", async (req, res) => {
     const session = await requireUserSession(req, res);
     if (!session) return;
