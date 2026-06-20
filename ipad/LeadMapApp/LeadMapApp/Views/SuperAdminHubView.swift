@@ -248,6 +248,30 @@ struct SuperAdminHubView: View {
                             }
                         }
                     }
+
+                    // Fase 23: Drips/cron + Marketplace + Partner-application + Developer-application
+                    Section("Cron & marketplace") {
+                        NavigationLink {
+                            SuperAdminDripsManagementView(api: api)
+                        } label: {
+                            Label("Cron / drips", systemImage: "envelope.arrow.triangle.branch.fill")
+                        }
+                        NavigationLink {
+                            LeadgridMarketplaceView(api: api)
+                        } label: {
+                            Label("Marketplace", systemImage: "storefront.fill")
+                        }
+                        NavigationLink {
+                            LeadgridPartnerApplicationView(api: api)
+                        } label: {
+                            Label("Min partner-søknad", systemImage: "doc.badge.gearshape")
+                        }
+                        NavigationLink {
+                            LeadgridDeveloperApplicationView(api: api)
+                        } label: {
+                            Label("Utvikler-program", systemImage: "chevron.left.forwardslash.chevron.right")
+                        }
+                    }
                 }
             }
             .navigationTitle("Super Admin")

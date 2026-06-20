@@ -1547,6 +1547,89 @@ extension APIClient {
     }
 }
 
+// MARK: - Fase 23: Drips + Marketplace + Partner/Developer-application + cron-triggers
+
+extension APIClient {
+
+    // -- Drips (e-post-serier) — super-admin manuell-trigger -------
+
+    /// Trigge drip-cron manuelt (kjør alle pending steps NÅ).
+    func runDripsCron() async throws -> DripRunResult {
+        try await post("/api/leadgrid/drips/run", body: [:])
+    }
+
+    /// Marker en lead som konvertert i drip-systemet (stopper serien).
+    func markDripConverted(leadId: String, conversionType: String) async throws {
+        try await post("/api/leadgrid/drips/converted",
+                        body: ["lead_id": leadId, "conversion_type": conversionType])
+    }
+
+    // -- Scheduled reports manuell-cron-trigger --------------------
+
+    /// Kjør alle pending scheduled-reports NÅ (super-admin override).
+    func runScheduledReportsCron() async throws {
+        try await post("/api/leadgrid/scheduled-reports/run", body: [:])
+    }
+
+    // -- Marketplace -----------------------------------------------
+
+    /// Liste public marketplace-partnere m/ filter på type + tier.
+    func fetchLeadgridMarketplace(type: String? = nil, tier: String? = nil) async throws -> LeadgridMarketplaceResponse {
+        var qs: [String] = []
+        if let type { qs.append("type=\(type)") }
+        if let tier { qs.append("tier=\(tier)") }
+        let q = qs.isEmpty ? "" : "?" + qs.joined(separator: "&")
+        return try await get("/api/leadgrid/marketplace\(q)")
+    }
+
+    // -- Partner-application (selv-tjeneste) ------------------------
+
+    /// Hent min organisasjons partner-søknad (hvis innsendt).
+    func fetchMyPartnerApplication() async throws -> LeadgridMyPartnerApplicationResponse {
+        try await get("/api/leadgrid/partner-application/my")
+    }
+
+    /// Send inn partner-søknad for en organisasjon.
+    func submitPartnerApplication(
+        organizationId: String, partnerType: String,
+        proposedTagline: String?, reason: String?,
+        proposedLogoUrl: String?, termsVersion: String, agreedToTerms: Bool,
+    ) async throws {
+        var body: [String: Any] = [
+            "organizationId": organizationId,
+            "partnerType": partnerType,
+            "termsVersion": termsVersion,
+            "agreedToTerms": agreedToTerms,
+        ]
+        if let proposedTagline { body["proposedTagline"] = proposedTagline }
+        if let reason { body["reason"] = reason }
+        if let proposedLogoUrl { body["proposedLogoUrl"] = proposedLogoUrl }
+        try await post("/api/leadgrid/partner-applications", body: body)
+    }
+
+    /// Hent gjeldende partner-terms (versjon + tekst).
+    func fetchLeadgridPartnerTerms() async throws -> LeadgridPartnerTerms {
+        try await get("/api/leadgrid/partner-terms")
+    }
+
+    // -- Developer-application -------------------------------------
+
+    /// Send inn developer-søknad (utvikler-program for Leadgrid API).
+    func submitDeveloperApplication(payload: LeadgridDeveloperApplication, agreedToTerms: Bool) async throws {
+        var body: [String: Any] = [
+            "email": payload.email,
+            "agreedToTerms": agreedToTerms,
+        ]
+        if let n = payload.fullName { body["fullName"] = n }
+        if let o = payload.organizationName { body["organizationName"] = o }
+        if let w = payload.website { body["website"] = w }
+        if let u = payload.useCase { body["useCase"] = u }
+        if let d = payload.integrationDescription { body["integrationDescription"] = d }
+        if let c = payload.expectedMonthlyApiCalls { body["expectedMonthlyApiCalls"] = c }
+        try await post("/api/leadgrid/developer-application", body: body)
+    }
+}
+
 enum APIError: Error {
     case invalidResponse
     case statusCode(Int)
