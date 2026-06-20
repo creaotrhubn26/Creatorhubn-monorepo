@@ -57,6 +57,7 @@ import {
   startStripeConnect,
   syncStripeConnect,
   reconcilePaypalPayout,
+  verifyPaypalWebhook,
 } from "./editing-payments-service";
 
 export interface EditingJobsRoutesDeps {
@@ -980,6 +981,12 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
   app.post("/api/editing/paypal/webhook", async (req, res) => {
     try {
       const evt = req.body || {};
+      // Signatur-verifisering (mot PAYPAL_WEBHOOK_ID) — avviser forfalskede events.
+      const verified = await verifyPaypalWebhook(req.headers, evt);
+      if (!verified) {
+        console.warn("[editing/paypal/webhook] avvist: signatur ikke verifisert");
+        return res.status(400).json({ error: "ugyldig_signatur" });
+      }
       const type = String(evt.event_type || "");
       if (type.startsWith("PAYMENT.PAYOUTS-ITEM")) {
         const jobId = evt?.resource?.payout_item?.sender_item_id;
