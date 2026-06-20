@@ -60,6 +60,7 @@ struct LeadgridNotificationInboxView: View {
                 }
             }
             .navigationTitle("Varsler")
+        .marketingDirectorBackdrop(.notifications)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

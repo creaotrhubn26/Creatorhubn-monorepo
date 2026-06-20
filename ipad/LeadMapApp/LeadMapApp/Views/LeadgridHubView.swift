@@ -115,6 +115,7 @@ struct LeadgridHubView: View {
                 }
             }
             .navigationTitle("Leadgrid CRM")
+            .marketingDirectorBackdrop(.crmHome)
             .sheet(isPresented: Binding(
                 get: { appState.presentingLeadgridNotifications },
                 set: { appState.presentingLeadgridNotifications = $0 }

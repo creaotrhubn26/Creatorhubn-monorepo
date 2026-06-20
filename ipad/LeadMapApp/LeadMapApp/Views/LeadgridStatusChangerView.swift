@@ -264,6 +264,7 @@ struct WonDialogSheet: View {
                 } header: { Text("Notat (valgfri)") }
             }
             .navigationTitle("Marker som vunnet")
+        .marketingDirectorBackdrop(.wonLost)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

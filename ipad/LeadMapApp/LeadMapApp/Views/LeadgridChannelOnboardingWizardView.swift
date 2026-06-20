@@ -64,6 +64,7 @@ struct LeadgridChannelOnboardingWizardView: View {
                 }
             }
             .navigationTitle("Sett opp varslings-kanaler")
+        .marketingDirectorBackdrop(.notifications)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
