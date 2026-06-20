@@ -41,6 +41,7 @@ struct LeadgridScheduledReportsView: View {
             }
         }
         .navigationTitle("Schedulerte rapporter")
+        .marketingDirectorBackdrop(.reports)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

@@ -81,6 +81,7 @@ struct LeadgridPartnersView: View {
             }
         }
         .navigationTitle("Partnere")
+        .marketingDirectorBackdrop(.customerJourney)
         .task { await load() }
         .refreshable { await load() }
     }

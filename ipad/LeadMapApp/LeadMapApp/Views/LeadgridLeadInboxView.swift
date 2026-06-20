@@ -40,6 +40,7 @@ struct LeadgridLeadInboxView: View {
             }
         }
         .navigationTitle("Lead-inbox")
+        .marketingDirectorBackdrop(.crmHome)
         .task { await load() }
         .refreshable { await load() }
         .sheet(item: Binding(

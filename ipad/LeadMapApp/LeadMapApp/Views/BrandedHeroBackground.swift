@@ -29,6 +29,13 @@ enum LeadgridBackdrop: String, CaseIterable {
     case backdrop7 = "Backdrop7"   // Pencil-path m/ pin
     case backdrop8 = "Backdrop8"   // Isometric workspace
 
+    // ── Markedssjef-Leadgrid-serien (fase 28) ────────────────────
+    case backdrop9 = "Backdrop9"    // CRM Hjem — landskap m/ glowing pin-pillars + aurora
+    case backdrop10 = "Backdrop10"  // Won/Lost — grønn vs rød pin-pidestaller m/ trapper
+    case backdrop11 = "Backdrop11"  // Customer Journey — pin-cluster → pink destination m/ touchpoints
+    case backdrop12 = "Backdrop12"  // Reports & Schedule — 3 kalender-plater + envelope + bar-chart pin
+    case backdrop18 = "Backdrop18"  // Notifications — waterfall av message-bubbles m/ status-dots
+
     // ── Super Admin-serien (fase 27) ────────────────────────────
     case backdrop13 = "Backdrop13"  // Command Center — silhouette m/ 3 hologramskjermer (kart/graf/hub)
     case backdrop14 = "Backdrop14"  // B2B Funnel — 3 transparente plater → green pin/bar-chart

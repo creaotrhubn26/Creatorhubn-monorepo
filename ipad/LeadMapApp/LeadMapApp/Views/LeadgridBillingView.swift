@@ -64,6 +64,7 @@ struct LeadgridBillingView: View {
             }
         }
         .navigationTitle("Faktura")
+        .marketingDirectorBackdrop(.customerJourney)
         .task { await load() }
         .refreshable { await load() }
         .sheet(item: Binding(
