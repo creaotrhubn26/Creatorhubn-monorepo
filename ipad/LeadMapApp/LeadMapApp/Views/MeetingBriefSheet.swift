@@ -28,6 +28,7 @@ struct MeetingBriefSheet: View {
                 }
             }
             .navigationTitle("Forbered til møte")
+        .salesHierarchyBackdrop(.salesRep)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

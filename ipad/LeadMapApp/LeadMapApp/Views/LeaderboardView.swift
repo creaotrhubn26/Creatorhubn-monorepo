@@ -31,6 +31,7 @@ struct LeaderboardView: View {
                 }
             }
             .navigationTitle("Team-leaderboard")
+        .salesHierarchyBackdrop(.teamLeader)
             .task { await load() }
             .refreshable { await load() }
         }

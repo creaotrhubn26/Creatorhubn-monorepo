@@ -40,6 +40,7 @@ struct AddCustomerView: View {
                 }
             }
             .navigationTitle("Ny kunde")
+        .salesHierarchyBackdrop(.promotor)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
