@@ -1474,6 +1474,79 @@ extension APIClient {
     }
 }
 
+// MARK: - Fase 22: 5 siste super-admin-views (alle endepunkter eksisterer)
+
+extension APIClient {
+
+    // -- Errors / Observability ------------------------------------
+
+    func fetchAdminErrors(level: String? = nil, limit: Int = 50) async throws -> AdminErrorsResponse {
+        var qs = "?limit=\(limit)"
+        if let level { qs += "&level=\(level)" }
+        return try await get("/api/admin-room/errors\(qs)")
+    }
+
+    func fetchAdminErrorsStats() async throws -> AdminErrorsStatsResponse {
+        try await get("/api/admin-room/errors/stats")
+    }
+
+    func resolveAdminError(id: String) async throws {
+        try await post("/api/admin-room/errors/\(id)/resolve", body: [:])
+    }
+
+    func reopenAdminError(id: String) async throws {
+        try await post("/api/admin-room/errors/\(id)/reopen", body: [:])
+    }
+
+    // -- Market Intelligence ---------------------------------------
+
+    func fetchMarketScans() async throws -> MarketScansResponse {
+        try await get("/api/market-scans")
+    }
+
+    func fetchMarketScanCompetitors(scanId: String) async throws -> MarketScanCompetitorsResponse {
+        try await get("/api/market-scans/\(scanId)/competitors")
+    }
+
+    func fetchMarketScanOpportunities(scanId: String) async throws -> MarketScanOpportunitiesResponse {
+        try await get("/api/market-scans/\(scanId)/opportunities")
+    }
+
+    // -- Brand Kit (per prosjekt) ----------------------------------
+
+    func fetchBrandKit(projectId: String) async throws -> BrandKitResponse {
+        try await get("/api/role-room/brand-kit/\(projectId)")
+    }
+
+    func scanBrandKit(projectId: String) async throws -> BrandKitResponse {
+        try await post("/api/role-room/brand-kit/\(projectId)/scan", body: [:])
+    }
+
+    // -- Lead Map Campaigns ----------------------------------------
+
+    func fetchLeadMapCampaigns() async throws -> LeadMapCampaignsResponse {
+        try await get("/api/lead-map/campaigns")
+    }
+
+    func fetchCategoryConversion() async throws -> CategoryConversionResponse {
+        try await get("/api/lead-map/analytics/category-conversion")
+    }
+
+    // -- Org switcher (impersonation) ------------------------------
+
+    func fetchSuperAdminOrgs() async throws -> SuperAdminOrgsResponse {
+        try await get("/api/superadmin/organizations")
+    }
+
+    func fetchActiveImpersonation() async throws -> ImpersonationStatus {
+        try await get("/api/superadmin/active-impersonation")
+    }
+
+    func endImpersonation() async throws {
+        try await post("/api/superadmin/end-impersonation", body: [:])
+    }
+}
+
 enum APIError: Error {
     case invalidResponse
     case statusCode(Int)

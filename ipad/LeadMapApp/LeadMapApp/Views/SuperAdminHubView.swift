@@ -214,6 +214,40 @@ struct SuperAdminHubView: View {
                             Label("What's New", systemImage: "sparkles.rectangle.stack.fill")
                         }
                     }
+
+                    // Fase 22: Observability + Market Intel + Campaigns + Org Switcher + Brand Kit
+                    Section("Market Intel & Observability") {
+                        NavigationLink {
+                            SuperAdminObservabilityView(api: api)
+                        } label: {
+                            Label("Observability (errors)", systemImage: "ladybug.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminMarketScansView(api: api)
+                        } label: {
+                            Label("Market Scans", systemImage: "binoculars.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminCampaignsView(api: api)
+                        } label: {
+                            Label("Ads-kampanjer", systemImage: "megaphone.fill")
+                        }
+                    }
+
+                    Section("Tilgang & merkevare") {
+                        NavigationLink {
+                            SuperAdminOrgSwitcherView(api: api)
+                        } label: {
+                            Label("Org-switcher (impersonate)", systemImage: "eye.circle.fill")
+                        }
+                        if let projectId = appState.activeProjectId {
+                            NavigationLink {
+                                SuperAdminBrandKitView(api: api, projectId: projectId)
+                            } label: {
+                                Label("Brand Kit (aktivt prosjekt)", systemImage: "paintpalette.fill")
+                            }
+                        }
+                    }
                 }
             }
             .navigationTitle("Super Admin")
