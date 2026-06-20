@@ -257,7 +257,7 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
     <Box
       sx={{
         position: 'fixed',
-        [position]: { xs: 299, sm: 374, md: 449, lg: 524 },
+        [position]: { xs: 16, sm: 20, md: 24, lg: 24 },
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 9999,
