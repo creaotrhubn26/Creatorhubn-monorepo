@@ -11,6 +11,7 @@
 import React, { useState } from "react";
 import { Box, Typography, Button, Divider, ThemeProvider, createTheme } from "@mui/material";
 import VerifiedUserIcon from "@mui/icons-material/VerifiedUser";
+import { usePartnerSeo } from "./usePartnerSeo";
 
 type Locale = "no" | "en";
 const BRAND = {
@@ -83,6 +84,11 @@ const CONTENT = {
 export default function PartnerTerms() {
   const [locale, setLocale] = useState<Locale>("en");
   const c = CONTENT[locale];
+  usePartnerSeo({
+    title: "Partner Program — Terms & Privacy | Creatorhub",
+    description: "Creatorhub Partner Standard, payouts and applicant privacy for the Creatorhub editing Partner Program — quality, storage, GDPR (DPA/NDA, SCC/TIA), reviews and termination.",
+    jsonLdId: "partner-terms-jsonld",
+  });
   const theme = createTheme({ palette: { mode: "dark", primary: { main: BRAND.accent }, background: { default: BRAND.bg } } });
 
   return (

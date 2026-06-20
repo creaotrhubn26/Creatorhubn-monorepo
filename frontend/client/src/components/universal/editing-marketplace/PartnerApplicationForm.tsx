@@ -17,6 +17,39 @@ import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import PaymentsIcon from "@mui/icons-material/Payments";
 import StarIcon from "@mui/icons-material/Star";
 import { apiRequest } from "@/lib/queryClient";
+import { usePartnerSeo } from "./usePartnerSeo";
+import { trackEvent, trackPageView } from "@/utils/ga4-client-tracking";
+
+// GEO/SEO: FAQPage + Organization (@graph) — gjør siden siterbar for AI-søkemotorer.
+const PARTNER_JSONLD = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://creatorhubn.com/#organization",
+      name: "Creatorhub",
+      url: "https://creatorhubn.com",
+      logo: "https://creatorhubn.com/creatorhub-wordmark-light.png",
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://creatorhubn.com/partner/apply",
+      name: "Creatorhub Editing Partner Program — Apply",
+      isPartOf: { "@id": "https://creatorhubn.com/#organization" },
+      description: "Apply to become a verified external editing partner (retouching, clipping path, color grading, video editing) for photographers and videographers on Creatorhub.",
+    },
+    {
+      "@type": "FAQPage",
+      mainEntity: [
+        { "@type": "Question", name: "How do I become a Creatorhub editing partner?", acceptedAnswer: { "@type": "Answer", text: "Apply at creatorhubn.com/partner/apply. After approval you receive a private partner portal to complete verification (compliance, secure storage and payments)." } },
+        { "@type": "Question", name: "Is there a fee to join the Creatorhub Partner Program?", acceptedAnswer: { "@type": "Answer", text: "Prototype testers pay 0% platform fee during the prototype period. Standard partners pay a platform fee per job, shown transparently in the portal." } },
+        { "@type": "Question", name: "How do editing partners get paid?", acceptedAnswer: { "@type": "Answer", text: "Payouts (PayPal or Stripe) are released automatically once the photographer approves each delivery." } },
+        { "@type": "Question", name: "Is client data secure and GDPR-compliant?", acceptedAnswer: { "@type": "Answer", text: "Yes — encrypted transfer, job-scoped access, automatic deletion after delivery, and a signed Data Processing Agreement + NDA. Partners outside the EEA complete SCC and a transfer impact assessment." } },
+        { "@type": "Question", name: "Who can become an editing partner?", acceptedAnswer: { "@type": "Answer", text: "External photo and video editing studios — retouching, clipping path, background removal, color grading, video editing — delivering to photographers and videographers." } },
+      ],
+    },
+  ],
+};
 
 type Locale = "no" | "en";
 
@@ -143,9 +176,26 @@ export default function PartnerApplicationForm() {
   const [hp, setHp] = useState("");
   const loadedAt = React.useRef(Date.now());
 
+  // SEO + GEO (FAQPage/Organization JSON-LD + title/meta).
+  usePartnerSeo({
+    title: "Become a Creatorhub Verified Partner — Editing Partner Program",
+    description: "Apply to become a verified external editing partner for photographers and videographers on Creatorhub. Secure GDPR-compliant workflow, automatic payouts, and a prototype-tester track with 0% platform fee.",
+    jsonLd: PARTNER_JSONLD,
+    jsonLdId: "partner-apply-jsonld",
+  });
+  // GA4: funnel-events.
+  const startedRef = React.useRef(false);
+  React.useEffect(() => {
+    trackPageView("/partner/apply", "Partner apply");
+    trackEvent("partner_apply_view");
+  }, []);
+
   const isForeign = f.country !== "NO";
   const nonEea = f.country !== "__other" && !EEA.has(f.country);
-  const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const set = (k: string, v: string) => {
+    if (!startedRef.current) { startedRef.current = true; trackEvent("partner_apply_start"); }
+    setF((p) => ({ ...p, [k]: v }));
+  };
 
   // #9 inline-validering
   const emailValid = !f.contactEmail || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.contactEmail);
@@ -235,6 +285,10 @@ export default function PartnerApplicationForm() {
             : "",
       );
       try { localStorage.removeItem("partner_application_draft"); } catch { /* */ }
+      trackEvent("partner_apply_submit", {
+        country: f.country, is_foreign: isForeign, services_count: selectedServices.length,
+        duplicate: !!(resp?.alreadyReceived || resp?.alreadyApproved),
+      });
       setState("done");
     } catch {
       setState("error"); setErrMsg(s.err);
