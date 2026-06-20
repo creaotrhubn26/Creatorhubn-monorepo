@@ -272,6 +272,25 @@ struct SuperAdminHubView: View {
                             Label("Utvikler-program", systemImage: "chevron.left.forwardslash.chevron.right")
                         }
                     }
+
+                    // Fase 24: Newsletter + RR-økonomi + Outreach
+                    Section("Marketing & økonomi") {
+                        NavigationLink {
+                            SuperAdminNewsletterView(api: api)
+                        } label: {
+                            Label("Newsletter (RR)", systemImage: "newspaper.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminRREconomyView(api: api)
+                        } label: {
+                            Label("RR-økonomi", systemImage: "chart.line.uptrend.xyaxis.circle.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminOutreachTemplatesView(api: api)
+                        } label: {
+                            Label("Outreach-templates", systemImage: "text.bubble.fill")
+                        }
+                    }
                 }
             }
             .navigationTitle("Super Admin")

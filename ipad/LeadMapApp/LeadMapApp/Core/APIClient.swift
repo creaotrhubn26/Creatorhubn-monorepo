@@ -1630,6 +1630,79 @@ extension APIClient {
     }
 }
 
+// MARK: - Fase 24: Newsletter + RR-økonomi + Outreach
+
+extension APIClient {
+
+    // -- Newsletter (RR-Newsletter CMS) ----------------------------
+
+    func fetchNewsletterIssues() async throws -> NewsletterIssuesResponse {
+        try await get("/api/admin-room/newsletter/role-room/issues")
+    }
+
+    func fetchNewsletterStats() async throws -> NewsletterStatsResponse {
+        try await get("/api/admin-room/newsletter/role-room/stats")
+    }
+
+    func fetchNewsletterSignups(limit: Int = 50) async throws -> NewsletterSignupsResponse {
+        try await get("/api/admin-room/newsletter/role-room/signups?limit=\(limit)")
+    }
+
+    func sendNewsletterTest(issueId: String, recipient: String) async throws {
+        try await post(
+            "/api/admin-room/newsletter/role-room/issues/\(issueId)/send-test",
+            body: ["recipient": recipient],
+        )
+    }
+
+    func sendNewsletter(issueId: String) async throws {
+        try await post(
+            "/api/admin-room/newsletter/role-room/issues/\(issueId)/send", body: [:])
+    }
+
+    func unpublishNewsletter(issueId: String) async throws {
+        try await post(
+            "/api/admin-room/newsletter/role-room/issues/\(issueId)/unpublish", body: [:])
+    }
+
+    // -- RR-Økonomi ------------------------------------------------
+
+    func fetchRoleRoomEconomyAggregate() async throws -> RoleRoomEconomyAggregate {
+        try await get("/api/admin-room/role-room/economy/aggregate")
+    }
+
+    func fetchRoleRoomEconomySubscribers(status: String? = nil) async throws -> RoleRoomEconomySubscribersResponse {
+        let qs = status.map { "?status=\($0)" } ?? ""
+        return try await get("/api/admin-room/role-room/economy/subscribers\(qs)")
+    }
+
+    func fetchRoleRoomEconomyTimeseries(months: Int = 12) async throws -> RoleRoomEconomyTimeseriesResponse {
+        try await get("/api/admin-room/role-room/economy/timeseries?months=\(months)")
+    }
+
+    func cancelRoleRoomSubscription(subscriptionId: String) async throws {
+        try await post(
+            "/api/admin-room/role-room/subscription/\(subscriptionId)/cancel", body: [:])
+    }
+
+    // -- Outreach-templates ----------------------------------------
+
+    func fetchOutreachTemplates(segment: String? = nil, language: String? = nil) async throws -> OutreachTemplatesResponse {
+        var qs: [String] = []
+        if let segment { qs.append("segment=\(segment)") }
+        if let language { qs.append("language=\(language)") }
+        let q = qs.isEmpty ? "" : "?" + qs.joined(separator: "&")
+        return try await get("/api/admin-room/outreach-templates\(q)")
+    }
+
+    func personalizeOutreachTemplate(templateId: String, leadId: String) async throws -> [String: String] {
+        try await post(
+            "/api/admin-room/outreach-templates/personalize",
+            body: ["template_id": templateId, "lead_id": leadId],
+        )
+    }
+}
+
 enum APIError: Error {
     case invalidResponse
     case statusCode(Int)
