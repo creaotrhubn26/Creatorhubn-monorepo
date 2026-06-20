@@ -345,6 +345,39 @@ export async function syncStripeConnect(pool: Pool, userId: string): Promise<{ p
   }
 }
 
+/** Verifiser PayPal webhook-signatur (mot PAYPAL_WEBHOOK_ID). Hopper over hvis ID
+ *  ikke er konfigurert (sandbox-fallback). Returnerer false ved feilet verifisering. */
+export async function verifyPaypalWebhook(
+  headers: Record<string, string | string[] | undefined>,
+  event: unknown,
+): Promise<boolean> {
+  const webhookId = process.env.PAYPAL_WEBHOOK_ID;
+  if (!webhookId) return true; // ingen ID → ikke konfigurert ennå, ikke blokkér
+  const token = await getPaypalAccessToken();
+  if (!token) return false;
+  const h = (k: string) => { const v = headers[k]; return Array.isArray(v) ? v[0] : v; };
+  try {
+    const resp = await fetch(`${paypalBase()}/v1/notifications/verify-webhook-signature`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        auth_algo: h("paypal-auth-algo"),
+        cert_url: h("paypal-cert-url"),
+        transmission_id: h("paypal-transmission-id"),
+        transmission_sig: h("paypal-transmission-sig"),
+        transmission_time: h("paypal-transmission-time"),
+        webhook_id: webhookId,
+        webhook_event: event,
+      }),
+    });
+    if (!resp.ok) return false;
+    const data = (await resp.json()) as { verification_status?: string };
+    return data.verification_status === "SUCCESS";
+  } catch {
+    return false;
+  }
+}
+
 /** Webhook-reconcile: oppdater oppdragets payout_status fra PayPal payout-item-event. */
 export async function reconcilePaypalPayout(pool: Pool, jobId: string, transactionStatus: string): Promise<void> {
   const st = transactionStatus.toUpperCase();
