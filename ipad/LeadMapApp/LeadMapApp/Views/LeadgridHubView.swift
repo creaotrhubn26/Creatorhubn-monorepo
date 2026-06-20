@@ -100,6 +100,19 @@ struct LeadgridHubView: View {
                         }
                     }
                 }
+
+                // Fase 18: Super-admin (vises bare for Daniel — B2B-pipeline +
+                // alle superadmin-flows fra felt).
+                if appState.isSuperAdmin {
+                    Section {
+                        NavigationLink {
+                            SuperAdminHubView()
+                        } label: {
+                            Label("Super Admin", systemImage: "shield.checkered")
+                                .foregroundStyle(.purple)
+                        }
+                    }
+                }
             }
             .navigationTitle("Leadgrid CRM")
             .sheet(isPresented: Binding(

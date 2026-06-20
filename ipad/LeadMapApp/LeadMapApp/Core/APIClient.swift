@@ -1056,6 +1056,200 @@ actor APIClient {
     }()
 }
 
+// MARK: - Fase 18: Super-admin endpoints
+
+extension APIClient {
+
+    // -- /api/auth/user (rolle-deteksjon) ---------------------------
+
+    /// Hent innlogget bruker m/ role + permissions. Brukes ved app-start
+    /// for å detektere super_admin og låse opp SuperAdminHub.
+    func fetchAuthUser() async throws -> AuthUserResponse {
+        try await get("/api/auth/user")
+    }
+
+    // -- Agency-leads (B2B Leadgrid-pipeline) -----------------------
+
+    /// Liste markedssjef-leads (prospekter for Leadgrid). Filter på status.
+    func fetchAgencyLeads(status: String? = nil) async throws -> AgencyLeadsResponse {
+        let qs = status.map { "?status=\($0)" } ?? ""
+        return try await get("/api/admin-room/agency-leads\(qs)")
+    }
+
+    /// Hent enkel agency-lead detalj.
+    func fetchAgencyLead(id: String) async throws -> AgencyLead {
+        try await get("/api/admin-room/agency-leads/\(id)")
+    }
+
+    /// Oppdater status / interne notater / assignment.
+    func updateAgencyLead(id: String, payload: [String: Any]) async throws {
+        try await patch("/api/admin-room/agency-leads/\(id)", body: payload)
+    }
+
+    /// Konverter lead til kunde — sender selvbetjent onboarding-lenke
+    /// til kontakten.
+    func convertAgencyLeadToCustomer(
+        id: String, persona: String, sendEmail: Bool,
+    ) async throws -> AgencyLeadConvertResponse {
+        try await post(
+            "/api/admin-room/agency-leads/\(id)/convert-to-customer",
+            body: ["persona": persona, "sendEmail": sendEmail],
+        )
+    }
+
+    // -- WhatsApp templates -----------------------------------------
+
+    func fetchWaTemplates(orgKey: String? = nil) async throws -> WaTemplatesResponse {
+        let qs = orgKey.map { "?org_key=\($0)" } ?? ""
+        return try await get("/api/superadmin/wa-templates\(qs)")
+    }
+
+    func deleteWaTemplate(name: String, orgKey: String? = nil) async throws {
+        let qs = orgKey.map { "?org_key=\($0)" } ?? ""
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+        try await delete("/api/superadmin/wa-templates/\(encoded)\(qs)")
+    }
+
+    func sendWaTemplateTest(name: String, phone: String, params: [String]?) async throws {
+        var body: [String: Any] = ["phone": phone]
+        if let params { body["params"] = params }
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+        try await post("/api/superadmin/wa-templates/\(encoded)/send-test", body: body)
+    }
+
+    func fetchWaTemplateAnalytics() async throws -> WaTemplateAnalyticsResponse {
+        try await get("/api/superadmin/wa-templates/analytics")
+    }
+
+    func syncWaTemplatesFromMeta() async throws {
+        try await post("/api/superadmin/wa-templates/sync-from-meta", body: [:])
+    }
+
+    func syncWaTemplatesToLeadgrid() async throws {
+        try await post("/api/superadmin/wa-templates/sync-leadgrid", body: [:])
+    }
+
+    // -- WhatsApp Org configs ---------------------------------------
+
+    func fetchWaOrgConfigs() async throws -> WaOrgConfigsResponse {
+        try await get("/api/superadmin/wa-org-configs")
+    }
+
+    func updateWaOrgConfig(orgKey: String, payload: [String: Any]) async throws {
+        let encoded = orgKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? orgKey
+        try await patch("/api/superadmin/wa-org-configs/\(encoded)", body: payload)
+    }
+
+    func deleteWaOrgConfig(orgKey: String) async throws {
+        let encoded = orgKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? orgKey
+        try await delete("/api/superadmin/wa-org-configs/\(encoded)")
+    }
+
+    // -- Partners + applications ------------------------------------
+
+    func fetchSuperAdminPartners() async throws -> SuperAdminPartnersResponse {
+        try await get("/api/superadmin/partners")
+    }
+
+    func revokePartner(id: String) async throws {
+        try await post("/api/superadmin/partners/\(id)/revoke", body: [:])
+    }
+
+    func fetchPartnerApplications(status: String = "pending") async throws -> PartnerApplicationsResponse {
+        try await get("/api/superadmin/partner-applications?status=\(status)")
+    }
+
+    func approvePartnerApplication(id: String, notes: String?) async throws {
+        var body: [String: Any] = [:]
+        if let notes { body["notes"] = notes }
+        try await post("/api/superadmin/partner-applications/\(id)/approve", body: body)
+    }
+
+    func rejectPartnerApplication(id: String, reason: String?) async throws {
+        var body: [String: Any] = [:]
+        if let reason { body["reason"] = reason }
+        try await post("/api/superadmin/partner-applications/\(id)/reject", body: body)
+    }
+
+    // -- Email branding (per org) -----------------------------------
+
+    func fetchEmailBrandingConfigs() async throws -> EmailBrandingResponse {
+        try await get("/api/superadmin/email-branding")
+    }
+
+    func updateEmailBranding(orgKey: String, payload: [String: Any]) async throws {
+        let encoded = orgKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? orgKey
+        try await patch("/api/superadmin/email-branding/\(encoded)", body: payload)
+    }
+
+    // -- API keys + webhooks ----------------------------------------
+
+    func fetchSuperAdminApiKeys() async throws -> LeadgridApiKeysResponse {
+        try await get("/api/superadmin/api-keys")
+    }
+
+    func revokeApiKey(id: String) async throws {
+        try await post("/api/superadmin/api-keys/\(id)/revoke", body: [:])
+    }
+
+    func fetchWebhookEndpoints() async throws -> WebhookEndpointsResponse {
+        try await get("/api/superadmin/webhook-endpoints")
+    }
+
+    func testWebhookEndpoint(id: String) async throws {
+        try await post("/api/superadmin/webhook-endpoints/\(id)/test", body: [:])
+    }
+
+    func deleteWebhookEndpoint(id: String) async throws {
+        try await delete("/api/superadmin/webhook-endpoints/\(id)")
+    }
+
+    func fetchWebhookDeliveries(endpointId: String? = nil) async throws -> WebhookDeliveriesResponse {
+        let qs = endpointId.map { "?endpoint_id=\($0)" } ?? ""
+        return try await get("/api/superadmin/webhook-deliveries\(qs)")
+    }
+
+    // -- TestFlight testers -----------------------------------------
+
+    func fetchTestflightTesters() async throws -> TestflightTestersResponse {
+        try await get("/api/superadmin/testflight-testers")
+    }
+
+    func syncTestflightTestersFromAsc() async throws {
+        try await post("/api/superadmin/testflight-testers/sync-asc", body: [:])
+    }
+
+    func graduateTestflightTester(id: String) async throws {
+        try await post("/api/superadmin/testflight-testers/\(id)/graduate", body: [:])
+    }
+
+    func removeTestflightTester(id: String) async throws {
+        try await post("/api/superadmin/testflight-testers/\(id)/remove", body: [:])
+    }
+
+    func fetchAscHealth() async throws -> AscHealthResponse {
+        try await get("/api/superadmin/testflight-testers/asc-health")
+    }
+
+    // -- Notification log + onboarding-funnel + payments + overage --
+
+    func fetchSuperAdminNotificationLog(limit: Int = 100) async throws -> NotificationLogResponse {
+        try await get("/api/superadmin/notification-log?limit=\(limit)")
+    }
+
+    func fetchOnboardingFunnel() async throws -> OnboardingFunnelResponse {
+        try await get("/api/superadmin/onboarding-funnel")
+    }
+
+    func fetchPaymentsOverview() async throws -> PaymentOverviewResponse {
+        try await get("/api/superadmin/payments-overview")
+    }
+
+    func fetchOverageStats() async throws -> OverageStatsResponse {
+        try await get("/api/superadmin/overage-stats")
+    }
+}
+
 enum APIError: Error {
     case invalidResponse
     case statusCode(Int)
