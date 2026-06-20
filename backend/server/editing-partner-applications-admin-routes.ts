@@ -16,6 +16,7 @@ import crypto from "crypto";
 import { composeEmail } from "./email-design-system";
 import { sendTransactionalEmail } from "./transactional-email-service";
 import { mintPortalToken, revokeVendorPortalTokens } from "./editing-partner-portal-service";
+import { paypalHealthCheck, paypalTestPayout } from "./editing-payments-service";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -194,6 +195,62 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
     } catch (err) {
       console.error("[editing-vendors:partner-type]", err);
       res.status(500).json({ error: "kunne_ikke_oppdatere" });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // TEST/diagnostikk (admin Betalingstest-fane) — PayPal-helse + escrow-simulering
+  // ════════════════════════════════════════════════════════════════════
+  app.get("/api/superadmin/editing/test/jobs", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    try {
+      const r = await pool.query(
+        `SELECT id, project_title, vendor_name, amount_cents, currency, status,
+                payment_method, payment_status, payout_method, payout_status, payout_reference, created_at
+           FROM editing_jobs ORDER BY created_at DESC LIMIT 25`,
+      );
+      res.json({ jobs: r.rows });
+    } catch (err) {
+      console.error("[editing/test/jobs]", err);
+      res.status(500).json({ error: "kunne_ikke_hente" });
+    }
+  });
+
+  // Simuler betalt: sett escrow 'held' uten faktisk betaling (kun test).
+  app.post("/api/superadmin/editing/test/jobs/:id/simulate-paid", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    try {
+      const r = await pool.query(
+        `UPDATE editing_jobs SET payment_status='held', payment_method=COALESCE(payment_method,'test'), updated_at=NOW()
+          WHERE id=$1 AND payment_status IS DISTINCT FROM 'released' RETURNING id, payment_status`,
+        [req.params.id],
+      );
+      if (!r.rows[0]) return res.status(404).json({ error: "ikke_funnet_eller_released" });
+      res.json({ ok: true, ...r.rows[0] });
+    } catch (err) {
+      console.error("[editing/test/simulate-paid]", err);
+      res.status(500).json({ error: "kunne_ikke_simulere" });
+    }
+  });
+
+  // PayPal-helse (OAuth) + valgfri test-payout til en sandbox-e-post.
+  app.post("/api/superadmin/editing/test/paypal-ping", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    try {
+      const health = await paypalHealthCheck();
+      let payout: { ok: boolean; batchId?: string; error?: string } | null = null;
+      const email = req.body?.email ? String(req.body.email).trim() : "";
+      if (email && health.ok) {
+        const amountCents = Number.isFinite(Number(req.body?.amountCents)) ? Math.round(Number(req.body.amountCents)) : 100;
+        payout = await paypalTestPayout(email, amountCents);
+      }
+      res.json({ health, payout });
+    } catch (err) {
+      console.error("[editing/test/paypal-ping]", err);
+      res.status(500).json({ error: "kunne_ikke_teste" });
     }
   });
 
