@@ -50,6 +50,51 @@ struct SuperAdminHubView: View {
                         } label: {
                             Label("Overage / plan-overskridelser", systemImage: "exclamationmark.gauge")
                         }
+                        NavigationLink {
+                            SuperAdminB2BCockpitView(api: api)
+                        } label: {
+                            Label("B2B-funnel (cockpit)", systemImage: "chart.line.downtrend.xyaxis")
+                        }
+                        NavigationLink {
+                            SuperAdminCustomerSuccessView(api: api)
+                        } label: {
+                            Label("Customer Success", systemImage: "heart.text.square.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminCaseStudiesView(api: api)
+                        } label: {
+                            Label("Case Studies", systemImage: "doc.text.image.fill")
+                        }
+                    }
+
+                    // Fase 19: RBAC + nav-config + LinkedIn cockpit
+                    if let orgId = appState.activeOrganizationId {
+                        Section("RBAC & Organisasjon") {
+                            NavigationLink {
+                                SuperAdminPermissionsMatrixView(api: api, orgId: orgId)
+                            } label: {
+                                Label("Permissions-matrise", systemImage: "tablecells.fill")
+                            }
+                            NavigationLink {
+                                SuperAdminPromoteMemberView(api: api, orgId: orgId)
+                            } label: {
+                                Label("Forfremme medlem", systemImage: "arrow.up.right.square.fill")
+                            }
+                            NavigationLink {
+                                SuperAdminRoleNavConfigView(api: api)
+                            } label: {
+                                Label("Rolle-meny-config", systemImage: "rectangle.3.group.fill")
+                            }
+                        }
+                    }
+
+                    Section("Marketing-cockpit") {
+                        NavigationLink {
+                            SuperAdminLinkedInCockpitView(api: api)
+                        } label: {
+                            Label("LinkedIn (CAPI + Lead Sync)",
+                                   systemImage: "circle.grid.cross.fill")
+                        }
                     }
 
                     Section("WhatsApp") {
