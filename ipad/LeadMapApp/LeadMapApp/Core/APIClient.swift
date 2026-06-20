@@ -1703,6 +1703,167 @@ extension APIClient {
     }
 }
 
+// MARK: - Fase 25: Ad-tech-stack (Google/Meta/LinkedIn/TikTok + GTM/GA4/GSC)
+
+extension APIClient {
+
+    // -- Configs CRUD ---------------------------------------------
+
+    func fetchAdsConfigs() async throws -> AdsConfigsResponse {
+        try await get("/api/admin-room/agent/ads/configs")
+    }
+
+    func fetchAdsConfig(id: String) async throws -> AdsConfigDetailResponse {
+        try await get("/api/admin-room/agent/ads/configs/\(id)")
+    }
+
+    // -- Approval-flyt --------------------------------------------
+
+    /// Producer ber klient godkjenne Agent-anbefalinger.
+    func requestAdsConfigApproval(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/request-approval", body: [:])
+    }
+
+    /// Liste pending approvals klient skal godkjenne.
+    func fetchPendingAdsApprovals() async throws -> AdsApprovalsResponse {
+        try await get("/api/role-room/ads-approvals/pending")
+    }
+
+    /// Klient godkjenner ads-config.
+    func approveAdsConfig(configId: String) async throws {
+        try await post("/api/role-room/ads-approvals/\(configId)/approve", body: [:])
+    }
+
+    /// Klient avslår ads-config.
+    func rejectAdsConfig(configId: String, reason: String?) async throws {
+        var body: [String: Any] = [:]
+        if let reason { body["reason"] = reason }
+        try await post("/api/role-room/ads-approvals/\(configId)/reject", body: body)
+    }
+
+    // -- Setup diagnose + insights --------------------------------
+
+    func diagnoseAdsConfigSetup(id: String) async throws -> AdsSetupDiagnoseResponse {
+        try await get("/api/admin-room/agent/ads/configs/\(id)/setup/diagnose")
+    }
+
+    func fetchAdsConfigInsights(id: String) async throws -> AdsInsightsResponse {
+        try await get("/api/admin-room/agent/ads/configs/\(id)/insights")
+    }
+
+    // -- Google Search Console ------------------------------------
+
+    func verifyGsc(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/gsc/verify", body: [:])
+    }
+
+    func submitGscSitemap(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/gsc/sitemap", body: [:])
+    }
+
+    func diagnoseGsc(id: String) async throws -> AdsSetupDiagnoseResponse {
+        try await get("/api/admin-room/agent/ads/configs/\(id)/gsc/diagnose")
+    }
+
+    // -- GA4 + GTM provisjon --------------------------------------
+
+    func provisionGa4(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/ga4/provision", body: [:])
+    }
+
+    func provisionGtm(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/gtm/provision", body: [:])
+    }
+
+    func importGtmTags(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/gtm/import-tags", body: [:])
+    }
+
+    // -- Meta-platform actions ------------------------------------
+
+    func provisionMetaPixel(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/meta/provision-pixel", body: [:])
+    }
+
+    func syncMetaConversions(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/meta/sync-conversions", body: [:])
+    }
+
+    func createMetaAudience(id: String, name: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/meta/create-audience",
+            body: ["name": name],
+        )
+    }
+
+    // -- Google Ads actions ---------------------------------------
+
+    func syncAdsConfigToGoogle(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/sync-to-google", body: [:])
+    }
+
+    func createGoogleAdsAudience(id: String, name: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/google/create-audience",
+            body: ["name": name],
+        )
+    }
+
+    // -- LinkedIn actions -----------------------------------------
+
+    func provisionLinkedInInsightTag(id: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/linkedin/provision-insight-tag", body: [:])
+    }
+
+    func syncLinkedInConversions(id: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/linkedin/sync-conversions", body: [:])
+    }
+
+    func createLinkedInAudience(id: String, name: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/linkedin/create-audience",
+            body: ["name": name],
+        )
+    }
+
+    // -- TikTok actions -------------------------------------------
+
+    func provisionTiktokPixel(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/tiktok/provision-pixel", body: [:])
+    }
+
+    func syncTiktokEvents(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/tiktok/sync-events", body: [:])
+    }
+
+    func syncTiktokLeads(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/tiktok/sync-leads", body: [:])
+    }
+
+    func createTiktokAudience(id: String, name: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/tiktok/create-audience",
+            body: ["name": name],
+        )
+    }
+
+    // -- Account-lookups (OAuth-account-listing per platform) -----
+
+    func fetchGa4Accounts() async throws -> OAuthAccountsResponse {
+        try await get("/api/admin-room/agent/ads/ga4/accounts")
+    }
+
+    func fetchMetaAccounts() async throws -> OAuthAccountsResponse {
+        try await get("/api/admin-room/agent/ads/meta/accounts")
+    }
+
+    func fetchLinkedInAccounts() async throws -> OAuthAccountsResponse {
+        try await get("/api/admin-room/agent/ads/linkedin/accounts")
+    }
+}
+
 enum APIError: Error {
     case invalidResponse
     case statusCode(Int)
