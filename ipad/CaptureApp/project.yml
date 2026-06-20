@@ -41,6 +41,11 @@ targets:
       path: CaptureApp/Generated/Info.plist
       properties:
         CFBundleDisplayName: CreatorHub One
+        # Appen bruker kun standard HTTPS-kryptering (eksemptert). Setter dette
+        # så TestFlight-bygg ikke blokkeres på «Missing Compliance» — uten det
+        # er bygget VALID men «not in internally testable state» til noen svarer
+        # på export-compliance manuelt i App Store Connect.
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen:
           UIColorName: LaunchSplashBackground
           UIImageName: CreatorHubOneLogo
