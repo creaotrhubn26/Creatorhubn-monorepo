@@ -398,22 +398,52 @@ struct SuperAdminRREconomyView: View {
 
 struct SuperAdminOutreachTemplatesView: View {
     let api: APIClient
+    @Environment(AppState.self) private var appState
 
     @State private var templates: [OutreachTemplate] = []
     @State private var loading = true
     @State private var segmentFilter: String? = nil
     @State private var errorText: String?
 
-    private let segments: [(String, String?)] = [
-        ("Alle", nil), ("Agency", "agency"), ("Corporate", "corporate"), ("Creator", "creator"),
-    ]
+    /// Segmenter er produkt-spesifikke (jf. mig 0335 + outreach-routes.ts).
+    /// Role Room: casting/produsent/agentur etc. Leadgrid: B2B-byrå/
+    /// markedssjef/franchise etc. (LEADGRID-OUTREACH-PLAN.md).
+    private var segmentsForActiveProduct: [(String, String?)] {
+        switch appState.activeAdminProduct {
+        case .roleRoom:
+            return [
+                ("Alle", nil),
+                ("Casting", "casting_director"),
+                ("Produsent", "producer"),
+                ("Agentur", "agency"),
+                ("Skole", "education"),
+            ]
+        case .leadgrid:
+            return [
+                ("Alle", nil),
+                ("B2B-byrå", "b2b_agency"),
+                ("Markedssjef", "marketing_director"),
+                ("Franchise HQ", "franchise_hq"),
+                ("Bransje-foren.", "industry_assoc"),
+                ("Ad-partner", "ad_partner"),
+            ]
+        }
+    }
 
     var body: some View {
         List {
+            // Product-velger: aktivt Admin Room-produkt styrer hvilke
+            // templates som vises (per ?product=role_room|leadgrid).
+            Section {
+                AdminProductPicker()
+            } header: {
+                Text("Produkt-kontekst")
+            }
+
             Section {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(segments, id: \.0) { s in
+                        ForEach(segmentsForActiveProduct, id: \.0) { s in
                             Button {
                                 segmentFilter = s.1
                                 Task { await load() }
@@ -482,12 +512,22 @@ struct SuperAdminOutreachTemplatesView: View {
         .navigationTitle("Outreach")
         .task { await load() }
         .refreshable { await load() }
+        // Reload + reset segment-filter når produkt-kontekst endrer seg.
+        // Segmentene er produkt-spesifikke (b2b_agency finnes ikke i
+        // Role Room-katalogen).
+        .onChange(of: appState.activeAdminProduct) { _, _ in
+            segmentFilter = nil
+            Task { await load() }
+        }
     }
 
     private func load() async {
         await MainActor.run { loading = true }
         do {
-            let r = try await api.fetchOutreachTemplates(segment: segmentFilter)
+            let r = try await api.fetchOutreachTemplates(
+                product: appState.activeAdminProduct,
+                segment: segmentFilter,
+            )
             await MainActor.run {
                 templates = r.templates
                 loading = false
