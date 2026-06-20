@@ -460,7 +460,7 @@ function FundingAppDrawer({ open, initial, onClose, onSaved }: FundingDrawerProp
   );
 }
 
-function FundingAppsTab() {
+export function FundingAppsTab() {
   const [items, setItems] = useState<FundingApp[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -925,7 +925,7 @@ function InvestorDrawer({ open, initial, onClose, onSaved }: InvestorDrawerProps
   );
 }
 
-function InvestorContactsTab() {
+export function InvestorContactsTab() {
   const [items, setItems] = useState<InvestorContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1217,7 +1217,7 @@ function PartnerDrawer({ open, initial, onClose, onSaved }: PartnerDrawerProps) 
   );
 }
 
-function PartnerContactsTab() {
+export function PartnerContactsTab() {
   const [items, setItems] = useState<PartnerContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1518,7 +1518,7 @@ function ProductSwitcher({
   );
 }
 
-function BusinessPlanTab() {
+export function BusinessPlanTab() {
   // Mig 0335: én forretningsplan per produkt. Daniel veksler mellom Role Room
   // og Leadgrid uten å rote sammen tekstene. URL-state (?bizProduct=) gjør
   // dette deeplink-vennlig.
@@ -1754,7 +1754,7 @@ const ACTION_LABEL: Record<string, string> = {
   status_change: 'Status endret',
 };
 
-function ActivityLogTab() {
+export function ActivityLogTab() {
   const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
