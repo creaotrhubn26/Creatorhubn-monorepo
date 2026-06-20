@@ -427,6 +427,42 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
     }
   });
 
+  // ── OFFENTLIG partner-katalog (SEO/GEO-landing) — ingen auth, kun trygge felt.
+  // Ingen e-post/user_id (unngår enumerering/kontakt-harvesting); kontakt skjer via plattformen.
+  app.get("/api/editing/partners/public", async (_req, res) => {
+    try {
+      const r = await pool.query(
+        `SELECT ${VENDOR_PROFILE_COLS} FROM vendor_onboarding_profiles
+          WHERE vendor_type='editing' AND approval_status='approved'
+          ORDER BY rating DESC NULLS LAST, vendor_name ASC LIMIT 80`,
+      );
+      const partners = [];
+      for (const row of r.rows) {
+        const summary = buildComplianceSummary(row as ComplianceProfile);
+        if (!summary.cleared || row.quality_flagged) continue; // kun verifiserte, ikke-flaggede
+        const prods = await pool.query(
+          `SELECT category, name, product_name, price, currency FROM vendor_showcase_products
+            WHERE vendor_id=$1 AND (status IS NULL OR status='active') ORDER BY price ASC NULLS LAST LIMIT 8`,
+          [row.user_id],
+        );
+        partners.push({
+          vendorName: row.vendor_name, tagline: row.tagline, logoUrl: row.logo_url,
+          country: row.country, isInternational: summary.isInternational,
+          rating: row.rating != null ? Number(row.rating) : null, reviewCount: row.review_count ?? 0,
+          turnaroundDays: row.turnaround_days, tier: summary.tier, verificationPercent: summary.verificationPercent,
+          services: prods.rows.map((p) => ({
+            category: p.category, name: p.name || p.product_name,
+            price: p.price != null ? Number(p.price) : null, currency: p.currency || "NOK",
+          })),
+        });
+      }
+      res.json({ partners, count: partners.length });
+    } catch (err) {
+      console.error("[editing/partners/public] error", err);
+      res.status(500).json({ error: "kunne_ikke_hente" });
+    }
+  });
+
   // ── Vendor-profil + full priskatalog + compliance-status-tabell ──
   app.get("/api/editing/vendors/:vendorUserId", async (req, res) => {
     const session = await requireUserSession(req, res);

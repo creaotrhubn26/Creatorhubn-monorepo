@@ -2139,7 +2139,7 @@ export default function CreatorHubInvestorLanding({
                 </Box>
                 <Box
                   component="a"
-                  href="/partner/apply"
+                  href="/partner"
                   sx={{
                     color: '#fff5e8',
                     textDecoration: 'underline',
