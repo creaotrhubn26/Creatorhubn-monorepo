@@ -459,7 +459,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
       res.json({ partners, count: partners.length });
     } catch (err) {
       console.error("[editing/partners/public] error", err);
-      res.status(500).json({ error: "kunne_ikke_hente" });
+      res.status(500).json({ error: "kunne_ikke_hente", _debug: (err as Error)?.message?.slice(0, 200) });
     }
   });
 
