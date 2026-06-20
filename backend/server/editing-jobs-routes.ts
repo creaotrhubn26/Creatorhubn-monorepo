@@ -169,6 +169,16 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
         return res.status(429).json({ error: "for_mange_forsok" });
       }
       const b = req.body || {};
+      // Anti-bot: honeypot (skjult felt skal ALLTID være tomt) + tids-felle (skjema
+      // fylt urealistisk raskt). Treff → lat som suksess (ikke lagre, ikke avslør).
+      if (typeof b.hp === "string" && b.hp.trim() !== "") {
+        console.warn("[epa] honeypot-treff (bot) ignorert", { ip });
+        return res.json({ ok: true });
+      }
+      if (Number.isFinite(Number(b.elapsedMs)) && Number(b.elapsedMs) >= 0 && Number(b.elapsedMs) < 1500) {
+        console.warn("[epa] tids-felle-treff (bot) ignorert", { ip, elapsedMs: b.elapsedMs });
+        return res.json({ ok: true });
+      }
       const cap = (v: unknown, n: number) => (v == null ? null : String(v).slice(0, n));
       const companyName = cap(b.companyName, 300);
       const contactName = cap(b.contactName, 200);

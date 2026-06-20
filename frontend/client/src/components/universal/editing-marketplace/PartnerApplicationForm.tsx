@@ -139,6 +139,9 @@ export default function PartnerApplicationForm() {
   const [state, setState] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [errMsg, setErrMsg] = useState("");
   const [dupMsg, setDupMsg] = useState("");
+  // Anti-bot: honeypot-felt (skjult; ekte brukere lar det stå tomt) + tidsmåling.
+  const [hp, setHp] = useState("");
+  const loadedAt = React.useRef(Date.now());
 
   const isForeign = f.country !== "NO";
   const nonEea = f.country !== "__other" && !EEA.has(f.country);
@@ -221,6 +224,7 @@ export default function PartnerApplicationForm() {
           teamSize: f.teamSize ? Number(f.teamSize) : null,
           services: selectedServices,
           consentContact, consentPrivacy: true, locale,
+          hp, elapsedMs: Date.now() - loadedAt.current,
         }),
       })) as { ok?: boolean; alreadyReceived?: boolean; alreadyApproved?: boolean; reopened?: boolean };
       setDupMsg(
@@ -295,6 +299,10 @@ export default function PartnerApplicationForm() {
               <Card sx={{ bgcolor: BRAND.card, border: `1px solid ${BRAND.border}`, backdropFilter: "blur(6px)" }}>
                 <CardContent sx={{ p: { xs: 2, md: 3 } }}>
                   <Stack spacing={2}>
+                    {/* Honeypot — skjult for mennesker; bots fyller det → avvises i backend. */}
+                    <Box component="input" type="text" name="website_url" tabIndex={-1} autoComplete="off"
+                      value={hp} onChange={(e) => setHp((e.target as HTMLInputElement).value)} aria-hidden="true"
+                      sx={{ position: "absolute", left: "-9999px", top: 0, width: 1, height: 1, opacity: 0, pointerEvents: "none" }} />
                     {f.country === "NO" ? (
                       <Autocomplete
                         freeSolo
