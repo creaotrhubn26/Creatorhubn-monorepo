@@ -142,10 +142,14 @@ export async function exchangeGoogleIdToken(
     `${crypto.randomUUID()}${crypto.randomUUID()}`,
     10,
   );
+  // Each column gets its OWN placeholder — even though email and username
+  // carry the same value. Reusing one `$1` for two columns makes Postgres
+  // try to deduce a single type from both positions and throw
+  // "inconsistent types deduced for parameter $1" at prepare time.
   const upsert = await input.pool.query<{ id: string; role: string | null }>(
     `
       INSERT INTO users (email, username, password, first_name, last_name, profile_image_url, role, last_login_at, created_at, updated_at)
-      VALUES ($1, $1, $5, $2, $3, $4, 'user', NOW(), NOW(), NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, 'user', NOW(), NOW(), NOW())
       ON CONFLICT (email) DO UPDATE SET
         username   = COALESCE(NULLIF(users.username, ''), EXCLUDED.username),
         password   = COALESCE(NULLIF(users.password, ''), EXCLUDED.password),
@@ -156,7 +160,7 @@ export async function exchangeGoogleIdToken(
         updated_at = NOW()
       RETURNING id, role
     `,
-    [email, givenName, familyName, profileImage, placeholderPassword],
+    [email, email, placeholderPassword, givenName, familyName, profileImage],
   );
   const userRow = upsert.rows[0];
   if (!userRow) {
