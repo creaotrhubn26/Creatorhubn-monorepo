@@ -1938,3 +1938,50 @@ export const marketingPostersApi = {
     await jsonFetch(`/marketing-posters/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 };
+
+// ─────────────────────────────────────────────────────────────────
+// Workspace-aggregator (Dagens agenda + Kommende frister)
+// Bytter ut empty-states i AdminWorkspace høyre kolonne med live data.
+// Backend: admin-workspace-aggregator-routes.ts.
+// ─────────────────────────────────────────────────────────────────
+
+export interface AgendaItem {
+  id: string;
+  source: 'meeting';
+  title: string;
+  starts_at: string;
+  ends_at: string | null;
+  time_zone: string;
+  meet_link: string | null;
+  project_id: string | null;
+  status: string;
+}
+
+export type DeadlineSource = 'funding_app' | 'case' | 'meeting';
+
+export interface DeadlineItem {
+  id: string;
+  source: DeadlineSource;
+  title: string;
+  due_date: string;          // ISO date eller datetime
+  product_key: AdminProductKey | null;
+  priority: string | null;
+  status: string | null;
+  link_path: string | null;
+}
+
+export const DEADLINE_SOURCE_LABEL: Record<DeadlineSource, string> = {
+  funding_app: 'Søknad',
+  case: 'Sak',
+  meeting: 'Møte',
+};
+
+export const workspaceAggregatorApi = {
+  todayAgenda: async (): Promise<AgendaItem[]> => {
+    const data = await jsonFetch<{ items: AgendaItem[] }>('/workspace/today-agenda');
+    return data.items;
+  },
+  upcomingDeadlines: async (days: number = 14): Promise<{ items: DeadlineItem[]; windowDays: number }> => {
+    return jsonFetch<{ items: DeadlineItem[]; windowDays: number }>(`/workspace/upcoming-deadlines?days=${days}`);
+  },
+};

@@ -452,6 +452,7 @@ import { setupWhatsNewRoutes } from "./whats-new-routes";
 import { setupMarketingPosterRoutes } from "./marketing-poster-routes";
 import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-routes";
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
+import { setupAdminWorkspaceAggregatorRoutes } from "./admin-workspace-aggregator-routes";
 import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
 import { setupNewsletterFromReportRoutes } from "./role-room-newsletter-from-report-routes";
@@ -16583,6 +16584,15 @@ setupAdminOutreachRoutes({
   getActiveSessionFromRequest,
   requireAdminRoomAccess,
   logAdminActivity,
+});
+
+// ── AdminWorkspace aggregator (dagens agenda + kommende frister)
+// Fyller empty-states i AdminWorkspace høyre kolonne med live data
+// på tvers av meetings/funding/cases (PR #828 + #830).
+setupAdminWorkspaceAggregatorRoutes({
+  app,
+  pool,
+  requireAdminRoomAccess,
 });
 
 // ── AI-citation-tracker (måler om GEO-strategien faktisk fører til at AI-modeller siterer oss)
