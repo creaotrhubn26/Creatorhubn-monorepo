@@ -139,11 +139,7 @@ export default function PartnerApplicationForm() {
         <Box sx={{ maxWidth: 760, mx: "auto" }}>
           {/* Header */}
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
-              <Box sx={{ width: 34, height: 34, borderRadius: "9px", display: "grid", placeItems: "center",
-                background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})`, color: "#0b0c10", fontWeight: 800 }}>C</Box>
-              <Typography sx={{ fontWeight: 700, letterSpacing: ".5px", color: BRAND.cream }}>Creatorhub</Typography>
-            </Box>
+            <Box component="img" src="/creatorhub-wordmark-light.png" alt="Creatorhub Norge" sx={{ height: { xs: 34, md: 44 }, width: "auto" }} />
             <Button size="small" onClick={() => setLocale(locale === "en" ? "no" : "en")} sx={{ color: BRAND.muted }}>
               {locale === "en" ? "Norsk" : "English"}
             </Button>
