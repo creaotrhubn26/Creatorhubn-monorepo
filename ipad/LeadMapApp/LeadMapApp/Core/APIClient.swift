@@ -1357,6 +1357,36 @@ extension APIClient {
     }
 }
 
+// MARK: - Fase 20: Platform-status + integrations + API-endpoints-health
+
+extension APIClient {
+
+    /// Aggregert plattform-helse: Render + Neon + Vercel + Stripe + Anthropic + bruker-presence.
+    func fetchPlatformStatus() async throws -> PlatformStatusResponse {
+        try await get("/api/admin-room/platform-status")
+    }
+
+    /// Daniel's integrations-oversikt: totalt antall, aktive, ødelagte, per kategori.
+    func fetchIntegrationsOverview() async throws -> IntegrationsOverview {
+        try await get("/api/admin/integrations/overview")
+    }
+
+    /// Alle integrasjons-keys (Stripe/Meta/LinkedIn/AI-providers/osv).
+    func fetchIntegrationKeys() async throws -> IntegrationKeysResponse {
+        try await get("/api/admin/integrations/keys")
+    }
+
+    /// Webhook-endepunkter på tvers av integrations (annet enn superadmin-webhooks).
+    func fetchIntegrationWebhooks() async throws -> IntegrationWebhooksResponse {
+        try await get("/api/admin/integrations/webhooks")
+    }
+
+    /// API-endepunkt-helse — feil/warning/info-tellere per source siste 24t.
+    func fetchApiEndpointsHealth() async throws -> ApiEndpointsHealthResponse {
+        try await get("/api/admin/api-endpoints/health")
+    }
+}
+
 enum APIError: Error {
     case invalidResponse
     case statusCode(Int)

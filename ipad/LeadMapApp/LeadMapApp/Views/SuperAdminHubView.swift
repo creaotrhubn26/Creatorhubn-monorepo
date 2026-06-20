@@ -151,6 +151,25 @@ struct SuperAdminHubView: View {
                             Label("TestFlight-testere", systemImage: "airplane.circle.fill")
                         }
                     }
+
+                    // Fase 20: Plattform-helse + Integrations
+                    Section("Plattform & helse") {
+                        NavigationLink {
+                            SuperAdminPlatformStatusView(api: api)
+                        } label: {
+                            Label("Plattform-status", systemImage: "server.rack")
+                        }
+                        NavigationLink {
+                            SuperAdminIntegrationsView(api: api)
+                        } label: {
+                            Label("Integrations-oversikt", systemImage: "circle.grid.cross.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminApiHealthView(api: api)
+                        } label: {
+                            Label("API-helse (24t)", systemImage: "waveform.path.ecg")
+                        }
+                    }
                 }
             }
             .navigationTitle("Super Admin")
