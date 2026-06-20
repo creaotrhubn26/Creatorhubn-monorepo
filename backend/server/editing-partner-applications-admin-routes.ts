@@ -48,6 +48,7 @@ async function requireSuperAdmin(
 
 async function sendWelcomeEmail(pool: Pool, args: {
   to: string; companyName: string; isForeign: boolean; jti: string; rawToken: string; sentBy?: string;
+  partnerType?: string | null; prototypeUntil?: string | null; platformFeeBps?: number | null;
 }): Promise<void> {
   const portalUrl = `${PORTAL_BASE}/partner-portal?jti=${args.jti}&t=${encodeURIComponent(args.rawToken)}`;
   const guideUrl = `${PORTAL_BASE}/partner-portal/guide`;
@@ -56,11 +57,33 @@ async function sendWelcomeEmail(pool: Pool, args: {
     ? "Velkommen som Creatorhub-partner – aktiver portal-tilgangen din"
     : "Welcome to the Creatorhub Partner Program – activate your portal access";
   const headline = no ? "Søknaden din er godkjent" : "Your application is approved";
-  const body = no
-    ? `Gratulerer, ${args.companyName}! Du er godkjent som Creatorhub redigeringspartner. Klikk knappen under for å logge inn i partnerportalen og fullføre verifiseringen (compliance, lagring og betaling). Lenken er personlig og gyldig i 14 dager.`
-    : `Congratulations, ${args.companyName}! You have been approved as a Creatorhub editing partner. Click the button below to sign in to your partner portal and complete verification (compliance, storage and payments). The link is personal and valid for 14 days.`;
+
+  // Type-bevisst status-linje: prototype-tester (m/ periode) vs. vanlig partner (m/ fee).
+  const feePct = ((args.platformFeeBps ?? 1500) / 100);
+  const untilDate = args.prototypeUntil
+    ? new Date(args.prototypeUntil).toLocaleDateString(no ? "nb-NO" : "en-GB", { year: "numeric", month: "long", day: "numeric" })
+    : null;
+  let statusLine = "";
+  if (args.partnerType === "prototype") {
+    statusLine = no
+      ? `Du er registrert som PROTOTYPE-TESTER i Creatorhub Partner Program${untilDate ? ` for perioden frem til ${untilDate}` : ""} — med 0 % plattformgebyr i prototype-perioden${untilDate ? ` (deretter ${feePct}%)` : ""}.`
+      : `You are registered as a PROTOTYPE TESTER on the Creatorhub Partner Program${untilDate ? ` for the period until ${untilDate}` : ""} — with 0% platform fee during the prototype period${untilDate ? ` (${feePct}% thereafter)` : ""}.`;
+  } else if (args.partnerType === "standard") {
+    statusLine = no
+      ? `Du er registrert som Creatorhub-partner med ${feePct}% plattformgebyr per oppdrag.`
+      : `You are registered as a Creatorhub partner with a ${feePct}% platform fee per job.`;
+  }
+
+  const intro = no
+    ? `Gratulerer, ${args.companyName}! Du har bestått kravene og er godkjent som Creatorhub redigeringspartner.`
+    : `Congratulations, ${args.companyName}! You have passed the requirements and been approved as a Creatorhub editing partner.`;
+  const outro = no
+    ? `Klikk knappen under for å logge inn i partnerportalen og fullføre verifiseringen (compliance, lagring og betaling). Lenken er personlig og gyldig i 14 dager.`
+    : `Click the button below to sign in to your partner portal and complete verification (compliance, storage and payments). The link is personal and valid for 14 days.`;
+  const body = `${intro}${statusLine ? ` ${statusLine}` : ""} ${outro}`;
   const { html, text } = composeEmail({
     category: "general",
+    brand: "creatorhub",
     subject,
     headline,
     subhead: no ? "Creatorhub Partnerprogram" : "Creatorhub Partner Program",
@@ -94,6 +117,60 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
     }
   });
 
+  // Liste over godkjente redigeringsvendors m/ partner-type/fee (for admin-panelet, filtrerbar).
+  app.get("/api/superadmin/editing/vendors", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    try {
+      const r = await pool.query(
+        `SELECT p.user_id, p.vendor_name, p.country, p.is_foreign, p.approval_status,
+                p.partner_type, p.prototype_until, p.platform_fee_bps,
+                p.rating, p.review_count, p.quality_flagged, p.approved_at,
+                u.email
+           FROM vendor_onboarding_profiles p
+           LEFT JOIN users u ON u.id = p.user_id
+          WHERE p.vendor_type = 'editing'
+          ORDER BY p.approved_at DESC NULLS LAST, p.created_at DESC
+          LIMIT 300`,
+      );
+      res.json({ vendors: r.rows });
+    } catch (err) {
+      console.error("[editing-vendors:list]", err);
+      res.status(500).json({ error: "kunne_ikke_hente" });
+    }
+  });
+
+  // Endre partner-type/fee/prototype-varighet for en eksisterende vendor.
+  app.patch("/api/superadmin/editing/vendors/:userId/partner-type", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    try {
+      const partnerType = req.body?.partnerType === "standard" ? "standard"
+        : req.body?.partnerType === "prototype" ? "prototype" : null;
+      let prototypeUntil: string | null = null;
+      if (partnerType === "prototype") {
+        if (req.body?.prototypeUntil) prototypeUntil = new Date(req.body.prototypeUntil).toISOString();
+        else if (Number.isFinite(Number(req.body?.prototypeMonths)) && Number(req.body.prototypeMonths) > 0) {
+          const d = new Date(); d.setMonth(d.getMonth() + Number(req.body.prototypeMonths)); prototypeUntil = d.toISOString();
+        }
+      }
+      const platformFeeBps = Number.isFinite(Number(req.body?.platformFeeBps))
+        ? Math.max(0, Math.round(Number(req.body.platformFeeBps))) : null;
+      const upd = await pool.query(
+        `UPDATE vendor_onboarding_profiles
+            SET partner_type=$2, prototype_until=$3, platform_fee_bps=$4, updated_at=now()
+          WHERE user_id=$1 AND vendor_type='editing'
+        RETURNING user_id, partner_type, prototype_until, platform_fee_bps`,
+        [req.params.userId, partnerType, prototypeUntil, platformFeeBps],
+      );
+      if (!upd.rows[0]) return res.status(404).json({ error: "vendor_ikke_funnet" });
+      res.json({ ok: true, vendor: upd.rows[0] });
+    } catch (err) {
+      console.error("[editing-vendors:partner-type]", err);
+      res.status(500).json({ error: "kunne_ikke_oppdatere" });
+    }
+  });
+
   // Godkjenn — transaksjonelt: users-rad → profil approved → app approved.
   app.post("/api/superadmin/editing-partner-applications/:id/approve", async (req, res) => {
     const s = await requireSuperAdmin(req, res, pool, activeSessions);
@@ -107,6 +184,19 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
         [req.params.id],
       )).rows[0];
       if (!appRow) { await client.query("ROLLBACK"); return res.status(404).json({ error: "ikke_funnet_eller_behandlet" }); }
+
+      // Admin-beslutning: prototype-tester (0 % i en periode) vs. vanlig kunde (fee).
+      const partnerType = req.body?.partnerType === "standard" ? "standard"
+        : req.body?.partnerType === "prototype" ? "prototype" : null;
+      let prototypeUntil: string | null = null;
+      if (partnerType === "prototype") {
+        if (req.body?.prototypeUntil) prototypeUntil = new Date(req.body.prototypeUntil).toISOString();
+        else if (Number.isFinite(Number(req.body?.prototypeMonths)) && Number(req.body.prototypeMonths) > 0) {
+          const d = new Date(); d.setMonth(d.getMonth() + Number(req.body.prototypeMonths)); prototypeUntil = d.toISOString();
+        }
+      }
+      const platformFeeBps = Number.isFinite(Number(req.body?.platformFeeBps))
+        ? Math.max(0, Math.round(Number(req.body.platformFeeBps))) : null;
 
       const email = String(appRow.contact_email).toLowerCase();
       // 1) Find-or-create users-rad (søker har aldri logget inn).
@@ -135,17 +225,18 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
         await client.query(
           `UPDATE vendor_onboarding_profiles
               SET vendor_type='editing', approval_status='approved', approved_at=now(),
-                  approved_by=$2, is_foreign=$3, country=$4, is_eea=$5, updated_at=now()
+                  approved_by=$2, is_foreign=$3, country=$4, is_eea=$5,
+                  partner_type=$6, prototype_until=$7, platform_fee_bps=$8, updated_at=now()
             WHERE user_id=$1`,
-          [userId, s.userId, !!appRow.is_foreign, appRow.country, appRow.is_eea],
+          [userId, s.userId, !!appRow.is_foreign, appRow.country, appRow.is_eea, partnerType, prototypeUntil, platformFeeBps],
         );
       } else {
         await client.query(
           `INSERT INTO vendor_onboarding_profiles
              (user_id, vendor_type, vendor_name, business_info, approval_status, approved_at,
-              approved_by, is_foreign, country, is_eea)
-           VALUES ($1, 'editing', $2, '{}'::jsonb, 'approved', now(), $3, $4, $5, $6)`,
-          [userId, appRow.company_name, s.userId, !!appRow.is_foreign, appRow.country, appRow.is_eea],
+              approved_by, is_foreign, country, is_eea, partner_type, prototype_until, platform_fee_bps)
+           VALUES ($1, 'editing', $2, '{}'::jsonb, 'approved', now(), $3, $4, $5, $6, $7, $8, $9)`,
+          [userId, appRow.company_name, s.userId, !!appRow.is_foreign, appRow.country, appRow.is_eea, partnerType, prototypeUntil, platformFeeBps],
         );
       }
 
@@ -165,6 +256,7 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
         await sendWelcomeEmail(pool, {
           to: appRow.contact_email, companyName: appRow.company_name,
           isForeign: !!appRow.is_foreign, jti, rawToken, sentBy: s.userId,
+          partnerType, prototypeUntil, platformFeeBps,
         });
       } catch (mailErr) {
         console.error("[partner-apps:approve] e-post feilet (ufarlig)", mailErr);

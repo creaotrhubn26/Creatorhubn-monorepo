@@ -70,19 +70,35 @@ export interface EditingJobsRoutesDeps {
   ) => Promise<void>;
 }
 
-// Plattform-cut. Under prototype-testing kan vendor-fee være betinget/null
-// (EDITING_PROTOTYPE_NO_FEE=1). Ellers default 15% (overstyrbar via env).
-function platformFeeCents(amountCents: number): number {
-  if (process.env.EDITING_PROTOTYPE_NO_FEE === "1") return 0;
-  const pct = Number(process.env.EDITING_PLATFORM_FEE_PCT || "0.15");
-  return Math.max(0, Math.round(amountCents * pct));
-}
+// Plattform-cut PER VENDOR. Admin bestemmer ved godkjenning:
+//  - 'prototype'  → 0 % så lenge prototype_until er i framtiden (eller NULL = ubegrenset);
+//                   etter utløp faller den tilbake til platform_fee_bps (eller default).
+//  - 'standard'   → platform_fee_bps (default 1500 bps = 15 %).
+//  - NULL/uavklart → behold prototype-fase-default (global env), bakoverkompatibelt.
+const DEFAULT_FEE_BPS = Math.round(Number(process.env.EDITING_PLATFORM_FEE_PCT || "0.15") * 10000);
+type FeeConfig = { partner_type?: string | null; prototype_until?: string | Date | null; platform_fee_bps?: number | null };
 
-// ÉN sannhetskilde for plattform-gebyret som VISES — leser samme env som charges.
-function platformFeeInfo(): { pct: number; prototype: boolean } {
-  const prototype = process.env.EDITING_PROTOTYPE_NO_FEE === "1";
-  const pct = prototype ? 0 : Number(process.env.EDITING_PLATFORM_FEE_PCT || "0.15") * 100;
-  return { pct: Math.round(pct * 10) / 10, prototype };
+function prototypeActive(cfg: FeeConfig): boolean {
+  if (cfg.partner_type !== "prototype") return false;
+  if (!cfg.prototype_until) return true; // ubegrenset prototype
+  return new Date() < new Date(cfg.prototype_until);
+}
+function feeBpsFor(cfg: FeeConfig): number {
+  if (cfg.partner_type === "prototype") return prototypeActive(cfg) ? 0 : (cfg.platform_fee_bps ?? DEFAULT_FEE_BPS);
+  if (cfg.partner_type === "standard") return cfg.platform_fee_bps ?? DEFAULT_FEE_BPS;
+  // uavklart → global prototype-fase-default
+  return process.env.EDITING_PROTOTYPE_NO_FEE === "1" ? 0 : DEFAULT_FEE_BPS;
+}
+function platformFeeCents(amountCents: number, cfg: FeeConfig): number {
+  return Math.max(0, Math.round((amountCents * feeBpsFor(cfg)) / 10000));
+}
+// ÉN sannhetskilde for plattform-gebyret som VISES — samme config som charges.
+function platformFeeInfo(cfg: FeeConfig): { pct: number; prototype: boolean; prototypeUntil: string | null } {
+  return {
+    pct: Math.round((feeBpsFor(cfg) / 100) * 10) / 10,
+    prototype: prototypeActive(cfg),
+    prototypeUntil: cfg.prototype_until ? new Date(cfg.prototype_until).toISOString() : null,
+  };
 }
 
 // MVA-beregning (formidler-modell), jf. norsk snudd avregning for fjernleverbare
@@ -108,7 +124,8 @@ const VENDOR_PROFILE_COLS = `
   compliance_gdpr_status, compliance_delivery_status, dpa_signed, nda_signed,
   scc_signed, tia_completed, subcontractors_allowed, portfolio_use_allowed,
   portfolio_submitted, payment_connected, dpa_document_key,
-  vendor_nda_governing_law, vendor_nda_url, vendor_nda_uploaded_at, quality_flagged
+  vendor_nda_governing_law, vendor_nda_url, vendor_nda_uploaded_at, quality_flagged,
+  partner_type, prototype_until, platform_fee_bps
 `;
 
 export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
@@ -444,15 +461,17 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
           : null;
       const splitSheetId: string | null = b.splitSheetId || null;
 
-      // MVA: slå opp vendorens utenlandsk-status → reverse charge for utenlandske.
+      // MVA + fee: slå opp vendorens utenlandsk-status + partner-type/fee-config.
       let vendorIsForeign = false;
+      let feeCfg: FeeConfig = {};
       if (vendorId) {
-        const vf = await pool.query<{ is_foreign: boolean }>(
-          `SELECT is_foreign FROM vendor_onboarding_profiles WHERE user_id = $1 LIMIT 1`, [vendorId],
+        const vf = await pool.query<{ is_foreign: boolean; partner_type: string | null; prototype_until: string | null; platform_fee_bps: number | null }>(
+          `SELECT is_foreign, partner_type, prototype_until, platform_fee_bps FROM vendor_onboarding_profiles WHERE user_id = $1 LIMIT 1`, [vendorId],
         );
         vendorIsForeign = !!vf.rows[0]?.is_foreign;
+        if (vf.rows[0]) feeCfg = { partner_type: vf.rows[0].partner_type, prototype_until: vf.rows[0].prototype_until, platform_fee_bps: vf.rows[0].platform_fee_bps };
       }
-      const feeCents = platformFeeCents(amountCents);
+      const feeCents = platformFeeCents(amountCents, feeCfg);
       const vat = computeJobVat(amountCents, feeCents, vendorIsForeign);
 
       const ins = await pool.query(
@@ -1254,7 +1273,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
         country: row?.country || "NO",
         isForeign: !!row?.is_foreign,
         compliance,
-        platformFee: platformFeeInfo(),
+        platformFee: platformFeeInfo((row || {}) as FeeConfig),
       });
     } catch (err) {
       console.error("[editing/vendor/me] error", err);
