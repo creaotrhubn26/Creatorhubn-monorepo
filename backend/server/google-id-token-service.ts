@@ -129,11 +129,17 @@ export async function exchangeGoogleIdToken(
   const familyName = payload.family_name?.trim() ?? null;
   const profileImage = payload.picture?.trim() ?? null;
 
+  // `username` is NOT NULL on the users table, so a first-time Google
+  // sign-in (the INSERT path) MUST provide it or the whole login 500s.
+  // Mirror the web/Leadgrid convention: username = the verified email
+  // (unique per user, same as the conflict target). Backfill it on the
+  // UPDATE branch too so older rows with a null/empty username self-heal.
   const upsert = await input.pool.query<{ id: string; role: string | null }>(
     `
-      INSERT INTO users (email, first_name, last_name, profile_image_url, role, last_login_at, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, 'user', NOW(), NOW(), NOW())
+      INSERT INTO users (email, username, first_name, last_name, profile_image_url, role, last_login_at, created_at, updated_at)
+      VALUES ($1, $1, $2, $3, $4, 'user', NOW(), NOW(), NOW())
       ON CONFLICT (email) DO UPDATE SET
+        username   = COALESCE(NULLIF(users.username, ''), EXCLUDED.username),
         first_name = COALESCE(EXCLUDED.first_name, users.first_name),
         last_name  = COALESCE(EXCLUDED.last_name,  users.last_name),
         profile_image_url = COALESCE(EXCLUDED.profile_image_url, users.profile_image_url),
