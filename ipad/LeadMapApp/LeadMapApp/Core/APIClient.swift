@@ -1387,6 +1387,249 @@ extension APIClient {
     }
 }
 
+// MARK: - Fase 21: Resterende admin-room-paritet
+
+extension APIClient {
+
+    // -- Leads growth (B2B + per-org månedlig vekst) ---------------
+
+    func fetchLeadsGrowth(period: String = "12m", scope: String = "b2b") async throws -> LeadsGrowthResponse {
+        try await get("/api/admin-room/leads-growth?period=\(period)&scope=\(scope)")
+    }
+
+    // -- Social connections status ---------------------------------
+
+    func fetchSocialConnectionsStatus(orgId: String? = nil) async throws -> SocialConnectionsStatusResponse {
+        let qs = orgId.map { "?orgId=\($0)" } ?? ""
+        return try await get("/api/admin-room/social-connections/status\(qs)")
+    }
+
+    // -- Competitor report (Claude SWOT per konkurrent) ------------
+
+    func fetchCompetitorReport(competitorId: String) async throws -> CompetitorReportResponse {
+        try await get("/api/admin-room/lead-map/leads/\(competitorId)/competitor-report")
+    }
+
+    // -- Resend status ---------------------------------------------
+
+    func fetchResendStatus() async throws -> ResendStatusResponse {
+        try await get("/api/admin-room/resend/status")
+    }
+
+    // -- Post drafts (eksisterende endpoint) -----------------------
+
+    func fetchPostDrafts(status: String? = nil, platform: String? = nil) async throws -> MarketingPostDraftsResponse {
+        var qs: [String] = []
+        if let status { qs.append("status=\(status)") }
+        if let platform { qs.append("platform=\(platform)") }
+        let q = qs.isEmpty ? "" : "?" + qs.joined(separator: "&")
+        return try await get("/api/role-room/agent/post-drafts\(q)")
+    }
+
+    func deletePostDraft(id: String) async throws {
+        try await delete("/api/role-room/agent/post-drafts/\(id)")
+    }
+
+    func publishPostDraft(id: String) async throws {
+        try await post("/api/role-room/agent/post-drafts/\(id)/publish", body: [:])
+    }
+
+    // -- Content calendar (eksisterende endpoint) ------------------
+
+    func fetchContentCalendar(brandKey: String? = nil) async throws -> ContentCalendarResponse {
+        let qs = brandKey.map { "?brandKey=\($0)" } ?? ""
+        return try await get("/api/role-room/marketing-cockpit/content-calendar\(qs)")
+    }
+
+    // -- What's new (eksisterende endpoint) ------------------------
+
+    func fetchWhatsNew() async throws -> WhatsNewResponse {
+        try await get("/api/admin-room/whats-new")
+    }
+
+    func fetchPublicWhatsNew() async throws -> WhatsNewResponse {
+        try await get("/api/whats-new")
+    }
+
+    // -- B2 Archive (eksisterende endpoint) ------------------------
+
+    func fetchB2ArchiveUsage(roleRoom: Bool = false) async throws -> B2ArchiveUsage {
+        let path = roleRoom ? "/api/role-room/admin/b2-archive/usage" : "/api/admin/b2-archive/usage"
+        return try await get(path)
+    }
+
+    func fetchB2ArchiveFiles(roleRoom: Bool = false) async throws -> B2ArchiveFilesResponse {
+        let path = roleRoom ? "/api/role-room/admin/b2-archive/files" : "/api/admin/b2-archive/files"
+        return try await get(path)
+    }
+
+    // -- Migrations status (eksisterende endpoint) -----------------
+
+    func fetchMigrationsStatus() async throws -> MigrationsStatus {
+        try await get("/api/admin-room/migrations/status")
+    }
+
+    func runMigrations() async throws {
+        try await post("/api/admin-room/migrations/run", body: [:])
+    }
+}
+
+// MARK: - Fase 22: 5 siste super-admin-views (alle endepunkter eksisterer)
+
+extension APIClient {
+
+    // -- Errors / Observability ------------------------------------
+
+    func fetchAdminErrors(level: String? = nil, limit: Int = 50) async throws -> AdminErrorsResponse {
+        var qs = "?limit=\(limit)"
+        if let level { qs += "&level=\(level)" }
+        return try await get("/api/admin-room/errors\(qs)")
+    }
+
+    func fetchAdminErrorsStats() async throws -> AdminErrorsStatsResponse {
+        try await get("/api/admin-room/errors/stats")
+    }
+
+    func resolveAdminError(id: String) async throws {
+        try await post("/api/admin-room/errors/\(id)/resolve", body: [:])
+    }
+
+    func reopenAdminError(id: String) async throws {
+        try await post("/api/admin-room/errors/\(id)/reopen", body: [:])
+    }
+
+    // -- Market Intelligence ---------------------------------------
+
+    func fetchMarketScans() async throws -> MarketScansResponse {
+        try await get("/api/market-scans")
+    }
+
+    func fetchMarketScanCompetitors(scanId: String) async throws -> MarketScanCompetitorsResponse {
+        try await get("/api/market-scans/\(scanId)/competitors")
+    }
+
+    func fetchMarketScanOpportunities(scanId: String) async throws -> MarketScanOpportunitiesResponse {
+        try await get("/api/market-scans/\(scanId)/opportunities")
+    }
+
+    // -- Brand Kit (per prosjekt) ----------------------------------
+
+    func fetchBrandKit(projectId: String) async throws -> BrandKitResponse {
+        try await get("/api/role-room/brand-kit/\(projectId)")
+    }
+
+    func scanBrandKit(projectId: String) async throws -> BrandKitResponse {
+        try await post("/api/role-room/brand-kit/\(projectId)/scan", body: [:])
+    }
+
+    // -- Lead Map Campaigns ----------------------------------------
+
+    func fetchLeadMapCampaigns() async throws -> LeadMapCampaignsResponse {
+        try await get("/api/lead-map/campaigns")
+    }
+
+    func fetchCategoryConversion() async throws -> CategoryConversionResponse {
+        try await get("/api/lead-map/analytics/category-conversion")
+    }
+
+    // -- Org switcher (impersonation) ------------------------------
+
+    func fetchSuperAdminOrgs() async throws -> SuperAdminOrgsResponse {
+        try await get("/api/superadmin/organizations")
+    }
+
+    func fetchActiveImpersonation() async throws -> ImpersonationStatus {
+        try await get("/api/superadmin/active-impersonation")
+    }
+
+    func endImpersonation() async throws {
+        try await post("/api/superadmin/end-impersonation", body: [:])
+    }
+}
+
+// MARK: - Fase 23: Drips + Marketplace + Partner/Developer-application + cron-triggers
+
+extension APIClient {
+
+    // -- Drips (e-post-serier) — super-admin manuell-trigger -------
+
+    /// Trigge drip-cron manuelt (kjør alle pending steps NÅ).
+    func runDripsCron() async throws -> DripRunResult {
+        try await post("/api/leadgrid/drips/run", body: [:])
+    }
+
+    /// Marker en lead som konvertert i drip-systemet (stopper serien).
+    func markDripConverted(leadId: String, conversionType: String) async throws {
+        try await post("/api/leadgrid/drips/converted",
+                        body: ["lead_id": leadId, "conversion_type": conversionType])
+    }
+
+    // -- Scheduled reports manuell-cron-trigger --------------------
+
+    /// Kjør alle pending scheduled-reports NÅ (super-admin override).
+    func runScheduledReportsCron() async throws {
+        try await post("/api/leadgrid/scheduled-reports/run", body: [:])
+    }
+
+    // -- Marketplace -----------------------------------------------
+
+    /// Liste public marketplace-partnere m/ filter på type + tier.
+    func fetchLeadgridMarketplace(type: String? = nil, tier: String? = nil) async throws -> LeadgridMarketplaceResponse {
+        var qs: [String] = []
+        if let type { qs.append("type=\(type)") }
+        if let tier { qs.append("tier=\(tier)") }
+        let q = qs.isEmpty ? "" : "?" + qs.joined(separator: "&")
+        return try await get("/api/leadgrid/marketplace\(q)")
+    }
+
+    // -- Partner-application (selv-tjeneste) ------------------------
+
+    /// Hent min organisasjons partner-søknad (hvis innsendt).
+    func fetchMyPartnerApplication() async throws -> LeadgridMyPartnerApplicationResponse {
+        try await get("/api/leadgrid/partner-application/my")
+    }
+
+    /// Send inn partner-søknad for en organisasjon.
+    func submitPartnerApplication(
+        organizationId: String, partnerType: String,
+        proposedTagline: String?, reason: String?,
+        proposedLogoUrl: String?, termsVersion: String, agreedToTerms: Bool,
+    ) async throws {
+        var body: [String: Any] = [
+            "organizationId": organizationId,
+            "partnerType": partnerType,
+            "termsVersion": termsVersion,
+            "agreedToTerms": agreedToTerms,
+        ]
+        if let proposedTagline { body["proposedTagline"] = proposedTagline }
+        if let reason { body["reason"] = reason }
+        if let proposedLogoUrl { body["proposedLogoUrl"] = proposedLogoUrl }
+        try await post("/api/leadgrid/partner-applications", body: body)
+    }
+
+    /// Hent gjeldende partner-terms (versjon + tekst).
+    func fetchLeadgridPartnerTerms() async throws -> LeadgridPartnerTerms {
+        try await get("/api/leadgrid/partner-terms")
+    }
+
+    // -- Developer-application -------------------------------------
+
+    /// Send inn developer-søknad (utvikler-program for Leadgrid API).
+    func submitDeveloperApplication(payload: LeadgridDeveloperApplication, agreedToTerms: Bool) async throws {
+        var body: [String: Any] = [
+            "email": payload.email,
+            "agreedToTerms": agreedToTerms,
+        ]
+        if let n = payload.fullName { body["fullName"] = n }
+        if let o = payload.organizationName { body["organizationName"] = o }
+        if let w = payload.website { body["website"] = w }
+        if let u = payload.useCase { body["useCase"] = u }
+        if let d = payload.integrationDescription { body["integrationDescription"] = d }
+        if let c = payload.expectedMonthlyApiCalls { body["expectedMonthlyApiCalls"] = c }
+        try await post("/api/leadgrid/developer-application", body: body)
+    }
+}
+
 enum APIError: Error {
     case invalidResponse
     case statusCode(Int)

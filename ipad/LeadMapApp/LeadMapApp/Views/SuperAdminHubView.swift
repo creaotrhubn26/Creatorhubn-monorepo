@@ -169,6 +169,108 @@ struct SuperAdminHubView: View {
                         } label: {
                             Label("API-helse (24t)", systemImage: "waveform.path.ecg")
                         }
+                        NavigationLink {
+                            SuperAdminResendStatusView(api: api)
+                        } label: {
+                            Label("Resend (email)", systemImage: "envelope.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminMigrationsStatusView(api: api)
+                        } label: {
+                            Label("Migrasjoner", systemImage: "arrow.triangle.swap")
+                        }
+                        NavigationLink {
+                            SuperAdminB2ArchiveView(api: api)
+                        } label: {
+                            Label("B2 Archive", systemImage: "externaldrive.connected.to.line.below")
+                        }
+                    }
+
+                    // Fase 21: Vekst + Sosial + Innhold
+                    Section("Vekst & innhold") {
+                        NavigationLink {
+                            SuperAdminLeadsGrowthView(api: api)
+                        } label: {
+                            Label("Leads-vekst (B2B)", systemImage: "chart.bar.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminSocialConnectionsView(api: api)
+                        } label: {
+                            Label("Sosiale koblinger", systemImage: "link.circle.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminPostDraftsView(api: api)
+                        } label: {
+                            Label("Post-drafts", systemImage: "doc.text.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminContentCalendarView(api: api)
+                        } label: {
+                            Label("Content-kalender", systemImage: "calendar")
+                        }
+                        NavigationLink {
+                            SuperAdminWhatsNewView(api: api)
+                        } label: {
+                            Label("What's New", systemImage: "sparkles.rectangle.stack.fill")
+                        }
+                    }
+
+                    // Fase 22: Observability + Market Intel + Campaigns + Org Switcher + Brand Kit
+                    Section("Market Intel & Observability") {
+                        NavigationLink {
+                            SuperAdminObservabilityView(api: api)
+                        } label: {
+                            Label("Observability (errors)", systemImage: "ladybug.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminMarketScansView(api: api)
+                        } label: {
+                            Label("Market Scans", systemImage: "binoculars.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminCampaignsView(api: api)
+                        } label: {
+                            Label("Ads-kampanjer", systemImage: "megaphone.fill")
+                        }
+                    }
+
+                    Section("Tilgang & merkevare") {
+                        NavigationLink {
+                            SuperAdminOrgSwitcherView(api: api)
+                        } label: {
+                            Label("Org-switcher (impersonate)", systemImage: "eye.circle.fill")
+                        }
+                        if let projectId = appState.activeProjectId {
+                            NavigationLink {
+                                SuperAdminBrandKitView(api: api, projectId: projectId)
+                            } label: {
+                                Label("Brand Kit (aktivt prosjekt)", systemImage: "paintpalette.fill")
+                            }
+                        }
+                    }
+
+                    // Fase 23: Drips/cron + Marketplace + Partner-application + Developer-application
+                    Section("Cron & marketplace") {
+                        NavigationLink {
+                            SuperAdminDripsManagementView(api: api)
+                        } label: {
+                            Label("Cron / drips", systemImage: "envelope.arrow.triangle.branch.fill")
+                        }
+                        NavigationLink {
+                            LeadgridMarketplaceView(api: api)
+                        } label: {
+                            Label("Marketplace", systemImage: "storefront.fill")
+                        }
+                        NavigationLink {
+                            LeadgridPartnerApplicationView(api: api)
+                        } label: {
+                            Label("Min partner-søknad", systemImage: "doc.badge.gearshape")
+                        }
+                        NavigationLink {
+                            LeadgridDeveloperApplicationView(api: api)
+                        } label: {
+                            Label("Utvikler-program", systemImage: "chevron.left.forwardslash.chevron.right")
+                        }
                     }
                 }
             }
