@@ -1258,6 +1258,11 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
       if (!auth || auth.role !== "photographer") return res.status(404).json({ error: "ikke_funnet" });
       if (auth.job.status !== "delivered") return res.status(400).json({ error: "ikke_levert" });
+      // Escrow: krev at betaling er mottatt (held) før godkjenning frigir utbetaling.
+      // Gratis/0-beløps-oppdrag slipper kravet (ingen penger å holde).
+      if ((auth.job.amount_cents || 0) > 0 && auth.job.payment_status !== "held") {
+        return res.status(400).json({ error: "betaling_kreves", message: "Betal oppdraget før du godkjenner leveransen." });
+      }
       await pool.query(
         `UPDATE editing_jobs SET status = 'approved', approved_at = NOW(), updated_at = NOW() WHERE id = $1`,
         [req.params.id],

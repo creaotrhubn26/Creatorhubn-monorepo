@@ -1289,6 +1289,19 @@ app.post(
         case "checkout.session.completed":
         case "checkout.session.async_payment_succeeded": {
           const session = event.data.object as Stripe.Checkout.Session;
+          // Editing-marketplace: marker oppdrag som betalt → escrow «held» (robust kilde,
+          // virker selv om fotografen lukker fanen før success-redirect). Reverterer ikke 'released'.
+          if (session.metadata?.kind === "editing_job" && session.metadata?.editingJobId) {
+            try {
+              await pool.query(
+                `UPDATE editing_jobs SET payment_status='held', updated_at=NOW()
+                  WHERE id=$1 AND payment_status IS DISTINCT FROM 'released'`,
+                [session.metadata.editingJobId],
+              );
+            } catch (e) {
+              console.error("[stripe-webhook] editing held-update failed", e);
+            }
+          }
           // Sjekk NextRole først (egen app_id-metadata).
           // NextRole-handleren sender sin egen 'Subscribe'-event til CAPI,
           // så vi hopper over generisk fallback for å unngå dobbeltsending.
