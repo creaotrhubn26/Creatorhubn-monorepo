@@ -105,6 +105,7 @@ import {
 import PriceManagementDashboard from './PriceManagementDashboard';
 import MarketplaceAppConfigManager from './MarketplaceAppConfigManager';
 import VendorTypeManager from '../vendor/VendorTypeManager';
+import EditingPartnersAdminPanel from './EditingPartnersAdminPanel';
 import FullscreenChatWidget from '../chat/FullscreenChatWidget';
 import { CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
 import AdminCommunicationPanel from './AdminCommunicationPanel';
@@ -1390,6 +1391,7 @@ export default function AdminDashboard({
     { id: 'academy', label: 'Academy', icon: School },
     { id: 'tidum-tilganger', label: 'Tidum', icon: Business },
     { id: 'vendor-types', label: 'Leverandørtyper', icon: Business },
+    { id: 'editing-partners', label: 'Redigeringspartnere', icon: Business },
     { id: 'profession-types', label: 'Profesjonstyper', icon: People },
     { id: 'integrasjoner', label: 'Integrasjoner', icon: Link },
     { id: 'feature-management', label: 'Funksjonsflagg', icon: ToggleOn },
@@ -1432,7 +1434,7 @@ export default function AdminDashboard({
     {
       label: 'Forretning',
       items: adminTabs.filter((tab) =>
-        ['okonomi', 'price-management', 'user-costs', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'profession-types'].includes(tab.id),
+        ['okonomi', 'price-management', 'user-costs', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'editing-partners', 'profession-types'].includes(tab.id),
       ),
     },
     {
@@ -1467,6 +1469,7 @@ export default function AdminDashboard({
     academy: 'Styr Academy-økonomi, instruktører og utbetalingsflyt.',
     'tidum-tilganger': 'Behandle Tidum-forespørsler, knytt dem til virksomheter og hold tilgangssynken samlet i CreatorHub.',
     'vendor-types': 'Vedlikehold leverandørtyper og tilbudsstruktur.',
+    'editing-partners': 'Godkjenn redigerings-søknader; sett prototype-tester (0 % i en periode) vs. vanlig kunde (partner-fee). Filtrer på type.',
     'profession-types': 'Administrer profesjoner, roller og kapasitet i CreatorHub.',
     integrasjoner: 'Konfigurer API-er, OAuth og eksterne systemkoblinger.',
     'feature-management': 'Kontroller funksjonsflagg og plattformtilgang.',
@@ -3377,6 +3380,8 @@ export default function AdminDashboard({
             }}
           />
         );
+      case 'editing-partners':
+        return <EditingPartnersAdminPanel />;
       case 'profession-types':
         return <ProfessionTypeManager />;
       case 'integrasjoner':

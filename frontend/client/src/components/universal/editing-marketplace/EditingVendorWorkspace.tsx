@@ -38,6 +38,7 @@ import EditingJobChat from "./EditingJobChat";
 import PartnerProgramDashboard from "./PartnerProgramDashboard";
 import EditingVendorCatalog from "./EditingVendorCatalog";
 import VendorNdaCard from "./VendorNdaCard";
+import VendorPrototypeFeedbackTool from "./VendorPrototypeFeedbackTool";
 import {
   t,
   pillarLabel,
@@ -192,9 +193,12 @@ export default function EditingVendorWorkspace({ userId }: Props) {
       {/* Partnerprogram-/verifiserings-dashboard — alltid øverst */}
       <PartnerProgramDashboard me={me} locale={locale} onStartVerification={() => setTab(1)} />
 
-      <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
-        {t("ws_title", locale)}
-      </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1, mb: 1 }}>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          {t("ws_title", locale)}
+        </Typography>
+        <VendorPrototypeFeedbackTool locale={locale} vendorName={me?.vendorName} />
+      </Box>
 
       {compliance && !compliance.cleared && (
         <Alert severity="warning" sx={{ mb: 2 }}>

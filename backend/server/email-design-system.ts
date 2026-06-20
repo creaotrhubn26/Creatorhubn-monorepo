@@ -133,40 +133,21 @@ function htmlToText(html: string): string {
 // ──────────────────────────────────────────────────────────────────
 // Header — logo + kategori-badge
 // ──────────────────────────────────────────────────────────────────
-export function emailHeader(category: EmailCategory = 'general'): string {
+export function emailHeader(category: EmailCategory = 'general', brand: 'roleroom' | 'creatorhub' = 'roleroom'): string {
   const cat = CATEGORY_BADGE[category];
+  // Ekte logo-bilder (absolutte URL-er for e-post). Creatorhub-wordmarken er lys →
+  // får en mørk pille for kontrast på lys e-post-bakgrunn. Role Room-logoen er
+  // mørk/lilla og vises som den er.
+  const logoHtml = brand === 'creatorhub'
+    ? `<div style="display:inline-block;background:#0b0c10;border-radius:8px;padding:7px 12px;"><img src="https://creatorhubn.com/creatorhub-wordmark-light.png" alt="Creatorhub Norge" height="26" style="display:block;height:26px;width:auto;border:0;" /></div>`
+    : `<img src="https://theroleroom.com/TheRoleRoom_Logo_Tagline.png" alt="The Role Room" height="40" style="display:block;height:40px;width:auto;border:0;" />`;
   return `
     <tr>
       <td style="padding:32px 32px 8px 32px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
             <td style="vertical-align:middle;">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="
-                    width:32px;
-                    height:32px;
-                    background:linear-gradient(135deg,${emailPalette.accent} 0%,${emailPalette.accentMagenta} 100%);
-                    border-radius:6px;
-                    text-align:center;
-                    vertical-align:middle;
-                    color:#ffffff;
-                    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-                    font-weight:800;
-                    font-size:13px;
-                    line-height:32px;
-                  ">RR</td>
-                  <td style="padding-left:10px;vertical-align:middle;">
-                    <span style="
-                      color:${emailPalette.textPrimary};
-                      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-                      font-weight:800;
-                      font-size:14px;
-                      letter-spacing:-0.1px;
-                    ">The Role Room</span>
-                  </td>
-                </tr>
-              </table>
+              ${logoHtml}
             </td>
             <td style="vertical-align:middle;text-align:right;">
               <span style="
@@ -492,6 +473,7 @@ export function renderEmail(args: RenderEmailArgs): { html: string; text: string
 // ──────────────────────────────────────────────────────────────────
 export interface ComposeArgs {
   category?: EmailCategory;
+  brand?: 'roleroom' | 'creatorhub';
   subject: string;
   preheader?: string;
   headline: string;
@@ -507,7 +489,7 @@ export interface ComposeArgs {
 
 export function composeEmail(args: ComposeArgs): { html: string; text: string } {
   const parts: string[] = [
-    emailHeader(args.category),
+    emailHeader(args.category, args.brand),
     emailHero({ headline: args.headline, subhead: args.subhead }),
   ];
   if (args.body) parts.push(emailBody(args.body));
