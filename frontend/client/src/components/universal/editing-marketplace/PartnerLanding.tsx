@@ -62,13 +62,22 @@ const STR = {
 };
 const WHY_ICONS = [StarIcon, LockIcon, PaymentsIcon];
 
-const FAQ = [
-  { q: "How do I become a Creatorhub editing partner?", a: "Apply at creatorhubn.com/partner/apply. After approval you receive a private partner portal to complete verification (compliance, secure storage and payments)." },
-  { q: "Is there a fee to join?", a: "Prototype testers pay 0% platform fee during the prototype period. Standard partners pay a transparent platform fee per job." },
-  { q: "How do partners get paid?", a: "Payouts (PayPal or Stripe) are released automatically once the photographer approves each delivery." },
-  { q: "Is client data secure and GDPR-compliant?", a: "Yes — encrypted transfer, job-scoped access, automatic deletion, a signed DPA + NDA. Partners outside the EEA complete SCC and a transfer impact assessment." },
-  { q: "Who can become a partner?", a: "External photo and video editing studios — retouching, clipping path, color grading, video editing — delivering to photographers and videographers." },
-];
+const FAQ_I18N: Record<Locale, Array<{ q: string; a: string }>> = {
+  en: [
+    { q: "How do I become a Creatorhub editing partner?", a: "Apply at creatorhubn.com/partner/apply. After approval you receive a private partner portal to complete verification (compliance, secure storage and payments)." },
+    { q: "Is there a fee to join?", a: "Prototype testers pay 0% platform fee during the prototype period. Standard partners pay a transparent platform fee per job." },
+    { q: "How do partners get paid?", a: "Payouts (PayPal or Stripe) are released automatically once the photographer approves each delivery." },
+    { q: "Is client data secure and GDPR-compliant?", a: "Yes — encrypted transfer, job-scoped access, automatic deletion, a signed DPA + NDA. Partners outside the EEA complete SCC and a transfer impact assessment." },
+    { q: "Who can become a partner?", a: "External photo and video editing studios — retouching, clipping path, color grading, video editing — delivering to photographers and videographers." },
+  ],
+  no: [
+    { q: "Hvordan blir jeg redigeringspartner i Creatorhub?", a: "Søk på creatorhubn.com/partner/apply. Etter godkjenning får du en privat partnerportal for å fullføre verifisering (compliance, sikker lagring og betaling)." },
+    { q: "Koster det noe å bli med?", a: "Prototype-testere betaler 0 % plattformgebyr i prototype-perioden. Vanlige partnere betaler et transparent plattformgebyr per oppdrag." },
+    { q: "Hvordan får partnere betalt?", a: "Utbetaling (PayPal eller Stripe) frigis automatisk når fotografen godkjenner hver leveranse." },
+    { q: "Er klientdata sikret og GDPR-kompatibelt?", a: "Ja — kryptert overføring, oppdrags-scoped tilgang, automatisk sletting, signert DPA + NDA. Partnere utenfor EØS fullfører SCC og en overførings-vurdering (TIA)." },
+    { q: "Hvem kan bli partner?", a: "Eksterne foto- og video-redigeringsstudioer — retusj, clipping path, color grading, video-redigering — som leverer til fotografer og videografer." },
+  ],
+};
 
 function flag(cc: string | null): string {
   if (!cc || cc.length !== 2) return "";
@@ -96,7 +105,7 @@ export default function PartnerLanding() {
       "@graph": [
         { "@type": "Organization", "@id": "https://creatorhubn.com/#organization", name: "Creatorhub", url: "https://creatorhubn.com", logo: "https://creatorhubn.com/creatorhub-wordmark-light.png" },
         { "@type": "WebPage", "@id": "https://creatorhubn.com/partner", name: "Creatorhub Editing Partner Program", isPartOf: { "@id": "https://creatorhubn.com/#organization" } },
-        { "@type": "FAQPage", mainEntity: FAQ.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
+        { "@type": "FAQPage", mainEntity: FAQ_I18N.en.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
       ],
     },
     jsonLdId: "partner-landing-jsonld",
@@ -197,7 +206,7 @@ export default function PartnerLanding() {
           {/* FAQ (GEO) */}
           <Box sx={{ mt: 6 }}>
             <Typography sx={{ fontFamily: BRAND.font, fontWeight: 800, fontSize: 20, color: BRAND.cream, mb: 2 }}>{s.faqTitle}</Typography>
-            {FAQ.map((f) => (
+            {FAQ_I18N[locale].map((f) => (
               <Box key={f.q} sx={{ mb: 2 }}>
                 <Typography sx={{ fontWeight: 700, color: BRAND.accent, fontSize: 15 }}>{f.q}</Typography>
                 <Typography sx={{ color: BRAND.muted, fontSize: 14, mt: 0.4 }}>{f.a}</Typography>
