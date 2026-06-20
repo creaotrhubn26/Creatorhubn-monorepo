@@ -1392,8 +1392,9 @@ struct SuperAdminTestflightTestersView: View {
 // ============================================================
 
 /// Helper for å parse #RRGGBB-strenger (fra email-branding) til Color.
-/// Returnerer `nil` for ugyldige strenger.
-private func colorFromHex(_ hex: String) -> Color? {
+/// Returnerer `nil` for ugyldige strenger. Internal (ikke private) så
+/// andre SuperAdmin-views (BrandKit, osv) kan bruke den.
+func colorFromHex(_ hex: String) -> Color? {
     var hexStr = hex.trimmingCharacters(in: .whitespacesAndNewlines)
     if hexStr.hasPrefix("#") { hexStr.removeFirst() }
     guard hexStr.count == 6, let v = UInt64(hexStr, radix: 16) else {
