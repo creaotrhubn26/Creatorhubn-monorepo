@@ -429,7 +429,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
               {/* Consent: auto-research */}
               <Box sx={{
                 mt: 0.5, p: 2, borderRadius: 2,
-                border: `1px solid ${consentResearch ? palette.accent : 'rgba(245,243,255,0.15)'}`,
+                border: `1px solid ${consentResearch ? palette.accentBright : 'rgba(245,243,255,0.15)'}`,
                 bgcolor: consentResearch ? 'rgba(168,85,247,0.06)' : 'rgba(255,255,255,0.02)',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
@@ -438,8 +438,8 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                   <Box sx={{
                     width: 20, height: 20, mt: 0.3,
                     borderRadius: 0.5,
-                    border: `2px solid ${consentResearch ? palette.accent : 'rgba(245,243,255,0.30)'}`,
-                    bgcolor: consentResearch ? palette.accent : 'transparent',
+                    border: `2px solid ${consentResearch ? palette.accentBright : 'rgba(245,243,255,0.30)'}`,
+                    bgcolor: consentResearch ? palette.accentBright : 'transparent',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     flexShrink: 0,
                   }}>
@@ -457,7 +457,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                       <Box component="a" href="/personvern/automatisk-research"
                            target="_blank" rel="noopener noreferrer"
                            onClick={(e) => e.stopPropagation()}
-                           sx={{ color: palette.accent, textDecoration: 'underline' }}>
+                           sx={{ color: palette.accentBright, textDecoration: 'underline' }}>
                         Les mer →
                       </Box>
                     </Typography>
