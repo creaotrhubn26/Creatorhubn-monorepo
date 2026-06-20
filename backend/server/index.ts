@@ -452,6 +452,7 @@ import { setupWhatsNewRoutes } from "./whats-new-routes";
 import { setupMarketingPosterRoutes } from "./marketing-poster-routes";
 import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-routes";
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
+import { setupAdminWorkspaceCasesRoutes } from "./admin-workspace-cases-routes";
 import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
 import { setupNewsletterFromReportRoutes } from "./role-room-newsletter-from-report-routes";
@@ -16578,6 +16579,15 @@ setupAdminIndustryTargetsRoutes({
 
 // ── Outreach-system (templates + AI-personalisering per Outreach Plan)
 setupAdminOutreachRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
+// ── AdminWorkspace «Saker» (cases + comments, multi-produkt)
+setupAdminWorkspaceCasesRoutes({
   app,
   pool,
   getActiveSessionFromRequest,
