@@ -11,7 +11,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Box, Card, CardContent, Typography, Button, Chip, Stack, Tabs, Tab, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions, RadioGroup, FormControlLabel,
-  Radio, TextField, MenuItem, Alert, CircularProgress, Tooltip,
+  Radio, TextField, MenuItem, Alert, CircularProgress, Tooltip, Snackbar,
 } from "@mui/material";
 import ScienceIcon from "@mui/icons-material/Science";
 import StorefrontIcon from "@mui/icons-material/Storefront";
@@ -60,13 +60,22 @@ export default function EditingPartnersAdminPanel() {
   });
 
   const pending = (apps.data?.applications || []).filter((a) => a.status === "pending" || a.status === "reviewing");
+  const leads = (apps.data?.applications || []).filter((a) => a.status === "lead");
   const allVendors = vendors.data?.vendors || [];
   const prototypeVendors = allVendors.filter((v) => v.partner_type === "prototype");
   const standardVendors = allVendors.filter((v) => v.partner_type === "standard");
 
+  const [addLeadOpen, setAddLeadOpen] = useState(false);
+  const [snack, setSnack] = useState("");
+
   const reject = useMutation({
     mutationFn: (id: string) => apiRequest(`/api/superadmin/editing-partner-applications/${id}/reject`, { method: "POST" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/superadmin/editing-partner-applications"] }),
+  });
+  const invite = useMutation({
+    mutationFn: (id: string) => apiRequest(`/api/superadmin/editing-partner-applications/${id}/invite`, { method: "POST" }),
+    onSuccess: () => setSnack("Invitasjon sendt — prospektet søker selv."),
+    onError: () => setSnack("Kunne ikke sende invitasjon."),
   });
 
   const refresh = () => {
@@ -76,13 +85,19 @@ export default function EditingPartnersAdminPanel() {
 
   return (
     <Box>
-      <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>Redigeringspartnere</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Godkjenn søknader og bestem om partneren er prototype-tester (0 % i en periode) eller vanlig kunde (partner-fee). Endre type/varighet/fee når som helst.
-      </Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1}>
+        <Box>
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>Redigeringspartnere</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 620 }}>
+            Legg inn prospekter som leads og inviter dem til å søke selv (de bestemmer + samtykker). Godkjenn søknader som prototype-tester (0 % i en periode) eller vanlig kunde (fee). Endre type/varighet/fee når som helst.
+          </Typography>
+        </Box>
+        <Button variant="outlined" size="small" onClick={() => setAddLeadOpen(true)}>+ Legg til lead</Button>
+      </Stack>
 
       <Tabs value={filter} onChange={(_, v) => setFilter(v)} sx={{ mb: 2 }} variant="scrollable" scrollButtons="auto">
         <Tab label={`Søknader (${pending.length})`} />
+        <Tab label={`Leads (${leads.length})`} />
         <Tab label={`Prototype-testere (${prototypeVendors.length})`} />
         <Tab label={`Vanlige kunder (${standardVendors.length})`} />
         <Tab label={`Alle vendors (${allVendors.length})`} />
@@ -116,10 +131,34 @@ export default function EditingPartnersAdminPanel() {
         </Stack>
       )}
 
-      {/* Vendor-lister */}
-      {filter > 0 && (
+      {/* Leads — inviter til å søke selv */}
+      {filter === 1 && (
         <Stack spacing={1.5}>
-          {(filter === 1 ? prototypeVendors : filter === 2 ? standardVendors : allVendors).map((v) => {
+          {leads.length === 0 && <Typography color="text.secondary">Ingen leads. Bruk «+ Legg til lead» for å registrere et prospekt.</Typography>}
+          {leads.map((a) => (
+            <Card key={a.id} variant="outlined">
+              <CardContent>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+                  <Box>
+                    <Typography sx={{ fontWeight: 700 }}>{a.company_name} {a.is_foreign && <Chip size="small" label={a.country || "Utland"} sx={{ ml: 1 }} />}</Typography>
+                    <Typography variant="body2" color="text.secondary">{a.contact_email}</Typography>
+                    <Chip size="small" label="Lead — har ikke søkt selv ennå" sx={{ mt: 0.6 }} />
+                  </Box>
+                  <Stack direction="row" spacing={1}>
+                    <Button variant="contained" size="small" disabled={invite.isPending} onClick={() => invite.mutate(a.id)}>Inviter til å søke</Button>
+                    <Button variant="outlined" size="small" onClick={() => setTarget({ kind: "app", app: a })}>Godkjenn likevel…</Button>
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+          ))}
+        </Stack>
+      )}
+
+      {/* Vendor-lister */}
+      {filter > 1 && (
+        <Stack spacing={1.5}>
+          {(filter === 2 ? prototypeVendors : filter === 3 ? standardVendors : allVendors).map((v) => {
             const tl = vendorTypeLabel(v);
             return (
               <Card key={v.user_id} variant="outlined">
@@ -142,12 +181,53 @@ export default function EditingPartnersAdminPanel() {
               </Card>
             );
           })}
-          {(filter === 1 ? prototypeVendors : filter === 2 ? standardVendors : allVendors).length === 0 && <Typography color="text.secondary">Ingen i denne kategorien.</Typography>}
+          {(filter === 2 ? prototypeVendors : filter === 3 ? standardVendors : allVendors).length === 0 && <Typography color="text.secondary">Ingen i denne kategorien.</Typography>}
         </Stack>
       )}
 
       {target && <DecisionDialog target={target} onClose={() => setTarget(null)} onDone={() => { setTarget(null); refresh(); }} />}
+      {addLeadOpen && <AddLeadDialog onClose={() => setAddLeadOpen(false)} onDone={() => { setAddLeadOpen(false); refresh(); setSnack("Lead lagt til."); }} />}
+      <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack("")} message={snack} />
     </Box>
+  );
+}
+
+// ── Legg til en lead (prospekt) ──
+function AddLeadDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [companyName, setCompanyName] = useState("");
+  const [email, setEmail] = useState("");
+  const [country, setCountry] = useState("NO");
+  const [notes, setNotes] = useState("");
+  const [err, setErr] = useState("");
+  const save = useMutation({
+    mutationFn: () => {
+      if (!companyName.trim() || !email.includes("@")) throw new Error("req");
+      return apiRequest("/api/superadmin/editing-partner-applications/lead", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyName, email, country, notes }),
+      });
+    },
+    onSuccess: onDone,
+    onError: (e: unknown) => setErr((e as Error)?.message === "req" ? "Fyll ut firma + e-post." : "Noe gikk galt."),
+  });
+  return (
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Legg til lead</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          <Typography variant="body2" color="text.secondary">Registrer et prospekt (uten samtykke). Inviter dem deretter til å søke selv.</Typography>
+          <TextField label="Firmanavn" value={companyName} onChange={(e) => setCompanyName(e.target.value)} fullWidth />
+          <TextField label="E-post" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth />
+          <TextField label="Land (ISO-2)" value={country} onChange={(e) => setCountry(e.target.value.toUpperCase().slice(0, 2))} sx={{ maxWidth: 160 }} />
+          <TextField label="Notat (valgfritt)" value={notes} onChange={(e) => setNotes(e.target.value)} multiline minRows={2} fullWidth />
+          {err && <Alert severity="error">{err}</Alert>}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Avbryt</Button>
+        <Button variant="contained" onClick={() => save.mutate()} disabled={save.isPending}>{save.isPending ? "Lagrer…" : "Legg til"}</Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 

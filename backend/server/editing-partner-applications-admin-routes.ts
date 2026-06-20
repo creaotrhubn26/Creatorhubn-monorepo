@@ -99,6 +99,32 @@ async function sendWelcomeEmail(pool: Pool, args: {
   });
 }
 
+// Invitasjon til å SØKE selv (lead → selv-avgjørelse + samtykke). Lenke forhåndsutfyller
+// firma/e-post på /partner/apply; prospektet fyller ut + samtykker selv.
+async function sendInviteEmail(pool: Pool, args: {
+  to: string; companyName: string; isForeign: boolean; sentBy?: string;
+}): Promise<void> {
+  const applyUrl = `${PORTAL_BASE}/partner/apply?email=${encodeURIComponent(args.to)}&company=${encodeURIComponent(args.companyName)}`;
+  const no = !args.isForeign;
+  const subject = no ? "Invitasjon: bli redigeringspartner i Creatorhub" : "You're invited to apply as a Creatorhub editing partner";
+  const headline = no ? "Du er invitert til å søke" : "You're invited to apply";
+  const body = no
+    ? `Hei ${args.companyName}! Vi vil gjerne ha dere med i Creatorhub Partner Program for redigering. Klikk under for å fylle ut søknaden selv (et par minutter) — dere bestemmer selv og bekrefter vilkårene. Vi ser frem til porteføljen deres.`
+    : `Hi ${args.companyName}! We'd love to have you in the Creatorhub editing Partner Program. Click below to fill in the application yourself (a couple of minutes) — you decide and confirm the terms. We look forward to seeing your portfolio.`;
+  const { html, text } = composeEmail({
+    category: "general", brand: "creatorhub", subject, headline,
+    subhead: no ? "Creatorhub Partnerprogram" : "Creatorhub Partner Program",
+    body,
+    cta: { label: no ? "Søk nå" : "Apply now", href: applyUrl, variant: "primary" },
+    footer: { reason: no ? "Du mottar denne fordi vi tror bedriften din passer som Creatorhub-partner. Svar STOPP for å takke nei." : "You received this because we think your company is a good fit as a Creatorhub partner. Reply STOP to opt out." },
+  });
+  await sendTransactionalEmail({
+    to: args.to, subject, html, text,
+    fromLabel: "Creatorhub", kind: "editing_partner_invite",
+    sentByUserId: args.sentBy ?? null, pool,
+  });
+}
+
 export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
   const { app, pool, activeSessions } = deps;
 
@@ -168,6 +194,51 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
     } catch (err) {
       console.error("[editing-vendors:partner-type]", err);
       res.status(500).json({ error: "kunne_ikke_oppdatere" });
+    }
+  });
+
+  // Legg til en LEAD (prospekt) — uten samtykke, godkjenner ingenting. Dedupe på e-post.
+  app.post("/api/superadmin/editing-partner-applications/lead", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    try {
+      const email = String(req.body?.email || "").trim().toLowerCase().slice(0, 255);
+      const companyName = String(req.body?.companyName || "").trim().slice(0, 300);
+      const country = String(req.body?.country || "NO").trim().toUpperCase().slice(0, 2);
+      if (!email.includes("@") || !companyName) return res.status(400).json({ error: "mangler_felt" });
+      const isForeign = country !== "NO";
+      const existing = (await pool.query<{ id: string; status: string }>(
+        `SELECT id, status FROM editing_partner_applications WHERE lower(contact_email)=lower($1) ORDER BY created_at DESC LIMIT 1`, [email],
+      )).rows[0];
+      if (existing) return res.json({ ok: true, id: existing.id, existed: true, status: existing.status });
+      const r = await pool.query<{ id: string }>(
+        `INSERT INTO editing_partner_applications
+           (company_name, country, is_foreign, is_eea, contact_name, contact_email, notes,
+            consent_contact, consent_privacy, status, locale, source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,false,false,'lead',$8,'admin_lead') RETURNING id`,
+        [companyName, country, isForeign, !isForeign /* enkel EØS-antakelse for lead */, String(req.body?.contactName || "").slice(0, 200) || companyName, email, String(req.body?.notes || "").slice(0, 4000), isForeign ? "en" : "no"],
+      );
+      res.json({ ok: true, id: r.rows[0].id });
+    } catch (err) {
+      console.error("[partner-apps:lead]", err);
+      res.status(500).json({ error: "kunne_ikke_opprette_lead" });
+    }
+  });
+
+  // Inviter et prospekt til å søke selv (e-post m/ forhåndsutfylt apply-lenke).
+  app.post("/api/superadmin/editing-partner-applications/:id/invite", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    try {
+      const row = (await pool.query(
+        `SELECT contact_email, company_name, is_foreign FROM editing_partner_applications WHERE id=$1`, [req.params.id],
+      )).rows[0];
+      if (!row) return res.status(404).json({ error: "ikke_funnet" });
+      await sendInviteEmail(pool, { to: row.contact_email, companyName: row.company_name, isForeign: !!row.is_foreign, sentBy: s.userId });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[partner-apps:invite]", err);
+      res.status(500).json({ error: "kunne_ikke_sende_invitasjon" });
     }
   });
 

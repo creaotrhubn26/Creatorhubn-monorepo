@@ -188,7 +188,58 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
       const isForeign = country !== "NO";
       const isEea = isEeaCountry(country);
       const services = Array.isArray(b.services) ? b.services.slice(0, 40).map((s: unknown) => String(s).slice(0, 80)) : [];
+      // Felles felt-verdier (delt mellom INSERT og merge-UPDATE).
+      const vals = [
+        companyName, country, isForeign, isEea, cap(b.registrationNumber, 120), cap(b.vatNumber, 120),
+        contactName, email, cap(b.phone, 60), cap(b.website, 500),
+        b.teamSize != null ? Number(b.teamSize) : null, JSON.stringify(services), cap(b.pricingModel, 40),
+        cap(b.currency, 8), cap(b.priceRange, 120), cap(b.portfolioUrl, 500), cap(b.notes, 4000),
+        b.consentContact === true, true,
+        cap(b.privacyPolicyVersion || COMPLIANCE_VERSION, 40),
+        crypto.createHash("sha256").update(String(b.consentText || "creatorhub-partner-standard")).digest("hex"),
+        ip || null, cap(req.headers["user-agent"], 500),
+        isForeign ? "en" : "no",
+      ];
       try {
+        // Dedupe-merge: én rad per e-post. Aldri slett — slå sammen/oppgrader.
+        const existing = (await pool.query<{ id: string; status: string }>(
+          `SELECT id, status FROM editing_partner_applications WHERE lower(contact_email)=lower($1) ORDER BY created_at DESC LIMIT 1`,
+          [email],
+        )).rows[0];
+
+        if (existing) {
+          if (existing.status === "approved") {
+            return res.json({ ok: true, alreadyApproved: true });
+          }
+          if (existing.status === "pending" || existing.status === "reviewing") {
+            // Aktiv søknad finnes → ingen dublett; frisk opp nyeste info.
+            await pool.query(
+              `UPDATE editing_partner_applications
+                  SET company_name=$1, phone=$2, website=$3, services=$4::jsonb, pricing_model=$5,
+                      currency=$6, price_range=$7, portfolio_url=$8, notes=$9, updated_at=now()
+                WHERE id=$10`,
+              [companyName, cap(b.phone, 60), cap(b.website, 500), JSON.stringify(services), cap(b.pricingModel, 40),
+               cap(b.currency, 8), cap(b.priceRange, 120), cap(b.portfolioUrl, 500), cap(b.notes, 4000), existing.id],
+            );
+            return res.json({ ok: true, alreadyReceived: true });
+          }
+          // lead / rejected / withdrawn → oppgrader PÅ STEDET til pending m/ samtykke (historikk bevart).
+          await pool.query(
+            `UPDATE editing_partner_applications SET
+               company_name=$1, country=$2, is_foreign=$3, is_eea=$4, registration_number=$5, vat_number=$6,
+               contact_name=$7, contact_email=$8, phone=$9, website=$10, team_size=$11, services=$12::jsonb,
+               pricing_model=$13, currency=$14, price_range=$15, portfolio_url=$16, notes=$17,
+               consent_contact=$18, consent_privacy=$19, privacy_policy_version=$20, consent_text_hash=$21,
+               consent_ip=$22, consent_user_agent=$23, consent_at=now(), locale=$24,
+               status='pending', source=CASE WHEN source='admin_lead' THEN 'lead_converted' ELSE source END,
+               updated_at=now()
+             WHERE id=$25`,
+            [...vals, existing.id],
+          );
+          return res.json({ ok: true, applicationId: existing.id, reopened: true });
+        }
+
+        // Ingen eksisterende → ny søknad.
         const r = await pool.query<{ id: string }>(
           `INSERT INTO editing_partner_applications
              (company_name, country, is_foreign, is_eea, registration_number, vat_number,
@@ -199,21 +250,11 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,
                    $20,$21,$22,$23, now(), $24, 'public_form')
            RETURNING id`,
-          [
-            companyName, country, isForeign, isEea, cap(b.registrationNumber, 120), cap(b.vatNumber, 120),
-            contactName, email, cap(b.phone, 60), cap(b.website, 500),
-            b.teamSize != null ? Number(b.teamSize) : null, JSON.stringify(services), cap(b.pricingModel, 40),
-            cap(b.currency, 8), cap(b.priceRange, 120), cap(b.portfolioUrl, 500), cap(b.notes, 4000),
-            b.consentContact === true, true,
-            cap(b.privacyPolicyVersion || COMPLIANCE_VERSION, 40),
-            crypto.createHash("sha256").update(String(b.consentText || "creatorhub-partner-standard")).digest("hex"),
-            ip || null, cap(req.headers["user-agent"], 500),
-            isForeign ? "en" : "no",
-          ],
+          vals,
         );
         return res.json({ ok: true, applicationId: r.rows[0].id });
       } catch (e: unknown) {
-        // Myk dedupe: aktiv søknad finnes allerede → vennlig svar, ikke 500.
+        // Backstop mot race (unik aktiv-e-post-index) → vennlig svar, ikke 500.
         if ((e as { code?: string })?.code === "23505") {
           return res.json({ ok: true, alreadyReceived: true });
         }
