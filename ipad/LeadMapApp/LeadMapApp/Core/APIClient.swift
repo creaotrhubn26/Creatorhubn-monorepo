@@ -1630,6 +1630,370 @@ extension APIClient {
     }
 }
 
+// MARK: - Fase 24: Newsletter + RR-økonomi + Outreach
+
+extension APIClient {
+
+    // -- Newsletter (RR-Newsletter CMS) ----------------------------
+
+    func fetchNewsletterIssues() async throws -> NewsletterIssuesResponse {
+        try await get("/api/admin-room/newsletter/role-room/issues")
+    }
+
+    func fetchNewsletterStats() async throws -> NewsletterStatsResponse {
+        try await get("/api/admin-room/newsletter/role-room/stats")
+    }
+
+    func fetchNewsletterSignups(limit: Int = 50) async throws -> NewsletterSignupsResponse {
+        try await get("/api/admin-room/newsletter/role-room/signups?limit=\(limit)")
+    }
+
+    func sendNewsletterTest(issueId: String, recipient: String) async throws {
+        try await post(
+            "/api/admin-room/newsletter/role-room/issues/\(issueId)/send-test",
+            body: ["recipient": recipient],
+        )
+    }
+
+    func sendNewsletter(issueId: String) async throws {
+        try await post(
+            "/api/admin-room/newsletter/role-room/issues/\(issueId)/send", body: [:])
+    }
+
+    func unpublishNewsletter(issueId: String) async throws {
+        try await post(
+            "/api/admin-room/newsletter/role-room/issues/\(issueId)/unpublish", body: [:])
+    }
+
+    // -- RR-Økonomi ------------------------------------------------
+
+    func fetchRoleRoomEconomyAggregate() async throws -> RoleRoomEconomyAggregate {
+        try await get("/api/admin-room/role-room/economy/aggregate")
+    }
+
+    func fetchRoleRoomEconomySubscribers(status: String? = nil) async throws -> RoleRoomEconomySubscribersResponse {
+        let qs = status.map { "?status=\($0)" } ?? ""
+        return try await get("/api/admin-room/role-room/economy/subscribers\(qs)")
+    }
+
+    func fetchRoleRoomEconomyTimeseries(months: Int = 12) async throws -> RoleRoomEconomyTimeseriesResponse {
+        try await get("/api/admin-room/role-room/economy/timeseries?months=\(months)")
+    }
+
+    func cancelRoleRoomSubscription(subscriptionId: String) async throws {
+        try await post(
+            "/api/admin-room/role-room/subscription/\(subscriptionId)/cancel", body: [:])
+    }
+
+    // -- Outreach-templates ----------------------------------------
+
+    func fetchOutreachTemplates(segment: String? = nil, language: String? = nil) async throws -> OutreachTemplatesResponse {
+        var qs: [String] = []
+        if let segment { qs.append("segment=\(segment)") }
+        if let language { qs.append("language=\(language)") }
+        let q = qs.isEmpty ? "" : "?" + qs.joined(separator: "&")
+        return try await get("/api/admin-room/outreach-templates\(q)")
+    }
+
+    func personalizeOutreachTemplate(templateId: String, leadId: String) async throws -> [String: String] {
+        try await post(
+            "/api/admin-room/outreach-templates/personalize",
+            body: ["template_id": templateId, "lead_id": leadId],
+        )
+    }
+}
+
+// MARK: - Fase 25: Ad-tech-stack (Google/Meta/LinkedIn/TikTok + GTM/GA4/GSC)
+
+extension APIClient {
+
+    // -- Configs CRUD ---------------------------------------------
+
+    func fetchAdsConfigs() async throws -> AdsConfigsResponse {
+        try await get("/api/admin-room/agent/ads/configs")
+    }
+
+    func fetchAdsConfig(id: String) async throws -> AdsConfigDetailResponse {
+        try await get("/api/admin-room/agent/ads/configs/\(id)")
+    }
+
+    // -- Approval-flyt --------------------------------------------
+
+    /// Producer ber klient godkjenne Agent-anbefalinger.
+    func requestAdsConfigApproval(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/request-approval", body: [:])
+    }
+
+    /// Liste pending approvals klient skal godkjenne.
+    func fetchPendingAdsApprovals() async throws -> AdsApprovalsResponse {
+        try await get("/api/role-room/ads-approvals/pending")
+    }
+
+    /// Klient godkjenner ads-config.
+    func approveAdsConfig(configId: String) async throws {
+        try await post("/api/role-room/ads-approvals/\(configId)/approve", body: [:])
+    }
+
+    /// Klient avslår ads-config.
+    func rejectAdsConfig(configId: String, reason: String?) async throws {
+        var body: [String: Any] = [:]
+        if let reason { body["reason"] = reason }
+        try await post("/api/role-room/ads-approvals/\(configId)/reject", body: body)
+    }
+
+    // -- Setup diagnose + insights --------------------------------
+
+    func diagnoseAdsConfigSetup(id: String) async throws -> AdsSetupDiagnoseResponse {
+        try await get("/api/admin-room/agent/ads/configs/\(id)/setup/diagnose")
+    }
+
+    func fetchAdsConfigInsights(id: String) async throws -> AdsInsightsResponse {
+        try await get("/api/admin-room/agent/ads/configs/\(id)/insights")
+    }
+
+    // -- Google Search Console ------------------------------------
+
+    func verifyGsc(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/gsc/verify", body: [:])
+    }
+
+    func submitGscSitemap(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/gsc/sitemap", body: [:])
+    }
+
+    func diagnoseGsc(id: String) async throws -> AdsSetupDiagnoseResponse {
+        try await get("/api/admin-room/agent/ads/configs/\(id)/gsc/diagnose")
+    }
+
+    // -- GA4 + GTM provisjon --------------------------------------
+
+    func provisionGa4(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/ga4/provision", body: [:])
+    }
+
+    func provisionGtm(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/gtm/provision", body: [:])
+    }
+
+    func importGtmTags(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/gtm/import-tags", body: [:])
+    }
+
+    // -- Meta-platform actions ------------------------------------
+
+    func provisionMetaPixel(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/meta/provision-pixel", body: [:])
+    }
+
+    func syncMetaConversions(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/meta/sync-conversions", body: [:])
+    }
+
+    func createMetaAudience(id: String, name: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/meta/create-audience",
+            body: ["name": name],
+        )
+    }
+
+    // -- Google Ads actions ---------------------------------------
+
+    func syncAdsConfigToGoogle(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/sync-to-google", body: [:])
+    }
+
+    func createGoogleAdsAudience(id: String, name: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/google/create-audience",
+            body: ["name": name],
+        )
+    }
+
+    // -- LinkedIn actions -----------------------------------------
+
+    func provisionLinkedInInsightTag(id: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/linkedin/provision-insight-tag", body: [:])
+    }
+
+    func syncLinkedInConversions(id: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/linkedin/sync-conversions", body: [:])
+    }
+
+    func createLinkedInAudience(id: String, name: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/linkedin/create-audience",
+            body: ["name": name],
+        )
+    }
+
+    // -- TikTok actions -------------------------------------------
+
+    func provisionTiktokPixel(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/tiktok/provision-pixel", body: [:])
+    }
+
+    func syncTiktokEvents(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/tiktok/sync-events", body: [:])
+    }
+
+    func syncTiktokLeads(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/tiktok/sync-leads", body: [:])
+    }
+
+    func createTiktokAudience(id: String, name: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/tiktok/create-audience",
+            body: ["name": name],
+        )
+    }
+
+    // -- Account-lookups (OAuth-account-listing per platform) -----
+
+    func fetchGa4Accounts() async throws -> OAuthAccountsResponse {
+        try await get("/api/admin-room/agent/ads/ga4/accounts")
+    }
+
+    func fetchMetaAccounts() async throws -> OAuthAccountsResponse {
+        try await get("/api/admin-room/agent/ads/meta/accounts")
+    }
+
+    func fetchLinkedInAccounts() async throws -> OAuthAccountsResponse {
+        try await get("/api/admin-room/agent/ads/linkedin/accounts")
+    }
+}
+
+// MARK: - Fase 26: Cockpit-sub + Lead-map-detalj + Decks/funding + Error-detail
+
+extension APIClient {
+
+    // -- Cockpit: PR / Journalists --------------------------------
+
+    func fetchPRJournalists() async throws -> PRJournalistsResponse {
+        try await get("/api/admin-room/cockpit/pr/journalists")
+    }
+
+    func fetchPRReleases() async throws -> PRReleasesResponse {
+        try await get("/api/admin-room/cockpit/pr/releases")
+    }
+
+    func generatePRRelease(prompt: String) async throws -> PRRelease {
+        try await post(
+            "/api/admin-room/cockpit/pr/releases/generate",
+            body: ["prompt": prompt],
+        )
+    }
+
+    func distributePRRelease(id: String) async throws {
+        try await post("/api/admin-room/cockpit/pr/releases/\(id)/distribute", body: [:])
+    }
+
+    // -- Cockpit: Webinars ----------------------------------------
+
+    func fetchCockpitWebinars() async throws -> CockpitWebinarsResponse {
+        try await get("/api/admin-room/cockpit/webinars")
+    }
+
+    // -- Cockpit: Referrals + nurture-cron ------------------------
+
+    func fetchCockpitReferrals() async throws -> CockpitReferralsResponse {
+        try await get("/api/admin-room/cockpit/referrals")
+    }
+
+    func runNurtureCron() async throws -> NurtureRunResult {
+        try await post("/api/admin-room/cockpit/nurture/run-due", body: [:])
+    }
+
+    // -- Lead Map detalj-sub --------------------------------------
+
+    /// Søk steder via Google Places API.
+    func searchLeadMapPlaces(query: String) async throws -> LeadMapPlacesSearchResponse {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        return try await get("/api/admin-room/lead-map/places/search?q=\(encoded)")
+    }
+
+    /// Importer søkeresultater som leads.
+    func importLeadMapPlaces(placeIds: [String]) async throws -> LeadMapPlaceImportResult {
+        try await post(
+            "/api/admin-room/lead-map/places/import",
+            body: ["place_ids": placeIds],
+        )
+    }
+
+    /// Generer Claude AI-pitch for en gitt lead.
+    func generateLeadPitch(leadId: String) async throws -> LeadMapPitch {
+        try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/generate-pitch", body: [:])
+    }
+
+    /// Hent geo-data for en lead (lat/lng/distance fra meg).
+    func fetchLeadGeo(leadId: String) async throws -> [String: AnyCodableShim] {
+        try await get("/api/admin-room/lead-map/leads/\(leadId)/geo")
+    }
+
+    // -- Admin Decks (business decks) -----------------------------
+
+    func fetchAdminDecks() async throws -> AdminDecksResponse {
+        try await get("/api/admin-room/decks")
+    }
+
+    func fetchAdminDeckSlides(deckId: String) async throws -> AdminDeckSlidesResponse {
+        try await get("/api/admin-room/decks/\(deckId)/slides")
+    }
+
+    func generateDeckSlide(deckId: String, slideId: String, prompt: String) async throws {
+        try await post(
+            "/api/admin-room/decks/\(deckId)/slides/\(slideId)/generate",
+            body: ["prompt": prompt],
+        )
+    }
+
+    // -- Funding Apps ---------------------------------------------
+
+    func fetchFundingApps() async throws -> FundingAppsResponse {
+        try await get("/api/admin-room/funding-apps")
+    }
+
+    func generateFundingApp(id: String, prompt: String) async throws {
+        try await post(
+            "/api/admin-room/funding-apps/\(id)/generate",
+            body: ["prompt": prompt],
+        )
+    }
+
+    // -- CS Snapshot-all -------------------------------------------
+
+    /// Lag snapshot av alle kunder NÅ (cron-trigger fra iPad).
+    func runCSSnapshotAll() async throws -> CSSnapshotAllResult {
+        try await post("/api/admin-room/customer-success/snapshot-all", body: [:])
+    }
+
+    // -- Error detail ---------------------------------------------
+
+    func fetchAdminErrorDetail(id: String) async throws -> AdminErrorDetailResponse {
+        try await get("/api/admin-room/errors/\(id)")
+    }
+}
+
+/// Liten shim for å dekode arbitrary JSON-verdier (string/number/bool/null).
+struct AnyCodableShim: Codable, Hashable {
+    let value: String
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let s = try? c.decode(String.self) { value = s }
+        else if let n = try? c.decode(Double.self) { value = "\(n)" }
+        else if let b = try? c.decode(Bool.self) { value = "\(b)" }
+        else { value = "" }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        try c.encode(value)
+    }
+}
+
 enum APIError: Error {
     case invalidResponse
     case statusCode(Int)

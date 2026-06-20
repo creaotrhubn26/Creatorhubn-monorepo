@@ -47,6 +47,7 @@ struct LeadgridWonLostDashboardView: View {
             .padding()
         }
         .navigationTitle("Vunnet / Tapt")
+        .marketingDirectorBackdrop(.wonLost)
         .task(id: period) { await load() }
         .refreshable { await load() }
     }

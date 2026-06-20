@@ -1,6 +1,6 @@
 // BrandedHeroBackground.swift
 //
-// Gjenbrukbar hero-bakgrunn som applyerer en backdrop (Backdrop1..8)
+// Gjenbrukbar hero-bakgrunn som applyerer en backdrop (Backdrop1..17)
 // med gradient-overlay slik at innhold over den er lesbart.
 //
 // Bruk:
@@ -28,6 +28,20 @@ enum LeadgridBackdrop: String, CaseIterable {
     case backdrop6 = "Backdrop6"   // Mac+iPad-mockup (mer detaljert)
     case backdrop7 = "Backdrop7"   // Pencil-path m/ pin
     case backdrop8 = "Backdrop8"   // Isometric workspace
+
+    // ── Markedssjef-Leadgrid-serien (fase 28) ────────────────────
+    case backdrop9 = "Backdrop9"    // CRM Hjem — landskap m/ glowing pin-pillars + aurora
+    case backdrop10 = "Backdrop10"  // Won/Lost — grønn vs rød pin-pidestaller m/ trapper
+    case backdrop11 = "Backdrop11"  // Customer Journey — pin-cluster → pink destination m/ touchpoints
+    case backdrop12 = "Backdrop12"  // Reports & Schedule — 3 kalender-plater + envelope + bar-chart pin
+    case backdrop18 = "Backdrop18"  // Notifications — waterfall av message-bubbles m/ status-dots
+
+    // ── Super Admin-serien (fase 27) ────────────────────────────
+    case backdrop13 = "Backdrop13"  // Command Center — silhouette m/ 3 hologramskjermer (kart/graf/hub)
+    case backdrop14 = "Backdrop14"  // B2B Funnel — 3 transparente plater → green pin/bar-chart
+    case backdrop15 = "Backdrop15"  // Marketing Cockpit — 4 hexagonale moduler (people/news/video/refresh)
+    case backdrop16 = "Backdrop16"  // Ad-Tech Stack — 4 stablete plater m/ earth/sphere
+    case backdrop17 = "Backdrop17"  // Platform Health — server-racks m/ waveform pulse
 }
 
 struct BrandedHeroBackground: View {

@@ -40,6 +40,7 @@ struct LeadgridAssignmentHistoryView: View {
             }
         }
         .navigationTitle("Historikk")
+        .marketingDirectorBackdrop(.wonLost)
         .task { await load() }
         .refreshable { await load() }
     }

@@ -79,6 +79,7 @@ struct SuperAdminOnboardingFunnelView: View {
             }
         }
         .navigationTitle("Onboarding-funnel")
+        .superAdminBackdrop(.b2bFunnel)
         .task { await load() }
         .refreshable { await load() }
     }
@@ -137,6 +138,7 @@ struct SuperAdminPaymentsView: View {
             }
         }
         .navigationTitle("Inntekter")
+        .superAdminBackdrop(.b2bFunnel)
         .task { await load() }
         .refreshable { await load() }
     }

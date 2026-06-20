@@ -57,6 +57,7 @@ struct LeadgridExportShareView: View {
                 }
             }
             .navigationTitle("Eksporter leads")
+        .marketingDirectorBackdrop(.reports)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

@@ -70,6 +70,7 @@ struct LeadgridNotificationPrefsView: View {
                 }
             }
             .navigationTitle("Varsels-innstillinger")
+        .marketingDirectorBackdrop(.notifications)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

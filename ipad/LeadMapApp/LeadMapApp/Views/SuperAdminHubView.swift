@@ -272,9 +272,83 @@ struct SuperAdminHubView: View {
                             Label("Utvikler-program", systemImage: "chevron.left.forwardslash.chevron.right")
                         }
                     }
+
+                    // Fase 24: Newsletter + RR-økonomi + Outreach
+                    Section("Marketing & økonomi") {
+                        NavigationLink {
+                            SuperAdminNewsletterView(api: api)
+                        } label: {
+                            Label("Newsletter (RR)", systemImage: "newspaper.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminRREconomyView(api: api)
+                        } label: {
+                            Label("RR-økonomi", systemImage: "chart.line.uptrend.xyaxis.circle.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminOutreachTemplatesView(api: api)
+                        } label: {
+                            Label("Outreach-templates", systemImage: "text.bubble.fill")
+                        }
+                    }
+
+                    // Fase 25: Ad-tech-stack
+                    Section("Ad-tech-stack") {
+                        NavigationLink {
+                            SuperAdminAdsConfigsView(api: api)
+                        } label: {
+                            Label("Ads-configs (klient-pixels)", systemImage: "megaphone.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminAdsApprovalsView(api: api)
+                        } label: {
+                            Label("Ads-godkjenninger", systemImage: "checkmark.seal.fill")
+                        }
+                    }
+
+                    // Fase 26: PR + Webinars + Lead-map detalj + Decks + CS-snapshot
+                    Section("Cockpit-sub") {
+                        NavigationLink {
+                            SuperAdminPRView(api: api)
+                        } label: {
+                            Label("PR (journalister + pressemeldinger)", systemImage: "newspaper")
+                        }
+                        NavigationLink {
+                            SuperAdminWebinarsView(api: api)
+                        } label: {
+                            Label("Webinars + referrals + nurture",
+                                   systemImage: "video.fill.badge.plus")
+                        }
+                    }
+
+                    Section("Lead-Map detalj") {
+                        NavigationLink {
+                            SuperAdminLeadMapPlacesView(api: api)
+                        } label: {
+                            Label("Places-import (Google Places)", systemImage: "mappin.and.ellipse")
+                        }
+                    }
+
+                    Section("Business decks & CS-snapshot") {
+                        NavigationLink {
+                            SuperAdminBusinessDecksView(api: api)
+                        } label: {
+                            Label("Decks + funding-apps", systemImage: "doc.richtext.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminCSSnapshotView(api: api)
+                        } label: {
+                            Label("CS Snapshot (manuell)", systemImage: "camera.viewfinder")
+                        }
+                    }
                 }
             }
             .navigationTitle("Super Admin")
+            .background(
+                BrandedHeroBackground(.backdrop13, darkenFrom: 0.55, darkenTo: 0.95)
+                    .ignoresSafeArea()
+            )
+            .scrollContentBackground(.hidden)
         }
     }
 }
