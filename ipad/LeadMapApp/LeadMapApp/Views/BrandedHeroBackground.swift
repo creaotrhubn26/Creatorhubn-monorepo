@@ -1,6 +1,6 @@
 // BrandedHeroBackground.swift
 //
-// Gjenbrukbar hero-bakgrunn som applyerer en backdrop (Backdrop1..8)
+// Gjenbrukbar hero-bakgrunn som applyerer en backdrop (Backdrop1..17)
 // med gradient-overlay slik at innhold over den er lesbart.
 //
 // Bruk:
@@ -28,6 +28,13 @@ enum LeadgridBackdrop: String, CaseIterable {
     case backdrop6 = "Backdrop6"   // Mac+iPad-mockup (mer detaljert)
     case backdrop7 = "Backdrop7"   // Pencil-path m/ pin
     case backdrop8 = "Backdrop8"   // Isometric workspace
+
+    // ── Super Admin-serien (fase 27) ────────────────────────────
+    case backdrop13 = "Backdrop13"  // Command Center — silhouette m/ 3 hologramskjermer (kart/graf/hub)
+    case backdrop14 = "Backdrop14"  // B2B Funnel — 3 transparente plater → green pin/bar-chart
+    case backdrop15 = "Backdrop15"  // Marketing Cockpit — 4 hexagonale moduler (people/news/video/refresh)
+    case backdrop16 = "Backdrop16"  // Ad-Tech Stack — 4 stablete plater m/ earth/sphere
+    case backdrop17 = "Backdrop17"  // Platform Health — server-racks m/ waveform pulse
 }
 
 struct BrandedHeroBackground: View {

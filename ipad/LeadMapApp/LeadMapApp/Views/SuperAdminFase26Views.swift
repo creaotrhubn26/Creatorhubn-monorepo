@@ -108,6 +108,7 @@ struct SuperAdminPRView: View {
             }
         }
         .navigationTitle("PR")
+        .superAdminBackdrop(.marketing)
         .task { await load() }
         .refreshable { await load() }
         .overlay(alignment: .bottom) {
@@ -265,6 +266,7 @@ struct SuperAdminWebinarsView: View {
             }
         }
         .navigationTitle("Webinars + nurture")
+        .superAdminBackdrop(.marketing)
         .task { await load() }
         .refreshable { await load() }
         .overlay(alignment: .bottom) {

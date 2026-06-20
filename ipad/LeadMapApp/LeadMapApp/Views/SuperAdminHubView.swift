@@ -344,6 +344,11 @@ struct SuperAdminHubView: View {
                 }
             }
             .navigationTitle("Super Admin")
+            .background(
+                BrandedHeroBackground(.backdrop13, darkenFrom: 0.55, darkenTo: 0.95)
+                    .ignoresSafeArea()
+            )
+            .scrollContentBackground(.hidden)
         }
     }
 }

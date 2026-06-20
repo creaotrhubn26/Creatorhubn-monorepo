@@ -107,6 +107,7 @@ struct SuperAdminNewsletterView: View {
             }
         }
         .navigationTitle("Newsletter")
+        .superAdminBackdrop(.marketing)
         .task { await load() }
         .refreshable { await load() }
         .overlay(alignment: .bottom) {

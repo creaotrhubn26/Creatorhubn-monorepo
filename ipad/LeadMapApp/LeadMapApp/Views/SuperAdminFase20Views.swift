@@ -63,6 +63,7 @@ struct SuperAdminPlatformStatusView: View {
             }
         }
         .navigationTitle("Plattform-status")
+        .superAdminBackdrop(.platform)
         .task { await load() }
         .refreshable { await load() }
         .overlay(alignment: .bottom) {
@@ -273,6 +274,7 @@ struct SuperAdminIntegrationsView: View {
             }
         }
         .navigationTitle("Integrations")
+        .superAdminBackdrop(.platform)
         .task { await load() }
         .refreshable { await load() }
     }
@@ -393,6 +395,7 @@ struct SuperAdminApiHealthView: View {
             }
         }
         .navigationTitle("API-helse")
+        .superAdminBackdrop(.platform)
         .task { await load() }
         .refreshable { await load() }
     }
