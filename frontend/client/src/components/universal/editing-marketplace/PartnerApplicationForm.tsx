@@ -87,6 +87,29 @@ const DIAL: Record<string, string> = {
 
 interface BrregCompany { navn: string; organisasjonsnummer: string; }
 
+// Vanlige redigerings-tjenester — ett-trykks-chips (verdi = engelsk kanonisk).
+const SERVICE_OPTIONS: Array<{ v: string; no: string; en: string }> = [
+  { v: "Clipping path", no: "Clipping path", en: "Clipping path" },
+  { v: "Background removal", no: "Bakgrunnsfjerning", en: "Background removal" },
+  { v: "Retouching", no: "Retusjering", en: "Retouching" },
+  { v: "Ghost mannequin", no: "Ghost mannequin", en: "Ghost mannequin" },
+  { v: "Color grading", no: "Color grading", en: "Color grading" },
+  { v: "Color correction", no: "Fargekorreksjon", en: "Color correction" },
+  { v: "Shadow/reflection", no: "Skygge/refleksjon", en: "Shadow/reflection" },
+  { v: "Dust/scratch removal", no: "Støv/riper-fjerning", en: "Dust/scratch removal" },
+  { v: "Jewelry retouching", no: "Smykke-retusjering", en: "Jewelry retouching" },
+  { v: "Video editing", no: "Video-redigering", en: "Video editing" },
+];
+
+// Valuta per land — settes automatisk ved landsvalg (samme som katalogen).
+function currencyForCountry(cc: string): string {
+  const c = (cc || "").toUpperCase();
+  if (c === "NO") return "NOK"; if (c === "GB" || c === "UK") return "GBP";
+  if (c === "US") return "USD"; if (c === "SE") return "SEK"; if (c === "DK") return "DKK";
+  const eea = ["AT","BE","BG","HR","CY","CZ","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","IS","LI"];
+  return eea.includes(c) ? "EUR" : "USD";
+}
+
 export default function PartnerApplicationForm() {
   const [locale, setLocale] = useState<Locale>("en");
   const s = STR[locale];
@@ -115,10 +138,20 @@ export default function PartnerApplicationForm() {
   const [consentPrivacy, setConsentPrivacy] = useState(false);
   const [state, setState] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [errMsg, setErrMsg] = useState("");
+  const [dupMsg, setDupMsg] = useState("");
 
   const isForeign = f.country !== "NO";
   const nonEea = f.country !== "__other" && !EEA.has(f.country);
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
+
+  // #9 inline-validering
+  const emailValid = !f.contactEmail || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.contactEmail);
+  const urlOk = (u: string) => !u || /^https?:\/\//i.test(u);
+  // #10 landsflagg-emoji fra ISO-landkode
+  const flagEmoji = (cc: string) => cc && cc.length === 2
+    ? String.fromCodePoint(...[...cc.toUpperCase()].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 65))
+    : "🏳️";
+  const selectedServices = f.services.split(",").map((x) => x.trim()).filter(Boolean);
 
   // Brreg-søk (kun Norge): søk på bedriftsnavn → autofyll navn + org.nr.
   const [brregOptions, setBrregOptions] = useState<BrregCompany[]>([]);
@@ -144,27 +177,48 @@ export default function PartnerApplicationForm() {
       const prevDial = DIAL[p.country] || "";
       const dial = DIAL[cc] || "";
       const phone = !p.phone.trim() || p.phone.trim() === prevDial ? dial : p.phone;
-      return { ...p, country: cc, phone, registrationNumber: cc === "NO" ? p.registrationNumber : "" };
+      return { ...p, country: cc, phone, currency: currencyForCountry(cc), registrationNumber: cc === "NO" ? p.registrationNumber : "" };
     });
     setBrregOptions([]);
   };
 
+  // #8 Gjenopprett kladd ved åpning; ellers auto-detekter land fra nettleser-locale.
+  React.useEffect(() => {
+    try {
+      const draft = JSON.parse(localStorage.getItem("partner_application_draft") || "null");
+      if (draft && typeof draft === "object" && draft.companyName !== undefined) { setF((p) => ({ ...p, ...draft })); return; }
+    } catch { /* ignore */ }
+    const region = (navigator.language || "").split("-")[1]?.toUpperCase();
+    if (region && DIAL[region]) onCountryChange(region);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // #8 Lagre kladd (debounced) — mister ikke fremdrift.
+  React.useEffect(() => {
+    const t = setTimeout(() => { try { localStorage.setItem("partner_application_draft", JSON.stringify(f)); } catch { /* */ } }, 400);
+    return () => clearTimeout(t);
+  }, [f]);
+
   async function submit() {
-    if (!f.companyName.trim() || !f.contactName.trim() || !f.contactEmail.includes("@") || !consentPrivacy) {
+    if (!f.companyName.trim() || !f.contactName.trim() || !emailValid || !f.contactEmail || !consentPrivacy
+        || !urlOk(f.website) || !urlOk(f.portfolioUrl)) {
       setState("error"); setErrMsg(s.req); return;
     }
     setState("sending"); setErrMsg("");
     try {
-      await apiRequest("/api/editing/partner-applications", {
+      const resp = (await apiRequest("/api/editing/partner-applications", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...f,
           country: f.country === "__other" ? "" : f.country,
           teamSize: f.teamSize ? Number(f.teamSize) : null,
-          services: f.services.split(",").map((x) => x.trim()).filter(Boolean),
+          services: selectedServices,
           consentContact, consentPrivacy: true, locale,
         }),
-      });
+      })) as { ok?: boolean; alreadyReceived?: boolean };
+      setDupMsg(resp?.alreadyReceived
+        ? (locale === "en" ? "We already have an active application from this email — we'll be in touch." : "Vi har allerede en aktiv søknad fra denne e-posten — vi tar kontakt.")
+        : "");
+      try { localStorage.removeItem("partner_application_draft"); } catch { /* */ }
       setState("done");
     } catch {
       setState("error"); setErrMsg(s.err);
@@ -191,7 +245,7 @@ export default function PartnerApplicationForm() {
             <Card sx={{ mt: 4, bgcolor: BRAND.card, border: `1px solid ${BRAND.border}` }}>
               <CardContent sx={{ textAlign: "center", py: 6 }}>
                 <VerifiedUserIcon sx={{ fontSize: 48, color: BRAND.accent, mb: 1 }} />
-                <Typography sx={{ fontSize: 18 }}>{s.done}</Typography>
+                <Typography sx={{ fontSize: 18 }}>{dupMsg || s.done}</Typography>
               </CardContent>
             </Card>
           ) : (
@@ -238,7 +292,7 @@ export default function PartnerApplicationForm() {
                         getOptionLabel={(o) => (typeof o === "string" ? o : o.navn)}
                         inputValue={f.companyName}
                         onInputChange={(_, v, reason) => { if (reason === "input") { set("companyName", v); searchBrreg(v); } }}
-                        onChange={(_, val) => { if (val && typeof val !== "string") setF((p) => ({ ...p, companyName: val.navn, registrationNumber: val.organisasjonsnummer })); }}
+                        onChange={(_, val) => { if (val && typeof val !== "string") setF((p) => ({ ...p, companyName: val.navn, registrationNumber: val.organisasjonsnummer, vatNumber: `NO${val.organisasjonsnummer}MVA` })); }}
                         renderOption={(props, o) => (
                           <li {...props} key={o.organisasjonsnummer}>
                             {o.navn} <span style={{ opacity: 0.55, marginLeft: 6, fontSize: 12 }}>· {o.organisasjonsnummer}</span>
@@ -262,19 +316,33 @@ export default function PartnerApplicationForm() {
                     {nonEea && <Alert severity="info" sx={{ py: 0.5, bgcolor: "rgba(255,186,108,0.10)", color: BRAND.cream, border: `1px solid ${BRAND.accent}33`, "& .MuiAlert-icon": { color: BRAND.accent } }}>{s.eea}</Alert>}
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                       <TextField label={s.contact} value={f.contactName} onChange={(e) => set("contactName", e.target.value)} required sx={{ flex: 1 }} />
-                      <TextField label={s.email} type="email" value={f.contactEmail} onChange={(e) => set("contactEmail", e.target.value)} required sx={{ flex: 1 }} />
+                      <TextField label={s.email} type="email" value={f.contactEmail} onChange={(e) => set("contactEmail", e.target.value)} required sx={{ flex: 1 }}
+                        error={!emailValid} helperText={!emailValid ? (locale === "en" ? "Invalid email address" : "Ugyldig e-postadresse") : ""} />
                     </Stack>
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                      <TextField label={s.phone} value={f.phone} onChange={(e) => set("phone", e.target.value)} sx={{ flex: 1 }} />
-                      <TextField label={s.website} value={f.website} onChange={(e) => set("website", e.target.value)} sx={{ flex: 1 }} placeholder="https://" />
+                      <TextField label={s.phone} value={f.phone} onChange={(e) => set("phone", e.target.value)} sx={{ flex: 1 }}
+                        InputProps={{ startAdornment: <Box component="span" sx={{ mr: 1, fontSize: 18 }} aria-hidden>{flagEmoji(f.country)}</Box> }} />
+                      <TextField label={s.website} value={f.website} onChange={(e) => set("website", e.target.value)} sx={{ flex: 1 }} placeholder="https://"
+                        error={!urlOk(f.website)} helperText={!urlOk(f.website) ? (locale === "en" ? "Must start with http(s)://" : "Må starte med http(s)://") : ""} />
                     </Stack>
-                    {isForeign && (
-                      <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                        <TextField label={s.reg} value={f.registrationNumber} onChange={(e) => set("registrationNumber", e.target.value)} sx={{ flex: 1 }} />
-                        <TextField label={s.vat} value={f.vatNumber} onChange={(e) => set("vatNumber", e.target.value)} sx={{ flex: 1 }} />
-                      </Stack>
-                    )}
-                    <TextField label={s.services} value={f.services} onChange={(e) => set("services", e.target.value)} fullWidth placeholder="clipping path, background removal, retouching…" />
+                    {/* Org.nr/MVA vises for alle; for Norge auto-fylles de fra Brønnøysund. */}
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                      <TextField label={s.reg} value={f.registrationNumber} onChange={(e) => set("registrationNumber", e.target.value)} sx={{ flex: 1 }} />
+                      <TextField label={s.vat} value={f.vatNumber} onChange={(e) => set("vatNumber", e.target.value)} sx={{ flex: 1 }} />
+                    </Stack>
+                    <Autocomplete
+                      multiple freeSolo
+                      options={SERVICE_OPTIONS.map((o) => o.v)}
+                      value={selectedServices}
+                      onChange={(_, val) => set("services", (val as string[]).join(", "))}
+                      getOptionLabel={(o) => { const m = SERVICE_OPTIONS.find((x) => x.v === o); return m ? (locale === "en" ? m.en : m.no) : String(o); }}
+                      renderInput={(params) => (
+                        <TextField {...params} label={s.services}
+                          placeholder={selectedServices.length ? "" : (locale === "en" ? "Pick or type…" : "Velg eller skriv…")}
+                          helperText={locale === "en" ? "Tap to select; type to add your own" : "Trykk for å velge; skriv for å legge til egne"} />
+                      )}
+                      fullWidth
+                    />
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                       <TextField select label={s.pricing} value={f.pricingModel} onChange={(e) => set("pricingModel", e.target.value)} sx={{ flex: 1 }}>
                         <MenuItem value="per_image">{s.perImage}</MenuItem>
@@ -287,7 +355,8 @@ export default function PartnerApplicationForm() {
                       </TextField>
                     </Stack>
                     <TextField label={s.priceRange} value={f.priceRange} onChange={(e) => set("priceRange", e.target.value)} fullWidth />
-                    <TextField label={s.portfolio} value={f.portfolioUrl} onChange={(e) => set("portfolioUrl", e.target.value)} fullWidth placeholder="https://" />
+                    <TextField label={s.portfolio} value={f.portfolioUrl} onChange={(e) => set("portfolioUrl", e.target.value)} fullWidth placeholder="https://"
+                      error={!urlOk(f.portfolioUrl)} helperText={!urlOk(f.portfolioUrl) ? (locale === "en" ? "Must start with http(s)://" : "Må starte med http(s)://") : ""} />
                     <TextField label={s.notes} value={f.notes} onChange={(e) => set("notes", e.target.value)} multiline minRows={2} fullWidth />
                     <FormControlLabel control={<Checkbox checked={consentContact} onChange={(e) => setConsentContact(e.target.checked)} />} label={<Typography variant="body2" sx={{ color: BRAND.muted }}>{s.consentContact}</Typography>} />
                     <FormControlLabel control={<Checkbox checked={consentPrivacy} onChange={(e) => setConsentPrivacy(e.target.checked)} />} label={
