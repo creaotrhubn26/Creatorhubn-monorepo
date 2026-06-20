@@ -291,6 +291,20 @@ struct SuperAdminHubView: View {
                             Label("Outreach-templates", systemImage: "text.bubble.fill")
                         }
                     }
+
+                    // Fase 25: Ad-tech-stack
+                    Section("Ad-tech-stack") {
+                        NavigationLink {
+                            SuperAdminAdsConfigsView(api: api)
+                        } label: {
+                            Label("Ads-configs (klient-pixels)", systemImage: "megaphone.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminAdsApprovalsView(api: api)
+                        } label: {
+                            Label("Ads-godkjenninger", systemImage: "checkmark.seal.fill")
+                        }
+                    }
                 }
             }
             .navigationTitle("Super Admin")
