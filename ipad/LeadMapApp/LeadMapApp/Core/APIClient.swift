@@ -1250,6 +1250,113 @@ extension APIClient {
     }
 }
 
+// MARK: - Fase 19: Resterende admin-room paritet
+
+extension APIClient {
+
+    // -- RBAC permissions-matrise (per org) -----------------------
+
+    /// Liste over alle role-keys + default permissions + medlemmer per rolle.
+    /// Brukes i SuperAdminPermissionsMatrixView for å vise full RBAC-grid.
+    func fetchPermissionsMatrix(orgId: String) async throws -> PermissionsMatrixResponse {
+        try await get("/api/admin-room/lead-map/organizations/\(orgId)/role-defaults")
+    }
+
+    // -- Promote-medlem (sales-hierarki) --------------------------
+
+    /// Forhåndsvis hva som skjer hvis vi forfremmer member til toRole.
+    func previewPromotion(orgId: String, userId: String, toRole: String) async throws -> PromotionPreview {
+        try await get(
+            "/api/admin-room/lead-map/organizations/\(orgId)/members/\(userId)/promotion-preview?to_role=\(toRole)"
+        )
+    }
+
+    /// Bekreft forfremmelse til ny rolle.
+    func promoteMember(orgId: String, userId: String, toRole: String, reason: String?) async throws {
+        var body: [String: Any] = ["to_role": toRole]
+        if let reason { body["reason"] = reason }
+        try await post(
+            "/api/admin-room/lead-map/organizations/\(orgId)/members/\(userId)/promote",
+            body: body,
+        )
+    }
+
+    /// Liste alle medlemmer i org for promote-flyten.
+    func fetchOrgMembersForPromote(orgId: String) async throws -> OrgMembersResponse {
+        try await get("/api/admin-room/lead-map/organizations/\(orgId)/members")
+    }
+
+    // -- Customer Success ----------------------------------------
+
+    func fetchCustomerSuccessDashboard() async throws -> CSDashboardSummary {
+        try await get("/api/admin-room/customer-success/dashboard")
+    }
+
+    func fetchCSRenewals(daysAhead: Int = 90, status: String? = nil) async throws -> CSRenewalsResponse {
+        var qs = "?days=\(daysAhead)"
+        if let status { qs += "&status=\(status)" }
+        return try await get("/api/admin-room/customer-success/renewals\(qs)")
+    }
+
+    func updateRenewalStatus(id: String, payload: [String: Any]) async throws {
+        try await patch("/api/admin-room/customer-success/renewals/\(id)", body: payload)
+    }
+
+    // -- B2B Cockpit (Daniel's egen B2B-funnel) -------------------
+
+    func fetchB2BFunnel(arpuMonthlyNok: Double? = nil) async throws -> B2BFunnelResponse {
+        let qs = arpuMonthlyNok.map { "?arpuMonthlyNok=\($0)" } ?? ""
+        return try await get("/api/admin-room/cockpit/b2b/funnel\(qs)")
+    }
+
+    // -- LinkedIn Cockpit ----------------------------------------
+
+    func fetchLinkedInCapiStatus() async throws -> LinkedInCapiStatus {
+        try await get("/api/admin-room/cockpit/linkedin/capi/status")
+    }
+
+    func fetchLinkedInLeadSyncStatus() async throws -> LinkedInLeadSyncStatus {
+        try await get("/api/admin-room/cockpit/linkedin/leadsync/status")
+    }
+
+    func triggerLinkedInCapiSendDue() async throws {
+        try await post("/api/admin-room/cockpit/linkedin/capi/send-due", body: [:])
+    }
+
+    func triggerLinkedInLeadSyncPoll() async throws {
+        try await post("/api/admin-room/cockpit/linkedin/leadsync/poll-now", body: [:])
+    }
+
+    func fetchLinkedInCockpitOrgs() async throws -> LinkedInCockpitOrgsResponse {
+        try await get("/api/admin-room/cockpit/linkedin/orgs")
+    }
+
+    func setLinkedInCockpitDefaultOrg(id: String) async throws {
+        try await post("/api/admin-room/cockpit/linkedin/orgs/\(id)/default", body: [:])
+    }
+
+    // -- Case Studies --------------------------------------------
+
+    func fetchCaseStudies() async throws -> CaseStudiesResponse {
+        try await get("/api/admin-room/cockpit/case-studies")
+    }
+
+    func generateCaseStudy(customerId: String) async throws {
+        try await post("/api/admin-room/cockpit/case-studies/generate",
+                        body: ["customerId": customerId])
+    }
+
+    // -- Role Nav Config -----------------------------------------
+
+    func fetchRoleNavConfigs() async throws -> RoleNavConfigsResponse {
+        try await get("/api/admin-room/role-nav-config")
+    }
+
+    func updateRoleNavConfig(role: String, payload: [String: Any]) async throws {
+        try await patch("/api/admin-room/role-nav-config/\(role)", body: payload)
+    }
+}
+
 enum APIError: Error {
     case invalidResponse
     case statusCode(Int)
