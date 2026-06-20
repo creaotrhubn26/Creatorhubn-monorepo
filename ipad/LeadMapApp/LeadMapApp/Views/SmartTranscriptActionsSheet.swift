@@ -46,6 +46,7 @@ struct SmartTranscriptActionsSheet: View {
                 }
             }
             .navigationTitle("Claude foreslår")
+        .salesHierarchyBackdrop(.salesRep)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

@@ -91,6 +91,7 @@ struct LeadDetailSheet: View {
                                 .padding()
                         }
                         .navigationTitle("Status-historikk")
+        .salesHierarchyBackdrop(.salesRep)
                         .navigationBarTitleDisplayMode(.inline)
                     }
                 }

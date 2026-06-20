@@ -32,6 +32,7 @@ struct BusinessCardScannerView: View {
                 }
             }
             .navigationTitle("Skann visittkort")
+        .salesHierarchyBackdrop(.promotor)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

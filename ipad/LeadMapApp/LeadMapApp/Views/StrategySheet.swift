@@ -47,6 +47,7 @@ struct StrategySheet: View {
                 .padding(.vertical, 12)
             }
             .navigationTitle("Strategi: \(lead.name)")
+        .salesHierarchyBackdrop(.salesRep)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

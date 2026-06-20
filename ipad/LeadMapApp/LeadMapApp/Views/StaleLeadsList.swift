@@ -30,6 +30,7 @@ struct StaleLeadsList: View {
                 }
             }
             .navigationTitle("Stille leads")
+        .salesHierarchyBackdrop(.promotor)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
