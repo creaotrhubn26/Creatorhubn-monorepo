@@ -89,6 +89,21 @@ final class AppState {
     /// True hvis user.role == 'super_admin' eller user.isPlatformAdmin.
     var isSuperAdmin: Bool { userRole == "super_admin" }
 
+    // ── Admin Room multi-produkt (PR #827) ─────────────────────
+    /// Hvilket produkt Admin Room-flatene (business-plan, outreach,
+    /// industry-targets) er i kontekst for. Default `.leadgrid` siden
+    /// iPad-en primært brukes for Leadgrid (TestFlight live).
+    /// Persistert i UserDefaults (`AdminProductDefaultsKey.activeProduct`).
+    var activeAdminProduct: AdminProductKey = .leadgrid {
+        didSet {
+            guard oldValue != activeAdminProduct else { return }
+            UserDefaults.standard.set(
+                activeAdminProduct.rawValue,
+                forKey: AdminProductDefaultsKey.activeProduct,
+            )
+        }
+    }
+
     // ── Min dag (PR #616) ───────────────────────────────────────
     var workloadLeads: [WorkloadLead] = []
     var quota: QuotaProgress?
@@ -206,12 +221,16 @@ final class AppState {
     }
 
     func bootstrap() async {
-        // 1. Hent persistert prosjekt + org-valg
+        // 1. Hent persistert prosjekt + org-valg + admin-produkt-valg
         if let stored = UserDefaults.standard.string(forKey: "rr.lead_map.active_project"), !stored.isEmpty {
             self.activeProjectId = stored
         }
         if let storedOrg = UserDefaults.standard.string(forKey: "rr.lead_map.active_org"), !storedOrg.isEmpty {
             self.activeOrganizationId = storedOrg
+        }
+        if let storedProduct = UserDefaults.standard.string(forKey: AdminProductDefaultsKey.activeProduct),
+           let product = AdminProductKey(rawValue: storedProduct) {
+            self.activeAdminProduct = product
         }
 
         // 2. Last fra cache umiddelbart så UI er responsivt selv før refresh

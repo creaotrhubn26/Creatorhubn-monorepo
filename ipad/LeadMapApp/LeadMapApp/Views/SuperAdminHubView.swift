@@ -344,6 +344,16 @@ struct SuperAdminHubView: View {
                 }
             }
             .navigationTitle("Super Admin")
+            // PR #827: product-velger i toolbar styrer hvilken kontekst
+            // Admin Room-flatene (business-plan, outreach-templates,
+            // industry-targets) henter data for via ?product=.
+            .toolbar {
+                if appState.isSuperAdmin {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        AdminProductToolbarMenu()
+                    }
+                }
+            }
             .background(
                 BrandedHeroBackground(.backdrop13, darkenFrom: 0.55, darkenTo: 0.95)
                     .ignoresSafeArea()

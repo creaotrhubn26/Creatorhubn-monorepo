@@ -117,13 +117,17 @@ struct RoleRoomEconomyTimeseriesResponse: Codable {
 struct OutreachTemplate: Codable, Hashable, Identifiable {
     let id: String
     let name: String
-    let segment: String?        // 'agency' | 'corporate' | 'creator'
+    let segment: String?        // 'agency' | 'corporate' | 'creator' | 'b2b_agency' | ...
     let language: String?       // 'nb' | 'en'
     let subjectTemplate: String?
     let bodyTemplate: String?
     let placeholders: [String]?
     let lastUsedAt: String?
     let useCount: Int?
+    /// Multi-produkt (PR #827): hvilket produkt template-en tilhører.
+    /// Backend filtrerer på `?product=role_room|leadgrid`, men feltet
+    /// dekodes også for chips/UI-bekreftelse.
+    let productKey: String?
 }
 
 struct OutreachTemplatesResponse: Codable {
