@@ -305,6 +305,42 @@ struct SuperAdminHubView: View {
                             Label("Ads-godkjenninger", systemImage: "checkmark.seal.fill")
                         }
                     }
+
+                    // Fase 26: PR + Webinars + Lead-map detalj + Decks + CS-snapshot
+                    Section("Cockpit-sub") {
+                        NavigationLink {
+                            SuperAdminPRView(api: api)
+                        } label: {
+                            Label("PR (journalister + pressemeldinger)", systemImage: "newspaper")
+                        }
+                        NavigationLink {
+                            SuperAdminWebinarsView(api: api)
+                        } label: {
+                            Label("Webinars + referrals + nurture",
+                                   systemImage: "video.fill.badge.plus")
+                        }
+                    }
+
+                    Section("Lead-Map detalj") {
+                        NavigationLink {
+                            SuperAdminLeadMapPlacesView(api: api)
+                        } label: {
+                            Label("Places-import (Google Places)", systemImage: "mappin.and.ellipse")
+                        }
+                    }
+
+                    Section("Business decks & CS-snapshot") {
+                        NavigationLink {
+                            SuperAdminBusinessDecksView(api: api)
+                        } label: {
+                            Label("Decks + funding-apps", systemImage: "doc.richtext.fill")
+                        }
+                        NavigationLink {
+                            SuperAdminCSSnapshotView(api: api)
+                        } label: {
+                            Label("CS Snapshot (manuell)", systemImage: "camera.viewfinder")
+                        }
+                    }
                 }
             }
             .navigationTitle("Super Admin")

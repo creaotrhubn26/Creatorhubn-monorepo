@@ -1864,6 +1864,136 @@ extension APIClient {
     }
 }
 
+// MARK: - Fase 26: Cockpit-sub + Lead-map-detalj + Decks/funding + Error-detail
+
+extension APIClient {
+
+    // -- Cockpit: PR / Journalists --------------------------------
+
+    func fetchPRJournalists() async throws -> PRJournalistsResponse {
+        try await get("/api/admin-room/cockpit/pr/journalists")
+    }
+
+    func fetchPRReleases() async throws -> PRReleasesResponse {
+        try await get("/api/admin-room/cockpit/pr/releases")
+    }
+
+    func generatePRRelease(prompt: String) async throws -> PRRelease {
+        try await post(
+            "/api/admin-room/cockpit/pr/releases/generate",
+            body: ["prompt": prompt],
+        )
+    }
+
+    func distributePRRelease(id: String) async throws {
+        try await post("/api/admin-room/cockpit/pr/releases/\(id)/distribute", body: [:])
+    }
+
+    // -- Cockpit: Webinars ----------------------------------------
+
+    func fetchCockpitWebinars() async throws -> CockpitWebinarsResponse {
+        try await get("/api/admin-room/cockpit/webinars")
+    }
+
+    // -- Cockpit: Referrals + nurture-cron ------------------------
+
+    func fetchCockpitReferrals() async throws -> CockpitReferralsResponse {
+        try await get("/api/admin-room/cockpit/referrals")
+    }
+
+    func runNurtureCron() async throws -> NurtureRunResult {
+        try await post("/api/admin-room/cockpit/nurture/run-due", body: [:])
+    }
+
+    // -- Lead Map detalj-sub --------------------------------------
+
+    /// Søk steder via Google Places API.
+    func searchLeadMapPlaces(query: String) async throws -> LeadMapPlacesSearchResponse {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        return try await get("/api/admin-room/lead-map/places/search?q=\(encoded)")
+    }
+
+    /// Importer søkeresultater som leads.
+    func importLeadMapPlaces(placeIds: [String]) async throws -> LeadMapPlaceImportResult {
+        try await post(
+            "/api/admin-room/lead-map/places/import",
+            body: ["place_ids": placeIds],
+        )
+    }
+
+    /// Generer Claude AI-pitch for en gitt lead.
+    func generateLeadPitch(leadId: String) async throws -> LeadMapPitch {
+        try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/generate-pitch", body: [:])
+    }
+
+    /// Hent geo-data for en lead (lat/lng/distance fra meg).
+    func fetchLeadGeo(leadId: String) async throws -> [String: AnyCodableShim] {
+        try await get("/api/admin-room/lead-map/leads/\(leadId)/geo")
+    }
+
+    // -- Admin Decks (business decks) -----------------------------
+
+    func fetchAdminDecks() async throws -> AdminDecksResponse {
+        try await get("/api/admin-room/decks")
+    }
+
+    func fetchAdminDeckSlides(deckId: String) async throws -> AdminDeckSlidesResponse {
+        try await get("/api/admin-room/decks/\(deckId)/slides")
+    }
+
+    func generateDeckSlide(deckId: String, slideId: String, prompt: String) async throws {
+        try await post(
+            "/api/admin-room/decks/\(deckId)/slides/\(slideId)/generate",
+            body: ["prompt": prompt],
+        )
+    }
+
+    // -- Funding Apps ---------------------------------------------
+
+    func fetchFundingApps() async throws -> FundingAppsResponse {
+        try await get("/api/admin-room/funding-apps")
+    }
+
+    func generateFundingApp(id: String, prompt: String) async throws {
+        try await post(
+            "/api/admin-room/funding-apps/\(id)/generate",
+            body: ["prompt": prompt],
+        )
+    }
+
+    // -- CS Snapshot-all -------------------------------------------
+
+    /// Lag snapshot av alle kunder NÅ (cron-trigger fra iPad).
+    func runCSSnapshotAll() async throws -> CSSnapshotAllResult {
+        try await post("/api/admin-room/customer-success/snapshot-all", body: [:])
+    }
+
+    // -- Error detail ---------------------------------------------
+
+    func fetchAdminErrorDetail(id: String) async throws -> AdminErrorDetailResponse {
+        try await get("/api/admin-room/errors/\(id)")
+    }
+}
+
+/// Liten shim for å dekode arbitrary JSON-verdier (string/number/bool/null).
+struct AnyCodableShim: Codable, Hashable {
+    let value: String
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let s = try? c.decode(String.self) { value = s }
+        else if let n = try? c.decode(Double.self) { value = "\(n)" }
+        else if let b = try? c.decode(Bool.self) { value = "\(b)" }
+        else { value = "" }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        try c.encode(value)
+    }
+}
+
 enum APIError: Error {
     case invalidResponse
     case statusCode(Int)
