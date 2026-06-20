@@ -38,6 +38,16 @@ struct CreatorHubOneRootView: View {
     /// main section and stashes ``?subTab=<id>`` into sessionStorage
     /// so the target hub picks it up on mount.
     enum TabPath {
+        /// Host that serves the photographer dashboard. This is the web
+        /// FRONTEND (the React SPA on Vercel) — deliberately NOT the API
+        /// backend (`session.backendBaseURL`). The backend only serves
+        /// `/api/*` and returns Express's "Cannot GET <path>" for these
+        /// SPA routes, which is exactly what a backend-based URL produced.
+        /// Auth still flows because ``WebViewAuthBridge`` pre-seeds the
+        /// session token into localStorage (host-agnostic), and the SPA
+        /// calls the backend API from there just like a desktop browser.
+        static let webBaseURL = URL(string: "https://creatorhubn.com")!
+
         static let gallery = "/photographer-dashboard-material?tab=showcase-admin"
         static let admin = "/photographer-dashboard-material?tab=administration"
         static let tilbud = "/photographer-dashboard-material?tab=administration&subTab=quotes"
@@ -65,7 +75,7 @@ struct CreatorHubOneRootView: View {
         fallback: Fallback,
     ) -> some View {
         if let stored = SignInService.shared.session,
-           let url = URL(string: path, relativeTo: stored.backendBaseURL) {
+           let url = URL(string: path, relativeTo: TabPath.webBaseURL) {
             AuthenticatedWebView(
                 url: url,
                 session: stored,
@@ -106,17 +116,13 @@ struct CreatorHubOneRootView: View {
                 .tabItem { Label("Shoot", systemImage: "camera") }
                 .tag(Tab.shoot)
 
-            // Galleri → Showcase Admin surface on the dashboard. Lets
-            // the photographer preview how each project renders for
-            // the client + track hearts/comments without leaving the
-            // iPad. The ``?tab=showcase-admin`` query hands off to
-            // UniversalDashboard's deep-link effect.
-            webTab(
-                path: TabPath.gallery,
-                fallback: GalleryPlaceholderView(),
-            )
-            .tabItem { Label("Galleri", systemImage: "photo.on.rectangle") }
-            .tag(Tab.gallery)
+            // Galleri → NATIVE client-gallery review (showcase admin).
+            // Rebuilt native for a run-and-gun feel: live engagement
+            // counts, client selections + comments, respond + mark
+            // complete — e2e synced against /api/photographer/galleries.
+            GalleriView()
+                .tabItem { Label("Galleri", systemImage: "photo.on.rectangle") }
+                .tag(Tab.gallery)
 
             // Admin → whole AdministrationHub (pris, kontrakter,
             // kommunikasjon, Evendi). Pencil-bridge on so contract
@@ -172,6 +178,9 @@ struct CreatorHubOneRootView: View {
                 .tag(Tab.debug)
             #endif
         }
+        // CreatorHub dark branding across the whole shell — amber accent +
+        // forced dark scheme so every tab reads as one branded product.
+        .chBranded()
     }
 }
 
