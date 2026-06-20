@@ -831,10 +831,16 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   
   // Enhance with dynamic profession branding (auto-scalable)
   // This makes UniversalDashboard auto-scalable - new professions added via ProfessionTypeManager will automatically work
+  // Beregn profesjons-avledede verdier UTENFOR useMemo-en. Funksjonene fra
+  // useDynamicProfessions() er IKKE memoisert (ny identitet hver render). Lå de i
+  // config-deps re-beregnet config HVER render → config.tabs ny hver render →
+  // availableTabs ustabil → de 8 effektene (deps: availableTabs) kjørte hver
+  // render = kontinuerlig re-render («risting»). Verdiene her er stabile (strenger
+  // / ref fra professionConfigs-state), så config blir stabil.
+  const displayName = getProfessionDisplayName(profession);
+  const professionColor = getUserProfessionColor(profession);
+  const professionIcon = getProfessionIcon(profession);
   const config = useMemo(() => {
-    const displayName = getProfessionDisplayName(profession);
-    const professionColor = getUserProfessionColor(profession);
-    const professionIcon = getProfessionIcon(profession);
     const creatorPublishingProfessions = new Set(['admin', 'photographer', 'videographer', 'music_producer', 'enterprise']);
     const nextTabs = [...(baseConfig.tabs || [])].filter((tab) => tab.id !== 'showcase-publisher');
 
@@ -863,7 +869,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       icon: professionIcon || baseConfig.icon,
       tabs: nextTabs,
     };
-  }, [profession, baseConfig, getProfessionDisplayName, getUserProfessionColor, getProfessionIcon]);
+  }, [profession, baseConfig, displayName, professionColor, professionIcon]);
 
   // Fetch user session (public, minimal info)
   const { data: userSession } = useQuery({
@@ -1100,33 +1106,40 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       };
 
       const hasAccess = featureMap[tab.id] !== false;
-      if (tab.id === 'administration') {
-        console.log('🔍 Administration tab check:', { tabId: tab.id, hasAccess, featureMapValue: featureMap[tab.id] });
-      }
       return hasAccess;
     });
-    
-    console.log('📋 Available tabs:', tabs.map(t => t.id));
-    console.log('📋 Config tabs:', config.tabs.map(t => t.id));
-    
-    // Track filtered tabs for analytics
-    const filteredTabIds = config.tabs
-      .filter(tab => !tabs.find(t => t.id === tab.id))
-      .map(tab => tab.id);
-    
-    if (universalDashboardAccess.hasAccess && filteredTabIds.length > 0) {
-      features.trackFeatureUsage('universal-dashboard','tabs-filtered', {
-        filteredTabs: filteredTabIds,
-        availableCount: tabs.length,
-        totalCount: config.tabs.length
-      });
-    }
-    
+
+    // VIKTIG: ingen side-effekter (analytics/console) i denne useMemo-en.
+    // `features.trackFeatureUsage(...)` ble tidligere kalt her under render, og
+    // siden `features` lå i deps re-beregnet memo-en HVER render → ny tabs-array
+    // hver render → de 8 effektene under (deps: availableTabs) kjørte hver render
+    // → kontinuerlig re-render («risting») + en GA `feature_used`-storm. Analytics
+    // ligger nå i en guardet useEffect under, og `features` er fjernet fra deps.
     return tabs;
   }, [config.tabs, projectsTabAccess.hasAccess, clientsTabAccess.hasAccess, equipmentTabAccess.hasAccess,
       showcaseTabAccess.hasAccess, settingsTabAccess.hasAccess, timelineTabAccess.hasAccess,
       photoEnhancementAccess.hasAccess, videoEnhancementAccess.hasAccess, audioEnhancementAccess.hasAccess,
-      profession, isAdmin, isMentor, features, roleRoomAccess.hasWorkspaceAccess, universalDashboardAccess.hasAccess]);
+      profession, isAdmin, isMentor, roleRoomAccess.hasWorkspaceAccess]);
+
+  // 'tabs-filtered'-analytics — fyres KUN når det filtrerte settet faktisk endrer
+  // seg (keyet på ID-ene), aldri per render. Flyttet ut av useMemo-en over.
+  const filteredTabIds = useMemo(
+    () => config.tabs.filter((tab) => !availableTabs.find((t) => t.id === tab.id)).map((tab) => tab.id),
+    [config.tabs, availableTabs],
+  );
+  const filteredTabsKey = filteredTabIds.join(',');
+  useEffect(() => {
+    if (universalDashboardAccess.hasAccess && filteredTabIds.length > 0) {
+      features.trackFeatureUsage('universal-dashboard', 'tabs-filtered', {
+        filteredTabs: filteredTabIds,
+        availableCount: availableTabs.length,
+        totalCount: config.tabs.length,
+      });
+    }
+    // `features` er et stabilt API fra context; bevisst utelatt fra deps så
+    // effekten ikke re-fyrer på identitets-churn (det ville gjeninnført stormen).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredTabsKey, universalDashboardAccess.hasAccess]);
 
   // Register this component in the integration system
   useEffect(() => {
@@ -1185,7 +1198,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     return () => {
       communication.unregisterComponent('universal-dashboard');
     };
-}, [communication, dataFlow]);
+    // KJØR KUN ÉN GANG (mount). Tidligere deps [communication, dataFlow] endret
+    // identitet hver render (context-verdiene er ikke memoisert), så denne
+    // effekten kjørte hver render → `trackFeatureUsage('opened')`-storm +
+    // 4 nye dataFlow-noder PER render (ubegrenset lekkasje). registerComponent/
+    // registerNode opererer på stabile refs/useCallbacks, så mount-once er korrekt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   // Listen to global events and update accordingly
   useEffect(() => {
