@@ -197,10 +197,13 @@ export function deckKey(deckId: string, slug: string, suffix: string): string {
 
 /**
  * Bygg key for business-plan-snapshot.
- * F.eks. `business-plans/snapshots/2026-06-05T15-23-snapshot.json`
+ * F.eks. `business-plans/role_room/snapshots/2026-06-05T15-23-snapshot.json`
+ * eller `business-plans/leadgrid/snapshots/...` etter mig 0335 (multi-produkt).
+ *
+ * @param productKey 'role_room' (default for bakoverkompatibilitet) eller 'leadgrid'.
  */
-export function businessPlanSnapshotKey(): string {
+export function businessPlanSnapshotKey(productKey: "role_room" | "leadgrid" = "role_room"): string {
   const now = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "T");
   const stamp = now.slice(0, 19); // YYYY-MM-DDTHH-MM-SS
-  return `business-plans/snapshots/${stamp}-snapshot.json`;
+  return `business-plans/${productKey}/snapshots/${stamp}-snapshot.json`;
 }

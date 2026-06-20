@@ -52,33 +52,45 @@ export function registerB2ArchiveCronRoutes(deps: CronRoutesDeps): void {
     if (!checkCronSecret(req, res)) return;
 
     try {
+      // Mig 0335 (multi-produkt): én rad per (user_id, product_key).
+      // Cron snapshotter siste oppdaterte rad PER PRODUKT.
       const result = await pool.query(
-        `SELECT * FROM admin_business_plan ORDER BY updated_at DESC LIMIT 1`,
+        `SELECT DISTINCT ON (product_key) *
+           FROM admin_business_plan
+          ORDER BY product_key, updated_at DESC`,
       );
-      const plan = result.rows[0];
-      if (!plan) {
+      if (result.rows.length === 0) {
         return res.json({ archived: false, reason: "Ingen business-plan i DB" });
       }
 
-      const snapshot = {
-        snapshotAt: new Date().toISOString(),
-        plan,
-      };
-      const archiveResult = await archiveToRoleRoomB2(
-        businessPlanSnapshotKey(),
-        JSON.stringify(snapshot, null, 2),
-        "application/json; charset=utf-8",
-      );
+      const archived: Array<{ productKey: string; bucket: string; key: string; sizeBytes: number }> = [];
+      for (const plan of result.rows) {
+        const productKey: "role_room" | "leadgrid" =
+          plan.product_key === "leadgrid" ? "leadgrid" : "role_room";
+        const snapshot = {
+          snapshotAt: new Date().toISOString(),
+          productKey,
+          plan,
+        };
+        const archiveResult = await archiveToRoleRoomB2(
+          businessPlanSnapshotKey(productKey),
+          JSON.stringify(snapshot, null, 2),
+          "application/json; charset=utf-8",
+        );
+        if (archiveResult) {
+          archived.push({
+            productKey,
+            bucket: archiveResult.bucket,
+            key: archiveResult.key,
+            sizeBytes: archiveResult.size,
+          });
+        }
+      }
 
-      if (!archiveResult) {
+      if (archived.length === 0) {
         return res.status(503).json({ archived: false, reason: "B2 ikke konfigurert" });
       }
-      return res.json({
-        archived: true,
-        bucket: archiveResult.bucket,
-        key: archiveResult.key,
-        sizeBytes: archiveResult.size,
-      });
+      return res.json({ archived: true, snapshots: archived });
     } catch (err) {
       console.error("[b2-archive-cron] business-plan error", err);
       return res.status(500).json({ error: (err as Error).message });
