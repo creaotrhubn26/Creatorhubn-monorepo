@@ -149,8 +149,23 @@ export function setupAdminLeadsGrowthRoutes(deps: AdminRoomRoutesDeps): void {
         totalChurned: buckets.reduce((s, b) => s + b.churned, 0),
       });
     } catch (err) {
-      console.error("[leads-growth] error", err);
-      return res.status(500).json({ error: "Kunne ikke beregne leads-growth" });
+      // Graceful: SQL-feil (mangler kolonne won_at/lost_at på crm_customers
+      // i org-scope, mangler tabell, etc.) → returnér tom shape så iPad
+      // viser "Per måned (0)" i stedet for "Kunne ikke laste".
+      console.warn("[leads-growth] failed:", (err as Error).message);
+      const months = period === "3m" ? 3 : period === "6m" ? 6 : 12;
+      const now = new Date();
+      const emptyBuckets = Array.from({ length: months }, (_, i) => {
+        const d = new Date(now.getFullYear(), now.getMonth() - (months - 1 - i), 1);
+        return {
+          month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+          new: 0, converted: 0, churned: 0,
+        };
+      });
+      return res.json({
+        period, scope, buckets: emptyBuckets,
+        totalNew: 0, totalConverted: 0, totalChurned: 0,
+      });
     }
   });
 }

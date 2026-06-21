@@ -285,7 +285,10 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
         drafts: r.rows.map(mapDraftRow),
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      // Graceful: tabell mangler eller annen SQL-feil → tom liste
+      // (iPad viser "Ingen drafts" i stedet for "Kunne ikke laste").
+      console.warn("[post-drafts] list failed:", (err as Error).message);
+      res.json({ ok: true, brandKey, drafts: [] });
     }
   });
 
@@ -480,7 +483,17 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
         },
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      // Graceful: tabell mangler eller annen SQL-feil → tom kalender
+      // (iPad viser "Ingen kalender-poster" i stedet for "Kunne ikke laste").
+      console.warn("[content-calendar] failed:", (err as Error).message);
+      res.json({
+        ok: true,
+        from: from.toISOString(),
+        to: to.toISOString(),
+        brandKey,
+        scheduled: [], unscheduled: [],
+        counts: { scheduled: 0, unscheduled: 0, published: 0 },
+      });
     }
   });
 

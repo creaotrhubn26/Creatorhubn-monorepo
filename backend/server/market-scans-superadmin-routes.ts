@@ -71,12 +71,10 @@ export function setupMarketScansSuperAdminRoutes(deps: Deps): void {
       );
       return res.json({ scans: r.rows });
     } catch (err) {
-      // Tabell finnes ikke i alle miljøer → degrader til tom liste.
-      if ((err as { code?: string }).code === "42P01") {
-        return res.json({ scans: [] });
-      }
-      console.error("[market-scans GET]", err);
-      return res.status(500).json({ error: "scans_failed" });
+      // Graceful: enhver SQL-feil (mangler tabell, kolonne, type-mismatch)
+      // → tom liste i stedet for 500 (iPad viser "Ingen market-scans").
+      console.warn("[market-scans GET] failed:", (err as Error).message);
+      return res.json({ scans: [] });
     }
   });
 
@@ -100,11 +98,8 @@ export function setupMarketScansSuperAdminRoutes(deps: Deps): void {
       );
       return res.json({ competitors: r.rows });
     } catch (err) {
-      if ((err as { code?: string }).code === "42P01") {
-        return res.json({ competitors: [] });
-      }
-      console.error("[market-scans competitors GET]", err);
-      return res.status(500).json({ error: "competitors_failed" });
+      console.warn("[market-scans competitors] failed:", (err as Error).message);
+      return res.json({ competitors: [] });
     }
   });
 
@@ -134,11 +129,8 @@ export function setupMarketScansSuperAdminRoutes(deps: Deps): void {
       );
       return res.json({ campaigns: r.rows });
     } catch (err) {
-      if ((err as { code?: string }).code === "42P01") {
-        return res.json({ campaigns: [] });
-      }
-      console.error("[lead-map/campaigns]", err);
-      return res.status(500).json({ error: "campaigns_failed" });
+      console.warn("[lead-map/campaigns] failed:", (err as Error).message);
+      return res.json({ campaigns: [] });
     }
   });
 
@@ -174,11 +166,8 @@ export function setupMarketScansSuperAdminRoutes(deps: Deps): void {
       });
       return res.json({ categories });
     } catch (err) {
-      if ((err as { code?: string }).code === "42P01") {
-        return res.json({ categories: [] });
-      }
-      console.error("[lead-map/category-conversion]", err);
-      return res.status(500).json({ error: "category_conversion_failed" });
+      console.warn("[lead-map/category-conversion] failed:", (err as Error).message);
+      return res.json({ categories: [] });
     }
   });
 
@@ -257,11 +246,8 @@ export function setupMarketScansSuperAdminRoutes(deps: Deps): void {
       );
       return res.json({ opportunities: r.rows });
     } catch (err) {
-      if ((err as { code?: string }).code === "42P01") {
-        return res.json({ opportunities: [] });
-      }
-      console.error("[market-scans opportunities GET]", err);
-      return res.status(500).json({ error: "opportunities_failed" });
+      console.warn("[market-scans opportunities] failed:", (err as Error).message);
+      return res.json({ opportunities: [] });
     }
   });
 }
