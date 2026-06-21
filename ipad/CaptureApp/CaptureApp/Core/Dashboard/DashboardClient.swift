@@ -12,15 +12,20 @@ actor DashboardClient {
     private let baseURL: URL
     private let session: URLSession
     private var authHeaders: [String: String]
+    /// Signed-in photographer id — several dashboard endpoints scope by
+    /// `?userId=` even with a Bearer present.
+    let userId: String?
 
     init(
         baseURL: URL,
         session: URLSession = .shared,
         authHeaders: [String: String] = [:],
+        userId: String? = nil,
     ) {
         self.baseURL = baseURL
         self.session = session
         self.authHeaders = authHeaders
+        self.userId = userId
     }
 
     /// Build from the signed-in session (nil when signed out).
@@ -30,6 +35,7 @@ actor DashboardClient {
         return DashboardClient(
             baseURL: stored.backendBaseURL,
             authHeaders: SignInService.shared.authHeaders,
+            userId: stored.userId,
         )
     }
 
@@ -77,7 +83,7 @@ actor DashboardClient {
 
     // MARK: - Internals
 
-    private func getJSON<Response: Decodable>(path: String) async throws -> Response {
+    func getJSON<Response: Decodable>(path: String) async throws -> Response {
         guard let url = URL(string: path, relativeTo: baseURL) else {
             throw DashboardError.transport("invalid path \(path)")
         }
@@ -96,7 +102,7 @@ actor DashboardClient {
 
     /// POST/PATCH a JSON body; 2xx with body ignored. Used for mutations
     /// where we re-fetch the list afterwards rather than parse the ack.
-    private func send<Body: Encodable>(path: String, method: String, body: Body) async throws {
+    func send<Body: Encodable>(path: String, method: String, body: Body) async throws {
         guard let url = URL(string: path, relativeTo: baseURL) else {
             throw DashboardError.transport("invalid path \(path)")
         }
@@ -110,13 +116,34 @@ actor DashboardClient {
         try check(response, data)
     }
 
-    private func applyAuth(_ request: inout URLRequest) {
+    /// POST a JSON body and decode the response — for mutations whose ack
+    /// carries data we need (e.g. a Google Meet join link).
+    func postJSON<Body: Encodable, Response: Decodable>(path: String, body: Body) async throws -> Response {
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw DashboardError.transport("invalid path \(path)")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        applyAuth(&request)
+        request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await data(for: request)
+        try check(response, data)
+        do {
+            return try JSONDecoder().decode(Response.self, from: data)
+        } catch {
+            throw DashboardError.decode(String(describing: error))
+        }
+    }
+
+    func applyAuth(_ request: inout URLRequest) {
         for (name, value) in authHeaders {
             request.setValue(value, forHTTPHeaderField: name)
         }
     }
 
-    private func check(_ response: URLResponse, _ data: Data) throws {
+    func check(_ response: URLResponse, _ data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
             throw DashboardError.transport("not HTTPURLResponse")
         }
@@ -127,7 +154,7 @@ actor DashboardClient {
         }
     }
 
-    private func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
         do {
             return try await session.data(for: request)
         } catch let urlError as URLError {
