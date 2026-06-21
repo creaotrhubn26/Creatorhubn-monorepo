@@ -95,6 +95,7 @@ struct GmailThreadView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            ProjectBanner(conversationId: thread.threadId ?? thread.id, provider: "gmail")
             if model.loading && model.messages.isEmpty {
                 ProgressView("Laster…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -214,6 +215,7 @@ struct GoogleChatThreadView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            ProjectBanner(conversationId: space.id, provider: "google-chat")
             if model.loading && model.messages.isEmpty {
                 ProgressView("Laster…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -341,6 +343,7 @@ struct EvendiThreadView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            ProjectBanner(conversationId: conversation.id, provider: "evendi")
             if model.loading && model.messages.isEmpty {
                 ProgressView("Laster…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {

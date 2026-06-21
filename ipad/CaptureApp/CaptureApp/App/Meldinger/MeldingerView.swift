@@ -279,6 +279,7 @@ struct ChatThreadView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            ProjectBanner(conversationId: conversation.channelId ?? conversation.id, provider: "internal-chat")
             messageList
             composeBar
         }
