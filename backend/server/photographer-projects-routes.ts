@@ -486,12 +486,14 @@ export function setupPhotographerProjectsRoutes(
         }
       }
 
-      // Marker submission som konvertert hvis fra inquiry-flyt.
+      // Marker submission som konvertert hvis fra inquiry-flyt. client_submissions
+      // har project_id + status (IKKE converted_to_project_id/converted_at), så
+      // den gamle UPDATEn feilet stille og forespørselen ble liggende som «ny».
       if (newProjectId && submissionId) {
         try {
           await pool.query(
             `UPDATE client_submissions
-                SET converted_to_project_id = $1, converted_at = NOW(), updated_at = NOW()
+                SET project_id = $1, status = 'converted', updated_at = NOW()
               WHERE id = $2`,
             [newProjectId, submissionId],
           );
