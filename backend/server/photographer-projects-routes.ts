@@ -59,6 +59,11 @@ export function ensurePhotographerProjectsSchemaShared(pool: Pool): Promise<void
           );
           CREATE INDEX IF NOT EXISTS project_time_tracking_project_idx
             ON project_time_tracking (project_id, date_worked DESC);
+          -- An older definition FK'd project_id to integrated_projects(id),
+          -- but photographer projects live in `projects` — drop the stale FK
+          -- so time logging works (the table is app-managed, no FK needed).
+          ALTER TABLE project_time_tracking
+            DROP CONSTRAINT IF EXISTS project_time_tracking_project_id_integrated_projects_id_fk;
         `);
       } catch (err) {
         console.warn('[photographer-projects] schema-ensure failed:', err);
@@ -424,7 +429,7 @@ export function setupPhotographerProjectsRoutes(
                  $5, 'active', 'planning', $6, $7, $8,
                  $9, $10, $11, $12,
                  $13::jsonb, $14::jsonb, $15,
-                 NOW()::text, NOW()::text)
+                 NOW(), NOW())
          RETURNING id`,
         [
           photographerId,
@@ -757,7 +762,7 @@ export function setupPhotographerProjectsRoutes(
            estimated_hours= COALESCE($10, estimated_hours),
            description    = COALESCE($11, description),
            client_id      = COALESCE($12, client_id),
-           updated_at     = NOW()::text
+           updated_at     = NOW()
          WHERE id = $13 AND user_id = $14
          RETURNING id, title, event_date, location, description, client_id,
                    google_calendar_event_id`,
@@ -1177,7 +1182,7 @@ export function setupPhotographerProjectsRoutes(
            external_invoice_id = $1,
            external_invoice_number = $2,
            invoiced_at = NOW(),
-           updated_at = NOW()::text
+           updated_at = NOW()
          WHERE id = $3 AND user_id = $4`,
         [result.salesOrderId, result.salesOrderNumber != null ? String(result.salesOrderNumber) : null, projectId, photographerId],
       );
