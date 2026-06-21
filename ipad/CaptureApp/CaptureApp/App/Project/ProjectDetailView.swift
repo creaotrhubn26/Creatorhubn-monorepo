@@ -112,7 +112,7 @@ struct ProjectDetailView: View {
                     Label(loc, systemImage: "mappin.and.ellipse").font(.caption).foregroundStyle(CHTheme.textMuted)
                 }
                 if let date = model.detail?.eventDate {
-                    Label(DashboardDate.relative(date), systemImage: "calendar").font(.caption).foregroundStyle(CHTheme.textMuted)
+                    Label(DashboardDate.shortDate(date), systemImage: "calendar").font(.caption).foregroundStyle(CHTheme.textMuted)
                 }
             }
         }

@@ -108,6 +108,7 @@ struct RequestDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                if !submission.isConverted { responseAdviceCard }
                 contactCard
                 projectCard
                 if hasText(submission.description) || hasText(submission.specialRequests) || hasText(submission.clientNotes) {
@@ -173,7 +174,7 @@ struct RequestDetailView: View {
         CHCard {
             VStack(alignment: .leading, spacing: 10) {
                 cardTitle("Prosjektdetaljer", "camera.aperture")
-                if let d = submission.eventDate, !d.isEmpty { infoRow("Dato", DashboardDate.relative(d).isEmpty ? d : d) }
+                if let d = submission.eventDate, !d.isEmpty { infoRow("Dato", DashboardDate.shortDate(d)) }
                 if let loc = submission.location, !loc.isEmpty { infoRow("Sted", loc) }
                 if let b = submission.budget { infoRow("Budsjett", "kr \(Int(b))") }
                 if let tf = submission.timeframe, !tf.isEmpty { infoRow("Tidsramme", tf) }
@@ -208,6 +209,54 @@ struct RequestDetailView: View {
                     infoRow("Tilbudssum", "kr \(Int(qa))")
                 }
             }
+        }
+    }
+
+    /// "Anbefalt svar" — when the client didn't state a deadline, advise when
+    /// to reply and why. Photographers win bookings on speed: clients usually
+    /// message several photographers, and the first solid reply often takes the
+    /// job. Urgency escalates with how long the request has already waited.
+    private var responseAdviceCard: some View {
+        let advice = responseAdvice
+        return CHCard {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "clock.badge.exclamationmark")
+                    .font(.title3).foregroundStyle(advice.tint)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(advice.headline).font(.subheadline.weight(.semibold)).foregroundStyle(advice.tint)
+                    Text(advice.reason).font(.caption).foregroundStyle(CHTheme.textSecondary)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(advice.tint.opacity(0.4), lineWidth: 1))
+    }
+
+    private struct Advice { let headline: String; let reason: String; let tint: Color }
+
+    private var responseAdvice: Advice {
+        // Respect a client-stated deadline — then no generic advice needed.
+        if let tf = submission.timeframe, !tf.trimmingCharacters(in: .whitespaces).isEmpty {
+            return Advice(
+                headline: "Kunden ønsker svar: \(tf)",
+                reason: "Svar i god tid før dette — raske svar gir flere bookinger.",
+                tint: CHTheme.accentSoft,
+            )
+        }
+        let why = "Kunder kontakter ofte flere fotografer samtidig — den som svarer først og grundigst vinner som regel oppdraget. Forespørsler besvart raskt bookes langt oftere."
+        let waited = submission.submittedAt.flatMap { DashboardDate.parse($0) }
+            .map { Date().timeIntervalSince($0) } ?? 0
+        let hours = waited / 3600
+        if hours >= 24 {
+            let days = Int(hours / 24)
+            return Advice(headline: "Svar nå — har ventet \(days) \(days == 1 ? "dag" : "dager")",
+                          reason: why, tint: CHTheme.danger)
+        } else if hours >= 3 {
+            return Advice(headline: "Svar i dag — har ventet \(Int(hours)) t",
+                          reason: why, tint: CHTheme.warning)
+        } else {
+            return Advice(headline: "Svar innen 1 time",
+                          reason: why, tint: CHTheme.success)
         }
     }
 

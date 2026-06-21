@@ -195,9 +195,28 @@ enum DashboardDate {
         return f
     }()
 
+    // Date-only ("2026-09-12") fallback for event dates without a time.
+    private static let dateOnly: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
+    // "12. sep 2026"
+    private static let shortDateFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.setLocalizedDateFormatFromTemplate("d MMM yyyy")
+        return f
+    }()
+
     static func parse(_ raw: String?) -> Date? {
         guard let raw, !raw.isEmpty else { return nil }
-        return isoFractional.date(from: raw) ?? iso.date(from: raw)
+        return isoFractional.date(from: raw)
+            ?? iso.date(from: raw)
+            ?? dateOnly.date(from: String(raw.prefix(10)))
     }
 
     /// Relative ("for 3 t", "i går") if recent, else short date.
@@ -207,5 +226,13 @@ enum DashboardDate {
         fmt.locale = Locale(identifier: "nb_NO")
         fmt.unitsStyle = .abbreviated
         return fmt.localizedString(for: date, relativeTo: Date())
+    }
+
+    /// Friendly absolute date, e.g. "12. sep 2026". Falls back to the raw
+    /// string (trimmed to the date part) if it can't be parsed.
+    static func shortDate(_ raw: String?) -> String {
+        guard let raw, !raw.isEmpty else { return "" }
+        if let date = parse(raw) { return shortDateFmt.string(from: date) }
+        return String(raw.prefix(10))
     }
 }
