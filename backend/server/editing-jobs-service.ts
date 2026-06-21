@@ -146,6 +146,67 @@ export async function presignStagingUpload(
   return { url, key, bucket: cfg.bucket };
 }
 
+/**
+ * Presignert PUT-URL for at FOTOGRAFEN laster kildefiler (rå-/originaler) opp
+ * til staging, slik at redigereren kan hente dem. Lagres under `source/` slik at
+ * de aldri forveksles med vendorens leveranse. Nøkkelen returneres og lagres på
+ * editing_job_files med file_role='source'.
+ */
+export async function presignStagingSourceUpload(
+  jobId: string,
+  fileName: string,
+  contentType: string,
+  expiresInSeconds = 3600,
+): Promise<{ url: string; key: string; bucket: string } | null> {
+  const cfg = getStagingClient();
+  if (!cfg) return null;
+  const key = `${stagingPrefix(jobId)}source/${safeFileName(fileName)}`;
+  const command = new PutObjectCommand({
+    Bucket: cfg.bucket,
+    Key: key,
+    ContentType: contentType || "application/octet-stream",
+  });
+  const url = await getSignedUrl(cfg.client, command, { expiresIn: expiresInSeconds });
+  return { url, key, bucket: cfg.bucket };
+}
+
+/** Presignert GET-URL fra staging — for at redigereren skal hente en kildefil. */
+export async function presignStagingDownload(
+  key: string,
+  expiresInSeconds = 3600,
+): Promise<string | null> {
+  const cfg = getStagingClient();
+  if (!cfg || !key) return null;
+  const command = new GetObjectCommand({ Bucket: cfg.bucket, Key: key });
+  return getSignedUrl(cfg.client, command, { expiresIn: expiresInSeconds });
+}
+
+/**
+ * Slett kildefiler fra staging (GDPR-rent) når oppdraget er ferdig eller avbrutt.
+ * Vendor-leveranser ryddes allerede i transferStagingToPhotographer.
+ */
+export async function purgeStagingSourceFiles(pool: Pool, jobId: string): Promise<number> {
+  const cfg = getStagingClient();
+  if (!cfg) return 0;
+  const r = await pool.query<{ id: string; staging_key: string | null }>(
+    `SELECT id, staging_key FROM editing_job_files
+      WHERE job_id = $1 AND file_role = 'source' AND transfer_status <> 'deleted'`,
+    [jobId],
+  );
+  let purged = 0;
+  for (const f of r.rows) {
+    if (!f.staging_key) continue;
+    try {
+      await cfg.client.send(new DeleteObjectCommand({ Bucket: cfg.bucket, Key: f.staging_key }));
+      await pool.query(`UPDATE editing_job_files SET transfer_status = 'deleted' WHERE id = $1`, [f.id]);
+      purged++;
+    } catch {
+      // beste forsøk — neste opprydding tar den
+    }
+  }
+  return purged;
+}
+
 async function streamToBuffer(body: unknown): Promise<Buffer> {
   const maybe = body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined;
   if (maybe?.transformToByteArray) {
