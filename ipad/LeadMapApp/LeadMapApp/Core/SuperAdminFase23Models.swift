@@ -92,9 +92,15 @@ struct LeadgridDeveloperApplication: Codable, Hashable {
     let reviewedAt: String?
 }
 
+/// Mappes mot backend `GET /api/leadgrid/partner-terms`
+/// (partner-applications-routes.ts). Backend gir `{version, body_md,
+/// effective_at}`. iPad bruker historisk title/body/publishedAt.
 struct LeadgridPartnerTerms: Codable, Hashable {
     let version: String
-    let title: String
-    let body: String
-    let publishedAt: String?
+    let bodyMd: String?
+    let effectiveAt: String?
+
+    var title: String { "Partner-vilkår v\(version)" }
+    var body: String { bodyMd ?? "" }
+    var publishedAt: String? { effectiveAt }
 }

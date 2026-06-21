@@ -353,7 +353,7 @@ struct SuperAdminApiHealthView: View {
                 Section { HStack { Spacer(); ProgressView(); Spacer() } }
             } else if let r = response {
                 Section {
-                    healthScoreBanner(r.healthScore, r.windowHours)
+                    healthScoreBanner(r.healthScore ?? 0, r.windowHours ?? 24)
                 }
 
                 let sortedEndpoints = r.endpoints.sorted { lhs, rhs in

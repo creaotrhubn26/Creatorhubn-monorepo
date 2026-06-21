@@ -19,6 +19,7 @@
  */
 
 import type express from "express";
+import type { Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 
@@ -281,8 +282,45 @@ export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
     }
   });
 
-  // ── PATCH /linkedin/orgs/:id — sett som default ──────────────────
-  app.patch("/api/admin-room/cockpit/linkedin/orgs/:id/default", async (req, res) => {
+  // ── GET /linkedin/orgs — liste alle koblede orgs ────────────────
+  // Brukes av iPad SuperAdminLinkedInCockpitView for å vise hvilke
+  // LinkedIn-orgs Daniel har koblet på + hvilken som er default.
+  app.get("/api/admin-room/cockpit/linkedin/orgs", async (req, res) => {
+    if (!guard(req, res)) return;
+    try {
+      const r = await pool.query<{
+        id: string;
+        display_name: string | null;
+        vanity_name: string | null;
+        is_default: boolean;
+        connected_at: string;
+        organization_urn: string;
+        org_type: string;
+      }>(
+        `SELECT id::text, display_name, vanity_name, is_default,
+                connected_at::text, organization_urn, org_type
+           FROM linkedin_org_config
+          ORDER BY is_default DESC, connected_at DESC`,
+      );
+      // Match iPad-Codable-modellen LinkedInCockpitOrg
+      const orgs = r.rows.map((row) => ({
+        id: row.id,
+        name: row.display_name || row.organization_urn,
+        vanityName: row.vanity_name,
+        logoUrl: null,
+        isDefault: row.is_default,
+        connectedAt: row.connected_at,
+      }));
+      return res.json({ orgs });
+    } catch (err) {
+      console.error("[linkedin/orgs GET]", err);
+      return res.status(500).json({ error: "Henting feilet" });
+    }
+  });
+
+  // ── PATCH+POST /linkedin/orgs/:id/default — sett som default ─────
+  // iPad-clienten bruker POST (alle action-endepunkter); web bruker PATCH.
+  const setLinkedInDefaultHandler = async (req: Request, res: Response) => {
     if (!guard(req, res)) return;
     try {
       const found = await pool.query(
@@ -300,7 +338,9 @@ export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
       console.error("[linkedin/orgs default]", err);
       return res.status(500).json({ error: "Endring feilet" });
     }
-  });
+  };
+  app.patch("/api/admin-room/cockpit/linkedin/orgs/:id/default", setLinkedInDefaultHandler);
+  app.post("/api/admin-room/cockpit/linkedin/orgs/:id/default", setLinkedInDefaultHandler);
 
   // ── DELETE /linkedin/orgs/:id — fjern kobling ───────────────────
   app.delete("/api/admin-room/cockpit/linkedin/orgs/:id", async (req, res) => {

@@ -557,24 +557,36 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   });
 
   // ── GET /api/role-room/ads-approvals/pending — for klient-portal ──
+  // clientProjectId valgfri: hvis ikke satt returnerer vi pending approvals
+  // som producer'en eier (admin-overview / iPad SuperAdminAdsApprovalsView).
   app.get("/api/role-room/ads-approvals/pending", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
     const projectId = typeof req.query.clientProjectId === "string" ? req.query.clientProjectId : null;
-    if (!projectId) return res.status(400).json({ error: "clientProjectId er påkrevd" });
 
     try {
-      const cfgs = await pool.query(
-        `SELECT id::text, client_name, client_website_url, business_type, business_summary,
-                approval_status, sent_for_approval_at, approval_message, review_deadline,
-                claude_analysis, management_fee_pct, management_fee_negotiated
-           FROM client_ads_configs
-          WHERE client_project_id = $1::uuid
-            AND approval_status IN ('awaiting_client','revision_requested')
-          ORDER BY sent_for_approval_at DESC`,
-        [projectId],
-      ).catch(() => ({ rows: [] }));
+      const cfgs = projectId
+        ? await pool.query(
+            `SELECT id::text, client_name, client_website_url, business_type, business_summary,
+                    approval_status, sent_for_approval_at, approval_message, review_deadline,
+                    claude_analysis, management_fee_pct, management_fee_negotiated
+               FROM client_ads_configs
+              WHERE client_project_id = $1::uuid
+                AND approval_status IN ('awaiting_client','revision_requested')
+              ORDER BY sent_for_approval_at DESC`,
+            [projectId],
+          ).catch(() => ({ rows: [] }))
+        : await pool.query(
+            `SELECT id::text, client_name, client_website_url, business_type, business_summary,
+                    approval_status, sent_for_approval_at, approval_message, review_deadline,
+                    claude_analysis, management_fee_pct, management_fee_negotiated
+               FROM client_ads_configs
+              WHERE content_producer_user_id = $1
+                AND approval_status IN ('awaiting_client','revision_requested')
+              ORDER BY sent_for_approval_at DESC`,
+            [session.userId],
+          ).catch(() => ({ rows: [] }));
 
       // Hent actions per config
       const results: any[] = [];
