@@ -384,16 +384,29 @@ final class AppState {
         self.authToken = token
         self.userEmail = email
         self.api = APIClient(token: token)
+        // Last user-role FØR refreshAll så SuperAdminHub-section i
+        // LeadgridHubView låses opp umiddelbart for super_admin. Uten
+        // dette ble userRole nil helt til neste app-start (bootstrap)
+        // kjørte loadUserRole — Super Admin-section var skjult etter
+        // Google login selv om DB-role var 'super_admin'.
+        await loadOrganizations()
+        await loadOrgContext()
+        await loadUserRole()
         await refreshAll()
     }
 
     /// Brukes etter en vellykket pairing-kode-bytte eller Google Sign-In.
-    /// Setter token + last alt frem.
+    /// Setter token + last alt frem (inkl. user-role for super_admin-deteksjon).
     func completePairing(token: String, userId: String) {
         AuthClient.saveToken(token, email: nil)
         self.authToken = token
         self.api = APIClient(token: token)
-        Task { await refreshAll() }
+        Task {
+            await loadOrganizations()
+            await loadOrgContext()
+            await loadUserRole()
+            await refreshAll()
+        }
     }
 
     func signOut() {
