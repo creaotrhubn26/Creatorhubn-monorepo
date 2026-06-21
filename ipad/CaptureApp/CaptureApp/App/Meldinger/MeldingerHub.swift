@@ -64,12 +64,19 @@ struct MeldingerView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            channelChips
-            Divider().overlay(CHTheme.border)
-            channelBody
+        // One NavigationStack at the hub so the system places content below the
+        // iPad floating top tab-bar (the channel inboxes are plain content that
+        // navigate within this stack — they no longer nest their own stacks).
+        NavigationStack {
+            VStack(spacing: 0) {
+                channelChips
+                Divider().overlay(CHTheme.border)
+                channelBody
+            }
+            .background(CHTheme.bg.ignoresSafeArea())
+            .navigationTitle("Meldinger")
+            .navigationBarTitleDisplayMode(.inline)
         }
-        .background(CHTheme.bg.ignoresSafeArea())
         .task {
             guard !accessLoaded else { return }
             await access.refresh()
@@ -97,9 +104,6 @@ struct MeldingerView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
-        // Clear the iPad's floating top tab-bar pill so the channel chips
-        // don't collide with it.
-        .padding(.top, 44)
     }
 
     @ViewBuilder

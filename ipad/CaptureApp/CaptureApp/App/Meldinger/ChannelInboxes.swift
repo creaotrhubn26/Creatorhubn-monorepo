@@ -24,37 +24,33 @@ struct GmailInbox: View {
     @State private var model = GmailInboxModel()
 
     var body: some View {
-        NavigationStack {
-            ChannelInboxScaffold(
-                title: "Ingen e-poster",
-                loading: model.loading && model.threads.isEmpty,
-                isEmpty: model.threads.isEmpty,
-                errorMessage: model.threads.isEmpty ? model.errorMessage : nil,
-                emptyText: "Gmail-tråder dukker opp her når Google Workspace er koblet til.",
-                onRefresh: { await model.load() },
-            ) {
-                ForEach(model.threads) { thread in
-                    NavigationLink {
-                        GmailThreadView(thread: thread)
-                    } label: {
-                        ThreadPreviewRow(
-                            title: thread.counterpartName ?? thread.counterpartEmail ?? thread.subject ?? "Ukjent",
-                            subtitle: thread.subject,
-                            preview: thread.snippet,
-                            time: thread.timestamp,
-                            unread: thread.unreadCount,
-                            badge: thread.hasAttachments ? "paperclip" : nil,
-                        )
-                    }
-                    .listRowBackground(CHTheme.surface)
-                    .listRowSeparatorTint(CHTheme.border)
+        ChannelInboxScaffold(
+            title: "Ingen e-poster",
+            loading: model.loading && model.threads.isEmpty,
+            isEmpty: model.threads.isEmpty,
+            errorMessage: model.threads.isEmpty ? model.errorMessage : nil,
+            emptyText: "Gmail-tråder dukker opp her når Google Workspace er koblet til.",
+            onRefresh: { await model.load() },
+        ) {
+            ForEach(model.threads) { thread in
+                NavigationLink {
+                    GmailThreadView(thread: thread)
+                } label: {
+                    ThreadPreviewRow(
+                        title: thread.counterpartName ?? thread.counterpartEmail ?? thread.subject ?? "Ukjent",
+                        subtitle: thread.subject,
+                        preview: thread.snippet,
+                        time: thread.timestamp,
+                        unread: thread.unreadCount,
+                        badge: thread.hasAttachments ? "paperclip" : nil,
+                    )
                 }
+                .listRowBackground(CHTheme.surface)
+                .listRowSeparatorTint(CHTheme.border)
             }
-            .searchable(text: $model.search, prompt: "Søk i e-post")
-            .onSubmit(of: .search) { Task { await model.load() } }
-            .navigationTitle("E-post")
-            .navigationBarTitleDisplayMode(.inline)
         }
+        .searchable(text: $model.search, prompt: "Søk i e-post")
+        .onSubmit(of: .search) { Task { await model.load() } }
         .task { await model.load() }
     }
 }
@@ -154,27 +150,23 @@ struct GoogleChatInbox: View {
     @State private var model = GoogleChatInboxModel()
 
     var body: some View {
-        NavigationStack {
-            ChannelInboxScaffold(
-                title: "Ingen rom",
-                loading: model.loading && model.spaces.isEmpty,
-                isEmpty: model.spaces.isEmpty,
-                errorMessage: model.spaces.isEmpty ? model.errorMessage : nil,
-                emptyText: "Google Chat-rom dukker opp her når Google Workspace er koblet til.",
-                onRefresh: { await model.load() },
-            ) {
-                ForEach(model.spaces) { space in
-                    NavigationLink {
-                        GoogleChatThreadView(space: space)
-                    } label: {
-                        ThreadPreviewRow(title: space.name ?? "Rom", subtitle: nil, preview: space.description, time: nil, unread: 0, badge: nil)
-                    }
-                    .listRowBackground(CHTheme.surface)
-                    .listRowSeparatorTint(CHTheme.border)
+        ChannelInboxScaffold(
+            title: "Ingen rom",
+            loading: model.loading && model.spaces.isEmpty,
+            isEmpty: model.spaces.isEmpty,
+            errorMessage: model.spaces.isEmpty ? model.errorMessage : nil,
+            emptyText: "Google Chat-rom dukker opp her når Google Workspace er koblet til.",
+            onRefresh: { await model.load() },
+        ) {
+            ForEach(model.spaces) { space in
+                NavigationLink {
+                    GoogleChatThreadView(space: space)
+                } label: {
+                    ThreadPreviewRow(title: space.name ?? "Rom", subtitle: nil, preview: space.description, time: nil, unread: 0, badge: nil)
                 }
+                .listRowBackground(CHTheme.surface)
+                .listRowSeparatorTint(CHTheme.border)
             }
-            .navigationTitle("Google Chat")
-            .navigationBarTitleDisplayMode(.inline)
         }
         .task { await model.load() }
     }
@@ -276,34 +268,30 @@ struct EvendiInbox: View {
     @State private var model = EvendiInboxModel()
 
     var body: some View {
-        NavigationStack {
-            ChannelInboxScaffold(
-                title: "Ingen Evendi-samtaler",
-                loading: model.loading && model.conversations.isEmpty,
-                isEmpty: model.conversations.isEmpty,
-                errorMessage: model.conversations.isEmpty ? model.errorMessage : nil,
-                emptyText: "Brudepar-samtaler fra Evendi dukker opp her.",
-                onRefresh: { await model.load() },
-            ) {
-                ForEach(model.conversations) { conv in
-                    NavigationLink {
-                        EvendiThreadView(conversation: conv)
-                    } label: {
-                        ThreadPreviewRow(
-                            title: conv.coupleName ?? "Brudepar",
-                            subtitle: nil,
-                            preview: conv.lastMessage,
-                            time: conv.lastMessageAt,
-                            unread: conv.vendorUnreadCount ?? 0,
-                            badge: nil,
-                        )
-                    }
-                    .listRowBackground(CHTheme.surface)
-                    .listRowSeparatorTint(CHTheme.border)
+        ChannelInboxScaffold(
+            title: "Ingen Evendi-samtaler",
+            loading: model.loading && model.conversations.isEmpty,
+            isEmpty: model.conversations.isEmpty,
+            errorMessage: model.conversations.isEmpty ? model.errorMessage : nil,
+            emptyText: "Brudepar-samtaler fra Evendi dukker opp her.",
+            onRefresh: { await model.load() },
+        ) {
+            ForEach(model.conversations) { conv in
+                NavigationLink {
+                    EvendiThreadView(conversation: conv)
+                } label: {
+                    ThreadPreviewRow(
+                        title: conv.coupleName ?? "Brudepar",
+                        subtitle: nil,
+                        preview: conv.lastMessage,
+                        time: conv.lastMessageAt,
+                        unread: conv.vendorUnreadCount ?? 0,
+                        badge: nil,
+                    )
                 }
+                .listRowBackground(CHTheme.surface)
+                .listRowSeparatorTint(CHTheme.border)
             }
-            .navigationTitle("Evendi")
-            .navigationBarTitleDisplayMode(.inline)
         }
         .task { await model.load() }
     }

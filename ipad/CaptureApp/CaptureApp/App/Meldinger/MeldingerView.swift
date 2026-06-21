@@ -44,48 +44,36 @@ struct InternalChatInbox: View {
     @State private var model = MeldingerModel()
 
     var body: some View {
-        NavigationStack {
-            Group {
-                switch model.phase {
-                case .loading where model.conversations.isEmpty:
-                    ProgressView("Laster meldinger…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                case let .error(message) where model.conversations.isEmpty:
-                    ContentUnavailableView {
-                        Label("Kunne ikke laste meldinger", systemImage: "exclamationmark.bubble")
-                    } description: {
-                        Text(message)
-                    } actions: {
-                        Button("Prøv igjen") { Task { await model.load(force: true) } }
-                            .buttonStyle(.borderedProminent)
-                    }
-                default:
-                    if model.conversations.isEmpty {
-                        ContentUnavailableView(
-                            "Ingen samtaler ennå",
-                            systemImage: "bubble.left.and.bubble.right",
-                            description: Text("Når en klient skriver til deg dukker samtalen opp her."),
-                        )
-                    } else {
-                        inbox
-                    }
+        Group {
+            switch model.phase {
+            case .loading where model.conversations.isEmpty:
+                ProgressView("Laster meldinger…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case let .error(message) where model.conversations.isEmpty:
+                ContentUnavailableView {
+                    Label("Kunne ikke laste meldinger", systemImage: "exclamationmark.bubble")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Prøv igjen") { Task { await model.load(force: true) } }
+                        .buttonStyle(.borderedProminent)
+                }
+            default:
+                if model.conversations.isEmpty {
+                    ContentUnavailableView(
+                        "Ingen samtaler ennå",
+                        systemImage: "bubble.left.and.bubble.right",
+                        description: Text("Når en klient skriver til deg dukker samtalen opp her."),
+                    )
+                } else {
+                    inbox
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(CHTheme.bg.ignoresSafeArea())
-            .navigationTitle("Meldinger")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task { await model.load(force: true) }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                }
-            }
-            .navigationDestination(for: Conversation.self) { conversation in
-                ChatThreadView(conversation: conversation)
-            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(CHTheme.bg.ignoresSafeArea())
+        .navigationDestination(for: Conversation.self) { conversation in
+            ChatThreadView(conversation: conversation)
         }
         .task { await model.load() }
     }
