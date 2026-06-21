@@ -60,8 +60,8 @@ export function ensurePhotographerProjectsSchemaShared(pool: Pool): Promise<void
           CREATE INDEX IF NOT EXISTS project_time_tracking_project_idx
             ON project_time_tracking (project_id, date_worked DESC);
           -- An older definition FK'd project_id to integrated_projects(id),
-          -- but photographer projects live in `projects` — drop the stale FK
-          -- so time logging works (the table is app-managed, no FK needed).
+          -- but photographer projects live in the projects table — drop the
+          -- stale FK so time logging works (app-managed table, no FK needed).
           ALTER TABLE project_time_tracking
             DROP CONSTRAINT IF EXISTS project_time_tracking_project_id_integrated_projects_id_fk;
         `);
