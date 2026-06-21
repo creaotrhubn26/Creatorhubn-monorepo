@@ -9,6 +9,29 @@ export function ensurePhotographerProjectsSchemaShared(pool: Pool): Promise<void
     photographerProjectsSchemaReadyShared = (async () => {
       try {
         await pool.query(`
+          -- Core photographer-project columns. On prod the base projects table
+          -- is the portfolio table (title/slug/category/published…), so the
+          -- create/detail queries that read user_id/name/status/etc. 500'd with
+          -- "column user_id does not exist". Add them (idempotent) so the whole
+          -- request→project→timeline→worklog loop works. slug/category are
+          -- NOT NULL on the portfolio table but unused for photographer
+          -- projects, so relax them too.
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS user_id VARCHAR(64);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_name VARCHAR(255);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type VARCHAR(64);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'active';
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS phase VARCHAR(32);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS event_date TIMESTAMPTZ;
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS estimated_hours NUMERIC(10,2);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS actual_hours NUMERIC(10,2);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS profession VARCHAR(64);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_data JSONB;
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS settings JSONB;
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS budget NUMERIC(10,2);
+          ALTER TABLE projects ALTER COLUMN slug DROP NOT NULL;
+          ALTER TABLE projects ALTER COLUMN category DROP NOT NULL;
+          CREATE INDEX IF NOT EXISTS projects_user_id_idx ON projects (user_id);
           ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_id UUID;
           ALTER TABLE projects ADD COLUMN IF NOT EXISTS service_price NUMERIC(10,2);
           ALTER TABLE projects ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC(10,2);
@@ -397,7 +420,7 @@ export function setupPhotographerProjectsRoutes(
             service_price, hourly_rate, cost_overhead, estimated_hours,
             project_data, settings, budget,
             created_at, updated_at)
-         VALUES ($1, $2, $2, 'photographer', $3, $4,
+         VALUES ($1, $2, $16, 'photographer', $3, $4,
                  $5, 'active', 'planning', $6, $7, $8,
                  $9, $10, $11, $12,
                  $13::jsonb, $14::jsonb, $15,
@@ -420,6 +443,9 @@ export function setupPhotographerProjectsRoutes(
           Object.keys(projectDataJson).length > 0 ? JSON.stringify(projectDataJson) : null,
           settings && typeof settings === 'object' ? JSON.stringify(settings) : null,
           Number.isFinite(Number(budget)) ? Number(budget) : null,
+          // $16 — `name` gets its own placeholder (reusing $2 for title+name
+          // makes Postgres throw "inconsistent types deduced for parameter $2").
+          trimmedTitle,
         ],
       );
       const newProjectId = result.rows[0]?.id;
