@@ -70,7 +70,9 @@ private struct RequestRow: View {
             HStack(spacing: 8) {
                 Text(submission.name ?? "Ukjent").font(.headline).foregroundStyle(CHTheme.textPrimary).lineLimit(1)
                 if submission.isStarred { Image(systemName: "star.fill").font(.caption2).foregroundStyle(CHTheme.warning) }
-                if submission.isNew {
+                if submission.isConverted {
+                    Label("Prosjekt", systemImage: "checkmark.circle.fill").font(.caption2.weight(.semibold)).foregroundStyle(CHTheme.success)
+                } else if submission.isNew {
                     Text("NY").font(.caption2.weight(.bold)).foregroundStyle(CHTheme.bg)
                         .padding(.horizontal, 6).padding(.vertical, 2).background(CHTheme.accent, in: Capsule())
                 }
@@ -209,20 +211,32 @@ struct RequestDetailView: View {
         }
     }
 
+    @ViewBuilder
     private var createButton: some View {
-        Button {
-            Task { await create() }
-        } label: {
-            HStack {
-                if working { ProgressView().controlSize(.small) }
-                else { Image(systemName: "folder.badge.plus") }
-                Text(working ? "Oppretter prosjekt…" : "Opprett prosjekt")
+        if submission.isConverted, let pid = submission.projectId, !pid.isEmpty {
+            NavigationLink {
+                ProjectDetailView(projectId: pid, title: submission.name)
+            } label: {
+                Label("Åpne prosjekt", systemImage: "folder.fill")
+                    .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        } else {
+            Button {
+                Task { await create() }
+            } label: {
+                HStack {
+                    if working { ProgressView().controlSize(.small) }
+                    else { Image(systemName: "folder.badge.plus") }
+                    Text(working ? "Oppretter prosjekt…" : "Opprett prosjekt")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(working)
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
-        .disabled(working)
     }
 
     private func create() async {

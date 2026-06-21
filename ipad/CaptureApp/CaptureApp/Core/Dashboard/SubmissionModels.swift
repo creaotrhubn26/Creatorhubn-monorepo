@@ -28,12 +28,15 @@ struct Submission: Decodable, Sendable, Identifiable, Hashable {
     var depositReceived: Bool
     var isStarred: Bool
     var submittedAt: String?
+    /// Set once converted to a project (status flips to "converted").
+    var projectId: String?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, email, phone, company, projectType, eventDate, location, budget
         case description, message, notes, specialRequests, contactPreference, timeframe
         case referralSource, priority, clientNotes, status
         case quoteSent, quoteAmount, contractSent, depositReceived, isStarred, submittedAt
+        case projectId
     }
 
     init(from decoder: Decoder) throws {
@@ -63,7 +66,9 @@ struct Submission: Decodable, Sendable, Identifiable, Hashable {
         depositReceived = c.firstBool([.depositReceived]) ?? false
         isStarred = c.firstBool([.isStarred]) ?? false
         submittedAt = c.firstString([.submittedAt])
+        projectId = c.firstString([.projectId])
     }
 
     var isNew: Bool { (status ?? "new").lowercased() == "new" }
+    var isConverted: Bool { (status ?? "").lowercased() == "converted" || (projectId ?? "").isEmpty == false }
 }
