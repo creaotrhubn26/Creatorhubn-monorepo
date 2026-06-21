@@ -115,6 +115,11 @@ struct LeadgridHubView: View {
                 }
             }
             .navigationTitle("Leadgrid CRM")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    OrgPickerToolbarMenu()
+                }
+            }
             .marketingDirectorBackdrop(.crmHome)
             .sheet(isPresented: Binding(
                 get: { appState.presentingLeadgridNotifications },
