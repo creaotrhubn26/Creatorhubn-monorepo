@@ -62,10 +62,20 @@ struct ProjectDetailView: View {
     @State private var model: ProjectHubModel
     private let fallbackTitle: String?
     @State private var showLogTime = false
+    private let projectId: String
+    @State private var deliverables: ProjectDeliverables
+
+    /// Template inferred from the project type — drives flags, deliverables,
+    /// suggested phases and worklog phases.
+    private var template: ProjectTemplate { ProjectTemplate.match(model.detail?.projectType) }
 
     init(projectId: String, title: String? = nil) {
+        self.projectId = projectId
         _model = State(initialValue: ProjectHubModel(projectId: projectId))
         self.fallbackTitle = title
+        // Seeded once; the template refines once detail loads but the default
+        // deliverables cover the common case.
+        _deliverables = State(initialValue: ProjectDeliverables(projectId: projectId, template: .generic))
     }
 
     var body: some View {
@@ -77,10 +87,12 @@ struct ProjectDetailView: View {
                     ContentUnavailableView("Kunne ikke laste prosjektet", systemImage: "folder.badge.questionmark", description: Text(message))
                 } else {
                     header
+                    templateCard
                     statusStepper
                     economics
-                    if !model.milestones.isEmpty { timelineSection }
+                    timelineSection
                     worklogSection
+                    deliverablesSection
                     if !model.galleries.isEmpty { galleriesSection }
                 }
             }
@@ -90,11 +102,61 @@ struct ProjectDetailView: View {
         .background(CHTheme.bg.ignoresSafeArea())
         .navigationTitle(model.detail?.title ?? fallbackTitle ?? "Prosjekt")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await model.load() }
+        .task {
+            await model.load()
+            // Re-seed the deliverables checklist from the real type's template.
+            deliverables = ProjectDeliverables(projectId: projectId, template: template)
+        }
         .refreshable { await model.load() }
         .sheet(isPresented: $showLogTime) {
-            LogTimeSheet(defaultRate: model.detail.map { _ in nil } ?? nil) { task, hours, rate in
+            LogTimeSheet(phases: template.worklogPhases) { task, hours, rate in
                 Task { await model.logTime(task: task, hours: hours, rate: rate) }
+            }
+        }
+    }
+
+    // MARK: - Template (type + complexity flags)
+
+    private var templateCard: some View {
+        CHCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label(template.displayName, systemImage: "square.grid.2x2")
+                        .font(.headline).foregroundStyle(CHTheme.textPrimary)
+                    Spacer()
+                }
+                if !template.flags.isEmpty {
+                    FlowChips(flags: template.flags)
+                }
+            }
+        }
+    }
+
+    // MARK: - Deliverables
+
+    private var deliverablesSection: some View {
+        CHCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Leveranser").font(.headline).foregroundStyle(CHTheme.textPrimary)
+                    Spacer()
+                    Text("\(deliverables.doneCount)/\(deliverables.items.count)")
+                        .font(.caption.monospacedDigit()).foregroundStyle(CHTheme.textMuted)
+                }
+                ForEach(deliverables.items) { item in
+                    Button { deliverables.toggle(item) } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: item.done ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(item.done ? CHTheme.success : CHTheme.textMuted)
+                            Text(item.id)
+                                .font(.subheadline)
+                                .foregroundStyle(item.done ? CHTheme.textMuted : CHTheme.textPrimary)
+                                .strikethrough(item.done, color: CHTheme.textMuted)
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
@@ -188,23 +250,38 @@ struct ProjectDetailView: View {
 
     // MARK: - Timeline
 
+    @ViewBuilder
     private var timelineSection: some View {
         CHCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Timeline").font(.headline).foregroundStyle(CHTheme.textPrimary)
-                ForEach(model.milestones) { m in
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: (m.status ?? "").lowercased().contains("complet") || (m.status ?? "").lowercased().contains("done") ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle((m.status ?? "").lowercased().contains("complet") ? CHTheme.success : CHTheme.textMuted)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(m.title ?? "Milepæl").font(.subheadline).foregroundStyle(CHTheme.textPrimary)
-                            if let due = m.dueDate {
-                                Text(DashboardDate.relative(due)).font(.caption2).foregroundStyle(CHTheme.textMuted)
-                            }
+                if model.milestones.isEmpty {
+                    // No backend milestones yet → show the type's suggested phases.
+                    Text("Anbefalte faser for \(template.displayName.lowercased())")
+                        .font(.caption).foregroundStyle(CHTheme.textMuted)
+                    ForEach(Array(template.phases.enumerated()), id: \.offset) { idx, phase in
+                        HStack(alignment: .top, spacing: 10) {
+                            Text("\(idx + 1)").font(.caption2.weight(.bold)).foregroundStyle(CHTheme.accent)
+                                .frame(width: 18, height: 18).background(CHTheme.accent.opacity(0.15), in: Circle())
+                            Text(phase).font(.subheadline).foregroundStyle(CHTheme.textSecondary)
+                            Spacer()
                         }
-                        Spacer()
-                        if m.progress > 0 && m.progress < 100 {
-                            Text("\(Int(m.progress))%").font(.caption2).foregroundStyle(CHTheme.accentSoft)
+                    }
+                } else {
+                    ForEach(model.milestones) { m in
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: (m.status ?? "").lowercased().contains("complet") || (m.status ?? "").lowercased().contains("done") ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle((m.status ?? "").lowercased().contains("complet") ? CHTheme.success : CHTheme.textMuted)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(m.title ?? "Milepæl").font(.subheadline).foregroundStyle(CHTheme.textPrimary)
+                                if let due = m.dueDate {
+                                    Text(DashboardDate.shortDate(due)).font(.caption2).foregroundStyle(CHTheme.textMuted)
+                                }
+                            }
+                            Spacer()
+                            if m.progress > 0 && m.progress < 100 {
+                                Text("\(Int(m.progress))%").font(.caption2).foregroundStyle(CHTheme.accentSoft)
+                            }
                         }
                     }
                 }
@@ -267,7 +344,7 @@ struct ProjectDetailView: View {
 }
 
 private struct LogTimeSheet: View {
-    let defaultRate: Double?
+    var phases: [String] = []
     let onSave: (String, Double, Double?) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var task = ""
@@ -281,6 +358,24 @@ private struct LogTimeSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                if !phases.isEmpty {
+                    Section("Fase") {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(phases, id: \.self) { p in
+                                    Button { task = p } label: {
+                                        Text(p).font(.caption.weight(.semibold))
+                                            .padding(.horizontal, 12).padding(.vertical, 7)
+                                            .background(task == p ? CHTheme.accent.opacity(0.2) : CHTheme.surfaceElevated, in: Capsule())
+                                            .foregroundStyle(task == p ? CHTheme.accent : CHTheme.textSecondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                        .listRowBackground(CHTheme.surface)
+                    }
+                }
                 Section("Oppgave") {
                     TextField("Hva jobbet du med?", text: $task).listRowBackground(CHTheme.surface)
                 }
@@ -309,5 +404,24 @@ private struct LogTimeSheet: View {
             }
         }
         .chBranded()
+    }
+}
+
+/// Wrapping chips for the project's complexity flags.
+private struct FlowChips: View {
+    let flags: [ProjectComplexityFlag]
+
+    var body: some View {
+        // Simple wrapping layout: two rows of chips via a flexible grid.
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], alignment: .leading, spacing: 8) {
+            ForEach(flags, id: \.self) { flag in
+                Label(flag.label, systemImage: flag.icon)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(CHTheme.accent.opacity(0.12), in: Capsule())
+                    .foregroundStyle(CHTheme.accentSoft)
+            }
+        }
     }
 }
