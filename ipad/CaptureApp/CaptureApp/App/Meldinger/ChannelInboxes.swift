@@ -129,6 +129,7 @@ struct GmailThreadView: View {
             ReadTracker.shared.markRead(thread.threadId ?? thread.id)
             await model.load()
         }
+        .livePoll(every: 6) { await model.load() }
     }
 }
 
@@ -239,6 +240,7 @@ struct GoogleChatThreadView: View {
             }
         }
         .task { await model.load() }
+        .livePoll(every: 6) { await model.load() }
     }
 }
 
@@ -373,6 +375,7 @@ struct EvendiThreadView: View {
             ReadTracker.shared.markRead(conversation.id)
             await model.load()
         }
+        .livePoll(every: 6) { await model.load() }
     }
 }
 

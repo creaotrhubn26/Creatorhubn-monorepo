@@ -296,6 +296,7 @@ struct ChatThreadView: View {
             }
         }
         .task { await model.load() }
+        .livePoll(every: 5) { await model.load() }
     }
 
     @ViewBuilder

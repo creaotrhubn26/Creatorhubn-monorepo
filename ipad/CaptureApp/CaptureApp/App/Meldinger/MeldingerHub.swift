@@ -232,6 +232,37 @@ struct ComposeBar: View {
     }
 }
 
+// MARK: - Live polling
+
+/// Lightweight "real-time": re-runs `action` on an interval while the view is
+/// on screen (SwiftUI cancels the `.task` on disappear). This is what delivers
+/// live new messages — the backend doesn't broadcast REST-posted messages over
+/// its WebSocket, and prod-web itself falls back to polling, so a WS client
+/// here wouldn't surface new messages anyway. Polls only while foregrounded.
+private struct LivePoll: ViewModifier {
+    let seconds: Double
+    let action: () async -> Void
+    @Environment(\.scenePhase) private var scenePhase
+
+    func body(content: Content) -> some View {
+        content.task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(seconds))
+                if Task.isCancelled { break }
+                await action()
+            }
+        }
+    }
+}
+
+extension View {
+    /// Poll `action` every `seconds` while visible + foregrounded.
+    func livePoll(every seconds: Double = 5, _ action: @escaping () async -> Void) -> some View {
+        modifier(LivePoll(seconds: seconds, action: action))
+    }
+}
+
 // MARK: - Generic channel scaffolding
 
 /// A simple left/right chat bubble for the channel threads.
