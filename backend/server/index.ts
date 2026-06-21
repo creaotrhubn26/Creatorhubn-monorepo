@@ -73648,6 +73648,35 @@ void driveBatchWorker;
 
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
+  // iPad-bearer hydrering — last alle ikke-revokerte ipad_tokens inn i
+  // activeSessions ved boot. Uten dette mister vi alle iPad-sessions ved
+  // hver Render-redeploy → 401 på alle iPad-kall til Daniel re-logger.
+  void (async () => {
+    try {
+      const r = await pool.query<{
+        token: string; user_id: string; email: string | null; role: string | null;
+      }>(
+        `SELECT t.token, t.user_id, u.email, u.role
+           FROM ipad_tokens t
+           JOIN users u ON u.id::text = t.user_id
+          WHERE t.revoked_at IS NULL`,
+      );
+      let hydrated = 0;
+      for (const row of r.rows) {
+        if (!activeSessions.has(row.token)) {
+          activeSessions.set(row.token, {
+            userId: row.user_id,
+            email: row.email ?? "",
+            role: row.role ?? "member",
+          });
+          hydrated++;
+        }
+      }
+      console.log(`🔑 Hydrated ${hydrated} iPad-bearer-sessions fra ipad_tokens`);
+    } catch (e) {
+      console.warn("[boot] ipad_tokens hydrering feilet:", (e as Error).message);
+    }
+  })();
   // Slice 9X.79 — SmartFlyt scheduler-loop (poller every 60s)
   void (async () => {
     try {
