@@ -123,22 +123,29 @@ export function registerTestflightTestersRoutes({ app, pool, activeSessions }: D
   app.get("/api/superadmin/testflight-testers", async (req, res) => {
     const s = await requireSuperAdmin(req, res, pool, activeSessions);
     if (!s) return;
-    const r = await pool.query(
-      `SELECT t.*,
-              o.name AS org_name, o.org_type, o.plan,
-              o2.name AS graduated_to_org_name,
-              nda.status AS nda_status, nda.sign_token AS nda_sign_token,
-              nda.signed_at AS nda_signed_at_v,
-              intent.status AS intent_status, intent.sign_token AS intent_sign_token,
-              intent.signed_at AS intent_signed_at_v
-         FROM testflight_testers t
-         LEFT JOIN organizations o ON o.id = t.organization_id
-         LEFT JOIN organizations o2 ON o2.id = t.graduated_to_org_id
-         LEFT JOIN partner_intent_agreements nda ON nda.id = t.nda_agreement_id
-         LEFT JOIN partner_intent_agreements intent ON intent.id = t.intent_agreement_id
-        ORDER BY t.invited_at DESC LIMIT 200`,
-    );
-    res.json({ testers: r.rows });
+    try {
+      const r = await pool.query(
+        `SELECT t.*,
+                o.name AS org_name, o.org_type, o.plan,
+                o2.name AS graduated_to_org_name,
+                nda.status AS nda_status, nda.sign_token AS nda_sign_token,
+                nda.signed_at AS nda_signed_at_v,
+                intent.status AS intent_status, intent.sign_token AS intent_sign_token,
+                intent.signed_at AS intent_signed_at_v
+           FROM testflight_testers t
+           LEFT JOIN organizations o ON o.id = t.organization_id
+           LEFT JOIN organizations o2 ON o2.id = t.graduated_to_org_id
+           LEFT JOIN partner_intent_agreements nda ON nda.id = t.nda_agreement_id
+           LEFT JOIN partner_intent_agreements intent ON intent.id = t.intent_agreement_id
+          ORDER BY t.invited_at DESC LIMIT 200`,
+      );
+      res.json({ testers: r.rows });
+    } catch (err) {
+      // Graceful fallback hvis testflight_testers eller relaterte tabeller
+      // mangler i live DB → tom liste (iPad viser "Ingen testere").
+      console.warn("[testflight-testers] list failed:", (err as Error).message);
+      res.json({ testers: [] });
+    }
   });
 
   // ---------- Legg til tester ----------

@@ -109,22 +109,27 @@ export function registerPartnerApiManagementRoutes({ app, pool, activeSessions }
   app.get("/api/superadmin/api-keys", async (req, res) => {
     const s = await requireSuperAdmin(req, res, pool, activeSessions);
     if (!s) return;
-    const r = await pool.query(
-      `SELECT k.id::text, k.name, k.key_prefix, k.scopes,
-              k.partner_id::text, k.organization_id::text,
-              k.is_active, k.expires_at::text, k.revoked_at::text,
-              k.last_used_at::text, k.created_at::text,
-              p.name AS partner_name,
-              o.name AS organization_name,
-              (SELECT COUNT(*) FROM partner_api_audit_log
-                WHERE api_key_id = k.id
-                  AND created_at > now() - interval '7 days') AS calls_7d
-         FROM partner_api_keys k
-         LEFT JOIN leadgrid_partners p ON p.id = k.partner_id
-         LEFT JOIN organizations o ON o.id = k.organization_id
-        ORDER BY k.created_at DESC LIMIT 200`,
-    );
-    res.json({ data: r.rows });
+    try {
+      const r = await pool.query(
+        `SELECT k.id::text, k.name, k.key_prefix, k.scopes,
+                k.partner_id::text, k.organization_id::text,
+                k.is_active, k.expires_at::text, k.revoked_at::text,
+                k.last_used_at::text, k.created_at::text,
+                p.name AS partner_name,
+                o.name AS organization_name,
+                (SELECT COUNT(*)::int FROM partner_api_audit_log
+                  WHERE api_key_id = k.id
+                    AND created_at > now() - interval '7 days') AS calls_7d
+           FROM partner_api_keys k
+           LEFT JOIN leadgrid_partners p ON p.id = k.partner_id
+           LEFT JOIN organizations o ON o.id = k.organization_id
+          ORDER BY k.created_at DESC LIMIT 200`,
+      );
+      res.json({ data: r.rows });
+    } catch (err) {
+      console.warn("[api-keys] list failed:", (err as Error).message);
+      res.json({ data: [] });
+    }
   });
 
   // POST /api/superadmin/api-keys/:id/revoke
@@ -237,20 +242,25 @@ export function registerPartnerApiManagementRoutes({ app, pool, activeSessions }
   app.get("/api/superadmin/webhook-endpoints", async (req, res) => {
     const s = await requireSuperAdmin(req, res, pool, activeSessions);
     if (!s) return;
-    const r = await pool.query(
-      `SELECT e.id::text, e.url, e.description, e.events, e.is_active,
-              e.partner_id::text, e.organization_id::text,
-              e.last_delivery_at::text, e.last_success_at::text,
-              e.last_failure_at::text, e.consecutive_failures,
-              e.auto_disabled_at::text, e.created_at::text,
-              p.name AS partner_name,
-              o.name AS organization_name
-         FROM partner_webhook_endpoints e
-         LEFT JOIN leadgrid_partners p ON p.id = e.partner_id
-         LEFT JOIN organizations o ON o.id = e.organization_id
-        ORDER BY e.created_at DESC LIMIT 200`,
-    );
-    res.json({ data: r.rows });
+    try {
+      const r = await pool.query(
+        `SELECT e.id::text, e.url, e.description, e.events, e.is_active,
+                e.partner_id::text, e.organization_id::text,
+                e.last_delivery_at::text, e.last_success_at::text,
+                e.last_failure_at::text, e.consecutive_failures,
+                e.auto_disabled_at::text, e.created_at::text,
+                p.name AS partner_name,
+                o.name AS organization_name
+           FROM partner_webhook_endpoints e
+           LEFT JOIN leadgrid_partners p ON p.id = e.partner_id
+           LEFT JOIN organizations o ON o.id = e.organization_id
+          ORDER BY e.created_at DESC LIMIT 200`,
+      );
+      res.json({ data: r.rows });
+    } catch (err) {
+      console.warn("[webhook-endpoints] list failed:", (err as Error).message);
+      res.json({ data: [] });
+    }
   });
 
   // PATCH /api/superadmin/webhook-endpoints/:id

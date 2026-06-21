@@ -120,7 +120,9 @@ export function registerErrorLogRoutes({
       });
       return res.json({ errors });
     } catch (err) {
-      return res.status(500).json({ error: "list_failed", detail: String(err) });
+      // Graceful: error_log mangler → tom liste (iPad: "Ingen feil").
+      console.warn("[admin-room errors] list failed:", (err as Error).message);
+      return res.json({ errors: [] });
     }
   });
 
@@ -131,7 +133,11 @@ export function registerErrorLogRoutes({
       const stats = await getErrorStats(pool);
       return res.json({ stats });
     } catch (err) {
-      return res.status(500).json({ error: "stats_failed", detail: String(err) });
+      // Graceful: tom stats (iPad: skip stats-banner).
+      console.warn("[admin-room errors] stats failed:", (err as Error).message);
+      return res.json({
+        stats: { total: 0, unresolved: 0, critical: 0, last24h: 0, bySource: {} },
+      });
     }
   });
 
