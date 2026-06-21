@@ -64,6 +64,7 @@ struct ProjectDetailView: View {
     @State private var showLogTime = false
     private let projectId: String
     @State private var deliverables: ProjectDeliverables
+    @State private var showSendToEditor = false
 
     /// Template inferred from the project type — drives flags, deliverables,
     /// suggested phases and worklog phases.
@@ -93,6 +94,7 @@ struct ProjectDetailView: View {
                     timelineSection
                     worklogSection
                     deliverablesSection
+                    sendToEditorButton
                     if !model.galleries.isEmpty { galleriesSection }
                 }
             }
@@ -113,6 +115,20 @@ struct ProjectDetailView: View {
                 Task { await model.logTime(task: task, hours: hours, rate: rate) }
             }
         }
+        .sheet(isPresented: $showSendToEditor) {
+            SendToEditorView(projectId: projectId, projectTitle: model.detail?.title)
+        }
+    }
+
+    /// Hand the project off to an external editor via the Partner Program.
+    private var sendToEditorButton: some View {
+        Button { showSendToEditor = true } label: {
+            Label("Send til ekstern redigerer", systemImage: "paperplane")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        .tint(CHTheme.accent)
     }
 
     // MARK: - Template (type + complexity flags)
