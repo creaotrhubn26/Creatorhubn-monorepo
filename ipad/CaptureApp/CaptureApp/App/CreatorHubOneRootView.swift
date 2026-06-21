@@ -124,52 +124,29 @@ struct CreatorHubOneRootView: View {
                 .tabItem { Label("Galleri", systemImage: "photo.on.rectangle") }
                 .tag(Tab.gallery)
 
-            // Admin → whole AdministrationHub (pris, kontrakter,
-            // kommunikasjon, Evendi). Pencil-bridge on so contract
-            // signatures + tilbud-signaturer inside the hub work.
-            webTab(
-                path: TabPath.admin,
-                enablePencilBridge: true,
-                fallback: AdminPlaceholderView(),
-            )
-            .tabItem { Label("Admin", systemImage: "slider.horizontal.3") }
-            .tag(Tab.admin)
+            // Admin → NATIVE contracts hub (list, detalj, signér med
+            // Apple Pencil, send, status) e2e mot /api/contracts.
+            AdminView()
+                .tabItem { Label("Admin", systemImage: "slider.horizontal.3") }
+                .tag(Tab.admin)
 
-            // Tilbud → same hub but deep-links straight to the
-            // Evendi/quote sub-tab, skipping the two-tap drill-down.
-            // ``source=ipad-quote`` is kept for backwards-compat with
-            // SmartWorkflowSystem's own auto-open handler (desktop
-            // flow still works without the outer dashboard).
-            webTab(
-                path: TabPath.tilbud,
-                enablePencilBridge: true,
-                fallback: TilbudPlaceholderView(),
-            )
-            .tabItem { Label("Tilbud", systemImage: "doc.text.below.ecg") }
-            .tag(Tab.tilbud)
+            // Tilbud → NATIVE quote builder (liste, detalj m/ linjer,
+            // status, send, signér; nytt tilbud) e2e mot /api/quotes.
+            TilbudView()
+                .tabItem { Label("Tilbud", systemImage: "doc.text.below.ecg") }
+                .tag(Tab.tilbud)
 
-            // Pris-admin → the standalone ``/price-administration``
-            // route. Separate from Admin because pricing is
-            // referenced from every other tab (tilbud pulls prices,
-            // kontrakter reference packages) so a direct entry keeps
-            // the photographer one tap away.
-            webTab(
-                path: TabPath.pricing,
-                fallback: PricingPlaceholderView(),
-            )
-            .tabItem { Label("Pris", systemImage: "tag") }
-            .tag(Tab.pricing)
+            // Pris → NATIVE pris-administrasjon (priser, tillegg, rabatter)
+            // e2e mot /api/price-administration.
+            PrisView()
+                .tabItem { Label("Pris", systemImage: "tag") }
+                .tag(Tab.pricing)
 
-            // Meldinger → Kommunikasjon sub-tab inside Admin. Uses
-            // the same subTab handoff. Pencil-bridge off (no
-            // signatures in chat — would just pop the sheet on
-            // stray taps).
-            webTab(
-                path: TabPath.messages,
-                fallback: MessagesPlaceholderView(),
-            )
-            .tabItem { Label("Meldinger", systemImage: "envelope") }
-            .tag(Tab.messages)
+            // Meldinger → NATIVE klient-innboks/chat e2e mot
+            // /api/communication.
+            MeldingerView()
+                .tabItem { Label("Meldinger", systemImage: "envelope") }
+                .tag(Tab.messages)
 
             // Debug-fanen følger KUN med i DEBUG-builds — skjules i release.
             #if DEBUG
