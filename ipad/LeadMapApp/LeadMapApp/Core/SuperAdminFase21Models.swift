@@ -178,15 +178,28 @@ struct ContentCalendarResponse: Codable {
 // MARK: - What's New (release notes)
 // ============================================================
 
+/// Mappes mot backend `GET /api/admin-room/whats-new` (whats-new-routes.ts).
+/// Backend gir: `{id, mode, kind, date, title, description, published,
+/// displayOrder, createdAt, updatedAt}`. iPad-UI bruker historisk
+/// body/category/publishedAt/pinned — vi aliaser via computed.
 struct WhatsNewEntry: Codable, Hashable, Identifiable {
     let id: String
+    let mode: String?
+    let kind: String?
+    let date: String?
     let title: String
-    let body: String?
-    let category: String?       // 'feature' | 'fix' | 'announcement'
-    let publishedAt: String?
-    let pinned: Bool?
-    let imageUrl: String?
-    let linkUrl: String?
+    let description: String?
+    let published: Bool?
+    let displayOrder: Int?
+    let createdAt: String?
+    let updatedAt: String?
+
+    var body: String? { description }
+    var category: String? { kind }
+    var publishedAt: String? { date ?? createdAt }
+    var pinned: Bool? { (displayOrder ?? 0) > 0 }
+    var imageUrl: String? { nil }
+    var linkUrl: String? { nil }
 }
 
 struct WhatsNewResponse: Codable {
@@ -227,11 +240,24 @@ struct B2ArchiveFilesResponse: Codable {
 // MARK: - Migrations status
 // ============================================================
 
+/// Mappes mot backend `GET /api/admin-room/migrations/status`
+/// (admin-room-migrations-routes.ts). Backend gir hele in-memory state +
+/// pendingFiles + pendingCount + lockHeld. iPad bruker historisk
+/// lastRunAt/lastRunStatus/lastError — vi aliaser.
 struct MigrationsStatus: Codable, Hashable {
-    let lockHeld: Bool
+    let lockHeld: Bool?
     let pendingFiles: [String]?
-    let pendingCount: Int
-    let lastRunAt: String?
-    let lastRunStatus: String?
-    let lastError: String?
+    let pendingCount: Int?
+    let status: String?
+    let startedAt: String?
+    let finishedAt: String?
+    let triggeredBy: String?
+    let exitCode: Int?
+    let errorMessage: String?
+    let appliedThisRun: Int?
+    let skippedThisRun: Int?
+
+    var lastRunAt: String? { finishedAt ?? startedAt }
+    var lastRunStatus: String? { status }
+    var lastError: String? { errorMessage }
 }

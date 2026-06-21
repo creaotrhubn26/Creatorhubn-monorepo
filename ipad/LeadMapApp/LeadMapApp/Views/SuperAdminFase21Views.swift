@@ -871,13 +871,13 @@ struct SuperAdminMigrationsStatusView: View {
             } else if let s = status {
                 Section {
                     HStack(spacing: 12) {
-                        Image(systemName: s.lockHeld ? "lock.fill" : "checkmark.shield.fill")
+                        Image(systemName: (s.lockHeld ?? false) ? "lock.fill" : "checkmark.shield.fill")
                             .font(.title)
-                            .foregroundStyle(s.lockHeld ? .orange : .green)
+                            .foregroundStyle((s.lockHeld ?? false) ? .orange : .green)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(s.lockHeld ? "Run pågår" : "Klar").font(.headline.bold())
-                            Text("\(s.pendingCount) pending").font(.caption)
-                                .foregroundStyle(s.pendingCount > 0 ? .orange : .secondary)
+                            Text((s.lockHeld ?? false) ? "Run pågår" : "Klar").font(.headline.bold())
+                            Text("\(s.pendingCount ?? 0) pending").font(.caption)
+                                .foregroundStyle((s.pendingCount ?? 0) > 0 ? .orange : .secondary)
                         }
                         Spacer()
                     }
@@ -909,7 +909,7 @@ struct SuperAdminMigrationsStatusView: View {
                         }
                     }
                 }
-                if s.pendingCount > 0 && !s.lockHeld {
+                if (s.pendingCount ?? 0) > 0 && !(s.lockHeld ?? false) {
                     Section {
                         Button {
                             Task { await runMigrate() }
