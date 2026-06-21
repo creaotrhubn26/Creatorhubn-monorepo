@@ -41,13 +41,14 @@ extension DashboardClient {
     /// first (the canonical route); the body carries the field names every
     /// variant of the backend handler accepts (`channelId`/`conversationId`
     /// + `text`/`content`) so a single rename can't drop the send.
-    func sendMessage(channelId: String, text: String) async throws {
+    func sendMessage(channelId: String, text: String, attachments: [MessageAttachment] = []) async throws {
         struct Body: Encodable {
             let channelId: String
             let conversationId: String
             let text: String
             let content: String
             let userId: String?
+            let attachments: [MessageAttachment]?
         }
         let body = Body(
             channelId: channelId,
@@ -55,6 +56,7 @@ extension DashboardClient {
             text: text,
             content: text,
             userId: userId,
+            attachments: attachments.isEmpty ? nil : attachments,
         )
         try await send(path: "/api/communication/messages", method: "POST", body: body)
     }

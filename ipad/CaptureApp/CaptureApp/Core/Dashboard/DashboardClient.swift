@@ -9,7 +9,7 @@ import Foundation
 /// injected per request, errors mapped to ``DashboardError`` so views can
 /// show a readable message + retry.
 actor DashboardClient {
-    private let baseURL: URL
+    let baseURL: URL
     private let session: URLSession
     private var authHeaders: [String: String]
     /// Signed-in photographer id — several dashboard endpoints scope by

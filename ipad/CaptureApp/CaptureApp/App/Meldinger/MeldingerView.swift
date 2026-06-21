@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// Native "Meldinger" tab — the photographer's client inbox + chat threads,
 /// rebuilt native for a run-and-gun feel instead of the old WebView. Lists
@@ -194,8 +195,28 @@ final class ChatThreadModel {
     private(set) var loading = true
     private(set) var errorMessage: String?
     var sending = false
+    /// Attachments staged for the next send + an in-flight upload flag.
+    private(set) var pendingAttachments: [MessageAttachment] = []
+    private(set) var uploading = false
 
     init(channelId: String) { self.channelId = channelId }
+
+    /// Upload a picked file and stage it for the next send.
+    func attach(data: Data, filename: String, mimeType: String) async {
+        guard let client = DashboardClient.make() else { return }
+        uploading = true
+        defer { uploading = false }
+        do {
+            let att = try await client.uploadAttachment(data: data, filename: filename, mimeType: mimeType)
+            pendingAttachments.append(att)
+        } catch {
+            errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription
+        }
+    }
+
+    func removePending(_ att: MessageAttachment) {
+        pendingAttachments.removeAll { $0.id == att.id }
+    }
 
     func load() async {
         guard let client = DashboardClient.make() else {
@@ -220,15 +241,18 @@ final class ChatThreadModel {
     /// id/timestamp) shows up.
     func send(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        // Allow sending with only attachments (no text).
+        guard !trimmed.isEmpty || !pendingAttachments.isEmpty else { return }
         guard let client = DashboardClient.make() else {
             errorMessage = DashboardError.signedOut.localizedDescription
             return
         }
+        let atts = pendingAttachments
         sending = true
         defer { sending = false }
         do {
-            try await client.sendMessage(channelId: channelId, text: trimmed)
+            try await client.sendMessage(channelId: channelId, text: trimmed, attachments: atts)
+            pendingAttachments = []
             await load()
         } catch {
             errorMessage = (error as? DashboardError)?.localizedDescription
@@ -242,6 +266,7 @@ struct ChatThreadView: View {
     private let conversation: Conversation
     @State private var draft: String = ""
     @FocusState private var composeFocused: Bool
+    @State private var photoItem: PhotosPickerItem?
 
     init(conversation: Conversation) {
         self.conversation = conversation
@@ -319,35 +344,65 @@ struct ChatThreadView: View {
     }
 
     private var composeBar: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            TextField("Skriv en melding…", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...5)
-                .focused($composeFocused)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .background(CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 20))
-                .foregroundStyle(CHTheme.textPrimary)
-
-            Button {
-                let text = draft
-                draft = ""
-                Task { await model.send(text) }
-            } label: {
-                Group {
-                    if model.sending {
-                        ProgressView()
-                            .tint(CHTheme.bg)
-                    } else {
-                        Image(systemName: "arrow.up")
-                            .font(.headline.weight(.bold))
+        VStack(spacing: 8) {
+            // Staged attachments (uploaded, awaiting send)
+            if !model.pendingAttachments.isEmpty || model.uploading {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(model.pendingAttachments) { att in
+                            HStack(spacing: 6) {
+                                Image(systemName: "paperclip").font(.caption2)
+                                Text(att.filename).font(.caption2).lineLimit(1)
+                                Button { model.removePending(att) } label: { Image(systemName: "xmark.circle.fill").font(.caption2) }
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .background(CHTheme.surfaceElevated, in: Capsule())
+                            .foregroundStyle(CHTheme.textSecondary)
+                        }
+                        if model.uploading {
+                            HStack(spacing: 6) { ProgressView().controlSize(.mini); Text("Laster opp…").font(.caption2) }
+                                .padding(.horizontal, 8).padding(.vertical, 5)
+                                .background(CHTheme.surfaceElevated, in: Capsule())
+                                .foregroundStyle(CHTheme.textMuted)
+                        }
                     }
+                    .padding(.horizontal, 12)
                 }
-                .frame(width: 38, height: 38)
-                .foregroundStyle(CHTheme.bg)
-                .background(canSend ? CHTheme.accent : CHTheme.textMuted, in: Circle())
             }
-            .disabled(!canSend || model.sending)
+            HStack(alignment: .bottom, spacing: 10) {
+                PhotosPicker(selection: $photoItem, matching: .images) {
+                    Image(systemName: "paperclip")
+                        .font(.headline)
+                        .foregroundStyle(CHTheme.textSecondary)
+                        .frame(width: 38, height: 38)
+                }
+                TextField("Skriv en melding…", text: $draft, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(1...5)
+                    .focused($composeFocused)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 20))
+                    .foregroundStyle(CHTheme.textPrimary)
+
+                Button {
+                    let text = draft
+                    draft = ""
+                    Task { await model.send(text) }
+                } label: {
+                    Group {
+                        if model.sending {
+                            ProgressView().tint(CHTheme.bg)
+                        } else {
+                            Image(systemName: "arrow.up").font(.headline.weight(.bold))
+                        }
+                    }
+                    .frame(width: 38, height: 38)
+                    .foregroundStyle(CHTheme.bg)
+                    .background(canSend ? CHTheme.accent : CHTheme.textMuted, in: Circle())
+                }
+                .disabled(!canSend || model.sending)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -356,10 +411,21 @@ struct ChatThreadView: View {
                 .overlay(CHTheme.border.frame(height: 0.5), alignment: .top)
                 .ignoresSafeArea(edges: .bottom),
         )
+        .onChange(of: photoItem) { _, newItem in
+            guard let newItem else { return }
+            Task {
+                if let data = try? await newItem.loadTransferable(type: Data.self) {
+                    let name = "bilde-\(Int(Date().timeIntervalSince1970)).jpg"
+                    await model.attach(data: data, filename: name, mimeType: "image/jpeg")
+                }
+                photoItem = nil
+            }
+        }
     }
 
     private var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !model.pendingAttachments.isEmpty
     }
 }
 
@@ -377,15 +443,29 @@ private struct MessageBubble: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(CHTheme.textMuted)
                 }
-                Text(message.text?.isEmpty == false ? message.text! : "—")
-                    .font(.body)
-                    .foregroundStyle(message.fromMe ? CHTheme.bg : CHTheme.textPrimary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(
-                        message.fromMe ? CHTheme.accent : CHTheme.surfaceElevated,
-                        in: RoundedRectangle(cornerRadius: 16),
-                    )
+                if let text = message.text, !text.isEmpty {
+                    Text(text)
+                        .font(.body)
+                        .foregroundStyle(message.fromMe ? CHTheme.bg : CHTheme.textPrimary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(
+                            message.fromMe ? CHTheme.accent : CHTheme.surfaceElevated,
+                            in: RoundedRectangle(cornerRadius: 16),
+                        )
+                }
+                ForEach(message.attachments) { att in
+                    Link(destination: URL(string: att.downloadUrl) ?? URL(string: "https://creatorhubn.com")!) {
+                        HStack(spacing: 6) {
+                            Image(systemName: att.mimeType.hasPrefix("image") ? "photo" : "paperclip")
+                            Text(att.filename).lineLimit(1)
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(message.fromMe ? CHTheme.accent.opacity(0.85) : CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
+                        .foregroundStyle(message.fromMe ? CHTheme.bg : CHTheme.accentSoft)
+                    }
+                }
                 let relative = DashboardDate.relative(message.timestamp)
                 if !relative.isEmpty {
                     Text(relative)

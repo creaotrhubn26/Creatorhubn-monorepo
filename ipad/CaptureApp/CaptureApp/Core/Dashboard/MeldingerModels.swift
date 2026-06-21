@@ -110,6 +110,8 @@ struct ChatMessage: Sendable, Identifiable, Hashable {
     /// True when authored by the signed-in photographer (computed by the
     /// client from `senderId` ↔ userId, but the backend may also send it).
     var fromMe: Bool
+    /// Attachments — top-level `attachments` or nested under `metadata`.
+    var attachments: [MessageAttachment] = []
 }
 
 extension ChatMessage: Decodable {
@@ -119,7 +121,10 @@ extension ChatMessage: Decodable {
         case senderName, senderEmail, senderId
         case timestamp, createdAt
         case fromMe, isMine
+        case attachments, metadata
     }
+
+    private struct MetadataBox: Decodable { var attachments: [MessageAttachment]? }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -140,6 +145,14 @@ extension ChatMessage: Decodable {
         fromMe = (try? c.decodeIfPresent(Bool.self, forKey: .fromMe))
             ?? (try? c.decodeIfPresent(Bool.self, forKey: .isMine)).flatMap { $0 }
             ?? false
+
+        if let top = try? c.decodeIfPresent([MessageAttachment].self, forKey: .attachments) {
+            attachments = top
+        } else if let meta = try? c.decodeIfPresent(MetadataBox.self, forKey: .metadata), let list = meta.attachments {
+            attachments = list
+        } else {
+            attachments = []
+        }
     }
 }
 
