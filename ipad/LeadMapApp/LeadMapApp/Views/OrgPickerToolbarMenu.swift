@@ -12,9 +12,11 @@ struct OrgPickerToolbarMenu: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        // Bare vis hvis brukeren har 2+ orgs. Med 1 org gir veksler ingen
-        // verdi og tar bare plass i toolbar.
-        if appState.organizations.count >= 2 {
+        // Vises hvis:
+        //  - brukeren har 2+ orgs (kan veksle direkte), ELLER
+        //  - brukeren er super_admin (kan se alle orgs i systemet via
+        //    Org Switcher, selv om de bare har 1 medlemskap)
+        if appState.organizations.count >= 2 || appState.isSuperAdmin {
             Menu {
                 ForEach(appState.organizations, id: \.id) { org in
                     Button {
@@ -29,9 +31,18 @@ struct OrgPickerToolbarMenu: View {
                         }
                     }
                 }
+                if appState.isSuperAdmin {
+                    Divider()
+                    // Hint til super_admin om at de kan se alle orgs (inkl.
+                    // andre Leadgrid-kunder) via Org Switcher.
+                    Label("Alle orgs er i Super Admin → Org Switcher",
+                          systemImage: "shield.checkered")
+                        .foregroundStyle(.secondary)
+                }
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: "building.2.fill")
+                    Image(systemName: appState.isSuperAdmin
+                          ? "shield.lefthalf.filled" : "building.2.fill")
                         .font(.caption)
                     Text(activeName)
                         .font(.caption.bold())
@@ -42,7 +53,11 @@ struct OrgPickerToolbarMenu: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(Color.accentColor.opacity(0.15), in: Capsule())
+                .background(
+                    (appState.isSuperAdmin ? Color.purple : Color.accentColor)
+                        .opacity(0.15),
+                    in: Capsule(),
+                )
                 .foregroundStyle(.primary)
             }
             .menuStyle(.borderlessButton)
