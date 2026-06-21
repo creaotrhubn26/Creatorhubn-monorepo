@@ -43,6 +43,7 @@ struct GmailInbox: View {
                         time: thread.timestamp,
                         unread: thread.unreadCount,
                         badge: thread.hasAttachments ? "paperclip" : nil,
+                        readKey: thread.threadId ?? thread.id,
                     )
                 }
                 .listRowBackground(CHTheme.surface)
@@ -124,7 +125,10 @@ struct GmailThreadView: View {
                 CRMSheetButton(conversationId: thread.threadId ?? thread.id, provider: "gmail", hintName: thread.counterpartName)
             }
         }
-        .task { await model.load() }
+        .task {
+            ReadTracker.shared.markRead(thread.threadId ?? thread.id)
+            await model.load()
+        }
     }
 }
 
@@ -287,6 +291,7 @@ struct EvendiInbox: View {
                         time: conv.lastMessageAt,
                         unread: conv.vendorUnreadCount ?? 0,
                         badge: nil,
+                        readKey: conv.id,
                     )
                 }
                 .listRowBackground(CHTheme.surface)
@@ -364,7 +369,10 @@ struct EvendiThreadView: View {
                 CRMSheetButton(conversationId: conversation.id, provider: "evendi", hintName: conversation.coupleName)
             }
         }
-        .task { await model.load() }
+        .task {
+            ReadTracker.shared.markRead(conversation.id)
+            await model.load()
+        }
     }
 }
 
@@ -377,6 +385,14 @@ struct ThreadPreviewRow: View {
     let time: String?
     let unread: Int
     let badge: String?
+    /// When set, the unread badge clears once this id has been opened locally.
+    var readKey: String?
+    @State private var tracker = ReadTracker.shared
+
+    private var effectiveUnread: Int {
+        guard let readKey else { return unread }
+        return tracker.unread(readKey, serverCount: unread)
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -396,8 +412,8 @@ struct ThreadPreviewRow: View {
                     Text(preview).font(.caption).foregroundStyle(CHTheme.textMuted).lineLimit(2)
                 }
             }
-            if unread > 0 {
-                Text("\(unread)").font(.caption2.weight(.bold)).foregroundStyle(CHTheme.bg)
+            if effectiveUnread > 0 {
+                Text("\(effectiveUnread)").font(.caption2.weight(.bold)).foregroundStyle(CHTheme.bg)
                     .padding(.horizontal, 7).padding(.vertical, 3).background(CHTheme.accent, in: Capsule())
             }
         }

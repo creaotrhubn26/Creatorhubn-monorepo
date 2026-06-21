@@ -42,6 +42,7 @@ struct MeldingerView: View {
     @State private var access = ChannelAccess()
     @State private var selected: Channel = .intern
     @State private var accessLoaded = false
+    @State private var composing = false
 
     /// Internal team (the @creatorhubn.com org) sees every channel even when
     /// not connected, so the tab is discoverable; the channel then shows its
@@ -76,6 +77,16 @@ struct MeldingerView: View {
             .background(CHTheme.bg.ignoresSafeArea())
             .navigationTitle("Meldinger")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if selected == .intern || selected == .gmail {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { composing = true } label: { Image(systemName: "square.and.pencil") }
+                    }
+                }
+            }
+            .sheet(isPresented: $composing) {
+                NewMessageComposer(channel: selected)
+            }
         }
         .task {
             guard !accessLoaded else { return }
