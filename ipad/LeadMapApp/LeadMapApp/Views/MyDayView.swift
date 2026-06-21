@@ -29,6 +29,9 @@ struct MyDayView: View {
             .scrollContentBackground(.hidden)
             .navigationTitle("Min dag")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    OrgPickerToolbarMenu()
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task { await refresh() }
