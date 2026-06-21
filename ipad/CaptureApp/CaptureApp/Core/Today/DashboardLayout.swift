@@ -3,6 +3,7 @@ import Observation
 
 /// The cards the photographer can arrange on "I dag".
 enum DashboardSection: String, Codable, CaseIterable, Identifiable, Sendable {
+    case foresporsler
     case dagensShoots
     case klarForAvreise
     case denneUken
@@ -14,6 +15,7 @@ enum DashboardSection: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
+        case .foresporsler: return "Forespørsler"
         case .dagensShoots: return "Dagens shoots"
         case .klarForAvreise: return "Klar før avreise"
         case .denneUken: return "Denne uken"
@@ -25,6 +27,7 @@ enum DashboardSection: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var icon: String {
         switch self {
+        case .foresporsler: return "tray.and.arrow.down"
         case .dagensShoots: return "camera.aperture"
         case .klarForAvreise: return "bag"
         case .denneUken: return "calendar"

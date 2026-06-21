@@ -31,6 +31,17 @@ final class TodayEnvModel {
 
 @MainActor
 @Observable
+final class TodayRequestsModel {
+    private(set) var newCount = 0
+    func load() async {
+        guard let client = DashboardClient.make() else { return }
+        let subs = (try? await client.listSubmissions()) ?? []
+        newCount = subs.filter(\.isNew).count
+    }
+}
+
+@MainActor
+@Observable
 final class TodayDeliveryModel {
     private(set) var galleries: [GallerySummary] = []
     func load() async {
@@ -54,6 +65,7 @@ struct TodayView: View {
     @State private var showCustomize = false
     @State private var notes = NotesStore.shared
     @State private var quickNote = ""
+    @State private var requests = TodayRequestsModel()
 
     var ownerUserId: String = "dev-owner"
 
@@ -261,6 +273,33 @@ struct TodayView: View {
 
     // MARK: - Quote
 
+    /// Inbound requests — entry point of the loop. Shows the new-request count
+    /// and opens the Forespørsler inbox where each becomes a project.
+    private var foresporslerCard: some View {
+        NavigationLink {
+            RequestsInboxView()
+        } label: {
+            CHCard {
+                HStack(spacing: 14) {
+                    Image(systemName: "tray.and.arrow.down.fill")
+                        .font(.title2).foregroundStyle(CHTheme.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Forespørsler").font(.headline).foregroundStyle(CHTheme.textPrimary)
+                        Text(requests.newCount > 0 ? "\(requests.newCount) nye henvendelser å følge opp" : "Ingen nye henvendelser")
+                            .font(.caption).foregroundStyle(CHTheme.textSecondary)
+                    }
+                    Spacer()
+                    if requests.newCount > 0 {
+                        Text("\(requests.newCount)").font(.subheadline.weight(.bold)).foregroundStyle(CHTheme.bg)
+                            .padding(.horizontal, 9).padding(.vertical, 4).background(CHTheme.accent, in: Capsule())
+                    }
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(CHTheme.textMuted)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
     /// Contextual notes — quick capture inline + recent/pinned, tap into
     /// the full Notater surface. (Voice + Claude actions land next layer.)
     private var notaterCard: some View {
@@ -327,6 +366,7 @@ struct TodayView: View {
     @ViewBuilder
     private func sectionView(for section: DashboardSection) -> some View {
         switch section {
+        case .foresporsler: foresporslerCard
         case .dagensShoots: todaysSection
         case .klarForAvreise: packingCard
         case .denneUken: weekCard
@@ -362,13 +402,14 @@ struct TodayView: View {
         defer { isLoading = false }
         async let envTask: Void = env.load()
         async let deliveryTask: Void = delivery.load()
+        async let requestsTask: Void = requests.load()
         if let store {
             do { snapshot = try await store.load(ownerUserId: ownerUserId); loadError = nil }
             catch { loadError = String(describing: error) }
         } else {
             loadError = "Database ikke tilgjengelig"
         }
-        _ = await (envTask, deliveryTask)
+        _ = await (envTask, deliveryTask, requestsTask)
     }
 }
 
