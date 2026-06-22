@@ -54,7 +54,17 @@ final class SendToEditorModel {
 }
 
 /// Wraps the new job id so it can drive an Identifiable sheet.
-private struct SentJob: Identifiable { let id: String; let vendorName: String }
+private struct SentJob: Identifiable { let id: String; let vendorName: String; let pricePerImage: Double? }
+
+/// Best-effort per-image price for the cull saving estimate — prefer a
+/// retouching/culling line item, else the cheapest service.
+private func perImagePrice(_ vendor: EditingVendor) -> Double? {
+    let perImage = vendor.services.first { s in
+        let t = ((s.category ?? "") + " " + (s.name ?? "")).lowercased()
+        return t.contains("retouch") || t.contains("retusj") || t.contains("cull")
+    }
+    return perImage?.price ?? vendor.services.compactMap(\.price).min()
+}
 
 struct SendToEditorView: View {
     @State private var model: SendToEditorModel
@@ -106,13 +116,15 @@ struct SendToEditorView: View {
                         await model.send(vendor: v, brief: brief, amountKr: amount, services: services)
                         if let jobId = model.sentJobId {
                             selected = nil
-                            sentJob = SentJob(id: jobId, vendorName: v.vendorName ?? "redigereren")
+                            sentJob = SentJob(id: jobId, vendorName: v.vendorName ?? "redigereren",
+                                              pricePerImage: perImagePrice(v))
                         }
                     }
                 }
             }
             .sheet(item: $sentJob) { job in
-                SourceUploadView(jobId: job.id, vendorName: job.vendorName) { dismiss() }
+                EditorSourcePicker(jobId: job.id, vendorName: job.vendorName,
+                                   pricePerImage: job.pricePerImage) { dismiss() }
             }
         }
         .chBranded()
