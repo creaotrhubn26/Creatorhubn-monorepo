@@ -210,7 +210,7 @@ export async function listLeadsInBounds(
             c.ai_opportunity_score, c.estimated_value, c.lead_source, c.owner_user_id,
             c.last_visit_at, c.next_follow_up_at, c.next_action, c.tags, c.notes,
             c.created_at, c.updated_at,
-            u.name AS assigned_user_name, u.email AS assigned_user_email,
+            NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name, u.email AS assigned_user_email,
             c.project_id
      FROM crm_customers c
      LEFT JOIN users u ON u.id = c.owner_user_id
@@ -234,7 +234,7 @@ export async function getLeadById(
             c.ai_opportunity_score, c.estimated_value, c.lead_source, c.owner_user_id,
             c.last_visit_at, c.next_follow_up_at, c.next_action, c.tags, c.notes,
             c.created_at, c.updated_at,
-            u.name AS assigned_user_name, u.email AS assigned_user_email,
+            NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name, u.email AS assigned_user_email,
             c.project_id
      FROM crm_customers c
      LEFT JOIN users u ON u.id = c.owner_user_id
