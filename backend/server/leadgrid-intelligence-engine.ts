@@ -566,28 +566,32 @@ interface LeadRow {
 }
 
 async function fetchLead(pool: Pool, leadId: string): Promise<LeadRow | null> {
+  // FIX (2026-06-22): crm_customers har INGEN organization_id-kolonne.
+  // Vi henter primary org via JOIN organization_members.
   const r = await pool.query<LeadRow>(
-    `SELECT id::text,
-            organization_id::text,
-            owner_user_id::text,
-            assigned_user_id::text,
-            lead_status,
-            pipeline_stage,
-            lead_category,
-            email,
-            phone,
-            website_url,
-            latitude::float8 AS latitude,
-            longitude::float8 AS longitude,
-            estimated_value::float8 AS estimated_value,
-            enrichment_data,
-            enriched_at::text,
-            last_visit_at::text,
-            last_contacted_at::text,
-            next_follow_up_at::text,
-            ai_opportunity_score
-       FROM crm_customers
-      WHERE id = $1::uuid
+    `SELECT c.id::text,
+            (SELECT om.organization_id::text FROM organization_members om
+              WHERE om.user_id = c.owner_user_id ORDER BY om.joined_at ASC LIMIT 1)
+            AS organization_id,
+            c.owner_user_id::text,
+            c.assigned_user_id::text,
+            c.lead_status,
+            c.pipeline_stage,
+            c.lead_category,
+            c.email,
+            c.phone,
+            c.website_url,
+            c.latitude::float8 AS latitude,
+            c.longitude::float8 AS longitude,
+            c.estimated_value::float8 AS estimated_value,
+            c.enrichment_data,
+            c.enriched_at::text,
+            c.last_visit_at::text,
+            c.last_contacted_at::text,
+            c.next_follow_up_at::text,
+            c.ai_opportunity_score
+       FROM crm_customers c
+      WHERE c.id = $1::uuid
       LIMIT 1`,
     [leadId],
   );

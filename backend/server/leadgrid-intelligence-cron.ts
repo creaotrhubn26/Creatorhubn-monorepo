@@ -46,28 +46,34 @@ async function expireOldRecommendations(pool: Pool): Promise<number> {
 async function emitFollowUpEvents(pool: Pool): Promise<{ due: number; overdue: number }> {
   let due = 0;
   let overdue = 0;
+  // FIX (2026-06-22): crm_customers har INGEN organization_id-kolonne.
+  // Org-relasjon hentes via owner_user_id → organization_members (PR
+  // #837/#848-mønster). Vi henter "primary org" for hver lead-eier som
+  // første org de tilhører.
   try {
-    // Forfalt (>24t)
     const overdueRows = await pool.query<{
       id: string;
-      organization_id: string;
+      organization_id: string | null;
       assigned_user_id: string | null;
       name: string;
       next_follow_up_at: string;
     }>(
-      `SELECT id::text,
-              organization_id::text,
-              assigned_user_id::text,
-              name,
-              next_follow_up_at::text
-         FROM crm_customers
-        WHERE archived_at IS NULL
-          AND next_follow_up_at IS NOT NULL
-          AND next_follow_up_at < NOW() - INTERVAL '24 hours'
-          AND organization_id IS NOT NULL`,
+      `SELECT c.id::text,
+              (SELECT om.organization_id::text FROM organization_members om
+                WHERE om.user_id = c.owner_user_id ORDER BY om.joined_at ASC LIMIT 1)
+              AS organization_id,
+              c.assigned_user_id::text,
+              c.name,
+              c.next_follow_up_at::text
+         FROM crm_customers c
+        WHERE c.archived_at IS NULL
+          AND c.next_follow_up_at IS NOT NULL
+          AND c.next_follow_up_at < NOW() - INTERVAL '24 hours'
+          AND c.owner_user_id IS NOT NULL`,
     );
     overdue = overdueRows.rowCount ?? 0;
     for (const row of overdueRows.rows) {
+      if (!row.organization_id) continue;
       void emitWebhook(pool, "followup.overdue", {
         lead_id: row.id,
         assigned_user_id: row.assigned_user_id,
@@ -76,28 +82,30 @@ async function emitFollowUpEvents(pool: Pool): Promise<{ due: number; overdue: n
       }, row.organization_id);
     }
 
-    // Forfaller innenfor 24t (forfallsvindu)
     const dueRows = await pool.query<{
       id: string;
-      organization_id: string;
+      organization_id: string | null;
       assigned_user_id: string | null;
       name: string;
       next_follow_up_at: string;
     }>(
-      `SELECT id::text,
-              organization_id::text,
-              assigned_user_id::text,
-              name,
-              next_follow_up_at::text
-         FROM crm_customers
-        WHERE archived_at IS NULL
-          AND next_follow_up_at IS NOT NULL
-          AND next_follow_up_at >= NOW()
-          AND next_follow_up_at < NOW() + INTERVAL '24 hours'
-          AND organization_id IS NOT NULL`,
+      `SELECT c.id::text,
+              (SELECT om.organization_id::text FROM organization_members om
+                WHERE om.user_id = c.owner_user_id ORDER BY om.joined_at ASC LIMIT 1)
+              AS organization_id,
+              c.assigned_user_id::text,
+              c.name,
+              c.next_follow_up_at::text
+         FROM crm_customers c
+        WHERE c.archived_at IS NULL
+          AND c.next_follow_up_at IS NOT NULL
+          AND c.next_follow_up_at >= NOW()
+          AND c.next_follow_up_at < NOW() + INTERVAL '24 hours'
+          AND c.owner_user_id IS NOT NULL`,
     );
     due = dueRows.rowCount ?? 0;
     for (const row of dueRows.rows) {
+      if (!row.organization_id) continue;
       void emitWebhook(pool, "followup.due", {
         lead_id: row.id,
         assigned_user_id: row.assigned_user_id,
@@ -130,11 +138,14 @@ export function registerLeadgridIntelligenceCron(deps: Deps): void {
 
       const startedAt = Date.now();
       try {
+        // FIX (2026-06-22): crm_customers har ikke organization_id.
+        // Vi krever bare at lead har en eier (owner_user_id). Org-relasjon
+        // hentes nedstrøms i computeIntelligenceForLead via fetchLead.
         const rows = await pool.query<{ id: string }>(
           `SELECT id::text
              FROM crm_customers
             WHERE archived_at IS NULL
-              AND organization_id IS NOT NULL
+              AND owner_user_id IS NOT NULL
               AND lead_status != 'do_not_contact'
             ORDER BY scored_at ASC NULLS FIRST
             LIMIT $1`,
