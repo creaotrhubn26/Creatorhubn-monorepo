@@ -541,6 +541,8 @@ import { registerPitchDeckAssetRoutes } from "./pitch-deck-asset-service.js";
 import { registerLeadMapResearchRoutes } from "./lead-map-research-routes.js";
 import { registerLeadgridResearchRoutes } from "./leadgrid-research-routes.js";
 import { registerLeadgridMarketScanRoutes } from "./leadgrid-market-scan-routes.js";
+import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-routes.js";
+import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
 import { registerLeadScoutRoutes } from "./lead-scout-routes.js";
 import { registerLeadPresetRoutes } from "./lead-preset-routes.js";
 import { registerLeadRulesRoutes } from "./lead-rules-routes.js";
@@ -24426,6 +24428,13 @@ registerLeadgridResearchRoutes({ app, pool, activeSessions });
 // (/api/leadgrid/market-scan/*). Gjenbruker market_scans-orkestratoren.
 // Gated på leadgrid.market_scan.run (migrate 312).
 registerLeadgridMarketScanRoutes({ app, pool, activeSessions });
+// Leadgrid Intelligence Engine — composite scoring + Next Best Action
+// (mig 313). Gated på intelligence.* / routes.*-permissions per rolle.
+registerLeadgridIntelligenceRoutes({ app, pool, activeSessions });
+// Daglig cron-rescore (kalles fra GitHub Actions @ 04:00 UTC).
+// Krever LEADGRID_INTELLIGENCE_CRON_TOKEN env-var i tillegg til
+// matching x-cron-trigger-token-header.
+registerLeadgridIntelligenceCron({ app, pool });
 // Lead Scout — crawl + Claude needs/signals/scoring
 // Gated på marketing.scout.run / marketing.needs.view / marketing.needs.edit
 registerLeadScoutRoutes({ app, pool, activeSessions });
