@@ -2221,3 +2221,51 @@ struct OrgProfileEnvelope: Decodable {
     let isOwner: Bool
     let ownerOnlyFields: [String]
 }
+
+// MARK: - Leadgrid Intelligence (PR #855)
+
+extension APIClient {
+
+    func fetchLeadIntelligence(leadId: String) async throws -> LeadgridIntelligenceForLead {
+        try await get("/api/leadgrid/intelligence/leads/\(leadId)")
+    }
+
+    func recomputeLeadIntelligence(leadId: String) async throws -> LeadgridIntelligenceForLead {
+        try await post("/api/leadgrid/intelligence/leads/\(leadId)/recompute", body: nil)
+    }
+
+    func fetchNBARecommendations(priority: String? = nil, limit: Int = 50) async throws -> [LeadgridNBARecommendation] {
+        var path = "/api/leadgrid/intelligence/recommendations?limit=\(limit)"
+        if let p = priority { path += "&priority=\(p)" }
+        let resp: NBARecommendationsResponse = try await get(path)
+        return resp.recommendations
+    }
+
+    func acceptRecommendation(_ id: String) async throws -> LeadgridNBARecommendation {
+        try await post("/api/leadgrid/intelligence/recommendations/\(id)/accept", body: nil)
+    }
+
+    func executeRecommendation(_ id: String, outcome: String, notes: String?) async throws -> LeadgridNBARecommendation {
+        var body: [String: Any] = ["outcome": outcome]
+        if let n = notes { body["outcome_notes"] = n }
+        return try await post("/api/leadgrid/intelligence/recommendations/\(id)/execute", body: body)
+    }
+
+    func dismissRecommendation(_ id: String) async throws -> LeadgridNBARecommendation {
+        try await post("/api/leadgrid/intelligence/recommendations/\(id)/dismiss", body: nil)
+    }
+
+    func fetchFollowUpQueue() async throws -> [LeadgridFollowUpItem] {
+        let resp: FollowUpQueueResponse = try await get("/api/leadgrid/intelligence/follow-up-queue")
+        return resp.items
+    }
+
+    func fetchLeadScoreHistory(leadId: String) async throws -> [LeadgridScoreHistoryEntry] {
+        let resp: ScoreHistoryResponse = try await get("/api/leadgrid/intelligence/leads/\(leadId)/history")
+        return resp.history
+    }
+}
+
+private struct NBARecommendationsResponse: Decodable { let recommendations: [LeadgridNBARecommendation] }
+private struct FollowUpQueueResponse: Decodable { let items: [LeadgridFollowUpItem] }
+private struct ScoreHistoryResponse: Decodable { let history: [LeadgridScoreHistoryEntry] }
