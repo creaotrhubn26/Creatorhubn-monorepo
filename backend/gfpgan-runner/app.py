@@ -171,6 +171,102 @@ def _download_weight(requested_key: str | None) -> tuple[Path, str, str]:
     raise RuntimeError("GFPGAN weights were not found in R2")
 
 
+# ── Weight bootstrap ──────────────────────────────────────────────────
+# The backend gates each model on the weight file EXISTING in the R2 models
+# bucket (HeadObject), and the runner only ever READS weights from R2 — so on a
+# fresh environment nothing routes to the runner (chicken-and-egg). To make a
+# deploy self-healing, on startup we ensure the canonical weights exist in R2,
+# pulling them from the official public releases when missing. Idempotent: a
+# weight already present is skipped. Runs in a background thread so the health
+# check binds the port immediately.
+
+WEIGHT_SOURCES: list[tuple[str, str]] = [
+    ("models/gfpgan/weights/GFPGANv1.4.pth",
+     "https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth"),
+    ("models/realesrgan/weights/RealESRGAN_x4plus.pth",
+     "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"),
+    ("models/realesrgan/weights/RealESRGAN_x2plus.pth",
+     "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth"),
+    ("models/codeformer/weights/codeformer.pth",
+     "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth"),
+]
+
+_bootstrap_status: dict[str, Any] = {"state": "idle", "uploaded": [], "skipped": [], "errors": []}
+
+
+def _r2_client_and_bucket() -> tuple[Any, str] | None:
+    config = _r2_config()
+    if not config["enabled"] or not config["buckets"]:
+        return None
+    client = boto3.client(
+        "s3",
+        endpoint_url=config["endpoint"],
+        aws_access_key_id=config["access_key_id"],
+        aws_secret_access_key=config["secret_access_key"],
+        region_name="auto",
+        config=Config(signature_version="s3v4"),
+    )
+    return client, config["buckets"][0]
+
+
+def _r2_object_exists(client: Any, buckets: list[str], key: str) -> bool:
+    for bucket in buckets:
+        try:
+            client.head_object(Bucket=bucket, Key=key)
+            return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
+def _ensure_weights_in_r2() -> None:
+    import urllib.request
+
+    pair = _r2_client_and_bucket()
+    if pair is None:
+        _bootstrap_status["state"] = "no_r2"
+        return
+    client, write_bucket = pair
+    config = _r2_config()
+    _bootstrap_status["state"] = "running"
+
+    for key, url in WEIGHT_SOURCES:
+        try:
+            if _r2_object_exists(client, config["buckets"], key):
+                _bootstrap_status["skipped"].append(key)
+                continue
+            cache_dir = Path(os.getenv("GFPGAN_CACHE_DIR", "/tmp/creatorhub-gfpgan"))
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            tmp = cache_dir / (Path(key).name + ".download")
+            req = urllib.request.Request(url, headers={"User-Agent": "creatorhub-gfpgan-runner"})
+            with urllib.request.urlopen(req, timeout=600) as resp, open(tmp, "wb") as out:
+                while True:
+                    chunk = resp.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+            if tmp.stat().st_size < 1_000_000:
+                raise RuntimeError(f"download too small ({tmp.stat().st_size} bytes)")
+            client.upload_file(str(tmp), write_bucket, key)
+            try:
+                tmp.unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                pass
+            _bootstrap_status["uploaded"].append(key)
+        except Exception as exc:  # noqa: BLE001
+            _bootstrap_status["errors"].append(f"{key}: {exc.__class__.__name__}: {exc}")
+
+    _bootstrap_status["state"] = "done"
+
+
+@app.on_event("startup")
+def _bootstrap_on_startup() -> None:
+    if os.getenv("GFPGAN_DISABLE_WEIGHT_BOOTSTRAP") == "true":
+        _bootstrap_status["state"] = "disabled"
+        return
+    threading.Thread(target=_ensure_weights_in_r2, name="weight-bootstrap", daemon=True).start()
+
+
 def _patch_torchvision_functional_tensor() -> None:
     try:
         import torchvision.transforms.functional as tv_functional
@@ -310,6 +406,7 @@ def health() -> dict[str, Any]:
         "lastError": _last_error,
         "maxInputEdge": int(os.getenv("GFPGAN_MAX_INPUT_EDGE", "1600")),
         "upscale": int(os.getenv("GFPGAN_UPSCALE", "1")),
+        "weightBootstrap": _bootstrap_status,
     }
 
 
