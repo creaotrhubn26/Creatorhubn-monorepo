@@ -23,8 +23,12 @@ import {
   leadMatchesTerritory,
   recordBreach,
   computeCoverage,
+  summarizeManagerStats,
   type LeadGeo,
   type CoverageLead,
+  type ManagerMember,
+  type TerritoryRow,
+  type BreachKind,
 } from "./leadgrid-territory-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
@@ -406,6 +410,101 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       return res.json({ coverage, adminOverlaps: detectAdminOverlaps(territories) });
     } catch (err) {
       return res.status(500).json({ error: "coverage_failed", detail: String(err) });
+    }
+  });
+
+  // ─── GET /api/leadgrid/territories/dashboard ──────────────────────
+  // Leder-dashboard: sone-ytelse per selger (brudd, in/out-besøk, in/out-leads,
+  // «ute nå»). Periode: this_month | last_30d (default) | ytd.
+  app.get("/api/leadgrid/territories/dashboard", permBreaches, async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "Innlogging kreves" });
+    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
+    if (!orgId) return res.json({ sellers: [], period: "last_30d" });
+
+    const period = ["this_month", "last_30d", "ytd"].includes(String(req.query.period))
+      ? String(req.query.period) : "last_30d";
+    const now = new Date();
+    const since =
+      period === "this_month" ? new Date(now.getFullYear(), now.getMonth(), 1)
+      : period === "ytd" ? new Date(now.getFullYear(), 0, 1)
+      : new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+
+    try {
+      const membersRes = await pool.query<{
+        user_id: string; display_name: string | null; email: string | null;
+        role: string | null; team_name: string | null; territory_label: string | null;
+        sales_team_id: string | null;
+      }>(
+        `SELECT om.user_id,
+                COALESCE(NULLIF(TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')), ''),
+                         u.username, u.email, om.user_id) AS display_name,
+                u.email, om.role, st.name AS team_name,
+                up.territory AS territory_label, om.sales_team_id::text
+           FROM organization_members om
+           JOIN users u ON u.id = om.user_id
+           LEFT JOIN user_profiles up ON up.user_id = om.user_id AND up.organization_id = om.organization_id
+           LEFT JOIN sales_teams st ON st.id = om.sales_team_id
+          WHERE om.organization_id = $1::uuid
+            AND om.role IN ('salgskonsulent', 'promotor', 'teamleder')`,
+        [orgId],
+      );
+      const memberIds = membersRes.rows.map((m) => m.user_id);
+      if (memberIds.length === 0) return res.json({ sellers: [], period });
+
+      const [breaches, visits, leads, locations, orgTerritories] = await Promise.all([
+        pool.query<{ user_id: string; event_kind: string; count: number }>(
+          `SELECT user_id, event_kind, COUNT(*)::int AS count
+             FROM lead_territory_events
+            WHERE organization_id = $1::uuid AND created_at >= $2
+            GROUP BY user_id, event_kind`, [orgId, since.toISOString()]),
+        pool.query<{ user_id: string; total: number; out_of_grid: number }>(
+          `SELECT user_id, COUNT(*)::int AS total,
+                  COUNT(*) FILTER (WHERE out_of_grid)::int AS out_of_grid
+             FROM crm_visits
+            WHERE user_id = ANY($1) AND visit_datetime >= $2
+            GROUP BY user_id`, [memberIds, since.toISOString()]),
+        pool.query<{ user_id: string; latitude: any; longitude: any; postal_code: string | null; municipality_code: string | null }>(
+          `SELECT assigned_user_id AS user_id, latitude, longitude, postal_code, municipality_code
+             FROM crm_customers
+            WHERE assigned_user_id = ANY($1)
+              AND latitude IS NOT NULL AND longitude IS NOT NULL`, [memberIds]),
+        pool.query<{ user_id: string; lat: any; lng: any }>(
+          `SELECT user_id, lat, lng FROM member_locations
+            WHERE organization_id = $1::uuid AND is_sharing = TRUE`, [orgId]),
+        loadOrgTerritories(pool, orgId),
+      ]);
+
+      // Grids per bruker: direkte tildelt ELLER via teamet brukeren er i.
+      const territoriesByUser: Record<string, TerritoryRow[]> = {};
+      for (const m of membersRes.rows) {
+        territoriesByUser[m.user_id] = orgTerritories.filter(
+          (t) => t.assignedUserId === m.user_id ||
+                 (t.salesTeamId != null && t.salesTeamId === m.sales_team_id),
+        );
+      }
+
+      const members: ManagerMember[] = membersRes.rows.map((m) => ({
+        userId: m.user_id, displayName: m.display_name, email: m.email,
+        role: m.role, teamName: m.team_name, territoryLabel: m.territory_label,
+      }));
+
+      const sellers = summarizeManagerStats(members, {
+        breachRows: breaches.rows.map((r) => ({ user_id: r.user_id, event_kind: r.event_kind as BreachKind, count: r.count })),
+        visitRows: visits.rows,
+        assignedLeads: leads.rows.map((r) => ({
+          userId: r.user_id,
+          latitude: r.latitude != null ? Number(r.latitude) : null,
+          longitude: r.longitude != null ? Number(r.longitude) : null,
+          postalCode: r.postal_code, municipalityCode: r.municipality_code,
+        })),
+        locations: locations.rows.map((r) => ({ user_id: r.user_id, lat: Number(r.lat), lng: Number(r.lng) })),
+        territoriesByUser,
+      });
+
+      return res.json({ period, sellers });
+    } catch (err) {
+      return res.status(500).json({ error: "dashboard_failed", detail: String(err) });
     }
   });
 

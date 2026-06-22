@@ -302,6 +302,107 @@ export function computeCoverage(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Leder-dashboard (sone-ytelse per selger — ren funksjon)
+// ─────────────────────────────────────────────────────────────────────
+
+export interface ManagerMember {
+  userId: string;
+  displayName: string | null;
+  email: string | null;
+  role: string | null;
+  teamName: string | null;
+  territoryLabel: string | null;
+}
+
+export interface ManagerStatsInput {
+  /** Brudd gruppert per bruker + type. */
+  breachRows: Array<{ user_id: string; event_kind: BreachKind; count: number }>;
+  /** Besøk per bruker (total + antall utenfor sone). */
+  visitRows: Array<{ user_id: string; total: number; out_of_grid: number }>;
+  /** Hver selgers tildelte leads (geo) for in/out-grid-telling. */
+  assignedLeads: Array<{ userId: string } & LeadGeo>;
+  /** Siste kjente posisjon per bruker. */
+  locations: Array<{ user_id: string; lat: number; lng: number }>;
+  /** Grids per bruker (egne + via team). */
+  territoriesByUser: Record<string, TerritoryRow[]>;
+}
+
+export interface ManagerSellerStats {
+  userId: string;
+  displayName: string | null;
+  email: string | null;
+  role: string | null;
+  teamName: string | null;
+  territoryLabel: string | null;
+  hasGrid: boolean;
+  breaches: { leadAccess: number; gps: number; visit: number; total: number };
+  visits: { total: number; inGrid: number; outOfGrid: number };
+  leads: { total: number; inGrid: number; outOfGrid: number };
+  live: { lat: number; lng: number; currentlyOutOfGrid: boolean } | null;
+}
+
+export function summarizeManagerStats(
+  members: ManagerMember[],
+  input: ManagerStatsInput,
+): ManagerSellerStats[] {
+  const breachByUser = new Map<string, Record<string, number>>();
+  for (const r of input.breachRows) {
+    const m = breachByUser.get(r.user_id) ?? {};
+    m[r.event_kind] = (m[r.event_kind] ?? 0) + Number(r.count);
+    breachByUser.set(r.user_id, m);
+  }
+  const visitByUser = new Map(input.visitRows.map((v) => [v.user_id, v]));
+  const locByUser = new Map(input.locations.map((l) => [l.user_id, l]));
+  const leadsByUser = new Map<string, Array<LeadGeo>>();
+  for (const l of input.assignedLeads) {
+    const arr = leadsByUser.get(l.userId) ?? [];
+    arr.push(l);
+    leadsByUser.set(l.userId, arr);
+  }
+
+  return members.map((mem) => {
+    const grids = input.territoriesByUser[mem.userId] ?? [];
+    const hasGrid = grids.length > 0;
+
+    const b = breachByUser.get(mem.userId) ?? {};
+    const leadAccess = b["lead_access_out_of_grid"] ?? 0;
+    const gps = b["gps_out_of_grid"] ?? 0;
+    const visitBreach = b["visit_out_of_grid"] ?? 0;
+
+    const v = visitByUser.get(mem.userId);
+    const visitTotal = Number(v?.total ?? 0);
+    const visitOut = Number(v?.out_of_grid ?? 0);
+
+    const leads = leadsByUser.get(mem.userId) ?? [];
+    let inGrid = 0;
+    for (const lead of leads) {
+      if (!hasGrid || grids.some((t) => leadMatchesTerritory(lead, t))) inGrid++;
+    }
+
+    const loc = locByUser.get(mem.userId);
+    let live: ManagerSellerStats["live"] = null;
+    if (loc) {
+      const currentlyOut = hasGrid && !grids.some((t) => pointMatchesTerritory(loc.lat, loc.lng, t));
+      live = { lat: loc.lat, lng: loc.lng, currentlyOutOfGrid: currentlyOut };
+    }
+
+    return {
+      userId: mem.userId,
+      displayName: mem.displayName,
+      email: mem.email,
+      role: mem.role,
+      teamName: mem.teamName,
+      territoryLabel: mem.territoryLabel,
+      hasGrid,
+      breaches: { leadAccess, gps, visit: visitBreach, total: leadAccess + gps + visitBreach },
+      visits: { total: visitTotal, inGrid: visitTotal - visitOut, outOfGrid: visitOut },
+      leads: { total: leads.length, inGrid, outOfGrid: leads.length - inGrid },
+      live,
+    };
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // DB-funksjoner
 // ─────────────────────────────────────────────────────────────────────
 

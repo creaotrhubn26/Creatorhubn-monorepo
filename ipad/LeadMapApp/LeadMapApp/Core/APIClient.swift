@@ -302,6 +302,14 @@ actor APIClient {
         return resp.coverage
     }
 
+    /// Leder-dashboard: sone-ytelse per selger.
+    func fetchTerritoryDashboard(
+        organizationId: String, period: String = "last_30d"
+    ) async throws -> TerritoryDashboardResponse {
+        try await get(
+            "/api/leadgrid/territories/dashboard?organization_id=\(organizationId)&period=\(period)")
+    }
+
     /// Opprett en grid fra et tegnet polygon (Apple Pencil på iPad).
     /// Koordinatene lukkes til en GeoJSON-ring ([lng,lat]).
     func createTerritory(

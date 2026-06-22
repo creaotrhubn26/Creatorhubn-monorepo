@@ -15,9 +15,11 @@ import {
   detectAdminOverlaps,
   resolveLeadTerritories,
   computeCoverage,
+  summarizeManagerStats,
   type TerritoryRow,
   type LeadGeo,
   type CoverageLead,
+  type ManagerMember,
 } from "../leadgrid-territory-service";
 
 // Et kvadrat rundt Oslo: lng 10..11, lat 59..60. GeoJSON = [lng, lat].
@@ -261,6 +263,59 @@ describe("computeCoverage", () => {
     const r = computeCoverage(leads, [oslo], { orphanCap: 2 });
     expect(r.orphans).toBe(5);
     expect(r.orphanLeads).toHaveLength(2);
+  });
+});
+
+describe("summarizeManagerStats", () => {
+  const osloGrid = territory({ id: "g1", geometry: OSLO_SQUARE, assignedUserId: "u1" });
+  const members: ManagerMember[] = [
+    { userId: "u1", displayName: "Anna", email: "a@x.no", role: "salgskonsulent", teamName: "Team A", territoryLabel: "Oslo" },
+    { userId: "u2", displayName: "Per", email: "p@x.no", role: "promotor", teamName: "Team A", territoryLabel: null },
+  ];
+
+  it("fletter brudd, besøk, leads og live-posisjon per selger", () => {
+    const stats = summarizeManagerStats(members, {
+      breachRows: [
+        { user_id: "u1", event_kind: "gps_out_of_grid", count: 2 },
+        { user_id: "u1", event_kind: "visit_out_of_grid", count: 1 },
+      ],
+      visitRows: [{ user_id: "u1", total: 5, out_of_grid: 2 }],
+      assignedLeads: [
+        { userId: "u1", latitude: 59.5, longitude: 10.5, postalCode: null, municipalityCode: null }, // in grid
+        { userId: "u1", latitude: 63.4, longitude: 10.4, postalCode: null, municipalityCode: null }, // ute
+      ],
+      locations: [{ user_id: "u1", lat: 63.4, lng: 10.4 }], // utenfor Oslo-grid
+      territoriesByUser: { u1: [osloGrid] },
+    });
+    const a = stats.find((s) => s.userId === "u1")!;
+    expect(a.breaches).toEqual({ leadAccess: 0, gps: 2, visit: 1, total: 3 });
+    expect(a.visits).toEqual({ total: 5, inGrid: 3, outOfGrid: 2 });
+    expect(a.leads).toEqual({ total: 2, inGrid: 1, outOfGrid: 1 });
+    expect(a.live).toEqual({ lat: 63.4, lng: 10.4, currentlyOutOfGrid: true });
+    expect(a.hasGrid).toBe(true);
+  });
+
+  it("selger uten grid: ingen håndheving, alt regnes in-grid, aldri «ute nå»", () => {
+    const stats = summarizeManagerStats(members, {
+      breachRows: [],
+      visitRows: [],
+      assignedLeads: [{ userId: "u2", latitude: 63.4, longitude: 10.4, postalCode: null, municipalityCode: null }],
+      locations: [{ user_id: "u2", lat: 63.4, lng: 10.4 }],
+      territoriesByUser: {},
+    });
+    const p = stats.find((s) => s.userId === "u2")!;
+    expect(p.hasGrid).toBe(false);
+    expect(p.leads).toEqual({ total: 1, inGrid: 1, outOfGrid: 0 });
+    expect(p.live).toEqual({ lat: 63.4, lng: 10.4, currentlyOutOfGrid: false });
+  });
+
+  it("returnerer en rad per medlem, også uten data", () => {
+    const stats = summarizeManagerStats(members, {
+      breachRows: [], visitRows: [], assignedLeads: [], locations: [], territoriesByUser: {},
+    });
+    expect(stats).toHaveLength(2);
+    expect(stats[0].breaches.total).toBe(0);
+    expect(stats[0].live).toBeNull();
   });
 });
 
