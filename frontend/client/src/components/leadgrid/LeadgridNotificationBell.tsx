@@ -19,6 +19,7 @@ import LocalFireDepartmentIcon from "@mui/icons-material/LocalFireDepartment";
 import WhatshotIcon from "@mui/icons-material/Whatshot";
 import SettingsIcon from "@mui/icons-material/Settings";
 import MarkEmailReadIcon from "@mui/icons-material/MarkEmailRead";
+import WrongLocationIcon from "@mui/icons-material/WrongLocation";
 
 interface Notif {
   id: string;
@@ -40,6 +41,7 @@ const EVENT_ICONS: Record<string, React.ReactNode> = {
   lead_assigned_on_accept:      <NotificationsActiveIcon sx={{ color: "#a78bfa" }} />,
   lead_won:                     <NotificationsActiveIcon sx={{ color: "#9be15d" }} />,
   lead_status_change:           <NotificationsActiveIcon sx={{ color: "#ffb86b" }} />,
+  territory_breach:             <WrongLocationIcon sx={{ color: "#ff6b6b" }} />,
 };
 
 function timeAgo(iso: string): string {

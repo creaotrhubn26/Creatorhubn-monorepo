@@ -1,46 +1,33 @@
-Leadgrid v0.4.0 (build 4) — Selv-onboard, klient-portal og Google Sign-In
+Leadgrid v0.4.0 (build 5) — Territorie-grids: hold deg i din sone
 
 NYTT I DENNE BUILDEN:
 
-• Google Sign-In som primær innlogging
-  - Trykk «Fortsett med Google» — ingen pairing-kode nødvendig.
-  - Pairing-kode er fortsatt der som backup (Jeg har en pairing-kode).
-  - Nye brukere får automatisk Solo Free-org opprettet ved første login.
+• Selger-grids (territorier) — native
+  - Hver selger/promotør får et tildelt område (polygon, sirkel og/eller
+    kommune/postnummer). Vises på kartet (blått omriss).
+  - Tegn grids direkte med Apple Pencil: «Tegn på kart» → «Lagre som grid».
 
-• AddCustomerView — super-enkel «+» på Prosjekter-fanen
-  - To felter: nettside + e-post → Leadgrid gjør resten.
-  - BRREG-oppslag, logo-fetch, websitet-crawl, behovs-analyse, klient-
-    portal-lenke sendes — alt på 30 sekunder, med live progress.
-  - Backdrop7 (selger med pin-rute) som hero.
+• Geofence-håndheving (mykt)
+  - On-device sjekk: banner «Du er utenfor din sone» med en gang du går ut.
+  - Bakgrunns-geofence for sirkel-soner: varsel selv når appen er lukket.
+  - Logges server-side; teamleder/salgssjef varsles. Ingenting blokkeres.
 
-• MarketingInboxView — innboks for markedsfører-roller
-  - Vises hvis du har marketing.deliveries.execute.
-  - Hver focus-request fra klient dukker opp her med kunde-logo,
-    behov-tag og klient-notat.
-  - Filter: åpne / pågår / ferdig.
+• Smart dagsrute
+  - «Bygg rute» ordner dine in-grid leads etter prioritet + kjøretid.
+  - Native turn-by-turn (Apple Maps) per stopp + felt-innsjekk
+    (Ankommet/Besøkt/Hopp over). Ruten tegnes på kartet.
 
-• DeliveryPlaybookView — steg-for-steg-utførelse
-  - Tap på en focus-request → start playbook.
-  - Header med kunde-logo, behov-tittel og fremdrifts-bar.
-  - «Vi trenger fra kunden» med huk-av-checkboxes.
-  - Steg-for-steg med markér-ferdig + blokkert.
-  - «Slik verifiserer du» til slutt.
-  - Innebygde playbooks: Meta Pixel, GA4, Google Ads, GTM, JSON-LD,
-    video-strategi, +14 andre.
+• Territorie-dekning (leder)
+  - «...» → «Territorie-dekning»: foreldreløse leads (rødt) + grids på kart.
+  - «Tegn manglende sone» åpner Pencil-editoren rett fra dekningsvisningen.
 
-• ProjectsPortfolioView utvidet
-  - Sortér på score / nylig / navn.
-  - Auto-logo-fetch fra crawl.
-  - Per-prosjekt-gating m/ projects.view_all-permission.
-
-• Innstillinger-instruksjoner ryddet
-  - Gamle «theroleroom.com → Admin Room → Lead Map» er erstattet
-    med «theroleroom.com/leadgrid → Innstillinger → Mine enheter».
+• Leder-dashboard for sone-ytelse
+  - Team-leaderboard → «Sone-ytelse»: per selger — brudd, besøk i/ute,
+    leads i/ute, og live «utenfor sonen nå» på kart (rødt = ute akkurat nå).
 
 KJENT:
-- Klient-portalen lever live på web (theroleroom.com/c/{token}) men
-  iPad-app åpner fortsatt bare som-deg-portal — del lenken direkte
-  med klient.
+- Bakgrunns-geofence krever «Alltid»-posisjonstillatelse (samme som
+  nær-lead-varsel). Uten den faller den tilbake til on-device-sjekk når
+  appen er åpen.
 
-Krever iOS 17.0+. Glade for tilbakemeldinger på Slack eller
-daniel@creatorhubn.com.
+Krever iOS 17.0+. Tilbakemeldinger på Slack eller daniel@creatorhubn.com.

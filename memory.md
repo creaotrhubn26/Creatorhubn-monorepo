@@ -1,7 +1,48 @@
 # memory.md — Role Room session-state, refaktor-plan og kø
 
-> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-13 (kvelds-sesjon — Growth/SEO/Agent/Live-Set/DIT infrastruktur).
+> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-06-22 (LeadGrid territorie-pakke — grids/geofence/rute/dashboard, PR #856).
 > Plassert i repo-rot slik at Claude Code (lokal eller web) automatisk leser den ved oppstart.
+
+---
+
+## 🟥 MÅ GJØRES — LeadGrid territorie-pakke (2026-06-22)
+
+**Status:** Hele territorie-pakken bygget på web + iPad native, ligger i **PR #856**
+(`claude/analyze-github-project-9p4agw`). 46/46 backend-enhetstester grønne; CI var grønn,
+re-kjører på siste commits. Funksjoner: grids (polygon/sirkel/kommune-postnr) + myk
+geofence-håndheving, Apple Pencil-grids, smart dagsrute (Distance Matrix + native nav +
+felt-innsjekk), dekningskart, leder-dashboard for sone-ytelse. Migrasjoner: 314/315/316.
+
+### 1. Merge PR #856 → main  (= PROD-deploy!)
+- Merge deployer backend (Render + auto-migrasjoner 314/315/316) OG frontend (Vercel) til **prod**.
+- Auto-merge er IKKE aktivert i repoet → enten skru på *Settings → General → Pull Requests →
+  Allow auto-merge*, eller merge manuelt når CI er grønn. (Webhook varsler ikke ved CI-suksess.)
+
+### 2. TestFlight — iPad LeadMapApp build 5
+- Repo-secrets må finnes: `APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNECT_API_ISSUER_ID`,
+  `APP_STORE_CONNECT_API_KEY_CONTENT` (.p8 base64).
+- App Store Connect-app-record for `com.creatorhubn.LeadMapApp` må finnes (engangs, manuelt).
+- Etter merge (workflow på main): trigg workflow **«LeadMap TestFlight»** (`leadmap-testflight.yml`)
+  via workflow_dispatch.
+- Finn/bekreft doc `project_leadgrid_ios_testflight.md` (IKKE funnet i repoet) — verifiser
+  signerings-metode. Workflowen antar API-nøkkel + automatisk signering (per Fastfile); hvis
+  doc-en bruker `fastlane match` / .p12-cert-secret må workflowen justeres.
+- Build bumpet til 5 i `ipad/LeadMapApp/project.yml`; changelog oppdatert.
+
+### 3. Produksjonsverifisering (utestående)
+- Kjør `backend/scripts/verify-creatorhub-access.mjs` (Daniels kundetilgang + BRREG-kryss for
+  talkit.no / medside.no / holycrust.no / thepetkey.com). Krever `DATABASE_URL` + utgående nett
+  → lås opp miljøet eller kjør lokalt/Render-shell.
+
+### 4. Sikkerhet/hygiene (fra første analyse)
+- Fjern committede søppelfiler med Neon-connstring fra git (`backend/t { Pool } = require('pg');`,
+  psql-connstring-filnavn, m.fl.) + **roter Neon-credential**.
+- Legg `helmet` + app-nivå `express-rate-limit` i `backend/server/index.ts` (begge i deps).
+
+### 5. Backlog (uten PowerOffice)
+- BRREG-backfill av alle kunder (orgnr + konkurs/avvikling-flagg).
+- «Nær meg»-nudge (ProximityMonitor + territorier + Intelligence).
+- Slack-varsling på `territory.breach` / `deal.won` (webhook-abonnement).
 
 ---
 

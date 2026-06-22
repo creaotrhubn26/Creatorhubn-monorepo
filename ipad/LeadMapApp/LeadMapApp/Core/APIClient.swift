@@ -278,6 +278,89 @@ actor APIClient {
         )
     }
 
+    // MARK: - Territorie-grids (LeadGrid territory enforcement)
+
+    /// Kun den innloggede selgerens egne grids (for on-device geofence).
+    func fetchMyTerritories(organizationId: String) async throws -> [Territory] {
+        let resp: TerritoriesResponse = try await get(
+            "/api/leadgrid/territories/mine?organization_id=\(organizationId)"
+        )
+        return resp.territories
+    }
+
+    /// Alle aktive grids i org-en (manager — for dekningskart).
+    func fetchOrgTerritories(organizationId: String) async throws -> [Territory] {
+        let resp: TerritoriesResponse = try await get(
+            "/api/leadgrid/territories?organization_id=\(organizationId)")
+        return resp.territories
+    }
+
+    /// Territorie-dekning for org-en (foreldreløse, overlapp, leads per grid).
+    func fetchCoverage(organizationId: String) async throws -> CoverageResult? {
+        let resp: CoverageResponse = try await get(
+            "/api/leadgrid/territories/coverage?organization_id=\(organizationId)")
+        return resp.coverage
+    }
+
+    /// Leder-dashboard: sone-ytelse per selger.
+    func fetchTerritoryDashboard(
+        organizationId: String, period: String = "last_30d"
+    ) async throws -> TerritoryDashboardResponse {
+        try await get(
+            "/api/leadgrid/territories/dashboard?organization_id=\(organizationId)&period=\(period)")
+    }
+
+    /// Opprett en grid fra et tegnet polygon (Apple Pencil på iPad).
+    /// Koordinatene lukkes til en GeoJSON-ring ([lng,lat]).
+    func createTerritory(
+        organizationId: String,
+        name: String,
+        assignedUserId: String?,
+        polygon coords: [CLLocationCoordinate2D]
+    ) async throws -> String {
+        var ring = coords.map { [$0.longitude, $0.latitude] }
+        if let first = ring.first, let last = ring.last,
+           first[0] != last[0] || first[1] != last[1] {
+            ring.append(first)
+        }
+        var body: [String: Any] = [
+            "organization_id": organizationId,
+            "name": name,
+            "geometry": ["type": "Polygon", "coordinates": [ring]],
+        ]
+        if let u = assignedUserId { body["assigned_user_id"] = u }
+        let resp: CreateTerritoryResponse = try await post(
+            "/api/leadgrid/territories", body: body)
+        return resp.id
+    }
+
+    // MARK: - Smart dagsrute
+
+    /// Planlegg dagens rute blant selgerens in-grid leads.
+    func planDayRoute(
+        organizationId: String, startLat: Double, startLng: Double
+    ) async throws -> DayRoutePlanResponse {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        return try await post("/api/leadgrid/routes/plan", body: [
+            "organization_id": organizationId,
+            "start_lat": startLat,
+            "start_lng": startLng,
+            "planned_date": df.string(from: Date()),
+        ])
+    }
+
+    /// Oppdater status på et rute-stopp (innsjekk i felt).
+    func updateRouteStop(
+        routeId: String, stopId: String, status: String,
+        outcome: String? = nil, notes: String? = nil
+    ) async throws {
+        var body: [String: Any] = ["status": status]
+        if let o = outcome { body["outcome"] = o }
+        if let n = notes { body["notes"] = n }
+        try await patch("/api/leadgrid/routes/\(routeId)/stops/\(stopId)", body: body)
+    }
+
     // MARK: - Smart-transkript (PR #642 — Claude analyserer dikterings-notater)
 
     func analyzeTranscript(leadId: String, transcript: String) async throws -> TranscriptAnalysis {

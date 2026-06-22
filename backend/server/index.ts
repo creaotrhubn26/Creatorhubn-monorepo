@@ -543,6 +543,8 @@ import { registerLeadgridResearchRoutes } from "./leadgrid-research-routes.js";
 import { registerLeadgridMarketScanRoutes } from "./leadgrid-market-scan-routes.js";
 import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-routes.js";
 import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
+import { registerLeadgridTerritoryRoutes } from "./leadgrid-territory-routes.js";
+import { registerLeadgridRouteRoutes } from "./leadgrid-route-routes.js";
 import { registerLeadScoutRoutes } from "./lead-scout-routes.js";
 import { registerLeadPresetRoutes } from "./lead-preset-routes.js";
 import { registerLeadRulesRoutes } from "./lead-rules-routes.js";
@@ -24435,6 +24437,13 @@ registerLeadgridIntelligenceRoutes({ app, pool, activeSessions });
 // Krever LEADGRID_INTELLIGENCE_CRON_TOKEN env-var i tillegg til
 // matching x-cron-trigger-token-header.
 registerLeadgridIntelligenceCron({ app, pool });
+// LeadGrid territorie-grids — "hold deg i din grid" (mig 314).
+// CRUD + check + brudd-logg (/api/leadgrid/territories/*).
+// Gated på territories.view / territories.manage / territories.view_breaches.
+registerLeadgridTerritoryRoutes({ app, pool, activeSessions });
+// Smart dagsrute — ordner selgerens in-grid leads (Distance Matrix +
+// nærmeste-nabo). /api/leadgrid/routes/* (mig 313/316). routes.create/view/execute.
+registerLeadgridRouteRoutes({ app, pool, activeSessions });
 // Lead Scout — crawl + Claude needs/signals/scoring
 // Gated på marketing.scout.run / marketing.needs.view / marketing.needs.edit
 registerLeadScoutRoutes({ app, pool, activeSessions });
