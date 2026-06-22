@@ -36,6 +36,17 @@ struct LeadgridHubView: View {
                         }
                     }
                 }
+
+                Section("Research") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridResearchListView(api: api)
+                        } label: {
+                            Label("Kjør AI-research på lead",
+                                   systemImage: "sparkles.rectangle.stack")
+                        }
+                    }
+                }
                 Section("Varsler") {
                     Button {
                         appState.presentingLeadgridNotifications = true

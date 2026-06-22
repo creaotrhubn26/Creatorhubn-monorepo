@@ -539,6 +539,7 @@ import { registerPitchDeckPdfRoutes } from "./pitch-deck-pdf-service.js";
 import { registerPitchDeckBriefRoutes } from "./pitch-deck-brief-routes.js";
 import { registerPitchDeckAssetRoutes } from "./pitch-deck-asset-service.js";
 import { registerLeadMapResearchRoutes } from "./lead-map-research-routes.js";
+import { registerLeadgridResearchRoutes } from "./leadgrid-research-routes.js";
 import { registerLeadScoutRoutes } from "./lead-scout-routes.js";
 import { registerLeadPresetRoutes } from "./lead-preset-routes.js";
 import { registerLeadRulesRoutes } from "./lead-rules-routes.js";
@@ -24417,6 +24418,9 @@ registerPitchDeckBriefRoutes({ app, pool, activeSessions });
 registerPitchDeckAssetRoutes({ app, pool, activeSessions });
 // Research → Leads-orkestrator (gated på lead_research.run)
 registerLeadMapResearchRoutes({ app, pool, activeSessions });
+// Native Leadgrid Research — per-lead Claude + BRREG + website-analyse
+// (POST/GET /api/leadgrid/leads/:id/research). Used by iPad-app.
+registerLeadgridResearchRoutes({ app, pool, activeSessions });
 // Lead Scout — crawl + Claude needs/signals/scoring
 // Gated på marketing.scout.run / marketing.needs.view / marketing.needs.edit
 registerLeadScoutRoutes({ app, pool, activeSessions });
