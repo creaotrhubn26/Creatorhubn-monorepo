@@ -545,6 +545,8 @@ import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-rout
 import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
 import { registerLeadgridTerritoryRoutes } from "./leadgrid-territory-routes.js";
 import { registerLeadgridRouteRoutes } from "./leadgrid-route-routes.js";
+import { registerLeadgridMeetingNotesRoutes } from "./leadgrid-meeting-notes-routes.js";
+import { registerLeadgridAgentBridgeRoutes } from "./leadgrid-agent-bridge-routes.js";
 import { registerLeadScoutRoutes } from "./lead-scout-routes.js";
 import { registerLeadPresetRoutes } from "./lead-preset-routes.js";
 import { registerLeadRulesRoutes } from "./lead-rules-routes.js";
@@ -24444,6 +24446,15 @@ registerLeadgridTerritoryRoutes({ app, pool, activeSessions });
 // Smart dagsrute — ordner selgerens in-grid leads (Distance Matrix +
 // nærmeste-nabo). /api/leadgrid/routes/* (mig 313/316). routes.create/view/execute.
 registerLeadgridRouteRoutes({ app, pool, activeSessions });
+// AI Meeting Notes — voice memo → Whisper → Claude action items
+// (/api/leadgrid/leads/:id/meeting-notes/*). Gated på meeting_notes.*
+// (migrate 318).
+registerLeadgridMeetingNotesRoutes({ app, pool, activeSessions });
+// Role Room Agent Bridge — full intelligence-rapport per lead som
+// orkestrerer alle Role Room Agent-services (brreg, website, competitors,
+// merch-fit, threat, swot, outreach). Gated på leadgrid.research.run
+// (migrate 318).
+registerLeadgridAgentBridgeRoutes({ app, pool, activeSessions });
 // Lead Scout — crawl + Claude needs/signals/scoring
 // Gated på marketing.scout.run / marketing.needs.view / marketing.needs.edit
 registerLeadScoutRoutes({ app, pool, activeSessions });
