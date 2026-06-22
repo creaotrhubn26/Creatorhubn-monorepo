@@ -969,6 +969,96 @@ actor APIClient {
         try await patch("/api/leadgrid/portal/\(portalToken)/notification-prefs", body: payload)
     }
 
+    // ============================================================
+    // MARK: - Leadgrid Market Scan (PR #851)
+    //
+    // Native markedssjef-lead-discovery via Claude + BRREG + Places.
+    // Backend gjenbruker market-scan-service.ts under panseret og
+    // auto-oppretter crm_customers med lat/lng = pin på Kart-tab.
+    // RBAC: leadgrid.market_scan.run.
+    //
+    // NB: Funksjons- og type-navnene er prefikset `Leadgrid…` for å
+    // unngå kollisjon med eksisterende `fetchMarketScans()` /
+    // `MarketScan*` for det eldre /api/market-scans-endepunktet (brukt
+    // av SuperAdminFase22Views).
+    // ============================================================
+
+    /// Historikk over alle scans innlogget bruker har kjørt
+    /// (sortert nyeste først, maks 30).
+    func fetchLeadgridMarketScans() async throws -> [LeadgridMarketScan] {
+        let resp: LeadgridMarketScanListResponse = try await get(
+            "/api/leadgrid/market-scan"
+        )
+        return resp.scans
+    }
+
+    /// Hent én scan med tilhørende konkurrenter + muligheter.
+    /// Backend har separate endepunkter, så vi henter alt parallelt
+    /// og pakker det inn i et LeadgridMarketScanDetail.
+    func fetchLeadgridMarketScan(id: String) async throws -> LeadgridMarketScanDetail {
+        async let scan: LeadgridMarketScanProgressResponse = get(
+            "/api/leadgrid/market-scan/\(id)"
+        )
+        async let competitors: LeadgridMarketScanCompetitorsResponse = get(
+            "/api/leadgrid/market-scan/\(id)/competitors"
+        )
+        async let opportunities: LeadgridMarketScanOpportunitiesResponse = get(
+            "/api/leadgrid/market-scan/\(id)/opportunities"
+        )
+        let (s, c, o) = try await (scan, competitors, opportunities)
+        return LeadgridMarketScanDetail(
+            scan: s.scan,
+            competitors: c.competitors,
+            opportunities: o.opportunities,
+        )
+    }
+
+    /// Letvekts status-poll for detail-view (henter kun scan-progress —
+    /// competitors/opportunities oppdateres separat når status=completed).
+    func fetchLeadgridMarketScanProgress(id: String) async throws -> LeadgridMarketScan {
+        let resp: LeadgridMarketScanProgressResponse = try await get(
+            "/api/leadgrid/market-scan/\(id)"
+        )
+        return resp.scan
+    }
+
+    /// Kicker orkestratoren — returnerer ny scan-rad fra DB via
+    /// progress-poll (backend's run-endepunkt sender bare {scanId, name}).
+    func runLeadgridMarketScan(input: RunLeadgridMarketScanInput) async throws -> LeadgridMarketScan {
+        var body: [String: Any] = [
+            "industry": input.industry.trimmingCharacters(in: .whitespaces),
+            "region":   input.region.trimmingCharacters(in: .whitespaces),
+            "auto_create_leads": input.autoCreateLeads,
+        ]
+        let trimmedName = input.name.trimmingCharacters(in: .whitespaces)
+        if !trimmedName.isEmpty { body["name"] = trimmedName }
+        let trimmedAudience = input.targetAudience.trimmingCharacters(in: .whitespaces)
+        if !trimmedAudience.isEmpty { body["target_audience"] = trimmedAudience }
+        let trimmedGoal = input.goal.trimmingCharacters(in: .whitespaces)
+        if !trimmedGoal.isEmpty { body["goal"] = trimmedGoal }
+        if let orgId = input.organizationId, !orgId.isEmpty {
+            body["organization_id"] = orgId
+        }
+        let runResp: LeadgridMarketScanRunResponse = try await post(
+            "/api/leadgrid/market-scan/run",
+            body: body,
+        )
+        // Hent kanonisk scan-rad så caller får hele Leadgrid-Market-Scan-shape.
+        return try await fetchLeadgridMarketScanProgress(id: runResp.scanId)
+    }
+
+    /// Manuell trigger for å auto-opprette leads etter en scan som
+    /// kjørte med auto_create_leads=false. Returnerer oppdatert scan
+    /// (med ny leads_created_count).
+    @discardableResult
+    func createLeadgridLeadsFromScan(id: String) async throws -> LeadgridMarketScan {
+        let _: LeadgridMarketScanCreateLeadsResponse = try await post(
+            "/api/leadgrid/market-scan/\(id)/create-leads",
+            body: [:],
+        )
+        return try await fetchLeadgridMarketScanProgress(id: id)
+    }
+
     // MARK: - Internal
 
     private func makeRequest(_ path: String, method: String = "GET") -> URLRequest {
