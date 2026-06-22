@@ -540,6 +540,7 @@ import { registerPitchDeckBriefRoutes } from "./pitch-deck-brief-routes.js";
 import { registerPitchDeckAssetRoutes } from "./pitch-deck-asset-service.js";
 import { registerLeadMapResearchRoutes } from "./lead-map-research-routes.js";
 import { registerLeadgridResearchRoutes } from "./leadgrid-research-routes.js";
+import { registerLeadgridMarketScanRoutes } from "./leadgrid-market-scan-routes.js";
 import { registerLeadScoutRoutes } from "./lead-scout-routes.js";
 import { registerLeadPresetRoutes } from "./lead-preset-routes.js";
 import { registerLeadRulesRoutes } from "./lead-rules-routes.js";
@@ -24421,6 +24422,10 @@ registerLeadMapResearchRoutes({ app, pool, activeSessions });
 // Native Leadgrid Research — per-lead Claude + BRREG + website-analyse
 // (POST/GET /api/leadgrid/leads/:id/research). Used by iPad-app.
 registerLeadgridResearchRoutes({ app, pool, activeSessions });
+// Native Leadgrid Market Scan — markedssjef-lead-discovery m/ auto-pin
+// (/api/leadgrid/market-scan/*). Gjenbruker market_scans-orkestratoren.
+// Gated på leadgrid.market_scan.run (migrate 312).
+registerLeadgridMarketScanRoutes({ app, pool, activeSessions });
 // Lead Scout — crawl + Claude needs/signals/scoring
 // Gated på marketing.scout.run / marketing.needs.view / marketing.needs.edit
 registerLeadScoutRoutes({ app, pool, activeSessions });
