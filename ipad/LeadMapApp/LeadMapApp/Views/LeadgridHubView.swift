@@ -59,6 +59,27 @@ struct LeadgridHubView: View {
                     }
                 }
 
+                // Intelligence Engine (PR #855) — NBA + pipeline + score-breakdown.
+                Section("Intelligence") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridFollowUpQueueView(api: api)
+                        } label: {
+                            Label("Følg-opp-kø", systemImage: "bolt.fill")
+                        }
+                        NavigationLink {
+                            LeadgridPipelineKanbanView(api: api)
+                        } label: {
+                            Label("Pipeline-kanban", systemImage: "rectangle.split.3x1.fill")
+                        }
+                        NavigationLink {
+                            LeadgridAllRecommendationsView(api: api)
+                        } label: {
+                            Label("Alle NBA-anbefalinger", systemImage: "sparkles")
+                        }
+                    }
+                }
+
                 Section("Varsler") {
                     Button {
                         appState.presentingLeadgridNotifications = true
