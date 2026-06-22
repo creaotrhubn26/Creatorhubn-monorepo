@@ -586,6 +586,8 @@ struct SmartEditPanel: View {
             slider("Metning", systemImage: "drop", value: $model.recipe.saturation, range: -1...1, signed: true)
 
             warmthRow
+            toggleRow("Rett opp horisont", systemImage: "level", isOn: $model.recipe.autoStraighten)
+                .onChange(of: model.recipe.autoStraighten) { _, _ in model.recipeChanged() }
             Divider().overlay(CHTheme.border)
             toggleRow("Støvfjerning", systemImage: "sparkle", isOn: $model.dustRemoval)
             toggleRow("Bakgrunnsrydd", systemImage: "scissors", isOn: $model.backgroundClean)
