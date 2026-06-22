@@ -235,6 +235,13 @@ final class RedigeringModel {
         }
     }
 
+    /// Reload the selected asset from disk + re-render (after a Sky enhance).
+    func refreshSelected() async {
+        guard let id = selectedId, let svc = services() else { return }
+        await reloadSelected(svc.store, assetId: id)
+        await render()
+    }
+
     /// Persist the current recipe as a named local preset.
     func saveAsPreset(_ name: String) {
         if let data = try? JSONEncoder().encode(recipe) {
@@ -246,10 +253,12 @@ final class RedigeringModel {
     private func render() async {
         guard let asset = selected else { afterImage = nil; return }
         rendering = true
-        // Use the RAW source for max quality, UNLESS AI-retusj has produced a
-        // cleaned JPEG — then that cleaned image is the working base.
-        let raw = asset.autoCleanedKey == nil ? asset.rawKey : nil
-        let jpeg = asset.displayPreviewKey
+        // Working base priority: server "sky" enhance → AI-cleaned → RAW.
+        // Local recipe/exposure/crop layer on top of whichever base.
+        let serverEnhanced = asset.serverEnhancedKey
+        let cleaned = asset.autoCleanedKey
+        let raw = (serverEnhanced == nil && cleaned == nil) ? asset.rawKey : nil
+        let jpeg = serverEnhanced ?? cleaned ?? asset.displayPreviewKey
         let r = effectiveRecipe()
         let ev = exposureEV
         let crop = crops[asset.id]
@@ -550,6 +559,7 @@ struct SmartEditPanel: View {
     @Bindable var model: RedigeringModel
     @State private var showSavePreset = false
     @State private var presetDraft = ""
+    @State private var showSky = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -596,6 +606,13 @@ struct SmartEditPanel: View {
                 Text(msg).font(.caption2).foregroundStyle(CHTheme.textMuted)
             }
 
+            Button { showSky = true } label: {
+                Label("AI-forbedring (sky)", systemImage: "cloud.bolt")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered).controlSize(.large).tint(CHTheme.accent)
+            .disabled(model.selected == nil)
+
             Button { model.applyToSeries() } label: {
                 Label("Bruk på serie", systemImage: "sparkles").frame(maxWidth: .infinity)
             }
@@ -612,6 +629,11 @@ struct SmartEditPanel: View {
             TextField("Navn", text: $presetDraft)
             Button("Lagre") { if !presetDraft.isEmpty { model.saveAsPreset(presetDraft); presetDraft = "" } }
             Button("Avbryt", role: .cancel) {}
+        }
+        .sheet(isPresented: $showSky) {
+            if let asset = model.selected {
+                SkyEnhanceView(asset: asset) { Task { await model.refreshSelected() } }
+            }
         }
     }
 
