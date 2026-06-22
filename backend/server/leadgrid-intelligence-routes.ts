@@ -37,14 +37,22 @@ function getSession(
   return null;
 }
 
-/** Resolve org-id via lead-id → crm_customers.organization_id */
+/**
+ * Resolve org-id via lead-id. crm_customers har INGEN organization_id-kolonne —
+ * vi henter primary org via owner_user_id → organization_members.
+ * Mønster fra PR #837/#848.
+ */
 async function orgIdFromLead(
   pool: Pool,
   leadId: string,
 ): Promise<string | null> {
   try {
     const r = await pool.query<{ organization_id: string | null }>(
-      `SELECT organization_id::text FROM crm_customers WHERE id = $1::uuid LIMIT 1`,
+      `SELECT (SELECT om.organization_id::text FROM organization_members om
+                WHERE om.user_id = c.owner_user_id
+                ORDER BY om.joined_at ASC LIMIT 1) AS organization_id
+         FROM crm_customers c
+        WHERE c.id = $1::uuid LIMIT 1`,
       [leadId],
     );
     return r.rows[0]?.organization_id ?? null;
@@ -412,6 +420,8 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
       );
 
       try {
+        // FIX (2026-06-22): crm_customers har ikke organization_id —
+        // filtrer via owner_user_id IN org-members (PR #837/#848-mønster).
         const r = await pool.query(
           `SELECT id::text,
                   name,
@@ -430,7 +440,9 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
                   last_contacted_at::text,
                   assigned_user_id::text
              FROM crm_customers
-            WHERE organization_id = $1::uuid
+            WHERE owner_user_id IN (
+                SELECT user_id::text FROM organization_members WHERE organization_id = $1::uuid
+              )
               AND archived_at IS NULL
               AND (
                 follow_up_priority >= 50
@@ -637,9 +649,13 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         Math.max(1, parseInt(String(req.body?.limit ?? "1000"), 10) || 1000),
       );
       try {
+        // FIX (2026-06-22): crm_customers har ikke organization_id.
         const rows = await pool.query<{ id: string }>(
           `SELECT id::text FROM crm_customers
-            WHERE organization_id = $1::uuid AND archived_at IS NULL
+            WHERE owner_user_id IN (
+                SELECT user_id::text FROM organization_members WHERE organization_id = $1::uuid
+              )
+              AND archived_at IS NULL
             ORDER BY scored_at ASC NULLS FIRST
             LIMIT $2`,
           [orgId, cap],
