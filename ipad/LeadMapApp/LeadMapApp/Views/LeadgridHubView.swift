@@ -47,6 +47,18 @@ struct LeadgridHubView: View {
                         }
                     }
                 }
+
+                Section("Market Scan") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridMarketScanListView(api: api)
+                        } label: {
+                            Label("Finn nye leads via Claude",
+                                   systemImage: "magnifyingglass.circle.fill")
+                        }
+                    }
+                }
+
                 Section("Varsler") {
                     Button {
                         appState.presentingLeadgridNotifications = true
