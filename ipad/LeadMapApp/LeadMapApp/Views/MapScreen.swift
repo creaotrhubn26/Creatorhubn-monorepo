@@ -32,6 +32,7 @@ struct MapHomeView: View {
     @State private var showDrawingSheet = false
     @State private var showCardScanner = false
     @State private var showResearchStart = false
+    @State private var showCoverage = false
     @State private var camera: MapCameraPosition = .region(
         MKCoordinateRegion(
             center: .init(latitude: 59.9139, longitude: 10.7522), // Oslo
@@ -155,6 +156,9 @@ struct MapHomeView: View {
                             Button("Tegn på kart", systemImage: "pencil.tip.crop.circle") {
                                 showDrawingSheet = true
                             }
+                            Button("Territorie-dekning", systemImage: "map.circle") {
+                                showCoverage = true
+                            }
                         }
                         // Lead Research er en VALGFRI tilleggsfunksjon.
                         // Vises kun hvis orgen har gitt brukeren
@@ -183,6 +187,9 @@ struct MapHomeView: View {
                 AnnotationDrawingView(
                     initialRegion: camera.region
                 )
+            }
+            .sheet(isPresented: $showCoverage) {
+                CoverageView()
             }
             .sheet(isPresented: $showCardScanner) {
                 if #available(iOS 16.0, *) {

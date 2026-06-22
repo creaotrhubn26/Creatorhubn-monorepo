@@ -288,6 +288,20 @@ actor APIClient {
         return resp.territories
     }
 
+    /// Alle aktive grids i org-en (manager — for dekningskart).
+    func fetchOrgTerritories(organizationId: String) async throws -> [Territory] {
+        let resp: TerritoriesResponse = try await get(
+            "/api/leadgrid/territories?organization_id=\(organizationId)")
+        return resp.territories
+    }
+
+    /// Territorie-dekning for org-en (foreldreløse, overlapp, leads per grid).
+    func fetchCoverage(organizationId: String) async throws -> CoverageResult? {
+        let resp: CoverageResponse = try await get(
+            "/api/leadgrid/territories/coverage?organization_id=\(organizationId)")
+        return resp.coverage
+    }
+
     /// Opprett en grid fra et tegnet polygon (Apple Pencil på iPad).
     /// Koordinatene lukkes til en GeoJSON-ring ([lng,lat]).
     func createTerritory(
