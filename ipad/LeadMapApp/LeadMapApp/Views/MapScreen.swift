@@ -69,6 +69,10 @@ struct MapHomeView: View {
                     ForEach(appState.annotations) { annot in
                         annotationOverlay(annot)
                     }
+                    // Selgerens egne territorie-grids (polygon + sirkel)
+                    ForEach(appState.myTerritories) { t in
+                        territoryOverlay(t)
+                    }
                 }
                 .mapStyle(.standard(elevation: .flat))
                 .ignoresSafeArea(edges: .bottom)
@@ -78,6 +82,7 @@ struct MapHomeView: View {
                     ProjectContextCard()
                         .padding(.top, 4)
                     RemindersBanner()
+                    TerritoryBanner()
                     Spacer()
                 }
             }
@@ -197,6 +202,22 @@ struct MapHomeView: View {
             default:
                 EmptyMapContent()
             }
+        }
+    }
+
+    /// Render en territorie-grid som overlay: polygon og/eller sirkel.
+    @MapContentBuilder
+    private func territoryOverlay(_ t: Territory) -> some MapContent {
+        let coords = t.polygonCoordinates
+        if coords.count >= 3 {
+            MapPolygon(coordinates: coords)
+                .stroke(.blue, lineWidth: 2)
+                .foregroundStyle(.blue.opacity(0.10))
+        }
+        if let c = t.center, let r = t.radiusM {
+            MapCircle(center: c, radius: CLLocationDistance(r))
+                .stroke(.blue, lineWidth: 2)
+                .foregroundStyle(.blue.opacity(0.10))
         }
     }
 }

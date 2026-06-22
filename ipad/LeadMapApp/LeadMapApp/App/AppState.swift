@@ -194,6 +194,20 @@ final class AppState {
         }
     }
 
+    // ── Territorie-grids (LeadGrid territory enforcement) ──────
+    var myTerritories: [Territory] = []
+
+    func refreshTerritories() async {
+        guard let api, let orgId = activeOrganizationId else { return }
+        do {
+            let t = try await api.fetchMyTerritories(organizationId: orgId)
+            self.myTerritories = t
+            TerritoryMonitor.shared.configure(territories: t)
+        } catch {
+            print("[AppState] territories failed: \(error)")
+        }
+    }
+
     // ── Heartbeat-loop ─────────────────────────────────────────
     private var heartbeatController: HeartbeatController?
 
@@ -232,6 +246,7 @@ final class AppState {
             await startHeartbeatIfNeeded()
             startNotificationsPolling()
             await refreshAnnotations()
+            await refreshTerritories()
             if let api = self.api {
                 ProximityMonitor.shared.configure(api: api)
             }

@@ -8,6 +8,7 @@ import {
   isTerritoryActive,
   matchesAdminUnits,
   matchesPolygon,
+  matchesCircle,
   leadMatchesTerritory,
   pointMatchesTerritory,
   pickBestTerritory,
@@ -33,6 +34,9 @@ function territory(over: Partial<TerritoryRow> = {}): TerritoryRow {
     geometry: over.geometry ?? null,
     municipalities: over.municipalities ?? [],
     postalCodes: over.postalCodes ?? [],
+    centerLat: over.centerLat ?? null,
+    centerLng: over.centerLng ?? null,
+    radiusM: over.radiusM ?? null,
     priority: over.priority ?? 100,
     active: over.active ?? true,
     effectiveFrom: over.effectiveFrom ?? null,
@@ -159,6 +163,26 @@ describe("matchesPolygon / leadMatchesTerritory (kombinasjon)", () => {
     expect(pointMatchesTerritory(59.5, 10.5, t)).toBe(true);
     expect(pointMatchesTerritory(63.4, 10.4, t)).toBe(false);
     expect(pointMatchesTerritory(59.5, 10.5, territory({ geometry: null }))).toBe(false);
+  });
+});
+
+describe("matchesCircle", () => {
+  // Sirkel: 5 km rundt Oslo sentrum (59.9139, 10.7522).
+  const t = territory({ centerLat: 59.9139, centerLng: 10.7522, radiusM: 5000 });
+  it("innenfor radius matcher", () => {
+    expect(matchesCircle(lead({ latitude: 59.92, longitude: 10.76 }), t)).toBe(true);
+  });
+  it("utenfor radius matcher ikke", () => {
+    expect(matchesCircle(lead({ latitude: 60.3, longitude: 11.1 }), t)).toBe(false);
+  });
+  it("krever senter + radius + posisjon", () => {
+    expect(matchesCircle(lead({ latitude: 59.92, longitude: 10.76 }), territory())).toBe(false);
+    expect(matchesCircle(lead({ latitude: null, longitude: null }), t)).toBe(false);
+  });
+  it("inngår i kombinasjon (leadMatchesTerritory)", () => {
+    expect(leadMatchesTerritory(lead({ latitude: 59.92, longitude: 10.76 }), t)).toBe(true);
+    expect(pointMatchesTerritory(59.92, 10.76, t)).toBe(true);
+    expect(pointMatchesTerritory(60.3, 11.1, t)).toBe(false);
   });
 });
 

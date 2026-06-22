@@ -123,6 +123,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       const r = await pool.query(
         `SELECT t.id::text, t.organization_id::text, t.name, t.assigned_user_id,
                 t.sales_team_id::text, t.geometry, t.municipalities, t.postal_codes,
+                t.center_lat, t.center_lng, t.radius_m,
                 t.priority, t.active, t.effective_from, t.effective_to,
                 u.email AS assigned_email
            FROM lead_territories t
@@ -134,6 +135,38 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       return res.json({ territories: r.rows });
     } catch (err) {
       return res.status(500).json({ error: "list_failed", detail: String(err) });
+    }
+  });
+
+  // ─── GET /api/leadgrid/territories/mine ───────────────────────────
+  // Kun den innloggede selgerens egne grids (direkte tildelt ELLER via
+  // team). iPad henter denne og gjør on-device geofence-sjekk lokalt.
+  app.get("/api/leadgrid/territories/mine", permView, async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "Innlogging kreves" });
+    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
+    if (!orgId) return res.json({ territories: [] });
+    try {
+      const r = await pool.query(
+        `SELECT t.id::text, t.name, t.geometry, t.municipalities, t.postal_codes,
+                t.center_lat, t.center_lng, t.radius_m, t.priority, t.active,
+                t.assigned_user_id
+           FROM lead_territories t
+          WHERE t.organization_id = $1::uuid AND t.active = TRUE
+            AND (
+              t.assigned_user_id = $2
+              OR t.sales_team_id IN (
+                SELECT sales_team_id FROM organization_members
+                 WHERE organization_id = $1::uuid AND user_id = $2
+                   AND sales_team_id IS NOT NULL
+              )
+            )
+          ORDER BY t.priority DESC`,
+        [orgId, session.userId],
+      );
+      return res.json({ territories: r.rows });
+    } catch (err) {
+      return res.status(500).json({ error: "mine_failed", detail: String(err) });
     }
   });
 
@@ -151,6 +184,9 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       geometry?: unknown;
       municipalities?: string[];
       postal_codes?: string[];
+      center_lat?: number | null;
+      center_lng?: number | null;
+      radius_m?: number | null;
       priority?: number;
       effective_from?: string | null;
       effective_to?: string | null;
@@ -160,7 +196,10 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
     }
     const municipalities = Array.isArray(b.municipalities) ? b.municipalities : [];
     const postalCodes = Array.isArray(b.postal_codes) ? b.postal_codes : [];
-    if (b.geometry == null && municipalities.length === 0 && postalCodes.length === 0) {
+    const hasCircle =
+      typeof b.center_lat === "number" && typeof b.center_lng === "number" &&
+      typeof b.radius_m === "number" && b.radius_m > 0;
+    if (b.geometry == null && municipalities.length === 0 && postalCodes.length === 0 && !hasCircle) {
       return res.status(400).json({ error: "grid_uten_definisjon" });
     }
 
@@ -168,13 +207,18 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       const r = await pool.query<{ id: string }>(
         `INSERT INTO lead_territories
            (organization_id, name, assigned_user_id, sales_team_id, geometry,
-            municipalities, postal_codes, priority, effective_from, effective_to, created_by)
-         VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11)
+            municipalities, postal_codes, center_lat, center_lng, radius_m,
+            priority, effective_from, effective_to, created_by)
+         VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING id::text`,
         [
           orgId, b.name.trim(), b.assigned_user_id ?? null, b.sales_team_id ?? null,
           b.geometry != null ? JSON.stringify(b.geometry) : null,
-          municipalities, postalCodes, b.priority ?? 100,
+          municipalities, postalCodes,
+          hasCircle ? b.center_lat : null,
+          hasCircle ? b.center_lng : null,
+          hasCircle ? b.radius_m : null,
+          b.priority ?? 100,
           b.effective_from ?? null, b.effective_to ?? null, session.userId,
         ],
       );
@@ -204,6 +248,9 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
     if ("geometry" in b) push("geometry", b.geometry != null ? JSON.stringify(b.geometry) : null, "::jsonb");
     if (Array.isArray(b.municipalities)) push("municipalities", b.municipalities);
     if (Array.isArray(b.postal_codes)) push("postal_codes", b.postal_codes);
+    if ("center_lat" in b) push("center_lat", b.center_lat ?? null);
+    if ("center_lng" in b) push("center_lng", b.center_lng ?? null);
+    if ("radius_m" in b) push("radius_m", b.radius_m ?? null);
     if (typeof b.priority === "number") push("priority", b.priority);
     if (typeof b.active === "boolean") push("active", b.active);
     if ("effective_from" in b) push("effective_from", b.effective_from ?? null);

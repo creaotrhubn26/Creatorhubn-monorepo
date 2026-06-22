@@ -31,6 +31,7 @@ import B2BAcquisitionPanel from './B2BAcquisitionPanel';
 import AgencyAcquisitionDashboard from './AgencyAcquisitionDashboard';
 import CustomerSuccessDashboard from './CustomerSuccessDashboard';
 import LeadMapPanel from './LeadMapPanel';
+import { TerritoryGridManager } from '../../components/leadgrid/TerritoryGridManager';
 import LeadMapMyDayPanel from './LeadMapMyDayPanel';
 import LeadMapLeaderboardPanel from './LeadMapLeaderboardPanel';
 import LeadMapNotificationBell from './LeadMapNotificationBell';
@@ -655,6 +656,13 @@ export default function MarketingCockpitTab() {
           </Divider>
 
           <LeadMapPanel />
+
+          <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+            <Chip label="GRIDS / TERRITORIER" size="small"
+              sx={{ background: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontSize: '0.7rem', fontWeight: 700 }} />
+          </Divider>
+
+          <TerritoryGridManager />
 
           <MarketIntelligenceSection
             projectId="theroleroom"

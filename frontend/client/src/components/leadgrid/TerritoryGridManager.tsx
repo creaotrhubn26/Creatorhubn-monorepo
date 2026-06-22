@@ -26,6 +26,8 @@ import {
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import AddIcon from "@mui/icons-material/Add";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import EditLocationAltIcon from "@mui/icons-material/EditLocationAlt";
+import { TerritoryPolygonDrawer } from "./TerritoryPolygonDrawer";
 
 interface Territory {
   id: string;
@@ -73,7 +75,11 @@ export function TerritoryGridManager({ organizationId }: Props) {
   const [postalCodes, setPostalCodes] = useState("");
   const [geometryText, setGeometryText] = useState("");
   const [priority, setPriority] = useState(100);
+  const [centerLat, setCenterLat] = useState("");
+  const [centerLng, setCenterLng] = useState("");
+  const [radiusKm, setRadiusKm] = useState("");
   const [saving, setSaving] = useState(false);
+  const [drawing, setDrawing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,8 +119,12 @@ export function TerritoryGridManager({ organizationId }: Props) {
       try { geometry = JSON.parse(geometryText); }
       catch { setSnack({ kind: "err", msg: "Ugyldig GeoJSON" }); return; }
     }
-    if (!geometry && muni.length === 0 && post.length === 0) {
-      setSnack({ kind: "err", msg: "Angi minst kommuner, postnummer eller polygon" });
+    const cLat = centerLat.trim() ? Number(centerLat) : null;
+    const cLng = centerLng.trim() ? Number(centerLng) : null;
+    const radM = radiusKm.trim() ? Math.round(Number(radiusKm) * 1000) : null;
+    const hasCircle = cLat != null && cLng != null && radM != null && radM > 0;
+    if (!geometry && muni.length === 0 && post.length === 0 && !hasCircle) {
+      setSnack({ kind: "err", msg: "Angi minst kommuner, postnummer, polygon eller sirkel" });
       return;
     }
     setSaving(true);
@@ -128,6 +138,9 @@ export function TerritoryGridManager({ organizationId }: Props) {
           municipalities: muni,
           postal_codes: post,
           geometry,
+          center_lat: hasCircle ? cLat : null,
+          center_lng: hasCircle ? cLng : null,
+          radius_m: hasCircle ? radM : null,
           priority,
         }),
       });
@@ -141,6 +154,7 @@ export function TerritoryGridManager({ organizationId }: Props) {
         });
         setName(""); setAssignedUserId(""); setMunicipalities("");
         setPostalCodes(""); setGeometryText(""); setPriority(100);
+        setCenterLat(""); setCenterLng(""); setRadiusKm("");
         await load();
       } else {
         setSnack({ kind: "err", msg: j?.error ?? "Kunne ikke opprette" });
@@ -192,10 +206,40 @@ export function TerritoryGridManager({ organizationId }: Props) {
                          placeholder="0150 0151 5003" value={postalCodes}
                          onChange={(e) => setPostalCodes(e.target.value)} />
             </Stack>
-            <TextField label="Polygon-GeoJSON (valgfritt — kart-tegning kommer)" size="small"
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Button size="small" variant={drawing ? "contained" : "outlined"}
+                      startIcon={<EditLocationAltIcon />} onClick={() => setDrawing((d) => !d)}>
+                {drawing ? "Skjul kart" : "Tegn på kart"}
+              </Button>
+              {geometryText.trim() && (
+                <Chip size="small" color="success" label="Polygon satt"
+                      onDelete={() => setGeometryText("")} />
+              )}
+            </Stack>
+            {drawing && (
+              <TerritoryPolygonDrawer
+                onPolygon={(geo) => {
+                  setGeometryText(JSON.stringify(geo));
+                  setDrawing(false);
+                  setSnack({ kind: "ok", msg: "Polygon lagt til — husk å lagre grid" });
+                }}
+              />
+            )}
+            <TextField label="Polygon-GeoJSON (valgfritt — eller bruk «Tegn på kart»)" size="small"
                        fullWidth multiline minRows={2}
                        placeholder='{"type":"Polygon","coordinates":[[[10,59],[11,59],[11,60],[10,60],[10,59]]]}'
                        value={geometryText} onChange={(e) => setGeometryText(e.target.value)} />
+            <Typography variant="caption" color="text.secondary">
+              Sirkel-grid (valgfritt) — kreves for bakgrunns-geofence på iPad
+            </Typography>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+              <TextField label="Senter lat" size="small" fullWidth value={centerLat}
+                         placeholder="59.9139" onChange={(e) => setCenterLat(e.target.value)} />
+              <TextField label="Senter lng" size="small" fullWidth value={centerLng}
+                         placeholder="10.7522" onChange={(e) => setCenterLng(e.target.value)} />
+              <TextField label="Radius (km)" size="small" fullWidth value={radiusKm}
+                         placeholder="5" onChange={(e) => setRadiusKm(e.target.value)} />
+            </Stack>
             <Box>
               <Button variant="contained" startIcon={<AddIcon />} disabled={saving} onClick={create}>
                 {saving ? "Lagrer…" : "Opprett grid"}

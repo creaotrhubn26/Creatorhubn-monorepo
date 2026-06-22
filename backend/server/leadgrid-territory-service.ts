@@ -35,6 +35,9 @@ export interface TerritoryRow {
   geometry: unknown | null; // GeoJSON (Feature | Geometry)
   municipalities: string[];
   postalCodes: string[];
+  centerLat: number | null;
+  centerLng: number | null;
+  radiusM: number | null;
   priority: number;
   active: boolean;
   effectiveFrom: Date | null;
@@ -159,17 +162,29 @@ export function matchesPolygon(lead: LeadGeo, t: TerritoryRow): boolean {
   return pointInGeometry(lead.latitude, lead.longitude, t.geometry);
 }
 
-/**
- * Kombinasjon: en lead er i territoriet hvis polygon ELLER admin-enhet matcher.
- */
-export function leadMatchesTerritory(lead: LeadGeo, t: TerritoryRow): boolean {
-  return matchesPolygon(lead, t) || matchesAdminUnits(lead, t);
+/** Matcher lead-ens posisjon territoriets sirkel (senter + radius)? */
+export function matchesCircle(lead: LeadGeo, t: TerritoryRow): boolean {
+  if (
+    lead.latitude == null || lead.longitude == null ||
+    t.centerLat == null || t.centerLng == null || t.radiusM == null
+  ) {
+    return false;
+  }
+  const km = haversineKm(lead.latitude, lead.longitude, t.centerLat, t.centerLng);
+  return km * 1000 <= t.radiusM;
 }
 
-/** Er punktet (lat,lng) innenfor territoriet (kun polygon-delen)? */
+/**
+ * Kombinasjon: en lead er i territoriet hvis polygon, sirkel ELLER admin-enhet matcher.
+ */
+export function leadMatchesTerritory(lead: LeadGeo, t: TerritoryRow): boolean {
+  return matchesPolygon(lead, t) || matchesCircle(lead, t) || matchesAdminUnits(lead, t);
+}
+
+/** Er punktet (lat,lng) innenfor territoriet (geografisk: polygon eller sirkel)? */
 export function pointMatchesTerritory(lat: number, lng: number, t: TerritoryRow): boolean {
-  if (t.geometry == null) return false;
-  return pointInGeometry(lat, lng, t.geometry);
+  const geo: LeadGeo = { latitude: lat, longitude: lng, postalCode: null, municipalityCode: null };
+  return matchesPolygon(geo, t) || matchesCircle(geo, t);
 }
 
 /**
@@ -178,11 +193,10 @@ export function pointMatchesTerritory(lat: number, lng: number, t: TerritoryRow)
  */
 export function pickBestTerritory(matches: TerritoryRow[]): TerritoryRow | null {
   if (matches.length === 0) return null;
+  const hasShape = (t: TerritoryRow) => (t.geometry != null || t.radiusM != null) ? 1 : 0;
   return [...matches].sort((a, b) => {
     if (b.priority !== a.priority) return b.priority - a.priority;
-    const aHasPoly = a.geometry != null ? 1 : 0;
-    const bHasPoly = b.geometry != null ? 1 : 0;
-    return bHasPoly - aHasPoly;
+    return hasShape(b) - hasShape(a);
   })[0];
 }
 
@@ -221,6 +235,9 @@ function mapRow(r: Record<string, unknown>): TerritoryRow {
     geometry: r.geometry ?? null,
     municipalities: Array.isArray(r.municipalities) ? (r.municipalities as string[]) : [],
     postalCodes: Array.isArray(r.postal_codes) ? (r.postal_codes as string[]) : [],
+    centerLat: r.center_lat != null ? Number(r.center_lat) : null,
+    centerLng: r.center_lng != null ? Number(r.center_lng) : null,
+    radiusM: r.radius_m != null ? Number(r.radius_m) : null,
     priority: Number(r.priority ?? 100),
     active: r.active !== false,
     effectiveFrom: r.effective_from ? new Date(r.effective_from as string) : null,
@@ -231,6 +248,7 @@ function mapRow(r: Record<string, unknown>): TerritoryRow {
 const SELECT_COLS = `
   id::text, organization_id::text, name, assigned_user_id,
   sales_team_id::text, geometry, municipalities, postal_codes,
+  center_lat, center_lng, radius_m,
   priority, active, effective_from, effective_to`;
 
 /** Alle aktive territorier i en org. */
