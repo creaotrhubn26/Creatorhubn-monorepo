@@ -51,4 +51,43 @@ extension DashboardClient {
         guard let id = resp.resolvedId else { throw DashboardError.decode("editing job: no id") }
         return id
     }
+
+    // MARK: - Source files (photographer -> editor)
+
+    struct SourceUploadTarget: Decodable, Sendable {
+        let uploadUrl: String
+        let key: String?
+        let fileId: String?
+    }
+
+    /// Ask the backend for a presigned PUT so the photographer can upload one
+    /// source/raw file to staging for the editor to pull.
+    func requestSourceUpload(jobId: String, fileName: String, contentType: String) async throws -> SourceUploadTarget {
+        struct Body: Encodable { let fileName: String; let contentType: String }
+        return try await postJSON(
+            path: "/api/editing/jobs/\(jobId)/source-upload-url",
+            body: Body(fileName: fileName, contentType: contentType),
+        )
+    }
+
+    /// PUT the raw bytes straight to the presigned staging URL (no app auth —
+    /// the signature carries the grant). Content-Type must match what was signed.
+    func uploadToPresignedURL(_ urlString: String, data: Data, contentType: String) async throws {
+        guard let url = URL(string: urlString) else { throw DashboardError.transport("invalid upload url") }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.httpBody = data
+        let (respData, response) = try await self.data(for: request)
+        try check(response, respData)
+    }
+
+    /// Convenience: presign + upload one source file in a single call. Returns the
+    /// staging key on success.
+    @discardableResult
+    func sendSourceFile(jobId: String, fileName: String, contentType: String, data: Data) async throws -> String? {
+        let target = try await requestSourceUpload(jobId: jobId, fileName: fileName, contentType: contentType)
+        try await uploadToPresignedURL(target.uploadUrl, data: data, contentType: contentType)
+        return target.key
+    }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// "Send til ekstern redigerer" — connect the project to the Partner Program
 /// discovery: browse approved editing partners, pick one, and send the job
@@ -52,10 +53,14 @@ final class SendToEditorModel {
     }
 }
 
+/// Wraps the new job id so it can drive an Identifiable sheet.
+private struct SentJob: Identifiable { let id: String; let vendorName: String }
+
 struct SendToEditorView: View {
     @State private var model: SendToEditorModel
     @Environment(\.dismiss) private var dismiss
     @State private var selected: EditingVendor?
+    @State private var sentJob: SentJob?
 
     init(projectId: String?, projectTitle: String?) {
         _model = State(initialValue: SendToEditorModel(projectId: projectId, projectTitle: projectTitle))
@@ -99,9 +104,15 @@ struct SendToEditorView: View {
                 SendBriefSheet(vendor: v, projectTitle: model.projectTitle, sending: model.sending) { brief, amount, services in
                     Task {
                         await model.send(vendor: v, brief: brief, amountKr: amount, services: services)
-                        if model.sentJobId != nil { selected = nil; dismiss() }
+                        if let jobId = model.sentJobId {
+                            selected = nil
+                            sentJob = SentJob(id: jobId, vendorName: v.vendorName ?? "redigereren")
+                        }
                     }
                 }
+            }
+            .sheet(item: $sentJob) { job in
+                SourceUploadView(jobId: job.id, vendorName: job.vendorName) { dismiss() }
             }
         }
         .chBranded()
@@ -215,5 +226,113 @@ private struct SendBriefSheet: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Source-file upload (photographer -> editor)
+
+@MainActor
+@Observable
+final class SourceUploadModel {
+    let jobId: String
+    struct Upload: Identifiable, Sendable {
+        let id = UUID()
+        let name: String
+        var state: State
+        enum State: Equatable { case uploading, done, failed(String) }
+    }
+    private(set) var uploads: [Upload] = []
+
+    init(jobId: String) { self.jobId = jobId }
+
+    var doneCount: Int { uploads.filter { $0.state == .done }.count }
+
+    func add(_ items: [PhotosPickerItem]) async {
+        guard let client = DashboardClient.make() else { return }
+        for item in items {
+            let name = "kilde-\(Int(Date().timeIntervalSince1970))-\(uploads.count + 1).jpg"
+            let idx = uploads.count
+            uploads.append(Upload(name: name, state: .uploading))
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    uploads[idx].state = .failed("kunne ikke lese bilde"); continue
+                }
+                try await client.sendSourceFile(jobId: jobId, fileName: name, contentType: "image/jpeg", data: data)
+                uploads[idx].state = .done
+            } catch {
+                let msg = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription
+                if uploads.indices.contains(idx) { uploads[idx].state = .failed(msg) }
+            }
+        }
+    }
+}
+
+/// After the brief is sent, the photographer can attach source/raw files that
+/// the editor pulls from secure staging. Optional — they can finish without.
+struct SourceUploadView: View {
+    @State private var model: SourceUploadModel
+    @State private var picks: [PhotosPickerItem] = []
+    let vendorName: String
+    let onDone: () -> Void
+
+    init(jobId: String, vendorName: String, onDone: @escaping () -> Void) {
+        _model = State(initialValue: SourceUploadModel(jobId: jobId))
+        self.vendorName = vendorName
+        self.onDone = onDone
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Label("Forespørselen er sendt til \(vendorName).", systemImage: "checkmark.seal.fill")
+                        .foregroundStyle(CHTheme.accent)
+                        .listRowBackground(CHTheme.surface)
+                } footer: {
+                    Text("Last opp kildefilene (rå/originaler). De overføres sikkert til staging, og redigereren henter dem ned.")
+                        .foregroundStyle(CHTheme.textMuted)
+                }
+
+                Section {
+                    PhotosPicker(selection: $picks, matching: .images) {
+                        Label("Velg bilder", systemImage: "photo.on.rectangle.angled")
+                            .foregroundStyle(CHTheme.accent)
+                    }
+                    .listRowBackground(CHTheme.surface)
+                }
+
+                if !model.uploads.isEmpty {
+                    Section("Filer (\(model.doneCount)/\(model.uploads.count))") {
+                        ForEach(model.uploads) { u in
+                            HStack {
+                                Text(u.name).font(.caption).foregroundStyle(CHTheme.textSecondary).lineLimit(1)
+                                Spacer()
+                                switch u.state {
+                                case .uploading: ProgressView().controlSize(.small)
+                                case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(CHTheme.success)
+                                case .failed(let m):
+                                    Label(m, systemImage: "exclamationmark.triangle.fill")
+                                        .labelStyle(.iconOnly).foregroundStyle(CHTheme.warning)
+                                }
+                            }
+                            .listRowBackground(CHTheme.surface)
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(CHTheme.bg.ignoresSafeArea())
+            .navigationTitle("Kildefiler")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Ferdig") { onDone() } } }
+            .onChange(of: picks) { _, newItems in
+                guard !newItems.isEmpty else { return }
+                let items = newItems
+                picks = []
+                Task { await model.add(items) }
+            }
+        }
+        .chBranded()
     }
 }
