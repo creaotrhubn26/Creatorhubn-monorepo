@@ -83,6 +83,9 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
       const territories = await loadUserTerritories(pool, orgId, session.userId);
 
       // Kandidater: mine tildelte leads med koordinater som er forfalt/høy-score.
+      // FIX (2026-06-22): crm_customers har ikke organization_id-kolonne —
+      // filtrer org via owner_user_id IN organization_members (PR #837/#848).
+      // Beholder cp.organization_id OR-alternativ for legacy casting-prosjekter.
       const cand = await pool.query<CandidateLead & { latitude: any; longitude: any }>(
         `SELECT c.id::text, c.name, c.latitude, c.longitude,
                 c.postal_code AS "postalCode", c.municipality_code AS "municipalityCode",
@@ -90,7 +93,10 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
            FROM crm_customers c
            LEFT JOIN casting_projects cp ON cp.id = c.project_id
           WHERE c.assigned_user_id = $1
-            AND (c.organization_id = $2::uuid OR cp.organization_id = $2::uuid)
+            AND (c.owner_user_id IN (
+                    SELECT user_id::text FROM organization_members WHERE organization_id = $2::uuid
+                 )
+                 OR cp.organization_id = $2::uuid)
             AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
             AND c.lead_status NOT IN ('won','lost','do_not_contact')
             AND (COALESCE(c.follow_up_priority,0) >= 50

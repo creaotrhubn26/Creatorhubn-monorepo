@@ -390,11 +390,16 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
         latitude: number | null; longitude: number | null;
         postal_code: string | null; municipality_code: string | null;
       }>(
+        // FIX (2026-06-22): crm_customers har ikke organization_id —
+        // bruk owner_user_id IN organization_members (PR #837/#848).
         `SELECT c.id::text, c.name, c.latitude, c.longitude,
                 c.postal_code, c.municipality_code
            FROM crm_customers c
            LEFT JOIN casting_projects cp ON cp.id = c.project_id
-          WHERE (c.organization_id = $1::uuid OR cp.organization_id = $1::uuid)
+          WHERE (c.owner_user_id IN (
+                    SELECT user_id::text FROM organization_members WHERE organization_id = $1::uuid
+                 )
+                 OR cp.organization_id = $1::uuid)
             AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL`,
         [orgId],
       );
