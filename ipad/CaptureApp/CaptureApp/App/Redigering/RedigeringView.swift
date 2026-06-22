@@ -13,6 +13,9 @@ final class RedigeringModel {
     /// The recipe being tuned for the selected asset (per-asset, kept locally).
     var recipe: MagicRecipe = .product
     var presetName: String = "Produkt Clean"
+    /// Exposure in EV stops (-2…+2) — a true exposure control, applied on top
+    /// of the recipe so it brightens/darkens the whole frame (not just shadows).
+    var exposureEV: Double = 0
 
     /// AI-retusj toggles (distraction/dust/reflection removal).
     var dustRemoval = true
@@ -105,9 +108,68 @@ final class RedigeringModel {
 
     private func pushUndo() { undo.append(recipe); redo.removeAll() }
 
-    /// Apply the current recipe to every asset in the queue.
+    /// Apply the current recipe to every asset in the queue + persist the
+    /// selected asset's edit so "Etter" survives across surfaces.
     func applyToSeries() {
         for a in assets { applied[a.id] = recipe }
+        Task { await persistSelected() }
+    }
+
+    var working = false
+    var statusMessage: String?
+
+    private func services() -> (store: SessionStore, backend: BackendClient, dir: URL)? {
+        guard let stored = SignInService.shared.session,
+              let url = try? AppDatabase.defaultDiskURL(),
+              let db = try? AppDatabase.openOnDisk(at: url) else { return nil }
+        let store = SessionStore(database: db)
+        let backend = BackendClient(baseURL: stored.backendBaseURL, authHeaders: SignInService.shared.authHeaders)
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("redigering", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return (store, backend, dir)
+    }
+
+    /// Real AI-retusj: detect distractions (Claude Vision) + inpaint via the
+    /// existing native AutoCleanService, then reload so the cleaned image
+    /// becomes the working base. Gated by the dust/background toggles.
+    func runAIRetouch() async {
+        guard dustRemoval || backgroundClean else { statusMessage = "Skru på Støvfjerning eller Bakgrunnsrydd først."; return }
+        guard let asset = selected, let svc = services() else { return }
+        working = true; statusMessage = "Analyserer og fjerner distraksjoner…"; defer { working = false }
+        let auto = AutoCleanService(store: svc.store, backend: svc.backend)
+        await auto.processAsset(asset, downloadDir: svc.dir, mode: .autoClean)
+        await reloadSelected(svc.store, assetId: asset.id)
+        let count = selected?.autoCleanedDetectionCount ?? 0
+        statusMessage = count > 0 ? "Fjernet \(count) distraksjoner." : "Ingen distraksjoner funnet."
+        await render()
+    }
+
+    /// Persist the current edit as the asset's enhanced variant (full-res),
+    /// so other surfaces show "Etter".
+    func persistSelected() async {
+        guard let asset = selected, let svc = services() else { return }
+        working = true; defer { working = false }
+        let useRaw = asset.autoCleanedKey == nil ? asset.rawKey : nil
+        let jpeg = asset.displayPreviewKey
+        let r = recipe; let ev = exposureEV
+        let data = await Task.detached(priority: .userInitiated) {
+            RedigeringPipeline.renderExport(rawPath: useRaw, jpegPath: jpeg, recipe: r, exposureEV: ev)
+        }.value
+        guard let data else { return }
+        let dest = svc.dir.appendingPathComponent("\(asset.id.uuidString)-enhanced.jpg")
+        do {
+            try data.write(to: dest, options: .atomic)
+            try await svc.store.attachEnhancedKey(id: asset.id, key: dest.path)
+            statusMessage = "Lagret forbedret versjon."
+        } catch { statusMessage = "Kunne ikke lagre." }
+    }
+
+    private func reloadSelected(_ store: SessionStore, assetId: UUID) async {
+        if let fresh = try? await store.fetchAsset(id: assetId),
+           let idx = assets.firstIndex(where: { $0.id == assetId }) {
+            assets[idx] = fresh
+        }
     }
 
     /// Persist the current recipe as a named local preset.
@@ -119,11 +181,16 @@ final class RedigeringModel {
     }
 
     private func render() async {
-        guard let path = selected?.displayPreviewKey else { afterImage = nil; return }
+        guard let asset = selected else { afterImage = nil; return }
         rendering = true
+        // Use the RAW source for max quality, UNLESS AI-retusj has produced a
+        // cleaned JPEG — then that cleaned image is the working base.
+        let raw = asset.autoCleanedKey == nil ? asset.rawKey : nil
+        let jpeg = asset.displayPreviewKey
         let r = recipe
+        let ev = exposureEV
         let img = await Task.detached(priority: .userInitiated) {
-            MagicPipeline.renderPreview(source: path, recipe: r)
+            RedigeringPipeline.renderPreview(rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev)
         }.value
         afterImage = img
         rendering = false
@@ -134,6 +201,7 @@ final class RedigeringModel {
 
 struct RedigeringView: View {
     @State private var model = RedigeringModel()
+    @State private var zoom: CGFloat = 1
 
     var body: some View {
         NavigationStack {
@@ -194,9 +262,10 @@ struct RedigeringView: View {
 
     private var compareCard: some View {
         BeforeAfterCompare(
-            beforePath: model.selected?.displayPreviewKey,
+            beforePath: model.selected?.previewKey ?? model.selected?.displayPreviewKey,
             after: model.afterImage,
             rendering: model.rendering,
+            zoom: $zoom,
         )
         .frame(height: 460)
         .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -204,7 +273,7 @@ struct RedigeringView: View {
 
     private var toolbarRow: some View {
         HStack(spacing: 0) {
-            toolButton("Zoom", "plus.magnifyingglass") {}
+            toolButton("Zoom", "plus.magnifyingglass", active: zoom > 1) { withAnimation { zoom = zoom > 1 ? 1 : 2 } }
             toolButton("Beskjær", "crop") {}
             toolButton("Sammenlign", "rectangle.split.2x1", active: true) {}
             toolButton("Masker", "paintbrush.pointed") {}
@@ -306,7 +375,9 @@ struct BeforeAfterCompare: View {
     let beforePath: String?
     let after: UIImage?
     let rendering: Bool
+    @Binding var zoom: CGFloat
     @State private var split: CGFloat = 0.5
+    @GestureState private var pinch: CGFloat = 1
 
     var body: some View {
         GeometryReader { geo in
@@ -330,10 +401,16 @@ struct BeforeAfterCompare: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+            .scaleEffect(max(1, zoom * pinch))
             .contentShape(Rectangle())
             .gesture(DragGesture().onChanged { v in
                 split = min(1, max(0, v.location.x / geo.size.width))
             })
+            .simultaneousGesture(
+                MagnificationGesture()
+                    .updating($pinch) { value, state, _ in state = value }
+                    .onEnded { value in zoom = min(4, max(1, zoom * value)) }
+            )
         }
     }
 
@@ -385,7 +462,7 @@ struct SmartEditPanel: View {
                 .padding(10).background(CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 10))
             }
 
-            slider("Eksponering", systemImage: "sun.max", value: $model.recipe.shadowLift, range: -1...1, signed: true)
+            slider("Eksponering", systemImage: "sun.max", value: $model.exposureEV, range: -2...2, signed: true)
             slider("Kontrast", systemImage: "circle.lefthalf.filled", value: $model.recipe.contrast, range: -1...1, signed: true)
             slider("Skarphet", systemImage: "triangle", value: $model.recipe.texture, range: 0...1, signed: false)
             slider("Metning", systemImage: "drop", value: $model.recipe.saturation, range: -1...1, signed: true)
@@ -395,6 +472,20 @@ struct SmartEditPanel: View {
             toggleRow("Støvfjerning", systemImage: "sparkle", isOn: $model.dustRemoval)
             toggleRow("Bakgrunnsrydd", systemImage: "scissors", isOn: $model.backgroundClean)
             toggleRow("Fjern refleks", systemImage: "circle.dashed", isOn: $model.reflectionRemoval)
+
+            Button { Task { await model.runAIRetouch() } } label: {
+                HStack {
+                    if model.working { ProgressView().controlSize(.small) }
+                    Label("Kjør AI-retusj", systemImage: "wand.and.stars.inverse")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered).controlSize(.large).tint(CHTheme.accent)
+            .disabled(model.working)
+
+            if let msg = model.statusMessage {
+                Text(msg).font(.caption2).foregroundStyle(CHTheme.textMuted)
+            }
 
             Button { model.applyToSeries() } label: {
                 Label("Bruk på serie", systemImage: "sparkles").frame(maxWidth: .infinity)
