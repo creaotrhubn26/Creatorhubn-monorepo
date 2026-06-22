@@ -11,6 +11,11 @@
 
 import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  userHasTerritory,
+  isPointInUserGrid,
+  recordBreach,
+} from "./leadgrid-territory-service.js";
 
 const CLAUDE_MODEL = "claude-opus-4-7";
 let cachedAnthropic: Anthropic | null = null;
@@ -368,7 +373,45 @@ export async function logVisit(
     ],
   );
 
-  return { ok: true, visitId: v.rows[0].id };
+  const visitId = v.rows[0].id;
+
+  // Territorie-håndheving (myk): et fysisk besøk med GPS utenfor selgerens
+  // grid flagges på besøket og logges/varsles. Aldri kastende.
+  if (
+    opts.visitType === "physical" &&
+    typeof opts.visitLatitude === "number" &&
+    typeof opts.visitLongitude === "number"
+  ) {
+    void (async () => {
+      try {
+        const orgRes = await pool.query<{ organization_id: string | null }>(
+          `SELECT organization_id::text FROM crm_customers WHERE id = $1::uuid LIMIT 1`,
+          [opts.leadId],
+        );
+        const orgId = orgRes.rows[0]?.organization_id;
+        if (!orgId) return;
+        if (!(await userHasTerritory(pool, orgId, opts.ownerUserId))) return;
+        const inside = await isPointInUserGrid(
+          pool, orgId, opts.ownerUserId,
+          opts.visitLatitude as number, opts.visitLongitude as number,
+        );
+        if (inside) return;
+        await pool.query(
+          `UPDATE crm_visits SET out_of_grid = TRUE WHERE id = $1::uuid`,
+          [visitId],
+        );
+        await recordBreach(pool, {
+          organizationId: orgId,
+          userId: opts.ownerUserId,
+          kind: "visit_out_of_grid",
+          leadId: opts.leadId,
+          detail: { lat: opts.visitLatitude, lng: opts.visitLongitude },
+        });
+      } catch { /* aldri velt besøks-logging */ }
+    })();
+  }
+
+  return { ok: true, visitId };
 }
 
 export async function listVisits(

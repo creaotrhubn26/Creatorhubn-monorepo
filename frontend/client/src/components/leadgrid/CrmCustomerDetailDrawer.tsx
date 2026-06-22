@@ -29,6 +29,7 @@ import { LeadStatusChanger } from "./LeadStatusChanger";
 import { LeadStatusHistory } from "./LeadStatusHistory";
 import { AssignmentStatusChip } from "./AssignmentStatusChip";
 import { AssignLeadDialog } from "./AssignLeadDialog";
+import { TerritoryGridChip } from "./TerritoryGridChip";
 
 interface CustomerDetail {
   id: string;
@@ -195,6 +196,9 @@ export function CrmCustomerDetailDrawer({ customerId, onClose, onUpdated }: Prop
                 canReassign
                 onReassignClick={(level) => setReassignLevel(level)}
               />
+              <Box sx={{ mt: 1 }}>
+                <TerritoryGridChip leadId={customer.id} />
+              </Box>
             </Box>
 
             <Box>

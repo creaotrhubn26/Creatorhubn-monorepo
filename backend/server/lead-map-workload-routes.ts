@@ -28,6 +28,12 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { notifyLeadAssigned } from "./lead-map-notification-service.js";
+import {
+  loadOrgTerritories,
+  resolveLeadTerritories,
+  pickBestTerritory,
+  type LeadGeo,
+} from "./leadgrid-territory-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -355,11 +361,15 @@ export function registerLeadMapWorkloadRoutes({ app, pool, activeSessions }: Dep
       const strategy = body.strategy ?? "territory";
       const limit = Math.min(body.limit ?? 50, 200);
       try {
-        // Hent u-tildelte leads i org-en (via project_id)
+        // Hent u-tildelte leads i org-en (via project_id), inkl. geo for
+        // autoritativ grid-matching (polygon + kommune/postnummer).
         const leadsRes = await pool.query<{
           id: string; city: string | null; address: string | null;
+          latitude: number | null; longitude: number | null;
+          postal_code: string | null; municipality_code: string | null;
         }>(
-          `SELECT c.id::text, c.city, c.address
+          `SELECT c.id::text, c.city, c.address,
+                  c.latitude, c.longitude, c.postal_code, c.municipality_code
              FROM crm_customers c
              LEFT JOIN casting_projects cp ON cp.id = c.project_id
             WHERE c.assigned_user_id IS NULL
@@ -390,17 +400,40 @@ export function registerLeadMapWorkloadRoutes({ app, pool, activeSessions }: Dep
         if (sellersRes.rows.length === 0) {
           return res.status(400).json({ error: "ingen_tilgjengelige_selgere" });
         }
+        // Autoritative grids for org-en (polygon + kommune/postnummer).
+        const territories = await loadOrgTerritories(pool, orgId);
+        const availableSellers = new Set(sellersRes.rows.map((s) => s.user_id));
+
         const assignments: Array<{ leadId: string; userId: string; matchType: string }> = [];
         let roundRobinIdx = 0;
         for (const lead of leadsRes.rows) {
           let seller: typeof sellersRes.rows[0] | undefined;
           let matchType = "round_robin";
-          if (strategy === "territory" && (lead.city || lead.address)) {
-            const haystack = `${lead.city ?? ""} ${lead.address ?? ""}`.toLowerCase();
-            seller = sellersRes.rows.find((s) =>
-              s.territory && haystack.includes(s.territory.toLowerCase().split(/[\s,]+/)[0]),
+          if (strategy === "territory") {
+            // 1) Autoritativ grid: match på polygon ELLER admin-enhet, og
+            //    tildel territoriets eier (hvis den er en tilgjengelig selger).
+            const leadGeo: LeadGeo = {
+              latitude: lead.latitude != null ? Number(lead.latitude) : null,
+              longitude: lead.longitude != null ? Number(lead.longitude) : null,
+              postalCode: lead.postal_code,
+              municipalityCode: lead.municipality_code,
+            };
+            const matched = resolveLeadTerritories(leadGeo, territories).filter(
+              (t) => t.assignedUserId && availableSellers.has(t.assignedUserId),
             );
-            if (seller) matchType = "auto_territory";
+            const best = pickBestTerritory(matched);
+            if (best?.assignedUserId) {
+              seller = sellersRes.rows.find((s) => s.user_id === best.assignedUserId);
+              if (seller) matchType = "auto_territory";
+            }
+            // 2) Fallback: gammel fritekst-territory-match (bakoverkompat).
+            if (!seller && (lead.city || lead.address)) {
+              const haystack = `${lead.city ?? ""} ${lead.address ?? ""}`.toLowerCase();
+              seller = sellersRes.rows.find((s) =>
+                s.territory && haystack.includes(s.territory.toLowerCase().split(/[\s,]+/)[0]),
+              );
+              if (seller) matchType = "auto_territory";
+            }
           }
           if (!seller) {
             seller = sellersRes.rows[roundRobinIdx % sellersRes.rows.length];
