@@ -264,7 +264,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
         return res.status(403).json({ error: "ikke_medlem" });
       }
       try {
-        // u.name eksisterer ikke — users-tabellen har first_name + last_name.
+        // NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') eksisterer ikke — users-tabellen har first_name + last_name.
         // COALESCE bygger displayName fra det vi har.
         const r = await pool.query<{
           id: string; user_id: string; role: string;
