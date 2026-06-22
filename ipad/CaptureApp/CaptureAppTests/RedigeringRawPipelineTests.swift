@@ -115,6 +115,34 @@ final class RedigeringRawPipelineTests: XCTestCase {
                              "full-res export downscaled unexpectedly")
     }
 
+    /// 9. BESKJÆR — cropping to a normalised rect yields the expected pixels.
+    func testCropProducesExpectedSize() throws {
+        let raw = try rawData()
+        let jpeg = try RAWExportPipeline.render(
+            rawData: raw, recipe: .neutral, identifierHint: "cr2",
+            targetMaxDimension: 1600, colorPurpose: .appPreview,
+        )
+        let full = try XCTUnwrap(UIImage(data: jpeg))
+        let fullW = full.cgImage!.width
+        let cropped = RedigeringPipeline.cropped(full, to: CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5))
+        let cw = cropped.cgImage!.width
+        // Allow ±2px rounding from .integral.
+        XCTAssertEqual(Double(cw), Double(fullW) * 0.5, accuracy: 2, "crop width != 50% of source")
+        XCTAssertLessThan(cw, fullW, "crop did not shrink the image")
+    }
+
+    /// 10. FJERN REFLEKS — strong highlight recovery measurably changes the
+    /// rendered pixels vs. the plain recipe.
+    func testReflectionRemovalChangesPixels() throws {
+        let base = try render(.product)
+        var refl = MagicRecipe.product
+        refl.highlightRecovery = 0.7
+        refl.dehaze = 0.2
+        let out = try render(refl)
+        XCTAssertNotEqual(Int(out.luma * 200), Int(base.luma * 200),
+                          "reflection/highlight recovery had no measurable effect")
+    }
+
     // MARK: - Helpers
 
     /// Mean luma over a downsampled grid — cheap proxy for "the image changed".

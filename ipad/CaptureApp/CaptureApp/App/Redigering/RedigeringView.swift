@@ -31,6 +31,11 @@ final class RedigeringModel {
 
     /// Per-asset recipes applied via "Bruk på serie" / individual edits.
     private var applied: [UUID: MagicRecipe] = [:]
+    /// Per-asset crop (normalised rect, origin top-left).
+    private var crops: [UUID: CGRect] = [:]
+    /// Full-series batch progress.
+    private(set) var seriesProgress = 0
+    private(set) var seriesTotal = 0
     /// Undo/redo stacks of the recipe for the selected asset.
     private var undo: [MagicRecipe] = []
     private var redo: [MagicRecipe] = []
@@ -108,11 +113,35 @@ final class RedigeringModel {
 
     private func pushUndo() { undo.append(recipe); redo.removeAll() }
 
-    /// Apply the current recipe to every asset in the queue + persist the
-    /// selected asset's edit so "Etter" survives across surfaces.
+    /// Apply the current recipe to every asset, then render + persist each one
+    /// full-res in the background (real batch). Crop is per-asset; the recipe +
+    /// exposure + reflection apply to all.
     func applyToSeries() {
         for a in assets { applied[a.id] = recipe }
-        Task { await persistSelected() }
+        Task { await persistSeries() }
+    }
+
+    private func persistSeries() async {
+        guard let svc = services() else { return }
+        working = true; seriesTotal = assets.count; seriesProgress = 0
+        defer { working = false; seriesTotal = 0 }
+        let r = effectiveRecipe(); let ev = exposureEV
+        for a in assets {
+            let useRaw = a.autoCleanedKey == nil ? a.rawKey : nil
+            let jpeg = a.displayPreviewKey
+            let crop = crops[a.id]
+            let data = await Task.detached(priority: .utility) {
+                RedigeringPipeline.renderExport(rawPath: useRaw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
+            }.value
+            if let data {
+                let dest = svc.dir.appendingPathComponent("\(a.id.uuidString)-enhanced.jpg")
+                if (try? data.write(to: dest, options: .atomic)) != nil {
+                    try? await svc.store.attachEnhancedKey(id: a.id, key: dest.path)
+                }
+            }
+            seriesProgress += 1
+        }
+        statusMessage = "Lagret \(seriesProgress) bilder."
     }
 
     var working = false
@@ -152,9 +181,9 @@ final class RedigeringModel {
         working = true; defer { working = false }
         let useRaw = asset.autoCleanedKey == nil ? asset.rawKey : nil
         let jpeg = asset.displayPreviewKey
-        let r = recipe; let ev = exposureEV
+        let r = effectiveRecipe(); let ev = exposureEV; let crop = crops[asset.id]
         let data = await Task.detached(priority: .userInitiated) {
-            RedigeringPipeline.renderExport(rawPath: useRaw, jpegPath: jpeg, recipe: r, exposureEV: ev)
+            RedigeringPipeline.renderExport(rawPath: useRaw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
         }.value
         guard let data else { return }
         let dest = svc.dir.appendingPathComponent("\(asset.id.uuidString)-enhanced.jpg")
@@ -163,6 +192,37 @@ final class RedigeringModel {
             try await svc.store.attachEnhancedKey(id: asset.id, key: dest.path)
             statusMessage = "Lagret forbedret versjon."
         } catch { statusMessage = "Kunne ikke lagre." }
+    }
+
+    /// Masker tool: remove whatever the photographer marked. Builds a PNG mask
+    /// (white = remove) from a normalised rect and runs the real inpaint
+    /// endpoint, then makes the cleaned image the working base.
+    func runManualInpaint(normalizedRect: CGRect) async {
+        guard let asset = selected, let svc = services() else { return }
+        guard let srcPath = asset.displayPreviewKey,
+              let imageData = try? Data(contentsOf: URL(fileURLWithPath: srcPath)),
+              let img = UIImage(data: imageData), let cg = img.cgImage else { return }
+        working = true; statusMessage = "Fjerner markert område…"; defer { working = false }
+        let w = cg.width, h = cg.height
+        let rectPx = CGRect(x: normalizedRect.minX * CGFloat(w), y: normalizedRect.minY * CGFloat(h),
+                            width: normalizedRect.width * CGFloat(w), height: normalizedRect.height * CGFloat(h))
+        let format = UIGraphicsImageRendererFormat.default(); format.scale = 1; format.opaque = true
+        let maskPng = UIGraphicsImageRenderer(size: CGSize(width: w, height: h), format: format).image { _ in
+            UIColor.black.setFill(); UIBezierPath(rect: CGRect(x: 0, y: 0, width: w, height: h)).fill()
+            UIColor.white.setFill(); UIBezierPath(rect: rectPx).fill()
+        }.pngData()
+        guard let maskPng else { return }
+        do {
+            let resp = try await svc.backend.requestPhotoEnhancerInpaint(
+                imageData: imageData, imageMimeType: "image/jpeg", maskPngData: maskPng, intensity: 1.0)
+            guard let bytes = Data(base64Encoded: resp.imageBase64) else { statusMessage = "Inpaint feilet."; return }
+            let dest = svc.dir.appendingPathComponent("\(asset.id.uuidString)-masked.jpg")
+            try bytes.write(to: dest, options: .atomic)
+            try await svc.store.attachAutoCleanedKey(id: asset.id, key: dest.path, detectionCount: 1)
+            await reloadSelected(svc.store, assetId: asset.id)
+            statusMessage = "Område fjernet."
+            await render()
+        } catch { statusMessage = "Inpaint feilet." }
     }
 
     private func reloadSelected(_ store: SessionStore, assetId: UUID) async {
@@ -187,13 +247,35 @@ final class RedigeringModel {
         // cleaned JPEG — then that cleaned image is the working base.
         let raw = asset.autoCleanedKey == nil ? asset.rawKey : nil
         let jpeg = asset.displayPreviewKey
-        let r = recipe
+        let r = effectiveRecipe()
         let ev = exposureEV
+        let crop = crops[asset.id]
         let img = await Task.detached(priority: .userInitiated) {
-            RedigeringPipeline.renderPreview(rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev)
+            RedigeringPipeline.renderPreview(rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
         }.value
         afterImage = img
         rendering = false
+    }
+
+    /// Reflection removal isn't a separate model — it's a strong highlight/
+    /// specular tame layered on the recipe (recovers blown reflections +
+    /// a touch of dehaze for glare).
+    private func effectiveRecipe() -> MagicRecipe {
+        var r = recipe
+        if reflectionRemoval {
+            r.highlightRecovery = max(r.highlightRecovery, 0.7)
+            r.dehaze = max(r.dehaze, 0.2)
+        }
+        return r
+    }
+
+    // MARK: - Crop
+
+    var currentCrop: CGRect? { selectedId.flatMap { crops[$0] } }
+    func setCrop(_ rect: CGRect?) {
+        guard let id = selectedId else { return }
+        if let rect { crops[id] = rect } else { crops[id] = nil }
+        Task { await render() }
     }
 }
 
@@ -202,6 +284,8 @@ final class RedigeringModel {
 struct RedigeringView: View {
     @State private var model = RedigeringModel()
     @State private var zoom: CGFloat = 1
+    @State private var showCrop = false
+    @State private var showMask = false
 
     var body: some View {
         NavigationStack {
@@ -222,6 +306,21 @@ struct RedigeringView: View {
             .toolbar { ToolbarItem(placement: .topBarTrailing) { sessionMenu } }
         }
         .task { await model.loadSessions() }
+        .sheet(isPresented: $showCrop) {
+            if let path = model.selected?.previewKey ?? model.selected?.displayPreviewKey {
+                RectMarqueeSheet(imagePath: path, title: "Beskjær", applyLabel: "Beskjær",
+                                 initialRect: model.currentCrop, allowReset: true,
+                                 onReset: { model.setCrop(nil) }) { rect in model.setCrop(rect) }
+            }
+        }
+        .sheet(isPresented: $showMask) {
+            if let path = model.selected?.displayPreviewKey {
+                RectMarqueeSheet(imagePath: path, title: "Masker — marker for fjerning", applyLabel: "Fjern område",
+                                 initialRect: nil, allowReset: false, onReset: {}) { rect in
+                    Task { await model.runManualInpaint(normalizedRect: rect) }
+                }
+            }
+        }
         .chBranded()
     }
 
@@ -274,9 +373,9 @@ struct RedigeringView: View {
     private var toolbarRow: some View {
         HStack(spacing: 0) {
             toolButton("Zoom", "plus.magnifyingglass", active: zoom > 1) { withAnimation { zoom = zoom > 1 ? 1 : 2 } }
-            toolButton("Beskjær", "crop") {}
+            toolButton("Beskjær", "crop", active: model.currentCrop != nil) { showCrop = true }
             toolButton("Sammenlign", "rectangle.split.2x1", active: true) {}
-            toolButton("Masker", "paintbrush.pointed") {}
+            toolButton("Masker", "paintbrush.pointed") { showMask = true }
             toolButton("Angre", "arrow.uturn.backward", enabled: model.canUndo) { model.undoEdit() }
             toolButton("Gjør om", "arrow.uturn.forward", enabled: model.canRedo) { model.redoEdit() }
         }
@@ -324,12 +423,18 @@ struct RedigeringView: View {
 
     private var batchCard: some View {
         InfoCard(title: "Batch-redigering", icon: "rectangle.on.rectangle") {
-            row("checkmark.circle.fill", "\(model.appliedCount) bilder klare", CHTheme.success)
-            row("clock", "\(max(0, model.assets.count - model.appliedCount)) i kø", CHTheme.textMuted)
-            row("globe", "Levering: Web + Print", CHTheme.textSecondary)
-            ProgressView(value: Double(model.appliedCount), total: Double(max(1, model.assets.count)))
-                .tint(CHTheme.accent)
-            Text("\(model.appliedCount) / \(model.assets.count) bilder").font(.caption2).foregroundStyle(CHTheme.textMuted)
+            if model.seriesTotal > 0 {
+                row("hourglass", "Lagrer \(model.seriesProgress)/\(model.seriesTotal)…", CHTheme.accent)
+                ProgressView(value: Double(model.seriesProgress), total: Double(max(1, model.seriesTotal)))
+                    .tint(CHTheme.accent)
+            } else {
+                row("checkmark.circle.fill", "\(model.appliedCount) bilder klare", CHTheme.success)
+                row("clock", "\(max(0, model.assets.count - model.appliedCount)) i kø", CHTheme.textMuted)
+                row("globe", "Levering: Web + Print", CHTheme.textSecondary)
+                ProgressView(value: Double(model.appliedCount), total: Double(max(1, model.assets.count)))
+                    .tint(CHTheme.accent)
+                Text("\(model.appliedCount) / \(model.assets.count) bilder").font(.caption2).foregroundStyle(CHTheme.textMuted)
+            }
         }
     }
 
@@ -472,6 +577,7 @@ struct SmartEditPanel: View {
             toggleRow("Støvfjerning", systemImage: "sparkle", isOn: $model.dustRemoval)
             toggleRow("Bakgrunnsrydd", systemImage: "scissors", isOn: $model.backgroundClean)
             toggleRow("Fjern refleks", systemImage: "circle.dashed", isOn: $model.reflectionRemoval)
+                .onChange(of: model.reflectionRemoval) { _, _ in model.recipeChanged() }
 
             Button { Task { await model.runAIRetouch() } } label: {
                 HStack {
@@ -625,4 +731,102 @@ private struct InfoCard<Content: View>: View {
         .padding(14)
         .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 14))
     }
+}
+
+// MARK: - Rectangle marquee (shared by Beskjær + Masker)
+
+/// Draw a rectangle over the fitted image and return it in normalised image
+/// coordinates (origin top-left, 0…1). Used for crop and for marking a region
+/// to inpaint.
+struct RectMarqueeSheet: View {
+    let imagePath: String
+    let title: String
+    let applyLabel: String
+    let initialRect: CGRect?
+    let allowReset: Bool
+    let onReset: () -> Void
+    let onApply: (CGRect) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var startPoint: CGPoint?
+    @State private var currentRect: CGRect?   // in container coords
+
+    var body: some View {
+        NavigationStack {
+            GeometryReader { geo in
+                let image = UIImage(contentsOfFile: imagePath)
+                let fitted = fittedRect(image: image?.size ?? .zero, in: geo.size)
+                ZStack {
+                    CHTheme.bg
+                    if let image {
+                        Image(uiImage: image).resizable().scaledToFit()
+                    }
+                    if let r = displayRect(in: fitted) {
+                        Rectangle().path(in: r).stroke(CHTheme.accent, lineWidth: 2)
+                        Rectangle().path(in: r).fill(CHTheme.accent.opacity(0.12))
+                    }
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 4)
+                        .onChanged { v in
+                            let s = startPoint ?? v.startLocation
+                            startPoint = s
+                            let r = CGRect(x: min(s.x, v.location.x), y: min(s.y, v.location.y),
+                                           width: abs(v.location.x - s.x), height: abs(v.location.y - s.y))
+                                .intersection(fitted)
+                            currentRect = r
+                            if fitted.width > 0, fitted.height > 0 {
+                                normalized = CGRect(x: (r.minX - fitted.minX) / fitted.width,
+                                                    y: (r.minY - fitted.minY) / fitted.height,
+                                                    width: r.width / fitted.width,
+                                                    height: r.height / fitted.height)
+                            }
+                        }
+                        .onEnded { _ in startPoint = nil }
+                )
+            }
+            .background(CHTheme.bg.ignoresSafeArea())
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button("Avbryt") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(applyLabel) { apply() }.disabled(currentRect == nil || (currentRect?.width ?? 0) < 8)
+                }
+                if allowReset {
+                    ToolbarItem(placement: .bottomBar) {
+                        Button("Tilbakestill", role: .destructive) { onReset(); dismiss() }
+                    }
+                }
+            }
+        }
+        .chBranded()
+    }
+
+    private func fittedRect(image: CGSize, in container: CGSize) -> CGRect {
+        guard image.width > 0, image.height > 0 else { return CGRect(origin: .zero, size: container) }
+        let scale = min(container.width / image.width, container.height / image.height)
+        let w = image.width * scale, h = image.height * scale
+        return CGRect(x: (container.width - w) / 2, y: (container.height - h) / 2, width: w, height: h)
+    }
+
+    private func displayRect(in fitted: CGRect) -> CGRect? {
+        if let currentRect { return currentRect }
+        if let initialRect {
+            return CGRect(x: fitted.minX + initialRect.minX * fitted.width,
+                          y: fitted.minY + initialRect.minY * fitted.height,
+                          width: initialRect.width * fitted.width, height: initialRect.height * fitted.height)
+        }
+        return nil
+    }
+
+    private func apply() {
+        guard let norm = normalized else { return }
+        onApply(norm.intersection(CGRect(x: 0, y: 0, width: 1, height: 1)))
+        dismiss()
+    }
+
+    /// Normalised rect (0…1, image space) computed live during the drag.
+    @State private var normalized: CGRect?
 }
