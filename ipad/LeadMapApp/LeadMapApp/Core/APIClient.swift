@@ -1974,6 +1974,33 @@ extension APIClient {
     func fetchAdminErrorDetail(id: String) async throws -> AdminErrorDetailResponse {
         try await get("/api/admin-room/errors/\(id)")
     }
+
+    // -- Leadgrid Research (Claude + BRREG + website-analyse) ------
+    //
+    // Native iPad-view for "Research med AI" per kunde. Backend ligger
+    // i backend/server/leadgrid-research-routes.ts.
+
+    /// Hent cached research hvis < 30 dager gammel. Returner nil ved 404
+    /// (ingen research kjørt enda, eller stale).
+    func fetchLeadgridResearch(leadId: String) async throws -> LeadgridResearch? {
+        do {
+            let env: LeadgridResearchEnvelope = try await get(
+                "/api/leadgrid/leads/\(leadId)/research"
+            )
+            return env.research
+        } catch APIError.statusCode(404) {
+            return nil
+        }
+    }
+
+    /// Kjør hele research-pipeline nå — BRREG → website → Claude. Tar
+    /// 10-30 sek. Returnerer ny research-blob.
+    func runLeadgridResearch(leadId: String) async throws -> LeadgridResearch {
+        let env: LeadgridResearchEnvelope = try await post(
+            "/api/leadgrid/leads/\(leadId)/research"
+        )
+        return env.research
+    }
 }
 
 /// Liten shim for å dekode arbitrary JSON-verdier (string/number/bool/null).
