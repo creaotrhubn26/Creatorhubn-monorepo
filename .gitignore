@@ -202,3 +202,7 @@ scripts/.lead-map-admin-state.json
 ipad/LeadMapApp/LeadMapApp.xcodeproj
 ipad/LeadMapApp/LeadMapApp/Generated
 ipad/LeadMapApp/LeadMapWidget/Generated
+
+# Local-only RAW fixtures for Redigering testing (not committed)
+ipad/CaptureApp/CaptureApp/Resources/_MG_9300.CR2
+ipad/CaptureApp/CaptureAppTests/Resources/_MG_9300.CR2

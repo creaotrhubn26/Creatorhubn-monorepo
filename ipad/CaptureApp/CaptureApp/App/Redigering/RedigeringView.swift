@@ -57,6 +57,9 @@ final class RedigeringModel {
 
     func loadSessions() async {
         guard let ownerUserId else { errorMessage = "Ikke innlogget"; loading = false; return }
+        #if DEBUG
+        await RedigeringSampleSeeder.seedIfNeeded(ownerUserId: ownerUserId)
+        #endif
         do {
             let url = try AppDatabase.defaultDiskURL()
             let db = try AppDatabase.openOnDisk(at: url)
