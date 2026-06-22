@@ -95,6 +95,7 @@ struct ProjectDetailView: View {
                     worklogSection
                     deliverablesSection
                     sendToEditorButton
+                    editingJobsLink
                     if !model.galleries.isEmpty { galleriesSection }
                 }
             }
@@ -124,6 +125,20 @@ struct ProjectDetailView: View {
     private var sendToEditorButton: some View {
         Button { showSendToEditor = true } label: {
             Label("Send til ekstern redigerer", systemImage: "paperplane")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        .tint(CHTheme.accent)
+    }
+
+    /// Track editing jobs already sent for this project (status, delivery,
+    /// messages, approve/revision/pay).
+    private var editingJobsLink: some View {
+        NavigationLink {
+            EditingJobsView(projectId: projectId)
+        } label: {
+            Label("Redigeringsoppdrag", systemImage: "tray.full")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)

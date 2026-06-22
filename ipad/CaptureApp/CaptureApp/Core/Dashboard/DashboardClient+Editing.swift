@@ -90,4 +90,61 @@ extension DashboardClient {
         try await uploadToPresignedURL(target.uploadUrl, data: data, contentType: contentType)
         return target.key
     }
+
+    // MARK: - Job tracking (photographer)
+
+    /// All editing jobs the photographer has, newest first.
+    func listEditingJobs(status: String? = nil) async throws -> [EditingJob] {
+        struct Resp: Decodable { let jobs: [EditingJob] }
+        var path = "/api/editing/jobs"
+        if let status { path += "?status=\(status)" }
+        let resp: Resp = try await getJSON(path: path)
+        return resp.jobs
+    }
+
+    func editingJobDetail(id: String) async throws -> EditingJobDetail {
+        try await getJSON(path: "/api/editing/jobs/\(id)")
+    }
+
+    func jobMessages(id: String) async throws -> (messages: [JobMessage], canMessage: Bool) {
+        struct Resp: Decodable { let messages: [JobMessage]; let canMessage: Bool? }
+        let resp: Resp = try await getJSON(path: "/api/editing/jobs/\(id)/messages")
+        return (resp.messages, resp.canMessage ?? false)
+    }
+
+    @discardableResult
+    func sendJobMessage(id: String, body: String) async throws -> JobMessage {
+        struct Body: Encodable { let body: String }
+        struct Resp: Decodable { let message: JobMessage }
+        let resp: Resp = try await postJSON(path: "/api/editing/jobs/\(id)/messages", body: Body(body: body))
+        return resp.message
+    }
+
+    func approveJob(id: String) async throws {
+        struct Empty: Encodable {}
+        try await send(path: "/api/editing/jobs/\(id)/approve", method: "POST", body: Empty())
+    }
+
+    func requestRevision(id: String, note: String?) async throws {
+        struct Body: Encodable { let note: String? }
+        try await send(path: "/api/editing/jobs/\(id)/request-revision", method: "POST", body: Body(note: note))
+    }
+
+    func cancelJob(id: String) async throws {
+        struct Empty: Encodable {}
+        try await send(path: "/api/editing/jobs/\(id)/cancel", method: "POST", body: Empty())
+    }
+
+    struct PayResult: Decodable, Sendable {
+        let method: String?
+        let status: String?
+        let checkoutUrl: String?
+    }
+
+    /// Start payment. Invoice puts the job straight into escrow ('held');
+    /// Stripe returns a checkout URL to open in the browser.
+    func payJob(id: String, method: String) async throws -> PayResult {
+        struct Body: Encodable { let paymentMethod: String }
+        return try await postJSON(path: "/api/editing/jobs/\(id)/pay", body: Body(paymentMethod: method))
+    }
 }
