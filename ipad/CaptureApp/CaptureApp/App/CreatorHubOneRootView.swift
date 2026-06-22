@@ -23,6 +23,7 @@ struct CreatorHubOneRootView: View {
         case today
         case shoot
         case gallery
+        case redigering
         case admin
         case tilbud
         case pricing
@@ -123,6 +124,14 @@ struct CreatorHubOneRootView: View {
             GalleriView()
                 .tabItem { Label("Galleri", systemImage: "photo.on.rectangle") }
                 .tag(Tab.gallery)
+
+            // Redigering → NATIVE photo-enhancer kommandosenter: Før/Etter,
+            // Smart Edit (MagicRecipe-justeringer + AI-retusj), bildekø,
+            // stegflyt og batch. Gjenbruker capture-appens egen
+            // MagicPipeline + AutoCleanService.
+            RedigeringView()
+                .tabItem { Label("Redigering", systemImage: "wand.and.stars") }
+                .tag(Tab.redigering)
 
             // Admin → NATIVE contracts hub (list, detalj, signér med
             // Apple Pencil, send, status) e2e mot /api/contracts.
