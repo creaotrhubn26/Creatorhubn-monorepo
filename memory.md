@@ -1,7 +1,81 @@
 # memory.md — Role Room session-state, refaktor-plan og kø
 
-> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-13 (kvelds-sesjon — Growth/SEO/Agent/Live-Set/DIT infrastruktur).
+> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: **2026-06-22 kveld — Leadgrid Intelligence Engine + supporting stack**.
 > Plassert i repo-rot slik at Claude Code (lokal eller web) automatisk leser den ved oppstart.
+
+---
+
+## 🟥 MÅ GJØRES NÅ — Leadgrid Intelligence-stack (2026-06-22)
+
+**Status:** 4 nye PR-er åpne mot main. PR #855 + #856 + #857 er allerede MERGET. PR #858 + #859 venter på CI/review.
+
+### Merget i dag (allerede i prod via Render auto-deploy)
+- **PR #851** — Market Scan backend (Phase 1)
+- **PR #854** — Market Scan iPad UI (Phase 2)
+- **PR #855** — Intelligence Engine backend (composite scoring + Next Best Action, 3099 linjer)
+  - Mig 313: utvider crm_customers med pipeline_stage, lead_score, conversion_probability, expected_value, follow_up_priority, lead_temperature, next_best_action, ... + 11 nye tabeller
+  - 13 endepunkter under /api/leadgrid/intelligence/*
+  - HMAC-signerte webhooks + 22 event-typer + daily cron @ 04:00 UTC
+- **PR #856** — Territory-grids + Smart dagsrute (mig 314+315+316)
+- **PR #857** — Pipeline Kanban + Follow-up Queue + Intelligence Panel (iPad, 949 linjer)
+
+### ÅPNE PR-er som trenger merge
+- **PR #858** — Analytics Dashboard backend (7 endepunkter, mig 317)
+- **PR #859** — AI Meeting Notes (mig 318) + Role Room Agent Bridge (full intelligence-rapport)
+
+### ENV-vars som MÅ settes etter merge
+**På Render (backend):**
+- `LEADGRID_INTELLIGENCE_CRON_TOKEN=<random>` — for daglig re-score cron
+- `OPENAI_API_KEY=<key>` — Whisper transkripsjon (Meeting Notes)
+- `MAPBOX_TOKEN=<key>` — valgfritt (fallback til haversine hvis mangler)
+- `GOOGLE_MAPS_API_KEY=<key>` — Route Planner Distance Matrix (fallback til haversine)
+
+**På GitHub Secrets:**
+- `LEADGRID_INTELLIGENCE_CRON_TOKEN` — samme som Render
+- `BACKEND_URL=https://backend.creatorhubn.com` — for GH-actions cron
+
+### Migrasjoner som MÅ kjøres
+- `./backend/migrate.sh` vil ta mig 313 + 314 + 315 + 316 + 317 + 318 i rekkefølge
+- Verifiser etter: SELECT COUNT(*) FROM crm_customers WHERE pipeline_stage IS NOT NULL;
+
+### Test-flow når deployed
+```bash
+# 1. Recompute en lead
+curl -X POST $BACKEND/api/leadgrid/intelligence/leads/<UUID>/recompute \
+  -H "Authorization: Bearer <session-token>"
+
+# 2. Se follow-up-køen
+curl $BACKEND/api/leadgrid/intelligence/follow-up-queue \
+  -H "Authorization: Bearer <session-token>"
+
+# 3. Få full intelligence-rapport (orkestrerer Role Room Agent-services)
+curl -X POST $BACKEND/api/leadgrid/leads/<UUID>/full-intelligence \
+  -H "Authorization: Bearer <session-token>"
+
+# 4. Voice-memo → Meeting Notes
+curl -X POST $BACKEND/api/leadgrid/leads/<UUID>/meeting-notes/from-text \
+  -H "Authorization: Bearer <session-token>" \
+  -d '{"transcript":"Møte med Per Hansen ..."}'
+```
+
+### Avvik fra spec som ble gjort (viktig for fremtidige sesjoner)
+1. Mig 313 deklarerte `lead_routes.user_id` som UUID — feil. Mig 316 (PR #856) fixer til VARCHAR(255).
+2. Permissions-tabellen bruker `key`, ikke `permission_key` (mig 286-mønsteret).
+3. `crm_customers` har INGEN `organization_id`-kolonne — bruk `owner_user_id IN (SELECT user_id::text FROM organization_members WHERE organization_id = $1::uuid)` (PR #837/848-mønsteret).
+4. `crm_lead_activities.activity_type` CHECK tillater ikke `meeting_recap` → bruker `note_added` m/ `metadata.kind='meeting_recap'`.
+5. Analytics-service har fallback for både mig 313-baserte (pipeline_stage, lead_temperature) OG pre-313-fakta (lead_status, ai_opportunity_score), så den fungerer uansett mig-rekkefølge.
+
+### Neste fase (når kontekst gjenoptas)
+1. iPad-UI for Analytics Dashboard (visualisere /overview, /channels, /sources, /segments, /territories, /velocity-history, /conversion-funnel)
+2. iPad-UI for Route Planner (POST /plan + visualisere stops på MapKit + status-update)
+3. iPad-UI for Meeting Notes (AVFoundation-opptak + upload-audio + vis action items)
+4. iPad-UI for Full Intelligence Report (visualisere alle 7 moduler i ett dashboard)
+5. Drag-and-drop kanban: krever nytt backend-endepunkt PATCH /api/leadgrid/intelligence/leads/:id/pipeline-stage
+6. Snooze på recommendations: utvid lead_recommendations med snoozed_until-felt
+7. Routing av notifikasjoner (Slack + e-post) når NBA endrer fra warm → hot
+
+### memory.md i repo-roten — bør ryddes
+Denne fila + den jeg la inn fra PR #856 kolliderer. Vurder å flytte til `.claude-memory/` eller bare beholde her som lett-tilgjengelig statusdok.
 
 ---
 
