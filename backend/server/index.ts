@@ -545,6 +545,7 @@ import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-rout
 import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
 import { registerLeadgridTerritoryRoutes } from "./leadgrid-territory-routes.js";
 import { registerLeadgridRouteRoutes } from "./leadgrid-route-routes.js";
+import { registerLeadgridAnalyticsRoutes } from "./leadgrid-analytics-routes.js";
 import { registerLeadgridMeetingNotesRoutes } from "./leadgrid-meeting-notes-routes.js";
 import { registerLeadgridAgentBridgeRoutes } from "./leadgrid-agent-bridge-routes.js";
 import { registerLeadScoutRoutes } from "./lead-scout-routes.js";
@@ -24446,6 +24447,10 @@ registerLeadgridTerritoryRoutes({ app, pool, activeSessions });
 // Smart dagsrute — ordner selgerens in-grid leads (Distance Matrix +
 // nærmeste-nabo). /api/leadgrid/routes/* (mig 313/316). routes.create/view/execute.
 registerLeadgridRouteRoutes({ app, pool, activeSessions });
+// Leadgrid Analytics Dashboard — KPI-er per org (overview, channels,
+// sources, segments, territories, velocity, conversion-funnel). Gated på
+// analytics.view_overview/channels/sources/segments/velocity (migrate 317).
+registerLeadgridAnalyticsRoutes({ app, pool, activeSessions });
 // AI Meeting Notes — voice memo → Whisper → Claude action items
 // (/api/leadgrid/leads/:id/meeting-notes/*). Gated på meeting_notes.*
 // (migrate 318).
