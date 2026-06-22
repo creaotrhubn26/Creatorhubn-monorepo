@@ -73,6 +73,25 @@ struct MapHomeView: View {
                     ForEach(appState.myTerritories) { t in
                         territoryOverlay(t)
                     }
+                    // Dagsrute-overlay (iPad-native): linje + nummererte stopp
+                    if let route = appState.dayRoute {
+                        let routeCoords = route.stops.compactMap { $0.coordinate }
+                        if routeCoords.count >= 2 {
+                            MapPolyline(coordinates: routeCoords)
+                                .stroke(.green, lineWidth: 4)
+                        }
+                        ForEach(route.stops) { stop in
+                            if let c = stop.coordinate {
+                                Annotation("Stopp \(stop.position)", coordinate: c) {
+                                    Text("\(stop.position)")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.white)
+                                        .padding(6)
+                                        .background(Circle().fill(.green))
+                                }
+                            }
+                        }
+                    }
                 }
                 .mapStyle(.standard(elevation: .flat))
                 .ignoresSafeArea(edges: .bottom)

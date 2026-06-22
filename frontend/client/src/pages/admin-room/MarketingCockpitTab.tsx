@@ -32,6 +32,7 @@ import AgencyAcquisitionDashboard from './AgencyAcquisitionDashboard';
 import CustomerSuccessDashboard from './CustomerSuccessDashboard';
 import LeadMapPanel from './LeadMapPanel';
 import { TerritoryGridManager } from '../../components/leadgrid/TerritoryGridManager';
+import { TerritoryCoveragePanel } from '../../components/leadgrid/TerritoryCoveragePanel';
 import LeadMapMyDayPanel from './LeadMapMyDayPanel';
 import LeadMapLeaderboardPanel from './LeadMapLeaderboardPanel';
 import LeadMapNotificationBell from './LeadMapNotificationBell';
@@ -663,6 +664,8 @@ export default function MarketingCockpitTab() {
           </Divider>
 
           <TerritoryGridManager />
+
+          <TerritoryCoveragePanel />
 
           <MarketIntelligenceSection
             projectId="theroleroom"

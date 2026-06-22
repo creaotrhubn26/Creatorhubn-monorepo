@@ -22,7 +22,9 @@ import {
   detectAdminOverlaps,
   leadMatchesTerritory,
   recordBreach,
+  computeCoverage,
   type LeadGeo,
+  type CoverageLead,
 } from "./leadgrid-territory-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
@@ -365,6 +367,45 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       });
     } catch (err) {
       return res.status(500).json({ error: "check_failed", detail: String(err) });
+    }
+  });
+
+  // ─── GET /api/leadgrid/territories/coverage ───────────────────────
+  // Manager-oversikt: hvor mange leads dekkes av grids, foreldreløse,
+  // overlapp, og leads per grid.
+  app.get("/api/leadgrid/territories/coverage", permView, async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "Innlogging kreves" });
+    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
+    if (!orgId) return res.json({ coverage: null });
+    try {
+      const territories = await loadOrgTerritories(pool, orgId);
+      // Org-leads med koordinater: direkte organization_id ELLER via prosjekt.
+      const leadsRes = await pool.query<{
+        id: string; name: string | null;
+        latitude: number | null; longitude: number | null;
+        postal_code: string | null; municipality_code: string | null;
+      }>(
+        `SELECT c.id::text, c.name, c.latitude, c.longitude,
+                c.postal_code, c.municipality_code
+           FROM crm_customers c
+           LEFT JOIN casting_projects cp ON cp.id = c.project_id
+          WHERE (c.organization_id = $1::uuid OR cp.organization_id = $1::uuid)
+            AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL`,
+        [orgId],
+      );
+      const leads: CoverageLead[] = leadsRes.rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        latitude: r.latitude != null ? Number(r.latitude) : null,
+        longitude: r.longitude != null ? Number(r.longitude) : null,
+        postalCode: r.postal_code,
+        municipalityCode: r.municipality_code,
+      }));
+      const coverage = computeCoverage(leads, territories);
+      return res.json({ coverage, adminOverlaps: detectAdminOverlaps(territories) });
+    } catch (err) {
+      return res.status(500).json({ error: "coverage_failed", detail: String(err) });
     }
   });
 

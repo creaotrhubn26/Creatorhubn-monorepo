@@ -14,8 +14,10 @@ import {
   pickBestTerritory,
   detectAdminOverlaps,
   resolveLeadTerritories,
+  computeCoverage,
   type TerritoryRow,
   type LeadGeo,
+  type CoverageLead,
 } from "../leadgrid-territory-service";
 
 // Et kvadrat rundt Oslo: lng 10..11, lat 59..60. GeoJSON = [lng, lat].
@@ -215,6 +217,50 @@ describe("detectAdminOverlaps", () => {
     const a = territory({ id: "a", municipalities: ["0301"] });
     const b = territory({ id: "b", municipalities: ["4601"] });
     expect(detectAdminOverlaps([a, b])).toEqual([]);
+  });
+});
+
+describe("computeCoverage", () => {
+  const oslo = territory({ id: "oslo", geometry: OSLO_SQUARE, assignedUserId: "a" });
+  const byPost = territory({ id: "post", postalCodes: ["0150"], assignedUserId: "b" });
+  function cLead(over: Partial<CoverageLead> & { id: string }): CoverageLead {
+    return { latitude: null, longitude: null, postalCode: null, municipalityCode: null, ...over };
+  }
+
+  it("teller covered/orphan/overlap riktig", () => {
+    const leads: CoverageLead[] = [
+      cLead({ id: "1", latitude: 59.5, longitude: 10.5 }),               // i oslo-polygon
+      cLead({ id: "2", latitude: 59.5, longitude: 10.5, postalCode: "0150" }), // oslo + post = overlap
+      cLead({ id: "3", latitude: 63.4, longitude: 10.4 }),               // ingen (Trondheim)
+      cLead({ id: "4", postalCode: "9999" }),                            // ingen
+    ];
+    const r = computeCoverage(leads, [oslo, byPost]);
+    expect(r.total).toBe(4);
+    expect(r.covered).toBe(2);
+    expect(r.orphans).toBe(2);
+    expect(r.overlapping).toBe(1);
+    expect(r.coveragePct).toBe(50);
+    expect(r.orphanLeads.map((l) => l.id).sort()).toEqual(["3", "4"]);
+  });
+
+  it("perTerritory teller leads per grid (overlap teller i begge)", () => {
+    const leads = [cLead({ id: "1", latitude: 59.5, longitude: 10.5, postalCode: "0150" })];
+    const r = computeCoverage(leads, [oslo, byPost]);
+    expect(r.perTerritory.find((t) => t.territoryId === "oslo")?.leadCount).toBe(1);
+    expect(r.perTerritory.find((t) => t.territoryId === "post")?.leadCount).toBe(1);
+  });
+
+  it("tom liste gir 0% dekning uten å kaste", () => {
+    const r = computeCoverage([], [oslo]);
+    expect(r.total).toBe(0);
+    expect(r.coveragePct).toBe(0);
+  });
+
+  it("respekterer orphanCap", () => {
+    const leads = Array.from({ length: 5 }, (_, i) => cLead({ id: String(i), postalCode: "9999" }));
+    const r = computeCoverage(leads, [oslo], { orphanCap: 2 });
+    expect(r.orphans).toBe(5);
+    expect(r.orphanLeads).toHaveLength(2);
   });
 });
 

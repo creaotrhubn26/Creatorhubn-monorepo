@@ -222,6 +222,86 @@ export function detectAdminOverlaps(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Dekningsanalyse (ren funksjon — testbar)
+// ─────────────────────────────────────────────────────────────────────
+
+export interface CoverageLead extends LeadGeo {
+  id: string;
+  name?: string | null;
+}
+
+export interface CoverageResult {
+  total: number;
+  covered: number;
+  orphans: number;
+  overlapping: number;
+  coveragePct: number;
+  perTerritory: Array<{
+    territoryId: string;
+    name: string;
+    assignedUserId: string | null;
+    leadCount: number;
+  }>;
+  orphanLeads: Array<{
+    id: string;
+    name: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  }>;
+}
+
+/**
+ * Beregn territorie-dekning for en org: hvor mange leads dekkes av minst én
+ * grid, hvor mange er foreldreløse (ingen grid), og hvor mange ligger i flere
+ * grids (overlapp). Ren funksjon — ingen DB.
+ */
+export function computeCoverage(
+  leads: CoverageLead[],
+  territories: TerritoryRow[],
+  opts: { orphanCap?: number } = {},
+): CoverageResult {
+  const orphanCap = opts.orphanCap ?? 200;
+  const perCount = new Map<string, number>();
+  let covered = 0;
+  let overlapping = 0;
+  const orphanLeads: CoverageResult["orphanLeads"] = [];
+
+  for (const lead of leads) {
+    const matches = resolveLeadTerritories(lead, territories);
+    if (matches.length === 0) {
+      if (orphanLeads.length < orphanCap) {
+        orphanLeads.push({
+          id: lead.id,
+          name: lead.name ?? null,
+          latitude: lead.latitude,
+          longitude: lead.longitude,
+        });
+      }
+      continue;
+    }
+    covered++;
+    if (matches.length >= 2) overlapping++;
+    for (const t of matches) perCount.set(t.id, (perCount.get(t.id) ?? 0) + 1);
+  }
+
+  const total = leads.length;
+  return {
+    total,
+    covered,
+    orphans: total - covered,
+    overlapping,
+    coveragePct: total > 0 ? Math.round((covered / total) * 1000) / 10 : 0,
+    perTerritory: territories.map((t) => ({
+      territoryId: t.id,
+      name: t.name,
+      assignedUserId: t.assignedUserId,
+      leadCount: perCount.get(t.id) ?? 0,
+    })),
+    orphanLeads,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // DB-funksjoner
 // ─────────────────────────────────────────────────────────────────────
 

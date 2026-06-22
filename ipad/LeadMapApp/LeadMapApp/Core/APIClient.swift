@@ -312,6 +312,33 @@ actor APIClient {
         return resp.id
     }
 
+    // MARK: - Smart dagsrute
+
+    /// Planlegg dagens rute blant selgerens in-grid leads.
+    func planDayRoute(
+        organizationId: String, startLat: Double, startLng: Double
+    ) async throws -> DayRoutePlanResponse {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        return try await post("/api/leadgrid/routes/plan", body: [
+            "organization_id": organizationId,
+            "start_lat": startLat,
+            "start_lng": startLng,
+            "planned_date": df.string(from: Date()),
+        ])
+    }
+
+    /// Oppdater status på et rute-stopp (innsjekk i felt).
+    func updateRouteStop(
+        routeId: String, stopId: String, status: String,
+        outcome: String? = nil, notes: String? = nil
+    ) async throws {
+        var body: [String: Any] = ["status": status]
+        if let o = outcome { body["outcome"] = o }
+        if let n = notes { body["notes"] = n }
+        try await patch("/api/leadgrid/routes/\(routeId)/stops/\(stopId)", body: body)
+    }
+
     // MARK: - Smart-transkript (PR #642 — Claude analyserer dikterings-notater)
 
     func analyzeTranscript(leadId: String, transcript: String) async throws -> TranscriptAnalysis {
