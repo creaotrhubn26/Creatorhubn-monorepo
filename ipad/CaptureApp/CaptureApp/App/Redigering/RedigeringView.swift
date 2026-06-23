@@ -93,25 +93,44 @@ final class RedigeringModel {
     }
 
     private func loadRecipeForSelection() {
-        if let id = selectedId, let r = applied[id] { recipe = r }
+        guard let id = selectedId else { return }
+        // Restore persisted edit (survives crash/teardown), else the in-memory
+        // cache, else defaults.
+        if let saved = RedigeringEditStore.load(id) {
+            recipe = saved.recipe; exposureEV = saved.exposureEV
+            crops[id] = saved.crop
+            applied[id] = saved.recipe
+        } else if let r = applied[id] {
+            recipe = r
+        } else {
+            exposureEV = 0
+        }
+    }
+
+    /// Persist the selected asset's current edit state to disk.
+    private func persistEdit() {
+        guard let id = selectedId else { return }
+        applied[id] = recipe
+        RedigeringEditStore.save(id, .init(recipe: recipe, exposureEV: exposureEV, crop: crops[id]))
     }
 
     func applyPreset(_ name: String, _ r: MagicRecipe) {
         pushUndo(); presetName = name; recipe = r
+        persistEdit()
         Task { await render() }
     }
 
     /// Call when a slider commits (on release) — renders the real pipeline.
-    func recipeChanged() { Task { await render() } }
+    func recipeChanged() { persistEdit(); Task { await render() } }
     func beginEdit() { pushUndo() }
 
     func undoEdit() {
         guard let prev = undo.popLast() else { return }
-        redo.append(recipe); recipe = prev; Task { await render() }
+        redo.append(recipe); recipe = prev; persistEdit(); Task { await render() }
     }
     func redoEdit() {
         guard let next = redo.popLast() else { return }
-        undo.append(recipe); recipe = next; Task { await render() }
+        undo.append(recipe); recipe = next; persistEdit(); Task { await render() }
     }
 
     private func pushUndo() { undo.append(recipe); redo.removeAll() }
@@ -129,6 +148,7 @@ final class RedigeringModel {
         working = true; seriesTotal = assets.count; seriesProgress = 0
         defer { working = false; seriesTotal = 0 }
         let r = effectiveRecipe(); let ev = exposureEV
+        var failed: [String] = []
         for a in assets {
             let useRaw = a.autoCleanedKey == nil ? a.rawKey : nil
             let jpeg = a.displayPreviewKey
@@ -136,15 +156,21 @@ final class RedigeringModel {
             let data = await Task.detached(priority: .utility) {
                 RedigeringPipeline.renderExport(rawPath: useRaw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
             }.value
+            var ok = false
             if let data {
                 let dest = svc.dir.appendingPathComponent("\(a.id.uuidString)-enhanced.jpg")
                 if (try? data.write(to: dest, options: .atomic)) != nil {
                     try? await svc.store.attachEnhancedKey(id: a.id, key: dest.path)
+                    ok = true
                 }
             }
+            if !ok { failed.append(a.originalFilename) }
             seriesProgress += 1
         }
-        statusMessage = "Lagret \(seriesProgress) bilder."
+        let saved = assets.count - failed.count
+        statusMessage = failed.isEmpty
+            ? "Lagret \(saved) bilder."
+            : "Lagret \(saved), feilet \(failed.count): \(failed.prefix(3).joined(separator: ", "))\(failed.count > 3 ? "…" : "")"
     }
 
     var working = false
@@ -188,7 +214,7 @@ final class RedigeringModel {
         let data = await Task.detached(priority: .userInitiated) {
             RedigeringPipeline.renderExport(rawPath: useRaw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
         }.value
-        guard let data else { return }
+        guard let data else { statusMessage = "Kunne ikke lagre — bildet lot seg ikke dekode/rendre."; return }
         let dest = svc.dir.appendingPathComponent("\(asset.id.uuidString)-enhanced.jpg")
         do {
             try data.write(to: dest, options: .atomic)
@@ -287,6 +313,7 @@ final class RedigeringModel {
     func setCrop(_ rect: CGRect?) {
         guard let id = selectedId else { return }
         if let rect { crops[id] = rect } else { crops[id] = nil }
+        persistEdit()
         Task { await render() }
     }
 }

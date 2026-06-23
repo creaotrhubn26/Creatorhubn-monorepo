@@ -149,9 +149,16 @@ final class CullTheaterModel {
         loading = assets.isEmpty
         do {
             assets = try await cullStore().assets(sessionId: sessionId, ownerUserId: ownerUserId)
-            // Seed keepers from any decisions already made (LiveCull etc.):
-            // keep unless explicitly rejected or rated a soft-reject.
-            keptIds = Set(assets.filter { !$0.rejected && $0.rating != 2 }.map(\.id))
+            let assetIds = Set(assets.map(\.id))
+            if let saved = RedigeringEditStore.loadKept(sessionId) {
+                // Restore an in-progress cull (survives crash/teardown); drop any
+                // ids no longer in the session.
+                keptIds = saved.intersection(assetIds)
+            } else {
+                // Seed keepers from any decisions already made (LiveCull etc.):
+                // keep unless explicitly rejected or rated a soft-reject.
+                keptIds = Set(assets.filter { !$0.rejected && $0.rating != 2 }.map(\.id))
+            }
         } catch {
             errorMessage = "Kunne ikke laste bilder fra økten."
         }
@@ -176,6 +183,7 @@ final class CullTheaterModel {
                 else { kept.insert(a.id) }
             }
             keptIds = kept
+            RedigeringEditStore.saveKept(sessionId, keptIds)
             hasAutoCulled = true
         } catch {
             errorMessage = (error as? DashboardError)?.localizedDescription ?? "Auto-cull feilet."
@@ -184,6 +192,8 @@ final class CullTheaterModel {
 
     func toggle(_ asset: Asset) {
         if keptIds.contains(asset.id) { keptIds.remove(asset.id) } else { keptIds.insert(asset.id) }
+        // Persist immediately so a mid-cull crash/teardown never loses decisions.
+        RedigeringEditStore.saveKept(sessionId, keptIds)
     }
 
     func verdict(for asset: Asset) -> CullVerdict? { verdicts[asset.id.uuidString.lowercased()] }
