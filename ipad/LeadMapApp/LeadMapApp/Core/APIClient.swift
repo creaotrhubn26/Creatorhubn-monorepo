@@ -2282,6 +2282,17 @@ extension APIClient {
         try await post("/api/leadgrid/intelligence/recommendations/\(id)/dismiss", body: nil)
     }
 
+    /// Snooze en NBA-anbefaling i N timer (1-168).
+    /// Backend: POST /api/leadgrid/intelligence/recommendations/:id/snooze (PR #882).
+    /// Emiter `recommendation.snoozed`-webhook server-side.
+    @discardableResult
+    func snoozeRecommendation(_ id: String, hours: Int) async throws -> SnoozeResult {
+        try await post(
+            "/api/leadgrid/intelligence/recommendations/\(id)/snooze",
+            body: ["hours": hours]
+        )
+    }
+
     func fetchFollowUpQueue() async throws -> [LeadgridFollowUpItem] {
         let resp: FollowUpQueueResponse = try await get("/api/leadgrid/intelligence/follow-up-queue")
         return resp.items
@@ -2313,3 +2324,11 @@ struct PipelineStageUpdateResult: Decodable {
 private struct NBARecommendationsResponse: Decodable { let recommendations: [LeadgridNBARecommendation] }
 private struct FollowUpQueueResponse: Decodable { let items: [LeadgridFollowUpItem] }
 private struct ScoreHistoryResponse: Decodable { let history: [LeadgridScoreHistoryEntry] }
+
+/// Resultatet av en snooze-operasjon på en NBA-anbefaling.
+/// `snoozed_until` er ISO8601-tidspunkt; `hours` er antall timer den ble snoozet.
+struct SnoozeResult: Decodable {
+    let ok: Bool
+    let snoozedUntil: String?
+    let hours: Int?
+}
