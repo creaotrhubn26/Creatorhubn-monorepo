@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Trigger daily re-score
+      - name: Trigger daily re-score (m/ 3× retry exponential backoff)
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           CRON_TOKEN: ${{ secrets.LEADGRID_INTELLIGENCE_CRON_TOKEN }}
@@ -20,8 +20,33 @@ jobs:
             echo "Missing BACKEND_URL or LEADGRID_INTELLIGENCE_CRON_TOKEN secret"
             exit 1
           fi
-          response=$(curl -fSs -X POST \
-            "${BACKEND_URL%/}/api/leadgrid/intelligence/cron/daily-rescore" \
-            -H "x-cron-trigger-token: $CRON_TOKEN" \
-            -H "content-type: application/json")
-          echo "$response"
+          for attempt in 1 2 3; do
+            echo "Forsøk $attempt..."
+            RESP=$(curl -s -w "\n%{http_code}" -X POST \
+              "${BACKEND_URL%/}/api/leadgrid/intelligence/cron/daily-rescore" \
+              -H "x-cron-trigger-token: $CRON_TOKEN" \
+              -H "content-type: application/json")
+            CODE=$(echo "$RESP" | tail -1)
+            BODY=$(echo "$RESP" | sed '$d')
+            echo "HTTP $CODE: $BODY"
+            if [ "$CODE" = "200" ] && echo "$BODY" | jq -e '.ok == true' >/dev/null; then
+              echo "OK Cron lykkes på forsøk $attempt"
+              exit 0
+            fi
+            if [ $attempt -lt 3 ]; then
+              BACKOFF=$((30 * attempt * attempt))
+              echo "Venter ${BACKOFF}s før neste forsøk..."
+              sleep $BACKOFF
+            fi
+          done
+          echo "::error::Cron feilet etter 3 forsøk"
+          exit 1
+
+      - name: Slack-varsel ved permanent feil
+        if: failure()
+        run: |
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"text\":\"Leadgrid daglig rescore-cron feilet etter 3 forsøk. Sjekk Render-logger.\"}"
+          fi

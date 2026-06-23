@@ -22,6 +22,7 @@
 
 import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
+import { withAIQuota } from "./leadgrid-ai-queue.js";
 
 export type OutreachChannel =
   | "cold_call"
@@ -122,7 +123,7 @@ export async function recommendOutreachStrategy(
   availableChannels.push("social_proof"); // alltid mulig
 
   const client = new Anthropic({ apiKey });
-  const msg = await client.messages.create({
+  const msg = await withAIQuota("claude", null, () => client.messages.create({
     model: "claude-opus-4-7",
     max_tokens: 2500,
     messages: [
@@ -179,7 +180,7 @@ Returner strengt JSON:
 KRITISK: Bare bruk kanaler fra TILGJENGELIGE KANALER. Hvis email mangler, ikke foreslå email. Skriv på norsk. Tone: ${myTone}.`,
       },
     ],
-  });
+  }));
 
   const text = msg.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")

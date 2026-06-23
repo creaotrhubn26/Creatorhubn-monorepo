@@ -14,6 +14,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { parseOr400, createTerritoryBody } from "./leadgrid-validators.js";
 import {
   loadOrgTerritories,
   loadUserTerritories,
@@ -183,31 +184,13 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
     const orgId = await resolveOrgIdSmart(req, pool, session.userId);
     if (!orgId) return res.status(400).json({ error: "mangler_organization_id" });
 
-    const b = req.body as {
-      name?: string;
-      assigned_user_id?: string | null;
-      sales_team_id?: string | null;
-      geometry?: unknown;
-      municipalities?: string[];
-      postal_codes?: string[];
-      center_lat?: number | null;
-      center_lng?: number | null;
-      radius_m?: number | null;
-      priority?: number;
-      effective_from?: string | null;
-      effective_to?: string | null;
-    };
-    if (!b.name || b.name.trim().length < 2) {
-      return res.status(400).json({ error: "navn_kreves" });
-    }
-    const municipalities = Array.isArray(b.municipalities) ? b.municipalities : [];
-    const postalCodes = Array.isArray(b.postal_codes) ? b.postal_codes : [];
+    const b = parseOr400(createTerritoryBody, req.body, res);
+    if (!b) return;
+    const municipalities = b.municipalities;
+    const postalCodes = b.postal_codes;
     const hasCircle =
       typeof b.center_lat === "number" && typeof b.center_lng === "number" &&
       typeof b.radius_m === "number" && b.radius_m > 0;
-    if (b.geometry == null && municipalities.length === 0 && postalCodes.length === 0 && !hasCircle) {
-      return res.status(400).json({ error: "grid_uten_definisjon" });
-    }
 
     try {
       const r = await pool.query<{ id: string }>(

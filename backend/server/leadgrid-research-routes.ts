@@ -33,6 +33,7 @@ import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
 import { analyzeWebsite, type BrandProfile } from "./role-room-website-analyzer.js";
 import { enrichLeadWithBrreg, getStoredEnrichment } from "./lead-brreg-service.js";
+import { withAIQuota } from "./leadgrid-ai-queue.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -328,11 +329,13 @@ KRITISK:
 - Hvis BRREG-roller finnes, foretrekk reelle titler/navn i decisionMakers
 - firstTouch.channel MÅ være én av: email|linkedin|phone|in_person`;
 
-  const msg = await client.messages.create({
-    model: "claude-opus-4-7",
-    max_tokens: 3500,
-    messages: [{ role: "user", content: prompt }],
-  });
+  const msg = await withAIQuota("claude", null, () =>
+    client.messages.create({
+      model: "claude-opus-4-7",
+      max_tokens: 3500,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  );
 
   const text = msg.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")

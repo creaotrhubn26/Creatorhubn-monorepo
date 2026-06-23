@@ -1227,6 +1227,31 @@ actor APIClient {
         d.dateDecodingStrategy = .iso8601
         return d
     }()
+
+    // MARK: - Offline-resilient execute (robusthet-pakke 3)
+    //
+    // Raw write som OfflineActionQueue bruker når den drainer pending
+    // actions. Returnerer body (kan være tom) ved 2xx, throws ellers.
+
+    /// Raw execute for OfflineActionQueue. Returnerer Data ved 2xx, throws ellers.
+    func executeRaw(method: String, path: String, body: Data?) async throws -> Data {
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = method
+        req.timeoutInterval = 30
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let body = body {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = body
+        }
+        let (data, resp) = try await session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        if http.statusCode >= 400 {
+            throw APIError.serverError(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+        }
+        return data
+    }
 }
 
 // MARK: - Fase 18: Super-admin endpoints
@@ -2197,6 +2222,8 @@ struct AnyCodableShim: Codable, Hashable {
 enum APIError: Error {
     case invalidResponse
     case statusCode(Int)
+    case invalidURL
+    case serverError(Int, String)
 }
 
 // MARK: - Response envelopes

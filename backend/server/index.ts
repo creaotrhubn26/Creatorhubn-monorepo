@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ override: true });
 
 // Sentry MUST initialiseres FØR alle andre imports for å fange tidlig errors
-import { initBackendSentry } from "./sentry-init.js";
+import { initBackendSentry, buildSentryErrorMiddleware } from "./sentry-init.js";
 initBackendSentry();
 import {
   registerErrorLogRoutes,
@@ -543,6 +543,7 @@ import { registerLeadgridResearchRoutes } from "./leadgrid-research-routes.js";
 import { registerLeadgridMarketScanRoutes } from "./leadgrid-market-scan-routes.js";
 import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-routes.js";
 import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
+import { registerLeadgridRetentionCron } from "./leadgrid-retention-cron.js";
 import { registerLeadgridBackfillCron } from "./leadgrid-backfill-cron.js";
 import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
 import { registerLeadgridWebhookRotationRoutes } from "./leadgrid-webhook-rotation-routes.js";
@@ -1007,11 +1008,32 @@ import { respondWithError } from "./api-error";
 validateEnvOrExit();
 
 // Database connection
+// PERF (skalering nivå 2): tunet pool for å håndtere cron-batches (100 leads
+// samtidig) + concurrent web requests. Default pg.Pool max=10 var for lavt.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  max: parseInt(process.env.PG_POOL_MAX ?? "30", 10),
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+  // Statement timeout per query — beskytter mot runaway queries (30s)
+  statement_timeout: 30_000,
 });
 
+// Logger pool-health hvert 5. min for observability (Render-logs)
+setInterval(() => {
+  console.log(
+    `[pg-pool] total=${pool.totalCount} idle=${pool.idleCount} waiting=${pool.waitingCount}`,
+  );
+}, 5 * 60 * 1000).unref?.();
+
 const db = drizzle(pool, { schema });
+
+// Leadgrid schema-validator (mig 313–318) — kjøres i bakgrunn ved boot.
+// Logger ADVARSEL hvis kritiske kolonner mangler. Sett
+// LEADGRID_STRICT_SCHEMA=1 for å abort'e boot isteden.
+void import("./leadgrid-schema-check.js")
+  .then(({ runSchemaCheck }) => runSchemaCheck(pool))
+  .catch((err) => console.error("[schema-check] boot-feil:", err));
 
 // upload-multer (PDF/DOCX kontrakt-import) — flyttet til ./contracts-upload-import-routes.ts
 
@@ -22048,6 +22070,17 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// AI-queue health for observability (Leadgrid skalering nivå 2).
+// Eksponerer per-provider RPM-bruk, in-flight og pending wait-queue.
+app.get("/api/leadgrid/ai-queue/health", async (_req, res) => {
+  try {
+    const { aiQueue } = await import("./leadgrid-ai-queue.js");
+    res.json({ ok: true, ...aiQueue.snapshot() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err).slice(0, 200) });
+  }
+});
+
 // Auth endpoints - session-based login
 
 // POST /api/auth/login — Email/password login
@@ -24443,6 +24476,11 @@ registerLeadgridIntelligenceRoutes({ app, pool, activeSessions });
 // Krever LEADGRID_INTELLIGENCE_CRON_TOKEN env-var i tillegg til
 // matching x-cron-trigger-token-header.
 registerLeadgridIntelligenceCron({ app, pool });
+// Data-retention-cron: daglig sletting av gamle scores/recs/queue-rader.
+// Trigget @ 03:00 UTC fra GitHub Actions
+// (.github/workflows/leadgrid-retention-cleanup.yml). Bruker samme
+// CRON_TOKEN som intelligence-rescore.
+registerLeadgridRetentionCron({ app, pool });
 // Skalering nivå 2b — denormaliser crm_customers.organization_id (mig 320)
 // via backfill-cron (kjøres @ 03:15 UTC daily + manuell trigger). Eliminerer
 // owner_user_id IN organization_members-subqueries fra hot-path queries.
@@ -73646,6 +73684,10 @@ app.post("/import/lead/:leadId", async (req, res) => {
 app.all("/api/*", (req, res) => {
   res.status(404).json({ message: "Endpoint not implemented", path: req.path });
 });
+
+// Sentry error-middleware: må mountes ETTER alle routes, slik at den
+// fanger errors fra alle endepunkter. No-op hvis Sentry ikke initialisert.
+app.use(buildSentryErrorMiddleware());
 
 // Create HTTP server for WebSocket support
 const httpServer = createServer(app);

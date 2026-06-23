@@ -19,6 +19,12 @@ import {
   transcribeAudio,
   processMeetingNote,
 } from "./leadgrid-meeting-notes-service.js";
+import { emitWebhook } from "./webhook-emitter.js";
+import {
+  parseOr400,
+  fromTextBody,
+  uploadAudioBody,
+} from "./leadgrid-validators.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -105,15 +111,9 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
         res.status(400).json({ error: "mangler_organization_id" });
         return;
       }
-      const b = req.body as {
-        audio_base64?: string;
-        duration_seconds?: number;
-        language?: string;
-      };
-      if (!b.audio_base64) {
-        res.status(400).json({ error: "mangler_audio_base64" });
-        return;
-      }
+      const b = parseOr400(uploadAudioBody, req.body, res);
+      if (!b) return;
+      const leadId = req.params.id;
       try {
         const buf = Buffer.from(b.audio_base64, "base64");
         const insert = await pool.query<{ id: string }>(
@@ -122,37 +122,77 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
               audio_duration_seconds, processing_status)
            VALUES ($1::uuid, $2::uuid, $3, 'voice_memo', $4, 'transcribing')
            RETURNING id::text`,
-          [req.params.id, orgId, session.userId, b.duration_seconds ?? null],
+          [leadId, orgId, session.userId, b.duration_seconds ?? null],
         );
         const noteId = insert.rows[0].id;
 
-        // Fire-and-forget bakgrunns-prosessering (Whisper → Claude).
-        // For en jobb-kø-implementasjon flytt dette til BullMQ/cron.
-        void (async () => {
-          const tx = await transcribeAudio(buf, b.language ?? "no");
-          if (tx) {
-            await pool.query(
-              `UPDATE lead_meeting_notes
-                  SET transcript=$1, transcript_language=$2
-                WHERE id=$3::uuid`,
-              [tx.transcript, tx.language, noteId],
-            );
-            await processMeetingNote(pool, noteId);
-          } else {
-            await pool.query(
-              `UPDATE lead_meeting_notes
-                  SET processing_status='failed',
-                      error_message='Whisper feilet eller mangler nøkkel',
-                      processed_at=NOW()
-                WHERE id=$1::uuid`,
-              [noteId],
-            );
+        // Respons FØR tung prosessering. setImmediate sikrer at HTTP-svaret
+        // er sendt før Whisper/Claude starter — frigjør request-tråden.
+        // Retry: 3 forsøk på Whisper m/ exp backoff (2s, 8s, 18s).
+        setImmediate(async () => {
+          try {
+            let tx: Awaited<ReturnType<typeof transcribeAudio>> = null;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
+                tx = await transcribeAudio(buf, b.language);
+              } catch (txErr) {
+                console.warn(
+                  `[meeting-notes] Whisper-forsøk ${attempt}/3 kastet:`,
+                  txErr,
+                );
+              }
+              if (tx) break;
+              if (attempt < 3) {
+                const backoffMs = 2000 * attempt * attempt; // 2s, 8s, 18s
+                await new Promise((r) => setTimeout(r, backoffMs));
+              }
+            }
+            if (tx) {
+              await pool.query(
+                `UPDATE lead_meeting_notes
+                    SET transcript=$1, transcript_language=$2
+                  WHERE id=$3::uuid`,
+                [tx.transcript, tx.language, noteId],
+              );
+              await processMeetingNote(pool, noteId);
+              // Webhook ved completion — best-effort, blokker ikke loggen.
+              try {
+                void emitWebhook(
+                  pool,
+                  "meeting_note.processed",
+                  { meeting_note_id: noteId, lead_id: leadId },
+                  orgId,
+                );
+              } catch (whErr) {
+                console.warn("[meeting-notes] webhook emit feilet:", whErr);
+              }
+            } else {
+              await pool.query(
+                `UPDATE lead_meeting_notes
+                    SET processing_status='failed',
+                        error_message='Whisper feilet 3 ganger',
+                        processed_at=NOW()
+                  WHERE id=$1::uuid`,
+                [noteId],
+              );
+            }
+          } catch (err) {
+            console.error("[meeting-notes] bakgrunns-prosess feilet:", err);
+            await pool
+              .query(
+                `UPDATE lead_meeting_notes
+                    SET processing_status='failed',
+                        error_message=$1,
+                        processed_at=NOW()
+                  WHERE id=$2::uuid`,
+                [String(err).slice(0, 500), noteId],
+              )
+              .catch(() => {});
           }
-        })().catch((err) =>
-          console.warn("[meeting-notes] bakgrunns-prosess feilet:", err),
-        );
+        });
 
-        res.status(201).json({ meeting_note_id: noteId, status: "transcribing" });
+        // 202 Accepted = semantisk korrekt: jobben er akseptert, ikke ferdig.
+        res.status(202).json({ meeting_note_id: noteId, status: "transcribing" });
       } catch (err) {
         res.status(500).json({ error: "upload_failed", detail: String(err) });
       }
@@ -174,11 +214,9 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
         res.status(400).json({ error: "mangler_organization_id" });
         return;
       }
-      const b = req.body as { transcript?: string; language?: string };
-      if (!b.transcript) {
-        res.status(400).json({ error: "mangler_transcript" });
-        return;
-      }
+      const b = parseOr400(fromTextBody, req.body, res);
+      if (!b) return;
+      const leadId = req.params.id;
       try {
         const insert = await pool.query<{ id: string }>(
           `INSERT INTO lead_meeting_notes
@@ -186,19 +224,41 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
               transcript, transcript_language, processing_status)
            VALUES ($1::uuid, $2::uuid, $3, 'manual', $4, $5, 'analyzing')
            RETURNING id::text`,
-          [
-            req.params.id,
-            orgId,
-            session.userId,
-            b.transcript,
-            b.language ?? "no",
-          ],
+          [leadId, orgId, session.userId, b.transcript, b.language],
         );
         const noteId = insert.rows[0].id;
-        void processMeetingNote(pool, noteId).catch((err) =>
-          console.warn("[meeting-notes] analyse feilet:", err),
-        );
-        res.status(201).json({ meeting_note_id: noteId, status: "analyzing" });
+
+        // Frigjør request-tråden FØR Claude. setImmediate sikrer at HTTP-svar
+        // er på vei før analyse starter.
+        setImmediate(async () => {
+          try {
+            await processMeetingNote(pool, noteId);
+            try {
+              void emitWebhook(
+                pool,
+                "meeting_note.processed",
+                { meeting_note_id: noteId, lead_id: leadId },
+                orgId,
+              );
+            } catch (whErr) {
+              console.warn("[meeting-notes] webhook emit feilet:", whErr);
+            }
+          } catch (err) {
+            console.error("[meeting-notes] analyse feilet:", err);
+            await pool
+              .query(
+                `UPDATE lead_meeting_notes
+                    SET processing_status='failed',
+                        error_message=$1,
+                        processed_at=NOW()
+                  WHERE id=$2::uuid`,
+                [String(err).slice(0, 500), noteId],
+              )
+              .catch(() => {});
+          }
+        });
+
+        res.status(202).json({ meeting_note_id: noteId, status: "analyzing" });
       } catch (err) {
         res.status(500).json({ error: "create_failed", detail: String(err) });
       }
