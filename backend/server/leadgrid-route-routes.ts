@@ -18,6 +18,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { parseOr400, planRouteBody } from "./leadgrid-validators.js";
 import {
   loadUserTerritories, leadMatchesTerritory, type LeadGeo,
 } from "./leadgrid-territory-service.js";
@@ -71,13 +72,9 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
     const orgId = await resolveOrgIdSmart(req, pool, session.userId);
     if (!orgId) return res.status(400).json({ error: "mangler_organization_id" });
 
-    const b = req.body as {
-      planned_date?: string; start_lat?: number; start_lng?: number; limit?: number;
-    };
-    if (typeof b.start_lat !== "number" || typeof b.start_lng !== "number") {
-      return res.status(400).json({ error: "mangler_startposisjon" });
-    }
-    const limit = Math.min(Math.max(b.limit ?? 12, 1), 24);
+    const b = parseOr400(planRouteBody, req.body, res);
+    if (!b) return;
+    const limit = b.limit;
 
     try {
       const territories = await loadUserTerritories(pool, orgId, session.userId);
