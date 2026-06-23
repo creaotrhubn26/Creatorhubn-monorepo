@@ -16,6 +16,11 @@ import { computeIntelligenceForLead, fetchWeights, DEFAULT_WEIGHTS } from "./lea
 import type { IntelligenceWeights } from "./leadgrid-intelligence-engine.js";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { emitWebhook } from "./webhook-emitter.js";
+import {
+  parseOr400,
+  executeRecommendationBody,
+  patchWeightsBody,
+} from "./leadgrid-validators.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -332,9 +337,10 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         res.status(401).json({ error: "Innlogging kreves" });
         return;
       }
-      const outcome = typeof req.body?.outcome === "string" ? req.body.outcome : null;
-      const outcomeNotes =
-        typeof req.body?.outcome_notes === "string" ? req.body.outcome_notes : null;
+      const parsed = parseOr400(executeRecommendationBody, req.body, res);
+      if (!parsed) return;
+      const outcome = parsed.outcome;
+      const outcomeNotes = parsed.outcome_notes ?? null;
       try {
         const r = await pool.query<{
           id: string;
@@ -591,7 +597,18 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         res.status(400).json({ error: "no_org_context" });
         return;
       }
-      const body = (req.body ?? {}) as Partial<Record<keyof IntelligenceWeights, number>>;
+      const parsed = parseOr400(patchWeightsBody, req.body, res);
+      if (!parsed) return;
+      // Aksepterer flat form ELLER `{weights: {...}}`-innpakning. Flat
+      // form tar presedens (bakoverkompatibel med eksisterende klienter).
+      const body: Partial<Record<keyof IntelligenceWeights, number>> = {
+        categoryFit: parsed.categoryFit ?? (parsed.weights?.categoryFit as number | undefined),
+        digitalNeed: parsed.digitalNeed ?? (parsed.weights?.digitalNeed as number | undefined),
+        budgetPotential: parsed.budgetPotential ?? (parsed.weights?.budgetPotential as number | undefined),
+        engagement: parsed.engagement ?? (parsed.weights?.engagement as number | undefined),
+        timing: parsed.timing ?? (parsed.weights?.timing as number | undefined),
+        locationFit: parsed.locationFit ?? (parsed.weights?.locationFit as number | undefined),
+      };
       const allowedKeys: Array<keyof IntelligenceWeights> = [
         "categoryFit", "digitalNeed", "budgetPotential",
         "engagement", "timing", "locationFit",
