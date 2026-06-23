@@ -108,6 +108,20 @@ struct LeadgridFollowUpQueueView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+
+                Menu {
+                    Button("1 time")                  { snooze(item.id, hours: 1)   }
+                    Button("4 timer")                 { snooze(item.id, hours: 4)   }
+                    Button("I morgen tidlig (24t)")   { snooze(item.id, hours: 24)  }
+                    Button("Neste uke (7 dager)")     { snooze(item.id, hours: 168) }
+                } label: {
+                    Label("Snooze", systemImage: "clock.fill")
+                        .font(.caption)
+                }
+                .menuStyle(.borderlessButton)
+                .buttonStyle(.bordered)
+                .tint(.orange)
+
                 Button("Avvis") {
                     Task {
                         _ = try? await api.dismissRecommendation(item.id)
@@ -116,10 +130,16 @@ struct LeadgridFollowUpQueueView: View {
                 }
                 .font(.caption)
                 .buttonStyle(.bordered)
+                .tint(.gray)
 
                 Button("Gjør") {
                     // TODO: naviger til lead-detail (kobles på når MapScreen
-                    // eksponerer en selectLead-binding fra Hub).
+                    // eksponerer en selectLead-binding fra Hub). Markeres
+                    // som accepted via API i mellomtiden.
+                    Task {
+                        _ = try? await api.acceptRecommendation(item.id)
+                        await load()
+                    }
                 }
                 .font(.caption)
                 .buttonStyle(.borderedProminent)
@@ -194,5 +214,19 @@ struct LeadgridFollowUpQueueView: View {
             errorText = "Kunne ikke laste: \(error.localizedDescription)"
         }
         loading = false
+    }
+
+    /// Snooze en NBA-anbefaling i N timer og last køen på nytt.
+    /// Backend: POST /api/leadgrid/intelligence/recommendations/:id/snooze (PR #882).
+    @MainActor
+    private func snooze(_ id: String, hours: Int) {
+        Task {
+            do {
+                _ = try await api.snoozeRecommendation(id, hours: hours)
+                await load()
+            } catch {
+                errorText = "Kunne ikke snooze: \(error.localizedDescription)"
+            }
+        }
     }
 }
