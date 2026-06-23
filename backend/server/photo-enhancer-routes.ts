@@ -188,6 +188,14 @@ type PhotoEnhancerR2Source = {
   size: number;
   uploadId?: string | null;
   originalHash?: string | null;
+  // Where the source object lives. "r2" = the photo-enhancer Cloudflare R2
+  // upload bucket (legacy). "b2" = the Backblaze B2 staging bucket that the
+  // rest of the photographer pipeline (capture, gallery, editing handoff) uses
+  // — keeps the photographer-facing path on one provider, no cross-provider
+  // egress. The backend already holds B2 creds; the GFPGAN runner never sees
+  // the source (the backend downloads + forwards it), so B2 support is
+  // backend-only.
+  storage?: "r2" | "b2";
 };
 
 type LensCorrection = {
@@ -987,6 +995,7 @@ async function runPhotoEnhancerQueuedJob(job: PhotoEnhancerQueuedJob) {
       fileName: job.source.fileName,
       expectedMimeType: job.source.mimeType,
       expectedSize: job.source.size,
+      storage: job.source.storage,
     });
     job.source.originalHash = downloaded.originalHash;
     job.progress = 25;
@@ -1583,6 +1592,60 @@ function isAllowedPhotoEnhancerR2Object(bucket: string | null | undefined, key: 
   );
 }
 
+// ── Backblaze B2 source support (same staging bucket as capture/editing) ──
+// B2 is S3-compatible; reuse the Role Room staging creds the editing handoff
+// already uses. Sources live under PHOTO_ENHANCER_B2_STAGING_PREFIX.
+const PHOTO_ENHANCER_B2_STAGING_PREFIX = "photo-enhancer-staging";
+
+let photoEnhancerB2Client: S3Client | null = null;
+
+function buildPhotoEnhancerB2Config(): { enabled: boolean; endpoint: string; bucket: string; region: string } {
+  const region = process.env.B2_REGION || "eu-central-003";
+  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME || "";
+  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID || "";
+  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY || "";
+  return {
+    enabled: Boolean(bucket && keyId && appKey),
+    endpoint: `https://s3.${region}.backblazeb2.com`,
+    bucket,
+    region,
+  };
+}
+
+function getPhotoEnhancerB2Client(): S3Client | null {
+  const cfg = buildPhotoEnhancerB2Config();
+  if (!cfg.enabled) return null;
+  if (photoEnhancerB2Client) return photoEnhancerB2Client;
+  photoEnhancerB2Client = new S3Client({
+    region: cfg.region,
+    endpoint: cfg.endpoint,
+    credentials: {
+      accessKeyId: process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID || "",
+      secretAccessKey: process.env.B2_ROLE_ROOM_APPLICATION_KEY || "",
+    },
+    forcePathStyle: true,
+  });
+  return photoEnhancerB2Client;
+}
+
+function isAllowedPhotoEnhancerB2Object(bucket: string | null | undefined, key: string | null | undefined) {
+  const cfg = buildPhotoEnhancerB2Config();
+  return Boolean(
+    cfg.enabled &&
+      bucket === cfg.bucket &&
+      typeof key === "string" &&
+      key.startsWith(`${PHOTO_ENHANCER_B2_STAGING_PREFIX}/`) &&
+      !key.includes(".."),
+  );
+}
+
+function buildPhotoEnhancerB2UploadKey(params: { fileName: string; projectId?: string | null }): string {
+  const datePrefix = new Date().toISOString().slice(0, 10);
+  const projectSegment = sanitizeR2KeySegment(params.projectId || "unassigned", "unassigned");
+  const baseName = sanitizeR2KeySegment(path.basename(params.fileName || "source.raw"), "source.raw");
+  return [PHOTO_ENHANCER_B2_STAGING_PREFIX, projectSegment, datePrefix, crypto.randomUUID(), baseName].join("/");
+}
+
 function readPhotoEnhancerR2Source(value: unknown, fallback: Record<string, unknown> = {}): PhotoEnhancerR2Source | null {
   const sourceRecord = parseJsonObject(value);
   const bucket = readString(sourceRecord.bucket) || readString(fallback.bucket);
@@ -1596,6 +1659,7 @@ function readPhotoEnhancerR2Source(value: unknown, fallback: Record<string, unkn
     "application/octet-stream";
   const size = readNumber(sourceRecord.size) || readNumber(fallback.size) || 0;
   if (!bucket || !key || !size) return null;
+  const storageRaw = (readString(sourceRecord.storage) || readString(fallback.storage) || "r2").toLowerCase();
   return {
     bucket,
     key,
@@ -1604,6 +1668,7 @@ function readPhotoEnhancerR2Source(value: unknown, fallback: Record<string, unkn
     size,
     uploadId: readString(sourceRecord.uploadId) || null,
     originalHash: readString(sourceRecord.originalHash) || null,
+    storage: storageRaw === "b2" ? "b2" : "r2",
   };
 }
 
@@ -1640,12 +1705,24 @@ async function downloadPhotoEnhancerR2ObjectToTemp(params: {
   fileName: string;
   expectedSize?: number | null;
   expectedMimeType?: string | null;
+  storage?: "r2" | "b2";
 }) {
-  const config = buildPhotoEnhancerUploadR2Config();
-  const client = getPhotoEnhancerUploadR2Client(config);
-  if (!client || !config.bucket) throw new Error("photo_enhancer_r2_upload_not_configured");
-  if (!isAllowedPhotoEnhancerR2Object(params.bucket, params.key)) {
-    throw new Error("photo_enhancer_r2_object_not_allowed");
+  // B2 sources fetch from the Backblaze staging bucket (S3-compatible); the
+  // default R2 path is unchanged.
+  let client: S3Client | null;
+  if (params.storage === "b2") {
+    client = getPhotoEnhancerB2Client();
+    if (!client) throw new Error("photo_enhancer_b2_not_configured");
+    if (!isAllowedPhotoEnhancerB2Object(params.bucket, params.key)) {
+      throw new Error("photo_enhancer_b2_object_not_allowed");
+    }
+  } else {
+    const config = buildPhotoEnhancerUploadR2Config();
+    client = getPhotoEnhancerUploadR2Client(config);
+    if (!client || !config.bucket) throw new Error("photo_enhancer_r2_upload_not_configured");
+    if (!isAllowedPhotoEnhancerR2Object(params.bucket, params.key)) {
+      throw new Error("photo_enhancer_r2_object_not_allowed");
+    }
   }
 
   const head = await client.send(
@@ -5518,8 +5595,11 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     if (!source) {
       return res.status(400).json({ success: false, error: "r2_source_required" });
     }
-    if (!isAllowedPhotoEnhancerR2Object(source.bucket, source.key)) {
-      return res.status(403).json({ success: false, error: "photo_enhancer_r2_object_not_allowed" });
+    const sourceAllowed = source.storage === "b2"
+      ? isAllowedPhotoEnhancerB2Object(source.bucket, source.key)
+      : isAllowedPhotoEnhancerR2Object(source.bucket, source.key);
+    if (!sourceAllowed) {
+      return res.status(403).json({ success: false, error: "photo_enhancer_source_object_not_allowed" });
     }
     if (!isSupportedPhotoUpload({ originalname: source.fileName, mimetype: source.mimeType })) {
       return res.status(415).json({ success: false, error: "unsupported_photo_upload_type" });
@@ -5705,6 +5785,41 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     }
     schedulePhotoEnhancerQueue();
     res.json({ success: true, queue: getPhotoEnhancerQueueRuntime() });
+  });
+
+  // Presigned single PUT to the Backblaze B2 staging bucket — the
+  // photographer pipeline's storage. The client uploads the source here, then
+  // POSTs /jobs with { source: { bucket, key, storage: "b2", size, fileName,
+  // mimeType } } for async enhancement. Keeps the photo path on B2 (no R2).
+  router.post("/uploads/b2-presign", async (req, res) => {
+    const body = parseJsonObject(req.body);
+    const fileName = readString(body.fileName) || "source.raw";
+    const contentType = readString(body.contentType) || "application/octet-stream";
+    const projectId = readString(body.projectId);
+    const cfg = buildPhotoEnhancerB2Config();
+    const client = getPhotoEnhancerB2Client();
+    if (!cfg.enabled || !client) {
+      return res.status(503).json({ success: false, error: "photo_enhancer_b2_not_configured" });
+    }
+    try {
+      const key = buildPhotoEnhancerB2UploadKey({ fileName, projectId });
+      const url = await getSignedUrl(
+        client,
+        new PutObjectCommand({ Bucket: cfg.bucket, Key: key, ContentType: contentType }),
+        { expiresIn: 3600 },
+      );
+      res.json({
+        success: true,
+        storage: "b2",
+        bucket: cfg.bucket,
+        key,
+        uploadUrl: url,
+        expiresInSeconds: 3600,
+      });
+    } catch (error) {
+      console.error("[photo-enhancer] b2-presign failed:", error);
+      res.status(500).json({ success: false, error: "b2_presign_failed" });
+    }
   });
 
   router.post("/uploads/multipart", async (req, res) => {
