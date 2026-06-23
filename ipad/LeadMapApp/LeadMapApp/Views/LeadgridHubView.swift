@@ -21,6 +21,14 @@ struct LeadgridHubView: View {
                     }
                 }
 
+                // Robusthet-pakke 3: offline-kø-banner. Skrur seg av ved online + tom kø.
+                Section {
+                    OfflineQueueBadge()
+                        .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+
                 Section("CRM") {
                     if let api = appState.api {
                         NavigationLink {
