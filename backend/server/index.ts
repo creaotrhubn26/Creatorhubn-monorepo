@@ -547,6 +547,9 @@ import { registerLeadgridRetentionCron } from "./leadgrid-retention-cron.js";
 import { registerLeadgridBackfillCron } from "./leadgrid-backfill-cron.js";
 import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
 import { registerLeadgridWebhookRotationRoutes } from "./leadgrid-webhook-rotation-routes.js";
+import { registerLeadgridPublicApiV1 } from "./leadgrid-public-api-v1.js";
+import { registerLeadgridApiKeyMgmtRoutes } from "./leadgrid-api-key-mgmt-routes.js";
+import { registerLeadgridOpenApiRoutes } from "./leadgrid-openapi-routes.js";
 import { registerLeadgridTerritoryRoutes } from "./leadgrid-territory-routes.js";
 import { registerLeadgridRouteRoutes } from "./leadgrid-route-routes.js";
 import { registerLeadgridAnalyticsRoutes } from "./leadgrid-analytics-routes.js";
@@ -24491,6 +24494,14 @@ registerLeadgridAIUsageRoutes({ app, pool, activeSessions });
 // Webhook-secret-rotering m/ 7-dagers grace-period (mig 322).
 // POST /webhooks/:id/rotate-secret + cron /expire-old-webhook-secrets.
 registerLeadgridWebhookRotationRoutes({ app, pool, activeSessions });
+// Skalering nivå 3c — Public API v1 + API-keys + OpenAPI docs (mig 325).
+// Stabilt schema for 3.-parts-integrasjoner (Salesforce, HubSpot, custom).
+// /api/v1/leads, /api/v1/recommendations, /api/v1/health auth via lgk_-key.
+registerLeadgridPublicApiV1({ app, pool });
+// Admin-management av API-keys (session-auth, gated på api_keys.*).
+registerLeadgridApiKeyMgmtRoutes({ app, pool, activeSessions });
+// Swagger UI på /api/v1/docs + OpenAPI 3.1-spec på /api/v1/openapi.json.
+registerLeadgridOpenApiRoutes(app);
 // LeadGrid territorie-grids — "hold deg i din grid" (mig 314).
 // CRUD + check + brudd-logg (/api/leadgrid/territories/*).
 // Gated på territories.view / territories.manage / territories.view_breaches.
