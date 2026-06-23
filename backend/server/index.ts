@@ -547,6 +547,7 @@ import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.j
 import { registerLeadgridRetentionCron } from "./leadgrid-retention-cron.js";
 import { registerLeadgridBackfillCron } from "./leadgrid-backfill-cron.js";
 import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
+import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes.js";
 import { registerLeadgridWebhookRotationRoutes } from "./leadgrid-webhook-rotation-routes.js";
 import { registerLeadgridPublicApiV1 } from "./leadgrid-public-api-v1.js";
 import { registerLeadgridApiKeyMgmtRoutes } from "./leadgrid-api-key-mgmt-routes.js";
@@ -24492,6 +24493,11 @@ registerLeadgridBackfillCron({ app, pool });
 // Per-org AI-cost tracking (mig 321): GET /summary + /history.
 // Gated på billing.view_ai_usage.
 registerLeadgridAIUsageRoutes({ app, pool, activeSessions });
+// Pakke 3B — Pipeline forecasting + NBA attribution (mig 323).
+// GET /forecasting/pipeline (p10/p50/p90 m/ Claude-refinement + 6t cache),
+// POST /forecasting/pipeline/refresh, GET /forecasting/attribution.
+// Gated på forecasting.view (admin/salgssjef/teamleder).
+registerLeadgridForecastingRoutes({ app, pool, activeSessions });
 // Webhook-secret-rotering m/ 7-dagers grace-period (mig 322).
 // POST /webhooks/:id/rotate-secret + cron /expire-old-webhook-secrets.
 registerLeadgridWebhookRotationRoutes({ app, pool, activeSessions });
