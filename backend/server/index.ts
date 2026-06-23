@@ -543,6 +543,9 @@ import { registerLeadgridResearchRoutes } from "./leadgrid-research-routes.js";
 import { registerLeadgridMarketScanRoutes } from "./leadgrid-market-scan-routes.js";
 import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-routes.js";
 import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
+import { registerLeadgridBackfillCron } from "./leadgrid-backfill-cron.js";
+import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
+import { registerLeadgridWebhookRotationRoutes } from "./leadgrid-webhook-rotation-routes.js";
 import { registerLeadgridTerritoryRoutes } from "./leadgrid-territory-routes.js";
 import { registerLeadgridRouteRoutes } from "./leadgrid-route-routes.js";
 import { registerLeadgridAnalyticsRoutes } from "./leadgrid-analytics-routes.js";
@@ -24440,6 +24443,16 @@ registerLeadgridIntelligenceRoutes({ app, pool, activeSessions });
 // Krever LEADGRID_INTELLIGENCE_CRON_TOKEN env-var i tillegg til
 // matching x-cron-trigger-token-header.
 registerLeadgridIntelligenceCron({ app, pool });
+// Skalering nivå 2b — denormaliser crm_customers.organization_id (mig 320)
+// via backfill-cron (kjøres @ 03:15 UTC daily + manuell trigger). Eliminerer
+// owner_user_id IN organization_members-subqueries fra hot-path queries.
+registerLeadgridBackfillCron({ app, pool });
+// Per-org AI-cost tracking (mig 321): GET /summary + /history.
+// Gated på billing.view_ai_usage.
+registerLeadgridAIUsageRoutes({ app, pool, activeSessions });
+// Webhook-secret-rotering m/ 7-dagers grace-period (mig 322).
+// POST /webhooks/:id/rotate-secret + cron /expire-old-webhook-secrets.
+registerLeadgridWebhookRotationRoutes({ app, pool, activeSessions });
 // LeadGrid territorie-grids — "hold deg i din grid" (mig 314).
 // CRUD + check + brudd-logg (/api/leadgrid/territories/*).
 // Gated på territories.view / territories.manage / territories.view_breaches.
