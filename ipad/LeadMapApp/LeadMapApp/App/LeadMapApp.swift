@@ -16,6 +16,7 @@ struct LeadMapApp: App {
         WindowGroup {
             RootView()
                 .environment(appState)
+                .environment(NetworkMonitor.shared)
                 .preferredColorScheme(.dark)
                 .onAppear {
                     NotificationAppDelegate.appStateRef = appState
@@ -151,6 +152,21 @@ struct RootView: View {
             // Start Leadgrid-polling så snart auth er på plass.
             if appState.api != nil {
                 appState.startLeadgridPolling()
+            }
+            // Robusthet-pakke 3: drain offline-køen ved app-start hvis online,
+            // og sett opp connectivity-restore-handler.
+            if let api = appState.api {
+                let result = await OfflineActionQueue.shared.drain(api: api)
+                if result.success > 0 || result.failed > 0 {
+                    print("[offline-queue] drained at boot: \(result.success) ok, \(result.failed) failed")
+                }
+            }
+            NetworkMonitor.shared.onConnectivityRestored = {
+                Task {
+                    guard let api = appState.api else { return }
+                    let result = await OfflineActionQueue.shared.drain(api: api)
+                    print("[offline-queue] drained on reconnect: \(result.success) ok, \(result.failed) failed")
+                }
             }
         }
         .onChange(of: appState.authToken) { _, newValue in
