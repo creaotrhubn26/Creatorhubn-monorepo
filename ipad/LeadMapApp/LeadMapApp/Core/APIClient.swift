@@ -2356,3 +2356,37 @@ struct SnoozeResult: Decodable {
     let snoozedUntil: String?
     let hours: Int?
 }
+
+// MARK: - Leadgrid Route Planner (PR #856 + #870)
+//
+// Bygger ovenpå eksisterende `planDayRoute`/`updateRouteStop` (smart dagsrute).
+// Disse nye metodene gir Route Planner-UI-et (auto in-grid + nærmeste-nabo)
+// modeller med expected_route_value + matrix_source, og henter detaljert
+// rute-detalj for innsjekk i felt.
+
+extension APIClient {
+    /// Planlegg dagsrute uten å trenge organizationId — backend velger basert
+    /// på selgerens in-grid leads. Returnerer nil hvis ingen aktuelle leads.
+    func planRoute(
+        startLat: Double,
+        startLng: Double,
+        limit: Int = 12,
+        plannedDate: String? = nil
+    ) async throws -> LeadgridRouteDetail? {
+        var body: [String: Any] = [
+            "start_lat": startLat,
+            "start_lng": startLng,
+            "limit": limit,
+        ]
+        if let plannedDate { body["planned_date"] = plannedDate }
+        let resp: LeadgridRoutePlanResponse = try await post(
+            "/api/leadgrid/routes/plan", body: body
+        )
+        return resp.route
+    }
+
+    /// Hent en lagret rute med oppdaterte stopp-statuser (for innsjekk-flyt).
+    func fetchRoute(_ id: String) async throws -> LeadgridRouteFullResponse {
+        try await get("/api/leadgrid/routes/\(id)")
+    }
+}

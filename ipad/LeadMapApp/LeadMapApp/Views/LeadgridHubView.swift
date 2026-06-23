@@ -67,6 +67,17 @@ struct LeadgridHubView: View {
                     }
                 }
 
+                // Route Planner (PR #856 + #870) — kart + nummererte stopp + Apple Maps-nav.
+                Section("Rute") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridRoutePlannerView(api: api)
+                        } label: {
+                            Label("Dagsrute", systemImage: "map.fill")
+                        }
+                    }
+                }
+
                 // Intelligence Engine (PR #855) — NBA + pipeline + score-breakdown.
                 Section("Intelligence") {
                     if let api = appState.api {
