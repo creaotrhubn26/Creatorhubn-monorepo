@@ -2438,3 +2438,56 @@ extension APIClient {
         return resp.notes
     }
 }
+
+// MARK: - Leadgrid Momentum (Daniels Momentum Engine)
+//
+// Endepunkter:
+//   - GET  /api/leadgrid/momentum/today  → dagens momentum-score + NBA + reasoning
+//   - GET  /api/leadgrid/momentum/goal   → aktive månedsmål (revenue + daglige aktivitetsmål)
+//   - POST /api/leadgrid/momentum/goal   → lagre/oppdater månedsmål
+//   - GET  /api/leadgrid/momentum/trend  → siste N dager (clamp 7-180)
+//
+// Brukes av LeadgridMomentumCard, LeadgridSetGoalSheet og
+// LeadgridMomentumTrendChart på Min dag.
+
+extension APIClient {
+
+    func fetchMomentumToday() async throws -> LeadgridMomentum {
+        let resp: LeadgridMomentumResponse = try await get("/api/leadgrid/momentum/today")
+        return resp.momentum
+    }
+
+    func fetchSalesGoal() async throws -> LeadgridSalesGoal {
+        let resp: LeadgridSalesGoalResponse = try await get("/api/leadgrid/momentum/goal")
+        return resp.goal
+    }
+
+    func saveSalesGoal(
+        revenueTarget: Double?,
+        dealsTarget: Int?,
+        meetingsTarget: Int?,
+        dailyContactsTarget: Int,
+        dailyFollowupsTarget: Int,
+        dailyMeetingsTarget: Int,
+        dailyPipelineMovesTarget: Int
+    ) async throws -> LeadgridSalesGoal {
+        var body: [String: Any] = [
+            "daily_contacts_target": dailyContactsTarget,
+            "daily_followups_target": dailyFollowupsTarget,
+            "daily_meetings_target": dailyMeetingsTarget,
+            "daily_pipeline_moves_target": dailyPipelineMovesTarget,
+        ]
+        if let r = revenueTarget { body["revenue_target"] = r }
+        if let d = dealsTarget { body["deals_target"] = d }
+        if let m = meetingsTarget { body["meetings_target"] = m }
+        let resp: LeadgridSalesGoalResponse = try await post("/api/leadgrid/momentum/goal", body: body)
+        return resp.goal
+    }
+
+    /// Henter momentum-trend siste N dager (clamp 7-180).
+    func fetchMomentumTrend(days: Int = 30) async throws -> LeadgridMomentumTrend {
+        let clamped = max(7, min(180, days))
+        let resp: LeadgridMomentumTrendResponse = try await get("/api/leadgrid/momentum/trend?days=\(clamped)")
+        return resp.trend
+    }
+}

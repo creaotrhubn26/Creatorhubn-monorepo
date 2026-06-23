@@ -158,6 +158,132 @@ struct PhotoEnhancerClient: Sendable {
         _ = try? await postJSON("feedback", body: body)
     }
 
+    // MARK: - Async enhance (B2 source + job queue)
+
+    /// One async enhance: upload the source to B2, enqueue a job, poll to
+    /// completion, fetch the result. Non-blocking (short requests + polling),
+    /// honours Task cancellation, reports progress 0…1. Keeps the source on B2
+    /// (same provider as the rest of the photographer pipeline — no R2).
+    func enhanceAsync(imageData: Data, fileName: String, mime: String,
+                      preset: String, settings: EnhanceSettings,
+                      projectId: String? = nil,
+                      onProgress: @MainActor @escaping (Double, String) -> Void) async throws -> EnhanceResult {
+        // 1. presign + upload to B2
+        await onProgress(0.05, "Laster opp til B2…")
+        let target = try await b2Presign(fileName: fileName, contentType: mime, projectId: projectId)
+        try await putToURL(target.uploadUrl, data: imageData, contentType: mime)
+        try Task.checkCancellation()
+
+        // 2. enqueue the job
+        await onProgress(0.2, "Setter i kø…")
+        let jobId = try await createEnhanceJob(bucket: target.bucket, key: target.key,
+                                               fileName: fileName, mime: mime, size: imageData.count,
+                                               preset: preset, settings: settings, projectId: projectId)
+
+        // 3. poll to completion
+        for _ in 0..<200 {
+            try Task.checkCancellation()
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            let s = try await jobStatus(jobId: jobId)
+            await onProgress(0.2 + 0.7 * (Double(s.progress) / 100.0), "Forbedrer (\(s.progress)%)…")
+            switch s.status {
+            case "completed":
+                guard let urlStr = s.enhancedImageUrl else { throw EnhancerError.noImage }
+                await onProgress(0.95, "Henter resultat…")
+                let (bytes, img) = try await fetchResultImage(urlStr)
+                return EnhanceResult(image: img, jpegData: bytes, modelUsed: s.modelUsed, inferenceMode: "queue")
+            case "failed", "cancelled":
+                throw EnhancerError.http(0, s.failureReason ?? s.status)
+            default:
+                continue
+            }
+        }
+        throw EnhancerError.transport("timed out waiting for enhance job")
+    }
+
+    struct B2PresignTarget: Decodable, Sendable { let bucket: String; let key: String; let uploadUrl: String }
+
+    func b2Presign(fileName: String, contentType: String, projectId: String?) async throws -> B2PresignTarget {
+        struct Body: Encodable { let fileName: String; let contentType: String; let projectId: String? }
+        let (data, _) = try await postJSONReturning("uploads/b2-presign",
+            body: try JSONEncoder().encode(Body(fileName: fileName, contentType: contentType, projectId: projectId)))
+        return try decode(B2PresignTarget.self, from: data)
+    }
+
+    func putToURL(_ urlString: String, data: Data, contentType: String) async throws {
+        guard let url = URL(string: urlString) else { throw EnhancerError.transport("invalid upload url") }
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.timeoutInterval = 300
+        req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        req.httpBody = data
+        let (_, resp) = try await session.data(for: req)
+        if let http = resp as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw EnhancerError.http(http.statusCode, "B2 upload failed")
+        }
+    }
+
+    func createEnhanceJob(bucket: String, key: String, fileName: String, mime: String, size: Int,
+                          preset: String, settings: EnhanceSettings, projectId: String?) async throws -> String {
+        struct Source: Encodable { let bucket, key, storage, fileName, mimeType: String; let size: Int }
+        struct Body: Encodable { let source: Source; let preset: String; let settings: EnhanceSettings; let projectId: String? }
+        let body = Body(source: Source(bucket: bucket, key: key, storage: "b2", fileName: fileName, mimeType: mime, size: size),
+                        preset: preset, settings: settings, projectId: projectId)
+        let (data, _) = try await postJSONReturning("jobs", body: try JSONEncoder().encode(body))
+        struct Resp: Decodable { struct JobRef: Decodable { let id: String? }; let job: JobRef? }
+        guard let id = (try decode(Resp.self, from: data)).job?.id else { throw EnhancerError.decode("no job id") }
+        return id
+    }
+
+    struct JobStatus: Sendable {
+        let status: String; let progress: Int
+        let enhancedImageUrl: String?; let modelUsed: String?; let failureReason: String?
+    }
+
+    func jobStatus(jobId: String) async throws -> JobStatus {
+        let (data, _) = try await get("jobs/\(jobId)")
+        struct Resp: Decodable {
+            struct Result: Decodable { let enhancedImageUrl: String?; let modelUsed: String? }
+            struct JobRef: Decodable { let status: String?; let progress: Int?; let failureReason: String?; let result: Result? }
+            let job: JobRef?
+        }
+        let r = try decode(Resp.self, from: data).job
+        return JobStatus(status: r?.status ?? "unknown", progress: r?.progress ?? 0,
+                         enhancedImageUrl: r?.result?.enhancedImageUrl, modelUsed: r?.result?.modelUsed,
+                         failureReason: r?.failureReason)
+    }
+
+    /// Fetch the enhanced image — handles a data: URL, an absolute http URL, or
+    /// a backend-relative path (e.g. /api/photo-enhancer/files/:id/download).
+    private func fetchResultImage(_ urlString: String) async throws -> (Data, UIImage) {
+        let bytes: Data
+        if urlString.hasPrefix("data:"), let comma = urlString.firstIndex(of: ","),
+           let d = Data(base64Encoded: String(urlString[urlString.index(after: comma)...])) {
+            bytes = d
+        } else {
+            let url: URL
+            if urlString.hasPrefix("http") { url = URL(string: urlString)! } else if let stored = await SignInService.shared.session,
+                    let u = URL(string: urlString, relativeTo: stored.backendBaseURL) { url = u } else { throw EnhancerError.transport("invalid result url") }
+            var req = URLRequest(url: url); req.timeoutInterval = 120; apply(&req)
+            let (d, resp) = try await session.data(for: req)
+            if let http = resp as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                throw EnhancerError.http(http.statusCode, "result download failed")
+            }
+            bytes = d
+        }
+        guard let img = UIImage(data: bytes) else { throw EnhancerError.noImage }
+        return (bytes, img)
+    }
+
+    private func postJSONReturning(_ path: String, body: Data) async throws -> (Data, URLResponse) {
+        var req = URLRequest(url: try resolve(path))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        apply(&req)
+        req.httpBody = body
+        return try await run(req)
+    }
+
     // MARK: - HTTP plumbing
 
     private func resolve(_ path: String) throws -> URL {
