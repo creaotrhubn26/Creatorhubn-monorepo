@@ -26,7 +26,9 @@ PROJECT        = "CaptureApp.xcodeproj"
 
 platform :ios do
   before_all do
-    ensure_xcode_version(version: "26.5")
+    # Locally we want 26.5; CI sets XCODE_VERSION to whatever the runner
+    # selected so the assertion is portable across GitHub-hosted images.
+    ensure_xcode_version(version: ENV.fetch("XCODE_VERSION", "26.5"))
   end
 
   desc "Set CFBundleVersion to epoch seconds (unique + strictly increasing)"
