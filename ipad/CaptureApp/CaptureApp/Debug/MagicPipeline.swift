@@ -156,6 +156,19 @@ final class MagicPipeline {
         try? await store.attachEnhancedKey(id: assetId, key: destination.path)
     }
 
+    /// Render a recipe against a source JPEG and return the result as a
+    /// UIImage — for the native Redigering tab's live Før/Etter preview.
+    /// Reuses the exact disk pipeline (no duplicated colour logic) via a
+    /// throwaway temp file. Heavy; call off the main actor and ideally on
+    /// slider-release rather than every drag tick.
+    nonisolated static func renderPreview(source: String, recipe: MagicRecipe) -> UIImage? {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("magic-preview-\(UUID().uuidString).jpg")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        guard renderToDisk(source: source, destination: tmp, recipe: recipe) else { return nil }
+        return UIImage(contentsOfFile: tmp.path)
+    }
+
     nonisolated private static func renderToDisk(source: String, destination: URL, recipe: MagicRecipe) -> Bool {
         guard let sourceImage = UIImage(contentsOfFile: source),
               let ciRaw = CIImage(image: sourceImage)
