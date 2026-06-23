@@ -548,6 +548,7 @@ import { registerLeadgridRetentionCron } from "./leadgrid-retention-cron.js";
 import { registerLeadgridBackfillCron } from "./leadgrid-backfill-cron.js";
 import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
 import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes.js";
+import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
 import { registerLeadgridWebhookRotationRoutes } from "./leadgrid-webhook-rotation-routes.js";
 import { registerLeadgridPublicApiV1 } from "./leadgrid-public-api-v1.js";
 import { registerLeadgridApiKeyMgmtRoutes } from "./leadgrid-api-key-mgmt-routes.js";
@@ -24498,6 +24499,11 @@ registerLeadgridAIUsageRoutes({ app, pool, activeSessions });
 // POST /forecasting/pipeline/refresh, GET /forecasting/attribution.
 // Gated på forecasting.view (admin/salgssjef/teamleder).
 registerLeadgridForecastingRoutes({ app, pool, activeSessions });
+// Momentum Engine — sales-goal + daglig activity-target + momentum-score
+// 0-100 + neste-handling-anbefaling (mig 327).
+// 3 endepunkter: GET /momentum/today, GET /momentum/goal, POST /momentum/goal
+// Gated på momentum.view / momentum.set_goal.
+registerLeadgridMomentumRoutes({ app, pool, activeSessions });
 // Webhook-secret-rotering m/ 7-dagers grace-period (mig 322).
 // POST /webhooks/:id/rotate-secret + cron /expire-old-webhook-secrets.
 registerLeadgridWebhookRotationRoutes({ app, pool, activeSessions });
