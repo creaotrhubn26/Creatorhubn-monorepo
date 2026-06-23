@@ -66,6 +66,13 @@ struct LeadgridFollowUpQueueView: View {
         .navigationTitle("Følg-opp-kø")
         .task { await load() }
         .refreshable { await load() }
+        .onReceive(NotificationCenter.default.publisher(for: .leadgridRealtimeEvent)) { notif in
+            guard let info = notif.userInfo as? [String: String],
+                  let type = info["type"] else { return }
+            if type == "recommendation.created" || type == "nba.updated" || type == "followup.due" {
+                Task { await load() }
+            }
+        }
         .overlay {
             if loading && items.isEmpty {
                 ProgressView().controlSize(.large)
