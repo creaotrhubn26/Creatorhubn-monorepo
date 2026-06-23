@@ -140,3 +140,27 @@ export function buildSentryErrorMiddleware(): (
 export function isSentryEnabled(): boolean {
   return sentry !== null;
 }
+
+/**
+ * Spesialvariant av captureBackendException for Leadgrid-moduler.
+ * Setter `leadgrid_module`-tag for å filtrere i Sentry-dashboardet.
+ * Brukes f.eks. fra intelligence-cron, retention-cron, route-service.
+ */
+export function captureLeadgridError(
+  module: string,
+  err: unknown,
+  context?: Record<string, unknown>,
+): void {
+  if (!sentry) {
+    console.error(`[${module}] error (sentry off):`, err);
+    return;
+  }
+  try {
+    sentry.captureException(err, {
+      tags: { leadgrid_module: module },
+      extra: context,
+    });
+  } catch {
+    // ignore — Sentry må aldri abort'e parent-flow
+  }
+}

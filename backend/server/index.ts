@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ override: true });
 
 // Sentry MUST initialiseres FØR alle andre imports for å fange tidlig errors
-import { initBackendSentry } from "./sentry-init.js";
+import { initBackendSentry, buildSentryErrorMiddleware } from "./sentry-init.js";
 initBackendSentry();
 import {
   registerErrorLogRoutes,
@@ -543,6 +543,7 @@ import { registerLeadgridResearchRoutes } from "./leadgrid-research-routes.js";
 import { registerLeadgridMarketScanRoutes } from "./leadgrid-market-scan-routes.js";
 import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-routes.js";
 import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
+import { registerLeadgridRetentionCron } from "./leadgrid-retention-cron.js";
 import { registerLeadgridTerritoryRoutes } from "./leadgrid-territory-routes.js";
 import { registerLeadgridRouteRoutes } from "./leadgrid-route-routes.js";
 import { registerLeadgridAnalyticsRoutes } from "./leadgrid-analytics-routes.js";
@@ -1009,6 +1010,13 @@ const pool = new Pool({
 });
 
 const db = drizzle(pool, { schema });
+
+// Leadgrid schema-validator (mig 313–318) — kjøres i bakgrunn ved boot.
+// Logger ADVARSEL hvis kritiske kolonner mangler. Sett
+// LEADGRID_STRICT_SCHEMA=1 for å abort'e boot isteden.
+void import("./leadgrid-schema-check.js")
+  .then(({ runSchemaCheck }) => runSchemaCheck(pool))
+  .catch((err) => console.error("[schema-check] boot-feil:", err));
 
 // upload-multer (PDF/DOCX kontrakt-import) — flyttet til ./contracts-upload-import-routes.ts
 
@@ -24440,6 +24448,11 @@ registerLeadgridIntelligenceRoutes({ app, pool, activeSessions });
 // Krever LEADGRID_INTELLIGENCE_CRON_TOKEN env-var i tillegg til
 // matching x-cron-trigger-token-header.
 registerLeadgridIntelligenceCron({ app, pool });
+// Data-retention-cron: daglig sletting av gamle scores/recs/queue-rader.
+// Trigget @ 03:00 UTC fra GitHub Actions
+// (.github/workflows/leadgrid-retention-cleanup.yml). Bruker samme
+// CRON_TOKEN som intelligence-rescore.
+registerLeadgridRetentionCron({ app, pool });
 // LeadGrid territorie-grids — "hold deg i din grid" (mig 314).
 // CRUD + check + brudd-logg (/api/leadgrid/territories/*).
 // Gated på territories.view / territories.manage / territories.view_breaches.
@@ -73633,6 +73646,10 @@ app.post("/import/lead/:leadId", async (req, res) => {
 app.all("/api/*", (req, res) => {
   res.status(404).json({ message: "Endpoint not implemented", path: req.path });
 });
+
+// Sentry error-middleware: må mountes ETTER alle routes, slik at den
+// fanger errors fra alle endepunkter. No-op hvis Sentry ikke initialisert.
+app.use(buildSentryErrorMiddleware());
 
 // Create HTTP server for WebSocket support
 const httpServer = createServer(app);
