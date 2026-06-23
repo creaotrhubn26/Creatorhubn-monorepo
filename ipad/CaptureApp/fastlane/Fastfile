@@ -29,9 +29,15 @@ platform :ios do
     ensure_xcode_version(version: "26.5")
   end
 
-  desc "Bump CFBundleVersion by 1"
+  desc "Set CFBundleVersion to epoch seconds (unique + strictly increasing)"
   lane :bump_build do
-    increment_build_number(xcodeproj: PROJECT)
+    # xcodegen regenerates project.pbxproj from project.yml on every run,
+    # resetting CURRENT_PROJECT_VERSION to "1" — so a plain +1 always produced
+    # "2", which collides with / is lower than the existing date-based builds
+    # (20260622, …) and Apple silently rejects it in processing. Epoch seconds
+    # is monotonic, unique per upload, and < UINT32_MAX (Apple's per-component
+    # cap) until ~2106.
+    increment_build_number(build_number: Time.now.to_i.to_s, xcodeproj: PROJECT)
   end
 
   desc "Archive + upload to TestFlight"
