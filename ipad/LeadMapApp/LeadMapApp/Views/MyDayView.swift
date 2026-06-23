@@ -17,6 +17,7 @@ struct MyDayView: View {
                 VStack(spacing: 16) {
                     quotaCard
                     summaryCards
+                    forecastCard
                     leadsList
                 }
                 .padding(.horizontal)
@@ -146,6 +147,15 @@ struct MyDayView: View {
         }
         .padding(12)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    // MARK: - Forecasting-kort (PR #885, mig 323)
+
+    @ViewBuilder
+    private var forecastCard: some View {
+        if let api = state.api {
+            LeadgridForecastCard(api: api)
+        }
     }
 
     // MARK: - Lead-liste

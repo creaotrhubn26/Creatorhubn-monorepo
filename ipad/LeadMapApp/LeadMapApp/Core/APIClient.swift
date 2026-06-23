@@ -1142,6 +1142,30 @@ actor APIClient {
         return try await fetchLeadgridMarketScanProgress(id: id)
     }
 
+    // MARK: - Leadgrid Forecasting (PR #885, mig 323)
+    //
+    // Predikert revenue for konfigurert horisont (default 90d) m/
+    // p10/p50/p90-bånd + Claude-reasoning + contributing factors.
+    // Brukes av Forecasting-kortet på Min dag (iPad).
+    // ============================================================
+
+    /// Hent siste cached forecast (eller fresh hvis cache er kald).
+    func fetchPipelineForecast(horizon: Int = 90) async throws -> LeadgridForecast {
+        let resp: LeadgridForecastResponse = try await get(
+            "/api/leadgrid/forecasting/pipeline?horizon=\(horizon)"
+        )
+        return resp.forecast
+    }
+
+    /// Tving fresh recompute (Claude-kall + DB-skriv).
+    func refreshPipelineForecast(horizon: Int = 90) async throws -> LeadgridForecast {
+        let resp: LeadgridForecastResponse = try await post(
+            "/api/leadgrid/forecasting/pipeline/refresh",
+            body: ["horizon": horizon],
+        )
+        return resp.forecast
+    }
+
     // MARK: - Internal
 
     private func makeRequest(_ path: String, method: String = "GET") -> URLRequest {
