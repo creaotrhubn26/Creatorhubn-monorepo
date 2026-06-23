@@ -77,6 +77,7 @@ platform :ios do
       # La Xcode kontakte Apple for å auto-generere/registrere provisioning-
       # profiler (kreves for automatic signing i headless archive).
       xcargs: provisioning_xcargs,
+      export_xcargs: provisioning_xcargs,
     )
 
     # Sanity check FØR upload: bruk gyms faktiske output-sti
@@ -114,6 +115,7 @@ platform :ios do
       output_directory: "build/",
       output_name: "CreatorHubOne.ipa",
       xcargs: provisioning_xcargs,
+      export_xcargs: provisioning_xcargs,
     )
 
     upload_to_app_store(
