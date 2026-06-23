@@ -2356,3 +2356,85 @@ struct SnoozeResult: Decodable {
     let snoozedUntil: String?
     let hours: Int?
 }
+
+// MARK: - Leadgrid Meeting Notes (Voice Memo → Whisper → Claude action items)
+
+/// Resultatet av en voice-memo opplasting.
+/// Backend prosesserer asynkront (Whisper → Claude); poll `fetchMeetingNote` for status.
+struct MeetingNoteUploadResult: Decodable {
+    let meetingNoteId: String
+    let status: String
+}
+
+struct MeetingNote: Decodable, Identifiable {
+    let id: String
+    let source: String?
+    let transcript: String?
+    let summary: String?
+    let actionItems: [MeetingActionItem]?
+    let decisions: [MeetingDecision]?
+    let nextSteps: [MeetingNextStep]?
+    let topics: [MeetingTopic]?
+    let confidence: Double?
+    let processingStatus: String
+    let errorMessage: String?
+    let createdAt: String?
+    let processedAt: String?
+}
+
+struct MeetingActionItem: Decodable, Hashable {
+    let title: String
+    let dueDate: String?
+    let priority: String?
+    let assignee: String?
+}
+
+struct MeetingDecision: Decodable, Hashable {
+    let decision: String
+    let owner: String?
+}
+
+struct MeetingNextStep: Decodable, Hashable {
+    let step: String
+    let owner: String?
+    let deadline: String?
+}
+
+struct MeetingTopic: Decodable, Hashable {
+    let topic: String
+    let sentiment: String?
+}
+
+private struct MeetingNoteResponse: Decodable { let note: MeetingNote }
+private struct MeetingNotesListResponse: Decodable { let notes: [MeetingNote] }
+
+extension APIClient {
+    /// Last opp voice-memo for et lead. Backend transkriberer m/ Whisper og
+    /// ekstraherer action items m/ Claude (async — poll `fetchMeetingNote`).
+    func uploadVoiceMemo(
+        leadId: String,
+        audioData: Data,
+        durationSeconds: Int,
+        language: String = "no"
+    ) async throws -> MeetingNoteUploadResult {
+        let base64 = audioData.base64EncodedString()
+        let body: [String: Any] = [
+            "audio_base64": base64,
+            "duration_seconds": durationSeconds,
+            "language": language,
+        ]
+        return try await post("/api/leadgrid/leads/\(leadId)/meeting-notes/upload-audio", body: body)
+    }
+
+    /// Hent én meeting-note m/ status + (ved completed) transcript + action items.
+    func fetchMeetingNote(_ id: String) async throws -> MeetingNote {
+        let resp: MeetingNoteResponse = try await get("/api/leadgrid/meeting-notes/\(id)")
+        return resp.note
+    }
+
+    /// Liste alle meeting-notes for et lead.
+    func fetchMeetingNotes(leadId: String) async throws -> [MeetingNote] {
+        let resp: MeetingNotesListResponse = try await get("/api/leadgrid/leads/\(leadId)/meeting-notes")
+        return resp.notes
+    }
+}
