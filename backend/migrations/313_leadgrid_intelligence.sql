@@ -56,15 +56,19 @@ ALTER TABLE crm_customers
   ADD COLUMN IF NOT EXISTS priority VARCHAR(10) DEFAULT 'normal'
     CHECK (priority IN ('low','normal','high','urgent'));
 
+-- FIX (2026-06-22): crm_customers har INGEN organization_id-kolonne.
+-- Org-tilhørighet hentes via owner_user_id → organization_members.
+-- Indeksene bruker owner_user_id som "tenant"-key (det er hva queries
+-- faktisk filtrerer på via owner_user_id IN organization_members).
 CREATE INDEX IF NOT EXISTS idx_crm_customers_pipeline_stage
-  ON crm_customers(organization_id, pipeline_stage) WHERE archived_at IS NULL;
+  ON crm_customers(owner_user_id, pipeline_stage) WHERE archived_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_crm_customers_follow_up_priority
-  ON crm_customers(organization_id, follow_up_priority DESC NULLS LAST) WHERE archived_at IS NULL;
+  ON crm_customers(owner_user_id, follow_up_priority DESC NULLS LAST) WHERE archived_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_crm_customers_next_follow_up
-  ON crm_customers(organization_id, next_follow_up_at)
+  ON crm_customers(owner_user_id, next_follow_up_at)
   WHERE next_follow_up_at IS NOT NULL AND archived_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_crm_customers_temperature
-  ON crm_customers(organization_id, lead_temperature) WHERE archived_at IS NULL;
+  ON crm_customers(owner_user_id, lead_temperature) WHERE archived_at IS NULL;
 
 -- ─────────────────────────────────────────────────────────────────────
 -- 2. lead_scores_history — full breakdown for forklarbarhet + ML
