@@ -51,7 +51,13 @@ jobs:
           APP_STORE_CONNECT_TEAM_ID: ${{ secrets.APP_STORE_CONNECT_TEAM_ID }}
           FASTLANE_SKIP_UPDATE_CHECK: "1"
           FASTLANE_HIDE_CHANGELOG: "1"
-        run: fastlane ios beta
+        run: |
+          # Write the ASC API key to disk so xcodebuild can use it for
+          # headless provisioning (-authenticationKey* in the Fastfile).
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_CONTENT" | base64 --decode > "$RUNNER_TEMP/asc/AuthKey.p8"
+          export ASC_KEY_PATH="$RUNNER_TEMP/asc/AuthKey.p8"
+          fastlane ios beta
 
       - name: Upload build log on failure
         if: failure()
