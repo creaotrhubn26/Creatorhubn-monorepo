@@ -403,6 +403,145 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
     },
   );
 
+  // ─── POST /api/leadgrid/intelligence/recommendations/:id/snooze ────
+  // Mig 326. Body: { hours: number (1-168, default 24), reason?: string }
+  // Låser opp: iPad NBA-kort med "Snooze 24h"-knapp.
+  app.post(
+    "/api/leadgrid/intelligence/recommendations/:id/snooze",
+    permExecute,
+    async (req: Request, res: Response): Promise<void> => {
+      const session = getSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      const hours = Math.min(
+        168,
+        Math.max(1, parseInt(String((req.body as Record<string, unknown>)?.hours ?? "24"), 10) || 24),
+      );
+      try {
+        const r = await pool.query<{ id: string; snoozed_until: string; organization_id: string }>(
+          `UPDATE lead_recommendations
+              SET snoozed_until = NOW() + ($1 || ' hours')::interval,
+                  snoozed_at = NOW(),
+                  snoozed_by_user_id = $2
+            WHERE id = $3::uuid AND status = 'pending'
+            RETURNING id::text, snoozed_until::text, organization_id::text`,
+          [String(hours), session.userId, req.params.id],
+        );
+        if (r.rowCount === 0) {
+          res.status(404).json({ error: "ikke_funnet_eller_ikke_pending" });
+          return;
+        }
+
+        // Emit webhook (fire-and-forget)
+        void emitWebhook(pool, "recommendation.snoozed", {
+          recommendation_id: r.rows[0].id,
+          hours,
+          snoozed_until: r.rows[0].snoozed_until,
+          snoozed_by: session.userId,
+        }, r.rows[0].organization_id);
+
+        res.json({ ok: true, snoozed_until: r.rows[0].snoozed_until, hours });
+      } catch (err) {
+        console.error("[intelligence snooze] error", err);
+        res.status(500).json({ error: "snooze_failed", detail: String(err).slice(0, 200) });
+      }
+    },
+  );
+
+  // ─── PATCH /api/leadgrid/intelligence/leads/:id/pipeline-stage ─────
+  // Mig 326. Body: { pipeline_stage: 'new'|'first_contact'|... }
+  // Låser opp: iPad Kanban drag-and-drop mellom pipeline-kolonner.
+  const VALID_STAGES = [
+    'new', 'first_contact', 'qualified', 'meeting',
+    'proposal', 'negotiation', 'won', 'lost',
+  ] as const;
+
+  app.patch(
+    "/api/leadgrid/intelligence/leads/:id/pipeline-stage",
+    permExecute,
+    async (req: Request, res: Response): Promise<void> => {
+      const session = getSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      const newStage = String((req.body as Record<string, unknown>)?.pipeline_stage ?? "");
+      if (!(VALID_STAGES as readonly string[]).includes(newStage)) {
+        res.status(400).json({ error: "ugyldig_stage", valid: VALID_STAGES });
+        return;
+      }
+      try {
+        // Hent gammel stage + org for audit + webhook
+        const oldR = await pool.query<{ pipeline_stage: string; organization_id: string | null }>(
+          `SELECT pipeline_stage, organization_id::text AS organization_id
+             FROM crm_customers
+            WHERE id = $1::uuid
+            LIMIT 1`,
+          [req.params.id],
+        );
+        const oldStage = oldR.rows[0]?.pipeline_stage;
+        const orgId = oldR.rows[0]?.organization_id ?? null;
+        if (!oldStage) {
+          res.status(404).json({ error: "lead_ikke_funnet" });
+          return;
+        }
+
+        // Update + audit-felter (mig 326)
+        await pool.query(
+          `UPDATE crm_customers
+              SET pipeline_stage = $1,
+                  last_pipeline_stage_change_at = NOW(),
+                  last_pipeline_stage_change_by = $2,
+                  updated_at = NOW()
+            WHERE id = $3::uuid`,
+          [newStage, session.userId, req.params.id],
+        );
+
+        // Logg som aktivitet (crm_lead_activities — mig 271)
+        await pool.query(
+          `INSERT INTO crm_lead_activities
+             (customer_id, user_id, activity_type, old_value, new_value, description, metadata, created_at)
+           VALUES ($1::uuid, $2, 'status_changed', $3, $4, $5, $6::jsonb, NOW())`,
+          [
+            req.params.id, session.userId, oldStage, newStage,
+            `Pipeline-stage endret: ${oldStage} → ${newStage}`,
+            JSON.stringify({ kind: 'pipeline_stage_change', source: 'patch_endpoint' }),
+          ],
+        );
+
+        // Trigger Intelligence Engine re-score (fire-and-forget)
+        try {
+          const engine = await import("./leadgrid-intelligence-engine.js");
+          void engine.computeIntelligenceForLead(pool, req.params.id, { trigger: 'activity' });
+        } catch (err) {
+          console.warn("[pipeline-stage] re-score skip:", err);
+        }
+
+        // Emit webhook (fire-and-forget)
+        if (orgId) {
+          void emitWebhook(pool, "lead.pipeline_stage_changed", {
+            lead_id: req.params.id,
+            old_stage: oldStage,
+            new_stage: newStage,
+            changed_by: session.userId,
+          }, orgId);
+        }
+
+        res.json({
+          ok: true,
+          lead_id: req.params.id,
+          old_stage: oldStage,
+          new_stage: newStage,
+        });
+      } catch (err) {
+        console.error("[intelligence pipeline-stage] error", err);
+        res.status(500).json({ error: "update_failed", detail: String(err).slice(0, 200) });
+      }
+    },
+  );
+
   // ─── GET /api/leadgrid/intelligence/follow-up-queue ────────────────
   // Prioritert kø for i dag — leads med høy follow_up_priority eller
   // forfalt next_follow_up_at.
@@ -454,6 +593,14 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
                 follow_up_priority >= 50
                 OR (next_follow_up_at IS NOT NULL AND next_follow_up_at <= NOW())
                 OR lead_temperature IN ('hot','ready')
+              )
+              -- Mig 326: skjul leads hvor aktiv pending NBA er snoozed
+              AND NOT EXISTS (
+                SELECT 1 FROM lead_recommendations lr
+                 WHERE lr.lead_id = crm_customers.id
+                   AND lr.status = 'pending'
+                   AND lr.snoozed_until IS NOT NULL
+                   AND lr.snoozed_until > NOW()
               )
             ORDER BY
               CASE WHEN next_follow_up_at IS NOT NULL AND next_follow_up_at <= NOW() THEN 0 ELSE 1 END,
