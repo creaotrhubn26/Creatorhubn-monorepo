@@ -13,6 +13,7 @@
 
 import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
+import { withAIQuota } from "./leadgrid-ai-queue.js";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -49,11 +50,13 @@ export async function transcribeAudio(
     form.append("file", new Blob([new Uint8Array(audioBuffer)]), "audio.m4a");
     form.append("model", "whisper-1");
     form.append("language", language);
-    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
-      body: form,
-    });
+    const res = await withAIQuota("openai_whisper", null, () =>
+      fetch("https://api.openai.com/v1/audio/transcriptions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
+        body: form,
+      }),
+    );
     if (!res.ok) {
       const errText = await res.text();
       console.warn("[meeting-notes] Whisper feilet:", res.status, errText);
@@ -93,11 +96,13 @@ med lead "${leadName}". Returner KUN gyldig JSON i nøyaktig dette skjemaet:
 Transkripsjon:
 ${transcript}`;
   try {
-    const msg = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2000,
-      messages: [{ role: "user", content: prompt }],
-    });
+    const msg = await withAIQuota("claude", null, () =>
+      client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 2000,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    );
     const text = msg.content
       .filter((c): c is { type: "text"; text: string } => c.type === "text")
       .map((c) => c.text)

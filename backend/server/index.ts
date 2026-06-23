@@ -1004,9 +1004,23 @@ import { respondWithError } from "./api-error";
 validateEnvOrExit();
 
 // Database connection
+// PERF (skalering nivå 2): tunet pool for å håndtere cron-batches (100 leads
+// samtidig) + concurrent web requests. Default pg.Pool max=10 var for lavt.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  max: parseInt(process.env.PG_POOL_MAX ?? "30", 10),
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+  // Statement timeout per query — beskytter mot runaway queries (30s)
+  statement_timeout: 30_000,
 });
+
+// Logger pool-health hvert 5. min for observability (Render-logs)
+setInterval(() => {
+  console.log(
+    `[pg-pool] total=${pool.totalCount} idle=${pool.idleCount} waiting=${pool.waitingCount}`,
+  );
+}, 5 * 60 * 1000).unref?.();
 
 const db = drizzle(pool, { schema });
 
@@ -22043,6 +22057,17 @@ app.get("/api/health", (req, res) => {
     // photographer sees any quality/size issues Meta flags.
     ffmpeg,
   });
+});
+
+// AI-queue health for observability (Leadgrid skalering nivå 2).
+// Eksponerer per-provider RPM-bruk, in-flight og pending wait-queue.
+app.get("/api/leadgrid/ai-queue/health", async (_req, res) => {
+  try {
+    const { aiQueue } = await import("./leadgrid-ai-queue.js");
+    res.json({ ok: true, ...aiQueue.snapshot() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err).slice(0, 200) });
+  }
 });
 
 // Auth endpoints - session-based login
