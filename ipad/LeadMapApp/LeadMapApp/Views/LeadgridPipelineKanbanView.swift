@@ -41,6 +41,13 @@ struct LeadgridPipelineKanbanView: View {
         .navigationTitle("Pipeline")
         .task { await load() }
         .refreshable { await load() }
+        .onReceive(NotificationCenter.default.publisher(for: .leadgridRealtimeEvent)) { notif in
+            guard let info = notif.userInfo as? [String: String],
+                  let type = info["type"] else { return }
+            if type == "lead.scored" || type == "nba.updated" {
+                Task { await load() }
+            }
+        }
         .overlay {
             if loading && leads.isEmpty {
                 ProgressView().controlSize(.large)

@@ -168,12 +168,33 @@ struct RootView: View {
                     print("[offline-queue] drained on reconnect: \(result.success) ok, \(result.failed) failed")
                 }
             }
+            // Real-time WebSocket-subscriber (PR #874 backend).
+            // Supplerer eksisterende polling — gjør at NBA-push, lead-score
+            // og followup.due dukker opp umiddelbart uten å vente på neste
+            // polling-tick.
+            if let token = appState.authToken,
+               let orgId = appState.activeOrganizationId {
+                LeadgridRealtimeClient.shared.connect(
+                    baseURL: APIClient.baseURL,
+                    token: token,
+                    channels: ["org:\(orgId)"]
+                )
+            }
         }
         .onChange(of: appState.authToken) { _, newValue in
             if newValue != nil {
                 appState.startLeadgridPolling()
+                if let token = newValue,
+                   let orgId = appState.activeOrganizationId {
+                    LeadgridRealtimeClient.shared.connect(
+                        baseURL: APIClient.baseURL,
+                        token: token,
+                        channels: ["org:\(orgId)"]
+                    )
+                }
             } else {
                 appState.stopLeadgridPolling()
+                LeadgridRealtimeClient.shared.disconnect()
             }
         }
     }
