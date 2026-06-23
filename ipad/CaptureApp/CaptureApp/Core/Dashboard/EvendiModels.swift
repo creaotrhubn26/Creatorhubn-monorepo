@@ -1,18 +1,18 @@
 import Foundation
 
-/// DTOs for the native Evendi channel (wedding-vendor ↔ couple messaging) of
-/// the multi-channel chat surface. These mirror the JSON the Express backend
-/// returns for `/api/evendi/conversations/*`.
-///
-/// Decoding is *deliberately very tolerant* — Evendi rows come straight off
-/// Postgres in snake_case (`couple_name`, `last_message_at`,
-/// `vendor_unread_count`, `sender_type`) but a camelCase variant may also
-/// appear. Every field is optional and decoded with `try?` / `decodeIfPresent`
-/// with both-case fallbacks. Dates stay raw ISO strings — render via
-/// ``DashboardDate``.
-///
-/// All types are `Sendable` so they cross the actor boundary from
-/// ``DashboardClient`` into `@MainActor` view models cleanly.
+// DTOs for the native Evendi channel (wedding-vendor ↔ couple messaging) of
+// the multi-channel chat surface. These mirror the JSON the Express backend
+// returns for `/api/evendi/conversations/*`.
+//
+// Decoding is *deliberately very tolerant* — Evendi rows come straight off
+// Postgres in snake_case (`couple_name`, `last_message_at`,
+// `vendor_unread_count`, `sender_type`) but a camelCase variant may also
+// appear. Every field is optional and decoded with `try?` / `decodeIfPresent`
+// with both-case fallbacks. Dates stay raw ISO strings — render via
+// ``DashboardDate``.
+//
+// All types are `Sendable` so they cross the actor boundary from
+// ``DashboardClient`` into `@MainActor` view models cleanly.
 
 // MARK: - Evendi conversation
 

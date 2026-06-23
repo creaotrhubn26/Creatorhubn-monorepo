@@ -68,7 +68,7 @@ struct ProjectTemplate: Sendable, Hashable {
 
     static let all: [ProjectTemplate] = [
         wedding, commercialCampaign, productCatalog, realEstate, eventMultiDay,
-        editorial, fashion, brandingPackage, concert, portrait,
+        editorial, fashion, brandingPackage, concert, portrait
     ]
 
     // MARK: - Catalog

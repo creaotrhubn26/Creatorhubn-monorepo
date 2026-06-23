@@ -28,7 +28,7 @@ struct EnhanceSettings: Codable, Sendable, Equatable {
     var lut = Lut()
 
     struct Lut: Codable, Sendable, Equatable {
-        var name: String? = nil    // neutral|warm_soft|cool_soft|user_xxx|nil
+        var name: String?    // neutral|warm_soft|cool_soft|user_xxx|nil
         var strength = 0           // 0…100
     }
 }
@@ -198,8 +198,7 @@ struct PhotoEnhancerClient: Sendable {
 
     private func run(_ req: URLRequest) async throws -> (Data, URLResponse) {
         let (data, resp): (Data, URLResponse)
-        do { (data, resp) = try await session.data(for: req) }
-        catch { throw EnhancerError.transport(error.localizedDescription) }
+        do { (data, resp) = try await session.data(for: req) } catch { throw EnhancerError.transport(error.localizedDescription) }
         if let http = resp as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw EnhancerError.http(http.statusCode, String(data: data, encoding: .utf8)?.prefix(200).description)
         }
@@ -207,8 +206,7 @@ struct PhotoEnhancerClient: Sendable {
     }
 
     private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
-        do { return try JSONDecoder().decode(T.self, from: data) }
-        catch { throw EnhancerError.decode(String(describing: error)) }
+        do { return try JSONDecoder().decode(T.self, from: data) } catch { throw EnhancerError.decode(String(describing: error)) }
     }
 }
 

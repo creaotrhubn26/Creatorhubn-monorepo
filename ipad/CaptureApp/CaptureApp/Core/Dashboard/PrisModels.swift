@@ -1,18 +1,18 @@
 import Foundation
 
-/// DTOs for the native "Pris" (price administration) surface. These mirror
-/// the JSON the Express backend returns for `/api/price-administration/*`
-/// (pricing structures, additional costs, discounts).
-///
-/// Decoding is deliberately tolerant in the ``DashboardModels`` style:
-/// every optional field defaults to nil so a single missing/renamed column
-/// never fails the whole list. Money/rate fields are especially loose — the
-/// backend may serialise a numeric column as a JSON *number* OR as a JSON
-/// *string* (Postgres `numeric` often round-trips as a string), so they are
-/// decoded through ``decodeFlexibleDouble`` which accepts both.
-///
-/// All types are `Sendable` so they cross the actor boundary from
-/// ``DashboardClient`` into `@MainActor` view models cleanly.
+// DTOs for the native "Pris" (price administration) surface. These mirror
+// the JSON the Express backend returns for `/api/price-administration/*`
+// (pricing structures, additional costs, discounts).
+//
+// Decoding is deliberately tolerant in the ``DashboardModels`` style:
+// every optional field defaults to nil so a single missing/renamed column
+// never fails the whole list. Money/rate fields are especially loose — the
+// backend may serialise a numeric column as a JSON *number* OR as a JSON
+// *string* (Postgres `numeric` often round-trips as a string), so they are
+// decoded through ``decodeFlexibleDouble`` which accepts both.
+//
+// All types are `Sendable` so they cross the actor boundary from
+// ``DashboardClient`` into `@MainActor` view models cleanly.
 
 // MARK: - Flexible number decoding
 

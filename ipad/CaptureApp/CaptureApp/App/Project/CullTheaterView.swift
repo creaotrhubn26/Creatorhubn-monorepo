@@ -179,8 +179,7 @@ final class CullTheaterModel {
             for a in assets {
                 let v = verdicts[a.id.uuidString.lowercased()]
                 // No verdict -> default keep (don't silently drop the unknown).
-                if let v { if CullSuggestions.keepBuckets.contains(v.bucket) { kept.insert(a.id) } }
-                else { kept.insert(a.id) }
+                if let v { if CullSuggestions.keepBuckets.contains(v.bucket) { kept.insert(a.id) } } else { kept.insert(a.id) }
             }
             keptIds = kept
             RedigeringEditStore.saveKept(sessionId, keptIds)
@@ -415,10 +414,19 @@ private struct CullThumb: View {
     }
 
     private func bucketLabel(_ b: String) -> String {
-        switch b { case "hero": return "HERO"; case "keep": return "KEEP"; case "weak": return "SVAK"; default: return "DROPP" }
+        switch b {
+        case "hero": return "HERO"
+        case "keep": return "KEEP"
+        case "weak": return "SVAK"
+        default: return "DROPP"
+        }
     }
     private func bucketTint(_ b: String) -> Color {
-        switch b { case "hero": return CHTheme.accent; case "keep": return CHTheme.success
-        case "weak": return CHTheme.warning; default: return .red }
+        switch b {
+        case "hero": return CHTheme.accent
+        case "keep": return CHTheme.success
+        case "weak": return CHTheme.warning
+        default: return .red
+        }
     }
 }

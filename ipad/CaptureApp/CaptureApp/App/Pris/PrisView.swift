@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Native "Pris" tab — the photographer's price administration, rebuilt
-/// native instead of the old WebView. Three sections via a segmented
-/// picker: Priser (pricing structures), Tillegg (additional costs) and
-/// Rabatter (discounts). Each lists rows with a formatted amount/rate,
-/// supports swipe-to-delete, and an "+ Legg til" sheet to create new
-/// entries. End-to-end synced against `/api/price-administration/*`.
+// Native "Pris" tab — the photographer's price administration, rebuilt
+// native instead of the old WebView. Three sections via a segmented
+// picker: Priser (pricing structures), Tillegg (additional costs) and
+// Rabatter (discounts). Each lists rows with a formatted amount/rate,
+// supports swipe-to-delete, and an "+ Legg til" sheet to create new
+// entries. End-to-end synced against `/api/price-administration/*`.
 
 // MARK: - Section
 
@@ -130,8 +130,7 @@ final class PrisModel {
         pricing.remove(atOffsets: offsets)
         guard let client = DashboardClient.make() else { return }
         for id in ids {
-            do { try await client.deletePricing(id: id) }
-            catch {
+            do { try await client.deletePricing(id: id) } catch {
                 actionError = (error as? DashboardError)?.localizedDescription
                     ?? error.localizedDescription
                 await load(force: true)
@@ -169,8 +168,7 @@ final class PrisModel {
         costs.remove(atOffsets: offsets)
         guard let client = DashboardClient.make() else { return }
         for id in ids {
-            do { try await client.deleteAdditionalCost(id: id) }
-            catch {
+            do { try await client.deleteAdditionalCost(id: id) } catch {
                 actionError = (error as? DashboardError)?.localizedDescription
                     ?? error.localizedDescription
                 await load(force: true)
@@ -206,8 +204,7 @@ final class PrisModel {
         discounts.remove(atOffsets: offsets)
         guard let client = DashboardClient.make() else { return }
         for id in ids {
-            do { try await client.deleteDiscount(id: id) }
-            catch {
+            do { try await client.deleteDiscount(id: id) } catch {
                 actionError = (error as? DashboardError)?.localizedDescription
                     ?? error.localizedDescription
                 await load(force: true)

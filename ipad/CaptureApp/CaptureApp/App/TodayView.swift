@@ -404,8 +404,7 @@ struct TodayView: View {
         async let deliveryTask: Void = delivery.load()
         async let requestsTask: Void = requests.load()
         if let store {
-            do { snapshot = try await store.load(ownerUserId: ownerUserId); loadError = nil }
-            catch { loadError = String(describing: error) }
+            do { snapshot = try await store.load(ownerUserId: ownerUserId); loadError = nil } catch { loadError = String(describing: error) }
         } else {
             loadError = "Database ikke tilgjengelig"
         }

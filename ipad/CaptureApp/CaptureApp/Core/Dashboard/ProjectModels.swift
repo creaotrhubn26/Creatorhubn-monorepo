@@ -71,9 +71,7 @@ struct ProjectTimeEntry: Codable, Sendable, Identifiable, Hashable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         // id may arrive as a number from some rows.
-        if let s = try? c.decode(String.self, forKey: .id) { id = s }
-        else if let n = try? c.decode(Int.self, forKey: .id) { id = String(n) }
-        else { id = UUID().uuidString }
+        if let s = try? c.decode(String.self, forKey: .id) { id = s } else if let n = try? c.decode(Int.self, forKey: .id) { id = String(n) } else { id = UUID().uuidString }
         taskDescription = c.firstString([.taskDescription])
         hoursSpent = c.firstDouble([.hoursSpent]) ?? 0
         billableHours = c.firstDouble([.billableHours]) ?? 0
@@ -117,9 +115,7 @@ struct ProjectMilestone: Codable, Sendable, Identifiable, Hashable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        if let s = try? c.decode(String.self, forKey: .id) { id = s }
-        else if let n = try? c.decode(Int.self, forKey: .id) { id = String(n) }
-        else { id = UUID().uuidString }
+        if let s = try? c.decode(String.self, forKey: .id) { id = s } else if let n = try? c.decode(Int.self, forKey: .id) { id = String(n) } else { id = UUID().uuidString }
         title = c.firstString([.title])
         description = c.firstString([.description])
         status = c.firstString([.status])

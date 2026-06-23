@@ -44,8 +44,7 @@ final class ProjectHubModel {
     func setStatus(_ status: ProjectStatus) async {
         guard let client = DashboardClient.make() else { return }
         working = true; defer { working = false }
-        do { try await client.updateProjectStatus(id: projectId, status: status.rawValue); await load() }
-        catch { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription }
+        do { try await client.updateProjectStatus(id: projectId, status: status.rawValue); await load() } catch { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription }
     }
 
     func logTime(task: String, hours: Double, rate: Double?) async {

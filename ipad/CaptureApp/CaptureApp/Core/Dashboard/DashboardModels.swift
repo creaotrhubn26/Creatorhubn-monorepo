@@ -1,18 +1,18 @@
 import Foundation
 
-/// DTOs for the native photographer dashboard surfaces (Galleri/Admin/
-/// Tilbud/Pris/Meldinger). These mirror the JSON the Express backend
-/// returns for `/api/photographer/*`, `/api/quotes/*`, `/api/contracts/*`,
-/// `/api/price-administration/*` and `/api/communication/*`.
-///
-/// Decoding is deliberately tolerant: every optional field defaults to
-/// nil/0 so a single missing column never fails the whole list. Dates
-/// stay as raw ISO strings (Postgres timestamps carry microseconds +
-/// offset that a strict ISO8601 decoder rejects) — render them via
-/// ``DashboardDate``.
-///
-/// All types are `Sendable` so they cross the actor boundary from
-/// ``DashboardClient`` into `@MainActor` view models cleanly.
+// DTOs for the native photographer dashboard surfaces (Galleri/Admin/
+// Tilbud/Pris/Meldinger). These mirror the JSON the Express backend
+// returns for `/api/photographer/*`, `/api/quotes/*`, `/api/contracts/*`,
+// `/api/price-administration/*` and `/api/communication/*`.
+//
+// Decoding is deliberately tolerant: every optional field defaults to
+// nil/0 so a single missing column never fails the whole list. Dates
+// stay as raw ISO strings (Postgres timestamps carry microseconds +
+// offset that a strict ISO8601 decoder rejects) — render them via
+// ``DashboardDate``.
+//
+// All types are `Sendable` so they cross the actor boundary from
+// ``DashboardClient`` into `@MainActor` view models cleanly.
 
 // MARK: - Galleri (showcase-admin)
 

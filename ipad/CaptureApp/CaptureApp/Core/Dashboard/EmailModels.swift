@@ -1,18 +1,18 @@
 import Foundation
 
-/// DTOs for the native Gmail/email channel of the multi-channel chat surface.
-/// These mirror the JSON the Express backend returns for
-/// `/api/communication/email/*`.
-///
-/// Decoding is *deliberately very tolerant* — Gmail thread items often arrive
-/// as a nested Gmail API structure (snippet under `snippet`, subject buried in
-/// headers, counterpart under varied keys) so a single missing or renamed field
-/// must never fail the whole list. Every field is optional and decoded with
-/// `try?` / `decodeIfPresent`, with sensible fallbacks. Counts/booleans default
-/// to 0/false. Dates stay raw ISO strings — render via ``DashboardDate``.
-///
-/// All types are `Sendable` so they cross the actor boundary from
-/// ``DashboardClient`` into `@MainActor` view models cleanly.
+// DTOs for the native Gmail/email channel of the multi-channel chat surface.
+// These mirror the JSON the Express backend returns for
+// `/api/communication/email/*`.
+//
+// Decoding is *deliberately very tolerant* — Gmail thread items often arrive
+// as a nested Gmail API structure (snippet under `snippet`, subject buried in
+// headers, counterpart under varied keys) so a single missing or renamed field
+// must never fail the whole list. Every field is optional and decoded with
+// `try?` / `decodeIfPresent`, with sensible fallbacks. Counts/booleans default
+// to 0/false. Dates stay raw ISO strings — render via ``DashboardDate``.
+//
+// All types are `Sendable` so they cross the actor boundary from
+// ``DashboardClient`` into `@MainActor` view models cleanly.
 
 // MARK: - Gmail thread
 

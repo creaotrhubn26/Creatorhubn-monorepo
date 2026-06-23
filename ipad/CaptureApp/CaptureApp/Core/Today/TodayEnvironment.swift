@@ -1,14 +1,14 @@
 import Foundation
 import CoreLocation
 
-/// Computed sun times + live weather for the "I dag" Lys & vær card.
-///
-/// Golden hour + sunset are computed locally (NOAA solar position — no
-/// network, works offline + in the simulator). Weather is fetched from
-/// Open-Meteo behind ``WeatherProvider`` so the card works immediately in
-/// the simulator; a WeatherKit provider can drop in for device builds
-/// once the WeatherKit capability is enabled (it can't be set via the
-/// App Store Connect API and doesn't run in the simulator).
+// Computed sun times + live weather for the "I dag" Lys & vær card.
+//
+// Golden hour + sunset are computed locally (NOAA solar position — no
+// network, works offline + in the simulator). Weather is fetched from
+// Open-Meteo behind ``WeatherProvider`` so the card works immediately in
+// the simulator; a WeatherKit provider can drop in for device builds
+// once the WeatherKit capability is enabled (it can't be set via the
+// App Store Connect API and doesn't run in the simulator).
 
 // MARK: - Sun times (local NOAA computation)
 
@@ -120,7 +120,7 @@ struct OpenMeteoProvider: WeatherProvider {
             .init(name: "latitude", value: String(lat)),
             .init(name: "longitude", value: String(lon)),
             .init(name: "current", value: "temperature_2m,weather_code"),
-            .init(name: "timezone", value: "auto"),
+            .init(name: "timezone", value: "auto")
         ]
         struct Resp: Decodable {
             struct Current: Decodable { let temperature_2m: Double; let weather_code: Int }
@@ -160,7 +160,7 @@ extension OpenMeteoProvider {
             .init(name: "longitude", value: String(lon)),
             .init(name: "daily", value: "weather_code,temperature_2m_max,temperature_2m_min"),
             .init(name: "forecast_days", value: String(days)),
-            .init(name: "timezone", value: "auto"),
+            .init(name: "timezone", value: "auto")
         ]
         struct Resp: Decodable {
             struct Daily: Decodable {

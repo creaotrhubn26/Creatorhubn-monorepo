@@ -14,8 +14,7 @@ final class GmailInboxModel {
         guard let client = DashboardClient.make() else { errorMessage = "Ikke logget inn"; loading = false; return }
         loading = threads.isEmpty
         errorMessage = nil
-        do { threads = try await client.listEmailThreads(search: search.isEmpty ? nil : search) }
-        catch { if threads.isEmpty { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription } }
+        do { threads = try await client.listEmailThreads(search: search.isEmpty ? nil : search) } catch { if threads.isEmpty { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription } }
         loading = false
     }
 }
@@ -70,16 +69,14 @@ final class GmailThreadModel {
     func load() async {
         guard let client = DashboardClient.make() else { return }
         loading = messages.isEmpty
-        do { messages = try await client.emailThreadMessages(threadId: threadId) }
-        catch { if messages.isEmpty { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription } }
+        do { messages = try await client.emailThreadMessages(threadId: threadId) } catch { if messages.isEmpty { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription } }
         loading = false
     }
 
     func reply(_ text: String) async {
         guard let client = DashboardClient.make() else { return }
         sending = true; defer { sending = false }
-        do { try await client.replyEmail(threadId: threadId, message: text); await load() }
-        catch { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription }
+        do { try await client.replyEmail(threadId: threadId, message: text); await load() } catch { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription }
     }
 }
 
@@ -146,8 +143,7 @@ final class GoogleChatInboxModel {
     func load() async {
         guard let client = DashboardClient.make() else { errorMessage = "Ikke logget inn"; loading = false; return }
         loading = spaces.isEmpty
-        do { spaces = try await client.listGoogleChatSpaces() }
-        catch { if spaces.isEmpty { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription } }
+        do { spaces = try await client.listGoogleChatSpaces() } catch { if spaces.isEmpty { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription } }
         loading = false
     }
 }
@@ -258,8 +254,7 @@ final class EvendiInboxModel {
     func load() async {
         guard let client = DashboardClient.make() else { errorMessage = "Ikke logget inn"; loading = false; return }
         loading = conversations.isEmpty
-        do { conversations = try await client.listEvendiConversations() }
-        catch let e as DashboardError {
+        do { conversations = try await client.listEvendiConversations() } catch let e as DashboardError {
             if conversations.isEmpty {
                 switch e {
                 case .notFound, .unauthorized:

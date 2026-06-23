@@ -1,17 +1,17 @@
 import Foundation
 
-/// DTOs for the native "Tilbud" (quotes) surface. These mirror the JSON
-/// the Express backend returns for `/api/quotes/*`. Decoding follows the
-/// same tolerant style as ``DashboardModels`` — every optional field
-/// defaults to nil so a single missing/renamed column never fails the
-/// whole list, and dates stay as raw ISO strings (render via
-/// ``DashboardDate``).
-///
-/// Money is special: the backend (Postgres `numeric` columns through
-/// node-postgres) may hand us amounts as JSON numbers *or* as strings
-/// ("1995.00"). ``flexibleDouble`` decodes either, so a string price
-/// never blows up the row. All types are `Sendable` so they cross the
-/// ``DashboardClient`` actor boundary into `@MainActor` view models.
+// DTOs for the native "Tilbud" (quotes) surface. These mirror the JSON
+// the Express backend returns for `/api/quotes/*`. Decoding follows the
+// same tolerant style as ``DashboardModels`` — every optional field
+// defaults to nil so a single missing/renamed column never fails the
+// whole list, and dates stay as raw ISO strings (render via
+// ``DashboardDate``).
+//
+// Money is special: the backend (Postgres `numeric` columns through
+// node-postgres) may hand us amounts as JSON numbers *or* as strings
+// ("1995.00"). ``flexibleDouble`` decodes either, so a string price
+// never blows up the row. All types are `Sendable` so they cross the
+// ``DashboardClient`` actor boundary into `@MainActor` view models.
 
 // MARK: - Money decoding helper
 

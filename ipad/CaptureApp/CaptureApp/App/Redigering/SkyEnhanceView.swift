@@ -168,7 +168,8 @@ struct SkyEnhanceView: View {
             ForEach(SkyEnhanceModel.presets, id: \.self) { p in Button(p.capitalized) { model.preset = p } }
         } label: {
             HStack { Text("Preset: \(model.preset.capitalized)").foregroundStyle(CHTheme.textPrimary)
-                Spacer(); Image(systemName: "chevron.down").foregroundStyle(CHTheme.textMuted) }
+                Spacer(); Image(systemName: "chevron.down").foregroundStyle(CHTheme.textMuted)
+            }
             .padding(10).background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 10))
         }
     }
@@ -227,7 +228,8 @@ struct SkyEnhanceView: View {
     private var runButton: some View {
         Button { Task { await model.run() } } label: {
             HStack { if model.busy { ProgressView().controlSize(.small) }
-                Label("Kjør forbedring", systemImage: "wand.and.stars") }
+                Label("Kjør forbedring", systemImage: "wand.and.stars")
+            }
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent).controlSize(.large).tint(CHTheme.accent).disabled(model.busy)
@@ -244,12 +246,14 @@ struct SkyEnhanceView: View {
     }
     private func rowLabel(_ title: String, _ value: String) -> some View {
         HStack { Text(title).foregroundStyle(CHTheme.textSecondary); Spacer()
-            Text(value).foregroundStyle(CHTheme.accentSoft); Image(systemName: "chevron.down").font(.caption2).foregroundStyle(CHTheme.textMuted) }
+            Text(value).foregroundStyle(CHTheme.accentSoft); Image(systemName: "chevron.down").font(.caption2).foregroundStyle(CHTheme.textMuted)
+        }
     }
     private func slider(_ title: String, _ value: Binding<Int>, _ range: ClosedRange<Int>) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack { Text(title).font(.caption).foregroundStyle(CHTheme.textSecondary)
-                Spacer(); Text("\(value.wrappedValue)").font(.caption).foregroundStyle(CHTheme.accentSoft) }
+                Spacer(); Text("\(value.wrappedValue)").font(.caption).foregroundStyle(CHTheme.accentSoft)
+            }
             Slider(value: Binding(get: { Double(value.wrappedValue) }, set: { value.wrappedValue = Int($0) }),
                    in: Double(range.lowerBound)...Double(range.upperBound)).tint(CHTheme.accent)
         }

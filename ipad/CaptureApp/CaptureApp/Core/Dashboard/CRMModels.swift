@@ -1,19 +1,19 @@
 import Foundation
 
-/// DTOs for the Universal CRM context layer that backs the in-chat CRM
-/// panel (`/api/universal-crm/context/*`). These mirror the JSON the
-/// Express backend returns when resolving the CRM relationship for a
-/// single chat conversation: who the customer is, the active deal,
-/// commercial docs (quote/contract), recent activity, open tasks, and a
-/// short summary.
-///
-/// Decoding is deliberately tolerant (mirrors ``DashboardModels``): every
-/// field is optional and numbers that may arrive as either a JSON number
-/// or a string (Postgres `numeric` casts) go through ``CRMNumber``.
-/// Dates stay as raw ISO-ish strings — render them via ``DashboardDate``.
-///
-/// All types are `Sendable` so they cross the ``DashboardClient`` actor
-/// boundary into `@MainActor` view models cleanly.
+// DTOs for the Universal CRM context layer that backs the in-chat CRM
+// panel (`/api/universal-crm/context/*`). These mirror the JSON the
+// Express backend returns when resolving the CRM relationship for a
+// single chat conversation: who the customer is, the active deal,
+// commercial docs (quote/contract), recent activity, open tasks, and a
+// short summary.
+//
+// Decoding is deliberately tolerant (mirrors ``DashboardModels``): every
+// field is optional and numbers that may arrive as either a JSON number
+// or a string (Postgres `numeric` casts) go through ``CRMNumber``.
+// Dates stay as raw ISO-ish strings — render them via ``DashboardDate``.
+//
+// All types are `Sendable` so they cross the ``DashboardClient`` actor
+// boundary into `@MainActor` view models cleanly.
 
 // MARK: - Number coercion
 

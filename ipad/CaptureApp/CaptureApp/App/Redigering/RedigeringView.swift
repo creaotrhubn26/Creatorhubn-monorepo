@@ -52,7 +52,7 @@ final class RedigeringModel {
         ("Portrett", .portrait),
         ("Mat", .food),
         ("Landskap", .landscape),
-        ("Nøytral", .neutral),
+        ("Nøytral", .neutral)
     ]
 
     func loadSessions() async {

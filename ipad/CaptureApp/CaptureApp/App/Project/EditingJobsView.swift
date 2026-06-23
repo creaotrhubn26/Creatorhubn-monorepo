@@ -163,8 +163,7 @@ final class EditingJobDetailModel {
 
     func send(message: String) async {
         guard let client = DashboardClient.make() else { return }
-        do { _ = try await client.sendJobMessage(id: jobId, body: message); await reloadMessages(client) }
-        catch { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription }
+        do { _ = try await client.sendJobMessage(id: jobId, body: message); await reloadMessages(client) } catch { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription }
     }
 
     private func reloadMessages(_ client: DashboardClient) async {
@@ -174,8 +173,7 @@ final class EditingJobDetailModel {
     private func run(_ action: @escaping (DashboardClient) async throws -> Void) async {
         guard let client = DashboardClient.make() else { return }
         busy = true; defer { busy = false }
-        do { try await action(client); await load() }
-        catch { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription }
+        do { try await action(client); await load() } catch { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription }
     }
 }
 

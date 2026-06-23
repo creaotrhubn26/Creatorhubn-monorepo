@@ -23,7 +23,7 @@ extension DashboardClient {
     ) async throws -> CRMContext {
         var items = [
             URLQueryItem(name: "conversationId", value: conversationId),
-            URLQueryItem(name: "provider", value: provider),
+            URLQueryItem(name: "provider", value: provider)
         ]
         if let hintName, !hintName.isEmpty {
             items.append(URLQueryItem(name: "hintName", value: hintName))

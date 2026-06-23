@@ -1,19 +1,19 @@
 import Foundation
 
-/// DTOs for the native "Admin" surface — the photographer's contracts hub,
-/// rebuilt native against the Express `/api/contracts/*` REST surface.
-///
-/// Like ``DashboardModels``, decoding is deliberately tolerant: every
-/// optional field defaults to nil so a single missing/renamed column never
-/// fails the whole list. The backend (`mapContractRecord`) emits camelCase
-/// keys but is itself sloppy about shape — `totalAmount` arrives as a number
-/// most of the time but can come back as a string, and the list vs. single
-/// endpoints differ subtly. We absorb all of that here.
-///
-/// Dates stay as raw ISO strings — render via ``DashboardDate``.
-///
-/// All types are `Sendable` so they cross the actor boundary from
-/// ``DashboardClient`` into `@MainActor` view models cleanly.
+// DTOs for the native "Admin" surface — the photographer's contracts hub,
+// rebuilt native against the Express `/api/contracts/*` REST surface.
+//
+// Like ``DashboardModels``, decoding is deliberately tolerant: every
+// optional field defaults to nil so a single missing/renamed column never
+// fails the whole list. The backend (`mapContractRecord`) emits camelCase
+// keys but is itself sloppy about shape — `totalAmount` arrives as a number
+// most of the time but can come back as a string, and the list vs. single
+// endpoints differ subtly. We absorb all of that here.
+//
+// Dates stay as raw ISO strings — render via ``DashboardDate``.
+//
+// All types are `Sendable` so they cross the actor boundary from
+// ``DashboardClient`` into `@MainActor` view models cleanly.
 
 // MARK: - Contract
 //

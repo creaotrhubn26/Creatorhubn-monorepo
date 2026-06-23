@@ -163,7 +163,7 @@ struct ChatActionsMenu: View {
         "Bildene er klare for gjennomgang i galleriet ditt.",
         "Sender deg et tilbud i løpet av dagen.",
         "Er på vei – beregner å være der om ca. 15 min.",
-        "Tusen takk for i dag, det var en flott shoot!",
+        "Tusen takk for i dag, det var en flott shoot!"
     ]
 
     var body: some View {
@@ -217,8 +217,7 @@ struct ComposeBar: View {
                 .foregroundStyle(CHTheme.textPrimary)
             Button(action: onSend) {
                 Group {
-                    if sending { ProgressView().tint(CHTheme.bg) }
-                    else { Image(systemName: "arrow.up").font(.headline.weight(.bold)) }
+                    if sending { ProgressView().tint(CHTheme.bg) } else { Image(systemName: "arrow.up").font(.headline.weight(.bold)) }
                 }
                 .frame(width: 38, height: 38)
                 .foregroundStyle(CHTheme.bg)

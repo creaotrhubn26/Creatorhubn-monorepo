@@ -276,7 +276,7 @@ private struct CommentRow: View {
 /// Network thumbnail with a placeholder + rounded corners.
 private struct Thumbnail: View {
     let urlString: String?
-    var size: CGFloat? = nil
+    var size: CGFloat?
 
     var body: some View {
         AsyncImage(url: urlString.flatMap(URL.init(string:))) { phase in

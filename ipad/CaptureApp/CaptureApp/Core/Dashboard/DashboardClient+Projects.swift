@@ -20,7 +20,7 @@ extension DashboardClient {
         guard var comps = URLComponents(string: "/api/universal-crm/context/by-conversation") else { return nil }
         comps.queryItems = [
             .init(name: "conversationId", value: conversationId),
-            .init(name: "provider", value: provider),
+            .init(name: "provider", value: provider)
         ]
         let resp: Resp = try await getJSON(path: comps.string ?? "")
         let pid = resp.conversation?.projectId ?? resp.link?.projectId

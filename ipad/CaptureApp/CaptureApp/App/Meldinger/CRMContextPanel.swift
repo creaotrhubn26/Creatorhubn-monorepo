@@ -762,7 +762,7 @@ private struct LogActivitySheet: View {
         ("call", "Samtale", "phone"),
         ("email", "E-post", "envelope"),
         ("meeting", "Møte", "person.2"),
-        ("note", "Notat", "note.text"),
+        ("note", "Notat", "note.text")
     ]
 
     private var canSubmit: Bool {

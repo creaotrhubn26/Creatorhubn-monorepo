@@ -19,8 +19,7 @@ final class RequestsModel {
         }
         loading = submissions.isEmpty
         errorMessage = nil
-        do { submissions = try await client.listSubmissions() }
-        catch { if submissions.isEmpty { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription } }
+        do { submissions = try await client.listSubmissions() } catch { if submissions.isEmpty { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription } }
         loading = false
     }
 }
@@ -276,8 +275,7 @@ struct RequestDetailView: View {
                 Task { await create() }
             } label: {
                 HStack {
-                    if working { ProgressView().controlSize(.small) }
-                    else { Image(systemName: "folder.badge.plus") }
+                    if working { ProgressView().controlSize(.small) } else { Image(systemName: "folder.badge.plus") }
                     Text(working ? "Oppretter prosjekt…" : "Opprett prosjekt")
                 }
                 .frame(maxWidth: .infinity)

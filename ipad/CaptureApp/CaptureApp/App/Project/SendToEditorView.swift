@@ -29,8 +29,7 @@ final class SendToEditorModel {
         }
         loading = vendors.isEmpty
         errorMessage = nil
-        do { vendors = try await client.listEditingVendors() }
-        catch { if vendors.isEmpty { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription } }
+        do { vendors = try await client.listEditingVendors() } catch { if vendors.isEmpty { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription } }
         loading = false
     }
 

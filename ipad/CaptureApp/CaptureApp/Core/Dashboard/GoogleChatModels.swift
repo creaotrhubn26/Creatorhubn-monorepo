@@ -1,17 +1,17 @@
 import Foundation
 
-/// DTOs for the native Google Chat channel of the multi-channel chat surface.
-/// These mirror the JSON the Express backend returns for `/api/google/chat/*`.
-///
-/// Decoding is *deliberately very tolerant* — Google Chat space items carry a
-/// resource `name`, a human `displayName`, and a nested `spaceDetails.description`,
-/// any of which may be missing. A single renamed/absent field must never fail
-/// the whole list, so every field is optional and decoded with `try?` /
-/// `decodeIfPresent` with fallbacks. Dates stay raw ISO strings — render via
-/// ``DashboardDate``.
-///
-/// All types are `Sendable` so they cross the actor boundary from
-/// ``DashboardClient`` into `@MainActor` view models cleanly.
+// DTOs for the native Google Chat channel of the multi-channel chat surface.
+// These mirror the JSON the Express backend returns for `/api/google/chat/*`.
+//
+// Decoding is *deliberately very tolerant* — Google Chat space items carry a
+// resource `name`, a human `displayName`, and a nested `spaceDetails.description`,
+// any of which may be missing. A single renamed/absent field must never fail
+// the whole list, so every field is optional and decoded with `try?` /
+// `decodeIfPresent` with fallbacks. Dates stay raw ISO strings — render via
+// ``DashboardDate``.
+//
+// All types are `Sendable` so they cross the actor boundary from
+// ``DashboardClient`` into `@MainActor` view models cleanly.
 
 // MARK: - Google Chat space
 

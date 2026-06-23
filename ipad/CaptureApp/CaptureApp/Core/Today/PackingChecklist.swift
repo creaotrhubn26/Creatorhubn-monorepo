@@ -69,6 +69,6 @@ final class PackingChecklist {
         .init(name: "Batterier x4"),
         .init(name: "CFexpress-kort"),
         .init(name: "LED-lys (Aputure 120d)"),
-        .init(name: "Diffuser / reflektor"),
+        .init(name: "Diffuser / reflektor")
     ]
 }

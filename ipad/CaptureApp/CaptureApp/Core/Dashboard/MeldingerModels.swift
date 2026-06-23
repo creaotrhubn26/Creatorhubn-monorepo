@@ -1,21 +1,21 @@
 import Foundation
 
-/// DTOs for the native "Meldinger" (client inbox/chat) surface. These mirror
-/// the JSON the Express backend returns for `/api/communication/*`.
-///
-/// Decoding here is *deliberately very tolerant* — the communication
-/// endpoints return varied shapes depending on the conversation provider
-/// (internal chat / Google Chat / Gmail / Evendi), the last-message column
-/// is sometimes a nested object and sometimes a flat string, and message
-/// bodies come back under `text`, `body` *or* `content`. A single missing or
-/// renamed field must never fail the whole list, so every field is optional
-/// and decoded with `try?` / `decodeIfPresent`, with sensible fallbacks.
-///
-/// Dates stay raw ISO strings (Postgres timestamps carry microseconds +
-/// offset that a strict ISO8601 decoder rejects) — render via ``DashboardDate``.
-///
-/// All types are `Sendable` so they cross the actor boundary from
-/// ``DashboardClient`` into `@MainActor` view models cleanly.
+// DTOs for the native "Meldinger" (client inbox/chat) surface. These mirror
+// the JSON the Express backend returns for `/api/communication/*`.
+//
+// Decoding here is *deliberately very tolerant* — the communication
+// endpoints return varied shapes depending on the conversation provider
+// (internal chat / Google Chat / Gmail / Evendi), the last-message column
+// is sometimes a nested object and sometimes a flat string, and message
+// bodies come back under `text`, `body` *or* `content`. A single missing or
+// renamed field must never fail the whole list, so every field is optional
+// and decoded with `try?` / `decodeIfPresent`, with sensible fallbacks.
+//
+// Dates stay raw ISO strings (Postgres timestamps carry microseconds +
+// offset that a strict ISO8601 decoder rejects) — render via ``DashboardDate``.
+//
+// All types are `Sendable` so they cross the actor boundary from
+// ``DashboardClient`` into `@MainActor` view models cleanly.
 
 // MARK: - Conversation
 
