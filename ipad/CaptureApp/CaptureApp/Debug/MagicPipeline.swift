@@ -1,4 +1,3 @@
-#if DEBUG
 import Foundation
 import CoreImage
 import UIKit
@@ -499,4 +498,3 @@ final class MagicPipeline {
         "laptop", "smartphone", "camera", "headphone", "sunglasses"
     ]
 }
-#endif
