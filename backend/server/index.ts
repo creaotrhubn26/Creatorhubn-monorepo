@@ -217,6 +217,7 @@ import {
   attachUserEventsWebSocket,
   broadcastUserEvent,
 } from "./realtime-user-events.js";
+import { leadgridRealtime } from "./leadgrid-realtime.js";
 import {
   ensureProjectChangeLogSchema,
   listProjectChangeLog,
@@ -73680,6 +73681,12 @@ app.post("/import/lead/:leadId", async (req, res) => {
   }
 });
 
+// Skalering nivå 3a: real-time-observability — antall WebSocket-klienter
+// koblet til /ws/leadgrid + sum av channel-abonnementer.
+app.get("/api/leadgrid/realtime/health", (_req, res) => {
+  res.json(leadgridRealtime.snapshot());
+});
+
 // Catch-all for unhandled API routes
 app.all("/api/*", (req, res) => {
   res.status(404).json({ message: "Endpoint not implemented", path: req.path });
@@ -73696,6 +73703,9 @@ createWebSocketServer(httpServer, db);
 createDanceRealtimeServer(httpServer);
 attachCaptureWebSocket(httpServer, pool, activeSessions);
 attachUserEventsWebSocket(httpServer, pool, activeSessions);
+// Skalering nivå 3a: real-time WebSocket-push til iPad (Leadgrid).
+// Selger slipper å polle follow-up-queue når Intelligence Engine rescorer.
+leadgridRealtime.attach(httpServer, pool, activeSessions);
 
 // RT-1: Final fallback. Hver av de fire opcoderne over registrerer
 // sin egen 'upgrade'-listener for sin path. Et upgrade-request mot en
@@ -73714,6 +73724,7 @@ httpServer.on("upgrade", (req, socket) => {
       p === "/ws" ||
       p.startsWith("/ws/") ||
       p === "/ws/dance/realtime" ||
+      p === "/ws/leadgrid" ||
       /^\/api\/capture\/ws\/sessions\/[0-9a-f-]{36}$/.test(p) ||
       p === "/api/ipad/ws/events";
     if (!known && !socket.destroyed && socket.writable) {

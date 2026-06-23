@@ -28,6 +28,11 @@
 
 import type { Pool } from "pg";
 import { emitWebhook } from "./webhook-emitter.js";
+import {
+  broadcastLeadScored,
+  broadcastRecommendation,
+  broadcastNbaUpdated,
+} from "./leadgrid-realtime.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Typer
@@ -1102,7 +1107,7 @@ export async function computeIntelligenceForLead(
   result.recommendationId = recommendationId ?? undefined;
 
   // Webhooks (fire-and-forget for at vi ikke skal blokkere flowen)
-  void emitWebhook(pool, "lead.scored", {
+  const scoredPayload = {
     lead_id: leadId,
     organization_id: lead.organization_id,
     lead_score: leadScore,
@@ -1114,10 +1119,22 @@ export async function computeIntelligenceForLead(
     facets,
     triggered_by: trigger,
     computed_at: result.computedAt,
-  }, lead.organization_id);
+  };
+  void emitWebhook(pool, "lead.scored", scoredPayload, lead.organization_id);
+  // Skalering nivå 3a: real-time push til alle iPad-klienter i org-en
+  if (lead.organization_id) {
+    broadcastLeadScored(lead.organization_id, leadId, scoredPayload);
+    broadcastNbaUpdated(lead.organization_id, leadId, {
+      next_best_action: nba.action,
+      next_best_action_reason: nba.reason,
+      next_best_action_channel: nba.channel,
+      lead_temperature: temperature,
+      follow_up_priority: followUpPriority,
+    });
+  }
 
   if (recommendationId) {
-    void emitWebhook(pool, "recommendation.created", {
+    const recPayload = {
       recommendation_id: recommendationId,
       lead_id: leadId,
       organization_id: lead.organization_id,
@@ -1127,7 +1144,11 @@ export async function computeIntelligenceForLead(
       reason: nba.reason,
       confidence: nba.confidence,
       expected_impact: nba.expectedImpact,
-    }, lead.organization_id);
+    };
+    void emitWebhook(pool, "recommendation.created", recPayload, lead.organization_id);
+    if (lead.organization_id) {
+      broadcastRecommendation(lead.organization_id, lead.assigned_user_id, recPayload);
+    }
   }
 
   return result;
