@@ -1,16 +1,21 @@
 name: Capture TestFlight
 
 # Builds the iPad CaptureApp and uploads it to TestFlight via fastlane.
-# Triggers on pushes to main that touch the app, and on manual dispatch.
-# Signing is headless: the App Store Connect API key (repo secrets) +
-# -allowProvisioningUpdates auto-creates the distribution cert/profile.
+#
+# MANUAL-ONLY for now (workflow_dispatch). The headless export step needs the
+# App Store Connect API key to have **App Manager** (or Admin) role for cloud
+# distribution signing — until key 9YKHP6L25P is elevated (ASC → Users and
+# Access → Integrations), the export fails with "Cloud signing permission
+# error". Once that's done, re-enable the push trigger below so it auto-runs on
+# CaptureApp merges. (Local `fastlane ios beta` works today — it uses the
+# signed-in Xcode account.)
 on:
-  push:
-    branches: [main]
-    paths:
-      - "ipad/CaptureApp/**"
-      - ".github/workflows/capture-testflight.yml"
   workflow_dispatch:
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - "ipad/CaptureApp/**"
+  #     - ".github/workflows/capture-testflight.yml"
 
 concurrency:
   group: capture-testflight
