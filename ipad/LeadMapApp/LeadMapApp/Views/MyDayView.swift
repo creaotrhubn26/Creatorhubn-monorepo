@@ -155,7 +155,10 @@ struct MyDayView: View {
     @ViewBuilder
     private var momentumCard: some View {
         if let api = state.api {
-            LeadgridMomentumCard(api: api)
+            VStack(spacing: 10) {
+                LeadgridMomentumCard(api: api)
+                LeadgridMomentumTrendChart(api: api)
+            }
         }
     }
 
