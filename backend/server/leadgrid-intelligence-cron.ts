@@ -131,7 +131,14 @@ export function registerLeadgridIntelligenceCron(deps: Deps): void {
         res.status(503).json({ error: "cron_token_not_configured" });
         return;
       }
-      if (provided !== expected) {
+      // Timing-safe compare — beskytter mot timing-attack på token-prefiks.
+      // Provided kan være string | string[] | undefined fra Express.
+      if (typeof provided !== "string" || provided.length !== expected.length) {
+        res.status(401).json({ error: "invalid_cron_token" });
+        return;
+      }
+      const { timingSafeEqual } = await import("crypto");
+      if (!timingSafeEqual(Buffer.from(provided), Buffer.from(expected))) {
         res.status(401).json({ error: "invalid_cron_token" });
         return;
       }
