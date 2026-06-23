@@ -194,6 +194,58 @@ final class AppState {
         }
     }
 
+    // ── Territorie-grids (LeadGrid territory enforcement) ──────
+    var myTerritories: [Territory] = []
+
+    func refreshTerritories() async {
+        guard let api, let orgId = activeOrganizationId else { return }
+        do {
+            let t = try await api.fetchMyTerritories(organizationId: orgId)
+            self.myTerritories = t
+            TerritoryMonitor.shared.configure(territories: t)
+        } catch {
+            print("[AppState] territories failed: \(error)")
+        }
+    }
+
+    // ── Smart dagsrute ─────────────────────────────────────────
+    var dayRoute: DayRoute?
+    var dayRouteMessage: String?
+    var planningRoute = false
+
+    /// Planlegg dagens rute fra nåværende GPS-posisjon. Ruten vises både i
+    /// MyDay-sheet og som overlay på kartet (iPad-native fortrinn).
+    func planDayRoute() async {
+        guard let api, let orgId = activeOrganizationId else { return }
+        guard let loc = LocationService.shared.currentLocation else {
+            self.dayRouteMessage = "Trenger GPS-posisjon for å bygge rute."
+            return
+        }
+        planningRoute = true
+        dayRouteMessage = nil
+        defer { planningRoute = false }
+        do {
+            let resp = try await api.planDayRoute(
+                organizationId: orgId,
+                startLat: loc.coordinate.latitude,
+                startLng: loc.coordinate.longitude)
+            self.dayRoute = resp.route
+            if resp.route == nil { self.dayRouteMessage = resp.message ?? "Ingen aktuelle leads i din sone." }
+        } catch {
+            self.dayRouteMessage = "Kunne ikke bygge rute: \(error.localizedDescription)"
+        }
+    }
+
+    /// Innsjekk i felt: oppdater stopp-status (optimistisk lokalt).
+    func updateRouteStop(stopId: String, status: String) async {
+        guard let api, let route = dayRoute else { return }
+        do {
+            try await api.updateRouteStop(routeId: route.id, stopId: stopId, status: status)
+        } catch {
+            print("[AppState] route stop update failed: \(error)")
+        }
+    }
+
     // ── Heartbeat-loop ─────────────────────────────────────────
     private var heartbeatController: HeartbeatController?
 
@@ -232,6 +284,7 @@ final class AppState {
             await startHeartbeatIfNeeded()
             startNotificationsPolling()
             await refreshAnnotations()
+            await refreshTerritories()
             if let api = self.api {
                 ProximityMonitor.shared.configure(api: api)
             }
@@ -384,16 +437,29 @@ final class AppState {
         self.authToken = token
         self.userEmail = email
         self.api = APIClient(token: token)
+        // Last user-role FØR refreshAll så SuperAdminHub-section i
+        // LeadgridHubView låses opp umiddelbart for super_admin. Uten
+        // dette ble userRole nil helt til neste app-start (bootstrap)
+        // kjørte loadUserRole — Super Admin-section var skjult etter
+        // Google login selv om DB-role var 'super_admin'.
+        await loadOrganizations()
+        await loadOrgContext()
+        await loadUserRole()
         await refreshAll()
     }
 
     /// Brukes etter en vellykket pairing-kode-bytte eller Google Sign-In.
-    /// Setter token + last alt frem.
+    /// Setter token + last alt frem (inkl. user-role for super_admin-deteksjon).
     func completePairing(token: String, userId: String) {
         AuthClient.saveToken(token, email: nil)
         self.authToken = token
         self.api = APIClient(token: token)
-        Task { await refreshAll() }
+        Task {
+            await loadOrganizations()
+            await loadOrgContext()
+            await loadUserRole()
+            await refreshAll()
+        }
     }
 
     func signOut() {

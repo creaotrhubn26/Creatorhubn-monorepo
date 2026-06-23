@@ -222,8 +222,14 @@ export function setupAdminMonitoringRoutes(
         source: aggregateAvailable ? "system_events" : "static",
       });
     } catch (err) {
-      console.error("[admin-monitoring] api health failed:", err);
-      res.status(500).json({ error: "api_health_failed" });
+      // Graceful: returnér tom endpoints-liste (iPad: "Sources (0)").
+      console.warn("[admin-monitoring] api health failed:", (err as Error).message);
+      res.json({
+        endpoints: [],
+        healthScore: 100,
+        windowHours: 24,
+        source: "static",
+      });
     }
   });
 

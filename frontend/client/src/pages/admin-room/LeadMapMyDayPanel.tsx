@@ -114,6 +114,29 @@ function formatRelative(iso: string | null): string {
   return future ? `om ${days} d` : `${days} d siden`;
 }
 
+interface DayRouteStop {
+  position: number; lead_id: string; name: string | null;
+  latitude: number | null; longitude: number | null;
+  drive_seconds_from_previous: number;
+}
+interface DayRoute {
+  id: string; name: string;
+  total_distance_meters: number; total_drive_seconds: number;
+  expected_route_value: number; matrix_source: string;
+  stops: DayRouteStop[];
+}
+
+/** Google Maps multi-stopp dirs-URL fra ordnede stopp + valgfritt startpunkt. */
+function googleMapsRouteUrl(stops: DayRouteStop[], origin: { lat: number; lng: number } | null): string | null {
+  const pts = stops.filter((s) => s.latitude != null && s.longitude != null);
+  if (pts.length === 0) return null;
+  const dest = pts[pts.length - 1];
+  const waypoints = pts.slice(0, -1).map((s) => `${s.latitude},${s.longitude}`).join('|');
+  const o = origin ? `&origin=${origin.lat},${origin.lng}` : '';
+  const wp = waypoints ? `&waypoints=${encodeURIComponent(waypoints)}` : '';
+  return `https://www.google.com/maps/dir/?api=1${o}&destination=${dest.latitude},${dest.longitude}${wp}&travelmode=driving`;
+}
+
 export default function LeadMapMyDayPanel() {
   const [orgId, setOrgId] = useState<string | null>(getActiveOrgId());
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
@@ -121,6 +144,9 @@ export default function LeadMapMyDayPanel() {
   const [quota, setQuota] = useState<QuotaProgress | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [route, setRoute] = useState<DayRoute | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeMsg, setRouteMsg] = useState<string | null>(null);
 
   const headers = useMemo<HeadersInit>(
     () => ({ Authorization: `Bearer ${getAuthToken()}` }),
@@ -137,6 +163,30 @@ export default function LeadMapMyDayPanel() {
     );
     return () => navigator.geolocation.clearWatch(id);
   }, []);
+
+  // ─── Bygg dagens rute (in-grid leads, prioritet + kjøretid) ────
+  const buildRoute = useCallback(async () => {
+    if (!position) { setRouteMsg('Trenger GPS-posisjon for å bygge rute.'); return; }
+    setRouteLoading(true); setRouteMsg(null); setRoute(null);
+    try {
+      const res = await fetch('/api/leadgrid/routes/plan', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization_id: orgId ?? undefined,
+          start_lat: position.lat, start_lng: position.lng,
+          planned_date: new Date().toISOString().slice(0, 10),
+        }),
+      });
+      const j = await res.json();
+      if (res.ok && j.route) setRoute(j.route);
+      else setRouteMsg(j.message ?? j.error ?? 'Kunne ikke bygge rute.');
+    } catch {
+      setRouteMsg('Kunne ikke bygge rute (nettverksfeil).');
+    } finally {
+      setRouteLoading(false);
+    }
+  }, [position, orgId, headers]);
 
   // ─── Load workload + quota ─────────────────────────────────────
   const load = useCallback(async () => {
@@ -316,6 +366,53 @@ export default function LeadMapMyDayPanel() {
           </Card>
         </Grid>
       </Grid>
+
+      {/* ─── Smart dagsrute ──────────────────────────────────── */}
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }} flexWrap="wrap" useFlexGap>
+        <Button variant="contained" startIcon={<NavigationOutlinedIcon />}
+          onClick={buildRoute} disabled={routeLoading || !position}>
+          {routeLoading ? 'Bygger rute…' : 'Bygg dagens rute'}
+        </Button>
+        {!position && <Typography variant="caption" color="text.secondary">Tillat posisjon for å bygge rute</Typography>}
+        {routeMsg && <Typography variant="caption" color="text.secondary">{routeMsg}</Typography>}
+      </Stack>
+
+      {route && (
+        <Card variant="outlined" sx={{ mb: 2, borderColor: '#60a5fa' }}>
+          <CardContent>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" rowGap={1}>
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{route.name}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {route.stops.length} stopp · {(route.total_distance_meters / 1000).toFixed(1)} km ·
+                  {' '}{Math.round(route.total_drive_seconds / 60)} min kjøring ·
+                  {' '}forventet verdi {formatNok(route.expected_route_value)}
+                  {route.matrix_source === 'estimate' && ' · (estimert avstand)'}
+                </Typography>
+              </Box>
+              {(() => {
+                const url = googleMapsRouteUrl(route.stops, position);
+                return url ? (
+                  <Button size="small" variant="outlined" component="a" href={url} target="_blank"
+                    startIcon={<NavigationOutlinedIcon />}>Åpne i Google Maps</Button>
+                ) : null;
+              })()}
+            </Stack>
+            <Stack spacing={0.5} sx={{ mt: 1 }}>
+              {route.stops.map((s) => (
+                <Stack key={s.lead_id} direction="row" spacing={1} alignItems="center"
+                  sx={{ fontSize: 13, py: 0.5, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  <Chip size="small" label={s.position} />
+                  <span style={{ flex: 1 }}>{s.name ?? s.lead_id}</span>
+                  <Typography variant="caption" color="text.secondary">
+                    +{Math.round(s.drive_seconds_from_previous / 60)} min
+                  </Typography>
+                </Stack>
+              ))}
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ─── Lead-liste ──────────────────────────────────────── */}
       <Typography variant="h6" sx={{ mb: 1.5 }}>

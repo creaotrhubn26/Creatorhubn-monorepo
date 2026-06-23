@@ -282,20 +282,26 @@ export function registerPartnerApplicationsRoutes({
     const s = await requireSuperAdmin(req, res, pool, activeSessions);
     if (!s) return;
     const status = (req.query.status as string) || "pending";
-    const r = await pool.query(
-      `SELECT pa.*,
-              o.name AS org_name, o.org_type, o.plan,
-              o.logo_url AS org_logo_url, o.website AS org_website,
-              u.email AS applicant_email
-         FROM partner_applications pa
-         JOIN organizations o ON o.id = pa.organization_id
-         LEFT JOIN users u ON u.id = pa.applicant_user_id
-        WHERE pa.status = $1
-        ORDER BY pa.created_at DESC
-        LIMIT 100`,
-      [status],
-    );
-    res.json({ applications: r.rows });
+    try {
+      const r = await pool.query(
+        `SELECT pa.*,
+                o.name AS org_name, o.org_type, o.plan,
+                o.logo_url AS org_logo_url, o.website AS org_website,
+                u.email AS applicant_email
+           FROM partner_applications pa
+           JOIN organizations o ON o.id = pa.organization_id
+           LEFT JOIN users u ON u.id = pa.applicant_user_id
+          WHERE pa.status = $1
+          ORDER BY pa.created_at DESC
+          LIMIT 100`,
+        [status],
+      );
+      res.json({ applications: r.rows });
+    } catch (err) {
+      // Graceful: tabell/kolonne mangler → tom liste (iPad viser "Ingen søknader").
+      console.warn("[partner-applications] list failed:", (err as Error).message);
+      res.json({ applications: [] });
+    }
   });
 
   // ---------- Superadmin: inviter org til partnerskap ----------

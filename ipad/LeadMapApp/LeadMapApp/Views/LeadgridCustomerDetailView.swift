@@ -26,6 +26,7 @@ struct LeadgridCustomerDetailView: View {
     @State private var showAssign = false
     @State private var assignLevel: AssignLevel = .both
     @State private var leadStatus: String = ""
+    @State private var showResearch = false
 
     var body: some View {
         NavigationStack {
@@ -69,6 +70,15 @@ struct LeadgridCustomerDetailView: View {
                     )
                 }
             }
+            .sheet(isPresented: $showResearch) {
+                if let c = customer {
+                    LeadgridResearchView(
+                        leadId: customerId,
+                        leadName: c.name,
+                        api: api,
+                    )
+                }
+            }
         }
         .task {
             await load()
@@ -103,11 +113,37 @@ struct LeadgridCustomerDetailView: View {
                     noteCard(note)
                 }
                 assignmentCard(c)
+                researchCard(c)
                 statusCard
                 historyCard
             }
             .padding()
         }
+    }
+
+    @ViewBuilder
+    private func researchCard(_ c: LeadgridCustomerDetail) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("AI-research", systemImage: "sparkles")
+                .font(.caption.bold()).foregroundStyle(.purple)
+            Text("Få SWOT, beslutningstakere og en ferdig første-touch generert av Claude — basert på BRREG og deres nettside.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button {
+                showResearch = true
+            } label: {
+                Label("Research med AI", systemImage: "sparkles.rectangle.stack")
+                    .font(.callout.bold())
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.purple)
+        }
+        .padding()
+        .background(Color.purple.opacity(0.06),
+                     in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color.purple.opacity(0.20)))
     }
 
     @ViewBuilder

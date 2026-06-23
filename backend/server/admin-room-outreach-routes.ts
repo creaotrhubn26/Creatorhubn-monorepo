@@ -89,8 +89,9 @@ export function setupAdminOutreachRoutes(deps: AdminRoomRoutesDeps): void {
       );
       res.json({ items: result.rows });
     } catch (err) {
-      console.error("[admin-room outreach-templates] list error", err);
-      res.status(500).json({ error: "Kunne ikke hente templates" });
+      // Graceful: tabell mangler → tom liste (iPad: "Ingen templates").
+      console.warn("[admin-room outreach-templates] list failed:", (err as Error).message);
+      res.json({ items: [] });
     }
   });
 

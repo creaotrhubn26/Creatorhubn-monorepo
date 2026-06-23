@@ -94,7 +94,14 @@ final class GoogleSignInService: NSObject, ObservableObject {
 
 extension GoogleSignInService: ASWebAuthenticationPresentationContextProviding {
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        DispatchQueue.main.sync {
+        // AuthenticationServices kaller denne på main thread. DispatchQueue.
+        // main.sync låser opp i deadlock-detektoren (EXC_BREAKPOINT) fordi
+        // vi er allerede på main. MainActor.assumeIsolated er den riktige
+        // veien for synkron MainActor-aksess fra nonisolated kontekst når
+        // kaller-en er main thread (iOS 17+).
+        // (Samme fiks som i PR #829 — duplisert her fordi denne branchen
+        // er basert på origin/main hvor #829 ikke er merget enda.)
+        MainActor.assumeIsolated {
             UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
                 .first?.windows.first ?? ASPresentationAnchor()

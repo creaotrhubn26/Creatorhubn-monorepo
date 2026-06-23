@@ -514,6 +514,7 @@ import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes
 import { setupTalentSelftapesRoutes } from "./talent-selftapes-routes";
 import { setupAgencyLeadsRoutes } from "./agency-leads-routes";
 import { setupCustomerSuccessRoutes } from "./customer-success-routes.js";
+import { setupMarketScansSuperAdminRoutes } from "./market-scans-superadmin-routes.js";
 import { setupAdminLeadMapPricingRoutes } from "./admin-lead-map-pricing-routes.js";
 import { setupLeadMapRoutes } from "./lead-map-routes.js";
 import { registerLeadMapCompetitorRoutes } from "./lead-map-competitor-routes.js";
@@ -538,6 +539,15 @@ import { registerPitchDeckPdfRoutes } from "./pitch-deck-pdf-service.js";
 import { registerPitchDeckBriefRoutes } from "./pitch-deck-brief-routes.js";
 import { registerPitchDeckAssetRoutes } from "./pitch-deck-asset-service.js";
 import { registerLeadMapResearchRoutes } from "./lead-map-research-routes.js";
+import { registerLeadgridResearchRoutes } from "./leadgrid-research-routes.js";
+import { registerLeadgridMarketScanRoutes } from "./leadgrid-market-scan-routes.js";
+import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-routes.js";
+import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
+import { registerLeadgridTerritoryRoutes } from "./leadgrid-territory-routes.js";
+import { registerLeadgridRouteRoutes } from "./leadgrid-route-routes.js";
+import { registerLeadgridAnalyticsRoutes } from "./leadgrid-analytics-routes.js";
+import { registerLeadgridMeetingNotesRoutes } from "./leadgrid-meeting-notes-routes.js";
+import { registerLeadgridAgentBridgeRoutes } from "./leadgrid-agent-bridge-routes.js";
 import { registerLeadScoutRoutes } from "./lead-scout-routes.js";
 import { registerLeadPresetRoutes } from "./lead-preset-routes.js";
 import { registerLeadRulesRoutes } from "./lead-rules-routes.js";
@@ -24356,6 +24366,8 @@ setupCustomerSuccessRoutes({
   activeSessions,
   isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
 });
+// Market Intelligence — GET-routes for iPad SuperAdminMarketScansView
+setupMarketScansSuperAdminRoutes({ app, pool, activeSessions });
 // Lead Map module pricing-admin
 setupAdminLeadMapPricingRoutes({
   app,
@@ -24414,6 +24426,40 @@ registerPitchDeckBriefRoutes({ app, pool, activeSessions });
 registerPitchDeckAssetRoutes({ app, pool, activeSessions });
 // Research → Leads-orkestrator (gated på lead_research.run)
 registerLeadMapResearchRoutes({ app, pool, activeSessions });
+// Native Leadgrid Research — per-lead Claude + BRREG + website-analyse
+// (POST/GET /api/leadgrid/leads/:id/research). Used by iPad-app.
+registerLeadgridResearchRoutes({ app, pool, activeSessions });
+// Native Leadgrid Market Scan — markedssjef-lead-discovery m/ auto-pin
+// (/api/leadgrid/market-scan/*). Gjenbruker market_scans-orkestratoren.
+// Gated på leadgrid.market_scan.run (migrate 312).
+registerLeadgridMarketScanRoutes({ app, pool, activeSessions });
+// Leadgrid Intelligence Engine — composite scoring + Next Best Action
+// (mig 313). Gated på intelligence.* / routes.*-permissions per rolle.
+registerLeadgridIntelligenceRoutes({ app, pool, activeSessions });
+// Daglig cron-rescore (kalles fra GitHub Actions @ 04:00 UTC).
+// Krever LEADGRID_INTELLIGENCE_CRON_TOKEN env-var i tillegg til
+// matching x-cron-trigger-token-header.
+registerLeadgridIntelligenceCron({ app, pool });
+// LeadGrid territorie-grids — "hold deg i din grid" (mig 314).
+// CRUD + check + brudd-logg (/api/leadgrid/territories/*).
+// Gated på territories.view / territories.manage / territories.view_breaches.
+registerLeadgridTerritoryRoutes({ app, pool, activeSessions });
+// Smart dagsrute — ordner selgerens in-grid leads (Distance Matrix +
+// nærmeste-nabo). /api/leadgrid/routes/* (mig 313/316). routes.create/view/execute.
+registerLeadgridRouteRoutes({ app, pool, activeSessions });
+// Leadgrid Analytics Dashboard — KPI-er per org (overview, channels,
+// sources, segments, territories, velocity, conversion-funnel). Gated på
+// analytics.view_overview/channels/sources/segments/velocity (migrate 317).
+registerLeadgridAnalyticsRoutes({ app, pool, activeSessions });
+// AI Meeting Notes — voice memo → Whisper → Claude action items
+// (/api/leadgrid/leads/:id/meeting-notes/*). Gated på meeting_notes.*
+// (migrate 318).
+registerLeadgridMeetingNotesRoutes({ app, pool, activeSessions });
+// Role Room Agent Bridge — full intelligence-rapport per lead som
+// orkestrerer alle Role Room Agent-services (brreg, website, competitors,
+// merch-fit, threat, swot, outreach). Gated på leadgrid.research.run
+// (migrate 318).
+registerLeadgridAgentBridgeRoutes({ app, pool, activeSessions });
 // Lead Scout — crawl + Claude needs/signals/scoring
 // Gated på marketing.scout.run / marketing.needs.view / marketing.needs.edit
 registerLeadScoutRoutes({ app, pool, activeSessions });
@@ -73645,6 +73691,35 @@ void driveBatchWorker;
 
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
+  // iPad-bearer hydrering — last alle ikke-revokerte ipad_tokens inn i
+  // activeSessions ved boot. Uten dette mister vi alle iPad-sessions ved
+  // hver Render-redeploy → 401 på alle iPad-kall til Daniel re-logger.
+  void (async () => {
+    try {
+      const r = await pool.query<{
+        token: string; user_id: string; email: string | null; role: string | null;
+      }>(
+        `SELECT t.token, t.user_id, u.email, u.role
+           FROM ipad_tokens t
+           JOIN users u ON u.id::text = t.user_id
+          WHERE t.revoked_at IS NULL`,
+      );
+      let hydrated = 0;
+      for (const row of r.rows) {
+        if (!activeSessions.has(row.token)) {
+          activeSessions.set(row.token, {
+            userId: row.user_id,
+            email: row.email ?? "",
+            role: row.role ?? "member",
+          });
+          hydrated++;
+        }
+      }
+      console.log(`🔑 Hydrated ${hydrated} iPad-bearer-sessions fra ipad_tokens`);
+    } catch (e) {
+      console.warn("[boot] ipad_tokens hydrering feilet:", (e as Error).message);
+    }
+  })();
   // Slice 9X.79 — SmartFlyt scheduler-loop (poller every 60s)
   void (async () => {
     try {

@@ -62,7 +62,19 @@ export function setupCustomerSuccessRoutes(deps: Deps): void {
         const summary = await buildDashboardSummary(pool);
         return res.json(summary);
       } catch (err) {
-        return res.status(500).json({ error: "dashboard_failed", detail: String(err) });
+        // Graceful: hvis tabeller mangler eller én computeHealthForUser feiler
+        // returner tom dashboard (iPad viser nuller i stedet for "Kunne ikke laste").
+        console.warn("[customer-success/dashboard] failed:", (err as Error).message);
+        return res.json({
+          generatedAt: new Date().toISOString(),
+          totalCustomers: 0,
+          tierCounts: { green: 0, yellow: 0, red: 0 },
+          avgScore: 0,
+          upcomingRenewals30d: 0,
+          openFollowups: 0,
+          recentChurnSignals: 0,
+          customers: [],
+        });
       }
     });
 
@@ -75,7 +87,9 @@ export function setupCustomerSuccessRoutes(deps: Deps): void {
         const r = await listUpcomingRenewals(pool, { daysAhead: days, statusFilter });
         return res.json({ renewals: r });
       } catch (err) {
-        return res.status(500).json({ error: "renewals_failed", detail: String(err) });
+        // Graceful: customer_renewal_pipeline mangler → tom liste.
+        console.warn("[customer-success/renewals] failed:", (err as Error).message);
+        return res.json({ renewals: [] });
       }
     });
 

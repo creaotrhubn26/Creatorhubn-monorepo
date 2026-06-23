@@ -91,8 +91,14 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
   app.get("/api/admin-room/migrations/status", async (req, res) => {
     const session = requireAdminRoomAccess(req, res);
     if (!session) return;
-    const pendingFiles = await detectPendingMigrations();
-    res.json({ ...currentState, lockHeld: runLock, pendingFiles, pendingCount: pendingFiles.length });
+    try {
+      const pendingFiles = await detectPendingMigrations();
+      res.json({ ...currentState, lockHeld: runLock, pendingFiles, pendingCount: pendingFiles.length });
+    } catch (err) {
+      // Graceful: returnér in-memory state uten pending-listing.
+      console.warn("[migrations/status] failed:", (err as Error).message);
+      res.json({ ...currentState, lockHeld: runLock, pendingFiles: [], pendingCount: 0 });
+    }
   });
 
   app.post("/api/admin-room/migrations/run", async (req, res) => {

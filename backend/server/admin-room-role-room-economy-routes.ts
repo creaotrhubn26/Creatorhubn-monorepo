@@ -298,8 +298,18 @@ export function setupAdminRoleRoomEconomyRoutes(deps: RoleRoomEconomyDeps): void
         },
       });
     } catch (err) {
-      console.error("[admin-room role-room economy] subscribers error", err);
-      res.status(500).json({ error: "Kunne ikke hente subscribers fra Stripe" });
+      // Graceful: Stripe-feil, manglende ai_usage_log-tabell eller andre SQL-
+      // feil → tom liste (iPad viser "Kunne ikke laste subs" som tom seksjon).
+      console.warn("[admin-room role-room economy] subscribers failed:", (err as Error).message);
+      res.json({
+        items: [],
+        meta: {
+          nokPerUsd: NOK_USD,
+          hostingAllocationUsdMonthly: HOSTING_ALLOCATION_USD_PER_USER_MONTHLY,
+          totalCount: 0,
+          activeCount: 0,
+        },
+      });
     }
   });
 

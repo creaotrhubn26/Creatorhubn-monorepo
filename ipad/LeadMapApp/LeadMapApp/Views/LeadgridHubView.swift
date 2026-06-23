@@ -36,6 +36,50 @@ struct LeadgridHubView: View {
                         }
                     }
                 }
+
+                Section("Research") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridResearchListView(api: api)
+                        } label: {
+                            Label("Kjør AI-research på lead",
+                                   systemImage: "sparkles.rectangle.stack")
+                        }
+                    }
+                }
+
+                Section("Market Scan") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridMarketScanListView(api: api)
+                        } label: {
+                            Label("Finn nye leads via Claude",
+                                   systemImage: "magnifyingglass.circle.fill")
+                        }
+                    }
+                }
+
+                // Intelligence Engine (PR #855) — NBA + pipeline + score-breakdown.
+                Section("Intelligence") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridFollowUpQueueView(api: api)
+                        } label: {
+                            Label("Følg-opp-kø", systemImage: "bolt.fill")
+                        }
+                        NavigationLink {
+                            LeadgridPipelineKanbanView(api: api)
+                        } label: {
+                            Label("Pipeline-kanban", systemImage: "rectangle.split.3x1.fill")
+                        }
+                        NavigationLink {
+                            LeadgridAllRecommendationsView(api: api)
+                        } label: {
+                            Label("Alle NBA-anbefalinger", systemImage: "sparkles")
+                        }
+                    }
+                }
+
                 Section("Varsler") {
                     Button {
                         appState.presentingLeadgridNotifications = true
@@ -115,6 +159,11 @@ struct LeadgridHubView: View {
                 }
             }
             .navigationTitle("Leadgrid CRM")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    OrgPickerToolbarMenu()
+                }
+            }
             .marketingDirectorBackdrop(.crmHome)
             .sheet(isPresented: Binding(
                 get: { appState.presentingLeadgridNotifications },

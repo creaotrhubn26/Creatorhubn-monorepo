@@ -9,6 +9,7 @@ import MapKit
 struct MyDayView: View {
     @Environment(AppState.self) private var state
     @State private var isRefreshing = false
+    @State private var showRoute = false
 
     var body: some View {
         NavigationStack {
@@ -29,6 +30,25 @@ struct MyDayView: View {
             .scrollContentBackground(.hidden)
             .navigationTitle("Min dag")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    OrgPickerToolbarMenu()
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task {
+                            await state.planDayRoute()
+                            if state.dayRoute != nil { showRoute = true }
+                        }
+                    } label: {
+                        if state.planningRoute {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                        }
+                    }
+                    .accessibilityLabel("Bygg dagens rute")
+                    .disabled(state.planningRoute)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task { await refresh() }
@@ -40,6 +60,11 @@ struct MyDayView: View {
             }
             .refreshable { await refresh() }
             .task { await refresh() }
+            .sheet(isPresented: $showRoute) {
+                if let route = state.dayRoute {
+                    DayRouteSheet(route: route)
+                }
+            }
         }
     }
 
@@ -350,5 +375,87 @@ private extension Color {
             green: Double((rgb >> 8) & 0xFF) / 255,
             blue: Double(rgb & 0xFF) / 255
         )
+    }
+}
+
+// MARK: - Dagsrute-sheet (iPad-native: turn-by-turn + felt-innsjekk)
+
+private struct DayRouteSheet: View {
+    @Environment(AppState.self) private var state
+    @Environment(\.dismiss) private var dismiss
+    let route: DayRoute
+    @State private var stopStatus: [String: String] = [:]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(route.name).font(.headline)
+                        Text("\(route.stops.count) stopp · \(String(format: "%.1f", Double(route.totalDistanceMeters) / 1000)) km · \(route.totalDriveSeconds / 60) min kjøring")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text("Forventet verdi: \(Int(route.expectedRouteValue)) kr")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Section("Stopp") {
+                    ForEach(route.stops) { stop in stopRow(stop) }
+                }
+            }
+            .navigationTitle("Dagens rute")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button("Lukk") { dismiss() } }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func stopRow(_ stop: DayRouteStop) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Text("\(stop.position)")
+                    .font(.subheadline.bold())
+                    .frame(width: 26, height: 26)
+                    .background(Circle().fill(Color.blue.opacity(0.2)))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(stop.name ?? "Lead").font(.subheadline.bold())
+                    Text("+\(stop.driveSecondsFromPrevious / 60) min kjøring")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let s = stopStatus[stop.id] {
+                    Text(s == "visited" ? "Besøkt" : s == "skipped" ? "Hoppet over" : s)
+                        .font(.caption2).foregroundStyle(.green)
+                }
+            }
+            HStack(spacing: 8) {
+                Button { openInAppleMaps(stop) } label: {
+                    Label("Naviger", systemImage: "location.fill")
+                }
+                .buttonStyle(.borderedProminent).controlSize(.small)
+                Button { Task { await mark(stop, "visited") } } label: {
+                    Label("Besøkt", systemImage: "checkmark")
+                }
+                .buttonStyle(.bordered).controlSize(.small)
+                Button { Task { await mark(stop, "skipped") } } label: {
+                    Label("Hopp over", systemImage: "xmark")
+                }
+                .buttonStyle(.bordered).controlSize(.small)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func mark(_ stop: DayRouteStop, _ status: String) async {
+        stopStatus[stop.id] = status
+        await state.updateRouteStop(stopId: stop.id, status: status)
+    }
+
+    private func openInAppleMaps(_ stop: DayRouteStop) {
+        guard let c = stop.coordinate else { return }
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: c))
+        item.name = stop.name ?? "Lead"
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
     }
 }

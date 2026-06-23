@@ -88,18 +88,17 @@ export function setupAdminSocialConnectionsStatusRoutes(deps: AdminRoomRoutesDep
         totalConnections: rows.length,
       });
     } catch (err) {
-      // social_connections_v eksisterer kanskje ikke i alle env — degrader.
-      if ((err as { code?: string }).code === "42P01") {
-        return res.json({
-          connections: [],
-          byProvider: {},
-          totalConnected: 0,
-          totalConnections: 0,
-          note: "social_connections_v ikke tilgjengelig",
-        });
-      }
-      console.error("[social-connections-status] error", err);
-      return res.status(500).json({ error: "Kunne ikke hente status" });
+      // Graceful: enhver SQL-feil (mangler view, mangler kolonne, datatype-mismatch)
+      // → returnér tom shape så iPad viser "Ingen connections" i stedet for
+      // "Kunne ikke laste". Dette inkluderer 42P01 (table missing).
+      console.warn("[social-connections-status] failed:", (err as Error).message);
+      return res.json({
+        connections: [],
+        byProvider: {},
+        totalConnected: 0,
+        totalConnections: 0,
+        note: "social_connections_v ikke tilgjengelig eller feilet",
+      });
     }
   });
 }

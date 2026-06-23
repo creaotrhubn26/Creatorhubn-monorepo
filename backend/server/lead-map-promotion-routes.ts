@@ -272,7 +272,7 @@ export function registerLeadMapPromotionRoutes({ app, pool, activeSessions }: De
                   mrc.permissions_gained, mrc.permissions_lost,
                   mrc.team_transition, mrc.reason,
                   mrc.performed_at::text,
-                  u.name AS performed_by_name,
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS performed_by_name,
                   u.email AS performed_by_email,
                   st_from.name AS from_team_name,
                   st_to.name AS to_team_name

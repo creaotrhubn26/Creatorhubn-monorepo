@@ -43,7 +43,12 @@ export function setupAdminResendStatusRoutes(deps: AdminRoomRoutesDeps): void {
     const session = requireAdminRoomAccess(req, res);
     if (!session) return;
 
-    const apiKey = process.env.RESEND_API_KEY;
+    // Samme fallback-pattern som transactional-email-service og
+    // resend-admin-routes: ROLE_ROOM_RESEND_API_KEY er primær (det Daniel
+    // har satt i Render); RESEND_API_KEY er sekundær fallback. Uten denne
+    // dual-check rapporterte status-routen «ikke konfigurert» feilaktig.
+    const apiKey = (process.env.ROLE_ROOM_RESEND_API_KEY?.trim() || '')
+      || (process.env.RESEND_API_KEY?.trim() || '');
     const now = new Date().toISOString();
 
     if (!apiKey) {
@@ -53,7 +58,7 @@ export function setupAdminResendStatusRoutes(deps: AdminRoomRoutesDeps): void {
         domainCount: 0,
         verifiedDomainCount: 0,
         domains: [],
-        lastErrorMessage: "RESEND_API_KEY ikke konfigurert",
+        lastErrorMessage: "Verken ROLE_ROOM_RESEND_API_KEY eller RESEND_API_KEY er satt",
         lastSendCheckedAt: now,
         recentEmails: [],
       };
