@@ -2399,4 +2399,11 @@ extension APIClient {
         let resp: LeadgridSalesGoalResponse = try await post("/api/leadgrid/momentum/goal", body: body)
         return resp.goal
     }
+
+    /// Henter momentum-trend siste N dager (clamp 7-180).
+    func fetchMomentumTrend(days: Int = 30) async throws -> LeadgridMomentumTrend {
+        let clamped = max(7, min(180, days))
+        let resp: LeadgridMomentumTrendResponse = try await get("/api/leadgrid/momentum/trend?days=\(clamped)")
+        return resp.trend
+    }
 }

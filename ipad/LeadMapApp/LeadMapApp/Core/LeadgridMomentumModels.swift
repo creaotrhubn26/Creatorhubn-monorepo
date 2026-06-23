@@ -69,3 +69,33 @@ struct LeadgridSalesGoal: Codable, Hashable {
 struct LeadgridSalesGoalResponse: Codable {
     let goal: LeadgridSalesGoal
 }
+
+// MARK: - Trend (PR #496)
+
+struct LeadgridMomentumTrend: Codable, Hashable {
+    let organizationId: String
+    let days: Int
+    let points: [TrendPoint]
+    let avg: Double
+    let best: Double
+    let worst: Double
+    let directionChange: Double  // siste minus første score
+}
+
+struct TrendPoint: Codable, Hashable, Identifiable {
+    let date: String
+    let score: Double
+    let activityScore: Double?
+    let velocityScore: Double?
+    let decayScore: Double?
+    let overduePenalty: Double?
+    let contacts: Int?
+    let followups: Int?
+    let meetings: Int?
+    let pipelineMoves: Int?
+    var id: String { date }
+}
+
+struct LeadgridMomentumTrendResponse: Codable {
+    let trend: LeadgridMomentumTrend
+}

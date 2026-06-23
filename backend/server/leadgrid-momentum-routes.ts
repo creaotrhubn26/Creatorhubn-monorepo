@@ -145,4 +145,74 @@ export function registerLeadgridMomentumRoutes(deps: Deps): void {
       res.status(500).json({ error: "save_failed", detail: String(err) });
     }
   });
+
+  // GET /api/leadgrid/momentum/trend?days=30 — siste N dager fra
+  // leadgrid_momentum_snapshots. Returnerer points + avg/best/worst +
+  // directionChange (siste minus første) når vi har minst 7 dager.
+  app.get("/api/leadgrid/momentum/trend", permView, async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) { res.status(401).json({ error: "Innlogging kreves" }); return; }
+    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
+    if (!orgId) { res.status(400).json({ error: "mangler_organization_id" }); return; }
+    const parsed = parseInt(String(req.query.days ?? "30"), 10);
+    const days = Math.min(180, Math.max(7, Number.isFinite(parsed) ? parsed : 30));
+    try {
+      const r = await pool.query<{
+        snapshot_date: string;
+        momentum_score: string;
+        activity_score: string | null;
+        velocity_score: string | null;
+        decay_score: string | null;
+        overdue_penalty: string | null;
+        contacts_today: number | null;
+        followups_today: number | null;
+        meetings_today: number | null;
+        pipeline_moves_today: number | null;
+      }>(
+        `SELECT snapshot_date::text,
+                momentum_score::text,
+                activity_score::text,
+                velocity_score::text,
+                decay_score::text,
+                overdue_penalty::text,
+                contacts_today, followups_today, meetings_today, pipeline_moves_today
+           FROM leadgrid_momentum_snapshots
+          WHERE organization_id = $1::uuid
+            AND snapshot_date >= CURRENT_DATE - ($2 || ' days')::interval
+          ORDER BY snapshot_date ASC`,
+        [orgId, String(days)],
+      );
+      const points = r.rows.map((row) => ({
+        date: row.snapshot_date,
+        score: Number(row.momentum_score),
+        activityScore: row.activity_score !== null ? Number(row.activity_score) : null,
+        velocityScore: row.velocity_score !== null ? Number(row.velocity_score) : null,
+        decayScore: row.decay_score !== null ? Number(row.decay_score) : null,
+        overduePenalty: row.overdue_penalty !== null ? Number(row.overdue_penalty) : null,
+        contacts: row.contacts_today,
+        followups: row.followups_today,
+        meetings: row.meetings_today,
+        pipelineMoves: row.pipeline_moves_today,
+      }));
+      const scores = points.map((p) => p.score);
+      const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+      const best = scores.length > 0 ? Math.max(...scores) : 0;
+      const worst = scores.length > 0 ? Math.min(...scores) : 0;
+      const directionChange = points.length >= 7
+        ? (points[points.length - 1].score - points[0].score)
+        : 0;
+      res.json({
+        trend: {
+          organizationId: orgId,
+          days,
+          points,
+          avg, best, worst,
+          directionChange,
+        },
+      });
+    } catch (err) {
+      console.error("[momentum/trend] feilet", err);
+      res.status(500).json({ error: "trend_failed", detail: String(err) });
+    }
+  });
 }
