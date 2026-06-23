@@ -24,6 +24,21 @@ APP_IDENTIFIER = "com.creatorhubn.capture"
 SCHEME         = "CaptureApp"
 PROJECT        = "CaptureApp.xcodeproj"
 
+# xcargs for the archive. Locally `-allowProvisioningUpdates` uses the Xcode-
+# signed-in Apple ID. On a headless CI runner there's no account, so we also
+# pass the App Store Connect API key to xcodebuild (-authenticationKey*) so it
+# can create/download the distribution cert + profile. The key file path comes
+# from ASC_KEY_PATH (the CI workflow writes the .p8 there).
+def provisioning_xcargs
+  args = ["-allowProvisioningUpdates"]
+  if ENV["ASC_KEY_PATH"] && ENV["APP_STORE_CONNECT_API_KEY_ID"] && ENV["APP_STORE_CONNECT_API_ISSUER_ID"]
+    args << "-authenticationKeyPath #{ENV['ASC_KEY_PATH']}"
+    args << "-authenticationKeyID #{ENV['APP_STORE_CONNECT_API_KEY_ID']}"
+    args << "-authenticationKeyIssuerID #{ENV['APP_STORE_CONNECT_API_ISSUER_ID']}"
+  end
+  args.join(" ")
+end
+
 platform :ios do
   before_all do
     # Locally we want 26.5; CI sets XCODE_VERSION to whatever the runner
@@ -61,7 +76,7 @@ platform :ios do
       output_name: "CreatorHubOne.ipa",
       # La Xcode kontakte Apple for å auto-generere/registrere provisioning-
       # profiler (kreves for automatic signing i headless archive).
-      xcargs: "-allowProvisioningUpdates",
+      xcargs: provisioning_xcargs,
     )
 
     # Sanity check FØR upload: bruk gyms faktiske output-sti
@@ -98,7 +113,7 @@ platform :ios do
       clean: true,
       output_directory: "build/",
       output_name: "CreatorHubOne.ipa",
-      xcargs: "-allowProvisioningUpdates",
+      xcargs: provisioning_xcargs,
     )
 
     upload_to_app_store(
