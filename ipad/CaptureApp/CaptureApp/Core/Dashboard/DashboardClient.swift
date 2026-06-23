@@ -89,6 +89,7 @@ actor DashboardClient {
         }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = Self.defaultTimeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         applyAuth(&request)
         let (data, response) = try await data(for: request)
@@ -108,6 +109,7 @@ actor DashboardClient {
         }
         var request = URLRequest(url: url)
         request.httpMethod = method
+        request.timeoutInterval = Self.defaultTimeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         applyAuth(&request)
@@ -124,6 +126,7 @@ actor DashboardClient {
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = Self.defaultTimeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         applyAuth(&request)
@@ -154,11 +157,51 @@ actor DashboardClient {
         }
     }
 
+    /// Per-request timeout — URLSession's default (60s req / much longer
+    /// resource) is too forgiving for an interactive dashboard.
+    static let defaultTimeout: TimeInterval = 30
+
+    /// Runs the request with bounded retry + exponential backoff for transient
+    /// failures. Retries ONLY idempotent GETs (never POST/PATCH — avoids
+    /// double-submit) on network errors, 429, and 5xx.
     func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-        do {
-            return try await session.data(for: request)
-        } catch let urlError as URLError {
-            throw DashboardError.transport(String(describing: urlError.code))
+        let isIdempotent = (request.httpMethod ?? "GET").uppercased() == "GET"
+        let maxAttempts = isIdempotent ? 3 : 1
+        var attempt = 0
+        while true {
+            attempt += 1
+            do {
+                let (data, response) = try await session.data(for: request)
+                if isIdempotent, attempt < maxAttempts, let http = response as? HTTPURLResponse,
+                   http.statusCode == 429 || (500...599).contains(http.statusCode) {
+                    try? await Task.sleep(nanoseconds: Self.backoffNanos(attempt))
+                    continue
+                }
+                return (data, response)
+            } catch let urlError as URLError {
+                if isIdempotent, attempt < maxAttempts, Self.isRetryable(urlError) {
+                    try? await Task.sleep(nanoseconds: Self.backoffNanos(attempt))
+                    continue
+                }
+                throw DashboardError.transport(String(describing: urlError.code))
+            }
+        }
+    }
+
+    /// ~0.4s, ~0.9s … with jitter to avoid thundering-herd retries.
+    private static func backoffNanos(_ attempt: Int) -> UInt64 {
+        let base = 0.4 * pow(2.0, Double(attempt - 1))
+        let jitter = Double.random(in: 0...0.25)
+        return UInt64((base + jitter) * 1_000_000_000)
+    }
+
+    private static func isRetryable(_ error: URLError) -> Bool {
+        switch error.code {
+        case .timedOut, .networkConnectionLost, .cannotConnectToHost,
+             .dnsLookupFailed, .cannotFindHost, .resourceUnavailable:
+            return true
+        default:
+            return false
         }
     }
 }
@@ -175,6 +218,8 @@ enum DashboardError: Error, LocalizedError, Sendable {
         switch self {
         case .unauthorized: return "Økten er utløpt. Logg inn på nytt."
         case .notFound: return "Fant ikke ressursen."
+        case .httpStatus(429, _): return "For mange forespørsler — vent litt og prøv igjen."
+        case let .httpStatus(code, _) where (500...599).contains(code): return "Serveren har et problem (HTTP \(code)). Prøv igjen om litt."
         case let .httpStatus(code, _): return "Serverfeil (HTTP \(code)). Prøv igjen."
         case .decode: return "Klarte ikke å lese svaret fra serveren."
         case let .transport(detail): return "Nettverksfeil (\(detail))."

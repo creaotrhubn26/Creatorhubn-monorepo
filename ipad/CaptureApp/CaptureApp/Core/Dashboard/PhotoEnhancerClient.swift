@@ -160,14 +160,21 @@ struct PhotoEnhancerClient: Sendable {
 
     // MARK: - HTTP plumbing
 
+    private func resolve(_ path: String) throws -> URL {
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw EnhancerError.transport("invalid path \(path)")
+        }
+        return url
+    }
+
     private func get(_ path: String) async throws -> (Data, URLResponse) {
-        var req = URLRequest(url: URL(string: path, relativeTo: baseURL)!)
+        var req = URLRequest(url: try resolve(path))
         apply(&req)
         return try await run(req)
     }
 
     private func post(_ path: String, form: MultipartForm, timeout: TimeInterval) async throws -> (Data, URLResponse) {
-        var req = URLRequest(url: URL(string: path, relativeTo: baseURL)!)
+        var req = URLRequest(url: try resolve(path))
         req.httpMethod = "POST"
         req.timeoutInterval = timeout
         req.setValue("multipart/form-data; boundary=\(form.boundary)", forHTTPHeaderField: "Content-Type")
@@ -177,7 +184,7 @@ struct PhotoEnhancerClient: Sendable {
     }
 
     private func postJSON(_ path: String, body: Data) async throws -> (Data, URLResponse) {
-        var req = URLRequest(url: URL(string: path, relativeTo: baseURL)!)
+        var req = URLRequest(url: try resolve(path))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         apply(&req)
