@@ -13,6 +13,7 @@ struct LeadgridIntelligencePanel: View {
     @State private var loading = true
     @State private var errorText: String?
     @State private var acted = false
+    @State private var presentingVoiceMemo = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -46,6 +47,15 @@ struct LeadgridIntelligencePanel: View {
         .padding()
         .background(Color.purple.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
         .task { await load() }
+        .sheet(isPresented: $presentingVoiceMemo) {
+            if let lead = intel?.lead {
+                LeadgridVoiceMemoSheet(
+                    api: api,
+                    leadId: lead.id,
+                    leadName: lead.name
+                )
+            }
+        }
     }
 
     @ViewBuilder
@@ -119,6 +129,14 @@ struct LeadgridIntelligencePanel: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(.gray)
+
+                Button {
+                    presentingVoiceMemo = true
+                } label: {
+                    Label("Voice memo", systemImage: "mic.fill")
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
             }
         }
     }
