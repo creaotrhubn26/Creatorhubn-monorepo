@@ -24,8 +24,20 @@ interface Deps {
   pool: Pool;
 }
 
-const CHUNK_SIZE = 50;
 const MAX_PER_RUN = 10_000;
+
+/**
+ * Adaptiv chunk-størrelse for cron-iterasjon. Større batches ved høyere
+ * total fordi pool-kapasiteten (default max=30) tåler mer samtidig
+ * I/O, og hver intelligence-call er ÉN DB-roundtrip etter PR #870
+ * (CTE-batchfetch).
+ */
+function adaptiveChunkSize(totalLeads: number): number {
+  if (totalLeads < 100) return 25;
+  if (totalLeads < 1000) return 50;
+  if (totalLeads < 5000) return 75;
+  return 100;
+}
 
 async function expireOldRecommendations(pool: Pool): Promise<number> {
   try {
@@ -161,8 +173,9 @@ export function registerLeadgridIntelligenceCron(deps: Deps): void {
 
         let ok = 0;
         let failed = 0;
-        for (let i = 0; i < rows.rows.length; i += CHUNK_SIZE) {
-          const chunk = rows.rows.slice(i, i + CHUNK_SIZE);
+        const chunkSize = adaptiveChunkSize(rows.rows.length);
+        for (let i = 0; i < rows.rows.length; i += chunkSize) {
+          const chunk = rows.rows.slice(i, i + chunkSize);
           await Promise.all(
             chunk.map(async (r) => {
               try {
@@ -187,6 +200,7 @@ export function registerLeadgridIntelligenceCron(deps: Deps): void {
           processed: ok,
           failed,
           total_candidates: rows.rowCount,
+          chunk_size: chunkSize,
           followup_due: followUp.due,
           followup_overdue: followUp.overdue,
           expired_recommendations: expired,

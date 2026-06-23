@@ -19,6 +19,7 @@
  */
 
 import type { Pool } from "pg";
+import { withAIQuota } from "./leadgrid-ai-queue.js";
 
 export interface CompetitorAnalysis {
   name: string;
@@ -147,11 +148,13 @@ Returner KUN gyldig JSON i dette skjemaet:
   "competitors": [{"name": "...", "domain": "...", "threat_level": "low|medium|high", "market_position": "...", "differentiators": ["..."], "weaknesses": ["..."]}],
   "threat_assessment": {"market_threats": ["..."], "market_opportunities": ["..."], "urgency": "low|medium|high"}
 }`;
-    const msg = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2000,
-      messages: [{ role: "user", content: prompt }],
-    });
+    const msg = await withAIQuota("claude", null, () =>
+      client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 2000,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    );
     const text = msg.content
       .filter((c): c is { type: "text"; text: string } => c.type === "text")
       .map((c) => c.text)
@@ -198,11 +201,13 @@ Returner KUN gyldig JSON:
   "fits_strategy": true|false,
   "reasoning": "..."
 }`;
-    const msg = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 800,
-      messages: [{ role: "user", content: prompt }],
-    });
+    const msg = await withAIQuota("claude", null, () =>
+      client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 800,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    );
     const text = msg.content
       .filter((c): c is { type: "text"; text: string } => c.type === "text")
       .map((c) => c.text)

@@ -565,7 +565,7 @@ interface LeadRow {
   ai_opportunity_score: number | null;
 }
 
-async function fetchLead(pool: Pool, leadId: string): Promise<LeadRow | null> {
+export async function fetchLead(pool: Pool, leadId: string): Promise<LeadRow | null> {
   // FIX (2026-06-22): crm_customers har INGEN organization_id-kolonne.
   // Vi henter primary org via JOIN organization_members.
   const r = await pool.query<LeadRow>(
@@ -603,7 +603,7 @@ interface ActivityRow {
   created_at: string;
 }
 
-async function fetchRecentActivities(
+export async function fetchRecentActivities(
   pool: Pool,
   leadId: string,
   days = 60,
@@ -625,7 +625,7 @@ interface NeedRow {
   priority: number | null;
 }
 
-async function fetchNeeds(pool: Pool, leadId: string): Promise<NeedRow[]> {
+export async function fetchNeeds(pool: Pool, leadId: string): Promise<NeedRow[]> {
   try {
     const r = await pool.query<NeedRow>(
       `SELECT need_type, status, priority
@@ -644,7 +644,7 @@ interface SignalRow {
   signal_type: string;
 }
 
-async function fetchSignals(pool: Pool, leadId: string): Promise<SignalRow[]> {
+export async function fetchSignals(pool: Pool, leadId: string): Promise<SignalRow[]> {
   try {
     const r = await pool.query<SignalRow>(
       `SELECT signal_type FROM crm_customer_signals WHERE customer_id = $1`,
@@ -654,6 +654,135 @@ async function fetchSignals(pool: Pool, leadId: string): Promise<SignalRow[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * Batch-fetch alle DB-data som trengs for å beregne intelligence for ETT
+ * lead, i ÉN roundtrip via CTE. Erstatter 4 separate parallelle queries
+ * (lead, activities, needs, signals, weights) som tidligere kjørte via
+ * `Promise.all`.
+ *
+ * Effekt på 10k-leads cron: 4× → 1× DB-roundtrips = 40k → 10k queries.
+ *
+ * Returnerer `null` hvis lead ikke finnes. Hvis organization_id ikke kan
+ * resolves (lead har ingen owner_user_id, eller eieren er ikke i noen
+ * organization_members), settes `lead.organization_id = null` og
+ * `weights` faller tilbake til DEFAULT_WEIGHTS.
+ *
+ * NB: De individuelle `fetchLead/fetchRecentActivities/fetchNeeds/
+ * fetchSignals/fetchWeights`-funksjonene beholdes (eksporterte) fordi
+ * de potensielt brukes andre steder.
+ */
+export async function fetchLeadIntelContext(
+  pool: Pool,
+  leadId: string,
+): Promise<{
+  lead: LeadRow;
+  activities: ActivityRow[];
+  needs: NeedRow[];
+  signals: SignalRow[];
+  weights: IntelligenceWeights;
+} | null> {
+  const r = await pool.query<{
+    lead_data: LeadRow;
+    activities_json: ActivityRow[] | null;
+    needs_json: NeedRow[] | null;
+    signals_json: SignalRow[] | null;
+    weights_json: Array<{ dimension: string; weight: number }> | null;
+  }>(
+    `WITH lead AS (
+       SELECT c.id::text AS id,
+              (SELECT om.organization_id::text FROM organization_members om
+                 WHERE om.user_id = c.owner_user_id
+                 ORDER BY om.joined_at ASC LIMIT 1) AS organization_id,
+              c.owner_user_id::text AS owner_user_id,
+              c.assigned_user_id::text AS assigned_user_id,
+              c.lead_status,
+              c.pipeline_stage,
+              c.lead_category,
+              c.email, c.phone, c.website_url,
+              c.latitude::float8 AS latitude,
+              c.longitude::float8 AS longitude,
+              c.estimated_value::float8 AS estimated_value,
+              c.enrichment_data,
+              c.enriched_at::text AS enriched_at,
+              c.last_visit_at::text AS last_visit_at,
+              c.last_contacted_at::text AS last_contacted_at,
+              c.next_follow_up_at::text AS next_follow_up_at,
+              c.ai_opportunity_score
+         FROM crm_customers c
+        WHERE c.id = $1::uuid
+        LIMIT 1
+     ),
+     activities AS (
+       SELECT json_agg(row_to_json(a)) AS data FROM (
+         SELECT activity_type, created_at::text AS created_at
+           FROM crm_lead_activities
+          WHERE customer_id = $1::uuid
+            AND created_at > NOW() - INTERVAL '60 days'
+          ORDER BY created_at DESC
+          LIMIT 200
+       ) a
+     ),
+     needs AS (
+       SELECT json_agg(row_to_json(n)) AS data FROM (
+         SELECT need_type, status, priority
+           FROM crm_customer_needs
+          WHERE customer_id = $1
+            AND status IN ('detected','accepted')
+       ) n
+     ),
+     signals AS (
+       SELECT json_agg(row_to_json(s)) AS data FROM (
+         SELECT signal_type
+           FROM crm_customer_signals
+          WHERE customer_id = $1
+       ) s
+     ),
+     weights AS (
+       SELECT json_agg(row_to_json(w)) AS data FROM (
+         SELECT dimension, weight::float8 AS weight
+           FROM crm_scoring_weights
+          WHERE organization_id = (
+            SELECT organization_id::uuid FROM lead WHERE organization_id IS NOT NULL
+          )
+       ) w
+     )
+     SELECT row_to_json(lead.*) AS lead_data,
+            COALESCE(activities.data, '[]'::json) AS activities_json,
+            COALESCE(needs.data, '[]'::json) AS needs_json,
+            COALESCE(signals.data, '[]'::json) AS signals_json,
+            COALESCE(weights.data, '[]'::json) AS weights_json
+       FROM lead
+       LEFT JOIN activities ON true
+       LEFT JOIN needs ON true
+       LEFT JOIN signals ON true
+       LEFT JOIN weights ON true`,
+    [leadId],
+  );
+
+  if (r.rowCount === 0 || !r.rows[0]?.lead_data) return null;
+  const row = r.rows[0];
+
+  // Bygg weights med fallback til DEFAULT_WEIGHTS per dimension
+  const weightsArr = row.weights_json ?? [];
+  const lookup = new Map(weightsArr.map((w) => [w.dimension, w.weight]));
+  const weights: IntelligenceWeights = { ...DEFAULT_WEIGHTS };
+  (Object.keys(FACET_DIMENSION_KEYS) as Array<keyof IntelligenceWeights>).forEach((k) => {
+    const dim = FACET_DIMENSION_KEYS[k];
+    const v = lookup.get(dim);
+    if (typeof v === "number" && Number.isFinite(v)) {
+      weights[k] = v;
+    }
+  });
+
+  return {
+    lead: row.lead_data,
+    activities: row.activities_json ?? [],
+    needs: row.needs_json ?? [],
+    signals: row.signals_json ?? [],
+    weights,
+  };
 }
 
 /**
@@ -860,19 +989,16 @@ export async function computeIntelligenceForLead(
   const trigger = opts.trigger ?? "manual";
   const persist = opts.persist !== false;
 
-  const lead = await fetchLead(pool, leadId);
-  if (!lead) return null;
+  // PERF (skalering nivå 2): én CTE-query henter lead + activities + needs
+  // + signals + weights i én DB-roundtrip i stedet for fire parallelle
+  // queries. Effekt på 10k-leads cron: 40k → 10k queries.
+  const ctx = await fetchLeadIntelContext(pool, leadId);
+  if (!ctx) return null;
+  const { lead, activities, needs, signals, weights } = ctx;
   if (!lead.organization_id) {
     // Vi krever org-tilhørighet for å persistere
     return null;
   }
-
-  const [activities, needs, signals, weights] = await Promise.all([
-    fetchRecentActivities(pool, leadId, 60),
-    fetchNeeds(pool, leadId),
-    fetchSignals(pool, leadId),
-    fetchWeights(pool, lead.organization_id),
-  ]);
 
   const now = new Date();
   const lastContactIso =
