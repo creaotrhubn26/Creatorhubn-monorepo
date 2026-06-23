@@ -5,11 +5,24 @@
 // antall leads + sum forventet verdi + sorterte lead-kort.
 //
 // PR #855 har ikke et /pipeline-endepunkt — for nå deriver vi unike leads fra
-// NBA-recommendations + fetchLeadIntelligence per lead. Drag-and-drop er
-// utelatt (krever PATCH /pipeline-stage som ikke finnes ennå); tap kort →
-// sheet m/ lead-info (stage-picker kan kobles på senere).
+// NBA-recommendations + fetchLeadIntelligence per lead.
+//
+// PR #882 + denne: drag-and-drop er nå live via PATCH
+// /api/leadgrid/intelligence/leads/:id/pipeline-stage. Optimistisk UI-update
+// med revert + alert hvis backend feiler.
 
 import SwiftUI
+import UniformTypeIdentifiers
+
+// Transferable payload for drag-and-drop mellom kolonner.
+struct LeadDragPayload: Codable, Transferable {
+    let leadId: String
+    let currentStage: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .data)
+    }
+}
 
 struct LeadgridPipelineKanbanView: View {
     let api: APIClient
@@ -17,6 +30,8 @@ struct LeadgridPipelineKanbanView: View {
     @State private var loading = true
     @State private var errorText: String?
     @State private var selected: LeadIntelligenceLead?
+    @State private var droppingTarget: String?
+    @State private var moveError: String?
 
     private let stages: [(key: String, label: String, color: Color)] = [
         ("new",           "Ny",            .gray),
@@ -67,6 +82,14 @@ struct LeadgridPipelineKanbanView: View {
                 }
             }
         }
+        .alert("Feil", isPresented: Binding(
+            get: { moveError != nil },
+            set: { if !$0 { moveError = nil } }
+        )) {
+            Button("OK") { moveError = nil }
+        } message: {
+            if let err = moveError { Text(err) }
+        }
     }
 
     @ViewBuilder
@@ -100,13 +123,32 @@ struct LeadgridPipelineKanbanView: View {
                             card(lead, accent: stage.color)
                         }
                         .buttonStyle(.plain)
+                        .draggable(LeadDragPayload(leadId: lead.id, currentStage: lead.pipelineStage))
                     }
                 }
             }
         }
         .frame(width: 280)
         .padding(10)
-        .background(stage.color.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .background(
+            stage.color.opacity(droppingTarget == stage.key ? 0.20 : 0.05),
+            in: RoundedRectangle(cornerRadius: 12)
+        )
+        .overlay(
+            droppingTarget == stage.key
+                ? RoundedRectangle(cornerRadius: 12).strokeBorder(stage.color, lineWidth: 2)
+                : nil
+        )
+        .dropDestination(for: LeadDragPayload.self) { payloads, _ in
+            guard let payload = payloads.first else { return false }
+            if payload.currentStage == stage.key { return false }
+            Task {
+                await moveLead(payload.leadId, to: stage.key, oldStage: payload.currentStage)
+            }
+            return true
+        } isTargeted: { targeted in
+            droppingTarget = targeted ? stage.key : nil
+        }
     }
 
     @ViewBuilder
@@ -176,5 +218,54 @@ struct LeadgridPipelineKanbanView: View {
             errorText = "Kunne ikke laste: \(error.localizedDescription)"
         }
         loading = false
+    }
+
+    // Optimistisk flytte-funksjon: oppdater UI med en gang, deretter PATCH til
+    // backend. Revert + vis alert hvis serveren feiler.
+    @MainActor
+    private func moveLead(_ leadId: String, to newStage: String, oldStage: String) async {
+        guard let idx = leads.firstIndex(where: { $0.id == leadId }) else { return }
+        let original = leads[idx]
+        leads[idx] = original.with(pipelineStage: newStage)
+
+        do {
+            _ = try await api.updateLeadPipelineStage(leadId: leadId, stage: newStage)
+        } catch {
+            moveError = "Kunne ikke flytte: \(error.localizedDescription)"
+            if let revertIdx = leads.firstIndex(where: { $0.id == leadId }) {
+                leads[revertIdx] = leads[revertIdx].with(pipelineStage: oldStage)
+            }
+        }
+    }
+}
+
+// MARK: - Lokal helper for å rebygge LeadIntelligenceLead m/ ny stage.
+// Modellen har bare `let`-felter; tilbyr derfor en eksplisitt copy-with.
+private extension LeadIntelligenceLead {
+    func with(pipelineStage newStage: String) -> LeadIntelligenceLead {
+        LeadIntelligenceLead(
+            id: id,
+            name: name,
+            pipelineStage: newStage,
+            leadStatus: leadStatus,
+            leadScore: leadScore,
+            leadTemperature: leadTemperature,
+            conversionProbability: conversionProbability,
+            expectedValue: expectedValue,
+            followUpPriority: followUpPriority,
+            nextBestAction: nextBestAction,
+            nextBestActionReason: nextBestActionReason,
+            nextBestActionChannel: nextBestActionChannel,
+            nextBestActionConfidence: nextBestActionConfidence,
+            lastContactedAt: lastContactedAt,
+            nextFollowUpAt: nextFollowUpAt,
+            assignedUserId: assignedUserId,
+            latitude: latitude,
+            longitude: longitude,
+            phone: phone,
+            email: email,
+            website: website,
+            city: city
+        )
     }
 }

@@ -2291,6 +2291,23 @@ extension APIClient {
         let resp: ScoreHistoryResponse = try await get("/api/leadgrid/intelligence/leads/\(leadId)/history")
         return resp.history
     }
+
+    // PR #882 — drag-and-drop pipeline stage. Backend trigger Intelligence
+    // rescore + emit lead.pipeline_stage_changed webhook.
+    @discardableResult
+    func updateLeadPipelineStage(leadId: String, stage: String) async throws -> PipelineStageUpdateResult {
+        try await patchReturning(
+            "/api/leadgrid/intelligence/leads/\(leadId)/pipeline-stage",
+            body: ["pipeline_stage": stage]
+        )
+    }
+}
+
+struct PipelineStageUpdateResult: Decodable {
+    let ok: Bool
+    let leadId: String?
+    let oldStage: String?
+    let newStage: String?
 }
 
 private struct NBARecommendationsResponse: Decodable { let recommendations: [LeadgridNBARecommendation] }
