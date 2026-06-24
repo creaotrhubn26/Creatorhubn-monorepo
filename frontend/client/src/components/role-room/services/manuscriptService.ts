@@ -405,7 +405,7 @@ async function fetchActsFromDatabase(manuscriptId: string, isDbAvailable: boolea
   }
 
   try {
-    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/acts`);
+    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/acts`, { headers: getAuthHeaders() });
     if (!response.ok) {
       if (response.status === 404) {
         markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/acts (demo init)');
@@ -426,7 +426,7 @@ async function fetchScenesFromDatabase(manuscriptId: string, isDbAvailable: bool
   }
 
   try {
-    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/scenes`);
+    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/scenes`, { headers: getAuthHeaders() });
     if (!response.ok) {
       if (response.status === 404) {
         markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/scenes (demo init)');
@@ -447,7 +447,7 @@ async function fetchDialogueFromDatabase(manuscriptId: string, isDbAvailable: bo
   }
 
   try {
-    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/dialogue`);
+    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/dialogue`, { headers: getAuthHeaders() });
     if (!response.ok) {
       if (response.status === 404) {
         markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/dialogue (demo init)');
@@ -1759,7 +1759,7 @@ async function initializeDemoDataIfNeeded(projectId: string): Promise<void> {
 
   if (isDbAvailable) {
     try {
-      const response = await fetch(`/api/casting/manuscripts?projectId=${projectId}`);
+      const response = await fetch(`/api/casting/manuscripts?projectId=${projectId}`, { headers: getAuthHeaders() });
       if (response.ok) {
         databaseManuscripts = await response.json();
       } else if (response.status === 404) {
@@ -1888,7 +1888,7 @@ class ManuscriptService {
     
     if (isDbAvailable) {
       try {
-        const response = await fetch(`/api/casting/manuscripts/${id}`);
+        const response = await fetch(`/api/casting/manuscripts/${id}`, { headers: getAuthHeaders() });
         if (!response.ok) {
           if (response.status === 404) {
             markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id');
@@ -2122,7 +2122,7 @@ class ManuscriptService {
     
     if (isDbAvailable) {
       try {
-        const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/scenes`);
+        const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/scenes`, { headers: getAuthHeaders() });
         if (!response.ok) {
           if (response.status === 404) {
             markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/scenes');
@@ -2214,7 +2214,7 @@ class ManuscriptService {
     
     if (isDbAvailable) {
       try {
-        const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/dialogue`);
+        const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/dialogue`, { headers: getAuthHeaders() });
         if (!response.ok) {
           if (response.status === 404) {
             markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/dialogue');
@@ -2306,7 +2306,7 @@ class ManuscriptService {
     
     if (isDbAvailable) {
       try {
-        const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/revisions`);
+        const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/revisions`, { headers: getAuthHeaders() });
         if (!response.ok) {
           if (response.status === 404) {
             markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/revisions');
@@ -2773,7 +2773,7 @@ class ManuscriptService {
     
     if (isDbAvailable) {
       try {
-        const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/acts`);
+        const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/acts`, { headers: getAuthHeaders() });
         if (!response.ok) {
           if (response.status === 404) {
             markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/acts');
