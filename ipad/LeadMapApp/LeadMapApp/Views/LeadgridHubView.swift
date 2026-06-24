@@ -99,6 +99,19 @@ struct LeadgridHubView: View {
                     }
                 }
 
+                // Analytics Dashboard (PR #858 backend) — 7 KPI-endepunkter
+                // som SwiftUI Charts (5 seksjoner).
+                Section("Analyse") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridAnalyticsDashboardView(api: api)
+                        } label: {
+                            Label("Analytics Dashboard",
+                                   systemImage: "chart.line.uptrend.xyaxis")
+                        }
+                    }
+                }
+
                 Section("Varsler") {
                     Button {
                         appState.presentingLeadgridNotifications = true
