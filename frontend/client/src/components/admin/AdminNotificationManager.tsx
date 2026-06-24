@@ -28,7 +28,9 @@ import {
   Divider,
   Paper,
   Tooltip,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Send,
   Notifications,
@@ -97,7 +99,9 @@ export default function AdminNotificationManager() {
 
   // Theming system
   const theming = useTheming('prototype_tester');
-  
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
+
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -287,6 +291,7 @@ export default function AdminNotificationManager() {
 
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={nb}>
       <Box sx={{ p: 3 }}>
         <Box
@@ -303,7 +308,7 @@ export default function AdminNotificationManager() {
               </IconButton>
             </Tooltip>
           )}
-          <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+          <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
             <Notifications sx={{ mr: 2, verticalAlign: 'middle' }} />
             Admin Notifikasjoner
           </Typography>
@@ -344,8 +349,8 @@ export default function AdminNotificationManager() {
               color: 'white'}}
           >
             <CardContent>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Aktive</Typography>
-              <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ color: themeColors.primary }}>Aktive</Typography>
+              <Typography variant="h4" sx={{ color: themeColors.primary }}>
                 {notifications?.data?.filter((n: any) => n.isActive).length || 0}
               </Typography>
             </CardContent>
@@ -356,8 +361,8 @@ export default function AdminNotificationManager() {
               color: 'white'}}
           >
             <CardContent>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Høy Prioritet</Typography>
-              <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ color: themeColors.primary }}>Høy Prioritet</Typography>
+              <Typography variant="h4" sx={{ color: themeColors.primary }}>
                 {notifications?.data?.filter(
                   (n: any) => n.priority === 'high' || n.priority === 'urgent',
                 ).length || 0}
@@ -370,8 +375,8 @@ export default function AdminNotificationManager() {
               color: 'white'}}
           >
             <CardContent>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Totalt</Typography>
-              <Typography variant="h4" sx={{ color: theming.colors.primary }}>{notifications?.data?.length || 0}</Typography>
+              <Typography variant="h6" sx={{ color: themeColors.primary }}>Totalt</Typography>
+              <Typography variant="h4" sx={{ color: themeColors.primary }}>{notifications?.data?.length || 0}</Typography>
             </CardContent>
           </MuiCard>
           <MuiCard
@@ -380,8 +385,8 @@ export default function AdminNotificationManager() {
               color: 'white'}}
           >
             <CardContent>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Venter på godkjenning</Typography>
-              <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ color: themeColors.primary }}>Venter på godkjenning</Typography>
+              <Typography variant="h4" sx={{ color: themeColors.primary }}>
                 {pendingRequests?.data?.length || 0}
               </Typography>
             </CardContent>
@@ -392,7 +397,7 @@ export default function AdminNotificationManager() {
         {pendingRequests?.data?.length > 0 && (
           <MuiCard sx={{ mb: 3 }}>
             <CardContent>
-              <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <People color="primary" />
                 Venter på godkjenning ({pendingRequests.data.length})
               </Typography>
@@ -451,7 +456,7 @@ export default function AdminNotificationManager() {
         {/* Notifications List */}
         <MuiCard>
           <CardContent>
-            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+            <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
               Alle Notifikasjoner
             </Typography>
             {isLoading ? (
@@ -479,7 +484,7 @@ export default function AdminNotificationManager() {
                               alignItems: 'center',
                               gap: 1}}
                           >
-                            <Typography variant="h6" sx={{ color: theming.colors.primary }}>{notification.title}</Typography>
+                            <Typography variant="h6" sx={{ color: themeColors.primary }}>{notification.title}</Typography>
                             <Chip
                               label={notification.type}
                               size="small"
@@ -567,7 +572,7 @@ export default function AdminNotificationManager() {
               justifyContent: 'space-between',
               alignItems: 'center'}}
           >
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" sx={{ color: themeColors.primary }}>
               {editingNotification ? 'Rediger Notifikasjon' : 'Opprett Ny Notifikasjon'}
             </Typography>
             <IconButton
@@ -752,5 +757,6 @@ export default function AdminNotificationManager() {
         )}
       </Box>
     </LocalizationProvider>
+    </ThemeProvider>
   );
 }

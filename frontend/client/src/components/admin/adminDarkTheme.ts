@@ -32,6 +32,36 @@ export const adminDarkTheme = createTheme({
       },
     },
     MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } },
+    // Modaler/menyer/popovere må ha OPAK mørk flate – ellers skinner backdrop
+    // og innhold bak igjennom den halvtransparente paper-fargen.
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          backgroundColor: '#0f1729',
+          backgroundImage: 'none',
+          border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 18,
+        },
+      },
+    },
+    MuiMenu: {
+      styleOverrides: {
+        paper: {
+          backgroundColor: '#0f1729',
+          backgroundImage: 'none',
+          border: '1px solid rgba(255,255,255,0.12)',
+        },
+      },
+    },
+    MuiPopover: {
+      styleOverrides: {
+        paper: {
+          backgroundColor: '#0f1729',
+          backgroundImage: 'none',
+          border: '1px solid rgba(255,255,255,0.12)',
+        },
+      },
+    },
   },
 });
 

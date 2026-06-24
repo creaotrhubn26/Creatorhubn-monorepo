@@ -39,7 +39,9 @@ import {
   FormControl,
   InputLabel,
   Select,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Send as SendIcon,
   Search as SearchIcon,
@@ -144,6 +146,8 @@ export default function AdminCommunicationPanel({
 
   // Theming system
   const theming = useTheming('prototype_tester');
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const userProfession = 'photographer';
 
   // Use dynamic profession system
@@ -391,6 +395,7 @@ export default function AdminCommunicationPanel({
   const selectedChatInfo = getSelectedChatInfo();
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ height: '80vh', display: 'flex', flexDirection: 'column' }}>
       {/* Main Tabs */}
       <Tabs
@@ -478,12 +483,12 @@ export default function AdminCommunicationPanel({
                 <Grid xs={12} lg={4}>
                   <Card sx={{ mb: 2 }}>
                     <CardContent>
-                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                         <Payment color="primary" />
                         Betalingsstatistikk
                       </Typography>
                       <Box sx={{ textAlign: 'center', py: 2 }}>
-                        <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h4" color="primary" sx={{ color: themeColors.primary }}>
                           0
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -491,7 +496,7 @@ export default function AdminCommunicationPanel({
                         </Typography>
                       </Box>
                       <Box sx={{ textAlign: 'center', py: 1 }}>
-                        <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" color="success.main" sx={{ color: themeColors.primary }}>
                           100%
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -503,12 +508,12 @@ export default function AdminCommunicationPanel({
                   
                   <Card sx={{ mb: 2 }}>
                     <CardContent>
-                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                         <CardMembership color="primary" />
                         Medlemskort
                       </Typography>
                       <Box sx={{ textAlign: 'center', py: 2 }}>
-                        <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h4" color="primary" sx={{ color: themeColors.primary }}>
                           0
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -516,7 +521,7 @@ export default function AdminCommunicationPanel({
                         </Typography>
                       </Box>
                       <Box sx={{ textAlign: 'center', py: 1 }}>
-                        <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" color="success.main" sx={{ color: themeColors.primary }}>
                           0
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -528,12 +533,12 @@ export default function AdminCommunicationPanel({
                   
                   <Card sx={theming.getThemedCardSx()}>
                     <CardContent sx={theming.getThemedCardSx()}>
-                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                         <Speed color="primary" />
                         Ytelse
                       </Typography>
                       <Box sx={{ textAlign: 'center', py: 2 }}>
-                        <Typography variant="h4" color="success.main" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h4" color="success.main" sx={{ color: themeColors.primary }}>
                           &lt;100ms
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -541,7 +546,7 @@ export default function AdminCommunicationPanel({
                         </Typography>
                       </Box>
                       <Box sx={{ textAlign: 'center', py: 1 }}>
-                        <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" color="success.main" sx={{ color: themeColors.primary }}>
                           99.9%
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -585,7 +590,7 @@ export default function AdminCommunicationPanel({
             <CardContent sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Kommunikasjon</Typography>
+                  <Typography variant="h6" sx={{ color: themeColors.primary }}>Kommunikasjon</Typography>
                   <div><GooglePayStatusIndicator compact={true} /></div>
                   <div><div>{/* SubscriberStatsPanel temporarily disabled - component returns void */}<div>Subscriber Stats</div></div></div>
                   <div><DemoModeToggle compact={true} /></div>
@@ -721,7 +726,7 @@ export default function AdminCommunicationPanel({
                         {selectedChatInfo.name?.charAt(0).toUpperCase()}
                       </Avatar>
                       <Box>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>{selectedChatInfo.name}</Typography>
+                        <Typography variant="h6" sx={{ color: themeColors.primary }}>{selectedChatInfo.name}</Typography>
                         <Typography variant="body2" color="text.secondary">
                           {selectedChatInfo.profession || selectedChatInfo.type || 'Aktiv'}
                         </Typography>
@@ -829,7 +834,7 @@ export default function AdminCommunicationPanel({
             }}
               >
                 <ChatIcon sx={{ fontSize: 64, color: 'grey.400', mb: 2 }} />
-                <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" color="text.secondary" sx={{ color: themeColors.primary }}>
                   Velg en bruker eller gruppe for å starte en samtale
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -961,5 +966,6 @@ export default function AdminCommunicationPanel({
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }
