@@ -54,9 +54,10 @@ actor PairExchangeService {
         } else {
             formatted = cleaned
         }
+        let info = await MainActor.run { Self.deviceInfo() }
         return try await postExchange(body: [
             "shortCode": formatted,
-            "deviceInfo": Self.deviceInfo(),
+            "deviceInfo": info,
         ])
     }
 
@@ -68,9 +69,10 @@ actor PairExchangeService {
         var req = URLRequest(url: baseURL.appendingPathComponent("/api/leadgrid/auth/google/exchange"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let info = await MainActor.run { Self.deviceInfo() }
         req.httpBody = try JSONSerialization.data(withJSONObject: [
             "id_token": idToken,
-            "deviceInfo": Self.deviceInfo(),
+            "deviceInfo": info,
             "platform": "ios_native_app",
         ])
         let (data, response) = try await URLSession.shared.data(for: req)
@@ -90,9 +92,10 @@ actor PairExchangeService {
             throw PairExchangeError(code: "ukjent_kode")
         }
         let token = String(qrPayload.dropFirst(prefix.count))
+        let info = await MainActor.run { Self.deviceInfo() }
         return try await postExchange(body: [
             "token": token,
-            "deviceInfo": Self.deviceInfo(),
+            "deviceInfo": info,
         ])
     }
 
@@ -118,6 +121,7 @@ actor PairExchangeService {
         throw PairExchangeError(code: "http_\(http.statusCode)")
     }
 
+    @MainActor
     private static func deviceInfo() -> [String: String] {
         let device = UIDevice.current
         let bundle = Bundle.main
