@@ -28,7 +28,11 @@ final class ScannerViewController: UIViewController {
     var onScan: ((String) -> Void)?
     var onError: ((Error) -> Void)?
 
-    private let session = AVCaptureSession()
+    // AVCaptureSession er trådsikker — start/stop kjøres bevisst på
+    // bakgrunns-kø for å unngå main-thread-hikke. `nonisolated(unsafe)`
+    // tillater aksess fra Sendable closures under Swift 6 strict
+    // concurrency.
+    nonisolated(unsafe) private let session = AVCaptureSession()
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private let metadataOutput = AVCaptureMetadataOutput()
     private let delegate = ScannerDelegate()
@@ -45,8 +49,9 @@ final class ScannerViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         if !session.isRunning {
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                self?.session.startRunning()
+            let session = self.session
+            DispatchQueue.global(qos: .userInitiated).async {
+                session.startRunning()
             }
         }
     }
@@ -105,15 +110,20 @@ final class ScannerViewController: UIViewController {
 private final class ScannerDelegate: NSObject, AVCaptureMetadataOutputObjectsDelegate {
     weak var parent: ScannerViewController?
 
-    func metadataOutput(_ output: AVCaptureMetadataOutput,
-                       didOutput metadataObjects: [AVMetadataObject],
-                       from connection: AVCaptureConnection) {
+    nonisolated func metadataOutput(_ output: AVCaptureMetadataOutput,
+                                    didOutput metadataObjects: [AVMetadataObject],
+                                    from connection: AVCaptureConnection) {
         guard
             let obj = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
             obj.type == .qr,
             let value = obj.stringValue
         else { return }
-        parent?.deliver(value)
+        // Vi setter queue: .main på metadataOutput, men Swift 6 ser
+        // delegate-metoden som nonisolated. Hopp eksplisitt til MainActor
+        // for å kalle main-actor-isolert `deliver`.
+        Task { @MainActor [weak parent] in
+            parent?.deliver(value)
+        }
     }
 }
 
