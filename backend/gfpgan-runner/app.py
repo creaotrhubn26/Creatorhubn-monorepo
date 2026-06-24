@@ -116,6 +116,52 @@ def _r2_config() -> dict[str, Any]:
     }
 
 
+def _b2_config() -> dict[str, Any]:
+    # Backblaze B2 (S3-compatible) — the photographer pipeline's storage
+    # provider. Weights live under models/... in this bucket, so the whole
+    # runner is on B2 (capture/gallery/editing/enhance-source already are).
+    region = os.getenv("B2_REGION", "eu-central-003")
+    bucket = _first_non_empty(
+        os.getenv("PHOTO_ENHANCER_B2_MODELS_BUCKET"),
+        os.getenv("B2_ROLE_ROOM_BUCKET_NAME"),
+    )
+    key_id = os.getenv("B2_ROLE_ROOM_APPLICATION_KEY_ID")
+    app_key = os.getenv("B2_ROLE_ROOM_APPLICATION_KEY")
+    return {
+        "enabled": bool(bucket and key_id and app_key),
+        "endpoint": f"https://s3.{region}.backblazeb2.com",
+        "buckets": [bucket] if bucket else [],
+        "region": region,
+        "access_key_id": key_id,
+        "secret_access_key": app_key,
+    }
+
+
+def _make_s3_client(config: dict[str, Any]) -> Any:
+    return boto3.client(
+        "s3",
+        endpoint_url=config["endpoint"],
+        aws_access_key_id=config["access_key_id"],
+        aws_secret_access_key=config["secret_access_key"],
+        region_name=config.get("region") or "auto",
+        config=Config(signature_version="s3v4"),
+    )
+
+
+def _weight_storages() -> list[dict[str, Any]]:
+    """Ordered weight backends: B2 first (photographer pipeline's provider),
+    R2 second (legacy fallback so existing deployments keep working during
+    migration). Each entry: {client, buckets, label}."""
+    storages: list[dict[str, Any]] = []
+    b2 = _b2_config()
+    if b2["enabled"]:
+        storages.append({"client": _make_s3_client(b2), "buckets": b2["buckets"], "label": "b2"})
+    r2 = _r2_config()
+    if r2["enabled"] and r2["buckets"]:
+        storages.append({"client": _make_s3_client(r2), "buckets": r2["buckets"], "label": "r2"})
+    return storages
+
+
 def _candidate_keys(requested_key: str | None) -> list[str]:
     keys: list[str] = []
     if requested_key and requested_key.startswith("models/gfpgan/"):
@@ -134,18 +180,9 @@ def _cache_path_for_key(key: str) -> Path:
 
 
 def _download_weight(requested_key: str | None) -> tuple[Path, str, str]:
-    config = _r2_config()
-    if not config["enabled"]:
-        raise RuntimeError("R2 model credentials are not configured")
-
-    client = boto3.client(
-        "s3",
-        endpoint_url=config["endpoint"],
-        aws_access_key_id=config["access_key_id"],
-        aws_secret_access_key=config["secret_access_key"],
-        region_name="auto",
-        config=Config(signature_version="s3v4"),
-    )
+    storages = _weight_storages()
+    if not storages:
+        raise RuntimeError("no weight storage configured (B2 or R2)")
 
     last_error: Exception | None = None
     for key in _candidate_keys(requested_key):
@@ -154,31 +191,32 @@ def _download_weight(requested_key: str | None) -> tuple[Path, str, str]:
             return cache_path, "cache", key
 
         tmp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
-        for bucket in config["buckets"]:
-            try:
-                client.download_file(bucket, key, str(tmp_path))
-                tmp_path.replace(cache_path)
-                return cache_path, bucket, key
-            except Exception as exc:  # noqa: BLE001
-                last_error = exc
+        for storage in storages:  # B2 first, then R2
+            for bucket in storage["buckets"]:
                 try:
-                    tmp_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
+                    storage["client"].download_file(bucket, key, str(tmp_path))
+                    tmp_path.replace(cache_path)
+                    return cache_path, f"{storage['label']}:{bucket}", key
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+                    try:
+                        tmp_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
 
     if last_error:
-        raise RuntimeError(f"GFPGAN weights were not found in R2: {last_error.__class__.__name__}")
-    raise RuntimeError("GFPGAN weights were not found in R2")
+        raise RuntimeError(f"weights not found in B2/R2: {last_error.__class__.__name__}")
+    raise RuntimeError("weights not found in any storage")
 
 
 # ── Weight bootstrap ──────────────────────────────────────────────────
-# The backend gates each model on the weight file EXISTING in the R2 models
-# bucket (HeadObject), and the runner only ever READS weights from R2 — so on a
-# fresh environment nothing routes to the runner (chicken-and-egg). To make a
-# deploy self-healing, on startup we ensure the canonical weights exist in R2,
-# pulling them from the official public releases when missing. Idempotent: a
-# weight already present is skipped. Runs in a background thread so the health
-# check binds the port immediately.
+# The backend gates each model on the weight file EXISTING in the models bucket
+# (HeadObject), and the runner only READS weights — so on a fresh environment
+# nothing routes to the runner (chicken-and-egg). To make a deploy self-healing,
+# on startup we ensure the canonical weights exist in the PRIMARY storage (B2
+# when configured, else R2), pulling them from the official public releases when
+# missing. Idempotent: a weight already present is skipped. Runs in a background
+# thread so the health check binds the port immediately.
 
 WEIGHT_SOURCES: list[tuple[str, str]] = [
     ("models/gfpgan/weights/GFPGANv1.4.pth",
@@ -194,22 +232,7 @@ WEIGHT_SOURCES: list[tuple[str, str]] = [
 _bootstrap_status: dict[str, Any] = {"state": "idle", "uploaded": [], "skipped": [], "errors": []}
 
 
-def _r2_client_and_bucket() -> tuple[Any, str] | None:
-    config = _r2_config()
-    if not config["enabled"] or not config["buckets"]:
-        return None
-    client = boto3.client(
-        "s3",
-        endpoint_url=config["endpoint"],
-        aws_access_key_id=config["access_key_id"],
-        aws_secret_access_key=config["secret_access_key"],
-        region_name="auto",
-        config=Config(signature_version="s3v4"),
-    )
-    return client, config["buckets"][0]
-
-
-def _r2_object_exists(client: Any, buckets: list[str], key: str) -> bool:
+def _object_exists(client: Any, buckets: list[str], key: str) -> bool:
     for bucket in buckets:
         try:
             client.head_object(Bucket=bucket, Key=key)
@@ -219,20 +242,25 @@ def _r2_object_exists(client: Any, buckets: list[str], key: str) -> bool:
     return False
 
 
-def _ensure_weights_in_r2() -> None:
+def _ensure_weights() -> None:
+    """Seed the PRIMARY weight storage (B2 if configured, else R2) with the
+    canonical weights, pulling from the official public releases when missing.
+    Idempotent. Runs in a background thread on startup."""
     import urllib.request
 
-    pair = _r2_client_and_bucket()
-    if pair is None:
-        _bootstrap_status["state"] = "no_r2"
+    storages = _weight_storages()
+    if not storages:
+        _bootstrap_status["state"] = "no_storage"
         return
-    client, write_bucket = pair
-    config = _r2_config()
+    primary = storages[0]
+    client = primary["client"]
+    write_bucket = primary["buckets"][0]
     _bootstrap_status["state"] = "running"
+    _bootstrap_status["target"] = primary["label"]
 
     for key, url in WEIGHT_SOURCES:
         try:
-            if _r2_object_exists(client, config["buckets"], key):
+            if _object_exists(client, primary["buckets"], key):
                 _bootstrap_status["skipped"].append(key)
                 continue
             cache_dir = Path(os.getenv("GFPGAN_CACHE_DIR", "/tmp/creatorhub-gfpgan"))
@@ -264,7 +292,7 @@ def _bootstrap_on_startup() -> None:
     if os.getenv("GFPGAN_DISABLE_WEIGHT_BOOTSTRAP") == "true":
         _bootstrap_status["state"] = "disabled"
         return
-    threading.Thread(target=_ensure_weights_in_r2, name="weight-bootstrap", daemon=True).start()
+    threading.Thread(target=_ensure_weights, name="weight-bootstrap", daemon=True).start()
 
 
 def _patch_torchvision_functional_tensor() -> None:
