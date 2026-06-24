@@ -39,6 +39,7 @@ import MarketingPageRouter from '@/components/admin/content-marketing/MarketingP
 import { parseMarketingPagePath } from '@/components/admin/content-marketing/marketingPagesConfig';
 import { PublicBriefDetail, PublicBriefIndex, parsePublicBriefPath } from '@/components/admin/content-marketing/PublicBriefPage';
 import ClientWorkspaceShell from './components/client-workspace/ClientWorkspaceShell';
+import ClientPortalMarketingPage from '@/pages/client-portal-marketing';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
 import { useAriaHiddenFocusFix } from '@/hooks/useAriaHiddenFocusFix';
 import { detectLocale } from './cms/useLocale';
@@ -164,6 +165,15 @@ function CastingStandaloneAppContent() {
     return match ? decodeURIComponent(match[1]) : null;
   }, [localeCtx.pathname]);
 
+  // Klient-portal magic-link: /client/portal/:token — read-only marketing-plan-
+  // dashboard (token-i-URL-auth). Var KUN rutet i App.tsx, som ALDRI kjører på
+  // theroleroom.com/casting-main-hosten → lenken falt til landingssiden. Ekstraher
+  // token og render portalen her (mønster som /client/workspace over).
+  const clientPortalToken = useMemo(() => {
+    const match = localeCtx.pathname.match(/^\/client\/portal\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }, [localeCtx.pathname]);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -263,6 +273,10 @@ function CastingStandaloneAppContent() {
     return briefRoute.kind === 'index'
       ? <PublicBriefIndex />
       : <PublicBriefDetail slug={briefRoute.slug} />;
+  }
+
+  if (clientPortalToken) {
+    return <ClientPortalMarketingPage token={clientPortalToken} />;
   }
 
   if (clientWorkspaceProjectId) {
