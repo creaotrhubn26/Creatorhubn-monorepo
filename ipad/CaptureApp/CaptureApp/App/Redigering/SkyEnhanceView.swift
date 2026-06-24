@@ -63,17 +63,32 @@ final class SkyEnhanceModel {
         } catch { statusMessage = (error as? PhotoEnhancerClient.EnhancerError)?.errorDescription ?? "Forslag feilet." }
     }
 
-    func run() async {
+    private var runTask: Task<Void, Never>?
+
+    func run() {
         guard let client = PhotoEnhancerClient.make(), let src = sourceBytes() else { return }
-        busy = true; statusMessage = "Forbedrer (kan ta litt på RAW)…"; defer { busy = false }
-        do {
-            let r = try await client.enhance(imageData: src.data, fileName: src.name, mime: src.mime,
-                                             preset: preset, settings: settings)
-            resultImage = r.image; resultJPEG = r.jpegData
-            modelInfo = "Modell: \(r.modelUsed ?? "?") · \(r.inferenceMode ?? "")"
-            statusMessage = "Ferdig."
-        } catch { statusMessage = (error as? PhotoEnhancerClient.EnhancerError)?.errorDescription ?? "Forbedring feilet." }
+        busy = true; statusMessage = "Starter…"
+        runTask = Task { @MainActor in
+            defer { busy = false }
+            do {
+                // Async: upload to B2 → queue → poll → result. Non-blocking,
+                // progress-reported, cancelable. Source stays on B2 (no R2).
+                let r = try await client.enhanceAsync(
+                    imageData: src.data, fileName: src.name, mime: src.mime,
+                    preset: preset, settings: settings, projectId: "photo-enhancer",
+                ) { [weak self] _, msg in self?.statusMessage = msg }
+                resultImage = r.image; resultJPEG = r.jpegData
+                modelInfo = "Modell: \(r.modelUsed ?? "?") · async (B2-kø)"
+                statusMessage = "Ferdig."
+            } catch is CancellationError {
+                statusMessage = "Avbrutt."
+            } catch {
+                statusMessage = (error as? PhotoEnhancerClient.EnhancerError)?.errorDescription ?? "Forbedring feilet."
+            }
+        }
     }
+
+    func cancelRun() { runTask?.cancel() }
 
     /// Persist the result as the asset's server-enhanced variant. Stamps EXIF
     /// copyright first when provided, then teaches the personalisation model.
@@ -226,13 +241,20 @@ struct SkyEnhanceView: View {
     }
 
     private var runButton: some View {
-        Button { Task { await model.run() } } label: {
-            HStack { if model.busy { ProgressView().controlSize(.small) }
-                Label("Kjør forbedring", systemImage: "wand.and.stars")
+        Group {
+            if model.busy {
+                Button(role: .destructive) { model.cancelRun() } label: {
+                    HStack { ProgressView().controlSize(.small); Text("Avbryt") }
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered).controlSize(.large)
+            } else {
+                Button { model.run() } label: {
+                    Label("Kjør forbedring", systemImage: "wand.and.stars").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large).tint(CHTheme.accent)
             }
-            .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent).controlSize(.large).tint(CHTheme.accent).disabled(model.busy)
     }
 
     // helpers

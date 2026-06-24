@@ -17,6 +17,7 @@ struct MyDayView: View {
                 VStack(spacing: 16) {
                     quotaCard
                     summaryCards
+                    momentumCard
                     forecastCard
                     leadsList
                 }
@@ -147,6 +148,18 @@ struct MyDayView: View {
         }
         .padding(12)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    // MARK: - Momentum-kort (Daniels Momentum Engine)
+
+    @ViewBuilder
+    private var momentumCard: some View {
+        if let api = state.api {
+            VStack(spacing: 10) {
+                LeadgridMomentumCard(api: api)
+                LeadgridMomentumTrendChart(api: api)
+            }
+        }
     }
 
     // MARK: - Forecasting-kort (PR #885, mig 323)
