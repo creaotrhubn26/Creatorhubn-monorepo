@@ -54,6 +54,7 @@ import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 import RoleRoomUXLayer from './shared/RoleRoomUXLayer';
 import { getActiveProfessionMode } from './config/professionMode';
+import { Route } from 'wouter';
 import {
   Search as SearchTourIcon,
   HelpOutline as HelpTourIcon,
@@ -105,6 +106,30 @@ function upsertHeadLink(rel: string, href: string) {
   link.href = href;
   document.head.appendChild(link);
 }
+
+// App.tsx-only ruter som ALSO må virke på theroleroom.com. App.tsx kjører aldri
+// på denne hosten, så magic-link/invite/settings-lenker (bygd med theroleroom.com
+// som origin/hardkodet) falt stille til landingssiden. Lazy + wouter <Route> så
+// :token når komponenter som bruker useParams. (Audit etter dead-links/GA/portal.)
+const RrTesterInviteLanding = React.lazy(() =>
+  import('@/components/role-room/dance/BillingPanels').then((m) => ({ default: m.TesterInviteLanding })),
+);
+const RrDanceInviteLanding = React.lazy(() => import('@/components/role-room/dance/InviteLandingPage'));
+const RrLeadMapAccept = React.lazy(() => import('@/pages/LeadMapAccept'));
+const RrPostAgentLink = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
+const RrAcceptTesterInvite = React.lazy(() => import('@/pages/AcceptTesterInvite'));
+const RrAcceptPrototypeTesterInvite = React.lazy(() => import('@/pages/AcceptPrototypeTesterInvite'));
+const RrSecuritySettings = React.lazy(() => import('@/pages/sikkerhet'));
+
+const THEROLEROOM_APP_ROUTES: Array<{ test: RegExp; path: string; component: React.ComponentType<any> }> = [
+  { test: /^\/invite\/[^/]+$/, path: '/invite/:token', component: RrTesterInviteLanding },
+  { test: /^\/dance\/invite\/[^/]+$/, path: '/dance/invite/:token', component: RrDanceInviteLanding },
+  { test: /^\/role-room\/accept-invite$/, path: '/role-room/accept-invite', component: RrAcceptTesterInvite },
+  { test: /^\/prototype-tester\/accept-invite$/, path: '/prototype-tester/accept-invite', component: RrAcceptPrototypeTesterInvite },
+  { test: /^\/lead-map\/accept$/, path: '/lead-map/accept', component: RrLeadMapAccept },
+  { test: /^\/link$/, path: '/link', component: RrPostAgentLink },
+  { test: /^\/innstillinger\/sikkerhet$/, path: '/innstillinger/sikkerhet', component: RrSecuritySettings },
+];
 
 function CastingStandaloneAppContent() {
   // Detekter locale fra /en/-prefix og strip det før path-parsing.
@@ -307,6 +332,16 @@ function CastingStandaloneAppContent() {
     }
     if (/^\/blog\/[^/]+$/.test(publicPath)) {
       return <BlogPostPage />;
+    }
+
+    // App.tsx-only ruter (invite/magic-link/settings) som også må virke her.
+    const appRoute = THEROLEROOM_APP_ROUTES.find((r) => r.test.test(publicPath));
+    if (appRoute) {
+      return (
+        <React.Suspense fallback={null}>
+          <Route path={appRoute.path} component={appRoute.component} />
+        </React.Suspense>
+      );
     }
   }
 
