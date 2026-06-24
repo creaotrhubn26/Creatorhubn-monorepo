@@ -664,8 +664,14 @@ export default function AdminCommunicationPanel({
                       primary={user.name}
                       secondary={
                         <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            {user.profession || 'Bruker'}
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: user.isOnline ? 700 : 400,
+                              color: user.isOnline ? '#4ade80' : 'rgba(255,255,255,0.55)',
+                            }}
+                          >
+                            {user.isOnline ? 'Pålogget nå' : (user.profession || 'Frakoblet')}
                           </Typography>
                           {user.unreadCount > 0 && (
                             <Chip

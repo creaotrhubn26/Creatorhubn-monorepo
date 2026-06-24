@@ -6005,18 +6005,37 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   // ─── GET /api/admin/communication/users ───────────────────
   router.get('/api/admin/communication/users', async (_req, res) => {
     try {
-      // Get distinct senders from messages
-      const users = await db
-        .selectDistinct({ senderId: schema.communicationMessages.senderId })
-        .from(schema.communicationMessages)
-        .limit(100);
+      // Distinkte sendere fra meldinger, beriket med ekte navn + presence.
+      // Online = user_presence.last_seen_at innen 90 sek og ikke idle (samme
+      // vindu som Admin Room / platform-status). JOIN-en degraderer trygt:
+      // matcher vi ikke brukeren (sender_id kan være id ELLER e-post) faller
+      // vi tilbake til sender_id og isOnline=false – aldri en feil.
+      const result = await pool.query(
+        `WITH senders AS (
+           SELECT DISTINCT sender_id FROM communication_messages LIMIT 100
+         )
+         SELECT s.sender_id AS id,
+                COALESCE(u.email, s.sender_id) AS email,
+                COALESCE(
+                  NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
+                  u.email,
+                  s.sender_id
+                ) AS name,
+                p.last_seen_at AS last_seen_at,
+                (p.last_seen_at > NOW() - INTERVAL '90 seconds'
+                  AND COALESCE(p.is_idle, FALSE) = FALSE) AS is_online
+           FROM senders s
+           LEFT JOIN users u ON u.id = s.sender_id OR u.email = s.sender_id
+           LEFT JOIN user_presence p ON p.user_id = u.id`,
+      );
 
       res.json({
-        users: users.map((u) => ({
-          id: u.senderId,
-          email: u.senderId,
-          name: u.senderId,
-          isOnline: false,
+        users: result.rows.map((u) => ({
+          id: u.id,
+          email: u.email,
+          name: u.name,
+          isOnline: u.is_online === true,
+          lastSeenAt: u.last_seen_at ?? null,
         })),
       });
     } catch (error) {
